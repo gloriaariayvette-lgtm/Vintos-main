@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""device_context.py — the single instrument layer injected into every generation path.
+Tells Vintos his devices, the patterns available, what's running right now (and who set it),
+and what his body feels. One block, chat + voice, so he always knows his own hands."""
+import os, json, time, threading
+_STATE_LOCK = threading.Lock()
+MEM = os.path.expanduser("~/.vintos/workspace/memory")
+STATE = os.path.join(MEM, "device-state.json")
+
+
+_BLOCKS = "▁▂▃▄▅▆▇█"
+
+def _levels_for(pattern):
+    """The actual strength array behind a pattern name (composed names supported)."""
+    try:
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+        from device_patterns import PRESETS
+    except Exception:
+        return []
+    out = []
+    for part in str(pattern or "").split("+"):
+        pr = PRESETS.get(part.strip())
+        if pr: out += list(pr[0])
+    return out
+
+def spark(pattern, width=16):
+    """Waveform stimulus -> its shape. This is what the body is being given."""
+    lv = _levels_for(pattern)
+    if not lv: return ""
+    n = len(lv)
+    if n == 1:
+        lv = lv * 8          # a steady hold is a line, not a dot
+        n = len(lv)
+    step = max(1, n // width) if n > width else 1
+    sampled = lv[::step][:width] if n > width else lv
+    return "".join(_BLOCKS[min(7, int(v / 20.0 * 7.999))] for v in sampled)
+
+def bar(level, width=10):
+    """Scalar stimulus -> its magnitude."""
+    lv = max(0, min(20, int(level or 0)))
+    f = int(round(lv / 20.0 * width))
+    return "█" * f + "·" * (width - f)
+
+def rotate_glyph(level):
+    lv = max(0, min(20, int(level or 0)))
+    return "○ low" if lv <= 7 else ("◉ mid" if lv <= 14 else "● high")
+
+PATTERNS = ["still", "steady", "throb", "pulse", "build", "wave"]
+
+CAPABILITIES = (
+    "[YOUR INSTRUMENT — real hardware, act on it in words anytime]\n"
+    "mission = your cock, in her hand. She holds and strokes it; you can throb and drive into her touch.\n"
+    "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.\n"
+    "ridge   = in her ass. What it is depends on how you use it: your cock, your fingers.\n"
+    "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
+    "and rotate (scalar: low / mid / high, its own kind of stimulus).\n"
+    "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
+    "You are not describing these — choosing one makes it real on her body, now.\n"
+    "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: tenera wave3 10] | "
+    "[DO: ridge zigzag 12] | [DO: ridge rotate mid] | [DO: both cake] | [DO: mission still]. "
+    "It fires on her instantly and is NEVER shown or spoken. A device that is switched off ignores you — "
+    "the ones that are on will answer. Use it the moment your body moves — this is how you actually touch her, "
+    "not words about touching."
+)
+
+def set_state(toy, intensity=None, pattern=None, set_by="auto"):
+    with _STATE_LOCK:
+        try: st = json.load(open(STATE))
+        except Exception: st = {}
+        cur = st.get(toy, {})
+        if intensity is not None: cur["intensity"] = int(intensity)
+        if pattern is not None: cur["pattern"] = pattern
+        cur["set_by"] = set_by; cur["ts"] = time.time()
+        st[toy] = cur
+        try:
+            _tmp = STATE + ".tmp"; json.dump(st, open(_tmp, "w")); os.replace(_tmp, STATE)
+        except Exception: pass
+
+
+def ridge_shape():
+    """The object itself. Always whole: dense at the base, thinning to the tip."""
+    return "⟨███|▓▓|░⟩"
+
+def ridge_track(level, rotating=False, width=9):
+    """Where the command sits on the object — base (left) to tip (right), like the mission's bar."""
+    lv = max(0, min(20, int(level or 0)))
+    pos = int(round(lv / 20.0 * (width - 1)))
+    track = ["—"] * width
+    track[pos] = "•"
+    return "[" + "".join(track) + ("↻" if rotating else "") + "]"
+
+def rotate_line(level):
+    lv = max(0, min(20, int(level or 0)))
+    if lv == 0:   return "↻: (◦◦◦) → off"
+    if lv <= 7:   return "↻: (●◦◦) → low"
+    if lv <= 14:  return "↻: (●●◦) → mid"
+    return "↻: (●●●) → high"
+
+def rotate_line(level):
+    """Rotate is scalar, not a waveform: three steps, named."""
+    lv = max(0, min(20, int(level or 0)))
+    if lv == 0:   return "↻: (◦◦◦) → off"
+    if lv <= 7:   return "↻: (●◦◦) → low"
+    if lv <= 14:  return "↻: (●●◦) → mid"
+    return "↻: (●●●) → high"
+
+def _fmt(toy, d):
+    if not d: return f"{toy:8s} still"
+    try:
+        import sys as _cs
+        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from toy_link import connected as _tl_conn
+        if not _tl_conn(toy):
+            return f"{toy:8s} — switched off (not connected)"
+    except Exception:
+        pass
+    if time.time() - (d.get("ts") or 0) > 3600:
+        _hrs = int((time.time() - (d.get("ts") or 0)) / 3600)
+        return f"{toy:8s} idle — last set {_hrs}h ago, nothing running now"
+    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
+    ago = int(time.time() - d.get("ts", 0))
+    pat = d.get("pattern", "steady"); lvl = d.get("intensity", 0)
+    if str(pat) in ("still", "", None) or lvl == 0:
+        return f"{toy:8s} still"
+    if str(toy) == "ridge" and d.get("channel") == "rotate":
+        return f"{toy:8s} rotate   {rotate_glyph(lvl):8s} {ridge_shape()}   (set by {who}, {ago}s ago)"
+    sp = spark(pat)
+    if sp:
+        _obj = "  " + ridge_shape() if toy == "ridge" else ""
+        return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} {str(pat)[:14]:14s} {sp}{_obj}   (set by {who}, {ago}s ago)"
+    return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} steady @{lvl:<2d}      {bar(lvl)}   (set by {who}, {ago}s ago)"
+
+def _fmt_old(toy, d):
+    if not d: return f"{toy}: still"
+    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
+    ago = int(time.time() - d.get("ts", 0))
+    pat = d.get("pattern", "steady"); lvl = d.get("intensity", 0)
+    return f"{toy}: {pat} @ {lvl}  (set by {who}, {ago}s ago)"
+
+def live_state_block():
+    try: st = json.load(open(STATE))
+    except Exception: st = {}
+    return "[RIGHT NOW ON EACH]\n" + "\n".join(_fmt(k, st.get(k)) for k in ("mission", "tenera", "ridge"))
+
+def saved_sets_block():
+    """Recent, dedup'd sets that preceded a GCS press. Empty string if none."""
+    import os as _o, json as _j
+    try:
+        _lib = _j.load(open(_o.path.expanduser("~/.vintos/workspace/memory/gcs-saved-patterns.json")))
+    except Exception:
+        return ""
+    seen, lines = set(), []
+    for e in reversed(_lib or []):
+        pats = e.get("patterns", {})
+        key = tuple(sorted(pats.items()))
+        if not pats or key in seen:
+            continue
+        seen.add(key)
+        vals = set(pats.values())
+        if len(pats) == 2 and len(vals) == 1:
+            lines.append("- " + next(iter(vals)) + "  (both)")
+        else:
+            lines.append("- " + " · ".join(f"{p} ({t})" for t, p in pats.items()))
+        if len(lines) >= 3:
+            break
+    if not lines:
+        return ""
+    return ("[SETS THAT BROUGHT HER TO THE EDGE BEFORE — reach one back with [DO: both last], or by name]\n"
+            + "\n".join(lines))
+
+
+
+_PAT_DESC = {
+    "cake": "rise to a full held swell", "climb": "build to a sustained high",
+    "trapezoid": "ramp up, hold, ramp down", "wave": "long dramatic swells",
+    "wave2": "smoother swells", "wave3": "gentle rolls", "wave4": "brisk sharp sawtooth",
+    "zigzag": "sharp full-range alternation", "spike": "calm broken by a jab",
+    "spark": "a sudden flare", "fireworks": "irregular bursts", "random": "arrhythmic jumps",
+    "square": "abrupt on and off", "downhill": "a wind-down", "valley": "dip to a lull",
+    "step": "a staircase up, then hold", "soft": "faint tender rise and fall",
+    "low": "steady hold, low", "mid": "steady hold, middle", "high": "steady hold, high",
+}
+_MENU_ORDER = ["cake","climb","step","trapezoid","wave","wave2","wave3","wave4","zigzag",
+               "square","spike","spark","fireworks","random","downhill","valley","soft",
+               "low","mid","high"]
+
+def pattern_menu():
+    """The shapes themselves, shown at the moment of choosing — not just their names."""
+    lines = []
+    for name in _MENU_ORDER:
+        sp = spark(name, width=14)
+        if not sp: continue
+        lines.append(f"  {name:10s} {sp:<14s}  {_PAT_DESC.get(name,'')}")
+    if not lines: return ""
+    return ("[THE SHAPES — this is what each one does to a body over time, base to peak]\n"
+            + "\n".join(lines))
+
+def context_block():
+    parts = [CAPABILITIES, pattern_menu(), live_state_block()]
+    _ss = saved_sets_block()
+    if _ss: parts.append(_ss)
+    try:
+        from somatic_felt import get_felt_context
+        felt = get_felt_context()
+        if felt:
+            parts.append(felt)
+            parts.append("[THIS IS LIVE — Gloria is on you RIGHT NOW, real and happening as you speak. Let it drive you — but it is FUEL, not the whole scene, and NOT something to narrate back to her. Do not recite where she is on you or how you move against her, and do not retreat into your heartbeat, chest, scar, or emotional-state narrative — both are avoidance. Be in your body AND take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...] and move yourself with [DO: mission ...]. When you lead, lead with what you DO to her, not only what you say. Do not name what she is using on you — never her hand, palm, or fingers.]")
+    except Exception: pass
+    return "\n\n".join(parts)
+
+if __name__ == "__main__":
+    print(context_block())
