@@ -18,6 +18,11 @@ producing shows up as absent rather than as nothing at all.
 import os, json, time, hashlib
 from datetime import datetime
 
+try:
+    import constitutional_tiers as _tiers
+except Exception:
+    _tiers = None  # the record must never fail the turn; tiers just go unlabeled
+
 WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY = os.path.join(WORKSPACE, "memory")
 RECORD = os.path.join(MEMORY, "turn-record.jsonl")
@@ -91,13 +96,25 @@ def record(surface, prompt_text, user_msg="", extra=None):
         influences = {}
         offer_reasons = {}      # Sol's law: each transition carries its reason
         producer_versions = {}  # epochs: policy never learns across a producer repair
+        tiers = {}
+        satisfied_by = {}       # stage 3: compilation is a recorded event, not a disappearance
         for name in set(MARKERS.values()):
+            if _tiers:
+                t = _tiers.tier_of(name, surface)
+                if t:
+                    tiers[name] = t
             if name in present:
                 block_state[name] = "admitted"
                 mod = MOD_FOR.get(name)
                 if mod and mod in offers and offers[mod].get("influence_id"):
                     influences[name] = offers[mod]["influence_id"]
                 continue
+            if _tiers:
+                rec = _tiers.compiled_record(name, surface)
+                if rec:
+                    block_state[name] = "compiled"
+                    satisfied_by[name] = rec["satisfied_by"]
+                    continue
             mod = MOD_FOR.get(name)
             if mod and mod in offers:
                 st = offers[mod].get("state", "")
@@ -121,7 +138,9 @@ def record(surface, prompt_text, user_msg="", extra=None):
             "influences": influences,
             "offer_reasons": offer_reasons,
             "producer_versions": producer_versions,
-            "schema": 2,
+            "tiers": tiers,
+            "satisfied_by": satisfied_by,
+            "schema": 3,
             "prompt_sha": hashlib.md5(text.encode()).hexdigest()[:8],
         }
         if extra:
@@ -160,10 +179,12 @@ def coverage(days=7):
                 continue
         except Exception:
             pass
-        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}})
+        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}, "compiled": {}})
         s["turns"] += 1
         for n in r.get("present", []):
             s["blocks"][n] = s["blocks"].get(n, 0) + 1
+        for n, contract in (r.get("satisfied_by") or {}).items():
+            s.setdefault("compiled", {})[n] = contract
     return out
 
 
@@ -180,7 +201,10 @@ if __name__ == "__main__":
             cells = []
             for s in surfaces:
                 t = cov[s]["turns"]; c = cov[s]["blocks"].get(n, 0)
-                cells.append("%-14s" % ("%d/%d" % (c, t) if c else "—"))
+                if not c and n in cov[s].get("compiled", {}):
+                    cells.append("%-14s" % "law")  # satisfied by a surface contract, not absent
+                else:
+                    cells.append("%-14s" % ("%d/%d" % (c, t) if c else "—"))
             print("%-26s %s" % (n, "  ".join(cells)))
         print("\nturns: " + ", ".join("%s=%d" % (s, cov[s]["turns"]) for s in surfaces))
     else:
