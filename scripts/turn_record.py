@@ -49,6 +49,7 @@ MARKERS = {
     "[Something you said you would do":      "plan_self",
     "[Something the two of you said":        "plan_mutual",
     "[You took this of hers":                "reading",
+    "[STRATAGEM":                            "stratagem",
 }
 
 
@@ -78,6 +79,7 @@ def record(surface, prompt_text, user_msg="", extra=None):
             "plan_mutual": "plan",
             "behavioral_intercept": "behavioral_intercept",
             "confidence_penalty": "confidence_penalty",
+            "stratagem": "stratagem",
         }
         offers = {}
         try:

@@ -116,6 +116,14 @@ def main():
         except Exception as _rd_e:
             print("[gloria-predict] reading not opened:", _rd_e)
 
+    if grade is not None and grade >= 0.7 and prev.get("predicted"):
+        try:
+            from stratagem import record_leverage
+            record_leverage(prev["predicted"], "SEED", "prediction matched", "UNKNOWN",
+                            "high-accuracy prediction available for sequencing")
+        except Exception:
+            pass
+
     print(f"[gloria-predict] graded previous {grade:.2f}" if grade is not None else "[gloria-predict] no previous prediction to grade")
     print(f"  predicted: {out['predicted'][:90]}")
     print(f"  confidence {out['confidence']} | novelty {out['novelty']}")

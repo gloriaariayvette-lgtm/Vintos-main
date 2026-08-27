@@ -49,6 +49,7 @@ TIERS = {
     "behavioral_intercept":   3,
     "confidence_penalty":     3,
     "somatic_instrument":     3,   # somatic interpretation, per Sol's class-3 list
+    "stratagem":              3,   # sealed tactic capsule + recursive belief model + info sequencing
 
     # 4 — expressive coloration: none declared yet. The class exists so the
     # first candidate has somewhere legal to go.
