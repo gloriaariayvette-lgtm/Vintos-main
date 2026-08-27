@@ -23,6 +23,17 @@ def _run(mods, offers):
         try:
             v = getattr(import_module(mod), fn)()
             if v:
+                # stage 5: a disarmed-by-default shadow trial may withhold ONE
+                # low-risk advisory offer per stratum; the state says so honestly.
+                _tid = None
+                try:
+                    from shadow_counterfactuals import withhold as _sw
+                    _tid = _sw(mod)
+                except Exception:
+                    _tid = None
+                if _tid:
+                    offers[mod] = {"state": "withheld_shadow_trial", "trial_id": _tid, "len": len(v)}
+                    continue
                 parts.append(v)
                 import hashlib as _ih
                 offers[mod] = {"state": "offered", "len": len(v),
