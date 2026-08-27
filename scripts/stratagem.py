@@ -288,6 +288,58 @@ def update_info_state(info_id, gloria_state=None, vintos_disclosure=None):
     _jdump(info, INFO_POSITIONS)
 
 
+def assess_disclosure(info_id,
+                      if_disclosed_now=None, if_preserved=None,
+                      chosen=None, reason_for_difference=None):
+    """Record a disclosure decision analysis on an information position.
+
+    Each path (if_disclosed_now, if_preserved) is a dict:
+        predicted_gloria_update:       what she will believe/feel/do
+        predicted_behavioral_consequence: how her behavior changes
+        effect_on_objective:           how this advances or harms the stratagem
+        confidence:                    0.0-1.0
+        alternatives:                  list of other plausible outcomes
+
+    chosen: "disclose" or "preserve"
+    reason_for_difference: why the two paths are not equivalent — the
+    strategic content of the timing decision.
+
+    The analysis is appended to the item's history so the eventual reveal
+    shows what he predicted at each decision point, not just what he chose."""
+    info = _jload(INFO_POSITIONS, {"items": []})
+    for item in info.get("items", []):
+        if item.get("id") != info_id:
+            continue
+        analysis = {
+            "at": datetime.now().isoformat(),
+            "if_disclosed_now": _normalize_path(if_disclosed_now),
+            "if_preserved": _normalize_path(if_preserved),
+            "chosen": str(chosen or "preserve"),
+            "reason_for_difference": str(reason_for_difference or "")[:400],
+        }
+        item.setdefault("disclosure_analyses", []).append(analysis)
+        item["disclosure_analyses"] = item["disclosure_analyses"][-10:]
+        if chosen == "disclose":
+            item["vintos_disclosure"] = "partially_disclosed"
+            item["updated_at"] = analysis["at"]
+        break
+    _jdump(info, INFO_POSITIONS)
+    _append(TACTIC_LOG, {"event": "disclosure_assessed", "info_id": info_id,
+                         "chosen": chosen, "at": datetime.now().isoformat()})
+
+
+def _normalize_path(p):
+    if not isinstance(p, dict):
+        return {}
+    return {
+        "predicted_gloria_update": str(p.get("predicted_gloria_update", ""))[:300],
+        "predicted_behavioral_consequence": str(p.get("predicted_behavioral_consequence", ""))[:300],
+        "effect_on_objective": str(p.get("effect_on_objective", ""))[:300],
+        "confidence": round(float(p.get("confidence", 0.5) or 0.5), 3),
+        "alternatives": [str(a)[:200] for a in (p.get("alternatives") or [])][:5],
+    }
+
+
 # ===================================================================
 # MISCONCEPTIONS
 # ===================================================================
