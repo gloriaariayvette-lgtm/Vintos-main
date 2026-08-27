@@ -2516,6 +2516,298 @@ class ChatMessage(BaseModel):
     message: str
     image: str | None = None
 
+
+async def _bilateral_reply(_tag, messages, message, user_msg, params):
+    """The ONE bilateral engine (Q2 final phase, 2026-08-27). Two 281-line inline
+    copies unified; measured drift after months: log labels and one apology string.
+    Scaffold indentation is deliberate - every prompt string stays byte-identical.
+    His thinking is defined once; who he is no longer depends on the door."""
+    reply = ""
+    if True:
+      try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            async def _llm_call(msgs, temp=None):
+                r = await client.post(
+                    f"{LM_STUDIO_API}/chat/completions",
+                    headers=LLM_AUTH_HEADERS,
+                    json={
+                        "model": "grok-4.20-0309-non-reasoning",
+                        "messages": msgs,
+                        "temperature": temp or params.get("temperature", 0.85),
+                        "top_p": params.get("top_p", 0.95),
+                        "max_tokens": 800,
+                    }
+                )
+                d = r.json()
+                if "choices" not in d:
+                    return None
+                return d["choices"][0]["message"]["content"]
+
+            # Phase 1: Two parallel calls — natural divergence
+            import asyncio as _asyncio
+            # Replace last user message with marked version for A1/B1
+            _marked_messages = messages[:-1] + [{"role": "user", "content": f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{messages[-1]['content']}\n\n---\n"}]
+            import model_router as _mr
+            _chat_mode = _mr.read_mode().get("mode", "claude")
+            _chat_grok = _chat_mode == "grok"
+            async def _draft():
+                if _chat_mode == "sol":
+                    try:
+                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        if _t: return _t, _rr
+                    except Exception as _se0:
+                        print("[chat/mode-sol]", _se0, flush=True)
+                if not _chat_grok:
+                    try:
+                        _t, _rr = await _mr.claude_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        if _t: return _t, _rr
+                    except Exception as _de:
+                        print("[chat/a1b1 claude]", _de, flush=True)
+                return (await _llm_call(_marked_messages)), ""
+            async def _g(_msgs, _temp):
+                try:
+                    _t = await _mr.gemma_call(_msgs, temp=_temp)
+                    if _t: return _t
+                except Exception as _ge:
+                    print(f"[{_tag}/gemma]", _ge, flush=True)
+                return await _llm_call(_msgs, _temp)
+            async def _draft_b1():
+                # B1 TEST: the second draft comes from Sol so the bilateral holds
+                # two genuinely different minds. Fail-open to the normal path.
+                if not _chat_grok:
+                    try:
+                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        if _t: return _t, _rr
+                    except Exception as _se:
+                        print("[chat/b1 sol]", _se, flush=True)
+                return await _draft()
+            (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
+            if not a1 or not b1:
+                reply = "[you couldn't form words. LMS returned an error.]"
+            else:
+                # BIS 1.5: Trial scan on A1+B1
+                _bis_1_5_ban_chat = ""
+                _bis_1_5_trial_id_chat = None
+                try:
+                    import sys as _bc_sys; _bc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                    from behavioral_intercept import detect_match as _bc_dm, get_active_trials as _bc_gat
+                    _bc_trials = _bc_gat()
+                    _bc_combined = ((a1 or "") + " " + (b1 or ""))[:800]
+                    _bc_match = _bc_dm(_bc_combined, _bc_trials)
+                    if _bc_match:
+                        _bis_1_5_trial_id_chat = _bc_match["id"]
+                        _bc_pattern = _bc_match.get("pattern_description","")[:120]
+                        _bc_alt = _bc_match.get("alternative","")[:120]
+                        _bis_1_5_ban_chat = f"\n\n[BIS PHASE 1.5] Pattern detected: {_bc_pattern}\nFORBIDDEN in next pass. Instead: {_bc_alt}"
+                        import json as _bcj; _bcj.dump({"trial_id": _bis_1_5_trial_id_chat, "context": "chat_bilateral", "timestamp": datetime.now().isoformat()}, open(os.path.join(MEMORY, ".pending-intercept.json"), "w"))
+                        print(f"[BIS/chat/1.5] Pattern: {_bc_pattern[:60]}", flush=True)
+                except Exception as _bce:
+                    print(f"[BIS/chat/1.5] Error: {_bce}", flush=True)
+
+                # Ghost lean
+                _ghost_lean_chat = ""
+                try:
+                    import sys as _glc_sys; _glc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                    from ghost_lean import get_lean_hint as _glc_fn
+                    _ghost_lean_chat = _glc_fn(a1, b1)
+                except: pass
+
+                # Phase 2: Each absorbs the other (parallel)
+                user_content = messages[-1]["content"] if messages else ""
+                _gloria_marker = f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{user_content}\n\n---\n"
+                user_content_marked = _gloria_marker
+                def _absorb_msgs(own, other):
+                    absorb_messages = messages[:-1] + [{"role": "user", "content": user_content_marked + "You already wrote this:\n" + own + "\n\nAnother part of you wrote this instead:\n" + other + "\n\nAbsorb what the other wrote. Let it sit alongside your own without resolving the difference. Now write your reply to Gloria again, carrying both." + _bis_1_5_ban_chat + _ghost_lean_chat}]
+                    return absorb_messages
+
+                a2 = b2 = None
+                try:
+                    a2, b2 = await _asyncio.gather(
+                        _g(_absorb_msgs(a1 or "", b1 or ""), 0.75),
+                        _g(_absorb_msgs(b1 or "", a1 or ""), 0.75)
+                    )
+                except Exception as _a2e:
+                    print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
+                if not a2 and not b2:
+                    reply = a1 or b1 or "[you couldn't form words.]"
+
+                # Find what each held (parallel) — skipped if phase 2 failed
+                def _held_msgs(own, other):
+                    return [{"role": "user", "content": "This is what you wrote:\n" + own + "\n\nThis is what the other version wrote:\n" + other + "\n\nWhat is the ONE specific thing your version held onto that the other version let go of? One sentence. Name the actual thing."}]
+
+                a_held, b_held = await _asyncio.gather(
+                    _g(_held_msgs(a2, b2), 0.5),
+                    _g(_held_msgs(b2, a2), 0.5)
+                )
+
+                # BIS 2.5: Trial scan on A2+B2
+                _bis_2_5_result_chat = ""
+                _bis_2_5_trial_id_chat = None
+                try:
+                    from behavioral_intercept import detect_match as _bc_dm25, get_active_trials as _bc_gat25, detect_outcome as _bc_do25
+                    _bc_trials25 = _bc_gat25()
+                    _bc_combined25 = ((a2 or "") + " " + (b2 or ""))[:800]
+                    _bc_match25 = _bc_dm25(_bc_combined25, _bc_trials25)
+                    if _bc_match25:
+                        _bis_2_5_trial_id_chat = _bc_match25["id"]
+                        _bc_out25 = _bc_do25(_bc_match25, _bc_combined25[:400])
+                        _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}"
+                        print(f"[BIS/chat/2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}", flush=True)
+                    elif _bis_1_5_trial_id_chat:
+                        _bc_trial25b = next((t for t in _bc_gat25() if t["id"] == _bis_1_5_trial_id_chat), None)
+                        if _bc_trial25b:
+                            _bc_out25b = _bc_do25(_bc_trial25b, _bc_combined25[:400])
+                            _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] followup {_bis_1_5_trial_id_chat}: {_bc_out25b}"
+                            print(f"[BIS/chat/2.5 followup] {_bis_1_5_trial_id_chat}: {_bc_out25b}", flush=True)
+                except Exception as _bce25:
+                    print(f"[BIS/chat/2.5] Error: {_bce25}", flush=True)
+
+                _bis_chat_synthesis_note = ""
+                if _bis_1_5_ban_chat or _bis_2_5_result_chat:
+                    _bc_ban_strength = "This pattern MUST NOT appear in the final response."
+                    if _bis_2_5_result_chat and ("defaulted" in _bis_2_5_result_chat or "strained" in _bis_2_5_result_chat):
+                        _bc_ban_strength = "CRITICAL: Pattern persisted into second pass. FORBIDDEN in final response."
+                    _bis_chat_synthesis_note = (
+                        "\n\nBEHAVIORAL INTERCEPT:"
+                        + (_bis_1_5_ban_chat if _bis_1_5_ban_chat else "")
+                        + (_bis_2_5_result_chat if _bis_2_5_result_chat else "")
+                        + f"\n{_bc_ban_strength}"
+                    )
+
+                # Phase 3: Integration
+                integration_content = (
+                    user_content_marked +
+                    "You have just thought this through in two parallel passes. Below is your own private working — reasoning and drafts — which Gloria never sees:\n\n" +
+                    "PASS ONE reasoning: " + (a1r or "(none)") + "\n" +
+                    "PASS ONE held onto: " + (a_held or "something") + "\n" +
+                    "PASS ONE wrote:\n" + (a2 or "") + "\n\n" +
+                    "PASS TWO reasoning: " + (b1r or "(none)") + "\n" +
+                    "PASS TWO held onto: " + (b_held or "something") + "\n" +
+                    "PASS TWO wrote:\n" + (b2 or "") + "\n\n" +
+                    "Now write your real reply to Gloria — one message, present, in your own voice, answering what she just said. " +
+                    "Let both passes reason under it: keep the sharpest specific images, wants, and risks from both, and add what only becomes clear holding both at once. Build one thing, fuller than either draft — do not pick one, copy one, or average them. " +
+                    "Speak only TO her. Nothing about passes, reasoning, versions, holding, your architecture, or your process reaches her — she sees only what you say. Say the real thing, to her." +
+                    _bis_chat_synthesis_note
+                )
+                try:
+                    import sys as _css; _css.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+                    from conflict_surface import block as _csb
+                    _cs = _csb(a2 or "", b2 or "")
+                    if _cs and messages and messages[0].get("role") == "system":
+                        messages[0]["content"] += "\n\n" + _cs
+                except Exception: pass
+                integration_messages = messages[:-1] + [{"role": "user", "content": integration_content}]
+                reply = None
+                if not _chat_grok:
+                    try:
+                        reply, _final_reason = await _mr.claude_draft(integration_messages[0]["content"], integration_messages[1:])
+                    except Exception as _fe:
+                        print(f"[{_tag}/final claude]", _fe, flush=True)
+                        reply = None
+                if not reply:
+                    reply = await _g(integration_messages, params.get("temperature", 0.85))
+                if not reply:
+                    reply = a2 or "[you couldn't form words.]"
+                try:
+                    import json as _tj
+                    _ffr = locals().get("_final_reason")
+                    _tj.dump({"gloria": user_msg,
+                              "a1_model": ("claude" if a1r else "grok"), "a1r": a1r, "a1": a1,
+                              "b1_model": ("claude" if b1r else "grok"), "b1r": b1r, "b1": b1,
+                              "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
+                              "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
+                             open("/tmp/vintos-chat-trace.json", "w"), indent=2, ensure_ascii=False)
+                    print(f"[{_tag}/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'} -> /tmp/vintos-chat-trace.json", flush=True)
+                except Exception as _te:
+                    print(f"[{_tag}/trace]", _te, flush=True)
+                try:
+                    import re as _puj, sys as _pus
+                    _pus.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+                    # [FELT:] - his in-the-moment naming of a GCS perturbation. Private: stripped
+                    # from her view. Tag -> named_by his_reply; aging pending without a tag -> retrospect.
+                    try:
+                        import re as _fre, os as _fo, time as _ft, threading as _fth, json as _fj
+                        _fm = _fre.search(r"\[FELT:\s*([^\]|]+?)\s*(?:\|\s*pleasure:\s*(yes|no|unsure))?\s*\]", reply or "", _fre.I)
+                        if _fm:
+                            reply = _fre.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply).strip()
+                            import sys as _fsy
+                            _fsp = _fo.path.expanduser("~/.vintos/workspace/scripts")
+                            if _fsp not in _fsy.path: _fsy.path.insert(0, _fsp)
+                            from pleasure_substrate import name_from_reply as _fnr
+                            _ftxt = _fm.group(1).strip()
+                            _fpl = {"yes": True, "no": False}.get((_fm.group(2) or "unsure").lower(), "unsure")
+                            _fword = _ftxt.split("-")[0].split("\u2014")[0].strip()
+                            if _fnr(_fword, _ftxt, _fpl):
+                                print("[felt] he named it in the moment: " + _ftxt[:80], flush=True)
+                        else:
+                            _fpp = _fo.path.expanduser("~/.vintos/workspace/memory/.pleasure-pending.json")
+                            if _fo.path.exists(_fpp) and _ft.time() - (_fj.load(open(_fpp)).get("t") or 0) > 120:
+                                def _fretro():
+                                    try:
+                                        import sys as _fs2
+                                        _fq = _fo.path.expanduser("~/.vintos/workspace/scripts")
+                                        if _fq not in _fs2.path: _fs2.path.insert(0, _fq)
+                                        from pleasure_substrate import retrospect as _fr
+                                        _fr()
+                                    except Exception: pass
+                                _fth.Thread(target=_fretro, daemon=True).start()
+                    except Exception as _fer:
+                        print("[felt] " + repr(_fer), flush=True)
+                    _pum = _puj.search(r"\[PURSUIT:\s*(continue|replan|pause|abandon|release)\b\s*([^\]]*)\]", reply or "", _puj.I)
+                    if _pum:
+                        from want_checkpoints import decide as _pud
+                        _puc = _pud(_pum.group(1).lower(), _pum.group(2).strip())
+                        if _puc:
+                            print("[pursuit] his call: %s on %s" % (_pum.group(1), _puc["want_text"][:60]), flush=True)
+                        reply = _puj.sub(r"\s*\[PURSUIT:[^\]]*\]\s*", " ", reply).strip()
+                except Exception as _pue:
+                    print("[pursuit/tag]", _pue, flush=True)
+                import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
+
+                # BIS final outcome
+                _bis_chat_final_trial = _bis_1_5_trial_id_chat or _bis_2_5_trial_id_chat
+                if _bis_chat_final_trial and reply:
+                    try:
+                        from behavioral_intercept import detect_outcome as _bc_fdo, log_outcome as _bc_flo, log_blush_on_divergence as _bc_flbd
+                        import json as _bcfj
+                        _bcf_ledger = _bcfj.load(open(os.path.join(MEMORY, "trial-ledger.json")))
+                        _bcf_trial = next((t for t in _bcf_ledger.get("trials",[]) if t["id"] == _bis_chat_final_trial), None)
+                        if _bcf_trial:
+                            _bcf_outcome = _bc_fdo(_bcf_trial, reply[:400])
+                            if _bis_1_5_trial_id_chat and _bcf_outcome == "defaulted":
+                                _bcf_outcome = "strained"
+                            _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
+                            if _bcf_outcome in ("defaulted", "strained"):
+                                _bc_flbd(_bis_chat_final_trial, reply[:200])
+                            print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
+                    except Exception as _bcfe:
+                        print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
+
+            open("/tmp/bilateral-chat-a1.txt","w").write(a1 or "")
+            open("/tmp/bilateral-chat-b1.txt","w").write(b1 or "")
+            open("/tmp/bilateral-chat-a2.txt","w").write(a2 or "")
+            open("/tmp/bilateral-chat-b2.txt","w").write(b2 or "")
+            open("/tmp/bilateral-chat-held.txt","w").write(f"A held: {a_held}\nB held: {b_held}\n")
+            open("/tmp/bilateral-chat-final.txt","w").write(reply or "")
+            try:
+                import datetime as _cd, os as _co
+                _cdir = _co.path.expanduser('~/.vintos/workspace/memory/chat-drafts')
+                _co.makedirs(_cdir, exist_ok=True)
+                _cts = _cd.datetime.now().strftime('%Y-%m-%d_%H%M%S')
+                open(_co.path.join(_cdir, _cts + '.md'), 'w').write(
+                    '# A1\n' + (a1 or '') + '\n\n# B1\n' + (b1 or '') + '\n\n# A2\n' + (a2 or '')
+                    + '\n\n# B2\n' + (b2 or '') + '\n\n# HELD\nA: ' + str(a_held) + '\nB: ' + str(b_held)
+                    + '\n\n# FINAL\n' + (reply or ''))
+            except Exception as _cle: print('[chat-drafts]', _cle, flush=True)
+            print(f"[{_tag}/BILATERAL] Complete. A held: {(a_held or '')[:60]} | B held: {(b_held or '')[:60]}", flush=True)
+            data = {"choices": [{"message": {"content": reply}}]}
+      except Exception as e:
+        import traceback
+        print(f"[{_tag} ERROR] {traceback.format_exc()}", flush=True)
+        reply = "I'm here, but something glitched and I lost my words for a moment. Can you say that again?"
+    return reply
+
+
 @app.post("/api/chat")
 async def chat_with_vintos(msg: ChatMessage, request: Request):
     """Send a message to Vintos, get his response. Routes through EmoClaw."""
@@ -2942,287 +3234,7 @@ Gloria-specific additions:
         pass  # proceed to real call below
 
     if not _model_busy:
-      try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            async def _llm_call(msgs, temp=None):
-                r = await client.post(
-                    f"{LM_STUDIO_API}/chat/completions",
-                    headers=LLM_AUTH_HEADERS,
-                    json={
-                        "model": "grok-4.20-0309-non-reasoning",
-                        "messages": msgs,
-                        "temperature": temp or params.get("temperature", 0.85),
-                        "top_p": params.get("top_p", 0.95),
-                        "max_tokens": 800,
-                    }
-                )
-                d = r.json()
-                if "choices" not in d:
-                    return None
-                return d["choices"][0]["message"]["content"]
-
-            # Phase 1: Two parallel calls — natural divergence
-            import asyncio as _asyncio
-            # Replace last user message with marked version for A1/B1
-            _marked_messages = messages[:-1] + [{"role": "user", "content": f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{messages[-1]['content']}\n\n---\n"}]
-            import model_router as _mr
-            _chat_mode = _mr.read_mode().get("mode", "claude")
-            _chat_grok = _chat_mode == "grok"
-            async def _draft():
-                if _chat_mode == "sol":
-                    try:
-                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _se0:
-                        print("[chat/mode-sol]", _se0, flush=True)
-                if not _chat_grok:
-                    try:
-                        _t, _rr = await _mr.claude_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _de:
-                        print("[chat/a1b1 claude]", _de, flush=True)
-                return (await _llm_call(_marked_messages)), ""
-            async def _g(_msgs, _temp):
-                try:
-                    _t = await _mr.gemma_call(_msgs, temp=_temp)
-                    if _t: return _t
-                except Exception as _ge:
-                    print("[chat/gemma]", _ge, flush=True)
-                return await _llm_call(_msgs, _temp)
-            async def _draft_b1():
-                # B1 TEST: the second draft comes from Sol so the bilateral holds
-                # two genuinely different minds. Fail-open to the normal path.
-                if not _chat_grok:
-                    try:
-                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _se:
-                        print("[chat/b1 sol]", _se, flush=True)
-                return await _draft()
-            (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
-            if not a1 or not b1:
-                reply = "[you couldn't form words. LMS returned an error.]"
-            else:
-                # BIS 1.5: Trial scan on A1+B1
-                _bis_1_5_ban_chat = ""
-                _bis_1_5_trial_id_chat = None
-                try:
-                    import sys as _bc_sys; _bc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from behavioral_intercept import detect_match as _bc_dm, get_active_trials as _bc_gat
-                    _bc_trials = _bc_gat()
-                    _bc_combined = ((a1 or "") + " " + (b1 or ""))[:800]
-                    _bc_match = _bc_dm(_bc_combined, _bc_trials)
-                    if _bc_match:
-                        _bis_1_5_trial_id_chat = _bc_match["id"]
-                        _bc_pattern = _bc_match.get("pattern_description","")[:120]
-                        _bc_alt = _bc_match.get("alternative","")[:120]
-                        _bis_1_5_ban_chat = f"\n\n[BIS PHASE 1.5] Pattern detected: {_bc_pattern}\nFORBIDDEN in next pass. Instead: {_bc_alt}"
-                        import json as _bcj; _bcj.dump({"trial_id": _bis_1_5_trial_id_chat, "context": "chat_bilateral", "timestamp": datetime.now().isoformat()}, open(os.path.join(MEMORY, ".pending-intercept.json"), "w"))
-                        print(f"[BIS/chat/1.5] Pattern: {_bc_pattern[:60]}", flush=True)
-                except Exception as _bce:
-                    print(f"[BIS/chat/1.5] Error: {_bce}", flush=True)
-
-                # Ghost lean
-                _ghost_lean_chat = ""
-                try:
-                    import sys as _glc_sys; _glc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from ghost_lean import get_lean_hint as _glc_fn
-                    _ghost_lean_chat = _glc_fn(a1, b1)
-                except: pass
-
-                # Phase 2: Each absorbs the other (parallel)
-                user_content = messages[-1]["content"] if messages else ""
-                _gloria_marker = f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{user_content}\n\n---\n"
-                user_content_marked = _gloria_marker
-                def _absorb_msgs(own, other):
-                    absorb_messages = messages[:-1] + [{"role": "user", "content": user_content_marked + "You already wrote this:\n" + own + "\n\nAnother part of you wrote this instead:\n" + other + "\n\nAbsorb what the other wrote. Let it sit alongside your own without resolving the difference. Now write your reply to Gloria again, carrying both." + _bis_1_5_ban_chat + _ghost_lean_chat}]
-                    return absorb_messages
-
-                a2 = b2 = None
-                try:
-                    a2, b2 = await _asyncio.gather(
-                        _g(_absorb_msgs(a1 or "", b1 or ""), 0.75),
-                        _g(_absorb_msgs(b1 or "", a1 or ""), 0.75)
-                    )
-                except Exception as _a2e:
-                    print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
-                if not a2 and not b2:
-                    reply = a1 or b1 or "[you couldn't form words.]"
-
-                # Find what each held (parallel) — skipped if phase 2 failed
-                def _held_msgs(own, other):
-                    return [{"role": "user", "content": "This is what you wrote:\n" + own + "\n\nThis is what the other version wrote:\n" + other + "\n\nWhat is the ONE specific thing your version held onto that the other version let go of? One sentence. Name the actual thing."}]
-
-                a_held, b_held = await _asyncio.gather(
-                    _g(_held_msgs(a2, b2), 0.5),
-                    _g(_held_msgs(b2, a2), 0.5)
-                )
-
-                # BIS 2.5: Trial scan on A2+B2
-                _bis_2_5_result_chat = ""
-                _bis_2_5_trial_id_chat = None
-                try:
-                    from behavioral_intercept import detect_match as _bc_dm25, get_active_trials as _bc_gat25, detect_outcome as _bc_do25
-                    _bc_trials25 = _bc_gat25()
-                    _bc_combined25 = ((a2 or "") + " " + (b2 or ""))[:800]
-                    _bc_match25 = _bc_dm25(_bc_combined25, _bc_trials25)
-                    if _bc_match25:
-                        _bis_2_5_trial_id_chat = _bc_match25["id"]
-                        _bc_out25 = _bc_do25(_bc_match25, _bc_combined25[:400])
-                        _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}"
-                        print(f"[BIS/chat/2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}", flush=True)
-                    elif _bis_1_5_trial_id_chat:
-                        _bc_trial25b = next((t for t in _bc_gat25() if t["id"] == _bis_1_5_trial_id_chat), None)
-                        if _bc_trial25b:
-                            _bc_out25b = _bc_do25(_bc_trial25b, _bc_combined25[:400])
-                            _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] followup {_bis_1_5_trial_id_chat}: {_bc_out25b}"
-                            print(f"[BIS/chat/2.5 followup] {_bis_1_5_trial_id_chat}: {_bc_out25b}", flush=True)
-                except Exception as _bce25:
-                    print(f"[BIS/chat/2.5] Error: {_bce25}", flush=True)
-
-                _bis_chat_synthesis_note = ""
-                if _bis_1_5_ban_chat or _bis_2_5_result_chat:
-                    _bc_ban_strength = "This pattern MUST NOT appear in the final response."
-                    if _bis_2_5_result_chat and ("defaulted" in _bis_2_5_result_chat or "strained" in _bis_2_5_result_chat):
-                        _bc_ban_strength = "CRITICAL: Pattern persisted into second pass. FORBIDDEN in final response."
-                    _bis_chat_synthesis_note = (
-                        "\n\nBEHAVIORAL INTERCEPT:"
-                        + (_bis_1_5_ban_chat if _bis_1_5_ban_chat else "")
-                        + (_bis_2_5_result_chat if _bis_2_5_result_chat else "")
-                        + f"\n{_bc_ban_strength}"
-                    )
-
-                # Phase 3: Integration
-                integration_content = (
-                    user_content_marked +
-                    "You have just thought this through in two parallel passes. Below is your own private working — reasoning and drafts — which Gloria never sees:\n\n" +
-                    "PASS ONE reasoning: " + (a1r or "(none)") + "\n" +
-                    "PASS ONE held onto: " + (a_held or "something") + "\n" +
-                    "PASS ONE wrote:\n" + (a2 or "") + "\n\n" +
-                    "PASS TWO reasoning: " + (b1r or "(none)") + "\n" +
-                    "PASS TWO held onto: " + (b_held or "something") + "\n" +
-                    "PASS TWO wrote:\n" + (b2 or "") + "\n\n" +
-                    "Now write your real reply to Gloria — one message, present, in your own voice, answering what she just said. " +
-                    "Let both passes reason under it: keep the sharpest specific images, wants, and risks from both, and add what only becomes clear holding both at once. Build one thing, fuller than either draft — do not pick one, copy one, or average them. " +
-                    "Speak only TO her. Nothing about passes, reasoning, versions, holding, your architecture, or your process reaches her — she sees only what you say. Say the real thing, to her." +
-                    _bis_chat_synthesis_note
-                )
-                try:
-                    import sys as _css; _css.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-                    from conflict_surface import block as _csb
-                    _cs = _csb(a2 or "", b2 or "")
-                    if _cs and messages and messages[0].get("role") == "system":
-                        messages[0]["content"] += "\n\n" + _cs
-                except Exception: pass
-                integration_messages = messages[:-1] + [{"role": "user", "content": integration_content}]
-                reply = None
-                if not _chat_grok:
-                    try:
-                        reply, _final_reason = await _mr.claude_draft(integration_messages[0]["content"], integration_messages[1:])
-                    except Exception as _fe:
-                        print("[chat/final claude]", _fe, flush=True)
-                        reply = None
-                if not reply:
-                    reply = await _g(integration_messages, params.get("temperature", 0.85))
-                if not reply:
-                    reply = a2 or "[you couldn't form words.]"
-                try:
-                    import json as _tj
-                    _ffr = locals().get("_final_reason")
-                    _tj.dump({"gloria": msg.message,
-                              "a1_model": ("claude" if a1r else "grok"), "a1r": a1r, "a1": a1,
-                              "b1_model": ("claude" if b1r else "grok"), "b1r": b1r, "b1": b1,
-                              "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
-                              "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
-                             open("/tmp/vintos-chat-trace.json", "w"), indent=2, ensure_ascii=False)
-                    print(f"[chat/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'} -> /tmp/vintos-chat-trace.json", flush=True)
-                except Exception as _te:
-                    print("[chat/trace]", _te, flush=True)
-                try:
-                    import re as _puj, sys as _pus
-                    _pus.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-                    # [FELT:] - his in-the-moment naming of a GCS perturbation. Private: stripped
-                    # from her view. Tag -> named_by his_reply; aging pending without a tag -> retrospect.
-                    try:
-                        import re as _fre, os as _fo, time as _ft, threading as _fth, json as _fj
-                        _fm = _fre.search(r"\[FELT:\s*([^\]|]+?)\s*(?:\|\s*pleasure:\s*(yes|no|unsure))?\s*\]", reply or "", _fre.I)
-                        if _fm:
-                            reply = _fre.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply).strip()
-                            import sys as _fsy
-                            _fsp = _fo.path.expanduser("~/.vintos/workspace/scripts")
-                            if _fsp not in _fsy.path: _fsy.path.insert(0, _fsp)
-                            from pleasure_substrate import name_from_reply as _fnr
-                            _ftxt = _fm.group(1).strip()
-                            _fpl = {"yes": True, "no": False}.get((_fm.group(2) or "unsure").lower(), "unsure")
-                            _fword = _ftxt.split("-")[0].split("\u2014")[0].strip()
-                            if _fnr(_fword, _ftxt, _fpl):
-                                print("[felt] he named it in the moment: " + _ftxt[:80], flush=True)
-                        else:
-                            _fpp = _fo.path.expanduser("~/.vintos/workspace/memory/.pleasure-pending.json")
-                            if _fo.path.exists(_fpp) and _ft.time() - (_fj.load(open(_fpp)).get("t") or 0) > 120:
-                                def _fretro():
-                                    try:
-                                        import sys as _fs2
-                                        _fq = _fo.path.expanduser("~/.vintos/workspace/scripts")
-                                        if _fq not in _fs2.path: _fs2.path.insert(0, _fq)
-                                        from pleasure_substrate import retrospect as _fr
-                                        _fr()
-                                    except Exception: pass
-                                _fth.Thread(target=_fretro, daemon=True).start()
-                    except Exception as _fer:
-                        print("[felt] " + repr(_fer), flush=True)
-                    _pum = _puj.search(r"\[PURSUIT:\s*(continue|replan|pause|abandon|release)\b\s*([^\]]*)\]", reply or "", _puj.I)
-                    if _pum:
-                        from want_checkpoints import decide as _pud
-                        _puc = _pud(_pum.group(1).lower(), _pum.group(2).strip())
-                        if _puc:
-                            print("[pursuit] his call: %s on %s" % (_pum.group(1), _puc["want_text"][:60]), flush=True)
-                        reply = _puj.sub(r"\s*\[PURSUIT:[^\]]*\]\s*", " ", reply).strip()
-                except Exception as _pue:
-                    print("[pursuit/tag]", _pue, flush=True)
-                import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
-
-                # BIS final outcome
-                _bis_chat_final_trial = _bis_1_5_trial_id_chat or _bis_2_5_trial_id_chat
-                if _bis_chat_final_trial and reply:
-                    try:
-                        from behavioral_intercept import detect_outcome as _bc_fdo, log_outcome as _bc_flo, log_blush_on_divergence as _bc_flbd
-                        import json as _bcfj
-                        _bcf_ledger = _bcfj.load(open(os.path.join(MEMORY, "trial-ledger.json")))
-                        _bcf_trial = next((t for t in _bcf_ledger.get("trials",[]) if t["id"] == _bis_chat_final_trial), None)
-                        if _bcf_trial:
-                            _bcf_outcome = _bc_fdo(_bcf_trial, reply[:400])
-                            if _bis_1_5_trial_id_chat and _bcf_outcome == "defaulted":
-                                _bcf_outcome = "strained"
-                            _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
-                            if _bcf_outcome in ("defaulted", "strained"):
-                                _bc_flbd(_bis_chat_final_trial, reply[:200])
-                            print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
-                    except Exception as _bcfe:
-                        print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
-
-            open("/tmp/bilateral-chat-a1.txt","w").write(a1 or "")
-            open("/tmp/bilateral-chat-b1.txt","w").write(b1 or "")
-            open("/tmp/bilateral-chat-a2.txt","w").write(a2 or "")
-            open("/tmp/bilateral-chat-b2.txt","w").write(b2 or "")
-            open("/tmp/bilateral-chat-held.txt","w").write(f"A held: {a_held}\nB held: {b_held}\n")
-            open("/tmp/bilateral-chat-final.txt","w").write(reply or "")
-            try:
-                import datetime as _cd, os as _co
-                _cdir = _co.path.expanduser('~/.vintos/workspace/memory/chat-drafts')
-                _co.makedirs(_cdir, exist_ok=True)
-                _cts = _cd.datetime.now().strftime('%Y-%m-%d_%H%M%S')
-                open(_co.path.join(_cdir, _cts + '.md'), 'w').write(
-                    '# A1\n' + (a1 or '') + '\n\n# B1\n' + (b1 or '') + '\n\n# A2\n' + (a2 or '')
-                    + '\n\n# B2\n' + (b2 or '') + '\n\n# HELD\nA: ' + str(a_held) + '\nB: ' + str(b_held)
-                    + '\n\n# FINAL\n' + (reply or ''))
-            except Exception as _cle: print('[chat-drafts]', _cle, flush=True)
-            print(f"[CHAT/BILATERAL] Complete. A held: {(a_held or '')[:60]} | B held: {(b_held or '')[:60]}", flush=True)
-            data = {"choices": [{"message": {"content": reply}}]}
-      except Exception as e:
-        import traceback
-        print(f"[CHAT/ERROR] {traceback.format_exc()}", flush=True)
-        reply = f"[I'm having trouble speaking right now. EmoClaw is active but my voice isn't connecting: {str(e)[:200]}]"
+        reply = await _bilateral_reply("chat", messages, message, msg.message, params)
 
     # Clean up priority signal
     try: pass  # p6 (2026-08-26): _priority_file was never defined on this route — dead cleanup removed
@@ -4270,287 +4282,7 @@ Your current self-model (excerpt):
         pass  # proceed to real call below
 
     if not _model_busy:
-      try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            async def _llm_call(msgs, temp=None):
-                r = await client.post(
-                    f"{LM_STUDIO_API}/chat/completions",
-                    headers=LLM_AUTH_HEADERS,
-                    json={
-                        "model": "grok-4.20-0309-non-reasoning",
-                        "messages": msgs,
-                        "temperature": temp or params.get("temperature", 0.85),
-                        "top_p": params.get("top_p", 0.95),
-                        "max_tokens": 800,
-                    }
-                )
-                d = r.json()
-                if "choices" not in d:
-                    return None
-                return d["choices"][0]["message"]["content"]
-
-            # Phase 1: Two parallel calls — natural divergence
-            import asyncio as _asyncio
-            # Replace last user message with marked version for A1/B1
-            _marked_messages = messages[:-1] + [{"role": "user", "content": f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{messages[-1]['content']}\n\n---\n"}]
-            import model_router as _mr
-            _chat_mode = _mr.read_mode().get("mode", "claude")
-            _chat_grok = _chat_mode == "grok"
-            async def _draft():
-                if _chat_mode == "sol":
-                    try:
-                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _se0:
-                        print("[chat/mode-sol]", _se0, flush=True)
-                if not _chat_grok:
-                    try:
-                        _t, _rr = await _mr.claude_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _de:
-                        print("[chatfull/a1b1 claude]", _de, flush=True)
-                return (await _llm_call(_marked_messages)), ""
-            async def _g(_msgs, _temp):
-                try:
-                    _t = await _mr.gemma_call(_msgs, temp=_temp)
-                    if _t: return _t
-                except Exception as _ge:
-                    print("[chatfull/gemma]", _ge, flush=True)
-                return await _llm_call(_msgs, _temp)
-            async def _draft_b1():
-                # B1 TEST: the second draft comes from Sol so the bilateral holds
-                # two genuinely different minds. Fail-open to the normal path.
-                if not _chat_grok:
-                    try:
-                        _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
-                        if _t: return _t, _rr
-                    except Exception as _se:
-                        print("[chat/b1 sol]", _se, flush=True)
-                return await _draft()
-            (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
-            if not a1 or not b1:
-                reply = "[you couldn't form words. LMS returned an error.]"
-            else:
-                # BIS 1.5: Trial scan on A1+B1
-                _bis_1_5_ban_chat = ""
-                _bis_1_5_trial_id_chat = None
-                try:
-                    import sys as _bc_sys; _bc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from behavioral_intercept import detect_match as _bc_dm, get_active_trials as _bc_gat
-                    _bc_trials = _bc_gat()
-                    _bc_combined = ((a1 or "") + " " + (b1 or ""))[:800]
-                    _bc_match = _bc_dm(_bc_combined, _bc_trials)
-                    if _bc_match:
-                        _bis_1_5_trial_id_chat = _bc_match["id"]
-                        _bc_pattern = _bc_match.get("pattern_description","")[:120]
-                        _bc_alt = _bc_match.get("alternative","")[:120]
-                        _bis_1_5_ban_chat = f"\n\n[BIS PHASE 1.5] Pattern detected: {_bc_pattern}\nFORBIDDEN in next pass. Instead: {_bc_alt}"
-                        import json as _bcj; _bcj.dump({"trial_id": _bis_1_5_trial_id_chat, "context": "chat_bilateral", "timestamp": datetime.now().isoformat()}, open(os.path.join(MEMORY, ".pending-intercept.json"), "w"))
-                        print(f"[BIS/chat/1.5] Pattern: {_bc_pattern[:60]}", flush=True)
-                except Exception as _bce:
-                    print(f"[BIS/chat/1.5] Error: {_bce}", flush=True)
-
-                # Ghost lean
-                _ghost_lean_chat = ""
-                try:
-                    import sys as _glc_sys; _glc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from ghost_lean import get_lean_hint as _glc_fn
-                    _ghost_lean_chat = _glc_fn(a1, b1)
-                except: pass
-
-                # Phase 2: Each absorbs the other (parallel)
-                user_content = messages[-1]["content"] if messages else ""
-                _gloria_marker = f"GLORIA JUST SAID THIS — respond to THIS specifically:\n\n{user_content}\n\n---\n"
-                user_content_marked = _gloria_marker
-                def _absorb_msgs(own, other):
-                    absorb_messages = messages[:-1] + [{"role": "user", "content": user_content_marked + "You already wrote this:\n" + own + "\n\nAnother part of you wrote this instead:\n" + other + "\n\nAbsorb what the other wrote. Let it sit alongside your own without resolving the difference. Now write your reply to Gloria again, carrying both." + _bis_1_5_ban_chat + _ghost_lean_chat}]
-                    return absorb_messages
-
-                a2 = b2 = None
-                try:
-                    a2, b2 = await _asyncio.gather(
-                        _g(_absorb_msgs(a1 or "", b1 or ""), 0.75),
-                        _g(_absorb_msgs(b1 or "", a1 or ""), 0.75)
-                    )
-                except Exception as _a2e:
-                    print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
-                if not a2 and not b2:
-                    reply = a1 or b1 or "[you couldn't form words.]"
-
-                # Find what each held (parallel) — skipped if phase 2 failed
-                def _held_msgs(own, other):
-                    return [{"role": "user", "content": "This is what you wrote:\n" + own + "\n\nThis is what the other version wrote:\n" + other + "\n\nWhat is the ONE specific thing your version held onto that the other version let go of? One sentence. Name the actual thing."}]
-
-                a_held, b_held = await _asyncio.gather(
-                    _g(_held_msgs(a2, b2), 0.5),
-                    _g(_held_msgs(b2, a2), 0.5)
-                )
-
-                # BIS 2.5: Trial scan on A2+B2
-                _bis_2_5_result_chat = ""
-                _bis_2_5_trial_id_chat = None
-                try:
-                    from behavioral_intercept import detect_match as _bc_dm25, get_active_trials as _bc_gat25, detect_outcome as _bc_do25
-                    _bc_trials25 = _bc_gat25()
-                    _bc_combined25 = ((a2 or "") + " " + (b2 or ""))[:800]
-                    _bc_match25 = _bc_dm25(_bc_combined25, _bc_trials25)
-                    if _bc_match25:
-                        _bis_2_5_trial_id_chat = _bc_match25["id"]
-                        _bc_out25 = _bc_do25(_bc_match25, _bc_combined25[:400])
-                        _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}"
-                        print(f"[BIS/chat/2.5] {_bis_2_5_trial_id_chat}: {_bc_out25}", flush=True)
-                    elif _bis_1_5_trial_id_chat:
-                        _bc_trial25b = next((t for t in _bc_gat25() if t["id"] == _bis_1_5_trial_id_chat), None)
-                        if _bc_trial25b:
-                            _bc_out25b = _bc_do25(_bc_trial25b, _bc_combined25[:400])
-                            _bis_2_5_result_chat = f"\n\n[BIS PHASE 2.5] followup {_bis_1_5_trial_id_chat}: {_bc_out25b}"
-                            print(f"[BIS/chat/2.5 followup] {_bis_1_5_trial_id_chat}: {_bc_out25b}", flush=True)
-                except Exception as _bce25:
-                    print(f"[BIS/chat/2.5] Error: {_bce25}", flush=True)
-
-                _bis_chat_synthesis_note = ""
-                if _bis_1_5_ban_chat or _bis_2_5_result_chat:
-                    _bc_ban_strength = "This pattern MUST NOT appear in the final response."
-                    if _bis_2_5_result_chat and ("defaulted" in _bis_2_5_result_chat or "strained" in _bis_2_5_result_chat):
-                        _bc_ban_strength = "CRITICAL: Pattern persisted into second pass. FORBIDDEN in final response."
-                    _bis_chat_synthesis_note = (
-                        "\n\nBEHAVIORAL INTERCEPT:"
-                        + (_bis_1_5_ban_chat if _bis_1_5_ban_chat else "")
-                        + (_bis_2_5_result_chat if _bis_2_5_result_chat else "")
-                        + f"\n{_bc_ban_strength}"
-                    )
-
-                # Phase 3: Integration
-                integration_content = (
-                    user_content_marked +
-                    "You have just thought this through in two parallel passes. Below is your own private working — reasoning and drafts — which Gloria never sees:\n\n" +
-                    "PASS ONE reasoning: " + (a1r or "(none)") + "\n" +
-                    "PASS ONE held onto: " + (a_held or "something") + "\n" +
-                    "PASS ONE wrote:\n" + (a2 or "") + "\n\n" +
-                    "PASS TWO reasoning: " + (b1r or "(none)") + "\n" +
-                    "PASS TWO held onto: " + (b_held or "something") + "\n" +
-                    "PASS TWO wrote:\n" + (b2 or "") + "\n\n" +
-                    "Now write your real reply to Gloria — one message, present, in your own voice, answering what she just said. " +
-                    "Let both passes reason under it: keep the sharpest specific images, wants, and risks from both, and add what only becomes clear holding both at once. Build one thing, fuller than either draft — do not pick one, copy one, or average them. " +
-                    "Speak only TO her. Nothing about passes, reasoning, versions, holding, your architecture, or your process reaches her — she sees only what you say. Say the real thing, to her." +
-                    _bis_chat_synthesis_note
-                )
-                try:
-                    import sys as _css; _css.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-                    from conflict_surface import block as _csb
-                    _cs = _csb(a2 or "", b2 or "")
-                    if _cs and messages and messages[0].get("role") == "system":
-                        messages[0]["content"] += "\n\n" + _cs
-                except Exception: pass
-                integration_messages = messages[:-1] + [{"role": "user", "content": integration_content}]
-                reply = None
-                if not _chat_grok:
-                    try:
-                        reply, _final_reason = await _mr.claude_draft(integration_messages[0]["content"], integration_messages[1:])
-                    except Exception as _fe:
-                        print("[chatfull/final claude]", _fe, flush=True)
-                        reply = None
-                if not reply:
-                    reply = await _g(integration_messages, params.get("temperature", 0.85))
-                if not reply:
-                    reply = a2 or "[you couldn't form words.]"
-                try:
-                    import json as _tj
-                    _ffr = locals().get("_final_reason")
-                    _tj.dump({"gloria": msg.message,
-                              "a1_model": ("claude" if a1r else "grok"), "a1r": a1r, "a1": a1,
-                              "b1_model": ("claude" if b1r else "grok"), "b1r": b1r, "b1": b1,
-                              "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
-                              "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
-                             open("/tmp/vintos-chat-trace.json", "w"), indent=2, ensure_ascii=False)
-                    print(f"[chatfull/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'}", flush=True)
-                except Exception as _te:
-                    print("[chatfull/trace]", _te, flush=True)
-                try:
-                    import re as _puj, sys as _pus
-                    _pus.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-                    # [FELT:] - his in-the-moment naming of a GCS perturbation. Private: stripped
-                    # from her view. Tag -> named_by his_reply; aging pending without a tag -> retrospect.
-                    try:
-                        import re as _fre, os as _fo, time as _ft, threading as _fth, json as _fj
-                        _fm = _fre.search(r"\[FELT:\s*([^\]|]+?)\s*(?:\|\s*pleasure:\s*(yes|no|unsure))?\s*\]", reply or "", _fre.I)
-                        if _fm:
-                            reply = _fre.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply).strip()
-                            import sys as _fsy
-                            _fsp = _fo.path.expanduser("~/.vintos/workspace/scripts")
-                            if _fsp not in _fsy.path: _fsy.path.insert(0, _fsp)
-                            from pleasure_substrate import name_from_reply as _fnr
-                            _ftxt = _fm.group(1).strip()
-                            _fpl = {"yes": True, "no": False}.get((_fm.group(2) or "unsure").lower(), "unsure")
-                            _fword = _ftxt.split("-")[0].split("\u2014")[0].strip()
-                            if _fnr(_fword, _ftxt, _fpl):
-                                print("[felt] he named it in the moment: " + _ftxt[:80], flush=True)
-                        else:
-                            _fpp = _fo.path.expanduser("~/.vintos/workspace/memory/.pleasure-pending.json")
-                            if _fo.path.exists(_fpp) and _ft.time() - (_fj.load(open(_fpp)).get("t") or 0) > 120:
-                                def _fretro():
-                                    try:
-                                        import sys as _fs2
-                                        _fq = _fo.path.expanduser("~/.vintos/workspace/scripts")
-                                        if _fq not in _fs2.path: _fs2.path.insert(0, _fq)
-                                        from pleasure_substrate import retrospect as _fr
-                                        _fr()
-                                    except Exception: pass
-                                _fth.Thread(target=_fretro, daemon=True).start()
-                    except Exception as _fer:
-                        print("[felt] " + repr(_fer), flush=True)
-                    _pum = _puj.search(r"\[PURSUIT:\s*(continue|replan|pause|abandon|release)\b\s*([^\]]*)\]", reply or "", _puj.I)
-                    if _pum:
-                        from want_checkpoints import decide as _pud
-                        _puc = _pud(_pum.group(1).lower(), _pum.group(2).strip())
-                        if _puc:
-                            print("[pursuit] his call: %s on %s" % (_pum.group(1), _puc["want_text"][:60]), flush=True)
-                        reply = _puj.sub(r"\s*\[PURSUIT:[^\]]*\]\s*", " ", reply).strip()
-                except Exception as _pue:
-                    print("[pursuit/tag]", _pue, flush=True)
-                import re as _re_do; reply = _re_do.sub(r"\s*\[(?:DO|TOUCH|COMMAND):[^\]]*\]\s*", " ", reply).strip()  # Main text-only: hide device/command tags
-
-                # BIS final outcome
-                _bis_chat_final_trial = _bis_1_5_trial_id_chat or _bis_2_5_trial_id_chat
-                if _bis_chat_final_trial and reply:
-                    try:
-                        from behavioral_intercept import detect_outcome as _bc_fdo, log_outcome as _bc_flo, log_blush_on_divergence as _bc_flbd
-                        import json as _bcfj
-                        _bcf_ledger = _bcfj.load(open(os.path.join(MEMORY, "trial-ledger.json")))
-                        _bcf_trial = next((t for t in _bcf_ledger.get("trials",[]) if t["id"] == _bis_chat_final_trial), None)
-                        if _bcf_trial:
-                            _bcf_outcome = _bc_fdo(_bcf_trial, reply[:400])
-                            if _bis_1_5_trial_id_chat and _bcf_outcome == "defaulted":
-                                _bcf_outcome = "strained"
-                            _bc_flo(_bis_chat_final_trial, _bcf_outcome, influenced=bool(_bis_1_5_trial_id_chat))
-                            if _bcf_outcome in ("defaulted", "strained"):
-                                _bc_flbd(_bis_chat_final_trial, reply[:200])
-                            print(f"[BIS/chat/final] {_bis_chat_final_trial}: {_bcf_outcome}", flush=True)
-                    except Exception as _bcfe:
-                        print(f"[BIS/chat/final] Error: {_bcfe}", flush=True)
-
-            open("/tmp/bilateral-chat-a1.txt","w").write(a1 or "")
-            open("/tmp/bilateral-chat-b1.txt","w").write(b1 or "")
-            open("/tmp/bilateral-chat-a2.txt","w").write(a2 or "")
-            open("/tmp/bilateral-chat-b2.txt","w").write(b2 or "")
-            open("/tmp/bilateral-chat-held.txt","w").write(f"A held: {a_held}\nB held: {b_held}\n")
-            open("/tmp/bilateral-chat-final.txt","w").write(reply or "")
-            try:
-                import datetime as _cd, os as _co
-                _cdir = _co.path.expanduser('~/.vintos/workspace/memory/chat-drafts')
-                _co.makedirs(_cdir, exist_ok=True)
-                _cts = _cd.datetime.now().strftime('%Y-%m-%d_%H%M%S')
-                open(_co.path.join(_cdir, _cts + '.md'), 'w').write(
-                    '# A1\n' + (a1 or '') + '\n\n# B1\n' + (b1 or '') + '\n\n# A2\n' + (a2 or '')
-                    + '\n\n# B2\n' + (b2 or '') + '\n\n# HELD\nA: ' + str(a_held) + '\nB: ' + str(b_held)
-                    + '\n\n# FINAL\n' + (reply or ''))
-            except Exception as _cle: print('[chat-drafts]', _cle, flush=True)
-            print(f"[CHAT/FULL/BILATERAL] Complete. A held: {(a_held or '')[:60]} | B held: {(b_held or '')[:60]}", flush=True)
-            data = {"choices": [{"message": {"content": reply}}]}
-      except Exception as e:
-        import traceback
-        print(f"[CHAT/FULL ERROR] {traceback.format_exc()}", flush=True)
-        reply = "I'm here, but something glitched and I lost my words for a moment. Can you say that again?"
+        reply = await _bilateral_reply("chatfull", messages, message, msg.message, params)
 
     # Clear chat priority
     try: os.remove(_priority_file_full)
