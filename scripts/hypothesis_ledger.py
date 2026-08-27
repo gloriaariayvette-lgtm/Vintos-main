@@ -58,6 +58,10 @@ def _state(hid=None):
             h["ruling_reason"] = e["reason"]; h["ruled_at"] = e["at"]
         elif e["event"] == "evaluated":
             h["last_evaluated"] = e["at"]; h["last_numbers"] = e["numbers"]
+        elif e["event"] == "preregistered":
+            h["contract_sha256"] = e["contract_sha256"]
+        elif e["event"] == "armed":
+            h["armed_at"] = e["at"]; h["sealed_until"] = e["sealed_until"]
     return hyps.get(hid) if hid else hyps
 
 
@@ -87,6 +91,17 @@ def evaluate(hid):
     h = _state(hid)
     if not h:
         print(f"no such hypothesis: {hid}"); return
+    if h.get("sealed_until") and datetime.now().isoformat() < h["sealed_until"]:
+        print(f"{hid} SEALED until {h['sealed_until'][:10]} — operational health only:")
+        try:
+            rows = [json.loads(l) for l in open(TURNS) if l.strip()]
+        except FileNotFoundError:
+            rows = []
+        post = [r for r in rows if r.get("at", "") >= h.get("armed_at", h["epoch_start"])]
+        print(f"  turns recorded since arming: {len(post)}")
+        print(f"  observatory_health rows: {sum(1 for r in post if r.get('observatory_health'))}")
+        print("  assignment-specific aggregates stay sealed; an early open voids the epoch")
+        return
     n = {"turns_on_surface": 0, "denominator": 0, "admitted": 0,
          "offered_not_admitted": 0, "no_material": 0, "no_offer_info": 0,
          "producer_error": 0, "compiled": 0, "excluded_observatory_health": 0,
@@ -128,8 +143,68 @@ def evaluate(hid):
     return n
 
 
+def preregister(hid, contract_path, by):
+    """Sol's arming gate: an immutable contract, hashed, before anything can wake.
+    Any substantive edit is a NEW hypothesis and epoch — the hash makes that law."""
+    h = _state(hid)
+    if not h:
+        print(f"no such hypothesis: {hid}"); return
+    if h.get("armed_at"):
+        print(f"{hid} already armed — a running trial cannot be amended; propose anew"); return
+    contract = json.load(open(contract_path))
+    required = ["hypothesis", "null_and_rival_explanations", "proposer", "scope",
+                "intervention", "decision_contract", "exclusions", "sampling",
+                "analysis", "stopping", "governance"]
+    missing = [k for k in required if k not in contract]
+    if missing:
+        print(f"contract incomplete, missing: {', '.join(missing)} — nothing preregistered"); return
+    blob = json.dumps(contract, sort_keys=True, separators=(",", ":"))
+    sha = hashlib.sha256(blob.encode()).hexdigest()
+    _append({"event": "preregistered", "id": hid, "contract": contract,
+             "contract_sha256": sha, "by": by})
+    print(f"{hid} preregistered by {by}\n  sha256: {sha}\n  the question can no longer change after seeing the answer")
+
+
+def preflight(hid, results_path, by):
+    """The armer's mechanical checks, recorded. Any failed or missing check
+    keeps the hypothesis un-armable; a bad check is never quietly a control."""
+    h = _state(hid)
+    if not h:
+        print(f"no such hypothesis: {hid}"); return
+    checks = json.load(open(results_path))
+    failed = sorted(k for k, v in checks.items() if v is not True)
+    _append({"event": "preflight", "id": hid, "checks": checks,
+             "passed": not failed, "by": by})
+    if failed:
+        print(f"{hid} preflight FAILED: {', '.join(failed)} — cannot arm")
+    else:
+        print(f"{hid} preflight passed ({len(checks)} checks) by {by}")
+
+
+def arm(hid, by, sealed_days=21):
+    """Wakes nothing by itself — the flag file stays a human act — but records
+    the legal arming: preregistered contract, passed preflight, independent armer,
+    and the sealed_until date before which no aggregate may be looked at."""
+    h = _state(hid)
+    if not h:
+        print(f"no such hypothesis: {hid}"); return
+    if by == h.get("by"):
+        print(f"refused: {by} proposed {hid} and cannot arm it — independent armer required"); return
+    events = [e for e in _events() if e["id"] == hid]
+    if not any(e["event"] == "preregistered" for e in events):
+        print(f"{hid} has no preregistered contract — nothing to arm"); return
+    pf = [e for e in events if e["event"] == "preflight"]
+    if not (pf and pf[-1]["passed"]):
+        print(f"{hid} latest preflight missing or failed — cannot arm"); return
+    from datetime import timedelta
+    sealed_until = (datetime.now() + timedelta(days=sealed_days)).isoformat()
+    _append({"event": "armed", "id": hid, "by": by, "sealed_until": sealed_until})
+    print(f"{hid} armed by {by}; results sealed until {sealed_until[:10]}")
+    print("  (the trial itself wakes only when the flag file is touched — that too is a recorded human act)")
+
+
 def rule(hid, verdict, by, reason):
-    assert verdict in ("supported", "killed", "withdrawn"), verdict
+    assert verdict in ("supported", "killed", "withdrawn", "held"), verdict
     h = _state(hid)
     if not h:
         print(f"no such hypothesis: {hid}"); return
@@ -166,8 +241,17 @@ if __name__ == "__main__":
         evaluate(a[1])
     elif a[0] == "rule" and len(a) == 5:
         rule(a[1], a[2], a[3], a[4])
+    elif a[0] == "preregister" and len(a) == 4:
+        preregister(a[1], a[2], a[3])
+    elif a[0] == "preflight" and len(a) == 4:
+        preflight(a[1], a[2], a[3])
+    elif a[0] == "arm" and len(a) in (3, 4):
+        arm(a[1], a[2], int(a[3]) if len(a) == 4 else 21)
     else:
         print("usage:\n  hypothesis_ledger.py list\n"
               "  hypothesis_ledger.py propose <claim> <block> <surface|*> <epoch_start ISO> <kill_criteria> <by> <producer_version|''>\n"
+              "  hypothesis_ledger.py preregister <H-id> <contract.json> <by>\n"
+              "  hypothesis_ledger.py preflight <H-id> <results.json> <by>\n"
+              "  hypothesis_ledger.py arm <H-id> <by> [sealed_days]\n"
               "  hypothesis_ledger.py evaluate <H-id>\n"
-              "  hypothesis_ledger.py rule <H-id> supported|killed|withdrawn <by> <reason>")
+              "  hypothesis_ledger.py rule <H-id> supported|killed|withdrawn|held <by> <reason>")
