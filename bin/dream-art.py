@@ -67,6 +67,9 @@ def main():
         "prompt": data.get("revised_prompt", prompt)[:400],
         "timestamp": datetime.now().isoformat(),
         "dream_source": src,
+        "image_class": "DREAM_BORN" if src == "dream" else "WANT_ACT",
+        "softened_from_dream": src == "dream",  # p6 (2026-08-26): dreams render CLOTHED/UNSPICY for the moderated API — the image is softer than the dream; the archive says so honestly
+        "want_id": os.environ.get("DREAM_ART_WANT_ID", ""),
     })
     json.dump(gallery, open(GALLERY, "w"), indent=2)
     print(f"[dream-art] painted: {fname}")

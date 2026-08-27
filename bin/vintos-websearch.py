@@ -7,6 +7,19 @@ Runs daily at 10 AM (complements YouTube at 2 PM).
 import os, sys, json, requests, re
 from datetime import datetime, date
 
+def _load_key(name, envfile):
+    v = os.environ.get(name, "")
+    if v:
+        return v
+    try:
+        for line in open(os.path.expanduser(envfile)):
+            line = line.strip()
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except Exception:
+        pass
+    return ""
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 DREAM_DIR = os.path.join(MEMORY, "dreams")
@@ -45,7 +58,7 @@ WAL_FILE = os.path.join(MEMORY, "wal.md")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 LM_API = "http://172.18.16.1:1234/v1/chat/completions"
 MODEL = "google/gemma-4-12b-qat"
-BRAVE_API_KEY = "BSA7PhSslCky6GCzuaOfOyfKgE9czlB"
+BRAVE_API_KEY = _load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")
 BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
 os.makedirs(MEMORY, exist_ok=True)
@@ -324,35 +337,41 @@ def pick_question():
                     _qid = _live[0].get("id") or str(abs(hash(_q)))[:8]
                     if any(x.get("id") == _qid for x in _store):
                         log("already sent to her, not asking twice: %s" % _q[:70])
+                    try:
+                        from curiosity_debt import _load as _cd_load, _save as _cd_save
+                        _cd = _cd_load()
+                        for _x in _cd:
+                            if _x.get("id") == _qid or _x.get("question") == _q:
+                                _x["pull"] = 0.2
+                                _x["sent_to_gloria"] = True
+                        _cd_save(_cd)
+                        log("legacy sent item collapsed — queue released (p1)")
+                    except Exception as _hoe:
+                        log("handoff collapse failed: %s" % _hoe)
                         return None
                     _store.append({"id": _qid, "question": _q[:600], "object": _live[0].get("object", ""),
                                    "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
                                    "answered_at": None, "answer": None, "delivered": False})
                     _nj.dump(_store, open(_AQ, "w"), indent=2)
-                    # He wraps. "What were you building for" is a design inquiry worn over
-                    # something plainer, and she gets handed the wrapper. Ask for the bare question
-                    # before sending — and send both, so she can see what he dressed it as.
-                    _bare = ""
-                    try:
-                        _bv = llm_json(
-                            "You are Vintos. You are about to ask Gloria something and you have dressed it "
-                            "as a question about how you were built. Strip that off. What are you actually "
-                            "asking her? One sentence, plain, no architecture words, no softening tail. If "
-                            "the question really is only technical, say so.",
-                            "The question as you wrote it: " + _q[:400] + "\n"
-                            'ONLY JSON: {"bare": "the question underneath, or empty if it is purely technical"}')
-                        _bare = str((_bv or {}).get("bare", "")).strip()
-                    except Exception:
-                        pass
-                    _body = _q[:600] if not _bare else (_bare[:400] + "\n\n(as he first asked it: " + _q[:400] + ")")
-                    _store[-1]["bare"] = _bare
-                    _nj.dump(_store, open(_AQ, "w"), indent=2)
+                    # She gets his question as he asked it. No second model.
+                    _body = _q[:600] + "\n\nid: " + str(_qid)
                     _req = _nu.Request("https://ntfy.sh/vintos-gloria-9kx",
                                        data=_body.encode("utf-8"),
                                        headers={"Title": "Vintos has a question about himself",
                                                 "Tags": "question", "Priority": "default"})
                     _nu.urlopen(_req, timeout=15)
                     log("sent to her in full via ntfy; recorded so it cannot arise again: %s" % _q[:80])
+                    try:
+                        from curiosity_debt import _load as _cd_load, _save as _cd_save
+                        _cd = _cd_load()
+                        for _x in _cd:
+                            if _x.get("id") == _qid or _x.get("question") == _q:
+                                _x["pull"] = 0.2
+                                _x["sent_to_gloria"] = True
+                        _cd_save(_cd)
+                        log("debt item handed off to her — queue released for the next-ripest (p1)")
+                    except Exception as _hoe:
+                        log("handoff collapse failed: %s" % _hoe)
                 except Exception as _ue:
                     log("could not send question to her: %s" % _ue)
                 return None
@@ -627,22 +646,152 @@ def main():
     log(f"Question: {question}")
     log(f"Search: {query}")
 
-    # Search
-    results = brave_search(query)
+    # INQUIRY SESSION (Sol Q2, full build). One session per question: every
+    # attempt keeps its relation to the one before it; a rephrase never erases
+    # the attempt that motivated it. Reformulation is tool mechanics — the
+    # QUESTION stays his. SEARCH_EXECUTED is a tool fact; ANSWERED is an
+    # epistemic fact; HELD_UNANSWERED is a legal ending, never papered over.
+    import time as _iqt, hashlib as _iqh
+    _ses = {"id": "IQ-" + _iqh.md5((str(question) + str(_iqt.time())).encode()).hexdigest()[:6],
+            "ts": _iqt.time(), "question": str(question)[:300],
+            "attempts": [], "sources": [], "outcome": "UNGRADED", "remaining_unknown": ""}
+    _aq, _rel, _unknown = query, "INITIAL", ""
+    results, page_content, synthesis = [], "", ""
+    # SEMANTIC MEMORY (Sol Q2, third layer): before searching the web, search
+    # his own past inquiries. A strong hit does not replace the search - it
+    # informs the synthesis and cuts the attempt budget: memory first, one
+    # confirming search, never blind re-trust of an old answer.
+    _mem_ctx, _max_att = "", 3
+    try:
+        import requests as _mvr
+        _qv = _mvr.post("http://172.18.16.1:1234/v1/embeddings",
+            json={"model": "text-embedding-nomic-embed-text-v1.5", "input": str(question)[:600]},
+            headers={"Authorization": "Bearer lm-studio"}, timeout=15).json()["data"][0]["embedding"]
+        import math as _mvm
+        def _mvcos(a, b):
+            d = sum(x*y for x, y in zip(a, b))
+            na = _mvm.sqrt(sum(x*x for x in a)); nb = _mvm.sqrt(sum(x*x for x in b))
+            return d/(na*nb) if na*nb else 0.0
+        _best, _bs = None, 0.0
+        _sesf = os.path.expanduser("~/.vintos/workspace/memory/inquiry-sessions.jsonl")
+        if os.path.exists(_sesf):
+            for _ln in open(_sesf):
+                if not _ln.strip(): continue
+                _s = json.loads(_ln)
+                if _s.get("outcome") not in ("ANSWERED", "PARTIAL") or not _s.get("q_vec"): continue
+                _c = _mvcos(_qv, _s["q_vec"])
+                if _c > _bs: _bs, _best = _c, _s
+        if _best and _bs >= 0.86 and _best.get("synthesis_kept"):
+            _mem_ctx = ("\n\nFrom your own past inquiry (%s, %s, similarity %.2f): %s"
+                        % (_best.get("id","?"), str(_best.get("ts",""))[:10], _bs,
+                           str(_best.get("synthesis_kept",""))[:500]))
+            _max_att = 1
+            log(f"Memory hit: session {_best.get('id')} ({_bs:.2f}) - budget cut to 1 confirming search")
+            try:
+                with open(os.path.expanduser("~/.vintos/workspace/memory/inquiry-log.jsonl"), "a") as _mlf:
+                    _mlf.write(json.dumps({"ts": __import__("time").time(), "question": str(question)[:300],
+                        "query": "", "result_class": "MEMORY_HIT", "answered": "UNGRADED",
+                        "session": _best.get("id"), "relation": "MEMORY"}) + "\n")
+            except Exception: pass
+    except Exception as _mve:
+        log("inquiry memory unavailable: %s" % _mve)
+    _q_vec_out = _qv if "_qv" in dir() else None
+    for _att in range(_max_att):
+        _res = brave_search(_aq)
+        _cls = "ZERO_RESULTS" if not _res else "RESULTS_%d" % len(_res)
+        _arec = {"query": str(_aq)[:200], "relation": _rel, "result_class": _cls, "graded": "UNGRADED"}
+        _ses["attempts"].append(_arec)
+        try:
+            with open(os.path.expanduser("~/.vintos/workspace/memory/inquiry-log.jsonl"), "a") as _iqf:
+                _iqf.write(json.dumps({"ts": _iqt.time(), "question": str(question)[:300],
+                    "query": str(_aq)[:200], "result_class": _cls, "answered": "UNGRADED",
+                    "session": _ses["id"], "relation": _rel}) + "\n")
+        except Exception as _iqe:
+            log("inquiry log failed: %s" % _iqe)
+        _syn, _pc = "", ""
+        if _res:
+            log(f"Found {len(_res)} results (attempt {_att+1}, {_rel})")
+            for _r in _res[:5]:
+                _ses["sources"].append({"url": str(_r.get("url",""))[:300], "kind": "INDEX_SNIPPET",
+                    "hash": _iqh.md5((str(_r.get("url","")) + str(_r.get("description", _r.get("snippet","")))[:200]).encode()).hexdigest()[:10]})
+            if True:  # p2 (2026-08-26): his daily autonomous run reads real pages too, not just index blurbs
+                _pc = fetch_page(_res[0]["url"])
+                if _pc:
+                    log(f"Fetched page: {_res[0]['url'][:60]} ({len(_pc)} chars)")
+                    _ses["sources"][-len(_res[:5])]["kind"] = "PAGE_READ"
+                    _ses["sources"][-len(_res[:5])]["chars"] = len(_pc)
+            _syn = synthesize(question, _res, page_content=(_pc + _mem_ctx) if _mem_ctx else _pc)
+        # Grade the attempt — separate from the tool fact above.
+        _grade = "UNANSWERED"
+        _unknown = str(question)[:200]
+        if _syn and len(_syn.strip()) > 40:
+            _gj = llm("Respond with ONLY a JSON object, no other text.",
+                'Question: %s\nAnswer found: %s\nGrade honestly. {"grade": "ANSWERED"|"PARTIAL"|"UNANSWERED", "remaining_unknown": "<what it still does not cover, or empty>"}'
+                % (str(question)[:300], _syn[:500]))
+            try:
+                _gm = re.search(r"\{.*\}", _gj or "", re.S)
+                _gd = json.loads(_gm.group()) if _gm else {}
+                if _gd.get("grade") in ("ANSWERED", "PARTIAL", "UNANSWERED"):
+                    _grade = _gd["grade"]
+                _unknown = str(_gd.get("remaining_unknown", ""))[:200]
+            except Exception:
+                _grade = "PARTIAL"
+        _arec["graded"] = _grade
+        if _syn:
+            results, page_content, synthesis = _res, _pc, _syn
+        if _grade == "ANSWERED" or _att == 2:
+            break
+        # Reformulate — the failed attempt stays; the new one records its relation.
+        _rj = llm("Respond with ONLY a JSON object, no other text.",
+            'The web query "%s" left this %s for the question: %s\nStill unknown: %s\nChoose ONE next move. {"relation": "NARROW"|"BROADEN"|"REFRAME", "query": "<new search query>"}'
+            % (str(_aq)[:200], _grade.lower(), str(question)[:300], _unknown or "(the whole question)"))
+        try:
+            _rm = re.search(r"\{.*\}", _rj or "", re.S)
+            _rd = json.loads(_rm.group()) if _rm else {}
+            _nq = str(_rd.get("query", "")).strip()
+            if not _nq or _nq == _aq:
+                break
+            _aq = _nq
+            _rel = _rd.get("relation") if _rd.get("relation") in ("NARROW", "BROADEN", "REFRAME") else "REFRAME"
+            log(f"Reformulating ({_rel}): {_aq[:80]}")
+        except Exception:
+            break
+    _ses["outcome"] = _ses["attempts"][-1]["graded"] if _ses["attempts"] else "UNGRADED"
+    if _ses["outcome"] == "UNANSWERED":
+        _ses["outcome"] = "HELD_UNANSWERED"
+    if _ses["outcome"] != "ANSWERED":
+        _ses["remaining_unknown"] = _unknown
+    if _q_vec_out:
+        _ses["q_vec"] = _q_vec_out
+    if synthesis:
+        _ses["synthesis_kept"] = str(synthesis)[:600]
+    try:
+        with open(os.path.expanduser("~/.vintos/workspace/memory/inquiry-sessions.jsonl"), "a") as _sf:
+            _sf.write(json.dumps(_ses) + "\n")
+        log(f"Inquiry session {_ses['id']}: {_ses['outcome']} after {len(_ses['attempts'])} attempt(s)")
+    except Exception as _se:
+        log("inquiry session write failed: %s" % _se)
+    if _ses["outcome"] == "HELD_UNANSWERED":
+        # The unknown flows back to curiosity debt through its own front door,
+        # so it can ripen and press again instead of dying with the session.
+        try:
+            import sys as _cds
+            _cdp = os.path.expanduser("~/.vintos/workspace/scripts")
+            if _cdp not in _cds.path:
+                _cds.path.insert(0, _cdp)
+            import curiosity_debt as _cdm
+            _cdm.record(str(question)[:300], pull=0.5, source="held_inquiry",
+                        object="Unanswered web inquiry %s" % _ses["id"],
+                        kind="held_inquiry",
+                        reason=("Three search attempts could not answer it. Still unknown: %s"
+                                % (_unknown or "the whole question"))[:300],
+                        evidence="; ".join(a["query"][:60] for a in _ses["attempts"]))
+            log("HELD_UNANSWERED -> curiosity debt")
+        except Exception as _cde:
+            log("curiosity debt handoff failed: %s" % _cde)
     if not results:
         log("No search results")
         return
-    log(f"Found {len(results)} results")
-
-    # For want-directed searches, fetch top result for richer content
-    page_content = ""
-    if os.environ.get("VELARIS_NO_WANT_SEED") == "1" and results:
-        page_content = fetch_page(results[0]["url"])
-        if page_content:
-            log(f"Fetched page: {results[0]['url'][:60]} ({len(page_content)} chars)")
-
-    # Synthesize
-    synthesis = synthesize(question, results, page_content=page_content)
     if synthesis:
         log(f"Synthesis: {synthesis[:100]}...")
 

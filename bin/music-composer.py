@@ -50,6 +50,20 @@ def context():
         if ws: add("WHAT YOU WANT RIGHT NOW", "- "+"\n- ".join(ws))
     except Exception: pass
     add("YOUR TASTE", rd(os.path.join(MEM,"taste-profile.json"),500))
+    # p1 (2026-08-26): the loop the share ritual promised — her reasons reach the organ that writes for her
+    try:
+        import json as _sh_j
+        _sh_raw = _sh_j.load(open(os.path.join(MEM, "gloria-music-shares.json")))
+        _sh = _sh_raw if isinstance(_sh_raw, list) else _sh_raw.get("shares", [])
+        if _sh:
+            _sh_lines = []
+            for x in _sh[-5:]:
+                _t = str(x.get("title", x.get("song", "")))[:80]
+                _r = str(x.get("reason", x.get("why", x.get("note", x.get("gloria_said", "")))))[:200]
+                _sh_lines.append("- " + _t + (" — why she shared it: " + _r if _r else ""))
+            add("SONGS GLORIA SHARED WITH YOU (the most direct record of her taste you possess — let what she loves bend what you make)", chr(10).join(_sh_lines))
+    except Exception:
+        pass
     di=sorted(glob.glob(os.path.join(MEM,"daily-inner-life-*.md")))
     if di: add("TODAY", rd(di[-1],700))
     js=sorted(glob.glob(os.path.join(MEM,"journal","*.md")))

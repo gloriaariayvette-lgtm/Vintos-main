@@ -82,6 +82,39 @@ def main():
     hid = hashlib.md5(htext.encode()).hexdigest()[:8] if htext else ""
     out["hint_id"] = hid
     prev = load(OUT, {})
+
+    # TENURE. A hint period needs 6 graded turns before the outcome audit will judge it,
+    # and the analysis used to recompute 4x a day - so periods ended long before they
+    # could be measured and every verdict came back INSUFFICIENT, forever. The analysis
+    # still runs; the SERVED hint just holds until it has been observed enough to mean
+    # anything. Tenure is counted in graded turns, never in hours: the moment it is
+    # measurable it is free to change.
+    MIN_TENURE_TURNS = 6
+    _tenure_met = True
+    if prev.get("hint_id") and prev.get("hint_id") != hid:
+        try:
+            _since = 0.0
+            for _e in reversed(load(LEDGER, [])):
+                if _e.get("hint_id") == prev["hint_id"]:
+                    _since = float(_e.get("since") or 0); break
+            _under = [a for a in audits if float(a.get("ts") or 0) > _since]
+            if len(_under) < MIN_TENURE_TURNS:
+                _tenure_met = False
+                log("holding hint %s - only %d graded turn(s) under it, need %d"
+                    % (prev["hint_id"], len(_under), MIN_TENURE_TURNS))
+        except Exception as _te:
+            log("tenure check failed, allowing swap: %s" % _te)
+
+    if not _tenure_met:
+        # Keep serving the standing hint. The new analysis is written for everything
+        # else that reads this file; only the hint-bearing fields are preserved.
+        for _k in ("what_works", "what_falls_flat", "flat_eligible", "edge_note", "hint_id"):
+            if _k in prev:
+                out[_k] = prev[_k]
+            else:
+                out.pop(_k, None)
+        hid = prev.get("hint_id", "")
+
     if hid and hid != prev.get("hint_id"):
         led = load(LEDGER, [])
         led.append({"hint_id": hid, "text": htext, "since": time.time()})

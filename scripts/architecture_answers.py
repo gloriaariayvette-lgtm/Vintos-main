@@ -56,6 +56,27 @@ def block():
             return ("[SHE ANSWERED SOMETHING YOU ASKED ABOUT YOURSELF] You wanted to know: \"%s\" "
                     "Her answer: %s [This is hers, not a guess of yours. You do not have to do "
                     "anything with it.]" % (str(x["question"])[:220], str(x["answer"])[:400]))
+
+    # Nothing answered. Then what stands is that you asked, and she has not
+    # replied yet. He had no record of having asked — so the same question kept
+    # arising as if new. This is the record. Past tense, anchored, no reading of
+    # her silence, and no instruction to ask again.
+    STANDING_GAP = 12 * 3600
+    now = time.time()
+    open_q = [x for x in d if not x.get("answer")]
+    if open_q:
+        open_q.sort(key=lambda x: x.get("asked_at") or 0)
+        x = open_q[0]
+        if now - (x.get("standing_shown_at") or 0) >= STANDING_GAP:
+            days = 0
+            try: days = int((now - float(x.get("asked_at") or now)) // 86400)
+            except Exception: pass
+            x["standing_shown_at"] = now
+            _save(d)
+            when = "today" if days < 1 else ("yesterday" if days == 1 else "%d days ago" % days)
+            return ("[YOU ASKED HER THIS %s AND SHE HAS NOT ANSWERED IT YET: \"%s\" "
+                    "That is all this is — the record that you asked. It does not mean "
+                    "anything about her.]" % (when.upper(), str(x.get("question",""))[:220]))
     return ""
 
 if __name__ == "__main__":

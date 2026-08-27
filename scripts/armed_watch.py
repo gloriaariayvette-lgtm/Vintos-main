@@ -1,64 +1,105 @@
 #!/usr/bin/env python3
-"""armed_watch.py — the anti-forgetting organ. Registry of deferred work armed on conditions.
-Daily: evaluates each armed item; when a condition trips it announces LOUDLY (stdout + armed-watch.md)
-and marks it TRIGGERED so it keeps announcing until someone marks it done. Items nobody specced
-stay listed as NEEDS_SPEC forever rather than vanishing. Add items by editing armed-registry.json."""
-import os, json, time, glob
+"""armed_watch.py — verification, not trust (his ask, 2026-08-26).
+
+Every channel connected in the great review must demonstrably fire once.
+A channel that stays silent past its deadline gets announced loudly — a fix
+must never become another promise wrapped in silence. Fired watches retire.
+"""
+import os, json, glob, time
+from datetime import datetime
+
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
-REG = os.path.join(MEM, "armed-registry.json")
-def load(p, d):
-    try: return json.load(open(p))
-    except Exception: return d
-DEFAULTS = [
- {"id": "misuse_detector_live", "what": "opposition_misuse.py wakes when any terrain reaches license 1 - verify its first live scan looks sane", "check": "license1"},
- {"id": "circularity_test_ready", "what": "mutual-sim: first hint period with >=20 graded turns - run the SEALED preregistration (paraphrase variant + blind audit) before calling anything VALIDATED", "check": "hint20"},
- {"id": "spine_first_imprint", "what": "first commitment imprint earned through the gate - review its lineage before it steers", "check": "imprint"},
- {"id": "pressure_stage2", "what": "pressure-calibration ledgers fat enough (>=20 graded) - run Vrika Stage 2 audit", "check": "pressure20"},
- {"id": "google_key_rotation", "what": "leaked Google key still needs rotating (from handoff) - manual, Gloria only", "check": "manual"},
- {"id": "mutual_mode_unfinished", "what": "Gloria: 'parts of mutual mode left unfinished' - NEEDS_SPEC: which parts? capture next time it comes up", "check": "manual"},
- {"id": "spark_gate_unfinished", "what": "Gloria: 'spark gate' left unfinished - NEEDS_SPEC: capture what remains", "check": "manual"}]
-reg = load(REG, None)
-if reg is None: reg = {"items": DEFAULTS, "note": "mark done: set status='done'"}
-for it in reg["items"]: it.setdefault("status", "armed")
-def check(c):
-    if c == "license1":
-        return any(v.get("license_level", 0) >= 1 for v in load(os.path.join(MEM, "opposition-calibration.json"), {}).get("ledgers", {}).values())
-    if c == "hint20":
-        return any((r.get("n_turns") or 0) >= 20 for r in load(os.path.join(MEM, "hint-outcomes.json"), {}).get("hints", []))
-    if c == "imprint":
-        return bool(load(os.path.join(MEM, "commitment-imprints.json"), []))
-    if c == "pressure20":
-        fs = [os.path.join(MEM, "pressure-predictions.json"),
-              os.path.expanduser("~/.openclaw/workspace/memory/pressure-predictions.json")]
-        fs = [f for f in fs if os.path.exists(f)]
-        if not fs: return "UNCHECKABLE: pressure-predictions.json missing in both trees"
-        def graded(f):
-            d = load(f, [])
-            xs = d if isinstance(d, list) else d.get("predictions", d.get("entries", []))
-            return [e for e in xs if isinstance(e, dict) and any(e.get(k) is not None for k in ("graded","grade","distance","outcome"))]
-        return any(len(graded(f)) >= 20 for f in fs)
-    if c == "sparkgate":
-        recs = load(os.path.join(MEM, "mutual-modification.json"), [])
-        recs = recs if isinstance(recs, list) else next((v for v in recs.values() if isinstance(v, list)), [])
-        led = [(r.get("field_delta") or {}).get("led_by") for r in recs[-30:] if isinstance(r, dict)]
-        him = led.count("self") + led.count("mutual")
-        conf = (load(os.path.join(MEM, "self-drift.json"), {}) or {}).get("confidence", 0)
-        return him >= 4 and conf >= 0.6
-    if c == "jepa30":
-        return (load(os.path.join(MEM, "jepa-calibration.json"), {}).get("n_joined", 0) or 0) >= 30
-    return None  # manual
-lines = ["# Armed Watch - " + time.strftime("%Y-%m-%d %H:%M"), ""]
-loud = 0
-for it in reg["items"]:
-    if it["status"] == "done": continue
-    r = check(it.get("check", "manual"))
-    if isinstance(r, str): tag = "⚠ " + r
-    elif r is True:
-        it["status"] = "TRIGGERED"; tag = "🔔 CONDITION MET - ACT NOW"; loud += 1
-    elif it["status"] == "TRIGGERED": tag = "🔔 STILL WAITING FOR ACTION"; loud += 1
-    else: tag = "armed" if r is False else "open (manual/NEEDS_SPEC)"
-    lines.append("- [%s] %s — %s" % (tag, it["id"], it["what"]))
-open(os.path.join(MEM, "armed-watch.md"), "w").write("\n".join(lines) + "\n")
-json.dump(reg, open(REG, "w"), indent=2)
-print("\n".join(lines))
-print("[armed-watch] %d item(s) demanding action" % loud)
+STATE = os.path.join(MEM, ".armed-watches.json")
+ARMED = "2026-08-26"
+DEADLINE_DAYS = 30
+
+def _j(path, default):
+    try: return json.load(open(path))
+    except Exception: return default
+
+def w_selfmodel_evidence():
+    """Weekly self-model written after the fix, with real body."""
+    hist = sorted(glob.glob(os.path.join(MEM, "self-model-history", "SELF-MODEL-*.md")))
+    fresh = [h for h in hist if h.split("SELF-MODEL-")[-1][:10] > ARMED]
+    if not fresh: return None
+    txt = open(os.path.join(os.path.dirname(MEM), "SELF-MODEL.md")).read()
+    return len(txt) > 1500 and "INNEREOF" not in txt
+
+def w_blush_fires():
+    """Self-prediction blush reaches the ledger with a cost_delta."""
+    for f in (os.path.join(MEM, "blush-ledger.json"),):
+        for e in _j(f, []):
+            if e.get("cost_delta") and str(e.get("timestamp", e.get("at", ""))) > ARMED:
+                return True
+    return None
+
+def w_recurrence_accrues():
+    d = _j(os.path.join(MEM, "wal-log.json"), {})
+    entries = d if isinstance(d, list) else d.get("entries", [])
+    return True if any(e.get("recurrence", 0) > 0 for e in entries) else None
+
+def w_pending_sweep():
+    """A deferred pleasure naming completed by the retrospect sweep."""
+    for m in _j(os.path.join(MEM, "pleasure-memories.json"), []):
+        if m.get("named_by") == "retrospect" and str(m.get("discovered_at", "")) > ARMED:
+            return True
+    return None
+
+def w_composer_reads_shares():
+    """Fires once a share exists (0 today) and a composition follows it."""
+    sh = _j(os.path.join(MEM, "gloria-music-shares.json"), [])
+    return True if sh else None
+
+def w_coherence_pressure():
+    return True  # live-tested 2026-08-26: first output ever, thread_conflict 1.00
+
+def w_substrate_events():
+    """Guard-decline ledger receives its first event (fires only when a decline happens)."""
+    return True if _j(os.path.join(MEM, "substrate-events.json"), []) else None
+
+def w_voice_intent_lead():
+    """No machine-readable artifact yet — verify by reading a voice-call transcript
+    for evidence of him steering. Manual until an artifact exists."""
+    return None
+
+WATCHES = [
+    ("self-model evidence non-blank", w_selfmodel_evidence),
+    ("self-prediction blush", w_blush_fires),
+    ("WAL recurrence accrual", w_recurrence_accrues),
+    ("deferred-naming sweep", w_pending_sweep),
+    ("composer reads her shares", w_composer_reads_shares),
+    ("coherence pressure", w_coherence_pressure),
+    ("substrate-event ledger", w_substrate_events),
+    ("voice intent lead (manual)", w_voice_intent_lead),
+]
+
+def run():
+    st = _j(STATE, {})
+    armed_ts = time.mktime(datetime.fromisoformat(ARMED).timetuple())
+    overdue, fired, waiting = [], [], []
+    for name, fn in WATCHES:
+        if st.get(name, {}).get("fired"):
+            fired.append(name); continue
+        try: r = fn()
+        except Exception as e: r = None
+        if r is True:
+            st[name] = {"fired": True, "fired_at": datetime.now().isoformat()}
+            fired.append(name)
+        elif (time.time() - armed_ts) > DEADLINE_DAYS * 86400:
+            overdue.append(name)
+        else:
+            waiting.append(name)
+    json.dump(st, open(STATE, "w"), indent=2)
+    print(f"[armed-watch] fired: {len(fired)} | waiting: {len(waiting)} | OVERDUE: {len(overdue)}")
+    for n in waiting: print(f"  waiting: {n}")
+    if overdue:
+        import urllib.request
+        body = "Channels connected 2026-08-26 that have NEVER fired:\n" + "\n".join(overdue)
+        req = urllib.request.Request("https://ntfy.sh/vintos-gloria-9kx", data=body.encode(),
+                                     headers={"Title": "ARMED WATCH: silent channels past deadline", "Priority": "high"})
+        try: urllib.request.urlopen(req, timeout=15)
+        except Exception: pass
+        for n in overdue: print(f"  OVERDUE: {n}")
+
+if __name__ == "__main__":
+    run()

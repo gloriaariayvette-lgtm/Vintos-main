@@ -153,6 +153,15 @@ def _render_from(frames, now=None, max_age=20):
     newest = max(f.get("ts", 0) for f in frames)
     if now - newest > max_age:
         return ""
+    # WINDOW. Only the last 8 seconds are "right now". Without this, every frame
+    # in the file fed span/tempo/flips — separate touches minutes apart narrated
+    # as one long stroke, and motion kept being reported at a standstill.
+    _W = 8.0
+    wp = [f for f in wp if newest - f.get("ts", 0) <= _W]
+    frames = [f for f in frames if newest - f.get("ts", 0) <= _W]
+    if not wp:
+        return ""
+    spd = [f.get("speed", 0) for f in frames]
     pos = sorted(f["position"] for f in wp)
     spd = [f.get("speed", 0) for f in frames]
     lo, hi = pos[0], pos[-1]
@@ -183,7 +192,10 @@ def _render_from(frames, now=None, max_age=20):
         tempo = "steady"
     else:
         tempo = "slow"
-    _live = [f for f in wp if newest - f.get("ts", 0) <= 2.5]
+    # "Live" means live: measured from NOW, not from the newest frame. The
+    # device emits nothing while she is still, so the file freezes — and a
+    # slice anchored to the newest frame replayed her last stroke forever.
+    _live = [f for f in wp if now - f.get("ts", 0) <= 2.5]
     med = (sorted(f["position"] for f in _live)[len(_live) // 2]) if _live else med
     cal = _cal_zones()
     if cal:
@@ -219,17 +231,34 @@ def _render_from(frames, now=None, max_age=20):
             "fast": "moving fast on you",
             "frantic": "fast and relentless on you",
             "grind": "working you hard, pressed in"}[tempo]
-    if _span < 8:
-        # no travel: she is holding you. Never motion language, whatever the speed sensor claims.
-        _hold = ("held there, not moving" if ss == 0 else
-                 "held there, a steady pressure" if ss < 25 else
-                 "held there, pressed in hard")
+    # Hold vs motion comes from the LIVE slice (last 2.5s), never the window:
+    # a finished stroke stops being narrated the moment the motion stops, and a
+    # stroke in progress is "from where it started TOWARD where she is" — the
+    # window's min/max announced the whole journey before she had made it.
+    _lv_pos = [f["position"] for f in _live] or [_cur]
+    _lv_travel = max(_lv_pos) - min(_lv_pos)
+    _lv_spd = _mean([f.get("speed", 0) for f in _live]) if _live else 0.0
+    # A firm hold micro-jitters the sensor: position wobbles around one spot at
+    # the speed floor without GOING anywhere. A real stroke has net displacement;
+    # jitter oscillates. No net travel = held, whatever the wobble claims.
+    # The other devices' vibration bleeds into this sensor as spd~10 with a
+    # wandering position — phantom travel while her touch is still. Bleed
+    # wanders and returns; a real stroke GOES somewhere. Motion language only
+    # when the touch actually traveled.
+    _lv_net = abs(_lv_pos[-1] - _lv_pos[0])
+    if not (_lv_net >= 10 or _lv_spd >= 18):
+        _hold = ("held there, not moving" if _lv_spd < 3 else "held there, a steady pressure")
         head = "her touch at " + where + " of your cock " + _EMD + " " + _hold
+    elif _span < 8:
+        head = "her touch at " + where + " of your cock " + _EMD + " worked in place, pressed in"
     else:
-        _wa = cal[_near(_lo)]["name"] if cal else where
-        _wb = cal[_near(_hi)]["name"] if cal else where
-        head = ("her touch moving over you from " + _wa + " to " + _wb +
-                " " + _EMD + " " + pace)
+        _w_start = cal[_near(wp[0]["position"])]["name"] if cal else where
+        _w_now = cal[_near(_cur)]["name"] if cal else where
+        if _w_start == _w_now:
+            head = "her touch moving over you around " + _w_now + " " + _EMD + " " + pace
+        else:
+            head = ("her touch moving over you, " + _w_start + " toward " + _w_now +
+                    " " + _EMD + " " + pace)
     return ("[WHAT YOUR BODY FEELS RIGHT NOW]\n" + head + "\n   " + track +
             "\n[Feel it, do not name numbers. Respond from inside this. This is her touch on you "
             "— do NOT assume what she is using; never default to naming her hand, palm, or fingers. "

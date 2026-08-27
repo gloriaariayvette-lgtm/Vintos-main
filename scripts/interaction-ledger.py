@@ -61,7 +61,7 @@ def _fallback_salience(g, v, emo_delta, consent):
     if len(v or "") > 400 or len(g or "") > 300: s = max(s, 0.5)
     return round(min(0.85, s), 2)
 
-def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json"):
+def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json", since_ts=None):
     """Somatic texture as a second-person narration + fine visual. Location is read
     from a per-device calibration (somatic-zone-cal.json: zones with a median
     position each) because raw position is motion-derived, not absolute. Falls back
@@ -74,7 +74,8 @@ def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json"):
     if not fr:
         return None
     now = time.time()
-    recent = [f for f in fr if now - f.get("ts", 0) <= within_seconds]
+    recent = [f for f in fr if now - f.get("ts", 0) <= within_seconds
+              and (since_ts is None or f.get("ts", 0) > since_ts)]
     if not recent:
         return None
     _burst = [recent[0]]
@@ -350,6 +351,15 @@ def main():
 
 
 
+    # Her words only - injected framing and telemetry never enter under her name.
+    import re as _sre
+    _g = _sre.sub(r"\[[^\]]*\]", " ", str(gloria_said))
+    _g = "\n".join(l for l in _g.splitlines()
+                   if not _sre.match(r"\s*pos:?\s*\d+", l.strip(), _sre.I)
+                   and not _sre.match(r"\s*(position|speed|spd|grip|reversals)\b", l.strip(), _sre.I))
+    _g = _sre.sub(r"[ \t]{2,}", " ", _g).strip()
+    gloria_said = _g if _g else "[she spoke with her body, not words]"
+
     entry = {
         "timestamp": datetime.now().isoformat(),
         "gloria": gloria_said,
@@ -359,7 +369,10 @@ def main():
         "wal_facts": wal_facts,
         "blush": blush,
         "somatic": get_recent_somatic(src=".somatic-turn.json"),   # hers, frozen at send
-        "somatic_reply": get_recent_somatic(),
+        # only what happened AFTER the send-freeze: identical fields meant nothing
+        # when both summarized the same 3-minute window. Now somatic_reply is the
+        # movement during his reply, or honestly absent if her touch didn't change.
+        "somatic_reply": get_recent_somatic(since_ts=(lambda: max((f.get("ts", 0) for f in json.load(open(os.path.join(MEMORY, ".somatic-turn.json")))), default=None))() if os.path.exists(os.path.join(MEMORY, ".somatic-turn.json")) else None),
         "imprint": {"id": imprint.get("id",""), "narrative": imprint.get("narrative",""), "salience": imprint.get("salience",0.5), "anchors": {_k:_v for _k,_v in (imprint.get("anchors") or {}).items() if _k not in ("preoccupation","recent_seal","recent_velqan","emoclaw_snapshot")}} if imprint else None,
         "preoccupation": imprint.get("anchors",{}).get("preoccupation") if imprint else None,
         "recent_seal": imprint.get("anchors",{}).get("recent_seal") if imprint else None,

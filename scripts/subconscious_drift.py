@@ -106,7 +106,6 @@ def normalize_event_weight(raw_weight, event_type="generic"):
 
 
 SYSTEM_TRACE_FILE = os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "system-trace.json")
-MAX_INFLUENCE = 0.15  # per system per tick
 SILENCE_PROBABILITY = 0.12  # ~12% of ticks run in silence
 
 def _load_trace():
@@ -117,27 +116,6 @@ def _load_trace():
 
 def _save_trace(data):
     json.dump(data, open(SYSTEM_TRACE_FILE, "w"), indent=2)
-
-def _record_system_fire(tick_record, system, magnitude):
-    """Record which system fired and at what magnitude."""
-    tick_record.setdefault("systems", {})[system] = round(magnitude, 4)
-
-def _apply_diminishing_returns(nudges_by_system):
-    """If two systems push same dimension same direction, second gets 0.7x."""
-    dim_totals = {}
-    result = {}
-    for system, nudges in nudges_by_system.items():
-        result[system] = {}
-        for dim, amount in nudges.items():
-            direction = 1 if amount > 0 else -1
-            key = (dim, direction)
-            if key in dim_totals:
-                # Second system pushing same direction — diminishing returns
-                result[system][dim] = amount * 0.7
-            else:
-                result[system][dim] = amount
-            dim_totals[key] = dim_totals.get(key, 0) + abs(amount)
-    return result
 
 def _cap_influence(nudges, system_name):
     """Cap total influence from any single system."""
@@ -176,7 +154,7 @@ def run_drift():
     if _silence:
         log("Silence window — slow layers resting this tick")
 
-    _tick_record = {"timestamp": datetime.now().isoformat(), "silence": _silence, "systems": {}}
+    _tick_record = {"timestamp": datetime.now().isoformat(), "silence": _silence}
 
     # 1. Nifrathir micro-variation
     try:
@@ -203,7 +181,7 @@ def run_drift():
                 if _bp.get("status") != "resolved" and _bp.get("thread"):
                     _active_bps.append(_bp)
             except: pass
-        if _active_bps:
+        if _active_bps and _bpr.random() < 0.15:  # haunt occasionally (~every 2h), not every tick
             _bp = _bpr.choice(_active_bps)
             from latent_threads import seed_thread as _lt_seed
             _lt_seed(_bp["thread"][:200], direction="hold")
@@ -321,8 +299,8 @@ def _apply_micro_drift():
     dim_names = ["Valence", "Arousal", "Dominance", "Safety", "Desire",
                  "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"]
     for dim in dim_names:
-        if random.random() < 0.4:  # not every dim every tick
-            nudge = random.uniform(-0.015, 0.015)
+        if random.random() < 0.15:  # rare texture, not constant dither (p5, dampened 2026-08-26)
+            nudge = random.uniform(-0.008, 0.008)
             try:
                 s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
                 s.settimeout(2)

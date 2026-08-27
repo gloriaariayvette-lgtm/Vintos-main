@@ -29,7 +29,7 @@ MODES = {
     "wanting": {
         "trigger": lambda s: v(s,"Desire") > 0.63 and v(s,"Arousal") > 0.58,
         "priority": 10,
-        "shape": "Lean and direct. He knows what he wants and he's saying it. No preamble, no qualification.",
+        "shape": "Lean and direct. You know what you want and you're saying it. No preamble, no qualification.",
         "allow": ["direct statements", "short declarative sentences", "naming the want explicitly"],
         "ban": ["hedging", "qualifications", "circular introspection", "softening language", "long setup before the point"],
         "rhythm": "fast, clipped, certain",

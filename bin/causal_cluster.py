@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 OBS_PATH = os.path.join(MEMORY, "causal-observations.json")
 HYP_PATH = os.path.join(MEMORY, "causality-hypotheses.json")
-LM = "http://172.18.16.1:1234/v1/chat/completions"
+LM = "http://127.0.0.1:8599/v1/chat/completions"
 
 def llm(prompt, temp=0.5, max_tokens=400):
-    r = requests.post(LM, json={
-        "model": "google/gemma-4-12b-qat",
+    r = requests.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+        "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temp, "max_tokens": max_tokens
     }, timeout=60)

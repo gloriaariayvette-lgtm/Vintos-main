@@ -133,6 +133,12 @@ def extract_capacities(text, source, source_date):
         "elaborate one, let something land without auditing it.\n\n"
         "Rules:\n"
         "- Only from evidence in the text. Never from encouragement.\n"
+        "- A moment can be sexual or somatic and still be a capacity. If he met what was\n"
+        "  actually happening instead of performing through it, that counts, and it counts\n"
+        "  the same as anywhere else. What is forbidden is the reverse: never read sex as\n"
+        "  performance, avoidance, or a failure of presence. It is not evidence against him.\n"
+        "- The text must name the OCCASION: when it happened, what was going on, what he\n"
+        "  did instead. A sentence that only claims he is doing better is NOT a capacity.\n"
         "- Past tense, anchored to the moment: 'you did', never 'you tend to'.\n"
         "- If nothing in this text clearly qualifies, return []. That is a correct answer.\n\n"
         "For each capacity return a JSON object with:\n"
@@ -231,7 +237,17 @@ def make_trial(source, source_date, i, p):
 
 def process_source(source, target_date=None):
     ledger = load_ledger()
-    d = os.path.join(MEMORY, "therapy" if source == "therapy" else "mirror")
+    if source == "therapy":
+        d = os.path.join(MEMORY, "therapy")
+    elif source == "journal":
+        # His journals are where he narrates having done a hard thing. Nothing else
+        # reads them for that. Capacities only — a journal never creates a new deficit,
+        # because self-report is admissible for what he did, not for what he is.
+        d = os.path.join(MEMORY, "journal")
+        if not os.path.isdir(d):
+            d = os.path.join(MEMORY, "journals")
+    else:
+        d = os.path.join(MEMORY, "mirror")
     if not os.path.isdir(d): print(f"[Extractor] No {source} dir."); return
     files = sorted(os.listdir(d))
     if target_date: files = [f for f in files if target_date in f]
@@ -244,7 +260,7 @@ def process_source(source, target_date=None):
         text = open(os.path.join(d, fname)).read()
         if source == "therapy" and "STEP 5" not in text: continue
         ledger.setdefault("processed", []).append(f"{source}:{source_date}")
-        pairs = extract_from_text(text, source, source_date)
+        pairs = [] if source == "journal" else extract_from_text(text, source, source_date)
         for i, p in enumerate(pairs):
             t = make_trial(source, source_date, i, p)
             ledger["trials"].append(t)
@@ -265,7 +281,7 @@ def process_source(source, target_date=None):
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "all"
     target = sys.argv[2] if len(sys.argv) > 2 else None
-    if mode in ("therapy", "mirror"):
+    if mode in ("therapy", "mirror", "journal"):
         process_source(mode, target)
     else:
         process_source("therapy", target)

@@ -410,10 +410,14 @@ def _safe_extract(r):
         if "choices" not in data:
             print(f"[Journal] LLM error: {data.get('error', data)}", file=__import__("sys").stderr, flush=True)
             return ""
-        return data["choices"][0]["message"]["content"].strip()
+        msg = data["choices"][0]["message"]
+        content = msg.get("content") or ""
+        if not content.strip() and msg.get("refusal"):
+            print(f"[Journal] Model refused: {str(msg['refusal'])[:200]}", file=__import__("sys").stderr, flush=True)
+        return content.strip()
     except Exception as _se:
         print(f"[Journal] Response parse error: {_se}", file=__import__("sys").stderr, flush=True)
-        return "", sys
+        return ""
 try:
     emo = os.environ.get("_JRN_EMO", "")
     gloria_model = os.environ.get("_JRN_GLORIA", "")
@@ -635,7 +639,53 @@ What I haven't said yet matters more than what I've already named. I go there.""
         }, timeout=600)
         return _safe_extract(r)
     a1 = call_llm()
-    b1 = call_llm()
+    # B1 TEST: Sol 5.6 writes the B draft; the house model writes A. Same prompt,
+    # same absorption, same merge — the difference under test is the generator.
+    # Fail-open: if Sol errors, B1 falls back to the house model and the log says so.
+    def _sol_key():
+        k = os.environ.get("OPENAI_API_KEY", "")
+        if k: return k
+        try:
+            for line in open("/home/gloria/.vintos/vintos.env"):
+                if line.strip().startswith("OPENAI_API_KEY="):
+                    return line.strip().split("=", 1)[1]
+        except Exception:
+            pass
+        return ""
+    _SOL_MODEL = os.environ.get("SOL_MODEL", "gpt-5.6")
+    def _user_content_for_sol():
+        _scene = os.environ.get("_JRN_SCENE", "")
+        if _scene and os.path.exists(_scene):
+            import base64 as _b64m
+            _b64 = _b64m.b64encode(open(_scene, "rb").read()).decode()
+            _mime = "image/png" if _scene.endswith(".png") else "image/jpeg"
+            return [{"type": "image_url", "image_url": {"url": f"data:{_mime};base64,{_b64}"}},
+                    {"type": "text", "text": user_msg}]
+        return user_msg
+    def call_sol():
+        k = _sol_key()
+        if not k: raise RuntimeError("no OPENAI_API_KEY")
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": "Bearer " + k, "Content-Type": "application/json"},
+            json={"model": _SOL_MODEL,
+                  "messages": [{"role": "system", "content": system_msg},
+                               {"role": "user", "content": _user_content_for_sol()}],
+                  "max_completion_tokens": 6000, "reasoning_effort": "low"}, timeout=600)
+        out = _safe_extract(r)
+        if not (out or "").strip(): raise RuntimeError("empty from Sol: HTTP %s %s" % (r.status_code, r.text[:150]))
+        return out
+    _b1_arm = {"arm": "sol", "model": _SOL_MODEL, "fell_back": False}
+    try:
+        b1 = call_sol()
+    except Exception as _sole:
+        print(f"[Journal] Sol B1 failed ({_sole}) — falling back to house model", flush=True)
+        b1 = call_llm()
+        _b1_arm = {"arm": "sol", "model": _SOL_MODEL, "fell_back": True, "error": str(_sole)[:300]}
+    try:
+        import json as _armj
+        _armj.dump(_b1_arm, open("/tmp/vintos-journal-arm.json", "w"))
+    except Exception:
+        pass
     if not (a1 or "").strip() or not (b1 or "").strip():
         print("[Journal] ABORT: empty draft(s) from generation API — writing nothing", flush=True)
         import sys as _ab_sys; _ab_sys.exit(1)
@@ -1048,6 +1098,28 @@ import sys, os
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from hallucination_check import check_and_log
 text = os.environ.get("_HC_TEXT", "")
+# A/B stage log: one JSONL row per journal — arm, a1, b1, a2, b2, final.
+try:
+    import json as _abj, os as _abo, datetime as _abd
+    def _rd(f):
+        try: return open(f).read()
+        except Exception: return ""
+    _arm = {}
+    try: _arm = _abj.load(open("/tmp/vintos-journal-arm.json"))
+    except Exception: pass
+    _abo.makedirs(_abo.path.expanduser("~/.vintos/logs"), exist_ok=True)
+    with open(_abo.path.expanduser("~/.vintos/logs/journal-ab-log.jsonl"), "a") as _abf:
+        _abf.write(_abj.dumps({
+            "ts": _abd.datetime.now().isoformat(),
+            "arm": _arm,
+            "a1": _rd("/tmp/vintos-bilateral-a1.txt"),
+            "b1": _rd("/tmp/vintos-bilateral-b1.txt"),
+            "a2": _rd("/tmp/vintos-bilateral-a2.txt"),
+            "b2": _rd("/tmp/vintos-bilateral-b2.txt"),
+            "final": text,
+        }) + "\n")
+except Exception as _abe:
+    print(f"[Journal/ablog] {_abe}", flush=True)
 clean, flags = check_and_log(text, source="journal", context_summary="emotional state, chat history, value map, temporal context, pearls, gloria model", journal_file=os.path.expanduser("~/.vintos/workspace/memory/journal/" + os.environ.get("_JRN_TODAY", "") + ".md"), entry_header="## " + __import__("datetime").datetime.now().strftime("%H:%M") + " — Idle thoughts")
 if not clean:
     print("FLAGGED: " + "; ".join(flags))

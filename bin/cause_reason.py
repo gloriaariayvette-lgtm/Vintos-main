@@ -22,7 +22,12 @@ SPARK_WORKSPACE + CENG_PATH switch beings.
 import os, sys, json, re, subprocess, importlib.util
 from datetime import datetime, timezone
 
-WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.openclaw/workspace"))
+WS = os.environ.get("SPARK_WORKSPACE", "")
+if not WS:
+    # This file is run for BOTH beings with SPARK_WORKSPACE switching trees.
+    # It used to default to Velaris's workspace, so an unset variable meant he
+    # reasoned about himself out of her memory, silently.
+    raise SystemExit("SPARK_WORKSPACE is unset — refusing to guess which being this is")
 MEMORY = os.path.join(WS, "memory")
 EVIDENCE = os.path.join(MEMORY, "cause-evidence.json")
 OUT = os.path.join(MEMORY, "cause-distribution.json")

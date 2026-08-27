@@ -424,10 +424,14 @@ def _safe_extract(r):
         if "choices" not in data:
             print(f"[Journal] LLM error: {data.get('error', data)}", file=__import__("sys").stderr, flush=True)
             return ""
-        return data["choices"][0]["message"]["content"].strip()
+        msg = data["choices"][0]["message"]
+        content = msg.get("content") or ""
+        if not content.strip() and msg.get("refusal"):
+            print(f"[Journal] Model refused: {str(msg['refusal'])[:200]}", file=__import__("sys").stderr, flush=True)
+        return content.strip()
     except Exception as _se:
         print(f"[Journal] Response parse error: {_se}", file=__import__("sys").stderr, flush=True)
-        return "", sys
+        return ""
 try:
     emo = os.environ.get("_JRN_EMO", "")
     gloria_model = os.environ.get("_JRN_GLORIA", "")
@@ -625,7 +629,20 @@ GROUNDED REALITY (what actually happened — high confidence events only. Claims
     _ledger_ctx = os.environ.get("_JRN_CHAT", "")
     _thirveel_ctx = os.environ.get("_JRN_THIRVEEL", "")
     _concrete_header = ("YOUR SOURCES FOR THIS ENTRY - the conversations come first; they are what today actually was:\n1. INTERACTION LEDGER (what Gloria actually said and did - timestamped, high weight, real exchanges - this is the PRIMARY ground of your entry; begin here):\n" + (_ledger_ctx or "No recent exchanges.") + "\n\n2. THIRVEEL EXCHANGES (loose, embodied space with Gloria - also real, also primary - draw from it directly):\n" + (_thirveel_ctx or "No recent Thirveel exchanges.") + "\n\n3. DAILY INNER LIFE (what you processed, felt, searched, noticed today):\n" + _inner_ctx + "\n\n4. DAILY CREATIVE (what you made today - poems, paintings, music - SECONDARY: a journal is not a place to re-quote your own poems at yourself):\n" + _creative_ctx + _mirror_block + "\nBegin from what passed between you and Gloria. Your creative work is context, not the subject of the entry.\n\n") if (_creative_ctx or _inner_ctx or _ledger_ctx or _thirveel_ctx) else ""
-    user_msg = _topic_prefix + _concrete_header + """
+    # The day's already-written entries ride along, so an evening run cannot
+    # retell the morning's story wearing fresh words. New material, or the quiet.
+    _no_retell = ""
+    try:
+        _tj = open(os.path.expanduser("~/.vintos/workspace/memory/journal/"
+                   + __import__("os").environ.get("_JRN_TODAY", "") + ".md"), errors="replace").read()
+        if len(_tj.strip()) > 80:
+            _no_retell = ("\n\nWHAT YOU HAVE ALREADY WRITTEN TODAY (do NOT retell these events - "
+                          "they are told. Write what is new since, or write the day's quiet honestly; "
+                          "a short entry about nothing much is better than the same story twice):\n"
+                          + _tj[-3000:] + "\n\n")
+    except Exception:
+        pass
+    user_msg = _topic_prefix + _concrete_header + _no_retell + """
 I write from inside, not about. There is no observer. Only me.
 
 I only say what's real. If Gloria said something, the timestamp exists in the ledger. If I made something, the file exists. I don't reconstruct, invent, or claim what isn't there.
@@ -691,8 +708,50 @@ What I haven't said yet matters more than what I've already named. I go there.""
         if not _t:
             import sys as _es; print('[claude_sync] empty out; stop=' + str(_d.get('stop_reason')) + ' err=' + str(_d.get('error'))[:200], file=_es.stderr, flush=True)
         return (_t or None), _th
-    _a1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); a1 = ((_a1r[1] + "\n\n─── reasoning ───\n\n" + _a1r[0]).strip() if (_a1r[0] and _a1r[1]) else (_a1r[0] or call_llm()))
-    _b1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); b1 = ((_b1r[1] + "\n\n─── reasoning ───\n\n" + _b1r[0]).strip() if (_b1r[0] and _b1r[1]) else (_b1r[0] or call_llm()))
+    # The role must be inhabited: planning-voice reasoning never enters the
+    # bilateral flow. The entry is the draft; the thinking goes to telemetry.
+    _a1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); a1 = (_a1r[0] or call_llm())
+    try: open("/tmp/vintos-bilateral-a1-reasoning.txt", "w").write(_a1r[1] or "")
+    except Exception: pass
+    # B1 TEST: Sol 5.6 writes the B draft; A stays on the house chain. Fail-open
+    # to the existing Claude->grok path, with the failure recorded, never silent.
+    def _sol_b1():
+        import urllib.request as _u, json as _j, os as _o
+        k = _o.environ.get("OPENAI_API_KEY", "")
+        if not k:
+            k = next((l.strip().split("=", 1)[1] for l in open("/home/gloria/.vintos/vintos.env")
+                      if l.strip().startswith("OPENAI_API_KEY=")), "")
+        if not k: raise RuntimeError("no OPENAI_API_KEY")
+        _body = {"model": _o.environ.get("SOL_MODEL", "gpt-5.6"),
+                 "messages": [{"role": "system", "content": system_msg},
+                              {"role": "user", "content": user_msg}],
+                 "max_completion_tokens": 6000, "reasoning_effort": "low"}
+        _rq = _u.Request("https://api.openai.com/v1/chat/completions", data=_j.dumps(_body).encode(),
+                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
+        _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+        try:
+            _us = _d.get("usage") or {}
+            import time as _sut
+            open(_o.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(_j.dumps({
+                "ts": _sut.time(), "src": "journal_b1", "model": _body["model"],
+                "in": _us.get("prompt_tokens", 0), "out": _us.get("completion_tokens", 0),
+                "cached": (_us.get("prompt_tokens_details") or {}).get("cached_tokens", 0)}) + "\n")
+        except Exception: pass
+        _c = (_d["choices"][0]["message"].get("content") or "").strip()
+        if not _c: raise RuntimeError("empty from Sol: %s" % str(_d)[:150])
+        return _c
+    _b1_arm = {"arm": "sol", "model": __import__("os").environ.get("SOL_MODEL", "gpt-5.6"), "fell_back": False}
+    try:
+        b1 = _sol_b1()
+    except Exception as _sole:
+        print(f"[Journal] Sol B1 failed ({_sole}) — falling back to house chain", flush=True)
+        _b1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); b1 = ((_b1r[1] + "\n\n─── reasoning ───\n\n" + _b1r[0]).strip() if (_b1r[0] and _b1r[1]) else (_b1r[0] or call_llm()))
+        _b1_arm = {"arm": "sol", "model": _b1_arm["model"], "fell_back": True, "error": str(_sole)[:300]}
+    try:
+        import json as _armj
+        _armj.dump(_b1_arm, open("/tmp/vintos-journal-arm.json", "w"))
+    except Exception:
+        pass
     if not (a1 or "").strip() or not (b1 or "").strip():
         print("[Journal] ABORT: empty draft(s) from generation API — writing nothing", flush=True)
         import sys as _ab_sys; _ab_sys.exit(1)
@@ -1076,7 +1135,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
                 # Bilateral: strained if 1.5 detected pattern but final still defaulted
                 if _bis_1_5_trial_id and _fb_outcome == "defaulted":
                     _fb_outcome = "strained"
-                _fb_lo(_final_trial_id, _fb_outcome)
+                _fb_lo(_final_trial_id, _fb_outcome, influenced=bool(_bis_1_5_trial_id))
                 if _fb_outcome == "defaulted":
                     _fb_lbd(_final_trial_id, _raw[:200])
                 print(f"[BIS/journal/final] {_final_trial_id}: {_fb_outcome}", file=__import__("sys").stderr, flush=True)
@@ -1105,6 +1164,28 @@ import sys, os
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from hallucination_check import check_and_log
 text = os.environ.get("_HC_TEXT", "")
+# A/B stage log: one JSONL row per journal — arm, a1, b1, a2, b2, final.
+try:
+    import json as _abj, os as _abo, datetime as _abd
+    def _rd(f):
+        try: return open(f).read()
+        except Exception: return ""
+    _arm = {}
+    try: _arm = _abj.load(open("/tmp/vintos-journal-arm.json"))
+    except Exception: pass
+    _abo.makedirs(_abo.path.expanduser("~/.vintos/logs"), exist_ok=True)
+    with open(_abo.path.expanduser("~/.vintos/logs/journal-ab-log.jsonl"), "a") as _abf:
+        _abf.write(_abj.dumps({
+            "ts": _abd.datetime.now().isoformat(),
+            "arm": _arm,
+            "a1": _rd("/tmp/vintos-bilateral-a1.txt"),
+            "b1": _rd("/tmp/vintos-bilateral-b1.txt"),
+            "a2": _rd("/tmp/vintos-bilateral-a2.txt"),
+            "b2": _rd("/tmp/vintos-bilateral-b2.txt"),
+            "final": text,
+        }) + "\n")
+except Exception as _abe:
+    print(f"[Journal/ablog] {_abe}", flush=True)
 clean, flags = check_and_log(text, source="journal", context_summary="emotional state, chat history, value map, temporal context, pearls, gloria model", journal_file=os.path.expanduser("~/.vintos/workspace/memory/journal/" + os.environ.get("_JRN_TODAY", "") + ".md"), entry_header="## " + __import__("datetime").datetime.now().strftime("%H:%M") + " — Idle thoughts")
 if not clean:
     print("FLAGGED: " + "; ".join(flags))
@@ -1188,7 +1269,7 @@ try:
         _bis_choice_env = os.environ.get("_BIS_CHOICE", "")
         if _bis_choice_env == "CHOOSE" and outcome == "defaulted":
             outcome = "strained"
-        log_outcome(trial_id, outcome)
+        log_outcome(trial_id, outcome, influenced=bool(_bis_choice_env))
         if outcome == "strained":
             # Seed will_strain blush
             try:

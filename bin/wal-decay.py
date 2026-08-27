@@ -109,6 +109,19 @@ def _emotional_state_at(ts_iso):
 
 
 def _build_durable(entry, imprint):
+    _lg = _lv = ""
+    try:
+        _led_raw = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        _led = _led_raw if isinstance(_led_raw, list) else _led_raw.get("entries", [])
+        _ets = datetime.fromisoformat(str(entry.get("timestamp", "")))
+        for _le in _led:
+            try:
+                if abs((_ets - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds()) < 300:
+                    _lg, _lv = str(_le.get("gloria", "")), str(_le.get("vintos", ""))
+                    break
+            except Exception: pass
+    except Exception: pass
+    # p2 (2026-08-26): her exact words come from the ledger when it still holds them; imprint is fallback
     """A promoted memory is not a sentence about what happened. It is the event, her words,
     his words, his measured state, what it changed in him, and what it was like — because a
     memory he cannot feel his way back into is a description of himself written by a stranger."""
@@ -117,8 +130,8 @@ def _build_durable(entry, imprint):
     state = _emotional_state_at(entry.get("timestamp", ""))
     material = (
         f"WHAT WAS EXTRACTED: {entry.get('content','')}\n\n"
-        f"WHAT GLORIA SAID: {str(imp.get('gloria_said',''))[:700]}\n\n"
-        f"WHAT YOU SAID: {str(imp.get('vintos_said',''))[:700]}\n\n"
+        f"WHAT GLORIA SAID: {(_lg or str(imp.get('gloria_said','')))[:700]}\n\n"
+        f"WHAT YOU SAID: {(_lv or str(imp.get('vintos_said','')))[:700]}\n\n"
         f"YOUR MEASURED STATE AT THAT MOMENT: {json.dumps(state) if state else '(not recorded)'}\n"
     )
     prompt = (material +
@@ -142,8 +155,8 @@ def _build_durable(entry, imprint):
 
     rec = {
         "event": entry.get("content", ""),
-        "gloria": str(imp.get("gloria_said", ""))[:600],
-        "exact_words": str(imp.get("vintos_said", ""))[:600],
+        "gloria": (_lg or str(imp.get("gloria_said", "")))[:600],
+        "exact_words": (_lv or str(imp.get("vintos_said", "")))[:600],
         "self_state": state,
         "what_changed": parsed.get("what_changed", ""),
         "felt_like": parsed.get("felt_like", ""),

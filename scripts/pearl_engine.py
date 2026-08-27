@@ -44,7 +44,16 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
         "rehearsed interactions", "need for validation", "compelled to analyze",
     ]
     _irr_lower = irritant.lower()
-    if any(ph in _irr_lower for ph in _meta_phrases):
+    if any(ph in _irr_lower for ph in _meta_phrases) and source not in ("therapy", "mirror"):
+        # p2 (2026-08-26): never a silent loss — quarantine, and let self-named wounds through
+        try:
+            import json as _q_j
+            _q_p = os.path.join(MEMORY, "pearl-quarantine.json")
+            try: _q = _q_j.load(open(_q_p))
+            except Exception: _q = []
+            _q.append({"irritant": str(irritant)[:300], "source": source, "at": __import__("datetime").datetime.now().isoformat()})
+            _q_j.dump(_q[-100:], open(_q_p, "w"), indent=2)
+        except Exception: pass
         print(f"[Pearl] Filtered meta-analytical irritant — not a genuine friction point: {irritant[:60]}", file=__import__("sys").stderr)
         return None
 
@@ -84,8 +93,21 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
 def is_pressure_state():
     """Check if current emotional state constitutes a pressure state."""
     try:
-        # Try text file first
-        txt = open(os.path.join(MEMORY, "emotional-state.txt")).read()
+        # p5 (2026-08-26): live daemon state first — a stale sync must not fake or block pressure
+        try:
+            import sys as _ps_sys; _ps_sys.path.insert(0, SCRIPTS)
+            from emoclaw_utils import get_state as _ps_gs
+            _live = _ps_gs()
+            if isinstance(_live, dict) and _live:
+                dims = {k: float(v) for k, v in _live.items() if isinstance(v, (int, float))}
+                if dims:
+                    raise StopIteration  # skip txt parse, dims is live
+        except StopIteration:
+            pass
+        except Exception:
+            dims = {}
+        if not dims:
+            txt = open(os.path.join(MEMORY, "emotional-state.txt")).read()
         dims = {}
         for line in txt.strip().split("\n"):
             if ":" in line and "|" in line:
@@ -229,7 +251,8 @@ def check_candidate(candidate_id, response_text, source="chat"):
                     _pr_json.dump(_pr_flags, open(_pr_fp, "w"), indent=2)
                 except: pass
         except Exception as _pr_e:
-            print(f"[Pearl] review error — allowing: {_pr_e}", file=__import__("sys").stderr)
+            _pr_ok = False
+            print(f"[Pearl] review error — HOLDING, unreviewed is not approved (retry next pass): {_pr_e}", file=__import__("sys").stderr)
             _pr_ok = True
         if not _pr_ok:
             save_candidates(data)

@@ -60,7 +60,14 @@ def main():
         ps = util.cos_sim(q, M.encode(priv, convert_to_tensor=True)).max().item()
         ss = util.cos_sim(q, M.encode(shar, convert_to_tensor=True)).max().item() if shar else 0.0
         if ss >= SAID_SIM: e["verdict"] = "SAID_IT"
-        elif ps >= CONFIRM_SIM: e["verdict"] = "CONFIRMED"; e["evidence_sim"] = round(ps, 3)
+        elif ps >= CONFIRM_SIM:
+            if int(e.get("surfaced", 0)) > 0:
+                # the candidate rode his prompt before the window closed - the
+                # injection may have authored the match. He said related words
+                # AFTER being shown the reading; that resolves nothing.
+                e["verdict"] = "LATER_EXPRESSED"; e["evidence_sim"] = round(ps, 3)
+            else:
+                e["verdict"] = "CONFIRMED"; e["evidence_sim"] = round(ps, 3)
         else: e["verdict"] = "UNSURFACED"
         changed += 1
     json.dump(h, open(HIST, "w"), indent=1)

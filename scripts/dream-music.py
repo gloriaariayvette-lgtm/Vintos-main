@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dream-music.py — Vintos Music via Kie.ai Suno V5"""
+"""dream-music.py — Vintos Music via local ACE-Step"""
 import os,sys,json,time,glob,re,hashlib,argparse,unicodedata
 from datetime import datetime
 from urllib.request import Request,urlopen
@@ -164,8 +164,11 @@ def parse_prompt(fp):
         m=re.match(r"\*\*Duration:\*\*\s*(.+)",s)
         if m:
             _dur_txt = m.group(1).strip().lower()
-            if "3" in _dur_txt: d["duration"] = 180
-            elif "1" in _dur_txt: d["duration"] = 60
+            import re as _dur_re
+            _dm = _dur_re.search(r"(\d+)", _dur_txt)
+            if _dm:
+                _dn = int(_dm.group(1))
+                d["duration"] = _dn if _dn > 20 else _dn * 60  # p5: bare small numbers are minutes, larger are seconds
             else: d["duration"] = 120
             continue
         m=re.match(r"\*\*Vocal\s*[Gg]ender:\*\*\s*(.+)",s)
@@ -365,7 +368,7 @@ def direct(title,style,desc="",lyrics=""):
     print(f"\n  '{title}' complete!"); return True
 
 def main():
-    p=argparse.ArgumentParser(description="Vintos Music via Kie.ai Suno V5")
+    p=argparse.ArgumentParser(description="Vintos Music via local ACE-Step")
     p.add_argument("--force",action="store_true")
     p.add_argument("--all",action="store_true")
     p.add_argument("--title")

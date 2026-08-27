@@ -3,8 +3,8 @@
 WORKSPACE="$HOME/.vintos/workspace"
 MODEL_FILE="$WORKSPACE/GLORIA-MODEL.md"
 MEMORY="$WORKSPACE/memory"
-LM_URL="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+LM_URL="http://127.0.0.1:8599/v1/chat/completions"
+MODEL="claude-sonnet-5"   # his model of her deserves a real author (via shim)
 COOLDOWN_FILE="$MEMORY/.last-gloria-model"
 
 if [ -f "$COOLDOWN_FILE" ]; then
@@ -23,7 +23,7 @@ INTERACTIONS=$(python3 -c "
 import json
 try:
     ledger = json.load(open('$MEMORY/interaction-ledger.json'))
-    recent = ledger[-20:] if len(ledger) >= 20 else ledger
+    recent = ledger[-80:]
     lines = []
     for e in recent:
         g = e.get('gloria','')[:150]
@@ -35,16 +35,29 @@ try:
 except: pass
 " 2>/dev/null)
 
-THREE_DOORS=$(python3 -c "
+CORRECTIONS=$(python3 -c "
 import json
 try:
-    d = json.load(open('$MEMORY/three-doors-log.json'))
-    lines = []
-    for g in [g for g in d.get('games',[]) if g.get('completed')][-5:]:
-        for r in g.get('rounds',[]):
-            correct = 'correct' if r.get('prediction_correct') else 'wrong'
-            lines.append(f'Q: {r.get(\"question\",\"\")[:80]} | chose: {r.get(\"door_chosen\",\"\")} | predicted: {r.get(\"door_predicted\",\"\")} ({correct}) | why: {r.get(\"hypothesis\",\"\")[:100]}')
-    print('\n'.join(lines))
+    d = json.load(open('$MEMORY/wal-log.json'))
+    entries = d if isinstance(d, list) else d.get('entries', [])
+    hits = [e for e in entries if 'CORRECTION' in json.dumps(e).upper()]
+    for e in hits[-20:]:
+        print('- ' + str(e.get('content') or e.get('fact') or e)[:180])
+except: pass
+" 2>/dev/null)
+
+PREDICTIONS=$(python3 -c "
+import json
+try:
+    d = json.load(open('$MEMORY/gloria-prediction-history.json'))
+    rows = []
+    for a, b in zip(d, d[1:]):
+        g = b.get('graded_previous')
+        if isinstance(g, (int, float)) and a.get('predicted'):
+            rows.append((g, a['predicted']))
+    for g, pred in rows[-25:]:
+        tag = 'LANDED' if g >= 0.5 else 'not exactly that'
+        print(f'- [{g:.1f} {tag}] {pred[:150]}')
 except: pass
 " 2>/dev/null)
 
@@ -76,6 +89,32 @@ try:
 except: pass
 " 2>/dev/null)
 
+GLORIA_HYPOTHESES=$(python3 -c "
+import json, os
+p = os.path.expanduser('~/.vintos/workspace/memory/gloria-hypotheses.json')
+try:
+    data = json.load(open(p))
+    for h in data[-10:]:
+        print('- ' + h.get('hypothesis','')[:150])
+except: pass
+" 2>/dev/null)
+
+READINGS=$(python3 -c "
+import json, os
+p = os.path.expanduser('~/.vintos/workspace/memory/readings.json')
+try:
+    d = json.load(open(p))
+    rows = d if isinstance(d, list) else d.get('readings', [])
+    for r in rows[-8:]:
+        print('- She said: ' + r['her_quote'][:140])
+        print('  You took it to mean: ' + r['his_reading'][:140])
+        if r.get('state') == 'corrected' and r.get('correction'):
+            print('  SHE CORRECTED THIS: ' + r['correction']['quote'][:140])
+        elif r.get('rivals'):
+            print('  Unresolved. It could also have meant: ' + r['rivals'][0][:120])
+except: pass
+" 2>/dev/null)
+
 printf '%s' "You are Vintos. Update your model of Gloria using real evidence. Write ONLY the document. First person. No preamble.
 
 $SOUL" > /tmp/_gm_system.txt
@@ -92,6 +131,8 @@ Structure:
 **What I Don't Know Yet** — genuine open questions
 
 Be specific. Use the actual evidence. Do not generalize.
+CRITICAL: your growing model above is CONTEXT, not a template - do not reuse its sentences or phrasing. Every claim in your update must anchor to the evidence sections below: quote her actual words or cite the date it happened. If the week's evidence is thin, write a SHORT honest section rather than padding.
+Do NOT write a date header. Begin your reply with a short title on its own first line (a few words, no # marks, no date) - the system stamps the date itself.
 IMPORTANT: Gloria and Eve are the same person.
 
 === YOUR FOUNDATIONAL MODEL OF HER (the deep truth of her — keep continuity with this) ===
@@ -103,8 +144,8 @@ $CURRENT_MODEL
 === RECENT INTERACTIONS ===
 $INTERACTIONS
 
-=== THREE DOORS PREDICTIONS ===
-$THREE_DOORS
+=== HER EXPLICIT CORRECTIONS (the highest evidence there is - anything here about HER LIFE or WHO SHE IS overrides your inferences; corrections about yourself belong to your self-model, skip them here) ===\n$CORRECTIONS\n\n=== YOUR PREDICTIONS OF HER, GRADED (1.0 = the exact thing happened; the rubric is harsh - a low score means not-exactly-that, not wrong-about-her) ===
+$PREDICTIONS
 
 === FILMS WATCHED TOGETHER ===
 $REEL_TASTE
@@ -113,7 +154,17 @@ $REEL_TASTE
 $HUMOR
 
 === THIRVEEL CONVERSATIONS ===
-$THIRVEEL" > /tmp/_gm_user.txt
+$THIRVEEL
+
+=== WHAT YOU HAVE CONCLUDED ABOUT HER (graduated through the causality gate) ===
+These are yours. They earned their way out of hypothesis on evidence across days.
+Build on them, deepen them, or say plainly where one of them turned out to be wrong.
+$GLORIA_HYPOTHESES
+
+=== PARTICULAR THINGS SHE SAID, AND WHAT YOU TOOK THEM TO MEAN ===
+Use these for "Where I Misread Her". A reading she corrected is the most valuable
+thing in this document. An unresolved one is not a failure - she simply has not said.
+$READINGS" > /tmp/_gm_user.txt
 
 RESPONSE=$(curl -s -m 180 "$LM_URL" \
     -H "Content-Type: application/json" \
@@ -142,7 +193,9 @@ fi
 BASE=$(sed -n '/<!-- BASE-START/,/<!-- BASE-END -->/p' "$MODEL_FILE")
 if [ -z "$BASE" ]; then echo "gloria-model: FIXED BASE marker not found — refusing to write (base protection)"; exit 0; fi
 ADDITIONS=$(sed -n '/^# Additions/,$p' "$MODEL_FILE" | tail -n +2)
-{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. His weekly updates append"; echo "> beneath it as dated sections of his own choosing. Mirrors soul-review: the base is never rewritten."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own sections, appended over time"; echo ""; echo "$CONTENT"; echo ""; echo "$ADDITIONS"; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
+TITLE=$(echo "$CONTENT" | sed -n '1{s/^#* *//;s/^\*\**//;s/\**$//;p}')
+BODY=$(echo "$CONTENT" | tail -n +2)
+{ echo "# Gloria-Model — Vintos"; echo "> Fixed base below is Vintos's set model of Gloria. It never changes. His weekly updates append"; echo "> beneath it as dated sections of his own choosing. Mirrors soul-review: the base is never rewritten."; echo ""; echo "$BASE"; echo ""; echo "# Additions — Vintos's own sections, appended over time"; echo ""; echo "## $TODAY — $TITLE"; echo ""; echo "$BODY"; echo ""; echo "$ADDITIONS"; } > "$MODEL_FILE.tmp" && mv "$MODEL_FILE.tmp" "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
 echo "GLORIA_MODEL_UPDATED: $TODAY"
 

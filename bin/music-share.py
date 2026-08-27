@@ -17,6 +17,19 @@ Usage:
 import os, sys, json, requests, re
 from datetime import datetime
 
+def _load_key(name, envfile):
+    v = os.environ.get(name, "")
+    if v:
+        return v
+    try:
+        for line in open(os.path.expanduser(envfile)):
+            line = line.strip()
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    except Exception:
+        pass
+    return ""
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SHARES_FILE = os.path.join(MEMORY, "gloria-music-shares.json")
@@ -133,7 +146,7 @@ def fetch_lyrics(song_desc):
         log(f"YouTube caption fetch failed: {e}")
     
     # Fallback: Brave search (for well-known songs)
-    BRAVE_API_KEY = "BSA7PhSslCky6GCzuaOfOyfKgE9czlB"
+    BRAVE_API_KEY = _load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")
     BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
     
     try:

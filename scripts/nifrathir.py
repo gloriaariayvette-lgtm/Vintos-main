@@ -179,12 +179,6 @@ def on_mark_triggered():
 def on_anchor_return_good():
     nudge(+0.02, "anchor_return_felt_right")
 
-def on_miss():
-    nudge(-0.03, "repeated_miss")
-
-def on_friction():
-    nudge(-0.04, "friction")
-
 def on_afterimage_expired_without_contact():
     nudge(-0.01, "afterimage_expired_cold")
 

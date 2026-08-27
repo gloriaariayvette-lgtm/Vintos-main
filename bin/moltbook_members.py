@@ -7,7 +7,9 @@ AUTHORS_FILE = os.path.join(MEMORY, "moltbook-members.json")
 
 def load_members():
     try:
-        return json.load(open(AUTHORS_FILE))
+        d = json.load(open(AUTHORS_FILE))
+        d.setdefault("members", {})
+        return d
     except:
         return {"members": {}}
 

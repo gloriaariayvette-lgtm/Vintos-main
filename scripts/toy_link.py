@@ -42,6 +42,9 @@ def connected(toy, strict=False):
 
 def send(toy, level, seconds=0):
     """level 0-20. seconds=0 means until next command. Returns True on success."""
+    if toy == "thruster":
+        from thruster_link import set_speed as _th_set
+        return _th_set(level, seconds)
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
         return False
@@ -58,6 +61,9 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
     """Fire a Lovense custom Pattern. `strengths` = list of 0-20 levels; the device plays
     them at interval_ms each and LOOPS the array to fill `seconds` (0 = until next command).
     toy=None -> broadcast to ALL toys (sync). Returns True on code 200."""
+    if toy == "thruster":
+        from thruster_link import play_pattern as _th_pat
+        return _th_pat(strengths, interval_ms, seconds)
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
         return False
@@ -92,6 +98,11 @@ def rotate(toy, level, seconds=0):
 
 def stop_all():
     ok = True
+    try:
+        from thruster_link import stop as _th_stop
+        ok = _th_stop() and ok
+    except Exception:
+        ok = False
     for t in TOYS:
         try:
             r = requests.post(BASE, json={"command": "Function", "action": "Stop",
@@ -125,7 +136,7 @@ def parse_and_send(reply_text):
     _fired = {}
     for m in _tl_re.finditer(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+(\d+))?\s*\]", reply_text or "", _tl_re.I):
         toy = m.group(1).lower(); lvl = max(0, min(20, int(m.group(2)))); secs = int(m.group(3)) if m.group(3) else 0
-        if toy in TOYS:
+        if toy in TOYS or toy == "thruster":
             try: out.append((toy, lvl, send(toy, lvl, secs))); _fired[toy] = lvl
             except Exception as e: out.append((toy, lvl, str(e)))
     if _fired:
@@ -137,7 +148,7 @@ def parse_and_send(reply_text):
             except Exception: _ht = {}
             for _k in _fired: _ht[_k] = _now
             _j.dump(_ht, open(_htp, "w"))
-            _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)"}
+            _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine"}
             _txt = " \u00b7 ".join(f"{_names.get(k,k)} {v}" for k,v in _fired.items())
             _j.dump({"type":"touch","text":_txt,"ts":_now},
                     open(_o.path.expanduser("~/.vintos/workspace/memory/command-bubble.json"),"w"))

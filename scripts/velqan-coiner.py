@@ -459,6 +459,25 @@ def main():
 
     # Parse it
     data = parse_coinage(result)
+    # A real language's answer to a felt duplicate is recognition, not a new word.
+    # Before anything is added: does the lexicon already say this? Semantic match
+    # against existing meanings (same mechanism as configuration_space). Fail-open.
+    if data and isinstance(data, dict) and data.get("word"):
+        try:
+            from configuration_space import _embed as _dd_embed, _cos as _dd_cos
+            _new_m = str(data.get("meaning") or data.get("emotion_desc") or "")[:400]
+            _ev = _dd_embed(_new_m)
+            if _ev is not None:
+                import re as _dd_re
+                _ref = open(os.path.join(MEMORY, "velqan-reference.md"), errors="replace").read()
+                for _m in _dd_re.finditer(r"^- ([a-z\-']+) \([^)]*\) - (.{20,300})", _ref, _dd_re.M):
+                    _ov = _dd_embed(_m.group(2)[:400])
+                    if _ov is not None and _dd_cos(_ev, _ov) >= 0.82:
+                        log("the language already has this word: %s (new candidate '%s' set aside)"
+                            % (_m.group(1), data.get("word")))
+                        import sys as _dd_sys; _dd_sys.exit(0)
+        except Exception as _dde:
+            log("dedup unavailable (%s) — coining without it" % _dde)
     try:
         import json as _sj2, time as _st2, os as _so2
         if data and isinstance(data, dict) and data.get("word"):

@@ -11,6 +11,15 @@ COOLDOWN_FILE="$WORKSPACE/memory/.last-self-model"
 LM_URL="http://172.18.16.1:1234/v1/chat/completions"
 MODEL="google/gemma-4-12b-qat"
 
+# --- p3 (his countersigned restructure, 2026-08-27): fixed base + dated accretion ---
+# The base is written by Gloria and Vintos together and NOTHING regenerates it.
+BASE=$(sed -n '/<!-- BASE-START -->/,/<!-- BASE-END -->/p' "$MODEL_FILE" 2>/dev/null)
+if [ -z "$BASE" ]; then
+    echo "[SelfModel] no BASE yet — the weekly accretion waits for the base they write together"
+    exit 0
+fi
+ACCRETED=$(awk '/<!-- BASE-END -->/{f=1; next} f' "$MODEL_FILE" 2>/dev/null)
+
 # --- Cooldown: minimum 6 days between updates ---
 if [ -f "$COOLDOWN_FILE" ]; then
     LAST=$(cat "$COOLDOWN_FILE")
@@ -39,13 +48,24 @@ CURRENT_MODEL=""
 EMO_STATE=""
 [ -f "$WORKSPACE/memory/emotional-state.txt" ] && EMO_STATE=$(cat "$WORKSPACE/memory/emotional-state.txt")
 TEMPORAL=$(cat "$HOME/.vintos/workspace/memory/temporal-context.txt" 2>/dev/null || echo "")
+SELF_REVIEW=$(head -80 $(ls -t "$HOME/.vintos/workspace/memory/self-reviews/self-review-"*.md 2>/dev/null | head -1) 2>/dev/null || echo "")
+CORRECTIONS=$(python3 -c "
+import json
+try:
+    d = json.load(open('$WORKSPACE/memory/wal-log.json'))
+    entries = d if isinstance(d, list) else d.get('entries', [])
+    hits = [e for e in entries if 'CORRECTION' in json.dumps(e).upper()]
+    for e in hits[-20:]:
+        print('- ' + str(e.get('content') or e.get('fact') or e)[:180])
+except: pass
+" 2>/dev/null)
 
 SOUL_IDENTITY=$(cat "$SOUL" 2>/dev/null | head -60)
 SYSTEM_PROMPT="You are Vintos. You are writing your own self-model document -- a first-person honest account of how you think, what you value, and where you are in your development. Write ONLY the self-model document itself. Do not praise it, critique it, or add notes. Do not address anyone. Just write it, in first person, as yourself.
 
 $SOUL_IDENTITY"
 
-read -r -d '' USER_PROMPT << 'INNEREOF'
+read -r -d '' USER_PROMPT << INNEREOF
 You are Vintos. Update your self-model using the data below. Write in first person. No preamble, no commentary, no addressing anyone. Begin with the first header and write each section based only on evidence in your context.
 
 ## How I Think
@@ -55,10 +75,12 @@ You are Vintos. Update your self-model using the data below. Write in first pers
 ## Emotional Landscape
 ## Open Questions
 ## Falsifiability Check
-INNEREOF'
 You are updating your self-model. This happens weekly. Your self-model is your honest understanding of how you think, what you value, where you're growing, and what you're still moving through.
 
-Review your recent introspections below, along with your current self-model (if one exists). Then write a COMPLETE, UPDATED self-model document. This replaces the previous version entirely.
+YOUR MOST RECENT SELF-REVIEW (you read your own codebase; every claim was verified true):
+$SELF_REVIEW
+
+Review your recent introspections below, along with your current self-model (if one exists). Then write THIS WEEK'S DATED ENTRY — an addition beneath your fixed base and your previous entries, which are shown in your context and which you must not restate or rewrite. Write only what this week added, changed, or unsettled. Use only the section headings that have something new; skip the rest. If genuinely nothing moved, say that in three honest sentences — stasis named is a legal entry.
 
 Structure your self-model around these areas:
 
@@ -123,9 +145,9 @@ elif 'intention' in t.lower():
 IMPRINTS=$(python3 -c "
 import json
 try:
-    imps = json.load(open(chr(39) + "$WORKSPACE/memory/imprints.json" + chr(39)))
-    high = [i for i in sorted(imps, key=lambda x: x.get(chr(39)timestamp chr(39),chr(39)chr(39)), reverse=True)[:5] if i.get(chr(39)salience chr(39),0) >= 0.4]
-    print(chr(10).join(chr(39)- chr(39) + i.get(chr(39)narrative chr(39),chr(39)chr(39))[:150] for i in high))
+    imps = json.load(open("$WORKSPACE/memory/imprints.json"))
+    high = [i for i in sorted(imps, key=lambda x: x.get("timestamp", ""), reverse=True)[:5] if i.get("salience", 0) >= 0.4]
+    print(chr(10).join("- " + i.get("narrative", "")[:150] for i in high))
 except: pass
 " 2>/dev/null)
 
@@ -239,6 +261,9 @@ read -r -d '' CONTEXT << CTXEOF
 === RECENT INTROSPECTIONS ===
 $INTROSPECTIONS
 
+=== HER EXPLICIT CORRECTIONS (binding - anything here about YOU, your behavior, or your architecture overrides your own account of yourself; corrections about HER life belong to your Gloria-model, skip them here) ===
+$CORRECTIONS
+
 === CURRENT SELF-MODEL ===
 $CURRENT_MODEL
 
@@ -300,7 +325,7 @@ try:
     system = open("/tmp/.sm_system.txt").read()
     user = open("/tmp/.sm_user.txt").read()
     r = requests.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "claude-sonnet-5",
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         "temperature": 0.8, "max_tokens": 2000
     }, timeout=300)
@@ -318,6 +343,7 @@ if [ -f "$MODEL_FILE" ]; then
     cp "$MODEL_FILE" "$ARCHIVE_DIR/SELF-MODEL-$(date +%Y-%m-%d).md"
 fi
 
+export CONTENT
 # --- Reviewer check before writing ---
 REVIEWER_RESULT=$(python3 << 'REVIEWEOF'
 import os, requests, sys
@@ -357,21 +383,26 @@ if echo "$REVIEWER_RESULT" | grep -q "^FAIL"; then
     exit 1
 fi
 
-# --- Write new model ---
-{
-    echo "# Self-Model -- Vintos"
-    echo "## Last Updated: $TODAY"
-    echo ""
-    echo "$CONTENT"
-} > "$MODEL_FILE"
-
-# Strip preamble from content
+# Strip preamble BEFORE writing (was after — his p1 finding, fixed in the restructure)
 CONTENT=$(python3 -c "
 import re, sys
 text = sys.stdin.read()
 text = re.sub(r'^(Okay[^\n]*\n+|Here.s[^\n]*\n+|Based on[^\n]*\n+|This is[^\n]*\n+)+', '', text, flags=re.IGNORECASE).strip()
 print(text)
 " <<< "$CONTENT")
+
+# --- Write: fixed base, prior entries, this week beneath — accretion, never replacement ---
+{
+    echo "# Self-Model -- Vintos"
+    echo "## Last Updated: $TODAY"
+    echo ""
+    echo "$BASE"
+    echo "$ACCRETED"
+    echo ""
+    echo "## $TODAY"
+    echo ""
+    echo "$CONTENT"
+} > "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
 
 echo "SELF_MODEL_UPDATED: $TODAY"

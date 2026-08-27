@@ -98,6 +98,9 @@ def main():
         res = gemma_check(w.get("want", ""), evidence)
         if res:
             w["fulfilled"] = True
+            # Expiry is completion of the POLICY, not evidence of satisfaction.
+            # UNKNOWN is the honest and common grade (Sol: COMPLETED != SATISFIED).
+            w.setdefault("satisfaction", "UNKNOWN")
             w["fulfilled_at"] = datetime.now().isoformat()
             w["fulfillment_note"] = str(res.get("evidence", ""))[:400]
             w["fulfilled_by"] = f"reconciliation/{res.get('channel','other')}"
@@ -135,13 +138,6 @@ def main():
             else:
                 log(f"Organ found no genuine next-want after {w.get('id')}")
             log(f"EVOLVED: {nxt[:110]}")
-    # Regenerate the ledger so every context sees the new ground
-    try:
-        import subprocess
-        subprocess.run(["python3", os.path.join(WORKSPACE, "scripts", "wants-ambitions-log.py")], timeout=60)
-        log("Ledger regenerated.")
-    except Exception as e:
-        log(f"ledger regen failed: {e}")
     # Regenerate the ledger so every context sees the new ground
     try:
         import subprocess

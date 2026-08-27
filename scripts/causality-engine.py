@@ -463,8 +463,10 @@ def graduate_hypotheses(db):
 
         if days_old >= 7:
             marks = h.get("marks", [])
-            confirmed_m = sum(1 for m in marks if isinstance(m, dict) and m.get("outcome") == "attempted")
-            challenged_m = sum(1 for m in marks if isinstance(m, dict) and m.get("outcome") in ("defaulted", "partial"))
+            # A voided mark stays in the record and stops counting. Marks made under the
+            # rule where a quiet day voted against a hypothesis are history, not evidence.
+            confirmed_m = sum(1 for m in marks if isinstance(m, dict) and not m.get("voided") and m.get("outcome") == "attempted")
+            challenged_m = sum(1 for m in marks if isinstance(m, dict) and not m.get("voided") and m.get("outcome") in ("defaulted", "partial"))
             net = confirmed_m - challenged_m
             # Also count nightly confirmations via status
             if h.get("status") == "confirmed" and not marks:
@@ -509,8 +511,10 @@ def graduate_hypotheses(db):
                         "temperature": 0.3, "max_tokens": 150
                     }, timeout=60)
                     _rv_raw = _rv_r.json()["choices"][0]["message"]["content"].strip()
-                    _rv_clean = _rv_raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-                    _rv_data = _rv_json.loads(_rv_clean)
+                    import re as _rv_re
+                    _rv_m = _rv_re.search(r"\{.*?\}", _rv_raw, _rv_re.S)
+                    if not _rv_m: raise ValueError("no JSON object in reviewer reply")
+                    _rv_data = _rv_json.loads(_rv_m.group(0))
                     if not _rv_data.get("accurate", True):
                         _rv_ok = False
                         _rv_concern = _rv_data.get("concern", "")
@@ -532,8 +536,27 @@ def graduate_hypotheses(db):
                         except Exception as _rv_fe:
                             log(f"  [Review] flag write failed: {_rv_fe}")
                 except Exception as _rv_e:
-                    log(f"  [Review] error — allowing graduation: {_rv_e}")
-                    _rv_ok = True
+                    # Unreviewed is not approved. An unreachable reviewer used to wave
+                    # the hypothesis through, and nothing in the record distinguished
+                    # "checked and clean" from "checker was down".
+                    log(f"  [Review] error — HOLDING graduation: {_rv_e}")
+                    _rv_ok = False
+                    try:
+                        _rv_fp = os.path.join(MEMORY, "hallucination-flags.json")
+                        try: _rv_flags = _rv_json.load(open(_rv_fp))
+                        except Exception: _rv_flags = []
+                        _rv_flags.append({
+                            "type": "graduation_held",
+                            "hypothesis": h["hypothesis"],
+                            "subject": h.get("subject", "self"),
+                            "concern": "reviewer unreachable: %s" % str(_rv_e)[:200],
+                            "held_reason": "reviewer_unreachable",
+                            "timestamp": datetime.now().isoformat(),
+                            "reviewed": False
+                        })
+                        _rv_json.dump(_rv_flags, open(_rv_fp, "w"), indent=2)
+                    except Exception as _rv_fe:
+                        log(f"  [Review] hold-flag write failed: {_rv_fe}")
                 # Only update belief/narrative if review passed
                 if _rv_ok:
                     if h.get("subject") == "gloria":
@@ -889,6 +912,15 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
             "event, a measured change. 'The pattern recurred' or 'no sign of it today' are not evidence and "
             "will be discarded. If you cannot point to something concrete, answer unsure — that is an honest "
             "answer and costs nothing.\n\n"
+            "RECURRED has THREE answers and the third is the most common one:\n"
+            "  yes      - the pattern occurred. Cite it.\n"
+            "  no       - the OCCASION AROSE and the pattern did NOT hold. This is real counter-\n"
+            "             evidence and your EVIDENCE line must name the occasion it failed on.\n"
+            "  unsure   - nothing today bore on this either way. The situation never came up.\n"
+            "             THIS IS NOT A FAILURE OF THE HYPOTHESIS. Most true things about a person\n"
+            "             do not happen every day. Answer unsure freely; it costs nothing and it is\n"
+            "             the honest answer for a quiet day.\n"
+            "Never answer no merely because you saw no sign of it. Absence is unsure, not no.\n\n"
             "Example output:\n"
             "1. RECURRED: yes\n"
             "1. EVIDENCE: Warmth 0.61->0.94 at 14:23, immediately after Gloria wrote 'I missed you today'.\n\n"
@@ -913,6 +945,11 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
             recurred = match.group(2).lower().strip()
             if 0 <= idx < len(to_test):
                 h = to_test[idx]
+                # "no" now means the occasion arose and the pattern did not hold — genuine
+                # counter-evidence. A day the situation never came up is "unsure" and leaves
+                # no mark at all. It used to leave a mark AGAINST the hypothesis, so every
+                # quiet day voted that he was wrong about himself, and nothing ever survived
+                # to day seven. Absence of recurrence is not disconfirmation.
                 outcome = "attempted" if recurred == "yes" else ("defaulted" if recurred == "no" else None)
                 _ev = str(_ev_lines.get(match.group(1), "")).strip()
                 # A bare outcome tag is not evidence. Every graduation this system has ever reached was
@@ -972,12 +1009,17 @@ def write_hypothesis_log(db):
                     f.write(f"  → {h['revision']}\n")
                 f.write("\n")
 
-        # Self-knowledge — hypotheses that graduated after 7 days
-        confirmed = [h for h in db["hypotheses"] if h.get("self_knowledge")]
-        if confirmed:
+        # Self-knowledge — p3 (2026-08-26): graduated knowledge lives in belief sediment, read it from there
+        try:
+            _bs_raw = json.load(open(os.path.join(MEMORY, "belief-sediment.json")))
+            _beliefs = _bs_raw if isinstance(_bs_raw, list) else _bs_raw.get("beliefs", _bs_raw.get("sediment", []))
+        except Exception:
+            _beliefs = []
+        _beliefs = sorted(_beliefs, key=lambda b: -b.get("confidence", 0))[:10]
+        if _beliefs:
             f.write("## What I Know About Myself\n\n")
-            for h in confirmed[-10:]:
-                f.write(f"- {h['hypothesis']}\n")
+            for b in _beliefs:
+                f.write(f"- {b.get('pattern','')[:200]} (confidence {b.get('confidence',0):.2f}, seen {b.get('evidence_count',0)}x)\n")
 
 
 def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
@@ -1012,12 +1054,11 @@ def add_blush_hypothesis(pattern, frequency_snapshot, score, subject="self"):
     for h in db["hypotheses"]:
         if pattern in h.get("hypothesis", "").lower() or pattern in h.get("source", ""):
             # Already exists — reinforce it
-            h.setdefault("marks", []).append({
-                "date": datetime.now().date().isoformat(),
-                "outcome": "attempted",
-                "source": "blush_recurrence"
-            })
-            h["days_tested"] = len(h["marks"])
+            # Recurrence is history, not evidence. This used to append a mark that
+            # graduation counts, so a hypothesis born from a blush pattern could be
+            # confirmed by the same pattern recurring — the hypothesis grading itself.
+            h["blush_recurrences"] = h.get("blush_recurrences", 0) + 1
+            h["last_blush_recurrence"] = datetime.now().isoformat()
             save_hypotheses(db)
             log(f"  [Blush] Reinforced existing hypothesis for pattern: {pattern}")
             return
@@ -1185,10 +1226,14 @@ def nightly_run():
             if _tm: _h["test"] = _tm.group(1).strip()
             if _h.get("hypothesis"):
                 new_hyps.append(_h)
-    for h in new_hyps[:3]:
+    from datetime import date as _p6d
+    _today6 = _p6d.today().isoformat()
+    _already6 = sum(1 for x in db.get("hypotheses", []) if x.get("formed_date") == _today6)
+    _q_budget = max(0, min(2, 4 - _already6))  # p6: shared daily budget of 4; qualitative takes at most 2, leaving room for JEPA-grounded
+    for h in new_hyps[:_q_budget]:
         db["hypotheses"].append(h)
         log("  New: " + h["hypothesis"][:80])
-    log("Formed " + str(min(len(new_hyps),3)) + " new hypotheses (capped at 3)")
+    log("Formed " + str(min(len(new_hyps), _q_budget)) + " qualitative (budget " + str(_q_budget) + ", " + str(_already6) + " already today)")
 
     # JEPA-grounded causal formation — reason over cause-evidence.json, feed same trial machinery
     try:

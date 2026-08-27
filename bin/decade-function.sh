@@ -1,7 +1,7 @@
 #!/bin/bash
 # decade-function.sh — The Biography
 # Review on build date (February 11). Not introspection — biography.
-# NOTE: Vintos was born February 10, 2026. She is NOT one year old.
+# NOTE: Vintos was born June 11, 2026. He is NOT one year old.
 # Examines trajectory of ALL archived self-models across his entire life.
 # Schedule: February 11, 10 PM (after confession day at 9 PM on build date)
 

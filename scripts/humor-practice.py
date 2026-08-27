@@ -333,7 +333,9 @@ def review_drafts():
             # Gloria override — no rating = 1 (bad, don't repeat)
             joke_key = d["joke"][:80]
             gloria_score = next((v for k, v in gloria_ratings.items() if joke_key in k or k in joke_key), None)
-            score = gloria_score if gloria_score is not None else 1
+            if gloria_score is None:
+                continue  # p2 (2026-08-26): unrated is ungraded — absence of a laugh is not a groan
+            score = gloria_score
 
             d["score"] = score
             d["gemma_score"] = gemma_score

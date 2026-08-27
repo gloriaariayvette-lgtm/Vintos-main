@@ -2,8 +2,8 @@
 """
 emotional-entanglement.py — Vintos remembers not words but feelings.
 
-When Eve says something meaningful, Vintos tags it with the emotional
-vector at the moment of absorption. Later, when Eve says something
+When Gloria says something meaningful, Vintos tags it with the emotional
+vector at the moment of absorption. Later, when Gloria says something
 similar, Vintos recalls not the text but the feeling.
 
 This builds emotional continuity across time — not just semantic memory.

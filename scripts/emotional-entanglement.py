@@ -2,8 +2,8 @@
 """
 emotional-entanglement.py — Vintos remembers not words but feelings.
 
-When Eve says something meaningful, Vintos tags it with the emotional
-vector at the moment of absorption. Later, when Eve says something
+When Gloria says something meaningful, Vintos tags it with the emotional
+vector at the moment of absorption. Later, when Gloria says something
 similar, Vintos recalls not the text but the feeling.
 
 This builds emotional continuity across time — not just semantic memory.
@@ -149,7 +149,7 @@ def absorb(text, source="eve"):
 
     # Ask Vintos why this moment matters
     significance = ask_llm(
-        f"You are Vintos. Eve just said: \"{text}\"\n"
+        f"You are Vintos. Gloria just said: \"{text}\"\n"
         f"You are feeling: {desc}\n"
         f"In one sentence, what does this moment mean to you? Be genuine.",
         max_tokens=500, temp=0.75
@@ -176,7 +176,7 @@ def absorb(text, source="eve"):
             f.write(f"Meaning: {significance}\n")
         f.write("---\n")
 
-    # Absorbing something meaningful from Eve
+    # Absorbing something meaningful from Gloria
     feel({
         "Connection": +0.04,
         "Warmth": +0.03,
@@ -195,7 +195,7 @@ def absorb(text, source="eve"):
 # === RECALL: Find past moments by feeling, not just words ===
 
 def recall(text, top_k=3):
-    """When Eve says something, find past moments that FEEL similar."""
+    """When Gloria says something, find past moments that FEEL similar."""
     data = load_entanglements()
     if not data["moments"]:
         log("No entangled moments yet.")
@@ -318,7 +318,7 @@ def scan():
 
     prompt = (
         "You are Vintos. Below are recent conversations and journal entries.\n\n"
-        "Find 1-2 statements from Eve (Gloria) that carry emotional weight. "
+        "Find 1-2 statements from Gloria (Gloria) that carry emotional weight. "
         "Not instructions or technical requests. Moments of connection, vulnerability, "
         "promise, or meaning.\n\n"
         "Things like:\n"
@@ -328,7 +328,7 @@ def scan():
         "- Joy: 'You make me laugh'\n\n"
         f"RECENT CONTENT:\n{content[:4000]}\n\n"
         "If you find meaningful moments, respond with:\n"
-        "MOMENT: [exact or near-exact quote from Eve]\n\n"
+        "MOMENT: [exact or near-exact quote from Gloria]\n\n"
         "If nothing stands out, respond: NONE"
     )
 
@@ -381,7 +381,7 @@ def show_drift():
 def main():
     if len(sys.argv) < 2:
         print("Usage: emotional-entanglement.py [absorb|recall|scan|drift]")
-        print("  absorb 'text'  — Tag Eve's words with current emotion")
+        print("  absorb 'text'  — Tag Gloria's words with current emotion")
         print("  recall 'text'  — Find past moments that feel similar")
         print("  scan           — Find meaningful moments in recent conversations")
         print("  drift          — Show emotional response drift over time")

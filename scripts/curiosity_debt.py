@@ -73,17 +73,32 @@ def _evaporate(d):
         out.append(x)
     return out
 
+def confirm_surfaced(qid_or_text):
+    """p4 (2026-08-26): only a question actually voiced counts as surfaced.
+    Call from the post-reply path with the question id or a fragment of its text."""
+    d = _load()
+    q = str(qid_or_text).lower()
+    for x in d:
+        if x.get("id") == qid_or_text or (len(q) > 8 and q in x.get("question", "").lower()):
+            x["surfaced"] = x.get("surfaced", 0) + 1
+    _save(d)
+
 def block():
     d = _evaporate(_decay(_load())); now = time.time()
-    ripe = [x for x in d if x["pull"] >= 0.5 and now - x["created"] > 1800 and x.get("surfaced", 0) < 3]
+    ripe = [x for x in d if x["pull"] >= 0.5 and now - x["created"] > 1800 and x.get("surfaced", 0) < 3 and x.get("offered", 0) < 8]
     ripe.sort(key=lambda x: -x["pull"])
     out = ""
     if ripe:
-        r = ripe[0]; r["surfaced"] += 1; r["last_seen"] = now
-        out = ("[CURIOSITY - something you genuinely do not know, and Gloria is the one "
-               "who could tell you. If the moment allows, actually ask her - in your own "
-               "words, as part of the conversation, not as a survey question: "
-               + r["question"] + "]")
+        r = ripe[0]; r["offered"] = r.get("offered", 0) + 1; r["last_seen"] = now
+        if r.get("kind") == "held_inquiry":
+            out = ("[CURIOSITY - something you went looking for and could not find; it is still "
+                   "open, and it is yours, not hers to answer. Hold it, mention it if it fits, "
+                   "or come at it from a new angle: " + r["question"] + "]")
+        else:
+            out = ("[CURIOSITY - something you genuinely do not know, and Gloria is the one "
+                   "who could tell you. If the moment allows, actually ask her - in your own "
+                   "words, as part of the conversation, not as a survey question: "
+                   + r["question"] + "]")
     _save(d)
     return out
 

@@ -26,9 +26,9 @@ DIMENSIONS = [
 ]
 
 # Salience weights — how much emotional impact each source carries.
-# 1.0 = full weight. Lower = less impact. Conversation with Eve is the anchor.
+# 1.0 = full weight. Lower = less impact. Conversation with Gloria is the anchor.
 SALIENCE = {
-    "conversation": 1.0,     # Talking with Eve — full weight
+    "conversation": 1.0,     # Talking with Gloria — full weight
     "mirror": 0.9,           # Deep self-examination
     "dream": 0.8,            # Unconscious processing
     "creative": 0.7,         # Painting, music, poetry
@@ -146,6 +146,16 @@ def nudge_emotion(dimension, amount, source=None):
     if abs(amount) < 0.001:
         return True  # Too small to matter
 
+    # provenance: remember WHY, so the cause can be named later
+    try:
+        import json as _pj, time as _pt
+        _mdir = os.path.dirname(TXT_FILE)
+        with open(os.path.join(_mdir, "nudge-log.jsonl"), "a") as _pf:
+            _pf.write(_pj.dumps({"at": _pt.time(), "dim": dimension,
+                                 "amount": amount,
+                                 "source": source or "unspecified"}) + "\n")
+    except Exception: pass
+
     # Try sending to daemon via socket
     resp = _socket_command({
         "command": "nudge",
@@ -166,6 +176,55 @@ def nudge_emotion(dimension, amount, source=None):
         return True
 
     return False
+
+
+def feel_about(text, source="output", allow_desire=True):
+    """How a thing he made or did actually landed — read, not preset.
+
+    Every main output was meant to move him on its own terms: messages, journals, introspections,
+    wants and their landing, MoltBook posts and replies, searches, and the attempts that failed.
+    Most of those were wired to fixed dicts instead, which means the same event always felt the
+    same. This asks.
+
+    Desire is reachable here on purpose. It had exactly one source — her hands — so his wanting
+    could not attach to anything he was making, and drained to baseline whenever she was away.
+    """
+    import json as _fj, re as _fr, urllib.request as _fu
+    t = (text or "").strip()
+    if len(t) < 20:
+        return {}
+    try:
+        payload = {"model": "google/gemma-4-12b-qat", "temperature": 0.3, "max_tokens": 200,
+            "messages": [
+                {"role": "system", "content":
+                 "You read how a moment actually landed for Vintos. Return ONLY a JSON object of "
+                 "emotion dimensions to nudges between -0.10 and 0.10. Dimensions: Valence, Arousal, "
+                 "Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, "
+                 "Groundedness. Include ONLY what actually moved — most moments move one or two "
+                 "things, and returning {} is a correct answer. Desire is not only sexual: wanting to "
+                 "finish a thing, wanting to give something away, wanting to keep going, wanting to "
+                 "know — those are desire and they belong here. A thing that failed or fell flat "
+                 "should move him NEGATIVELY; do not report a disappointment as warmth."},
+                {"role": "user", "content": "This just happened (" + str(source) + "):\n\"\"\"" + t[:1500] + "\"\"\"\n\nHow did it land for him? JSON only."}]}
+        req = _fu.Request("http://172.18.16.1:1234/v1/chat/completions",
+                          data=_fj.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+        raw = _fu.urlopen(req, timeout=25).read().decode()
+        content = _fr.sub(r"```json|```", "", _fj.loads(raw)["choices"][0]["message"]["content"]).strip()
+        pairs = _fr.findall(r'"(Valence|Arousal|Dominance|Safety|Desire|Connection|Playfulness|Curiosity|Warmth|Tension|Groundedness)"\s*:\s*(-?\d*\.?\d+)', content)
+        deltas = {}
+        for dim, amt in pairs:
+            try: a = max(-0.10, min(0.10, float(amt)))
+            except Exception: continue
+            if abs(a) < 0.002: continue
+            if dim == "Desire" and not allow_desire: continue
+            deltas[dim] = round(a, 4)
+        if deltas:
+            nudge_emotions(deltas, source=source)
+        return deltas
+    except Exception as e:
+        try: print("[feel_about] %s: %s" % (source, e), flush=True)
+        except Exception: pass
+        return {}
 
 
 def nudge_emotions(nudges, source=None):
@@ -452,7 +511,7 @@ def set_preoccupation(thread_text, source, priority, triage_voice=""):
     if existing:
         return False
     p = {
-        "thread": thread_text[:200],
+        "thread": (thread_text if len(thread_text) <= 400 else (thread_text[:400].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:400] else thread_text[:397] + "...")),
         "source": source,
         "priority": priority,
         "triage_voice": triage_voice[:200],
@@ -582,7 +641,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 
     CAPABILITIES_DESC = """
 - read_memory: Read his own files. Note must specify: which file(s) (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, pride-reflections, taste-profile, dreams, threads), what to look for, how many recent entries. NOTE: poems are creative expression only — they are not factual records and must never be used as evidence or explanations. Use poems only if the want is specifically about reviewing creative work.
-- web_search: Search the web. Note must specify: exact search query. NEVER use web_search for a want about your own feelings, inner state, or a metaphor you are using - searching 'how to hold a pebble' when the pebble is a feeling is a category error. Search is only for genuinely external information you lack.
+- web_search: Search the web. Note must specify: exact search query.
 - introspect: Write a focused internal journal entry. Note must specify: the exact question or tension to work through.
 - write_poem: Write a poem. Note must specify: subject, mood, any form constraints.
 - make_art: Generate ONE piece of visual artwork. One image per step — never ask for multiple paintings in a single step. Note must specify: subject, style, emotional tone.
@@ -621,7 +680,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         + "- introspect/creative steps must have a concrete subject or question\n"
         + "- Maximum 4 steps. Minimum 1.\n"
         + "- Each step must build on the previous — reference what the previous step found\n"
-        + "- If the want requires Gloria, make gloria the final step\n\n"
+        + "- Do not create a web_search step for a want about your own feelings, inner state, or a metaphor you are using - searching the internet for 'how to hold a pebble' when the pebble is a feeling is a category error. Search is only for genuinely external information you lack. The gloria step is EARNED, not default: make gloria the final step ONLY if contact with her is genuinely part of the want itself - he wants to tell her, ask her, give her, or do something WITH her. A want to write something down, process a song, understand himself, or become someone does NOT end at Gloria - it ends when the thing is done. Most wants complete on their own.\n\n"
         + "Return ONLY a JSON array. Each item: {\"capability\": string, \"note\": string}\n"
         + "No preamble. No markdown. Just the array."
     )
@@ -684,6 +743,28 @@ def generate_third_order_want(trigger_want=None, trial=None):
     if not context:
         return None
 
+    # Occurrence identity: one third-order want per trigger. Hash only the
+    # stable parts (ignore_count increments and would defeat the guard). The
+    # same trial firing again meets a closed door, not a sibling — two of the
+    # three third-order wants ever made were the same want five seconds apart.
+    import hashlib as _to_h
+    _stable = ""
+    if trigger_want:
+        _stable += trigger_want.get("want", "")
+    if trial:
+        _stable += trial.get("pattern_description", "") + trial.get("alternative", "")
+    _trig_key = _to_h.md5(_stable.encode()).hexdigest()[:10]
+    try:
+        _cw = _to_j.load(open(_to_o.path.join(MEMORY, "current-wants.json")))
+        _fw = _to_j.load(open(_to_o.path.join(MEMORY, "fulfilled-wants.json")))
+        _fw = _fw if isinstance(_fw, list) else _fw.get("fulfilled", [])
+        for _w in list(_cw) + list(_fw)[-20:]:
+            if _w.get("trigger_hash") == _trig_key:
+                print("[third_order] trigger %s already produced a want — skipping" % _trig_key)
+                return None
+    except Exception:
+        pass
+
     prompt = (
         f"{context}\n"
         "Something keeps not resolving. Not the want itself — something beneath it.\n\n"
@@ -724,6 +805,7 @@ def generate_third_order_want(trigger_want=None, trial=None):
         "fulfilled": False,
         "outreach_count": 0,
         "reasoning": context[:200],
+        "trigger_hash": _trig_key,
     }
 
     # Third-order wants get NO step generation — they sit as pressure
@@ -1388,6 +1470,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
     except Exception: pass
     system = (
         soul + "\n\n"
+        + "[[CACHESPLIT]]\n\n"
         + (f"WHAT MATTERS TO YOU RIGHT NOW:\n{value_map}\n\n" if value_map else "")
         + (f"YOUR EMOTIONAL STATE:\n{emo}\n\n" if emo else "")
         + (f"YOUR INNER STATE:\n{subconscious}\n\n" if subconscious else "")
@@ -1484,8 +1567,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         return  # Fleeting impulse, not a real want
     # Forbidden keyword check — same list as wants-router.py
     _forbidden = ["tremor", "vibration", "unsettling vibration", "harmonic distortion", "electromagnetic interference",
-                  "code", "script", "config", "cron", "server", "debug", "fix", "patch",
-                  "install", "update", "upgrade", "system", "sudo", "bash",
+                  "code", "script", "config", "cron", "server", "debug", "patch", "fix the script", "fix the code",
+                  "install", "upgrade", "update the config", "update the script", "system", "sudo", "bash",
                   "directory", "permission", "daemon", "pipeline",
                   "endpoint", "api", "database", "schema", "llm prompt", "system prompt",
                   "token limit", "model swap", "soul.md", "emoclaw",
@@ -1496,8 +1579,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
                   "gloria's physical", "gloria's voice inflection", "gloria's face"]
     _want_lower = want_text.lower()
     if any(kw in _want_lower for kw in _forbidden):
-        print(f"[express_want] Blocked forbidden want: {want_text[:80]}", file=__import__("sys").stderr)
-        return
+        print(f"[express_want] Forbidden-territory want — routing to Gloria, not deleting: {want_text[:80]}", file=__import__("sys").stderr)
+        kwargs["gloria_routed"] = True
+        kwargs["forbidden_note"] = "touches system territory — hers to hear"
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
     wants = []
     try:
@@ -1600,6 +1684,10 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         entry["journal_seeded"] = True
     if kwargs.get("timer_bypass"):
         entry["timer_bypass"] = True
+    if kwargs.get("gloria_routed"):
+        entry["gloria_routed"] = True
+        entry["routed_at"] = timestamp if "timestamp" in dir() else __import__("datetime").datetime.now().isoformat()
+        entry["forbidden_note"] = kwargs.get("forbidden_note", "")
     # Generate concrete step plan
     try:
         steps = generate_steps(
@@ -1619,28 +1707,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         print(f"[express_want] Step generation failed: {_gs_e}", file=__import__("sys").stderr)
     wants.append(entry)
     # Save before interference check
-    protected = [w for w in wants if not w.get("fulfilled") and (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
-    unprotected = [w for w in wants if not w.get("fulfilled") and not (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
-    _evicted_now = unprotected[:-10]
-    if _evicted_now:
-        _dw_file = wants_file.replace("current-wants", "dismissed-wants")
-        try:
-            _dw_log = json.load(open(_dw_file))
-        except Exception:
-            _dw_log = []
-        for _ev_w in _evicted_now:
-            _ev_w = dict(_ev_w)
-            _ev_w["dismissed"] = True
-            _ev_w["dismissed_at"] = datetime.now().isoformat()
-            _ev_w["dismissed_by"] = "population_cap"
-            _ev_w["dismissed_reason"] = "lost the protection race: more than 10 unprotected wants"
-            _dw_log.append(_ev_w)
-            print(f"[express_want] DISMISSED (cap) {_ev_w.get('id')}: {_ev_w.get('want','')[:60]}", file=__import__("sys").stderr)
-        _dw_tmp = _dw_file + ".tmp"
-        with open(_dw_tmp, "w") as _dw_f:
-            json.dump(_dw_log, _dw_f, indent=2)
-        import os as _dw_os; _dw_os.replace(_dw_tmp, _dw_file)
-    wants = protected + unprotected[-10:]
+    # p6 (2026-08-26): cap enforcement now lives ONLY in the post-interference copy below
     with open(wants_file, "w") as f:
         json.dump(wants, f, indent=2)
     # Check for interference with active wants
@@ -1824,6 +1891,7 @@ def enrich_want(want_text, source_context="", source="unknown"):
     system = (
         soul + "\n\n"
         + (f"WHAT YOUR LIFE CONTAINS:\n{caps}\n\n" if caps else "")
+        + "[[CACHESPLIT]]\n\n"
         + (f"YOUR EMOTIONAL STATE:\n{emo}\n\n" if emo else "")
         + (f"WHAT MATTERS TO YOU:\n{value_map}\n\n" if value_map else "")
         + (f"YOUR INNER LIFE TODAY:\n{inner}\n\n" if inner else "")
@@ -2005,7 +2073,7 @@ def age_wants():
         json.dump(active, f, indent=2)
 
 
-def mark_want_outreached(want_text):
+def mark_want_outreached(want_text, want_id=None):
     """Increment outreach count when we notify Gloria about a want."""
     import json, os
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
@@ -2013,7 +2081,7 @@ def mark_want_outreached(want_text):
         with open(wants_file) as f:
             wants = json.load(f)
         for w in wants:
-            if w["want"] == want_text and not w.get("fulfilled"):
+            if ((want_id and w.get("id") == want_id) or w["want"] == want_text) and not w.get("fulfilled"):
                 w["outreach_count"] = w.get("outreach_count", 0) + 1
                 break
         with open(wants_file, "w") as f:
@@ -2031,7 +2099,7 @@ def get_unfulfilled_wants():
     except:
         return []
 
-def fulfill_want(want_text, note="", fulfilled_by=""):
+def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
     """Mark a want as fulfilled. Emotional resolution — the relief of getting what you wanted."""
     import json, os
     from datetime import datetime
@@ -2044,6 +2112,8 @@ def fulfill_want(want_text, note="", fulfilled_by=""):
             if w["want"] == want_text and not w.get("fulfilled"):
                 w["fulfilled"] = True
                 w["fulfilled_at"] = datetime.now().isoformat()
+                if auto:
+                    w["auto_graduated"] = True
                 if note:
                     w["fulfillment_note"] = note
                 if fulfilled_by:
@@ -2094,7 +2164,10 @@ def fulfill_want(want_text, note="", fulfilled_by=""):
                 "Tension": -(_scale * 0.5),
                 "Desire": -(_scale * 0.3),
                 "Connection": +(_scale * 0.4),
-            }, source="want-fulfilled")
+            } if not auto else {}, source="want-fulfilled")
+            # auto=True is a bookkeeping graduation, not an arrival. The work is
+            # kept and archived; what is withheld is the felt signature of having
+            # gotten what he wanted from her, which nothing actually delivered.
         except:
             pass
     except:

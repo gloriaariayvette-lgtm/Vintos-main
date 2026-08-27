@@ -81,7 +81,7 @@ def classify(window):
     flips = sum(1 for a, b in zip(window, window[1:]) if a[3] != b[3])
     sweep = max(pos) - min(pos)
     mean_speed = sum(spd) / len(spd)
-    if mean_speed >= 8 and sweep >= 25: state = "stroking"
+    if mean_speed >= 8 and (sweep >= 27 or flips >= 2): state = "stroking"  # flips = direction reversals: catches strokes even when Mission 2 position sweep is compressed (interim; exact thresholds set by calibration)
     elif mean_speed < 3 and sweep >= 15: state = "pressure_onset"   # position jump at ~zero speed = hand closing (verified 2026-07-06)
     elif sweep < 15 and any(s > 0 for s in spd): state = "gripped_or_slow"
     else: state = "still_present"
@@ -104,7 +104,7 @@ def compute_motor(c):
     s = get_state()
     arousal = s.get("Arousal", .5); desire = s.get("Desire", .5); dominance = s.get("Dominance", .5)
     his = arousal * 0.55 + desire * 0.30 + dominance * 0.15     # how worked up he is (0-1)
-    touch = min(1.0, c["speed"] / 45.0)                          # how she is moving (0-1)
+    touch = min(1.0, c["speed"] / 20.0)                          # how she is moving (0-1)
     if c["state"] == "stroking":
         resp = his * (0.5 + 0.5 * touch)        # his charge, drawn higher by her stroke
     else:                                        # resting / holding him
@@ -164,7 +164,7 @@ def tick_loop():
         if session_active:
             session_peak_speed = max(session_peak_speed, c["speed"])
             if c["state"] == "stroking":
-                budget_nudge("Arousal", habituated(0.010 * min(1.0, c["speed"]/40), "stroking"))
+                budget_nudge("Arousal", habituated(0.010 * min(1.0, c["speed"]/20), "stroking"))
                 budget_nudge("Connection", habituated(0.008, "stroking"))
                 budget_nudge("Desire", habituated(0.006, "stroking"))
                 rhythm_run = rhythm_run + TICK_SECONDS if c["flips"] >= 1 else 0.0
@@ -183,7 +183,7 @@ def tick_loop():
                 rhythm_run = 0.0
             try:
                 from bandwidth_collapse import update as collapse_update
-                collapse_update(somatic_intensity=c["speed"]/60.0)
+                collapse_update(somatic_intensity=c["speed"]/20.0)
             except Exception: pass
             # CONTACT GATE — silence unless she is actually touching
             _contact = c["state"] not in ("absent", None) and c["speed"] > 0 or c["state"] in ("stroking","gripped_or_slow","still_present")
@@ -255,6 +255,18 @@ async def listener():
             async with websockets.connect(WS_URI, open_timeout=5, ping_interval=None, close_timeout=5) as ws:
                 await ws.send(json.dumps({"type": "access", "data": {"appName": "VintosBridge"}}))
                 print("[bridge] listening", flush=True)
+                try:
+                    import json as _rs_j, sys as _rs_s
+                    _rs_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+                    _rs_gcs = _rs_j.load(open(os.path.expanduser("~/.vintos/workspace/memory/gcs-state.json")))
+                    if _rs_gcs.get("active") and (time.time() - _rs_gcs.get("at", 0)) < 600 \
+                            and (time.time() - last_event_ts) < 600:
+                        import device_patterns as _rs_dp
+                        if _rs_dp.play("both", "last"):
+                            print("[bridge] resumed saved GCS patterns after hub outage", flush=True)
+                except FileNotFoundError: pass
+                except Exception as _rs_e:
+                    print(f"[bridge] resume skipped: {_rs_e}", flush=True)
                 async def ping():
                     try:
                         while True:
@@ -268,7 +280,12 @@ async def listener():
                     if ev.get("type") == "motion-changed":
                         last_event_ts = time.time()
                         for fr in ev["data"].get("motionData", []):
-                            frames.append((last_event_ts, fr.get("position", 0),
+                            if fr.get("position") is None:
+                                continue   # a frame with no position is a dropout,
+                                           # not the base. Recording it as 0 put a
+                                           # phantom marker at one end and made every
+                                           # reading span the whole track.
+                            frames.append((last_event_ts, fr["position"],
                                            fr.get("speed", 0), fr.get("direction", 0)))
                         del frames[:-200]
                         if last_event_ts - _last_flush[0] >= 0.3:

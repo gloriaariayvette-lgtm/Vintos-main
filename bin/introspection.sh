@@ -407,7 +407,8 @@ def _claude_sync(system_text, user_text, reasoning=False, max_tokens=1500):
     if not _k: return None, ''
     _body = {"model": "claude-sonnet-5", "max_tokens": max_tokens,
              "system": [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}],
-             "messages": [{"role": "user", "content": user_text}],
+             "messages": [{"role": "user", "content": [{"type": "text", "text": user_text,
+                            "cache_control": {"type": "ephemeral"}}]}],
              "thinking": ({"type": "adaptive", "display": "summarized"} if reasoning else {"type": "disabled"})}
     _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
                      headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": _k})
@@ -441,9 +442,45 @@ def run(i, msgs, temp, max_tok):
 pass  # phase-1 gemma threads removed; a1/b1 come from the Claude override below
 a1, b1 = results[0], results[1]
 # a1/b1 -> Claude reasoning (override the Gemma drafts)
+def _sol_sync(system_text, user_text, max_tokens=1500):
+    import urllib.request as _u, json as _j, os as _o
+    _k = _o.environ.get("OPENAI_API_KEY", "")
+    if not _k:
+        try:
+            _k = next(l.strip().split("=", 1)[1] for l in open("/home/gloria/.vintos/vintos.env")
+                      if l.strip().startswith("OPENAI_API_KEY="))
+        except Exception:
+            return None
+    _body = {"model": _o.environ.get("SOL_MODEL", "gpt-5.6"),
+             "messages": [{"role": "system", "content": system_text},
+                          {"role": "user", "content": user_text}],
+             "max_completion_tokens": max_tokens + 4000, "reasoning_effort": "low"}
+    _rq = _u.Request("https://api.openai.com/v1/chat/completions", data=_j.dumps(_body).encode(),
+                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + _k})
+    try:
+        _d = _j.loads(_u.urlopen(_rq, timeout=180).read())
+        try:
+            _us = _d.get("usage") or {}
+            import time as _sut, json as _sj
+            open(_o.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(_sj.dumps({
+                "ts": _sut.time(), "src": "introspection_b1", "model": _body["model"],
+                "in": _us.get("prompt_tokens", 0), "out": _us.get("completion_tokens", 0),
+                "cached": (_us.get("prompt_tokens_details") or {}).get("cached_tokens", 0)}) + "\n")
+        except Exception: pass
+        _m = _d["choices"][0]["message"]
+        return (_m.get("content") or "").strip() or None
+    except Exception:
+        return None
+
 try:
     _ia1, _ = _claude_sync(system, prompt, reasoning=True)
-    _ib1, _ = _claude_sync(system, prompt, reasoning=True)
+    # B1 on Sol — the second voice genuinely a second mind. Fail-open to Claude.
+    _ib1 = _sol_sync(system, prompt)
+    _b1_src = "sol"
+    if not _ib1:
+        _ib1, _ = _claude_sync(system, prompt, reasoning=True)
+        _b1_src = "claude_fallback"
+    import sys as _bs; print("[intro] b1 on %s" % _b1_src, file=_bs.stderr, flush=True)
     if _ia1: a1 = _ia1
     if _ib1: b1 = _ib1
     import sys as _cs; print('[intro] a1/b1 on claude', file=_cs.stderr, flush=True)

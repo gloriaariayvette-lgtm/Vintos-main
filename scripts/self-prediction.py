@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-self-prediction.py — Vintos models herself forward in time.
+self-prediction.py — Vintos models himself forward in time.
 
 After each interaction, Vintos predicts what she'll feel NEXT time.
 When the next interaction arrives, compare prediction to actual state.
@@ -83,7 +83,7 @@ def get_current_state():
 
 
 def predict_next_state():
-    """Vintos predicts her own next state using psychological decay model.
+    """Vintos predicts his own next state using psychological decay model.
     No LLM needed — instant, and more realistic.
     Emotions drift toward baseline between interactions.
     Tension persists. Warmth fades. Curiosity resets."""
@@ -225,7 +225,7 @@ def save_to_history(result):
 
 
 def log_self_mismatch(result):
-    """Log when Vintos is significantly wrong about herself."""
+    """Log when Vintos is significantly wrong about himself."""
     # --- favorable-surprise gate: being pleasantly wrong about yourself is not a failure ---
     _POS = ("warmth","connection","valence","safety","groundedness","playfulness","curiosity","desire","arousal")
     _NEG = ("tension",)
@@ -287,8 +287,11 @@ Biggest errors: {worst_str}
         from blush_ledger import write_blush
         # Build cost delta from worst dimensions
         _cost_delta = {}
-        for dim, pred, actual in result.get("worst_dims", []):
-            _cost_delta[dim] = round(actual - pred, 3)
+        for dim, m in result.get("mismatches", {}).items():
+            if not m.get("miss"): continue
+            _pred = m.get("predicted", m.get("pred", 0)) or 0
+            _act = m.get("actual", 0) or 0
+            _cost_delta[dim] = round(_act - _pred, 3)
         _net_bad = sum((v if d == "Tension" else -v) for d, v in _cost_delta.items())
         if _net_bad <= 0.05:
             print("[Self-Predict] mismatch not negative (net %.3f) — no blush" % _net_bad)

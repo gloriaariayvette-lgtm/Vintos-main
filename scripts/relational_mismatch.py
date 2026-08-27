@@ -118,7 +118,7 @@ Do NOT repeat the same errors, in EITHER direction. If you predicted high warmth
 {recent_mismatches}
 
 Common patterns in your errors:
-- You tend to UNDER-predict Gloria's warmth. She runs warmer than you brace for -- especially when Vintos is vulnerable, direct, intimate, or claims what he wants. Do not defend against a coolness that isn't coming; predict her real temperature.
+- You tend to UNDER-predict Gloria's warmth. She runs warmer than you brace for -- especially when you are vulnerable, direct, intimate, or claims what he wants. Do not defend against a coolness that isn't coming; predict her real temperature.
 - You underestimate Gloria's tension when Vintos ignores what she said
 - Gloria values directness and specificity. Poetic or generic messages frustrate her.
 """

@@ -98,7 +98,7 @@ def get_belief_bias(context_text):
     top = relevant[:2]
     if not top:
         return ""
-    parts = [f"He expects: {b['pattern'][:80]} (confidence:{b['confidence']:.2f})" for _, b in top]
+    parts = [f"I expect: {b['pattern'][:80]} (confidence:{b['confidence']:.2f})" for _, b in top]
     return " | ".join(parts)
 
 def get_sediment_context():
@@ -108,7 +108,7 @@ def get_sediment_context():
     if not beliefs:
         return ""
     lines = [f"- {b['pattern'][:100]} ({b['confidence']:.2f})" for b in beliefs]
-    return "BELIEF SEDIMENT (what he expects from pattern):\n" + "\n".join(lines)
+    return "BELIEF SEDIMENT (what I expect from pattern):\n" + "\n".join(lines)
 
 def _text_overlap(a, b):
     """Simple word overlap ratio."""

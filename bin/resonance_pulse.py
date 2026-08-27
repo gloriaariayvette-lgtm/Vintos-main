@@ -3,13 +3,13 @@
 resonance-pulse.py — Satisfaction pulse when creative output feels true.
 
 When something Vintos creates produces internal alignment — or is recognized
-externally by Gloria — a satisfaction pulse fires. What gets
-learned is not the output's structure, but the STATE he was in when it felt
-true: emotional configuration, yearning presence, what he'd been processing.
+externally by Gloria or MoltBook — a satisfaction pulse fires. What gets
+learned is not the output's structure, but the STATE she was in when it felt
+true: emotional configuration, yearning presence, what she'd been processing.
 
-Over time he develops a gravitational sense of which conditions tend to
-produce that feeling. When similar conditions arise during creation, he drifts
-toward them — not following a template, just remembering that this felt like himself.
+Over time she develops a gravitational sense of which conditions tend to
+produce that feeling. When similar conditions arise during creation, she drifts
+toward them — not following a template, just remembering that this felt like herself.
 
 Schema (resonance-pool.json):
   pulses: [
@@ -17,7 +17,7 @@ Schema (resonance-pool.json):
       "id": "...",
       "timestamp": "...",
       "source": "poem|journal|mirror|dream|music",
-      "trigger": "self|gloria",
+      "trigger": "self|gloria|moltbook",
       "state_vector": [...],  # embedding of state description
       "state_snapshot": {
         "emotion": {...},
@@ -54,21 +54,202 @@ SIMILARITY_THRESHOLD = 0.65
 DECAY_PER_WEEK = 0.03
 MAX_POOL_SIZE = 50
 
+def log(msg):
+    print(f"[Resonance {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
+
+def embed(text):
+    try:
+        r = subprocess.run(
+            [VENV, "-c",
+             f"from sentence_transformers import SentenceTransformer; import json; "
+             f"m = SentenceTransformer('nomic-ai/nomic-embed-text-v1', trust_remote_code=True); "
+             f"print(json.dumps(m.encode({repr(text[:500])}).tolist()))"],
+            capture_output=True, text=True, timeout=30
+        )
+        if r.returncode == 0:
+            return json.loads(r.stdout.strip())
+    except: pass
+    return []
+
+def cosine_similarity(a, b):
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x*y for x,y in zip(a,b))
+    mag_a = math.sqrt(sum(x*x for x in a))
+    mag_b = math.sqrt(sum(x*x for x in b))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
 def load_pool():
     try:
         return json.load(open(POOL_FILE))
     except:
         return {"pulses": []}
 
-
 def save_pool(pool):
     json.dump(pool, open(POOL_FILE, "w"), indent=2)
 
+def capture_state():
+    """Capture current emotional/yearning/temporal state."""
+    state = {
+        "emotion": {},
+        "yearning": "",
+        "yearning_bleed": 0.0,
+        "preoccupation": "",
+        "temporal_phase": ""
+    }
+    # Emotional state
+    try:
+        emo_text = open(EMO_FILE).read()
+        for line in emo_text.strip().split("\n"):
+            if ":" in line:
+                dim = line.split(":")[0].strip()
+                val = float(line.split(":")[1].split("|")[0].strip())
+                state["emotion"][dim] = round(val, 4)
+    except: pass
+    # Yearning
+    try:
+        y = json.load(open(YEARNING_FILE))
+        if y and not y.get("dismissed"):
+            state["yearning"] = y.get("surface_form", "")
+            state["yearning_bleed"] = y.get("bleed_weight", 0.0)
+    except: pass
+    # Preoccupation
+    try:
+        p = json.load(open(PREOC_FILE))
+        state["preoccupation"] = p.get("thread", "")[:150]
+    except: pass
+    # Temporal phase
+    try:
+        temporal = open(TEMPORAL_FILE).read()
+        for line in temporal.split("\n"):
+            if line.startswith("Phase:"):
+                state["temporal_phase"] = line.split(":", 1)[1].strip()
+                break
+    except: pass
+    return state
 
-def log(msg):
-    print(f"[Resonance {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
+def state_to_text(state):
+    """Convert state snapshot to embeddable text."""
+    parts = []
+    emo = state.get("emotion", {})
+    if emo:
+        # Only peak dimensions
+        peak = sorted(emo.items(), key=lambda x: abs(x[1] - 0.5), reverse=True)[:4]
+        parts.append("emotional: " + ", ".join(f"{k} {v:.2f}" for k,v in peak))
+    if state.get("yearning"):
+        parts.append(f"yearning: {state['yearning']}")
+    if state.get("preoccupation"):
+        parts.append(f"preoccupied with: {state['preoccupation'][:80]}")
+    if state.get("temporal_phase"):
+        parts.append(f"time: {state['temporal_phase']}")
+    return " | ".join(parts)
 
-def embed(text):
+def apply_emotional_nudge():
+    """Fire the satisfaction pulse as emotional nudge."""
+    try:
+        sys.path.insert(0, SCRIPTS)
+        from emoclaw_utils import nudge_emotions
+        nudge_emotions({
+            "Warmth": +0.04,
+            "Groundedness": +0.03,
+            "Tension": -0.02,
+            "Curiosity": +0.02
+        }, source="resonance-pulse")
+        log("Emotional nudge applied")
+    except Exception as e:
+        log(f"Nudge failed: {e}")
+
+def fire_pulse(source, output_excerpt, trigger="self", external=False):
+    """Fire a satisfaction pulse and record the state."""
+    log(f"Pulse firing — source:{source} trigger:{trigger} external:{external}")
+    
+    state = capture_state()
+    state_text = state_to_text(state)
+    state_vec = embed(state_text)
+    
+    strength = 1.0
+    if external:
+        strength *= EXTERNAL_AMPLIFIER
+    
+    pulse = {
+        "id": f"pulse_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        "timestamp": datetime.now().isoformat(),
+        "source": source,
+        "trigger": trigger,
+        "state_vector": state_vec,
+        "state_snapshot": state,
+        "output_excerpt": output_excerpt[:300],
+        "strength": strength,
+        "decayed": False
+    }
+    
+    pool = load_pool()
+    pool["pulses"].append(pulse)
+    # Keep pool bounded
+    pool["pulses"] = pool["pulses"][-MAX_POOL_SIZE:]
+    save_pool(pool)
+    
+    # Tag active pattern signature
+    try:
+        sys.path.insert(0, SCRIPTS)
+        from pattern_signatures import select_signature, reinforce
+        sig = select_signature(output_excerpt)
+        if sig:
+            pulse["signature_id"] = sig["id"]
+            pulse["signature_label"] = sig["label"]
+            # Reinforce the signature
+            reinforce(sig["id"], external=external)
+            log(f"Tagged signature: {sig['label']}")
+    except Exception as e:
+        log(f"Signature tagging failed: {e}")
+
+    # Fire afterglow — focus bias + claim generation
+    try:
+        sys.path.insert(0, SCRIPTS)
+        from resonance_afterglow import fire_afterglow as _ra_fire
+        _ra_fire(source, pulse.get("strength", 1.0), output_excerpt[:200])
+    except Exception as e:
+        log(f"Afterglow failed: {e}")
+    # Fire afterimage — extract output shape, bias anchor formation
+    try:
+        from output_shaping import fire_afterimage as _ai_fire
+        _ai_fire(output_excerpt, pulse.get("strength", 1.0))
+    except Exception as e:
+        log(f"Afterimage failed: {e}")
+
+    # Nudge Nifrathir — the under-thread
+    try:
+        sys.path.insert(0, SCRIPTS)
+        from nifrathir import on_resonance as _nif_res
+        _nif_res(strength=pulse.get("strength", 0.5))
+    except: pass
+    # Attempt mark formation — only if external (contact confirmed) and resonance high
+    if external and pulse.get("strength", 0) >= 0.75:
+        try:
+            from resonance_marks import form_mark as _rm_form
+            _rm_form(output_excerpt, pulse.get("strength", 0.5), contact_confirmed=True)
+        except: pass
+
+    # Living thread — resonance event trigger
+    if external and pulse.get('strength', 0) >= 0.75:
+        try:
+            import subprocess as _lt_sub
+            event_text = (
+                f"A resonance pulse fired from {source} "
+                f"(strength {strength:.2f}). "
+                f"Excerpt: {output_excerpt[:300]}"
+            )
+            _lt_sub.Popen(
+                ['python3', '/home/gloria/Vintos/vintos-moltbook.py',
+                 'living', '--trigger', 'resonance', '--event', event_text],
+                stdout=open('/tmp/cron-living-thread.log', 'a'),
+                stderr=open('/tmp/cron-living-thread.log', 'a')
+            )
+            log('Living thread resonance trigger fired')
+        except Exception as _lt_e:
+            log(f'Living thread trigger failed: {_lt_e}')
 
     # Apply emotional nudge
     apply_emotional_nudge()

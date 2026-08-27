@@ -7,7 +7,8 @@ WORKSPACE="$HOME/.vintos/workspace"
 MEMORY="$WORKSPACE/memory"
 LM_API="http://172.18.16.1:1234/v1/chat/completions"
 MODEL="google/gemma-4-12b-qat"
-BRAVE_API_KEY="BSA7PhSslCky6GCzuaOfOyfKgE9czlB"
+[ -f "$HOME/.vintos/vintos.env" ] && set -a && . "$HOME/.vintos/vintos.env" && set +a
+BRAVE_API_KEY="${BRAVE_API_KEY:-}"
 BRAVE_ENDPOINT="https://api.search.brave.com/res/v1/web/search"
 
 # Load taste

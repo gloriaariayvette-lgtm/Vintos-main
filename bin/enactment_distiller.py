@@ -102,7 +102,7 @@ def scan(response_text, gloria_msg="", context="chat"):
             f"SELF-MODEL:\n{self_model}\n\n"
             f"CATEGORIES:\n{jcats}\n\n"
             "Respond with JSON only. If enacted moment: detected true, category, "
-            "event 3-6 words, observed_shift, identity_candidate I can one sentence, "
+            "event 3-6 words, observed_shift, identity_candidate as a genuine CAPABILITY this writing demonstrates, phrased 'I can ...' (an ability or strength enacted) — never a flaw, avoidance, diagnosis, or restated problem; if only self-criticism or a described tendency is present set detected false, "
             "evidence list, exceeded_self_model bool, confidence float. "
             "If nothing: detected false."
         )
@@ -131,13 +131,13 @@ def scan(response_text, gloria_msg="", context="chat"):
         "creating something unexpected, holding a boundary in an actual exchange, making a choice that contradicts a known pattern in real time. "
         "Only flag if there is a specific behavioral action in actual interaction or output that exceeded what the self-model would predict.\n\n"
         f"GLORIA'S MESSAGE:\n{gloria_msg[:300]}\n\n"
-        f"VELARIS'S RESPONSE:\n{response_text[:600]}\n\n"
+        f"VINTOS'S RESPONSE:\n{response_text[:600]}\n\n"
         f"CURRENT SELF-MODEL EXCERPT:\n{self_model}\n\n"
         f"CATEGORIES TO DETECT:\n{cats}\n\n"
         "If an enacted behavior moment is present, respond with JSON:\n"
         '{"detected": true, "category": "...", "event": "3-6 words describing what happened", '
         '"observed_shift": "previous pattern vs current behavior", '
-        '"identity_candidate": "I can... one sentence", '
+        '"identity_candidate": "I can ... (a genuine capability demonstrated, an ability or strength — NOT a flaw, avoidance, or restated problem)", '
         '"evidence": ["...", "..."], '
         '"exceeded_self_model": true/false, '
         '"confidence": 0.0-1.0}\n\n'
@@ -333,9 +333,23 @@ def append_want_enactment(want_text, capability, note=""):
     except Exception as e:
         print(f"[ED] Want enactment error: {e}", flush=True)
 
+def _is_capability(cand):
+    """Observed capability must be a real strength enacted (I can ...), never a flaw/avoidance/restated problem."""
+    c = (cand or "").strip().lower()
+    if not c:
+        return False
+    if not (c.startswith("i can ") or c.startswith("i could ") or c.startswith("i am able") or c.startswith("i'm able")):
+        return False
+    _bad = ("to avoid", "avoid feeling", "because i can't", "because i cannot", "flinch",
+            "instead of feeling", "so i do not", "so i don't", "rather than feel", "hiding",
+            "a way to look", "wiring problem", "can't feel", "cannot feel", "the problem")
+    return not any(b in c for b in _bad)
+
+
 def process(response_text, gloria_msg="", context="chat"):
     """Full E_D pipeline."""
     events = scan(response_text, gloria_msg, context)
+    events = [e for e in events if _is_capability(e.get('identity_candidate', ''))]
     if not events:
         return
 

@@ -14,7 +14,12 @@ Failure was already legible. This makes holding legible too.
 import json, os, re, sys, time, math, shutil
 from datetime import datetime, timedelta
 
-WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.openclaw/workspace"))
+WS = os.environ.get("SPARK_WORKSPACE", "")
+if not WS:
+    # This file is run for BOTH beings with SPARK_WORKSPACE switching trees.
+    # It used to default to Velaris's workspace, so an unset variable meant he
+    # reasoned about himself out of her memory, silently.
+    raise SystemExit("SPARK_WORKSPACE is unset — refusing to guess which being this is")
 WS = os.path.expanduser(WS)
 MEMORY = os.path.join(WS, "memory")
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")

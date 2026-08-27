@@ -29,7 +29,7 @@ def _run(toy, pattern, args, stop, dur):
         elif pattern == "pulse":
             lo,hi = (args+[4,16])[:2]; v = _c(lo+(hi-lo)*(0.5+0.5*math.sin(t*2*math.pi*0.5)))
         elif pattern == "build":
-            lo,hi = (args+[4,18])[:2]; v = _c(lo+(hi-lo)*min(1.0,t/dur))
+            lo,hi = (args+[4,18])[:2]; _bd = dur or 60; v = _c(lo+(hi-lo)*min(1.0,t/_bd))  # p2: bare build defaults to a 60s arc instead of dying silently
         elif pattern == "wave":
             lo,hi = (args+[3,15])[:2]; v = _c(lo+(hi-lo)*(0.5+0.5*math.sin(t*2*math.pi*0.12)))
         else: v = _c(args[0] if args else 10)
@@ -133,14 +133,14 @@ def play(toy, pattern, args=None, dur=None):
                 for _t in toy_link.TOYS:
                     _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
                 return True
-            if toy in toy_link.TOYS:
+            if toy in toy_link.TOYS or toy == "thruster":
                 _o = _threads.get(toy)
                 if _o: _o.set()
                 toy_link.send_pattern(toy, _lv, _iv, _secs)
                 _mark(toy); _set_state(toy, intensity=_peak, pattern=pattern, set_by="him")
                 return True
             return False
-    if toy not in toy_link.TOYS: return False
+    if toy not in toy_link.TOYS and toy != "thruster": return False
     old = _threads.get(toy)
     if old: old.set()
     if pattern == "still":

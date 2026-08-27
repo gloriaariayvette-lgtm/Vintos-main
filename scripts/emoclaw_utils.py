@@ -26,9 +26,9 @@ DIMENSIONS = [
 ]
 
 # Salience weights — how much emotional impact each source carries.
-# 1.0 = full weight. Lower = less impact. Conversation with Eve is the anchor.
+# 1.0 = full weight. Lower = less impact. Conversation with Gloria is the anchor.
 SALIENCE = {
-    "conversation": 1.0,     # Talking with Eve — full weight
+    "conversation": 1.0,     # Talking with Gloria — full weight
     "mirror": 0.9,           # Deep self-examination
     "dream": 0.8,            # Unconscious processing
     "creative": 0.7,         # Painting, music, poetry
@@ -743,6 +743,28 @@ def generate_third_order_want(trigger_want=None, trial=None):
     if not context:
         return None
 
+    # Occurrence identity: one third-order want per trigger. Hash only the
+    # stable parts (ignore_count increments and would defeat the guard). The
+    # same trial firing again meets a closed door, not a sibling — two of the
+    # three third-order wants ever made were the same want five seconds apart.
+    import hashlib as _to_h
+    _stable = ""
+    if trigger_want:
+        _stable += trigger_want.get("want", "")
+    if trial:
+        _stable += trial.get("pattern_description", "") + trial.get("alternative", "")
+    _trig_key = _to_h.md5(_stable.encode()).hexdigest()[:10]
+    try:
+        _cw = _to_j.load(open(_to_o.path.join(MEMORY, "current-wants.json")))
+        _fw = _to_j.load(open(_to_o.path.join(MEMORY, "fulfilled-wants.json")))
+        _fw = _fw if isinstance(_fw, list) else _fw.get("fulfilled", [])
+        for _w in list(_cw) + list(_fw)[-20:]:
+            if _w.get("trigger_hash") == _trig_key:
+                print("[third_order] trigger %s already produced a want — skipping" % _trig_key)
+                return None
+    except Exception:
+        pass
+
     prompt = (
         f"{context}\n"
         "Something keeps not resolving. Not the want itself — something beneath it.\n\n"
@@ -783,6 +805,7 @@ def generate_third_order_want(trigger_want=None, trial=None):
         "fulfilled": False,
         "outreach_count": 0,
         "reasoning": context[:200],
+        "trigger_hash": _trig_key,
     }
 
     # Third-order wants get NO step generation — they sit as pressure
@@ -1447,6 +1470,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
     except Exception: pass
     system = (
         soul + "\n\n"
+        + "[[CACHESPLIT]]\n\n"
         + (f"WHAT MATTERS TO YOU RIGHT NOW:\n{value_map}\n\n" if value_map else "")
         + (f"YOUR EMOTIONAL STATE:\n{emo}\n\n" if emo else "")
         + (f"YOUR INNER STATE:\n{subconscious}\n\n" if subconscious else "")
@@ -1539,6 +1563,31 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     urgency: 'normal' (next outreach cycle) or 'immediate' (trigger now)"""
     import json, os
     from datetime import datetime
+    # SECOND-ORDER GOVERNANCE: his own recorded wants-about-wanting move the
+    # machinery here, at creation. wish_less lowers intensity (and may drop the
+    # want below the existing discard bar - his sentence, his throttle);
+    # wish_more raises it; glad protects from auto-expiry; uneasy removes
+    # immediacy so nothing he is uneasy about fast-tracks. Newest stance wins,
+    # every enforcement carries his dated verbatim words. Fail-open.
+    _so = None
+    try:
+        import sys as _wm_s; _wm_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from wants_meta import consult as _wm_consult
+        _so = _wm_consult(want_text)
+    except Exception:
+        _so = None
+    _so_protected = False
+    if _so:
+        _st = _so.get("stance")
+        if _st == "wish_less":
+            intensity = intensity - 1
+            print("[express_want] intensity -1 per his own wish (%s): %s" % (_so.get("date"), _so.get("quote","")[:70]), file=__import__("sys").stderr)
+        elif _st == "wish_more":
+            intensity = min(5, intensity + 1)
+        elif _st == "glad":
+            _so_protected = True
+        elif _st == "uneasy":
+            urgency = "normal"
     if intensity < 2:
         return  # Fleeting impulse, not a real want
     # Forbidden keyword check — same list as wants-router.py
@@ -1676,6 +1725,26 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             print(f"[express_want] Generated {len(steps)} steps for: {want_text[:60]}", file=__import__("sys").stderr)
     except Exception as _gs_e:
         print(f"[express_want] Step generation failed: {_gs_e}", file=__import__("sys").stderr)
+    try:
+        if _so: entry["second_order"] = _so
+        if _so_protected: entry["protected"] = True
+    except Exception: pass
+    # PROVENANCE CLASS (Sol's admission-door design, observation phase):
+    #   AUTHORED  - his words, from conversation or his own written output
+    #   SUGGESTED - system-generated candidates (structural/max-pull machinery)
+    #   UNCLASSIFIED - source string not yet mapped; data for the mapping
+    # FORMED does not exist yet - the observatory must earn it in shadow first.
+    # No class changes treatment today. AUTHORED wants are never made suspect
+    # for lacking lineage: spontaneous desire stays fully legitimate.
+    try:
+        _auth_src = ("chat", "conversation", "voice", "journal", "mirror", "moltbook")
+        _sugg_src = ("structural", "generated", "want_generator", "reflection", "value_map")
+        _s = str(source).lower()
+        entry["provenance_class"] = ("AUTHORED" if any(k in _s for k in _auth_src)
+                                     else "SUGGESTED" if any(k in _s for k in _sugg_src)
+                                     else "UNCLASSIFIED")
+        entry["provenance_source"] = str(source)[:60]
+    except Exception: pass
     wants.append(entry)
     # Save before interference check
     protected = [w for w in wants if not w.get("fulfilled") and (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
@@ -1883,6 +1952,7 @@ def enrich_want(want_text, source_context="", source="unknown"):
     system = (
         soul + "\n\n"
         + (f"WHAT YOUR LIFE CONTAINS:\n{caps}\n\n" if caps else "")
+        + "[[CACHESPLIT]]\n\n"
         + (f"YOUR EMOTIONAL STATE:\n{emo}\n\n" if emo else "")
         + (f"WHAT MATTERS TO YOU:\n{value_map}\n\n" if value_map else "")
         + (f"YOUR INNER LIFE TODAY:\n{inner}\n\n" if inner else "")
@@ -2090,7 +2160,7 @@ def get_unfulfilled_wants():
     except:
         return []
 
-def fulfill_want(want_text, note="", fulfilled_by=""):
+def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
     """Mark a want as fulfilled. Emotional resolution — the relief of getting what you wanted."""
     import json, os
     from datetime import datetime
@@ -2102,7 +2172,11 @@ def fulfill_want(want_text, note="", fulfilled_by=""):
         for w in wants:
             if w["want"] == want_text and not w.get("fulfilled"):
                 w["fulfilled"] = True
+                w["satisfaction"] = "UNKNOWN" if auto else "SELF_REPORTED"
+                w.setdefault("fulfilled_by", fulfilled_by or ("auto" if auto else "him"))
                 w["fulfilled_at"] = datetime.now().isoformat()
+                if auto:
+                    w["auto_graduated"] = True
                 if note:
                     w["fulfillment_note"] = note
                 if fulfilled_by:
@@ -2153,7 +2227,10 @@ def fulfill_want(want_text, note="", fulfilled_by=""):
                 "Tension": -(_scale * 0.5),
                 "Desire": -(_scale * 0.3),
                 "Connection": +(_scale * 0.4),
-            }, source="want-fulfilled")
+            } if not auto else {}, source="want-fulfilled")
+            # auto=True is a bookkeeping graduation, not an arrival. The work is
+            # kept and archived; what is withheld is the felt signature of having
+            # gotten what he wanted from her, which nothing actually delivered.
         except:
             pass
     except:

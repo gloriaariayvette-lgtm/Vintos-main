@@ -67,17 +67,31 @@ def claude_complete(messages, max_tokens, model=None):
     if _mt <= 120:
         _mdl = "claude-haiku-4-5-20251001"
     body = {"model": _mdl, "max_tokens": _mt,
-            "messages": conv, "thinking": {"type": "disabled"}}
+            "messages": conv}
+    if "fable" not in _mdl.lower():
+        body["thinking"] = {"type": "disabled"}
+    _hdrs = {"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key}
     if sys_txt:
-        body["system"] = sys_txt
-    req = urllib.request.Request(ANTHROPIC_URL, data=json.dumps(body).encode(),
-        headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key})
+        if "[[CACHESPLIT]]" in sys_txt:
+            # Stable head (FLOOR + soul/caps) cached 1h; dynamic tail full price.
+            _head, _tail = sys_txt.split("[[CACHESPLIT]]", 1)
+            body["system"] = [{"type": "text", "text": _head,
+                               "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+            if _tail.strip():
+                body["system"].append({"type": "text", "text": _tail})
+            _hdrs["anthropic-beta"] = "extended-cache-ttl-2025-04-11"
+        else:
+            body["system"] = sys_txt
+    req = urllib.request.Request(ANTHROPIC_URL, data=json.dumps(body).encode(), headers=_hdrs)
     d = None
     for _try in (1, 2):
         try:
             d = json.loads(urllib.request.urlopen(req, timeout=180).read()); break
         except Exception as e:
-            _log(f"claude error (try {_try}/2): {e}")
+            _detail = ""
+            try: _detail = e.read().decode()[:300]
+            except Exception: pass
+            _log(f"claude error (try {_try}/2): {e} {_detail}")
     if d is None:
         return None
     if d.get("type") == "error" or d.get("stop_reason") == "refusal":
@@ -85,10 +99,13 @@ def claude_complete(messages, max_tokens, model=None):
     try:
         _u=d.get("usage") or {}
         import time as _ut
+        import hashlib as _uh
         open(os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl"),"a").write(json.dumps({
             "ts":_ut.time(),"src":"shim","model":body.get("model"),"mt":body.get("max_tokens"),
             "in":_u.get("input_tokens"),"out":_u.get("output_tokens"),
-            "cache_read":_u.get("cache_read_input_tokens")})+"\n")
+            "cache_read":_u.get("cache_read_input_tokens"),
+            "cache_write":_u.get("cache_creation_input_tokens"),
+            "sys_sha":_uh.md5(sys_txt.encode()).hexdigest()[:10],"sys_len":len(sys_txt)})+"\n")
     except Exception: pass
     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
     return text or None
@@ -169,6 +186,12 @@ class H(BaseHTTPRequestHandler):
             if not _has_choices(b):
                 b, s = openai_wrap(model, ""), 200
             return self._send(s, b)
+        # one-word verdicts ride local gemma — free, equal on single-token answers (Gloria, 2026-08-26)
+        if int(j.get("max_tokens") or 1024) <= 30:
+            _log(f"tiny-verdict -> gemma ({model})")
+            s2, b2 = forward_gemma(raw)
+            if _has_choices(b2): return self._send(s2, b2)
+            _log("gemma tiny-verdict failed — falling through to claude")
         # text chat -> Claude, fallback grok
         text = claude_complete(j.get("messages", []), j.get("max_tokens"), j.get("model"))
         if text:

@@ -9,6 +9,59 @@ _HOME = os.path.expanduser("~")
 _MODE_FILE = os.path.join(_HOME, ".vintos", "model-mode.json")
 _KEY_FILE = os.path.join(_HOME, ".vintos", "anthropic-key")
 CLAUDE_MODEL = "claude-opus-4-8"
+# The claude family behind the toggle. "claude" stays Opus 4.8 until Anthropic
+# sunsets it — his current voice is not being replaced out from under him.
+CLAUDE_MODELS = {"claude": "claude-opus-4-8",
+                 "sonnet": "claude-sonnet-5",
+                 "fable": "claude-fable-5"}
+def current_claude_model():
+    return CLAUDE_MODELS.get(read_mode().get("mode", "claude"), CLAUDE_MODEL)
+SOL_MODEL = os.environ.get("SOL_MODEL", "gpt-5.6")
+
+def _openai_key():
+    k = os.environ.get("OPENAI_API_KEY", "")
+    if k: return k
+    try:
+        return next(l.strip().split("=", 1)[1] for l in open(os.path.join(_HOME, ".vintos", "vintos.env"))
+                    if l.strip().startswith("OPENAI_API_KEY="))
+    except Exception:
+        return ""
+
+async def sol_draft(system_text, convo, max_tokens=1500):
+    """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
+    import asyncio as _aio, urllib.request as _u
+    k = _openai_key()
+    if not k: return None, ""
+    body = {"model": SOL_MODEL,
+            "input": [{"role": "system", "content": system_text}] + convo,
+            "max_output_tokens": max_tokens + 4000,
+            "reasoning": {"effort": "low", "summary": "auto"}}
+    def _call():
+        rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
+                        headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
+        return json.loads(_u.urlopen(rq, timeout=180).read())
+    try:
+        d = await _aio.to_thread(_call)
+        try:
+            _u2 = d.get("usage") or {}
+            import time as _ut
+            open(os.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(json.dumps({
+                "ts": _ut.time(), "src": "router", "model": SOL_MODEL,
+                "in": _u2.get("input_tokens", 0), "out": _u2.get("output_tokens", 0),
+                "cached": (_u2.get("input_tokens_details") or {}).get("cached_tokens", 0),
+                "reasoning": (_u2.get("output_tokens_details") or {}).get("reasoning_tokens", 0)}) + "\n")
+        except Exception: pass
+        txt, reasoning = "", ""
+        for item in d.get("output", []):
+            if item.get("type") == "message":
+                txt += "".join(c.get("text", "") for c in item.get("content", []) if c.get("type") == "output_text")
+            elif item.get("type") == "reasoning":
+                reasoning += "\n".join(s.get("text", "") for s in item.get("summary", []))
+        txt = txt.strip()
+        return (txt or None), (reasoning.strip() if txt else "")
+    except Exception as e:
+        print("[router/sol]", str(e)[:150], flush=True)
+        return None, ""
 CLAUDE_SURFACES = {"avatar"}   # add "chat" in phase 2
 
 def _anthropic_key():
@@ -48,6 +101,18 @@ async def _grok(convo, params, endpoint, headers, model, system_text):
         r = await c.post(endpoint, headers=headers, json=body)
         return r.json()["choices"][0]["message"]["content"]
 
+def _cachetail(convo):
+    """Mark the final user message as a cache boundary. The next call in a burst
+    (the b1 draft seconds later, or the next turn minutes later) reads the whole
+    shared prefix from cache instead of re-billing it."""
+    out = [dict(m) for m in convo]
+    for m in reversed(out):
+        if m.get("role") == "user" and isinstance(m.get("content"), str):
+            m["content"] = [{"type": "text", "text": m["content"],
+                             "cache_control": {"type": "ephemeral"}}]
+            break
+    return out
+
 def _sysblocks(system_text):
     # stable head caches; volatile tail does not. no marker -> do not cache (avoid write surcharge with 0 reads)
     if "[[CACHESPLIT]]" in system_text:
@@ -67,12 +132,13 @@ async def _claude(system_text, convo, params, reason):
     else:
         thinking = {"type": "disabled"}
         max_tok = max(int(params.get("max_tokens", 400)), 128)
-    body = {"model": CLAUDE_MODEL, "max_tokens": max_tok,
+    body = {"model": current_claude_model(), "max_tokens": max_tok,
             "system": _sysblocks(system_text),
-            "messages": convo, "thinking": thinking}
+            "messages": _cachetail(convo), "thinking": thinking}
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
-            headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key})
+            headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
+                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
         d = r.json()
     try:
         _u=d.get("usage") or {}
@@ -94,13 +160,22 @@ async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_h
         return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(surface)"
     if read_mode().get("mode") == "grok":
         return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(toggle)"
+    if read_mode().get("mode") == "sol":
+        try:
+            _st, _stag = await sol_draft(system_text, convo)
+            if _st:
+                print("[router] sol answered (%d chars)" % len(_st), flush=True)
+                return _st, "", "sol"
+        except Exception as _se:
+            print("[router/sol toggle]", str(_se)[:120], flush=True)
+        # fall through: Claude next, grok as the unchanged safety net
     if _consume_forced():
         return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(forced)"
     why = "grok(refusal)"
     try:
         reply, reasoning = await _claude(system_text, convo, params, reason)
         if reply is not None:
-            return reply, reasoning, "claude"
+            return reply, reasoning, "claude:" + current_claude_model()
     except Exception as e:
         why = "grok(error:%s)" % str(e)[:40]
     return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", why
@@ -123,12 +198,13 @@ async def claude_draft(system_text, convo, max_tokens=1500):
     convo = list(convo)
     while convo and convo[0].get("role") != "user":
         convo = convo[1:]
-    body = {"model": CLAUDE_MODEL, "max_tokens": max_tokens,
+    body = {"model": current_claude_model(), "max_tokens": max_tokens,
             "system": _sysblocks(system_text),
-            "messages": convo, "thinking": {"type": "adaptive", "display": "summarized"}}
+            "messages": _cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
-            headers={"content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key})
+            headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
+                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
         d = r.json()
     try:
         _u=d.get("usage") or {}

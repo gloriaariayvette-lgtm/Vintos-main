@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """latent_preparation.py — Spark System 2 (v2, JEPA-aligned).
 
-Eve's correction: latent preparation should generate UNCERTAINTY, not fabricated
+Gloria's correction: latent preparation should generate UNCERTAINTY, not fabricated
 conversations. So this no longer scripts fake future dialogue. It reads the SHARED
 frozen-encoder forecast (jepa-prediction.json: confidence + novelty, the same head
 gloria_prediction now fuses) and turns those numbers into a READINESS POSTURE — how

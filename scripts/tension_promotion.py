@@ -239,6 +239,18 @@ def main():
         if _fresh and t["status"] in ("HYPOTHESIS", "SUPPORTED", "CONFIRMED"):
             _prev = t["status"]
             t["status"] = "CONTESTED"
+            # A correction that demotes an interpretation also opens a repair case.
+            # Contesting records that he was wrong about her; the case records
+            # whether anything he did about it ever landed.
+            try:
+                import sys as _rc_sys
+                _rc_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from repair_case import open_case as _rc_open
+                _rc_open("tension-ledger", _fresh[-1].get("quote", ""),
+                         anchor_at=_fresh[-1].get("at"), kind="correction",
+                         subject=t.get("tension_id", ""))
+            except Exception as _rc_e:
+                log("repair case not opened: %s" % _rc_e)
             t["eligible_for_visibility"] = False
             t["last_corrected"] = max(e["at"] for e in _fresh)
             t["correction_count"] = t.get("correction_count", 0) + 1

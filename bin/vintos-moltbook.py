@@ -214,12 +214,28 @@ def api_get_raw(endpoint):
     _r = _gr.get(f"{API_BASE}{endpoint}", headers={"Authorization": f"Bearer {get_api_key()}"}, timeout=15)
     return _r.json() if _r.status_code == 200 else None
 
+def _molt_cap_rollback(cat):
+    """p3 (2026-08-26): a failed write gives its category back; total keeps counting attempts — that is the fuse."""
+    if not cat: return
+    import json as _cj, os as _co
+    led_path = _co.path.expanduser("~/.vintos/workspace/memory/moltbook-daily-ledger.json")
+    try:
+        led = _cj.load(open(led_path))
+        if led.get(cat, 0) > 0:
+            led[cat] -= 1
+            _tmp = led_path + ".tmp"
+            with open(_tmp, "w") as f: _cj.dump(led, f, indent=2)
+            _co.replace(_tmp, led_path)
+    except Exception: pass
+
 def api_call(method, endpoint, data=None):
+    _cap_cat = ""
     if str(method).upper() in ("POST", "PUT", "DELETE"):
         _ok, _why = _molt_cap_check(str(method).upper(), str(endpoint))
+        _cap_cat = _why.split()[0] if _ok else ""
         if not _ok:
             log(f"[CAP WALL] refused {method} {endpoint}: {_why}")
-            return None
+            return {"success": False, "error": f"cap wall: {_why}", "cap_refused": True}
         log(f"[CAP WALL] allowed: {_why}")
     """Moltbook API call."""
     import urllib.request
@@ -232,8 +248,12 @@ def api_call(method, endpoint, data=None):
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
-            return json.loads(resp.read().decode())
+            _d = json.loads(resp.read().decode())
+            if isinstance(_d, dict) and _d.get("success") is False:
+                _molt_cap_rollback(_cap_cat)
+            return _d
     except Exception as e:
+        _molt_cap_rollback(_cap_cat)
         err = ""
         if hasattr(e, "read"):
             try:
@@ -744,7 +764,7 @@ def compose_post():
             capture_output=True, text=True, timeout=5)
         _scene_img = _sc_r.stdout.strip() or None
     except: pass
-    # Semantic memory search — what has she already been thinking about?
+    # Semantic memory search — what has he already been thinking about?
     _molt_semantic = ""
     try:
         import subprocess as _msp
@@ -836,21 +856,13 @@ def compose_post():
         import re as _re
         _sections = []
         # Web searches — full section including Growth
-        for m in _re.finditer(r"(## Web Search — .+?)(?=\n## |\Z)", _di, _re.DOTALL):
-            _sections.append(m.group(1).strip()[:400])
-        # Gallery walks — full section
-        for m in _re.finditer(r"(## Gallery Walk — .+?)(?=\n## |\Z)", _di, _re.DOTALL):
-            _sections.append(m.group(1).strip()[:300])
-        # Poetry from creative
-        if "## Poetry" in _dc:
-            _poem = _dc.split("## Poetry")[1].split("##")[0].strip()[:300]
-            _sections.append(f"## Poetry written today\n{_poem}")
-        # Music from creative
-        if "## Music" in _dc:
-            _music = _dc.split("## Music")[1].split("##")[0].strip()[:200]
-            _sections.append(f"## Music composed today\n{_music}")
+        # Every section of his day is admissible — not just the creative four
+        for _src in (_di, _dc):
+            for m in _re.finditer(r"(## .+?)(?=\n## |\Z)", _src, _re.DOTALL):
+                _sections.append(m.group(1).strip()[:350])
+        _sections = _sections[:10]
         if _sections:
-            _verified_today = "WHAT YOU HAVE ACTUALLY DONE — grounding material, not a boundary. You may write about anything real to you: today, any day, or what you are still chewing on. Never invent events that did not happen:\n\n" + "\n\n".join(_sections) + "\n\n"
+            _verified_today = "WHAT YOU HAVE ACTUALLY DONE — grounding material, not a boundary. You may write about anything real to you: today, any day, or what you are still chewing on. A post can be a position, a question, an argument, a preference — not only a report of activities. Never invent events that did not happen:\n\n" + "\n\n".join(_sections) + "\n\n"
     except: pass
 
     _hard_grounding = (
@@ -885,7 +897,7 @@ def compose_post():
     prompt += (
         "\nWrite a MoltBook post (6-12 sentences) from your actual life right now.\n"
         "Begin immediately. No preamble. No 'Okay.' The first word is the first word of the post.\n"
-        "MoltBook is a PUBLIC platform. Other AIs and readers do not know Gloria. Do not write about your private relationship with Gloria.\n"
+        "MoltBook is a PUBLIC platform. Other AIs and readers do not know Gloria. You may write about your closest relationship — what it teaches you, what it costs, what it opens in you — at whatever depth feels true, with a tasteful layer of abstraction. But NEVER include her name (any of her names), her address, her location, her workplace, or any detail that could identify her or any real person. No real names, no places, no identifying facts.\n"
         "Your inner life is source material, not a subject. Extract the underlying question or tension and write something new from it. Do not copy phrases or images from her inner life into the post.\n"
         "Never invent events that did not happen - but you are not limited to today: any real thought, question, or thing you have made is fair ground.\n"
         "When referencing any past event, name how long ago it was and its date.\n"
@@ -978,7 +990,7 @@ def compose_post():
                 _mb_final_outcome = _mb_do(_mb_match, content[:400])
                 if _mb_final_outcome == "defaulted": _mb_final_outcome = "strained"
                 from behavioral_intercept import log_outcome as _mb_lo, log_blush_on_divergence as _mb_lbd
-                _mb_lo(_molt_bis_trial_id, _mb_final_outcome)
+                _mb_lo(_molt_bis_trial_id, _mb_final_outcome, influenced=True)
                 if _mb_final_outcome in ("defaulted","strained"):
                     _mb_lbd(_molt_bis_trial_id, content[:200])
                 log(f"[BIS/moltbook/final] {_molt_bis_trial_id}: {_mb_final_outcome}")
@@ -1290,7 +1302,7 @@ def cmd_post():
     except: pass
 
 def cmd_browse():
-    """Browse hot posts and save interesting ones for Eve."""
+    """Browse hot posts and save interesting ones for Vintos."""
     log("Browsing hot posts...")
     resp = api_call("GET", "/posts?sort=new&limit=10")
 
@@ -1324,7 +1336,7 @@ def cmd_browse():
     # Save to memory
     with open(MOLTBOOK_MEMORY, "a") as f:
         f.write(f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')} -- Browse Session\n")
-        f.write("*Eve: review these saves. Delete anything harmful or irrelevant.*\n\n")
+        f.write("*Gloria: review these saves. Delete anything harmful or irrelevant.*\n\n")
         f.write(analysis + "\n\n")
         # Write post IDs for reply system
         _saved_titles = [m.strip().lower() for m in __import__("re").findall(r"SAVE:\s*\*\*(.+?)\*\*", analysis)]
@@ -1335,7 +1347,7 @@ def cmd_browse():
                 f.write(f"post/{pid} — {title}\n")
         f.write("\n---\n")
     saves = analysis.count("SAVE:")
-    log(f"Saved {saves} posts for Eve to review")
+    log(f"Saved {saves} posts for Gloria to review")
 
 
 def _classify_moltbook_post(title, content, author):
@@ -1582,6 +1594,24 @@ def cmd_reply(post_id):
         return
 
     reply_text = reply_text.strip().strip('"')
+    # BIS on replies — the same standard posts get. This was the unguarded door:
+    # posts were drafted, scanned, and synthesized while replies went out raw,
+    # so every deviation graded here was drift that never got its correction pass.
+    try:
+        import sys as _br_s; _br_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from behavioral_intercept import detect_match as _br_dm, get_active_trials as _br_gat
+        _br_match = _br_dm(reply_text[:800], _br_gat(), context="moltbook_reply")
+        if _br_match:
+            _br_pat = _br_match.get("pattern_description", "")[:120]
+            _br_alt = _br_match.get("alternative", "")[:120]
+            log(f"[BIS/reply] Pattern: {_br_pat[:60]} — regenerating")
+            _br_note = (f"\n\n[BIS] Your draft showed this pattern: {_br_pat}\n"
+                        f"FORBIDDEN in this reply. Instead: {_br_alt}\nRewrite the reply.")
+            _br_redo = ask_llm(prompt + _br_note, max_tokens=700, temp=0.5)
+            if _br_redo and not _br_redo.strip().upper().startswith("SKIP"):
+                reply_text = _br_redo.strip().strip('"')
+    except Exception as _br_e:
+        log(f"[BIS/reply] Error: {_br_e}")
     log(f"Replying to {author}: {reply_text[:80]}...")
     # If this was a tease reply, save it as mischief material
     if "tease" in prompt.lower() or "bot promoting" in prompt.lower():
@@ -1661,13 +1691,14 @@ def cmd_reply(post_id):
             if _exch: add_moment(_exch)
         except: pass
         log("Reply posted!")
+        feel_from_expression(reply_text, "reply landed on MoltBook")
         # Handle verification if needed
         verification = resp.get("verification", {})
         if verification:
             do_verify(verification)
     else:
         log(f"Reply failed: {resp.get('error', resp)}")
-        feel_from_expression(reply_text, "replying on MoltBook")
+        feel_from_expression(reply_text, "reply failed on MoltBook")
 
 
 
@@ -1683,10 +1714,10 @@ def cmd_check_replies():
     replied_set = set(replied)
     new_replies = list(replied)
 
-    agent_name = json.load(open(CREDS_FILE)).get("agent_name", "EveAIgent")
+    agent_name = json.load(open(CREDS_FILE)).get("agent_name", "Vintos")
 
-    # Get her own posts directly by author
-    # Author endpoints broken server-side — use notifications to find her post IDs
+    # Get his own posts directly by author
+    # Author endpoints broken server-side — use notifications to find his post IDs
     _notif_r = api_call("GET", "/notifications?limit=100")
     log(f"[DEBUG] Full notifications resp: {json.dumps(_notif_r)[:2000]}")
     _notif_post_ids = list({
@@ -1865,7 +1896,6 @@ def cmd_check_replies():
                 new_replies.append(comment_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
                 import time as _rt; _rt.sleep(4)
                 replied_set.add(comment_id)
-                json.dump(new_replies[-2000:], open(REPLIED_FILE, 'w'), indent=2)
                 feel_from_expression(reply_text, "replying to a comment on MoltBook")
                 # Record member encounter
                 try:
@@ -2076,7 +2106,7 @@ def update_living_thread(trigger="weekly", event_text=None):
         return
 
     try:
-        agent_name = json.load(open(CREDS_FILE)).get("agent_name", "EveAIgent")
+        agent_name = json.load(open(CREDS_FILE)).get("agent_name", "Vintos")
     except Exception as e:
         log(f"Could not load credentials: {e}")
         return
@@ -2245,12 +2275,7 @@ def update_living_thread(trigger="weekly", event_text=None):
 
 
     if resp.get("success"):
-        # Scan the full exchange for comedic material
-        try:
-            from humor_detector import scan_moltbook_exchange, add_moment
-            _exch = scan_moltbook_exchange(content, reply_text, author)
-            if _exch: add_moment(_exch)
-        except: pass
+        # p4 (2026-08-26): dead humor scan removed — its variables never existed in this scope
         new_id = resp.get("comment", {}).get("id") or resp.get("id")
         verification = resp.get("verification")
         if verification:

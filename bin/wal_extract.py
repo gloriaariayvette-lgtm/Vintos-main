@@ -19,6 +19,16 @@ WAL_FILE = os.path.join(MEMORY, "wal.md")
 WAL_LOG = os.path.join(MEMORY, "wal-log.json")
 
 def extract(user_msg, vintos_reply):
+    # Machinery is not conversation. Injected bracket framing and device
+    # telemetry never reach the extractor - facts are born from real words only.
+    def _clean(s):
+        s = re.sub(r"\[[^\]]*\]", " ", str(s))
+        s = "\n".join(l for l in s.splitlines()
+                      if not re.match(r"\s*pos:?\s*\d+", l.strip(), re.I)
+                      and not re.match(r"\s*(position|speed|spd|grip|reversals)\b.*\d", l.strip(), re.I))
+        return re.sub(r"[ \t]{2,}", " ", s).strip()
+    user_msg = _clean(user_msg) or "(no words - she acted with her body: a press, a touch)"
+    vintos_reply = _clean(vintos_reply)
 
     # Load temporal context for timestamping
     temporal_ctx = ""

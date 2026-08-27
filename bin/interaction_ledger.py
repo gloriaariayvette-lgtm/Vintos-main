@@ -23,6 +23,179 @@ BLUSH_FILE = os.path.join(MEMORY, "blush-ledger.md")
 
 MAX_ENTRIES = 300  # ~10 days at 30/day
 
+def _device_marks():
+    """What he actually did to her body in this turn, rendered — appended to his words."""
+    import time as _dm_t
+    try:
+        import sys as _dm_s, os as _dm_o, json as _dm_j
+        _dm_s.path.insert(0, _dm_o.path.expanduser("~/.vintos/workspace/scripts"))
+        import device_context as _dc
+        st = _dm_j.load(open(_dm_o.path.expanduser("~/.vintos/workspace/memory/device-state.json")))
+    except Exception:
+        return ""
+    lines = []
+    for toy in ("tenera", "ridge"):   # mission has its own depiction — untouched
+        d = st.get(toy) or {}
+        if d.get("set_by") != "him":
+            continue
+        if _dm_t.time() - (d.get("ts") or 0) > 180:
+            continue
+        pat = str(d.get("pattern") or "")
+        lvl = int(d.get("intensity") or 0)
+        if not pat or pat == "still":
+            continue
+        sp = _dc.spark(pat)
+        if toy == "ridge":
+            lines.append(f"ridge:  {_dc.ridge_shape()}\n        {_dc.ridge_track(lvl)}   {pat}  {sp}")
+        else:
+            lines.append(f"tenera: {pat}  {sp}  @{lvl}")
+    return ("\n\n" + "\n".join(lines)) if lines else ""
+
+
+def _fallback_salience(g, v, emo_delta, consent):
+    """No reasoning imprint (e.g. the Grok path) -> score the exchange on what actually happened, not on which model answered."""
+    s = 0.3
+    if emo_delta and emo_delta != "stable":
+        s = 0.7 if "sharply" in emo_delta else 0.55
+    if consent and consent.strip().upper().startswith("YES"): s = max(s, 0.65)
+    if len(v or "") > 400 or len(g or "") > 300: s = max(s, 0.5)
+    return round(min(0.85, s), 2)
+
+def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json"):
+    """Somatic texture as a second-person narration + fine visual. Location is read
+    from a per-device calibration (somatic-zone-cal.json: zones with a median
+    position each) because raw position is motion-derived, not absolute. Falls back
+    to fixed base->tip zones if no calibration exists. speed 0/10/20/30/40; tempo:
+    still / slow / steady / fast / grind."""
+    try:
+        fr = json.load(open(os.path.join(MEMORY, src)))
+    except Exception:
+        return None
+    if not fr:
+        return None
+    now = time.time()
+    recent = [f for f in fr if now - f.get("ts", 0) <= within_seconds]
+    if not recent:
+        return None
+    _burst = [recent[0]]
+    for _a, _b in zip(recent, recent[1:]):
+        if _b.get("ts", 0) - _a.get("ts", 0) > 6.0:
+            _burst = [_b]
+        else:
+            _burst.append(_b)
+    recent = _burst
+    _wp = [f for f in recent if f.get("position") is not None]
+    pos = sorted(f.get("position") for f in _wp)
+    spd = [f.get("speed", 0) for f in recent]
+    if not pos:
+        return None
+    dur = round(recent[-1].get("ts", 0) - recent[0].get("ts", 0))
+    peak = max(spd) if spd else 0
+    avg = round(sum(spd) / len(spd), 1) if spd else 0.0
+    _lo, _hi = pos[0], pos[-1]
+    _sweep = _hi - _lo
+    _med = pos[len(pos) // 2]
+    _p20 = pos[int(len(pos) * 0.2)]
+    _p80 = pos[int(len(pos) * 0.8)]
+    _last_pos = _wp[-1].get("position")
+    _last_dir = _wp[-1].get("direction", 0)     # 0 = toward the tip, 1 = toward the base
+
+    _moving = [s for s in spd if s > 0]
+    def _sustained(levels):
+        for lvl in (40, 30, 20, 10):
+            if sum(1 for s in levels if s >= lvl) >= max(1, len(levels) // 4):
+                return lvl
+        return 0
+    _ss = _sustained(_moving) if _moving else 0
+    _flips = sum(1 for _a, _b in zip(_wp, _wp[1:])
+                 if _a.get("direction", 0) != _b.get("direction", 0))
+    _rate = _flips / max(1, dur)
+    _grind = peak >= 40 or (_ss >= 20 and _sweep <= 20)
+    if _ss == 0:
+        tempo = "still"
+    elif _grind:
+        tempo = "grind"
+    elif _ss >= 20:
+        tempo = "fast"
+    else:
+        tempo = "slow" if _rate < 0.5 else "steady"
+    _adv = {"still": "", "slow": "slowly ", "steady": "", "fast": "", "grind": ""}[tempo]
+    _up = (_last_dir == 0)
+
+    # ---- location + narration ----
+    _cal = None
+    try:
+        _cal = json.load(open(os.path.join(MEMORY, "somatic-zone-cal.json"))).get("zones")
+    except Exception:
+        _cal = None
+
+    if _cal:
+        _cal = sorted(_cal, key=lambda z: z["median"])
+        def _near(v):
+            return min(range(len(_cal)), key=lambda i: abs(_cal[i]["median"] - v))
+        # location is where the touch is CENTERED (median); the spread to ~0 is the
+        # stroke's motion, not travel across his body, so anchor on the median.
+        _primary = _cal[_near(_med)]["name"]
+        _verb = {"still": "holding", "slow": "slowly working", "steady": "stroking",
+                 "fast": "stroking", "grind": "grinding into"}[tempo]
+        _hard = " hard" if tempo in ("fast", "grind") else ""
+        if tempo == "still":
+            narr = "she's wrapped around " + _primary + " of your cock, holding you still"
+        else:
+            narr = "she's " + _adv + _verb + " " + _primary + " of your cock" + _hard
+        _lname = _cal[0]["name"].split()[-1]
+        _rname = _cal[-1]["name"].split()[-1]
+        _cmin = _cal[0]["median"]
+        _cmax = max(_cal[-1]["median"], _cmin + 1)
+        def _cell(p):
+            f = (p - _cmin) / float(_cmax - _cmin)
+            return min(39, max(0, int(round(f * 39))))
+    else:
+        _Z = ["the base", "the lower shaft", "just under the head", "the head"]
+        def _zn(p):
+            return min(3, max(0, int(p // 25)))
+        _zl, _zh = _zn(_lo), _zn(_hi)
+        _lo_n, _hi_n = _Z[_zl], _Z[_zh]
+        _travel = _sweep >= 15 or _zl != _zh
+        if tempo == "still":
+            narr = "she's wrapped around " + _hi_n + " of your cock, holding you, not moving"
+        elif tempo == "grind":
+            narr = ("she's working your cock hard from " + _lo_n + " up over " + _hi_n) if _travel \
+                else ("she's grinding into " + _hi_n + " of your cock, working it right there")
+        elif not _travel:
+            _v = {"slow": "slowly working", "steady": "stroking", "fast": "pumping"}[tempo]
+            narr = "she's " + _v + " " + _hi_n + " of your cock"
+        elif _zh == 3:
+            _cover = ("taking the head and drawing back up" if _up else "covering the head before pulling back down")
+            narr = ("she's " + _adv + "stroking the head of your cock, " + _cover) if _zl >= 3 \
+                else ("she's " + _adv + "stroking your cock up from " + _lo_n + ", " + _cover)
+        else:
+            _end = " and back down" if not _up else ""
+            _f = "fast " if tempo == "fast" else ""
+            narr = "she's " + _adv + "stroking your cock " + _f + "from " + _lo_n + " up to " + _hi_n + _end
+        _lname, _rname = "base", "tip"
+        def _cell(p):
+            return min(39, max(0, int(round(p / 100.0 * 39))))
+
+    # ---- fine visual: motion band + a dot where the touch is centered ----
+    if _cal:
+        _bl, _bh = _cell(_p20), _cell(_p80)
+        _dot = _cell(_med)
+    else:
+        _bl, _bh = _cell(_lo), _cell(_hi)
+        _dot = _cell(_last_pos)
+    _cells = [chr(0x00b7)] * 40
+    for _k in range(min(_bl, _bh), max(_bl, _bh) + 1):
+        _cells[_k] = chr(0x2500)
+    _cells[_dot] = chr(0x25cf)
+    _visual = _lname + " " + "".join(_cells) + " " + _rname
+
+    return {"frames": len(recent), "duration_s": dur, "tempo": tempo, "visual": _visual,
+            "avg_speed": avg, "peak_speed": peak, "speed": _ss,
+            "position_range": [_lo, _hi], "median": _med,
+            "cadence": round(_rate, 2), "calibrated": bool(_cal), "summary": narr}
+
+
 def load_ledger():
     try:
         with open(LEDGER_FILE) as f:
@@ -175,18 +348,22 @@ def main():
             os.remove(_cn)
     except: pass
 
+
+
     entry = {
         "timestamp": datetime.now().isoformat(),
-        "gloria": gloria_said[:500],
-        "vintos": vintos_said[:500],
+        "gloria": gloria_said,
+        "vintos": vintos_said + _device_marks(),
         "consent": consent_note,
-        "salience": imprint["salience"] if imprint else 0.3,
+        "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(gloria_said, vintos_said, locals().get("_emo_delta","stable"), consent_note),
         "wal_facts": wal_facts,
         "blush": blush,
-        "imprint": {"id": imprint["id"], "narrative": imprint["narrative"], "salience": imprint["salience"], "anchors": imprint.get("anchors", {})} if imprint else None,
-        "preoccupation": imprint["anchors"].get("preoccupation") if imprint else None,
-        "recent_seal": imprint["anchors"].get("recent_seal") if imprint else None,
-        "recent_velqan": imprint["anchors"].get("recent_velqan") if imprint else None,
+        "somatic": get_recent_somatic(src=".somatic-turn.json"),   # hers, frozen at send
+        "somatic_reply": get_recent_somatic(),
+        "imprint": {"id": imprint.get("id",""), "narrative": imprint.get("narrative",""), "salience": imprint.get("salience",0.5), "anchors": {_k:_v for _k,_v in (imprint.get("anchors") or {}).items() if _k not in ("preoccupation","recent_seal","recent_velqan","emoclaw_snapshot")}} if imprint else None,
+        "preoccupation": imprint.get("anchors",{}).get("preoccupation") if imprint else None,
+        "recent_seal": imprint.get("anchors",{}).get("recent_seal") if imprint else None,
+        "recent_velqan": imprint.get("anchors",{}).get("recent_velqan") if imprint else None,
         "temporal_activity": None,
         "silence_contract": None,
         "emotional_shift": _emo_delta,

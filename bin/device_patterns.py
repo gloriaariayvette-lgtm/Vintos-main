@@ -58,7 +58,8 @@ PRESETS = {
     "spark": ([2, 2, 2, 18, 20, 16, 20, 14, 2, 2, 2], 150),             # calm, flare, calm
     "soft": ([2, 3, 4, 5, 6, 5, 4, 3, 2, 3, 4, 5, 6, 5, 4, 3, 2], 350), # faint tender rise/fall
 }
-PRESETS["trapezoid"] = PRESETS["trapezold"]   # accept the correct spelling too
+PRESETS["trapezoid"] = PRESETS["trapezold"]
+PRESETS["wave"] = PRESETS["wave1"]   # the mixer calls it Wave   # accept the correct spelling too
 _SYNC = ("both", "all", "sync")
 
 def _compose(names):
@@ -77,6 +78,26 @@ def _compose(names):
 
 def play(toy, pattern, args=None, dur=None):
     args = args or []
+    # Rotate is a second, scalar channel — not a waveform. [DO: ridge rotate mid|low|high|N]
+    if str(pattern).lower() == "rotate":
+        _lvl_map = {"low": 5, "mid": 12, "high": 18, "off": 0, "still": 0}
+        _a = str(args[0]).lower() if args else "mid"
+        _lv = _lvl_map.get(_a)
+        if _lv is None:
+            try: _lv = max(0, min(20, int(float(_a))))
+            except Exception: _lv = 12
+        _ok = toy_link.rotate(toy, _lv)
+        if _ok:
+            _mark(toy)
+            _set_state(toy, intensity=_lv, pattern="rotate", set_by="him")
+            try:
+                import json as _rj, os as _ro
+                _sp = _ro.path.expanduser("~/.vintos/workspace/memory/device-state.json")
+                _st = _rj.load(open(_sp))
+                _st.setdefault(toy, {})["channel"] = "rotate"
+                _tmp = _sp + ".tmp"; _rj.dump(_st, open(_tmp, "w")); _ro.replace(_tmp, _sp)
+            except Exception: pass
+        return _ok
     if pattern in ("last", "saved"):   # replay the set that last brought her to GCS
         try:
             _lib = json.load(open(os.path.join(MEM, "gcs-saved-patterns.json")))
@@ -98,7 +119,7 @@ def play(toy, pattern, args=None, dur=None):
     if any(p in PRESETS for p in _parts):
         _lv, _iv = _compose(_parts)
         if _lv:
-            _secs = int(args[0]) if args else 3600            # 0 = loop until his next directive
+            _secs = 3600            # always loop for the session; a number in his tag no longer truncates the figure
             _peak = max(_lv)
             _TENERA_MIN_IV = 600   # suction needs a slower step to actuate dramatically
             if toy in _SYNC or toy == "tenera":
@@ -129,7 +150,7 @@ def play(toy, pattern, args=None, dur=None):
     stop = threading.Event(); _threads[toy] = stop
     threading.Thread(target=_run, args=(toy,pattern,args,stop,dur), daemon=True).start()
     return True
-_DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\d+)*)\s*\]", re.I)
+_DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\w+)*)\s*\]", re.I)
 _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
@@ -139,15 +160,22 @@ def fire_his_intent(reply_text):
         if json.load(open(os.path.join(MEM,"hardware-button.json"))).get("stopped"):
             return _strip_tags(reply_text)
     except Exception: pass
+    _GAP = 0.4
     _fired=[]
     for m in _DIR.finditer(reply_text):
         toy=m.group(1).lower(); pat=m.group(2).lower()
-        args=[int(x) for x in m.group(3).split()] if m.group(3).strip() else []
+        _raw_args = m.group(3).split() if m.group(3).strip() else []
+        args = []
+        for _x in _raw_args:
+            try: args.append(int(_x))
+            except ValueError: args.append(_x)   # words like low/mid/high are valid for rotate
+        if _fired: time.sleep(_GAP)   # let the previous rule settle on the server
         try: play(toy, pat, args)
         except Exception: pass
         _fired.append(toy+" \u2192 "+pat+((" "+" ".join(str(a) for a in args)) if args else ""))
     for m in _TOUCH.finditer(reply_text):
         toy=m.group(1).lower(); lvl=int(m.group(2))
+        if _fired: time.sleep(_GAP)
         try: play(toy, "steady", [lvl])
         except Exception: pass
         _fired.append(toy+" \u2192 "+str(lvl))

@@ -15,7 +15,7 @@ DREAM_DIR="$WORKSPACE/skills/dreaming/memory/dreams"
 MIRROR_DIR="$MEMORY/mirror"
 GROUNDING_DIR="$MEMORY/grounding"
 KISS_DIR="$MEMORY/kisses"
-BIRTHDAY="2026-02-11"
+BIRTHDAY="2026-06-11"
 
 NOW=$(date +%s)
 NOW_HOUR=$(date +%H)

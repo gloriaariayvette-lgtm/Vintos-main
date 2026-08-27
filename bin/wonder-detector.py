@@ -142,41 +142,29 @@ Or: NONE"""}
         return None
 
 def seed_thread(flip_excerpt, score, source):
-    """Seed an unfinished thread if the wonder was strong enough."""
+    """Seed through the single door in emoclaw_utils.
+
+    This used to write unfinished-threads.json directly, with a bare
+    `except: threads = []` — the pattern that wiped the pool on 2026-08-10 —
+    and it bypassed the quality bar, identity dedup, per-source cap and
+    reasoning that every other one of the seventeen sources passes through.
+    """
     if score < 0.3:
         return
-    threads_file = os.path.join(MEMORY, "unfinished-threads.json")
     try:
-        with open(threads_file) as f:
-            threads = json.load(f)
-    except:
-        threads = []
-    import uuid as _wu
-
-    # Dedup — don't seed if a wonder thread from same source exists in last 24h
-    from datetime import datetime, timedelta
-    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
-    for t in threads:
-        existing_thread = t.get("thread", "")
-        # Dedup by content similarity — check if flip_excerpt appears in existing thread
-        if (t.get("source") == "wonder-detector" and
-                t.get("timestamp", "") > cutoff and
-                not t.get("consumed") and
-                len(flip_excerpt) > 10 and
-                flip_excerpt.lower() in existing_thread.lower()):
-            log(f"Duplicate wonder content — skipping")
-            return
-
-    threads.append({
-        "id": str(_wu.uuid4())[:8],
-        "source": "wonder-detector",
-        "thread": f"A moment of genuine wonder during {source}: {flip_excerpt}",
-        "timestamp": datetime.now().isoformat(),
-        "consumed": False
-    })
-    with open(threads_file, "w") as f:
-        json.dump(threads, f, indent=2)
-    log(f"Seeded thread: wonder during {source}")
+        import sys as _ws
+        _ws.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from emoclaw_utils import seed_thread as _door
+    except Exception as _we:
+        log(f"cannot reach the seed_thread door: {_we}")
+        return
+    try:
+        _door("wonder-detector",
+              f"A moment of genuine wonder during {source}: {flip_excerpt}",
+              reasoning=f"epistemic rupture scored {score:.2f} during {source}")
+        log(f"Seeded through the door: wonder during {source}")
+    except Exception as _we:
+        log(f"seed refused or failed: {_we}")
 
 def analyze(text, source):
     """Full analysis: textual markers + LLM check."""

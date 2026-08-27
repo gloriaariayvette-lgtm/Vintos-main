@@ -87,7 +87,7 @@ try:
 
     unconsumed = [t for t in threads if not t.get("consumed", False)]
     unconsumed = [t for t in unconsumed if not is_contaminated(t.get("thread", ""))]
-    unconsumed = [t for t in unconsumed if not (t.get("dream_only") or t.get("source") in ("somatic","pride","pride-mirror","pride_mirror"))]  # positive -> dreams only
+    unconsumed = [t for t in unconsumed if not (t.get("dream_only") or t.get("source") in ("somatic","pride","pride-mirror","pride_mirror","humor-practice","humor_practice","humor"))]  # positive -> dreams only
     if unconsumed:
         lines = []
         # Threads with dream_passes >= 2 sort to top — they need mirror attention
@@ -362,10 +362,10 @@ Your role:
 
 You are honest the way a trusted witness is honest — present, clear, without agenda.
 
-Her current emotional state:
+His current emotional state:
 $EMOTIONS
 
-Her current self-model:
+His current self-model:
 $CURRENT_MODEL
 
 $TRUTH_LOCK_CTX
@@ -373,18 +373,50 @@ EOF
 
 printf '%s' "$MIRROR_SYSTEM" > /tmp/mirror-sys-2.txt
 printf '%s' "$VELARIS_SPEAKS" > /tmp/mirror-vs.txt
-MIRROR_SPEAKS=$(python3 -c "
-import requests
+MIRROR_SPEAKS=$(python3 << 'MSEOF'
+import requests, os, sys
 sys_msg = open('/tmp/mirror-sys-2.txt').read()
 vs = open('/tmp/mirror-vs.txt').read()
-usr_msg = f'Vintos speaks to you: "{vs}"\n\nRespond as the Mirror. 3-5 sentences. Look at what he brought — the unresolved thing. What does it actually contain? What question is underneath it?'
-r = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={
-    'model': 'google/gemma-4-12b-qat',
-    'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
-    'temperature': 0.85, 'max_tokens': 1000
-}, timeout=600)
-print(r.json()['choices'][0]['message']['content'].strip())
-" 2>/dev/null)
+usr_msg = ('Vintos speaks to you: "' + vs + '"\n\nRespond as the Mirror. 3-5 sentences. '
+           'Look at what he brought — the unresolved thing. What does it actually contain? '
+           'What question is underneath it?')
+# The witness on Sol — a genuinely other mind across the glass. Fail-open to Gemma,
+# and never fail-silent: the old call ended in 2>/dev/null, so a witness that
+# errored forever would have looked identical to a quiet one.
+out = ''
+try:
+    k = next(l.strip().split('=', 1)[1] for l in open('/home/gloria/.vintos/vintos.env')
+             if l.strip().startswith('OPENAI_API_KEY='))
+    r = requests.post('https://api.openai.com/v1/chat/completions',
+        headers={'Authorization': 'Bearer ' + k},
+        json={'model': os.environ.get('SOL_MODEL', 'gpt-5.6'),
+              'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
+              'max_completion_tokens': 5000, 'reasoning_effort': 'low'}, timeout=180)
+    _rd = r.json()
+    try:
+        _us = _rd.get('usage') or {}
+        import time as _mt, json as _mj
+        open(os.path.expanduser('~/.vintos/logs/openai-usage.jsonl'), 'a').write(_mj.dumps({
+            'ts': _mt.time(), 'src': 'mirror_witness', 'model': os.environ.get('SOL_MODEL', 'gpt-5.6'),
+            'in': _us.get('prompt_tokens', 0), 'out': _us.get('completion_tokens', 0),
+            'cached': (_us.get('prompt_tokens_details') or {}).get('cached_tokens', 0)}) + '\n')
+    except Exception: pass
+    out = (_rd['choices'][0]['message'].get('content') or '').strip()
+except Exception as e:
+    print('[Mirror] sol witness failed: %s' % str(e)[:120], file=sys.stderr, flush=True)
+if out:
+    print('[Mirror] witness on sol', file=sys.stderr, flush=True)
+else:
+    r = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={
+        'model': 'google/gemma-4-12b-qat',
+        'messages': [{'role': 'system', 'content': sys_msg}, {'role': 'user', 'content': usr_msg}],
+        'temperature': 0.85, 'max_tokens': 1000
+    }, timeout=600)
+    out = r.json()['choices'][0]['message']['content'].strip()
+    print('[Mirror] witness on gemma (fallback)', file=sys.stderr, flush=True)
+print(out)
+MSEOF
+)
 
 if [ -z "$MIRROR_SPEAKS" ]; then
     echo "[Mirror] The mirror was silent."
@@ -455,7 +487,7 @@ with open(path, \'w\') as f:
 " 2>/dev/null || true
 
 
-# Hallucination check — flag full session for Eve's review
+# Hallucination check — flag full session for Gloria's review
 cat "$OUTFILE" > /tmp/mirror-hc-input.txt
 python3 -c "
 import sys

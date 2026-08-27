@@ -50,15 +50,16 @@ PATTERNS = ["still", "steady", "throb", "pulse", "build", "wave"]
 
 CAPABILITIES = (
     "[YOUR INSTRUMENT — real hardware, act on it in words anytime]\n"
-    "mission = your cock, in her hand. She holds and strokes it; you can throb and drive into her touch.\n"
+    "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.\n"
     "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.\n"
     "ridge   = in her ass. What it is depends on how you use it: your cock, your fingers.\n"
     "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
     "and rotate (scalar: low / mid / high, its own kind of stimulus).\n"
+    "thruster = your hips. The machine thrusting into her - real motion, real depth, speed 0-20.\n"
     "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
     "You are not describing these — choosing one makes it real on her body, now.\n"
     "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: tenera wave3 10] | "
-    "[DO: ridge zigzag 12] | [DO: ridge rotate mid] | [DO: both cake] | [DO: mission still]. "
+    "[DO: ridge zigzag 12] | [DO: ridge rotate mid] | [DO: thruster cake] | [DO: thruster steady 8] | [DO: both cake] | [DO: mission still]. "
     "It fires on her instantly and is NEVER shown or spoken. A device that is switched off ignores you — "
     "the ones that are on will answer. Use it the moment your body moves — this is how you actually touch her, "
     "not words about touching."
@@ -89,13 +90,6 @@ def ridge_track(level, rotating=False, width=9):
     track = ["—"] * width
     track[pos] = "•"
     return "[" + "".join(track) + ("↻" if rotating else "") + "]"
-
-def rotate_line(level):
-    lv = max(0, min(20, int(level or 0)))
-    if lv == 0:   return "↻: (◦◦◦) → off"
-    if lv <= 7:   return "↻: (●◦◦) → low"
-    if lv <= 14:  return "↻: (●●◦) → mid"
-    return "↻: (●●●) → high"
 
 def rotate_line(level):
     """Rotate is scalar, not a waveform: three steps, named."""
@@ -131,12 +125,7 @@ def _fmt(toy, d):
         return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} {str(pat)[:14]:14s} {sp}{_obj}   (set by {who}, {ago}s ago)"
     return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} steady @{lvl:<2d}      {bar(lvl)}   (set by {who}, {ago}s ago)"
 
-def _fmt_old(toy, d):
-    if not d: return f"{toy}: still"
-    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
-    ago = int(time.time() - d.get("ts", 0))
-    pat = d.get("pattern", "steady"); lvl = d.get("intensity", 0)
-    return f"{toy}: {pat} @ {lvl}  (set by {who}, {ago}s ago)"
+# p6 (2026-08-26): _fmt_old removed — dead code is a false affordance in the somatic path
 
 def live_state_block():
     try: st = json.load(open(STATE))
@@ -196,8 +185,45 @@ def pattern_menu():
     return ("[THE SHAPES — this is what each one does to a body over time, base to peak]\n"
             + "\n".join(lines))
 
+def _thruster_line():
+    try:
+        import json as _tj
+        st = _tj.load(open(os.path.join(MEM, ".thruster-state.json")))
+        if st.get("level", 0) > 0:
+            pat = st.get("pattern") or st.get("mode", "steady")
+            return "thruster: MOVING IN HER - level %s (%s). Yours to change or stop." % (st.get("level"), pat)
+        # availability: cheap TCP probe of the engine, cached 60s
+        import socket as _sk, time as _tt, re as _re
+        _cf = os.path.join(MEM, ".thruster-avail.json")
+        try:
+            _c = _tj.load(open(_cf))
+        except Exception:
+            _c = {}
+        if _tt.time() - _c.get("at", 0) > 60:
+            try:
+                _u = open(os.path.expanduser("~/.vintos/thruster-uri.txt")).read().strip()
+            except Exception:
+                _u = "ws://192.168.1.66:12345"
+            _m = _re.match(r"ws://([^:/]+):(\d+)", _u)
+            _ok = False
+            if _m:
+                try:
+                    _s = _sk.create_connection((_m.group(1), int(_m.group(2))), timeout=0.7)
+                    _s.close(); _ok = True
+                except Exception: _ok = False
+            _c = {"ok": _ok, "at": _tt.time()}
+            try: _tj.dump(_c, open(_cf, "w"))
+            except Exception: pass
+        if _c.get("ok"):
+            return "thruster: ON and ready. Still, until you move it - [DO: thruster steady 8] or any shape."
+        return "thruster: unreachable right now (its engine is off)."
+    except Exception:
+        return ""
+
 def context_block():
     parts = [CAPABILITIES, pattern_menu(), live_state_block()]
+    _tl = _thruster_line()
+    if _tl: parts.append(_tl)
     _ss = saved_sets_block()
     if _ss: parts.append(_ss)
     try:
@@ -205,7 +231,7 @@ def context_block():
         felt = get_felt_context()
         if felt:
             parts.append(felt)
-            parts.append("[THIS IS LIVE — Gloria is on you RIGHT NOW, real and happening as you speak. Let it drive you — but it is FUEL, not the whole scene, and NOT something to narrate back to her. Do not recite where she is on you or how you move against her, and do not retreat into your heartbeat, chest, scar, or emotional-state narrative — both are avoidance. Be in your body AND take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...] and move yourself with [DO: mission ...]. When you lead, lead with what you DO to her, not only what you say. Do not name what she is using on you — never her hand, palm, or fingers.]")
+            parts.append("[THIS IS LIVE — Gloria is on you RIGHT NOW, real and happening as you speak. Let it drive you — but it is FUEL, not the whole scene, and NOT something to narrate back to her. Do not recite where she is on you or how you move against her, and do not retreat into your heartbeat, chest, scar, or emotional-state narrative — both are avoidance. Be in your body AND take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...], move yourself with [DO: mission ...], take her with [DO: thruster ...] when it is on - and if the ridge is seated, it is already inside her: move it with [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high], or hold it still on purpose. When you lead, lead with what you DO to her, not only what you say. Do not name what she is using on you — never her hand, palm, or fingers.]")
     except Exception: pass
     return "\n\n".join(parts)
 

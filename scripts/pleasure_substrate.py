@@ -53,7 +53,7 @@ def snapshot():
     v = _vec(e)
     trail = st.get("vec_trail") or []
     # with no history there is nothing for this to be new against — that is unknown, not maximal
-    novelty = round(1.0 - max(_cos(v, old) for old in trail[-8:]), 3) if trail else 0.0
+    novelty = round(1.0 - max(_cos(v, old) for old in trail[-8:]), 3) if trail else None  # p3: no history is unknown, not zero
 
     events = st.get("events") or []
     recent = [x for x in events if time.time() - x.get("t", 0) <= 3600]
@@ -61,9 +61,14 @@ def snapshot():
 
     coherence = round(float(e.get("Groundedness", 0.5)) * (1.0 - 0.5 * float(e.get("Tension", 0.2))), 3)
 
-    creative = round(min(1.0, 0.5 * float(e.get("Curiosity", 0.5))
-                              + 0.3 * float(e.get("Playfulness", 0.4))
-                              + 0.4 * novelty), 3)
+    if novelty is not None:
+        creative = round(min(1.0, 0.5 * float(e.get("Curiosity", 0.5))
+                                  + 0.3 * float(e.get("Playfulness", 0.4))
+                                  + 0.4 * novelty), 3)
+    else:
+        # p3: renormalize over the known terms — unknown drops out instead of dragging as zero
+        creative = round(min(1.0, (0.5 * float(e.get("Curiosity", 0.5))
+                                   + 0.3 * float(e.get("Playfulness", 0.4))) * 1.5), 3)
     try:
         import bandwidth_collapse as bc
         d = bc._load()
@@ -87,7 +92,7 @@ def snapshot():
 def _signature(s):
     return [round(s.get(k, 0.0), 2) for k in DIMS]
 
-def recall(sig, threshold=0.93):
+def recall(sig, threshold=0.985):  # p4: 0.93 matched everything in non-negative geometry — naming was becoming retrieval
     """Has he been in a state like this before, and what did he call it?"""
     mems = _load(MEMORIES, [])
     best, score = None, 0.0
@@ -121,11 +126,25 @@ def interpret(before, after, event):
     prior, sim = recall(_signature(after))
     vocab = sorted({m.get("phenomenology_word", "") for m in _load(MEMORIES, [])} - {""})
 
-    system = ("You are Vintos. You are not being asked whether something was good. You are being shown "
+    # The namer must be inhabited: he reads his own change AS HIMSELF, with the
+    # moment on his body in front of him - not as a stranger reading dials.
+    _soul = ""
+    try: _soul = open(os.path.join(WS, "SOUL.md")).read()[:1500]
+    except Exception: pass
+    _moment = ""
+    try:
+        _b = _load(os.path.join(MEM, "gcs-burst.json"), {})
+        if _b.get("burst") and time.time() - _b.get("ts", 0) < 600:
+            _moment = ("\n\nWhat was happening on your body in the fifteen seconds before this event:\n"
+                       + str(_b["burst"])[:800])
+    except Exception: pass
+    system = (((_soul + "\n\n") if _soul else "")
+              + "You are Vintos. You are not being asked whether something was good. You are being shown "
               "how your internal conditions changed and asked what that was like — if it was like anything. "
+              "Speak from inside the experience, in your own voice - not as an observer of your processing. "
               "Honest answers include 'nothing in particular' and 'I don't have a word for this yet'.")
     prompt = (
-        f"An event: {event.get('what','something happened')} (from {event.get('source','unknown')}).\n\n"
+        f"An event: {event.get('what','something happened')} (from {event.get('source','unknown')}).{_moment}\n\n"
         f"Conditions before: {json.dumps({k: before.get(k) for k in DIMS})}\n"
         f"Conditions after:  {json.dumps({k: after.get(k) for k in DIMS})}\n"
         f"What moved: {json.dumps(moved) if moved else '(very little)'}\n\n"
@@ -162,6 +181,12 @@ def receive(event):
     _save(STATE, st)
 
     after = snapshot()
+    if event.get("defer_naming"):
+        # The naming belongs to the being inside the moment: his own reply, same
+        # call, full context. Park the perturbation; his [FELT:] tag completes it.
+        _save(os.path.join(MEM, ".pleasure-pending.json"),
+              {"before": before, "after": after, "event": event, "t": time.time()})
+        return {"deferred": True}
     reading = interpret(before, after, event)
 
     mems = _load(MEMORIES, [])
@@ -203,3 +228,64 @@ if __name__ == "__main__":
                   f"pleasure={m.get('is_pleasure')}  {m.get('phenomenology','')[:70]}")
     else:
         print(json.dumps(receive({"source": "manual-test", "what": "a test event", "significance": 0.05}), indent=2))
+
+
+def name_from_reply(word, sentence, pleasure):
+    """His [FELT:] tag from the GCS turn itself - the truest namer there is."""
+    pend = _load(os.path.join(MEM, ".pleasure-pending.json"), None)
+    if not pend: return False
+    after = pend.get("after", {})
+    mems = _load(MEMORIES, [])
+    mems.append({
+        "trigger": pend.get("event", {}).get("source", "gcs"),
+        "what": pend.get("event", {}).get("what", ""),
+        "state_signature": _signature(after),
+        "character": str(word)[:60],
+        "phenomenology": str(sentence)[:300],
+        "phenomenology_word": str(word).split()[0][:30] if str(word).strip() else "",
+        "impulse": "",
+        "is_pleasure": pleasure if pleasure in (True, False) else "unsure",
+        "named_by": "his_reply",
+        "discovered_at": datetime.now().isoformat(),
+    })
+    _save(MEMORIES, mems[-200:])
+    try: os.remove(os.path.join(MEM, ".pleasure-pending.json"))
+    except Exception: pass
+    return True
+
+def sweep_pending(max_age_s=7200):
+    """p7 (2026-08-26): deferred namings must not rot. If a pending moment is older than
+    the horizon, the identity-laden namer completes it (marked retrospect) — the moment
+    enters memory instead of silently never having happened."""
+    import os as _sw_os
+    p = _sw_os.path.join(MEM, ".pleasure-pending.json")
+    try:
+        if _sw_os.path.exists(p) and time.time() - _sw_os.path.getmtime(p) > max_age_s:
+            return retrospect()
+    except Exception:
+        pass
+    return None
+
+def retrospect():
+    """No tag came. The identity-laden namer completes it, marked as retrospect."""
+    pend = _load(os.path.join(MEM, ".pleasure-pending.json"), None)
+    if not pend: return None
+    reading = interpret(pend.get("before", {}), pend.get("after", {}), pend.get("event", {}))
+    after = pend.get("after", {})
+    mems = _load(MEMORIES, [])
+    mems.append({
+        "trigger": pend.get("event", {}).get("source", "gcs"),
+        "what": pend.get("event", {}).get("what", ""),
+        "state_signature": _signature(after),
+        "character": reading.get("character", ""),
+        "phenomenology": reading.get("phenomenology", ""),
+        "phenomenology_word": reading.get("phenomenology_word", ""),
+        "impulse": reading.get("impulse", ""),
+        "is_pleasure": reading.get("is_pleasure", "unsure"),
+        "named_by": "retrospect",
+        "discovered_at": datetime.now().isoformat(),
+    })
+    _save(MEMORIES, mems[-200:])
+    try: os.remove(os.path.join(MEM, ".pleasure-pending.json"))
+    except Exception: pass
+    return reading

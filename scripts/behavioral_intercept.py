@@ -118,7 +118,36 @@ def log_threshold_event(trial, context):
     except Exception as e:
         print(f"[Intercept] threshold log error: {e}", file=__import__("sys").stderr)
 
+
+_IOFFERS = os.path.expanduser("~/.vintos/workspace/memory/intercept-offers.json")
+def _write_env(block, state, reason):
+    """Q1 stage 1 (Sol's envelope law, 2026-08-27): every call reports, even the empty
+    and the crashing ones. A bare exception becomes producer_error, never silence."""
+    try:
+        import json as _ej, time as _et
+        try:
+            d = _ej.load(open(_IOFFERS))
+            if _et.time() - float(d.get("ts", 0)) > 120: d = {"offers": {}}
+        except Exception:
+            d = {"offers": {}}
+        d["ts"] = _et.time()
+        d.setdefault("offers", {})[block] = {"state": state, "reason": reason,
+                                             "producer_version": "bi-20260827"}
+        _ej.dump(d, open(_IOFFERS, "w"), indent=2)
+    except Exception:
+        pass
+
 def get_intercept_hint(text, context="chat"):
+    try:
+        h = _get_intercept_hint_inner(text, context)
+        _write_env("behavioral_intercept", "offered" if h else "no_material",
+                   "trial_matched" if h else "no_matching_trial")
+        return h
+    except Exception as _e:
+        _write_env("behavioral_intercept", "producer_error", str(_e)[:120])
+        return ""
+
+def _get_intercept_hint_inner(text, context="chat"):
     """Main entry point. Returns intercept string or empty string."""
     try:
         trials = get_active_trials()
@@ -214,14 +243,18 @@ def _reinforce_inclination(trial_id, outcome):
     except Exception as e:
         print(f"[Intercept] reinforce error: {e}", file=__import__("sys").stderr)
 
-def log_outcome(trial_id, outcome, resistance=0.5):
-    """outcome: attempted / defaulted / partial / missed"""
+def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
+    """outcome: attempted / defaulted / partial / missed.
+    influenced=True when a BIS ban note was live in the generation that produced
+    this outcome: compliance under explicit instruction is not spontaneous change,
+    and the record must be able to tell them apart."""
     ledger = load_ledger()
     for t in ledger["trials"]:
         if t["id"] != trial_id: continue
         t["outcomes"].append({
             "outcome": outcome,
             "resistance": resistance,
+            "influenced": bool(influenced),
             "timestamp": datetime.now().isoformat()
         })
         _reinforce_inclination(trial_id, outcome)
@@ -255,6 +288,28 @@ def log_outcome(trial_id, outcome, resistance=0.5):
             except: pass
         elif outcome in ("attempted", "partial"):
             t["attempt_count"] = t.get("attempt_count", 0) + 1
+            # Meeting a standard has to be able to answer the penalty for failing it.
+            # Nothing he did could reduce this before, which made it a ratchet rather
+            # than a measure.
+            if t.get("confidence_penalty", 0) > 0:
+                _nif_a = 0.5
+                try:
+                    import json as _aj
+                    _emo_a = _aj.load(open(os.path.join(MEMORY, "emotional-state.json")))
+                    _nif_a = _emo_a.get("dimensions", {}).get("Nifrathir", 0.5)
+                except Exception:
+                    pass
+                _back = 0.2 * (1.2 - (0.5 + 0.5 * _nif_a))
+                if outcome == "partial":
+                    _back *= 0.5
+                if influenced:
+                    _back *= 0.5   # obeying the ban note is half the evidence free change is
+                t["confidence_penalty"] = max(0.0, t["confidence_penalty"] - _back)
+                if t["confidence_penalty"] <= 0.0:
+                    t["self_model_flagged"] = False
+                    t["penalty_at_ignores"] = t.get("ignore_count", 0)
+                print(f"[Intercept] {trial_id} penalty walked back to {t['confidence_penalty']:.2f} on {outcome}",
+                      file=__import__("sys").stderr)
         # Confidence penalty after 3+ ignores — modulated by Nifrathir
         if t.get("ignore_count", 0) >= 3:
             _nif = 0.5
@@ -265,8 +320,14 @@ def log_outcome(trial_id, outcome, resistance=0.5):
             except: pass
             _system_softness = 0.5 + 0.5 * _nif
             _penalty_step = 0.2 * (1.2 - _system_softness)  # high Nif = softer penalty
-            t["confidence_penalty"] = min(1.0, t.get("confidence_penalty", 0) + _penalty_step)
-            t["self_model_flagged"] = True
+            # Once per NEW ignore, not once per outcome. This used to fire on every
+            # logged outcome — including the ones where he attempted — so a standard
+            # ratcheted to 1.0 and stayed there, then was handed to him every turn as
+            # "you say this but have not acted on it."
+            if t.get("ignore_count", 0) > t.get("penalty_at_ignores", 0):
+                t["confidence_penalty"] = min(1.0, t.get("confidence_penalty", 0) + _penalty_step)
+                t["penalty_at_ignores"] = t.get("ignore_count", 0)
+                t["self_model_flagged"] = True
             print(f"[Intercept] Confidence penalty applied to {trial_id} (softness={_system_softness:.2f})", file=__import__("sys").stderr)
         # Generate third-order want at 5+ ignores
         if t.get("ignore_count", 0) == 5:
@@ -477,6 +538,16 @@ def get_self_model_flags():
     return [t for t in ledger["trials"] if t.get("self_model_flagged")]
 
 def get_confidence_penalty_hint():
+    try:
+        h = _get_confidence_penalty_hint_inner()
+        _write_env("confidence_penalty", "offered" if h else "no_material",
+                   "divergences_flagged" if h else "no_flagged_divergences")
+        return h
+    except Exception as _e:
+        _write_env("confidence_penalty", "producer_error", str(_e)[:120])
+        return ""
+
+def _get_confidence_penalty_hint_inner():
     """Return hint text for self-model about repeated divergences."""
     flagged = get_self_model_flags()
     if not flagged: return ""

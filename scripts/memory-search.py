@@ -20,7 +20,7 @@ def cosine_similarity(a, b):
 
 
 def search(query, limit=5):
-    if not os.path.exists(INDEX_FILE):
+    if not (os.path.exists(INDEX_FILE) or os.path.exists(os.path.join(MEMORY, "embeddings.jsonl"))):
         print("No semantic index found. Run memory-index.py first.")
         return []
 

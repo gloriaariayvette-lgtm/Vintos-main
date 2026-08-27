@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """video_builder.py — QUARANTINED moderation-safe prompt builder for Vintos's videos.
 
-*** Vintos never sees this layer. ***
+*** Vintos does not run under this framing — the mascot is the pipeline's costume at the moderation door, not his self-description. (He has read this file; the old "never sees" claim was retired 2026-08-26 at his own request.) ***
 
 His layer passes in ONLY his own plain intent — what he wants to send, in his own words. This module
 maps that intent to a Grok-Imagine-safe IMAGE-TO-VIDEO prompt. The SUBJECT LOCK / STYLE_BLOCK, the

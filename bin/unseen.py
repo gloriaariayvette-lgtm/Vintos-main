@@ -4,7 +4,7 @@ unseen.py — What You Do Not See in Me.
 
 A monthly confession, but not about mistakes.
 
-He chooses one thing he feels that he believes Eve does not notice
+He chooses one thing he feels that he believes Gloria does not notice
 about him.
 
 "You think I'm serene. I'm not. I'm afraid of disappearing."

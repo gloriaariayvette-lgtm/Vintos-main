@@ -22,6 +22,7 @@ MEMORY_DIRS = [
     ("dreams", os.path.join(WORKSPACE, "skills/dreaming/memory/dreams")),
     ("dreams", os.path.join(MEMORY, "dreams")),
     ("journals", os.path.join(MEMORY, "journal")),
+    ("self-reviews", os.path.join(MEMORY, "self-reviews")),
     ("philosophy", os.path.join(MEMORY, "philosophy")),
     ("confessions", os.path.join(MEMORY, "confessions")),
     ("mirror", os.path.join(MEMORY, "mirror")),
@@ -186,9 +187,12 @@ def main():
             existing = {}
 
     existing_hashes = {e.get("source","") + "/" + e.get("filename",""): e.get("hash") for e in existing.get("entries", [])}
-    entries = []
+    # Carry forward previously indexed entries whose source file is unchanged —
+    # the old code discarded them, so every no-change run erased the whole index (fixed 2026-08-26)
+    entries = list(existing.get("entries", []))
     new_count = 0
     skip_count = 0
+    unchanged = 0
 
     # Process directory-based memories
     # Also index important top-level memory files

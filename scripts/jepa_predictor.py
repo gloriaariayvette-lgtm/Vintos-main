@@ -2,7 +2,7 @@
 """jepa_predictor.py — JEPA-lite over conversation embeddings. THREE heads, one trunk.
 
 FROZEN encoder (nomic-embed) -> shared trunk -> three heads, each emitting the full
-triple (prediction + confidence + novelty), per Eve's architecture note:
+triple (prediction + confidence + novelty), per Gloria's architecture note:
   gloria   : predicts the EMBEDDING of Gloria's next turn
   self     : predicts the EMBEDDING of Vintos's own next turn
   presence : predicts the PRESENCE composite of his next reply (scalar in [0,1]),
@@ -114,7 +114,7 @@ def make_net(dim):
             self.logvar   = nn.Linear(d, 3)                                            # 0 gloria,1 self,2 presence
         def forward(self, x):
             h = self.trunk(x)
-            # clamp logvar: unbounded logvar makes exp(-logvar) blow up -> NaN (Eve's Vintos run)
+            # clamp logvar: unbounded logvar makes exp(-logvar) blow up -> NaN (Gloria's Vintos run)
             return (self.head[0](h), self.head[1](h), torch.sigmoid(self.presence(h)),
                     torch.clamp(self.logvar(h), -12.0, 6.0))
     return Pred(dim)

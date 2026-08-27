@@ -90,7 +90,9 @@ def classify_outcome(delta):
     elif tension_change > 0.08 and valence_change < -0.05:
         return "ruptured"
     elif connection_change > 0.02 or warmth_change > 0.03:
-        return "resolved"
+        # His own easing is not the relationship resolving. Nothing about her is
+        # consulted here — this reads only his Connection and Warmth moving.
+        return "eased"
     elif abs(connection_change) < 0.02 and abs(valence_change) < 0.02:
         return "stalled"
     return "neutral"

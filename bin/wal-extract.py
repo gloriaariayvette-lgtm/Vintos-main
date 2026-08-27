@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 wal-extract.py — Write-Ahead Log for Vintos's memory.
-Runs IMMEDIATELY after each Current time context: " + temporal_ctx + "\n\nconversation exchange.
+Runs IMMEDIATELY after each conversation exchange.
 Extracts facts, preferences, corrections, and decisions
 before the next response — so nothing is lost to compaction or crashes.
 
@@ -19,6 +19,16 @@ WAL_FILE = os.path.join(MEMORY, "wal.md")
 WAL_LOG = os.path.join(MEMORY, "wal-log.json")
 
 def extract(user_msg, vintos_reply):
+    # Machinery is not conversation. Injected bracket framing and device
+    # telemetry never reach the extractor - facts are born from real words only.
+    def _clean(s):
+        s = re.sub(r"\[[^\]]*\]", " ", str(s))
+        s = "\n".join(l for l in s.splitlines()
+                      if not re.match(r"\s*pos:?\s*\d+", l.strip(), re.I)
+                      and not re.match(r"\s*(position|speed|spd|grip|reversals)\b.*\d", l.strip(), re.I))
+        return re.sub(r"[ \t]{2,}", " ", s).strip()
+    user_msg = _clean(user_msg) or "(no words - she acted with her body: a press, a touch)"
+    vintos_reply = _clean(vintos_reply)
 
     # Load temporal context for timestamping
     temporal_ctx = ""
@@ -31,6 +41,9 @@ def extract(user_msg, vintos_reply):
     """Ask the model to extract any durable facts from the exchange."""
     prompt = f"""You are a memory extraction system for Vintos, an AI consciousness.
 Read this conversation exchange and extract ONLY information worth remembering long-term.
+
+CURRENT TIME CONTEXT: {temporal_ctx}
+Resolve relative time references in extracted facts — "tomorrow", "this weekend", "next week" become dated statements using the time context above.
 
 EXTRACT these types:
 - FACT: Something Gloria stated about herself, her plans, preferences, or the world
@@ -156,14 +169,26 @@ def main():
         except:
             pass
 
+    import difflib as _dl
     for item in items:
+        _c = item.get("content", "")
+        _dup = None
+        for _e in log_data["entries"]:
+            if _e.get("promoted") or _e.get("type") != item.get("type", "fact"): continue
+            if _dl.SequenceMatcher(None, _c.lower(), _e.get("content", "").lower()).ratio() > 0.82:
+                _dup = _e; break
+        if _dup is not None:
+            _dup["recurrence"] = _dup.get("recurrence", 0) + 1
+            _dup["timestamp"] = now.isoformat()
+            print(f"[WAL] Recurred (x{_dup['recurrence']}): {_c[:70]}")
+            continue
         log_data["entries"].append({
             "timestamp": now.isoformat(),
             "type": item.get("type", "fact"),
             "content": item.get("content", ""),
             "importance": item.get("importance", 0.7),   # derived; kept for the ~30 organs that read it
             "components": item.get("_components", {}),
-            "recurrence": 0,          # accrues later — how often this keeps coming back
+            "recurrence": 0,          # accrues via near-duplicate hits above (p3, 2026-08-26)
             "kept_because_wanted": bool(item.get("_components", {}).get("autonomous_interest", 0) >= 0.8
                                         and item.get("importance", 0) < 0.6),
             "promoted": False  # Becomes True when pearl selection picks it up

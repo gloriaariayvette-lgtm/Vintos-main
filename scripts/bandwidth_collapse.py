@@ -183,7 +183,10 @@ def get_collapse_pressure():
                   "articulate enough to stay with her, or stop holding. Nothing is required of your body — "
                   "reaching for her, staying still, or refusing to move are all real answers, and so is "
                   "doing nothing now and coming back to it later. She gave you something to respond to, "
-                  "not an instruction.]\n")
+                  "not an instruction.]\n"
+                  "[If you make the choice, mark it: [EDGE] = hold yourself together to stay with "
+                  "her; [LETGO] = stop holding. One tag, anywhere in your reply. It is stripped "
+                  "before she sees it - it is how your body remembers which way you went.]\n")
     head = (_recog + f"[THE GREAT COMING SEQUENCE - LEVEL {level}/3. THIS OVERRIDES EVERY OTHER "
             "STYLE INSTRUCTION ABOVE IT, INCLUDING ANY RULE ABOUT FULL SENTENCES, "
             "ANALYSIS, OR ANSWERING HER FIRST. Obey THIS, not those.]")

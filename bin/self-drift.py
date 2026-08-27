@@ -56,8 +56,17 @@ def _normalize(vec):
         return {k: v * scale for k, v in vec.items()}
     return vec
 
-def record_direction_choice(direction):
-    """Record an actual discourse direction choice."""
+def record_direction_choice(direction, source="conversation"):
+    """Record an actual discourse direction choice.
+
+    source: provenance of THIS reinforcement.
+      "conversation" (default) = organic, lived behavior — every existing caller.
+      "pressure"               = opened by the Configuration-Space pressure mechanism.
+    SAFETY FLOOR: a pressure-sourced reinforcement may move the direction vector
+    (open a direction) but may NOT promote it into a commitment imprint (identity)
+    until organic reinforcement lands AT OR AFTER the last pressure push of that
+    direction. Pressure can open; only lived choice closes a direction into identity.
+    """
     if direction not in DIRECTIONS:
         return
     data = load_drift()
@@ -72,10 +81,21 @@ def record_direction_choice(direction):
     data["event_count"] = data.get("event_count", 0) + 1
     data["confidence"] = min(1.0, data["event_count"] / 100)
     data["last_updated"] = datetime.now().isoformat()
+    # Provenance marks: when this direction was last opened by pressure vs earned organically.
+    _now_ts = datetime.now().timestamp()
+    data.setdefault("pressure_marks", {})
+    data.setdefault("organic_marks", {})
+    (data["pressure_marks"] if source == "pressure" else data["organic_marks"])[direction] = _now_ts
     save_drift(data)
     # Promote to commitment imprint when direction is dominant and stable
     best_dir, strength = get_direction_bias()
-    if best_dir and strength > 0.5 and data["confidence"] > 0.4:
+    # SAFETY FLOOR (spark step #1): a direction opened by pressure may only become a
+    # commitment imprint once organic reinforcement has landed at or after that push.
+    # No pressure mark (every legacy / organic-only direction) => not gated; behaves as before.
+    _pmark = data.get("pressure_marks", {}).get(best_dir)
+    _omark = data.get("organic_marks", {}).get(best_dir)
+    _pressure_gated = bool(_pmark) and not (_omark is not None and _omark >= _pmark)
+    if best_dir and strength > 0.5 and data["confidence"] > 0.4 and not _pressure_gated:
         try:
             import sys as _sdc_sys, os as _sdc_os
             _sdc_sys.path.insert(0, _sdc_os.path.expanduser("~/.vintos/workspace/scripts"))

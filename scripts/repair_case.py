@@ -37,9 +37,10 @@ USAGE
 import os, sys, json, uuid, subprocess
 from datetime import datetime, timezone
 
-WORKSPACE = os.environ.get("SPARK_WORKSPACE", "")
-if not WORKSPACE:
-    WORKSPACE = os.path.expanduser("~/.vintos/workspace")
+# A module belongs to the tree it lives in. A hardcoded default meant the other
+# being's process, importing this without SPARK_WORKSPACE set, wrote her records
+# into his files. The env var still wins when something points deliberately.
+WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 CASES = os.path.join(MEMORY, "repair-cases.json")
