@@ -86,14 +86,22 @@ def main():
         except Exception as e:
             errors.append("ordinary/%s: %s" % (surface, e))
 
+    touch_results = []
+
     def touching(surface, i):
         try:
             with TC.turn_scope("canary %s touch %d" % (mark, i), surface) as t:
                 with tlock:
                     turn_ids.append(t.turn_id)
                 import toy_link
-                toy_link.parse_and_send("[TOUCH: mission %d 0] words" % random.randint(4, 14),
-                                        context=t.context)
+                r = toy_link.parse_and_send("[TOUCH: mission %d 0] words" % random.randint(4, 14),
+                                            context=t.context)
+                with tlock:
+                    # parse_and_send SAYS what happened to each tag. The first
+                    # canary threw this away and then tried to reconstruct it
+                    # from the log — and when the log showed nothing, all it
+                    # could report was "vanished". Keep the primary evidence.
+                    touch_results.append((t.turn_id, surface, r))
         except Exception as e:
             errors.append("touch/%s: %s" % (surface, e))
 
@@ -150,6 +158,16 @@ def main():
     #                       hardware-button file says stopped, so the tags were
     #                       never offered. Correct behaviour, but the gate went
     #                       unexercised: reported, not passed silently.
+    from collections import Counter
+    outcomes = Counter()
+    for _tid, _surf, r in touch_results:
+        if not r:
+            outcomes["empty (returned before the gate)"] += 1
+        for item in (r or []):
+            outcomes[str(item[2] if len(item) > 2 else item)[:40]] += 1
+    print("        touch outcomes: %s" % (dict(outcomes) or "NO RESULTS COLLECTED"))
+    decisions = Counter(r.get("decision", "?") for r in rows)
+    print("        gate rows for canary turns: %s" % (dict(decisions) or "none"))
     if sim:
         check("the touches were SIMULATED, not swallowed (%d would_send)" % len(sim), True)
     elif denied:
@@ -165,9 +183,15 @@ def main():
             check("touches skipped BEFORE the gate: the stop button is down. "
                   "Correct — but the gate went unexercised. Lift the button "
                   "and rerun for the full proof", True)
+        elif any("refused" in k or "would_send" in k for k in outcomes):
+            # parse_and_send DID consult the gate and was refused, but no row
+            # with our turn_id reached the log — the decision happened and the
+            # record of it is missing. That is a logging seam, named as such.
+            check("gate decisions were made but never logged against the turn",
+                  False, dict(outcomes))
         else:
             check("the touches were SIMULATED, not swallowed", False,
-                  "no gate rows and no stop button — the tags vanished")
+                  "outcomes: %s — the tags vanished before the gate" % (dict(outcomes) or "none"))
 
     print("\n--- no thread lost, no turn reused ---")
     check("no thread raised", not errors, errors[:3])
