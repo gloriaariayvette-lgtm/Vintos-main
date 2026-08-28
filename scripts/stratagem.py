@@ -121,9 +121,14 @@ if __name__ == "__main__":
     import sys
     a = sys.argv[1:]
     if not a or a[0] == "status":
+        # distinguish these: an empty worktable and a dead broker are not the
+        # same fact, and one string for both cost us a confused restart.
+        alive = _post("/worktable_id") is not None
         pid = _worktable_id()
-        if not pid:
-            print("worktable: empty (broker unreachable or no active project)")
+        if not alive:
+            print("broker: UNREACHABLE at " + BROKER)
+        elif not pid:
+            print("broker: up | worktable: empty (no project on the table)")
         else:
             print("worktable:", pid)
             print("stratagem:", json.dumps(_post("/stratagem/state", {"id": pid}) or {}, indent=2))
