@@ -283,6 +283,47 @@ def writer_env(turn):
         return env
 
 
+def mark_effects_from_gate(turn):
+    """Derive the effects axis from what the gate and transports RECORDED,
+    never from the reply text. 'completed if reply else none' called every
+    nonempty reply a completed effect even when the send failed or nothing was
+    ever attempted (Sol's overclaim finding)."""
+    if turn is None:
+        return None
+    try:
+        import effect_gate as _eg
+        state, why = _eg.effects_axis(turn.turn_id)
+    except Exception as e:
+        state, why = "unknown", str(e)[:60]
+    return mark_lifecycle(turn, "effects", state, why)
+
+
+def note_writer(turn, ok):
+    """Count one post-writer launch, honestly."""
+    if turn is None:
+        return
+    d = getattr(turn, "_writers", None)
+    if d is None:
+        d = turn._writers = {"ok": 0, "fail": 0}
+    d["ok" if ok else "fail"] += 1
+
+
+def mark_post_writers(turn):
+    """dispatched only if every launch succeeded; failed if any did not;
+    none if nothing was launched at all. 'dispatched' unconditionally claimed
+    writers that were skipped or whose launch raised."""
+    if turn is None:
+        return None
+    d = getattr(turn, "_writers", None) or {"ok": 0, "fail": 0}
+    if d["fail"]:
+        state, why = "failed", "%d launch(es) failed" % d["fail"]
+    elif d["ok"]:
+        state, why = "dispatched", "%d launched" % d["ok"]
+    else:
+        state, why = "unknown", "no writers recorded"
+    return mark_lifecycle(turn, "post_writers", state, why)
+
+
 def mark_lifecycle(turn, axis, state, reason_class=""):
     """Record one independent lifecycle fact. Never synthesizes another axis."""
     if turn is None or axis not in turn.lifecycle:

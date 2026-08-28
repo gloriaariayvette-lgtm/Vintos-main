@@ -8145,7 +8145,11 @@ Your current self-model (excerpt):
                     _av_spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
                     if os.path.exists(_av_spp_script):
                         _av_spp.Popen([_av_spp_venv, _av_spp_script, "predict"], stdout=open("/tmp/self-predict.log", "a"), stderr=open("/tmp/self-predict.log", "a"), env=_prov_writer_env)
-                except Exception as _av_spp_e: print("[avatar self-predict]", _av_spp_e, flush=True)
+                        _tc.note_writer(_turn, True)
+                except Exception as _av_spp_e:
+                    print("[avatar self-predict]", _av_spp_e, flush=True)
+                    try: _tc.note_writer(_turn, False)
+                    except Exception: pass
                 try:
                     if _test_mode_active():
                         print("[avatar WAL] test mode active - skipping", flush=True)
@@ -8154,7 +8158,10 @@ Your current self-model (excerpt):
                         _av_wal_script = os.path.join(WORKSPACE, "scripts", "wal-extract.py")
                         if os.path.exists(_av_wal_script):
                             _av_wal.Popen(["python3", _av_wal_script, msg.message[:1000], reply[:1000]], stdout=open("/tmp/wal-extract.log", "a"), stderr=open("/tmp/wal-extract.log", "a"), env=_prov_writer_env)
-                except Exception: pass
+                            _tc.note_writer(_turn, True)
+                except Exception:
+                    try: _tc.note_writer(_turn, False)
+                    except Exception: pass
                 try:
                     if _test_mode_active():
                         print("[avatar ledger] test mode active - skipping", flush=True)
@@ -8163,7 +8170,10 @@ Your current self-model (excerpt):
                         _av_led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
                         if os.path.exists(_av_led_script):
                             _av_led.Popen(["python3", _av_led_script, msg.message, reply], stdout=open("/tmp/interaction-ledger.log", "a"), stderr=open("/tmp/interaction-ledger.log", "a"), env=_prov_writer_env)
-                except Exception: pass
+                            _tc.note_writer(_turn, True)
+                except Exception:
+                    try: _tc.note_writer(_turn, False)
+                    except Exception: pass
                 try:
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am
                     try:
@@ -8192,11 +8202,17 @@ Your current self-model (excerpt):
                 _imp_sp2.Popen(["python3", _imp_script, "capture", msg.message[:300], reply[:300]],
                     stdout=open("/tmp/imprint.log", "a"), stderr=open("/tmp/imprint.log", "a"),
                     env=_prov_writer_env)
+                try: _tc.note_writer(_turn, True)
+                except Exception: pass
         except Exception as _ime:
             print("[avatar imprint]", _ime, flush=True)
+            try: _tc.note_writer(_turn, False)
+            except Exception: pass
         try:
             if _turn is not None and _tc is not None:
-                _tc.mark_lifecycle(_turn, "post_writers", "dispatched")
+                # dispatched only if every launch succeeded, failed if any did
+                # not, unknown if nothing was recorded — never a blanket claim.
+                _tc.mark_post_writers(_turn)
         except Exception: pass
         # the wall, if it is on and he wants it - never blocks the reply
         try:
@@ -8251,7 +8267,10 @@ Your current self-model (excerpt):
         try:
             if _turn is not None and _tc is not None:
                 _turn.stage = "effects_completed"
-                _tc.mark_lifecycle(_turn, "effects", "completed" if reply else "none")
+                # From the gate log, never the reply text: "completed if reply"
+                # called every nonempty reply a completed effect even when the
+                # send failed or nothing was attempted (Sol's overclaim).
+                _tc.mark_effects_from_gate(_turn)
         except Exception: pass
         try:
             import re as _puj, sys as _pus

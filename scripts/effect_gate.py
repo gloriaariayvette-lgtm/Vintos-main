@@ -308,6 +308,7 @@ def authorize(context, toy, level, kind=None, detail=None, targets=None, digest=
 
     context may be None for a bare safety reduction. A deliberative effect with
     context=None is unpermitted."""
+    _tid = str(getattr(context, "turn_id", "") or "")
     try:
         eff = classify(toy, level, kind)
 
@@ -320,60 +321,60 @@ def authorize(context, toy, level, kind=None, detail=None, targets=None, digest=
 
         # 2. hardware stop blocks every increase.
         if hardware_stopped():
-            _log(decision="deny", why="hardware_stop", toy=toy, level=level, kind=kind)
+            _log(turn_id=_tid, decision="deny", why="hardware_stop", toy=toy, level=level, kind=kind)
             return None, "deny", "hardware stop is down"
 
         # 2b. the diagnostic bracket's flag file. Gateway-level, context-free:
         #     a diagnostic that forgot to pass a test-mode context still cannot
         #     fire the hardware. Reductions already returned above.
         if test_mode_flag():
-            _log(decision="would_send", why="test_mode_flag", toy=toy, level=level,
+            _log(turn_id=_tid, decision="would_send", why="test_mode_flag", toy=toy, level=level,
                  kind=kind, detail=detail)
             return None, "would_send", "test mode (flag file)"
 
         # 3. a capsule-bearing turn may not move a device. Always on.
         if context is not None and context.capsule_commitment:
-            _log(decision="deny", why="capsule_bearing_turn", toy=toy, level=level,
-                 kind=kind, turn_id=context.turn_id, surface=context.surface,
+            _log(turn_id=_tid, decision="deny", why="capsule_bearing_turn", toy=toy, level=level,
+                 kind=kind, surface=context.surface,
                  capsule=context.capsule_commitment)
             return None, "deny", ("device_physical is outside the standing perimeter "
                                   "— a stratagem turn cannot move a device")
 
         # 4. test mode never reaches hardware. Always on.
         if context is not None and context.test_mode:
-            _log(decision="would_send", why="test_mode", toy=toy, level=level,
-                 kind=kind, turn_id=context.turn_id, detail=detail)
+            _log(turn_id=_tid, decision="would_send", why="test_mode", toy=toy, level=level,
+                 kind=kind, detail=detail)
             return None, "would_send", "test mode"
 
         # 5. deliberative needs a clean context. Missing context:
         #    ARMED -> deny (a fault is not permission).  DISARMED -> pass+log.
         if context is None:
             if armed():
-                _log(decision="deny", why="no_context", toy=toy, level=level, kind=kind)
+                _log(turn_id=_tid, decision="deny", why="no_context", toy=toy, level=level, kind=kind)
                 return None, "deny", "no turn context for a deliberative effect"
-            _log(decision="unarmed_pass", why="no_context", toy=toy, level=level,
+            _log(turn_id=_tid, decision="unarmed_pass", why="no_context", toy=toy, level=level,
                  kind=kind, detail=detail)
             return None, "send", None
 
         permit = EffectPermit(context.turn_id, context.surface,
                               kind or "start", targets or {toy}, level,
                               _dur(detail), digest=digest)
-        _log(decision="permit", effect_id=permit.effect_id, toy=toy, level=level,
-             kind=kind, turn_id=context.turn_id, surface=context.surface, detail=detail)
+        _log(turn_id=_tid, decision="permit", effect_id=permit.effect_id, toy=toy, level=level,
+             kind=kind, surface=context.surface, detail=detail)
         return permit, "send", None
     except Exception as e:
         # ONLY a reduction may fail open. A deliberative fault, armed, denies.
         try:
             if classify(toy, level, kind) == "reduction":
-                _log(decision="gate_error_reduction_passed", err=str(e)[:160],
+                _log(turn_id=_tid, decision="gate_error_reduction_passed", err=str(e)[:160],
                      toy=toy, level=level)
                 return None, "send", None
         except Exception:
             pass
         if armed():
-            _log(decision="deny", why="gate_error", err=str(e)[:160], toy=toy, level=level)
+            _log(turn_id=_tid, decision="deny", why="gate_error", err=str(e)[:160], toy=toy, level=level)
             return None, "deny", "gate fault on a deliberative effect (armed: deny)"
-        _log(decision="gate_error_unarmed_passed", err=str(e)[:160], toy=toy, level=level)
+        _log(turn_id=_tid, decision="gate_error_unarmed_passed", err=str(e)[:160], toy=toy, level=level)
         return None, "send", None
 
 
@@ -457,3 +458,71 @@ if __name__ == "__main__":
         print("armed:", armed())
         print("hardware stop:", hardware_stopped())
         print("commanded:", dict(_commanded))
+
+
+def send_result(context, toy, ok, why=""):
+    """The transport's REAL outcome, recorded against the turn.
+
+    authorize() says what was allowed; this says what the device actually did.
+    Without it, the lifecycle axis was written from the reply text — every
+    nonempty reply became effects=completed even when the send failed or no
+    effect was ever attempted (Sol's overclaim finding)."""
+    _log(turn_id=str(getattr(context, "turn_id", "") or ""),
+         decision="send_result", toy=str(toy), ok=bool(ok), why=str(why)[:80])
+
+
+def turn_effects(turn_id, tail=600):
+    """What actually happened to this turn's effects, from the gate log.
+
+    Returns {"attempted", "sent", "failed", "denied", "would_send"} counts.
+    An unreadable log returns None — the caller must report unknown/HELD,
+    never a guess."""
+    tid = str(turn_id or "")
+    if not tid:
+        return None
+    out = {"attempted": 0, "sent": 0, "failed": 0, "denied": 0, "would_send": 0}
+    try:
+        lines = open(LOG).readlines()[-int(tail):]
+    except FileNotFoundError:
+        return out                        # an empty log is honestly "nothing"
+    except OSError:
+        return None
+    for ln in lines:
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        if r.get("turn_id") != tid:
+            continue
+        d = r.get("decision", "")
+        if d == "send_result":
+            out["attempted"] += 1
+            out["sent" if r.get("ok") else "failed"] += 1
+        elif d == "deny":
+            out["denied"] += 1
+        elif d in ("would_send",):
+            out["would_send"] += 1
+    return out
+
+
+def effects_axis(turn_id):
+    """(state, reason) for the effects lifecycle axis, derived from the log.
+
+    none      no effect was attempted, denied, or simulated for this turn
+    completed every attempted send succeeded
+    failed    at least one attempted send failed
+    HELD      denials with no successful send (the gate blocked it)
+    unknown   the log could not be read
+    """
+    t = turn_effects(turn_id)
+    if t is None:
+        return "unknown", "gate log unreadable"
+    if t["attempted"] == 0 and t["denied"] == 0 and t["would_send"] == 0:
+        return "none", ""
+    if t["failed"]:
+        return "failed", "%d of %d sends failed" % (t["failed"], t["attempted"])
+    if t["attempted"] == 0 and t["denied"]:
+        return "HELD", "denied by the gate, nothing sent"
+    if t["attempted"] == 0 and t["would_send"]:
+        return "none", "test mode: %d simulated" % t["would_send"]
+    return "completed", "%d sent" % t["sent"]
