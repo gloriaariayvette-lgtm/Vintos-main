@@ -45,7 +45,16 @@ import os, sys, uuid, json
 from datetime import datetime
 from contextlib import contextmanager
 
-sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+# APPEND, never insert(0). This inserted the live scripts directory at the
+# FRONT of sys.path at import time — after a caller had deliberately put another
+# tree first. On his host that silently shadowed the checkout, so the deploy
+# gate was running the suites against the LIVE modules rather than the ones
+# being deployed: a genuine regression passed here and failed there, and worse,
+# could have passed there while the new code was never exercised at all.
+# Appending still finds these modules when nothing else provides them.
+_live = os.path.expanduser("~/.vintos/workspace/scripts")
+if _live not in sys.path:
+    sys.path.append(_live)
 
 BROKER = "http://127.0.0.1:8611"
 SURFACES = {"chat", "avatar"}

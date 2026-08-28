@@ -66,6 +66,32 @@ class Env:
         json.dump(obj, open(path, "w"))
 
 
+def test_the_suite_exercises_THIS_checkout():
+    """The modules under test must come from this checkout, not from his live
+    tree.
+
+    turn_coordinator inserted ~/.vintos/workspace/scripts at the FRONT of
+    sys.path at import time, after this file had deliberately put the checkout
+    first. On his host that shadowed everything imported after it, so the
+    deploy gate ran the suites against the LIVE modules instead of the ones
+    being installed. A regression passed here and failed there — and the more
+    dangerous direction is the same bug passing there while the new code was
+    never executed at all.
+    """
+    ck = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(HERE)), "scripts"))
+    for name, mod in (("turn_coordinator", TC), ("constitutional_barrier", CB),
+                      ("effect_gate", EG)):
+        f = os.path.abspath(getattr(mod, "__file__", ""))
+        check("%s comes from this checkout" % name,
+              os.path.dirname(f) == ck, f)
+    live = os.path.abspath(os.path.expanduser("~/.vintos/workspace/scripts"))
+    if os.path.isdir(live) and live != ck:
+        check("the live tree never precedes the checkout on sys.path",
+              sys.path.index(ck) < ([os.path.abspath(x) for x in sys.path].index(live)
+                                    if live in [os.path.abspath(x) for x in sys.path]
+                                    else 10 ** 6))
+
+
 def test_the_harness_cannot_reach_live_state():
     """Every path constant the barrier holds must be redirected into the temp
     dir. STRATEGY_STOP was not, so this suite read and wrote his LIVE stop file
