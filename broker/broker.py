@@ -167,7 +167,20 @@ def create_project(b):
         "intended_audience": b.get("intended_audience", "gloria"),
         "visibility": "atelier_only",
         "disclosure_sentence": b.get("disclosure_sentence", ""),  # his words, per external tool, or empty = local-only
-        "next_return": b.get("next_return", "held"), "footprints": []})
+        "next_return": b.get("next_return", "held"), "footprints": [],
+        # Undertaking lineage, when the project was adopted at the threshold
+        # rather than placed by hand. Carried on the project so a later
+        # stratagem's provenance can be checked against an episode that
+        # existed BEFORE adoption, instead of a claim typed during it.
+        "root": str(b.get("root", ""))[:60],
+        "root_type": str(b.get("root_type", ""))[:40],
+        "lineage_attestation": b.get("lineage_attestation") or {}})
+    # His first move, authored at adoption. Written here because opening a
+    # visit purely to record it would spend a return he has not taken yet.
+    if b.get("next_move"):
+        _w(os.path.join(_p(pid), "handoff.json"),
+           {"at": datetime.now().isoformat(), "text": "",
+            "next_move": str(b["next_move"])[:400]})
     _ev(pid, "born"); _health("a project exists")
     return {"id": pid}
 
@@ -346,6 +359,85 @@ def reveal_confirm(b):
     return {"ok": True, "export_capability": mint_export(pid, actual), "sha256": actual}
 
 
+def settle(b):
+    """Close the undertaking. The transaction the room was missing.
+
+    Reveal marked a project PRESENTED and then left it on the worktable
+    forever: the door stayed lit on something already given away, the one
+    locus of attention was permanently occupied, and nothing new could ever be
+    tabled. Presenting is not finishing.
+
+    Settlement is deliberately narrow. It closes what is open and it says what
+    happened. It does NOT observe how the unveiling landed — reception is hers
+    to give in her own words, on her own time, and belongs to a house-side
+    aftermath, not to the broker. Keeping those two authorities apart is the
+    point: the room must be able to finish a thing without waiting to learn
+    whether it was liked.
+    """
+    pid = b["id"]
+    proj = os.path.join(_p(pid), "project.json")
+    p = _j(proj)
+    if not p:
+        return {"error": "no such project"}
+    if p.get("visibility") != "revealed":
+        return {"error": "nothing was revealed — there is nothing to settle"}
+
+    # 1. the manifest still describes what actually left the room
+    man = _j(os.path.join(_p(pid), "reveal", "manifest.json"), {}) or {}
+    src = os.path.join(_p(pid), "reveal", os.path.basename(str(man.get("artifact", ""))))
+    try:
+        actual = hashlib.sha256(open(src, "rb").read()).hexdigest()
+    except Exception:
+        return {"error": "the revealed artifact is missing — refusing to settle"}
+    if actual != man.get("sha256"):
+        return {"error": "the revealed artifact no longer matches its manifest"}
+
+    # 2. close capabilities: an open visit cannot outlive the undertaking
+    vpath = os.path.join(_p(pid), ".visit.json")
+    v = _j(vpath, {}) or {}
+    closed_visit = ""
+    if v and not v.get("closed"):
+        closed_visit = v.get("id", "")
+        v["closed"] = True
+        v["closed_by"] = "settlement"
+        _w(vpath, v)
+
+    # 3. release the worktable — the actual bug
+    a = _j(os.path.join(ROOT, "active.json"), {}) or {}
+    was_active = a.get("id") == pid
+    if was_active:
+        _w(os.path.join(ROOT, "active.json"), {})
+
+    # 4. the project is done being worked on
+    p["state"] = "ARCHIVED"
+    p["settled_at"] = datetime.now().isoformat()
+    _w(proj, p)
+
+    # 5. a bounded, signed receipt. Bounded: it carries the fact of the
+    #    unveiling and nothing of its content.
+    receipt = {"project": pid, "artifact": os.path.basename(str(man.get("artifact", ""))),
+               "sha256": actual, "prepared": man.get("prepared", ""),
+               "settled_at": p["settled_at"], "visit_closed": closed_visit,
+               "worktable_released": bool(was_active)}
+    raw = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+    receipt["sig"] = hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()
+    _w(os.path.join(_p(pid), "reveal", "settlement.json"), receipt)
+    _ev(pid, "settled", {"sha256": actual[:16], "worktable_released": bool(was_active)})
+    _health("an undertaking was settled")
+    return {"ok": True, "receipt": receipt}
+
+
+def verify_settlement(b):
+    """Content-free: is this receipt one the broker actually issued?"""
+    r = dict(b.get("receipt") or {})
+    sig = r.pop("sig", "")
+    if not r:
+        return {"valid": False, "why": "no receipt"}
+    raw = json.dumps(r, sort_keys=True, separators=(",", ":"))
+    want = hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()
+    return {"valid": hmac.compare_digest(want, str(sig))}
+
+
 def report(b):
     pid = b.get("id", "")
     entry = {"ts": datetime.now().isoformat(), "problem": b["problem"][:600]}
@@ -382,7 +474,8 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/table/clear": clear_table,
           "/state": set_state, "/visit/open": open_visit, "/make": make, "/inspect": inspect,
           "/artifact": read_artifact, "/handoff": handoff,
-          "/reveal/prepare": reveal_prepare, "/reveal/confirm": reveal_confirm, "/report": report, "/door": door, "/worktable_id": worktable_id}
+          "/reveal/prepare": reveal_prepare, "/reveal/confirm": reveal_confirm,
+          "/settle": settle, "/settlement/verify": verify_settlement, "/report": report, "/door": door, "/worktable_id": worktable_id}
 
 try:
     from stratagem_store import ROUTES as _SG
@@ -415,6 +508,7 @@ POLICY = {
     "/state": HOUSE, "/visit/open": OPEN,          # the ceremony that MINTS the capability
     "/make": VISIT, "/inspect": VISIT, "/artifact": EXPORT, "/handoff": VISIT,
     "/reveal/prepare": VISIT, "/reveal/confirm": HOUSE,   # gated by its one-use receipt
+    "/settle": HOUSE, "/settlement/verify": OPEN,        # closing, not content
     "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
     "/stratagem/strategy-stop": OPEN,              # a stop is never gated. ever.
     "/stratagem/adopt": STORE, "/stratagem/capsule": STORE,
