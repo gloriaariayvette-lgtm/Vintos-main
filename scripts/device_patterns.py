@@ -19,7 +19,7 @@ def _mark(toy):
     try: json.dump(d, open(HIS, "w"))
     except Exception: pass
 def _c(x): return max(0, min(20, int(round(x))))
-def _run(toy, pattern, args, stop, dur):
+def _run(toy, pattern, args, stop, dur, permit=None):
     t0 = time.time()
     while not stop.is_set() and (dur is None or time.time()-t0 < dur):
         t = time.time()-t0
@@ -33,7 +33,7 @@ def _run(toy, pattern, args, stop, dur):
         elif pattern == "wave":
             lo,hi = (args+[3,15])[:2]; v = _c(lo+(hi-lo)*(0.5+0.5*math.sin(t*2*math.pi*0.12)))
         else: v = _c(args[0] if args else 10)
-        toy_link.send(toy, v); _mark(toy); _set_state(toy, intensity=v, pattern=pattern, set_by="him")
+        toy_link.send(toy, v, permit=permit); _mark(toy); _set_state(toy, intensity=v, pattern=pattern, set_by="him")
         time.sleep(0.35)
     if not stop.is_set():            # natural end -> settle to rest, don't leave it buzzing
         toy_link.send(toy, 0); _set_state(toy, intensity=0, pattern="still", set_by="him")
@@ -76,7 +76,7 @@ def _compose(names):
     return levels, (interval or 250)
 
 
-def play(toy, pattern, args=None, dur=None):
+def play(toy, pattern, args=None, dur=None, permit=None):
     args = args or []
     # Rotate is a second, scalar channel — not a waveform. [DO: ridge rotate mid|low|high|N]
     if str(pattern).lower() == "rotate":
@@ -86,7 +86,7 @@ def play(toy, pattern, args=None, dur=None):
         if _lv is None:
             try: _lv = max(0, min(20, int(float(_a))))
             except Exception: _lv = 12
-        _ok = toy_link.rotate(toy, _lv)
+        _ok = toy_link.rotate(toy, _lv, permit=permit)
         if _ok:
             _mark(toy)
             _set_state(toy, intensity=_lv, pattern="rotate", set_by="him")
@@ -110,10 +110,10 @@ def play(toy, pattern, args=None, dur=None):
             _ok = False
             for _t, _p in _saved.items():
                 if _t in toy_link.TOYS and _p:
-                    _ok = play(_t, _p, args) or _ok
+                    _ok = play(_t, _p, args, permit=permit) or _ok
             return _ok
         if toy in toy_link.TOYS and _saved.get(toy):
-            return play(toy, _saved[toy], args)
+            return play(toy, _saved[toy], args, permit=permit)
         return False
     _parts = pattern.split("+")
     if any(p in PRESETS for p in _parts):
@@ -129,14 +129,14 @@ def play(toy, pattern, args=None, dur=None):
                     _o = _threads.get(_t)
                     if _o: _o.set()
                 for _t in toy_link.TOYS:
-                    toy_link.send_pattern(_t, _lv, _iv, _secs)   # per-toy targeted; broadcast didn't drive Tenera dramatically
+                    toy_link.send_pattern(_t, _lv, _iv, _secs, permit=permit)   # per-toy targeted; broadcast didn't drive Tenera dramatically
                 for _t in toy_link.TOYS:
                     _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
                 return True
             if toy in toy_link.TOYS or toy == "thruster":
                 _o = _threads.get(toy)
                 if _o: _o.set()
-                toy_link.send_pattern(toy, _lv, _iv, _secs)
+                toy_link.send_pattern(toy, _lv, _iv, _secs, permit=permit)
                 _mark(toy); _set_state(toy, intensity=_peak, pattern=pattern, set_by="him")
                 return True
             return False
@@ -146,15 +146,33 @@ def play(toy, pattern, args=None, dur=None):
     if pattern == "still":
         toy_link.send(toy,0); _mark(toy); _set_state(toy,intensity=0,pattern="still",set_by="him"); return True
     if pattern == "steady":
-        lvl=_c(args[0] if args else 10); toy_link.send(toy,lvl); _mark(toy); _set_state(toy,intensity=lvl,pattern="steady",set_by="him"); return True
+        lvl=_c(args[0] if args else 10); toy_link.send(toy,lvl,permit=permit); _mark(toy); _set_state(toy,intensity=lvl,pattern="steady",set_by="him"); return True
     stop = threading.Event(); _threads[toy] = stop
-    threading.Thread(target=_run, args=(toy,pattern,args,stop,dur), daemon=True).start()
+    threading.Thread(target=_run, args=(toy,pattern,args,stop,dur,permit), daemon=True).start()
     return True
 _DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\w+)*)\s*\]", re.I)
 _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
-def fire_his_intent(reply_text):
+def _authorize(context, toy, level, kind):
+    """One [DO:] effect against the turn. Returns (proceed, permit). Behavior-
+    neutral while the gate is disarmed; when armed a capsule turn is denied and
+    the test-mode flag converts a fire to a no-op."""
+    try:
+        import effect_gate
+        permit, mode, why = effect_gate.authorize(context, toy, level, kind=kind,
+                                                  detail="[DO:]")
+        if mode == "deny":
+            print("[DO] %s refused: %s" % (toy, why), flush=True)
+            return False, None
+        if mode == "would_send":
+            return False, None
+        return True, permit
+    except Exception:
+        return True, None
+
+
+def fire_his_intent(reply_text, context=None):
     if not reply_text: return reply_text
     try:
         if json.load(open(os.path.join(MEM,"hardware-button.json"))).get("stopped"):
@@ -169,14 +187,21 @@ def fire_his_intent(reply_text):
         for _x in _raw_args:
             try: args.append(int(_x))
             except ValueError: args.append(_x)   # words like low/mid/high are valid for rotate
+        _lvl = next((a for a in args if isinstance(a, int)), 12)
+        _ok, _permit = _authorize(context, toy, _lvl, "pattern")
+        if not _ok:
+            continue
         if _fired: time.sleep(_GAP)   # let the previous rule settle on the server
-        try: play(toy, pat, args)
+        try: play(toy, pat, args, permit=_permit)
         except Exception: pass
         _fired.append(toy+" \u2192 "+pat+((" "+" ".join(str(a) for a in args)) if args else ""))
     for m in _TOUCH.finditer(reply_text):
         toy=m.group(1).lower(); lvl=int(m.group(2))
+        _ok, _permit = _authorize(context, toy, lvl, "start")
+        if not _ok:
+            continue
         if _fired: time.sleep(_GAP)
-        try: play(toy, "steady", [lvl])
+        try: play(toy, "steady", [lvl], permit=_permit)
         except Exception: pass
         _fired.append(toy+" \u2192 "+str(lvl))
     if _fired:

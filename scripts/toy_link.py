@@ -49,10 +49,13 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
     armed, an unpermitted deliberative effect is denied."""
     try:
         import effect_gate
-        # a valid permit issued for this exact effect is authority already granted
+        # a valid permit issued for this effect is authority already granted.
+        # A permit may cover a specific toy or a "both"/broadcast effect; its
+        # single-use consumption is owned by the parser that requested it, not
+        # by each transport call (one authorized effect can touch two toys).
         if permit is not None:
             try:
-                if permit.valid_now() and permit.target == toy and permit.consume():
+                if permit.valid_now() and permit.target in (toy, "both", None):
                     return True, "send"
             except Exception:
                 pass
@@ -185,8 +188,11 @@ if __name__ == "__main__":
         print("stop_all:", stop_all())
 
 import re as _tl_re
-def parse_and_send(reply_text):
-    """Fire [TOUCH: toy level seconds] tags from a reply. Respects the stop button. Device fires regardless of test-mode."""
+def parse_and_send(reply_text, context=None):
+    """Fire [TOUCH: toy level seconds] tags from a reply. Respects the stop
+    button. Each tag authorizes against the turn context: a capsule turn is
+    denied, and the test-mode flag turns a fire into a no-op — the tag no longer
+    fires 'regardless of test-mode'."""
     import os as _o, json as _j
     try:
         if _j.load(open(_o.path.expanduser("~/.vintos/workspace/memory/hardware-button.json"))).get("stopped"): return []
@@ -202,7 +208,18 @@ def parse_and_send(reply_text):
     for m in _tl_re.finditer(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+(\d+))?\s*\]", reply_text or "", _tl_re.I):
         toy = m.group(1).lower(); lvl = max(0, min(20, int(m.group(2)))); secs = int(m.group(3)) if m.group(3) else 0
         if toy in TOYS or toy == "thruster":
-            try: out.append((toy, lvl, send(toy, lvl, secs))); _fired[toy] = lvl
+            # authorize this tag against the turn, then send with the permit so
+            # the transport call is not re-gated without a context.
+            _permit = None
+            try:
+                import effect_gate
+                _permit, _mode, _why = effect_gate.authorize(context, toy, lvl,
+                                                            kind="start", detail="[TOUCH:]")
+                if _mode != "send":
+                    out.append((toy, lvl, "refused:%s" % _mode)); continue
+            except Exception:
+                pass
+            try: out.append((toy, lvl, send(toy, lvl, secs, context=context, permit=_permit))); _fired[toy] = lvl
             except Exception as e: out.append((toy, lvl, str(e)))
     if _fired:
         try:

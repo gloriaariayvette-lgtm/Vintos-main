@@ -7557,6 +7557,15 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     except Exception: pass
     _tvl_intercept = ""
     """Avatar overlay chat — full main-chat context, VR gesture control, no memory writes."""
+    # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
+    _turn = None
+    try:
+        import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import turn_coordinator as _tc
+        _turn = _tc.begin(str(getattr(msg, "message", "") or ""), "avatar")
+        globals()["_active_turn_context"] = _turn.context   # projector gate reads this
+    except Exception as _tc_e:
+        print("[coordinator]", _tc_e, flush=True)
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -7672,6 +7681,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                     from inner_context import missing_inner_block as _mib
                     _mi=_mib()
                     if _mi: _vt_subblock_a += chr(10)+chr(10)+_mi
+                except Exception: pass
+                try:
+                    if _turn is not None and _turn.capsule_block:
+                        _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
                 except Exception: pass
                 if _jf2: _vt_subblock_a += "\n\n" + _jf2
             except Exception: pass
@@ -8023,7 +8036,7 @@ Your current self-model (excerpt):
             try:
                 import sys as _dps2; _dps2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                 from device_patterns import fire_his_intent as _fhi
-                reply = _fhi(reply)   # fire his [DO: ...] on the hardware, strip it from shown text
+                reply = _fhi(reply, context=(_turn.context if _turn is not None else None))   # fire his [DO: ...], authorized against the turn
             except Exception as _fe: print("[DO fire]", _fe, flush=True)
             try:
                 from command_bubble import extract_and_post as _cb_post2
@@ -8046,9 +8059,15 @@ Your current self-model (excerpt):
                 try:
                     import sys as _tls2; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                     from toy_link import parse_and_send as _tl_ps
-                    _tl_ps(reply)
+                    _tl_ps(reply, context=(_turn.context if _turn is not None else None))
                 except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
+            # close the turn: dispose the capsule (if any) and clear the context
+            try:
+                if _turn is not None:
+                    _tc.finish(_turn, reply, outcome="effects_completed")
+                globals()["_active_turn_context"] = None
+            except Exception: pass
             # -- Ported systems run independently now, cannot be killed by emotional_operators failing --
             try:
 
