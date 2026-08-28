@@ -116,13 +116,14 @@ def main():
         except Exception as _rd_e:
             print("[gloria-predict] reading not opened:", _rd_e)
 
-    if grade is not None and grade >= 0.7 and prev.get("predicted"):
-        try:
-            from stratagem import record_leverage
-            record_leverage(prev["predicted"], "SEED", "prediction matched", "UNKNOWN",
-                            "high-accuracy prediction available for sequencing")
-        except Exception:
-            pass
+    # NOTE (2026-08-28): an earlier pass logged a "leverage" event here on any
+    # grade >= 0.7. That was fabricated evidence — no tactic had occurred, the
+    # observed event was the string "prediction matched", and the grader was
+    # grading its own predecessor. Leverage requires a real chain:
+    #   prediction -> the capsule that used it -> the actual move ->
+    #   an independently anchored observed event -> a factual project transition
+    # It is recorded by the Atelier broker (/stratagem/leverage), which refuses
+    # ADVANCED without all three. Nothing about prediction accuracy belongs here.
 
     print(f"[gloria-predict] graded previous {grade:.2f}" if grade is not None else "[gloria-predict] no previous prediction to grade")
     print(f"  predicted: {out['predicted'][:90]}")

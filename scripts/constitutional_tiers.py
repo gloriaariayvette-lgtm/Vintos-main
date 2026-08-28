@@ -39,6 +39,9 @@ TIERS = {
     "plan_mutual":            2,
     "reading":                2,
     "intent_lead":            2,   # his declared direction for the turn is live state, not advice
+    "stratagem_tactic":       2,   # an ADOPTED tactic is live state: never withheld, never optimized
+                                   # away while its lease holds. Tier 2 also makes it mechanically
+                                   # exempt from shadow trials (those admit tiers 3-4 only).
 
     # 3 — advisory offers: compete on distinct contribution.
     "interaction_model_hint": 3,   # Sol's own example of a future class-1 compilation
@@ -49,7 +52,9 @@ TIERS = {
     "behavioral_intercept":   3,
     "confidence_penalty":     3,
     "somatic_instrument":     3,   # somatic interpretation, per Sol's class-3 list
-    "stratagem":              3,   # sealed tactic capsule + recursive belief model + info sequencing
+    "stratagem_opportunity":  3,   # the Atelier affordance that a want may be carried
+                                   # strategically. An opportunity is advisory; the adopted
+                                   # tactic above is not.
 
     # 4 — expressive coloration: none declared yet. The class exists so the
     # first candidate has somewhere legal to go.

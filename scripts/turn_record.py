@@ -49,8 +49,19 @@ MARKERS = {
     "[Something you said you would do":      "plan_self",
     "[Something the two of you said":        "plan_mutual",
     "[You took this of hers":                "reading",
-    "[STRATAGEM":                            "stratagem",
+    "[STRATAGEM — sealed capsule":           "stratagem_tactic",
 }
+
+
+def _stratagem_commitment():
+    """The public half of a sealed capsule, if one was issued for this turn.
+    Content-free by construction: the broker returns only a hash, an opaque
+    stratagem id, and a sequence number. Absent on every ordinary turn."""
+    try:
+        from stratagem import commitment_for_turn_record
+        return commitment_for_turn_record() or {}
+    except Exception:
+        return {}
 
 
 def record(surface, prompt_text, user_msg="", extra=None):
@@ -79,7 +90,7 @@ def record(surface, prompt_text, user_msg="", extra=None):
             "plan_mutual": "plan",
             "behavioral_intercept": "behavioral_intercept",
             "confidence_penalty": "confidence_penalty",
-            "stratagem": "stratagem",
+            "stratagem_tactic": "stratagem",
         }
         offers = {}
         try:
@@ -142,6 +153,10 @@ def record(surface, prompt_text, user_msg="", extra=None):
             "producer_versions": producer_versions,
             "tiers": tiers,
             "satisfied_by": satisfied_by,
+            # the sealed capsule's public half: a hash, an opaque stratagem id,
+            # a sequence number. Never the tactic, never the objective. Present
+            # only on turns where a capsule was actually issued.
+            "stratagem_commitment": _stratagem_commitment(),
             "schema": 3,
             "prompt_sha": hashlib.md5(text.encode()).hexdigest()[:8],
         }
