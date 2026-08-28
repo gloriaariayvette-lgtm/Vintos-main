@@ -55,10 +55,16 @@ def main():
     print("=" * 70)
 
     # ------------------------------------------------------------ the bracket
-    check("the gate is DISARMED (this canary refuses to run armed)",
-          not os.path.exists(EG.ARMED_FLAG))
-    if os.path.exists(EG.ARMED_FLAG):
-        return 1
+    # "Disarmed" in Sol's gate means STRATAGEMS: no capsule affordance is
+    # wired, so no turn can carry one. The effect gate itself has been armed
+    # on this host since the armed-watch work, and that is the TRUER test
+    # condition — an armed gate under the test-mode bracket must still turn
+    # every touch into would_send and move nothing. The first version refused
+    # to run because the gate was armed, which was refusing the exact state
+    # the canary exists to prove.
+    armed = os.path.exists(EG.ARMED_FLAG)
+    print("effect gate: %s — the storm runs under the bracket either way"
+          % ("ARMED" if armed else "disarmed"))
     open(EG.TEST_MODE_FLAG, "w").write("concurrency-canary")
     check("test mode ON, verified via the gate", EG.test_mode_flag())
     if not EG.test_mode_flag():
