@@ -78,17 +78,27 @@ def record_stop_intent(raw_text, project=""):
     """
     rec = {"at": datetime.now().isoformat(), "verbatim": str(raw_text)[:300],
            "project": str(project)[:40], "acknowledged": False, "attempts": 0}
+    rec["persisted"] = False
     try:
+        os.makedirs(os.path.dirname(STRATEGY_STOP), exist_ok=True)
         with open(STRATEGY_STOP, "w") as f:
             json.dump(rec, f)
+        rec["persisted"] = True
     except OSError:
+        # Persistence is how the stop survives a restart. It is NOT a
+        # precondition for delivering it — a stop that could not be written to
+        # disk must still be sent, and must still close this turn.
         pass
     return rec
 
 
 def pending_stop():
     """The unacknowledged stop, if there is one. A corrupt record raises through
-    _j, which closes the barrier: an unreadable stop is not an absent stop."""
+    _j, which closes the barrier: an unreadable stop is not an absent stop.
+
+    Callers that are DELIVERING a stop must not let that raise abort them —
+    see turn_coordinator._deliver_stop, which treats an unreadable record as
+    'there is a stop and I do not know its state', never as 'no stop'."""
     r = _j(STRATEGY_STOP)
     if not isinstance(r, dict) or not r.get("at"):
         return None

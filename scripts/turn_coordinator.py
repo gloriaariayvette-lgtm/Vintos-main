@@ -391,14 +391,38 @@ def _strategy_stop(raw_text, cb=None):
     if cb is None:
         import constitutional_barrier as cb
     pid = _worktable_id()
-    cb.record_stop_intent(raw_text, pid)
-    return _deliver_stop(cb, raw_text, pid)
+    rec = cb.record_stop_intent(raw_text, pid)
+    if not rec.get("persisted"):
+        # It could not be written down. That is a durability problem, not a
+        # reason to withhold the stop: deliver it now regardless. This was a
+        # real defect — persistence failing made the stop silently never send.
+        _stop_note("could not persist the stop; delivering it anyway")
+    return _deliver_stop(cb, raw_text, pid, recorded=rec)
 
 
-def _deliver_stop(cb, raw_text="", pid=None, attempts=3):
+def _stop_note(msg):
+    try:
+        print("[strategy-stop] %s" % msg, flush=True)
+    except Exception:
+        pass
+
+
+def _deliver_stop(cb, raw_text="", pid=None, attempts=3, recorded=None):
     """Try to land the pending stop. Safe to call on any turn; acknowledges only
-    on a real broker confirmation."""
-    p = cb.pending_stop()
+    on a real broker confirmation.
+
+    ``recorded`` is the intent just written by _strategy_stop. It is used when
+    the on-disk record is unavailable or unreadable, so that a filesystem
+    problem can delay the acknowledgement but can never swallow the stop.
+    """
+    try:
+        p = cb.pending_stop()
+    except Exception:
+        # An unreadable record means there IS a stop whose state is unknown.
+        # Never read that as 'no stop'.
+        p = recorded or {"verbatim": str(raw_text)[:300], "project": pid or ""}
+    if not p:
+        p = recorded
     if not p:
         return True
     pid = pid if pid is not None else (p.get("project") or _worktable_id())

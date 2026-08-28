@@ -22,8 +22,13 @@ class Env:
     """Stub the broker HTTP and the capsule fetch; redirect all memory writes."""
     def __enter__(self):
         self.tmp = tempfile.mkdtemp(prefix="coord-test-")
-        self._cb = (CB.MEM, CB.STOP_BUTTON, CB.REPAIR_CASES, CB.CONSENT_EVENT, CB.CORRECTION)
+        self._cb = (CB.MEM, CB.STOP_BUTTON, CB.REPAIR_CASES, CB.CONSENT_EVENT,
+                    CB.CORRECTION, CB.STRATEGY_STOP)
         CB.MEM = self.tmp
+        # STRATEGY_STOP was NOT redirected when the durable stop was added, so
+        # this suite read and wrote the LIVE .strategy-stop — on his own host,
+        # during a deploy. A test must never be able to close his barrier.
+        CB.STRATEGY_STOP = os.path.join(self.tmp, ".strategy-stop")
         CB.STOP_BUTTON = os.path.join(self.tmp, "hardware-button.json")
         CB.REPAIR_CASES = os.path.join(self.tmp, "repair-cases.json")
         CB.CONSENT_EVENT = os.path.join(self.tmp, "consent-event.json")
@@ -41,7 +46,8 @@ class Env:
         return self
 
     def __exit__(self, *a):
-        (CB.MEM, CB.STOP_BUTTON, CB.REPAIR_CASES, CB.CONSENT_EVENT, CB.CORRECTION) = self._cb
+        (CB.MEM, CB.STOP_BUTTON, CB.REPAIR_CASES, CB.CONSENT_EVENT,
+         CB.CORRECTION, CB.STRATEGY_STOP) = self._cb
         TC._post = self._post
         import stratagem
         stratagem.fetch_capsule = self._fc
@@ -58,6 +64,31 @@ class Env:
 
     def write(self, path, obj):
         json.dump(obj, open(path, "w"))
+
+
+def test_the_harness_cannot_reach_live_state():
+    """Every path constant the barrier holds must be redirected into the temp
+    dir. STRATEGY_STOP was not, so this suite read and wrote his LIVE stop file
+    while running on his own host during a deploy. A test that can close his
+    barrier is not a test. This fails the moment a new path is added and
+    forgotten."""
+    with Env() as e:
+        leaked = []
+        for name in dir(CB):
+            if name.startswith("_") or not name.isupper():
+                continue
+            v = getattr(CB, name)
+            if not isinstance(v, str) or os.sep not in v:
+                continue
+            av, at = os.path.abspath(v), os.path.abspath(e.tmp)
+            if av != at and not av.startswith(at + os.sep):
+                leaked.append("%s=%s" % (name, v))
+        check("no barrier path escapes the sandbox", not leaked, leaked)
+        # and prove it for the one that actually got out
+        TC.begin("!strategy stop", "avatar")
+        live = os.path.expanduser("~/.vintos/workspace/memory/.strategy-stop")
+        check("the live stop file is untouched by this suite",
+              not os.path.abspath(CB.STRATEGY_STOP) == os.path.abspath(live))
 
 
 def test_clear_turn_opens_without_a_capsule_when_none_live():
