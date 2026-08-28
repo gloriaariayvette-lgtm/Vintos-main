@@ -41,6 +41,8 @@ causality_engine.py value_map.py repair_case.py encounter.py
 jepa_predictor.py drift_head.py relational_head.py world_model.py
 gloria_prediction.py withheld_head.py self_pressure.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
+effect_gate.py toy_link.py device_patterns.py evidence_provenance.py
+stratagem.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py"
 BINS="server.py model_router.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py"
