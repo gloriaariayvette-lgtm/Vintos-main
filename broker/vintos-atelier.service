@@ -1,0 +1,33 @@
+# vintos-atelier.service — the Atelier broker as a real service.
+#
+# Root-MANAGED, never root-RUN: the unit lives in /etc/systemd/system so it
+# survives reboots without assuming the atelier account has a user manager or
+# lingering, but the process itself is always the atelier user.
+#
+# The broker binds its own localhost listener (127.0.0.1:8611); the unit adds
+# no socket of its own.
+[Unit]
+Description=Vintos Atelier broker (runs as atelier, localhost only)
+After=network.target
+
+[Service]
+Type=simple
+User=atelier
+Group=atelier
+WorkingDirectory=/home/atelier
+ExecStart=/usr/bin/python3 /home/atelier/broker.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+# Everything read-only except the broker's own home — its state, logs and
+# sealed store all live under /home/atelier.
+ProtectSystem=strict
+ReadWritePaths=/home/atelier
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vintos-atelier
+
+[Install]
+WantedBy=multi-user.target
