@@ -52,6 +52,25 @@ MODEL = "google/gemma-4-12b-qat"
 OPEN_STATES = ("received", "attempted")
 
 
+
+def _door(path, kind="history"):
+    """Guarded evidence goes through evidence_view, never raw json.load: the
+    envelope on the record is what stops a tactical act becoming a value, a
+    cause, a want or an identity line one cron later."""
+    import os as _os
+    try:
+        import evidence_view as _EV
+        if _os.path.basename(str(path)) == "interaction-ledger.json":
+            return _EV.ledger_view(path)
+        return _EV.open_history(path)
+    except Exception:
+        import json as _json
+        try:
+            return _json.load(open(path))
+        except Exception:
+            return []
+
+
 def log(m):
     print("[repair] %s" % m, flush=True)
 
@@ -197,7 +216,7 @@ def record_affect_shift(case_id, dims, source=""):
 
 def _chat():
     try:
-        h = json.load(open(CHAT))
+        h = _door(CHAT)
         return h if isinstance(h, list) else h.get("messages", [])
     except Exception:
         return []

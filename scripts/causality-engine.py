@@ -43,6 +43,25 @@ except ImportError:
 
 # Load identity
 SOUL_PATH = os.path.join(WORKSPACE, "SOUL.md")
+
+def _door(path):
+    """Guarded evidence goes through evidence_view, never raw json.load: the
+    envelope on the record is what stops a tactical act becoming a value, a
+    cause, a want or an identity line one cron later."""
+    import os as _os
+    try:
+        import evidence_view as _EV
+        if _os.path.basename(str(path)) == "interaction-ledger.json":
+            return _EV.ledger_view(path)
+        return _EV.open_history(path)
+    except Exception:
+        import json as _json
+        try:
+            return _json.load(open(path))
+        except Exception:
+            return []
+
+
 def load_soul():
     try:
         with open(SOUL_PATH) as f:
@@ -211,7 +230,7 @@ def load_recent_conversations():
     # Interaction ledger
     try:
         import json as _cej
-        ledger = _cej.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
         recent = ledger[-10:] if len(ledger) >= 10 else ledger
         ledger_text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in recent)
         if ledger_text:
@@ -417,7 +436,7 @@ def load_daily_material(date=None):
     except: parts["creative"] = ""
 
     try:
-        ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
         # Filter to today's entries by timestamp prefix
         today_entries = [e for e in ledger if e.get("timestamp", "").startswith(target)]
         if not today_entries:
@@ -714,7 +733,7 @@ def load_testing_context():
     # Interaction ledger — today only
     ctx["interactions"] = ""
     try:
-        ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
         today_entries = [e for e in ledger if e.get("timestamp","").startswith(today)]
         ctx["interactions"] = "\n".join(
             f"[{e.get('timestamp','')[11:16]}] Gloria: {e.get('gloria','')[:120]} | Vintos: {e.get('vintos','')[:120]}"

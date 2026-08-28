@@ -37,6 +37,25 @@ def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
+
+def _ev_load(path, default=None, _o=load):
+    """Learning organ. Guarded evidence is read through evidence_view, never
+    raw: the envelope on the record is what keeps a tactical act from becoming
+    a value, a cause, a want or an identity line one cron later, and reopening
+    the file with json.load walks straight past it."""
+    try:
+        import evidence_view as _EV
+        if _EV.is_guarded(path):
+            if os.path.basename(str(path)) == "interaction-ledger.json":
+                return _EV.ledger_view(path)
+            return _EV.open_history(path)
+    except Exception:
+        pass
+    return _o(path, default)
+
+
+load = _ev_load
+
 def _grok_cfg():
     try:
         import importlib.util
