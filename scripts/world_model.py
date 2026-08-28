@@ -52,6 +52,14 @@ def _recent():
                          for e in led[-4:] if isinstance(e, dict))
     return ""
 
+def _house_ground():
+    """The real layout of her house, when a map exists. Fail-open: no map (Velaris) -> ''."""
+    try:
+        import house_map
+        return house_map.ground_block()
+    except Exception:
+        return ""
+
 def _extract(convo):
     import requests
     system = ("You track the SCENE two people share, not just their words. From the recent exchange, return ONLY "
@@ -59,6 +67,9 @@ def _extract(convo):
               '"objects":["<a thing/prop present in the scene>"],"attention":"<what attention rests on now, short>"}. '
               "Only name a scene or objects if the exchange truly implies a shared space or props (real or imagined "
               "together). If it is purely abstract talk, return empty string and empty list. Be concrete, not flowery.")
+    hg = _house_ground()
+    if hg:
+        system += " " + hg
     try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 180,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": convo[:1400]}]}, timeout=90)
