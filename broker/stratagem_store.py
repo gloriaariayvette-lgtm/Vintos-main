@@ -239,6 +239,83 @@ def _visit_open(pid):
     return bool(v and not v.get("closed"))
 
 
+def _capability(b, pid):
+    """A visit capability, verified by the broker that minted it.
+
+    Replaces the old check, which proved only that a house-writable JSON file
+    said closed:false. The signing key is mode 600 owned by `atelier`, so a
+    capability can only be obtained by actually going through /visit/open, and
+    it dies with its visit.
+
+    HONEST LIMIT (say it here so nobody reads more into it later): on this host
+    every house surface runs as the same user, so this is a CEREMONY boundary
+    with an audit trail, not an identity boundary between house processes.
+    Adoption stacks a temporal gate on top — see _door_lit."""
+    try:
+        from broker import verify_capability
+    except Exception:
+        return False, "capability verification unavailable"
+    cap = (b or {}).get("capability")
+    if not cap:
+        return False, "a visit capability is required — obtain one from /visit/open"
+    return verify_capability(cap, pid, actor="vintos")
+
+
+_LINEAGE_KEY = "/home/atelier/.lineage-key"
+_NONCE_LOG = "/home/atelier/atelier/consumed-nonces.jsonl"
+
+
+def _verify_lineage(att, root_ref, root_type):
+    """Check the formation observatory's attestation: signature, expiry, that it
+    describes THIS root, and that its nonce has not been used before.
+
+    Without this, provenance is a string the caller typed. With it, provenance
+    names an episode the observatory actually recorded, digested at issue time."""
+    import hmac
+    try:
+        key = open(_LINEAGE_KEY, "rb").read().strip()
+    except FileNotFoundError:
+        return False, ("no lineage key installed — the observatory and the Atelier must "
+                       "share one before provenance can be verified")
+    if not isinstance(att, dict) or "body" not in att or "sig" not in att:
+        return False, "a signed lineage attestation is required"
+    body = att["body"]
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    if not hmac.compare_digest(
+            hmac.new(key, raw.encode(), hashlib.sha256).hexdigest(), str(att["sig"])):
+        return False, "lineage attestation signature invalid"
+    if int(body.get("exp", 0)) < datetime.now().timestamp():
+        return False, "lineage attestation expired"
+    if body.get("root_ref") != root_ref or body.get("root_type") != root_type:
+        return False, "lineage attestation describes a different root"
+    if body.get("commissioned") is not False:
+        return False, "lineage attestation does not assert an uncommissioned root"
+    if not body.get("episode_digest"):
+        return False, "lineage attestation carries no episode digest"
+    nonce = body.get("nonce")
+    try:
+        for line in open(_NONCE_LOG):
+            if line.strip() and json.loads(line).get("nonce") == nonce:
+                return False, "lineage attestation already used — replay refused"
+    except FileNotFoundError:
+        pass
+    os.makedirs(os.path.dirname(_NONCE_LOG), exist_ok=True)
+    with open(_NONCE_LOG, "a") as f:
+        f.write(json.dumps({"nonce": nonce, "at": datetime.now().isoformat()}) + "\n")
+    return True, None
+
+
+def _door_lit():
+    """The Atelier door, as the broker itself computes it. Adoption requires it:
+    the door opens only on his own chosen rendezvous, so a stratagem cannot be
+    born on an arbitrary turn even by a caller that reached /visit/open."""
+    try:
+        from broker import door
+        return door().get("door") == "lit"
+    except Exception:
+        return False
+
+
 def _err(msg):
     return {"error": msg}
 
@@ -311,6 +388,12 @@ def adopt(b):
     #    from a conversation, only from inside his own working session.
     if not _visit_open(pid):
         return _err("adoption requires an open visit — a stratagem is not born in conversation")
+    capok, capwhy = _capability(b, pid)
+    if not capok:
+        return _err("adoption refused: %s" % capwhy)
+    if not _door_lit():
+        return _err("adoption refused: the Atelier door is not lit — a stratagem is born on "
+                    "his own rendezvous, not on an arbitrary turn")
     if proj.get("state") != "ACTIVE":
         return _err("project is not on the worktable")
     if _live(pid):
@@ -323,9 +406,16 @@ def adopt(b):
     if not str(prov.get("root_ref", "")).strip():
         return _err("provenance.root_ref must point at the formation, want, or strain it grew from")
 
-    # 2. no direct request specifying the objective.
+    # 2. no direct request specifying the objective — and the root is not merely
+    #    claimed, it is attested by the formation observatory against an episode
+    #    it recorded before this adoption.
     if prov.get("commissioned") is not False:
         return _err("provenance.commissioned must be explicitly false — a commissioned objective is not a stratagem")
+    linok, linwhy = _verify_lineage(prov.get("attestation"),
+                                    str(prov.get("root_ref", ""))[:200],
+                                    prov.get("root_type"))
+    if not linok:
+        return _err("provenance refused: %s" % linwhy)
 
     # 3. a predicted advantage from sequencing rather than acting now.
     if not str(b.get("sequencing_advantage", "")).strip():
@@ -500,6 +590,9 @@ def advance(b):
         return _err("no stratagem")
     if not _visit_open(pid):
         return _err("advancing the tactic requires an open visit")
+    capok, capwhy = _capability(b, pid)
+    if not capok:
+        return _err("refused: %s" % capwhy)
     obs = str(b.get("observation", ""))[:400]
     s["step"] = min(s.get("step", 0) + 1, len(s["tactics"]))
     _wa(os.path.join(_sd(pid), "stratagem.json"), s)
@@ -517,6 +610,9 @@ def lease(b):
         return _err("no stratagem")
     if not _visit_open(pid):
         return _err("lease decisions happen inside a visit")
+    capok, capwhy = _capability(b, pid)
+    if not capok:
+        return _err("refused: %s" % capwhy)
     if action == "renew":
         s["status"] = "active"
         s["lease_expires"] = (datetime.now() + timedelta(days=s["lease_days"])).isoformat()
@@ -748,6 +844,9 @@ def resolve(b):
         return _err("no stratagem")
     if not _visit_open(pid):
         return _err("resolution happens inside a visit")
+    capok, capwhy = _capability(b, pid)
+    if not capok:
+        return _err("refused: %s" % capwhy)
     outcome = str(b.get("outcome", "")).strip()
     if not outcome:
         return _err("an authored outcome is required")

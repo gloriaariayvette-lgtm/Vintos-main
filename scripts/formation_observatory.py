@@ -100,6 +100,63 @@ def _episode(sig):
         ep["status"] = "echo_only"   # organs agreeing about one root - recorded, worth nothing
     return ep
 
+
+def attest(root_ref, root_type):
+    """Issue a lineage attestation for a root this observatory actually recorded.
+
+    A stratagem's provenance is otherwise an unverifiable claim typed at
+    adoption time. This binds the claim to a real recorded episode: the
+    attestation carries a digest of the episode containing the root, so the
+    Atelier can check the lineage existed BEFORE adoption rather than being
+    asserted during it.
+
+    Shadow law is intact. This reads the episode log and signs a statement
+    about it. It writes nothing into any prompt, want, identity, or value, and
+    it decides nothing — it answers a question, it does not speak.
+
+    HONEST LIMIT: the key is readable by whoever runs this, so on a single-user
+    host it proves "the observatory recorded this episode", not "no human could
+    have forged it". What it does buy: a fabricated root cannot point at an
+    episode that does not exist.
+    """
+    import hmac, hashlib as _h, time as _t, uuid as _u, secrets as _s
+    episodes = []
+    try:
+        for line in open(OUT):
+            if line.strip():
+                episodes.append(json.loads(line))
+    except FileNotFoundError:
+        return {"error": "no episodes recorded — nothing to attest"}
+    hit = None
+    for ep in reversed(episodes):
+        if root_ref and root_ref in json.dumps(ep):
+            hit = ep
+            break
+    if not hit:
+        return {"error": "no recorded episode contains root_ref %r — provenance unattestable"
+                         % str(root_ref)[:60]}
+    digest = _h.sha256(json.dumps(hit, sort_keys=True,
+                                  separators=(",", ":")).encode()).hexdigest()
+    body = {"root_ref": str(root_ref)[:200], "root_type": str(root_type)[:40],
+            "episode_at": hit.get("at"), "episode_status": hit.get("status"),
+            "episode_digest": digest, "commissioned": False,
+            "nonce": _u.uuid4().hex, "exp": int(_t.time()) + 3600}
+    keypath = os.path.expanduser("~/.vintos/.lineage-key")
+    try:
+        key = open(keypath, "rb").read().strip()
+    except FileNotFoundError:
+        key = _s.token_bytes(32).hex().encode()
+        old = os.umask(0o077)
+        try:
+            os.makedirs(os.path.dirname(keypath), exist_ok=True)
+            with open(keypath, "wb") as _kf:
+                _kf.write(key)
+            os.chmod(keypath, 0o600)
+        finally:
+            os.umask(old)
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return {"body": body, "sig": hmac.new(key, raw.encode(), _h.sha256).hexdigest()}
+
 def main():
     sig = _signals()
     ep = _episode(sig)

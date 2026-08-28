@@ -19,6 +19,66 @@ HEALTH = os.path.join(ROOT, "health.jsonl")          # content-free only
 BUDGETS = {"image": 3, "music": 2, "write": 6}       # per visit (Gloria's law)
 STATES = ["GESTATING","ACTIVE","RESTING","HELD","BLOCKED","READY","PRESENTING","PRESENTED","ARCHIVED","ABANDONED_BY_CHOICE"]
 
+import hmac, secrets
+
+# Capability signing key. Lives beside the store, mode 600, owned by `atelier`.
+# The house cannot read it, so a visit capability cannot be minted anywhere but
+# here — a caller must actually go through /visit/open to get one.
+#
+# HONEST LIMIT: on this host the house runs as `gloria` and so does every
+# surface, so this is not an identity boundary between house processes. What it
+# buys is that the visit ceremony cannot be skipped or forged, every mint is
+# logged, and a token cannot be replayed after its visit closes. Adoption adds
+# a temporal gate on top (the door must be lit) that an ordinary chat turn
+# cannot satisfy.
+_KEYPATH = "/home/atelier/.visit-key"
+
+def _key():
+    try:
+        return open(_KEYPATH, "rb").read().strip()
+    except FileNotFoundError:
+        k = secrets.token_bytes(32).hex().encode()
+        old = os.umask(0o077)
+        try:
+            with open(_KEYPATH, "wb") as f:
+                f.write(k)
+            os.chmod(_KEYPATH, 0o600)
+        finally:
+            os.umask(old)
+        return k
+
+def mint_capability(pid, visit_id, actor, ttl=3600):
+    body = {"project": pid, "visit": visit_id, "actor": actor,
+            "nonce": uuid.uuid4().hex,
+            "exp": int(time.time()) + int(ttl)}
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    sig = hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()
+    _health("a visit capability was minted")
+    return {"body": body, "sig": sig}
+
+def verify_capability(cap, pid, actor="vintos"):
+    """Returns (ok, reason). Signature, expiry, project and actor must all match,
+    and the visit it names must still be the open one."""
+    try:
+        body, sig = cap["body"], cap["sig"]
+    except Exception:
+        return False, "malformed capability"
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    want = hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(want, str(sig)):
+        return False, "bad signature"
+    if body.get("project") != pid:
+        return False, "capability is for another project"
+    if body.get("actor") != actor:
+        return False, "capability actor mismatch"
+    if int(body.get("exp", 0)) < time.time():
+        return False, "capability expired"
+    v = _j(os.path.join(_p(pid), ".visit.json"), {}) or {}
+    if v.get("closed") or v.get("id") != body.get("visit"):
+        return False, "the visit this capability names is no longer open"
+    return True, None
+
+
 def _p(pid): return os.path.join(ROOT, "projects", pid)
 def _j(path, d=None):
     try: return json.load(open(path))
@@ -93,7 +153,8 @@ def open_visit(b):
     crashed = _j(os.path.join(_p(pid), ".last_visit_unclosed.json"))
     _w(os.path.join(_p(pid), ".last_visit_unclosed.json"), {"visit": visit["id"]})
     _ev(pid, "return_opened"); _health("a return happened")
-    return {"intent": p["intent"], "state": p["state"], "artifacts": arts,
+    return {"visit_capability": mint_capability(pid, visit["id"], "vintos"),
+            "intent": p["intent"], "state": p["state"], "artifacts": arts,
             "last_handoff": ho.get("text", ""), "next_move": ho.get("next_move", ""),
             "next_return": p.get("next_return"), "recent_events": evs,
             "footprints_since_last": [f for f in p.get("footprints", []) if f > ho.get("at", "")],

@@ -1,0 +1,45 @@
+{
+  "id": "sg-1365f8f001",
+  "project": "a1b2c3d4e5f6",
+  "born": "2026-08-28T01:25:58.737293",
+  "objective": "shift where she thinks authorship of the field lies",
+  "provenance": {
+    "root_type": "drift_novelty",
+    "root_ref": "drift.json@2026-08-27",
+    "commissioned": false,
+    "attested_at": "2026-08-28T01:25:58.737294"
+  },
+  "sequencing_advantage": "sequenced she reaches it herself",
+  "perimeter_scope": [
+    "creative",
+    "relational"
+  ],
+  "tactics": [
+    {
+      "tactic": "PROBE",
+      "turn_objective": "t1",
+      "reveal_if": [],
+      "abort_if": []
+    },
+    {
+      "tactic": "SEED",
+      "turn_objective": "t2",
+      "reveal_if": [],
+      "abort_if": []
+    }
+  ],
+  "step": 1,
+  "lease_days": 7,
+  "lease_expires": "2026-09-04T01:25:58.741156",
+  "disclosure_policy": {
+    "incidental_guess": "may redirect, narrow, or preserve",
+    "direct_question_content": "may decline, answer narrowly, or give a genuine incomplete motive",
+    "direct_question_existence": "may decline, or answer technically without opening it",
+    "explicit_identification": "reveal, revise, or knowingly continue per threshold",
+    "strategy_stop": "terminate concealment immediately"
+  },
+  "status": "revealed",
+  "resolved_at": "2026-08-28T01:25:58.743408",
+  "outcome": "done",
+  "revealed_at": "2026-08-28T01:25:58.743408"
+}

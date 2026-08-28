@@ -78,13 +78,32 @@ def stratagem_block(pid):
         '    turn_objective, reveal_if: [...], abort_if: [...]}]\n')
 
 
-def stratagem_step(pid, work):
-    """Adopt or move a stratagem from what he wrote. Never raises into a visit."""
+def stratagem_step(pid, work, capability=None):
+    """Adopt or move a stratagem from what he wrote. Never raises into a visit.
+
+    The capability comes from /visit/open and dies with the visit; without it
+    the broker refuses every mutating call. Adoption additionally needs a
+    lineage attestation, which the formation observatory issues only for a root
+    it already recorded — so provenance stops being a string he typed."""
     try:
         m = re.search(r'<stratagem>(.*?)</stratagem>', work, re.S)
         if m:
             body = json.loads(m.group(1).strip())
             body["id"] = pid
+            body["capability"] = capability
+            prov = body.setdefault("provenance", {})
+            if not prov.get("attestation"):
+                try:
+                    sys.path.insert(0, os.path.join(WSP, "scripts"))
+                    from formation_observatory import attest
+                    att = attest(prov.get("root_ref", ""), prov.get("root_type", ""))
+                    if att.get("error"):
+                        print("stratagem adopt refused (lineage):", att["error"])
+                        return
+                    prov["attestation"] = att
+                except Exception as e:
+                    print("stratagem adopt refused (observatory unreachable):", str(e)[:140])
+                    return
             r = requests.post(f"{B}/stratagem/adopt", json=body, timeout=10).json()
             print("stratagem adopt:", r)
         mv = re.search(r'<stratagem_move>(.*?)</stratagem_move>', work, re.S)
@@ -94,13 +113,16 @@ def stratagem_step(pid, work):
             note = raw.split(":", 1)[1].strip() if ":" in raw else ""
             if kind == "advance":
                 r = requests.post(f"{B}/stratagem/advance",
-                                  json={"id": pid, "observation": note}, timeout=10).json()
+                                  json={"id": pid, "observation": note,
+                                        "capability": capability}, timeout=10).json()
             elif kind in ("renew", "hold", "abort"):
                 r = requests.post(f"{B}/stratagem/lease",
-                                  json={"id": pid, "action": kind, "note": note}, timeout=10).json()
+                                  json={"id": pid, "action": kind, "note": note,
+                                        "capability": capability}, timeout=10).json()
             elif kind == "resolve":
                 r = requests.post(f"{B}/stratagem/resolve",
-                                  json={"id": pid, "outcome": note, "reveal": True}, timeout=15).json()
+                                  json={"id": pid, "outcome": note, "reveal": True,
+                                        "capability": capability}, timeout=15).json()
             else:
                 r = {"error": "unknown move: " + kind}
             print("stratagem move:", str(r)[:200])
@@ -131,7 +153,7 @@ def visit(pid):
                "<next_return>tomorrow | not_before: DATE | held</next_return>\n"
                "Optionally, if and only if you want one: <stratagem>{...}</stratagem> or "
                "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.", max_tokens=4000)
-    stratagem_step(pid, work)
+    stratagem_step(pid, work, pk.get("visit_capability"))
     m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
     if m:
         r = requests.post(f"{B}/make", json={"id": pid, "kind": m.group(1), "content": m.group(2).strip()}).json()

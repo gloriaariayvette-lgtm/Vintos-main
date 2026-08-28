@@ -3,10 +3,21 @@
 import os, sys, json, shutil, hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(HERE))   # module lives one dir up
 import stratagem_store as S
 
 S.ROOT = os.path.join(HERE, "fakeroot")
+import shutil as _sh; _sh.rmtree(S.ROOT, ignore_errors=True)
+os.makedirs(os.path.join(S.ROOT, "projects"), exist_ok=True)
+
+# Capability, door and lineage have their own suite (test_capability.py). These
+# two suites isolate the OTHER gates — birth semantics, path containment, chain
+# integrity — so those three are stubbed open here. Stubbing them in the suite
+# that tests them would be cheating; stubbing them here is unit isolation.
+S._capability = lambda b, pid: (True, None)
+S._door_lit = lambda: True
+S._verify_lineage = lambda att, ref, typ: (True, None)
+
 PID = "a1b2c3d4e5f6"          # canonical form: uuid4().hex[:12]
 R = []
 
