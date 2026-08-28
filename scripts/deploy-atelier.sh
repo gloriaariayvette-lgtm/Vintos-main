@@ -225,7 +225,11 @@ if sudo -n true 2>/dev/null; then
     if sudo install -o atelier -g atelier -m 644 "$SRC/broker/broker.py" "$BROKER" \
        && sudo install -o atelier -g atelier -m 644 "$SRC/broker/stratagem_store.py" "$STORE"; then
         sudo pkill -f "$BROKER" 2>/dev/null; sleep 1
-        sudo -u atelier setsid nohup python3 "$BROKER" >>/home/atelier/broker.log 2>&1 </dev/null &
+        # The redirect has to be INSIDE the sudo'd shell. Written the obvious
+        # way, `sudo ... >>/home/atelier/broker.log` is evaluated by the
+        # caller's shell as gloria, who cannot write that file, so the
+        # relaunch dies with Permission denied and the broker stays down.
+        sudo -u atelier setsid sh -c "nohup python3 '$BROKER' >>/home/atelier/broker.log 2>&1 &" </dev/null
         sleep 2; brokered=1; say "  installed and restarted"
     else
         say "  BROKER INSTALL FAILED — his scripts ARE installed, the broker is not."
@@ -233,14 +237,14 @@ if sudo -n true 2>/dev/null; then
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
         say "    sudo pkill -f $BROKER; sleep 1"
-        say "    sudo -u atelier setsid nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &"
+        say "    sudo -u atelier setsid sh -c 'nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &'"
     fi
 else
     say "  sudo wants a password. These four lines, in order:"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
     say "    sudo pkill -f $BROKER; sleep 1"
-    say "    sudo -u atelier setsid nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &"
+    say "    sudo -u atelier setsid sh -c 'nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &'"
 fi
 say
 
