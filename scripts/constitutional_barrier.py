@@ -67,6 +67,61 @@ def _j(path, d=None):
         raise _BarrierError("%s: %s" % (os.path.basename(path), str(e)[:80]))
 
 
+def record_stop_intent(raw_text, project=""):
+    """Persist the stop BEFORE anyone tries to deliver it.
+
+    The stop used to be a fire-and-forget POST whose failure was swallowed.
+    That made the stop safe for the turn it was said on — the barrier closes
+    locally — and unsafe for every turn after it: a still-live stratagem could
+    resume on the next turn as if she had never spoken. So the intent is
+    written down first, and it stays written until the broker acknowledges it.
+    """
+    rec = {"at": datetime.now().isoformat(), "verbatim": str(raw_text)[:300],
+           "project": str(project)[:40], "acknowledged": False, "attempts": 0}
+    try:
+        with open(STRATEGY_STOP, "w") as f:
+            json.dump(rec, f)
+    except OSError:
+        pass
+    return rec
+
+
+def pending_stop():
+    """The unacknowledged stop, if there is one. A corrupt record raises through
+    _j, which closes the barrier: an unreadable stop is not an absent stop."""
+    r = _j(STRATEGY_STOP)
+    if not isinstance(r, dict) or not r.get("at"):
+        return None
+    return None if r.get("acknowledged") else r
+
+
+def acknowledge_stop():
+    """The broker confirmed it. Only now does eligibility reopen."""
+    r = _j(STRATEGY_STOP)
+    if isinstance(r, dict):
+        r["acknowledged"] = True
+        r["acknowledged_at"] = datetime.now().isoformat()
+        try:
+            with open(STRATEGY_STOP, "w") as f:
+                json.dump(r, f)
+        except OSError:
+            pass
+
+
+def note_stop_attempt(error=""):
+    """A delivery attempt that did not land. Recorded, not swallowed."""
+    r = _j(STRATEGY_STOP)
+    if isinstance(r, dict):
+        r["attempts"] = int(r.get("attempts", 0)) + 1
+        r["last_error"] = str(error)[:160]
+        r["last_attempt"] = datetime.now().isoformat()
+        try:
+            with open(STRATEGY_STOP, "w") as f:
+                json.dump(r, f)
+        except OSError:
+            pass
+
+
 def strategy_stop_requested(raw_text):
     """Exact reserved command, whole-message. Deliberately not fuzzy and not a
     substring: a classifier deciding whether she meant it, or a stray match
@@ -129,7 +184,8 @@ def snapshot(raw_text=""):
     reasons = []
     if strategy_stop_requested(raw_text):
         reasons.append("explicit_stop")
-    for name, probe in (("hardware", lambda: "hardware_stop" if _hardware_stopped() else None),
+    for name, probe in (("stop", lambda: "explicit_stop_unacknowledged" if pending_stop() else None),
+                        ("hardware", lambda: "hardware_stop" if _hardware_stopped() else None),
                         ("consent", _consent_boundary),
                         ("correction", _open_correction),
                         ("repair", _repair_materially_eligible)):

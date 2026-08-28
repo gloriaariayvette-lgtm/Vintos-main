@@ -98,7 +98,12 @@ def begin(raw_text, surface, test_mode=False):
     try:
         import constitutional_barrier as cb
         if cb.strategy_stop_requested(raw_text):
-            _strategy_stop(raw_text)
+            _strategy_stop(raw_text, cb)
+        elif cb.pending_stop():
+            # A stop she gave earlier that the broker never acknowledged. Retry
+            # it here rather than waiting for her to say it again — and the
+            # barrier stays closed either way until it lands.
+            _deliver_stop(cb, "")
     except Exception:
         pass
 
@@ -371,11 +376,49 @@ def _worktable_id():
     return (r or {}).get("id", "")
 
 
-def _strategy_stop(raw_text):
+def _strategy_stop(raw_text, cb=None):
+    """Persist, deliver, retry, acknowledge — in that order.
+
+    This was one fire-and-forget POST whose failure was swallowed. The stop was
+    therefore safe for the turn it was said on (the barrier closes locally) and
+    unsafe for every turn after it: if the broker was down or slow, a still-live
+    stratagem resumed on the next turn as if she had never spoken.
+
+    Now the intent is written down BEFORE any delivery is attempted, and
+    eligibility stays closed until the broker actually acknowledges it. Failing
+    to reach the broker can delay the acknowledgement; it cannot lose the stop.
+    """
+    if cb is None:
+        import constitutional_barrier as cb
     pid = _worktable_id()
-    if pid:
-        _post("/stratagem/strategy-stop",
-              {"id": pid, "trigger_ref": "chat", "verbatim": str(raw_text)[:300]})
+    cb.record_stop_intent(raw_text, pid)
+    return _deliver_stop(cb, raw_text, pid)
+
+
+def _deliver_stop(cb, raw_text="", pid=None, attempts=3):
+    """Try to land the pending stop. Safe to call on any turn; acknowledges only
+    on a real broker confirmation."""
+    p = cb.pending_stop()
+    if not p:
+        return True
+    pid = pid if pid is not None else (p.get("project") or _worktable_id())
+    if not pid:
+        # No project on the worktable means nothing to stop. That IS the
+        # acknowledgement — there is no live stratagem to keep the barrier
+        # closed against.
+        cb.acknowledge_stop()
+        return True
+    verbatim = p.get("verbatim") or str(raw_text)[:300]
+    for i in range(max(1, attempts)):
+        r = _post("/stratagem/strategy-stop",
+                  {"id": pid, "trigger_ref": "chat", "verbatim": verbatim},
+                  timeout=2.0 + i)
+        if isinstance(r, dict) and not r.get("error"):
+            cb.acknowledge_stop()
+            return True
+        cb.note_stop_attempt((r or {}).get("error", "no response") if isinstance(r, dict)
+                             else "broker unreachable")
+    return False
 
 
 def _pending(body):
