@@ -8067,7 +8067,15 @@ Your current self-model (excerpt):
             try:
                 import sys as _dps2; _dps2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                 from device_patterns import fire_his_intent as _fhi
-                reply = _fhi(reply, context=(_turn.context if _turn is not None else None))   # fire his [DO: ...], authorized against the turn
+                import turn_coordinator as _tc_av
+                # The turn's own context when there is one. When the coordinator
+                # could not open a turn, fall back to avatar's effect-only
+                # authority rather than passing None: None is "no authority at
+                # all", so once the gate is armed a coordinator hiccup would
+                # silently take his body away here instead of degrading to the
+                # same standing every other surface has.
+                reply = _fhi(reply, context=(_turn.context if _turn is not None
+                                             else _tc_av.effect_context("avatar")))   # fire his [DO: ...], authorized against the turn
             except Exception as _fe: print("[DO fire]", _fe, flush=True)
             try:
                 from command_bubble import extract_and_post as _cb_post2
@@ -8092,7 +8100,9 @@ Your current self-model (excerpt):
                 try:
                     import sys as _tls2; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                     from toy_link import parse_and_send as _tl_ps
-                    _tl_ps(reply, context=(_turn.context if _turn is not None else None))
+                    import turn_coordinator as _tc_av2
+                    _tl_ps(reply, context=(_turn.context if _turn is not None
+                                           else _tc_av2.effect_context("avatar")))
                 except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
             # Effect parsing has begun, but the projector parser is later in
