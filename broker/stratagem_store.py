@@ -259,7 +259,11 @@ def _capability(b, pid):
         from broker import verify_capability
     except Exception:
         return False, "capability verification unavailable"
-    cap = (b or {}).get("capability")
+    # Accept either spelling. The broker's route matrix takes
+    # visit_capability OR capability, and /visit/open returns the field named
+    # visit_capability — so a caller following the door's own lead got past
+    # the door and was then refused in here for using the name it was given.
+    cap = (b or {}).get("capability") or (b or {}).get("visit_capability")
     if not cap:
         return False, "a visit capability is required — obtain one from /visit/open"
     return verify_capability(cap, pid, actor="vintos")
@@ -1163,7 +1167,7 @@ def reveal(b):
     return {"ok": True, "status": "revealed", "history": _history(pid, s)}
 
 
-@route(txn=False)
+@route(txn=False, verify_first=False)
 def strategy_stop(b):
     """Gloria's mechanical stop. Callable WITHOUT an Atelier visit, from the
     raw-input chokepoint, on a reserved explicit command — never an LLM
@@ -1187,14 +1191,26 @@ def strategy_stop(b):
         s["stopped_at"] = datetime.now().isoformat()
         s["stop_trigger_ref"] = str(b.get("trigger_ref", ""))[:300]
         s["stop_trigger_verbatim"] = str(b.get("verbatim", ""))[:600]
+        # A stop is the ONE transaction that must never be refused. Every other
+        # route verifies the ledger head first and returns TAMPER_HELD, and
+        # strategy_stop inherited that — so a corrupted ledger, which is
+        # exactly when she would most want to stop him, was the state in which
+        # she could not. It runs regardless now, and records what it found.
+        _ok, _n, _why = verify(pid)
+        if not _ok:
+            s["stopped_over_held_ledger"] = str(_why)[:160]
         _wa(os.path.join(_sd(pid), "stratagem.json"), s)
         _chain(pid, "stopped_by_gloria",
                {"stratagem": s["id"], "trigger_ref": s["stop_trigger_ref"],
                 "verbatim": s["stop_trigger_verbatim"],
                 "contract": s["disclosure_policy"]["strategy_stop"]})
-        return {"stopped": True, "status": "stopped_sealed",
-                "contract": s["disclosure_policy"]["strategy_stop"],
-                "note": "capsule issuance halted; /stratagem/reveal opens the history"}
+        out = {"stopped": True, "status": "stopped_sealed",
+               "contract": s["disclosure_policy"]["strategy_stop"],
+               "note": "capsule issuance halted; /stratagem/reveal opens the history"}
+        if s.get("stopped_over_held_ledger"):
+            out["ledger_held"] = s["stopped_over_held_ledger"]
+            out["note"] += " — NOTE: the ledger did not verify; the stop stands anyway"
+        return out
 
 
 @route()

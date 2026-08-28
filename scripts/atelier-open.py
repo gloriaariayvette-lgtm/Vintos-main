@@ -139,7 +139,11 @@ def main(dry=False):
     # Asking is cheap; being asked repeatedly is not. One ask per invocation,
     # and the caller decides whether there is ever another day.
 
-    pid = requests.post(B + "/project", json={"intent": intent, "sealed": True},
+    # next_return "open": the broker's default is "held", which renders the
+    # door dark — so this created a project, tabled it, and then printed a door
+    # it had just guaranteed nobody could walk through.
+    pid = requests.post(B + "/project",
+                        json={"intent": intent, "sealed": True, "next_return": "open"},
                         timeout=20).json().get("id")
     if not pid:
         print("project not created")

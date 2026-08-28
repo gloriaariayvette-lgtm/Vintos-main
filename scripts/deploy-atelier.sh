@@ -291,6 +291,28 @@ _mr="$(dest bin/model_router.py)"
 say "  his model:    $(cd "$(dirname -- "$_mr")" 2>/dev/null \
                        && python3 -c 'import model_router;print(model_router.current_claude_model())' 2>&1 | tail -1)"
 [ -n "$HOUSE_UNIT" ] && say "  house:        $HOUSE_UNIT $(systemctl --user is-active "$HOUSE_UNIT" 2>/dev/null) / $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8500/ 2>/dev/null)"
+# The observatory and the broker must share a lineage key or the threshold can
+# never adopt. Compared by digest — neither key is ever read out or printed.
+_bfp="$(curl -s -m 5 -X POST http://127.0.0.1:8611/lineage/fingerprint \
+        -H 'Content-Type: application/json' -d '{}' 2>/dev/null \
+        | python3 -c 'import sys,json;print((json.load(sys.stdin) or {}).get("fingerprint",""))' 2>/dev/null)"
+_lfp="$(python3 - <<'PY' 2>/dev/null
+import hashlib, os
+p = os.path.expanduser("~/.vintos/.lineage-key")
+try:
+    print(hashlib.sha256(open(p, "rb").read().strip()).hexdigest()[:16])
+except Exception:
+    print("")
+PY
+)"
+if [ -z "$_bfp" ] || [ -z "$_lfp" ]; then
+    say "  lineage key:  one side missing (broker='$_bfp' observatory='$_lfp')"
+    say "                the threshold cannot adopt until both exist and match"
+elif [ "$_bfp" = "$_lfp" ]; then
+    say "  lineage key:  observatory and broker agree"
+else
+    say "  lineage key:  MISMATCH — attestations will all fail; adoption impossible"
+fi
 _th="$(dest scripts/atelier-threshold.py)"
 say "  threshold:    $(python3 -c "import ast;ast.parse(open('$_th').read());print('installed, parses')" 2>&1 | tail -1)"
 say

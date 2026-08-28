@@ -216,7 +216,11 @@ def offer(dry=False):
         "root": root, "root_type": known[root]["root_type"],
         "lineage_attestation": att,
         "next_move": tag("first_move")[:400],
-        "next_return": "held"}, timeout=20).json().get("id")
+        # NOT "held". 'held' makes the door dark, and adopting an undertaking
+        # is the act of choosing to return to it — birthing it held would let
+        # him adopt something he could then never open. He can hold it himself
+        # from inside, in a handoff, which is where that choice belongs.
+        "next_return": "open"}, timeout=20).json().get("id")
     if not pid:
         print("project not created")
         return 1

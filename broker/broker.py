@@ -438,6 +438,26 @@ def verify_settlement(b):
     return {"valid": hmac.compare_digest(want, str(sig))}
 
 
+def lineage_fingerprint(b=None):
+    """Content-free fingerprint of the lineage signing key.
+
+    The formation observatory signs attestations with ~/.vintos/.lineage-key as
+    gloria; the broker verifies them with /home/atelier/.lineage-key as
+    atelier. If those two files differ, every attestation fails its signature
+    and the Undertaking Threshold can never adopt anything — silently, because
+    the failure looks like a provenance refusal.
+
+    This returns a truncated digest so the two can be COMPARED without either
+    side ever reading, printing, or transmitting the key itself.
+    """
+    try:
+        from stratagem_store import _LINEAGE_KEY
+        k = open(_LINEAGE_KEY, "rb").read().strip()
+    except Exception as e:
+        return {"present": False, "why": str(e)[:80]}
+    return {"present": True, "fingerprint": hashlib.sha256(k).hexdigest()[:16]}
+
+
 def report(b):
     pid = b.get("id", "")
     entry = {"ts": datetime.now().isoformat(), "problem": b["problem"][:600]}
@@ -475,7 +495,8 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/state": set_state, "/visit/open": open_visit, "/make": make, "/inspect": inspect,
           "/artifact": read_artifact, "/handoff": handoff,
           "/reveal/prepare": reveal_prepare, "/reveal/confirm": reveal_confirm,
-          "/settle": settle, "/settlement/verify": verify_settlement, "/report": report, "/door": door, "/worktable_id": worktable_id}
+          "/settle": settle, "/settlement/verify": verify_settlement,
+          "/lineage/fingerprint": lineage_fingerprint, "/report": report, "/door": door, "/worktable_id": worktable_id}
 
 try:
     from stratagem_store import ROUTES as _SG
@@ -509,6 +530,7 @@ POLICY = {
     "/make": VISIT, "/inspect": VISIT, "/artifact": EXPORT, "/handoff": VISIT,
     "/reveal/prepare": VISIT, "/reveal/confirm": HOUSE,   # gated by its one-use receipt
     "/settle": HOUSE, "/settlement/verify": OPEN,        # closing, not content
+    "/lineage/fingerprint": OPEN,                        # a digest, never the key
     "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
     "/stratagem/strategy-stop": OPEN,              # a stop is never gated. ever.
     "/stratagem/adopt": STORE, "/stratagem/capsule": STORE,

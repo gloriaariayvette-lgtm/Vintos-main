@@ -104,7 +104,11 @@ check("his first move travels with it", b["next_move"] == "write what I already 
 check("the root travels with it", b["root"] == "curiosity:9")
 check("the attestation travels with it",
       b["lineage_attestation"]["commissioned"] is False)
-check("it does not schedule his return", b["next_return"] == "held")
+# "held" renders the door DARK. Adopting an undertaking is the act of choosing
+# to return to it, so birthing it held let him adopt something he could then
+# never open. He can hold it himself later, from inside, in a handoff.
+check("the door it opens is one he can actually walk through",
+      b["next_return"] == "open", b["next_return"])
 
 print("\n--- a malformed answer is never read as a decline ---")
 calls["created"] = 0
