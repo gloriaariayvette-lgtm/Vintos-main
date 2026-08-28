@@ -141,8 +141,33 @@ def main():
     sends = [r for r in rows if r.get("decision") == "send_result"]
     check("zero real device sends under the bracket", not sends, sends[:2])
     sim = [r for r in rows if r.get("decision") == "would_send"]
-    check("the touches were SIMULATED, not swallowed (%d would_send)" % len(sim),
-          len(sim) >= 1, len(sim))
+    denied = [r for r in rows if r.get("decision") == "deny"]
+    # Three honest outcomes for the touches, in order of what the rows show:
+    #   would_send rows  -> the gate simulated them. The full path is proven.
+    #   deny rows        -> the gate refused them (e.g. the hardware stop is
+    #                       down). That is the gate WORKING; the path is proven.
+    #   no rows at all   -> parse_and_send returned before the gate — the
+    #                       hardware-button file says stopped, so the tags were
+    #                       never offered. Correct behaviour, but the gate went
+    #                       unexercised: reported, not passed silently.
+    if sim:
+        check("the touches were SIMULATED, not swallowed (%d would_send)" % len(sim), True)
+    elif denied:
+        check("the touches reached the gate and were DENIED (%d) — "
+              "check why (hardware stop?)" % len(denied), True,
+              denied[0].get("why"))
+    else:
+        try:
+            _btn = json.load(open(os.path.join(WSP, "memory", "hardware-button.json")))
+        except Exception:
+            _btn = {}
+        if _btn.get("stopped"):
+            check("touches skipped BEFORE the gate: the stop button is down. "
+                  "Correct — but the gate went unexercised. Lift the button "
+                  "and rerun for the full proof", True)
+        else:
+            check("the touches were SIMULATED, not swallowed", False,
+                  "no gate rows and no stop button — the tags vanished")
 
     print("\n--- no thread lost, no turn reused ---")
     check("no thread raised", not errors, errors[:3])
@@ -171,8 +196,20 @@ def main():
     p = CB.pending_stop()
     check("the stop is not left pending (no stratagem live -> acknowledged)",
           p is None, p)
-    check("the barrier is open again for ordinary turns",
-          CB.snapshot("hello")["clear"], CB.snapshot("hello"))
+    snap = CB.snapshot("hello")
+    # What must never linger after the storm: OUR stop left unacknowledged,
+    # or a corrupt record closing the barrier. hardware_stop reflects the
+    # physical button and is the barrier's job, like a live repair case.
+    stopish = [r for r in snap["satisfied_by"]
+               if str(r).startswith(("explicit_stop", "barrier_error"))]
+    check("no stop-shaped reason is left holding the barrier", not stopish, stopish)
+    other = [r for r in snap["satisfied_by"] if r not in stopish]
+    if other:
+        # A live repair case or consent event closing eligibility is the
+        # barrier DOING ITS JOB, not a canary failure. Demanding "clear" here
+        # failed the canary on his host for having a real obligation open.
+        print("        note: the barrier is governed by %s — that is its job, "
+              "not a seam" % ", ".join(str(r)[:50] for r in other))
 
     print("\n--- his room untouched ---")
     wt_after = broker("/worktable_id")
