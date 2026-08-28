@@ -178,14 +178,32 @@ def visit(pid):
                "<next_return>tomorrow | not_before: DATE | held</next_return>\n"
                "Optionally, if and only if you want one: <stratagem>{...}</stratagem> or "
                "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.", max_tokens=4000)
-    stratagem_step(pid, work, pk.get("visit_capability"))
+    cap = pk.get("visit_capability")
+    stratagem_step(pid, work, cap)
     m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
     if m:
-        r = requests.post(f"{B}/make", json={"id": pid, "kind": m.group(1), "content": m.group(2).strip()}).json()
+        # Every sealed-content route requires the visit capability now. Without
+        # it the broker refuses and his work is silently lost — which is what
+        # happened on the first real visit. Carry it, and if the make is
+        # refused, keep what he wrote where it will not vanish.
+        r = requests.post(f"{B}/make", json={"id": pid, "kind": m.group(1),
+                          "content": m.group(2).strip(), "capability": cap}).json()
         print("made:", r)
-        lk = re.search(r'<look>(.*?)</look>', work, re.S)
-        requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
-                      "artifact": r.get("file", ""), "note": (lk.group(1).strip() if lk else "I looked.")})
+        if r.get("error"):
+            try:
+                _sd = os.path.join(WSP, "memory", "atelier-unsaved")
+                os.makedirs(_sd, exist_ok=True)
+                _f = os.path.join(_sd, "%s-%s.txt" % (pid, __import__("time").strftime("%Y%m%d_%H%M%S")))
+                open(_f, "w").write(m.group(2).strip())
+                print("make refused (%s) — his piece saved to %s so it is not lost"
+                      % (r["error"], _f))
+            except Exception as _e:
+                print("make refused AND could not preserve his piece:", _e)
+        else:
+            lk = re.search(r'<look>(.*?)</look>', work, re.S)
+            requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
+                          "artifact": r.get("file", ""), "capability": cap,
+                          "note": (lk.group(1).strip() if lk else "I looked.")})
     rp = re.search(r'<report>(.*?)</report>', work, re.S)
     if rp:
         _msg = rp.group(1).strip()[:600]
@@ -195,9 +213,14 @@ def visit(pid):
         print("reported outward:", _msg[:80])
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
-    requests.post(f"{B}/handoff", json={"id": pid, "text": ho.group(1).strip() if ho else "(no handoff written)",
-                  "next_return": nr.group(1).strip() if nr else "held"})
-    print("visit closed with handoff")
+    _hr = requests.post(f"{B}/handoff", json={"id": pid,
+                  "text": ho.group(1).strip() if ho else "(no handoff written)",
+                  "next_return": nr.group(1).strip() if nr else "held",
+                  "capability": cap}).json()
+    if _hr.get("error"):
+        print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
+    else:
+        print("visit closed with handoff")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "force":
