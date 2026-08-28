@@ -7677,19 +7677,20 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 from conversation_pressure import get_pressure_block as _cpb2; _vt_subblock_a += "\n\n" + _cpb2()
             except Exception: pass
             try:
+                from inner_context import missing_inner_block as _mib
+                _mi=_mib()
+                if _mi: _vt_subblock_a += chr(10)+chr(10)+_mi
+            except Exception: pass
+            # capsule append + admission is its OWN sibling block, so an unrelated
+            # advisory organ (joke_fermentation, curiosity) cannot veto the
+            # stratagem door by raising (Sol P1).
+            try:
+                if _turn is not None and _turn.capsule_block:
+                    _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
+                    if _tc is not None: _tc.mark_admitted(_turn)   # only now that it's in the prompt
+            except Exception: pass
+            try:
                 from joke_fermentation import callback_block as _jfb2; _jf2=_jfb2()
-                try:
-                    from inner_context import missing_inner_block as _mib
-                    _mi=_mib()
-                    if _mi: _vt_subblock_a += chr(10)+chr(10)+_mi
-                except Exception: pass
-                try:
-                    if _turn is not None and _turn.capsule_block:
-                        _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
-                        # record admission ONLY now that the text is actually in
-                        # the prompt — not at fetch time (Sol #1).
-                        if _tc is not None: _tc.mark_admitted(_turn)
-                except Exception: pass
                 if _jf2: _vt_subblock_a += "\n\n" + _jf2
             except Exception: pass
             try:
@@ -7842,8 +7843,13 @@ Your current self-model (excerpt):
         messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
         try:
             import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-            from turn_record import record as _tr_rec
-            _tr_rec("avatar", messages[0]["content"], getattr(msg, "message", ""))
+            # route the turn record through the coordinator so the context's
+            # commitment + provenance are actually stamped (Sol P0).
+            if _turn is not None and _tc is not None:
+                _tc.record(_turn, messages[0]["content"], getattr(msg, "message", ""))
+            else:
+                from turn_record import record as _tr_rec
+                _tr_rec("avatar", messages[0]["content"], getattr(msg, "message", ""))
         except Exception: pass
         try: open("/tmp/vintos-full-prompt.txt","w").write(messages[0]["content"])
         except Exception: pass

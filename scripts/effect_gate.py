@@ -86,6 +86,18 @@ class TurnContext:
 
 MAX_LEASE_SECONDS = 30 * 60   # hard safety ceiling for an until-replaced lease
 
+# what execution kind each permit kind authorizes. A pattern permit covers both
+# the pattern start and the scalar ticks its background loop emits; a plain start
+# permit covers only a scalar send; rotate covers only rotate.
+_KIND_COMPATIBLE = {
+    "start":   frozenset({"start"}),
+    "pattern": frozenset({"pattern", "start"}),
+    "rotate":  frozenset({"rotate"}),
+    "replay":  frozenset({"replay", "pattern", "start"}),
+    "resume":  frozenset({"resume", "pattern", "start"}),
+    "increase": frozenset({"increase", "start"}),
+}
+
 
 class EffectPermit:
     """An immutable, bounded, single-use authorization for one deliberative
@@ -120,18 +132,26 @@ class EffectPermit:
     def valid_now(self):
         return datetime.now().isoformat() <= self.expires
 
-    def covers(self, toy, level, kind):
-        """True iff this permit authorizes THIS command: still valid, the toy is
-        in the target set, the level is within the authorized maximum, and the
-        kind matches (a scalar send may run under a pattern permit's ramp, but a
-        pattern/rotate may not run under a plain-level permit)."""
+    def covers(self, toy, level, kind, digest=None):
+        """True iff this permit authorizes THIS command: still valid, the toy in
+        the target set, the level within the authorized maximum, the kind
+        compatible, and — when the caller supplies one — the transport digest
+        matching what was authorized.
+
+        Kind compatibility (a permit authorizes only what it was granted for):
+            start   -> scalar send only
+            pattern -> a pattern start AND its scalar execution ticks
+            rotate  -> rotate only
+        """
         if not self.valid_now():
             return False
         if toy not in self.targets and "both" not in self.targets:
             return False
         if int(level or 0) > self.maximum:
             return False
-        if kind in ("rotate",) and self.kind != "rotate":
+        if not _KIND_COMPATIBLE.get(self.kind, frozenset()).__contains__(kind or "start"):
+            return False
+        if digest is not None and self.digest is not None and digest != self.digest:
             return False
         return True
 

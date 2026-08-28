@@ -82,12 +82,16 @@ with Env() as e:
 
 
 with Env() as e:
-    S.capsule({"id": PID, "turn_id": "turn-X", "surface": "chat"})
-    d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": "abc",
+    _cap = S.capsule({"id": PID, "turn_id": "turn-X", "surface": "chat"})
+    _sha = _cap["commitment"]["capsule_sha256"]
+    d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": _sha,
                        "state": "generation_failed", "reason_class": "model_error"})
     check("disposition records a terminal state", d.get("ok") and d["state"] == "generation_failed", d)
-    d = S.disposition({"id": PID, "turn_id": "turn-X", "state": "not_a_state"})
+    d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": _sha, "state": "not_a_state"})
     check("unknown disposition state refused", "error" in d, d)
+    # a wrong hash for a real turn is refused (Sol: validate the exact sha)
+    d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": "deadbeef", "state": "completed"})
+    check("wrong capsule hash refused", "error" in d, d)
 
     # the stratagem did not advance on a failed generation
     st = json.load(open(os.path.join(S._sd(PID), "stratagem.json")))
@@ -111,6 +115,9 @@ with Env() as e:
     r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "admitted_to_prompt"})
     check("late admitted after completed is a no-op (monotonic)",
           r.get("idempotent") is True, r)
+    # historically impossible: a failure after a terminal completed
+    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "generation_failed"})
+    check("failure after completed is a no-op (terminal)", r.get("idempotent") is True, r)
     r = S.disposition({"id": PID, "turn_id": "never-issued", "state": "completed"})
     check("disposition for an un-issued turn refused", "error" in r, r)
 

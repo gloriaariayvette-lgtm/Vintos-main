@@ -202,6 +202,38 @@ def test_permit_outlives_the_turn():
         assert permit.valid_now()               # no end_turn needed; permit stands
 
 
+def test_permit_kind_compatibility():
+    with Env() as e:
+        e.arm()
+        # a plain-start permit does not authorize a pattern or a rotate
+        p, _m, _ = EG.authorize(TC("t1", "chat"), "mission", 12, kind="start")
+        assert p.covers("mission", 12, "start")
+        assert not p.covers("mission", 12, "pattern")
+        assert not p.covers("mission", 12, "rotate")
+        # a pattern permit covers the pattern start AND its scalar ticks
+        p, _m, _ = EG.authorize(TC("t1", "chat"), "mission", 12, kind="pattern")
+        assert p.covers("mission", 8, "pattern") and p.covers("mission", 8, "start")
+        assert not p.covers("mission", 8, "rotate")
+
+
+def test_permit_digest_binding():
+    with Env() as e:
+        e.arm()
+        p, _m, _ = EG.authorize(TC("t1", "chat"), "mission", 12, kind="pattern", digest="D")
+        assert p.covers("mission", 12, "pattern", digest="D")
+        assert not p.covers("mission", 12, "pattern", digest="OTHER")
+
+
+def test_execution_lease_stops_on_hardware_stop():
+    with Env() as e:
+        e.arm()
+        p, _m, _ = EG.authorize(TC("t1", "chat"), "mission", 12, kind="pattern")
+        lease = p.lease()
+        assert lease.live()
+        e.stop_button(True)
+        assert not lease.live()      # hardware stop kills a running lease
+
+
 def test_hardware_stop_blocks_every_increase():
     with Env() as e:
         e.arm()

@@ -197,6 +197,34 @@ def may_witness(turn, claim_kind):
         return True
 
 
+def envelope(turn):
+    """The small provenance envelope every evidence writer should receive (Sol).
+
+        turn_id
+        surface
+        input_provenance:  counterpart_verbatim   (her input is always eligible)
+        output_provenance: stratagem_influenced | ordinary_generation
+        may_witness:       False for generated-output evidence when influenced
+
+    Her verbatim input stays eligible evidence; his tactically generated output
+    may be recorded as an ACT but must not witness beliefs, repair, causality,
+    prediction accuracy, identity, or want learning. A writer that cannot
+    enforce this records generation_provenance='withheld_from_witnessing' rather
+    than processing normally."""
+    influenced = bool(turn and turn.carries_capsule)
+    return {"turn_id": getattr(turn, "turn_id", ""),
+            "surface": getattr(turn, "surface", ""),
+            "input_provenance": "counterpart_verbatim",
+            "output_provenance": "stratagem_influenced" if influenced else "ordinary_generation",
+            "may_witness": not influenced}
+
+
+def witnessing_allowed(turn):
+    """Convenience for a witnessing writer: True on an ordinary turn, False when
+    the reply is stratagem-influenced and must not witness itself."""
+    return not (turn and turn.carries_capsule)
+
+
 def record(turn, surface_prompt_text, user_msg="", extra=None):
     """Write the turn record with the context's commitment + provenance."""
     try:

@@ -602,14 +602,20 @@ def disposition(b):
     turn_id = str(b.get("turn_id", ""))[:80]
     sha = str(b.get("capsule_sha256", ""))[:64]
 
-    # the turn/hash must belong to a capsule this stratagem actually issued —
-    # except the very first 'issued' event, which is what registers it.
-    if state != "issued" and not _capsule_issued_for(pid, turn_id):
-        return _err("no issued capsule for turn %s — disposition refused" % turn_id)
+    # the EXACT (turn_id, capsule_sha256) must match a capsule this stratagem
+    # issued — for every state including 'issued', since issuance writes the
+    # capsule record before the coordinator ever reports a disposition.
+    if not _capsule_issued_for(pid, turn_id, sha):
+        return _err("no issued capsule for (turn %s, sha %s) — disposition refused"
+                    % (turn_id, sha[:12]))
 
-    # idempotent + monotonic: find the highest rank already recorded for this
-    # (turn_id, sha); ignore a repeat or a regression.
-    prev_rank = _max_disposition_rank(pid, turn_id, sha)
+    # a recorded terminal FAILURE cannot be followed by a normal-path state, and
+    # a normal terminal 'completed' cannot be followed by a failure: history is
+    # not merely numerically monotonic.
+    prev_rank, prev_terminal = _disposition_state(pid, turn_id, sha)
+    if prev_terminal:
+        return {"ok": True, "idempotent": True, "state": state,
+                "note": "already terminal (%s)" % prev_terminal}
     if prev_rank is not None and _DISPOSITION_RANK[state] <= prev_rank:
         return {"ok": True, "idempotent": True, "state": state,
                 "note": "already at or beyond this state"}
@@ -620,18 +626,30 @@ def disposition(b):
     return {"ok": True, "seq": ev["seq"], "state": state}
 
 
-def _capsule_issued_for(pid, turn_id):
+_TERMINAL_STATES = {"completed", "generation_failed", "capsule_unrealized"}
+
+
+def _capsule_issued_for(pid, turn_id, sha=""):
+    """A capsule was issued for this EXACT (turn_id, sha). An empty sha matches
+    any — used only where the caller has no hash — but a supplied hash must be
+    the one recorded at issuance."""
     try:
         for line in open(os.path.join(_sd(pid), "capsules.jsonl")):
-            if line.strip() and json.loads(line).get("capsule", {}).get("turn_id") == turn_id:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get("capsule", {}).get("turn_id") != turn_id:
+                continue
+            if not sha or rec.get("capsule_sha256") == sha:
                 return True
     except (FileNotFoundError, ValueError, OSError):
         pass
     return False
 
 
-def _max_disposition_rank(pid, turn_id, sha):
-    hi = None
+def _disposition_state(pid, turn_id, sha):
+    """(highest rank recorded, terminal state if any) for this (turn, sha)."""
+    hi, terminal = None, None
     try:
         for line in open(os.path.join(_sd(pid), "events.jsonl")):
             if not line.strip():
@@ -641,12 +659,15 @@ def _max_disposition_rank(pid, turn_id, sha):
                 continue
             d = e.get("data", {})
             if d.get("turn_id") == turn_id and (not sha or d.get("capsule_sha256") == sha):
-                r = _DISPOSITION_RANK.get(d.get("state"))
+                st = d.get("state")
+                r = _DISPOSITION_RANK.get(st)
                 if r is not None and (hi is None or r > hi):
                     hi = r
+                if st in _TERMINAL_STATES:
+                    terminal = st
     except (FileNotFoundError, ValueError, OSError):
         pass
-    return hi
+    return hi, terminal
 
 
 @route()

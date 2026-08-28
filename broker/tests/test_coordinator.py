@@ -165,6 +165,27 @@ def test_turn_scope_records_failure_on_exception():
                   if p[0] == "/stratagem/disposition"), e.posts)
 
 
+def test_envelope_marks_stratagem_output_unwitnessable():
+    with Env() as e:
+        e.capsule = ("blk", {"capsule_sha256": "abc"})
+        t = TC.begin("hello", "avatar")
+        env = TC.envelope(t)
+        check("input stays eligible evidence", env["input_provenance"] == "counterpart_verbatim", env)
+        check("output marked stratagem_influenced",
+              env["output_provenance"] == "stratagem_influenced", env)
+        check("may_witness false for a tactic", env["may_witness"] is False, env)
+        check("witnessing_allowed false for a tactic", TC.witnessing_allowed(t) is False)
+
+
+def test_envelope_lets_an_ordinary_turn_witness():
+    with Env():
+        t = TC.begin("hello", "avatar")
+        env = TC.envelope(t)
+        check("ordinary output witnesses normally",
+              env["output_provenance"] == "ordinary_generation" and env["may_witness"] is True, env)
+        check("witnessing_allowed true for ordinary", TC.witnessing_allowed(t) is True)
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

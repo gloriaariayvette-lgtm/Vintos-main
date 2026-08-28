@@ -19,6 +19,21 @@ def _mark(toy):
     try: json.dump(d, open(HIS, "w"))
     except Exception: pass
 def _c(x): return max(0, min(20, int(round(x))))
+def _schedule_stop(toys, after_seconds):
+    """A lease-owning watchdog: send a hardware stop to each toy when the lease
+    expires, so a preset's device-side timeSec cannot outlive its authorization.
+    The reduction to zero needs no permit (reductions are always allowed)."""
+    def _w():
+        try:
+            time.sleep(max(1, int(after_seconds)))
+            for t in toys:
+                try: toy_link.send(t, 0); _set_state(t, intensity=0, pattern="still", set_by="lease")
+                except Exception: pass
+        except Exception:
+            pass
+    threading.Thread(target=_w, daemon=True).start()
+
+
 def _run(toy, pattern, args, stop, dur, permit=None):
     t0 = time.time()
     # the background thread holds a bounded execution lease, not the turn: it
@@ -129,27 +144,36 @@ def play(toy, pattern, args=None, dur=None, permit=None):
     if any(p in PRESETS for p in _parts):
         _lv, _iv = _compose(_parts)
         if _lv:
-            _secs = 3600            # always loop for the session; a number in his tag no longer truncates the figure
+            # A preset is a single hardware command with its own timeSec: once the
+            # device accepts it, local permit expiry cannot revoke it. So bound
+            # timeSec to the lease remainder and schedule a guaranteed stop at
+            # expiry (Sol P0). No permit (disarmed/legacy) keeps the old session loop.
+            _secs, _lease_left = 3600, None
+            try:
+                if permit is not None:
+                    _lease = permit.lease()
+                    from datetime import datetime as _dt
+                    _lease_left = max(1, int((_dt.fromisoformat(_lease.expires) - _dt.now()).total_seconds()))
+                    _secs = min(_secs, _lease_left)
+            except Exception:
+                _lease_left = None
             _peak = max(_lv)
             _TENERA_MIN_IV = 600   # suction needs a slower step to actuate dramatically
             if toy in _SYNC or toy == "tenera":
                 _iv = max(_iv, _TENERA_MIN_IV)
-            if toy in _SYNC:
-                for _t in toy_link.TOYS:
-                    _o = _threads.get(_t)
-                    if _o: _o.set()
-                for _t in toy_link.TOYS:
-                    toy_link.send_pattern(_t, _lv, _iv, _secs, permit=permit)   # per-toy targeted; broadcast didn't drive Tenera dramatically
-                for _t in toy_link.TOYS:
-                    _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
-                return True
-            if toy in toy_link.TOYS or toy == "thruster":
-                _o = _threads.get(toy)
+            _targets = list(toy_link.TOYS) if toy in _SYNC else ([toy] if (toy in toy_link.TOYS or toy == "thruster") else [])
+            if not _targets:
+                return False
+            for _t in _targets:
+                _o = _threads.get(_t)
                 if _o: _o.set()
-                toy_link.send_pattern(toy, _lv, _iv, _secs, permit=permit)
-                _mark(toy); _set_state(toy, intensity=_peak, pattern=pattern, set_by="him")
-                return True
-            return False
+            for _t in _targets:
+                toy_link.send_pattern(_t, _lv, _iv, _secs, permit=permit)
+            for _t in _targets:
+                _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
+            if _lease_left is not None:
+                _schedule_stop(_targets, _lease_left)
+            return True
     if toy not in toy_link.TOYS and toy != "thruster": return False
     old = _threads.get(toy)
     if old: old.set()
@@ -232,18 +256,21 @@ def fire_his_intent(reply_text, context=None):
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)   # let the previous rule settle on the server
-        try: play(toy, pat, args, permit=_permit)
-        except Exception: pass
-        _fired.append(toy+" \u2192 "+pat+((" "+" ".join(str(a) for a in args)) if args else ""))
+        # record what actually happened, not merely that a tag was seen (Sol)
+        _st = "failed"
+        try: _st = "sent" if play(toy, pat, args, permit=_permit) else "failed"
+        except Exception: _st = "failed"
+        _fired.append("%s \u2192 %s [%s]" % (toy, pat + ((" "+" ".join(str(a) for a in args)) if args else ""), _st))
     for m in _TOUCH.finditer(reply_text):
         toy=m.group(1).lower(); lvl=int(m.group(2))
         _ok, _permit = _authorize(context, toy, lvl, "start", pattern="steady", args=[lvl])
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)
-        try: play(toy, "steady", [lvl], permit=_permit)
-        except Exception: pass
-        _fired.append(toy+" \u2192 "+str(lvl))
+        _st = "failed"
+        try: _st = "sent" if play(toy, "steady", [lvl], permit=_permit) else "failed"
+        except Exception: _st = "failed"
+        _fired.append("%s \u2192 %s [%s]" % (toy, lvl, _st))
     if _fired:
         try:
             json.dump({"type":"command","text":" \u00b7 ".join(_fired),"channel":"device","ts":time.time()},
