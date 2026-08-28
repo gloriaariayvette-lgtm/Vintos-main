@@ -7557,18 +7557,19 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     except Exception: pass
     _tvl_intercept = ""
     """Avatar overlay chat — full main-chat context, VR gesture control, no memory writes."""
+    # AUTHENTICATE FIRST — a turn (and any private capsule it fetches) must never
+    # be opened for an unauthorized request (Sol).
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
     # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
-    _turn = None
+    _turn = _tc = None
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
         _turn = _tc.begin(str(getattr(msg, "message", "") or ""), "avatar")
-        globals()["_active_turn_context"] = _turn.context   # projector gate reads this
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
     try:
         # Load full context — same as main chat
@@ -7685,6 +7686,9 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 try:
                     if _turn is not None and _turn.capsule_block:
                         _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
+                        # record admission ONLY now that the text is actually in
+                        # the prompt — not at fetch time (Sol #1).
+                        if _tc is not None: _tc.mark_admitted(_turn)
                 except Exception: pass
                 if _jf2: _vt_subblock_a += "\n\n" + _jf2
             except Exception: pass
@@ -8062,11 +8066,11 @@ Your current self-model (excerpt):
                     _tl_ps(reply, context=(_turn.context if _turn is not None else None))
                 except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
-            # close the turn: dispose the capsule (if any) and clear the context
+            # device effects done — bump the stage but DO NOT close yet: the
+            # projector effect and the post-writers still run below, and the
+            # capsule's terminal disposition must be the LAST thing (Sol #1).
             try:
-                if _turn is not None:
-                    _tc.finish(_turn, reply, outcome="effects_completed")
-                globals()["_active_turn_context"] = None
+                if _turn is not None: _turn.stage = "effects_completed"
             except Exception: pass
             # -- Ported systems run independently now, cannot be killed by emotional_operators failing --
             try:
@@ -8162,15 +8166,18 @@ Your current self-model (excerpt):
                 # rendered, in test mode.
                 try:
                     import effect_gate as _pj_eg
-                    # TurnContext is None until the coordinator is wired: disarmed
-                    # this passes as today; armed-without-context it denies, which
-                    # is the safe direction. The coordinator will pass the turn's
-                    # context here.
-                    _pj_ctx = globals().get("_active_turn_context")
+                    # the turn's context in LOCAL scope — not a module global that
+                    # a concurrent avatar call could overwrite or that the close
+                    # already cleared (Sol #5).
+                    _pj_ctx = _turn.context if _turn is not None else None
                     _pj_ok, _pj_mode, _pj_why = _pj_eg.authorize_effect(
                         _pj_ctx, "projector", detail=_pm.group(1).strip()[:80])
                 except Exception:
+                    # fail-closed when armed (Sol #6)
                     _pj_ok, _pj_mode, _pj_why = True, "send", None
+                    try:
+                        if _pj_eg.armed(): _pj_ok, _pj_mode, _pj_why = False, "deny", "gate fault"
+                    except Exception: pass
                 if not _pj_ok:
                     reply = _pjr.sub(r"\s*\[PROJECT:[^\]]*\]\s*", " ", reply).strip()
                     print("[projector] refused (%s): %s" % (_pj_mode, _pj_why), flush=True)
@@ -8236,6 +8243,17 @@ Your current self-model (excerpt):
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
     except Exception as e:
         return {"reply": "", "error": str(e)}
+    finally:
+        # route-wide guaranteed close (Sol #3): whatever happened above, the
+        # turn's capsule gets a terminal disposition. finish() is idempotent and
+        # records generation_failed when no reply was produced.
+        try:
+            if _turn is not None and _tc is not None:
+                _outcome = _turn.stage if _turn.stage in (
+                    "effects_completed", "completed") else "generation_failed"
+                _tc.finish(_turn, "" if _outcome != "generation_failed" else None,
+                           outcome=_outcome)
+        except Exception: pass
 
 # === Avatar latest imprint — for overlay bubble ===
 @app.get("/api/avatar/imprint")

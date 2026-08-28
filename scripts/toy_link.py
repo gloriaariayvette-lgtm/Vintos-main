@@ -55,7 +55,7 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
         # by each transport call (one authorized effect can touch two toys).
         if permit is not None:
             try:
-                if permit.valid_now() and permit.target in (toy, "both", None):
+                if permit.covers(toy, level, kind):
                     return True, "send"
             except Exception:
                 pass
@@ -67,7 +67,23 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
             print("[toy_link] TEST MODE — would send %s %s (nothing sent)" % (toy, level), flush=True)
         return allow, mode
     except Exception:
-        return True, "send"
+        # A wrapper fault must not stop a reduction, and must not become
+        # permission for a deliberative effect when armed (Sol: fail-closed).
+        return _fail_decision(toy, level, kind)
+
+
+def _fail_decision(toy, level, kind):
+    """The gate's own rule, applied when the wrapper itself faulted: a reduction
+    always passes; a deliberative effect denies when armed, else passes."""
+    try:
+        import effect_gate
+        if effect_gate.classify(toy, level, kind) == "reduction":
+            return True, "send"
+        if effect_gate.armed():
+            return False, "deny"
+    except Exception:
+        pass
+    return True, "send"     # gate wholly unavailable => arming impossible => pass
 
 
 def _note(toy, level):
@@ -212,13 +228,20 @@ def parse_and_send(reply_text, context=None):
             # the transport call is not re-gated without a context.
             _permit = None
             try:
-                import effect_gate
+                import effect_gate, hashlib as _hh
+                _dg = _hh.sha256(("touch|start|%d" % lvl).encode()).hexdigest()[:16]
                 _permit, _mode, _why = effect_gate.authorize(context, toy, lvl,
-                                                            kind="start", detail="[TOUCH:]")
+                                                            kind="start", detail="[TOUCH:]",
+                                                            targets={toy}, digest=_dg)
                 if _mode != "send":
                     out.append((toy, lvl, "refused:%s" % _mode)); continue
+                if _permit is not None and not _permit.consume():
+                    out.append((toy, lvl, "refused:already_spent")); continue
             except Exception:
-                pass
+                # wrapper fault: a [TOUCH:] is deliberative, so deny when armed
+                _pa_ok, _ = _fail_decision(toy, lvl, "start")
+                if not _pa_ok:
+                    out.append((toy, lvl, "refused:armed_fault")); continue
             try: out.append((toy, lvl, send(toy, lvl, secs, context=context, permit=_permit))); _fired[toy] = lvl
             except Exception as e: out.append((toy, lvl, str(e)))
     if _fired:
@@ -257,10 +280,11 @@ def _toy_trace(tag):
 
 _send_orig, _pattern_orig = send, send_pattern
 
-def send(toy, level, seconds=0, _o=_send_orig):
+def send(toy, level, seconds=0, context=None, permit=None, _o=_send_orig):
     _toy_trace("send %s=%s sec=%s" % (toy, level, seconds))
-    return _o(toy, level, seconds)
+    return _o(toy, level, seconds, context=context, permit=permit)
 
-def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None, _o=_pattern_orig):
+def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
+                 context=None, permit=None, _o=_pattern_orig):
     _toy_trace("pattern %s n=%d iv=%s sec=%s" % (toy, len(strengths or []), interval_ms, seconds))
-    return _o(toy, strengths, interval_ms, seconds, func)
+    return _o(toy, strengths, interval_ms, seconds, func, context=context, permit=permit)

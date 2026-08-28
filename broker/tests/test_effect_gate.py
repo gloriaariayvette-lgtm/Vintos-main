@@ -186,7 +186,10 @@ def test_armed_grants_a_permit_with_clean_context():
         e.arm()
         permit, mode, _ = EG.authorize(TC("t1", "chat"), "mission", 12)
         assert mode == "send" and permit is not None
-        assert permit.target == "mission" and permit.turn_id == "t1"
+        assert "mission" in permit.targets and permit.turn_id == "t1"
+        assert permit.covers("mission", 12, "start") is True
+        assert permit.covers("mission", 13, "start") is False    # above the maximum
+        assert permit.covers("tenera", 12, "start") is False     # wrong target
         assert permit.consume() is True
         assert permit.consume() is False       # single-use start
 

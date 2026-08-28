@@ -79,9 +79,18 @@ def test_live_capsule_is_fetched_and_carried_when_clear():
         check("context marks the tactic", t.context.capsule_commitment == t.commitment)
         check("provenance stamps the turn",
               EG.provenance(t.context).get("generation_provenance") == "stratagem_influenced")
-        check("admitted_to_prompt disposition posted",
-              any(p[0] == "/stratagem/disposition" and p[1]["state"] == "admitted_to_prompt"
+        # begin() records ISSUED, not admitted — admission waits for injection
+        check("issued disposition posted at begin",
+              any(p[0] == "/stratagem/disposition" and p[1]["state"] == "issued"
                   for p in e.posts), e.posts)
+        check("NOT admitted at begin",
+              not any(p[1].get("state") == "admitted_to_prompt" for p in e.posts
+                      if p[0] == "/stratagem/disposition"), e.posts)
+        e.posts.clear()
+        TC.mark_admitted(t)
+        check("mark_admitted posts admitted_to_prompt",
+              any(p[1].get("state") == "admitted_to_prompt" for p in e.posts
+                  if p[0] == "/stratagem/disposition"), e.posts)
 
 
 def test_no_capsule_requested_when_barrier_closed():

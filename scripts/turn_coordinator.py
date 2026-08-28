@@ -53,18 +53,19 @@ SURFACES = {"chat", "avatar"}
 
 class Turn:
     __slots__ = ("turn_id", "surface", "barrier", "capsule_block", "commitment",
-                 "context", "test_mode", "stage", "_disposed")
+                 "project_id", "context", "test_mode", "stage", "_disposed")
 
     def __init__(self, turn_id, surface, barrier, capsule_block, commitment,
-                 context, test_mode):
+                 project_id, context, test_mode):
         self.turn_id = turn_id
         self.surface = surface
         self.barrier = barrier
         self.capsule_block = capsule_block or ""
         self.commitment = commitment or {}
+        self.project_id = project_id or ""
         self.context = context
         self.test_mode = test_mode
-        self.stage = "opened"
+        self.stage = "issued" if self.commitment else "opened"
         self._disposed = False
 
     @property
@@ -108,11 +109,12 @@ def begin(raw_text, surface, test_mode=False):
     # 3-4. fetch a capsule ONLY if clear. A capsule is never requested and then
     #      discarded — that would write a private issuance event for a tactic
     #      with no standing in the turn.
-    capsule_block, commitment = "", {}
+    capsule_block, commitment, project_id = "", {}, ""
     if clear:
         try:
             from stratagem import fetch_capsule
             capsule_block, commitment = fetch_capsule(turn_id, surface)
+            project_id = commitment.get("stratagem_project", "") if commitment else ""
         except Exception:
             capsule_block, commitment = "", {}
     else:
@@ -132,32 +134,57 @@ def begin(raw_text, surface, test_mode=False):
         context = None
 
     turn = Turn(turn_id, surface, barrier, capsule_block, commitment,
-                context, test_mode)
-
-    # 6. if a capsule was admitted to the prompt, tell the broker so the
-    #    disposition ledger reflects it.
+                project_id, context, test_mode)
+    # NOTE: 'admitted_to_prompt' is NOT recorded here. A capsule fetched is only
+    # 'issued'. Admission is recorded by mark_admitted(), called by the caller
+    # immediately after the capsule text is actually appended to the prompt —
+    # so a failure between here and injection cannot record a false admission.
     if commitment:
-        turn.stage = "admitted_to_prompt"
-        _dispose(turn, "admitted_to_prompt")
+        _dispose(turn, "issued")
     return turn
 
 
-def authorize_device(turn, toy, level, kind=None, detail=None):
+def mark_admitted(turn):
+    """Call immediately after turn.capsule_block was successfully appended to the
+    assembled prompt. Records the real admission event."""
+    if turn is None or not turn.carries_capsule or turn.stage == "admitted_to_prompt":
+        return
+    turn.stage = "admitted_to_prompt"
+    _dispose(turn, "admitted_to_prompt")
+
+
+def authorize_device(turn, toy, level, kind=None, detail=None, targets=None):
     """Authorize one device effect against this turn. Returns (permit, mode, why).
-    The executor passes the permit to toy_link. A capsule turn is denied here."""
+    On a wrapper fault: a reduction passes, a deliberative effect denies when
+    armed (fail-closed)."""
     try:
         import effect_gate
-        return effect_gate.authorize(turn.context, toy, level, kind=kind, detail=detail)
+        return effect_gate.authorize(turn.context, toy, level, kind=kind,
+                                     detail=detail, targets=targets)
     except Exception:
+        try:
+            import effect_gate
+            if effect_gate.classify(toy, level, kind) == "reduction":
+                return None, "send", None
+            if effect_gate.armed():
+                return None, "deny", "gate fault (armed: deny)"
+        except Exception:
+            pass
         return None, "send", None
 
 
 def authorize_nondevice(turn, kind, detail=None):
-    """Authorize a projector/outbound effect. Returns (allow, mode, why)."""
+    """Authorize a projector/outbound effect. Fail-closed when armed."""
     try:
         import effect_gate
         return effect_gate.authorize_effect(turn.context, kind, detail=detail)
     except Exception:
+        try:
+            import effect_gate
+            if effect_gate.armed():
+                return False, "deny", "gate fault (armed: deny)"
+        except Exception:
+            pass
         return True, "send", None
 
 
@@ -214,15 +241,17 @@ _DISPOSITION_STATES = {"issued", "admitted_to_prompt", "generation_failed",
 
 
 def _dispose(turn, state):
-    """Best-effort disposition. If the broker is unreachable, record it pending
-    locally rather than let 'issued' silently look like 'used'."""
-    body = {"id": _worktable_id(),
+    """Best-effort disposition, bound to (project_id, turn_id, capsule_sha256).
+    If the broker is unreachable, keep the COMPLETE body pending — not just the
+    turn id and state — so the retry carries everything the broker needs to
+    apply it idempotently and in order."""
+    body = {"id": turn.project_id or _worktable_id(),
             "turn_id": turn.turn_id,
             "capsule_sha256": turn.commitment.get("capsule_sha256", ""),
             "state": state}
     r = _post("/stratagem/disposition", body)
-    if r is None:
-        _pending(turn.turn_id, state)
+    if r is None or (isinstance(r, dict) and r.get("error")):
+        _pending(body)
 
 
 def _worktable_id():
@@ -237,12 +266,11 @@ def _strategy_stop(raw_text):
               {"id": pid, "trigger_ref": "chat", "verbatim": str(raw_text)[:300]})
 
 
-def _pending(turn_id, state):
+def _pending(body):
     try:
         mem = os.path.expanduser("~/.vintos/workspace/memory")
         with open(os.path.join(mem, "disposition-pending.jsonl"), "a") as f:
-            f.write(json.dumps({"turn_id": turn_id, "state": state,
-                                "at": datetime.now().isoformat()}) + "\n")
+            f.write(json.dumps({**body, "at": datetime.now().isoformat()}) + "\n")
     except Exception:
         pass
 

@@ -4,6 +4,7 @@ import os, sys, json, tempfile, shutil, uuid, hmac, hashlib, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))   # broker/, where the modules live
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "scripts"))
 import stratagem_store as S
 import broker as BK
 
@@ -98,6 +99,34 @@ with Env() as e:
     ok, n, why = S.verify(PID)
     check("chain still verifies after disposition", ok, why)
 
+
+with Env() as e:
+    # disposition is idempotent + monotonic per (project, turn_id, sha)
+    S.capsule({"id": PID, "turn_id": "turn-M", "surface": "chat"})
+    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "issued"})
+    check("issued accepted", r.get("ok") and not r.get("idempotent"), r)
+    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "issued"})
+    check("repeat issued is idempotent", r.get("idempotent") is True, r)
+    S.disposition({"id": PID, "turn_id": "turn-M", "state": "completed"})
+    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "admitted_to_prompt"})
+    check("late admitted after completed is a no-op (monotonic)",
+          r.get("idempotent") is True, r)
+    r = S.disposition({"id": PID, "turn_id": "never-issued", "state": "completed"})
+    check("disposition for an un-issued turn refused", "error" in r, r)
+
+with Env() as e:
+    # a permit binds its exact effect: level and target
+    import effect_gate as EG
+    ctx = EG.TurnContext("t1", "avatar")
+    open(os.path.join(e.tmp, ".effect-gate-armed"), "w").write("")
+    EG.ARMED_FLAG = os.path.join(e.tmp, ".effect-gate-armed")
+    permit, mode, _ = EG.authorize(ctx, "mission", 12, kind="pattern",
+                                   targets={"mission"}, digest="d")
+    check("permit granted for a clean armed context", mode == "send" and permit, mode)
+    check("permit covers its own level", permit.covers("mission", 12, "pattern"))
+    check("permit rejects a higher level", not permit.covers("mission", 18, "pattern"))
+    check("permit rejects another toy", not permit.covers("tenera", 12, "pattern"))
+    EG.ARMED_FLAG = os.path.join(e.tmp, "nonexistent")
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -132,7 +132,7 @@ blob = json.dumps(r)
 leaks = [w for w in ("authorship", "drift_novelty", "guards the role") if w in blob]
 print(("PASS " if not leaks else "FAIL ") + "objective/provenance absent from capsule response  ->  leaks=%s" % leaks)
 results.append(not leaks)
-ok = set(com) == {"capsule_sha256", "stratagem_id", "seq", "turn_id"}
+ok = set(com) == {"capsule_sha256", "stratagem_id", "stratagem_project", "seq", "turn_id"}
 print(("PASS " if ok else "FAIL ") + "commitment is content-free  ->  " + str(com)[:110])
 results.append(ok)
 ok = cap.get("tactic") == "PROBE" and cap.get("step") == 1

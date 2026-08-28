@@ -84,45 +84,97 @@ class TurnContext:
                 "turn_id": self.turn_id}
 
 
+MAX_LEASE_SECONDS = 30 * 60   # hard safety ceiling for an until-replaced lease
+
+
 class EffectPermit:
     """An immutable, bounded, single-use authorization for one deliberative
-    effect. Its background execution (a looping pattern) runs under this permit
-    regardless of whether the turn is still open."""
-    __slots__ = ("effect_id", "turn_id", "surface", "kind", "target",
-                 "maximum", "duration", "expires", "capsule_commitment",
-                 "_consumed", "_lock")
+    effect. It binds the exact effect it authorizes — kind, the exact target
+    set, the maximum intensity, and a parameter digest — so a permit granted at
+    level 12 cannot be reused to run a named pattern peaking at 18, and a permit
+    for one toy cannot fire another. consume() guards the START; the running
+    execution then holds a separate bounded lease (see ExecutionLease)."""
+    __slots__ = ("effect_id", "turn_id", "surface", "kind", "targets",
+                 "maximum", "digest", "duration", "expires", "lease_mode",
+                 "capsule_commitment", "_consumed", "_lock")
 
-    def __init__(self, turn_id, surface, kind, target, maximum, duration):
+    def __init__(self, turn_id, surface, kind, targets, maximum, duration,
+                 digest=None):
         self.effect_id = uuid.uuid4().hex
         self.turn_id = turn_id
         self.surface = surface
         self.kind = kind
-        self.target = target
+        # exact target set: "both"/broadcast is expanded by the caller
+        self.targets = frozenset(targets if isinstance(targets, (set, frozenset, list, tuple))
+                                 else [targets])
         self.maximum = int(maximum)
+        self.digest = digest
         self.duration = int(duration or 0)
-        self.expires = (datetime.now() + timedelta(
-            seconds=self.duration or 3600)).isoformat()
+        self.lease_mode = "bounded" if self.duration else "until_replaced"
+        secs = self.duration or MAX_LEASE_SECONDS
+        self.expires = (datetime.now() + timedelta(seconds=secs)).isoformat()
         self.capsule_commitment = None      # a permit never carries a capsule
         self._consumed = False
         self._lock = threading.Lock()
 
+    def valid_now(self):
+        return datetime.now().isoformat() <= self.expires
+
+    def covers(self, toy, level, kind):
+        """True iff this permit authorizes THIS command: still valid, the toy is
+        in the target set, the level is within the authorized maximum, and the
+        kind matches (a scalar send may run under a pattern permit's ramp, but a
+        pattern/rotate may not run under a plain-level permit)."""
+        if not self.valid_now():
+            return False
+        if toy not in self.targets and "both" not in self.targets:
+            return False
+        if int(level or 0) > self.maximum:
+            return False
+        if kind in ("rotate",) and self.kind != "rotate":
+            return False
+        return True
+
     def consume(self):
-        """A permit authorizes one execution. Later ticks of that execution are
-        the SAME authorized action, so consumption guards the START only."""
+        """Authorizes one execution start; later ticks are the same action."""
         with self._lock:
             if self._consumed:
                 return False
             self._consumed = True
             return True
 
-    def valid_now(self):
-        return datetime.now().isoformat() <= self.expires
+    def lease(self):
+        """A separate bounded execution lease for a background pattern thread, so
+        expiry can be checked by the executor and the turn's close cannot revoke
+        an already-started, still-legal execution."""
+        return ExecutionLease(self.effect_id, self.targets, self.maximum,
+                              self.expires, self.lease_mode)
 
     def as_dict(self):
         return {"effect_id": self.effect_id, "turn_id": self.turn_id,
-                "surface": self.surface, "kind": self.kind, "target": self.target,
-                "maximum": self.maximum, "duration": self.duration,
-                "expires": self.expires, "capsule_commitment": None}
+                "surface": self.surface, "kind": self.kind,
+                "targets": sorted(self.targets), "maximum": self.maximum,
+                "digest": self.digest, "duration": self.duration,
+                "lease_mode": self.lease_mode, "expires": self.expires,
+                "capsule_commitment": None}
+
+
+class ExecutionLease:
+    """What a running pattern thread holds. Bounded and checkable; the executor
+    stops and reduces to zero when it expires or the hardware stop is down."""
+    __slots__ = ("effect_id", "targets", "maximum", "expires", "mode")
+
+    def __init__(self, effect_id, targets, maximum, expires, mode):
+        self.effect_id = effect_id
+        self.targets = frozenset(targets)
+        self.maximum = int(maximum)
+        self.expires = expires
+        self.mode = mode
+
+    def live(self):
+        if hardware_stopped():
+            return False
+        return datetime.now().isoformat() <= self.expires
 
 
 # ---------------------------------------------------------------------------
@@ -191,8 +243,14 @@ def classify(toy, level, kind=None):
 # the decision — always takes an explicit context (or None for a bare reduction)
 # ---------------------------------------------------------------------------
 
-def authorize(context, toy, level, kind=None, detail=None):
+def authorize(context, toy, level, kind=None, detail=None, targets=None, digest=None):
     """Returns (permit_or_None, mode, reason).
+
+    targets: the exact, already-expanded target set this effect will touch
+    (a broadcast alias like "both" must be expanded by the caller before
+    authorizing). Defaults to {toy}. The granted permit binds this set, the
+    level as its maximum, and the digest, so it cannot be reused for a larger
+    effect.
 
     mode: "send" (a reduction, or a granted deliberative permit),
           "would_send" (test mode: record only),
@@ -251,7 +309,8 @@ def authorize(context, toy, level, kind=None, detail=None):
             return None, "send", None
 
         permit = EffectPermit(context.turn_id, context.surface,
-                              kind or "start", toy, level, _dur(detail))
+                              kind or "start", targets or {toy}, level,
+                              _dur(detail), digest=digest)
         _log(decision="permit", effect_id=permit.effect_id, toy=toy, level=level,
              kind=kind, turn_id=context.turn_id, surface=context.surface, detail=detail)
         return permit, "send", None

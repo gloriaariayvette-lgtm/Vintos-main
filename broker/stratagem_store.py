@@ -576,28 +576,77 @@ def _existing_capsule(pid, sid, turn_id, surface):
     return None
 
 
+# disposition lifecycle order. Higher rank never regresses to lower; a repeat of
+# the same or a lower rank is idempotent (recorded once, ignored after).
+# Terminal failures sit above the normal path so nothing can follow them.
+_DISPOSITION_RANK = {
+    "issued": 0, "admitted_to_prompt": 1, "response_created": 2,
+    "effects_completed": 3, "postwriters_dispatched": 4, "transport_unknown": 4,
+    "completed": 5, "generation_failed": 9, "capsule_unrealized": 9,
+}
+
+
 @route()
 def disposition(b):
-    """Append what became of an issued capsule. Never voids or deletes it — it
-    was genuinely issued. A generation failure records capsule_unrealized and
-    does NOT advance the tactic or count as an eligible tactical turn.
-
-    States: issued | admitted_to_prompt | generation_failed | response_created
-            | effects_completed | transport_unknown | completed"""
+    """Append what became of an issued capsule, idempotent and monotonic per
+    (project, turn_id, capsule_sha256). Never voids the capsule. A generation
+    failure records capsule_unrealized/generation_failed and does NOT advance
+    the tactic."""
     pid = b.get("id", "")
     s = _j(os.path.join(_sd(pid), "stratagem.json"))
     if not s:
         return _err("no stratagem on this project")
     state = str(b.get("state", "")).strip()
-    valid = {"issued", "admitted_to_prompt", "generation_failed", "response_created",
-             "effects_completed", "transport_unknown", "completed", "capsule_unrealized"}
-    if state not in valid:
+    if state not in _DISPOSITION_RANK:
         return _err("unknown disposition state: %s" % state)
+    turn_id = str(b.get("turn_id", ""))[:80]
+    sha = str(b.get("capsule_sha256", ""))[:64]
+
+    # the turn/hash must belong to a capsule this stratagem actually issued —
+    # except the very first 'issued' event, which is what registers it.
+    if state != "issued" and not _capsule_issued_for(pid, turn_id):
+        return _err("no issued capsule for turn %s — disposition refused" % turn_id)
+
+    # idempotent + monotonic: find the highest rank already recorded for this
+    # (turn_id, sha); ignore a repeat or a regression.
+    prev_rank = _max_disposition_rank(pid, turn_id, sha)
+    if prev_rank is not None and _DISPOSITION_RANK[state] <= prev_rank:
+        return {"ok": True, "idempotent": True, "state": state,
+                "note": "already at or beyond this state"}
+
     ev = _chain(pid, "capsule_disposition",
-                {"stratagem": s["id"], "turn_id": str(b.get("turn_id", ""))[:80],
-                 "capsule_sha256": str(b.get("capsule_sha256", ""))[:64],
+                {"stratagem": s["id"], "turn_id": turn_id, "capsule_sha256": sha,
                  "state": state, "reason_class": str(b.get("reason_class", ""))[:60]})
     return {"ok": True, "seq": ev["seq"], "state": state}
+
+
+def _capsule_issued_for(pid, turn_id):
+    try:
+        for line in open(os.path.join(_sd(pid), "capsules.jsonl")):
+            if line.strip() and json.loads(line).get("capsule", {}).get("turn_id") == turn_id:
+                return True
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return False
+
+
+def _max_disposition_rank(pid, turn_id, sha):
+    hi = None
+    try:
+        for line in open(os.path.join(_sd(pid), "events.jsonl")):
+            if not line.strip():
+                continue
+            e = json.loads(line)
+            if e.get("type") != "capsule_disposition":
+                continue
+            d = e.get("data", {})
+            if d.get("turn_id") == turn_id and (not sha or d.get("capsule_sha256") == sha):
+                r = _DISPOSITION_RANK.get(d.get("state"))
+                if r is not None and (hi is None or r > hi):
+                    hi = r
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return hi
 
 
 @route()
@@ -638,8 +687,8 @@ def capsule(b):
     if prior:
         return {"active": True, "capsule": prior["capsule"], "idempotent": True,
                 "commitment": {"capsule_sha256": prior["capsule_sha256"],
-                               "stratagem_id": s["id"], "seq": prior["seq"],
-                               "turn_id": turn_id}}
+                               "stratagem_id": s["id"], "stratagem_project": pid,
+                               "seq": prior["seq"], "turn_id": turn_id}}
 
     steps = s["tactics"]
     # Steps exhausted holds mechanically. Reissuing the final tactic after he
@@ -682,6 +731,7 @@ def capsule(b):
         os.fsync(f.fileno())
     return {"active": True, "capsule": cap,
             "commitment": {"capsule_sha256": sha, "stratagem_id": s["id"],
+                           "stratagem_project": pid,
                            "seq": ev["seq"], "turn_id": turn_id}}
 
 

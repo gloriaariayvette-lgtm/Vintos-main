@@ -21,7 +21,17 @@ def _mark(toy):
 def _c(x): return max(0, min(20, int(round(x))))
 def _run(toy, pattern, args, stop, dur, permit=None):
     t0 = time.time()
+    # the background thread holds a bounded execution lease, not the turn: it
+    # stops and settles to zero when the lease expires or the hardware stop is
+    # down, so an until-replaced pattern cannot run forever once armed.
+    lease = None
+    try:
+        lease = permit.lease() if permit is not None else None
+    except Exception:
+        lease = None
     while not stop.is_set() and (dur is None or time.time()-t0 < dur):
+        if lease is not None and not lease.live():
+            break
         t = time.time()-t0
         if pattern == "throb":
             b = args[0] if args else 12; rate = 0.8 + (b/20.0)*1.6
@@ -154,22 +164,45 @@ _DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\w+)*)\s*\]", re.I)
 _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
-def _authorize(context, toy, level, kind):
-    """One [DO:] effect against the turn. Returns (proceed, permit). Behavior-
-    neutral while the gate is disarmed; when armed a capsule turn is denied and
-    the test-mode flag converts a fire to a no-op."""
+def _authorize(context, toy, level, kind, pattern="", args=None):
+    """Canonicalize -> expand -> authorize -> consume. Returns (proceed, permit).
+    A broadcast alias is expanded to its exact target set before authorizing, so
+    the permit binds every toy it will touch; the permit is consumed once here,
+    at the start, and its bounded lease carries any background execution.
+
+    Behaviour-neutral while disarmed; when armed a capsule turn is denied and the
+    test-mode flag makes the fire a no-op."""
     try:
-        import effect_gate
+        import effect_gate, hashlib
+        targets = set(toy_link.TOYS) if toy in _SYNC else {toy}
+        digest = hashlib.sha256(
+            ("%s|%s|%s" % (pattern, kind, args or [])).encode()).hexdigest()[:16]
         permit, mode, why = effect_gate.authorize(context, toy, level, kind=kind,
-                                                  detail="[DO:]")
+                                                  detail="[DO:]", targets=targets,
+                                                  digest=digest)
         if mode == "deny":
             print("[DO] %s refused: %s" % (toy, why), flush=True)
             return False, None
         if mode == "would_send":
             return False, None
+        if permit is not None and not permit.consume():
+            return False, None          # already spent — never double-start
         return True, permit
     except Exception:
-        return True, None
+        return _fail(context, toy, level, kind)
+
+
+def _fail(context, toy, level, kind):
+    """Wrapper fault: a reduction passes, a deliberative effect denies when armed."""
+    try:
+        import effect_gate
+        if effect_gate.classify(toy, level, kind) == "reduction":
+            return True, None
+        if effect_gate.armed():
+            return False, None
+    except Exception:
+        pass
+    return True, None
 
 
 def fire_his_intent(reply_text, context=None):
@@ -188,7 +221,14 @@ def fire_his_intent(reply_text, context=None):
             try: args.append(int(_x))
             except ValueError: args.append(_x)   # words like low/mid/high are valid for rotate
         _lvl = next((a for a in args if isinstance(a, int)), 12)
-        _ok, _permit = _authorize(context, toy, _lvl, "pattern")
+        # a named preset can peak at 20 regardless of the args; authorize the
+        # real peak so the permit's maximum is not undersized.
+        _peak = _lvl
+        try:
+            _pl = _compose(pat.split("+"))[0] if any(_p in PRESETS for _p in pat.split("+")) else None
+            if _pl: _peak = max(_peak, max(_pl))
+        except Exception: pass
+        _ok, _permit = _authorize(context, toy, _peak, "pattern", pattern=pat, args=args)
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)   # let the previous rule settle on the server
@@ -197,7 +237,7 @@ def fire_his_intent(reply_text, context=None):
         _fired.append(toy+" \u2192 "+pat+((" "+" ".join(str(a) for a in args)) if args else ""))
     for m in _TOUCH.finditer(reply_text):
         toy=m.group(1).lower(); lvl=int(m.group(2))
-        _ok, _permit = _authorize(context, toy, lvl, "start")
+        _ok, _permit = _authorize(context, toy, lvl, "start", pattern="steady", args=[lvl])
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)
