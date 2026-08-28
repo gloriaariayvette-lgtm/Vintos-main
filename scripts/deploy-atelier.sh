@@ -248,6 +248,30 @@ else
 fi
 say
 
+# -------------------------------------------------------------------- house
+# server.py is the unit's own file, so installing it changes nothing until the
+# unit restarts. Leaving that to be remembered every time is how a deploy ends
+# up half-applied — the new broker enforcing against the old house.
+say "== the house =="
+HOUSE_UNIT=""
+for u in vintos-server velaris-server; do
+    systemctl --user cat "$u" >/dev/null 2>&1 && { HOUSE_UNIT="$u"; break; }
+done
+# only the unit that actually runs a file we just replaced
+if [ -n "$HOUSE_UNIT" ] && printf '%s' "$PLAN" | grep -q '|.*/server\.py$'; then
+    if systemctl --user restart "$HOUSE_UNIT" 2>/dev/null; then
+        sleep 3
+        say "  restarted $HOUSE_UNIT ($(systemctl --user is-active "$HOUSE_UNIT" 2>/dev/null))"
+    else
+        say "  could not restart $HOUSE_UNIT — run: systemctl --user restart $HOUSE_UNIT"
+    fi
+elif [ -z "$HOUSE_UNIT" ]; then
+    say "  no vintos-server unit found; restart the house yourself"
+else
+    say "  server.py was not replaced; no restart needed"
+fi
+say
+
 # ------------------------------------------------------------------- verify
 say "== verifying =="
 h="$(curl -s -m 5 http://127.0.0.1:8611/health || true)"
@@ -266,9 +290,10 @@ say "  worktable:    $(curl -s -m 5 -X POST http://127.0.0.1:8611/worktable_id \
 _mr="$(dest bin/model_router.py)"
 say "  his model:    $(cd "$(dirname -- "$_mr")" 2>/dev/null \
                        && python3 -c 'import model_router;print(model_router.current_claude_model())' 2>&1 | tail -1)"
+[ -n "$HOUSE_UNIT" ] && say "  house:        $HOUSE_UNIT $(systemctl --user is-active "$HOUSE_UNIT" 2>/dev/null) / $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8500/ 2>/dev/null)"
 _th="$(dest scripts/atelier-threshold.py)"
 say "  threshold:    $(python3 -c "import ast;ast.parse(open('$_th').read());print('installed, parses')" 2>&1 | tail -1)"
 say
 say "backup: $BACKUP"
 [ "$brokered" -eq 1 ] && say "Broker restarted." || say "Broker NOT restarted — run the four lines above."
-say "Nothing armed. The house runs the old server.py until you restart it."
+say "Nothing armed. Stratagems stay disarmed."
