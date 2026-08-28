@@ -146,13 +146,32 @@ def worktable():
     return {"active": bool(a.get("id")), "since": a.get("since")}   # content-free
 
 def to_table(b):
+    # Validate BEFORE writing anything. This wrote active.json first and only
+    # then resolved the path, so a bogus id (a pasted "PROJECT_ID" placeholder)
+    # occupied the worktable with a project that does not exist: the door broke
+    # and nothing could be opened until active.json was cleared by hand.
+    pid = _p(b["id"])                                   # raises BadProject
+    proj_file = os.path.join(pid, "project.json")
+    p = _j(proj_file)
+    if not p:
+        return {"error": "no such project"}
     a = _j(os.path.join(ROOT, "active.json"), {})
     if a.get("id") and a["id"] != b["id"]:
         return {"error": "worktable occupied — rest, archive, or abandon it first (one locus of attention)"}
+    p["state"] = "ACTIVE"
+    _w(proj_file, p)
     _w(os.path.join(ROOT, "active.json"), {"id": b["id"], "since": datetime.now().isoformat()})
-    p = _j(os.path.join(_p(b["id"]), "project.json")); p["state"] = "ACTIVE"
-    _w(os.path.join(_p(b["id"]), "project.json"), p); _ev(b["id"], "to_table")
+    _ev(b["id"], "to_table")
     return {"ok": True}
+
+
+def clear_table(b=None):
+    """Release the worktable. Recovery for a poisoned active.json — and honest:
+    it records that the table was cleared rather than silently rewriting state."""
+    a = _j(os.path.join(ROOT, "active.json"), {}) or {}
+    _w(os.path.join(ROOT, "active.json"), {})
+    _health("the worktable was cleared")
+    return {"ok": True, "was": a.get("id", "")}
 
 def set_state(b):
     assert b["state"] in STATES
@@ -293,6 +312,7 @@ def worktable_id(b=None):
     return {"id": a.get("id", "")}
 
 ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/table": to_table,
+          "/table/clear": clear_table,
           "/state": set_state, "/visit/open": open_visit, "/make": make, "/inspect": inspect,
           "/artifact": read_artifact, "/handoff": handoff,
           "/reveal/prepare": reveal_prepare, "/reveal/confirm": reveal_confirm, "/report": report, "/door": door, "/worktable_id": worktable_id}
