@@ -104,6 +104,25 @@ def sketch_block():
     return out + ("\n(" + leg + ")" if leg else "")
 
 
+def room_context(scene):
+    """One compact line of real geometry for a scene set at home. '' otherwise.
+    This is Gloria's choice (b): the house reaches him only when he is in it."""
+    s = str(scene or "").strip().lower()
+    if not s:
+        return ""
+    for rid, r in rooms().items():
+        if rid in s or s in rid:
+            a = ", ".join(r.get("anchors") or [])
+            adj = ", ".join(x for x in (r.get("adjacent") or []) if x != "outside")
+            parts = ["the %s is real" % rid]
+            if a:
+                parts.append("here: %s" % a)
+            if adj:
+                parts.append("its doors lead to %s" % adj)
+            return "; ".join(parts)
+    return ""
+
+
 def anchors_for(scene):
     """The real furniture of whatever room the scene names. [] if no match."""
     s = str(scene or "").strip().lower()

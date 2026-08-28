@@ -126,6 +126,15 @@ def get_world_block():
     if not scene and not objs: return ""
     parts = []
     if scene: parts.append("you and Gloria are in %s" % scene)
+    if scene:
+        # her choice: the house's real geometry reaches him only when the
+        # scene is actually set in it — never as a standing caption
+        try:
+            import house_map
+            rc = house_map.room_context(scene)
+            if rc: parts.append(rc)
+        except Exception:
+            pass
     if objs: parts.append("still here: %s" % ", ".join(objs[:6]))
     if att: parts.append("attention rests on %s" % att)
     pres = st.get("self_presence", "")

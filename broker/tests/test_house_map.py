@@ -48,6 +48,16 @@ sk = house_map.sketch_block()
 check("the sketch exists and is monospace-drawable", sk.count("\n") >= 10 and "livingroom" in sk)
 check("the sketch marks the curtains distinctly from doors", "~~" in sk and "==" in sk)
 check("the sketch carries its legend", "curtains" in sk)
+check("the entrance reads as the front door, not a room", "front door" in sk and "enter" in sk)
+
+# choice (b): geometry reaches him only when the scene is set at home
+rc = house_map.room_context("the livingroom")
+check("a home scene gets its real geometry", "sofa" in rc and "kitchen" in rc)
+check("a scene elsewhere gets nothing", house_map.room_context("a beach at dusk") == ""
+      and house_map.room_context("") == "")
+wm2 = open(os.path.join(ROOT, "scripts", "world_model.py"), errors="replace").read()
+check("the world block consumes room_context, fail-open",
+      "room_context" in wm2 and "except Exception" in wm2.split("room_context", 1)[1][:220])
 
 # fail-open: no map means empty everything (Velaris and any broken install)
 check("no map -> no rooms, no route", house_map.rooms({}) == {} and house_map.route("a", "b", {}) == [])
