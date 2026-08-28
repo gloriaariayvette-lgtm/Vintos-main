@@ -54,6 +54,8 @@ _commanded = {}                       # toy -> last level the gate let through
 _commanded_lock = threading.Lock()
 _target_locks = {}                    # toy -> Lock, for per-device serialization
 _target_lock_guard = threading.Lock()
+_execution_owners = {}                # toy -> effect_id for the current deliberative lease
+_execution_owner_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +153,9 @@ class EffectPermit:
             return False
         if not _KIND_COMPATIBLE.get(self.kind, frozenset()).__contains__(kind or "start"):
             return False
-        if digest is not None and self.digest is not None and digest != self.digest:
+        # A digest-bound permit is unusable unless the executor carries the
+        # exact digest. Omitting it must not turn a binding into a wildcard.
+        if self.digest is not None and digest != self.digest:
             return False
         return True
 
@@ -195,6 +199,29 @@ class ExecutionLease:
         if hardware_stopped():
             return False
         return datetime.now().isoformat() <= self.expires
+
+
+def claim_execution(targets, effect_id):
+    """Make effect_id the current execution owner for each exact target."""
+    if not effect_id:
+        return
+    with _execution_owner_lock:
+        for target in targets:
+            _execution_owners[str(target)] = str(effect_id)
+
+
+def execution_owned_by(target, effect_id):
+    """Whether effect_id still owns target after any replacement commands."""
+    with _execution_owner_lock:
+        return bool(effect_id) and _execution_owners.get(str(target)) == str(effect_id)
+
+
+def release_execution(target, effect_id=None):
+    """Release target ownership, optionally only if effect_id still owns it."""
+    with _execution_owner_lock:
+        target = str(target)
+        if effect_id is None or _execution_owners.get(target) == str(effect_id):
+            _execution_owners.pop(target, None)
 
 
 # ---------------------------------------------------------------------------

@@ -221,6 +221,7 @@ def test_permit_digest_binding():
         e.arm()
         p, _m, _ = EG.authorize(TC("t1", "chat"), "mission", 12, kind="pattern", digest="D")
         assert p.covers("mission", 12, "pattern", digest="D")
+        assert not p.covers("mission", 12, "pattern")
         assert not p.covers("mission", 12, "pattern", digest="OTHER")
 
 

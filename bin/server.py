@@ -7681,14 +7681,6 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _mi=_mib()
                 if _mi: _vt_subblock_a += chr(10)+chr(10)+_mi
             except Exception: pass
-            # capsule append + admission is its OWN sibling block, so an unrelated
-            # advisory organ (joke_fermentation, curiosity) cannot veto the
-            # stratagem door by raising (Sol P1).
-            try:
-                if _turn is not None and _turn.capsule_block:
-                    _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
-                    if _tc is not None: _tc.mark_admitted(_turn)   # only now that it's in the prompt
-            except Exception: pass
             try:
                 from joke_fermentation import callback_block as _jfb2; _jf2=_jfb2()
                 if _jf2: _vt_subblock_a += "\n\n" + _jf2
@@ -7711,6 +7703,16 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             except Exception: pass
         except Exception:
             _vt_subblock_a = ""
+        # The constitutional capsule door is outside every advisory organ's
+        # parent try. Subconscious, jokes, curiosity, and the other optional
+        # blocks may fail independently without vetoing an eligible capsule.
+        try:
+            if _turn is not None and _turn.capsule_block:
+                _vt_subblock_a += chr(10)+chr(10)+_turn.capsule_block
+                if _tc is not None:
+                    _tc.mark_admitted(_turn)   # only now that it is in the prompt
+        except Exception as _cap_admit_e:
+            print("[capsule/admission]", _cap_admit_e, flush=True)
         lastvideo_ctx = ""
         try:
             import glob as _vg

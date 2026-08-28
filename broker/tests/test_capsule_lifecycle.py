@@ -90,8 +90,11 @@ with Env() as e:
     d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": _sha, "state": "not_a_state"})
     check("unknown disposition state refused", "error" in d, d)
     # a wrong hash for a real turn is refused (Sol: validate the exact sha)
-    d = S.disposition({"id": PID, "turn_id": "turn-X", "capsule_sha256": "deadbeef", "state": "completed"})
+    d = S.disposition({"id": PID, "turn_id": "turn-X",
+                       "capsule_sha256": "d" * 64, "state": "completed"})
     check("wrong capsule hash refused", "error" in d, d)
+    d = S.disposition({"id": PID, "turn_id": "turn-X", "state": "completed"})
+    check("missing capsule hash refused", "error" in d, d)
 
     # the stratagem did not advance on a failed generation
     st = json.load(open(os.path.join(S._sd(PID), "stratagem.json")))
@@ -106,19 +109,26 @@ with Env() as e:
 
 with Env() as e:
     # disposition is idempotent + monotonic per (project, turn_id, sha)
-    S.capsule({"id": PID, "turn_id": "turn-M", "surface": "chat"})
-    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "issued"})
+    _cap = S.capsule({"id": PID, "turn_id": "turn-M", "surface": "chat"})
+    _sha = _cap["commitment"]["capsule_sha256"]
+    r = S.disposition({"id": PID, "turn_id": "turn-M",
+                       "capsule_sha256": _sha, "state": "issued"})
     check("issued accepted", r.get("ok") and not r.get("idempotent"), r)
-    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "issued"})
+    r = S.disposition({"id": PID, "turn_id": "turn-M",
+                       "capsule_sha256": _sha, "state": "issued"})
     check("repeat issued is idempotent", r.get("idempotent") is True, r)
-    S.disposition({"id": PID, "turn_id": "turn-M", "state": "completed"})
-    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "admitted_to_prompt"})
+    S.disposition({"id": PID, "turn_id": "turn-M",
+                   "capsule_sha256": _sha, "state": "completed"})
+    r = S.disposition({"id": PID, "turn_id": "turn-M",
+                       "capsule_sha256": _sha, "state": "admitted_to_prompt"})
     check("late admitted after completed is a no-op (monotonic)",
           r.get("idempotent") is True, r)
     # historically impossible: a failure after a terminal completed
-    r = S.disposition({"id": PID, "turn_id": "turn-M", "state": "generation_failed"})
+    r = S.disposition({"id": PID, "turn_id": "turn-M",
+                       "capsule_sha256": _sha, "state": "generation_failed"})
     check("failure after completed is a no-op (terminal)", r.get("idempotent") is True, r)
-    r = S.disposition({"id": PID, "turn_id": "never-issued", "state": "completed"})
+    r = S.disposition({"id": PID, "turn_id": "never-issued",
+                       "capsule_sha256": _sha, "state": "completed"})
     check("disposition for an un-issued turn refused", "error" in r, r)
 
 with Env() as e:
@@ -130,9 +140,10 @@ with Env() as e:
     permit, mode, _ = EG.authorize(ctx, "mission", 12, kind="pattern",
                                    targets={"mission"}, digest="d")
     check("permit granted for a clean armed context", mode == "send" and permit, mode)
-    check("permit covers its own level", permit.covers("mission", 12, "pattern"))
-    check("permit rejects a higher level", not permit.covers("mission", 18, "pattern"))
-    check("permit rejects another toy", not permit.covers("tenera", 12, "pattern"))
+    check("permit covers its own level", permit.covers("mission", 12, "pattern", digest="d"))
+    check("permit rejects a missing digest", not permit.covers("mission", 12, "pattern"))
+    check("permit rejects a higher level", not permit.covers("mission", 18, "pattern", digest="d"))
+    check("permit rejects another toy", not permit.covers("tenera", 12, "pattern", digest="d"))
     EG.ARMED_FLAG = os.path.join(e.tmp, "nonexistent")
 
 print("\n%d/%d passed" % (sum(R), len(R)))

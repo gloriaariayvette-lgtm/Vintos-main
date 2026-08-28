@@ -601,6 +601,8 @@ def disposition(b):
         return _err("unknown disposition state: %s" % state)
     turn_id = str(b.get("turn_id", ""))[:80]
     sha = str(b.get("capsule_sha256", ""))[:64]
+    if not re.fullmatch(r"[0-9a-f]{64}", sha):
+        return _err("capsule_sha256 must be the exact 64-character commitment")
 
     # the EXACT (turn_id, capsule_sha256) must match a capsule this stratagem
     # issued — for every state including 'issued', since issuance writes the
@@ -629,10 +631,10 @@ def disposition(b):
 _TERMINAL_STATES = {"completed", "generation_failed", "capsule_unrealized"}
 
 
-def _capsule_issued_for(pid, turn_id, sha=""):
-    """A capsule was issued for this EXACT (turn_id, sha). An empty sha matches
-    any — used only where the caller has no hash — but a supplied hash must be
-    the one recorded at issuance."""
+def _capsule_issued_for(pid, turn_id, sha):
+    """A capsule was issued for this exact, non-empty (turn_id, sha)."""
+    if not turn_id or not sha:
+        return False
     try:
         for line in open(os.path.join(_sd(pid), "capsules.jsonl")):
             if not line.strip():
@@ -640,7 +642,7 @@ def _capsule_issued_for(pid, turn_id, sha=""):
             rec = json.loads(line)
             if rec.get("capsule", {}).get("turn_id") != turn_id:
                 continue
-            if not sha or rec.get("capsule_sha256") == sha:
+            if rec.get("capsule_sha256") == sha:
                 return True
     except (FileNotFoundError, ValueError, OSError):
         pass

@@ -19,22 +19,39 @@ def _mark(toy):
     try: json.dump(d, open(HIS, "w"))
     except Exception: pass
 def _c(x): return max(0, min(20, int(round(x))))
-def _schedule_stop(toys, after_seconds):
+def _schedule_stop(toys, after_seconds, effect_id):
     """A lease-owning watchdog: send a hardware stop to each toy when the lease
     expires, so a preset's device-side timeSec cannot outlive its authorization.
     The reduction to zero needs no permit (reductions are always allowed)."""
     def _w():
         try:
             time.sleep(max(1, int(after_seconds)))
-            for t in toys:
-                try: toy_link.send(t, 0); _set_state(t, intensity=0, pattern="still", set_by="lease")
-                except Exception: pass
+            _stop_if_owned(toys, effect_id)
         except Exception:
             pass
     threading.Thread(target=_w, daemon=True).start()
 
 
-def _run(toy, pattern, args, stop, dur, permit=None):
+def _stop_if_owned(toys, effect_id):
+    """Synchronous expiry action, split out so ownership is regression-tested."""
+    try: import effect_gate as _eg
+    except Exception: return []
+    stopped = []
+    for t in toys:
+        try:
+            # An old lease must never stop a newer command that replaced it.
+            if not _eg.execution_owned_by(t, effect_id):
+                continue
+            if toy_link.send(t, 0):
+                _set_state(t, intensity=0, pattern="still", set_by="lease")
+                _eg.release_execution(t, effect_id)
+                stopped.append(t)
+        except Exception:
+            pass
+    return stopped
+
+
+def _run(toy, pattern, args, stop, dur, permit=None, effect_digest=None):
     t0 = time.time()
     # the background thread holds a bounded execution lease, not the turn: it
     # stops and settles to zero when the lease expires or the hardware stop is
@@ -58,7 +75,8 @@ def _run(toy, pattern, args, stop, dur, permit=None):
         elif pattern == "wave":
             lo,hi = (args+[3,15])[:2]; v = _c(lo+(hi-lo)*(0.5+0.5*math.sin(t*2*math.pi*0.12)))
         else: v = _c(args[0] if args else 10)
-        toy_link.send(toy, v, permit=permit); _mark(toy); _set_state(toy, intensity=v, pattern=pattern, set_by="him")
+        if toy_link.send(toy, v, permit=permit, effect_digest=effect_digest):
+            _mark(toy); _set_state(toy, intensity=v, pattern=pattern, set_by="him")
         time.sleep(0.35)
     if not stop.is_set():            # natural end -> settle to rest, don't leave it buzzing
         toy_link.send(toy, 0); _set_state(toy, intensity=0, pattern="still", set_by="him")
@@ -101,7 +119,8 @@ def _compose(names):
     return levels, (interval or 250)
 
 
-def play(toy, pattern, args=None, dur=None, permit=None):
+def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
+         outcome=None):
     args = args or []
     # Rotate is a second, scalar channel — not a waveform. [DO: ridge rotate mid|low|high|N]
     if str(pattern).lower() == "rotate":
@@ -111,7 +130,11 @@ def play(toy, pattern, args=None, dur=None, permit=None):
         if _lv is None:
             try: _lv = max(0, min(20, int(float(_a))))
             except Exception: _lv = 12
-        _ok = toy_link.rotate(toy, _lv, permit=permit)
+        _ok = toy_link.rotate(toy, _lv, permit=permit,
+                              effect_digest=effect_digest)
+        if outcome is not None:
+            outcome.update(status="sent" if _ok else "failed",
+                           targets={toy: "sent" if _ok else "failed"})
         if _ok:
             _mark(toy)
             _set_state(toy, intensity=_lv, pattern="rotate", set_by="him")
@@ -135,10 +158,12 @@ def play(toy, pattern, args=None, dur=None, permit=None):
             _ok = False
             for _t, _p in _saved.items():
                 if _t in toy_link.TOYS and _p:
-                    _ok = play(_t, _p, args, permit=permit) or _ok
+                    _ok = play(_t, _p, args, permit=permit,
+                               effect_digest=effect_digest) or _ok
             return _ok
         if toy in toy_link.TOYS and _saved.get(toy):
-            return play(toy, _saved[toy], args, permit=permit)
+            return play(toy, _saved[toy], args, permit=permit,
+                        effect_digest=effect_digest, outcome=outcome)
         return False
     _parts = pattern.split("+")
     if any(p in PRESETS for p in _parts):
@@ -167,22 +192,40 @@ def play(toy, pattern, args=None, dur=None, permit=None):
             for _t in _targets:
                 _o = _threads.get(_t)
                 if _o: _o.set()
+            _results = {}
             for _t in _targets:
-                toy_link.send_pattern(_t, _lv, _iv, _secs, permit=permit)
-            for _t in _targets:
+                _results[_t] = bool(toy_link.send_pattern(
+                    _t, _lv, _iv, _secs, permit=permit,
+                    effect_digest=effect_digest))
+            _sent_targets = [t for t, ok in _results.items() if ok]
+            for _t in _sent_targets:
                 _mark(_t); _set_state(_t, intensity=_peak, pattern=pattern, set_by="him")
-            if _lease_left is not None:
-                _schedule_stop(_targets, _lease_left)
-            return True
+            if _lease_left is not None and permit is not None and _sent_targets:
+                _schedule_stop(_sent_targets, _lease_left, permit.effect_id)
+            _status = ("sent" if len(_sent_targets) == len(_targets) else
+                       "partial" if _sent_targets else "failed")
+            if outcome is not None:
+                outcome.update(status=_status,
+                               targets={t: "sent" if ok else "failed"
+                                        for t, ok in _results.items()})
+            return bool(_sent_targets)
     if toy not in toy_link.TOYS and toy != "thruster": return False
     old = _threads.get(toy)
     if old: old.set()
     if pattern == "still":
-        toy_link.send(toy,0); _mark(toy); _set_state(toy,intensity=0,pattern="still",set_by="him"); return True
+        _ok = toy_link.send(toy,0)
+        if _ok: _mark(toy); _set_state(toy,intensity=0,pattern="still",set_by="him")
+        if outcome is not None: outcome.update(status="sent" if _ok else "failed", targets={toy: "sent" if _ok else "failed"})
+        return _ok
     if pattern == "steady":
-        lvl=_c(args[0] if args else 10); toy_link.send(toy,lvl,permit=permit); _mark(toy); _set_state(toy,intensity=lvl,pattern="steady",set_by="him"); return True
+        lvl=_c(args[0] if args else 10)
+        _ok = toy_link.send(toy, lvl, permit=permit, effect_digest=effect_digest)
+        if _ok: _mark(toy); _set_state(toy,intensity=lvl,pattern="steady",set_by="him")
+        if outcome is not None: outcome.update(status="sent" if _ok else "failed", targets={toy: "sent" if _ok else "failed"})
+        return _ok
     stop = threading.Event(); _threads[toy] = stop
-    threading.Thread(target=_run, args=(toy,pattern,args,stop,dur,permit), daemon=True).start()
+    threading.Thread(target=_run, args=(toy,pattern,args,stop,dur,permit,effect_digest), daemon=True).start()
+    if outcome is not None: outcome.update(status="started", targets={toy: "started"})
     return True
 _DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\w+)*)\s*\]", re.I)
 _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
@@ -206,14 +249,15 @@ def _authorize(context, toy, level, kind, pattern="", args=None):
                                                   digest=digest)
         if mode == "deny":
             print("[DO] %s refused: %s" % (toy, why), flush=True)
-            return False, None
+            return False, None, digest
         if mode == "would_send":
-            return False, None
+            return False, None, digest
         if permit is not None and not permit.consume():
-            return False, None          # already spent — never double-start
-        return True, permit
+            return False, None, digest  # already spent — never double-start
+        return True, permit, digest
     except Exception:
-        return _fail(context, toy, level, kind)
+        ok, permit = _fail(context, toy, level, kind)
+        return ok, permit, None
 
 
 def _fail(context, toy, level, kind):
@@ -245,6 +289,10 @@ def fire_his_intent(reply_text, context=None):
             try: args.append(int(_x))
             except ValueError: args.append(_x)   # words like low/mid/high are valid for rotate
         _lvl = next((a for a in args if isinstance(a, int)), 12)
+        _kind = "rotate" if pat == "rotate" else "pattern"
+        if _kind == "rotate" and args and not isinstance(args[0], int):
+            _lvl = {"low": 5, "mid": 12, "high": 18,
+                    "off": 0, "still": 0}.get(str(args[0]).lower(), 12)
         # a named preset can peak at 20 regardless of the args; authorize the
         # real peak so the permit's maximum is not undersized.
         _peak = _lvl
@@ -252,23 +300,33 @@ def fire_his_intent(reply_text, context=None):
             _pl = _compose(pat.split("+"))[0] if any(_p in PRESETS for _p in pat.split("+")) else None
             if _pl: _peak = max(_peak, max(_pl))
         except Exception: pass
-        _ok, _permit = _authorize(context, toy, _peak, "pattern", pattern=pat, args=args)
+        _ok, _permit, _digest = _authorize(
+            context, toy, _peak, _kind, pattern=pat, args=args)
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)   # let the previous rule settle on the server
         # record what actually happened, not merely that a tag was seen (Sol)
+        _detail = {}
         _st = "failed"
-        try: _st = "sent" if play(toy, pat, args, permit=_permit) else "failed"
+        try:
+            play(toy, pat, args, permit=_permit, effect_digest=_digest,
+                 outcome=_detail)
+            _st = _detail.get("status", "failed")
         except Exception: _st = "failed"
         _fired.append("%s \u2192 %s [%s]" % (toy, pat + ((" "+" ".join(str(a) for a in args)) if args else ""), _st))
     for m in _TOUCH.finditer(reply_text):
         toy=m.group(1).lower(); lvl=int(m.group(2))
-        _ok, _permit = _authorize(context, toy, lvl, "start", pattern="steady", args=[lvl])
+        _ok, _permit, _digest = _authorize(
+            context, toy, lvl, "start", pattern="steady", args=[lvl])
         if not _ok:
             continue
         if _fired: time.sleep(_GAP)
+        _detail = {}
         _st = "failed"
-        try: _st = "sent" if play(toy, "steady", [lvl], permit=_permit) else "failed"
+        try:
+            play(toy, "steady", [lvl], permit=_permit,
+                 effect_digest=_digest, outcome=_detail)
+            _st = _detail.get("status", "failed")
         except Exception: _st = "failed"
         _fired.append("%s \u2192 %s [%s]" % (toy, lvl, _st))
     if _fired:

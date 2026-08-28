@@ -40,7 +40,8 @@ def connected(toy, strict=False):
     if not tid: return not strict
     return _status_cache["map"].get(tid, "1" if not strict else "0") == "1"
 
-def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
+def _gate(toy, level, kind=None, detail=None, context=None, permit=None,
+          effect_digest=None):
     """Ask the effect gate. Returns (proceed, mode). Never raises — a fault must
     not stop a reduction. Authority is EXPLICIT: a coordinator passes a context
     (and, for a deliberative effect it already authorized, a permit). A bare
@@ -55,11 +56,12 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
         # by each transport call (one authorized effect can touch two toys).
         if permit is not None:
             try:
-                if permit.covers(toy, level, kind):
+                if permit.covers(toy, level, kind, digest=effect_digest):
                     return True, "send"
             except Exception:
                 pass
-        _permit, mode, why = effect_gate.authorize(context, toy, level, kind=kind, detail=detail)
+        _permit, mode, why = effect_gate.authorize(
+            context, toy, level, kind=kind, detail=detail, digest=effect_digest)
         allow = mode == "send"
         if mode == "deny":
             print("[toy_link] %s %s refused: %s" % (toy, kind or "level", why), flush=True)
@@ -105,18 +107,36 @@ def _tlock(toy):
         return threading.Lock()
 
 
-def send(toy, level, seconds=0, context=None, permit=None):
+def _claim_or_release(toy, level, permit):
+    """Align expiry ownership with the command that reached transport."""
+    try:
+        import effect_gate
+        if int(level or 0) <= 0:
+            effect_gate.release_execution(toy)
+        elif permit is not None:
+            effect_gate.claim_execution({toy}, permit.effect_id)
+        else:
+            # A legacy/disarmed command still replaces an older leased command.
+            effect_gate.release_execution(toy)
+    except Exception:
+        pass
+
+
+def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
     """level 0-20. seconds=0 means until next command. Returns True on success.
     context/permit are the explicit authority path; bare calls (reflex,
     diagnostics) pass neither and are governed by the gate's no-context rules."""
-    ok, _mode = _gate(toy, level, detail="send:%ss" % seconds, context=context, permit=permit)
+    ok, _mode = _gate(toy, level, detail="send:%ss" % seconds, context=context,
+                      permit=permit, effect_digest=effect_digest)
     if not ok:
         return False
     with _tlock(toy):
         if toy == "thruster":
             from thruster_link import set_speed as _th_set
-            _note(toy, level)
-            return _th_set(level, seconds)
+            _ok = _th_set(level, seconds)
+            if _ok:
+                _note(toy, level); _claim_or_release(toy, level, permit)
+            return _ok
         if toy in TOYS and not connected(toy):
             print(f"[toy_link] {toy} not connected — skipping", flush=True)
             return False
@@ -124,25 +144,31 @@ def send(toy, level, seconds=0, context=None, permit=None):
         try:
             r = requests.post(BASE, json={"command": "Function", "action": action,
                 "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
-            _note(toy, level)
-            return r.json().get("code") == 200
+            _ok = r.json().get("code") == 200
+            if _ok:
+                _note(toy, level); _claim_or_release(toy, level, permit)
+            return _ok
         except Exception as e:
             print(f"[toy_link] send failed: {e}", flush=True)
             return False
 
-def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None, context=None, permit=None):
+def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
+                 context=None, permit=None, effect_digest=None):
     """Fire a Lovense custom Pattern. `strengths` = list of 0-20 levels; the device plays
     them at interval_ms each and LOOPS the array to fill `seconds` (0 = until next command).
     toy=None -> broadcast to ALL toys (sync). Returns True on code 200."""
     _peak = max([int(x) for x in (strengths or [0])] or [0])
     ok, _mode = _gate(toy, _peak, kind="pattern", context=context, permit=permit,
+                      effect_digest=effect_digest,
                       detail="pattern:%d steps peak %d seconds:%ss" % (len(strengths or []), _peak, seconds))
     if not ok:
         return False
     if toy == "thruster":
         from thruster_link import play_pattern as _th_pat
-        _note(toy, _peak)
-        return _th_pat(strengths, interval_ms, seconds)
+        _ok = _th_pat(strengths, interval_ms, seconds)
+        if _ok:
+            _note(toy, _peak); _claim_or_release(toy, _peak, permit)
+        return _ok
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
         return False
@@ -155,17 +181,19 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None, context=
         payload["toy"] = TOYS[toy]
     try:
         r = requests.post(BASE, json=payload, timeout=3)
-        _note(toy, _peak)
-        return r.json().get("code") == 200
+        _ok = r.json().get("code") == 200
+        if _ok:
+            _note(toy, _peak); _claim_or_release(toy, _peak, permit)
+        return _ok
     except Exception as e:
         print(f"[toy_link] send_pattern failed: {e}", flush=True)
         return False
 
 
-def rotate(toy, level, seconds=0, context=None, permit=None):
+def rotate(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
     """Ridge's second channel: rotation. Scalar, not a waveform."""
     ok, _mode = _gate(toy, level, kind="rotate", detail="rotate:%ss" % seconds,
-                      context=context, permit=permit)
+                      context=context, permit=permit, effect_digest=effect_digest)
     if not ok:
         return False
     if toy in TOYS and not connected(toy):
@@ -175,7 +203,10 @@ def rotate(toy, level, seconds=0, context=None, permit=None):
     try:
         r = requests.post(BASE, json={"command": "Function", "action": f"Rotate:{lvl}",
             "timeSec": seconds, "toy": TOYS.get(toy, toy), "apiVer": 1}, timeout=2)
-        return r.json().get("code") == 200
+        _ok = r.json().get("code") == 200
+        if _ok:
+            _note(toy, lvl); _claim_or_release(toy, lvl, permit)
+        return _ok
     except Exception as e:
         print(f"[toy_link] rotate failed: {e}", flush=True)
         return False
@@ -242,8 +273,15 @@ def parse_and_send(reply_text, context=None):
                 _pa_ok, _ = _fail_decision(toy, lvl, "start")
                 if not _pa_ok:
                     out.append((toy, lvl, "refused:armed_fault")); continue
-            try: out.append((toy, lvl, send(toy, lvl, secs, context=context, permit=_permit))); _fired[toy] = lvl
-            except Exception as e: out.append((toy, lvl, str(e)))
+            try:
+                _sent = send(toy, lvl, secs, context=context, permit=_permit,
+                             effect_digest=_dg)
+                _status = "sent" if _sent else "failed"
+                out.append((toy, lvl, _status))
+                _fired[toy] = {"level": lvl, "status": _status}
+            except Exception as e:
+                out.append((toy, lvl, "failed:%s" % str(e)[:120]))
+                _fired[toy] = {"level": lvl, "status": "failed"}
     if _fired:
         try:
             import time as _t2
@@ -251,10 +289,13 @@ def parse_and_send(reply_text, context=None):
             _htp = _o.path.expanduser("~/.vintos/workspace/memory/his-touch.json")
             try: _ht = _j.load(open(_htp))
             except Exception: _ht = {}
-            for _k in _fired: _ht[_k] = _now
+            for _k, _v in _fired.items():
+                if _v["status"] == "sent": _ht[_k] = _now
             _j.dump(_ht, open(_htp, "w"))
             _names = {"mission": "his cock", "tenera": "his mouth + hands", "ridge": "the ridge (her ass)", "thruster": "the machine"}
-            _txt = " \u00b7 ".join(f"{_names.get(k,k)} {v}" for k,v in _fired.items())
+            _txt = " \u00b7 ".join(
+                "%s %s [%s]" % (_names.get(k, k), v["level"], v["status"])
+                for k, v in _fired.items())
             _j.dump({"type":"touch","text":_txt,"ts":_now},
                     open(_o.path.expanduser("~/.vintos/workspace/memory/command-bubble.json"),"w"))
         except Exception: pass
@@ -280,11 +321,14 @@ def _toy_trace(tag):
 
 _send_orig, _pattern_orig = send, send_pattern
 
-def send(toy, level, seconds=0, context=None, permit=None, _o=_send_orig):
+def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None,
+         _o=_send_orig):
     _toy_trace("send %s=%s sec=%s" % (toy, level, seconds))
-    return _o(toy, level, seconds, context=context, permit=permit)
+    return _o(toy, level, seconds, context=context, permit=permit,
+              effect_digest=effect_digest)
 
 def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
-                 context=None, permit=None, _o=_pattern_orig):
+                 context=None, permit=None, effect_digest=None, _o=_pattern_orig):
     _toy_trace("pattern %s n=%d iv=%s sec=%s" % (toy, len(strengths or []), interval_ms, seconds))
-    return _o(toy, strengths, interval_ms, seconds, func, context=context, permit=permit)
+    return _o(toy, strengths, interval_ms, seconds, func, context=context,
+              permit=permit, effect_digest=effect_digest)
