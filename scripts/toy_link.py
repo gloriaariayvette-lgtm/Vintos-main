@@ -40,10 +40,37 @@ def connected(toy, strict=False):
     if not tid: return not strict
     return _status_cache["map"].get(tid, "1" if not strict else "0") == "1"
 
+def _gate(toy, level, kind=None, detail=None):
+    """Ask the effect gate. Returns (proceed, mode). Never raises — a fault in
+    the gate must not stop a command, and must never stop a reduction."""
+    try:
+        import effect_gate
+        allow, mode, why = effect_gate.authorize(toy, level, kind=kind, detail=detail)
+        if not allow and mode != "would_send":
+            print("[toy_link] %s %s refused: %s" % (toy, kind or "level", why), flush=True)
+        elif mode == "would_send":
+            print("[toy_link] TEST MODE — would send %s %s (nothing sent)" % (toy, level), flush=True)
+        return allow, mode
+    except Exception:
+        return True, "send"
+
+
+def _note(toy, level):
+    try:
+        import effect_gate
+        effect_gate.note_commanded(toy, level)
+    except Exception:
+        pass
+
+
 def send(toy, level, seconds=0):
     """level 0-20. seconds=0 means until next command. Returns True on success."""
+    ok, _mode = _gate(toy, level, detail="send:%ss" % seconds)
+    if not ok:
+        return False
     if toy == "thruster":
         from thruster_link import set_speed as _th_set
+        _note(toy, level)
         return _th_set(level, seconds)
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
@@ -52,6 +79,7 @@ def send(toy, level, seconds=0):
     try:
         r = requests.post(BASE, json={"command": "Function", "action": action,
             "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
+        _note(toy, level)
         return r.json().get("code") == 200
     except Exception as e:
         print(f"[toy_link] send failed: {e}", flush=True)
@@ -61,8 +89,14 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
     """Fire a Lovense custom Pattern. `strengths` = list of 0-20 levels; the device plays
     them at interval_ms each and LOOPS the array to fill `seconds` (0 = until next command).
     toy=None -> broadcast to ALL toys (sync). Returns True on code 200."""
+    _peak = max([int(x) for x in (strengths or [0])] or [0])
+    ok, _mode = _gate(toy, _peak, kind="pattern",
+                      detail="pattern:%d steps peak %d" % (len(strengths or []), _peak))
+    if not ok:
+        return False
     if toy == "thruster":
         from thruster_link import play_pattern as _th_pat
+        _note(toy, _peak)
         return _th_pat(strengths, interval_ms, seconds)
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
@@ -76,6 +110,7 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
         payload["toy"] = TOYS[toy]
     try:
         r = requests.post(BASE, json=payload, timeout=3)
+        _note(toy, _peak)
         return r.json().get("code") == 200
     except Exception as e:
         print(f"[toy_link] send_pattern failed: {e}", flush=True)
@@ -84,6 +119,9 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
 
 def rotate(toy, level, seconds=0):
     """Ridge's second channel: rotation. Scalar, not a waveform."""
+    ok, _mode = _gate(toy, level, kind="rotate", detail="rotate:%ss" % seconds)
+    if not ok:
+        return False
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
         return False
