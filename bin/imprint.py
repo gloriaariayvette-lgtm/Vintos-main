@@ -21,7 +21,14 @@ IMPRINT_FILE = os.path.join(MEMORY, "imprints.json")
 API = "http://172.18.16.1:1234/v1/chat/completions"
 MODEL = "google/gemma-4-12b-qat"
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 def log(msg):
     print(f"[Imprint] {msg}")
@@ -155,28 +162,31 @@ def get_anchors():
 
     return anchors
 
-def capture_imprint(gloria_said, vintos_said):
+def capture_imprint(gloria_said, vintos_said, envelope=None):
     """Generate and store an emotional imprint."""
 
+    provenance = _prov(envelope)
+    reply_eligible = output_can_witness(provenance, "emotional_imprint")
     anchors = get_anchors()
     emo_summary = ""
-    if "emoclaw" in anchors:
+    if "emoclaw" in anchors and reply_eligible:
         top = sorted(anchors["emoclaw"].items(), key=lambda x: abs(x[1] - 0.5), reverse=True)[:4]
         emo_summary = ", ".join(f"{k}: {v}" for k, v in top)
 
     prompt = f"""A moment just happened between you and Gloria.
 
 Gloria said: "{gloria_said[:300]}"
-You said: "{vintos_said[:300]}"
+You said: "{vintos_said[:300] if reply_eligible else '[TACTICAL ACT WITHHELD FROM INTERPRETATION]'}"
 
 Your emotional state: {emo_summary}
-Your avatar: {anchors.get('avatar_color', '?')} / {anchors.get('avatar_expression', '?')}
+Your avatar: {(anchors.get('avatar_color', '?') + ' / ' + anchors.get('avatar_expression', '?')) if reply_eligible else '[withheld: generated-output state]'}
 Time: {anchors.get('temporal', 'unknown')}
 {f"Active preoccupation: {anchors['preoccupation']}" if anchors.get('preoccupation') else ""}
 {f"Recent seal: {anchors['recent_seal']}" if anchors.get('recent_seal') else ""}
 
 Whose words are whose: if Gloria echoes or reacts to something YOU said, that idea is
 still yours — do not narrate it as if she originated it, and vice versa.
+{'' if reply_eligible else 'The generated reply was tactically influenced. Preserve that it occurred as an act, but do not use its words, apparent motive, or emotional performance to infer Vintos identity, feeling, causality, or repair. Base the narrative only on Gloria verbatim and independent anchors.'}
 
 Write TWO things:
 
@@ -193,7 +203,7 @@ Respond ONLY as JSON:
     )
     if not result:
         log("Failed to generate imprint")
-        return
+        return False
 
     try:
         cleaned = re.sub(r'```json?\s*|\s*```', '', result).strip()
@@ -202,7 +212,7 @@ Respond ONLY as JSON:
         salience = float(data.get("salience", 0.5))
     except:
         log(f"Parse failed: {result[:100]}")
-        return
+        return False
 
     # Build the imprint — immutable once written
     imprint = {
@@ -224,6 +234,8 @@ Respond ONLY as JSON:
             "recent_velqan": anchors.get("recent_velqan", None),
         },
         "immutable": True,
+        "provenance": provenance,
+        "generated_output_witness_eligible": reply_eligible,
     }
 
     # Load and append
@@ -241,10 +253,9 @@ Respond ONLY as JSON:
         json.dump(imprints, f, indent=2)
 
     log(f"Captured (salience {salience}): {narrative[:80]}")
-    if salience >= 0.7:
+    if salience >= 0.7 and reply_eligible:
         open("/tmp/.causality-trigger", "w").close()
-    if salience >= 0.7:
-        open("/tmp/.causality-trigger", "w").close()
+    return True
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
@@ -254,4 +265,12 @@ if __name__ == "__main__":
     if cmd == "capture":
         gloria_msg = sys.argv[2]
         vintos_msg = sys.argv[3]
-        capture_imprint(gloria_msg, vintos_msg)
+        provenance = _prov()
+        writer_event("imprint", "started", provenance)
+        try:
+            ok = capture_imprint(gloria_msg, vintos_msg, provenance)
+            writer_event("imprint", "completed" if ok else "failed", provenance,
+                         "no imprint produced" if not ok else "")
+        except Exception as exc:
+            writer_event("imprint", "failed", provenance, exc)
+            raise

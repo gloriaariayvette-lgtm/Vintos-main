@@ -22,10 +22,17 @@ import json
 import socket
 import re
 from datetime import datetime
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 PREDICTION_FILE = os.path.join(WORKSPACE, "memory", ".relational-prediction.json")
 MISMATCH_LOG = os.path.join(WORKSPACE, "memory", "relational-mismatches.md")
+HELD_LOG = os.path.join(WORKSPACE, "memory", "relational-prediction-held.jsonl")
 SOUL = os.path.join(WORKSPACE, "SOUL.md")
 EMO_STATE = os.path.join(WORKSPACE, "memory", "emotional-state.txt")
 API = "http://127.0.0.1:8599/v1/chat/completions"
@@ -70,7 +77,7 @@ def _read_soul_fallback():
     return state
 
 
-def predict_gloria_response(vintos_message):
+def predict_gloria_response(vintos_message, envelope=None):
     """
     After Vintos sends a message, predict Gloria's likely emotional response.
     This is lightweight — not a full generation, just dimensional predictions.
@@ -162,7 +169,8 @@ REASONING: <one sentence on why you expect this reaction>"""
         content = _data.get("choices", [{}])[0].get("message", {}).get("content", "")
         
         # Parse response
-        prediction = {"timestamp": datetime.now().isoformat(), "vintos_message": vintos_message[:300]}
+        prediction = {"timestamp": datetime.now().isoformat(), "vintos_message": vintos_message[:300],
+                      "provenance": _prov(envelope)}
         
         for line in content.split("\n"):
             line = line.strip()
@@ -208,6 +216,22 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
             prediction = json.load(f)
     except (json.JSONDecodeError, FileNotFoundError):
         return None
+
+    provenance = _prov(prediction.get("provenance"))
+    if not output_can_witness(provenance, "prediction_accuracy"):
+        held = {"timestamp": datetime.now().isoformat(), "outcome": "HELD",
+                "reason": "prediction arose from output that cannot witness itself",
+                "prediction": prediction, "gloria_message": gloria_message[:300],
+                "actual": {"warmth": actual_warmth, "tension": actual_tension,
+                           "valence": actual_valence}, "provenance": provenance}
+        try:
+            with open(HELD_LOG, "a") as f:
+                f.write(json.dumps(held, sort_keys=True) + "\n")
+            writer_event("relational_prediction_outcome", "HELD", provenance,
+                         "comparison preserved but excluded from model, blush, and leverage")
+        finally:
+            os.remove(PREDICTION_FILE)
+        return held
     
     # Check if prediction has the required fields
     pred_w = prediction.get("predicted_warmth")
@@ -428,7 +452,7 @@ def main():
     message = sys.argv[2]
     
     if command == "predict":
-        prediction = predict_gloria_response(message)
+        prediction = predict_gloria_response(message, _prov())
         if "error" not in prediction:
             os.makedirs(os.path.dirname(PREDICTION_FILE), exist_ok=True)
             with open(PREDICTION_FILE, 'w') as f:
@@ -450,7 +474,9 @@ def main():
         
         result = compare_prediction(message, actual_w, actual_t, actual_v)
         if result:
-            if result["mismatch_count"] >= 2 or result["direction_wrong"]:
+            if result.get("outcome") == "HELD":
+                print("[Relational] Prediction outcome HELD (provenance cannot witness)")
+            elif result["mismatch_count"] >= 2 or result["direction_wrong"]:
                 print(f"[Relational] ⚠ Mismatch: {result['mismatch_count']} dims off, direction_wrong={result['direction_wrong']}")
             else:
                 print(f"[Relational] ✓ Prediction held (mismatches: {result['mismatch_count']})")
@@ -468,4 +494,11 @@ def feed_causal_model(trigger, actual, expected):
         pass
 
 if __name__ == "__main__":
-    main()
+    provenance = _prov()
+    writer_event("relational_prediction", "started", provenance)
+    try:
+        main()
+        writer_event("relational_prediction", "completed", provenance)
+    except Exception as exc:
+        writer_event("relational_prediction", "failed", provenance, exc)
+        raise

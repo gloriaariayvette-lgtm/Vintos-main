@@ -53,7 +53,8 @@ SURFACES = {"chat", "avatar"}
 
 class Turn:
     __slots__ = ("turn_id", "surface", "barrier", "capsule_block", "commitment",
-                 "project_id", "context", "test_mode", "stage", "_disposed")
+                 "project_id", "context", "test_mode", "stage", "lifecycle",
+                 "_disposed")
 
     def __init__(self, turn_id, surface, barrier, capsule_block, commitment,
                  project_id, context, test_mode):
@@ -66,6 +67,8 @@ class Turn:
         self.context = context
         self.test_mode = test_mode
         self.stage = "issued" if self.commitment else "opened"
+        self.lifecycle = {"generation": "not_started", "effects": "not_started",
+                          "post_writers": "not_started", "transport": "not_started"}
         self._disposed = False
 
     @property
@@ -212,11 +215,62 @@ def envelope(turn):
     enforce this records generation_provenance='withheld_from_witnessing' rather
     than processing normally."""
     influenced = bool(turn and turn.carries_capsule)
-    return {"turn_id": getattr(turn, "turn_id", ""),
+    return {"schema": 1,
+            "turn_id": getattr(turn, "turn_id", ""),
             "surface": getattr(turn, "surface", ""),
             "input_provenance": "counterpart_verbatim",
             "output_provenance": "stratagem_influenced" if influenced else "ordinary_generation",
-            "may_witness": not influenced}
+            "may_witness": not influenced,
+            "capsule_commitment": dict(getattr(turn, "commitment", {}) or {})}
+
+
+def writer_env(turn):
+    """Environment for a subprocess evidence writer."""
+    try:
+        from evidence_provenance import subprocess_env
+        return subprocess_env(envelope(turn))
+    except Exception:
+        env = os.environ.copy()
+        # A wrapper fault is explicit unknown, never an accidental ordinary turn.
+        env["VINTOS_EVIDENCE_ENVELOPE"] = json.dumps({
+            "turn_id": getattr(turn, "turn_id", ""), "surface": getattr(turn, "surface", ""),
+            "input_provenance": "counterpart_verbatim", "output_provenance": "unknown",
+            "may_witness": False, "capsule_commitment": dict(getattr(turn, "commitment", {}) or {})})
+        return env
+
+
+def mark_lifecycle(turn, axis, state, reason_class=""):
+    """Record one independent lifecycle fact. Never synthesizes another axis."""
+    if turn is None or axis not in turn.lifecycle:
+        return None
+    turn.lifecycle[axis] = state
+    _record_lifecycle_local(turn, axis, state, reason_class)
+    if not turn.carries_capsule:
+        return {"ok": True, "local_only": True, "axes": dict(turn.lifecycle)}
+    body = {"id": turn.project_id or _worktable_id(), "turn_id": turn.turn_id,
+            "capsule_sha256": turn.commitment.get("capsule_sha256", ""),
+            "axes": {axis: state}, "reason_class": str(reason_class)[:60]}
+    r = _post("/stratagem/disposition", body)
+    if r is None or (isinstance(r, dict) and r.get("error")):
+        _pending(body)
+    return r
+
+
+def _record_lifecycle_local(turn, axis, state, reason_class=""):
+    """The canary-visible lifecycle for all turns, including no-capsule turns."""
+    try:
+        mem = os.path.expanduser("~/.vintos/workspace/memory")
+        os.makedirs(mem, exist_ok=True)
+        event = {"at": datetime.now().isoformat(), "turn_id": turn.turn_id,
+                 "surface": turn.surface, "axis": axis, "state": state,
+                 "reason_class": str(reason_class)[:60],
+                 "capsule_sha256": turn.commitment.get("capsule_sha256", "")}
+        with open(os.path.join(mem, "turn-lifecycle.jsonl"), "a") as f:
+            f.write(json.dumps(event, sort_keys=True) + "\n")
+    except Exception as exc:
+        # The broker call below remains independent; local logging failure does
+        # not erase an otherwise valid turn or masquerade as a lifecycle fact.
+        print("[turn-lifecycle] local write failed: %s" % str(exc)[:160], file=sys.stderr)
 
 
 def witnessing_allowed(turn):

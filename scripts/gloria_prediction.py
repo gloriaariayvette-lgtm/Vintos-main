@@ -12,6 +12,10 @@ and appends to gloria-prediction-history.json (the ledger, JEPA training data la
 import os, json, re
 from datetime import datetime, timezone
 import requests
+try:
+    from evidence_provenance import writer_event
+except Exception:
+    def writer_event(*a, **k): return None
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
@@ -30,6 +34,10 @@ def main():
     if not recent:
         print("[gloria-predict] no chat yet"); return
     convo = "\n".join(f"{str(e.get('role','?')).upper()}: {str(e.get('content',''))[:280]}" for e in recent)
+    tactical_sources = [e.get("generation_provenance") for e in recent
+                        if e.get("role") == "assistant"
+                        and isinstance(e.get("generation_provenance"), dict)
+                        and e["generation_provenance"].get("output_provenance") == "stratagem_influenced"]
     prev = load(OUT, {})
     # No new exchange since the last run = nothing to predict from and nothing
     # new to grade against. Regrading the same silence every 30 minutes stacked
@@ -69,7 +77,7 @@ def main():
     # Absence of a grade is None, never a fake 0.0 - a missing key or an
     # ungradeable first run must not score as a miss (or open a reading).
     grade = None
-    if "grade_of_previous" in d and prev.get("predicted"):
+    if "grade_of_previous" in d and prev.get("predicted") and prev.get("may_grade", True):
         try: grade = float(d["grade_of_previous"])
         except Exception: grade = None
     out = {
@@ -78,6 +86,12 @@ def main():
         "novelty": round(float(d.get("novelty", 0.5) or 0.5), 3),
         "predicted_at": now,
         "input_hash": _in_hash,
+        # A prediction may still help choose the next act, but if its source
+        # window contains tactical output its later match cannot train the
+        # model or open a reading: that would let the tactic witness itself.
+        "may_grade": not bool(tactical_sources),
+        "source_provenance": (tactical_sources[-1] if tactical_sources else
+                              {"output_provenance": "ordinary_generation", "may_witness": True}),
     }
 
     # JEPA fusion: if the frozen-encoder predictor has run, prefer its GROUNDED
@@ -94,15 +108,22 @@ def main():
 
     log = load(HIST, [])
     # record the grade of what we predicted last time, then this new prediction
+    previous_held = bool(prev.get("predicted") and not prev.get("may_grade", True))
     log.append({"at": now, "graded_previous": (round(grade, 3) if grade is not None else None),
-                "predicted": out["predicted"], "confidence": out["confidence"], "novelty": out["novelty"]})
+                "grade_outcome": "HELD" if previous_held else ("graded" if grade is not None else "unknown"),
+                "predicted": out["predicted"], "confidence": out["confidence"],
+                "novelty": out["novelty"], "may_grade": out["may_grade"],
+                "source_provenance": out["source_provenance"]})
     json.dump(log[-300:], open(HIST, "w"), indent=2)
+    if previous_held:
+        writer_event("gloria_prediction_outcome", "HELD", prev.get("source_provenance"),
+                     "source window contained tactical output; no grading or reading")
 
     # A prediction graded a total miss is a misread of her with the evidence still
     # attached. It opens a reading - what he took her to mean, and what else it
     # could have meant - so a wrong reading has somewhere to live and something
     # she can correct, instead of quietly becoming the model.
-    if grade is not None and grade <= 0.2 and prev.get("predicted"):
+    if grade is not None and grade <= 0.2 and prev.get("predicted") and prev.get("may_grade", True):
         try:
             import sys as _rd_sys
             _rd_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -20,6 +20,12 @@ LEDGER_FILE = os.path.join(MEMORY, "interaction-ledger.json")
 IMPRINT_FILE = os.path.join(MEMORY, "imprints.json")
 WAL_LOG = os.path.join(MEMORY, "wal-log.json")
 BLUSH_FILE = os.path.join(MEMORY, "blush-ledger.md")
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 MAX_ENTRIES = 300  # ~10 days at 30/day
 
@@ -209,13 +215,17 @@ def save_ledger(entries):
     with open(LEDGER_FILE, "w") as f:
         json.dump(entries, f, indent=2)
 
-def get_recent_imprint(within_seconds=120):
+def get_recent_imprint(within_seconds=120, turn_id=""):
     """Get the most recently written imprint if within time window."""
     try:
         with open(IMPRINT_FILE) as f:
             imprints = json.load(f)
         if not imprints:
             return None
+        if turn_id:
+            matches = [i for i in imprints
+                       if (i.get("provenance") or {}).get("turn_id") == turn_id]
+            return matches[-1] if matches else None
         latest = imprints[-1]
         ts = datetime.fromisoformat(latest["timestamp"])
         if (datetime.now() - ts).total_seconds() < within_seconds:
@@ -224,13 +234,19 @@ def get_recent_imprint(within_seconds=120):
         pass
     return None
 
-def get_recent_wal_facts(within_seconds=120):
+def get_recent_wal_facts(within_seconds=120, turn_id=""):
     """Get WAL entries written in the last N seconds."""
     facts = []
     try:
         with open(WAL_LOG) as f:
             data = json.load(f)
         entries = data.get("entries", [])
+        if turn_id:
+            for e in entries:
+                p = e.get("last_occurrence_provenance") or e.get("provenance") or {}
+                if p.get("turn_id") == turn_id:
+                    facts.append(e.get("content", "")[:400])
+            return facts
         cutoff = datetime.now() - timedelta(seconds=within_seconds)
         for e in reversed(entries):
             try:
@@ -281,6 +297,8 @@ def main():
 
     gloria_said = sys.argv[1]
     vintos_said = sys.argv[2]
+    provenance = _prov()
+    writer_event("interaction_ledger", "started", provenance)
 
     # Capture emotional state before delay
     _emo_before = {}
@@ -336,8 +354,9 @@ def main():
                     else: _parts.append(f"{_dim} dropped slightly")
             _emo_delta = ", ".join(_parts) if _parts else "stable"
     except: pass
-    imprint = get_recent_imprint(within_seconds=120)
-    wal_facts = get_recent_wal_facts(within_seconds=120)
+    _turn_id = provenance.get("turn_id", "")
+    imprint = get_recent_imprint(within_seconds=120, turn_id=_turn_id)
+    wal_facts = get_recent_wal_facts(within_seconds=120, turn_id=_turn_id)
     blush = get_recent_blush(within_seconds=120)
 
     # Read consent note if server left one
@@ -365,7 +384,11 @@ def main():
         "gloria": gloria_said,
         "vintos": vintos_said + _device_marks(),
         "consent": consent_note,
-        "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(gloria_said, vintos_said, locals().get("_emo_delta","stable"), consent_note),
+        "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(
+            gloria_said,
+            vintos_said if output_can_witness(provenance, "interaction_evidence") else "",
+            locals().get("_emo_delta", "stable") if output_can_witness(provenance, "interaction_evidence") else "stable",
+            consent_note),
         "wal_facts": wal_facts,
         "blush": blush,
         "somatic": get_recent_somatic(src=".somatic-turn.json"),   # hers, frozen at send
@@ -379,7 +402,10 @@ def main():
         "recent_velqan": imprint.get("anchors",{}).get("recent_velqan") if imprint else None,
         "temporal_activity": None,
         "silence_contract": None,
-        "emotional_shift": _emo_delta,
+        "emotional_shift": (_emo_delta if output_can_witness(provenance, "interaction_evidence")
+                            else "withheld_from_witnessing"),
+        "provenance": provenance,
+        "generated_output_witness_eligible": output_can_witness(provenance, "interaction_evidence"),
     }
     # Pull temporal context fields
     try:
@@ -406,6 +432,7 @@ def main():
         entry["blush"] = None
     ledger.append(entry)
     save_ledger(ledger)
+    writer_event("interaction_ledger", "completed", provenance)
     print(f"[Ledger] Entry written (salience {entry['salience']}, {len(wal_facts)} facts, blush: {bool(blush)})")
 
 if __name__ == "__main__":

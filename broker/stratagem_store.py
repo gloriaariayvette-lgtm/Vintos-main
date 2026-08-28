@@ -25,20 +25,13 @@ Countersigned constraints (Sol's reviews, 2026-08-28):
   - lease expiry and exhausted steps both HOLD; neither resolves or reveals
   - corruption and unreachability are typed states, never read as absence
 
-NOT YET ENFORCED — this module must not be wired to a conversation surface
-until these exist, because none of them can be enforced from inside the vault:
-  - EFFECT-TIME AUTHORISATION. The perimeter here screens a declared scope at
-    birth. Nothing stops a live tactic producing an effect in an excluded
-    domain, because the broker never sees effects. The effect broker must ask
-    for authorisation per typed effect and deny on broker-unavailable.
-  - VISIT CAPABILITY. _visit_open() proves only that a writable JSON file says
-    closed:false, and any localhost caller can open a visit as "vintos". This
-    needs a broker-minted, short-lived, one-use capability bound to project,
-    actor, visit and nonce.
-  - SIGNED LINEAGE. provenance is an attestation the broker records but cannot
-    check. It needs a signed statement from the formation observatory.
-  - PRECEDENCE. Repair, consent, safety and an explicit stop must prevent a
-    capsule being requested at all. Sharing tier 2 does not establish order.
+ENFORCED AT THE HOUSE DOOR (not inside this vault): visit capabilities and
+signed formation lineage at adoption; constitutional precedence before capsule
+request; explicit per-turn effect authority; evidence-writer provenance; and
+independent generation/effects/post-writers/transport histories. The public
+capsule affordance remains deliberately unwired. These mechanisms make a future
+activation auditable; they do not turn same-user process boundaries into
+identity boundaries.
 """
 import os, re, json, hashlib, uuid, functools
 from datetime import datetime, timedelta
@@ -576,29 +569,77 @@ def _existing_capsule(pid, sid, turn_id, surface):
     return None
 
 
-# disposition lifecycle order. Higher rank never regresses to lower; a repeat of
-# the same or a lower rank is idempotent (recorded once, ignored after).
-# Terminal failures sit above the normal path so nothing can follow them.
-_DISPOSITION_RANK = {
-    "issued": 0, "admitted_to_prompt": 1, "response_created": 2,
-    "effects_completed": 3, "postwriters_dispatched": 4, "transport_unknown": 4,
-    "completed": 5, "generation_failed": 9, "capsule_unrealized": 9,
+# A turn does not have one honest completion rank. Generation, effects,
+# post-writers and transport can each succeed, fail, or remain unknowable
+# independently.  These axes are authoritative; the old scalar vocabulary is
+# accepted below only as a compatibility adapter for surfaces being migrated.
+_AXIS_STATES = {
+    "generation": {"not_started", "created", "failed", "HELD", "unknown"},
+    "effects": {"not_started", "none", "started", "completed", "failed", "HELD", "unknown"},
+    "post_writers": {"not_started", "dispatched", "completed", "failed", "HELD", "unknown"},
+    "transport": {"not_started", "handed_to_framework", "acknowledged", "declined", "failed", "HELD", "unknown"},
+}
+_AXIS_TERMINAL = {
+    "generation": {"created", "failed", "HELD", "unknown"},
+    "effects": {"none", "completed", "failed", "HELD", "unknown"},
+    "post_writers": {"completed", "failed", "HELD", "unknown"},
+    "transport": {"acknowledged", "declined", "failed", "HELD", "unknown"},
+}
+_AXIS_ORDER = {
+    "generation": {"not_started": 0, "created": 1, "failed": 1, "HELD": 1, "unknown": 1},
+    "effects": {"not_started": 0, "started": 1, "none": 2, "completed": 2,
+                "failed": 2, "HELD": 2, "unknown": 2},
+    "post_writers": {"not_started": 0, "dispatched": 1, "completed": 2,
+                     "failed": 2, "HELD": 2, "unknown": 2},
+    "transport": {"not_started": 0, "handed_to_framework": 1, "acknowledged": 2,
+                  "declined": 2, "failed": 2, "HELD": 2, "unknown": 2},
+}
+_LEGACY_STATES = {"issued", "admitted_to_prompt", "response_created",
+                  "effects_completed", "postwriters_dispatched", "transport_unknown",
+                  "completed", "generation_failed", "capsule_unrealized"}
+_LEGACY_AXES = {
+    "response_created": {"generation": "created"},
+    "effects_completed": {"effects": "completed"},
+    "postwriters_dispatched": {"post_writers": "dispatched"},
+    "transport_unknown": {"transport": "unknown"},
+    "generation_failed": {"generation": "failed", "effects": "HELD",
+                          "post_writers": "HELD", "transport": "HELD"},
+    "capsule_unrealized": {"generation": "failed", "effects": "HELD",
+                           "post_writers": "HELD", "transport": "HELD"},
+    # Historical callers used completed without evidence for the latter axes.
+    # Preserve that uncertainty instead of manufacturing completion.
+    "completed": {"generation": "created", "effects": "completed",
+                  "post_writers": "unknown", "transport": "unknown"},
 }
 
 
 @route()
 def disposition(b):
-    """Append what became of an issued capsule, idempotent and monotonic per
-    (project, turn_id, capsule_sha256). Never voids the capsule. A generation
-    failure records capsule_unrealized/generation_failed and does NOT advance
-    the tactic."""
+    """Append independent lifecycle facts for an issued capsule.
+
+    Preferred body: ``axes={axis: state}``.  A legacy ``state`` is translated
+    explicitly and retained as an audit event; it is never the authoritative
+    lifecycle snapshot.
+    """
     pid = b.get("id", "")
     s = _j(os.path.join(_sd(pid), "stratagem.json"))
     if not s:
         return _err("no stratagem on this project")
     state = str(b.get("state", "")).strip()
-    if state not in _DISPOSITION_RANK:
-        return _err("unknown disposition state: %s" % state)
+    axes = b.get("axes")
+    if axes is None:
+        if state not in _LEGACY_STATES:
+            return _err("unknown disposition state: %s" % state)
+        axes = _LEGACY_AXES.get(state, {})
+    if not isinstance(axes, dict) or not axes:
+        # issued/admitted are admission-history events, not lifecycle axes.
+        if state not in ("issued", "admitted_to_prompt"):
+            return _err("axes must be a non-empty object")
+    for axis, value in axes.items():
+        if axis not in _AXIS_STATES:
+            return _err("unknown lifecycle axis: %s" % axis)
+        if value not in _AXIS_STATES[axis]:
+            return _err("unknown %s state: %s" % (axis, value))
     turn_id = str(b.get("turn_id", ""))[:80]
     sha = str(b.get("capsule_sha256", ""))[:64]
     if not re.fullmatch(r"[0-9a-f]{64}", sha):
@@ -611,24 +652,48 @@ def disposition(b):
         return _err("no issued capsule for (turn %s, sha %s) — disposition refused"
                     % (turn_id, sha[:12]))
 
-    # a recorded terminal FAILURE cannot be followed by a normal-path state, and
-    # a normal terminal 'completed' cannot be followed by a failure: history is
-    # not merely numerically monotonic.
-    prev_rank, prev_terminal = _disposition_state(pid, turn_id, sha)
-    if prev_terminal:
+    current = _lifecycle_state(pid, turn_id, sha)
+    legacy_terminal = _legacy_terminal(pid, turn_id, sha)
+    if state and legacy_terminal:
         return {"ok": True, "idempotent": True, "state": state,
-                "note": "already terminal (%s)" % prev_terminal}
-    if prev_rank is not None and _DISPOSITION_RANK[state] <= prev_rank:
-        return {"ok": True, "idempotent": True, "state": state,
-                "note": "already at or beyond this state"}
-
-    ev = _chain(pid, "capsule_disposition",
+                "axes": current, "note": "legacy caller already terminal (%s)" % legacy_terminal}
+    patch = {}
+    for axis, value in axes.items():
+        previous = current.get(axis, "not_started")
+        if previous == value:
+            continue
+        if previous in _AXIS_TERMINAL[axis]:
+            continue
+        if _AXIS_ORDER[axis][value] < _AXIS_ORDER[axis][previous]:
+            continue
+        patch[axis] = value
+    # Preserve issued/admitted history exactly once for migration/audit.
+    if state in ("issued", "admitted_to_prompt"):
+        if _legacy_seen(pid, turn_id, sha, state):
+            return {"ok": True, "idempotent": True, "state": state,
+                    "axes": current}
+        ev = _chain(pid, "capsule_disposition",
+                    {"stratagem": s["id"], "turn_id": turn_id,
+                     "capsule_sha256": sha, "state": state,
+                     "reason_class": str(b.get("reason_class", ""))[:60]})
+        return {"ok": True, "seq": ev["seq"], "state": state, "axes": current}
+    if not patch:
+        return {"ok": True, "idempotent": True, "state": state or "axes",
+                "axes": current, "note": "no axis could advance"}
+    latest = dict(current); latest.update(patch)
+    ev = _chain(pid, "capsule_lifecycle",
                 {"stratagem": s["id"], "turn_id": turn_id, "capsule_sha256": sha,
-                 "state": state, "reason_class": str(b.get("reason_class", ""))[:60]})
-    return {"ok": True, "seq": ev["seq"], "state": state}
-
-
-_TERMINAL_STATES = {"completed", "generation_failed", "capsule_unrealized"}
+                 "patch": patch, "axes": latest,
+                 "reason_class": str(b.get("reason_class", ""))[:60],
+                 "legacy_state": state or None})
+    # Keep a compatibility audit event without using it for ordering.
+    if state:
+        _chain(pid, "capsule_disposition",
+               {"stratagem": s["id"], "turn_id": turn_id, "capsule_sha256": sha,
+                "state": state, "reason_class": str(b.get("reason_class", ""))[:60],
+                "translated_to_axes": patch})
+    return {"ok": True, "seq": ev["seq"], "state": state or "axes",
+            "patch": patch, "axes": latest}
 
 
 def _capsule_issued_for(pid, turn_id, sha):
@@ -649,27 +714,64 @@ def _capsule_issued_for(pid, turn_id, sha):
     return False
 
 
-def _disposition_state(pid, turn_id, sha):
-    """(highest rank recorded, terminal state if any) for this (turn, sha)."""
-    hi, terminal = None, None
+def _lifecycle_state(pid, turn_id, sha):
+    """Reconstruct the latest independent lifecycle axes from the event chain."""
+    out = {axis: "not_started" for axis in _AXIS_STATES}
     try:
         for line in open(os.path.join(_sd(pid), "events.jsonl")):
             if not line.strip():
                 continue
             e = json.loads(line)
-            if e.get("type") != "capsule_disposition":
+            if e.get("type") != "capsule_lifecycle":
                 continue
             d = e.get("data", {})
             if d.get("turn_id") == turn_id and (not sha or d.get("capsule_sha256") == sha):
-                st = d.get("state")
-                r = _DISPOSITION_RANK.get(st)
-                if r is not None and (hi is None or r > hi):
-                    hi = r
-                if st in _TERMINAL_STATES:
-                    terminal = st
+                for axis, value in (d.get("patch") or {}).items():
+                    if axis in _AXIS_STATES and value in _AXIS_STATES[axis]:
+                        out[axis] = value
     except (FileNotFoundError, ValueError, OSError):
         pass
-    return hi, terminal
+    return out
+
+
+def _legacy_seen(pid, turn_id, sha, state):
+    try:
+        for line in open(os.path.join(_sd(pid), "events.jsonl")):
+            e = json.loads(line)
+            d = e.get("data", {})
+            if (e.get("type") == "capsule_disposition" and d.get("turn_id") == turn_id
+                    and d.get("capsule_sha256") == sha and d.get("state") == state):
+                return True
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+    return False
+
+
+def _legacy_terminal(pid, turn_id, sha):
+    for state in ("completed", "generation_failed", "capsule_unrealized"):
+        if _legacy_seen(pid, turn_id, sha, state):
+            return state
+    return None
+
+
+@route()
+def writer_event(b):
+    """Record one asynchronous writer's own result; never infer aggregation."""
+    pid = b.get("id", "")
+    turn_id = str(b.get("turn_id", ""))[:80]
+    sha = str(b.get("capsule_sha256", ""))[:64]
+    writer = str(b.get("writer", ""))[:80]
+    status = str(b.get("status", ""))
+    if not writer:
+        return _err("writer required")
+    if status not in {"started", "completed", "failed", "HELD", "unknown"}:
+        return _err("unknown writer status: %s" % status)
+    if not re.fullmatch(r"[0-9a-f]{64}", sha) or not _capsule_issued_for(pid, turn_id, sha):
+        return _err("no issued capsule for exact writer-event commitment")
+    ev = _chain(pid, "capsule_writer_event",
+                {"turn_id": turn_id, "capsule_sha256": sha, "writer": writer,
+                 "status": status, "detail": str(b.get("detail", ""))[:300]})
+    return {"ok": True, "seq": ev["seq"], "writer": writer, "status": status}
 
 
 @route()
@@ -1145,6 +1247,7 @@ ROUTES = {
     "/stratagem/adopt": adopt,
     "/stratagem/capsule": capsule,
     "/stratagem/disposition": disposition,
+    "/stratagem/writer-event": writer_event,
     "/stratagem/advance": advance,
     "/stratagem/lease": lease,
     "/stratagem/belief": belief,

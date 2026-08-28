@@ -186,6 +186,23 @@ def test_envelope_lets_an_ordinary_turn_witness():
         check("witnessing_allowed true for ordinary", TC.witnessing_allowed(t) is True)
 
 
+def test_lifecycle_axes_are_posted_independently():
+    with Env() as e:
+        e.capsule = ("blk", {"capsule_sha256": "abc", "stratagem_id": "sg-1"})
+        t = TC.begin("hello", "avatar")
+        e.posts.clear()
+        TC.mark_lifecycle(t, "post_writers", "dispatched")
+        TC.mark_lifecycle(t, "transport", "handed_to_framework")
+        bodies = [b for p, b in e.posts if p == "/stratagem/disposition"]
+        check("coordinator emits separate axis patches",
+              {"post_writers": "dispatched"} in [b.get("axes") for b in bodies]
+              and {"transport": "handed_to_framework"} in [b.get("axes") for b in bodies], bodies)
+        local = os.path.join(os.environ["HOME"], ".vintos", "workspace", "memory", "turn-lifecycle.jsonl")
+        rows = [json.loads(line) for line in open(local)]
+        check("local lifecycle preserves both axes for canary turns",
+              [r["axis"] for r in rows[-2:]] == ["post_writers", "transport"], rows[-2:])
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

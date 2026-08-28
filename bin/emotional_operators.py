@@ -2,6 +2,15 @@
 Local: what did this utterance do. Trajectory: what changed about the conversation.
 Trajectory operators outweigh local ones and compound on repetition."""
 import json, os, time, math
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 LANDSCAPE = os.path.expanduser("~/.vintos/workspace/memory/emotional-landscape.json")
 LOGF = os.path.expanduser("~/.vintos/workspace/memory/operator-log.jsonl")
@@ -43,7 +52,7 @@ def _recent_turns(n=6):
         return "\n".join(f"Gloria: {r.get('gloria','')}\nVintos: {r.get('reply','')}" for r in rows)
     except: return "(no history)"
 
-def _map_llm(gloria_msg, last_reply):
+def _map_llm(gloria_msg, last_reply, include_history=True):
     import requests
     r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
         headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
@@ -54,7 +63,8 @@ def _map_llm(gloria_msg, last_reply):
                 "TRAJECTORY - what changed about the conversation as a sequence: did the reply satisfy the previous request, "
                 "repair a rupture, ignore a correction, repeat the same move despite feedback, break an established pattern? "
                 "Operators: " + ", ".join(TRAJECTORY) + "\n\n"
-                "RECENT TURNS:\n" + _recent_turns() + "\n\n"
+                "RECENT TURNS:\n" + (_recent_turns() if include_history else
+                                      "[withheld: current tactical act cannot witness a trajectory]") + "\n\n"
                 f"Vintos last said: {(last_reply or '(nothing yet)')[:400]}\n"
                 f"Gloria just said: {(gloria_msg or '')[:400]}\n\n"
                 'Return ONLY JSON: {"local": [["verb","quantity"],...], "trajectory": ["OperatorName",...]} '
@@ -64,14 +74,20 @@ def _map_llm(gloria_msg, last_reply):
     i, j = txt.find("{"), txt.rfind("}")
     return json.loads(txt[i:j+1]) if i >= 0 else {}
 
-def step(gloria_msg, last_reply=""):
+def step(gloria_msg, last_reply="", envelope=None):
+    provenance = _prov(envelope)
+    reply_eligible = output_can_witness(provenance, "emotional_trajectory")
+    writer_event("emotional_operators", "started", provenance)
     d = _load()
     local, traj = [], []
+    mapping_error = None
     try:
-        out = _map_llm(gloria_msg, last_reply)
+        out = _map_llm(gloria_msg, last_reply if reply_eligible else "",
+                       include_history=reply_eligible)
         local = [(v,q) for v,q in out.get("local",[]) if v in VERBS and q in QUANTITIES]
-        traj = [t for t in out.get("trajectory",[]) if t in TRAJECTORY]
-    except Exception: pass
+        traj = ([t for t in out.get("trajectory",[]) if t in TRAJECTORY]
+                if reply_eligible else [])
+    except Exception as exc: mapping_error = exc
     for v, q in local:
         d["q"][q] = max(0.02, min(0.98, d["q"][q] + VERBS[v]))
     for t in traj:
@@ -88,8 +104,12 @@ def step(gloria_msg, last_reply=""):
         with open(LOGF, "a") as f:
             f.write(json.dumps({"t": time.time(), "gloria": (gloria_msg or "")[:200], "reply": (last_reply or "")[:200],
                                 "ops": local, "traj": traj, "streaks": d["streaks"],
-                                "q": {k: round(x,3) for k,x in d["q"].items()}}) + "\n")
+                                "q": {k: round(x,3) for k,x in d["q"].items()},
+                                "provenance": provenance,
+                                "reply_witnessing_withheld": not reply_eligible}) + "\n")
     except: pass
+    writer_event("emotional_operators", "failed" if mapping_error else "completed", provenance,
+                 mapping_error or ("trajectory withheld" if not reply_eligible else ""))
     return local, traj
 
 def render():
@@ -145,9 +165,12 @@ def _load_prov():
 
 def _save_prov(d): json.dump(d, open(PROV_FILE, "w"), indent=2)
 
-def causal_step(gloria_msg, last_reply=""):
+def causal_step(gloria_msg, last_reply="", envelope=None):
     """What happened (meaning), why it moved wants (provenance), what it opened/closed (affordances)."""
     import requests
+    provenance = _prov(envelope)
+    reply_eligible = output_can_witness(provenance, "causality")
+    writer_event("causality", "started", provenance)
     d = _load_prov()
     try:
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
@@ -161,14 +184,15 @@ def causal_step(gloria_msg, last_reply=""):
                     'Example: {"understand_gloria": {"delta": 0.2, "reason": "she explained something new"}}. '
                     'Only include wants that actually moved. Wants: ' + ", ".join(WANTS) + "\n"
                     '3. "affordance_shifts": what became newly possible or impossible, as {"action":"open"|"close"}. Actions: ' + ", ".join(d["affordances"].keys()) + "\n\n"
-                    f"He last said: {(last_reply or '(nothing yet)')[:300]}\n"
+                    f"He last said: {((last_reply or '(nothing yet)')[:300] if reply_eligible else '[tactical act withheld from causal evidence]')}\n"
                     f"Gloria just said: {(gloria_msg or '')[:300]}\n\n"
                     'Return ONLY: {"meaning":"...","want_deltas":{...},"affordance_shifts":{...}}'}]},
             timeout=25)
         txt = r.json()["choices"][0]["message"]["content"]
         i, j = txt.find("{"), txt.rfind("}")
         out = json.loads(txt[i:j+1])
-    except Exception:
+    except Exception as exc:
+        writer_event("causality", "failed", provenance, exc)
         return d
 
     meaning = out.get("meaning", "")
@@ -186,7 +210,10 @@ def causal_step(gloria_msg, last_reply=""):
         if act not in d["affordances"]: continue
         d["affordances"][act] = max(0.05, min(0.95, d["affordances"][act] + (0.18 if verdict == "open" else -0.18)))
     d["last_meaning"] = meaning
+    d["last_provenance"] = provenance
     _save_prov(d)
+    writer_event("causality", "completed", provenance,
+                 "generated reply withheld" if not reply_eligible else "")
     return d
 
 def causal_context():

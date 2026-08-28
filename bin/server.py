@@ -607,7 +607,7 @@ def _map_view_context(message):
 
 # --- intent loop and prediction grading, ported from Velaris 30 Jul.
 # --- Above the first route on purpose: past uvicorn.run nothing registers.
-def _relational_predict(reply_text):
+def _relational_predict(reply_text, writer_env=None):
     """Store a prediction of how Gloria will answer what he just said.
 
     Every other chat path did this; Thirveel never did. So those conversations
@@ -623,7 +623,8 @@ def _relational_predict(reply_text):
         if _o.path.exists(script):
             _sp.Popen([venv, script, "predict", txt[:500]],
                       stdout=open("/tmp/relational-predict.log", "a"),
-                      stderr=open("/tmp/relational-predict.log", "a"))
+                      stderr=open("/tmp/relational-predict.log", "a"),
+                      env=writer_env)
     except Exception:
         pass
 
@@ -8038,12 +8039,23 @@ Your current self-model (excerpt):
         except Exception as _ge:
             print("[guard] check skipped:", _ge, flush=True)
 
+        # Generation is its own lifecycle axis. Build one typed provenance
+        # envelope now; every evidence writer receives this exact object.
+        _prov_envelope, _prov_writer_env = None, None
+        try:
+            if _turn is not None and _tc is not None:
+                _tc.mark_lifecycle(_turn, "generation", "created" if reply else "failed",
+                                   "model_returned_empty" if not reply else "")
+                _prov_envelope = _tc.envelope(_turn)
+                _prov_writer_env = _tc.writer_env(_turn)
+        except Exception as _pe:
+            print("[avatar provenance]", _pe, flush=True)
         # Save to avatar overlay history only — never touches main chat
         try:
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
             nudge_emotions_from_text(msg.message, source="gloria")
             _relational_compare(msg.message)
-            try: _relational_predict(reply)
+            try: _relational_predict(reply, _prov_writer_env)
             except Exception: pass
             try:
                 import sys as _dps2; _dps2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
@@ -8062,23 +8074,26 @@ Your current self-model (excerpt):
                 elif "[EDGE]" in _upr: _ecm.set_choice("edge")
                 reply = _ecr.sub(r"\[(?:EDGE|LETGO)\]", "", reply or "", flags=_ecr.I).strip()
             except Exception: pass
-            av_history.append({"role": "assistant", "content": reply, "ts": __import__("time").time(), "served_by": str(_model_used)})
+            av_history.append({"role": "assistant", "content": reply,
+                               "ts": __import__("time").time(), "served_by": str(_model_used),
+                               "generation_provenance": _prov_envelope})
             nudge_emotions_from_text(reply, source="reply")
             try:
                 from emotional_operators import step as _eo_s, causal_step as _eo_cs
-                _eo_s(msg.message, reply)
-                _eo_cs(msg.message, reply)
+                _eo_s(msg.message, reply, envelope=_prov_envelope)
+                _eo_cs(msg.message, reply, envelope=_prov_envelope)
                 try:
                     import sys as _tls2; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                     from toy_link import parse_and_send as _tl_ps
                     _tl_ps(reply, context=(_turn.context if _turn is not None else None))
                 except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
-            # device effects done — bump the stage but DO NOT close yet: the
-            # projector effect and the post-writers still run below, and the
-            # capsule's terminal disposition must be the LAST thing (Sol #1).
+            # Effect parsing has begun, but the projector parser is later in
+            # this handler. Do not call the axis completed yet.
             try:
-                if _turn is not None: _turn.stage = "effects_completed"
+                if _turn is not None:
+                    _turn.stage = "response_created"
+                    if _tc is not None: _tc.mark_lifecycle(_turn, "effects", "started")
             except Exception: pass
             # -- Ported systems run independently now, cannot be killed by emotional_operators failing --
             try:
@@ -8093,7 +8108,7 @@ Your current self-model (excerpt):
                     import json as _av_gwj
                     _av_es = _av_gwj.load(open("/home/gloria/.vintos/workspace/memory/emotional-state.json"))
                     _av_ev = _av_es.get("emotion_vector", _av_es.get("v", []))
-                    if _av_ev:
+                    if _av_ev and (not _prov_envelope or _prov_envelope.get("may_witness")):
                         from emotional_gravity_wells import record_visit as _av_rv
                         _av_rv(_av_ev)
                 except Exception: pass
@@ -8102,15 +8117,8 @@ Your current self-model (excerpt):
                     _av_spp_script = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
                     _av_spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
                     if os.path.exists(_av_spp_script):
-                        _av_spp.Popen([_av_spp_venv, _av_spp_script, "predict"], stdout=open("/tmp/self-predict.log", "a"), stderr=open("/tmp/self-predict.log", "a"))
+                        _av_spp.Popen([_av_spp_venv, _av_spp_script, "predict"], stdout=open("/tmp/self-predict.log", "a"), stderr=open("/tmp/self-predict.log", "a"), env=_prov_writer_env)
                 except Exception as _av_spp_e: print("[avatar self-predict]", _av_spp_e, flush=True)
-                try:
-                    import subprocess as _av_rp
-                    _av_rp_script = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-                    _av_rp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-                    if os.path.exists(_av_rp_script):
-                        _av_rp.Popen([_av_rp_venv, _av_rp_script, "predict", reply[:500]], stdout=open("/tmp/relational-predict.log", "a"), stderr=open("/tmp/relational-predict.log", "a"))
-                except Exception: pass
                 try:
                     if _test_mode_active():
                         print("[avatar WAL] test mode active - skipping", flush=True)
@@ -8118,7 +8126,7 @@ Your current self-model (excerpt):
                         import subprocess as _av_wal
                         _av_wal_script = os.path.join(WORKSPACE, "scripts", "wal-extract.py")
                         if os.path.exists(_av_wal_script):
-                            _av_wal.Popen(["python3", _av_wal_script, msg.message[:1000], reply[:1000]], stdout=open("/tmp/wal-extract.log", "a"), stderr=open("/tmp/wal-extract.log", "a"))
+                            _av_wal.Popen(["python3", _av_wal_script, msg.message[:1000], reply[:1000]], stdout=open("/tmp/wal-extract.log", "a"), stderr=open("/tmp/wal-extract.log", "a"), env=_prov_writer_env)
                 except Exception: pass
                 try:
                     if _test_mode_active():
@@ -8127,13 +8135,15 @@ Your current self-model (excerpt):
                         import subprocess as _av_led
                         _av_led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
                         if os.path.exists(_av_led_script):
-                            _av_led.Popen(["python3", _av_led_script, msg.message, reply], stdout=open("/tmp/interaction-ledger.log", "a"), stderr=open("/tmp/interaction-ledger.log", "a"))
+                            _av_led.Popen(["python3", _av_led_script, msg.message, reply], stdout=open("/tmp/interaction-ledger.log", "a"), stderr=open("/tmp/interaction-ledger.log", "a"), env=_prov_writer_env)
                 except Exception: pass
                 try:
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am
                     try:
                         from humor_detector import scan_turn as _hd_scan_turn
-                        _hd_scan_turn(gloria_text=(msg.message or ''), reply_text=(locals().get('reply') or ''))
+                        _hd_scan_turn(gloria_text=(msg.message or ''),
+                                      reply_text=((locals().get('reply') or '')
+                                                  if (not _prov_envelope or _prov_envelope.get("may_witness")) else ''))
                     except Exception: pass
                     _av_moment = _av_sgm(msg.message, context_tone="avatar-chat")
                     if _av_moment: _av_am(_av_moment)
@@ -8153,9 +8163,14 @@ Your current self-model (excerpt):
             if os.path.exists(_imp_script):
                 import subprocess as _imp_sp2
                 _imp_sp2.Popen(["python3", _imp_script, "capture", msg.message[:300], reply[:300]],
-                    stdout=open("/tmp/imprint.log", "a"), stderr=open("/tmp/imprint.log", "a"))
+                    stdout=open("/tmp/imprint.log", "a"), stderr=open("/tmp/imprint.log", "a"),
+                    env=_prov_writer_env)
         except Exception as _ime:
             print("[avatar imprint]", _ime, flush=True)
+        try:
+            if _turn is not None and _tc is not None:
+                _tc.mark_lifecycle(_turn, "post_writers", "dispatched")
+        except Exception: pass
         # the wall, if it is on and he wants it - never blocks the reply
         try:
             import subprocess as _pj_sp
@@ -8207,6 +8222,11 @@ Your current self-model (excerpt):
         except Exception as _pje:
             print("[projector/tag]", _pje, flush=True)
         try:
+            if _turn is not None and _tc is not None:
+                _turn.stage = "effects_completed"
+                _tc.mark_lifecycle(_turn, "effects", "completed" if reply else "none")
+        except Exception: pass
+        try:
             import re as _puj, sys as _pus
             _pus.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             # [FELT:] - his in-the-moment naming of a GCS perturbation. Private: stripped
@@ -8248,6 +8268,12 @@ Your current self-model (excerpt):
                 reply = _puj.sub(r"\s*\[PURSUIT:[^\]]*\]\s*", " ", reply).strip()
         except Exception as _pue:
             print("[pursuit/tag]", _pue, flush=True)
+        try:
+            if _turn is not None and _tc is not None:
+                # This is exactly what the server knows synchronously: it handed
+                # a response to FastAPI. Delivery/read remain unknowable here.
+                _tc.mark_lifecycle(_turn, "transport", "handed_to_framework")
+        except Exception: pass
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
     except Exception as e:
         return {"reply": "", "error": str(e)}
@@ -8259,6 +8285,8 @@ Your current self-model (excerpt):
             if _turn is not None and _tc is not None:
                 _outcome = _turn.stage if _turn.stage in (
                     "effects_completed", "completed") else "generation_failed"
+                if _outcome == "generation_failed":
+                    _tc.mark_lifecycle(_turn, "generation", "failed", "handler_exception")
                 _tc.finish(_turn, "" if _outcome != "generation_failed" else None,
                            outcome=_outcome)
         except Exception: pass

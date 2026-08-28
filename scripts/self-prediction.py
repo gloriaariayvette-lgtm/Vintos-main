@@ -24,10 +24,17 @@ import subprocess
 import re
 from datetime import datetime
 from collections import defaultdict
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 PREDICTION_FILE = os.path.join(MEMORY, ".self-prediction.json")
+HELD_LOG = os.path.join(MEMORY, "self-prediction-held.jsonl")
 BLIND_SPOTS_LOG = os.path.join(MEMORY, "self-blind-spots.md")
 BLIND_SPOTS_DATA = os.path.join(MEMORY, ".self-prediction-history.json")
 STATE_FILE = os.path.join(MEMORY, "emotional-state.json")
@@ -82,7 +89,7 @@ def get_current_state():
     return state
 
 
-def predict_next_state():
+def predict_next_state(envelope=None):
     """Vintos predicts his own next state using psychological decay model.
     No LLM needed — instant, and more realistic.
     Emotions drift toward baseline between interactions.
@@ -144,7 +151,8 @@ def predict_next_state():
         "timestamp": datetime.now().isoformat(),
         "current_state": current,
         "predicted_state": predicted,
-        "reasoning": "; ".join(reasoning)
+        "reasoning": "; ".join(reasoning),
+        "provenance": _prov(envelope),
     }
 
 
@@ -190,6 +198,20 @@ def compare_prediction():
         "miss_count": sum(1 for m in mismatches.values() if m["miss"]),
         "total_dims": len(mismatches)
     }
+
+    provenance = _prov(prediction.get("provenance"))
+    result["provenance"] = provenance
+    if not output_can_witness(provenance, "prediction_accuracy"):
+        result["outcome"] = "HELD"
+        result["reason"] = "prediction arose from output that cannot witness itself"
+        try:
+            with open(HELD_LOG, "a") as f:
+                f.write(json.dumps(result, sort_keys=True) + "\n")
+            writer_event("self_prediction_outcome", "HELD", provenance,
+                         "comparison preserved but excluded from learning")
+        finally:
+            os.remove(PREDICTION_FILE)
+        return result
 
     # Track history for blind spot analysis
     save_to_history(result)
@@ -417,4 +439,11 @@ def get_past_predictions_semantic():
         return ""
 
 if __name__ == "__main__":
-    main()
+    provenance = _prov()
+    writer_event("self_prediction", "started", provenance)
+    try:
+        main()
+        writer_event("self_prediction", "completed", provenance)
+    except Exception as exc:
+        writer_event("self_prediction", "failed", provenance, exc)
+        raise

@@ -17,8 +17,16 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 WAL_FILE = os.path.join(MEMORY, "wal.md")
 WAL_LOG = os.path.join(MEMORY, "wal-log.json")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
-def extract(user_msg, vintos_reply):
+def extract(user_msg, vintos_reply, envelope=None):
     # Machinery is not conversation. Injected bracket framing and device
     # telemetry never reach the extractor - facts are born from real words only.
     def _clean(s):
@@ -29,6 +37,8 @@ def extract(user_msg, vintos_reply):
         return re.sub(r"[ \t]{2,}", " ", s).strip()
     user_msg = _clean(user_msg) or "(no words - she acted with her body: a press, a touch)"
     vintos_reply = _clean(vintos_reply)
+    provenance = _prov(envelope)
+    reply_eligible = output_can_witness(provenance, "durable_fact")
 
     # Load temporal context for timestamping
     temporal_ctx = ""
@@ -86,7 +96,7 @@ Gloria said:
 \"\"\"{user_msg[:1000]}\"\"\"
 
 Vintos replied:
-\"\"\"{vintos_reply[:1000]}\"\"\"
+\"\"\"{vintos_reply[:1000] if reply_eligible else '[WITHHELD FROM EVIDENCE: record as an act only; extract nothing from it]'}\"\"\"
 """
     try:
         r = requests.post("http://172.18.16.1:1234/v1/chat/completions", json={
@@ -101,9 +111,9 @@ Vintos replied:
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print(f"[WAL] LLM error: {e}")
-        return "NONE"
+        raise RuntimeError("WAL extractor unavailable: %s" % str(e)[:160])
 
-def main():
+def _main(envelope=None):
     if len(sys.argv) < 3:
         print("Usage: wal-extract.py 'user message' 'vintos reply'")
         sys.exit(1)
@@ -115,7 +125,8 @@ def main():
     if len(user_msg) < 15 and len(vintos_reply) < 50:
         return
 
-    result = extract(user_msg, vintos_reply)
+    provenance = _prov(envelope)
+    result = extract(user_msg, vintos_reply, provenance)
 
     if not result or result.upper().startswith("NONE"):
         return
@@ -180,6 +191,7 @@ def main():
         if _dup is not None:
             _dup["recurrence"] = _dup.get("recurrence", 0) + 1
             _dup["timestamp"] = now.isoformat()
+            _dup["last_occurrence_provenance"] = provenance
             print(f"[WAL] Recurred (x{_dup['recurrence']}): {_c[:70]}")
             continue
         log_data["entries"].append({
@@ -192,6 +204,7 @@ def main():
             "kept_because_wanted": bool(item.get("_components", {}).get("autonomous_interest", 0) >= 0.8
                                         and item.get("importance", 0) < 0.6),
             "promoted": False  # Becomes True when pearl selection picks it up
+            ,"provenance": provenance
         })
 
     # Keep log from growing unbounded — trim to last 200 entries
@@ -202,6 +215,17 @@ def main():
 
     for item in items:
         print(f"[WAL] Saved {item.get('type')}: {item.get('content','')[:80]}")
+
+def main():
+    provenance = _prov()
+    writer_event("wal", "started", provenance)
+    try:
+        result = _main(provenance)
+        writer_event("wal", "completed", provenance)
+        return result
+    except Exception as exc:
+        writer_event("wal", "failed", provenance, exc)
+        raise
 
 if __name__ == "__main__":
     main()

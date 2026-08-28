@@ -132,6 +132,29 @@ with Env() as e:
     check("disposition for an un-issued turn refused", "error" in r, r)
 
 with Env() as e:
+    cap = S.capsule({"id": PID, "turn_id": "turn-axes", "surface": "avatar"})
+    sha = cap["commitment"]["capsule_sha256"]
+    r1 = S.disposition({"id": PID, "turn_id": "turn-axes", "capsule_sha256": sha,
+                        "axes": {"post_writers": "dispatched"}})
+    r2 = S.disposition({"id": PID, "turn_id": "turn-axes", "capsule_sha256": sha,
+                        "axes": {"transport": "unknown"}})
+    check("post-writers and transport advance independently",
+          r2.get("axes", {}).get("post_writers") == "dispatched"
+          and r2.get("axes", {}).get("transport") == "unknown", r2)
+    r3 = S.disposition({"id": PID, "turn_id": "turn-axes", "capsule_sha256": sha,
+                        "axes": {"effects": "HELD"}})
+    r4 = S.disposition({"id": PID, "turn_id": "turn-axes", "capsule_sha256": sha,
+                        "axes": {"effects": "completed"}})
+    check("HELD is a legal terminal axis state",
+          r3.get("axes", {}).get("effects") == "HELD" and r4.get("idempotent"), r4)
+    we = S.writer_event({"id": PID, "turn_id": "turn-axes", "capsule_sha256": sha,
+                         "writer": "wal", "status": "completed"})
+    check("a writer records its own outcome", we.get("ok") and we.get("writer") == "wal", we)
+    axes = S._lifecycle_state(PID, "turn-axes", sha)
+    check("writer completion does not synthesize aggregate completion",
+          axes["post_writers"] == "dispatched", axes)
+
+with Env() as e:
     # a permit binds its exact effect: level and target
     import effect_gate as EG
     ctx = EG.TurnContext("t1", "avatar")
