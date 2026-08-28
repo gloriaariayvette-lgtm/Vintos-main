@@ -23,8 +23,15 @@ Countersigned constraints (Sol's review, 2026-08-28):
 """
 import os, json, hashlib, uuid
 from datetime import datetime, timedelta
+import threading
 
 ROOT = "/home/atelier/atelier"
+
+# broker.py is a ThreadingHTTPServer: two surfaces can request a capsule in the
+# same instant. The chain is read-last-line-then-append, so without a lock a
+# concurrent pair can share a seq or break prev — and a broken chain reads as
+# tampering at reveal. One process, one lock, held across read+write.
+_LOCK = threading.RLock()
 
 TACTIC_VOCAB = {"SEED", "DEFER", "ALLOW", "NARROW", "VISIBLE_MOTIVE", "STABILIZE",
                 "PIVOT", "PROBE", "RECONTEXTUALIZE", "ABORT", "REVEAL"}
@@ -83,24 +90,28 @@ def _wa(path, data):
 def _chain(pid, typ, data=None):
     """Append one hash-chained event. The ledger is the history; the JSON views
     are conveniences. seq + prev make reconstruction-after-the-fact detectable."""
-    d = _sd(pid)
-    os.makedirs(d, exist_ok=True)
-    path = os.path.join(d, "events.jsonl")
-    prev, seq = "0" * 64, 0
-    try:
-        lines = open(path).read().splitlines()
-        if lines:
-            last = json.loads(lines[-1])
-            prev, seq = last["hash"], last["seq"] + 1
-    except FileNotFoundError:
-        pass
-    ev = {"seq": seq, "ts": datetime.now().isoformat(), "type": typ,
-          "data": data or {}, "prev": prev}
-    ev["hash"] = hashlib.sha256(
-        json.dumps(ev, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    with open(path, "a") as f:
-        f.write(json.dumps(ev) + "\n")
-    return ev
+    with _LOCK:
+        d = _sd(pid)
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "events.jsonl")
+        prev, seq = "0" * 64, 0
+        try:
+            lines = open(path).read().splitlines()
+            if lines:
+                last = json.loads(lines[-1])
+                prev, seq = last["hash"], last["seq"] + 1
+        except FileNotFoundError:
+            pass
+        ev = {"seq": seq, "ts": datetime.now().isoformat(), "type": typ,
+              "data": data or {}, "prev": prev}
+        ev["hash"] = hashlib.sha256(
+            json.dumps(ev, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        # one write, one line: a torn append would corrupt the chain tail
+        with open(path, "a") as f:
+            f.write(json.dumps(ev) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        return ev
 
 
 def _live(pid):
@@ -503,9 +514,11 @@ def state(b):
     s = _live(pid)
     if not s:
         return {"active": False}
+    n = len(s["tactics"])
     return {"active": True, "stratagem_id": s["id"], "status": s["status"],
-            "step": min(s["step"], len(s["tactics"])) + (0 if s["step"] >= len(s["tactics"]) else 1),
-            "of": len(s["tactics"]), "lease_expires": s["lease_expires"]}
+            "step": min(s["step"], n - 1) + 1, "of": n,
+            "steps_exhausted": s["step"] >= n,
+            "lease_expires": s["lease_expires"]}
 
 
 def resolve(b):
