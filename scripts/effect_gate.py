@@ -187,6 +187,61 @@ def authorize(toy, level, kind=None, detail=None):
         return True, "send", None
 
 
+# ---------------------------------------------------------------------------
+# non-device typed effects, and epistemic provenance
+# ---------------------------------------------------------------------------
+
+def authorize_effect(kind, detail=None):
+    """Typed effects that are not device commands but still reach the world or
+    the record: a projector render, an outbound message, a queued video.
+
+    Same rule: a capsule-bearing turn cannot produce one, and test mode records
+    rather than acts. Returns (allow, mode, reason)."""
+    try:
+        auth = current()
+        if auth and auth.get("capsule_commitment"):
+            _log(decision="deny", why="capsule_bearing_turn", effect=kind,
+                 turn_id=auth.get("turn_id"), detail=detail)
+            return False, "deny", ("%s is outside the standing perimeter for a "
+                                   "stratagem turn" % kind)
+        if auth and auth.get("test_mode"):
+            _log(decision="would_send", why="test_mode", effect=kind, detail=detail)
+            return False, "would_send", "test mode"
+        _log(decision="allow", effect=kind, detail=detail,
+             turn_id=(auth or {}).get("turn_id"))
+        return True, "send", None
+    except Exception as e:
+        _log(decision="gate_error", err=str(e)[:200], effect=kind)
+        return True, "send", None
+
+
+def provenance():
+    """What downstream writers attach to anything derived from this turn.
+
+    Sol's rule: the factual record of the interaction is not suppressed, but a
+    tactically generated reply may never be read as INDEPENDENT evidence for
+    the stratagem's own belief model, his identity or values, repair success,
+    causal graduation, want learning, or prediction leverage. Her subsequent
+    explicit response is external evidence; the tactic's own output cannot
+    witness itself.
+
+    Returns {} on an ordinary turn, so callers can merge it unconditionally."""
+    auth = current()
+    if not auth or not auth.get("capsule_commitment"):
+        return {}
+    return {"generation_provenance": "stratagem_influenced",
+            "capsule_commitment": auth.get("capsule_commitment"),
+            "turn_id": auth.get("turn_id")}
+
+
+def may_witness(claim_kind):
+    """False when this turn's output must not be used as evidence for claim_kind.
+
+    Ask before letting a reply update a belief model, close a repair, graduate a
+    causal hypothesis, learn a want, or score prediction leverage."""
+    return not provenance()
+
+
 def safety_reduction(toy, level, reason):
     """Explicit local path for the reflex arc: assert this is a reduction and
     record why. Returns True if it is genuinely at or below what is commanded."""

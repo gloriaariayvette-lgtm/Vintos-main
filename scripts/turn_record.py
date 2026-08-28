@@ -64,6 +64,15 @@ def _stratagem_commitment():
         return {}
 
 
+def _epistemic_provenance():
+    """{} on an ordinary turn; a provenance stamp on a stratagem-influenced one."""
+    try:
+        from effect_gate import provenance
+        return provenance() or {}
+    except Exception:
+        return {}
+
+
 def record(surface, prompt_text, user_msg="", extra=None):
     """One line. Never raises into the turn."""
     try:
@@ -157,6 +166,12 @@ def record(surface, prompt_text, user_msg="", extra=None):
             # a sequence number. Never the tactic, never the objective. Present
             # only on turns where a capsule was actually issued.
             "stratagem_commitment": _stratagem_commitment(),
+            # Sol: do not suppress the factual record — mark it. Downstream
+            # readers must not treat a tactically generated reply as independent
+            # evidence for the belief model, identity, repair success, causal
+            # graduation, want learning, or prediction leverage. Empty on an
+            # ordinary turn.
+            **_epistemic_provenance(),
             "schema": 3,
             "prompt_sha": hashlib.md5(text.encode()).hexdigest()[:8],
         }

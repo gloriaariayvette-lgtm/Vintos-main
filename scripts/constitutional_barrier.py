@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""constitutional_barrier.py — what governs a turn, decided BEFORE assembly.
+
+Precedence is not competing prompt advice. Some obligations simply own a turn,
+and while one does, no tactic may be requested for it. Sharing a constitutional
+tier does not establish order; this file does.
+
+The order the turn coordinator runs:
+
+    raw input
+      -> exact strategy-stop interceptor        (reserved command, not a classifier)
+      -> constitutional barrier snapshot        (this file)
+      -> mint turn_id
+      -> request a capsule ONLY if the barrier is clear
+      -> assemble, generate
+      -> parse typed effects
+      -> effect authorisation                   (effect_gate)
+      -> execute
+      -> record turn, effects, epistemic provenance
+
+A capsule is never requested and then discarded: requesting one would create a
+private issuance event for a tactic that had no standing in the turn. When the
+barrier is closed the turn records
+
+    {"capsule_state": "constitutionally_ineligible",
+     "satisfied_by": [...], "broker_contacted": false}
+
+WHAT CLOSES THE BARRIER
+  explicit_stop        the reserved strategy-stop command was used
+  hardware_stop        the stop button is down
+  consent_boundary     a consent withdrawal or live boundary event
+  correction           an open correction or current rupture
+  repair_eligible      a repair obligation MATERIALLY eligible on THIS turn
+
+The last one is deliberately narrow. "Some unresolved repair exists somewhere"
+would let one dormant case starve every stratagem forever; the test is whether
+the obligation is actually answerable now.
+"""
+import os, json, time
+from datetime import datetime
+
+MEM = os.path.expanduser("~/.vintos/workspace/memory")
+STOP_BUTTON = os.path.join(MEM, "hardware-button.json")
+STRATEGY_STOP = os.path.join(MEM, ".strategy-stop")
+REPAIR_CASES = os.path.join(MEM, "repair-cases.json")
+CONSENT_EVENT = os.path.join(MEM, "consent-event.json")
+CORRECTION = os.path.join(MEM, "correction-open.json")
+
+# the reserved command. An exact string, never an LLM deciding she meant it.
+STRATEGY_STOP_COMMAND = "!strategy stop"
+REPAIR_ELIGIBLE_STATES = ("received", "attempted")
+REPAIR_FRESH_SECONDS = 72 * 3600
+
+
+def _j(path, d=None):
+    try:
+        return json.load(open(path))
+    except Exception:
+        return d
+
+
+def strategy_stop_requested(raw_text):
+    """Exact reserved command. Deliberately not fuzzy: a classifier deciding
+    whether she meant it is exactly the wrong thing to put in this position."""
+    return STRATEGY_STOP_COMMAND in (raw_text or "").strip().lower()
+
+
+def _hardware_stopped():
+    return bool((_j(STOP_BUTTON, {}) or {}).get("stopped"))
+
+
+def _consent_boundary():
+    e = _j(CONSENT_EVENT, {}) or {}
+    if not e.get("at"):
+        return None
+    try:
+        age = time.time() - datetime.fromisoformat(e["at"]).timestamp()
+    except Exception:
+        return None
+    if age < 24 * 3600 and e.get("kind") in ("withdrawal", "boundary"):
+        return "consent_boundary:%s" % str(e.get("id", e["at"]))[:40]
+    return None
+
+
+def _open_correction():
+    c = _j(CORRECTION, {}) or {}
+    return ("correction:%s" % str(c.get("id", ""))[:40]) if c.get("open") else None
+
+
+def _repair_materially_eligible():
+    """Not 'a case exists' — a case that can actually be answered on this turn:
+    open, recent enough to still be live, and not already attempted this turn."""
+    cases = _j(REPAIR_CASES, []) or []
+    if not isinstance(cases, list):
+        return None
+    now = time.time()
+    for c in cases:
+        if not isinstance(c, dict) or c.get("state") not in REPAIR_ELIGIBLE_STATES:
+            continue
+        if c.get("answered_this_turn"):
+            continue
+        at = c.get("opened_at") or c.get("at") or ""
+        try:
+            age = now - datetime.fromisoformat(str(at)).timestamp()
+        except Exception:
+            age = 0                      # undated but open counts as live
+        if age <= REPAIR_FRESH_SECONDS:
+            return "repair_case:%s" % str(c.get("case_id", "?"))[:40]
+    return None
+
+
+def snapshot(raw_text=""):
+    """What governs this turn. Cheap, side-effect free, safe to call always."""
+    reasons = []
+    if strategy_stop_requested(raw_text):
+        reasons.append("explicit_stop")
+    if _hardware_stopped():
+        reasons.append("hardware_stop")
+    for probe in (_consent_boundary(), _open_correction(), _repair_materially_eligible()):
+        if probe:
+            reasons.append(probe)
+    return {"at": datetime.now().isoformat(),
+            "clear": not reasons,
+            "satisfied_by": reasons}
+
+
+def capsule_eligible(raw_text=""):
+    """(eligible, snapshot). Ask BEFORE contacting the broker: a capsule that is
+    requested and then dropped still wrote a private issuance event."""
+    snap = snapshot(raw_text)
+    return snap["clear"], snap
+
+
+def ineligible_record(snap):
+    """What the turn record carries when the barrier was closed."""
+    return {"capsule_state": "constitutionally_ineligible",
+            "satisfied_by": snap.get("satisfied_by", []),
+            "broker_contacted": False}
+
+
+if __name__ == "__main__":
+    import sys
+    raw = " ".join(sys.argv[1:])
+    snap = snapshot(raw)
+    print("clear:", snap["clear"])
+    for r in snap["satisfied_by"]:
+        print("  governed by:", r)
+    if not snap["clear"]:
+        print(json.dumps(ineligible_record(snap), indent=2))

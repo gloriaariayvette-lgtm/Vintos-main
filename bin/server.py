@@ -8137,6 +8137,21 @@ Your current self-model (excerpt):
             import re as _pjr, json as _pjj, datetime as _pjd
             _pm = _pjr.search(r"\[PROJECT:\s*([^|\]]+?)\s*(?:\|\s*(\d+)\s*s?\s*)?(?:\|\s*(grok|wan)\s*)?\]", reply or "", _pjr.I)
             if _pm:
+                # The wall is a physical/environmental effect from the same
+                # generated turn, so it consumes the same turn authority as a
+                # device command. Denied on a stratagem turn; recorded, not
+                # rendered, in test mode.
+                try:
+                    import effect_gate as _pj_eg
+                    _pj_ok, _pj_mode, _pj_why = _pj_eg.authorize_effect(
+                        "projector", detail=_pm.group(1).strip()[:80])
+                except Exception:
+                    _pj_ok, _pj_mode, _pj_why = True, "send", None
+                if not _pj_ok:
+                    reply = _pjr.sub(r"\s*\[PROJECT:[^\]]*\]\s*", " ", reply).strip()
+                    print("[projector] refused (%s): %s" % (_pj_mode, _pj_why), flush=True)
+                    _pm = None
+            if _pm:
                 _qp = os.path.join(MEMORY, "art", "video", "video-queue.json")
                 try: _q = _pjj.load(open(_qp))
                 except Exception: _q = []
