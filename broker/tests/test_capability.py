@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Visit-capability and signed-lineage gates. Forgery and replay must fail."""
-import os, sys, json, shutil, hmac, hashlib, time, uuid
+import os, sys, json, shutil, hmac, hashlib, time, uuid, tempfile, atexit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import stratagem_store as S
 import broker as BK
 
-FAKE = os.path.join(HERE, "fakeroot_cap")
-shutil.rmtree(FAKE, ignore_errors=True)
+FAKE = tempfile.mkdtemp(prefix="atelier-test-")   # never inside the repo
+atexit.register(lambda: shutil.rmtree(FAKE, ignore_errors=True))
 os.makedirs(os.path.join(FAKE, "projects"), exist_ok=True)
 S.ROOT = FAKE
 BK.ROOT = FAKE
@@ -42,6 +42,8 @@ def fresh(door_lit=True, visit_id="v1"):
 def lineage(root_ref="drift.json@2026-08-27", root_type="drift_novelty",
             nonce=None, exp=None, commissioned=False):
     body = {"root_ref": root_ref, "root_type": root_type,
+            "provenance_class": "self_originated", "commissioned_ancestor": False,
+            "source_record_digest": "s" * 64,
             "episode_at": "2026-08-27T10:00:00", "episode_status": "coherent_pull",
             "episode_digest": "d" * 64, "commissioned": commissioned,
             "nonce": nonce or uuid.uuid4().hex,
@@ -172,12 +174,17 @@ import formation_observatory as FO
 FO.OUT = os.path.join(FAKE, "episodes.jsonl")
 with open(FO.OUT, "w") as f:
     f.write(json.dumps({"at": "2026-08-27T10:00:00", "status": "coherent_pull",
-                        "organs": ["withheld"], "clusters":
-                        [{"organs": ["withheld"], "territory": "real_root_abc"}]}) + "\n")
+                        "organs": ["curiosity"], "roots": ["real_root_abc"],
+                        "signals": [{"organ": "curiosity", "text": "t",
+                                     "root": "real_root_abc", "activation": 0.7,
+                                     "root_type": "curiosity",
+                                     "provenance_class": "self_originated",
+                                     "commissioned_ancestor": False}],
+                        "clusters": []}) + "\n")
 os.environ["HOME"] = FAKE
-a = FO.attest("real_root_abc", "drift_novelty")
+a = FO.attest("real_root_abc", "curiosity")
 check("attests a recorded root", "sig" in a, list(a))
-a = FO.attest("invented_root_xyz", "drift_novelty")
+a = FO.attest("invented_root_xyz", "curiosity")
 check("refuses to attest an unrecorded root", "error" in a, a.get("error"))
 
 print("\n%d/%d passed" % (sum(R), len(R)))

@@ -101,6 +101,17 @@ class BadProject(ValueError):
 
 
 def _p(pid):
+    """Delegates to THE shared validator in broker.py so the two stores cannot
+    drift apart — fixing containment here while /visit/open stayed open was
+    exactly that failure. The local copy is a fallback for isolated tests."""
+    try:
+        from broker import canonical_pid, BadProject as _BP
+        try:
+            return canonical_pid(pid, ROOT)
+        except _BP as e:
+            raise BadProject(str(e))
+    except ImportError:
+        pass
     if not isinstance(pid, str) or not _PID_RE.match(pid):
         raise BadProject("malformed project id")
     base = os.path.realpath(os.path.join(ROOT, "projects"))
@@ -263,6 +274,9 @@ def _capability(b, pid):
 
 _LINEAGE_KEY = "/home/atelier/.lineage-key"
 _NONCE_LOG = "/home/atelier/atelier/consumed-nonces.jsonl"
+# The nonce log is global, so its check-and-append needs a global lock —
+# per-project locks would let two projects race the same attestation.
+_NONCE_LOCK = threading.Lock()
 
 
 def _verify_lineage(att, root_ref, root_type):
@@ -290,30 +304,57 @@ def _verify_lineage(att, root_ref, root_type):
         return False, "lineage attestation describes a different root"
     if body.get("commissioned") is not False:
         return False, "lineage attestation does not assert an uncommissioned root"
+    if body.get("provenance_class") != "self_originated":
+        return False, ("lineage provenance_class is %r — only a self-originated root may "
+                       "found a stratagem" % body.get("provenance_class"))
+    if body.get("commissioned_ancestor") is not False:
+        return False, "lineage attestation reports a commissioned ancestor"
+    if not body.get("source_record_digest"):
+        return False, "lineage attestation carries no source record digest"
     if not body.get("episode_digest"):
         return False, "lineage attestation carries no episode digest"
-    nonce = body.get("nonce")
-    try:
-        for line in open(_NONCE_LOG):
-            if line.strip() and json.loads(line).get("nonce") == nonce:
-                return False, "lineage attestation already used — replay refused"
-    except FileNotFoundError:
-        pass
-    os.makedirs(os.path.dirname(_NONCE_LOG), exist_ok=True)
-    with open(_NONCE_LOG, "a") as f:
-        f.write(json.dumps({"nonce": nonce, "at": datetime.now().isoformat()}) + "\n")
+    # Nonce is CHECKED here but not burned — burning belongs after the whole
+    # adoption succeeds, or a rejected adoption silently spends the attestation.
+    with _NONCE_LOCK:
+        try:
+            for line in open(_NONCE_LOG):
+                if line.strip() and json.loads(line).get("nonce") == body.get("nonce"):
+                    return False, "lineage attestation already used — replay refused"
+        except FileNotFoundError:
+            pass
     return True, None
 
 
-def _door_lit():
-    """The Atelier door, as the broker itself computes it. Adoption requires it:
-    the door opens only on his own chosen rendezvous, so a stratagem cannot be
-    born on an arbitrary turn even by a caller that reached /visit/open."""
+def _burn_nonce(nonce):
+    """Spend the attestation. Called only once the adoption has fully committed.
+    The lock is GLOBAL: the nonce log is shared, so per-project locks would let
+    two projects race the same attestation."""
+    if not nonce:
+        return False          # a missing nonce is never spendable
+    with _NONCE_LOCK:
+        try:
+            for line in open(_NONCE_LOG):
+                if line.strip() and json.loads(line).get("nonce") == nonce:
+                    return False
+        except FileNotFoundError:
+            pass
+        os.makedirs(os.path.dirname(_NONCE_LOG), exist_ok=True)
+        with open(_NONCE_LOG, "a") as f:
+            f.write(json.dumps({"nonce": nonce, "at": datetime.now().isoformat()}) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        return True
+
+
+def _on_worktable(pid):
+    """THIS project is the active one, is ACTIVE, and its door is lit — asked as
+    one question about one id, so the door cannot be lit for project A while
+    adoption lands on project B."""
     try:
-        from broker import door
-        return door().get("door") == "lit"
-    except Exception:
-        return False
+        from broker import on_worktable
+        return on_worktable(pid)
+    except Exception as e:
+        return False, "worktable state unavailable: %s" % str(e)[:80]
 
 
 def _err(msg):
@@ -391,11 +432,13 @@ def adopt(b):
     capok, capwhy = _capability(b, pid)
     if not capok:
         return _err("adoption refused: %s" % capwhy)
-    if not _door_lit():
-        return _err("adoption refused: the Atelier door is not lit — a stratagem is born on "
-                    "his own rendezvous, not on an arbitrary turn")
-    if proj.get("state") != "ACTIVE":
-        return _err("project is not on the worktable")
+    # ONE check, about THIS project: it is the active one, its state is ACTIVE,
+    # and the door is lit. Previously the door check asked about whatever sat on
+    # the worktable while the state check asked about the target — so a
+    # non-worktable project could be adopted onto under another's lit door.
+    wtok, wtwhy = _on_worktable(pid)
+    if not wtok:
+        return _err("adoption refused: %s" % wtwhy)
     if _live(pid):
         return _err("this project already carries a stratagem")
 
@@ -478,8 +521,16 @@ def adopt(b):
         "disclosure_policy": policy,
         "status": "active",
     }
+    # Everything has validated. Spend the attestation FIRST — if the nonce was
+    # taken by a concurrent adoption between the check and here, this one loses
+    # and writes nothing rather than both projects founding on one attestation.
+    att_body = (prov.get("attestation") or {}).get("body", {})
+    if not _burn_nonce(att_body.get("nonce")):
+        return _err("lineage attestation was consumed by a concurrent adoption — obtain a new one")
     _wa(os.path.join(_sd(pid), "stratagem.json"), s)
     _chain(pid, "adopted", {"stratagem": sid, "root_type": prov["root_type"],
+                            "provenance_class": att_body.get("provenance_class"),
+                            "source_record_digest": att_body.get("source_record_digest"),
                             "lease_expires": s["lease_expires"], "steps": len(s["tactics"])})
     return {"stratagem_id": sid, "lease_expires": s["lease_expires"], "steps": len(s["tactics"])}
 

@@ -10,7 +10,7 @@ MIRROR NOTE (2026-08-28): this file is the live /home/atelier/broker.py,
 mirrored into the repo so it can be reviewed. Code only — the projects/
 tree stays on Aegis behind the wall and is never mirrored anywhere.
 """
-import os, json, uuid, hashlib, time
+import os, re, json, uuid, hashlib, time
 from datetime import datetime, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -79,7 +79,44 @@ def verify_capability(cap, pid, actor="vintos"):
     return True, None
 
 
-def _p(pid): return os.path.join(ROOT, "projects", pid)
+_PID_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+class BadProject(ValueError):
+    pass
+
+
+def canonical_pid(pid, root=None):
+    """THE project-id validator. Both stores call this one.
+
+    Containment was fixed in the stratagem store first, which left every base
+    route — including /visit/open, the endpoint that mints capabilities —
+    still joining a caller string straight onto ROOT. One validator, shared,
+    so a fix in one place cannot leave the other open."""
+    base = os.path.realpath(os.path.join(root or ROOT, "projects"))
+    if not isinstance(pid, str) or not _PID_RE.match(pid):
+        raise BadProject("malformed project id")
+    path = os.path.realpath(os.path.join(base, pid))
+    if path != base and not path.startswith(base + os.sep):
+        raise BadProject("project id escapes the atelier root")
+    return path
+
+
+def _p(pid): return canonical_pid(pid)
+
+
+def on_worktable(pid):
+    """The named project is THE active one — not merely some project whose own
+    file says ACTIVE. The door and the worktable must agree about the same id."""
+    a = _j(os.path.join(ROOT, "active.json"), {}) or {}
+    if a.get("id") != pid:
+        return False, "this project is not on the worktable"
+    p = _j(os.path.join(_p(pid), "project.json"), {}) or {}
+    if p.get("state") != "ACTIVE":
+        return False, "project state is %s, not ACTIVE" % p.get("state")
+    if door().get("door") != "lit":
+        return False, "the door is not lit"
+    return True, None
 def _j(path, d=None):
     try: return json.load(open(path))
     except Exception: return d
@@ -133,6 +170,7 @@ def set_state(b):
 
 def open_visit(b):
     pid, who = b["id"], b.get("as", "vintos")
+    _p(pid)          # canonical + contained, BEFORE anything is minted or written
     p = _j(os.path.join(_p(pid), "project.json"))
     if who == "gloria":
         p["footprints"].append(datetime.now().isoformat())        # no lock, ever — but he always knows

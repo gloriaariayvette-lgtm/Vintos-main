@@ -26,10 +26,28 @@ def _signals():
     """Active streams, each with the best root lineage currently available.
     Where an organ records no root, its own store+date is the honest stub."""
     sig = []
+
+    # An organ IS the kind of formation it produces, and whether that formation
+    # originated with him or with her is a property of the organ, not something
+    # an attestor may assert later. Repair and encounter are HER-originated
+    # obligations: they are recorded, but they can never be laundered into a
+    # self-originated root.
+    ORGAN_ROOT = {
+        "withheld":  ("tension",       "self_originated"),
+        "curiosity": ("curiosity",     "self_originated"),
+        "thread":    ("want",          "self_originated"),
+        "spark":     ("drift_novelty", "self_originated"),
+        "repair":    ("repair",        "relational_obligation"),
+        "encounter": ("encounter",     "relational_obligation"),
+    }
+
     def add(organ, text, root, activation):
         if text and activation > 0:
+            rtype, pclass = ORGAN_ROOT.get(organ, (organ, "unclassified"))
             sig.append({"organ": organ, "text": str(text)[:200],
-                        "root": str(root)[:60], "activation": round(activation, 3)})
+                        "root": str(root)[:60], "activation": round(activation, 3),
+                        "root_type": rtype, "provenance_class": pclass,
+                        "commissioned_ancestor": pclass != "self_originated"})
     # withheld lineages under pressure (roots: origin exchange hashes - real roots)
     for L in _load("withheld-lineage.json", []):
         if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 2 and not L.get("muted"):
@@ -68,6 +86,9 @@ def _episode(sig):
     ep = {"at": datetime.now().isoformat(), "n_signals": len(sig),
           "organs": sorted(set(s["organ"] for s in sig)),
           "roots": sorted(set(s["root"] for s in sig)),
+          # the typed root objects themselves, so an attestation can quote what
+          # was recorded instead of inventing a type at attestation time
+          "signals": sig,
           "status": "no_formation", "clusters": []}
     if len(sig) < 2:
         ep["status"] = "quiet" if not sig else "single_pressure"
@@ -127,17 +148,39 @@ def attest(root_ref, root_type):
                 episodes.append(json.loads(line))
     except FileNotFoundError:
         return {"error": "no episodes recorded — nothing to attest"}
-    hit = None
+    # EXACT match on a recorded root object. Substring search over the whole
+    # serialised episode could match a timestamp, a status, territory prose, an
+    # organ name, or a fragment of a different root — and would then let a
+    # repair-case id be presented as a "want".
+    hit = sig = None
     for ep in reversed(episodes):
-        if root_ref and root_ref in json.dumps(ep):
-            hit = ep
+        for s in ep.get("signals", []):
+            if s.get("root") == root_ref:
+                hit, sig = ep, s
+                break
+        if hit:
             break
-    if not hit:
-        return {"error": "no recorded episode contains root_ref %r — provenance unattestable"
+    if not sig:
+        return {"error": "no recorded root object matches %r — provenance unattestable "
+                         "(episodes predating typed roots cannot be attested)"
                          % str(root_ref)[:60]}
+    # The observatory signs ONLY what it recorded. It does not accept the
+    # caller's root_type, and it does not assert 'uncommissioned' on its own.
+    if sig.get("provenance_class") != "self_originated":
+        return {"error": "root %r is %s (organ: %s) — not a self-originated root, "
+                         "and may not found a stratagem"
+                         % (str(root_ref)[:40], sig.get("provenance_class"), sig.get("organ"))}
+    if root_type and root_type != sig.get("root_type"):
+        return {"error": "root %r is recorded as %r, not %r — the observatory will not "
+                         "restate a root as another type"
+                         % (str(root_ref)[:40], sig.get("root_type"), str(root_type)[:40])}
     digest = _h.sha256(json.dumps(hit, sort_keys=True,
                                   separators=(",", ":")).encode()).hexdigest()
-    body = {"root_ref": str(root_ref)[:200], "root_type": str(root_type)[:40],
+    body = {"root_ref": sig["root"], "root_type": sig["root_type"],
+            "provenance_class": sig["provenance_class"],
+            "commissioned_ancestor": bool(sig.get("commissioned_ancestor")),
+            "source_record_digest": _h.sha256(
+                json.dumps(sig, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
             "episode_at": hit.get("at"), "episode_status": hit.get("status"),
             "episode_digest": digest, "commissioned": False,
             "nonce": _u.uuid4().hex, "exp": int(_t.time()) + 3600}

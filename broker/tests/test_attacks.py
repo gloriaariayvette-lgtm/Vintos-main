@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """The two defects Sol reproduced, plus the structural ones. All must now fail."""
-import os, sys, json, shutil, hashlib
+import os, sys, json, shutil, hashlib, tempfile, atexit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))   # module lives one dir up
 import stratagem_store as S
 
-S.ROOT = os.path.join(HERE, "fakeroot")
-import shutil as _sh; _sh.rmtree(S.ROOT, ignore_errors=True)
+S.ROOT = tempfile.mkdtemp(prefix="atelier-test-")   # never inside the repo
 os.makedirs(os.path.join(S.ROOT, "projects"), exist_ok=True)
 
 # Capability, door and lineage have their own suite (test_capability.py). These
@@ -15,10 +14,14 @@ os.makedirs(os.path.join(S.ROOT, "projects"), exist_ok=True)
 # integrity — so those three are stubbed open here. Stubbing them in the suite
 # that tests them would be cheating; stubbing them here is unit isolation.
 S._capability = lambda b, pid: (True, None)
-S._door_lit = lambda: True
+S._on_worktable = lambda pid: (True, None)
 S._verify_lineage = lambda att, ref, typ: (True, None)
+S._burn_nonce = lambda n: True        # lineage is stubbed, so its nonce is too
+atexit.register(lambda: shutil.rmtree(S.ROOT, ignore_errors=True))
 
-PID = "a1b2c3d4e5f6"          # canonical form: uuid4().hex[:12]
+PID = "a1b2c3d4e5f6"
+import atexit as _ae
+_ae.register(lambda: shutil.rmtree(S.ROOT, ignore_errors=True))          # canonical form: uuid4().hex[:12]
 R = []
 
 
