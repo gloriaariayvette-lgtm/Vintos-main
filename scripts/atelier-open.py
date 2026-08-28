@@ -83,18 +83,36 @@ def main(dry=False):
         print("a project is already on the worktable — nothing to open")
         return 0
 
-    answer = ask(voice(), PROMPT)
+    try:
+        answer = ask(voice(), PROMPT)
+    except Exception as e:
+        # A dead shim is NOT a decline. Say so, and change nothing.
+        print("could not reach him (shim error): %s" % str(e)[:160])
+        print("nothing recorded — this is not an answer, it is a failure to ask")
+        return 1
+
     m = re.search(r"<intent>(.*?)</intent>", answer, re.S)
     intent = (m.group(1).strip() if m else "")
+    declined = (answer.strip().upper() == "NOTHING"
+                or intent.upper() == "NOTHING"
+                or (not intent and "NOTHING" in answer.upper()))
 
-    if not intent or intent.upper() == "NOTHING" or "NOTHING" == answer.strip().upper():
-        print("he did not name anything. The room stays empty; nothing recorded.")
+    if declined:
+        print("he declined. The room stays empty; nothing recorded.")
         return 0
+    if not intent:
+        # He said SOMETHING but not in the tags. Never silently read that as a
+        # decline — show it, so a malformed answer is distinguishable from "no".
+        print("no <intent> tag in his reply. This is NOT recorded as a decline.")
+        print("what he actually said:\n---\n%s\n---" % answer.strip()[:1200])
+        return 2
 
-    print("his intent, verbatim:\n  " + intent[:400])
+    print("his intent, verbatim:\n  " + intent[:600])
     if dry:
         print("\n--dry-run: no project created")
         return 0
+    # Asking is cheap; being asked repeatedly is not. One ask per invocation,
+    # and the caller decides whether there is ever another day.
 
     pid = requests.post(B + "/project", json={"intent": intent, "sealed": True},
                         timeout=20).json().get("id")
