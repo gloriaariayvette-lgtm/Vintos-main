@@ -200,6 +200,36 @@ def may_witness(turn, claim_kind):
         return True
 
 
+def effect_context(surface, turn_id=None, test_mode=None):
+    """An EFFECT-ONLY turn context: authority for this surface's device effects,
+    never a capsule.
+
+    Voice and Thirveel legitimately drive the devices from his own [DO:]/[TOUCH:]
+    tags, but they have no capsule lifecycle — voice in particular stays outside
+    stratagem admission until it has turn correlation and recording. Without a
+    context of some kind, arming the effect gate would DENY those commands and
+    silently take his body away from those surfaces.
+
+    So they get authority and nothing else: capsule_commitment is always None,
+    which means the gate treats them as ordinary turns — and every rule that
+    matters (hardware stop, test mode, reductions-always-pass) still applies.
+    Never call this on a surface that should carry a capsule; use begin()."""
+    import uuid as _u
+    if test_mode is None:
+        try:
+            import effect_gate as _eg
+            test_mode = _eg.test_mode_flag()
+        except Exception:
+            test_mode = False
+    try:
+        from effect_gate import TurnContext
+        return TurnContext(turn_id or ("fx-" + _u.uuid4().hex[:12]), surface,
+                           capsule_commitment=None, barrier=None,
+                           test_mode=bool(test_mode))
+    except Exception:
+        return None
+
+
 def envelope(turn):
     """The small provenance envelope every evidence writer should receive (Sol).
 

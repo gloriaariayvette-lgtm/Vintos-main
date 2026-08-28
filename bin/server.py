@@ -5071,7 +5071,11 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         try:
             import sys as _tls2, importlib as _tls3; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             import toy_link as _tl_mod; _tls3.reload(_tl_mod)
-            _tl_mod.parse_and_send(reply)
+            # effect-only authority: this surface drives devices from his own
+            # tags but carries no capsule. Without it, arming the gate would
+            # deny these commands and silently take his body away here.
+            import turn_coordinator as _tc_fx
+            _tl_mod.parse_and_send(reply, context=_tc_fx.effect_context("chat"))
         except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
     except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
     history = history[-50:]
@@ -5593,7 +5597,10 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         try:
             import sys as _dps; _dps.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
             from device_patterns import fire_his_intent as _fhi
-            response_text = _fhi(response_text)   # his OWN words drive his body, then speak the rest
+            import turn_coordinator as _tc_vx
+            # voice: effect-only authority, never a capsule (voice stays outside
+            # stratagem admission until it has turn correlation and recording)
+            response_text = _fhi(response_text, context=_tc_vx.effect_context("voice"))   # his OWN words drive his body, then speak the rest
         except Exception as _fe: print("[voice/DO]", _fe, flush=True)
         try:
             from command_bubble import extract_and_post as _cb_post
@@ -10456,7 +10463,8 @@ Be yourself. Be free."""
                 try:
                     import sys as _tls2; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                     from toy_link import parse_and_send as _tl_ps
-                    _tl_ps(reply)
+                    import turn_coordinator as _tc_tx
+                    _tl_ps(reply, context=_tc_tx.effect_context("thirveel"))
                 except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
             with open(tv_log, "w") as f:
