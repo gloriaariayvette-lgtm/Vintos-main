@@ -34,6 +34,11 @@ except Exception:
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 PREDICTION_FILE = os.path.join(MEMORY, ".self-prediction.json")
+
+try:
+    import prediction_ledger as _PL
+except Exception:                                    # never break the comparison
+    _PL = None
 HELD_LOG = os.path.join(MEMORY, "self-prediction-held.jsonl")
 BLIND_SPOTS_LOG = os.path.join(MEMORY, "self-blind-spots.md")
 BLIND_SPOTS_DATA = os.path.join(MEMORY, ".self-prediction-history.json")
@@ -156,6 +161,24 @@ def predict_next_state(envelope=None):
     }
 
 
+def _retire(prediction_id, outcome):
+    """Consume by id, never by 'whatever is in the file now'."""
+    if _PL is not None:
+        ok, why = _PL.consume("self", prediction_id, outcome)
+        if not ok:
+            print("[Self-Predict] kept a newer prediction: %s" % why, flush=True)
+        return ok
+    try:
+        with open(PREDICTION_FILE) as f:
+            cur = json.load(f)
+        if cur.get("prediction_id") and cur.get("prediction_id") != prediction_id:
+            return False
+        os.remove(PREDICTION_FILE)
+    except Exception:
+        pass
+    return True
+
+
 def compare_prediction():
     """Compare stored self-prediction to actual current state."""
     if not os.path.exists(PREDICTION_FILE):
@@ -166,6 +189,10 @@ def compare_prediction():
             prediction = json.load(f)
     except:
         return None
+    # Retire only what this comparison actually read. Avatar writes the next
+    # self-prediction without waiting for this one, so an unconditional
+    # remove() destroys a prediction that was never graded.
+    _compared_id = prediction.get("prediction_id")
 
     actual = get_current_state()
     if not actual:
@@ -173,7 +200,7 @@ def compare_prediction():
 
     predicted = prediction.get("predicted_state", {})
     if not predicted:
-        os.remove(PREDICTION_FILE)
+        _retire(_compared_id, "no predicted state")
         return None
 
     # Calculate mismatches per dimension
@@ -210,7 +237,7 @@ def compare_prediction():
             writer_event("self_prediction_outcome", "HELD", provenance,
                          "comparison preserved but excluded from learning")
         finally:
-            os.remove(PREDICTION_FILE)
+            _retire(_compared_id, "HELD")
         return result
 
     # Track history for blind spot analysis
@@ -220,8 +247,9 @@ def compare_prediction():
     if result["miss_count"] >= 2:
         log_self_mismatch(result)
 
-    # Clean up
-    os.remove(PREDICTION_FILE)
+    # Retire exactly the prediction this comparison graded; if a newer one is
+    # open, this refuses and the newer one survives.
+    _retire(_compared_id, "graded")
     return result
 
 
@@ -401,8 +429,13 @@ def main():
         prediction = predict_next_state()
         if prediction and prediction.get("predicted_state"):
             os.makedirs(os.path.dirname(PREDICTION_FILE), exist_ok=True)
-            with open(PREDICTION_FILE, 'w') as f:
-                json.dump(prediction, f)
+            _turn = os.environ.get("VINTOS_TURN_ID", "")
+            _surf = os.environ.get("VINTOS_SURFACE", "")
+            if _PL is not None:
+                prediction = _PL.create("self", prediction, _turn, _surf) or prediction
+            else:
+                with open(PREDICTION_FILE, 'w') as f:
+                    json.dump(prediction, f)
             dims = prediction["predicted_state"]
             print(f"[Self-Predict] Stored: " +
                   ", ".join(f"{k}={v:.2f}" for k, v in list(dims.items())[:4]) + "...")

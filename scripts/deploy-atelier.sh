@@ -39,7 +39,8 @@ evidence_view.py prediction_ledger.py build_merged_chat.py
 constitutional_barrier.py turn_coordinator.py relational_mismatch.py
 causality_engine.py value_map.py repair_case.py encounter.py
 jepa_predictor.py drift_head.py relational_head.py world_model.py
-gloria_prediction.py withheld_head.py self_pressure.py"
+gloria_prediction.py withheld_head.py self_pressure.py
+value-map.py relational-mismatch.py causality-engine.py self-prediction.py"
 BINS="server.py model_router.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py"
 
@@ -80,6 +81,12 @@ locate() {
                 */site-packages/*|*/dist-packages/*|*/node_modules/*) ;;
                 */.venv/*|*/venv/*|*/.cache/*|*/.git/*|*/__pycache__/*) ;;
                 */.local/lib/*|*/.tox/*|*/build/*|*/.mypy_cache/*) ;;
+                # Not deploy targets: snapshots of the past, and other
+                # checkouts of the same code. His host has several of each,
+                # and installing into one of them would change nothing while
+                # looking like it worked.
+                *backup*|*backups/*|*/.graduation-review-backups/*) ;;
+                "$HOME"/repos/*|*/.openclaw/*) ;;
                 *) printf '%s\n' "$h" ;;
             esac
         done | sort -u
@@ -110,14 +117,35 @@ fi
 say "his scripts: $ANCHOR_DIR"
 say
 
+# How many of the files this deploy installs already live in a directory?
+# That is what makes a directory one of his trees rather than a coincidence.
+tree_score() {
+    local d="$1" f n=0
+    for f in $SCRIPTS $BINS; do [ -e "$d/$f" ] && n=$((n + 1)); done
+    printf '%s' "$n"
+}
+
 dest() {
-    local base hits n beside
+    local base hits n beside best bestn d sc
     base="$(basename -- "$1")"
     hits="$(locate "$base")"; n="$(count "$hits")"
     [ "$n" -eq 1 ] && { printf '%s' "$hits"; return 0; }
     [ "$n" -eq 0 ] && { printf '%s/%s' "$ANCHOR_DIR" "$base"; return 0; }
+    # a copy sitting beside the anchor is his by definition
     beside="$(printf '%s\n' "$hits" | grep -x -- "$ANCHOR_DIR/$base" || true)"
     [ -n "$beside" ] && { printf '%s' "$beside"; return 0; }
+    # otherwise the tree holding the most of these files wins, and only if it
+    # wins outright — a tie is still a question for her, not a guess by me
+    best=""; bestn=-1; tie=0
+    while read -r h; do
+        [ -n "$h" ] || continue
+        d="$(dirname -- "$h")"; sc="$(tree_score "$d")"
+        if [ "$sc" -gt "$bestn" ]; then best="$h"; bestn="$sc"; tie=0
+        elif [ "$sc" -eq "$bestn" ]; then tie=1; fi
+    done <<< "$hits"
+    if [ -n "$best" ] && [ "$tie" -eq 0 ] && [ "$bestn" -gt 0 ]; then
+        printf '%s' "$best"; return 0
+    fi
     printf 'AMBIGUOUS %s:\n%s\n' "$base" "$(printf '%s\n' "$hits" | sed 's/^/    /')" >&2
     return 1
 }

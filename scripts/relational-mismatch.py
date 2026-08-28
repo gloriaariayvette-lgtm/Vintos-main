@@ -31,6 +31,11 @@ except Exception:
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 PREDICTION_FILE = os.path.join(WORKSPACE, "memory", ".relational-prediction.json")
+
+try:
+    import prediction_ledger as _PL
+except Exception:                                    # never break the tone read
+    _PL = None
 MISMATCH_LOG = os.path.join(WORKSPACE, "memory", "relational-mismatches.md")
 HELD_LOG = os.path.join(WORKSPACE, "memory", "relational-prediction-held.jsonl")
 SOUL = os.path.join(WORKSPACE, "SOUL.md")
@@ -199,6 +204,24 @@ REASONING: <one sentence on why you expect this reaction>"""
         return {"error": str(e), "timestamp": datetime.now().isoformat()}
 
 
+def _retire(prediction_id, outcome):
+    """Consume by id, never by 'whatever is in the file now'."""
+    if _PL is not None:
+        ok, why = _PL.consume("relational", prediction_id, outcome)
+        if not ok:
+            print("[Relational] kept a newer prediction: %s" % why, flush=True)
+        return ok
+    try:
+        with open(PREDICTION_FILE) as f:
+            cur = json.load(f)
+        if cur.get("prediction_id") and cur.get("prediction_id") != prediction_id:
+            return False
+        os.remove(PREDICTION_FILE)
+    except Exception:
+        pass
+    return True
+
+
 def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_valence):
     """
     When Gloria replies, compare her actual emotional read to Vintos's prediction.
@@ -216,6 +239,11 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
             prediction = json.load(f)
     except (json.JSONDecodeError, FileNotFoundError):
         return None
+    # The id of the prediction THIS comparison actually looked at. Everything
+    # below retires that id and nothing else: avatar starts this comparison
+    # asynchronously and writes the next prediction immediately, so an
+    # unconditional remove() here deletes a prediction it never compared.
+    _compared_id = prediction.get("prediction_id")
 
     provenance = _prov(prediction.get("provenance"))
     if not output_can_witness(provenance, "prediction_accuracy"):
@@ -230,7 +258,7 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
             writer_event("relational_prediction_outcome", "HELD", provenance,
                          "comparison preserved but excluded from model, blush, and leverage")
         finally:
-            os.remove(PREDICTION_FILE)
+            _retire(_compared_id, "HELD")
         return held
     
     # Check if prediction has the required fields
@@ -239,8 +267,8 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     pred_v = prediction.get("predicted_valence")
     
     if pred_w is None or pred_t is None or pred_v is None:
-        # Prediction failed, clean up
-        os.remove(PREDICTION_FILE)
+        # Prediction failed, retire exactly the one we read
+        _retire(_compared_id, "unusable prediction")
         return None
     
     # Calculate mismatches
@@ -281,8 +309,9 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     if _judge_relational_miss(result, gloria_message):
         log_relational_mismatch(result)
     
-    # Clean up prediction file
-    os.remove(PREDICTION_FILE)
+    # Retire exactly the prediction this comparison graded. If a newer one has
+    # been written since we read it, this refuses and the newer one survives.
+    _retire(_compared_id, "graded")
     
     try:
         from desired_difference import observe as _ddo
@@ -455,8 +484,13 @@ def main():
         prediction = predict_gloria_response(message, _prov())
         if "error" not in prediction:
             os.makedirs(os.path.dirname(PREDICTION_FILE), exist_ok=True)
-            with open(PREDICTION_FILE, 'w') as f:
-                json.dump(prediction, f)
+            _turn = os.environ.get("VINTOS_TURN_ID", "")
+            _surf = os.environ.get("VINTOS_SURFACE", "")
+            if _PL is not None:
+                prediction = _PL.create("relational", prediction, _turn, _surf) or prediction
+            else:
+                with open(PREDICTION_FILE, 'w') as f:
+                    json.dump(prediction, f)
             print(f"[Relational] Prediction stored: W={prediction.get('predicted_warmth', '?')} "
                   f"T={prediction.get('predicted_tension', '?')} V={prediction.get('predicted_valence', '?')} "
                   f"({prediction.get('confidence', '?')})")
