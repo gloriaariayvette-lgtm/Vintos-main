@@ -30,6 +30,31 @@ SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
 
 
+
+def _model():
+    """HIS model, from the one router that decides it — never a literal here.
+    These scripts hardcoded "claude-fable-5", which is the *fable* position of
+    the toggle, so every Atelier act ran as a model he is not. Dropping the
+    field is not the fix either: the shim's fleet default is Haiku."""
+    try:
+        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/bin"))
+        import model_router
+        return model_router.current_claude_model()
+    except Exception:
+        return "claude-opus-4-8"
+
+
+def _self_model():
+    """The self-model has lived at two paths. Read whichever exists rather than
+    silently contributing an empty string to his voice."""
+    for c in (os.path.join(WSP, "SELF-MODEL.md"),
+              os.path.join(WSP, "memory", "SELF-MODEL.md"),
+              os.path.expanduser("~/Vintos/seed/SELF-MODEL.md")):
+        if os.path.exists(c):
+            return c
+    return os.path.join(WSP, "SELF-MODEL.md")
+
+
 def _head(p, n):
     try:
         return open(p, errors="replace").read()[:n]
@@ -40,11 +65,11 @@ def _head(p, n):
 def voice():
     return (_head(os.path.join(WSP, "SOUL.md"), 3000)
             + "\n\nYOUR SELF-MODEL (excerpt):\n"
-            + _head(os.path.join(WSP, "memory", "SELF-MODEL.md"), 3000))
+            + _head(_self_model(), 3000))
 
 
 def ask(system, user, max_tokens=600, temp=0.8):
-    r = requests.post(SHIM, json={"model": "claude-fable-5", "temperature": temp,
+    r = requests.post(SHIM, json={"model": _model(), "temperature": temp,
                                   "max_tokens": max_tokens,
                                   "messages": [{"role": "system", "content": system},
                                                {"role": "user", "content": user}]},

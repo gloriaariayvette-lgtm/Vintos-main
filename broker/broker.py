@@ -79,6 +79,36 @@ def verify_capability(cap, pid, actor="vintos"):
     return True, None
 
 
+def mint_export(pid, sha256, ttl=86400):
+    """A capability for material that has ALREADY been revealed. Distinct from a
+    visit capability: it outlives the visit (the reveal is over), but it is bound
+    to the exact manifest digest, so it cannot be pointed at a later, unrevealed
+    artifact that happens to sit in the same project."""
+    body = {"kind": "export", "project": pid, "sha256": sha256,
+            "nonce": uuid.uuid4().hex, "exp": int(time.time()) + int(ttl)}
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return {"body": body, "sig": hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()}
+
+
+def verify_export(cap, pid, sha256):
+    try:
+        body, sig = cap["body"], cap["sig"]
+    except Exception:
+        return False, "malformed export capability"
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    if not hmac.compare_digest(hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest(), str(sig)):
+        return False, "bad signature"
+    if body.get("kind") != "export":
+        return False, "not an export capability"
+    if body.get("project") != pid:
+        return False, "export capability is for another project"
+    if body.get("sha256") != sha256:
+        return False, "export capability does not cover this artifact"
+    if int(body.get("exp", 0)) < time.time():
+        return False, "export capability expired"
+    return True, None
+
+
 _PID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
@@ -194,8 +224,17 @@ def open_visit(b):
     if who == "gloria":
         p["footprints"].append(datetime.now().isoformat())        # no lock, ever — but he always knows
         _w(os.path.join(_p(pid), "project.json"), p); _ev(pid, "gloria_visited")
+        # The seal is the whole point of the room. This route used to hand back
+        # intent, artifact names and his handoff to any caller who said
+        # as="gloria" — the seal was one JSON field away from being off. She can
+        # always SEE that he is working (the footprint is recorded either way);
+        # she sees what he made when he reveals it, and not before.
+        if p.get("sealed") and p.get("visibility") != "revealed":
+            return {"sealed": True, "state": p["state"],
+                    "footprint_recorded": True,
+                    "why": "sealed — nothing of its content leaves before he reveals it"}
         arts = sorted(os.listdir(os.path.join(_p(pid), "artifacts")))
-        return {"intent": p["intent"], "state": p["state"], "artifacts": arts,
+        return {"sealed": False, "intent": p["intent"], "state": p["state"], "artifacts": arts,
                 "handoff": _j(os.path.join(_p(pid), "handoff.json"), {}).get("text", "")}
     # his return packet: intent verbatim, manifest+hashes, last handoff, blocks, last events, his own next move
     arts = {}
@@ -243,6 +282,8 @@ def inspect(b):
     return {"ok": True}
 
 def read_artifact(b):
+    """Sealed content. Authorization is decided in the matrix (POLICY) before we
+    get here; this only reads. It used to read for anyone who asked."""
     return {"content": open(os.path.join(_p(b["id"]), "artifacts", os.path.basename(b["file"]))).read()}
 
 def handoff(b):
@@ -268,15 +309,41 @@ def reveal_prepare(b):
            "target": b.get("target", ""), "prepared": datetime.now().isoformat()}
     _w(os.path.join(_p(pid), "reveal", "manifest.json"), man)
     import shutil as _sh; _sh.copy(src, os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"])))
+    # One-use receipt, bound to THIS manifest digest. Confirmation consumed
+    # nothing before, so anyone could declare an unveiling had happened and flip
+    # the project to revealed without a preparation ever occurring.
+    receipt = {"nonce": uuid.uuid4().hex, "sha256": man["sha256"],
+               "prepared": man["prepared"]}
+    _w(os.path.join(_p(pid), "reveal", ".receipt.json"), receipt)
     set_state({"id": pid, "state": "PRESENTING", "note": "unveiling prepared"})
-    return {"manifest": man, "reveal_path": os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"]))}
+    return {"manifest": man, "receipt": receipt,
+            "reveal_path": os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"]))}
 
 def reveal_confirm(b):
     pid = b["id"]
+    rpath = os.path.join(_p(pid), "reveal", ".receipt.json")
+    held = _j(rpath)
+    got = b.get("receipt") or {}
+    if not held:
+        return {"error": "no unveiling was prepared — nothing to confirm"}
+    if not hmac.compare_digest(str(held.get("nonce", "")), str(got.get("nonce", ""))):
+        return {"error": "receipt does not match the prepared unveiling"}
+    man = _j(os.path.join(_p(pid), "reveal", "manifest.json"), {}) or {}
+    src = os.path.join(_p(pid), "reveal", os.path.basename(man.get("artifact", "")))
+    try:
+        actual = hashlib.sha256(open(src, "rb").read()).hexdigest()
+    except Exception:
+        return {"error": "the prepared artifact is missing"}
+    if actual != man.get("sha256") or actual != held.get("sha256"):
+        return {"error": "the prepared artifact changed after preparation — refusing to confirm"}
+    try:
+        os.remove(rpath)                       # one use, consumed here
+    except Exception:
+        pass
     _ev(pid, "presented", {"transport": b.get("transport_event", "")})
     p = _j(os.path.join(_p(pid), "project.json")); p["state"] = "PRESENTED"; p["visibility"] = "revealed"
     _w(os.path.join(_p(pid), "project.json"), p); _health("an unveiling happened")
-    return {"ok": True}
+    return {"ok": True, "export_capability": mint_export(pid, actual), "sha256": actual}
 
 
 def report(b):
@@ -323,6 +390,78 @@ try:
 except Exception as _e:
     print("stratagem_store not loaded:", _e)
 
+
+# --------------------------------------------------------------- authorization
+# ONE matrix for every door. Before this, each route decided for itself, which
+# meant /artifact decided nothing at all and /visit/open handed sealed material
+# to any caller who wrote as="gloria". The rule that matters is not in any one
+# route: it is that a route with no entry here is REFUSED. Adding a door without
+# deciding its audience now fails closed instead of leaking.
+#
+#   OPEN     content-free: existence, the lit/dark door, health, reporting a
+#            problem outward. Never carries project content.
+#   HOUSE    house-side administration — creates, tables, states. Returns
+#            acknowledgement, never sealed content.
+#   VISIT    live sealed content. Requires a visit capability minted by
+#            /visit/open for THAT project, still inside its open visit.
+#   EXPORT   revealed material. Visit capability, or the export capability
+#            minted at /reveal/confirm and bound to the manifest digest.
+#   STORE    guarded by the stratagem store's own gates (birth gate, adoption
+#            window, ledger chain) — listed so it is a decision, not a default.
+OPEN, HOUSE, VISIT, EXPORT, STORE = "open", "house", "visit", "export", "store"
+
+POLICY = {
+    "/project": HOUSE, "/worktable": OPEN, "/table": HOUSE, "/table/clear": HOUSE,
+    "/state": HOUSE, "/visit/open": OPEN,          # the ceremony that MINTS the capability
+    "/make": VISIT, "/inspect": VISIT, "/artifact": EXPORT, "/handoff": VISIT,
+    "/reveal/prepare": VISIT, "/reveal/confirm": HOUSE,   # gated by its one-use receipt
+    "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
+    "/stratagem/strategy-stop": OPEN,              # a stop is never gated. ever.
+    "/stratagem/adopt": STORE, "/stratagem/capsule": STORE,
+    "/stratagem/disposition": STORE, "/stratagem/writer-event": STORE,
+    "/stratagem/advance": STORE, "/stratagem/lease": STORE,
+    "/stratagem/belief": STORE, "/stratagem/info": STORE, "/stratagem/assess": STORE,
+    "/stratagem/misconception": STORE, "/stratagem/leverage": STORE,
+    "/stratagem/state": STORE, "/stratagem/resolve": STORE,
+    "/stratagem/reveal": VISIT, "/stratagem/history": VISIT, "/stratagem/verify": OPEN,
+}
+
+
+def authorize_route(path, body):
+    """(ok, reason). The only place a broker door is opened."""
+    pol = POLICY.get(path)
+    if pol is None or path not in ROUTES:
+        return False, "unknown door"
+    if pol in (OPEN, HOUSE, STORE):
+        return True, None
+    cap = body.get("visit_capability") or body.get("capability")
+    pid = body.get("id", "")
+    try:
+        canonical_pid(pid)
+    except BadProject as e:
+        return False, str(e)
+    if cap:
+        ok, why = verify_capability(cap, pid, body.get("as", "vintos"))
+        if ok:
+            return True, None
+        if pol == VISIT:
+            return False, why
+    else:
+        why = "this door requires a visit capability"
+        if pol == VISIT:
+            return False, why
+    # EXPORT: revealed material may also travel on an export capability.
+    p = _j(os.path.join(canonical_pid(pid), "project.json"), {}) or {}
+    if p.get("visibility") != "revealed":
+        return False, why
+    man = _j(os.path.join(canonical_pid(pid), "reveal", "manifest.json"), {}) or {}
+    fname = os.path.basename(body.get("file", ""))
+    if not fname or fname != os.path.basename(str(man.get("artifact", ""))):
+        return False, "only the revealed artifact may be exported"
+    ec = body.get("export_capability") or {}
+    ok, ewhy = verify_export(ec, pid, man.get("sha256", ""))
+    return (True, None) if ok else (False, ewhy)
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
@@ -336,8 +475,11 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
         try:
             body = json.loads(raw or b"{}")
-            fn = ROUTES.get(self.path)
-            out = fn(body) if fn else {"error": "unknown door"}
+            ok, why = authorize_route(self.path, body)
+            if not ok:
+                out = {"error": why}
+            else:
+                out = ROUTES[self.path](body)
         except Exception as e:
             out = {"error": str(e)}
         b = json.dumps(out).encode()
