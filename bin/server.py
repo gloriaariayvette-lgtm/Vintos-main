@@ -607,7 +607,7 @@ def _map_view_context(message):
 
 # --- intent loop and prediction grading, ported from Velaris 30 Jul.
 # --- Above the first route on purpose: past uvicorn.run nothing registers.
-def _relational_predict(reply_text, writer_env=None):
+def _relational_predict(reply_text, writer_env=None, surface="", turn_id=""):
     """Store a prediction of how Gloria will answer what he just said.
 
     Every other chat path did this; Thirveel never did. So those conversations
@@ -621,10 +621,19 @@ def _relational_predict(reply_text, writer_env=None):
         script = _o.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
         venv = _o.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
         if _o.path.exists(script):
+            # Bind the prediction to the turn and surface that produced it.
+            # Without this the prediction is anonymous, and a comparison
+            # finishing late deletes whichever prediction happens to be open —
+            # including one written by a different surface a moment ago.
+            _env = dict(writer_env or _o.environ)
+            if turn_id:
+                _env["VINTOS_TURN_ID"] = str(turn_id)
+            if surface:
+                _env["VINTOS_SURFACE"] = str(surface)
             _sp.Popen([venv, script, "predict", txt[:500]],
                       stdout=open("/tmp/relational-predict.log", "a"),
                       stderr=open("/tmp/relational-predict.log", "a"),
-                      env=writer_env)
+                      env=_env)
     except Exception:
         pass
 
@@ -3324,7 +3333,7 @@ Gloria-specific additions:
         pass  # Gloria nudge removed
         nudge_emotions_from_text(msg.message, source="gloria")
         _relational_compare(msg.message)
-        try: _relational_predict(reply)
+        try: _relational_predict(reply, surface="chat")
         except Exception: pass
 
         # Reality anchor — record real chat interaction
@@ -4419,7 +4428,7 @@ Your current self-model (excerpt):
         pass  # Gloria nudge removed
         nudge_emotions_from_text(msg.message, source="gloria")
         _relational_compare(msg.message)
-        try: _relational_predict(reply)
+        try: _relational_predict(reply, surface="chat")
         except Exception: pass
 
         # Reality anchor — record real chat interaction
@@ -5035,7 +5044,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     try:
         nudge_emotions_from_text(msg.message, source="gloria")
         _relational_compare(msg.message)
-        try: _relational_predict(reply)
+        try: _relational_predict(reply, surface="chat")
         except Exception: pass
         nudge_emotions_from_text(reply, source="reply")
     except:
@@ -8062,7 +8071,8 @@ Your current self-model (excerpt):
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
             nudge_emotions_from_text(msg.message, source="gloria")
             _relational_compare(msg.message)
-            try: _relational_predict(reply, _prov_writer_env)
+            try: _relational_predict(reply, _prov_writer_env, surface="avatar",
+                                        turn_id=(_turn.turn_id if _turn is not None else ""))
             except Exception: pass
             try:
                 import sys as _dps2; _dps2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
