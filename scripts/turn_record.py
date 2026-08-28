@@ -53,28 +53,29 @@ MARKERS = {
 }
 
 
-def _stratagem_commitment():
-    """The public half of a sealed capsule, if one was issued for this turn.
-    Content-free by construction: the broker returns only a hash, an opaque
-    stratagem id, and a sequence number. Absent on every ordinary turn."""
-    try:
-        from stratagem import commitment_for_turn_record
-        return commitment_for_turn_record() or {}
-    except Exception:
+def _ctx_fields(context):
+    """Commitment + provenance from the turn's context. {} for an ordinary turn.
+    Content-free: only a hash, opaque id, and seq ever cross."""
+    if context is None:
         return {}
-
-
-def _epistemic_provenance():
-    """{} on an ordinary turn; a provenance stamp on a stratagem-influenced one."""
+    out = {}
     try:
-        from effect_gate import provenance
-        return provenance() or {}
+        com = getattr(context, "capsule_commitment", None)
+        if com:
+            out["stratagem_commitment"] = com if isinstance(com, dict) else {"capsule_sha256": str(com)}
+        prov = context.provenance() if hasattr(context, "provenance") else {}
+        out.update(prov or {})
     except Exception:
-        return {}
+        pass
+    return out
 
 
-def record(surface, prompt_text, user_msg="", extra=None):
-    """One line. Never raises into the turn."""
+def record(surface, prompt_text, user_msg="", extra=None, context=None):
+    """One line. Never raises into the turn.
+
+    context is the turn's TurnContext, passed explicitly by the coordinator.
+    Provenance is derived from it HERE, not read from a module global that a
+    prior end_turn() would have cleared. Absent context => ordinary turn."""
     try:
         text = prompt_text or ""
         present, sizes = [], {}
@@ -165,13 +166,12 @@ def record(surface, prompt_text, user_msg="", extra=None):
             # the sealed capsule's public half: a hash, an opaque stratagem id,
             # a sequence number. Never the tactic, never the objective. Present
             # only on turns where a capsule was actually issued.
-            "stratagem_commitment": _stratagem_commitment(),
-            # Sol: do not suppress the factual record — mark it. Downstream
-            # readers must not treat a tactically generated reply as independent
-            # evidence for the belief model, identity, repair success, causal
-            # graduation, want learning, or prediction leverage. Empty on an
-            # ordinary turn.
-            **_epistemic_provenance(),
+            # commitment + provenance come from the explicit context (Sol: the
+            # 120-second global-file join recreated the cross-surface race).
+            # Downstream readers must not treat a tactically generated reply as
+            # independent evidence for the belief model, identity, repair
+            # success, causal graduation, want learning, or prediction leverage.
+            **(_ctx_fields(context)),
             "schema": 3,
             "prompt_sha": hashlib.md5(text.encode()).hexdigest()[:8],
         }

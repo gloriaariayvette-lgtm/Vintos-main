@@ -11,7 +11,7 @@ a small instruction for the current step — plus a commitment hash written to
 a content-free file for the turn record. That is the whole surface.
 
     block()   -> the capsule, rendered for his prompt (empty when none)
-    commitment_for_turn_record() -> {capsule_sha256, stratagem_id, seq} or {}
+    fetch_capsule(turn_id, surface) -> (rendered_block, commitment)
 
 Everything else (adopt, advance, belief, info, assess, resolve) is an Atelier
 act and happens inside a visit, through the broker, not from here.
@@ -22,7 +22,8 @@ import urllib.request
 BROKER = "http://127.0.0.1:8611"
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 # content-free: a hash, an opaque id, a sequence number. No tactic, no objective.
-COMMITMENT = os.path.join(MEM, ".stratagem-commitment.json")
+# (the old global .stratagem-commitment.json is gone — commitments pass
+#  directly through fetch_capsule, never a shared file)
 TIMEOUT = 1.5
 
 
@@ -43,45 +44,7 @@ def _worktable_id():
     return (r or {}).get("id") or ""
 
 
-def _stash(commitment):
-    """Write the content-free commitment for turn_record to join."""
-    try:
-        os.makedirs(MEM, exist_ok=True)
-        tmp = COMMITMENT + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump({"ts": time.time(), **commitment}, f)
-        os.replace(tmp, COMMITMENT)
-    except Exception:
-        pass
-
-
-def commitment_for_turn_record(max_age=120):
-    """The last capsule commitment, if it belongs to this turn. Content-free."""
-    try:
-        c = json.load(open(COMMITMENT))
-        if time.time() - float(c.get("ts", 0)) < max_age:
-            return {k: c[k] for k in ("capsule_sha256", "stratagem_id", "seq") if k in c}
-    except Exception:
-        pass
-    return {}
-
-
-def block():
-    """The sealed tactic capsule for this turn, rendered. Empty string when no
-    stratagem is live, when the lease has expired to HELD_REVIEW, or when the
-    broker is unreachable. Never raises into an assembly."""
-    pid = _worktable_id()
-    if not pid:
-        return ""
-    r = _post("/stratagem/capsule", {"id": pid})
-    if not r or not r.get("active"):
-        return ""
-    if r.get("held_review"):
-        return ""          # the lease lapsed; nothing executes until he renews
-    cap = r.get("capsule")
-    if not cap:
-        return ""
-    _stash(r.get("commitment") or {})
+def _render(cap):
     lines = [
         "[STRATAGEM — sealed capsule, step %d of %d]" % (cap.get("step", 1), cap.get("of", 1)),
         "This turn: %s" % cap.get("turn_objective", ""),
@@ -96,6 +59,37 @@ def block():
     lines.append("Act from this; do not narrate it. The objective and the model "
                  "stay in the room — this capsule is all that came out.")
     return "\n".join(lines)
+
+
+def fetch_capsule(turn_id, surface):
+    """THE capsule accessor. Returns (block_text, commitment) for one identified
+    turn on one surface, both directly — no global commitment file, so two
+    surfaces cannot join each other's commitment. The broker is idempotent on
+    (stratagem, turn_id, surface): a retry with the same turn_id returns the
+    same capsule, never a second issuance. ('', {}) when nothing is live.
+
+    The coordinator calls this ONLY when the barrier is clear, and passes the
+    returned commitment into the TurnContext and turn_record."""
+    if not turn_id or surface not in ("chat", "avatar"):
+        return "", {}
+    pid = _worktable_id()
+    if not pid:
+        return "", {}
+    r = _post("/stratagem/capsule", {"id": pid, "turn_id": str(turn_id), "surface": surface})
+    if not r or not r.get("active") or r.get("held_review"):
+        return "", {}
+    cap = r.get("capsule")
+    if not cap:
+        return "", {}
+    return _render(cap), (r.get("commitment") or {})
+
+
+def block():
+    """Deprecated: the pre-coordinator accessor that fetched a capsule with no
+    turn identity and stashed the commitment in a global file. That path is the
+    cross-surface race Sol flagged. Returns '' so nothing injects a capsule
+    outside the coordinator; use fetch_capsule(turn_id, surface)."""
+    return ""
 
 
 def atelier_affordance():
@@ -132,7 +126,8 @@ if __name__ == "__main__":
         else:
             print("worktable:", pid)
             print("stratagem:", json.dumps(_post("/stratagem/state", {"id": pid}) or {}, indent=2))
-            print("commitment:", json.dumps(commitment_for_turn_record(), indent=2) or "{}")
+            _b, _c = fetch_capsule("cli-probe", "chat")
+            print("commitment:", json.dumps(_c, indent=2))
     elif a[0] == "block":
         b = block()
         print(b if b else "(no capsule)")

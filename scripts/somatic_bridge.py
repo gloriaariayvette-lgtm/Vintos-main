@@ -247,9 +247,14 @@ async def listener():
                         _rs_allow, _rs_why = True, None
                         try:
                             import effect_gate as _rs_eg
-                            _rs_allow, _rs_mode, _rs_why = _rs_eg.authorize(
-                                "both", 20, kind="replay",
+                            # no TurnContext here: a reflex-thread replay is not
+                            # a turn. Armed, the gate denies an unpermitted
+                            # deliberative resume, which is exactly right — a
+                            # reflex may reduce, never resume.
+                            _rs_permit, _rs_mode, _rs_why = _rs_eg.authorize(
+                                None, "both", 20, kind="replay",
                                 detail="post-outage GCS resume")
+                            _rs_allow = _rs_mode == "send"
                         except Exception:
                             pass
                         if not _rs_allow:

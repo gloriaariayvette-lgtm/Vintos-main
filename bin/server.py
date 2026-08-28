@@ -8143,8 +8143,13 @@ Your current self-model (excerpt):
                 # rendered, in test mode.
                 try:
                     import effect_gate as _pj_eg
+                    # TurnContext is None until the coordinator is wired: disarmed
+                    # this passes as today; armed-without-context it denies, which
+                    # is the safe direction. The coordinator will pass the turn's
+                    # context here.
+                    _pj_ctx = globals().get("_active_turn_context")
                     _pj_ok, _pj_mode, _pj_why = _pj_eg.authorize_effect(
-                        "projector", detail=_pm.group(1).strip()[:80])
+                        _pj_ctx, "projector", detail=_pm.group(1).strip()[:80])
                 except Exception:
                     _pj_ok, _pj_mode, _pj_why = True, "send", None
                 if not _pj_ok:

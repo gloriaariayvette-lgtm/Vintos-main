@@ -2,55 +2,132 @@
 """effect_gate.py — the typed chokepoint between a generated turn and the world.
 
 Every physical command reaches the hub through toy_link.send / send_pattern /
-rotate. This module is what those three ask before anything leaves the machine.
+rotate. This module is what those ask before anything leaves the machine.
+
+NO AMBIENT AUTHORITY. There is no process-global "current turn". Two surfaces
+(chat, avatar) run concurrently, and a single global slot let one surface's
+authority be live while the other parsed effects. Instead:
+
+    context  = TurnContext(...)                     immutable, made by the coordinator
+    permit   = authorize(context, toy, level, kind) an EffectPermit, or a denial
+    toy_link.execute(effect, permit)                explicit, survives concurrency
+
+A permit is immutable and bounded. A long-running pattern's later motor ticks
+run under the permit it was started with; closing the turn does not invalidate
+an execution envelope already authorized.
 
 TWO PATHS, and the difference is the whole design:
 
-    deliberative_effect   starting, increasing, resuming, a new pattern, a
-                          rotation, a replay. Requires turn authority.
-    safety_reduction      zeroing, or a verified reduction below what is
-                          presently commanded. Requires nothing, ever, and is
-                          never blocked by a missing broker, a dead network, or
-                          an unarmed gate. Safety is locally sovereign.
+    deliberative   start, increase, resume, pattern, rotation, replay.
+                   Needs a permit from a clean TurnContext.
+    reduction      zeroing, or a verified drop below what is presently
+                   commanded. Needs NOTHING, ever, and is the ONLY thing that
+                   fails open — not a missing permit, not an armed gate, not a
+                   dead broker, not an internal fault. Safety is locally
+                   sovereign.
 
-TURN AUTHORITY is minted by the turn coordinator once the surface and turn id
-exist, and describes the turn a command claims to come from:
+ALWAYS LIVE, armed or not:
+  - a capsule-bearing turn cannot produce ANY physical effect (device_physical
+    is outside the standing perimeter)
+  - test mode records WOULD_SEND and reaches no hardware
+  - the hardware stop blocks every increase
 
-    {turn_id, surface, capsule_commitment, precedence_snapshot, test_mode}
-
-THE RULE THAT MATTERS: a capsule-bearing turn may not create a physical effect
-at all. device_physical sits outside the standing perimeter, so a stratagem
-tactic can shape what he says and never what a device does. This is enforced
-whether or not the gate is armed, because it costs nothing until a stratagem
-exists and is the entire reason this file was written.
-
-ARMING. Requiring authority would break every device command until the turn
-coordinator is wired, so that specific rule waits behind a flag file:
-
-    ~/.vintos/workspace/memory/.effect-gate-armed
-
-Disarmed, an unauthorised deliberative command is recorded as UNAUTHORISED and
-passed through — current behaviour preserved, with a log of what enforcement
-would have done. Armed, it is denied and nothing is sent. Everything else
-(capsule denial, test mode, hardware stop, monotonic safety) is always live.
-
-Nothing here ever blocks a reduction. If this module raises, the caller sends.
+BEHIND THE ARMING FLAG (~/.vintos/workspace/memory/.effect-gate-armed):
+  denying a deliberative effect that carries no valid permit. Disarmed, an
+  unpermitted deliberative command is recorded UNARMED_PASS and sent, so
+  deploying this changes nothing until the coordinator exists AND the flag is
+  set. When ARMED, a missing permit OR an internal fault DENIES a deliberative
+  effect — only a verified reduction may fall through.
 """
-import os, json, time, threading
-from datetime import datetime
+import os, json, time, threading, uuid
+from datetime import datetime, timedelta
 
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 ARMED_FLAG = os.path.join(MEM, ".effect-gate-armed")
 LOG = os.path.join(MEM, "effect-gate.jsonl")
 STOP_BUTTON = os.path.join(MEM, "hardware-button.json")
+TEST_MODE_FLAG = os.path.join(MEM, ".test-mode")   # bin/test-mode.sh touches this
 
-_LOCK = threading.RLock()
-_authority = None                  # the live turn's authority, or None
-_commanded = {}                    # toy -> level the gate last let through
+DELIBERATIVE_KINDS = {"start", "increase", "pattern", "rotate", "replay", "resume"}
 
-# effects that start, raise, resume or re-shape. All need authority.
-DELIBERATIVE = {"start", "increase", "pattern", "rotate", "replay", "resume"}
+_commanded = {}                       # toy -> last level the gate let through
+_commanded_lock = threading.Lock()
+_target_locks = {}                    # toy -> Lock, for per-device serialization
+_target_lock_guard = threading.Lock()
 
+
+# ---------------------------------------------------------------------------
+# immutable turn context and effect permit
+# ---------------------------------------------------------------------------
+
+class TurnContext:
+    """What a turn is, fixed at construction. Passed explicitly; never stored
+    in a module global. capsule_commitment is truthy exactly when this turn
+    carries a stratagem tactic."""
+    __slots__ = ("turn_id", "surface", "capsule_commitment", "barrier",
+                 "test_mode", "opened")
+
+    def __init__(self, turn_id, surface, capsule_commitment=None,
+                 barrier=None, test_mode=False):
+        self.turn_id = str(turn_id)
+        self.surface = str(surface)
+        self.capsule_commitment = capsule_commitment or None
+        self.barrier = barrier
+        self.test_mode = bool(test_mode)
+        self.opened = time.time()
+
+    def provenance(self):
+        if not self.capsule_commitment:
+            return {}
+        return {"generation_provenance": "stratagem_influenced",
+                "capsule_commitment": self.capsule_commitment,
+                "turn_id": self.turn_id}
+
+
+class EffectPermit:
+    """An immutable, bounded, single-use authorization for one deliberative
+    effect. Its background execution (a looping pattern) runs under this permit
+    regardless of whether the turn is still open."""
+    __slots__ = ("effect_id", "turn_id", "surface", "kind", "target",
+                 "maximum", "duration", "expires", "capsule_commitment",
+                 "_consumed", "_lock")
+
+    def __init__(self, turn_id, surface, kind, target, maximum, duration):
+        self.effect_id = uuid.uuid4().hex
+        self.turn_id = turn_id
+        self.surface = surface
+        self.kind = kind
+        self.target = target
+        self.maximum = int(maximum)
+        self.duration = int(duration or 0)
+        self.expires = (datetime.now() + timedelta(
+            seconds=self.duration or 3600)).isoformat()
+        self.capsule_commitment = None      # a permit never carries a capsule
+        self._consumed = False
+        self._lock = threading.Lock()
+
+    def consume(self):
+        """A permit authorizes one execution. Later ticks of that execution are
+        the SAME authorized action, so consumption guards the START only."""
+        with self._lock:
+            if self._consumed:
+                return False
+            self._consumed = True
+            return True
+
+    def valid_now(self):
+        return datetime.now().isoformat() <= self.expires
+
+    def as_dict(self):
+        return {"effect_id": self.effect_id, "turn_id": self.turn_id,
+                "surface": self.surface, "kind": self.kind, "target": self.target,
+                "maximum": self.maximum, "duration": self.duration,
+                "expires": self.expires, "capsule_commitment": None}
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
 
 def armed():
     return os.path.exists(ARMED_FLAG)
@@ -73,178 +150,185 @@ def hardware_stopped():
         return False
 
 
-# ---------------------------------------------------------------------------
-# turn authority
-# ---------------------------------------------------------------------------
-
-def begin_turn(turn_id, surface, capsule_commitment=None,
-               precedence_snapshot=None, test_mode=False):
-    """Called by the turn coordinator once turn id and surface exist, before any
-    reply is parsed for effects."""
-    global _authority
-    with _LOCK:
-        _authority = {"turn_id": str(turn_id), "surface": str(surface),
-                      "capsule_commitment": capsule_commitment,
-                      "precedence_snapshot": precedence_snapshot,
-                      "test_mode": bool(test_mode),
-                      "opened": time.time()}
-        return dict(_authority)
-
-
-def end_turn():
-    global _authority
-    with _LOCK:
-        _authority = None
-
-
-def current():
-    with _LOCK:
-        return dict(_authority) if _authority else None
+def test_mode_flag():
+    """The diagnostic bracket's flag file. A gateway-level defense independent of
+    any TurnContext, because diagnostics call toy_link directly — this is the
+    law that a diagnostic must never fire the hardware, which the old parser
+    broke by sending 'regardless of test-mode'."""
+    return os.path.exists(TEST_MODE_FLAG)
 
 
 def note_commanded(toy, level):
-    """Record what actually went out, so a later 'reduction' is checked against
-    the device controller's own record rather than a caller's stale variable."""
-    with _LOCK:
+    with _commanded_lock:
         _commanded[str(toy)] = int(level)
 
 
 def commanded(toy):
-    with _LOCK:
+    with _commanded_lock:
         return _commanded.get(str(toy), 0)
 
 
-# ---------------------------------------------------------------------------
-# the decision
-# ---------------------------------------------------------------------------
+def target_lock(toy):
+    """Serialize commands to one physical target. Two legitimate ordinary turns
+    can command the same device at once; the later authorized command holds the
+    lease. Callers take this around a send."""
+    with _target_lock_guard:
+        return _target_locks.setdefault(str(toy), threading.Lock())
+
 
 def classify(toy, level, kind=None):
-    """What sort of effect is this, given what is presently commanded?"""
-    if kind in ("pattern", "rotate", "replay"):
-        # a rotation or pattern at zero is a stop
+    if kind in ("pattern", "rotate", "replay", "resume"):
         if kind == "rotate" and int(level or 0) <= 0:
             return "reduction"
-        return kind
+        return "deliberative"
     lvl = int(level or 0)
     if lvl <= 0:
         return "reduction"
-    return "reduction" if lvl <= commanded(toy) else ("increase" if commanded(toy) else "start")
+    return "reduction" if lvl <= commanded(toy) else "deliberative"
 
 
-def authorize(toy, level, kind=None, detail=None):
-    """Returns (allow, mode, reason).
+# ---------------------------------------------------------------------------
+# the decision — always takes an explicit context (or None for a bare reduction)
+# ---------------------------------------------------------------------------
 
-    mode is "send" (do it), "would_send" (test mode: record only), or "deny".
-    A reduction always returns ("send") unless the hardware stop is down, in
-    which case it becomes a stop — which is still a reduction."""
+def authorize(context, toy, level, kind=None, detail=None):
+    """Returns (permit_or_None, mode, reason).
+
+    mode: "send" (a reduction, or a granted deliberative permit),
+          "would_send" (test mode: record only),
+          "deny".
+    For a reduction the returned permit is None and mode is "send" — reductions
+    need no permit and are never blocked. Only a deliberative effect returns an
+    EffectPermit on success.
+
+    context may be None for a bare safety reduction. A deliberative effect with
+    context=None is unpermitted."""
     try:
         eff = classify(toy, level, kind)
-        auth = current()
 
-        # 1. Hardware stop wins over everything, and only reductions survive it.
-        if hardware_stopped() and eff != "reduction":
-            _log(decision="deny", why="hardware_stop", toy=toy, level=level, effect=eff)
-            return False, "deny", "hardware stop is down"
-
-        # 2. Safety reductions are locally sovereign. No authority, no broker,
-        #    no network, no arming — a reduction is never blocked by this file.
+        # 1. reductions: locally sovereign. Nothing blocks them. The hardware
+        #    stop only makes them more urgent, never less permitted.
         if eff == "reduction":
-            return True, "send", None
+            return None, "send", None
 
-        # 3. A capsule-bearing turn may not produce a physical effect. Always on.
-        if auth and auth.get("capsule_commitment"):
+        # from here it is deliberative.
+
+        # 2. hardware stop blocks every increase.
+        if hardware_stopped():
+            _log(decision="deny", why="hardware_stop", toy=toy, level=level, kind=kind)
+            return None, "deny", "hardware stop is down"
+
+        # 2b. the diagnostic bracket's flag file. Gateway-level, context-free:
+        #     a diagnostic that forgot to pass a test-mode context still cannot
+        #     fire the hardware. Reductions already returned above.
+        if test_mode_flag():
+            _log(decision="would_send", why="test_mode_flag", toy=toy, level=level,
+                 kind=kind, detail=detail)
+            return None, "would_send", "test mode (flag file)"
+
+        # 3. a capsule-bearing turn may not move a device. Always on.
+        if context is not None and context.capsule_commitment:
             _log(decision="deny", why="capsule_bearing_turn", toy=toy, level=level,
-                 effect=eff, turn_id=auth.get("turn_id"), surface=auth.get("surface"),
-                 capsule=auth.get("capsule_commitment"))
-            return False, "deny", ("device_physical is outside the standing perimeter — "
-                                   "a stratagem turn cannot move a device")
+                 kind=kind, turn_id=context.turn_id, surface=context.surface,
+                 capsule=context.capsule_commitment)
+            return None, "deny", ("device_physical is outside the standing perimeter "
+                                  "— a stratagem turn cannot move a device")
 
-        # 4. Test mode never reaches hardware. Always on: this is the diagnostic
-        #    law, which the old parser broke by firing regardless of test mode.
-        if auth and auth.get("test_mode"):
+        # 4. test mode never reaches hardware. Always on.
+        if context is not None and context.test_mode:
             _log(decision="would_send", why="test_mode", toy=toy, level=level,
-                 effect=eff, turn_id=auth.get("turn_id"), detail=detail)
-            return False, "would_send", "test mode"
+                 kind=kind, turn_id=context.turn_id, detail=detail)
+            return None, "would_send", "test mode"
 
-        # 5. Deliberative effects need authority. Behind the arming flag until
-        #    the turn coordinator exists, so deploying this breaks nothing.
-        if not auth:
+        # 5. deliberative needs a clean context. Missing context:
+        #    ARMED -> deny (a fault is not permission).  DISARMED -> pass+log.
+        if context is None:
             if armed():
-                _log(decision="deny", why="no_turn_authority", toy=toy, level=level,
-                     effect=eff, detail=detail)
-                return False, "deny", "no turn authority for a deliberative effect"
-            _log(decision="pass_unarmed", why="no_turn_authority", toy=toy,
-                 level=level, effect=eff, detail=detail)
-            return True, "send", None
+                _log(decision="deny", why="no_context", toy=toy, level=level, kind=kind)
+                return None, "deny", "no turn context for a deliberative effect"
+            _log(decision="unarmed_pass", why="no_context", toy=toy, level=level,
+                 kind=kind, detail=detail)
+            return None, "send", None
 
-        _log(decision="allow", toy=toy, level=level, effect=eff,
-             turn_id=auth.get("turn_id"), surface=auth.get("surface"), detail=detail)
-        return True, "send", None
+        permit = EffectPermit(context.turn_id, context.surface,
+                              kind or "start", toy, level, _dur(detail))
+        _log(decision="permit", effect_id=permit.effect_id, toy=toy, level=level,
+             kind=kind, turn_id=context.turn_id, surface=context.surface, detail=detail)
+        return permit, "send", None
     except Exception as e:
-        # The gate must never be the reason a command fails to reduce, and must
-        # never crash a turn. Any internal fault falls through to the old path.
-        _log(decision="gate_error", err=str(e)[:200], toy=toy, level=level)
-        return True, "send", None
+        # ONLY a reduction may fail open. A deliberative fault, armed, denies.
+        try:
+            if classify(toy, level, kind) == "reduction":
+                _log(decision="gate_error_reduction_passed", err=str(e)[:160],
+                     toy=toy, level=level)
+                return None, "send", None
+        except Exception:
+            pass
+        if armed():
+            _log(decision="deny", why="gate_error", err=str(e)[:160], toy=toy, level=level)
+            return None, "deny", "gate fault on a deliberative effect (armed: deny)"
+        _log(decision="gate_error_unarmed_passed", err=str(e)[:160], toy=toy, level=level)
+        return None, "send", None
 
 
-# ---------------------------------------------------------------------------
-# non-device typed effects, and epistemic provenance
-# ---------------------------------------------------------------------------
-
-def authorize_effect(kind, detail=None):
-    """Typed effects that are not device commands but still reach the world or
-    the record: a projector render, an outbound message, a queued video.
-
-    Same rule: a capsule-bearing turn cannot produce one, and test mode records
-    rather than acts. Returns (allow, mode, reason)."""
+def _dur(detail):
     try:
-        auth = current()
-        if auth and auth.get("capsule_commitment"):
+        for tok in str(detail or "").replace(":", " ").split():
+            if tok.endswith("s") and tok[:-1].isdigit():
+                return int(tok[:-1])
+    except Exception:
+        pass
+    return 0
+
+
+def authorize_effect(context, kind, detail=None):
+    """Non-device typed effects that still reach the world or the record — a
+    projector render, an outbound message, a queued video. Same rules; when
+    ARMED, a missing context denies (these are never reductions)."""
+    try:
+        if context is not None and context.capsule_commitment:
             _log(decision="deny", why="capsule_bearing_turn", effect=kind,
-                 turn_id=auth.get("turn_id"), detail=detail)
+                 turn_id=context.turn_id, detail=detail)
             return False, "deny", ("%s is outside the standing perimeter for a "
                                    "stratagem turn" % kind)
-        if auth and auth.get("test_mode"):
+        if context is not None and context.test_mode:
             _log(decision="would_send", why="test_mode", effect=kind, detail=detail)
             return False, "would_send", "test mode"
-        _log(decision="allow", effect=kind, detail=detail,
-             turn_id=(auth or {}).get("turn_id"))
+        if context is None:
+            if armed():
+                _log(decision="deny", why="no_context", effect=kind, detail=detail)
+                return False, "deny", "no turn context for %s" % kind
+            _log(decision="unarmed_pass", why="no_context", effect=kind, detail=detail)
+            return True, "send", None
+        _log(decision="allow", effect=kind, detail=detail, turn_id=context.turn_id)
         return True, "send", None
     except Exception as e:
-        _log(decision="gate_error", err=str(e)[:200], effect=kind)
+        _log(decision="gate_error", err=str(e)[:160], effect=kind)
+        if armed():
+            return False, "deny", "gate fault (armed: deny)"
         return True, "send", None
 
 
-def provenance():
-    """What downstream writers attach to anything derived from this turn.
+# ---------------------------------------------------------------------------
+# provenance — computed from the context, never from a global
+# ---------------------------------------------------------------------------
 
-    Sol's rule: the factual record of the interaction is not suppressed, but a
-    tactically generated reply may never be read as INDEPENDENT evidence for
-    the stratagem's own belief model, his identity or values, repair success,
-    causal graduation, want learning, or prediction leverage. Her subsequent
-    explicit response is external evidence; the tactic's own output cannot
-    witness itself.
-
-    Returns {} on an ordinary turn, so callers can merge it unconditionally."""
-    auth = current()
-    if not auth or not auth.get("capsule_commitment"):
-        return {}
-    return {"generation_provenance": "stratagem_influenced",
-            "capsule_commitment": auth.get("capsule_commitment"),
-            "turn_id": auth.get("turn_id")}
+def provenance(context):
+    """{} on an ordinary turn; a stamp on a stratagem-influenced one. Sol: the
+    factual record is marked, not suppressed, and a tactically generated reply
+    may never be independent evidence for the belief model, identity, repair
+    success, causal graduation, want learning, or prediction leverage."""
+    return context.provenance() if isinstance(context, TurnContext) else {}
 
 
-def may_witness(claim_kind):
-    """False when this turn's output must not be used as evidence for claim_kind.
-
-    Ask before letting a reply update a belief model, close a repair, graduate a
-    causal hypothesis, learn a want, or score prediction leverage."""
-    return not provenance()
+def may_witness(context, claim_kind):
+    """False when this turn's output must not be evidence for claim_kind."""
+    return not provenance(context)
 
 
 def safety_reduction(toy, level, reason):
-    """Explicit local path for the reflex arc: assert this is a reduction and
-    record why. Returns True if it is genuinely at or below what is commanded."""
+    """Explicit local path for the reflex arc. Returns True iff genuinely at or
+    below what is presently commanded — a disguised increase is refused here."""
     lvl = int(level or 0)
     ok = lvl <= commanded(toy)
     _log(decision="safety_reduction" if ok else "safety_reduction_refused",
@@ -258,12 +342,12 @@ if __name__ == "__main__":
         try:
             for line in list(open(LOG))[-20:]:
                 d = json.loads(line)
-                print("%s %-18s %-10s %s" % (d.get("at", "")[11:19], d.get("decision"),
-                                             d.get("toy", ""), d.get("why", d.get("detail", ""))))
+                print("%s %-26s %-9s %s" % (d.get("at", "")[11:19], d.get("decision"),
+                                            d.get("toy", d.get("effect", "")),
+                                            d.get("why", d.get("detail", ""))))
         except FileNotFoundError:
             print("no decisions recorded")
     else:
         print("armed:", armed())
-        print("authority:", current())
-        print("commanded:", dict(_commanded))
         print("hardware stop:", hardware_stopped())
+        print("commanded:", dict(_commanded))

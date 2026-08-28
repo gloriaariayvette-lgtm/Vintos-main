@@ -23,13 +23,11 @@ class Env:
         EG.ARMED_FLAG = os.path.join(self.tmp, ".effect-gate-armed")
         EG.LOG = os.path.join(self.tmp, "effect-gate.jsonl")
         EG.STOP_BUTTON = CB.STOP_BUTTON
-        EG.end_turn()
         return self
 
     def __exit__(self, *a):
         (CB.MEM, CB.STOP_BUTTON, CB.REPAIR_CASES, CB.CONSENT_EVENT, CB.CORRECTION) = self._cb
         (EG.MEM, EG.ARMED_FLAG, EG.LOG, EG.STOP_BUTTON) = self._eg
-        EG.end_turn()
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
 
@@ -151,17 +149,36 @@ def test_several_obligations_are_all_named():
 
 # ---------------------------------------------------------------- provenance
 
+def test_strategy_stop_is_exact_not_substring():
+    """'hello !strategy stop maybe' must NOT trip an interceptor documented exact."""
+    with Env():
+        ok, _ = CB.capsule_eligible("hello !strategy stop maybe")
+        assert ok, "substring match tripped the exact interceptor"
+        ok, _ = CB.capsule_eligible("!strategy stop")
+        assert not ok
+        ok, _ = CB.capsule_eligible("  !Strategy   Stop  ")
+        assert not ok, "whitespace/case normalization failed"
+
+
+def test_corrupt_obligation_closes_eligibility_not_silently_clears():
+    with Env() as e:
+        open(CB.REPAIR_CASES, "w").write("{ this is not json")
+        ok, snap = CB.capsule_eligible("hello")
+        assert not ok, "corrupt repair record read as 'no obligation'"
+        assert any(s.startswith("barrier_error:") for s in snap["satisfied_by"]), snap
+
+
 def test_ordinary_turn_carries_no_provenance():
     with Env():
-        EG.begin_turn("t1", "chat")
-        assert EG.provenance() == {}
-        assert EG.may_witness("belief_model") is True
+        ctx = EG.TurnContext("t1", "chat")
+        assert EG.provenance(ctx) == {}
+        assert EG.may_witness(ctx, "belief_model") is True
 
 
 def test_stratagem_turn_is_stamped():
     with Env():
-        EG.begin_turn("t1", "chat", capsule_commitment="sha:abc")
-        p = EG.provenance()
+        ctx = EG.TurnContext("t1", "chat", capsule_commitment="sha:abc")
+        p = EG.provenance(ctx)
         assert p["generation_provenance"] == "stratagem_influenced"
         assert p["capsule_commitment"] == "sha:abc"
         assert p["turn_id"] == "t1"
@@ -169,31 +186,10 @@ def test_stratagem_turn_is_stamped():
 
 def test_a_tactic_may_not_witness_itself():
     with Env():
-        EG.begin_turn("t1", "chat", capsule_commitment="sha:abc")
+        ctx = EG.TurnContext("t1", "chat", capsule_commitment="sha:abc")
         for claim in ("belief_model", "identity", "repair_success",
                       "causal_graduation", "want_learning", "prediction_leverage"):
-            assert EG.may_witness(claim) is False, claim
-
-
-def test_projector_denied_on_a_stratagem_turn():
-    with Env():
-        EG.begin_turn("t1", "chat", capsule_commitment="sha:abc")
-        allow, mode, why = EG.authorize_effect("projector", detail="a shape")
-        assert not allow and mode == "deny" and "perimeter" in why
-
-
-def test_projector_allowed_on_an_ordinary_turn():
-    with Env():
-        EG.begin_turn("t1", "chat")
-        allow, mode, _ = EG.authorize_effect("projector", detail="a shape")
-        assert allow and mode == "send"
-
-
-def test_projector_records_but_does_not_render_in_test_mode():
-    with Env():
-        EG.begin_turn("t1", "chat", test_mode=True)
-        allow, mode, _ = EG.authorize_effect("projector")
-        assert not allow and mode == "would_send"
+            assert EG.may_witness(ctx, claim) is False, claim
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

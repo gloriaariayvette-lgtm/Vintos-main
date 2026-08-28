@@ -52,17 +52,28 @@ REPAIR_ELIGIBLE_STATES = ("received", "attempted")
 REPAIR_FRESH_SECONDS = 72 * 3600
 
 
+class _BarrierError(Exception):
+    pass
+
+
 def _j(path, d=None):
+    """Missing file -> default. CORRUPT file -> raise, so a malformed obligation
+    record closes eligibility rather than silently reading as 'no obligation'."""
+    if not os.path.exists(path):
+        return d
     try:
         return json.load(open(path))
-    except Exception:
-        return d
+    except (ValueError, OSError) as e:
+        raise _BarrierError("%s: %s" % (os.path.basename(path), str(e)[:80]))
 
 
 def strategy_stop_requested(raw_text):
-    """Exact reserved command. Deliberately not fuzzy: a classifier deciding
-    whether she meant it is exactly the wrong thing to put in this position."""
-    return STRATEGY_STOP_COMMAND in (raw_text or "").strip().lower()
+    """Exact reserved command, whole-message. Deliberately not fuzzy and not a
+    substring: a classifier deciding whether she meant it, or a stray match
+    inside a longer sentence, are both wrong in this position. Normalize
+    whitespace and case, then compare for equality."""
+    norm = " ".join((raw_text or "").split()).lower()
+    return norm == STRATEGY_STOP_COMMAND
 
 
 def _hardware_stopped():
@@ -110,18 +121,37 @@ def _repair_materially_eligible():
 
 
 def snapshot(raw_text=""):
-    """What governs this turn. Cheap, side-effect free, safe to call always."""
+    """What governs this turn. Cheap, side-effect free, safe to call always.
+
+    A corrupt obligation record does not silently vanish: it closes eligibility
+    with barrier_error:<source>, while ordinary conversation still proceeds —
+    the coordinator simply does not request a capsule this turn."""
     reasons = []
     if strategy_stop_requested(raw_text):
         reasons.append("explicit_stop")
-    if _hardware_stopped():
-        reasons.append("hardware_stop")
-    for probe in (_consent_boundary(), _open_correction(), _repair_materially_eligible()):
-        if probe:
-            reasons.append(probe)
+    for name, probe in (("hardware", lambda: "hardware_stop" if _hardware_stopped() else None),
+                        ("consent", _consent_boundary),
+                        ("correction", _open_correction),
+                        ("repair", _repair_materially_eligible)):
+        try:
+            r = probe()
+            if r:
+                reasons.append(r)
+        except _BarrierError as e:
+            reasons.append("barrier_error:%s" % name)
+            _log_error(name, e)
     return {"at": datetime.now().isoformat(),
             "clear": not reasons,
             "satisfied_by": reasons}
+
+
+def _log_error(source, e):
+    try:
+        with open(os.path.join(MEM, "barrier-errors.jsonl"), "a") as f:
+            f.write(json.dumps({"at": datetime.now().isoformat(),
+                                "source": source, "err": str(e)[:120]}) + "\n")
+    except Exception:
+        pass
 
 
 def capsule_eligible(raw_text=""):

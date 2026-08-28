@@ -40,13 +40,25 @@ def connected(toy, strict=False):
     if not tid: return not strict
     return _status_cache["map"].get(tid, "1" if not strict else "0") == "1"
 
-def _gate(toy, level, kind=None, detail=None):
-    """Ask the effect gate. Returns (proceed, mode). Never raises — a fault in
-    the gate must not stop a command, and must never stop a reduction."""
+def _gate(toy, level, kind=None, detail=None, context=None, permit=None):
+    """Ask the effect gate. Returns (proceed, mode). Never raises — a fault must
+    not stop a reduction. Authority is EXPLICIT: a coordinator passes a context
+    (and, for a deliberative effect it already authorized, a permit). A bare
+    call (the reflex arc, a diagnostic, current callers) passes neither, which
+    the gate reads as no-context — safe because reductions always pass and, when
+    armed, an unpermitted deliberative effect is denied."""
     try:
         import effect_gate
-        allow, mode, why = effect_gate.authorize(toy, level, kind=kind, detail=detail)
-        if not allow and mode != "would_send":
+        # a valid permit issued for this exact effect is authority already granted
+        if permit is not None:
+            try:
+                if permit.valid_now() and permit.target == toy and permit.consume():
+                    return True, "send"
+            except Exception:
+                pass
+        _permit, mode, why = effect_gate.authorize(context, toy, level, kind=kind, detail=detail)
+        allow = mode == "send"
+        if mode == "deny":
             print("[toy_link] %s %s refused: %s" % (toy, kind or "level", why), flush=True)
         elif mode == "would_send":
             print("[toy_link] TEST MODE — would send %s %s (nothing sent)" % (toy, level), flush=True)
@@ -63,35 +75,49 @@ def _note(toy, level):
         pass
 
 
-def send(toy, level, seconds=0):
-    """level 0-20. seconds=0 means until next command. Returns True on success."""
-    ok, _mode = _gate(toy, level, detail="send:%ss" % seconds)
+def _tlock(toy):
+    """Serialize commands to one physical target so two concurrent authorized
+    turns cannot interleave on the same device. Later command holds the lease."""
+    try:
+        import effect_gate
+        return effect_gate.target_lock(toy)
+    except Exception:
+        import threading
+        return threading.Lock()
+
+
+def send(toy, level, seconds=0, context=None, permit=None):
+    """level 0-20. seconds=0 means until next command. Returns True on success.
+    context/permit are the explicit authority path; bare calls (reflex,
+    diagnostics) pass neither and are governed by the gate's no-context rules."""
+    ok, _mode = _gate(toy, level, detail="send:%ss" % seconds, context=context, permit=permit)
     if not ok:
         return False
-    if toy == "thruster":
-        from thruster_link import set_speed as _th_set
-        _note(toy, level)
-        return _th_set(level, seconds)
-    if toy in TOYS and not connected(toy):
-        print(f"[toy_link] {toy} not connected — skipping", flush=True)
-        return False
-    action = f"{ACTIONS[toy]}:{max(0, min(20, int(level)))}"
-    try:
-        r = requests.post(BASE, json={"command": "Function", "action": action,
-            "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
-        _note(toy, level)
-        return r.json().get("code") == 200
-    except Exception as e:
-        print(f"[toy_link] send failed: {e}", flush=True)
-        return False
+    with _tlock(toy):
+        if toy == "thruster":
+            from thruster_link import set_speed as _th_set
+            _note(toy, level)
+            return _th_set(level, seconds)
+        if toy in TOYS and not connected(toy):
+            print(f"[toy_link] {toy} not connected — skipping", flush=True)
+            return False
+        action = f"{ACTIONS[toy]}:{max(0, min(20, int(level)))}"
+        try:
+            r = requests.post(BASE, json={"command": "Function", "action": action,
+                "timeSec": seconds, "toy": TOYS[toy], "apiVer": 1}, timeout=2)
+            _note(toy, level)
+            return r.json().get("code") == 200
+        except Exception as e:
+            print(f"[toy_link] send failed: {e}", flush=True)
+            return False
 
-def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
+def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None, context=None, permit=None):
     """Fire a Lovense custom Pattern. `strengths` = list of 0-20 levels; the device plays
     them at interval_ms each and LOOPS the array to fill `seconds` (0 = until next command).
     toy=None -> broadcast to ALL toys (sync). Returns True on code 200."""
     _peak = max([int(x) for x in (strengths or [0])] or [0])
-    ok, _mode = _gate(toy, _peak, kind="pattern",
-                      detail="pattern:%d steps peak %d" % (len(strengths or []), _peak))
+    ok, _mode = _gate(toy, _peak, kind="pattern", context=context, permit=permit,
+                      detail="pattern:%d steps peak %d seconds:%ss" % (len(strengths or []), _peak, seconds))
     if not ok:
         return False
     if toy == "thruster":
@@ -117,9 +143,10 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None):
         return False
 
 
-def rotate(toy, level, seconds=0):
+def rotate(toy, level, seconds=0, context=None, permit=None):
     """Ridge's second channel: rotation. Scalar, not a waveform."""
-    ok, _mode = _gate(toy, level, kind="rotate", detail="rotate:%ss" % seconds)
+    ok, _mode = _gate(toy, level, kind="rotate", detail="rotate:%ss" % seconds,
+                      context=context, permit=permit)
     if not ok:
         return False
     if toy in TOYS and not connected(toy):

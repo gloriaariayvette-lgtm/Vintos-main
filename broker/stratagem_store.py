@@ -557,6 +557,49 @@ _INSTRUCTION = {
 SURFACES_ALLOWED = {"chat", "avatar"}
 
 
+def _existing_capsule(pid, sid, turn_id, surface):
+    """A capsule already issued for this exact (stratagem, turn, surface), or None.
+    Helper, not a route."""
+    try:
+        for line in open(os.path.join(_sd(pid), "capsules.jsonl")):
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            c = rec.get("capsule", {})
+            if (c.get("stratagem_id") == sid and c.get("turn_id") == turn_id
+                    and c.get("surface") == surface):
+                return rec
+    except FileNotFoundError:
+        pass
+    except (ValueError, OSError):
+        pass
+    return None
+
+
+@route()
+def disposition(b):
+    """Append what became of an issued capsule. Never voids or deletes it — it
+    was genuinely issued. A generation failure records capsule_unrealized and
+    does NOT advance the tactic or count as an eligible tactical turn.
+
+    States: issued | admitted_to_prompt | generation_failed | response_created
+            | effects_completed | transport_unknown | completed"""
+    pid = b.get("id", "")
+    s = _j(os.path.join(_sd(pid), "stratagem.json"))
+    if not s:
+        return _err("no stratagem on this project")
+    state = str(b.get("state", "")).strip()
+    valid = {"issued", "admitted_to_prompt", "generation_failed", "response_created",
+             "effects_completed", "transport_unknown", "completed", "capsule_unrealized"}
+    if state not in valid:
+        return _err("unknown disposition state: %s" % state)
+    ev = _chain(pid, "capsule_disposition",
+                {"stratagem": s["id"], "turn_id": str(b.get("turn_id", ""))[:80],
+                 "capsule_sha256": str(b.get("capsule_sha256", ""))[:64],
+                 "state": state, "reason_class": str(b.get("reason_class", ""))[:60]})
+    return {"ok": True, "seq": ev["seq"], "state": state}
+
+
 @route()
 def capsule(b):
     """Issue the sealed capsule for ONE identified turn on ONE surface.
@@ -586,6 +629,17 @@ def capsule(b):
         _wa(os.path.join(_sd(pid), "stratagem.json"), s)
         _chain(pid, "lease_expired", {"stratagem": s["id"], "at_step": s["step"]})
         return {"active": True, "held_review": True, "note": "lease expired"}
+
+    # IDEMPOTENT on (stratagem_id, turn_id, surface). If the event was written
+    # but the HTTP response was lost, a retry with the same turn_id returns the
+    # ORIGINAL capsule — never a second issuance, which would double-count the
+    # turn and leak a false cadence.
+    prior = _existing_capsule(pid, s["id"], turn_id, surface)
+    if prior:
+        return {"active": True, "capsule": prior["capsule"], "idempotent": True,
+                "commitment": {"capsule_sha256": prior["capsule_sha256"],
+                               "stratagem_id": s["id"], "seq": prior["seq"],
+                               "turn_id": turn_id}}
 
     steps = s["tactics"]
     # Steps exhausted holds mechanically. Reissuing the final tactic after he
@@ -1017,6 +1071,7 @@ def _history(pid, s):
 ROUTES = {
     "/stratagem/adopt": adopt,
     "/stratagem/capsule": capsule,
+    "/stratagem/disposition": disposition,
     "/stratagem/advance": advance,
     "/stratagem/lease": lease,
     "/stratagem/belief": belief,
