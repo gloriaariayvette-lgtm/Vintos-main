@@ -43,6 +43,12 @@ check("ground truth names the real furniture", "sofa" in g and "bed" in g and "d
 check("a matched scene yields that room's anchors", house_map.anchors_for("in the bedroom") == ["bed"])
 check("an empty scene grounds to nothing", house_map.anchors_for("") == [] and house_map.anchors_for("  ") == [])
 
+# the text sketch — the form he can actually receive
+sk = house_map.sketch_block()
+check("the sketch exists and is monospace-drawable", sk.count("\n") >= 10 and "livingroom" in sk)
+check("the sketch marks the curtains distinctly from doors", "~~" in sk and "==" in sk)
+check("the sketch carries its legend", "curtains" in sk)
+
 # fail-open: no map means empty everything (Velaris and any broken install)
 check("no map -> no rooms, no route", house_map.rooms({}) == {} and house_map.route("a", "b", {}) == [])
 

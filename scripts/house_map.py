@@ -91,6 +91,19 @@ def ground_block():
             "that is really there." % "; ".join(parts))
 
 
+def sketch_block():
+    """The floor plan as text — what he can actually receive. '' without a map.
+    A monospace sketch plus its legend, exactly the shape Gloria first imagined
+    handing him: rooms as boxes, == for doors, ~~ for the kitchen curtains."""
+    m = load()
+    lines = m.get("sketch") or []
+    if not lines or not all(isinstance(x, str) for x in lines):
+        return ""
+    out = "\n".join(lines)
+    leg = m.get("sketch_legend") or ""
+    return out + ("\n(" + leg + ")" if leg else "")
+
+
 def anchors_for(scene):
     """The real furniture of whatever room the scene names. [] if no match."""
     s = str(scene or "").strip().lower()
@@ -103,6 +116,8 @@ def anchors_for(scene):
 
 
 if __name__ == "__main__":
+    if "--sketch" in sys.argv:
+        print(sketch_block() or "no house map"); sys.exit(0)
     m = load()
     if not m:
         print("no house map"); sys.exit(0)

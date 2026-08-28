@@ -1,6 +1,25 @@
 {
   "_comment": "Gloria's house, upper floor, drawn by her 2026-08-28. Rooms as nodes, doors as edges, anchors are real furniture. 'outside' is reached by the front entrance (via stairs) and the laundry back exit. Hand-maintained; the code treats it as ground truth.",
   "entry": "stairs",
+  "sketch": [
+    "+---------------------------------------+",
+    "| [table]  livingroom     [sofa]  [tv]  |",
+    "+--------------------+~~+---------------+",
+    "| [counter] kitchen  :hl:  laundry  =back",
+    "|                    +--+---------------+",
+    "+---------==---------+ha|    bedroom    |",
+    "| [desk]   office    |ll|     [bed]     |",
+    "|                    |  +==-------------+",
+    "|                    |cl|   bathroom    |",
+    "+---------==---------+==+---------------+",
+    "|      vanity        |st|  cats' room   |",
+    "|                    =ai=               |",
+    "+--------==----------+rs+---------------+",
+    "|      balcony       |==|  << enter here",
+    "+--------------------+--+---------------+",
+    "            FRONT OF HOUSE"
+  ],
+  "sketch_legend": "== door in a wall, ~~ curtains (kitchen/laundry), hl/ha/ll the hall spine, cl closet, st/ai/rs the stairs to the front entrance, =back the laundry's back exit",
   "rooms": [
     {"id": "livingroom", "size": "large",
      "anchors": ["sofa", "chairs", "tv", "dining table"],
