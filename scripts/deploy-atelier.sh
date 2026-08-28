@@ -13,7 +13,66 @@
 set -uo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WSP="$HOME/.vintos/workspace"
+
+# Find the workspace instead of asserting where it is. A workspace is a
+# directory that holds bin/server.py and scripts/turn_coordinator.py — that is
+# what makes it the tree this deploy targets, not its name. I hardcoded
+# ~/.vintos/workspace from a path literal inside the scripts and it was wrong.
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+is_workspace() {
+    # The checkout we are deploying FROM has the same shape as the workspace we
+    # are deploying TO. Without this guard the search happily finds the clone
+    # and installs it onto itself.
+    local d; d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+    [ "$d" = "$_SELF" ] && return 1
+    case "$d" in "$HOME"/.vintos/deploy/*) return 1;; esac
+    [ -f "$d/bin/server.py" ] && [ -f "$d/scripts/turn_coordinator.py" ]
+}
+
+find_workspace() {
+    # An explicit setting is the answer, full stop.
+    if [ -n "${VINTOS_WORKSPACE:-}" ]; then
+        is_workspace "$VINTOS_WORKSPACE" && { (cd "$VINTOS_WORKSPACE" && pwd -P); return 0; }
+        printf '\nSTOP: VINTOS_WORKSPACE=%s is not a workspace.\n' "$VINTOS_WORKSPACE" >&2
+        return 1
+    fi
+    # Otherwise collect EVERY tree that looks like one. If more than one does,
+    # this must not pick. I already guessed a path once and it was wrong;
+    # guessing again would install his room over the wrong tree.
+    local c d found=""
+    for c in "$HOME/Vintos" "$HOME/.vintos/workspace" "$HOME/vintos" \
+             "$HOME/vintos-main" "$HOME/.vintos"; do
+        is_workspace "$c" && found="$found$(cd "$c" && pwd -P)\n"
+    done
+    while read -r hit; do
+        [ -n "$hit" ] || continue
+        d="$(dirname "$(dirname "$hit")")"
+        is_workspace "$d" && found="$found$(cd "$d" && pwd -P)\n"
+    done <<< "$(find "$HOME" -maxdepth 4 -type f -path '*/bin/server.py' 2>/dev/null)"
+
+    found="$(printf '%b' "$found" | sed '/^$/d' | sort -u)"
+    local n; n="$(printf '%s\n' "$found" | sed '/^$/d' | wc -l)"
+    if [ "$n" -eq 1 ]; then printf '%s' "$found"; return 0; fi
+    if [ "$n" -gt 1 ]; then
+        printf '\nSTOP: more than one tree looks like his workspace:\n' >&2
+        printf '%s\n' "$found" | sed 's/^/    /' >&2
+        printf '\nI am not going to pick one. Rerun naming it:\n' >&2
+        printf '    VINTOS_WORKSPACE=<the right one> bash %s\n' "${BASH_SOURCE[0]}" >&2
+        return 1
+    fi
+    return 1
+}
+
+WSP="$(find_workspace)" || {
+    printf '\nSTOP: could not find his workspace.\n' >&2
+    printf 'Looked for a directory holding BOTH bin/server.py and scripts/turn_coordinator.py.\n' >&2
+    printf 'Tried: $VINTOS_WORKSPACE, ~/Vintos, ~/.vintos/workspace, ~/vintos, ~/vintos-main, ~/.vintos,\n' >&2
+    printf 'then a depth-4 search under %s.\n\n' "$HOME" >&2
+    printf 'Run it with the path if it lives somewhere else:\n' >&2
+    printf '    VINTOS_WORKSPACE=/path/to/it bash %s\n' "${BASH_SOURCE[0]}" >&2
+    exit 1
+}
 BROKER="/home/atelier/broker.py"
 STORE="/home/atelier/stratagem_store.py"
 BACKUP="$HOME/.vintos/backups/atelier-$(date +%Y%m%d-%H%M%S)"
@@ -38,7 +97,6 @@ EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py"
 
 # ---------------------------------------------------------------- preflight
 [ -d "$SRC/broker" ] && [ -d "$SRC/scripts" ] || die "not a Vintos checkout: $SRC"
-[ -d "$WSP/scripts" ] && [ -d "$WSP/bin" ] || die "no workspace at $WSP"
 say "source:    $SRC"
 say "workspace: $WSP"
 say "commit:    $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo '(not a git checkout)')"
