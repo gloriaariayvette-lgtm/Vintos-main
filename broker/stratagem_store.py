@@ -270,7 +270,14 @@ def _capability(b, pid):
 
 
 _LINEAGE_KEY = "/home/atelier/.lineage-key"
-_NONCE_LOG = "/home/atelier/atelier/consumed-nonces.jsonl"
+# Derived from ROOT, never a hardcoded absolute path. As a constant this
+# pointed into /home/atelier even when ROOT was redirected — so the deploy
+# gate's suites, running as gloria against atelier's 700 directory, died on
+# PermissionError inside the lineage check and every adoption failed with an
+# error that matched no refusal. Same class of bug as a test reaching live
+# state: a path that ignores the sandbox it was told to run in.
+def _nonce_log():
+    return os.path.join(ROOT, "consumed-nonces.jsonl")
 # The nonce log is global, so its check-and-append needs a global lock —
 # per-project locks would let two projects race the same attestation.
 _NONCE_LOCK = threading.Lock()
@@ -314,11 +321,15 @@ def _verify_lineage(att, root_ref, root_type):
     # adoption succeeds, or a rejected adoption silently spends the attestation.
     with _NONCE_LOCK:
         try:
-            for line in open(_NONCE_LOG):
+            for line in open(_nonce_log()):
                 if line.strip() and json.loads(line).get("nonce") == body.get("nonce"):
                     return False, "lineage attestation already used — replay refused"
         except FileNotFoundError:
             pass
+        except OSError as e:
+            # Cannot READ the replay log -> cannot prove non-replay. Fail
+            # closed with a named reason, never an unhandled traceback.
+            return False, "nonce log unreadable: %s" % str(e)[:80]
     return True, None
 
 
@@ -330,13 +341,13 @@ def _burn_nonce(nonce):
         return False          # a missing nonce is never spendable
     with _NONCE_LOCK:
         try:
-            for line in open(_NONCE_LOG):
+            for line in open(_nonce_log()):
                 if line.strip() and json.loads(line).get("nonce") == nonce:
                     return False
         except FileNotFoundError:
             pass
-        os.makedirs(os.path.dirname(_NONCE_LOG), exist_ok=True)
-        with open(_NONCE_LOG, "a") as f:
+        os.makedirs(os.path.dirname(_nonce_log()), exist_ok=True)
+        with open(_nonce_log(), "a") as f:
             f.write(json.dumps({"nonce": nonce, "at": datetime.now().isoformat()}) + "\n")
             f.flush()
             os.fsync(f.fileno())

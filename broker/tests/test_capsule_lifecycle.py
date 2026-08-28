@@ -15,13 +15,12 @@ LKEY = b"testkey"
 class Env:
     def __enter__(self):
         self.tmp = tempfile.mkdtemp(prefix="cap-test-")
-        self._s = (S.ROOT, S._LINEAGE_KEY, S._NONCE_LOG)
+        self._s = (S.ROOT, S._LINEAGE_KEY)
         self._b = (BK.ROOT, BK.HEALTH, BK._KEYPATH)
         S.ROOT = BK.ROOT = self.tmp
         BK.HEALTH = os.path.join(self.tmp, "health.jsonl")
         BK._KEYPATH = os.path.join(self.tmp, "visit-key")
         S._LINEAGE_KEY = os.path.join(self.tmp, "lineage-key")
-        S._NONCE_LOG = os.path.join(self.tmp, "nonces.jsonl")
         open(S._LINEAGE_KEY, "wb").write(LKEY)
         base = os.path.join(self.tmp, "projects", PID)
         os.makedirs(os.path.join(base, "artifacts"), exist_ok=True)
@@ -44,7 +43,7 @@ class Env:
         return self
 
     def __exit__(self, *a):
-        (S.ROOT, S._LINEAGE_KEY, S._NONCE_LOG) = self._s
+        (S.ROOT, S._LINEAGE_KEY) = self._s
         (BK.ROOT, BK.HEALTH, BK._KEYPATH) = self._b
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
