@@ -2356,6 +2356,170 @@ async def _voice_test_page():
         return RedirectResponse("/app/")
 
 
+# A sandbox for tuning his ear — mic clarity, background-music rejection, and
+# end-of-turn detection — that touches NOTHING. It uses his real microphone and
+# his real /api/transcribe (Whisper), but never /api/chat and never
+# /api/voice/call-log, so nothing here reaches his memory or context. Served from
+# the house so it is same-origin with /api/transcribe.
+@app.get("/voice-tune")
+async def _voice_tune_page():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(_VOICE_TUNE_HTML)
+
+_VOICE_TUNE_HTML = r'''<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ear Tuning</title><style>
+:root{--bg:#0e1116;--panel:#161b22;--ink:#e6edf3;--dim:#8b949e;--line:#2b3138;
+--speak:#3fb950;--idle:#6e7681;--end:#d29922;--accent:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 2px}.sub{color:var(--dim);margin:0 0 14px}
+.warn{background:#1f2530;border:1px solid var(--line);border-left:3px solid var(--end);
+padding:8px 12px;border-radius:6px;color:var(--dim);margin-bottom:14px;font-size:13px}
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:920px}
+@media(max-width:720px){.wrap{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.panel h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0}
+.row label{color:var(--dim)}input[type=range]{width:150px;accent-color:var(--accent)}
+select{background:#0d1117;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px;max-width:180px}
+.val{font-variant-numeric:tabular-nums;color:var(--ink);min-width:56px;text-align:right}
+.tog{display:flex;gap:6px;flex-wrap:wrap}.tog button{background:#0d1117;color:var(--dim);
+border:1px solid var(--line);border-radius:20px;padding:5px 11px;cursor:pointer;font-size:12px}
+.tog button.on{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
+#state{font-size:22px;font-weight:700;letter-spacing:.02em}
+.meterwrap{height:22px;background:#0d1117;border:1px solid var(--line);border-radius:5px;overflow:hidden;position:relative}
+#meter{height:100%;width:0;background:linear-gradient(90deg,var(--speak),var(--end));transition:width .05s}
+#thline{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);opacity:.9}
+.big{display:flex;align-items:center;gap:12px;margin:6px 0 14px}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--idle);flex:none}
+.dot.speak{background:var(--speak);box-shadow:0 0 10px var(--speak)}
+.dot.end{background:var(--end)}
+button.go{background:var(--speak);color:#04120a;border:0;border-radius:8px;padding:10px 18px;
+font-weight:700;cursor:pointer;font-size:15px}button.go.stop{background:#da3633;color:#fff}
+#log{grid-column:1/-1}#lines{font-family:ui-monospace,Menlo,monospace;font-size:13px;
+max-height:230px;overflow:auto;background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:10px}
+.ln{padding:5px 0;border-bottom:1px solid #1b2027}.ln:last-child{border:0}
+.ln .t{color:var(--dim);font-size:11px}.ln .txt{color:var(--ink)}.ln.empty .txt{color:var(--end)}
+.hint{color:var(--dim);font-size:12px;margin-top:8px}
+</style></head><body>
+<h1>Ear Tuning</h1>
+<p class="sub">Tune how he hears you — clarity, background music, end of your turn.</p>
+<div class="warn">Sandbox. This uses your real mic and his real transcriber, but writes to <b>nothing</b> — no memory, no chat, no call log. Close the tab and it is as if it never happened.</div>
+<div class="big"><span class="dot" id="dot"></span><span id="state">idle</span>
+<button class="go" id="go">Start listening</button></div>
+
+<div class="wrap">
+  <div class="panel"><h2>Input</h2>
+    <div class="row"><label>Microphone</label><select id="dev"></select></div>
+    <div class="row"><label>Browser cleanup</label><div class="tog">
+      <button data-c="noiseSuppression" class="on">noise</button>
+      <button data-c="echoCancellation" class="on">echo</button>
+      <button data-c="autoGainControl" class="on">gain</button></div></div>
+    <div class="row"><label>High-pass <span class="hint">(cut low music rumble)</span></label>
+      <span class="val" id="hpV">80 Hz</span></div>
+    <div class="row"><label></label><input type="range" id="hp" min="0" max="300" value="80"></div>
+    <div class="hint">Voice lives above ~120 Hz; bass and kick drums below it. Raise until music fades but your voice stays full.</div>
+  </div>
+
+  <div class="panel"><h2>Turn detection</h2>
+    <div class="row"><label>Level now</label><span class="val" id="db">-inf</span></div>
+    <div class="meterwrap"><div id="meter"></div><div id="thline"></div></div>
+    <div class="row" style="margin-top:12px"><label>Speech threshold</label><span class="val" id="thV">-38 dB</span></div>
+    <div class="row"><label></label><input type="range" id="th" min="-70" max="-15" value="-38"></div>
+    <div class="row"><label>Min speech</label><span class="val" id="msV">250 ms</span></div>
+    <div class="row"><label></label><input type="range" id="ms" min="80" max="800" step="20" value="250"></div>
+    <div class="row"><label>End-of-turn silence</label><span class="val" id="esV">900 ms</span></div>
+    <div class="row"><label></label><input type="range" id="es" min="300" max="2500" step="50" value="900"></div>
+    <div class="hint">The blue line is the threshold. Play your music and watch the meter: if it stays left of the line, music won't trip him. Longer end-silence = he waits longer before deciding you're done.</div>
+  </div>
+
+  <div class="panel" id="log"><h2>Heard turns <span class="hint">(each is sent to his transcriber, nowhere else)</span></h2>
+    <div id="lines"><div class="hint" id="empty">Press Start, speak a sentence, then pause. His transcription of it appears here so you can check he caught your words over the music.</div></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), cons={noiseSuppression:true,echoCancellation:true,autoGainControl:true};
+let ac,stream,src,hp,an,data,rec,chunks=[],running=false,speaking=false,speechMs=0,silMs=0,last=0,turnStart=0,haveEmpty=true;
+const P={th:-38,ms:250,es:900,hpHz:80};
+
+function bind(id,key,fmt){const el=$('#'+id),out=$('#'+id+'V');
+ el.oninput=()=>{P[key]=+el.value;out.textContent=fmt(P[key]);if(key==='hpHz'&&hp)hp.frequency.value=P[key];drawTh();};
+ out.textContent=fmt(P[key]);}
+bind('th','th',v=>v+' dB');bind('ms','ms',v=>v+' ms');bind('es','es',v=>v+' ms');bind('hp','hpHz',v=>v+' Hz');
+
+document.querySelectorAll('.tog button').forEach(b=>b.onclick=()=>{
+ const c=b.dataset.c;cons[c]=!cons[c];b.classList.toggle('on',cons[c]);if(running)restart();});
+
+function drawTh(){const pct=(P.th+70)/(70-15)*100;$('#thline').style.left=Math.max(0,Math.min(100,pct))+'%';}
+drawTh();
+
+async function listDevices(){try{const ds=await navigator.mediaDevices.enumerateDevices();
+ const sel=$('#dev');sel.innerHTML='';ds.filter(d=>d.kind==='audioinput').forEach(d=>{
+ const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||('mic '+sel.length);sel.appendChild(o);});
+ }catch(e){}}
+$('#dev').onchange=()=>{if(running)restart();};
+
+async function start(){
+ const c={noiseSuppression:cons.noiseSuppression,echoCancellation:cons.echoCancellation,autoGainControl:cons.autoGainControl};
+ const dev=$('#dev').value;if(dev)c.deviceId={exact:dev};
+ stream=await navigator.mediaDevices.getUserMedia({audio:c});
+ await listDevices();
+ ac=new(window.AudioContext||window.webkitAudioContext)();
+ src=ac.createMediaStreamSource(stream);
+ hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=P.hpHz;
+ an=ac.createAnalyser();an.fftSize=1024;data=new Float32Array(an.fftSize);
+ src.connect(hp);hp.connect(an);
+ running=true;speaking=false;speechMs=silMs=0;last=performance.now();
+ $('#go').textContent='Stop';$('#go').classList.add('stop');
+ loop();
+}
+function stop(){running=false;try{rec&&rec.state!=='inactive'&&rec.stop();}catch(e){}
+ try{stream.getTracks().forEach(t=>t.stop());ac.close();}catch(e){}
+ setState('idle');$('#go').textContent='Start listening';$('#go').classList.remove('stop');$('#meter').style.width='0';$('#db').textContent='-inf';}
+function restart(){stop();setTimeout(start,120);}
+
+function setState(s){$('#state').textContent=s;const d=$('#dot');d.className='dot'+(s==='speaking'?' speak':s==='turn ended'?' end':'');}
+
+function startRec(){chunks=[];try{rec=new MediaRecorder(stream);rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+ rec.onstop=()=>{if(chunks.length)send(new Blob(chunks,{type:chunks[0].type}));};rec.start();}catch(e){}}
+function stopRec(){try{rec&&rec.state!=='inactive'&&rec.stop();}catch(e){}}
+
+async function send(blob){
+ const row=document.createElement('div');row.className='ln';const secs=((performance.now()-turnStart)/1000).toFixed(1);
+ row.innerHTML='<div class="t">'+new Date().toLocaleTimeString()+' · '+secs+'s · transcribing…</div><div class="txt">…</div>';
+ if(haveEmpty){$('#empty')&&$('#empty').remove();haveEmpty=false;}
+ $('#lines').prepend(row);
+ try{const fd=new FormData();fd.append('audio',blob,'turn.webm');
+ const r=await fetch('/api/transcribe',{method:'POST',body:fd});const j=await r.json();
+ const txt=(j.text||'').trim();
+ row.querySelector('.t').textContent=new Date().toLocaleTimeString()+' · '+secs+'s';
+ if(txt){row.querySelector('.txt').textContent=txt;}
+ else{row.classList.add('empty');row.querySelector('.txt').textContent='(he caught no words — raise the mic, lower the threshold, or cut more music with high-pass)';}
+ }catch(e){row.querySelector('.txt').textContent='transcribe failed: '+e;}
+}
+
+function loop(){if(!running)return;
+ an.getFloatTimeDomainData(data);let sum=0;for(let i=0;i<data.length;i++)sum+=data[i]*data[i];
+ const rms=Math.sqrt(sum/data.length);const db=rms>0?20*Math.log10(rms):-100;
+ const now=performance.now(),dt=now-last;last=now;
+ $('#db').textContent=(db<=-100?'-inf':db.toFixed(1))+(db>-100?' dB':'');
+ $('#meter').style.width=Math.max(0,Math.min(100,(db+70)/(70-15)*100))+'%';
+ const loud=db>P.th;
+ if(loud){silMs=0;speechMs+=dt;
+   if(!speaking&&speechMs>=P.ms){speaking=true;turnStart=now;setState('speaking');startRec();}}
+ else{if(speaking){silMs+=dt;
+   if(silMs>=P.es){speaking=false;speechMs=0;setState('turn ended');stopRec();setTimeout(()=>running&&setState('listening'),700);}}
+   else{speechMs=Math.max(0,speechMs-dt);}}
+ requestAnimationFrame(loop);
+}
+
+$('#go').onclick=()=>{if(running)stop();else start().catch(e=>{setState('mic blocked');alert('Mic error: '+e);});};
+navigator.mediaDevices&&navigator.mediaDevices.getUserMedia({audio:true}).then(s=>{s.getTracks().forEach(t=>t.stop());listDevices();}).catch(()=>{});
+</script></body></html>'''
+
+
 
 # === Avatar Models ===
 AVATAR_MODELS_DIR = os.path.expanduser("~/.vintos/workspace/avatar-models")
