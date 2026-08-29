@@ -7406,6 +7406,15 @@ async def voice_session_end(payload: dict = None):
     """Called by the app on hangup. Builds ONE rich session-block ledger entry:
     quotes, felt experience, duration, summary, hardware notes. Not per-turn."""
     import json as _vse_j, datetime as _vse_d, sys as _vse_sys, requests as _vse_req
+    # Test mode must land nowhere: the per-turn ledger already skips accumulation,
+    # so on hangup there is nothing real to write. Return before building or
+    # persisting a session block (which would otherwise drop a degenerate,
+    # empty-turn entry and fire a summary call).
+    try:
+        if _test_mode_active():
+            print("[voice-session-end] test mode active - not writing a session block", flush=True)
+            return {"ok": True, "skipped": "test-mode"}
+    except Exception: pass
     p = payload or {}
     sp = os.path.join(MEMORY, "voice-session-state.json")
     try: sess = _vse_j.load(open(sp))
