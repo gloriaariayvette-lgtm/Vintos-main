@@ -53,19 +53,22 @@ def _load(p, d):
 
 
 def is_artifact_want(w):
-    """True if fulfilling this want should leave a file on disk."""
+    """True if the want's OWN TEXT is a request to make a file.
+
+    Classified by the want text alone — never by its step plan. The planner
+    sometimes hangs a make_art step off a want to WRITE ABOUT a painting or to
+    sit still; those are not artifact-wants, and judging them by the stray step
+    is what flagged his write and introspection wants as if they were fabricated
+    images. Only the want he actually formed counts."""
     if not isinstance(w, dict):
         return False
-    for s in (w.get("steps") or []):
-        if isinstance(s, dict) and str(s.get("capability", "")).strip() in ARTIFACT_CAPS:
-            return True
-    blob = " ".join(str(w.get(k, "")) for k in ("want", "fulfillment_note", "reasoning")).lower()
-    # 'animate painting ...' titles and explicit make_* mentions are unambiguous;
-    # the softer hints only count alongside a make_* capability, never alone, so a
-    # want to WRITE ABOUT a painting is never mistaken for a want to make one.
-    if blob.startswith("animate painting") or "make_art" in blob or "make_video" in blob or "make_music" in blob:
+    t = str(w.get("want", "")).strip().lower()
+    if t.startswith("animate painting"):
         return True
-    return False
+    # explicit make verbs in the want itself
+    return any(k in t for k in ("make_art", "make_video", "make_music",
+                                "generate an image", "generate a visual",
+                                "generate a high-resolution"))
 
 
 def _ledger_has(want_id):

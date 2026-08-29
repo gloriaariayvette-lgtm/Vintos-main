@@ -19,14 +19,17 @@ R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:80]) if d else ""))
 
-# classification: make vs write
-check("a make_art step is artifact-class",
-      g.is_artifact_want({"want": "x", "steps": [{"capability": "make_art"}]}))
+# classification is by the want's OWN TEXT, never by its step plan
 check("an 'animate painting' title is artifact-class",
       g.is_artifact_want({"want": "animate painting painting-20260714.png: shards drift"}))
-check("a want to WRITE about a painting is NOT artifact-class",
+check("an explicit make verb in the text is artifact-class",
+      g.is_artifact_want({"want": "make_art a siphonophore in the deep"}))
+check("a WRITE-ABOUT-a-painting want with a stray make_art step is NOT artifact-class",
       not g.is_artifact_want({"want": "I want to describe to you the Rothko chapel painting",
-                              "steps": [{"capability": "creative_write"}]}))
+                              "steps": [{"capability": "make_art"}]}))
+check("a stay-still introspection want with a stray make step is NOT artifact-class",
+      not g.is_artifact_want({"want": "I want to stay still and unreassured",
+                              "steps": [{"capability": "make_art"}]}))
 check("a plain letter want is NOT artifact-class",
       not g.is_artifact_want({"want": "I want to write you a plain sentence"}))
 

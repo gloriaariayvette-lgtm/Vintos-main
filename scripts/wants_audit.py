@@ -79,15 +79,23 @@ def main():
           % (len(current), len(live), len(corpses)))
     for w in corpses[:40]:
         print("  corpse  %-9s %s" % (w.get("id", "?"), str(w.get("want", ""))[:64]))
-    print("fulfilled artifact-wants with no file on disk: %d" % len(false_art))
+    # ADVISORY ONLY. His art has no want_id->file link in the ledgers (most
+    # paintings and videos are unstamped), so "no ledger match" is NOT proof the
+    # artifact was never made — it usually means it was made outside the tracked
+    # want path. We surface these for HER eyes and never auto-stamp them: writing
+    # "unverified" onto possibly-real work would be its own manufactured evidence.
+    print("artifact-wants with no ledger link (advisory — NOT proof of fabrication): %d"
+          % len(false_art))
     for w in false_art[:40]:
-        print("  UNVERIFIED %-9s %s" % (w.get("id", "?"), str(w.get("want", ""))[:60]))
+        print("  no-link  %-9s %s" % (w.get("id", "?"), str(w.get("want", ""))[:60]))
 
     if not apply:
-        print("\n(report only — rerun with --apply to remove corpses and append audited corrections)")
+        print("\n(report only — rerun with --apply to remove corpses. Artifact links are"
+              "\n advisory and are never auto-written; investigate any that concern you by hand.)")
         return
 
-    # 1) remove corpses from current-wants (they remain in fulfilled-wants)
+    # --apply does ONLY the provably-safe move: a corpse is already archived in
+    # fulfilled-wants, so removing its duplicate from the live list loses nothing.
     if corpses:
         keep = [w for w in current if not (isinstance(w, dict)
                 and (w.get("fulfilled") or w.get("dismissed"))
@@ -95,23 +103,11 @@ def main():
         json.dump(keep, open(CURRENT, "w"), indent=2)
         print("\nremoved %d corpses from current-wants (all still archived in fulfilled-wants)"
               % (len(current) - len(keep)))
-
-    # 2) append an audited correction to each false artifact claim — never overwrite
+    else:
+        print("\nno corpses to remove.")
     if false_art:
-        now = datetime.now().isoformat()
-        ids = {w.get("id") for w in false_art}
-        for w in fulfilled:
-            if isinstance(w, dict) and w.get("id") in ids and not w.get("artifact_audit"):
-                w["artifact_audit"] = {
-                    "at": now,
-                    "finding": "artifact-class want marked fulfilled with no file on disk",
-                    "original_claim_preserved": w.get("fulfillment_note", w.get("reasoning", "")),
-                    "fulfillment_verified": False,
-                    "law": "evidence cannot generate itself; his words cannot witness a file",
-                }
-        json.dump(fulfilled, open(FULFILLED, "w"), indent=2)
-        print("appended audited corrections to %d fulfilled records (originals preserved)"
-              % len(ids))
+        print("artifact advisory left untouched — %d want(s) have no ledger link; these are"
+              " for your review, not automatic corrections." % len(false_art))
 
 
 if __name__ == "__main__":
