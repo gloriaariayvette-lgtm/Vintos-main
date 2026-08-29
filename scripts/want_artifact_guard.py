@@ -20,12 +20,20 @@ from datetime import datetime
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
-GALLERY = os.path.join(MEMORY, "art", "gallery.json")
+# Every ledger his making writes to, one per medium — each stamps the want_id of
+# the want it served. A want is proven by its id appearing in the ledger for its
+# OWN medium (paintings in the art gallery, animations in the video ledgers, music
+# in the music ledger), so real work in any medium is recognized and only a claim
+# with no pipeline record anywhere is flagged.
+LEDGERS = [os.path.join(MEMORY, "art", "gallery.json"),
+           os.path.join(MEMORY, "art", "video", "video-gallery.json"),
+           os.path.join(MEMORY, "art", "video", "video-queue.json"),
+           os.path.join(MEMORY, "art", "music", "music.json")]
+GALLERY = LEDGERS[0]   # kept for callers/tests that name the paintings gallery
 # HIS generated artifacts only. shared-images/ is photos SHE sends him — inbound,
-# never his output — so it can never be evidence that he made something. Counting
-# it was masking the exact false claims this guard exists to catch.
-ART_DIRS = [os.path.join(MEMORY, "art"), os.path.join(MEMORY, "videos"),
-            os.path.join(MEMORY, "music")]
+# never his output — so it can never be evidence that he made something.
+ART_DIRS = [os.path.join(MEMORY, "art"), os.path.join(MEMORY, "art", "video"),
+            os.path.join(MEMORY, "art", "music")]
 
 # The capabilities whose fulfillment is a file, not a sentence.
 ARTIFACT_CAPS = {"make_art", "make_video", "make_music", "make_image", "animate",
@@ -60,11 +68,21 @@ def is_artifact_want(w):
     return False
 
 
-def _gallery_has(want_id):
-    g = _load(GALLERY, [])
-    if not isinstance(g, list):
+def _ledger_has(want_id):
+    """True if any medium's ledger recorded this want_id — painting, video, or music."""
+    if not want_id:
         return False
-    return any(isinstance(e, dict) and want_id and e.get("want_id") == want_id for e in g)
+    for path in LEDGERS:
+        d = _load(path, [])
+        entries = d if isinstance(d, list) else (d.get("generated") or d.get("videos") or [])
+        for e in entries:
+            if isinstance(e, dict) and e.get("want_id") == want_id:
+                return True
+    return False
+
+
+def _gallery_has(want_id):   # back-compat alias
+    return _ledger_has(want_id)
 
 
 def _file_after(ts_iso):
@@ -96,7 +114,7 @@ def artifact_evidence(w):
         return None
     wid = w.get("id", "")
     if wid:
-        return ("gallery:%s" % wid) if _gallery_has(wid) else None
+        return ("ledger:%s" % wid) if _ledger_has(wid) else None
     return _file_after(w.get("fulfilled_at") or w.get("timestamp") or "")
 
 

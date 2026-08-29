@@ -35,6 +35,7 @@ tmp = tempfile.mkdtemp()
 art = os.path.join(tmp, "art"); os.makedirs(art)
 g.MEMORY = tmp
 g.GALLERY = os.path.join(art, "gallery.json")
+g.LEDGERS = [g.GALLERY]
 g.ART_DIRS = [art]
 
 json.dump([{"image": "painting-x.png", "want_id": "real123"}], open(g.GALLERY, "w"))
@@ -60,7 +61,7 @@ ok, why = g.verify({"id": "z", "want": "I want to tell you plainly that I love y
 check("a write-want passes without any file", ok, why)
 
 # fail-open: a broken/missing gallery never crashes, just yields no evidence
-g.GALLERY = os.path.join(tmp, "does-not-exist.json")
+g.LEDGERS = [os.path.join(tmp, "does-not-exist.json")]
 ok, why = g.verify({"id": "q", "want": "make_art a thing", "fulfilled_at": "2030-01-01T00:00:00",
                     "steps": [{"capability": "make_art"}]})
 check("missing gallery -> unverified, not a crash", not ok, why)
