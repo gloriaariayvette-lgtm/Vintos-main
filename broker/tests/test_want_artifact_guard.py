@@ -47,6 +47,14 @@ ok, why = g.verify({"id": "ghost999", "want": "animate painting bar.png",
                     "fulfilled": True, "fulfilled_at": "2030-01-01T00:00:00"})
 check("an artifact-want with no file and no gallery entry FAILS", not ok, why)
 
+# the masking bug: an id'd want with NO gallery entry fails even though a later
+# painting sits in his art dir — his output is not evidence for THIS want
+open(os.path.join(art, "painting-later.png"), "wb").close()
+os.utime(os.path.join(art, "painting-later.png"), (4102444800, 4102444800))  # yr 2100
+ok, why = g.verify({"id": "unstamped", "want": "make_art a thing",
+                    "steps": [{"capability": "make_art"}], "fulfilled_at": "2020-01-01T00:00:00"})
+check("an id'd artifact want is not saved by an unrelated later painting", not ok, why)
+
 # a non-artifact want always passes — words witness words
 ok, why = g.verify({"id": "z", "want": "I want to tell you plainly that I love you"})
 check("a write-want passes without any file", ok, why)

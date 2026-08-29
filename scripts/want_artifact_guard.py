@@ -21,8 +21,11 @@ from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 GALLERY = os.path.join(MEMORY, "art", "gallery.json")
-ART_DIRS = [os.path.join(MEMORY, "art"), os.path.join(MEMORY, "shared-images"),
-            os.path.join(MEMORY, "videos"), os.path.join(MEMORY, "music")]
+# HIS generated artifacts only. shared-images/ is photos SHE sends him — inbound,
+# never his output — so it can never be evidence that he made something. Counting
+# it was masking the exact false claims this guard exists to catch.
+ART_DIRS = [os.path.join(MEMORY, "art"), os.path.join(MEMORY, "videos"),
+            os.path.join(MEMORY, "music")]
 
 # The capabilities whose fulfillment is a file, not a sentence.
 ARTIFACT_CAPS = {"make_art", "make_video", "make_music", "make_image", "animate",
@@ -82,13 +85,18 @@ def _file_after(ts_iso):
 
 
 def artifact_evidence(w):
-    """The real file proving this artifact want, or None. Prefers an id-stamped
-    gallery entry; falls back to any output file dated at/after the want."""
+    """The real file proving this artifact want, or None.
+
+    His art pipeline stamps each generated file's gallery entry with the want_id,
+    so a want that HAS an id is verified only by an id-stamped gallery entry — no
+    date guessing, because he paints often and any old want predates some later,
+    unrelated painting. Only an id-less want (which can't be matched to the ledger)
+    falls back to a dated file in his own output dirs."""
     if not is_artifact_want(w):
         return None
     wid = w.get("id", "")
-    if wid and _gallery_has(wid):
-        return "gallery:%s" % wid
+    if wid:
+        return ("gallery:%s" % wid) if _gallery_has(wid) else None
     return _file_after(w.get("fulfilled_at") or w.get("timestamp") or "")
 
 
