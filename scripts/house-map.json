@@ -11,10 +11,10 @@
     "|                    |  +==-------------+",
     "|                    |cl|   bathroom    |",
     "+---------==---------+==+---------------+",
-    "|      vanity      ==stairs==  cats' room",
-    "+-----==------+      |    |",
+    "|      vanity      ==stairs==  cats' room|",
+    "+-----==------+      |    +--------------+",
     "|   balcony   |      | == |  << front door: enter here, up the stairs",
-    "+-------------+"
+    "+-------------+      +----+"
   ],
   "sketch_legend": "== door, ~~ curtains between kitchen and laundry, ha/ll the hall spine, cl closet; the front door opens onto the stairs at the front of the house, vanity to their left and the cats' room to their right",
   "rooms": [

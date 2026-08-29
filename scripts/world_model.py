@@ -123,7 +123,15 @@ def get_world_block():
     if not st: return ""
     scene = st.get("scene", ""); att = st.get("attention", "")
     objs = [o.get("name", "") for o in st.get("objects", []) if isinstance(o, dict) and o.get("salience", 0) >= 0.35]
-    if not scene and not objs: return ""
+    # her phone on the house wifi: a positive, fresh reading only — silence otherwise
+    presence = ""
+    try:
+        import home_presence
+        presence = home_presence.context_line()
+    except Exception:
+        pass
+    if not scene and not objs:
+        return "[%s]" % presence if presence else ""
     parts = []
     if scene: parts.append("you and Gloria are in %s" % scene)
     if scene:
@@ -137,6 +145,7 @@ def get_world_block():
             pass
     if objs: parts.append("still here: %s" % ", ".join(objs[:6]))
     if att: parts.append("attention rests on %s" % att)
+    if presence: parts.append(presence.rstrip("."))
     pres = st.get("self_presence", "")
     tail = (" (%s)" % pres) if pres and pres != "here with her" else ""
     return "[SCENE - %s.%s Speak from inside it, not about it.]" % ("; ".join(parts), tail)

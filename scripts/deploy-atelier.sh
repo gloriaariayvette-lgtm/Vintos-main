@@ -47,7 +47,7 @@ effect_gate.py toy_link.py device_patterns.py evidence_provenance.py
 stratagem.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh
-house_map.py house-map.json"
+house_map.py house-map.json home_presence.py"
 BINS="server.py model_router.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh"
