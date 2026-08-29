@@ -97,6 +97,19 @@ def main():
     for w in active[:MAX_CHECKS]:
         res = gemma_check(w.get("want", ""), evidence)
         if res:
+            # A make-want is proven by a file, not by Gemma reading his words. If
+            # the artifact is not on disk, this is not fulfillment — record the
+            # honest gap and leave the want alive. (evidence cannot generate itself)
+            try:
+                import want_artifact_guard as _ag
+                _ok, _why = _ag.verify({**w, "fulfilled_at": datetime.now().isoformat()})
+                if not _ok:
+                    w["artifact_unverified"] = {"at": datetime.now().isoformat(), "why": _why,
+                                                "gemma_said": str(res.get("evidence", ""))[:200]}
+                    log(f"HELD (artifact absent): {w.get('want','')[:80]} — {_why}")
+                    continue
+            except Exception:
+                pass
             w["fulfilled"] = True
             # Expiry is completion of the POLICY, not evidence of satisfaction.
             # UNKNOWN is the honest and common grade (Sol: COMPLETED != SATISFIED).

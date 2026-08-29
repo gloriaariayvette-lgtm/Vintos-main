@@ -2171,6 +2171,23 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
         fulfilled_intensity = 3
         for w in wants:
             if w["want"] == want_text and not w.get("fulfilled"):
+                # Artifact-class wants are proven by a file, never by a sentence;
+                # without one on disk, record the unverified state and refuse to
+                # call it lived. His words cannot witness a file (house law).
+                try:
+                    import sys as _ag_s
+                    _ag_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+                    import want_artifact_guard as _ag
+                    _ok, _why = _ag.verify({**w, "fulfilled_at": datetime.now().isoformat()})
+                    if not _ok:
+                        w["artifact_unverified"] = {"at": datetime.now().isoformat(),
+                                                    "why": _why, "attempted_note": note}
+                        with open(wants_file, "w") as f:
+                            json.dump(wants, f, indent=2)
+                        print("[fulfill] artifact want NOT fulfilled — %s: %s" % (_why, want_text[:60]))
+                        return
+                except Exception:
+                    pass
                 w["fulfilled"] = True
                 w["satisfaction"] = "UNKNOWN" if auto else "SELF_REPORTED"
                 w.setdefault("fulfilled_by", fulfilled_by or ("auto" if auto else "him"))
@@ -2215,6 +2232,9 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
                         stderr=open("/tmp/wants-ambitions-log.log","a"))
                 except: pass
                 break
+        # A fulfilled want is archived, so it must LEAVE the live list — marking it
+        # in place is what filled current-wants with done things. Move, don't mark.
+        wants = [x for x in wants if not (isinstance(x, dict) and x.get("fulfilled"))]
         with open(wants_file, "w") as f:
             json.dump(wants, f, indent=2)
         # Fulfillment feels good — proportional to how much he wanted it
