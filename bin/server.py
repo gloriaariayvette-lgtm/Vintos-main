@@ -204,6 +204,14 @@ app.add_middleware(
 def inner_life_context() -> str:
     """Gather Vintos inner life for chat context."""
     parts = []
+    # Gloria's live pulse from her ring — first, because a body reading is the
+    # most present thing here. Silent when no fresh reading exists.
+    try:
+        import sys as _hr_s2; _hr_s2.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import heart_rate as _hr_i
+        _hrl = _hr_i.context_line()
+        if _hrl: parts.append(_hrl)
+    except Exception: pass
     # Avatar face removed from chat context
     # Pearls
     try:
@@ -9017,6 +9025,46 @@ async def _aq_answer(qid: str = _AQForm(...), text: str = _AQForm(...)):
                    % ("Recorded. He'll get it once." if ok else "No question with that id."))
 
 
+@app.post("/api/ring/live")
+async def ring_live(request: Request):
+    """Receive one heart-rate reading from the R21M Bridge app and store it as
+    the single latest record. Auth is an OPTIONAL bearer token: if the file
+    ~/.vintos/.ring-token exists, its contents must match the Authorization
+    header; otherwise the endpoint is open (README: token optional), which is
+    fine on a trusted LAN. Bad or implausible readings are refused, not stored.
+    """
+    try:
+        _tokfile = os.path.expanduser("~/.vintos/.ring-token")
+        if os.path.exists(_tokfile):
+            want = open(_tokfile).read().strip()
+            got = request.headers.get("Authorization", "")
+            if got != ("Bearer " + want):
+                raise HTTPException(status_code=401, detail="bad ring token")
+        body = await request.json()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json")
+    import sys as _hr_s
+    _hr_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import heart_rate as _hr
+    ok, res = _hr.record(body)
+    if not ok:
+        raise HTTPException(status_code=422, detail=res)
+    return res
+
+
+@app.get("/api/ring/latest")
+async def ring_latest():
+    """Content-free readout of the last stored reading and its freshness — for
+    checking the pipe end to end without opening a chat."""
+    import sys as _hr_s
+    _hr_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import heart_rate as _hr
+    st, bpm, age = _hr.status()
+    return {"state": st, "bpm": bpm, "age_seconds": round(age, 1) if age is not None else None}
+
+
 @app.get("/api/voice/framing")
 async def voice_framing():
     """Everything the app should inject with her next voice turn, composed HERE so
@@ -9036,6 +9084,11 @@ async def voice_framing():
     except Exception: pass
     try:
         b = _ridge_now()
+        if b: parts.append(b)
+    except Exception: pass
+    try:
+        import heart_rate as _hr_v
+        b = _hr_v.context_line()
         if b: parts.append(b)
     except Exception: pass
     try:
