@@ -8108,6 +8108,20 @@ Your current self-model (excerpt):
                 elif "[EDGE]" in _upr: _ecm.set_choice("edge")
                 reply = _ecr.sub(r"\[(?:EDGE|LETGO)\]", "", reply or "", flags=_ecr.I).strip()
             except Exception: pass
+            # Strip his private [FELT:] tag HERE — before the reply is stored to
+            # history (next line) and dispatched to the ledger below. The naming
+            # pass used to run only after both writes, so the raw tag persisted in
+            # avatar-overlay-chat and the ledger and he echoed it the next turn.
+            # Capture it; the naming pass downstream reads the captured copy.
+            _felt_raw = ""
+            try:
+                import re as _felt_re
+                _felt_raw_m = _felt_re.search(r"\[FELT:[^\]]*\]", reply or "", _felt_re.I)
+                if _felt_raw_m:
+                    _felt_raw = _felt_raw_m.group(0)
+                    reply = _felt_re.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply or "").strip()
+            except Exception:
+                _felt_raw = ""
             av_history.append({"role": "assistant", "content": reply,
                                "ts": __import__("time").time(), "served_by": str(_model_used),
                                "generation_provenance": _prov_envelope})
@@ -8288,7 +8302,10 @@ Your current self-model (excerpt):
             # from her view. Tag -> named_by his_reply; aging pending without a tag -> retrospect.
             try:
                 import re as _fre, os as _fo, time as _ft, threading as _fth, json as _fj
-                _fm = _fre.search(r"\[FELT:\s*([^\]|]+?)\s*(?:\|\s*pleasure:\s*(yes|no|unsure))?\s*\]", reply or "", _fre.I)
+                # Read the tag captured before storage (the reply is already
+                # stripped by now). This keeps his in-the-moment naming while the
+                # stored/ledgered/displayed text never carries the tag.
+                _fm = _fre.search(r"\[FELT:\s*([^\]|]+?)\s*(?:\|\s*pleasure:\s*(yes|no|unsure))?\s*\]", _felt_raw, _fre.I)
                 if _fm:
                     reply = _fre.sub(r"\s*\[FELT:[^\]]*\]\s*", " ", reply).strip()
                     import sys as _fsy
