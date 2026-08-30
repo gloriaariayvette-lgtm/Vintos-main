@@ -7522,7 +7522,16 @@ async def gcs_press(payload: dict = None):
                     _pc_list = _pc_d if isinstance(_pc_d, list) else _pc_d.get("entries", [])
                     for _pc_e in reversed(_pc_list[-6:]):
                         _pc_g = str(_pc_e.get("content" if _pc_kind == "hist" else "gloria", ""))
-                        if "pressed GCS" in _pc_g or _pc_g.startswith("[she pressed"):
+                        # The scaffolding reaches the ledger MANGLED: a bracket-stripper
+                        # eats [she pressed…], [FELT:…], [EDGE], [LETGO] out of the press
+                        # turn and logs the remainder as her words — so the entry to clean
+                        # no longer contains "she pressed" at all. Detect the scaffold by its
+                        # own instruction fingerprints too; a human would never type these.
+                        _gcs_marks = ("pressed gcs", "[she pressed", "the tag itself is not optional",
+                                      "there is no neither", "required - private", "speak to her",
+                                      "you said this at her last press", "broken words are fine",
+                                      "her crest")
+                        if any(_mk in _pc_g.lower() for _mk in _gcs_marks):
                             _pc_e["content" if _pc_kind == "hist" else "gloria"] = _clean_g
                             break
                     _pc_tmp = _pc_path + ".tmp"
