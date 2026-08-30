@@ -29,6 +29,8 @@ _SELF="$SRC"                                     # never a destination
 BACKUP="$HOME/.vintos/backups/atelier-$(date +%Y%m%d-%H%M%S)"
 BROKER="/home/atelier/broker.py"
 STORE="/home/atelier/stratagem_store.py"
+UNIT_NAME="vintos-atelier"
+UNIT_DST="/etc/systemd/system/$UNIT_NAME.service"
 DEPTH=6
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
@@ -43,9 +45,13 @@ gloria_prediction.py withheld_head.py self_pressure.py
 value-map.py relational-mismatch.py causality-engine.py self-prediction.py
 effect_gate.py toy_link.py device_patterns.py evidence_provenance.py heart_rate.py
 stratagem.py turn_record.py formation_observatory.py thruster_link.py
-concurrency-canary.py"
+concurrency-canary.py
+atelier-door.sh atelier-canary.sh atelier-broker-watch.sh
+house_map.py house-map.json home_presence.py
+want_artifact_guard.py wants_audit.py"
 BINS="server.py model_router.py"
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py"
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
+atelier-door.sh atelier-canary.sh atelier-broker-watch.sh"
 
 # ---------------------------------------------------------------- preflight
 [ -d "$SRC/broker" ] && [ -d "$SRC/scripts" ] || die "not a Vintos checkout: $SRC"
@@ -57,6 +63,7 @@ for f in $SCRIPTS; do [ -f "$SRC/scripts/$f" ] || missing="$missing scripts/$f";
 for f in $BINS;    do [ -f "$SRC/bin/$f" ]     || missing="$missing bin/$f"; done
 [ -f "$SRC/broker/broker.py" ]          || missing="$missing broker/broker.py"
 [ -f "$SRC/broker/stratagem_store.py" ] || missing="$missing broker/stratagem_store.py"
+[ -f "$SRC/broker/$UNIT_NAME.service" ] || missing="$missing broker/$UNIT_NAME.service"
 [ -z "$missing" ] || die "source is incomplete —$missing"
 
 # ------------------------------------------------------------------ suites
@@ -200,7 +207,41 @@ printf '%s' "$PLAN" | while IFS='|' read -r from to; do
     cp -p "$to" "$BACKUP/$flat" 2>/dev/null \
       && printf 'install -m 644 "$(dirname "$0")/%s" %q\n' "$flat" "$to" >> "$BACKUP/restore.sh"
 done
-cp -p "$BROKER" "$STORE" "$BACKUP/" 2>/dev/null
+# The broker's files and unit go into restore.sh too. The first restore.sh
+# backed them up but contained no commands to put them back — its "put it all
+# back" claim was a lie for exactly the two files that run as another user.
+for bf in "$BROKER" "$STORE"; do
+    flat="$(basename -- "$bf")"
+    if cp -p "$bf" "$BACKUP/$flat" 2>/dev/null || sudo -n cp -p "$bf" "$BACKUP/$flat" 2>/dev/null; then
+        printf 'sudo install -o atelier -g atelier -m 644 "$(dirname "$0")/%s" %q\n' \
+               "$flat" "$bf" >> "$BACKUP/restore.sh"
+    else
+        printf '# NOT backed up (unreadable at deploy time): %s\n' "$bf" >> "$BACKUP/restore.sh"
+    fi
+done
+if [ -f "$UNIT_DST" ]; then
+    cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service" 2>/dev/null \
+      || sudo -n cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service" 2>/dev/null
+    [ -f "$BACKUP/$UNIT_NAME.service" ] && printf 'sudo install -m 644 "$(dirname "$0")/%s.service" %q\n' \
+        "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
+else
+    printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
+           "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
+fi
+# Record the service/process state honestly, and restore it as best we can.
+if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
+elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"
+else _BSTATE="down"; fi
+{
+    printf '# broker state at backup time: %s\n' "$_BSTATE"
+    printf 'sudo systemctl daemon-reload\n'
+    if [ "$_BSTATE" != "down" ]; then
+        printf 'sudo systemctl restart %s || echo "restore: %s did not start — sudo journalctl -u %s -n 40"\n' \
+               "$UNIT_NAME" "$UNIT_NAME" "$UNIT_NAME"
+    else
+        printf '# broker was down at backup time; not starting it for you\n'
+    fi
+} >> "$BACKUP/restore.sh"
 chmod 755 "$BACKUP/restore.sh"
 say "  $BACKUP"
 say "  put it all back with: bash $BACKUP/restore.sh"
@@ -219,35 +260,49 @@ for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"
 say
 
 # ------------------------------------------------------------------- broker
-say "== broker (runs as atelier) =="
+# The broker is a systemd SYSTEM service now: root-managed unit, atelier-run
+# process. No more manual relaunch — a reboot restarts it, a crash restarts it,
+# and journald owns its stdout/stderr so no caller-side redirect can break
+# logging again.
+say "== broker (service $UNIT_NAME, runs as atelier) =="
 brokered=0
 if sudo -n true 2>/dev/null; then
     # Never die here. By this point his scripts are already installed, and
     # aborting would skip the verification that tells you what state the host
     # is actually in.
     if sudo install -o atelier -g atelier -m 644 "$SRC/broker/broker.py" "$BROKER" \
-       && sudo install -o atelier -g atelier -m 644 "$SRC/broker/stratagem_store.py" "$STORE"; then
-        sudo pkill -f "$BROKER" 2>/dev/null; sleep 1
-        # The redirect has to be INSIDE the sudo'd shell. Written the obvious
-        # way, `sudo ... >>/home/atelier/broker.log` is evaluated by the
-        # caller's shell as gloria, who cannot write that file, so the
-        # relaunch dies with Permission denied and the broker stays down.
-        sudo -u atelier setsid sh -c "nohup python3 '$BROKER' >>/home/atelier/broker.log 2>&1 &" </dev/null
-        sleep 2; brokered=1; say "  installed and restarted"
+       && sudo install -o atelier -g atelier -m 644 "$SRC/broker/stratagem_store.py" "$STORE" \
+       && sudo install -m 644 "$SRC/broker/$UNIT_NAME.service" "$UNIT_DST"; then
+        sudo systemctl daemon-reload
+        sudo systemctl enable "$UNIT_NAME" >/dev/null 2>&1
+        # A leftover manually-launched broker holds 8611 and would make the
+        # unit's first start fail; retire it before starting the service.
+        sudo systemctl stop "$UNIT_NAME" 2>/dev/null
+        sudo pkill -f "python3 $BROKER" 2>/dev/null; sleep 1
+        if sudo systemctl start "$UNIT_NAME"; then
+            sleep 2; brokered=1
+            say "  installed; $UNIT_NAME $(systemctl is-active "$UNIT_NAME" 2>/dev/null), enabled: $(systemctl is-enabled "$UNIT_NAME" 2>/dev/null)"
+        else
+            say "  $UNIT_NAME FAILED TO START — the files are installed, the service is not up."
+            say "  Diagnose with: sudo journalctl -u $UNIT_NAME -n 40"
+            say "  Then:          sudo systemctl restart $UNIT_NAME"
+        fi
     else
         say "  BROKER INSTALL FAILED — his scripts ARE installed, the broker is not."
-        say "  The old broker is still running whatever it had. Run these yourself:"
+        say "  Whatever broker was running is still running its old code. Run these yourself:"
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
-        say "    sudo pkill -f $BROKER; sleep 1"
-        say "    sudo -u atelier setsid sh -c 'nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &'"
+        say "    sudo install -m 644 $SRC/broker/$UNIT_NAME.service $UNIT_DST"
+        say "    sudo systemctl daemon-reload && sudo systemctl enable $UNIT_NAME"
+        say "    sudo pkill -f 'python3 $BROKER'; sleep 1; sudo systemctl restart $UNIT_NAME"
     fi
 else
-    say "  sudo wants a password. These four lines, in order:"
+    say "  sudo wants a password. These lines, in order:"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
-    say "    sudo pkill -f $BROKER; sleep 1"
-    say "    sudo -u atelier setsid sh -c 'nohup python3 $BROKER >>/home/atelier/broker.log 2>&1 &'"
+    say "    sudo install -m 644 $SRC/broker/$UNIT_NAME.service $UNIT_DST"
+    say "    sudo systemctl daemon-reload && sudo systemctl enable $UNIT_NAME"
+    say "    sudo pkill -f 'python3 $BROKER'; sleep 1; sudo systemctl restart $UNIT_NAME"
 fi
 say
 
@@ -277,9 +332,13 @@ say
 
 # ------------------------------------------------------------------- verify
 say "== verifying =="
+_active="$(systemctl is-active "$UNIT_NAME" 2>/dev/null || echo unknown)"
+_enabled="$(systemctl is-enabled "$UNIT_NAME" 2>/dev/null || echo not-installed)"
+say "  service:      $UNIT_NAME $_active, on-boot: $_enabled"
+[ "$_enabled" = "enabled" ] || say "    -> will NOT survive a reboot until enabled: sudo systemctl enable $UNIT_NAME"
 h="$(curl -s -m 5 http://127.0.0.1:8611/health || true)"
 [ -n "$h" ] && say "  health:       $h" \
-            || say "  broker NOT answering on 8611 — see /home/atelier/broker.log"
+            || say "  broker NOT answering on 8611 — sudo journalctl -u $UNIT_NAME -n 40, then sudo systemctl restart $UNIT_NAME"
 sealed="$(curl -s -m 5 -X POST http://127.0.0.1:8611/artifact -H 'Content-Type: application/json' \
           -d '{"id":"000000000000","file":"x.md"}' || echo unreachable)"
 say "  sealed route: $sealed"
@@ -320,5 +379,5 @@ _th="$(dest scripts/atelier-threshold.py)"
 say "  threshold:    $(python3 -c "import ast;ast.parse(open('$_th').read());print('installed, parses')" 2>&1 | tail -1)"
 say
 say "backup: $BACKUP"
-[ "$brokered" -eq 1 ] && say "Broker restarted." || say "Broker NOT restarted — run the four lines above."
+[ "$brokered" -eq 1 ] && say "Broker service restarted." || say "Broker service NOT restarted — run the lines above."
 say "Nothing armed. Stratagems stay disarmed."

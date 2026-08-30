@@ -1035,19 +1035,7 @@ def do_verify(verification):
     })
     log(f"[DEBUG] Full verify resp: {json.dumps(resp)[:2000]}")
 
-    if resp and "incorrect" in str(resp).lower():
-        log("[verify] solver answer rejected — asking Sonnet once")
-        llm = ask_llm("Solve this obfuscated arithmetic puzzle. Decode the leetspeak, then compute. "
-                      "Reply with ONLY the number, two decimals.\n\n" + challenge)
-        m2 = re.search(r"-?\d+(?:\.\d+)?", llm or "")
-        if m2:
-            answer = f"{float(m2.group(0)):.2f}"
-            log(f"[verify] retrying with Sonnet answer {answer}")
-            resp = api_call("POST", "/verify", {"verification_code": code, "answer": answer})
-            log(f"[DEBUG] Retry verify resp: {json.dumps(resp)[:2000]}")
-
-
-    if resp.get("success"):
+    if resp and resp.get("success"):
         # Scan the full exchange for comedic material
         log("Verification successful!")
         try:
@@ -1210,7 +1198,9 @@ def cmd_post():
     log(f"Post created: {post_id}")
     log(f"[DEBUG] Full create resp: {json.dumps(resp)[:2000]}")
 
-    # Handle verification
+    # Handle verification. No challenge => Moltbook already published it, so the
+    # post is live; verified stays True. A challenge decides it.
+    verified = True
     verification = resp.get("post", {}).get("verification", {}) or resp.get("verification", {})
     if verification:
         verified = do_verify(verification)

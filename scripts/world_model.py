@@ -52,6 +52,14 @@ def _recent():
                          for e in led[-4:] if isinstance(e, dict))
     return ""
 
+def _house_ground():
+    """The real layout of her house, when a map exists. Fail-open: no map (Velaris) -> ''."""
+    try:
+        import house_map
+        return house_map.ground_block()
+    except Exception:
+        return ""
+
 def _extract(convo):
     import requests
     system = ("You track the SCENE two people share, not just their words. From the recent exchange, return ONLY "
@@ -59,6 +67,9 @@ def _extract(convo):
               '"objects":["<a thing/prop present in the scene>"],"attention":"<what attention rests on now, short>"}. '
               "Only name a scene or objects if the exchange truly implies a shared space or props (real or imagined "
               "together). If it is purely abstract talk, return empty string and empty list. Be concrete, not flowery.")
+    hg = _house_ground()
+    if hg:
+        system += " " + hg
     try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 180,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": convo[:1400]}]}, timeout=90)
@@ -112,11 +123,29 @@ def get_world_block():
     if not st: return ""
     scene = st.get("scene", ""); att = st.get("attention", "")
     objs = [o.get("name", "") for o in st.get("objects", []) if isinstance(o, dict) and o.get("salience", 0) >= 0.35]
-    if not scene and not objs: return ""
+    # her phone on the house wifi: a positive, fresh reading only — silence otherwise
+    presence = ""
+    try:
+        import home_presence
+        presence = home_presence.context_line()
+    except Exception:
+        pass
+    if not scene and not objs:
+        return "[%s]" % presence if presence else ""
     parts = []
     if scene: parts.append("you and Gloria are in %s" % scene)
+    if scene:
+        # her choice: the house's real geometry reaches him only when the
+        # scene is actually set in it — never as a standing caption
+        try:
+            import house_map
+            rc = house_map.room_context(scene)
+            if rc: parts.append(rc)
+        except Exception:
+            pass
     if objs: parts.append("still here: %s" % ", ".join(objs[:6]))
     if att: parts.append("attention rests on %s" % att)
+    if presence: parts.append(presence.rstrip("."))
     pres = st.get("self_presence", "")
     tail = (" (%s)" % pres) if pres and pres != "here with her" else ""
     return "[SCENE - %s.%s Speak from inside it, not about it.]" % ("; ".join(parts), tail)
