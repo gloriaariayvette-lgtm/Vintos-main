@@ -9269,6 +9269,21 @@ async def _aq_answer(qid: str = _AQForm(...), text: str = _AQForm(...)):
                    % ("Recorded. He'll get it once." if ok else "No question with that id."))
 
 
+@app.get("/api/atelier/reveals")
+async def atelier_reveals(request: Request):
+    """What he has chosen to show her from his Atelier — the feed the app's
+    Atelier tab renders. Only revealed pieces reach here (his own act put them
+    in the store); nothing sealed is exposed. Newest first."""
+    try:
+        with open(os.path.join(MEMORY, "atelier-reveals.json")) as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            data = []
+    except Exception:
+        data = []
+    return {"reveals": list(reversed(data))}
+
+
 @app.post("/api/ring/live")
 async def ring_live(request: Request):
     """Receive one heart-rate reading from the R21M Bridge app and store it as

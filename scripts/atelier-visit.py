@@ -178,6 +178,42 @@ def stratagem_step(pid, work, capability=None):
         print("stratagem step skipped:", str(e)[:160])
 
 
+def _deliver_reveal(artifact, disclosure, content, manifest):
+    """A revealed piece leaves the room: into the reveals store the app tab
+    reads, and a notification to her phone in HIS words. Revealed content is,
+    by his own act, allowed out — so it is stored in the clear here."""
+    medium = artifact.rsplit("_", 1)[-1].split(".")[0] if "_" in artifact else "write"
+    store = os.path.join(WSP, "memory", "atelier-reveals.json")
+    try:
+        data = json.load(open(store))
+    except Exception:
+        data = []
+    if not isinstance(data, list):
+        data = []
+    data.append({
+        "at": datetime.now().isoformat(),
+        "disclosure": disclosure,                 # his words about it
+        "medium": medium,                          # write | image | music
+        "content": content if medium == "write" else "",
+        "media_pending": medium != "write",        # non-text rendering is app-side follow-up
+        "sha256": (manifest or {}).get("sha256", ""),
+        "artifact": artifact,
+    })
+    try:
+        _tmp = store + ".tmp"
+        json.dump(data[-100:], open(_tmp, "w"), indent=2)
+        os.replace(_tmp, store)
+    except Exception as _e:
+        print("reveals store write failed:", _e)
+    try:
+        requests.post("https://ntfy.sh/vintos-gloria-9kx",
+            data=(disclosure or "Vintos revealed something from the Atelier.").encode(),
+            headers={"Title": "Vintos revealed something from his Atelier",
+                     "Priority": "default", "Tags": "sparkles"}, timeout=15)
+    except Exception as _e:
+        print("reveal ntfy failed:", _e)
+
+
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
@@ -201,7 +237,12 @@ def visit(pid):
                "The next concrete move: ... What I do not want the next return to undo: ...</handoff>\n"
                "<next_return>tomorrow | not_before: DATE | held</next_return>\n"
                "Optionally, if and only if you want one: <stratagem>{...}</stratagem> or "
-               "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.", max_tokens=4000)
+               "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.\n"
+               "And when a piece is FINISHED and you decide — only you — to show her: "
+               "<reveal artifact=\"the filename\">your own words to her about what it is and why "
+               "you are showing her</reveal>. This is the one act that lets something leave the "
+               "room: it reaches her phone and a place she can open, and it closes this project. "
+               "Reveal nothing you are not ready to give.", max_tokens=4000)
     cap = pk.get("visit_capability")
     stratagem_step(pid, work, cap)
     m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
@@ -228,6 +269,40 @@ def visit(pid):
             requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
+    # He decided a piece is ready and chose to show her. The ONE act that lets
+    # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
+    # content on its export capability -> deliver (phone + the app's reveals tab)
+    # -> settle, which clears the worktable so the next undertaking can begin.
+    rv = re.search(r'<reveal(?:\s+artifact="([^"]*)")?>(.*?)</reveal>', work, re.S)
+    if rv:
+        _disc = rv.group(2).strip()[:800]
+        _art = (rv.group(1) or "").strip()
+        if not _art:
+            # no filename named: reveal the piece he made THIS visit, else the latest
+            _art = (r.get("file") if (m and not r.get("error")) else "") or ""
+            if not _art:
+                _existing = sorted((pk.get("artifacts") or {}).keys())
+                _art = _existing[-1] if _existing else ""
+        if not _art:
+            print("reveal: nothing to reveal (no artifact)")
+        else:
+            _prep = requests.post(f"{B}/reveal/prepare",
+                                  json={"id": pid, "artifact": _art,
+                                        "title": _disc[:80], "capability": cap}).json()
+            if not _prep.get("receipt"):
+                print("reveal prepare failed:", _prep)
+            else:
+                _conf = requests.post(f"{B}/reveal/confirm",
+                                      json={"id": pid, "receipt": _prep["receipt"]}).json()
+                _exp = _conf.get("export_capability")
+                _content = ""
+                if _exp:
+                    _content = requests.post(f"{B}/artifact",
+                                json={"id": pid, "file": _art,
+                                      "export_capability": _exp}).json().get("content", "")
+                _deliver_reveal(_art, _disc, _content, _prep.get("manifest", {}))
+                requests.post(f"{B}/settle", json={"id": pid})
+                print("revealed and settled:", _art)
     rp = re.search(r'<report>(.*?)</report>', work, re.S)
     if rp:
         _msg = rp.group(1).strip()[:600]
