@@ -1323,22 +1323,31 @@ async def get_causality_hypotheses(request: Request):
             if h.get("graduated"):
                 continue
             marks = h.get("marks", [])
-            confirmed_marks = sum(1 for m in marks if isinstance(m, dict) and m.get("outcome") == "attempted")
-            challenged_marks = sum(1 for m in marks if isinstance(m, dict) and m.get("outcome") in ("defaulted", "partial"))
+            nightly = [m for m in marks if isinstance(m, dict) and m.get("schema_version") == 2]
+            confirmed_marks = sum(1 for m in nightly if m.get("verdict") == "yes" and m.get("lineage_state") == "eligible")
+            challenged_marks = sum(1 for m in nightly if m.get("verdict") == "no" and m.get("lineage_state") == "eligible")
+            unconfirmed_marks = sum(1 for m in nightly if m.get("verdict") == "unconfirmed")
             net = confirmed_marks - challenged_marks
             formed = h.get("formed_date", h.get("formed", ""))[:10]
             try:
                 days_old = (_cdate.today() - _cdate.fromisoformat(formed)).days
             except:
                 days_old = 0
-            if h.get("self_knowledge") or h.get("status") == "confirmed":
-                status = "CONFIRMED"
-            elif len(marks) == 0:
+            readiness = h.get("graduation_readiness") or {}
+            if h.get("status") == "review_held":
+                status = "REVIEW HELD"
+            elif readiness.get("state") == "eligible_day_7" or h.get("status") == "eligible_day_7":
+                status = "ELIGIBLE DAY 7"
+            elif not nightly and not h.get("tests_run"):
                 status = "UNTESTED"
+            elif not nightly:
+                status = "LEGACY EVALUATED"
             elif net > 0:
                 status = "SUPPORTED"
             elif net < 0:
                 status = "CHALLENGED"
+            elif unconfirmed_marks:
+                status = "UNCONFIRMED"
             else:
                 status = "MIXED"
             hypotheses.append({
@@ -1352,6 +1361,16 @@ async def get_causality_hypotheses(request: Request):
                 "marks": marks,
                 "net": net,
                 "days_old": days_old,
+                "hypothesis_id": h.get("hypothesis_id", ""),
+                "source": h.get("source", "unknown"),
+                "formation": h.get("formation"),
+                "nightly_evaluations": len(nightly),
+                "supporting_occasions": confirmed_marks,
+                "challenging_occasions": challenged_marks,
+                "unconfirmed_nights": unconfirmed_marks,
+                "tests_run": h.get("tests_run", 0),
+                "last_tested": h.get("last_tested"),
+                "graduation_readiness": readiness,
                 "marker": None,
             })
         return {"success": True, "hypotheses": hypotheses}
@@ -7028,7 +7047,7 @@ async def pass_held_item(idx: int, request: Request):
             else:
                 import sys as _bs_sys; _bs_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                 from belief_sediment import promote_hypothesis as _bs_p
-                _bs_p(hypothesis, evidence_count=item.get("marks_count", 1), source="manual_pass")
+                _bs_p(hypothesis, evidence_count=item.get("support_count", item.get("marks_count", 1)), source="manual_pass")
         elif item.get("type") == "pearl_held":
             cid = item.get("candidate_id", "")
             if cid:
