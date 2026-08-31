@@ -184,14 +184,22 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     by his own act, allowed out — so it is stored in the clear here."""
     medium = artifact.rsplit("_", 1)[-1].split(".")[0] if "_" in artifact else "write"
     store = os.path.join(WSP, "memory", "atelier-reveals.json")
-    try:
-        data = json.load(open(store))
-    except Exception:
+    if os.path.exists(store):
+        try:
+            data = json.load(open(store))
+        except Exception as e:
+            print("reveals store unreadable; refusing to overwrite it:", e)
+            return False
+    else:
         data = []
     if not isinstance(data, list):
-        data = []
+        print("reveals store is not a list; refusing to overwrite it")
+        return False
+    revealed_at = datetime.now().isoformat()
     data.append({
-        "at": datetime.now().isoformat(),
+        "at": revealed_at,                         # legacy readers
+        "revealed_at": revealed_at,
+        "revealed": True,
         "disclosure": disclosure,                 # his words about it
         "medium": medium,                          # write | image | music
         "content": content if medium == "write" else "",
@@ -201,10 +209,12 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     })
     try:
         _tmp = store + ".tmp"
-        json.dump(data[-100:], open(_tmp, "w"), indent=2)
+        with open(_tmp, "w") as _out:
+            json.dump(data[-100:], _out, indent=2)
         os.replace(_tmp, store)
     except Exception as _e:
         print("reveals store write failed:", _e)
+        return False
     try:
         requests.post("https://ntfy.sh/vintos-gloria-9kx",
             data=(disclosure or "Vintos revealed something from the Atelier.").encode(),
@@ -212,6 +222,7 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
                      "Priority": "default", "Tags": "sparkles"}, timeout=15)
     except Exception as _e:
         print("reveal ntfy failed:", _e)
+    return True
 
 
 def visit(pid):
@@ -295,14 +306,23 @@ def visit(pid):
                 _conf = requests.post(f"{B}/reveal/confirm",
                                       json={"id": pid, "receipt": _prep["receipt"]}).json()
                 _exp = _conf.get("export_capability")
-                _content = ""
-                if _exp:
-                    _content = requests.post(f"{B}/artifact",
+                if not _exp:
+                    print("reveal confirm failed:", _conf)
+                else:
+                    _fetch = requests.post(f"{B}/artifact",
                                 json={"id": pid, "file": _art,
-                                      "export_capability": _exp}).json().get("content", "")
-                _deliver_reveal(_art, _disc, _content, _prep.get("manifest", {}))
-                requests.post(f"{B}/settle", json={"id": pid})
-                print("revealed and settled:", _art)
+                                      "export_capability": _exp}).json()
+                    if "content" not in _fetch:
+                        print("reveal export failed; project remains open:", _fetch)
+                    elif not _deliver_reveal(_art, _disc, _fetch["content"],
+                                             _prep.get("manifest", {})):
+                        print("reveal shelf write failed; project remains open")
+                    else:
+                        _settled = requests.post(f"{B}/settle", json={"id": pid}).json()
+                        if _settled.get("ok") and not _settled.get("error"):
+                            print("revealed and settled:", _art)
+                        else:
+                            print("reveal delivered but settlement failed:", _settled)
     rp = re.search(r'<report>(.*?)</report>', work, re.S)
     if rp:
         _msg = rp.group(1).strip()[:600]

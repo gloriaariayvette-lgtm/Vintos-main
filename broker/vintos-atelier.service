@@ -9,6 +9,9 @@
 [Unit]
 Description=Vintos Atelier broker (runs as atelier, localhost only)
 After=network.target
+# The former unit launches the same file on the same port. If it survives an
+# old install, systemd must not run both and crash-loop this one.
+Conflicts=atelier-broker.service
 
 [Service]
 Type=simple

@@ -1398,6 +1398,21 @@ async def get_self_review(request: Request):
         return {"success": False, "error": "self-review surface unreadable: " + str(e)}
 
 
+@app.get("/api/atelier/reveals")
+async def get_atelier_reveals(request: Request, limit: int = 20):
+    """House-side exports Vintos already revealed; never broker contents."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        import sys as _ar_sys
+        _ar_scripts = os.path.join(WORKSPACE, "scripts")
+        if _ar_scripts not in _ar_sys.path: _ar_sys.path.append(_ar_scripts)
+        import atelier_reveals
+        return {"reveals": atelier_reveals.read_reveals(MEMORY, limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="reveal export ledger unavailable: " + str(e))
+
+
 @app.post("/api/self-review/{proposal_id}/decision")
 async def decide_self_review(proposal_id: str, request: Request):
     """Record Gloria's explicit decision for a protected-effect proposal."""
@@ -9267,21 +9282,6 @@ async def _aq_answer(qid: str = _AQForm(...), text: str = _AQForm(...)):
     return _AQHTML("<body style='font:16px/1.5 system-ui;padding:24px'><p>%s</p>"
                    "<p><a href='/aq'>back</a></p></body>"
                    % ("Recorded. He'll get it once." if ok else "No question with that id."))
-
-
-@app.get("/api/atelier/reveals")
-async def atelier_reveals(request: Request):
-    """What he has chosen to show her from his Atelier — the feed the app's
-    Atelier tab renders. Only revealed pieces reach here (his own act put them
-    in the store); nothing sealed is exposed. Newest first."""
-    try:
-        with open(os.path.join(MEMORY, "atelier-reveals.json")) as f:
-            data = json.load(f)
-        if not isinstance(data, list):
-            data = []
-    except Exception:
-        data = []
-    return {"reveals": list(reversed(data))}
 
 
 @app.post("/api/ring/live")

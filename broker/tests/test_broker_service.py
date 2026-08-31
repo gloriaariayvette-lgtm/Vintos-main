@@ -36,6 +36,8 @@ check("it starts the installed broker",
 check("it restarts on failure", re.search(r"^Restart=(on-failure|always)$", unit, re.M))
 check("it starts on boot (system target, no user manager assumed)",
       "WantedBy=multi-user.target" in unit)
+check("the legacy duplicate broker unit conflicts mechanically",
+      "Conflicts=atelier-broker.service" in unit)
 check("restrictive umask", re.search(r"^UMask=00?77$", unit, re.M))
 check("filesystem protected, /home/atelier writable",
       "ProtectSystem=strict" in unit and "ReadWritePaths=/home/atelier" in unit)
@@ -56,6 +58,8 @@ check("deploy enables the unit (reboot survival)", re.search(r"systemctl enable\
 check("deploy starts/restarts via systemd, not nohup", "nohup" not in dep)
 check("deploy retires a leftover manual broker before starting the unit",
       re.search(r"pkill -f .python3 \$BROKER", dep))
+check("deploy disables the legacy duplicate broker unit",
+      "disable --now atelier-broker.service" in dep)
 check("deploy verifies service active and enabled after install",
       "is-active" in dep and "is-enabled" in dep)
 check("failed start points at journalctl, not a dead log file",

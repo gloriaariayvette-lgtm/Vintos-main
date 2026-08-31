@@ -63,6 +63,10 @@ vis = open(os.path.join(os.path.dirname(HERE), "..", "scripts", "atelier-visit.p
 ck("the visit offers him a <reveal> tag", "<reveal" in vis and "reveal/prepare" in vis)
 ck("it delivers to the reveals store + her phone", "atelier-reveals.json" in vis and "ntfy" in vis)
 ck("it settles after revealing", "/settle" in vis)
+ck("a failed shelf write cannot settle the project",
+   "if not _deliver_reveal" in vis and "project remains open" in vis)
+ck("a malformed shelf is never overwritten as empty",
+   "refusing to overwrite it" in vis)
 
 srv.shutdown(); shutil.rmtree(TMP, ignore_errors=True)
 print("\n%d/%d passed" % (sum(R), len(R)))

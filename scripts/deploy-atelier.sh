@@ -53,7 +53,7 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
-SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py"
+SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py"
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
@@ -329,6 +329,9 @@ if sudo -n true 2>/dev/null; then
        && sudo install -m 644 "$SRC/broker/$UNIT_NAME.service" "$UNIT_DST"; then
         sudo systemctl daemon-reload
         sudo systemctl enable "$UNIT_NAME" >/dev/null 2>&1
+        # The old unit launches this same broker on this same port. Retire it;
+        # Conflicts= in the installed unit keeps it retired thereafter.
+        sudo systemctl disable --now atelier-broker.service >/dev/null 2>&1 || true
         # A leftover manually-launched broker holds 8611 and would make the
         # unit's first start fail; retire it before starting the service.
         sudo systemctl stop "$UNIT_NAME" 2>/dev/null
