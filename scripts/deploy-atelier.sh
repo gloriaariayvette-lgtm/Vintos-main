@@ -48,7 +48,7 @@ stratagem.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh
 house_map.py house-map.json home_presence.py
-want_artifact_guard.py wants_audit.py"
+want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 BINS="server.py model_router.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh"

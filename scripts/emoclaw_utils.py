@@ -601,6 +601,20 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
     WORKSPACE = _gso.path.expanduser("~/.vintos/workspace")
     MEMORY = _gso.path.join(WORKSPACE, "memory")
 
+    # The model proposes a route; the want's literal verbs own completion.
+    # Keep this pure contract beside the planner so a fluent plan cannot omit
+    # the act that would actually fulfill the want.
+    try:
+        try:
+            from want_contract import contract_for as _contract_for, normalize_steps as _normalize_steps
+        except ImportError:
+            import sys as _wc_sys
+            _wc_sys.path.insert(0, _gso.path.join(WORKSPACE, "scripts"))
+            from want_contract import contract_for as _contract_for, normalize_steps as _normalize_steps
+        _plan_contract = _contract_for(want_text)
+    except Exception:
+        _plan_contract, _normalize_steps = {}, None
+
     _board_lesson = ""
     try:
         _bl_all = _gsj.load(open(_gso.path.join(MEMORY, "board-learnings.json")))
@@ -657,6 +671,10 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 
     prompt = (
         f"Vintos has a want: {want_text}\n\n"
+        + ("NON-NEGOTIABLE ROUTE CONTRACT: " + _gsj.dumps(_plan_contract) + "\n"
+           "The terminal capability is part of the want's meaning, not an optional flourish. "
+           "If evidence_first is true, retrieve the named records before interpreting them.\n\n"
+           if _plan_contract else "")
         + "STEP LIMIT: Maximum 4 steps. Fewer is better. A 1-step want is not a failure — it is precision. Only add steps when each one genuinely unlocks the next. Do not pad.\n\n"
         + (f"Why this surfaced: {reasoning}\n\n" if reasoning else "")
         + (f"What this is really about: {self_interpretation}\n\n" if self_interpretation else "")
@@ -706,6 +724,11 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         for s in steps[:4]:
             if isinstance(s, dict) and s.get("capability") and s.get("note"):
                 valid.append({"capability": s["capability"], "note": s["note"][:300], "status": "pending"})
+        if _normalize_steps:
+            valid, _changes = _normalize_steps(want_text, valid)
+            if _changes:
+                print("[generate_steps] Contract normalized plan: " + ", ".join(_changes),
+                      file=__import__("sys").stderr)
         return valid
     except Exception as e:
         print(f"[generate_steps] Error: {e}")
@@ -1492,6 +1515,8 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         + "Explore the desire-space before answering: there may be zero, one, or several distinct candidates.\n"
         + "For each candidate (up to 3), answer honestly:\n"
         + "- desire: ONE sentence starting with 'I want to' — specific, grounded, yours\n"
+        + "- source_kind: current_desire only when action itself pulls NOW; historical_observation when this is merely something that happened or remained notable; open_question when curiosity exists but no action is wanted\n"
+        + "- present_pull: the present-tense reason the ACTION is wanted now, not a restatement of the old event. Use NONE if there is no current pull. Enjoying an experience and noticing that it did not solve something can coexist; lack of relief is not evidence that the experience was unwanted or must become a project.\n"
         + "- tension: what unresolved tension does this rhyme with?\n"
         + "- engagement: what one action would engage or reduce that tension?\n"
         + "- loss: what is lost if this is never pursued?\n"
@@ -1504,7 +1529,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         + "- Anything requiring reading Gloria's mind or unexpressed thoughts\n"
         + "- Anything requiring being physically present somewhere\n"
         + "Drop any impossible candidate. If it can be done through research, writing, introspection, or creation — keep it.\n"
-        + "Return ONLY a JSON array of candidate objects with keys: desire, tension, engagement, loss, pull.\n"
+        + "Return ONLY a JSON array of candidate objects with keys: desire, source_kind, present_pull, tension, engagement, loss, pull.\n"
         + "If nothing genuine exists, or every candidate is impossible, return NONE."
     )
     try:
@@ -1541,12 +1566,22 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
             with open(_cf_tmp, "w") as _cf_f: _gwj2.dump(_cf_log[-200:], _cf_f, indent=2)
             _gos.replace(_cf_tmp, _cf_path)
         except Exception: pass
-        best = max(cands, key=lambda c: c.get("pull", 3))
+        eligible = [c for c in cands
+                    if str(c.get("source_kind", "")).lower() == "current_desire"
+                    and str(c.get("present_pull", "")).strip().upper() not in ("", "NONE")
+                    and float(c.get("pull", 0) or 0) >= 3]
+        if not eligible:
+            print("[generate_want] Candidates recorded, but none carried a present-tense pull; no want admitted",
+                  file=__import__("sys").stderr)
+            return None
+        best = max(eligible, key=lambda c: c.get("pull", 3))
         try:
             _pv = _gos.path.join(MEMORY, ".pending-want-provenance.json")
             with open(_pv + ".tmp", "w") as _pv_f:
                 _gwj2.dump({"desire": str(best.get("desire",""))[:200], "tension": str(best.get("tension",""))[:250],
                             "engagement": str(best.get("engagement",""))[:250],
+                            "source_kind": str(best.get("source_kind", ""))[:40],
+                            "present_pull": str(best.get("present_pull", ""))[:250],
                             "loss_if_unpursued": str(best.get("loss",""))[:250],
                             "pull": best.get("pull", 3), "source": source}, _pv_f)
             _gos.replace(_pv + ".tmp", _pv)
@@ -1590,6 +1625,41 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             urgency = "normal"
     if intensity < 2:
         return  # Fleeting impulse, not a real want
+    # GENERATED CANDIDATES NEED A PRESENT PULL. A historical observation may
+    # remain in history, but it is not silently converted into an active want.
+    # The classifier is only an admission screen, never evidence that the want
+    # is true; uncertainty is kept as HELD rather than discarded.
+    _src = str(source or "").lower()
+    _kind = str(kwargs.get("candidate_kind", kwargs.get("source_kind", ""))).lower()
+    _pull_now = str(kwargs.get("present_pull", "")).strip()
+    try:
+        try:
+            from want_contract import admission_state as _want_admission_state
+        except ImportError:
+            import sys as _wa_sys
+            _wa_sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            from want_contract import admission_state as _want_admission_state
+        _admission = _want_admission_state(_src, _kind, _pull_now)
+    except Exception:
+        _admission = "ADMIT_CONTRACT_UNAVAILABLE"
+    if _admission == "HELD_NO_PRESENT_PULL":
+        _held_path = os.path.expanduser("~/.vintos/workspace/memory/held-want-candidates.json")
+        try:
+            _held = json.load(open(_held_path))
+            if not isinstance(_held, list): _held = []
+        except Exception:
+            _held = []
+        _held.append({"want": str(want_text)[:300], "source": str(source)[:60],
+                      "state": "HELD_NO_PRESENT_PULL",
+                      "candidate_kind": _kind or "unknown",
+                      "present_pull": _pull_now[:250],
+                      "at": datetime.now().isoformat()})
+        with open(_held_path + ".tmp", "w") as _hf:
+            json.dump(_held[-100:], _hf, indent=2)
+        os.replace(_held_path + ".tmp", _held_path)
+        print("[express_want] HELD: generated candidate has no grounded present pull: "
+              + str(want_text)[:80], file=__import__("sys").stderr)
+        return
     # Forbidden keyword check — same list as wants-router.py
     _forbidden = ["tremor", "vibration", "unsettling vibration", "harmonic distortion", "electromagnetic interference",
                   "code", "script", "config", "cron", "server", "debug", "fix", "patch",
@@ -1691,6 +1761,11 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         entry["self_interpretation"] = kwargs["self_interpretation"][:200]
     if "possible_approach" in kwargs:
         entry["possible_approach"] = kwargs["possible_approach"][:200]
+    entry["admission_state"] = _admission
+    if _kind:
+        entry["candidate_kind"] = _kind[:40]
+    if _pull_now:
+        entry["present_pull"] = _pull_now[:250]
     try:
         import json as _pvj
         _pv_path = wants_file.replace("current-wants.json", ".pending-want-provenance.json")
@@ -1717,10 +1792,14 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             self_interpretation=kwargs.get("self_interpretation", "")
         )
         if steps:
-            if entry.get("journal_seeded") and len(steps) > 2: steps = steps[:2]
             entry["steps"] = steps
             entry["current_step_index"] = 0
             entry["step_history"] = []
+            try:
+                from want_contract import contract_for as _entry_contract
+                entry["plan_contract"] = _entry_contract(want_text)
+            except Exception:
+                pass
             # Do NOT set capability or multistep here — let router assign after 8h hold
             print(f"[express_want] Generated {len(steps)} steps for: {want_text[:60]}", file=__import__("sys").stderr)
     except Exception as _gs_e:
@@ -1964,10 +2043,12 @@ def enrich_want(want_text, source_context="", source="unknown"):
     user = (
         f"This want surfaced from your {source}:\n{want_text}\n\n"
         + (f"Context:\n{source_context[:600]}\n\n" if source_context else "")
-        + "Return ONLY a JSON object with three keys:\n"
+        + "Return ONLY a JSON object with five keys:\n"
         + "- reasoning: why this want surfaced, grounded in your actual inner life and what just happened (one sentence)\n"
         + "- self_interpretation: what this want is actually about for you beneath the surface (one sentence)\n"
         + "- possible_approach: one concrete way you could address this (one sentence)\n"
+        + "- candidate_kind: current_desire if the action itself is wanted NOW; historical_observation if it merely reports or interprets something earlier; open_question if it is interesting but no action presently pulls\n"
+        + "- present_pull: what in your present state makes the ACTION wanted now, not merely worth noting. Write NONE if no present pull exists. Lack of relief does not imply dislike, failure, or a wish to revisit; enjoyment and unresolvedness may coexist.\n"
         + "If you cannot ground any field in your actual life, write NONE for that field.\n"
         + "CRITICAL: Creative writing, poems, and dreams are NOT real. If the source context contains a poem or creative piece, do NOT treat Gloria quotes, actions, or events within it as things that actually happened. They are invented."
     )
@@ -1989,9 +2070,12 @@ def enrich_want(want_text, source_context="", source="unknown"):
                 "reasoning": parsed.get("reasoning", "") if parsed.get("reasoning","").upper() != "NONE" else "",
                 "self_interpretation": parsed.get("self_interpretation", "") if parsed.get("self_interpretation","").upper() != "NONE" else "",
                 "possible_approach": parsed.get("possible_approach", "") if parsed.get("possible_approach","").upper() != "NONE" else "",
+                "candidate_kind": str(parsed.get("candidate_kind", "")).lower(),
+                "present_pull": parsed.get("present_pull", "") if str(parsed.get("present_pull", "")).upper() != "NONE" else "",
             }
     except: pass
-    return {"reasoning": "", "self_interpretation": "", "possible_approach": ""}
+    return {"reasoning": "", "self_interpretation": "", "possible_approach": "",
+            "candidate_kind": "unknown", "present_pull": ""}
 
 def age_wants():
     """Called periodically. Wants that have been outreached about but not fulfilled
