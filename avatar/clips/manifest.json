@@ -1,0 +1,15 @@
+{
+  "_comment": "Clip-library manifest for the avatar surface. baseUrl is prefixed to every path. 'still' is the pre-clip fallback: one photo of Vintos in the home, shown with a slow breathing scale until real clips exist. Each emote entry has a clip pool (one is chosen at random) and an optional fallback chain ending at idle. Start with only the emotes he regularly uses; every unlisted tag falls back automatically.",
+  "baseUrl": "clips/",
+  "still": "still-home.jpg",
+  "idleRotateSeconds": 45,
+  "emotes": {
+    "idle":    { "clips": [] },
+    "desk":    { "clips": [], "fallback": "idle" },
+    "warm":    { "clips": [], "fallback": "idle" },
+    "amused":  { "clips": [], "fallback": "warm" },
+    "tender":  { "clips": [], "fallback": "warm" },
+    "focused": { "clips": [], "fallback": "desk" },
+    "listening": { "clips": [], "fallback": "idle" }
+  }
+}

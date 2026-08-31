@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vintos</title>
+<style>
+  :root {
+    --amber: #c98a4b;
+    --amber-dim: #8a5f36;
+    --ink: #0d0b09;
+    --panel: rgba(24, 19, 15, 0.86);
+    --line: rgba(201, 138, 75, 0.35);
+    --text: #e8ddd0;
+    --text-dim: #9a8b78;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden;
+    font-family: "Iowan Old Style", "Palatino", Georgia, serif; color: var(--text); }
+
+  /* ---------- Scene: layered home + avatar ---------- */
+  #scene { position: fixed; inset: 0; }
+  #scene .layer { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; opacity: 0; transition: opacity 900ms ease; }
+  #scene .layer.live { opacity: 1; }
+  /* Subtle life for still-photo fallback: slow breathing scale */
+  #scene img.layer.live { animation: breathe 14s ease-in-out infinite alternate; }
+  @keyframes breathe { from { transform: scale(1.0); } to { transform: scale(1.03); } }
+  #scene-fallback { position: absolute; inset: 0;
+    background: radial-gradient(120% 90% at 50% 110%, #2a1c10 0%, #14100b 55%, #0d0b09 100%); }
+  #vignette { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(90% 70% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%); }
+
+  /* ---------- Telemetry bars (clean, nothing overlaps them) ---------- */
+  #telemetry { position: fixed; top: calc(var(--safe-top) + 18px); right: 14px;
+    display: flex; flex-direction: column; gap: 9px; z-index: 20; pointer-events: none; }
+  .tele-row { display: flex; align-items: center; gap: 8px;
+    font: 11px/1 "SF Mono", ui-monospace, monospace; letter-spacing: 0.12em;
+    color: var(--amber-dim); text-transform: lowercase; }
+  .tele-track { width: 88px; height: 2px; background: rgba(201,138,75,0.18); border-radius: 2px; }
+  .tele-fill { height: 100%; background: var(--amber-dim); border-radius: 2px;
+    transition: width 600ms ease, background 600ms ease; }
+
+  /* ---------- Close button ---------- */
+  #btn-close { position: fixed; top: calc(var(--safe-top) + 14px); left: 14px; z-index: 30;
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text-dim); font-size: 18px; }
+
+  /* ---------- Control drawer (model toggle + calls live here now) ---------- */
+  #drawer { position: fixed; right: 0; bottom: calc(var(--safe-bottom) + 120px); z-index: 40;
+    display: flex; align-items: flex-end; transform: translateX(calc(100% - 34px));
+    transition: transform 320ms cubic-bezier(.4,0,.2,1); }
+  #drawer.open { transform: translateX(0); }
+  #drawer-handle { width: 34px; height: 92px; border: 1px solid var(--line); border-right: none;
+    border-radius: 14px 0 0 14px; background: var(--panel); color: var(--amber);
+    display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  #drawer.open #drawer-handle .chev { transform: rotate(180deg); }
+  #drawer-handle .chev { transition: transform 320ms ease; }
+  #drawer-body { background: var(--panel); border: 1px solid var(--line); border-right: none;
+    border-radius: 14px 0 0 14px; padding: 16px 18px; display: flex; flex-direction: column;
+    gap: 14px; min-width: 190px; backdrop-filter: blur(14px); }
+  .drawer-label { font: 10px/1 "SF Mono", ui-monospace, monospace; letter-spacing: 0.2em;
+    color: var(--text-dim); text-transform: uppercase; }
+  #model-toggle { border: 1px solid var(--line); border-radius: 20px; background: transparent;
+    color: var(--amber); font: 13px/1 "SF Mono", ui-monospace, monospace; letter-spacing: 0.15em;
+    padding: 10px 14px; }
+  .drawer-btn { display: flex; align-items: center; gap: 10px; border: 1px solid transparent;
+    border-radius: 12px; background: rgba(255,255,255,0.04); color: var(--text);
+    font: 12px/1 "SF Mono", ui-monospace, monospace; letter-spacing: 0.15em; padding: 12px 14px; }
+  .drawer-btn .ico { font-size: 16px; }
+  /* Device Stop is destructive: requires a press-and-hold inside the open drawer */
+  #btn-stop { border-color: rgba(200, 60, 40, 0.4); color: #d98070; position: relative; overflow: hidden; }
+  #btn-stop .hold-fill { position: absolute; inset: 0; width: 0%; background: rgba(200,60,40,0.25); }
+  #btn-stop.armed .hold-fill { width: 100%; transition: width 900ms linear; }
+
+  /* ---------- Caption + input ---------- */
+  #caption { position: fixed; left: 20px; right: 20px; bottom: calc(var(--safe-bottom) + 96px);
+    z-index: 15; font-style: italic; font-size: 17px; line-height: 1.45;
+    color: var(--text); text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+    max-height: 34vh; overflow-y: auto; -webkit-mask-image: linear-gradient(to bottom, transparent, black 12%); }
+  #inputbar { position: fixed; left: 14px; right: 14px; bottom: calc(var(--safe-bottom) + 16px);
+    z-index: 25; display: flex; align-items: center; gap: 10px; }
+  #say { flex: 1; height: 52px; border-radius: 26px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); font: italic 16px/1 inherit; padding: 0 20px; }
+  #say::placeholder { color: var(--text-dim); }
+  .round-btn { width: 48px; height: 48px; flex: none; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--panel); font-size: 18px; color: var(--amber); }
+  button { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div id="scene-fallback"></div>
+  <!-- Two swap layers: the player crossfades between them (video or img elements are injected) -->
+  <div id="vignette"></div>
+</div>
+
+<button id="btn-close" aria-label="Close">✕</button>
+
+<div id="telemetry" aria-hidden="true"></div>
+
+<aside id="drawer">
+  <button id="drawer-handle" aria-label="Controls"><span class="chev">‹</span></button>
+  <div id="drawer-body">
+    <span class="drawer-label">Model</span>
+    <button id="model-toggle">✦ OPUS 4.8</button>
+    <span class="drawer-label">Actions</span>
+    <button class="drawer-btn" id="btn-call"><span class="ico">🎙</span> CALL</button>
+    <button class="drawer-btn" id="btn-gcs"><span class="ico">🌸</span> GCS</button>
+    <button class="drawer-btn" id="btn-stop"><span class="hold-fill"></span><span class="ico">🛑</span> HOLD TO STOP</button>
+  </div>
+</aside>
+
+<div id="caption"></div>
+
+<div id="inputbar">
+  <input id="say" type="text" placeholder="say something…" autocomplete="off">
+  <button class="round-btn" id="btn-camera">📷</button>
+  <button class="round-btn" id="btn-gallery">🖼</button>
+  <button class="round-btn" id="btn-send">→</button>
+</div>
+
+<script>
+/* ============================================================
+   Vintos avatar surface — photoreal clip-library player.
+
+   The scene is driven by a manifest (clips/manifest.json):
+   emote tag → list of looping clips filmed/generated in Gloria's
+   home from a reference photo. Missing tags fall back along a
+   declared chain and finally to the idle pool; before any clips
+   exist at all, a single still photo with a slow breathing scale
+   keeps the surface alive. Honest names: this file plays clips,
+   it does not simulate a body.
+
+   Integration surface (wire the existing websocket to this):
+     VintosAvatar.setEmote(tag)        — [GESTURE]/[DO:…] tags land here
+     VintosAvatar.setTelemetry({...})  — {val:0..1, aro:0..1, ...}
+     VintosAvatar.setCaption(text)
+     VintosAvatar.setModel(name)
+     VintosAvatar.on(event, cb)        — 'send' {text}, 'call', 'gcs',
+                                         'stop' (fires only after full
+                                         press-and-hold), 'close',
+                                         'camera', 'gallery',
+                                         'model-toggle'
+   ============================================================ */
+(function () {
+  const scene = document.getElementById('scene');
+  const vignette = document.getElementById('vignette');
+  const listeners = {};
+  const emit = (ev, data) => (listeners[ev] || []).forEach(cb => cb(data));
+
+  /* ---------- manifest + clip player ---------- */
+  let manifest = null;
+  let layers = [];           // two swap elements for crossfade
+  let front = 0;             // index of the visible layer
+  let currentEmote = null;
+  let idleTimer = null;
+
+  function makeLayer(src, isVideo) {
+    const el = isVideo ? document.createElement('video') : document.createElement('img');
+    el.className = 'layer';
+    if (isVideo) { el.muted = true; el.loop = true; el.playsInline = true; el.autoplay = true; }
+    el.src = src;
+    scene.insertBefore(el, vignette);
+    return el;
+  }
+
+  function resolveClips(tag) {
+    if (!manifest) return null;
+    let t = tag, guard = 0;
+    while (t && guard++ < 10) {
+      const entry = manifest.emotes[t];
+      if (entry && entry.clips && entry.clips.length) return entry.clips;
+      t = entry && entry.fallback;
+    }
+    return (manifest.emotes.idle && manifest.emotes.idle.clips) || null;
+  }
+
+  function showSource(src) {
+    const isVideo = /\.(mp4|webm|mov)$/i.test(src);
+    const next = makeLayer(src, isVideo);
+    const swap = () => {
+      requestAnimationFrame(() => next.classList.add('live'));
+      const old = layers[front];
+      if (old) { old.classList.remove('live'); setTimeout(() => old.remove(), 1000); }
+      layers[front] = next;
+    };
+    if (isVideo) { next.addEventListener('canplay', swap, { once: true }); next.load(); }
+    else { next.addEventListener('load', swap, { once: true }); }
+    next.addEventListener('error', () => next.remove(), { once: true });
+  }
+
+  function setEmote(tag) {
+    if (tag === currentEmote) return;
+    currentEmote = tag;
+    const clips = resolveClips(tag);
+    if (clips) showSource(base() + clips[Math.floor(Math.random() * clips.length)]);
+    scheduleIdleVariation();
+  }
+
+  // Rotate among idle clips so long silences never freeze on one loop.
+  function scheduleIdleVariation() {
+    clearTimeout(idleTimer);
+    const every = (manifest && manifest.idleRotateSeconds) || 45;
+    idleTimer = setTimeout(() => {
+      if (currentEmote === null || currentEmote === 'idle') setEmoteForce('idle');
+      scheduleIdleVariation();
+    }, every * 1000);
+  }
+  function setEmoteForce(tag) { currentEmote = null; setEmote(tag); }
+
+  function base() { return (manifest && manifest.baseUrl) || 'clips/'; }
+
+  fetch('clips/manifest.json')
+    .then(r => r.ok ? r.json() : null)
+    .then(m => {
+      manifest = m;
+      if (m && m.still && !(m.emotes && m.emotes.idle && m.emotes.idle.clips.length)) {
+        showSource(base() + m.still);       // still-photo fallback with breathing scale
+      } else if (m) {
+        setEmote('idle');
+      }
+    })
+    .catch(() => { /* fallback gradient stays; surface remains usable */ });
+
+  /* ---------- telemetry ---------- */
+  const teleBox = document.getElementById('telemetry');
+  const TELE_ORDER = ['val','aro','dom','saf','des','con','ply','cur','wrm','ten','gnd'];
+  const teleFills = {};
+  TELE_ORDER.forEach(k => {
+    const row = document.createElement('div'); row.className = 'tele-row';
+    const label = document.createElement('span'); label.textContent = k;
+    const track = document.createElement('div'); track.className = 'tele-track';
+    const fill = document.createElement('div'); fill.className = 'tele-fill';
+    track.appendChild(fill); row.append(label, track); teleBox.appendChild(row);
+    teleFills[k] = fill;
+  });
+  function setTelemetry(values) {
+    for (const [k, v] of Object.entries(values || {})) {
+      if (teleFills[k]) teleFills[k].style.width = Math.round(Math.max(0, Math.min(1, v)) * 100) + '%';
+    }
+  }
+
+  /* ---------- drawer + controls ---------- */
+  const drawer = document.getElementById('drawer');
+  document.getElementById('drawer-handle').addEventListener('click', () => drawer.classList.toggle('open'));
+
+  const modelBtn = document.getElementById('model-toggle');
+  modelBtn.addEventListener('click', () => emit('model-toggle'));
+  function setModel(name) { modelBtn.textContent = '✦ ' + name; }
+
+  document.getElementById('btn-call').addEventListener('click', () => emit('call'));
+  document.getElementById('btn-gcs').addEventListener('click', () => emit('gcs'));
+  document.getElementById('btn-close').addEventListener('click', () => emit('close'));
+  document.getElementById('btn-camera').addEventListener('click', () => emit('camera'));
+  document.getElementById('btn-gallery').addEventListener('click', () => emit('gallery'));
+
+  // Device Stop: press-and-hold 900ms inside the open drawer, so it cannot be
+  // hit by a stray tap on the avatar screen.
+  const stopBtn = document.getElementById('btn-stop');
+  let holdTimer = null;
+  const armStop = () => { stopBtn.classList.add('armed');
+    holdTimer = setTimeout(() => { disarmStop(); emit('stop'); }, 900); };
+  const disarmStop = () => { stopBtn.classList.remove('armed'); clearTimeout(holdTimer); };
+  stopBtn.addEventListener('pointerdown', armStop);
+  stopBtn.addEventListener('pointerup', disarmStop);
+  stopBtn.addEventListener('pointerleave', disarmStop);
+
+  /* ---------- caption + input ---------- */
+  const caption = document.getElementById('caption');
+  function setCaption(text) { caption.textContent = text || ''; caption.scrollTop = caption.scrollHeight; }
+
+  const say = document.getElementById('say');
+  const send = () => { const t = say.value.trim(); if (t) { emit('send', { text: t }); say.value = ''; } };
+  document.getElementById('btn-send').addEventListener('click', send);
+  say.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+  /* ---------- public API ---------- */
+  window.VintosAvatar = {
+    setEmote, setTelemetry, setCaption, setModel,
+    on(ev, cb) { (listeners[ev] = listeners[ev] || []).push(cb); },
+  };
+})();
+</script>
+</body>
+</html>
