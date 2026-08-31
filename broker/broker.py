@@ -458,6 +458,42 @@ def lineage_fingerprint(b=None):
     return {"present": True, "fingerprint": hashlib.sha256(k).hexdigest()[:16]}
 
 
+def manifest(b):
+    """Content-free integrity proof: THAT real artifacts exist and are intact —
+    never what they are. Count, how many are non-empty, total bytes, a combined
+    hash that changes if anything changes, and the last-made time. Enough to
+    confirm he actually made something (the Atelier's version of a want's
+    creation event), and nothing about medium, name, or meaning. No capability
+    required because it reveals nothing sealed.
+    """
+    pid = b.get("id", "")
+    try:
+        ad = os.path.join(_p(pid), "artifacts")
+    except BadProject as e:
+        return {"error": str(e)}
+    try:
+        names = sorted(os.listdir(ad))
+    except OSError:
+        return {"error": "no such project"}
+    h = hashlib.sha256()
+    total = nonempty = 0
+    last = ""
+    for n in names:
+        try:
+            data = open(os.path.join(ad, n), "rb").read()
+        except OSError:
+            continue
+        h.update(data); total += len(data)
+        if data:
+            nonempty += 1
+        mt = datetime.fromtimestamp(os.path.getmtime(os.path.join(ad, n))).isoformat()
+        if mt > last:
+            last = mt
+    return {"count": len(names), "nonempty": nonempty, "total_bytes": total,
+            "combined_sha256": h.hexdigest()[:32] if names else "",
+            "last_made": last, "all_real": len(names) > 0 and nonempty == len(names)}
+
+
 def report(b):
     pid = b.get("id", "")
     entry = {"ts": datetime.now().isoformat(), "problem": b["problem"][:600]}
@@ -496,7 +532,7 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/artifact": read_artifact, "/handoff": handoff,
           "/reveal/prepare": reveal_prepare, "/reveal/confirm": reveal_confirm,
           "/settle": settle, "/settlement/verify": verify_settlement,
-          "/lineage/fingerprint": lineage_fingerprint, "/report": report, "/door": door, "/worktable_id": worktable_id}
+          "/lineage/fingerprint": lineage_fingerprint, "/manifest": manifest, "/report": report, "/door": door, "/worktable_id": worktable_id}
 
 try:
     from stratagem_store import ROUTES as _SG
@@ -531,6 +567,7 @@ POLICY = {
     "/reveal/prepare": VISIT, "/reveal/confirm": HOUSE,   # gated by its one-use receipt
     "/settle": HOUSE, "/settlement/verify": OPEN,        # closing, not content
     "/lineage/fingerprint": OPEN,                        # a digest, never the key
+    "/manifest": OPEN,                                   # counts + a hash, never content
     "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
     "/stratagem/strategy-stop": OPEN,              # a stop is never gated. ever.
     "/stratagem/adopt": STORE, "/stratagem/capsule": STORE,

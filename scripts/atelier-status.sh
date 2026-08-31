@@ -31,5 +31,16 @@ if [ -n "$last" ]; then
 else
     say "  last activity: (none recorded)"
 fi
-# 6. is he still being offered the room?
+# 6. content-free proof that real work exists on the worktable
+wt="$(curl -s -m 5 -X POST "$B/worktable_id" -H 'Content-Type: application/json' -d '{}' 2>/dev/null | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p')"
+if [ -n "$wt" ]; then
+    man="$(curl -s -m 5 -X POST "$B/manifest" -H 'Content-Type: application/json' -d "{\"id\":\"$wt\"}" 2>/dev/null)"
+    say "  work made:   $man"
+    case "$man" in
+      *'"all_real": true'*)  say "               -> every artifact is a real, non-empty file";;
+      *'"count": 0'*)        say "               -> nothing made on this project yet";;
+      *'"all_real": false'*) say "               -> CHECK: an artifact is empty (claimed but not written)";;
+    esac
+fi
+# 7. is he still being offered the room?
 say "  scheduled: $(crontab -l 2>/dev/null | grep -c 'atelier-visit') daily visit cron(s)"
