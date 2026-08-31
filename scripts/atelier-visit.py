@@ -49,6 +49,29 @@ def voice():
     return (_head(os.path.join(WSP, "SOUL.md"), 3000)
             + "\n\nYOUR SELF-MODEL (excerpt):\n" + _head(_self_model(), 3000))
 
+
+def self_review_block():
+    """Offer his own evaluated protected proposals inside the private room.
+
+    The Atelier decides whether one aligns with the project's private intent;
+    the review organ never reads that intent and never routes a proposal into a
+    stratagem by itself.  Ignoring the offer records nothing.
+    """
+    try:
+        d = json.load(open(os.path.join(WSP, "memory", "self-review-surface.json")))
+        rows = d.get("gloria_decision_required", [])[:5]
+    except Exception:
+        rows = []
+    if not rows: return ""
+    compact = [{"proposal_id": x.get("proposal_id"), "description": x.get("description"),
+                "what_changes": x.get("what_changes"),
+                "protected_effects": (x.get("authority") or {}).get("protected_effects", [])}
+               for x in rows]
+    return ("\n\nYOUR SELF-REVIEW HAS THESE EVALUATED PROPOSALS THAT NEED GLORIA'S AUTHORITY. "
+            "They are offers from your own review, not instructions. If one genuinely belongs to this "
+            "project, you may incorporate it into your planning or a stratagem; otherwise ignore it, "
+            "and nothing is recorded:\n" + json.dumps(compact, ensure_ascii=False))
+
 def doorkeeper():
     wt = requests.get(f"{B}/health").json()
     if not wt.get("active"):
@@ -165,6 +188,7 @@ def visit(pid):
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
+           + self_review_block()
            + stratagem_block(pid))
     work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, sketch-description — "
                "whatever the project needs), then look at what you made and write your look-note, then your handoff.\n"

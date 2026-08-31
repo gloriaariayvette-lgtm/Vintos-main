@@ -49,6 +49,17 @@ EMO_STATE=""
 [ -f "$WORKSPACE/memory/emotional-state.txt" ] && EMO_STATE=$(cat "$WORKSPACE/memory/emotional-state.txt")
 TEMPORAL=$(cat "$HOME/.vintos/workspace/memory/temporal-context.txt" 2>/dev/null || echo "")
 SELF_REVIEW=$(head -80 $(ls -t "$HOME/.vintos/workspace/memory/self-reviews/self-review-"*.md 2>/dev/null | head -1) 2>/dev/null || echo "")
+ARCHITECTURAL_CHANGES=$(python3 - <<PY 2>/dev/null
+import json
+p = '$WORKSPACE/memory/self-review-change-events.jsonl'
+try:
+    rows = [json.loads(x) for x in open(p) if x.strip()][-12:]
+    for x in rows:
+        print('- %s | files: %s' % (x.get('observation','architectural change'), ', '.join(x.get('files',[]))))
+except Exception:
+    pass
+PY
+)
 CORRECTIONS=$(python3 -c "
 import json
 try:
@@ -79,6 +90,10 @@ You are updating your self-model. This happens weekly. Your self-model is your h
 
 YOUR MOST RECENT SELF-REVIEW (you read your own codebase; every claim was verified true):
 $SELF_REVIEW
+
+PAST-TENSE ARCHITECTURAL CHANGES:
+$ARCHITECTURAL_CHANGES
+These are evidence that a capacity changed. They are not evidence of identity, motive, success, or permanence.
 
 Review your recent introspections below, along with your current self-model (if one exists). Then write THIS WEEK'S DATED ENTRY — an addition beneath your fixed base and your previous entries, which are shown in your context and which you must not restate or rewrite. Write only what this week added, changed, or unsettled. Use only the section headings that have something new; skip the rest. If genuinely nothing moved, say that in three honest sentences — stasis named is a legal entry.
 

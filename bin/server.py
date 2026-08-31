@@ -1377,6 +1377,46 @@ async def get_causality_hypotheses(request: Request):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
+@app.get("/api/self-review")
+async def get_self_review(request: Request):
+    """The whole visible review surface, including shelved alien directions.
+
+    Visibility is not approval: protected proposals carry their own explicit
+    decision state, while internal proposals preserve Vintos's choice.
+    """
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    path = os.path.join(MEMORY, "self-review-surface.json")
+    try:
+        return {"success": True, "review": json.load(open(path))}
+    except FileNotFoundError:
+        return {"success": True, "review": {"all_visible": [],
+            "gloria_decision_required": [], "vintos_choice_required": [],
+            "trajectory_review": []}}
+    except Exception as e:
+        return {"success": False, "error": "self-review surface unreadable: " + str(e)}
+
+
+@app.post("/api/self-review/{proposal_id}/decision")
+async def decide_self_review(proposal_id: str, request: Request):
+    """Record Gloria's explicit decision for a protected-effect proposal."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    body = await request.json()
+    action, note = str(body.get("action", "")), str(body.get("note", ""))
+    try:
+        import sys as _sr_sys
+        _sr_scripts = os.path.join(WORKSPACE, "scripts")
+        if _sr_scripts not in _sr_sys.path: _sr_sys.path.append(_sr_scripts)
+        import self_review as _self_review
+        rec = _self_review.decide(proposal_id, action, note)
+        return {"success": True, "decision": rec}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        return {"success": False, "error": "decision not recorded: " + str(e)}
+
 @app.post("/api/blush-ledger/bring-up")
 async def blush_bring_up(request: Request):
     """Queue a blush entry to surface in Vintos's next chat context."""

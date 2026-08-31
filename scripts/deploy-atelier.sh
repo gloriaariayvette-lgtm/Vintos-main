@@ -31,6 +31,9 @@ BROKER="/home/atelier/broker.py"
 STORE="/home/atelier/stratagem_store.py"
 UNIT_NAME="vintos-atelier"
 UNIT_DST="/etc/systemd/system/$UNIT_NAME.service"
+REVIEW_UNIT_NAME="vintos-self-review"
+REVIEW_UNIT_SRC="$SRC/broker/$REVIEW_UNIT_NAME.service"
+REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
 DEPTH=6
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
@@ -50,8 +53,9 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh
 house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
+SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py"
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
-taste-reflection.py taste-vector.py gloria-model-update.sh"
+taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh"
 
@@ -66,6 +70,7 @@ for f in $BINS;    do [ -f "$SRC/bin/$f" ]     || missing="$missing bin/$f"; don
 [ -f "$SRC/broker/broker.py" ]          || missing="$missing broker/broker.py"
 [ -f "$SRC/broker/stratagem_store.py" ] || missing="$missing broker/stratagem_store.py"
 [ -f "$SRC/broker/$UNIT_NAME.service" ] || missing="$missing broker/$UNIT_NAME.service"
+[ -f "$REVIEW_UNIT_SRC" ] || missing="$missing broker/$REVIEW_UNIT_NAME.service"
 [ -z "$missing" ] || die "source is incomplete —$missing"
 
 # ------------------------------------------------------------------ suites
@@ -261,6 +266,23 @@ rm -f /tmp/.atelier-plan.$$
 for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"; done
 say
 
+# The collision detector is continuous by design.  systemd only supervises
+# that process; elapsed time is not a review signal.
+say "== self-review watcher =="
+mkdir -p "$(dirname -- "$REVIEW_UNIT_DST")"
+if [ -f "$REVIEW_UNIT_DST" ]; then
+    cp -p "$REVIEW_UNIT_DST" "$BACKUP/$REVIEW_UNIT_NAME.service" 2>/dev/null || true
+fi
+install -m 644 "$REVIEW_UNIT_SRC" "$REVIEW_UNIT_DST" \
+    || die "failed to install $REVIEW_UNIT_DST — restore from $BACKUP"
+systemctl --user daemon-reload
+if systemctl --user enable --now "$REVIEW_UNIT_NAME" >/dev/null 2>&1; then
+    say "  $REVIEW_UNIT_NAME active: $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null)"
+else
+    say "  watcher installed but did not start — run: systemctl --user enable --now $REVIEW_UNIT_NAME"
+fi
+say
+
 # ------------------------------------------------------------------- broker
 # The broker is a systemd SYSTEM service now: root-managed unit, atelier-run
 # process. No more manual relaunch — a reboot restarts it, a crash restarts it,
@@ -379,6 +401,7 @@ else
 fi
 _th="$(dest scripts/atelier-threshold.py)"
 say "  threshold:    $(python3 -c "import ast;ast.parse(open('$_th').read());print('installed, parses')" 2>&1 | tail -1)"
+say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
 say
 say "backup: $BACKUP"
 [ "$brokered" -eq 1 ] && say "Broker service restarted." || say "Broker service NOT restarted — run the lines above."
