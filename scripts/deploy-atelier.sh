@@ -49,7 +49,7 @@ value-map.py relational-mismatch.py causality-engine.py self-prediction.py
 effect_gate.py toy_link.py device_patterns.py evidence_provenance.py heart_rate.py
 stratagem.py turn_record.py formation_observatory.py thruster_link.py
 concurrency-canary.py
-atelier-door.sh atelier-canary.sh atelier-broker-watch.sh
+atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
@@ -57,7 +57,7 @@ SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
-atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh"
+atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # ---------------------------------------------------------------- preflight
 [ -d "$SRC/broker" ] && [ -d "$SRC/scripts" ] || die "not a Vintos checkout: $SRC"

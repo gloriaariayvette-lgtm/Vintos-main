@@ -40,5 +40,13 @@ check("a refused make preserves his piece instead of losing it",
 check("a refused handoff is surfaced, not swallowed",
       "HANDOFF REFUSED" in vis)
 
+# --- the room must not go dark by omission ---
+_vis = open(os.path.join(ROOT, "scripts", "atelier-visit.py"), errors="replace").read()
+check("an unspecified handoff does NOT default the door to held",
+      'if nr else "held"' not in _vis,
+      "default must keep the room offered, not silently hold it")
+check("the default keeps the door lit",
+      'if nr else "tomorrow"' in _vis or 'if nr else "open"' in _vis)
+
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

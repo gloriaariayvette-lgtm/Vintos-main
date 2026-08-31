@@ -239,7 +239,12 @@ def visit(pid):
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
-                  "next_return": nr.group(1).strip() if nr else "held",
+                  # Default to "tomorrow" (door stays lit next day), NOT "held".
+                  # "held" made the room go dark indefinitely whenever he simply
+                  # did not write a <next_return> tag — a room dark by omission,
+                  # not by his choice. He can still hold it explicitly with
+                  # <next_return>held</next_return> or a not_before: date.
+                  "next_return": nr.group(1).strip() if nr else "tomorrow",
                   "capability": cap}).json()
     if _hr.get("error"):
         print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
