@@ -14,7 +14,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.vintos/workspace/memory %h/.vintos/workspace/scripts %h/.vintos/workspace/bin %h/.vintos/workspace/broker/tests
+# Aegis is deliberately split: most organs live under workspace/scripts while
+# several live twins are under ~/Vintos.  The '-' makes that second tree legal
+# to omit on another host.  Never name workspace/bin: it does not exist on
+# Aegis, and systemd would fail the service before Python started.
+ReadWritePaths=%h/.vintos/workspace -%h/Vintos
 
 [Install]
 WantedBy=default.target

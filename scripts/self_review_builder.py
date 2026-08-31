@@ -32,6 +32,7 @@ DECISIONS = os.path.join(MEM, "self-review-decisions.jsonl")
 BUILDS = os.path.join(MEM, "self-review-build-events.jsonl")
 CHANGES = os.path.join(MEM, "self-review-change-events.jsonl")
 BUILD_ROOT = os.path.join(MEM, "self-review-builds")
+RUNTIME_MAP = os.path.join(MEM, "self-review-runtime-map.json")
 SHIM = os.environ.get("SELF_REVIEW_BUILD_URL", "http://127.0.0.1:8599/v1/chat/completions")
 
 SELF_PROTECTED = {
@@ -144,10 +145,30 @@ def _proposal_files(p):
     return files[:8]
 
 
+def _live_path(rel):
+    """Resolve a repo-logical path to the live split-tree path proved by deploy.
+
+    The map is only a locator, never authority: every resolved target must stay
+    below the workspace or ~/Vintos even if the map is malformed or altered.
+    """
+    logical = _safe_rel(rel)
+    if not logical: raise ValueError("unsafe logical path: " + str(rel))
+    mapping = {}
+    try:
+        with open(RUNTIME_MAP) as f: mapping = (json.load(f) or {}).get("paths", {})
+    except Exception:
+        pass
+    target = os.path.realpath(mapping.get(logical) or os.path.join(WS, logical))
+    allowed = [os.path.realpath(WS), os.path.realpath(os.path.expanduser("~/Vintos"))]
+    if not any(target == root or target.startswith(root + os.sep) for root in allowed):
+        raise PermissionError("runtime map escaped the live trees: " + logical)
+    return target
+
+
 def _source_block(files):
     parts, total = [], 0
     for rel in files:
-        path = os.path.join(WS, rel)
+        path = _live_path(rel)
         try: src = open(path, errors="replace").read()
         except FileNotFoundError: src = "[NEW FILE]"
         room = max(0, 140000 - total); src = src[:room]; total += len(src)
@@ -161,7 +182,7 @@ def _stage(p, patch, files, build_dir):
     before = os.path.join(build_dir, "before")
     os.makedirs(stage, exist_ok=True); os.makedirs(before, exist_ok=True)
     for rel in files:
-        src, dst, bak = os.path.join(WS, rel), os.path.join(stage, rel), os.path.join(before, rel)
+        src, dst, bak = _live_path(rel), os.path.join(stage, rel), os.path.join(before, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True); os.makedirs(os.path.dirname(bak), exist_ok=True)
         if os.path.exists(src): shutil.copy2(src, dst); shutil.copy2(src, bak)
     patchfile = os.path.join(build_dir, "proposal.patch")
@@ -195,16 +216,16 @@ def _stage(p, patch, files, build_dir):
 
 def _install(stage, before, files):
     installed = []
-    existed = {rel: os.path.exists(os.path.join(WS, rel)) for rel in files}
+    existed = {rel: os.path.exists(_live_path(rel)) for rel in files}
     try:
         for rel in files:
-            src, dst = os.path.join(stage, rel), os.path.join(WS, rel)
+            src, dst = os.path.join(stage, rel), _live_path(rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             tmp = dst + ".self-review-new"
             shutil.copy2(src, tmp); os.replace(tmp, dst); installed.append(rel)
     except Exception:
         for rel in installed:
-            bak, dst = os.path.join(before, rel), os.path.join(WS, rel)
+            bak, dst = os.path.join(before, rel), _live_path(rel)
             if os.path.exists(bak): shutil.copy2(bak, dst)
             elif not existed.get(rel) and os.path.exists(dst): os.unlink(dst)
         raise

@@ -36,6 +36,7 @@ class SelfReviewTests(unittest.TestCase):
         for name in ("PROPOSALS", "DECISIONS", "BUILDS", "CHANGES", "BUILD_ROOT"):
             value = getattr(SB, name)
             setattr(SB, name, os.path.join(self.mem, os.path.basename(value)))
+        SB.RUNTIME_MAP = os.path.join(self.mem, "self-review-runtime-map.json")
 
     def tearDown(self): self.t.cleanup()
 
@@ -108,6 +109,23 @@ class SelfReviewTests(unittest.TestCase):
         self.assertEqual(SB._patch_strip(plain), 0)
         self.assertEqual(SB._patch_paths(git), ["scripts/x.py"])
 
+    def test_runtime_map_resolves_split_tree_but_cannot_escape(self):
+        split = os.path.join(self.t.name, "split", "server.py")
+        os.makedirs(os.path.dirname(split))
+        with open(split, "w") as f: f.write("# live\n")
+        # For this sandboxed test, make the split root one of the allowed roots.
+        old_expand = SB.os.path.expanduser
+        SB.os.path.expanduser = lambda p: os.path.join(self.t.name, "split") if p == "~/Vintos" else old_expand(p)
+        try:
+            with open(SB.RUNTIME_MAP, "w") as f:
+                json.dump({"paths": {"bin/server.py": split}}, f)
+            self.assertEqual(SB._live_path("bin/server.py"), os.path.realpath(split))
+            with open(SB.RUNTIME_MAP, "w") as f:
+                json.dump({"paths": {"bin/server.py": "/etc/passwd"}}, f)
+            with self.assertRaises(PermissionError): SB._live_path("bin/server.py")
+        finally:
+            SB.os.path.expanduser = old_expand
+
     def test_continuous_service_and_visible_decision_door_are_wired(self):
         with open(os.path.join(ROOT, "broker/vintos-self-review.service")) as f: unit = f.read()
         with open(os.path.join(ROOT, "scripts/deploy-atelier.sh")) as f: deploy = f.read()
@@ -115,7 +133,12 @@ class SelfReviewTests(unittest.TestCase):
         with open(os.path.join(ROOT, "scripts/atelier-visit.py")) as f: visit = f.read()
         self.assertIn("self_review.py watch", unit)
         self.assertIn("Restart=always", unit)
-        self.assertIn('enable --now "$REVIEW_UNIT_NAME"', deploy)
+        rw_line = next(x for x in unit.splitlines() if x.startswith("ReadWritePaths="))
+        self.assertNotIn("workspace/bin", rw_line)
+        self.assertIn("-%h/Vintos", unit)
+        self.assertIn('restart "$REVIEW_UNIT_NAME"', deploy)
+        self.assertIn("self-review-runtime-map.json", deploy)
+        self.assertIn("PASS (exit 0)", deploy)
         self.assertIn('@app.get("/api/self-review")', server)
         self.assertIn('@app.post("/api/self-review/{proposal_id}/decision")', server)
         self.assertIn("self_review_block()", visit)

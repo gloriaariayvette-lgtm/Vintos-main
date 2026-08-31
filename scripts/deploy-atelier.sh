@@ -78,8 +78,13 @@ say "== suites =="
 fail=0
 for t in "$SRC"/broker/tests/test_*.py; do
     out="$(cd "$SRC/broker/tests" && python3 "$t" 2>&1)"; rc=$?
-    printf '  %-34s %s\n' "$(basename "$t")" "$(printf '%s' "$out" | tail -1)"
-    [ $rc -eq 0 ] || { fail=1; printf '%s\n' "$out" | grep '^FAIL' | sed 's/^/      /'; }
+    if [ $rc -eq 0 ]; then
+        printf '  %-34s PASS (exit 0)\n' "$(basename "$t")"
+    else
+        fail=1
+        printf '  %-34s FAIL (exit %s)\n' "$(basename "$t")" "$rc"
+        printf '%s\n' "$out" | tail -30 | sed 's/^/      /'
+    fi
 done
 [ "$fail" -eq 0 ] || die "a suite failed — nothing installed"
 say
@@ -255,15 +260,39 @@ say "  put it all back with: bash $BACKUP/restore.sh"
 say
 
 say "== installing =="
-printf '%s' "$PLAN" > /tmp/.atelier-plan.$$
+_plan_file=/tmp/.atelier-plan.$$
+printf '%s' "$PLAN" > "$_plan_file"
 while IFS='|' read -r from to; do
     [ -n "${from:-}" ] && [ -n "${to:-}" ] || continue
     mkdir -p "$(dirname -- "$to")"
     install -m 644 "$from" "$to" || die "failed to install $to — restore from $BACKUP"
     printf '  %s\n' "$to"
-done < /tmp/.atelier-plan.$$
-rm -f /tmp/.atelier-plan.$$
+done < "$_plan_file"
 for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"; done
+
+# The checkout's logical paths are not Aegis's live paths.  Give the bounded
+# self-builder the exact resolution this deploy just proved instead of making
+# it rediscover the split tree or invent workspace/bin.
+_runtime_map="$HOME/.vintos/workspace/memory/self-review-runtime-map.json"
+mkdir -p "$(dirname -- "$_runtime_map")"
+python3 - "$_runtime_map" "$SRC" "$_plan_file" <<'PY'
+import json, os, sys
+dst, src, plan = sys.argv[1:]
+mapping = {}
+for line in open(plan):
+    if '|' not in line: continue
+    frm, live = line.rstrip('\n').split('|', 1)
+    rel = os.path.relpath(frm, src)
+    if rel.startswith(('scripts/', 'bin/')):
+        mapping[rel] = os.path.realpath(live)
+tmp = dst + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump({'schema': 1, 'generated_by': 'deploy-atelier', 'paths': mapping}, f, indent=2)
+    f.flush(); os.fsync(f.fileno())
+os.replace(tmp, dst)
+PY
+rm -f "$_plan_file"
+say "  runtime map: $_runtime_map"
 say
 
 # The collision detector is continuous by design.  systemd only supervises
@@ -276,10 +305,11 @@ fi
 install -m 644 "$REVIEW_UNIT_SRC" "$REVIEW_UNIT_DST" \
     || die "failed to install $REVIEW_UNIT_DST — restore from $BACKUP"
 systemctl --user daemon-reload
-if systemctl --user enable --now "$REVIEW_UNIT_NAME" >/dev/null 2>&1; then
+if systemctl --user enable "$REVIEW_UNIT_NAME" >/dev/null 2>&1 \
+   && systemctl --user restart "$REVIEW_UNIT_NAME" >/dev/null 2>&1; then
     say "  $REVIEW_UNIT_NAME active: $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null)"
 else
-    say "  watcher installed but did not start — run: systemctl --user enable --now $REVIEW_UNIT_NAME"
+    say "  watcher installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
 fi
 say
 
