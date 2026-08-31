@@ -197,6 +197,13 @@ def quantum_block():
     """
     aq = _quantum_module()
     if not aq: return ""
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import quantum_snapshot
+        quantum_snapshot.refresh()
+    except Exception as e:
+        print("quantum live-number refresh held:", str(e)[:180])
     state = aq.status()
     if not state.get("configured"):
         return ""
@@ -205,12 +212,15 @@ def quantum_block():
                 "You may ignore that, work without it, or mention it in <report>."
                 % str(state.get("error", "unknown fault"))[:240])
     experiments = ", ".join(state.get("experiments", [])) or "none yet"
+    live = ", ".join(aq.available_materials()) or "none"
     return (
         "\n\nYOUR QUANTUM WORKTABLE ON THE MAC IS AVAILABLE. It is a medium, like image, "
         "music, or prose—not an assignment. Existing invitations: " + experiments + ".\n"
         "To try one and receive its complete result before you continue, write only:\n"
         '<quantum experiment="name">{"parameters": {...}, "shots": 4096}</quantum>\n'
-        "The parameters object may be empty to use the seed's own defaults.\n"
+        "Fresh house-number palettes available: " + live + ". An empty parameters object "
+        "uses a fresh palette when one exists, otherwise the seed's Mac defaults. You may alter "
+        "either; these are materials, not instructions.\n"
         "Or invent ordinary Python freely:\n"
         '<quantum_code name="your_name">\n'
         "import pyqpanda3.core as q\n"

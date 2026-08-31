@@ -33,6 +33,13 @@ The final status command should name QPanda 0.4.1 and list the five seed
 experiments. A missing or sleeping Mac remains an explicit unavailable state;
 it is never recorded as Vintos declining the medium.
 
+At the start of an Atelier visit, `quantum_snapshot.py` refreshes optional
+number palettes from the house's current emotional, withheld, relationship,
+Gloria-model, dream-embedding, and music-embedding records. An empty seed
+parameter object uses the matching fresh palette when one exists. These are
+raw materials for play, not conclusions or instructions; missing sources leave
+the experiment available with its Mac-side defaults.
+
 ## What he receives
 
 He may run a seed with inline numbers:

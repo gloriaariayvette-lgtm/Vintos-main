@@ -78,6 +78,17 @@ class QuantumDoorTests(unittest.TestCase):
         self.assertIn("<quantum_code", visit)
         self.assertIn('"quantum": 3', broker)
         self.assertIn("atelier_quantum.py", deploy)
+        self.assertIn("quantum_snapshot.py", deploy)
+
+    def test_empty_parameters_use_live_material(self):
+        AQ.configure("kevin@100.79.177.103")
+        proc = types.SimpleNamespace(returncode=0, stdout='{"ok":true}', stderr="")
+        with mock.patch.object(AQ, "live_parameters",
+                               return_value={"felt_intensity": 0.73}), \
+             mock.patch.object(AQ.subprocess, "run", return_value=proc) as called:
+            AQ.run_seed("emotion_withheld", {}, 256)
+        sent = json.loads(called.call_args.kwargs["input"])
+        self.assertEqual(sent["parameters"], {"felt_intensity": 0.73})
 
     def test_visit_returns_the_run_for_his_reading(self):
         lab = types.SimpleNamespace(run_seed=lambda *a, **k: {

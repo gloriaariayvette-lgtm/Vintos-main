@@ -82,7 +82,24 @@ def status(timeout=20):
     return request({"action": "status"}, timeout=timeout)
 
 
+def live_parameters(experiment):
+    path = os.path.expanduser("~/.vintos/workspace/memory/quantum-inputs/%s.json" % experiment)
+    try:
+        with open(path, encoding="utf-8") as f: body = json.load(f)
+        return body if isinstance(body, dict) else {}
+    except Exception:
+        return {}
+
+
+def available_materials():
+    root = os.path.expanduser("~/.vintos/workspace/memory/quantum-inputs")
+    try: return sorted(os.path.splitext(x)[0] for x in os.listdir(root) if x.endswith(".json"))
+    except Exception: return []
+
+
 def run_seed(experiment, parameters=None, shots=4096):
+    if not parameters:
+        parameters = live_parameters(experiment)
     return request({"action": "run", "experiment": experiment,
                     "parameters": parameters or {}, "shots": int(shots)})
 
