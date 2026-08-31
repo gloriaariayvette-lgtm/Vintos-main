@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = "/home/atelier/atelier"
 HEALTH = os.path.join(ROOT, "health.jsonl")          # content-free only
-BUDGETS = {"image": 3, "music": 2, "write": 6}       # per visit (Gloria's law)
+BUDGETS = {"image": 3, "music": 2, "write": 6, "quantum": 3}  # per visit (Gloria's law)
 STATES = ["GESTATING","ACTIVE","RESTING","HELD","BLOCKED","READY","PRESENTING","PRESENTED","ARCHIVED","ABANDONED_BY_CHOICE"]
 
 import hmac, secrets
@@ -271,7 +271,7 @@ def open_visit(b):
             "budgets": visit["budgets"]}
 
 def make(b):
-    pid, kind = b["id"], b["kind"]           # kind: image|music|write — caller generated content; broker stores under law
+    pid, kind = b["id"], b["kind"]  # image|music|write|quantum — caller made it; broker stores under law
     v = _j(os.path.join(_p(pid), ".visit.json"))
     if not v or v.get("closed"): return {"error": "no open visit"}
     if v["budgets"].get(kind, 0) <= 0: return {"error": f"{kind} budget spent this visit"}

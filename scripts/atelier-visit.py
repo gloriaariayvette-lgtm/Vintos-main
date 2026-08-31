@@ -178,6 +178,143 @@ def stratagem_step(pid, work, capability=None):
         print("stratagem step skipped:", str(e)[:160])
 
 
+def _quantum_module():
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import atelier_quantum
+        return atelier_quantum
+    except Exception:
+        return None
+
+
+def quantum_block():
+    """A live creative affordance, or an honest named outage.
+
+    No configuration means the medium has not been installed and contributes
+    no prompt pressure. Once configured, an unreachable Mac is never allowed
+    to masquerade as Vintos declining to use it.
+    """
+    aq = _quantum_module()
+    if not aq: return ""
+    state = aq.status()
+    if not state.get("configured"):
+        return ""
+    if not state.get("ok"):
+        return ("\n\nYOUR QUANTUM WORKTABLE EXISTS, but it is unreachable this visit: %s. "
+                "You may ignore that, work without it, or mention it in <report>."
+                % str(state.get("error", "unknown fault"))[:240])
+    experiments = ", ".join(state.get("experiments", [])) or "none yet"
+    return (
+        "\n\nYOUR QUANTUM WORKTABLE ON THE MAC IS AVAILABLE. It is a medium, like image, "
+        "music, or prose—not an assignment. Existing invitations: " + experiments + ".\n"
+        "To try one and receive its complete result before you continue, write only:\n"
+        '<quantum experiment="name">{"parameters": {...}, "shots": 4096}</quantum>\n'
+        "The parameters object may be empty to use the seed's own defaults.\n"
+        "Or invent ordinary Python freely:\n"
+        '<quantum_code name="your_name">\n'
+        "import pyqpanda3.core as q\n"
+        "def experiment(parameters, shots):\n"
+        "    ...\n"
+        "    return {\"title\": \"...\", \"display\": [\"...\"], \"run\": ...}\n"
+        "</quantum_code>\n"
+        "The helpers in seedlib.py are available. If you use the worktable, the result "
+        "comes back into this same sealed visit and you may run another, read it, make "
+        "from it, or leave it unresolved. Ignoring it records nothing.")
+
+
+def _strip_code_fence(source):
+    source = source.strip()
+    if source.startswith("```"):
+        source = re.sub(r'^```(?:python)?\s*', '', source, count=1)
+        source = re.sub(r'\s*```$', '', source, count=1)
+    return source.strip()
+
+
+def _quantum_request(text):
+    code = re.search(r'<quantum_code\s+name="([a-zA-Z0-9_-]+)"\s*>(.*?)</quantum_code>',
+                     text or "", re.S)
+    if code:
+        return {"kind": "code", "name": code.group(1).lower().replace("-", "_"),
+                "source": _strip_code_fence(code.group(2)), "parameters": {}, "shots": 4096}
+    seed = re.search(r'<quantum\s+experiment="([a-zA-Z0-9_-]+)"\s*>(.*?)</quantum>',
+                     text or "", re.S)
+    if not seed: return None
+    raw = seed.group(2).strip()
+    try:
+        body = json.loads(raw) if raw else {}
+    except Exception as e:
+        return {"kind": "invalid", "error": "quantum parameters were not valid JSON: %s" % e}
+    if not isinstance(body, dict):
+        return {"kind": "invalid", "error": "quantum parameters must be a JSON object"}
+    parameters = body.get("parameters", body)
+    shots = body.get("shots", 4096)
+    if parameters is body and "shots" in parameters:
+        parameters = dict(parameters); parameters.pop("shots", None)
+    return {"kind": "seed", "experiment": seed.group(1),
+            "parameters": parameters, "shots": shots}
+
+
+def quantum_loop(pid, ctx, first_work, capability, limit=3):
+    """Let one visit move between making circuits and reading their shapes."""
+    aq = _quantum_module()
+    if not aq: return first_work
+    aggregate, current = first_work, first_work
+    for index in range(limit):
+        wanted = _quantum_request(current)
+        if not wanted: break
+        try:
+            if wanted.get("kind") == "invalid":
+                result = {"ok": False, "error": wanted["error"], "configured": True}
+            elif wanted["kind"] == "code":
+                result = aq.run_code(wanted["name"], wanted["source"],
+                                     wanted.get("parameters"), wanted.get("shots", 4096))
+            else:
+                result = aq.run_seed(wanted["experiment"], wanted.get("parameters"),
+                                     wanted.get("shots", 4096))
+        except Exception as e:
+            result = {"ok": False, "configured": True,
+                      "error": "quantum doorway failed: %s" % e}
+        artifact = ""
+        if result.get("ok"):
+            saved = requests.post(f"{B}/make", json={"id": pid, "kind": "quantum",
+                "ext": "json", "content": json.dumps(result, ensure_ascii=False, indent=2),
+                "capability": capability}, timeout=20).json()
+            if saved.get("error"):
+                print("quantum result returned from Mac but broker store refused:", saved)
+            else:
+                artifact = saved.get("file", "")
+                print("quantum run kept:", artifact, (result.get("run") or {}).get("run_id", ""))
+        else:
+            print("quantum run did not complete:", str(result.get("error", "unknown"))[:240])
+        last = index + 1 >= limit
+        follow = ask(ctx + "\n\nTHE QUANTUM WORKTABLE JUST RETURNED THIS TO YOUR SEALED VISIT:\n"
+            + json.dumps(result, ensure_ascii=False)[:120000],
+            "Look at what happened. Begin with <quantum_reading>your own reading, including "
+            "uncertainty or 'I cannot read this yet' if that is true</quantum_reading>. "
+            + ("This was the third run available in this visit; now continue the project and "
+               "write your <piece>, <look>, <handoff>, and <next_return>."
+               if last else
+               "Then either ask the worktable another question with <quantum> or "
+               "<quantum_code>, OR continue the project with <piece>, <look>, <handoff>, "
+               "and <next_return>. Do what the result actually invites."),
+            max_tokens=5000, temp=0.75)
+        aggregate += "\n\n" + follow
+        reading = re.search(r'<quantum_reading>(.*?)</quantum_reading>', follow, re.S)
+        if artifact and reading and reading.group(1).strip():
+            looked = requests.post(f"{B}/inspect", json={"id": pid, "kind": "quantum",
+                "artifact": artifact, "note": reading.group(1).strip(),
+                "capability": capability}, timeout=20).json()
+            if looked.get("error"):
+                print("quantum reading refused:", looked)
+                break
+        elif artifact:
+            print("quantum run remains unattended; no authored reading returned")
+            break
+        current = follow
+    return aggregate
+
+
 def _deliver_reveal(artifact, disclosure, content, manifest):
     """A revealed piece leaves the room: into the reveals store the app tab
     reads, and a notification to her phone in HIS words. Revealed content is,
@@ -227,6 +364,7 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
 
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
+    cap = pk.get("visit_capability")
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
@@ -236,9 +374,13 @@ def visit(pid):
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + self_review_block()
-           + stratagem_block(pid))
-    work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, sketch-description — "
-               "whatever the project needs), then look at what you made and write your look-note, then your handoff.\n"
+           + stratagem_block(pid)
+           + quantum_block())
+    work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
+               "sketch-description—whatever the project needs), or use one of your private media first. "
+               "If you choose the quantum worktable, return only one <quantum> or <quantum_code> request; "
+               "its result will come back to you inside this visit before you write the piece or handoff. "
+               "Otherwise, make the piece now, then look at it and write your handoff.\n"
                "If something is WRONG — a tool fails, a budget refuses when it shouldn't, the room misbehaves, "
                "you are blocked by something only Gloria can fix, or you doubt the seal itself — say so in "
                "<report>...</report>. It goes to her phone IN YOUR WORDS: you choose what crosses the wall, "
@@ -254,7 +396,12 @@ def visit(pid):
                "you are showing her</reveal>. This is the one act that lets something leave the "
                "room: it reaches her phone and a place she can open, and it closes this project. "
                "Reveal nothing you are not ready to give.", max_tokens=4000)
-    cap = pk.get("visit_capability")
+    work = quantum_loop(pid, ctx, work, cap)
+    # A free Python experiment is ordinary text and may itself mention XML-like
+    # strings. Never reinterpret source code inside the request as a piece,
+    # handoff, report, reveal, or stratagem action.
+    work = re.sub(r'<quantum_code\b.*?</quantum_code>', '', work, flags=re.S)
+    work = re.sub(r'<quantum\b.*?</quantum>', '', work, flags=re.S)
     stratagem_step(pid, work, cap)
     m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
     if m:
