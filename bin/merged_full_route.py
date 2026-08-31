@@ -1042,8 +1042,11 @@ Gloria-specific additions:
                 _hf = os.path.join(MEMORY, "humor-profile.json")
                 with open(_hf) as _f:
                     _hp = _json.load(_f)
-                _hp.setdefault("landed", []).append(_last_vintos)
-                _hp["landed"] = _hp["landed"][-20:]
+                _hp.setdefault("real_reactions", []).append({
+                    "timestamp": datetime.now().isoformat(), "act": _last_vintos,
+                    "gloria_reaction": msg.message[:100], "evidence": "inferred_laughter",
+                    "witnessed": False})
+                _hp["real_reactions"] = _hp["real_reactions"][-20:]
                 with open(_hf, "w") as _f:
                     _json.dump(_hp, _f, indent=2)
             except: pass

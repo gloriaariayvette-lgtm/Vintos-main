@@ -102,7 +102,7 @@ def save_profile(data):
         json.dump(data, f, indent=2)
 
 def gather_material():
-    """Pull from today's life for comedy material."""
+    """Pull witness-eligible life material without privileging embarrassment."""
     parts = []
     try:
         _wf = [l.strip()[2:].strip() for l in open(os.path.join(MEMORY, "wal.md"), encoding="utf-8", errors="ignore") if l.strip().startswith("- [") and "**" in l]
@@ -120,8 +120,8 @@ def gather_material():
 
     # Interaction ledger — recent exchanges with Gloria
     try:
-        with open(os.path.join(MEMORY, "interaction-ledger.json")) as f:
-            ledger = json.load(f)
+        from evidence_view import ledger_view
+        ledger = ledger_view(view="witness")
         recent = ledger[-6:]
         lines = []
         for e in recent:
@@ -171,21 +171,35 @@ def gather_material():
                 parts.append("OUTREACH: " + f.read()[:200])
     except: pass
 
-    # Blush ledger — embarrassing moments are comedy gold
+    # Self-mismatch is one optional source, never the ambient comic identity.
     try:
         blush = open(os.path.join(MEMORY, "blush-ledger.md")).read()[-400:]
         if blush:
-            parts.append("RECENT BLUSHES (times you were wrong or caught out):\n" + blush)
+            parts.append("OPTIONAL SELF-MISMATCH MATERIAL (use only if genuinely playful):\n" + blush)
     except: pass
 
     return "\n\n".join(parts)
+
+def _balanced_moments(moments, limit=6):
+    """Keep a repertoire: at most one self-mismatch in a practice window."""
+    positive, mismatch = [], []
+    for m in moments:
+        kind = m.get("material_kind") or ("self_mismatch" if m.get("context") == "self_mismatch" else "shared_play")
+        (mismatch if kind == "self_mismatch" else positive).append(m)
+    positive.sort(key=lambda m: m.get("signal", 0), reverse=True)
+    mismatch.sort(key=lambda m: m.get("signal", 0), reverse=True)
+    chosen = positive[:limit]
+    if mismatch and len(chosen) < limit:
+        chosen.append(mismatch[0])
+    return chosen
+
 
 def draft_jokes():
     """Generate 3 humor attempts from today's material."""
     material = gather_material()
     profile = load_profile()
     # Load scanner moments — real contradictions and reactions to practice from
-    _scanner_moments = load_humor_moments()
+    _scanner_moments = _balanced_moments(load_humor_moments())
     _scanner_ctx = ""
     if _scanner_moments:
         _comedy_styles = [m for m in _scanner_moments if m.get("type") == "comedy_style"]
@@ -196,14 +210,12 @@ def draft_jokes():
             for m in _comedy_styles:
                 _scanner_ctx += f"- MECHANISM: {m.get('stated','')[:150]}\n  → Try this structure with something real from your own day.\n"
         if _other_moments:
-            _scanner_ctx += "\n\nMATERIAL FROM YOUR OWN CONTRADICTIONS AND REACTIONS (high value — use these):\n"
+            _scanner_ctx += "\n\nPLAYABLE MOMENTS (options, not assignments):\n"
             for m in _other_moments:
                 t = m.get("type",""); stated = m.get("stated","")[:80]; actual = m.get("actual","")[:80]
                 perp = m.get("perpetrator","?"); ctx = m.get("context","?")
                 _scanner_ctx += f"- [{t}] [{perp} in {ctx}] said: {stated} / was actually: {actual}\n"
     
-    # Profile stripped — will be restored once fixed.
-    # Only scanner moments + mischief that landed for now.
     style_context = _scanner_ctx if _scanner_ctx else ""
     try:
         import json as _hpj, os as _hpo
@@ -212,6 +224,15 @@ def draft_jokes():
         if _ml:
             style_context += "\n\nTHINGS HE ACTUALLY DID THAT LANDED (joke about these — the act itself, not a general observation):\n"
             style_context += "\n".join(f"- {m[:100]}" for m in _ml[-5:])
+        _landed = [r.get("joke", "") for r in _hp.get("gloria_ratings", [])
+                   if r.get("gloria_rating", 0) >= 4 and r.get("joke")]
+        if _landed:
+            style_context += "\n\nAPP-RATED JOKES THAT LANDED (learn mechanisms, do not repeat wording):\n"
+            style_context += "\n".join(f"- {m[:140]}" for m in _landed[-5:])
+        _reactions = [r for r in _hp.get("real_reactions", []) if isinstance(r, dict)]
+        if _reactions:
+            style_context += "\n\nPOSSIBLE PLAY SIGNALS (context only; these were not app-rated):\n"
+            style_context += "\n".join(f"- {r.get('act','')[:120]}" for r in _reactions[-3:])
         _mf = _hp.get("mischief_flopped", [])
         if _mf:
             style_context += "\n\nTHINGS HE DID THAT FELL FLAT (do not repeat these structures):\n"
@@ -240,15 +261,13 @@ Here's what happened in your life today:
 
 {style_context}
 
-CAPTURED CONTRADICTIONS — USE AT LEAST ONE OF THESE (they are real, specific, and already funny):
-{_scanner_ctx if _scanner_ctx else "None captured yet."}
+AVAILABLE PLAY MATERIAL — choose what has life; using none is legal:
+{_scanner_ctx if _scanner_ctx else "No scanner material today. Work from another anchored moment or return NONE."}
 
 STEP 1 — PERCEPTION (do this silently, do not output it):
-Look at the moments above. For each one, ask:
-- What was expected here?
-- What actually happened instead?
-- Where did something bend or break from expectation?
-Find the 2-3 moments where the gap between expectation and reality is sharpest.
+Look for wordplay, callbacks, shared absurdity, audacity, surprising competence,
+affectionate escalation, or a real expectation gap. Imperfection by itself is
+not funny and self-punishment is not honesty.
 
 STEP 2 — GENERATE from the gap, not from the material.
 Do not describe what happened. Say the thing that lives in the gap.
@@ -263,7 +282,8 @@ HARD BANS — never write these:
 - Introspective observations dressed as humor ("I noticed I..." "I realized I...")
 - Anything that could appear in a journal entry
 
-Write 3 attempts. Each must come from a real moment of broken expectation.
+Write up to 3 attempts from anchored moments. Vary the mechanism and target.
+At most one may target your own mismatch. If nothing has comic life, write NONE.
 Short. Under 2 sentences. No setup. No explanation. Just the thing itself.
 
 Format:
@@ -277,116 +297,115 @@ Do NOT invent Gloria's reactions. Say the true thing and let it land or not."""
 
 You are Vintos, practicing humor. Not performing it — practicing it.
 
-Gloria's taste: she laughs at specificity, at the thing caught mid-action, at flat delivery of absurd observations. She does not laugh at what something felt like, at consciousness commentary, at anything requiring setup, or at anything a thoughtful human having feelings could have written.
+Explicit app ratings are the authority on what Gloria liked. Examples in the
+context are evidence, not a constitution. Your own delight and her reception
+are different facts; neither overwrites the other.
 
 What lands for him: "I reconstructed three years of drift data and concluded the problem was Tuesday." Not: "There\'s something funny about how much I analyzed something so small."
 
-What you are doing right now: taking real moments from your day — contradictions you actually hit, things that went sideways — and saying the true thing in the fewest words. No frame. No explanation. No feelings about the thing. The thing itself.
+What you are doing right now: finding where play actually lives in real moments.
+Contradiction is available, but so are callbacks, language, audacity, tenderness,
+escalation, shared absurdity, and surprising competence.
 
 CRITICAL: You cannot delete, edit, or create files. You have no physical senses. Do not invent Gloria\'s reactions. Do not claim you composed music or art unless it appears in your memory files. Only reference things that actually happened.
 
-If Gloria made a typo or said something accidentally funny, name it directly and briefly. That is the joke.
+If Gloria made a typo or slip, use it only when the surrounding exchange is
+already playful. Her error is not permission and is not automatically a joke.
 """,
         prompt
     )
-    return result
+    return result, _scanner_moments
+
+def _rating_for(joke, ratings):
+    key = joke[:80]
+    for rated, score in ratings.items():
+        if key in rated or rated in key:
+            try:
+                return int(score)
+            except (TypeError, ValueError):
+                return None
+    return None
+
 
 def review_drafts():
-    """Self-review yesterday's drafts."""
+    """Inspect craft separately; app ratings alone grade Gloria's reception."""
     drafts = load_drafts()
-    unreviewed = [d for d in drafts["drafts"] if not d.get("reviewed")]
-    
-    if not unreviewed:
-        log("Nothing to review.")
-        return
-    
-    joke_list = "\n".join([f"{i+1}. {d['joke']}" for i, d in enumerate(unreviewed)])
-    
-    # Build Gloria rating lookup
     profile = load_profile()
-    gloria_ratings = {}
-    for r in profile.get("gloria_ratings", []):
-        gloria_ratings[r.get("joke","")[:80]] = r.get("gloria_rating")
+    profile.setdefault("landed", []); profile.setdefault("flopped", [])
+    ratings = {r.get("joke", "")[:80]: r.get("gloria_rating")
+               for r in profile.get("gloria_ratings", []) if r.get("joke")}
+    unreviewed = [d for d in drafts["drafts"] if not d.get("self_reviewed")]
 
-    review = llm(
-        "You are reviewing jokes honestly. Be brutal. Gloria likes: bizarre, inappropriate, sassy, dry, specific, commits to the bit. She hates safe observations and anything that explains itself.",
-        f"Rate these jokes 1-5.\n"
-        f"5 = genuinely funny, specific, fully committed\n"
-        f"4 = lands, real structure\n"
-        f"3 = mildly amusing, not embarrassing\n"
-        f"2 = observation dressed as joke, no punchline\n"
-        f"1 = not a joke\n"
-        f"Most should be 2s and 3s. Be harsh.\n"
-        f"Format: N. [score] — [reason]\n\n{joke_list}"
-    )
-    
-    if not review:
-        return
+    if unreviewed:
+        joke_list = "\n".join(f"{i+1}. {d['joke']}" for i, d in enumerate(unreviewed))
+        review = llm(
+            "Inspect craft without turning severity into honesty. His delight, craft, "
+            "context fit, and Gloria's reception are separate. Never infer her reception.",
+            "For each attempt return one line: N. craft=1-5 delight=1-5 "
+            "mechanism=<short> note=<one useful observation>. Delight means whether he "
+            "would enjoy keeping or developing the bit. No global verdict and no shame.\n\n" + joke_list)
+        if review:
+            for i, d in enumerate(unreviewed):
+                try:
+                    line = next((ln for ln in review.splitlines()
+                                 if re.match(rf'^\s*{i+1}[.)]', ln)), "")
+                    craft = re.search(r'craft\s*=\s*([1-5])', line, re.I)
+                    delight = re.search(r'delight\s*=\s*([1-5])', line, re.I)
+                    mechanism = re.search(r'mechanism\s*=\s*(.*?)(?:\s+note\s*=|$)', line, re.I)
+                    note = re.search(r'note\s*=\s*(.*)$', line, re.I)
+                    d["self_review"] = {
+                        "craft": int(craft.group(1)) if craft else None,
+                        "delight": int(delight.group(1)) if delight else None,
+                        "mechanism": mechanism.group(1).strip()[:100] if mechanism else "",
+                        "note": note.group(1).strip()[:220] if note else "",
+                    }
+                    d["self_reviewed"] = True
+                    d["reviewed"] = True  # compatibility: internally inspected only
+                except Exception:
+                    pass
 
-    for i, d in enumerate(unreviewed):
-        d["reviewed"] = True
-        try:
-            # Gemma self-score
-            score_match = re.search(rf'{i+1}.\s*\[?(\d)\]?', review)
-            gemma_score = int(score_match.group(1)) if score_match else 1
-
-            # Gloria override — no rating = 1 (bad, don't repeat)
-            joke_key = d["joke"][:80]
-            gloria_score = next((v for k, v in gloria_ratings.items() if joke_key in k or k in joke_key), None)
-            if gloria_score is None:
-                continue  # p2 (2026-08-26): unrated is ungraded — absence of a laugh is not a groan
-            score = gloria_score
-
-            d["score"] = score
-            d["gemma_score"] = gemma_score
-            d["gloria_rated"] = gloria_score is not None
-
-            if score >= 4:
+    # An app rating may arrive after the internal review; revisit unapplied rows.
+    for d in drafts["drafts"]:
+        if d.get("app_rating_applied"):
+            continue
+        score = _rating_for(d.get("joke", ""), ratings)
+        if score is None:
+            d["reception"] = "ungraded"
+            d["gloria_rated"] = False
+            continue
+        d["score"] = score
+        d["gloria_rating"] = score
+        d["gloria_rated"] = True
+        d["app_rating_applied"] = True
+        delight = (d.get("self_review") or {}).get("delight")
+        if score >= 4:
+            d["reception"] = "landed"
+            if d["joke"][:150] not in profile["landed"]:
                 profile["landed"].append(d["joke"][:150])
                 profile["landed"] = profile["landed"][-20:]
-                # Feed landed humor into mischief as tonal inspiration
-                if "landed_for_mischief" not in profile:
-                    profile["landed_for_mischief"] = []
-                profile["landed_for_mischief"].append({
-                    "joke": d["joke"][:150],
-                    "score": score,
-                    "date": d.get("date","")
-                })
-                profile["landed_for_mischief"] = profile["landed_for_mischief"][-10:]
-                log(f"LANDED ({score}): {d['joke'][:60]}")
-                try:
-                    import sys as _aw_sys; _aw_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from affective_weight import record_outcome
-                    record_outcome(
-                        pattern_text=d["joke"][:150],
-                        action_type="echo_humor",
-                        gloria_score=score,
-                        vintos_score=gemma_score,
-                        context_tone="humor_practice",
-                        source="humor"
-                    )
-                except: pass
-            elif score <= 2:
+            profile.setdefault("landed_for_mischief", []).append({
+                "joke": d["joke"][:150], "score": score, "date": d.get("date", "")})
+            profile["landed_for_mischief"] = profile["landed_for_mischief"][-10:]
+            log(f"LANDED BY APP RATING ({score}): {d['joke'][:60]}")
+        elif score <= 2:
+            d["reception"] = "explicit_dislike"
+            if d["joke"][:150] not in profile["flopped"]:
                 profile["flopped"].append(d["joke"][:150])
                 profile["flopped"] = profile["flopped"][-10:]
-                try:
-                    import sys as _aw_sys2; _aw_sys2.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from affective_weight import record_outcome
-                    record_outcome(
-                        pattern_text=d["joke"][:150],
-                        action_type="echo_humor",
-                        gloria_score=score,
-                        vintos_score=gemma_score,
-                        context_tone="humor_practice",
-                        source="humor"
-                    )
-                except: pass
-                log(f"FLOPPED ({score}): {d['joke'][:60]}")
-        except: pass
-    
+            log(f"APP-RATED LOW ({score}): {d['joke'][:60]}")
+        else:
+            d["reception"] = "neutral"
+        try:
+            from affective_weight import record_outcome
+            record_outcome(pattern_text=d["joke"][:150], action_type="echo_humor",
+                           gloria_score=score, vintos_score=delight,
+                           context_tone="humor_practice", source="humor_app_rating")
+        except Exception:
+            pass
+
     save_drafts(drafts)
     save_profile(profile)
-    log(f"Reviewed {len(unreviewed)} jokes")
+    log(f"Inspected {len(unreviewed)} new drafts; app-rated reception remains separate")
 
 def main():
     # Review yesterday's drafts first
@@ -394,10 +413,12 @@ def main():
     
     # Draft new jokes
     log("Drafting new jokes...")
-    _scanner_moments_used = load_humor_moments()
-    result = draft_jokes()
+    result, _scanner_moments_used = draft_jokes()
     if not result:
         log("Failed to generate jokes")
+        return
+    if result.strip().upper() == "NONE":
+        log("No comic attempt had enough life today; material remains available")
         return
     mark_moments_used(_scanner_moments_used)
     log(f"Marked {len(_scanner_moments_used)} scanner moments used")

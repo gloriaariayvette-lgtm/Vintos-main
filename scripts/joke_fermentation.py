@@ -19,13 +19,19 @@ def seed(text, source="chat"):
 def maybe_seed_from_humor():
     try:
         hp=json.load(open(os.path.join(MEM,"humor-profile.json")))
-        for line in (hp.get("landed") or [])[-3:]: seed(line,"landed")
+        rated=[r.get("joke","") for r in hp.get("gloria_ratings",[])
+               if r.get("gloria_rating",0)>=4 and r.get("joke")]
+        for line in rated[-3:]: seed(line,"app_rated_landed")
     except Exception: pass
 def get_ready_callback():
     d=_load(); now=time.time(); out=None
     for x in d:
-        if not x["fired"] and now>=x["ripe_at"] and now-x["ripe_at"]<6*3600:
-            x["fired"]=True; out=x["seed"]; break
+        if now-x["ripe_at"]>=6*3600 and not x.get("fired"):
+            x["state"]="HELD"; continue
+        last=x.get("offered_at",0); offers=x.get("offer_count",0)
+        if (not x.get("fired") and x.get("state") != "HELD" and now>=x["ripe_at"]
+                and now-x["ripe_at"]<6*3600 and offers<3 and now-last>=30*60):
+            x["offered_at"]=now; x["offer_count"]=offers+1; out=x["seed"]; break
     if out is not None: _save(d)
     return out
 def callback_block():
@@ -33,5 +39,5 @@ def callback_block():
     cb=get_ready_callback()
     if not cb: return ""
     return (f'[FERMENTED CALLBACK — this has been quietly ripening: "{cb}" — '
-            "drop it ONLY if it lands naturally right now; if it doesn't fit, let it keep sitting.]")
+            "use it ONLY if it lands naturally right now. An offer is not evidence that you used it.]")
 if __name__=="__main__": print(callback_block() or "(nothing ripe)")

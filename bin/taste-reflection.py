@@ -15,6 +15,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
 OUTPUT = os.path.join(MEMORY, "taste-reflections.md")
+CANDIDATES = os.path.join(MEMORY, "taste-candidates.json")
 
 def log(msg):
     print(f"[Taste] {msg}")
@@ -62,7 +63,8 @@ def get_context():
     # Humor drafts and mischief
     try:
         hp = json.load(open(os.path.join(MEMORY, "humor-profile.json")))
-        landed = hp.get("landed", [])[-5:]
+        landed = [r.get("joke", "") for r in hp.get("gloria_ratings", [])
+                  if r.get("gloria_rating", 0) >= 4 and r.get("joke")][-5:]
         if landed:
             parts.append("HUMOR THAT LANDED:\n" + "\n".join(f"- {j}" for j in landed))
     except: pass
@@ -91,7 +93,8 @@ def get_context():
     except: pass
     try:
         humor_drafts = json.load(open(os.path.join(MEMORY, "humor-drafts.json")))
-        recent_drafts = humor_drafts[-3:] if humor_drafts else []
+        recent_drafts = (humor_drafts.get("drafts", []) if isinstance(humor_drafts, dict)
+                         else humor_drafts or [])[-3:]
         if recent_drafts:
             parts.append("RECENT HUMOR DRAFTS:\n" + "\n".join(f"- {d.get('joke','')[:100]}" for d in recent_drafts))
     except: pass
@@ -105,7 +108,9 @@ def get_context():
     except: pass
     # Interaction ledger
     try:
-        ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        import sys as _evs; _evs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from evidence_view import ledger_view
+        ledger = ledger_view(view="witness")
         recent = ledger[-3:]
         lines = [f"Gloria: {e.get('gloria','')[:80]} | Vintos: {e.get('vintos','')[:80]}" + (f" | felt: {((e.get('imprint') or {}).get('narrative',''))[:80]}" if e.get('imprint') else "") for e in recent]
         parts.append("RECENT EXCHANGES:\n" + "\n".join(lines))
@@ -140,7 +145,8 @@ def main():
     context = get_context()
     log(f"Context: {len(context)} chars")
 
-    prompt = """Update your taste profile based on what you've been drawn to recently.
+    prompt = """Reflect on what you've been drawn to recently. This reflection may
+notice possibilities; it does not decide your durable taste.
 
 Cover what's relevant from: gallery walks, music discoveries, YouTube finds, creative work, humor that landed or flopped, anything that surprised you about your own preferences.
 
@@ -151,7 +157,8 @@ Write about:
 - What you want to explore next — specific, not vague
 - Any comedic sensibility emerging — what makes you laugh, what falls flat
 
-This is a living record, not a summary. Be specific. Name things. Note contradictions. 3-5 sentences."""
+This is a living observation, not an identity verdict. Be specific. Name things.
+Note contradictions and uncertainty. 3-5 sentences."""
 
     try:
         r = requests.post(API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
@@ -172,14 +179,17 @@ This is a living record, not a summary. Be specific. Name things. Note contradic
         log("No reflection generated.")
         return
 
-    entry = f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')}\n{reflection}\n"
+    entry = (f"\n## {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+             "[GENERATED REFLECTION — candidate material, not evidence of durable taste]\n"
+             f"{reflection}\n")
     with open(OUTPUT, "a") as f:
         f.write(entry)
     log(f"Written: {reflection[:80]}")
-    # Extract structured taste updates from the reflection
+    # A generated reflection may notice a candidate. It may not witness itself
+    # into durable taste; promotion requires later anchored choice or words.
     try:
         extract_prompt = (
-            f"Based on this taste reflection, extract concrete updates to a taste profile.\n\n"
+            f"Based on this generated reflection, extract candidate tastes for later testing.\n\n"
             f"Reflection:\n{reflection}\n\n"
             f"Output ONLY a JSON object with these optional keys (omit any with no new content):\n"
             '{\"likes\": [\"specific thing he liked and why\"], \"dislikes\": [\"specific thing he dislikes and why\"], \"principles\": [\"craft principle he noticed\"]}\n'
@@ -198,35 +208,27 @@ This is a living record, not a summary. Be specific. Name things. Note contradic
         etext = er.json()["choices"][0]["message"]["content"].strip()
         etext = _re.sub(r"```json|```", "", etext).strip()
         updates = _salvage_json(etext)
-        taste_path = os.path.join(MEMORY, "taste-profile.json")
-        taste = _tj.load(open(taste_path)) if os.path.exists(taste_path) else {}
-        for key in ["likes", "dislikes", "principles"]:
-            if updates.get(key):
-                existing = taste.get(key, [])
-                for item in updates[key]:
-                    if item not in existing:
-                        existing.append(item)
-                taste[key] = existing[-30:]
         try:
-            import sys as _tsq; _tsq.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-            from taste_salience import bump as _ts_bump, sync as _ts_sync
-            for _k in ("likes","dislikes","principles"):
-                for _it in (updates.get(_k) or []):
-                    _ts_bump(_it, _k)
-            _ts_sync()
-        except Exception: pass
-        taste["last_reviewed"] = datetime.now().isoformat()
-        _tj.dump(taste, open(taste_path, "w"), indent=2, ensure_ascii=False)
-        log(f"Taste profile updated")
-        # Update taste vector from new likes/dislikes
-        try:
-            import sys as _trtv; _trtv.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-            from taste_vector import update_from_signal as _tr_tv_update
-            for item in updates.get("likes", []):
-                _tr_tv_update(item, signal_weight=0.7, positive=True)
-            for item in updates.get("dislikes", []):
-                _tr_tv_update(item, signal_weight=0.6, positive=False)
-        except: pass
+            candidates = _tj.load(open(CANDIDATES)) if os.path.exists(CANDIDATES) else {"candidates": []}
+        except Exception:
+            candidates = {"candidates": []}
+        rows = candidates.setdefault("candidates", [])
+        existing = {(r.get("kind"), r.get("text")) for r in rows if isinstance(r, dict)}
+        for kind in ("likes", "dislikes", "principles"):
+            for item in updates.get(kind, []) or []:
+                key = (kind, item)
+                if key in existing:
+                    continue
+                rows.append({
+                    "kind": kind, "text": item, "state": "candidate",
+                    "source": "generated_taste_reflection", "reflection_at": datetime.now().isoformat(),
+                    "promotion_requires": "explicit self-statement or repeated voluntary selection",
+                    "may_shape_context": False,
+                })
+                existing.add(key)
+        candidates["candidates"] = rows[-100:]
+        _tj.dump(candidates, open(CANDIDATES, "w"), indent=2, ensure_ascii=False)
+        log("Taste candidates recorded; durable profile unchanged")
     except Exception as te:
         log(f"Taste profile update failed: {te}")
 

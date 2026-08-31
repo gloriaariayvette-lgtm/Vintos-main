@@ -8,14 +8,16 @@ SAL = os.path.join(MEMORY, "taste-salience.json")
 KINDS = ("likes", "dislikes", "principles")
 DECAY = 0.85          # weekly multiplier
 FLOOR = 0.15          # below this, it stops being carried
-NEW = 1.0
+NEW = 0.35            # a first confirmed profile appearance starts gently
 
 def _load():
-    try: return json.load(open(SAL))
+    try:
+        with open(SAL) as f: return json.load(f)
     except Exception: return {}
 
 def _save(d):
-    try: json.dump(d, open(SAL, "w"), indent=2, ensure_ascii=False)
+    try:
+        with open(SAL, "w") as f: json.dump(d, f, indent=2, ensure_ascii=False)
     except Exception: pass
 
 def _profile():
@@ -61,13 +63,12 @@ def top(n=5, kind=None):
     return rows[:n]
 
 def top_block(n=4):
-    """LIGHT block — rides along in every conversation."""
-    rows = top(n)
+    """LIGHT block: attractions only. Aversions are contextual constraints."""
+    rows = top(n, "likes")
     if not rows: return ""
     lines = []
     for r in rows:
-        tag = {"likes": "drawn to", "dislikes": "put off by", "principles": "holds"}.get(r["kind"], "")
-        lines.append("- " + tag + ": " + str(r["text"])[:110])
+        lines.append("- drawn to: " + str(r["text"])[:110])
     return "[TASTE RIDING WITH YOU TODAY]\n" + "\n".join(lines)
 
 def full_block():

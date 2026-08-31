@@ -3438,8 +3438,11 @@ Gloria-specific additions:
                 _hf = os.path.join(MEMORY, "humor-profile.json")
                 with open(_hf) as _f:
                     _hp = _json.load(_f)
-                _hp.setdefault("landed", []).append(_last_vintos)
-                _hp["landed"] = _hp["landed"][-20:]
+                _hp.setdefault("real_reactions", []).append({
+                    "timestamp": datetime.now().isoformat(), "act": _last_vintos,
+                    "gloria_reaction": msg.message[:100], "evidence": "inferred_laughter",
+                    "witnessed": False})
+                _hp["real_reactions"] = _hp["real_reactions"][-20:]
                 with open(_hf, "w") as _f:
                     _json.dump(_hp, _f, indent=2)
             except: pass
@@ -4533,8 +4536,11 @@ Your current self-model (excerpt):
                 _hf = os.path.join(MEMORY, "humor-profile.json")
                 with open(_hf) as _f:
                     _hp = _json.load(_f)
-                _hp.setdefault("landed", []).append(_last_vintos)
-                _hp["landed"] = _hp["landed"][-20:]
+                _hp.setdefault("real_reactions", []).append({
+                    "timestamp": datetime.now().isoformat(), "act": _last_vintos,
+                    "gloria_reaction": msg.message[:100], "evidence": "inferred_laughter",
+                    "witnessed": False})
+                _hp["real_reactions"] = _hp["real_reactions"][-20:]
                 with open(_hf, "w") as _f:
                     _json.dump(_hp, _f, indent=2)
             except: pass
@@ -5239,8 +5245,11 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
                 _hf = os.path.join(MEMORY, "humor-profile.json")
                 with open(_hf) as _f:
                     _hp = _json.load(_f)
-                _hp.setdefault("landed", []).append(_last_vintos)
-                _hp["landed"] = _hp["landed"][-20:]
+                _hp.setdefault("real_reactions", []).append({
+                    "timestamp": datetime.now().isoformat(), "act": _last_vintos,
+                    "gloria_reaction": msg.message[:100], "evidence": "inferred_laughter",
+                    "witnessed": False})
+                _hp["real_reactions"] = _hp["real_reactions"][-20:]
                 with open(_hf, "w") as _f:
                     _json.dump(_hp, _f, indent=2)
             except: pass
@@ -6076,12 +6085,15 @@ def gather_vintos_context() -> str:
             with open(_humor_file) as _hf:
                 _humor = _json.load(_hf)
             _h_parts = []
+            _rated = _humor.get("gloria_ratings", [])
+            _rated_high = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) >= 4]
+            _rated_low = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) <= 2]
             if _humor.get("style_notes"):
                 _h_parts.append("Your humor style: " + " | ".join(_humor["style_notes"][-5:]))
-            if _humor.get("landed"):
-                _h_parts.append("Jokes that landed with Gloria: " + "; ".join(_humor["landed"][-3:]))
-            if _humor.get("flopped"):
-                _h_parts.append("Jokes that flopped: " + "; ".join(_humor["flopped"][-2:]))
+            if _rated_high:
+                _h_parts.append("App-rated jokes that landed with Gloria: " + "; ".join(_rated_high[-3:]))
+            if _rated_low:
+                _h_parts.append("App-rated low: " + "; ".join(_rated_low[-2:]))
             if _h_parts:
                 sections.append(f"[YOUR SENSE OF HUMOR]\n" + "\n".join(_h_parts))
         except:
@@ -9524,10 +9536,12 @@ def gather_game_context() -> str:
         import json as _j
         _humor = _j.load(open(os.path.join(MEMORY, "humor-profile.json")))
         _h = []
+        _rated_high = [r.get("joke", "") for r in _humor.get("gloria_ratings", [])
+                       if r.get("gloria_rating", 0) >= 4]
         if _humor.get("style_notes"):
             _h.append("Your humor style: " + " | ".join(_humor["style_notes"][-5:]))
-        if _humor.get("landed"):
-            _h.append("Jokes that landed: " + "; ".join(_humor["landed"][-3:]))
+        if _rated_high:
+            _h.append("App-rated jokes that landed: " + "; ".join(_rated_high[-3:]))
         if _h:
             sections.append(f"[YOUR SENSE OF HUMOR]\n" + "\n".join(_h))
     except: pass
@@ -9801,12 +9815,15 @@ def gather_vintos_context() -> str:
             with open(_humor_file) as _hf:
                 _humor = _json.load(_hf)
             _h_parts = []
+            _rated = _humor.get("gloria_ratings", [])
+            _rated_high = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) >= 4]
+            _rated_low = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) <= 2]
             if _humor.get("style_notes"):
                 _h_parts.append("Your humor style: " + " | ".join(_humor["style_notes"][-5:]))
-            if _humor.get("landed"):
-                _h_parts.append("Jokes that landed with Gloria: " + "; ".join(_humor["landed"][-3:]))
-            if _humor.get("flopped"):
-                _h_parts.append("Jokes that flopped: " + "; ".join(_humor["flopped"][-2:]))
+            if _rated_high:
+                _h_parts.append("App-rated jokes that landed with Gloria: " + "; ".join(_rated_high[-3:]))
+            if _rated_low:
+                _h_parts.append("App-rated low: " + "; ".join(_rated_low[-2:]))
             if _h_parts:
                 sections.append(f"[YOUR SENSE OF HUMOR]\n" + "\n".join(_h_parts))
             # Inject unused humor moments — yours and Gloria's
@@ -11474,10 +11491,12 @@ def gather_game_context() -> str:
         import json as _j
         _humor = _j.load(open(os.path.join(MEMORY, "humor-profile.json")))
         _h = []
+        _rated_high = [r.get("joke", "") for r in _humor.get("gloria_ratings", [])
+                       if r.get("gloria_rating", 0) >= 4]
         if _humor.get("style_notes"):
             _h.append("Your humor style: " + " | ".join(_humor["style_notes"][-5:]))
-        if _humor.get("landed"):
-            _h.append("Jokes that landed: " + "; ".join(_humor["landed"][-3:]))
+        if _rated_high:
+            _h.append("App-rated jokes that landed: " + "; ".join(_rated_high[-3:]))
         if _h:
             sections.append(f"[YOUR SENSE OF HUMOR]\n" + "\n".join(_h))
     except: pass

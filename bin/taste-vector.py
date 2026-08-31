@@ -8,7 +8,8 @@ record). The vector updates from signals, scores options, and gets distorted by
 yearning bleed.
 
 Schema (taste-vector.json):
-  vector: [...] — 768-dim preference embedding, weighted average of signals
+  vector: [...] — 768-dim attraction embedding, weighted average of positive signals
+  aversions: [...] — bounded negative constraints; never inverted into identity
   strength: 0.0–1.0 — how strongly formed (increases with consistent signals)
   coherence: 0.0–1.0 — consistency of signals (drops when contradictions arrive)
   contradictions: [...] — coexisting preferences that refused to merge
@@ -80,20 +81,25 @@ def normalize(vec):
 
 def load_taste_vector():
     try:
-        return json.load(open(TASTE_VECTOR_FILE))
+        with open(TASTE_VECTOR_FILE) as f:
+            tv = json.load(f)
+        tv.setdefault("aversions", [])
+        return tv
     except:
         return {
             "vector": [],
             "strength": 0.0,
             "coherence": 0.5,
             "contradictions": [],
+            "aversions": [],
             "last_updated": datetime.now().isoformat(),
             "signal_count": 0
         }
 
 def save_taste_vector(tv):
     tv["last_updated"] = datetime.now().isoformat()
-    json.dump(tv, open(TASTE_VECTOR_FILE, "w"), indent=2)
+    with open(TASTE_VECTOR_FILE, "w") as f:
+        json.dump(tv, f, indent=2)
 
 def weighted_average(vec_a, vec_b, weight_a, weight_b):
     """Weighted average of two vectors."""
@@ -121,8 +127,23 @@ def update_from_signal(text, signal_weight=1.0, positive=True):
         return
 
     if not positive:
-        # Push away — invert signal
-        new_vec = [-x for x in new_vec]
+        # An aversion is not attraction to a semantic opposite. Keep it as a
+        # contextual constraint and leave the positive center untouched.
+        aversions = tv.setdefault("aversions", [])
+        key = text[:200]
+        old = next((a for a in aversions if a.get("text") == key), None)
+        if old:
+            old["weight"] = min(1.0, old.get("weight", 0.0) + signal_weight * 0.1)
+            old["last_seen"] = datetime.now().isoformat()
+        else:
+            aversions.append({"text": key, "vector": normalize(new_vec),
+                              "weight": min(1.0, signal_weight),
+                              "added": datetime.now().isoformat()})
+        tv["aversions"] = aversions[-20:]
+        tv["signal_count"] = tv.get("signal_count", 0) + 1
+        save_taste_vector(tv)
+        log("Recorded contextual aversion; attraction center unchanged")
+        return
 
     if not tv["vector"]:
         # First signal — just set
@@ -164,7 +185,7 @@ def score_option(option_text, base_score=0.0):
     """Score an option against taste vector with yearning distortion.
     Returns adjusted score."""
     tv = load_taste_vector()
-    if not tv["vector"] or tv["strength"] < 0.05:
+    if (not tv["vector"] or tv["strength"] < 0.05) and not tv.get("aversions"):
         return base_score
 
     option_vec = embed(option_text)
@@ -184,10 +205,17 @@ def score_option(option_text, base_score=0.0):
                 scoring_vec = normalize(scoring_vec)
     except: pass
 
-    sim = cosine_similarity(option_vec, scoring_vec)
-    adjustment = sim * tv["strength"] * 0.3  # max 0.3 adjustment
+    sim = cosine_similarity(option_vec, scoring_vec) if scoring_vec else 0.0
+    adjustment = sim * tv["strength"] * 0.3  # max 0.3 attraction adjustment
+    # Aversions apply only when this option resembles the specific constraint.
+    aversion = 0.0
+    for a in tv.get("aversions", []):
+        av = a.get("vector", [])
+        if av:
+            aversion = max(aversion, max(0.0, cosine_similarity(option_vec, av)) *
+                           min(1.0, float(a.get("weight", 0.5))) * 0.25)
     
-    return base_score + adjustment
+    return base_score + adjustment - aversion
 
 def batch_embed(texts):
     """Embed multiple texts in one subprocess call."""
@@ -239,7 +267,12 @@ def seed_from_profile():
             weight, positive = 0.7, True
 
         if not positive:
-            vec = [-x for x in vec]
+            tv.setdefault("aversions", []).append({
+                "text": text[:200], "vector": normalize(vec), "weight": weight,
+                "added": datetime.now().isoformat()})
+            tv["aversions"] = tv["aversions"][-20:]
+            tv["signal_count"] = tv.get("signal_count", 0) + 1
+            continue
 
         if not tv["vector"]:
             tv["vector"] = normalize(vec)

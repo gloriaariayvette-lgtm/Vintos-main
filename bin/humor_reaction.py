@@ -28,6 +28,12 @@ def save_profile(p):
     with open(HUMOR_PROFILE, "w") as f:
         json.dump(p, f, indent=2)
 
+def _reaction_key(r):
+    """Old profiles contain both strings and structured reactions."""
+    if isinstance(r, dict):
+        return str(r.get("act", ""))[:80]
+    return str(r)[:80]
+
 def find_recent_mischief(within_hours=2):
     """Find mischief acts in the last N hours."""
     cutoff = datetime.now() - timedelta(hours=within_hours)
@@ -81,19 +87,16 @@ def main():
         if act.get("reason"):
             description += f" — {act['reason']}"
         
-        # Add to real_reactions (timestamped)
-        profile["real_reactions"].append({
-            "timestamp": datetime.now().isoformat(),
-            "act": description,
-            "gloria_reaction": sys.argv[1][:100],
-        })
-        profile["real_reactions"] = profile["real_reactions"][-20:]
-        
-        # Add to real_reactions, not landed — landed is for humor-practice jokes only
-        if description[:80] not in [r[:80] for r in profile.get("real_reactions", [])]:
-            profile.setdefault("real_reactions", []).append(description[:150])
+        # This is a loose conversational inference, not an app rating. Preserve
+        # the distinction and never promote it into the practice landed list.
+        if description[:80] not in [_reaction_key(r) for r in profile.get("real_reactions", [])]:
+            profile["real_reactions"].append({
+                "timestamp": datetime.now().isoformat(), "act": description,
+                "gloria_reaction": sys.argv[1][:100], "evidence": "inferred_laughter",
+                "witnessed": False,
+            })
             profile["real_reactions"] = profile["real_reactions"][-20:]
-            print(f"[HumorReaction] Landed: {description[:80]}")
+            print(f"[HumorReaction] Possible positive reaction: {description[:80]}")
     
     save_profile(profile)
 

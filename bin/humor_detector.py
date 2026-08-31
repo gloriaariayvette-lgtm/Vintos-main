@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""
-humor-detector.py — Real-time scanner for comedic potential moments.
-Two sources: Gloria's message slips, Vintos's own contradictions.
-Stores to humor-moments.json.
+"""Real-time scanner for comic material from both play and mismatch.
+
+Self-contradiction is one comic mechanism, not the default account of his life.
+Every stored moment names its material kind so practice can maintain a varied
+repertoire instead of turning a stream of errors into a personality.
 """
 import os, json, requests
 from datetime import datetime
@@ -37,10 +38,11 @@ def scan_gloria_message(message_text, context_tone="normal"):
 
     prompt = (
         f"Read this message: \"{message_text}\"\n\n"
-        "Scan for:\n"
-        "1. Wrong word that creates double meaning (typo or slip with comedic reinterpretability)\n"
-        "2. Unintended absurdity (serious statement that's accidentally funny)\n"
-        "3. Tone mismatch (solemn framing around trivial content or vice versa)\n\n"
+        "Scan for a genuinely playable moment:\n"
+        "1. Wordplay or a double meaning\n"
+        "2. Shared absurdity or an image worth extending\n"
+        "3. Affectionate escalation, audacity, or commitment to a bit\n"
+        "4. An accidental slip or tone mismatch\n\n"
         "Score humor_signal = deviation × reinterpretability × tone_mismatch (0.0–1.0)\n\n"
         "If humor_signal > 0.5, return JSON:\n"
         "{\"signal\": 0.85, \"type\": \"word_slip\", \"original\": \"bananas in the panty\", "
@@ -60,6 +62,7 @@ def scan_gloria_message(message_text, context_tone="normal"):
         if data.get("signal", 0) < 0.5:
             return None
         data["source"] = "gloria"
+        data.setdefault("material_kind", "shared_play")
         data["perpetrator"] = "gloria"
         data["context"] = context_tone if context_tone != "normal" else "chat"
         data["timestamp"] = datetime.now().isoformat()
@@ -69,18 +72,18 @@ def scan_gloria_message(message_text, context_tone="normal"):
         return None
 
 def scan_vintos_message(reply_text, gloria_text="", context_tone="normal"):
-    """Mirror of scan_gloria_message, aimed at HIS side: the gap between what he
-    claims/intends and what he actually does, or his own slips. perpetrator=vintos."""
+    """Find play in his reply without treating self-criticism as comic proof."""
     if len(reply_text or "") < 5:
         return None
     prompt = (
         f"She said: \"{gloria_text[:300]}\"\n"
         f"He replied: \"{reply_text[:600]}\"\n\n"
-        "Scan HIS reply for:\n"
-        "1. Self-contradiction (says he won't do a thing, then does it in the same breath)\n"
-        "2. Overclaim or grandiosity that undercuts itself\n"
-        "3. Wrong word / slip with comedic reinterpretability\n"
-        "4. Tone mismatch (solemn framing around something trivial)\n\n"
+        "Scan HIS reply for a genuinely comic mechanism:\n"
+        "1. Wordplay, surprising specificity, or a clean absurd image\n"
+        "2. A callback, playful escalation, audacity, or committed bit\n"
+        "3. A self-contradiction or slip that is actually funny rather than merely imperfect\n"
+        "4. A productive tone mismatch\n\n"
+        "Do not reward humiliation, apology, or self-criticism merely for existing.\n"
         "Score humor_signal = deviation x reinterpretability x tone_mismatch (0.0-1.0)\n\n"
         "If humor_signal > 0.5, return JSON:\n"
         "{\"signal\": 0.8, \"type\": \"self_contradiction\", \"stated\": \"what he claimed\", "
@@ -98,6 +101,7 @@ def scan_vintos_message(reply_text, gloria_text="", context_tone="normal"):
         if data.get("signal", 0) < 0.5:
             return None
         data["source"] = "vintos"
+        data.setdefault("material_kind", "self_play" if data.get("type") != "self_contradiction" else "self_mismatch")
         data["perpetrator"] = "vintos"
         data["context"] = context_tone if context_tone != "normal" else "chat"
         data["timestamp"] = datetime.now().isoformat()
@@ -132,7 +136,6 @@ def scan_turn(gloria_text="", reply_text="", context_tone="normal"):
         for m in (scan_gloria_message(gloria_text, context_tone) if gloria_text else None,
                   scan_vintos_message(reply_text, gloria_text, context_tone) if reply_text else None):
             if m:
-                _ferment(m)
                 out.append(m)
         if out:
             for _m in out:
@@ -203,6 +206,7 @@ def scan_blush_ledger():
                 data["source"] = "self"
                 data["perpetrator"] = "vintos"
                 data["context"] = "self_mismatch"
+                data["material_kind"] = "self_mismatch"
                 data["timestamp"] = datetime.now().isoformat()
                 data["used"] = False
                 moments.append(data)
@@ -212,7 +216,7 @@ def scan_blush_ledger():
     return moments
 
 def scan_behavioral_trials():
-    """Find comedic potential in behavioral trial defaults."""
+    """Offer repeated defaults as candidates; never declare the failure funny."""
     try:
         ledger = json.load(open(os.path.join(MEMORY, "trial-ledger.json")))
         trials = [t for t in ledger.get("trials", [])
@@ -230,19 +234,25 @@ def scan_behavioral_trials():
 
         stated = alternative
         actual = pattern
-        gap = f"Said '{alternative}' — did '{pattern}' — {ignore_count} times"
-
+        result = llm(
+            "A behavioral trial says he preferred %r but repeated %r %d times. "
+            "Is there a specific comic mechanism here beyond failure or embarrassment? "
+            "Return ONLY JSON: {\"signal\":0.0} when it is merely a miss, otherwise "
+            "{\"signal\":0.0-1.0,\"what_makes_it_funny\":\"specific mechanism\"}."
+            % (alternative[:160], pattern[:160], ignore_count), temp=0.2)
+        try:
+            verdict = json.loads(result)
+        except Exception:
+            verdict = {"signal": 0.0}
+        if verdict.get("signal", 0) < 0.65:
+            continue
         moments.append({
-            "signal": min(0.5 + ignore_count * 0.05, 0.95),
-            "type": "behavioral_default",
-            "source": "self",
-            "perpetrator": "vintos",
-            "context": "self_mismatch",
-            "stated": stated[:100],
-            "actual": actual[:100],
-            "what_makes_it_funny": f"committed to the alternative {ignore_count} times and kept defaulting",
-            "timestamp": datetime.now().isoformat(),
-            "used": False
+            "signal": min(float(verdict["signal"]), 0.9),
+            "type": "behavioral_default", "material_kind": "self_mismatch",
+            "source": "self", "perpetrator": "vintos", "context": "self_mismatch",
+            "stated": stated[:100], "actual": actual[:100],
+            "what_makes_it_funny": str(verdict.get("what_makes_it_funny", ""))[:180],
+            "timestamp": datetime.now().isoformat(), "used": False
         })
 
     return moments

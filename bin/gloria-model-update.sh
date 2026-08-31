@@ -74,8 +74,11 @@ import json
 try:
     h = json.load(open('$MEMORY/humor-profile.json'))
     parts = []
-    if h.get('landed'): parts.append('Landed: ' + '; '.join(h['landed'][-3:]))
-    if h.get('flopped'): parts.append('Flopped: ' + '; '.join(h['flopped'][-2:]))
+    rated = h.get('gloria_ratings', [])
+    landed = [r.get('joke','') for r in rated if r.get('gloria_rating',0) >= 4]
+    low = [r.get('joke','') for r in rated if r.get('gloria_rating',0) <= 2]
+    if landed: parts.append('App-rated landed: ' + '; '.join(landed[-3:]))
+    if low: parts.append('App-rated low: ' + '; '.join(low[-2:]))
     print('\n'.join(parts))
 except: pass
 " 2>/dev/null)
