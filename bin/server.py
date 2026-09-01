@@ -8266,6 +8266,12 @@ Your current self-model (excerpt):
         # -- model router (single source of truth): Claude primary, grok fallback --
         import model_router as _mr
         _reason = (not _felt_now) and ("touched" not in (msg.message or "").lower())
+        # Stream his reply and start a [RENDER:] the moment the tag closes -
+        # the render overlaps the 60-120s he spends writing. Avatar only.
+        try:
+            import stream_watch as _sw, avatar_stage as _avst_s
+            _sw.install(_mr); _sw.EARLY.set(_avst_s.start_live)
+        except Exception as _swe: print("[avatar-stage] stream watch:", _swe, flush=True)
         try:
             try:
                 import json as _cap_j
