@@ -429,9 +429,32 @@ def register(app, secret):
             raise HTTPException(status_code=404, detail="no such still")
         return FileResponse(path, media_type="image/jpeg")
 
+    @app.get("/avatar/stage/rooms")
+    async def stage_rooms_review(request: Request):
+        """Every room loop, playable in a browser on the tailnet (?s=SECRET) -
+        review without opening the app or sending him anything."""
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
+        from fastapi.responses import HTMLResponse
+        s = request.query_params.get("s", "")
+        try:
+            man = json.load(open(MANIFEST))
+        except Exception:
+            man = {"rooms": {}}
+        cells = "".join(
+            "<div style='margin:0 0 28px'><div style='font:12px monospace;letter-spacing:0.2em;"
+            "text-transform:uppercase;color:#C96B3C;margin:0 0 8px'>%s</div>"
+            "<video style='width:100%%;border-radius:12px' src='/avatar/stage/clip/%s?s=%s' "
+            "autoplay muted loop playsinline></video></div>" % (r, cfg["clips"][0], s)
+            for r, cfg in sorted(man.get("rooms", {}).items()) if cfg.get("clips"))
+        return HTMLResponse("<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                            "<body style='background:#05050d;max-width:520px;margin:0 auto;"
+                            "padding:24px 14px'>%s</body>" % (cells or "<p style='color:#888'>No rooms yet.</p>"))
+
     @app.get("/avatar/stage/clip/{name}")
     async def stage_clip(name: str, request: Request):
-        _auth(request)
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
         path = os.path.realpath(os.path.join(CLIPS, name))
         if not path.startswith(os.path.realpath(CLIPS) + os.sep) or not os.path.exists(path):
             raise HTTPException(status_code=404, detail="no such clip")
