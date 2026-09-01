@@ -334,6 +334,17 @@ def _live_worker(prompt):
         import base64 as _b64, requests as _rq
         mem = os.path.join(WORKSPACE, "memory")
         refs = []
+        # A named room of the house grounds the scene in HER photo of it -
+        # "patio" means her patio, not a patio. Matched by room-name words.
+        try:
+            pl = prompt.lower()
+            for rname, rcfg in load_rooms().get("rooms", {}).items():
+                photo = os.path.expanduser(rcfg.get("photo", "") or "")
+                words = [w for w in rname.replace("_", "-").split("-") if len(w) > 2]
+                if photo and os.path.exists(photo) and any(w in pl for w in words):
+                    refs.append(photo)
+        except Exception:
+            pass
         try:
             shared = os.path.join(mem, "shared-images")
             cand = [os.path.join(shared, f) for f in os.listdir(shared)
@@ -349,6 +360,7 @@ def _live_worker(prompt):
             if os.path.exists(p):
                 mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
                 images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
+        log("live refs: %s" % ", ".join(os.path.basename(x) for x in refs if os.path.exists(x)))
         r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images}, timeout=900)
         if r.status_code != 200:
             raise RuntimeError("mac live render %s: %s" % (r.status_code, r.text[:200]))
