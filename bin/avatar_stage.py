@@ -327,9 +327,30 @@ def register(app, secret):
         mac = _mac_url()
         if not mac:
             raise HTTPException(status_code=503, detail="no Mac stage configured")
+        # His references travel with the prompt: photos SHE sent recently
+        # (shared-images, newest first) for setting/context, then his hero
+        # still last for the face lock - the same recipe his sends use.
+        import base64 as _b64
+        mem = os.path.join(WORKSPACE, "memory")
+        refs = []
+        try:
+            shared = os.path.join(mem, "shared-images")
+            cand = [os.path.join(shared, f) for f in os.listdir(shared)
+                    if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+            cand = [p for p in sorted(cand, key=os.path.getmtime, reverse=True)
+                    if time.time() - os.path.getmtime(p) < 72 * 3600][:2]
+            refs.extend(cand)
+        except Exception:
+            pass
+        refs.append(os.path.join(mem, "video", "hero-still.jpg"))
+        images = []
+        for p in refs:
+            if os.path.exists(p):
+                mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
+                images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
         import asyncio, requests as _rq
         def _run():
-            return _rq.post(mac + "/live", json={"prompt": prompt}, timeout=900)
+            return _rq.post(mac + "/live", json={"prompt": prompt, "images": images}, timeout=900)
         r = await asyncio.get_event_loop().run_in_executor(None, _run)
         if r.status_code != 200:
             raise HTTPException(status_code=502, detail="live render failed: " + r.text[:200])
