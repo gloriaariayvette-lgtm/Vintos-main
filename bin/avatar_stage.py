@@ -191,7 +191,10 @@ def speak(text, room=None):
         log("kokoro failed: %s" % e); return 1
     if not os.path.exists(WAV2LIP_CKPT):
         log("Wav2Lip checkpoint missing at %s" % WAV2LIP_CKPT); return 1
-    r = subprocess.run([sys.executable, "inference.py",
+    w2l_py = os.path.join(WAV2LIP_DIR, ".venv", "bin", "python")
+    if not os.path.exists(w2l_py):
+        w2l_py = sys.executable
+    r = subprocess.run([w2l_py, "inference.py",
                         "--checkpoint_path", WAV2LIP_CKPT,
                         "--face", face, "--audio", wav, "--outfile", out],
                        cwd=WAV2LIP_DIR, capture_output=True, text=True)
