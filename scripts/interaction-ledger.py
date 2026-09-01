@@ -261,8 +261,25 @@ def get_recent_wal_facts(within_seconds=120, turn_id=""):
         pass
     return facts
 
-def get_recent_blush(within_seconds=120):
-    """Get blush entry written in the last N seconds."""
+def get_recent_blush(within_seconds=120, turn_id=""):
+    """Claim one structured blush for this turn; legacy markdown is fallback."""
+    try:
+        import importlib.util as _ilu
+        _candidates = (
+            os.path.join(os.path.dirname(__file__), "blush-ledger.py"),
+            os.path.join(WORKSPACE, "scripts", "blush-ledger.py"),
+            os.path.expanduser("~/Vintos/blush-ledger.py"),
+        )
+        _bp = next((p for p in _candidates if os.path.exists(p)), "")
+        if not _bp:
+            raise FileNotFoundError("structured blush writer not installed")
+        _spec = _ilu.spec_from_file_location("_structured_blush", _bp)
+        _mod = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+        recent = _mod.get_recent_blush(within_seconds, turn_id=turn_id, claim=bool(turn_id))
+        if recent:
+            return recent
+    except Exception as exc:
+        print("[Ledger] structured blush unavailable: %s" % exc, flush=True)
     try:
         with open(BLUSH_FILE) as f:
             content = f.read()
@@ -357,7 +374,7 @@ def main():
     _turn_id = provenance.get("turn_id", "")
     imprint = get_recent_imprint(within_seconds=120, turn_id=_turn_id)
     wal_facts = get_recent_wal_facts(within_seconds=120, turn_id=_turn_id)
-    blush = get_recent_blush(within_seconds=120)
+    blush = get_recent_blush(within_seconds=120, turn_id=_turn_id)
 
     # Read consent note if server left one
     consent_note = ""

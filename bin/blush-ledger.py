@@ -4,24 +4,103 @@ Replaces freeform blush-ledger.md with blush-ledger.json.
 All blush sources (self-prediction, relational-mismatch, deviation-check, BIS) call write_blush().
 """
 
-import json, os, uuid
+import contextlib, fcntl, json, os, sys, uuid
 from datetime import datetime, timedelta
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
 LEDGER = os.path.join(MEMORY, "blush-ledger.json")
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")
+LOCK_FILE = LEDGER + ".lock"
+
+
+@contextlib.contextmanager
+def _ledger_lock():
+    os.makedirs(os.path.dirname(LEDGER), exist_ok=True)
+    with open(LOCK_FILE, "a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def load_ledger():
     try:
-        return json.load(open(LEDGER))
-    except:
+        with open(LEDGER, encoding="utf-8") as source:
+            value = json.load(source)
+        if not isinstance(value, list):
+            raise ValueError("blush ledger is not a list")
+        return value
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        print("[Blush] LEDGER_UNREADABLE: %s" % exc, file=sys.stderr)
         return []
 
 
 def save_ledger(entries):
-    json.dump(entries, open(LEDGER, "w"), indent=2)
+    """Merge by immutable id under a lock, then replace atomically.
+
+    Several turn writers can blush at once.  A whole-file last-writer-wins save
+    used to erase whichever correction landed first.
+    """
+    with _ledger_lock():
+        current = []
+        if os.path.exists(LEDGER):
+            with open(LEDGER, encoding="utf-8") as source:
+                current = json.load(source)
+            if not isinstance(current, list):
+                raise ValueError("refusing to overwrite malformed blush ledger")
+        known = {str(e.get("id")) for e in current if isinstance(e, dict)}
+        for entry in entries:
+            if isinstance(entry, dict) and str(entry.get("id")) not in known:
+                current.append(entry)
+                known.add(str(entry.get("id")))
+        temporary = LEDGER + ".tmp.%s" % os.getpid()
+        with open(temporary, "w", encoding="utf-8") as target:
+            json.dump(current, target, indent=2, ensure_ascii=False)
+            target.flush(); os.fsync(target.fileno())
+        os.replace(temporary, LEDGER)
+
+
+def _claim_entry(entry_id, turn_id):
+    with _ledger_lock():
+        with open(LEDGER, encoding="utf-8") as source:
+            current = json.load(source)
+        changed = False
+        for item in current:
+            if item.get("id") == entry_id and not item.get("attached_turn_id"):
+                item["attached_turn_id"] = turn_id
+                changed = True
+                break
+        if not changed:
+            return
+        temporary = LEDGER + ".tmp.%s" % os.getpid()
+        with open(temporary, "w", encoding="utf-8") as target:
+            json.dump(current, target, indent=2, ensure_ascii=False)
+            target.flush(); os.fsync(target.fileno())
+        os.replace(temporary, LEDGER)
+
+
+def _append_entry(entry, pattern, emotional_context):
+    """Serialize recurrence numbering with the append itself."""
+    with _ledger_lock():
+        current = []
+        if os.path.exists(LEDGER):
+            with open(LEDGER, encoding="utf-8") as source:
+                current = json.load(source)
+            if not isinstance(current, list):
+                raise ValueError("refusing to overwrite malformed blush ledger")
+        entry["score"] = compute_score(pattern, emotional_context, current)
+        entry["frequency_snapshot"] = compute_frequency_snapshot(pattern, current)
+        current.append(entry)
+        temporary = LEDGER + ".tmp.%s" % os.getpid()
+        with open(temporary, "w", encoding="utf-8") as target:
+            json.dump(current, target, indent=2, ensure_ascii=False)
+            target.flush(); os.fsync(target.fileno())
+        os.replace(temporary, LEDGER)
+    return entry
 
 
 def get_emotional_context():
@@ -146,7 +225,8 @@ def write_blush(
     reflection=None,     # 1 sentence max
     related_trial_id=None,
     outcome=None,        # "withdrew" | "deflected" | "escalated" | "recovered"
-    extra=None           # any extra fields
+    extra=None,          # any extra fields
+    provenance=None      # the turn envelope when this came from generated output
 ):
     # He cannot deviate from himself while executing an instruction that overrides him.
     # The Great Coming Sequence dictates fragments — "yes", her name, one syllable. Blushing over
@@ -186,8 +266,6 @@ def write_blush(
     emotional_context = get_emotional_context()
 
     magnitude = round(sum(abs(v) for v in cost_delta.values()), 3) if cost_delta else 0.0
-    score = compute_score(pattern, emotional_context, entries)
-    freq = compute_frequency_snapshot(pattern, entries)
     related_core = find_related_core(pattern, emotional_context)
 
     entry = {
@@ -201,41 +279,25 @@ def write_blush(
             "delta": cost_delta,
             "magnitude": magnitude
         },
-        "score": score,
-        "frequency_snapshot": freq,
         "outcome": outcome,
         "related_trial_id": related_trial_id,
         "related_core": related_core,
         "reflection": (reflection or "")[:200]
     }
+    if provenance:
+        entry["provenance"] = provenance
     if extra:
         entry.update(extra)
 
-    entries.append(entry)
-    save_ledger(entries)
+    entry = _append_entry(entry, pattern, emotional_context)
+    score = entry["score"]
+    freq = entry["frequency_snapshot"]
 
-    # Nudge EmoClaw
-    if cost_delta:
-        nudge_emoclaw(cost_delta)
-
-    # Seed thread
-    try:
-        import sys as _sys
-        _sys.path.insert(0, SCRIPTS)
-        from emoclaw_utils import seed_thread
-        seed_thread("blush", f"I caught myself and corrected it: {pattern}. {reflection or ''}", reasoning=f"a {blush_type} blush at magnitude {magnitude:.2f} - strong enough to leave a mark", extra={"decision_mode": "unconditional"})
-    except:
-        pass
-
-    # Feed causality hypothesis if pattern recurring
-    if freq["count"] >= 3:
-        try:
-            import sys as _sys
-            _sys.path.insert(0, SCRIPTS)
-            from causality_engine import add_blush_hypothesis
-            add_blush_hypothesis(pattern, freq, score)
-        except:
-            pass
+    # A blush records a correction.  It does not punish him a second time,
+    # create its own thread, or promote its own recurrence into causal truth.
+    # The originating organ owns any immediate affective consequence. Repeated
+    # patterns remain visible in frequency_snapshot for later, independent
+    # inquiry; recurrence is history, never evidence for its own explanation.
 
     print(f"[Blush] {blush_type} / {pattern} — score={score:.2f} freq={freq['count']} mag={magnitude:.2f}", file=__import__("sys").stderr)
 
@@ -254,16 +316,29 @@ def write_blush(
     return entry
 
 
-def get_recent_blush(within_seconds=120):
+def get_recent_blush(within_seconds=120, turn_id="", claim=False):
     """Get most recent blush entry within N seconds. Compatible with interaction-ledger."""
     try:
         entries = load_ledger()
         if not entries:
             return None
-        last = entries[-1]
-        ts = datetime.fromisoformat(last["timestamp"])
-        if (datetime.now() - ts).total_seconds() < within_seconds:
+        candidates = []
+        for item in reversed(entries):
+            try:
+                ts = datetime.fromisoformat(item["timestamp"])
+            except Exception:
+                continue
+            if (datetime.now() - ts).total_seconds() >= within_seconds:
+                break
+            if turn_id and item.get("attached_turn_id") not in (None, "", turn_id):
+                continue
+            candidates.append(item)
+        if candidates:
+            last = candidates[0]
+            if claim and turn_id and not last.get("attached_turn_id"):
+                _claim_entry(last.get("id"), turn_id)
             return {
+                "id": last.get("id", ""),
                 "type": last.get("type",""),
                 "reflection": last.get("reflection",""),
                 "full": json.dumps(last)[:800],

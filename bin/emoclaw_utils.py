@@ -1773,6 +1773,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         )
         if steps:
             entry["steps"] = steps
+            entry["plan_state"] = "READY"
+            entry["plan_attempts"] = 1
+            entry["planned_at"] = datetime.now().isoformat()
             entry["current_step_index"] = 0
             entry["step_history"] = []
             try:
@@ -1782,7 +1785,23 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
                 pass
             # Do NOT set capability or multistep here — let router assign after 8h hold
             print(f"[express_want] Generated {len(steps)} steps for: {want_text[:60]}", file=__import__("sys").stderr)
+        else:
+            entry["plan_state"] = "BLOCKED"
+            entry["plan_attempts"] = 1
+            entry["plan_block"] = {
+                "block_type": "PLANNER_NO_RESULT",
+                "evidence": "planner returned no usable steps",
+                "resume_event": "planner available; retry at execution door",
+                "at": datetime.now().isoformat(),
+            }
     except Exception as _gs_e:
+        entry["plan_state"] = "BLOCKED"
+        entry["plan_attempts"] = 1
+        entry["plan_block"] = {
+            "block_type": "PLANNER_FAILED", "evidence": str(_gs_e)[:240],
+            "resume_event": "planner available; retry at execution door",
+            "at": datetime.now().isoformat(),
+        }
         print(f"[express_want] Step generation failed: {_gs_e}", file=__import__("sys").stderr)
     wants.append(entry)
     # Save before interference check

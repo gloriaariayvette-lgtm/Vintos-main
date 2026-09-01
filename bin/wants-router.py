@@ -1857,10 +1857,90 @@ def route_want(want):
     return "gloria"
 
 
+def _persist_plan_fields(want):
+    """Merge only planner-owned fields under a lock; do not overwrite routing."""
+    import fcntl
+    path = os.path.join(MEMORY, "current-wants.json")
+    lock_path = path + ".lock"
+    with open(lock_path, "a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        with open(path) as source:
+            current = json.load(source)
+        rows = current if isinstance(current, list) else current.get("wants", [])
+        keys = ("steps", "current_step_index", "step_history", "plan_contract",
+                "plan_state", "plan_attempts", "planned_at", "plan_block")
+        for row in rows:
+            if row.get("id") == want.get("id"):
+                for key in keys:
+                    if key in want: row[key] = want[key]
+                    elif key in row and key in ("plan_block",): row.pop(key, None)
+                break
+        temporary = path + ".tmp.%s" % os.getpid()
+        with open(temporary, "w") as target:
+            json.dump(current, target, indent=2)
+            target.flush(); os.fsync(target.fileno())
+        os.replace(temporary, path)
+
+
+def _ensure_plan(want, force=False):
+    """Repair a missing move plan at the execution door.
+
+    Empty is a typed block, never an invitation to silently route a different
+    single action. Legacy wants without plan_state enter the same repair path.
+    """
+    if want.get("steps"):
+        return True
+    if want.get("manually_routed") or want.get("gloria_routed") or want.get("capability"):
+        return True
+    block = want.get("plan_block") or {}
+    if not force and block.get("at"):
+        try:
+            age = (datetime.now() - datetime.fromisoformat(str(block["at"])[:26])).total_seconds()
+            if age < 7200:
+                return False
+        except Exception:
+            pass
+    want["plan_attempts"] = int(want.get("plan_attempts", 0)) + 1
+    try:
+        from emoclaw_utils import generate_steps
+        steps = generate_steps(
+            want.get("want", ""), want.get("possible_approach", ""),
+            want.get("reasoning", ""), want.get("self_interpretation", ""))
+        if steps:
+            want["steps"] = steps
+            want["current_step_index"] = 0
+            want["step_history"] = []
+            want["plan_state"] = "READY"
+            want["planned_at"] = datetime.now().isoformat()
+            want.pop("plan_block", None)
+            try:
+                from want_contract import contract_for
+                want["plan_contract"] = contract_for(want.get("want", ""))
+            except Exception:
+                pass
+            _persist_plan_fields(want)
+            log("  → Missing move plan repaired (%d step%s)" %
+                (len(steps), "" if len(steps) == 1 else "s"))
+            return True
+        evidence = "planner returned no usable steps"
+        block_type = "PLANNER_NO_RESULT"
+    except Exception as exc:
+        evidence = str(exc)[:240]
+        block_type = "PLANNER_FAILED"
+    want["plan_state"] = "BLOCKED"
+    want["plan_block"] = {"block_type": block_type, "evidence": evidence,
+                          "resume_event": "planner available; retry at execution door",
+                          "at": datetime.now().isoformat()}
+    _persist_plan_fields(want)
+    return False
+
+
 def main():
     import argparse as _ap
     _parser = _ap.ArgumentParser()
     _parser.add_argument("--force-want-id", help="Force a single want by id")
+    _parser.add_argument("--repair-plans-only", action="store_true",
+                         help="Backfill missing move plans without executing wants")
     _args, _ = _parser.parse_known_args()
     all_wants = get_unfulfilled_wants()
 
@@ -1882,27 +1962,8 @@ def main():
             )
         except: pass
 
-    # Auto-fulfill stale gloria-routed multistep wants (no activity for 3+ days)
-    try:
-        from datetime import datetime as _dt, timedelta as _td
-        _stale_cutoff = _dt.now() - _td(days=2)
-        for _gw in all_wants:
-            if not _gw.get("gloria_routed") or not _gw.get("multistep"):
-                continue
-            if _gw.get("fulfilled"):
-                continue
-            _gw_ts_str = (_gw.get("unfulfilled_at") or _gw.get("dismissed_at") or _gw.get("timestamp",""))[:19]
-            if not _gw_ts_str:
-                continue
-            try:
-                _gw_ts = _dt.fromisoformat(_gw_ts_str)
-                if _gw_ts < _stale_cutoff:
-                    fulfill_want(_gw["want"], auto=True)
-                    log(f"  [Auto] Fulfilled stale gloria-routed want ({(_dt.now()-_gw_ts).days}d): {_gw.get('want','')[:60]}")
-            except Exception as _gw_e:
-                log(f"  [Auto] fulfill failed: {_gw_e}")
-    except Exception as _auto_e:
-        log(f"  [Auto] stale-want sweep failed: {_auto_e}")
+    # Elapsed time never fulfills a relational want.  Old Gloria-routed work
+    # remains HELD until an explicit response, revision, or abandonment.
 
     wants = [w for w in all_wants if not w.get("dismissed")]
     if not wants:
@@ -1914,6 +1975,20 @@ def main():
             log(f"Want id {_args.force_want_id} not found or already fulfilled.")
             return
         log(f"Force-routing single want: {wants[0].get('want','')[:80]}")
+
+    if _args.repair_plans_only:
+        repaired = blocked = already_ready = 0
+        for want in wants:
+            if want.get("steps"):
+                already_ready += 1
+                continue
+            if _ensure_plan(want, force=True):
+                repaired += 1
+            else:
+                blocked += 1
+        log("Plan repair only: %d repaired, %d already ready, %d held with a named block" %
+            (repaired, already_ready, blocked))
+        return
 
     for want in wants:
         text = want.get("want", "")
@@ -1930,6 +2005,12 @@ def main():
                         log(f"  → Holding ({_age_h:.1f}h old, need 8h) — skipping")
                         continue
                 except: pass
+
+        if not _ensure_plan(want, force=bool(_args.force_want_id)):
+            block = want.get("plan_block") or {}
+            log("  → PLAN BLOCKED (%s): %s" %
+                (block.get("block_type", "unknown"), block.get("evidence", "no detail")))
+            continue
 
         # Skip gloria_routed wants unless there's a pending discussion to reply to
         if want.get("gloria_routed"):
@@ -1948,41 +2029,8 @@ def main():
                         _has_discussion = True
                 except: pass
             if not _has_discussion:
-                # Auto-fulfill if stale > 3 days
-                try:
-                    import datetime as _gdt, json as _gfj
-                    _routed_at = want.get("routed_at") or want.get("created_at") or want.get("created", "")
-                    if _routed_at:
-                        _routed_dt = _gdt.datetime.fromisoformat(_routed_at[:19])
-                        _age_days = (_gdt.datetime.now() - _routed_dt).days
-                        if _age_days >= 2:
-                            log(f"  → Gloria-routed want stale {_age_days}d — dismissing honestly (brought to her, no reply)")
-                            _now_iso = _gdt.datetime.now().isoformat()
-                            _dw_path = os.path.join(MEMORY, "dismissed-wants.json")
-                            try: _dw = _gfj.load(open(_dw_path))
-                            except Exception: _dw = []
-                            if not any(f.get("id") == want.get("id") for f in _dw):
-                                _rec = dict(want)
-                                _rec["dismissed"] = True
-                                _rec["dismissed_at"] = _now_iso
-                                _rec["dismissed_by"] = "gloria_no_reply"
-                                _rec["dismissed_reason"] = "brought to her; the window closed unanswered"
-                                _dw.append(_rec)
-                                _gfj.dump(_dw, open(_dw_path, "w"), indent=2)
-                            want["dismissed"] = True
-                            _wants_data = _gfj.load(open(os.path.join(MEMORY, "current-wants.json")))
-                            _wd_list = _wants_data if isinstance(_wants_data, list) else _wants_data.get("wants", [])
-                            for _w in _wd_list:
-                                if _w.get("id") == want.get("id"):
-                                    _w["dismissed"] = True
-                                    _w["dismissed_at"] = _now_iso
-                                    _w["dismissed_by"] = "gloria_no_reply"
-                                    _w["dismissed_reason"] = "brought to her; the window closed unanswered"
-                            _gfj.dump(_wants_data, open(os.path.join(MEMORY, "current-wants.json"), "w"), indent=2)
-                            continue
-                except Exception as _gfe:
-                    log(f"  → Stale check error: {_gfe}")
-                log(f"  → Gloria-routed, no pending reply needed — skipping")
+                want["encounter_state"] = "HELD"
+                log("  → Gloria-routed want remains HELD; silence is not decline or resolution")
                 continue
             # Fall through to gloria action handler with discussion
         
@@ -2411,28 +2459,6 @@ for _sp_n in list(ACTION_MAP):
     ACTION_MAP[_sp_n] = _spine_wrap(_sp_n, ACTION_MAP[_sp_n])
 # === END SPINE DOOR ========================================================
 
-if __name__ == "__main__":
-    main()
-    # Strip auto-dismissed (deleted) wants from current-wants.json
-    try:
-        import json as _cd_json, os as _cd_os
-        _cd_path = _cd_os.path.join(MEMORY, "current-wants.json")
-        _cd_wants = _cd_json.load(open(_cd_path))
-        _cd_before = len(_cd_wants)
-        _cd_wants = [w for w in _cd_wants if not w.get("_delete")]
-        if len(_cd_wants) < _cd_before:
-            _cd_json.dump(_cd_wants, open(_cd_path, "w"), indent=2)
-            log(f"Cleaned {_cd_before - len(_cd_wants)} auto-dismissed wants")
-    except: pass
-    # Update wants-ambitions log
-    try:
-        import subprocess as _wa_sp
-        _wa_sp.Popen(["python3", os.path.join(WORKSPACE, "scripts", "wants-ambitions-log.py")],
-            stdout=open("/tmp/wants-ambitions-log.log", "a"),
-            stderr=open("/tmp/wants-ambitions-log.log", "a"))
-    except: pass
-
-
 def _mark_attempt(text, action_name):
     """Verification-failed branch, extracted from the dispatch megablock.
     Increments attempt_count on the matching want; the second failure spawns an
@@ -2539,3 +2565,27 @@ def _open_gloria_discussion(want, text):
     except: pass
     log(f"  → Want routed to Gloria discussion board: {text[:60]}")
 
+
+if __name__ == "__main__":
+    # Keep the entrypoint last: main's branches call the helpers above.  This
+    # block previously ran before _mark_attempt and _open_gloria_discussion
+    # existed, so the first matching want could die with NameError.
+    main()
+    try:
+        import json as _cd_json, os as _cd_os
+        _cd_path = _cd_os.path.join(MEMORY, "current-wants.json")
+        _cd_wants = _cd_json.load(open(_cd_path))
+        _cd_before = len(_cd_wants)
+        _cd_wants = [w for w in _cd_wants if not w.get("_delete")]
+        if len(_cd_wants) < _cd_before:
+            _cd_json.dump(_cd_wants, open(_cd_path, "w"), indent=2)
+            log(f"Cleaned {_cd_before - len(_cd_wants)} auto-dismissed wants")
+    except Exception as _cleanup_error:
+        log(f"Want cleanup failed: {_cleanup_error}")
+    try:
+        import subprocess as _wa_sp
+        _wa_sp.Popen(["python3", os.path.join(WORKSPACE, "scripts", "wants-ambitions-log.py")],
+            stdout=open("/tmp/wants-ambitions-log.log", "a"),
+            stderr=open("/tmp/wants-ambitions-log.log", "a"))
+    except Exception as _ambitions_error:
+        log(f"Wants-ambitions launch failed: {_ambitions_error}")

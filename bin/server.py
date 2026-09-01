@@ -1317,11 +1317,25 @@ async def get_causality_hypotheses(request: Request):
             return {"success": True, "hypotheses": []}
         with open(caus_path) as f:
             db = json.load(f)
+        marks_path = os.path.join(MEMORY, "causality-marks.json")
+        try:
+            with open(marks_path) as f:
+                saved_markers = json.load(f)
+        except FileNotFoundError:
+            saved_markers = {}
+        except Exception as e:
+            return {"success": False, "error": "causality markers unreadable: " + str(e)}
         from datetime import date as _cdate
         hypotheses = []
         for i, h in enumerate(db.get("hypotheses", [])):
             if h.get("graduated"):
                 continue
+            _hid = h.get("hypothesis_id")
+            if not _hid:
+                import hashlib as _chid
+                _hid = "CH-legacy-" + _chid.sha256(
+                    (str(h.get("formed", "")) + "\n" + str(h.get("hypothesis", ""))).encode()
+                ).hexdigest()[:16]
             marks = h.get("marks", [])
             nightly = [m for m in marks if isinstance(m, dict) and m.get("schema_version") == 2]
             confirmed_marks = sum(1 for m in nightly if m.get("verdict") == "yes" and m.get("lineage_state") == "eligible")
@@ -1361,7 +1375,7 @@ async def get_causality_hypotheses(request: Request):
                 "marks": marks,
                 "net": net,
                 "days_old": days_old,
-                "hypothesis_id": h.get("hypothesis_id", ""),
+                "hypothesis_id": _hid,
                 "source": h.get("source", "unknown"),
                 "formation": h.get("formation"),
                 "nightly_evaluations": len(nightly),
@@ -1371,7 +1385,8 @@ async def get_causality_hypotheses(request: Request):
                 "tests_run": h.get("tests_run", 0),
                 "last_tested": h.get("last_tested"),
                 "graduation_readiness": readiness,
-                "marker": None,
+                "marker": saved_markers.get(_hid,
+                                             saved_markers.get(str(i))),
             })
         return {"success": True, "hypotheses": hypotheses}
     except Exception as e:
@@ -1527,8 +1542,19 @@ async def get_blush_ledger(request: Request, limit: int = 20):
         json_path = os.path.join(MEMORY, "blush-ledger.json")
         if os.path.exists(json_path):
             try:
-                entries = json.load(open(json_path))
+                with open(json_path) as f:
+                    entries = json.load(f)
+                if not isinstance(entries, list):
+                    raise ValueError("structured blush ledger is not a list")
                 for e in entries:
+                    _bid = e.get("id")
+                    if not _bid:
+                        import hashlib as _blid
+                        _bid = "BL-legacy-" + _blid.sha256(
+                            (str(e.get("timestamp", "")) + "\n" +
+                             str(e.get("type", "")) + "\n" +
+                             str(e.get("pattern", ""))).encode()
+                        ).hexdigest()[:16]
                     ts = e.get("timestamp", "")[:16]
                     btype = e.get("type", e.get("blush_type", "unknown"))
                     pattern = e.get("pattern", "")
@@ -1536,6 +1562,7 @@ async def get_blush_ledger(request: Request, limit: int = 20):
                     cost = e.get("cost", {}).get("delta", {})
                     cost_str = ", ".join(f"{k}: {'+' if v>0 else ''}{v}" for k,v in cost.items())
                     all_blushes.append({
+                        "id": _bid,
                         "timestamp": ts,
                         "body": f"Type: {btype}\nPattern: {pattern}\nCost: {cost_str}\nReflect: {reflection}",
                         "type": btype,
@@ -1543,31 +1570,11 @@ async def get_blush_ledger(request: Request, limit: int = 20):
                         "source": "ledger",
                         "sort_key": ts
                     })
-            except: pass
+            except Exception as e:
+                return {"success": False, "error": "blush ledger unreadable: " + str(e)}
 
-        # Source 2: autonomous-blush.md (BIS trial divergences)
-        auto_path = os.path.join(MEMORY, "autonomous-blush.md")
-        if os.path.exists(auto_path):
-            try:
-                content = open(auto_path).read()
-                chunks = _bre.split(r'(?=## \d{4}-\d{2}-\d{2})', content)
-                for chunk in chunks:
-                    chunk = chunk.strip()
-                    if not chunk: continue
-                    lines = chunk.split('\n')
-                    header = lines[0].strip('# ').strip()
-                    body = '\n'.join(lines[1:]).strip()
-                    ts_match = _bre.search(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}', header)
-                    ts = ts_match.group() if ts_match else header[:16]
-                    all_blushes.append({
-                        "timestamp": ts,
-                        "body": body[:400],
-                        "type": "bis_divergence",
-                        "pattern": header,
-                        "source": "autonomous",
-                        "sort_key": ts
-                    })
-            except: pass
+        # autonomous-blush.md is a projection of self-prediction entries already
+        # in the structured ledger. Reading both made one correction appear twice.
 
         # Sort by timestamp desc, take limit
         all_blushes.sort(key=lambda x: x.get("sort_key",""), reverse=True)
@@ -1576,12 +1583,14 @@ async def get_blush_ledger(request: Request, limit: int = 20):
         marks_path = os.path.join(MEMORY, "blush-marks.json")
         marks = {}
         if os.path.exists(marks_path):
-            try: marks = json.load(open(marks_path))
-            except: pass
+            try:
+                with open(marks_path) as f: marks = json.load(f)
+            except Exception as e:
+                return {"success": False, "error": "blush markers unreadable: " + str(e)}
 
         for i, b in enumerate(all_blushes):
             b["index"] = i
-            b["marker"] = marks.get(str(i))
+            b["marker"] = marks.get(b.get("id", ""), marks.get(str(i)))
 
         return {"success": True, "entries": all_blushes}
     except Exception as e:
@@ -1690,8 +1699,8 @@ async def get_therapy_mirror_log(request: Request, limit: int = 10):
         return {"success": False, "error": str(e)}
 
 
-@app.post("/api/blush-ledger/{entry_index}/mark")
-async def mark_blush_entry(entry_index: int, request: Request):
+@app.post("/api/blush-ledger/{entry_ref}/mark")
+async def mark_blush_entry(entry_ref: str, request: Request):
     """Mark a blush entry as discussed or interesting."""
     if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
@@ -1706,15 +1715,15 @@ async def mark_blush_entry(entry_index: int, request: Request):
         if os.path.exists(marks_path):
             with open(marks_path) as f:
                 marks = json.load(f)
-        marks[str(entry_index)] = marker
+        marks[str(entry_ref)] = marker
         with open(marks_path, "w") as f:
             json.dump(marks, f, indent=2)
         return {"success": True, "marker": marker}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.post("/api/causality/{entry_index}/mark")
-async def mark_causality_entry(entry_index: int, request: Request):
+@app.post("/api/causality/{entry_ref}/mark")
+async def mark_causality_entry(entry_ref: str, request: Request):
     """Mark a causality hypothesis as track_this or noise."""
     if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         from fastapi import HTTPException
@@ -1729,7 +1738,7 @@ async def mark_causality_entry(entry_index: int, request: Request):
         if os.path.exists(marks_path):
             with open(marks_path) as f:
                 marks = json.load(f)
-        marks[str(entry_index)] = marker
+        marks[str(entry_ref)] = marker
         with open(marks_path, "w") as f:
             json.dump(marks, f, indent=2)
         return {"success": True, "marker": marker}

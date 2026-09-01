@@ -390,7 +390,7 @@ Valence delta: {result['valence']['diff']:+.3f} {'⚠' if result['valence']['mis
 My confidence was: {result['confidence']}
 My reasoning was: {result['reasoning']}
 
-Question for introspection: What was I wrong about in my model of him?
+Question for introspection: What did I miss about what Gloria was reaching for?
 
 """
     
@@ -406,7 +406,7 @@ Question for introspection: What was I wrong about in my model of him?
         _ref_prompt = (
             f"You said: \"{result['vintos_message'][:150]}\"\n"
             f"You predicted Gloria would feel: Warmth={result['warmth']['predicted']:.2f} Tension={result['tension']['predicted']:.2f} Valence={result['valence']['predicted']:.2f}\n"
-            f"He actually felt: Warmth={result['warmth']['actual']:.2f} Tension={result['tension']['actual']:.2f} Valence={result['valence']['actual']:.2f}\n"
+            f"Her reply actually read: Warmth={result['warmth']['actual']:.2f} Tension={result['tension']['actual']:.2f} Valence={result['valence']['actual']:.2f}\n"
             f"One sentence: What were you wrong about?"
         )
         _ref_resp = _rq.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {__import__('os').environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
@@ -434,16 +434,6 @@ Question for introspection: What was I wrong about in my model of him?
             reflection=reflection[:200] if reflection else None,
             outcome="withdrew",
         )
-        # Also seed a gloria-tagged causality hypothesis
-        try:
-            from causality_engine import add_blush_hypothesis as _rm_hyp
-            _rm_hyp(
-                f"relational_mismatch_{result['mismatch_count']}dim",
-                {"count": 1, "rolling_window_7d": 1, "last_occurrence": __import__("datetime").datetime.now().isoformat()},
-                abs(sum(_cost_delta.values())) / max(len(_cost_delta), 1),
-                subject="gloria"
-            )
-        except: pass
     except Exception as _ble:
         print(f"[Relational] blush write failed: {_ble}")
     open("/tmp/.causality-trigger", "w").close()
