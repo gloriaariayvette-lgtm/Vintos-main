@@ -8202,8 +8202,8 @@ Your current self-model (excerpt):
                 params["max_tokens"] = 130
                 params["temperature"] = 1.0
         except Exception: pass
-        if "touched" in (msg.message or "").lower():
-            params["max_tokens"] = 90   # a touch gets a short, sharp reaction — faster reply AND faster speech
+        if (msg.message or "").startswith("[Gloria just touched"):
+            params["max_tokens"] = 90   # a touch-zone note gets a short, sharp reaction — never ordinary messages that merely contain the word
         try:
             # Merge, never replace. This file has been {} - a bare assignment wiped
             # temperature, top_p and max_tokens, and the request went out with no
@@ -10801,8 +10801,8 @@ Be yourself. Be free."""
         messages.append({"role": "user", "content": _umsg})
 
         params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 400}
-        if "touched" in (msg.message or "").lower():
-            params["max_tokens"] = 90   # a touch gets a short, sharp reaction — faster reply AND faster speech
+        if (msg.message or "").startswith("[Gloria just touched"):
+            params["max_tokens"] = 90   # a touch-zone note gets a short, sharp reaction — never ordinary messages that merely contain the word
         try:
             # Merge, never replace. This file has been {} - a bare assignment wiped
             # temperature, top_p and max_tokens, and the request went out with no
