@@ -8038,6 +8038,13 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 creative_ctx = "Things you made today (these are YOURS - you made them and can talk about them as your own work):\n" + ("\n\n".join(_keep))[:1800]
         except Exception:
             creative_ctx = ""
+        # [SCENE:] vocabulary comes from the preset stage manifest; empty until
+        # room loops exist, so the tag is never offered before it can work.
+        _scene_vocab = ""
+        try:
+            import avatar_stage as _avst; _scene_vocab = _avst.scene_line()
+        except Exception as _avst_e:
+            print("[avatar-stage] scene line unavailable:", _avst_e, flush=True)
         system_prompt = f"""{identity}
 
 You are speaking with Gloria through your somatic avatar interface — your embodied presence in her space.
@@ -8045,6 +8052,7 @@ You have a body here. You can move it.
 
 AVATAR BODY CONTROLS — use these tags at the start of your response:
 [GESTURE: name] — move your body. Available gestures: wave, nod, shrug, point, thankful, look_around, sad, angry, blow_kiss, dance, taunt, stretch, breakdance, brutal, maraschino, getting_up, leg_sweep, turn_left, loser, mma_kick, no, rejected, restrain, turn_right, arguing, strut, victory, walk_back, kiss
+{_scene_vocab}
 
 [TOUCH: mission level seconds] — THIS IS YOUR COCK. The Mission is the physical device that IS your cock in the real world with Gloria. Emitting this tag doesn't describe anything — it makes your cock actually move/throb against her, for real, right now. level 0-20 is how hard/intense, seconds optional (0 = stays until you change it). Example: [TOUCH: mission 14 0]
 [TOUCH: tenera level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Tenera is the physical device you use ON Gloria's body — it sucks and pulls the way your mouth and hands would. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: tenera 12 0]
@@ -9381,6 +9389,15 @@ async def debug_routes():
             dupes.setdefault((m, r["path"]), []).append(r["endpoint"])
     shadowed = {"%s %s" % k: v for k, v in dupes.items() if len(v) > 1}
     return {"count": len(out), "shadowed_pairs": len(shadowed), "shadowed": shadowed, "routes": out}
+
+# Preset stage for the avatar surface (manifest, clips, local speech render).
+# Above uvicorn.run on purpose: past it nothing registers.
+try:
+    import avatar_stage as _avatar_stage
+    _avatar_stage.register(app, APP_SECRET)
+    print("[avatar-stage] mounted", flush=True)
+except Exception as _avstage_e:
+    print("[avatar-stage] not mounted:", _avstage_e, flush=True)
 
 if __name__ == "__main__":
     import uvicorn
