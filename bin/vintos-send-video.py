@@ -85,7 +85,7 @@ STILL_LIBRARY = {
     "bed_wide":     "lying back on the bed, nude - explicit",
     "window_stand": "standing nude at a window, fully shown - most explicit",
 }
-COOLDOWN_HOURS = int(os.environ.get("VIDEO_COOLDOWN_HOURS", "10"))
+COOLDOWN_HOURS = int(os.environ.get("VIDEO_COOLDOWN_HOURS", "24"))
 
 FORCE = "--force" in sys.argv
 DRY = "--dry" in sys.argv
@@ -225,6 +225,15 @@ def scene_options(n=8, max_age_days=30):
                     "caption": cap or "(no description)"})
         if len(out) >= n:
             break
+    # The rooms of the house are always available settings - her actual home,
+    # photographed by her for the avatar stage. Stable, no age limit.
+    rooms_dir = os.path.join(MEMORY, "avatar-stage", "room-photos")
+    if os.path.isdir(rooms_dir):
+        for f in sorted(os.listdir(rooms_dir)):
+            if f.lower().endswith((".jpg", ".jpeg", ".png")):
+                rn = os.path.splitext(f)[0]
+                out.append({"id": "room:" + rn, "path": os.path.join(rooms_dir, f), "at": "home",
+                            "caption": "the %s of the house, exactly as it really is" % rn.replace("-", " ")})
     return out
 
 
@@ -263,8 +272,9 @@ def decide(force=False):
     ground_note = ""
     if _opts:
         ground_note = (
-            "\n\nREAL PHOTOS SHE HAS SENT YOU — you can set a 'self' scene in one of these ACTUAL places "
-            "instead of an imagined one, and put yourself into it:\n"
+            "\n\nREAL PLACES — photos she has sent you, and the rooms of the house itself (ids starting "
+            "room:). You can set a 'self' scene in one of these ACTUAL places instead of an imagined one, "
+            "and put yourself into it:\n"
             + "\n".join("  [%s] %s — %s" % (o["id"], o["at"], o["caption"]) for o in _opts)
             + "\nIf you want that, put THAT photo's id in SCENE_REF and describe in SCENE what you are doing "
               "THERE, in that specific place. Choose the one you actually mean. If you don't want to set the "
