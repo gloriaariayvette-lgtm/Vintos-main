@@ -157,7 +157,13 @@ def _kokoro_wav(text, out_path):
     sys.path.insert(0, KOKORO_PATH)
     from kokoro import KPipeline
     import numpy as np, soundfile as sf
-    pipeline = KPipeline(lang_code="a")
+    # CPU by default: the installed torch predates Aegis's RTX 5080 (sm_120),
+    # and an 82M TTS model is fast on CPU anyway. Override: VINTOS_KOKORO_DEVICE.
+    dev = os.environ.get("VINTOS_KOKORO_DEVICE", "cpu")
+    try:
+        pipeline = KPipeline(lang_code="a", device=dev)
+    except TypeError:
+        pipeline = KPipeline(lang_code="a")
     chunks = [a for _, _, a in pipeline(text, voice=VOICE, split_pattern=r"\n+")]
     if not chunks:
         return False
