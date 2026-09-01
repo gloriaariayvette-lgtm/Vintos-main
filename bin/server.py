@@ -8620,6 +8620,11 @@ Your current self-model (excerpt):
                 # a response to FastAPI. Delivery/read remain unknowable here.
                 _tc.mark_lifecycle(_turn, "transport", "handed_to_framework")
         except Exception: pass
+        # [RENDER:] starts NOW, server-side, before the app even receives the
+        # reply - the render is ~2 min and every second counts. Idempotent.
+        try:
+            import avatar_stage as _avst_k; _avst_k.kick_from_reply(reply)
+        except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
     except Exception as e:
         return {"reply": "", "error": str(e)}

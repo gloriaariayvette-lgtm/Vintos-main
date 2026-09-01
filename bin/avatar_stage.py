@@ -317,6 +317,85 @@ def speak(text, room=None):
     return 0
 
 
+# ── live scene job (background) ──────────────────────────────────────────────
+import threading as _thr
+_LIVE = {"status": "idle", "prompt": "", "started": 0.0, "finished": 0.0, "seconds": 0.0, "error": ""}
+_LIVE_LOCK = _thr.Lock()
+
+def live_status():
+    st = dict(_LIVE)
+    if st["status"] == "rendering":
+        st["seconds"] = round(time.time() - st["started"], 1)
+    return st
+
+def _live_worker(prompt):
+    try:
+        mac = _mac_url()
+        import base64 as _b64, requests as _rq
+        mem = os.path.join(WORKSPACE, "memory")
+        refs = []
+        try:
+            shared = os.path.join(mem, "shared-images")
+            cand = [os.path.join(shared, f) for f in os.listdir(shared)
+                    if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+            cand = [p for p in sorted(cand, key=os.path.getmtime, reverse=True)
+                    if time.time() - os.path.getmtime(p) < 72 * 3600][:2]
+            refs.extend(cand)
+        except Exception:
+            pass
+        refs.append(os.path.join(mem, "video", "hero-still.jpg"))
+        images = []
+        for p in refs:
+            if os.path.exists(p):
+                mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
+                images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
+        r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images}, timeout=900)
+        if r.status_code != 200:
+            raise RuntimeError("mac live render %s: %s" % (r.status_code, r.text[:200]))
+        os.makedirs(CLIPS, exist_ok=True)
+        with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
+            f.write(r.content)
+        data = load_rooms()
+        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
+        save_rooms(data)
+        write_manifest()
+        with _LIVE_LOCK:
+            _LIVE.update(status="done", finished=time.time(), seconds=round(time.time() - _LIVE["started"], 1))
+        log("live scene ready in %.1fs: %s" % (_LIVE["seconds"], prompt[:80]))
+    except Exception as e:
+        with _LIVE_LOCK:
+            _LIVE.update(status="error", finished=time.time(), error=str(e)[:300],
+                         seconds=round(time.time() - _LIVE["started"], 1))
+        log("live scene FAILED after %.1fs: %s" % (_LIVE["seconds"], e))
+
+def start_live(prompt):
+    """Kick a live render now, in the background. Returns the status dict at
+    once. A render already in flight is left alone (the same reply reaches
+    here twice: once from the server the moment his reply exists, once from
+    the app when it parses the tag)."""
+    with _LIVE_LOCK:
+        if _LIVE["status"] == "rendering":
+            return live_status()
+        _LIVE.update(status="rendering", prompt=prompt, started=time.time(), finished=0.0, seconds=0.0, error="")
+    _thr.Thread(target=_live_worker, args=(prompt,), daemon=True).start()
+    log("live scene started: %s" % prompt[:80])
+    return live_status()
+
+def kick_from_reply(reply):
+    """Server-side start: the instant his reply text exists, before the app
+    has even received it. Returns True if a render was started."""
+    try:
+        import re as _re
+        m = _re.search(r"\[RENDER:\s*([^\]]+)\]", reply or "", _re.I)
+        if not m or not _mac_url():
+            return False
+        start_live(m.group(1).strip())
+        return True
+    except Exception as e:
+        log("kick_from_reply: %s" % e)
+        return False
+
+
 # ── server integration ───────────────────────────────────────────────────────
 def scene_line():
     """The [SCENE:] vocabulary line for his avatar chat prompt. Empty string
@@ -326,12 +405,14 @@ def scene_line():
         rooms = [r for r, c in man.get("rooms", {}).items() if c.get("clips")]
         if not rooms:
             return ""
-        return ("\n[SCENE: name] — where in the house you are. Move rooms when it feels "
-                "natural to the conversation. Available scenes: " + ", ".join(sorted(rooms)) + "\n"
-                "[RENDER: a scene you want to be in right now] — renders a brand-new live "
-                "scene of you (takes about two minutes and costs real money). Choose it "
-                "when the moment truly calls for it, not routinely; once made, "
-                "[SCENE: live] returns to it.\n")
+        return ("\n[SCENE: name] — where in the house you are. These rooms are already filmed: "
+                "moving between them is FREE and instant, so move whenever it fits the conversation "
+                "(cooking talk -> kitchen, winding down -> bedroom). Available scenes: " + ", ".join(sorted(rooms)) + "\n"
+                "[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
+                "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
+                "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
+                "and you want to be there with her. Never for a room you already have. Once made, "
+                "[SCENE: live] returns to it for free.\n")
     except Exception:
         return ""
 
@@ -483,52 +564,24 @@ def register(app, secret):
 
     @app.post("/api/avatar/live")
     async def stage_live(request: Request):
-        """His chosen live scene: the Mac renders it (nano still + H3), the
-        clip lands in this stage's library as room 'live'."""
+        """His chosen live scene. Returns IMMEDIATELY; the render runs in a
+        background thread (Mac: nano still + H3) and installs itself as room
+        'live'. The app polls /api/avatar/live/status. Idempotent while a
+        render is in flight, so the server-side kick and the app's own call
+        for the same reply never start two."""
         _auth(request)
         body = await request.json()
         prompt = str(body.get("prompt", "")).strip()
         if not prompt:
             raise HTTPException(status_code=400, detail="no prompt")
-        mac = _mac_url()
-        if not mac:
+        if not _mac_url():
             raise HTTPException(status_code=503, detail="no Mac stage configured")
-        # His references travel with the prompt: photos SHE sent recently
-        # (shared-images, newest first) for setting/context, then his hero
-        # still last for the face lock - the same recipe his sends use.
-        import base64 as _b64
-        mem = os.path.join(WORKSPACE, "memory")
-        refs = []
-        try:
-            shared = os.path.join(mem, "shared-images")
-            cand = [os.path.join(shared, f) for f in os.listdir(shared)
-                    if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-            cand = [p for p in sorted(cand, key=os.path.getmtime, reverse=True)
-                    if time.time() - os.path.getmtime(p) < 72 * 3600][:2]
-            refs.extend(cand)
-        except Exception:
-            pass
-        refs.append(os.path.join(mem, "video", "hero-still.jpg"))
-        images = []
-        for p in refs:
-            if os.path.exists(p):
-                mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
-                images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
-        import asyncio, requests as _rq
-        def _run():
-            return _rq.post(mac + "/live", json={"prompt": prompt, "images": images}, timeout=900)
-        r = await asyncio.get_event_loop().run_in_executor(None, _run)
-        if r.status_code != 200:
-            raise HTTPException(status_code=502, detail="live render failed: " + r.text[:200])
-        os.makedirs(CLIPS, exist_ok=True)
-        with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
-            f.write(r.content)
-        data = load_rooms()
-        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120],
-                                                "clips": ["live.mp4"]}
-        save_rooms(data)
-        write_manifest()
-        return {"ok": True, "room": "live"}
+        return JSONResponse(start_live(prompt), status_code=202)
+
+    @app.get("/api/avatar/live/status")
+    async def stage_live_status(request: Request):
+        _auth(request)
+        return JSONResponse(live_status())
 
     @app.get("/avatar/stage/speech/{name}")
     async def stage_speech(name: str, request: Request):
