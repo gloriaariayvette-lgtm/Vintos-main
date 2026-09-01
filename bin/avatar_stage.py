@@ -674,7 +674,7 @@ def register(app, secret):
             raise HTTPException(status_code=404, detail="no such clip")
         return FileResponse(path, media_type="video/mp4")
 
-    @app.post("/api/avatar/speak")
+    @app.post("/api/avatar/stage/speak")
     async def stage_speak(request: Request):
         _auth(request)
         body = await request.json()
