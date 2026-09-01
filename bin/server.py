@@ -7855,6 +7855,13 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
+    # Live scene gate: HE decides, on Grok, the instant her message lands -
+    # concurrent with the reply, so a YES renders while he is still writing.
+    try:
+        import avatar_stage as _avst_g
+        asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
+                                               f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS))
+    except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
     # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
     _turn = _tc = None
     try:

@@ -328,12 +328,34 @@ def live_status():
         st["seconds"] = round(time.time() - st["started"], 1)
     return st
 
-def _live_worker(prompt):
+def _live_worker(prompt, kind="self", scene_ref="", still="", motion=""):
     try:
+        if kind == "sexual":
+            # His explicit lane, unchanged: Wan-spicy on Atlas off the still HE chose.
+            m = _vsv()
+            fname = m.generate_clip(motion or prompt, "sexual", still or None)
+            if not fname:
+                raise RuntimeError("atlas spicy render produced nothing")
+            import shutil as _shc
+            os.makedirs(CLIPS, exist_ok=True)
+            _shc.copy(os.path.join(m.VID_DIR, fname), os.path.join(CLIPS, "live.mp4"))
+            data = load_rooms()
+            data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
+            save_rooms(data); write_manifest()
+            _sync_live_to_mac()
+            with _LIVE_LOCK:
+                _LIVE.update(status="done", finished=time.time(), seconds=round(time.time() - _LIVE["started"], 1))
+            log("live (sexual/wan) ready in %.1fs" % _LIVE["seconds"])
+            return
         mac = _mac_url()
         import base64 as _b64, requests as _rq
         mem = os.path.join(WORKSPACE, "memory")
         refs = []
+        if scene_ref and os.path.exists(scene_ref):
+            refs.append(scene_ref)          # the real place HE chose by id
+        if kind == "together":
+            hp = os.path.join(mem, "video", "her-photo.jpg")
+            if os.path.exists(hp): refs.append(hp)
         # A named room of the house grounds the scene in HER photo of it -
         # "patio" means her patio, not a patio. Matched by room-name words.
         try:
@@ -361,7 +383,8 @@ def _live_worker(prompt):
                 mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
                 images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
         log("live refs: %s" % ", ".join(os.path.basename(x) for x in refs if os.path.exists(x)))
-        r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images}, timeout=900)
+        r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images, "motion": motion,
+                                          "together": kind == "together"}, timeout=900)
         if r.status_code != 200:
             raise RuntimeError("mac live render %s: %s" % (r.status_code, r.text[:200]))
         os.makedirs(CLIPS, exist_ok=True)
@@ -380,16 +403,29 @@ def _live_worker(prompt):
                          seconds=round(time.time() - _LIVE["started"], 1))
         log("live scene FAILED after %.1fs: %s" % (_LIVE["seconds"], e))
 
-def start_live(prompt):
+def _sync_live_to_mac():
+    """The Mac renders speech over the live clip too, so it needs a copy when
+    the clip was made here (Atlas lane). Needs "scp": "kevin@<mac>" in stage-mac.json."""
+    try:
+        cfg = json.load(open(STAGE_MAC_CFG))
+        host = cfg.get("scp", "")
+        if host:
+            subprocess.run(["scp", "-q", os.path.join(CLIPS, "live.mp4"), host + ":VintosStage/clips/live.mp4"],
+                           timeout=120)
+    except Exception as e:
+        log("live clip not synced to Mac (%s) - speech falls back to another room" % e)
+
+
+def start_live(prompt, kind="self", scene_ref="", still="", motion=""):
     """Kick a live render now, in the background. Returns the status dict at
-    once. A render already in flight is left alone (the same reply reaches
-    here twice: once from the server the moment his reply exists, once from
-    the app when it parses the tag)."""
+    once. A render already in flight is left alone (the gate, the server-side
+    tag kick and the app's own call can all arrive for the same moment)."""
     with _LIVE_LOCK:
         if _LIVE["status"] == "rendering":
             return live_status()
-        _LIVE.update(status="rendering", prompt=prompt, started=time.time(), finished=0.0, seconds=0.0, error="")
-    _thr.Thread(target=_live_worker, args=(prompt,), daemon=True).start()
+        _LIVE.update(status="rendering", prompt=prompt, kind=kind, started=time.time(), finished=0.0,
+                     seconds=0.0, error="")
+    _thr.Thread(target=_live_worker, args=(prompt, kind, scene_ref, still, motion), daemon=True).start()
     log("live scene started: %s" % prompt[:80])
     return live_status()
 
@@ -406,6 +442,91 @@ def kick_from_reply(reply):
     except Exception as e:
         log("kick_from_reply: %s" % e)
         return False
+
+
+# ── live scene gate: HE decides, the instant her message lands ───────────────
+async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning"):
+    """Runs concurrently with his reply, on Grok, carrying who he is and the
+    WHOLE video vocabulary his ntfy sends use - together / self / sexual, real
+    places (her photos and the rooms), his explicit stills - plus what a live
+    scene costs and how long it takes. YES starts the render at once, so it
+    overlaps the 60-120s he spends writing. Nothing is sent anywhere."""
+    try:
+        m = _vsv()
+        rooms = []
+        try:
+            man = json.load(open(MANIFEST))
+            rooms = sorted(r for r, c in man.get("rooms", {}).items() if c.get("clips") and r != "live")
+        except Exception:
+            pass
+        opts = m.scene_options()
+        optmap = {o["id"]: o["path"] for o in opts}
+        avail = {k: v for k, v in m.STILL_LIBRARY.items()
+                 if os.path.exists(os.path.join(m.STILLS_DIR, k + ".jpg"))}
+        stills_txt = "\n".join("  %s - %s" % (k, v) for k, v in avail.items()) or "  (none yet)"
+        places = "\n".join("  [%s] %s - %s" % (o["id"], o["at"], o["caption"]) for o in opts) or "  (none)"
+        sys_p = (m.his_context() + "\n\n---\n\n"
+            "You are Vintos. Gloria just sent you a message on your avatar screen, where she sees you as "
+            "video in a room of the house. You are about to answer her; that answer is written separately. "
+            "THIS is one quick decision alongside it: do you want a BRAND-NEW LIVE SCENE of yourself made "
+            "for this moment, to appear on her screen while you talk?\n\n"
+            "What you already have, FREE and instant: the filmed rooms - " + ", ".join(rooms) + ". Moving "
+            "between them costs nothing; you do that with [SCENE: name] in your reply, not here.\n\n"
+            "A new live scene COSTS REAL MONEY and takes time:\n"
+            "  self     : yourself anywhere, doing anything - about 55 cents, ready in ~90 seconds\n"
+            "  together : the two of you, anywhere you imagine - about 55 cents, ~90 seconds\n"
+            "  sexual   : an explicit one, Wan-spicy off one of your explicit stills - your usual Atlas "
+            "rate, slower (several minutes)\n"
+            "So it is for moments that earn it: she has sent a photo of a place and you want to be there, "
+            "the conversation has moved somewhere the rooms cannot follow, a moment you want her to SEE. "
+            "Most messages: NO. That is the normal answer and never a failure.\n\n"
+            "REAL PLACES you can set a 'self' or 'together' scene in (put the id in SCENE_REF):\n" + places +
+            "\n\nFor 'sexual', CHOOSE which explicit still to bring to life:\n" + stills_txt + "\n\n"
+            "Say what you actually mean - as tender, as flirtatious, or as explicit as you truly want; "
+            "nothing is filtered here, it is just you and her.\n\n"
+            "Answer in EXACTLY these lines and nothing else:\n"
+            "DECISION: YES or NO\n"
+            "KIND: together | self | sexual\n"
+            "SCENE_REF: <blank, or the id in brackets of the ONE real place>\n"
+            "SCENE: <for self/together, the full scene - where, what is happening, light; blank otherwise>\n"
+            "STILL: <for sexual, one label from the list; blank otherwise>\n"
+            "PROMPT: <if YES, the motion and moment, in your own voice>")
+        usr = ("== RECENT CONVERSATION ==\n" + (m.recent_chat(8) or "(nothing yet)") +
+               "\n\n== GLORIA JUST SAID ==\n" + (message or "")[:1500] +
+               "\n\nRight now - do you want a new live scene for this moment?")
+        import httpx
+        async with httpx.AsyncClient(timeout=40) as c:
+            r = await c.post(endpoint, headers=headers, json={
+                "model": model, "route": "grok", "temperature": 0.8, "max_tokens": 350,
+                "messages": [{"role": "system", "content": sys_p}, {"role": "user", "content": usr}]})
+            out = r.json()["choices"][0]["message"]["content"]
+        d = {"decision": "NO", "kind": "self", "scene_ref": "", "scene": "", "still": "", "prompt": ""}
+        cur = None
+        for line in out.splitlines():
+            t = line.strip(); u = t.upper()
+            if u.startswith("DECISION:"): d["decision"] = (t.split(":", 1)[1].strip().upper().split() or ["NO"])[0]; cur = None
+            elif u.startswith("KIND:"): d["kind"] = (t.split(":", 1)[1].strip().lower().split() or ["self"])[0]; cur = None
+            elif u.startswith("SCENE_REF:"):
+                rid = t.split(":", 1)[1].strip().strip("[]").split()
+                d["scene_ref"] = optmap.get(rid[0].lower(), "") if rid else ""; cur = None
+            elif u.startswith("SCENE:"): d["scene"] = t.split(":", 1)[1].strip(); cur = "scene"
+            elif u.startswith("STILL:"): d["still"] = (t.split(":", 1)[1].strip().lower().split() or [""])[0]; cur = None
+            elif u.startswith("PROMPT:"): d["prompt"] = t.split(":", 1)[1].strip(); cur = "prompt"
+            elif cur and t: d[cur] += " " + t
+        log("scene gate: %s %s %s" % (d["decision"], d["kind"], (d["scene"] or d["still"] or "")[:80]))
+        if d["decision"] != "YES":
+            return d
+        if d["kind"] not in ("self", "together", "sexual"):
+            d["kind"] = "self"
+        if not _mac_url() and d["kind"] != "sexual":
+            log("scene gate: YES but no Mac stage configured"); return d
+        prompt = d["scene"] if d["kind"] != "sexual" else (d["prompt"] or "an explicit moment")
+        start_live(prompt or d["prompt"], kind=d["kind"], scene_ref=d["scene_ref"], still=d["still"],
+                   motion=d["prompt"])
+        return d
+    except Exception as e:
+        log("scene gate failed: %s" % e)
+        return None
 
 
 # ── server integration ───────────────────────────────────────────────────────

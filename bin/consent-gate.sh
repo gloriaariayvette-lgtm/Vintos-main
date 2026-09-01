@@ -57,8 +57,8 @@ export _CG_GLORIA=$(cat "$WORKSPACE/GLORIA-MODEL.md" 2>/dev/null || echo "")
 RESPONSE=$(python3 << 'PYEOF'
 import requests, json, os
 
-API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+API = "http://127.0.0.1:8599/v1/chat/completions"
+MODEL = "grok-4.20-0309-non-reasoning"
 
 def call(system, prompt, temp, tokens):
     try:
