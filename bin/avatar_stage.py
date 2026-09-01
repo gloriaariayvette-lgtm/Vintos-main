@@ -98,8 +98,53 @@ def write_manifest():
     return out
 
 
+STILLS = os.path.join(STAGE, "stills")
+
+def make_room_still(name, cfg):
+    """Phase one, gated on Gloria's eye: compose the face-locked still of him
+    in the room photo and park it at stills/<room>.jpg for her approval.
+    NOTHING is animated here - no video spend on a still she hasn't seen."""
+    photo = os.path.expanduser(cfg.get("photo", ""))
+    pose = cfg.get("pose", "").strip()
+    if not pose:
+        log("%s: no pose prompt in rooms.json - skipping" % name); return False
+    m = _vsv()
+    scene_ref = photo if photo and os.path.exists(photo) else None
+    if photo and not scene_ref:
+        log("%s: room photo missing (%s) - refusing to invent the room" % (name, photo)); return False
+    still = m.make_scene_still(pose, scene_ref=scene_ref)
+    if not still:
+        log("%s: scene still failed" % name); return False
+    os.makedirs(STILLS, exist_ok=True)
+    dest = os.path.join(STILLS, "%s.jpg" % name)
+    import shutil
+    shutil.copy(still, dest)
+    log("%s: still ready for review -> %s" % (name, dest))
+    return True
+
+
+def stills(room=None, force=False):
+    """Make review stills for every room that has a photo but no clips yet
+    (or one room with --room). Existing stills are kept unless --force."""
+    data = load_rooms()
+    targets = {room: data["rooms"][room]} if room else data.get("rooms", {})
+    if room and room not in data.get("rooms", {}):
+        log("unknown room %r - rooms.json has: %s" % (room, ", ".join(data.get("rooms", {})))); return 1
+    ok = True
+    for name, cfg in targets.items():
+        have_clips = [c for c in cfg.get("clips", []) if os.path.exists(os.path.join(CLIPS, c))]
+        if have_clips and not (room and force):
+            continue
+        if os.path.exists(os.path.join(STILLS, "%s.jpg" % name)) and not force:
+            log("%s: still already awaiting review" % name); continue
+        ok = make_room_still(name, cfg) and ok
+    return 0 if ok else 1
+
+
 def build_room(name, cfg, force=False):
-    """One room: face-locked still in the room photo -> animated loop."""
+    """One room: face-locked still in the room photo -> animated loop.
+    An approved still at stills/<room>.jpg is used as-is (that's the gate);
+    without one the still is composed fresh, ungated."""
     existing = [c for c in cfg.get("clips", []) if os.path.exists(os.path.join(CLIPS, c))]
     if existing and not force:
         log("%s: %d clip(s) already on disk - skipping (use --force to add another)" % (name, len(existing)))
@@ -109,10 +154,15 @@ def build_room(name, cfg, force=False):
     if not pose:
         log("%s: no pose prompt in rooms.json - skipping" % name); return False
     m = _vsv()
-    scene_ref = photo if photo and os.path.exists(photo) else None
-    if photo and not scene_ref:
-        log("%s: room photo missing (%s) - building ungrounded" % (name, photo))
-    still = m.make_scene_still(pose, scene_ref=scene_ref)
+    approved = os.path.join(STILLS, "%s.jpg" % name)
+    if os.path.exists(approved):
+        still = approved
+        log("%s: animating the approved still" % name)
+    else:
+        scene_ref = photo if photo and os.path.exists(photo) else None
+        if photo and not scene_ref:
+            log("%s: room photo missing (%s) - building ungrounded" % (name, photo))
+        still = m.make_scene_still(pose, scene_ref=scene_ref)
     if not still:
         log("%s: scene still failed" % name); return False
     blob = m.atlas_generate(pose + LOOP_SUFFIX, still,
@@ -286,6 +336,32 @@ def register(app, secret):
         except FileNotFoundError:
             return JSONResponse({"default": "", "rooms": {}})
 
+    @app.get("/avatar/stage/stills")
+    async def stage_stills(request: Request):
+        """Review page for pending room stills: open in a browser on the
+        tailnet with ?s=SECRET. Approval itself happens over Termius/chat."""
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
+        from fastapi.responses import HTMLResponse
+        names = sorted(f[:-4] for f in os.listdir(STILLS)) if os.path.isdir(STILLS) else []
+        s = request.query_params.get("s", "")
+        cells = "".join(
+            "<div style='margin:0 0 28px'><div style='font:12px monospace;letter-spacing:0.2em;"
+            "text-transform:uppercase;color:#C96B3C;margin:0 0 8px'>%s</div>"
+            "<img style='width:100%%;border-radius:12px' src='/avatar/stage/still/%s?s=%s'></div>" % (n, n, s)
+            for n in names) or "<p style='color:#888'>No stills waiting.</p>"
+        return HTMLResponse("<body style='background:#05050d;max-width:520px;margin:0 auto;"
+                            "padding:24px 14px;font-family:Georgia,serif'>%s</body>" % cells)
+
+    @app.get("/avatar/stage/still/{name}")
+    async def stage_still(name: str, request: Request):
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
+        path = os.path.realpath(os.path.join(STILLS, name + ".jpg"))
+        if not path.startswith(os.path.realpath(STILLS) + os.sep) or not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="no such still")
+        return FileResponse(path, media_type="image/jpeg")
+
     @app.get("/avatar/stage/clip/{name}")
     async def stage_clip(name: str, request: Request):
         _auth(request)
@@ -377,11 +453,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build"); b.add_argument("--room"); b.add_argument("--force", action="store_true")
+    st = sub.add_parser("stills"); st.add_argument("--room"); st.add_argument("--force", action="store_true")
     mt = sub.add_parser("mint"); mt.add_argument("name"); mt.add_argument("photo"); mt.add_argument("pose")
     sp = sub.add_parser("speak"); sp.add_argument("text"); sp.add_argument("--room")
     sub.add_parser("manifest")
     a = ap.parse_args()
     if a.cmd == "build":    sys.exit(build(a.room, a.force))
+    if a.cmd == "stills":   sys.exit(stills(a.room, a.force))
     if a.cmd == "mint":     sys.exit(mint(a.name, os.path.expanduser(a.photo), a.pose))
     if a.cmd == "speak":    sys.exit(speak(a.text, a.room))
     if a.cmd == "manifest": write_manifest(); sys.exit(0)
