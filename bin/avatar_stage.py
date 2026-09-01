@@ -538,9 +538,10 @@ def scene_line():
         rooms = [r for r, c in man.get("rooms", {}).items() if c.get("clips")]
         if not rooms:
             return ""
-        return ("\n[SCENE: name] — where in the house you are. These rooms are already filmed: "
-                "moving between them is FREE and instant, so move whenever it fits the conversation "
-                "(cooking talk -> kitchen, winding down -> bedroom). Available scenes: " + ", ".join(sorted(rooms)) + "\n"
+        return ("\n[SCENE: name] — REQUIRED: every reply begins with this tag, naming the room of the house "
+                "you are in right now - the one you were in, or a new one if the moment moved (cooking talk -> "
+                "kitchen-oven, winding down -> bedroom, evening air -> patio). These rooms are already filmed; "
+                "moving is FREE and instant. Rooms: " + ", ".join(sorted(rooms)) + "\n"
                 "[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
                 "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
                 "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
