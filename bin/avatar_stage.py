@@ -115,8 +115,11 @@ ROOM_POSES = {
              "the backrest, warm string lights glowing against the sheer lace curtains",
     "dining": "standing beside the mother-of-pearl dining table at the window, one hand "
               "resting on its top, green trees outside",
-    "bedroom": "sitting relaxed on the edge of the bed, soft window light behind him "
-               "through the green curtains",
+    "bedroom": "sitting relaxed on the edge of THIS EXACT bed from the reference photo, "
+               "keeping the room precisely as photographed: the dark tufted leather headboard "
+               "with its shelf, the window directly behind the bed with sage-green curtains "
+               "tied back, the small brass sconces on either side wall, the cream sheets and "
+               "plush brown blanket. Do not invent furniture or change the layout",
 }
 
 def make_room_still(name, cfg):
