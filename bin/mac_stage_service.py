@@ -170,7 +170,7 @@ def _find_media_url(o, ext):
     return None
 
 
-def live_render(prompt, images=None):
+def live_render(prompt, images=None, motion="", together=False):
     """His chosen live scene: nano-banana composes a full-body still of him in
     the described scene (~4c), H3 animates it at 768P (~50c). Aegis sends his
     references along: Gloria's recent photos first (setting/context), his hero
@@ -183,7 +183,10 @@ def live_render(prompt, images=None):
         if not os.path.exists(hero):
             return None, "no reference images sent and hero.jpg missing on the Mac"
         image_urls = ["data:image/jpeg;base64," + b64mod.b64encode(open(hero, "rb").read()).decode()]
-    still_prompt = ("Show the man from the LAST reference image in this scene: " + prompt.strip() +
+    who = ("Show the man from the LAST reference image AND the woman from the reference photo "
+           "of her, together, in this scene: " if together else
+           "Show the man from the LAST reference image in this scene: ")
+    still_prompt = (who + prompt.strip() +
                     ". Keep his EXACT face, hair, and build from that last reference. "
                     "Any earlier reference images are real photos of the setting or of the "
                     "woman in his life - use them for the scene's setting, objects, or her "
@@ -203,7 +206,8 @@ def live_render(prompt, images=None):
     img = b64mod.b64encode(open(still_path, "rb").read()).decode()
     try:
         resp = _fal("minimax/h3/image-to-video",
-                    {"prompt": ("Subtle natural idle motion only: breathing, small weight "
+                    {"prompt": (motion.strip() + " Locked-off camera." if motion.strip() else
+                                "Subtle natural idle motion only: breathing, small weight "
                                 "shifts. Locked-off camera. He begins and ends in the same pose."),
                      "image_url": "data:image/jpeg;base64," + img,
                      "resolution": "768P"}, timeout=900)
@@ -261,11 +265,12 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
                 prompt = str(body.get("prompt", "")).strip()
                 images = body.get("images") or []
+                motion = str(body.get("motion", "") or ""); together = bool(body.get("together"))
             except Exception:
                 self._send(400, b'{"error":"bad json"}'); return
             if not prompt:
                 self._send(400, b'{"error":"no prompt"}'); return
-            data, err = live_render(prompt, images)
+            data, err = live_render(prompt, images, motion, together)
             if err:
                 log(err); self._send(500, json.dumps({"error": err}).encode()); return
             self._send(200, data, "video/mp4"); return
