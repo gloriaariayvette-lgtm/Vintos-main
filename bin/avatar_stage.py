@@ -41,13 +41,16 @@ WAV2LIP_CKPT = os.environ.get("VINTOS_WAV2LIP_CKPT",
                               os.path.join(WAV2LIP_DIR, "checkpoints", "wav2lip_gan.pth"))
 KOKORO_PATH = os.path.expanduser("~/.vintos/kokoro")
 VOICE = os.environ.get("VINTOS_VOICE_MODEL", "am_adam")
-LOOP_SECONDS = int(os.environ.get("VINTOS_STAGE_LOOP_SECONDS", "10"))
+LOOP_SECONDS = int(os.environ.get("VINTOS_STAGE_LOOP_SECONDS", "15"))
 
-# The loop constraint every preset prompt carries: locked camera, subtle motion,
-# and matching first/last pose so the clip cycles invisibly under long speech.
-LOOP_SUFFIX = (" Locked-off camera, no camera movement. He stays in place with subtle natural "
-               "motion only - breathing, small weight shifts, an occasional glance. He begins "
-               "and ends in the same relaxed pose so the clip loops seamlessly. He does not speak.")
+# The loop constraint every preset prompt carries: locked camera, warm and
+# alive but never speaking (his voice plays over the loop), matching
+# first/last pose so the clip cycles invisibly.
+LOOP_SUFFIX = (" Locked-off camera, no camera movement. He stays in place, warm and at ease: "
+               "an easy genuine smile that comes and goes, small charming expressions, a soft "
+               "chuckle, a fond glance toward the camera, natural breathing and weight shifts. "
+               "His mouth never forms words - he does not talk. He begins and ends in the same "
+               "relaxed pose so the clip loops seamlessly.")
 
 
 def log(m):
