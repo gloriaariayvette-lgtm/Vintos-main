@@ -99,6 +99,25 @@ def write_manifest():
 
 
 STILLS = os.path.join(STAGE, "stills")
+ROOM_PHOTOS = os.path.join(STAGE, "room-photos")
+
+# Pose templates for the rooms of the house - one natural pose each, written
+# against Gloria's actual photos. New uploads register under these; a pose
+# already customised in rooms.json is never overwritten.
+ROOM_POSES = {
+    "living-room": "sitting comfortably on the ornate gold-framed antique sofa, one arm resting "
+                   "along its back, the red candle lit on the round mother-of-pearl coffee table in front of him",
+    "kitchen-oven": "standing at the black gas stove cooking, one hand on the skillet, "
+                    "the silver kettle beside it, warm under-cabinet light",
+    "vanity": "standing relaxed by the white french doors, hands loosely in his pockets, "
+              "soft daylight coming through the glass panes",
+    "patio": "sitting on the cushioned wooden bench on the covered patio at night, one arm along "
+             "the backrest, warm string lights glowing against the sheer lace curtains",
+    "dining": "standing beside the mother-of-pearl dining table at the window, one hand "
+              "resting on its top, green trees outside",
+    "bedroom": "sitting relaxed on the edge of the bed, soft window light behind him "
+               "through the green curtains",
+}
 
 def make_room_still(name, cfg):
     """Phase one, gated on Gloria's eye: compose the face-locked still of him
@@ -335,6 +354,51 @@ def register(app, secret):
             return JSONResponse(json.load(open(MANIFEST)))
         except FileNotFoundError:
             return JSONResponse({"default": "", "rooms": {}})
+
+    @app.get("/avatar/stage/rooms-upload")
+    async def stage_rooms_upload(request: Request):
+        """Room-photo drop, served by HIS server on the tailnet: photos go
+        straight from her phone to this box - never through his chat, never
+        off the house network. Open with ?s=SECRET."""
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
+        from fastapi.responses import HTMLResponse
+        s = request.query_params.get("s", "")
+        slots = "".join(
+            "<div style='margin:0 0 18px;border:1px solid rgba(201,107,60,0.3);border-radius:12px;padding:14px'>"
+            "<div style='font:12px monospace;letter-spacing:0.2em;text-transform:uppercase;color:#C96B3C;margin:0 0 8px'>%s"
+            "<span id='st-%s' style='float:right;color:#8fc79a;font-family:Georgia,serif;text-transform:none;letter-spacing:0'></span></div>"
+            "<input type='file' accept='image/*' style='color:#c8c4bf' onchange=\"up('%s',this)\"></div>" % (n, n, n)
+            for n in ROOM_POSES)
+        return HTMLResponse(
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<body style='background:#05050d;max-width:520px;margin:0 auto;padding:24px 14px;font-family:Georgia,serif'>"
+            "<p style='color:#888;font-style:italic'>Each photo lands directly on Aegis.</p>" + slots +
+            "<script>async function up(n,inp){var f=inp.files[0];if(!f)return;"
+            "document.getElementById('st-'+n).textContent='sending\\u2026';"
+            "var r=await fetch('/avatar/stage/room-photo/'+n+'?s=%s',{method:'POST',body:f});"
+            "document.getElementById('st-'+n).textContent=r.ok?'saved \\u2713':'failed - retry';}</script></body>" % s)
+
+    @app.post("/avatar/stage/room-photo/{name}")
+    async def stage_room_photo(name: str, request: Request):
+        if request.query_params.get("s", "") != secret:
+            _auth(request)
+        if name not in ROOM_POSES:
+            raise HTTPException(status_code=404, detail="unknown room slot")
+        blob = await request.body()
+        if not blob or len(blob) < 10000:
+            raise HTTPException(status_code=400, detail="no image data")
+        os.makedirs(ROOM_PHOTOS, exist_ok=True)
+        dest = os.path.join(ROOM_PHOTOS, name + ".jpg")
+        with open(dest, "wb") as f:
+            f.write(blob)
+        data = load_rooms()
+        room = data.setdefault("rooms", {}).setdefault(name, {"clips": []})
+        room["photo"] = dest
+        room.setdefault("pose", ROOM_POSES[name])
+        save_rooms(data)
+        log("room photo saved: %s (%d bytes)" % (name, len(blob)))
+        return {"ok": True, "room": name}
 
     @app.get("/avatar/stage/stills")
     async def stage_stills(request: Request):
