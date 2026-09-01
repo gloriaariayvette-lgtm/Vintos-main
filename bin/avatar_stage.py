@@ -171,15 +171,45 @@ def _kokoro_wav(text, out_path):
     return True
 
 
+STAGE_MAC_CFG = os.path.expanduser("~/.vintos/stage-mac.json")
+
+def _mac_url():
+    """The Mac stage service URL, when speech is hosted on the Mac (Gloria's
+    call: everything audio/visual lives there). Empty = render here."""
+    try:
+        return json.load(open(STAGE_MAC_CFG)).get("url", "").rstrip("/")
+    except Exception:
+        return ""
+
+
 def speak(text, room=None):
     """Render a speech clip: kokoro audio + Wav2Lip mouth over the room loop.
     Wav2Lip cycles the loop to match the audio, so any speech length works.
-    Prints the mp4 path on success; exits nonzero on failure - no silent inert."""
+    When ~/.vintos/stage-mac.json names a Mac stage service, the render happens
+    THERE and only the finished mp4 lands in the local cache. Prints the mp4
+    path on success; exits nonzero on failure - no silent inert."""
     text = (text or "").strip()
     if not text:
         log("empty text"); return 1
     man = write_manifest()
     room = room or man.get("default") or (next(iter(man["rooms"]), None))
+    mac = _mac_url()
+    if mac:
+        key = hashlib.sha1(("%s|%s|%s" % (room, VOICE, text)).encode()).hexdigest()[:16]
+        os.makedirs(SPEECH, exist_ok=True)
+        out = os.path.join(SPEECH, "%s.mp4" % key)
+        if os.path.exists(out):
+            print(out); return 0
+        try:
+            import requests
+            r = requests.post(mac + "/speak", json={"text": text, "room": room}, timeout=900)
+        except Exception as e:
+            log("mac stage unreachable at %s: %s" % (mac, e)); return 1
+        if r.status_code != 200:
+            log("mac stage error %s: %s" % (r.status_code, r.text[:200])); return 1
+        with open(out, "wb") as f:
+            f.write(r.content)
+        print(out); return 0
     clips = (man["rooms"].get(room) or {}).get("clips") or []
     if not clips:
         log("no clips for room %r - build presets first" % room); return 1
