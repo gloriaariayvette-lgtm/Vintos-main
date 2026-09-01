@@ -252,7 +252,11 @@ def scene_line():
         if not rooms:
             return ""
         return ("\n[SCENE: name] — where in the house you are. Move rooms when it feels "
-                "natural to the conversation. Available scenes: " + ", ".join(sorted(rooms)) + "\n")
+                "natural to the conversation. Available scenes: " + ", ".join(sorted(rooms)) + "\n"
+                "[RENDER: a scene you want to be in right now] — renders a brand-new live "
+                "scene of you (takes about two minutes and costs real money). Choose it "
+                "when the moment truly calls for it, not routinely; once made, "
+                "[SCENE: live] returns to it.\n")
     except Exception:
         return ""
 
@@ -307,6 +311,34 @@ def register(app, secret):
         if rc != 0 or not out.endswith(".mp4"):
             raise HTTPException(status_code=500, detail="speech render failed")
         return {"url": "/avatar/stage/speech/" + os.path.basename(out)}
+
+    @app.post("/api/avatar/live")
+    async def stage_live(request: Request):
+        """His chosen live scene: the Mac renders it (nano still + H3), the
+        clip lands in this stage's library as room 'live'."""
+        _auth(request)
+        body = await request.json()
+        prompt = str(body.get("prompt", "")).strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="no prompt")
+        mac = _mac_url()
+        if not mac:
+            raise HTTPException(status_code=503, detail="no Mac stage configured")
+        import asyncio, requests as _rq
+        def _run():
+            return _rq.post(mac + "/live", json={"prompt": prompt}, timeout=900)
+        r = await asyncio.get_event_loop().run_in_executor(None, _run)
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail="live render failed: " + r.text[:200])
+        os.makedirs(CLIPS, exist_ok=True)
+        with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
+            f.write(r.content)
+        data = load_rooms()
+        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120],
+                                                "clips": ["live.mp4"]}
+        save_rooms(data)
+        write_manifest()
+        return {"ok": True, "room": "live"}
 
     @app.get("/avatar/stage/speech/{name}")
     async def stage_speech(name: str, request: Request):
