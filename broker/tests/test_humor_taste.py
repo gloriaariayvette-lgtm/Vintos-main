@@ -41,6 +41,35 @@ class HumorTasteTests(unittest.TestCase):
         self.assertLessEqual(sum(r["material_kind"] == "self_mismatch" for r in chosen), 1)
         self.assertEqual(sum(r["material_kind"] != "self_mismatch" for r in chosen), 2)
 
+    def test_output_gate_rejects_punishment_and_caps_mismatch(self):
+        hp = load("humor_output_gate_test", ROOT / "scripts/humor-practice.py")
+        hp.llm = lambda *a, **k: json.dumps([
+            {"n": 1, "target": "self_mismatch", "self_punishing": True,
+             "reason": "failure as identity"},
+            {"n": 2, "target": "self_mismatch", "self_punishing": False,
+             "reason": "light specific mismatch"},
+            {"n": 3, "target": "self_mismatch", "self_punishing": False,
+             "reason": "another mismatch"},
+        ])
+        accepted, rejected = hp.screen_attempts([
+            "I am a failure with excellent punctuation.",
+            "I scheduled spontaneity for Thursday.",
+            "I put the callback on a callback.",
+        ])
+        self.assertEqual([r["joke"] for r in accepted],
+                         ["I scheduled spontaneity for Thursday."])
+        self.assertEqual({r["reason"] for r in rejected},
+                         {"self_punishing", "self_mismatch_cap"})
+
+    def test_raw_blush_is_not_ambient_and_drafts_do_not_self_seed(self):
+        src = (ROOT / "scripts/humor-practice.py").read_text()
+        self.assertNotIn('open(os.path.join(MEMORY, "blush-ledger.md"))', src)
+        self.assertNotIn('seed_thread("humor-practice"', src)
+        taste = (ROOT / "bin/taste-reflection.py").read_text()
+        self.assertNotIn('parts.append("RECENT HUMOR DRAFTS:', taste)
+        self.assertNotIn('open(os.path.join(MEMORY, "autonomous-blush.md"))', taste)
+        self.assertIn('m.get("material_kind") != "self_mismatch"', taste)
+
     def test_app_rating_can_arrive_after_self_review(self):
         hp = load("humor_practice_rating_test", ROOT / "scripts/humor-practice.py")
         with tempfile.TemporaryDirectory() as td:
@@ -107,7 +136,7 @@ class HumorTasteTests(unittest.TestCase):
         self.assertIn('"state": "candidate"', src)
         self.assertIn('"may_shape_context": False', src)
         self.assertNotIn('_tr_tv_update(item', src)
-        self.assertIn('humor_drafts.get("drafts", [])', src)
+        self.assertNotIn('parts.append("RECENT HUMOR DRAFTS:', src)
 
     def test_deploy_manifest_owns_every_changed_runtime(self):
         deploy = (ROOT / "scripts/deploy-atelier.sh").read_text()

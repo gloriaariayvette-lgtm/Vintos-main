@@ -1283,48 +1283,9 @@ def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidenc
 
 
 def add_blush_hypothesis(pattern, frequency_snapshot, score, subject="self"):
-    """Force a causality hypothesis from a recurring blush pattern. Bypasses daily cap.
-    subject: 'self' for Vintos's own patterns, 'gloria' for patterns about Gloria."""
-    db = load_existing_hypotheses()
-    # Check if we already have a hypothesis for this pattern
-    for h in db["hypotheses"]:
-        if pattern in h.get("hypothesis", "").lower() or pattern in h.get("source", ""):
-            # Already exists — reinforce it
-            # Recurrence is history, not evidence. This used to append a mark that
-            # graduation counts, so a hypothesis born from a blush pattern could be
-            # confirmed by the same pattern recurring — the hypothesis grading itself.
-            h["blush_recurrences"] = h.get("blush_recurrences", 0) + 1
-            h["last_blush_recurrence"] = datetime.now().isoformat()
-            save_hypotheses(db)
-            log(f"  [Blush] Reinforced existing hypothesis for pattern: {pattern}")
-            return
-    # Form new forced hypothesis
-    count = frequency_snapshot.get("count", 0)
-    w7 = frequency_snapshot.get("rolling_window_7d", 0)
-    hyp_text = f"When I blush with pattern '{pattern}', something systematic is happening — this has recurred {count} times ({w7} in the last 7 days). Score: {score:.2f}."
-    test_text = f"Watch for '{pattern}' pattern in next interactions. Does this blush recur? What triggers it?"
-    from datetime import date as _bd
-    h = {
-        "formed": datetime.now().isoformat(),
-        "formed_date": _bd.today().isoformat(),
-        "status": "untested",
-        "marks": [],
-        "days_tested": 0,
-        "graduated": False,
-        "hypothesis": hyp_text,
-        "test": test_text,
-        "confidence": "medium",
-        "source": f"blush_recurrence:{pattern}",
-        "subject": subject,
-        "forced": True
-    }
-    _stamp_formation(h, {
-        "pattern": pattern,
-        "frequency_snapshot": frequency_snapshot,
-    })
-    db["hypotheses"].append(h)
-    save_hypotheses(db)
-    log(f"  [Blush] Forced hypothesis for pattern: {pattern} (count={count})")
+    """Keep blush recurrence as history; it is not independent causal evidence."""
+    log("  [Blush] HELD as recurrence history, not promoted to causality: %s" % pattern)
+    return None
 
 
 def form_causal_hypotheses(db, cap=3):
