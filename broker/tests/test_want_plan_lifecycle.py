@@ -19,6 +19,27 @@ class WantPlanLifecycleTests(unittest.TestCase):
         self.assertIn('want["plan_state"] = "READY"', text)
         self.assertIn('want["plan_state"] = "BLOCKED"', text)
 
+    def test_journal_action_and_receipt_use_the_same_store(self):
+        text = (ROOT / "bin/wants-router.py").read_text(errors="replace")
+        write = text[text.index("def write_journal"):text.index("def echo_announce")]
+        capture = text[text.index("def capture_findings"):text.index("def _want_end_verdict")]
+        self.assertIn('"want-journals"', write)
+        self.assertIn('return f"Want journal receipt:', write)
+        journal_branch = capture[capture.index('capability == "write_journal"'):
+                                 capture.index('capability == "introspect"')]
+        self.assertIn('"want-journals"', journal_branch)
+        self.assertNotIn('"journal"', journal_branch.replace('"want-journals"', ''))
+
+    def test_capability_receipt_reaches_step_history_without_rediscovery(self):
+        text = (ROOT / "bin/wants-router.py").read_text(errors="replace")
+        self.assertIn("findings = actual_output or capture_findings", text)
+        self.assertIn("actual_output=_actual_output", text)
+
+    def test_unstarted_legacy_plans_are_normalized_once(self):
+        text = (ROOT / "bin/wants-router.py").read_text(errors="replace")
+        self.assertIn("execution-door-legacy-migration", text)
+        self.assertIn("from want_contract import normalize_steps", text)
+
     def test_silence_and_elapsed_time_do_not_close_gloria_wants(self):
         text = (ROOT / "bin/wants-router.py").read_text(errors="replace")
         self.assertNotIn('dismissed_by"] = "gloria_no_reply"', text)

@@ -86,18 +86,15 @@ def get_context():
     # Humor moments with comedic potential
     try:
         from humor_detector import get_unused_moments
-        _moments = get_unused_moments(limit=3)
+        _moments = [m for m in get_unused_moments(limit=8)
+                    if m.get("material_kind") != "self_mismatch"][:3]
         if _moments:
             parts.append("MOMENTS WITH COMEDIC POTENTIAL (not yet used):\n" +
                         "\n".join(f"- {m.get('original', m.get('stated',''))[:80]}" for m in _moments))
     except: pass
-    try:
-        humor_drafts = json.load(open(os.path.join(MEMORY, "humor-drafts.json")))
-        recent_drafts = (humor_drafts.get("drafts", []) if isinstance(humor_drafts, dict)
-                         else humor_drafts or [])[-3:]
-        if recent_drafts:
-            parts.append("RECENT HUMOR DRAFTS:\n" + "\n".join(f"- {d.get('joke','')[:100]}" for d in recent_drafts))
-    except: pass
+    # Ungraded practice drafts are not taste evidence.  Positively app-rated
+    # humor is already admitted above; feeding every raw draft here allowed a
+    # generated self-attack to become tomorrow's aesthetic context.
     # Previous taste profile for continuity
     try:
         prev = open(OUTPUT).read()
@@ -127,11 +124,9 @@ def get_context():
     try:
         parts.append("MY WANTS AND AMBITIONS:\n" + open(os.path.join(MEMORY, "wants-ambitions-log.md")).read()[-400:])
     except: pass
-    try:
-        blush = open(os.path.join(MEMORY, "autonomous-blush.md")).read()[-300:]
-        if blush.strip():
-            parts.append("WHERE I RECENTLY CORRECTED MYSELF:\n" + blush)
-    except: pass
+    # Correction records are not taste evidence.  If a mismatch later becomes
+    # genuinely playful, the humor output gate and an explicit app rating give
+    # it a lawful route back in.
     try:
         shares = json.load(open(os.path.join(MEMORY, "gloria-music-shares.json")))
         recent_shares = shares[-5:] if shares else []

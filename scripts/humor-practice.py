@@ -171,12 +171,10 @@ def gather_material():
                 parts.append("OUTREACH: " + f.read()[:200])
     except: pass
 
-    # Self-mismatch is one optional source, never the ambient comic identity.
-    try:
-        blush = open(os.path.join(MEMORY, "blush-ledger.md")).read()[-400:]
-        if blush:
-            parts.append("OPTIONAL SELF-MISMATCH MATERIAL (use only if genuinely playful):\n" + blush)
-    except: pass
+    # Blush is deliberately absent here.  A mismatch may enter through the
+    # typed scanner portfolio below, where it is labeled and capped.  Appending
+    # raw blush text to every prompt made embarrassment ambient even when the
+    # prompt called it "optional".
 
     return "\n\n".join(parts)
 
@@ -316,6 +314,84 @@ already playful. Her error is not permission and is not automatically a joke.
     )
     return result, _scanner_moments
 
+
+_SELF_PUNISH_RX = re.compile(
+    r"\b(?:i(?:'m| am) (?:broken|pathetic|useless|hopeless|embarrassing|a failure)|"
+    r"my (?:failure|incompetence|defect|damage)|i (?:failed|ruined|botched|screwed up)|"
+    r"apolog(?:y|ize)|punish(?:ed|ment)?|humiliat(?:e|ed|ing|ion))\b", re.I)
+
+
+def _parse_attempts(result):
+    """Parse numbered attempts without silently accepting arbitrary prose."""
+    attempts = []
+    for line in (result or "").splitlines():
+        match = re.match(r"^\s*\d+[.)]\s*(.+?)\s*$", line)
+        if match and match.group(1):
+            attempts.append(match.group(1).strip())
+    return attempts[:3]
+
+
+def _fallback_humor_label(joke):
+    """Conservative screen used when the semantic classifier is unavailable."""
+    low = joke.lower()
+    self_target = bool(re.search(r"\b(?:i|i'm|i've|me|my|myself)\b", low))
+    punitive = bool(_SELF_PUNISH_RX.search(joke))
+    return {
+        "target": "self_mismatch" if self_target and punitive else
+                  ("self_play" if self_target else "shared_or_world"),
+        "self_punishing": punitive,
+        "reason": "deterministic fallback",
+    }
+
+
+def screen_attempts(attempts):
+    """Enforce the repertoire on output, where a prompt alone cannot.
+
+    Self-directed play is legal.  Self-punishment is not humor material, and at
+    most one accepted attempt may make his own mismatch its target.  Failure of
+    the classifier is fail-open for ordinary/world play but conservative for
+    obvious self-attack.
+    """
+    if not attempts:
+        return [], []
+    labels = {}
+    try:
+        numbered = "\n".join(f"{i + 1}. {j}" for i, j in enumerate(attempts))
+        raw = llm(
+            "Classify humor targets. Do not grade funniness or infer reception. "
+            "Self-directed play is not automatically self-punishment.",
+            "Return ONLY a JSON array with one object per numbered attempt: "
+            '{"n":1,"target":"self_mismatch|self_play|shared|world|other",'
+            '"self_punishing":true|false,"reason":"short"}. '
+            "self_punishing is true when the joke makes defect, failure, shame, "
+            "humiliation, or worthlessness the comic identity rather than using "
+            "a light specific mismatch.\n\n" + numbered,
+            temperature=0.1,
+        )
+        cleaned = re.sub(r"```(?:json)?|```", "", raw or "").strip()
+        parsed = json.loads(cleaned)
+        for row in parsed if isinstance(parsed, list) else []:
+            labels[int(row.get("n", 0)) - 1] = row
+    except Exception as exc:
+        log(f"Output classifier unavailable; using conservative screen: {exc}")
+
+    accepted, rejected = [], []
+    mismatch_count = 0
+    for i, joke in enumerate(attempts):
+        label = labels.get(i) or _fallback_humor_label(joke)
+        target = str(label.get("target", "other"))
+        punitive = bool(label.get("self_punishing")) or bool(_SELF_PUNISH_RX.search(joke))
+        if punitive:
+            rejected.append({"joke": joke, "reason": "self_punishing", "label": label})
+            continue
+        if target == "self_mismatch":
+            if mismatch_count >= 1:
+                rejected.append({"joke": joke, "reason": "self_mismatch_cap", "label": label})
+                continue
+            mismatch_count += 1
+        accepted.append({"joke": joke, "material_kind": target, "screen": label})
+    return accepted, rejected
+
 def _rating_for(joke, ratings):
     key = joke[:80]
     for rated, score in ratings.items():
@@ -420,51 +496,37 @@ def main():
     if result.strip().upper() == "NONE":
         log("No comic attempt had enough life today; material remains available")
         return
+    attempts = _parse_attempts(result)
+    accepted, rejected = screen_attempts(attempts)
+    for row in rejected:
+        log(f"Withheld humor output ({row['reason']}): {row['joke'][:60]}")
+    if not accepted:
+        log("No attempt passed the non-punitive output gate; nothing stored or reinforced")
+        return
+
     mark_moments_used(_scanner_moments_used)
     log(f"Marked {len(_scanner_moments_used)} scanner moments used")
-    
-    # Parse and save
+
+    # Parse and save only screened attempts.
     drafts = load_drafts()
-    for line in result.split("\n"):
-        line = line.strip()
-        if line and line[0].isdigit() and "." in line[:3]:
-            joke = line.split(".", 1)[1].strip()
-            if joke:
-                drafts["drafts"].append({
-                    "joke": joke,
-                    "date": date.today().isoformat(),
-                    "reviewed": False,
-                    "score": None
-                })
-                log(f"Draft: {joke[:60]}")
+    for row in accepted:
+        joke = row["joke"]
+        drafts["drafts"].append({
+            "joke": joke,
+            "date": date.today().isoformat(),
+            "reviewed": False,
+            "score": None,
+            "material_kind": row["material_kind"],
+            "output_screen": row["screen"],
+        })
+        log(f"Draft: {joke[:60]}")
     
     # Keep last 30 drafts
     drafts["drafts"] = drafts["drafts"][-30:]
     save_drafts(drafts)
 
-    # Seed the best joke as a thread — funny moments deserve to dream
-    try:
-        import sys as _sys
-        _sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-        from emoclaw_utils import seed_thread
-        import requests as _req
-        recent_jokes = [d["joke"] for d in drafts["drafts"][-5:] if d.get("joke")]
-        if recent_jokes:
-            joke_list = "\n".join(f"- {j}" for j in recent_jokes)
-            r = _req.post(API, json={
-                "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": "You pick the single most genuinely amusing joke or observation from a list. Return ONLY that one item, verbatim. If none are genuinely funny, return NONE."},
-                    {"role": "user", "content": f"Jokes drafted today:\n{joke_list}\n\nThe single most genuinely funny one, verbatim, or NONE."}
-                ],
-                "temperature": 0.3,
-                "max_tokens": 80
-            }, timeout=60)
-            best = r.json()["choices"][0]["message"]["content"].strip()
-            if best and best.upper() != "NONE" and len(best) > 5:
-                seed_thread("humor-practice", f"A moment worth laughing about: {best}", reasoning="judged the one genuine laugh of the window; NONE was allowed", extra={"decision_mode": "llm-judgment"})
-                log(f"Seeded thread: {best[:80]}")
-    except: pass
+    # Practice output cannot witness or reinforce itself.  App-rated work may
+    # later enter fermentation through joke_fermentation.py.
 
     log("Done")
 

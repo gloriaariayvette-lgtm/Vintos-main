@@ -18,14 +18,18 @@ import json
 import subprocess
 from datetime import datetime
 
-def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep, current_step_index, current_step):
+def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
+                        current_step_index, current_step, actual_output=""):
     """Success path, extracted verbatim from the dispatch megablock: findings
     capture + felt step + advance-or-fulfill for multistep; plain fulfill +
     enactment distiller for single-step. Body unchanged."""
     # === MULTISTEP FINDINGS CAPTURE ===
     if is_multistep:
         # Capture findings and append to step history
-        findings = capture_findings(action, text)
+        # The capability's own receipt is authoritative.  Filesystem discovery
+        # is a compatibility fallback for older capabilities that still return
+        # only True; it must never replace a receipt from the act itself.
+        findings = actual_output or capture_findings(action, text)
         # The middle of the want lifecycle was silent. Creating one raises desire
         # and finishing one settles it, but working a step moved nothing at all —
         # so the part where he is actually in the thing never registered.
@@ -132,9 +136,9 @@ def capture_findings(capability, want_text):
         except:
             pass
         return "Artwork created"
-    elif capability in ["write_journal", "introspect"]:
+    elif capability == "write_journal":
         try:
-            journal_dir = os.path.join(MEMORY, "journal")
+            journal_dir = os.path.join(MEMORY, "want-journals")
             entries = sorted([f for f in os.listdir(journal_dir) if f.endswith(".md")])
             if entries:
                 _cf_path = os.path.join(journal_dir, entries[-1])
@@ -145,10 +149,25 @@ def capture_findings(capability, want_text):
                     journal_text = f.read()
                 paras = [p.strip() for p in journal_text.split("\n\n") if p.strip() and not p.startswith("#")]
                 summary = paras[0][:400] if paras else ""
-                return f"Journal reflection: {summary}"
-        except: 
-            pass
-        return "Journal entry written"
+                return f"Want journal receipt: {_cf_path}\nJournal reflection: {summary}"
+        except Exception as exc:
+            log(f"  → journal receipt unavailable: {exc}")
+        return ""
+    elif capability == "introspect":
+        # Modern introspection returns its text directly.  This fallback exists
+        # only for a legacy True return and searches the directory it actually
+        # writes, rather than the unrelated daily journal.
+        try:
+            journal_dir = os.path.join(MEMORY, "introspection", "wants")
+            entries = sorted([f for f in os.listdir(journal_dir) if f.endswith(".md")])
+            if entries:
+                _cf_path = os.path.join(journal_dir, entries[-1])
+                if __import__("time").time() - os.path.getmtime(_cf_path) <= 1200:
+                    text = open(_cf_path, encoding="utf-8", errors="ignore").read()
+                    return "Introspection receipt: %s\n%s" % (_cf_path, text[-500:])
+        except Exception as exc:
+            log(f"  → introspection receipt unavailable: {exc}")
+        return ""
     elif capability == "read_memory":
         # Capture from the read-memory output log
         try:
@@ -599,12 +618,17 @@ def write_journal(want_text):
             ],
             "temperature": 0.75, "max_tokens": 500
         }, timeout=120)
+        r.raise_for_status()
         entry = r.json()["choices"][0]["message"]["content"].strip()
         if not entry: return False
+        want_id = _wj_o.environ.get("STEP_WANT_ID", "")
         with open(journal_path, "a") as f:
-            f.write(f"\n## {hour} — Want journal\n\n{entry}\n")
+            f.write(f"\n## {hour} — Want journal"
+                    f"{(' [' + want_id + ']') if want_id else ''}\n\n{entry}\n")
         log(f"Want journal entry written to {journal_path}")
-        return True
+        # Return the act's own evidence.  The caller records this exact receipt;
+        # it does not go hunting in another journal directory afterward.
+        return f"Want journal receipt: {journal_path}\n{entry[:700]}"
     except Exception as e:
         log(f"write_journal failed: {e}")
         return False
@@ -1868,7 +1892,8 @@ def _persist_plan_fields(want):
             current = json.load(source)
         rows = current if isinstance(current, list) else current.get("wants", [])
         keys = ("steps", "current_step_index", "step_history", "plan_contract",
-                "plan_state", "plan_attempts", "planned_at", "plan_block")
+                "plan_state", "plan_attempts", "planned_at", "plan_block",
+                "plan_normalization")
         for row in rows:
             if row.get("id") == want.get("id"):
                 for key in keys:
@@ -1889,6 +1914,23 @@ def _ensure_plan(want, force=False):
     single action. Legacy wants without plan_state enter the same repair path.
     """
     if want.get("steps"):
+        # Normalize legacy plans before their first act.  Once a plan has moved,
+        # its history is immutable; changing step indexes retroactively would
+        # turn repair into falsification.
+        if not want.get("step_history") and int(want.get("current_step_index", 0) or 0) == 0:
+            try:
+                from want_contract import normalize_steps
+                normalized, changes = normalize_steps(want.get("want", ""), want["steps"])
+                if changes and normalized:
+                    want["steps"] = normalized
+                    want["plan_normalization"] = {
+                        "changes": changes, "at": datetime.now().isoformat(),
+                        "source": "execution-door-legacy-migration",
+                    }
+                    _persist_plan_fields(want)
+                    log("  → Legacy plan normalized: %s" % ", ".join(changes))
+            except Exception as exc:
+                log(f"  → Legacy plan normalization held: {exc}")
         return True
     if want.get("manually_routed") or want.get("gloria_routed") or want.get("capability"):
         return True
@@ -2333,7 +2375,11 @@ def main():
                             }, timeout=30)
                             _note = _fn_r.json()["choices"][0]["message"]["content"].strip()
                         except: pass
-                        _advance_or_fulfill(want, text, action, action_name, _note, is_multistep, current_step_index, current_step)
+                        _advance_or_fulfill(
+                            want, text, action, action_name, _note, is_multistep,
+                            current_step_index, current_step,
+                            actual_output=_actual_output,
+                        )
                     else:
                         _mark_attempt(text, action_name)
                     if action == "introspect":
