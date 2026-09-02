@@ -13,7 +13,7 @@ CLAUDE_MODEL = "claude-opus-4-8"
 # sunsets it — his current voice is not being replaced out from under him.
 CLAUDE_MODELS = {"claude": "claude-opus-4-8",
                  "sonnet": "claude-sonnet-5",
-                 "fable": "claude-fable-5"}
+                 "fable": "claude-fable-5-1"}
 def current_claude_model():
     return CLAUDE_MODELS.get(read_mode().get("mode", "claude"), CLAUDE_MODEL)
 SOL_MODEL = os.environ.get("SOL_MODEL", "gpt-5.6")
@@ -62,7 +62,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
     except Exception as e:
         print("[router/sol]", str(e)[:150], flush=True)
         return None, ""
-CLAUDE_SURFACES = {"avatar"}   # add "chat" in phase 2
+CLAUDE_SURFACES = {"avatar", "study"}   # add "chat" in phase 2
 
 def _anthropic_key():
     k = os.environ.get("ANTHROPIC_API_KEY", "")
