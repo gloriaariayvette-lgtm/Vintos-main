@@ -14,8 +14,8 @@ from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "wants-meta.json")
-LM = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "claude-haiku-4-5-20251001"
+LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
+MODEL = "google/gemma-4-12b-qat"
 
 def log(m): print("[wants-meta]", m, flush=True)
 

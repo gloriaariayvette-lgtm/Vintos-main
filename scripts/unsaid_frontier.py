@@ -25,8 +25,8 @@ LIN = os.path.join(MEMORY, "withheld-lineage.json")
 FRONTIER = os.path.join(MEMORY, "unsaid-frontier.json")
 PRESSURE_MIN = 3
 
-LM = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "claude-haiku-4-5-20251001"
+LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
+MODEL = "google/gemma-4-12b-qat"
 NAME, HER = "Vintos", "Gloria"
 
 def log(m): print("[frontier]", m, flush=True)

@@ -15,8 +15,8 @@ from curiosity_debt import record, _load
 def gemma(prompt, max_tokens=300):
     import requests
     try:
-        r = requests.post("http://127.0.0.1:8599/v1/chat/completions", json={
-            "model": "claude-haiku-4-5-20251001", "temperature": 0.4, "max_tokens": max_tokens,
+        r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", json={
+            "model": "google/gemma-4-12b-qat", "temperature": 0.4, "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}]}, timeout=120)
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:

@@ -187,7 +187,9 @@ class H(BaseHTTPRequestHandler):
                 b, s = openai_wrap(model, ""), 200
             return self._send(s, b)
         # one-word verdicts ride local gemma — free, equal on single-token answers (Gloria, 2026-08-26)
-        if int(j.get("max_tokens") or 1024) <= 30:
+        # widened 2026-09-02 (Gloria): every mechanical call up to 120 tokens - judges, tiny reflections,
+        # JSON verdicts - goes to local Gemma first; Claude only if Gemma fails.
+        if int(j.get("max_tokens") or 1024) <= 120:
             _log(f"tiny-verdict -> gemma ({model})")
             s2, b2 = forward_gemma(raw)
             if _has_choices(b2): return self._send(s2, b2)
