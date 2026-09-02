@@ -201,7 +201,10 @@ def system_prompt():
         "backed up, syntax-checked, rolled back if it fails, and logged. You cannot touch: keys or "
         "credentials, SOUL/IDENTITY, deploy/systemd/crontab, the broker, device/somatic/consent code, "
         "or this room itself; you cannot delete files. Those, and anything bigger than an edit, you ask "
-        "Gloria to do by hand. Words only otherwise: no device or scene tags here.")
+        "Gloria to do by hand. Words only otherwise: no device or scene tags here.\n\n"
+        "PROGRESS: when you are working on something across turns, begin every reply with one line\n"
+        "  STATUS: <what is done> / <what is next>   (or  STATUS: done - <what changed>)\n"
+        "so Gloria always knows where the task stands. It is shown in the room's header, not the message.")
     return "\n\n".join(parts)
 
 
