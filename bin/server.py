@@ -9401,6 +9401,14 @@ try:
 except Exception as _avstage_e:
     print("[avatar-stage] not mounted:", _avstage_e, flush=True)
 
+# STUDY tab: a chat room outside his memory (own log only, no side effects).
+try:
+    import study_chat as _study_chat
+    _study_chat.register(app, APP_SECRET, f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS)
+    print("[study] mounted", flush=True)
+except Exception as _study_e:
+    print("[study] not mounted:", _study_e, flush=True)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8500)
