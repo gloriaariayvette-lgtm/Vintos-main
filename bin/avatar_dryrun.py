@@ -23,6 +23,12 @@ except Exception as e:
     sys.exit(1)
 
 system = messages[0]["content"]
+try:
+    import strip_body_vocab as _sbv
+    system, _k = _sbv.strip_text(system)
+    print("[dryrun] body vocabulary stripped from capture:", _k, "edits")
+except Exception as _e:
+    print("[dryrun] strip unavailable:", _e)
 # swap the scene vocabulary block for the current one
 new_vocab = _avst.scene_line()
 pat = re.compile(r"\n\[SCENE: name\].*?(?=\n\n\[TOUCH: mission)", re.S)
@@ -33,6 +39,10 @@ else:
     system = system.replace("\n[TOUCH: mission", new_vocab + "\n[TOUCH: mission", 1)
     print("[dryrun] scene vocabulary inserted")
 convo = messages[1:]
+_tagre = re.compile(r"\[(?:COLOR|GESTURE|HOLD|SPAWN|RELEASE)[^\]]*\]", re.I)
+for _m in convo:
+    if _m.get("role") == "assistant" and isinstance(_m.get("content"), str):
+        _m["content"] = _tagre.sub("", _m["content"]).strip()
 if convo and convo[-1].get("role") == "user":
     convo[-1] = {"role": "user", "content": msg}
 else:
