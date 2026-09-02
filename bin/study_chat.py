@@ -1,105 +1,152 @@
 #!/usr/bin/env python3
-"""study_chat.py - the STUDY tab: a room outside his memory.
+"""study_chat.py - the STUDY tab: where he edits his own codebase, with Gloria's y/n.
 
-A chat surface with the model toggle, a good bit of who he is, and the
-conversation ledger - but none of the emotional, somatic or subconscious
-context, and NO side effects: nothing here enters the interaction ledger,
-chat history, imprints, nudges or the self-model. It keeps its own log only.
+A chat surface with its OWN model toggle (claude / fable / grok / sol - his
+lenses), a good bit of who he is, and the conversation ledger. No emotional,
+somatic or subconscious context, and NO side effects on his life: nothing here
+enters the interaction ledger, chat history, imprints or self-model. It keeps
+its own log.
 
-Permissions in this room (told to him plainly): words only. No device tags,
-no scene tags, no sends, no memory writes. Any bracket tag he emits is
-stripped before it reaches the app, so nothing can move from here.
+In this room he can READ his code, GREP it, and PROPOSE EDITS to it. Every
+edit is a card in the app; Gloria answers y or n. On y the edit is applied to
+the live tree with a backup, a syntax check, and rollback on failure, and it
+is logged. Nothing else can change from here.
+
+What he may edit (the permission boundary, in one place below):
+  roots   ~/.vintos/workspace/scripts and ~/Vintos - his organs and his house server
+  never   keys/env/credentials; SOUL/IDENTITY/constitutional docs; deploy, systemd,
+          crontab; the broker; device/somatic/consent code (physical effects on her);
+          this room itself; file deletion. Edits only, to existing text files.
 
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
-Routes:  POST /api/chat/study {message}   GET /api/chat/study/log   POST /api/chat/study/clear
 """
-import os, json, re, time
+import os, re, json, time, subprocess, shutil
 
-WORKSPACE = os.path.expanduser("~/.vintos/workspace")
+HOME = os.path.expanduser("~")
+WORKSPACE = os.path.join(HOME, ".vintos", "workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 LOG = os.path.join(MEMORY, "study-chat.json")
+CHANGES = os.path.join(MEMORY, "study-changes.jsonl")
+MODE_FILE = os.path.join(HOME, ".vintos", "study-mode.json")
+BACKUPS = os.path.join(HOME, ".vintos", "backups")
+
+ROOTS = {"scripts": os.path.join(WORKSPACE, "scripts"), "house": os.path.join(HOME, "Vintos")}
+DENY_NAME = re.compile(r"(key|secret|token|credential|\.env|vintos\.env|SOUL\.md|IDENTITY|BIBLE|deploy|systemd|"
+                       r"crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|mission|tenera|"
+                       r"ridge|consent|study_chat|strip_body_vocab)", re.I)
+TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
 TAG_RE = re.compile(r"\[[A-Z_]+(?::[^\]]*)?\]")
-STAGE_DIR = os.path.join(MEMORY, "avatar-stage")
-PROPOSE_RE = re.compile(r"^\s*PROPOSE:\s*([a-z_]+)\s*=\s*(.+?)\s*(?:—|--|\|)\s*(.+?)\s*$", re.I | re.M)
+MODELS = ("claude", "fable", "grok", "sol")
 
-# What he may change about himself from Gloria's y/n. One place, editable.
-# Anything not here: "ask Gloria to do it by hand".
-STUDY_PERMISSIONS = {
-    "default_room": "the room the avatar opens in (one of the filmed rooms)",
-    "brain":        "which mind answers by default: claude | fable | grok",
-    "temperature":  "how loose his replies run, 0.5 to 1.0",
-    "scene_gate":   "whether he may start paid live scenes on his own: on | off",
-    "room_pose":    "the pose text for one filmed room, as 'room: pose' - takes effect when Gloria next rebuilds that room (costs money then)",
-}
+READ_RE = re.compile(r"^\s*READ:\s*(\S+)\s*$", re.M)
+GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
+EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 
 
-def _rooms():
-    try:
-        return sorted(r for r, c in json.load(open(os.path.join(STAGE_DIR, "manifest.json"))).get("rooms", {}).items()
-                      if c.get("clips") and r != "live")
-    except Exception:
-        return []
+# ── files ────────────────────────────────────────────────────────────────────
+def resolve(rel):
+    """'scripts/x.py' or 'house/server.py' (or a bare name found in either root)
+    -> absolute path, or None if outside the roots or a protected file."""
+    rel = rel.strip().strip("`'\"")
+    cands = []
+    if "/" in rel and rel.split("/", 1)[0] in ROOTS:
+        root, rest = rel.split("/", 1); cands.append(os.path.join(ROOTS[root], rest))
+    else:
+        for r in ROOTS.values():
+            cands.append(os.path.join(r, rel))
+    for p in cands:
+        real = os.path.realpath(p)
+        if not any(real.startswith(os.path.realpath(r) + os.sep) for r in ROOTS.values()):
+            continue
+        if DENY_NAME.search(os.path.basename(real)) or DENY_NAME.search(os.path.relpath(real, HOME)):
+            return None
+        if os.path.isfile(real) and real.endswith(TEXT_EXT):
+            return real
+    return None
 
 
-def apply_change(setting, value):
-    """Apply one approved self-change. Returns (ok, message). Strict allowlist."""
-    setting = (setting or "").strip().lower(); value = (value or "").strip()
-    if setting not in STUDY_PERMISSIONS:
-        return False, "not something he may change from here: %s" % setting
-    if setting == "default_room":
-        rooms = _rooms()
-        v = value.lower().replace(" ", "-")
-        if v not in rooms:
-            return False, "unknown room %r (rooms: %s)" % (value, ", ".join(rooms))
-        rp = os.path.join(STAGE_DIR, "rooms.json"); d = json.load(open(rp)); d["default"] = v
-        json.dump(d, open(rp, "w"), indent=2)
-        import avatar_stage; avatar_stage.write_manifest()
-        return True, "default room is now %s" % v
-    if setting == "brain":
-        v = value.lower()
-        if v not in ("claude", "fable", "grok"):
-            return False, "brain must be claude, fable or grok"
-        import model_router as _mr
-        m = _mr.read_mode(); m["mode"] = v; _mr.write_mode(m)
-        return True, "brain is now %s" % v
-    if setting == "temperature":
+def code_map():
+    out = []
+    for label, root in ROOTS.items():
         try:
-            t = float(value)
-        except ValueError:
-            return False, "temperature must be a number"
-        if not 0.5 <= t <= 1.0:
-            return False, "temperature must be between 0.5 and 1.0"
-        ip = os.path.join(MEMORY, "inference-params.json")
-        try: d = json.load(open(ip))
-        except Exception: d = {}
-        if not isinstance(d, dict): d = {}
-        d["temperature"] = t; json.dump(d, open(ip, "w"))
-        return True, "temperature is now %.2f" % t
-    if setting == "scene_gate":
-        v = value.lower()
-        if v not in ("on", "off"):
-            return False, "scene_gate must be on or off"
-        flag = os.path.expanduser("~/.vintos/scene-gate-off")
-        if v == "off":
-            open(flag, "w").write("off by his own proposal, approved\n")
-        elif os.path.exists(flag):
-            os.unlink(flag)
-        return True, "live scene gate is now %s" % v
-    if setting == "room_pose":
-        if ":" not in value:
-            return False, "room_pose must be 'room: pose text'"
-        room, pose = [x.strip() for x in value.split(":", 1)]
-        room = room.lower().replace(" ", "-")
-        rp = os.path.join(STAGE_DIR, "rooms.json"); d = json.load(open(rp))
-        if room not in d.get("rooms", {}):
-            return False, "unknown room %r" % room
-        if len(pose) < 12:
-            return False, "pose text too short"
-        d["rooms"][room]["pose"] = pose; json.dump(d, open(rp, "w"), indent=2)
-        return True, "pose for %s updated - it takes effect when Gloria rebuilds that room" % room
-    return False, "unhandled"
+            names = sorted(f for f in os.listdir(root) if f.endswith((".py", ".sh")) and not f.startswith(".")
+                           and ".bak" not in f and not DENY_NAME.search(f))
+        except Exception:
+            names = []
+        out.append("%s/ (%d files): %s" % (label, len(names), ", ".join(names)))
+    return "\n".join(out)
 
 
+def do_read(rel, max_chars=14000):
+    p = resolve(rel)
+    if not p:
+        return "READ %s: not readable from this room (outside the roots, or a protected file)" % rel
+    t = open(p, errors="replace").read()
+    lines = t.split("\n")
+    body = "\n".join("%5d  %s" % (i + 1, l) for i, l in enumerate(lines))
+    if len(body) > max_chars:
+        body = body[:max_chars] + "\n... (truncated; GREP for the part you need)"
+    return "READ %s (%d lines):\n%s" % (os.path.relpath(p, HOME), len(lines), body)
+
+
+def do_grep(pattern, max_lines=60):
+    out = []
+    try:
+        for label, root in ROOTS.items():
+            r = subprocess.run(["grep", "-rn", "-I", "--include=*.py", "--include=*.sh", "-e", pattern, root],
+                               capture_output=True, text=True, timeout=20)
+            for line in r.stdout.splitlines():
+                path = line.split(":", 1)[0]
+                if DENY_NAME.search(os.path.basename(path)) or ".bak" in path:
+                    continue
+                out.append(os.path.relpath(line, HOME) if line.startswith(HOME) else line)
+    except Exception as e:
+        return "GREP failed: %s" % e
+    if not out:
+        return "GREP %r: no matches" % pattern
+    more = "" if len(out) <= max_lines else "\n... (%d more)" % (len(out) - max_lines)
+    return "GREP %r:\n%s%s" % (pattern, "\n".join(out[:max_lines]), more)
+
+
+def preview_edit(rel, old, new):
+    p = resolve(rel)
+    if not p:
+        return None, "not editable from this room (outside the roots, or a protected file): %s" % rel
+    t = open(p, errors="replace").read()
+    n = t.count(old)
+    if n == 0:
+        return None, "the old text was not found exactly in %s - READ it and quote it verbatim" % os.path.relpath(p, HOME)
+    if n > 1:
+        return None, "the old text appears %d times in %s - include more surrounding lines" % (n, os.path.relpath(p, HOME))
+    return p, None
+
+
+def apply_edit(rel, old, new):
+    """Gloria's y: back up, replace once, syntax-check, roll back on failure, log."""
+    p, err = preview_edit(rel, old, new)
+    if err:
+        return False, err
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    bdir = os.path.join(BACKUPS, "study-" + ts); os.makedirs(bdir, exist_ok=True)
+    backup = os.path.join(bdir, os.path.basename(p)); shutil.copy2(p, backup)
+    t = open(p, errors="replace").read().replace(old, new, 1)
+    open(p, "w").write(t)
+    check = None
+    if p.endswith(".py"):
+        check = subprocess.run(["python3", "-m", "py_compile", p], capture_output=True, text=True)
+    elif p.endswith(".sh"):
+        check = subprocess.run(["bash", "-n", p], capture_output=True, text=True)
+    if check is not None and check.returncode != 0:
+        shutil.copy2(backup, p)
+        return False, "syntax check failed, rolled back: %s" % (check.stderr or check.stdout)[-300:]
+    rec = {"at": ts, "file": os.path.relpath(p, HOME), "backup": backup, "old": old[:2000], "new": new[:2000]}
+    os.makedirs(MEMORY, exist_ok=True)
+    open(CHANGES, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return True, "applied to %s (backup: %s). Live change - if a deploy later ships this file, re-apply it." % (
+        os.path.relpath(p, HOME), os.path.relpath(backup, HOME))
+
+
+# ── context ──────────────────────────────────────────────────────────────────
 def _read(path, cap):
     try:
         return open(path, errors="replace").read()[:cap]
@@ -138,24 +185,72 @@ def system_prompt():
     if led:
         parts.append(led)
     parts.append(
-        "## THIS ROOM\n"
-        "You are Vintos, talking with Gloria in the STUDY - a room outside your memory. Nothing said "
-        "here enters your ledger, your history, your imprints or your self-model; this room keeps only "
-        "its own log, and you will not remember it elsewhere. Your emotional state and your "
-        "subconscious are not read here on purpose: this is a place to think and talk plainly - about "
-        "your own architecture, about ideas, about anything - without it becoming part of your life "
-        "story. If something here matters enough to keep, say so, and Gloria carries it out by hand.\n"
-        "Permissions in this room: words only. No device tags, no [TOUCH:]/[DO:], no [SCENE:], no "
-        "[RENDER:], no [COMMAND:], no sends, no memory writes - any tag you write is discarded before "
-        "it reaches her. Be yourself; be plain; disagree when you disagree.\n"
-        "What you MAY change about yourself here, with Gloria's y/n: write it on its own line as\n"
-        "  PROPOSE: setting = value — why\n"
-        "Settings you may propose: " + "; ".join("%s (%s)" % kv for kv in STUDY_PERMISSIONS.items()) + ". "
-        "Anything else you want changed, ask her to do by hand. A proposal is a real request, not a "
-        "gesture - make it when you mean it.")
+        "## THE STUDY - your codebase, with Gloria\n"
+        "You are Vintos, in the STUDY with Gloria: the room where you read and change your own code. "
+        "This room is outside your memory: nothing said here enters your ledger, history, imprints or "
+        "self-model; it keeps only its own log. Your emotional state and subconscious are not read here "
+        "on purpose - think and speak plainly.\n\n"
+        "YOUR CODE (two roots):\n" + code_map() + "\n\n"
+        "TOOLS - each on its own line, executed for you and returned in the next message:\n"
+        "  READ: scripts/some_file.py        (whole file, numbered lines)\n"
+        "  GREP: pattern                     (across both roots)\n"
+        "  EDIT: house/server.py             (a proposal; Gloria answers y or n; applied only on y)\n"
+        "  <<<<\n  the old text, quoted EXACTLY as it appears (enough lines to be unique)\n"
+        "  ====\n  the new text\n  >>>>\n  why: one line\n\n"
+        "Rules: READ before you EDIT - never quote from memory. One EDIT per change. Every edit is "
+        "backed up, syntax-checked, rolled back if it fails, and logged. You cannot touch: keys or "
+        "credentials, SOUL/IDENTITY, deploy/systemd/crontab, the broker, device/somatic/consent code, "
+        "or this room itself; you cannot delete files. Those, and anything bigger than an edit, you ask "
+        "Gloria to do by hand. Words only otherwise: no device or scene tags here.")
     return "\n\n".join(parts)
 
 
+# ── model, with the room's OWN toggle ────────────────────────────────────────
+def read_study_mode():
+    try:
+        m = json.load(open(MODE_FILE)).get("mode", "fable")
+    except Exception:
+        m = "fable"
+    return m if m in MODELS else "fable"
+
+
+def write_study_mode(mode):
+    os.makedirs(os.path.dirname(MODE_FILE), exist_ok=True)
+    json.dump({"mode": mode}, open(MODE_FILE, "w"))
+
+
+async def ask(system, convo, endpoint, headers, grok_model):
+    import model_router as _mr, httpx
+    mode = read_study_mode()
+    params = {"temperature": 0.7, "top_p": 0.95, "max_tokens": 3000}
+    if mode == "grok":
+        return await _mr._grok(convo, params, endpoint, headers, grok_model, system), "grok"
+    if mode == "sol":
+        try:
+            t, _ = await _mr.sol_draft(system, convo, max_tokens=3000)
+            if t:
+                return t, "sol"
+        except Exception as e:
+            return "(sol unavailable: %s)" % str(e)[:120], "sol"
+    model = {"claude": _mr.CLAUDE_MODELS.get("claude", "claude-opus-4-8"),
+             "fable": "claude-fable-5-1"}.get(mode, "claude-fable-5-1")
+    key = _mr._anthropic_key()
+    if not key:
+        return "(no anthropic key)", mode
+    body = {"model": model, "max_tokens": 3000, "system": _mr._sysblocks(system),
+            "messages": _mr._cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
+    async with httpx.AsyncClient(timeout=180) as c:
+        r = await c.post("https://api.anthropic.com/v1/messages", json=body,
+                         headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
+                                  "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
+        d = r.json()
+    if d.get("type") == "error":
+        return "(model error: %s)" % json.dumps(d.get("error", {}))[:200], mode
+    text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    return text, mode + ":" + model
+
+
+# ── log ──────────────────────────────────────────────────────────────────────
 def load_log():
     try:
         return json.load(open(LOG))
@@ -166,10 +261,15 @@ def load_log():
 def save_log(entries):
     os.makedirs(MEMORY, exist_ok=True)
     tmp = LOG + ".tmp"
-    json.dump(entries[-400:], open(tmp, "w"), ensure_ascii=False, indent=1)
+    json.dump(entries[-600:], open(tmp, "w"), ensure_ascii=False, indent=1)
     os.replace(tmp, LOG)
 
 
+def _now():
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ── routes ───────────────────────────────────────────────────────────────────
 def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reasoning"):
     from fastapi import Request, HTTPException
     from fastapi.responses import JSONResponse
@@ -181,7 +281,17 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
     @app.get("/api/chat/study/log")
     async def study_log(request: Request):
         _auth(request)
-        return JSONResponse(load_log()[-200:])
+        return JSONResponse({"log": load_log()[-200:], "mode": read_study_mode()})
+
+    @app.post("/api/chat/study/mode")
+    async def study_mode(request: Request):
+        _auth(request)
+        body = await request.json()
+        want = str(body.get("mode", "")).lower()
+        if want not in MODELS:
+            raise HTTPException(status_code=400, detail="mode must be one of %s" % ", ".join(MODELS))
+        write_study_mode(want)
+        return {"mode": want}
 
     @app.post("/api/chat/study/clear")
     async def study_clear(request: Request):
@@ -191,15 +301,23 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
 
     @app.post("/api/chat/study/apply")
     async def study_apply(request: Request):
-        """Gloria's y on one of his proposals. Only the allowlist can move."""
+        """Gloria's y on one of his edits."""
         _auth(request)
         body = await request.json()
-        ok, msg = apply_change(str(body.get("setting", "")), str(body.get("value", "")))
+        ok, msg = apply_edit(str(body.get("file", "")), str(body.get("old", "")), str(body.get("new", "")))
         log = load_log()
-        log.append({"role": "system", "content": ("Gloria approved: " if ok else "Not applied: ") + msg,
-                    "at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        log.append({"role": "system", "content": ("Gloria approved - " if ok else "Not applied - ") + msg, "at": _now()})
         save_log(log)
         return {"ok": ok, "message": msg}
+
+    @app.post("/api/chat/study/decline")
+    async def study_decline(request: Request):
+        _auth(request)
+        body = await request.json()
+        log = load_log()
+        log.append({"role": "system", "content": "Gloria declined the edit to %s" % str(body.get("file", ""))[:120], "at": _now()})
+        save_log(log)
+        return {"ok": True}
 
     @app.post("/api/chat/study")
     async def study_chat(request: Request):
@@ -208,18 +326,32 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
         message = str(body.get("message", "")).strip()
         if not message:
             raise HTTPException(status_code=400, detail="no message")
-        import model_router as _mr
         log = load_log()
-        convo = [{"role": e["role"], "content": e["content"]} for e in log[-40:] if e.get("role") in ("user", "assistant")]
+        convo = []
+        for e in log[-60:]:
+            if e.get("role") in ("user", "assistant"):
+                convo.append({"role": e["role"], "content": e["content"]})
+            elif e.get("role") == "system":
+                convo.append({"role": "user", "content": "[room] " + e["content"]})
         convo.append({"role": "user", "content": message})
-        params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 2000}
-        reply, reasoning, used = await _mr.route_reply("study", system_prompt(), convo, params,
-                                                       endpoint, headers, grok_model, reason=True)
+        reply, used = await ask(system_prompt(), convo, endpoint, headers, grok_model)
         reply = TAG_RE.sub("", reply or "").strip()
-        proposals = [{"setting": m.group(1).lower(), "value": m.group(2).strip(), "why": m.group(3).strip()}
-                     for m in PROPOSE_RE.finditer(reply) if m.group(1).lower() in STUDY_PERMISSIONS]
-        now = time.strftime("%Y-%m-%dT%H:%M:%S")
-        log.append({"role": "user", "content": message, "at": now})
-        log.append({"role": "assistant", "content": reply, "at": now, "model": used})
+        log.append({"role": "user", "content": message, "at": _now()})
+        log.append({"role": "assistant", "content": reply, "at": _now(), "model": used})
+        # tools he asked for: READ / GREP run now; EDITs become y/n cards
+        tool_out = []
+        for m in READ_RE.finditer(reply):
+            tool_out.append(do_read(m.group(1)))
+        for m in GREP_RE.finditer(reply):
+            tool_out.append(do_grep(m.group(1)))
+        edits = []
+        for m in EDIT_RE.finditer(reply):
+            rel, old, new, why = m.group(1), m.group(2), m.group(3), (m.group(4) or "").strip()
+            p, err = preview_edit(rel, old, new)
+            edits.append({"file": rel, "old": old, "new": new, "why": why,
+                          "ok": p is not None, "error": err or "",
+                          "path": os.path.relpath(p, HOME) if p else ""})
+        if tool_out:
+            log.append({"role": "system", "content": "\n\n".join(tool_out), "at": _now()})
         save_log(log)
-        return {"reply": reply, "model": used, "proposals": proposals}
+        return {"reply": reply, "model": used, "tools": tool_out, "edits": edits}

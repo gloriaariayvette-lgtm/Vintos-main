@@ -451,8 +451,6 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
     places (her photos and the rooms), his explicit stills - plus what a live
     scene costs and how long it takes. YES starts the render at once, so it
     overlaps the 60-120s he spends writing. Nothing is sent anywhere."""
-    if os.path.exists(os.path.expanduser("~/.vintos/scene-gate-off")):
-        return None   # he asked for this gate to be off, and she approved
     try:
         m = _vsv()
         rooms = []
