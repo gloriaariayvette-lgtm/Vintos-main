@@ -13,10 +13,15 @@ the live tree with a backup, a syntax check, and rollback on failure, and it
 is logged. Nothing else can change from here.
 
 What he may edit (the permission boundary, in one place below):
-  roots   ~/.vintos/workspace/scripts and ~/Vintos - his organs and his house server
-  never   keys/env/credentials; SOUL/IDENTITY/constitutional docs; deploy, systemd,
-          crontab; the broker; device/somatic/consent code (physical effects on her);
-          this room itself; file deletion. Edits only, to existing text files.
+  roots   ~/.vintos/workspace/scripts and ~/Vintos (his organs, his house server),
+          and the documents at the workspace root: SOUL.md, SELF-MODEL.md,
+          GLORIA-MODEL.md, CAPABILITIES.md and the rest.
+  y/n     a single ordinary code edit
+  Yes+✓   several edits at once, or any edit to a workspace document (SOUL,
+          SELF-MODEL, ...): Gloria must type the word Yes AND tick the box.
+  never   keys/env/credentials; deploy, systemd, crontab; the broker;
+          device/somatic/consent code (physical effects on her); this room
+          itself; file deletion. Edits only, to existing text files.
 
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
@@ -30,10 +35,13 @@ CHANGES = os.path.join(MEMORY, "study-changes.jsonl")
 MODE_FILE = os.path.join(HOME, ".vintos", "study-mode.json")
 BACKUPS = os.path.join(HOME, ".vintos", "backups")
 
-ROOTS = {"scripts": os.path.join(WORKSPACE, "scripts"), "house": os.path.join(HOME, "Vintos")}
-DENY_NAME = re.compile(r"(key|secret|token|credential|\.env|vintos\.env|SOUL\.md|IDENTITY|BIBLE|deploy|systemd|"
+ROOTS = {"scripts": os.path.join(WORKSPACE, "scripts"), "house": os.path.join(HOME, "Vintos"),
+         "docs": WORKSPACE}   # docs = the workspace root itself, .md files only
+DENY_NAME = re.compile(r"(key|secret|token|credential|\.env|vintos\.env|deploy|systemd|"
                        r"crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|mission|tenera|"
                        r"ridge|consent|study_chat|strip_body_vocab)", re.I)
+# Documents that shape who he is: editable, but only with Gloria's explicit permission (Yes + tick).
+EXPLICIT_DOCS = re.compile(r"\.md$", re.I)
 TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
 TAG_RE = re.compile(r"\[[A-Z_]+(?::[^\]]*)?\]")
 MODELS = ("claude", "fable", "grok", "sol")
@@ -58,6 +66,12 @@ def resolve(rel):
         real = os.path.realpath(p)
         if not any(real.startswith(os.path.realpath(r) + os.sep) for r in ROOTS.values()):
             continue
+        # the docs root is the workspace top level only: .md files directly in it, nothing beneath
+        if os.path.dirname(real) == os.path.realpath(WORKSPACE) and not real.endswith(".md"):
+            continue
+        if os.path.dirname(real) not in (os.path.realpath(r) for r in ROOTS.values()) and \
+           not any(real.startswith(os.path.realpath(r) + os.sep) for k, r in ROOTS.items() if k != "docs"):
+            continue
         if DENY_NAME.search(os.path.basename(real)) or DENY_NAME.search(os.path.relpath(real, HOME)):
             return None
         if os.path.isfile(real) and real.endswith(TEXT_EXT):
@@ -68,13 +82,21 @@ def resolve(rel):
 def code_map():
     out = []
     for label, root in ROOTS.items():
+        exts = (".md",) if label == "docs" else (".py", ".sh")
         try:
-            names = sorted(f for f in os.listdir(root) if f.endswith((".py", ".sh")) and not f.startswith(".")
+            names = sorted(f for f in os.listdir(root) if f.endswith(exts) and not f.startswith(".")
                            and ".bak" not in f and not DENY_NAME.search(f))
         except Exception:
             names = []
         out.append("%s/ (%d files): %s" % (label, len(names), ", ".join(names)))
     return "\n".join(out)
+
+
+def needs_explicit(paths):
+    """Several edits at once, or any edit to a workspace document -> Yes + tick."""
+    if len(paths) > 1:
+        return True
+    return any(os.path.dirname(os.path.realpath(p)) == os.path.realpath(WORKSPACE) for p in paths)
 
 
 def do_read(rel, max_chars=14000):
@@ -121,29 +143,61 @@ def preview_edit(rel, old, new):
     return p, None
 
 
-def apply_edit(rel, old, new):
-    """Gloria's y: back up, replace once, syntax-check, roll back on failure, log."""
-    p, err = preview_edit(rel, old, new)
-    if err:
-        return False, err
+def _syntax_ok(p):
+    if p.endswith(".py"):
+        r = subprocess.run(["python3", "-m", "py_compile", p], capture_output=True, text=True)
+    elif p.endswith(".sh"):
+        r = subprocess.run(["bash", "-n", p], capture_output=True, text=True)
+    else:
+        return True, ""
+    return r.returncode == 0, (r.stderr or r.stdout)[-300:]
+
+
+def apply_edits(edits, confirm=None):
+    """Gloria's approval on a set of edits. All or nothing: every edit must match,
+    all are backed up, all applied, every file syntax-checked; any failure rolls
+    the whole set back. Explicit permission (typed Yes + tick) is required for
+    several edits at once or any workspace document."""
+    resolved = []
+    for e in edits:
+        p, err = preview_edit(str(e.get("file", "")), str(e.get("old", "")), str(e.get("new", "")))
+        if err:
+            return False, err
+        resolved.append((p, str(e.get("old", "")), str(e.get("new", ""))))
+    if not resolved:
+        return False, "nothing to apply"
+    if needs_explicit([p for p, _, _ in resolved]):
+        c = confirm or {}
+        if str(c.get("yes", "")).strip().lower() != "yes" or not c.get("checked"):
+            return False, "this needs explicit permission: type Yes and tick the box"
     ts = time.strftime("%Y%m%d-%H%M%S")
     bdir = os.path.join(BACKUPS, "study-" + ts); os.makedirs(bdir, exist_ok=True)
-    backup = os.path.join(bdir, os.path.basename(p)); shutil.copy2(p, backup)
-    t = open(p, errors="replace").read().replace(old, new, 1)
-    open(p, "w").write(t)
-    check = None
-    if p.endswith(".py"):
-        check = subprocess.run(["python3", "-m", "py_compile", p], capture_output=True, text=True)
-    elif p.endswith(".sh"):
-        check = subprocess.run(["bash", "-n", p], capture_output=True, text=True)
-    if check is not None and check.returncode != 0:
-        shutil.copy2(backup, p)
-        return False, "syntax check failed, rolled back: %s" % (check.stderr or check.stdout)[-300:]
-    rec = {"at": ts, "file": os.path.relpath(p, HOME), "backup": backup, "old": old[:2000], "new": new[:2000]}
+    backups = {}
+    for p, _, _ in resolved:
+        if p not in backups:
+            backups[p] = os.path.join(bdir, os.path.basename(p)); shutil.copy2(p, backups[p])
+    try:
+        for p, old, new in resolved:
+            t = open(p, errors="replace").read()
+            if t.count(old) != 1:
+                raise RuntimeError("old text no longer unique in %s" % os.path.relpath(p, HOME))
+            open(p, "w").write(t.replace(old, new, 1))
+        for p in backups:
+            ok, msg = _syntax_ok(p)
+            if not ok:
+                raise RuntimeError("syntax check failed in %s: %s" % (os.path.relpath(p, HOME), msg))
+    except Exception as e:
+        for p, b in backups.items():
+            shutil.copy2(b, p)
+        return False, "rolled back everything - %s" % e
     os.makedirs(MEMORY, exist_ok=True)
-    open(CHANGES, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return True, "applied to %s (backup: %s). Live change - if a deploy later ships this file, re-apply it." % (
-        os.path.relpath(p, HOME), os.path.relpath(backup, HOME))
+    for p, old, new in resolved:
+        rec = {"at": ts, "file": os.path.relpath(p, HOME), "backup": backups[p], "old": old[:2000], "new": new[:2000],
+               "explicit": bool(confirm)}
+        open(CHANGES, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
+    files = ", ".join(sorted(set(os.path.relpath(p, HOME) for p in backups)))
+    return True, "applied %d edit(s) to %s (backups in %s). Live change - if a deploy later ships these files, re-apply." % (
+        len(resolved), files, os.path.relpath(bdir, HOME))
 
 
 # ── context ──────────────────────────────────────────────────────────────────
@@ -194,14 +248,18 @@ def system_prompt():
         "TOOLS - each on its own line, executed for you and returned in the next message:\n"
         "  READ: scripts/some_file.py        (whole file, numbered lines)\n"
         "  GREP: pattern                     (across both roots)\n"
-        "  EDIT: house/server.py             (a proposal; Gloria answers y or n; applied only on y)\n"
+        "  EDIT: house/server.py             (a proposal; applied only when Gloria approves)\n"
         "  <<<<\n  the old text, quoted EXACTLY as it appears (enough lines to be unique)\n"
         "  ====\n  the new text\n  >>>>\n  why: one line\n\n"
-        "Rules: READ before you EDIT - never quote from memory. One EDIT per change. Every edit is "
-        "backed up, syntax-checked, rolled back if it fails, and logged. You cannot touch: keys or "
-        "credentials, SOUL/IDENTITY, deploy/systemd/crontab, the broker, device/somatic/consent code, "
-        "or this room itself; you cannot delete files. Those, and anything bigger than an edit, you ask "
-        "Gloria to do by hand. Words only otherwise: no device or scene tags here.\n\n"
+        "Rules: READ before you EDIT - never quote from memory. One EDIT block per change; you may put "
+        "several EDIT blocks in one reply when a change spans files, and they are applied together or not "
+        "at all. Every edit is backed up, syntax-checked, rolled back if it fails, and logged.\n"
+        "Permission: a single code edit needs Gloria's y. Several edits at once, or any edit to a "
+        "workspace document (docs/ - your SOUL.md, SELF-MODEL.md, GLORIA-MODEL.md, CAPABILITIES.md and "
+        "the others) needs her EXPLICIT permission: she types Yes and ticks a box. You cannot touch: keys "
+        "or credentials, deploy/systemd/crontab, the broker, device/somatic/consent code, or this room "
+        "itself; you cannot delete files. Those you ask her to do by hand. Words only otherwise: no "
+        "device or scene tags here.\n\n"
         "PROGRESS: when you are working on something across turns, begin every reply with one line\n"
         "  STATUS: <what is done> / <what is next>   (or  STATUS: done - <what changed>)\n"
         "so Gloria always knows where the task stands. It is shown in the room's header, not the message.")
@@ -304,10 +362,12 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
 
     @app.post("/api/chat/study/apply")
     async def study_apply(request: Request):
-        """Gloria's y on one of his edits."""
+        """Gloria's approval on a set of his edits (y, or Yes + tick where required)."""
         _auth(request)
         body = await request.json()
-        ok, msg = apply_edit(str(body.get("file", "")), str(body.get("old", "")), str(body.get("new", "")))
+        edits = body.get("edits") or ([{"file": body.get("file"), "old": body.get("old"), "new": body.get("new")}]
+                                      if body.get("file") else [])
+        ok, msg = apply_edits(edits, body.get("confirm"))
         log = load_log()
         log.append({"role": "system", "content": ("Gloria approved - " if ok else "Not applied - ") + msg, "at": _now()})
         save_log(log)
@@ -347,14 +407,16 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
             tool_out.append(do_read(m.group(1)))
         for m in GREP_RE.finditer(reply):
             tool_out.append(do_grep(m.group(1)))
-        edits = []
+        edits, paths = [], []
         for m in EDIT_RE.finditer(reply):
             rel, old, new, why = m.group(1), m.group(2), m.group(3), (m.group(4) or "").strip()
             p, err = preview_edit(rel, old, new)
+            if p: paths.append(p)
             edits.append({"file": rel, "old": old, "new": new, "why": why,
                           "ok": p is not None, "error": err or "",
                           "path": os.path.relpath(p, HOME) if p else ""})
+        explicit = needs_explicit(paths) if paths else False
         if tool_out:
             log.append({"role": "system", "content": "\n\n".join(tool_out), "at": _now()})
         save_log(log)
-        return {"reply": reply, "model": used, "tools": tool_out, "edits": edits}
+        return {"reply": reply, "model": used, "tools": tool_out, "edits": edits, "explicit": explicit}
