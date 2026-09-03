@@ -363,6 +363,31 @@ def decide(force=False):
         # another photo — silently grounding in the wrong place is the failure
         # this whole change exists to remove.
         log("he named scene ref %r but it matched no photo — not grounding" % _rid)
+    # A room of the house named in the SCENE he wrote grounds it in her photo of
+    # that room even when he set no SCENE_REF - the place is real, so the picture
+    # should be too (just one more reference image to Grok). Explicit SCENE_REF wins.
+    if not d.get("scene_ref") and d.get("scene"):
+        import re as _rre
+        _sc = " " + _rre.sub(r"[^a-z0-9 ]", " ", d["scene"].lower()) + " "
+        _best = None
+        for _rid2, _p2 in _optmap.items():
+            if not _rid2.startswith("room:"):
+                continue
+            _rn = _rid2[5:].lower()
+            _cands = {_rn.replace("-", " ")}
+            _first = _rn.split("-")[0]
+            # only a standalone room NOUN answers alone ("kitchen-oven" -> "kitchen");
+            # an adjective half ("living" of living-room) must keep its "room".
+            if _first in ("kitchen", "bedroom", "patio", "dining", "vanity", "bathroom", "office",
+                          "garage", "hall", "hallway", "closet", "porch", "balcony", "deck", "study",
+                          "den", "laundry", "pantry", "foyer", "nursery", "basement", "attic", "bath"):
+                _cands.add(_first)
+            for _c in _cands:
+                if " " + _c + " " in _sc and (not _best or len(_c) > len(_best[0])):
+                    _best = (_c, _rid2, _p2)
+        if _best:
+            d["scene_ref"] = _best[2]; d["ground"] = True; d["scene_ref_id"] = _best[1]
+            log("scene names the %s - grounding in her photo [%s]" % (_best[0], _best[1]))
     return d
 
 

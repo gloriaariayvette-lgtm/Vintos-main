@@ -258,61 +258,61 @@ def _mac_url():
 
 
 def speak(text, room=None):
-    """Render a speech clip: kokoro audio + Wav2Lip mouth over the room loop.
-    Wav2Lip cycles the loop to match the audio, so any speech length works.
-    When ~/.vintos/stage-mac.json names a Mac stage service, the render happens
-    THERE and only the finished mp4 lands in the local cache. Prints the mp4
-    path on success; exits nonzero on failure - no silent inert."""
+    """Render a speech clip: his kokoro voice laid over the room's living close-up
+    (ffmpeg, no mouth edit - Gloria's call: charm over lip-flap). When
+    ~/.vintos/stage-mac.json names the Mac stage it renders THERE; if the Mac is
+    unreachable or errors (in the shop), the same voice-over renders HERE, so his
+    voice never depends on the Mac being home. Prints the mp4 path on success;
+    exits nonzero on failure - no silent inert."""
     text = (text or "").strip()
     if not text:
         log("empty text"); return 1
     man = write_manifest()
     room = room or man.get("default") or (next(iter(man["rooms"]), None))
-    mac = _mac_url()
-    if mac:
-        key = hashlib.sha1(("%s|%s|%s" % (room, VOICE, text)).encode()).hexdigest()[:16]
-        os.makedirs(SPEECH, exist_ok=True)
-        out = os.path.join(SPEECH, "%s.mp4" % key)
-        if os.path.exists(out):
-            print(out); return 0
-        try:
-            import requests
-            r = requests.post(mac + "/speak", json={"text": text, "room": room}, timeout=900)
-        except Exception as e:
-            log("mac stage unreachable at %s: %s" % (mac, e)); return 1
-        if r.status_code != 200:
-            log("mac stage error %s: %s" % (r.status_code, r.text[:200])); return 1
-        with open(out, "wb") as f:
-            f.write(r.content)
-        print(out); return 0
-    clips = (man["rooms"].get(room) or {}).get("clips") or []
-    if not clips:
-        log("no clips for room %r - build presets first" % room); return 1
-    face = os.path.join(CLIPS, clips[0])
     key = hashlib.sha1(("%s|%s|%s" % (room, VOICE, text)).encode()).hexdigest()[:16]
     os.makedirs(SPEECH, exist_ok=True)
     out = os.path.join(SPEECH, "%s.mp4" % key)
     if os.path.exists(out):
         print(out); return 0
+    mac = _mac_url()
+    if mac:
+        try:
+            import requests
+            # connect fast (8s) so a Mac that is away falls through at once; read long.
+            r = requests.post(mac + "/speak", json={"text": text, "room": room}, timeout=(8, 900))
+            if r.status_code == 200:
+                with open(out, "wb") as f:
+                    f.write(r.content)
+                print(out); return 0
+            log("mac stage error %s: %s - rendering here instead" % (r.status_code, r.text[:200]))
+        except Exception as e:
+            log("mac stage unreachable at %s: %s - rendering here instead" % (mac, e))
+    # LOCAL VOICE-OVER - the Mac's default, mirrored on Aegis.
+    clips = (man["rooms"].get(room) or {}).get("clips") or []
+    clips = [c for c in clips if os.path.exists(os.path.join(CLIPS, c))]
+    if not clips:
+        log("no clips for room %r - build presets first" % room); return 1
+    face = os.path.join(CLIPS, clips[0])
+    close = os.path.join(CLIPS, "%s-close.mp4" % room)   # speaking cuts closer when a close-up exists
+    if os.path.exists(close):
+        face = close
     wav = os.path.join(SPEECH, "%s.wav" % key)
     try:
         if not _kokoro_wav(text, wav):
             log("kokoro produced no audio"); return 1
     except Exception as e:
         log("kokoro failed: %s" % e); return 1
-    if not os.path.exists(WAV2LIP_CKPT):
-        log("Wav2Lip checkpoint missing at %s" % WAV2LIP_CKPT); return 1
-    w2l_py = os.path.join(WAV2LIP_DIR, ".venv", "bin", "python")
-    if not os.path.exists(w2l_py):
-        w2l_py = sys.executable
-    r = subprocess.run([w2l_py, "inference.py",
-                        "--checkpoint_path", WAV2LIP_CKPT,
-                        "--face", face, "--audio", wav, "--outfile", out],
-                       cwd=WAV2LIP_DIR, capture_output=True, text=True)
+    import shutil
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    r = subprocess.run([ffmpeg, "-y", "-loglevel", "error",
+                        "-stream_loop", "-1", "-i", face, "-i", wav,
+                        "-map", "0:v", "-map", "1:a", "-shortest",
+                        "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", out],
+                       capture_output=True, text=True)
     try: os.unlink(wav)
     except OSError: pass
     if r.returncode != 0 or not os.path.exists(out):
-        log("wav2lip failed: %s" % (r.stderr or r.stdout)[-400:]); return 1
+        log("voice-over mux failed: %s" % (r.stderr or r.stdout)[-300:]); return 1
     print(out)
     return 0
 
