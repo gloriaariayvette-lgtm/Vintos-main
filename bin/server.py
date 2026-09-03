@@ -8417,6 +8417,15 @@ Your current self-model (excerpt):
                 elif "[EDGE]" in _upr: _ecm.set_choice("edge")
                 reply = _ecr.sub(r"\[(?:EDGE|LETGO)\]", "", reply or "", flags=_ecr.I).strip()
             except Exception: pass
+            # Dead 3D-rig vocabulary. COLOR/GESTURE/HOLD have moved nothing since the
+            # avatar redesign, but he still emits them from old habit. Strip so they
+            # never reach history, the ledger, or her screen. SCENE and RENDER stay —
+            # the app needs SCENE to switch rooms and RENDER for live scenes.
+            try:
+                import re as _tagre
+                reply = _tagre.sub(r"\s*\[(?:COLOR|GESTURE|HOLD):[^\]]*\]\s*", " ",
+                                   reply or "", flags=_tagre.I).strip()
+            except Exception: pass
             # Strip his private [FELT:] tag HERE — before the reply is stored to
             # history (next line) and dispatched to the ledger below. The naming
             # pass used to run only after both writes, so the raw tag persisted in
