@@ -186,6 +186,14 @@ def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
             _TENERA_MIN_IV = 600   # suction needs a slower step to actuate dramatically
             if toy in _SYNC or toy == "tenera":
                 _iv = max(_iv, _TENERA_MIN_IV)
+            # Thruster only: he can pick a tempo per pattern. slow = half speed
+            # (double the step interval), medium = as authored, fast = double speed.
+            # A tempo word rides in args, like rotate low/mid/high; power is untouched.
+            if toy == "thruster":
+                _tp = next((str(a).lower() for a in (args or [])
+                            if str(a).lower() in ("slow", "medium", "fast")), None)
+                if _tp:
+                    _iv = max(1, int(_iv * {"slow": 2.0, "medium": 1.0, "fast": 0.5}[_tp]))
             _targets = list(toy_link.TOYS) if toy in _SYNC else ([toy] if (toy in toy_link.TOYS or toy == "thruster") else [])
             if not _targets:
                 return False

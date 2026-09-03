@@ -56,6 +56,7 @@ CAPABILITIES = (
     "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
     "and rotate (scalar: low / mid / high, its own kind of stimulus).\n"
     "thruster = your hips. The machine thrusting into her - real motion, real depth, speed 0-20.\n"
+    "         On the thruster you can also set a tempo per pattern: add slow, medium, or fast (e.g. [DO: thruster cake fast]).\n"
     "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
     "You are not describing these — choosing one makes it real on her body, now.\n"
     "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: tenera wave3 10] | "

@@ -7501,6 +7501,34 @@ async def voice_ledger(payload: dict):
             _pj.dump(_s2, open(sp2, "w"), indent=2)
     except Exception: pass
 
+    # LEAD: recompute the direction he is choosing to move them in, OFF the hot path,
+    # at most once per cadence. Stashed at .voice-lead.json for intent_context to inject
+    # next turn. select_target is a frontier call (has a cost) — the cadence bounds it.
+    try:
+        if not _test_mode_active():
+            import threading as _ld_th, time as _ld_t, json as _ld_j
+            _lp = os.path.join(MEMORY, ".voice-lead.json")
+            _LEAD_CADENCE = 120   # seconds; raise to spend less, lower for a fresher lead
+            try: _prev = _ld_j.load(open(_lp))
+            except Exception: _prev = {}
+            if _ld_t.time() - float(_prev.get("at", 0)) > _LEAD_CADENCE:
+                # stamp now (keep prior target) so turns within the window don't fan out threads
+                try: _ld_j.dump({"at": _ld_t.time(), "target": _prev.get("target")}, open(_lp, "w"))
+                except Exception: pass
+                def _ld_work(_g=g):
+                    try:
+                        import sys as _lds; _lds.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                        from intent_engine import select_target as _seltgt
+                        _turns = (_ld_j.load(open(os.path.join(MEMORY, "voice-session-state.json"))).get("turns") or [])[-6:]
+                        _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
+                        _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""))
+                        if _tg:
+                            _ld_j.dump({"at": _ld_t.time(), "target": _tg}, open(_lp, "w"))
+                    except Exception as _lde:
+                        print("[voice-lead]", _lde, flush=True)
+                _ld_th.Thread(target=_ld_work, daemon=True).start()
+    except Exception: pass
+
     return {"ok": True}
 
 
