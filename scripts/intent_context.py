@@ -39,6 +39,13 @@ def _lead_block():
     return out
 
 
+def _clean(s):
+    """A human sentence, or nothing. Raw dict/list reprs (some axes store their
+    target as a structure) never belong in his context, so drop them."""
+    s = str(s or "").strip()
+    return "" if (not s or s[0] in "{[") else s
+
+
 def _ledger_block():
     try:
         from desired_difference import map_summary
@@ -51,16 +58,16 @@ def _ledger_block():
     lines = []
     for label, rows in axes:
         for e in (rows or [])[-2:]:                       # the two freshest open intents per axis
-            way = (e.get("way") or "").strip()
+            way = _clean(e.get("way"))
             if not way:
                 continue
-            plan = (e.get("plan") or "").strip()
+            plan = _clean(e.get("plan"))
             st = e.get("status") or e.get("verdict") or "open"
             seg = "· " + label + ": " + way
             if plan and plan != "(pre-upgrade)":
                 seg += " — first move: " + plan
-            if str(st).upper() not in ("PENDING", "OPEN"):
-                seg += " [" + str(st) + "]"
+            if isinstance(st, str) and st.upper() not in ("PENDING", "OPEN"):
+                seg += " [" + st + "]"
             lines.append(seg)
     pend = m.get("difference_pending", 0)
     if not lines and not pend:
