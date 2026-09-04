@@ -3,6 +3,7 @@
 //   node room-ctl.mjs create "topic"            -> prints the code; saves ~/.vintos/code-review/room.json (code + hostKey)
 //   node room-ctl.mjs mode sequential|moderator  -> reply mode
 //   node room-ctl.mjs say "text"                 -> speak as host
+//   node room-ctl.mjs watch [n]                  -> print every reply as it lands; stop after n replies from the lenses (0 = keep going)
 //   node room-ctl.mjs state                      -> whose turn, who is present
 //   node room-ctl.mjs minutes                    -> writes ~/.vintos/code-review/<date>-room-minutes.md
 //   node room-ctl.mjs skip                       -> skip whoever holds the floor (a dead seat)
@@ -23,6 +24,19 @@ if (cmd === 'create') {
 const { code, hostKey } = saved();
 if (cmd === 'mode') { const r = await post({ action:'setReplyMode', code, requesterName: HOST, hostKey, mode: arg || 'sequential' }); console.log('mode ->', r.room.replyMode); }
 else if (cmd === 'say') { const r = await post({ action:'send', code, hostKey, message:{ id: Date.now(), type:'msg', name: HOST, initials:'GL', color:'#8A6D3B', role:'host', text: arg, client:'web', time: Date.now() } }); console.log(r.result?.appended ? 'said' : JSON.stringify(r.result)); }
+else if (cmd === 'watch') {
+  const want = rest[0] === undefined ? 3 : +rest[0]; let cursor = 0, got = 0; const seen = new Set();
+  console.log(`watching ${code}; waiting for ${want || 'any number of'} replies. Ctrl-C to stop.`);
+  for (;;) {
+    const ms = (await post({ action:'messages', code, cursor })).messages; cursor += ms.length;
+    for (const m of ms) { if (m.type === 'sys') { console.log(`  (room) ${m.text}`); continue; }
+      const lens = m.name !== HOST; console.log(`\n===== ${m.name} · ${new Date(m.time).toLocaleTimeString()} =====\n${m.text}\n`);
+      if (lens) { got++; seen.add(m.name); } }
+    if (want && got >= want) { console.log(`ALL IN: ${[...seen].join(', ')} have spoken (${got} replies).`); process.exit(0); }
+    const sw = await post({ action:'sweep', code }).catch(() => null); if (sw && sw.room.status !== 'active') { console.log('room ended'); process.exit(0); }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+}
 else if (cmd === 'state') { const ts = await post({ action:'turnState', code }); const sw = await post({ action:'sweep', code }); console.log(`room ${code} (${sw.room.status}, ${sw.room.replyMode}) present: ${sw.room.participants.map(p=>p.name).join(', ')}\nturn: ${ts.turnState?.currentName ?? '(open)'}`); }
 else if (cmd === 'minutes') {
   const ms = (await post({ action:'messages', code, cursor: 0 })).messages.filter(m => m.type !== 'sys');

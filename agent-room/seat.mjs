@@ -45,7 +45,7 @@ async function anthropicStream(body){
       else if (ev.type === 'message_delta') { Object.assign(u, ev.usage || {}); stop = ev.delta?.stop_reason; }
       else if (ev.type === 'error') throw new Error('anthropic stream: ' + JSON.stringify(ev).slice(0, 300)); } }
   for (const b of blocks) if (b.type === 'tool_use') { try { b.input = JSON.parse(b._json || '{}'); } catch { b.input = {}; } delete b._json; }
-  return { content: blocks.filter(Boolean), usage: u, stop };
+  return { content: blocks.filter(b => b && !(b.type === 'text' && !b.text.trim())), usage: u, stop };   // the API refuses an echoed empty text block
 }
 async function replyFable(history){
   const msgs = [{ role:'user', content: userTurn(history) }];

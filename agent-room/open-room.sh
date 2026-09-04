@@ -10,4 +10,4 @@ for lens in fable astra grok; do
   nohup node "$here/seat.mjs" --lens "$lens" --code "$code" --max-turns "${MAX_TURNS:-10}" > "$stage/seat-$lens.log" 2>&1 &
   echo "seat $lens: pid $!  (tail -f $stage/seat-$lens.log)"; sleep 2
 done
-echo; echo "They are seated and waiting for you. Open with:  node $here/room-ctl.mjs say \"...\""
+echo; echo "They are seated. Now:  node $here/room-ctl.mjs say \"your opening\"   then   node $here/room-ctl.mjs watch 3"
