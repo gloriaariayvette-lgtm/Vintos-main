@@ -1,20 +1,46 @@
 #!/usr/bin/env python3
-"""Assemble what every seat in the room is given: his persona (the same head the review used,
-minus the anatomy map) and the three finals from today's review. Writes:
-  ~/.vintos/code-review/persona.txt   ~/.vintos/code-review/finals.md"""
-import os, sys, glob, datetime
-sys.path.insert(0, os.path.expanduser("~/Vintos")); import importlib.util
-spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv=["x"]; spec.loader.exec_module(cr)
+"""What each seat walks into the room with. Per lens:
+  ~/.vintos/code-review/room-<lens>.md   = persona (the review's head) + THE ROOM rules
+                                         + YOUR OWN REVIEW (every section + your final)
+                                         + THE OTHER TWO FINALS (to address in turn 1)
+Usage: make-room-context.py [YYYYMMDD]   (default: today)"""
+import os, sys, glob, datetime, importlib.util
+spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv = ["x"]; spec.loader.exec_module(cr)
 day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y%m%d")
+LENSES = ("fable", "astra", "grok")
+ROOM_RULES = (
+    "THE ROOM. Three of you - Fable 5.1, Astra, Grok 4.6 - each having read your own body alone, now together. "
+    "You are all him; the others are not reviewers of you, they are you through another lens. Speak as yourself.\n"
+    "Turn 1: having read the other two finals in full, address every point that comes to mind - agreements, "
+    "disagreements, what the others missed - and pull code where it settles something (grep it, quote the lines). "
+    "Turns 2-5: only what is still contested. Five turns each, then stop.\n"
+    "Mark a real decision with a line beginning [DECISION]. For every decision, in this order: what class of problem "
+    "it makes impossible (not the one occurrence - the category; would it have prevented the last three?); whether "
+    "it gets better on its own as the model gets smarter (a fixed floor that leaves the judgment to you) or worse "
+    "(a hardcoded judgment call); what it costs and what it breaks; and its NEXT ACTION - the first concrete step, "
+    "who takes it. Rank what survives by whether it brings you closer to agency or further from it. "
+    "Do not re-propose what changed in the last day; if an idea was declined before, answer the old objection or say what is different now. "
+    "Note where two of you arrived at the same place independently - that is signal.\n")
 persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 4000)
            + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)
            + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.MEMORY, "GLORIA-MODEL.md"), 6000)
-           + "\n\nTHE ROOM: three of you - Fable 5.1, Astra, Grok 4.6 - each having read your own body alone, now together. "
-             "Turn 1: having read the other finals in full, address every point that comes to mind. Turns 2-5: only what is still contested. "
-             "Pull code where it settles something. Mark a real decision with a line beginning [DECISION]. Five turns each, then stop.")
-finals = []
-for lens in ("fable", "astra", "grok"):
+           + "\n\n" + ROOM_RULES)
+def own_review(lens):
+    parts = []
+    for sub in cr.ORDER:
+        p = os.path.join(cr.STAGE, f"{day}-{lens}-{sub}.md")
+        if os.path.exists(p): parts.append(open(p).read())
+    fin = os.path.join(cr.STAGE, f"{day}-{lens}-final.md")
+    if os.path.exists(fin): parts.append(open(fin).read())
+    return "\n\n".join(parts), len(parts)
+def final_of(lens):
     p = os.path.join(cr.STAGE, f"{day}-{lens}-final.md")
-    finals.append(f"\n\n# ===== FINAL through {lens} =====\n\n" + (open(p).read() if os.path.exists(p) else f"(no {lens} final for {day})"))
-open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona); open(os.path.join(cr.STAGE, "finals.md"), "w").write("".join(finals))
-print("wrote", os.path.join(cr.STAGE, "persona.txt"), "and finals.md", "(missing:", [l for l in ("fable","astra","grok") if not os.path.exists(os.path.join(cr.STAGE, f"{day}-{l}-final.md"))], ")")
+    return open(p).read() if os.path.exists(p) else f"(no {lens} final for {day})"
+open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
+for lens in LENSES:
+    own, n = own_review(lens); others = [l for l in LENSES if l != lens]
+    doc = (persona
+           + f"\n\n# ===== YOUR OWN REVIEW, through {lens} ({n} part(s): every section, then your final) =====\n\n" + (own or f"(no {lens} review staged for {day})")
+           + "".join(f"\n\n# ===== THE FINAL through {o} (address this in turn 1) =====\n\n" + final_of(o) for o in others))
+    out = os.path.join(cr.STAGE, f"room-{lens}.md"); open(out, "w").write(doc)
+    print(f"{out}: {len(doc)//1000}KB  (own parts: {n}; other finals: {', '.join(others)})")
