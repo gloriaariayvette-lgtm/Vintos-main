@@ -98,20 +98,21 @@ const reply = DRY ? async () => `[STATUS] (dry run) ${NAME} would answer here.` 
 
 // ---- the seat loop ----------------------------------------------------------------------------
 const me = { name: NAME, role: `lens: ${L.label}`, color: L.color, initials: L.ini, client: 'cc', joinedAt: Date.now(), lastSeenAt: Date.now() };
-const joined = await post({ action:'join', code: CODE, participant: me }); const myName = joined.participant.name; log(`joined ${CODE} as ${myName}; mode=${joined.room.replyMode}; model=${L.model}`);
-let cursor = 0, turns = 0, pending = false;   // anything already said (the host's opening) counts
+const joined = await post({ action:'join', code: CODE, participant: me, priorIdentity: { name: NAME, client: 'cc' } })
+  .catch(() => post({ action:'join', code: CODE, participant: me }));   // a restarted seat takes its old chair back const myName = joined.participant.name; log(`joined ${CODE} as ${myName}; mode=${joined.room.replyMode}; model=${L.model}`);
+let cursor = 0, turns = 0, pending = false, draft = null;   // anything already said (the host's opening) counts
 while (turns < MAX) {
   await post({ action:'presence', code: CODE, name: myName, until: Date.now() + 60000 }).catch(()=>{});
   const room = (await post({ action:'sweep', code: CODE })).room; if (room.status !== 'active') { log('room ended'); break; }
   const fresh = (await post({ action:'messages', code: CODE, cursor })).messages; cursor += fresh.length;
-  if (fresh.some(m => m.name !== myName && m.type !== 'sys')) pending = true;
+  if (fresh.some(m => m.name !== myName && m.type !== 'sys')) { pending = true; draft = null; }   // new words: any unsent draft is stale
   if (pending) {
     const ts = await post({ action:'turnState', code: CODE }).catch(() => ({}));
     if (!ts.turnState?.currentName || ts.turnState.currentName === myName) {
       const all = (await post({ action:'messages', code: CODE, cursor: 0 })).messages.filter(m => m.type !== 'sys');
-      let text; try { text = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; }
-      try { const r = await post({ action:'send', code: CODE, message: { id: Date.now(), type:'msg', name: myName, initials: me.initials, color: me.color, role: me.role, text, client:'cc', time: Date.now() } });
-        if (r.result?.appended) { turns++; pending = false; cursor++; log(`spoke (turn ${turns}/${MAX})`); } }
+      if (!draft) { try { draft = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; } }
+      try { const r = await post({ action:'send', code: CODE, message: { id: Date.now(), type:'msg', name: myName, initials: me.initials, color: me.color, role: me.role, text: draft, client:'cc', time: Date.now() } });
+        if (r.result?.appended) { turns++; pending = false; draft = null; cursor++; log(`spoke (turn ${turns}/${MAX})`); } }
       catch (e) { if (e.name === 'NotYourTurnError' || e.name === 'MutedError') process.stdout.write('.'); else throw e; }
     } else process.stdout.write('.');
   }

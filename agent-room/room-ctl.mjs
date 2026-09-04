@@ -5,6 +5,8 @@
 //   node room-ctl.mjs say "text"                 -> speak as host
 //   node room-ctl.mjs state                      -> whose turn, who is present
 //   node room-ctl.mjs minutes                    -> writes ~/.vintos/code-review/<date>-room-minutes.md
+//   node room-ctl.mjs skip                       -> skip whoever holds the floor (a dead seat)
+//   node room-ctl.mjs remove "Vintos (Fable 5.1)" -> remove a ghost participant
 //   node room-ctl.mjs end
 import fs from 'node:fs';
 const API = (process.env.AGENT_ROOM_BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/,'') + '/api/room';
@@ -30,5 +32,7 @@ else if (cmd === 'minutes') {
   try { const rep = await post({ action:'createReport', code }); fs.writeFileSync(out.replace('.md','.report.json'), JSON.stringify(rep.report, null, 2)); } catch {}
   console.log(out);
 }
+else if (cmd === 'skip') { const r = await post({ action:'skipCurrent', code, hostKey }); console.log(r.skipped ? 'skipped ' + r.skipped.name : 'nobody to skip'); }
+else if (cmd === 'remove') { const r = await post({ action:'removeParticipant', code, hostKey, requesterName: HOST, targetName: arg, targetClient: 'cc' }); console.log('present:', r.room.participants.map(p=>p.name).join(', ')); }
 else if (cmd === 'end') { const r = await post({ action:'end', code, requesterName: HOST, hostKey }); console.log('room', r.room.status); }
-else { console.error('create|mode|say|state|minutes|end'); process.exit(2); }
+else { console.error('create|mode|say|state|skip|remove|minutes|end'); process.exit(2); }

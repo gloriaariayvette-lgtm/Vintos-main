@@ -4,7 +4,7 @@ const H = process.env.HOME;
 export const ROOTS = (process.env.ROOM_ROOTS ? process.env.ROOM_ROOTS.split(':') : [
   `${H}/Vintos`, `${H}/.vintos/workspace/scripts`, `${H}/.vintos/deploy/vintos-main`, `${H}/.vintos/deploy/velaris-main`, `${H}/.vintos/code-review`,
 ]).map(p => path.resolve(p)).filter(p => fs.existsSync(p));
-function inside(p){ const r = path.resolve(p); return ROOTS.some(root => r === root || r.startsWith(root + path.sep)) ? r : null; }
+function inside(p){ const r = path.resolve(String(p).replace(/^~(?=\/|$)/, H)); return ROOTS.some(root => r === root || r.startsWith(root + path.sep)) ? r : null; }
 export const TOOLS = [
   { type:'function', function:{ name:'grep', description:'Search his code. Regex over the room roots (his organs and the repos). Returns file:line: text, max 60 hits.',
       parameters:{ type:'object', properties:{ pattern:{type:'string'}, path:{type:'string', description:'optional file or directory to limit to'} }, required:['pattern'] } } },
