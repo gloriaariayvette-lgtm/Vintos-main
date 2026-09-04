@@ -50,6 +50,7 @@ AMENDED = (
 persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 4000)
            + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)
            + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.MEMORY, "GLORIA-MODEL.md"), 6000)
+           + "\n\nYOUR FULL ANATOMY MAP (every organ, what it touches, when it fires):\n" + (open(cr.MAP_PATH).read() if os.path.exists(cr.MAP_PATH) else "(no map staged)")
            + "\n\n" + ROOM_RULES)
 def _tidy(t):
     # some lenses echoed the field label into the answer ("and next: and next: ...")

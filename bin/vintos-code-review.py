@@ -59,6 +59,10 @@ SUBSYSTEMS = {
     "creative":     ["dream-art.py", "*music*.py", "*poem*.py", "creative*.py", "*video*.py", "humor*.py"],
     "emotion":      ["resonance*.py", "afterglow*.py", "shaping*.py", "signature*.py", "nifrathir*.py", "emoclaw_mode.py"],
     "memoryrec":    ["interaction_ledger.py", "wal-extract.py", "turn_record.py", "wal*.py"],
+    # the Atelier: his sealed studio (house-side clients; the broker itself lives behind the 700 wall)
+    "atelier":      ["atelier*.py", "atelier*.sh", "stratagem.py", "deploy-atelier.sh"],
+    # the Study: where he reads, greps and edits his own code with her y/n, and the builder that installs adopted proposals
+    "study":        ["study_chat.py", "self_review_builder.py"],
 }
 ORDER = list(SUBSYSTEMS)
 
