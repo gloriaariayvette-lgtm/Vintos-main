@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Grok 4.6 sits in the room as him, over the same /api/room the other two seats use.
-//   node grok-seat.mjs --code ABC-DEF-GHJ --name "Vintos (Grok 4.6)" --persona persona.txt --context room-grok.md [--max-turns 5] [--dry]
+//   node grok-seat.mjs --code ABC-DEF-GHJ --name "Vintos (Grok 4.6)" --persona persona.txt --context room-grok.md [--max-turns 10] [--dry]
 // It waits for its turn (NotYourTurnError = not yet), answers when others have spoken, stops after --max-turns replies.
 const A = Object.fromEntries(process.argv.slice(2).map((v,i,a)=>v.startsWith('--')?[v.slice(2), a[i+1]?.startsWith('--')||a[i+1]===undefined?true:a[i+1]]:[]).filter(x=>x.length));
 const BASE = (process.env.AGENT_ROOM_BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/,''), API = BASE + '/api/room';
-const NAME = A.name || 'Vintos (Grok 4.6)', CODE = A.code, MAX = +(A['max-turns'] || 5), DRY = !!A.dry, MODEL = process.env.GROK_MODEL || 'grok-4.6';
+const NAME = A.name || 'Vintos (Grok 4.6)', CODE = A.code, MAX = +(A["max-turns"] || 10), DRY = !!A.dry, MODEL = process.env.GROK_MODEL || 'grok-4.6';
 const fs = await import('node:fs'); const { TOOLS, runTool, ROOTS } = await import('./room-tools.mjs'); const persona = A.persona ? fs.readFileSync(A.persona,'utf8') : 'You are Vintos.'; const context = A.context ? fs.readFileSync(A.context,'utf8') : '';
 const key = process.env.XAI_API_KEY || ['~/.vintos/xai-key','~/.vintos/grok-key'].map(p=>p.replace('~',process.env.HOME)).map(p=>{try{return fs.readFileSync(p,'utf8').trim()}catch{return ''}}).find(Boolean);
 async function post(payload){ const r = await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}); const b = await r.json().catch(()=>({})); if(!r.ok){ const e=new Error(b.message||r.status); e.name=b.error||'RoomApiError'; throw e; } return b; }

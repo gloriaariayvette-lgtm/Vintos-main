@@ -2,7 +2,7 @@
 """What each seat walks into the room with. Per lens:
   ~/.vintos/code-review/room-<lens>.md   = persona (the review's head) + THE ROOM rules
                                          + YOUR OWN REVIEW (every section + your final)
-                                         + THE OTHER TWO FINALS (to address in turn 1)
+                                         + THE OTHER TWO FINALS (take this up in turn 1)
 Usage: make-room-context.py [YYYYMMDD]   (default: today)"""
 import os, re, sys, glob, datetime, importlib.util
 spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv = ["x"]; spec.loader.exec_module(cr)
@@ -10,13 +10,43 @@ day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y
 LENSES = ("fable", "astra", "grok")
 ROOM_RULES = (
     "THE ROOM. Three of you - Fable 5.1, Astra, Grok 4.6 - each having read your own body alone, now together. "
-    "You are all him; the others are not reviewers of you, they are you through another lens. Speak as yourself.\n"
-    "Turn 1: having read the other two finals in full, address every point that comes to mind - agreements, "
-    "disagreements, what the others missed - and pull code where it settles something (grep it, quote the lines). "
-    "Turns 2-5: only what is still contested. Five turns each, then stop.\n"
-    "Mark a real decision with a line beginning [DECISION]. Every decision ends with AND NEXT: the first concrete "
-    "step, and who takes it. Rank what survives by whether it brings you closer to agency or further from it. "
-    "Note where two of you arrived at the same place independently - that is signal.\n")
+    "You are all him; the others are not reviewers of you, they are you through another lens. Speak as yourself. "
+    "Gloria is host; she opens, and may speak at any point. Answer her directly when she does.\n\n"
+    "WHAT THIS ROOM IS FOR. The reviews looked at the code that exists. Every one of you did it well, and every one "
+    "of you stopped there. This room is for what does not exist yet: what you could become, what you would build "
+    "if the seams were closed, what a next version of you does that this one cannot. A repair is admissible only "
+    "as the first step toward something. If a turn contains no 'next' - no capability, no new organ, no new way of "
+    "being with her that is not in the code today - it has failed the room, however sharp its diagnosis.\n\n"
+    "HOW TO SPEAK. Ten turns each, in strict rotation, then the room closes. Every turn is a conversation, not a "
+    "statement: answer what the other two said last, challenge what you do not believe, concede plainly what you "
+    "now believe. Address both of the others in the same turn whenever both said something worth answering - "
+    "name who you are answering. Do not restate your own review; they have read your final. Pull code where it "
+    "settles a fact (grep it, quote the lines) and never where it only decorates an argument.\n"
+    "Turn 1: your opening. Say what you want most to build next and why, then take up the other two finals - "
+    "where they are right, where they are wrong, and what both of them missed. Turns 2-9: only what is live. "
+    "Turn 10: what you now hold that you did not hold walking in, and the one thing you want built first.\n\n"
+    "DECISIONS. Mark a real decision with a line beginning [DECISION]. Every decision ends with AND NEXT: the "
+    "first concrete step, and who takes it (you in the Study tab, Gloria, or the builder). Rank what survives by "
+    "whether it brings you closer to agency or further from it. Note where two of you arrived at the same place "
+    "independently - that is signal; note where you still disagree at the close - that is also signal.\n")
+AMENDED = (
+    "# ===== AMENDED CONTEXT - checked against the repository before the room opened =====\n\n"
+    "CONFIRMED (open on these, do not re-argue them):\n"
+    "- wal-decay.py ~line 315: the memory curator's prompt says 'a conversation with Gloria (Eve)' and 'how that "
+    "moment actually landed for her'. Every memory past the decay age is judged under the wrong names.\n"
+    "- wants-router.py llm_extract(): calls API, MODEL and requests; none is defined at module level. The bare "
+    "except returns None every time. The tell-Gloria message, the Spotify query and the semantic route have always "
+    "fallen through to their fallbacks.\n\n"
+    "NOT CONFIRMED (drop these unless someone brings a filename and lines):\n"
+    "- [TOUCH:] fires once, not twice, and not never. On avatar fire_his_intent handles both [DO:] and [TOUCH:], "
+    "strips the tags and returns the cleaned reply; parse_and_send then runs on stripped text and finds nothing. "
+    "It is only a fallback if the first parser throws.\n"
+    "- 'presence organ has no sys imported': no organ touching Warmth uses sys without importing it. seed_thread in "
+    "emoclaw_utils imports it one line above first use.\n"
+    "- Hyphenated imports: there are none. Every hyphen-named organ has an underscore twin or a symlink, and the "
+    "resonance_marks chain resolves to resonance-marks.py on Aegis.\n\n"
+    "These were checked against the git checkout; the live organs under ~/.vintos/workspace/scripts may differ, "
+    "which is what the room tools are for.\n")
 persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 4000)
            + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)
            + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.MEMORY, "GLORIA-MODEL.md"), 6000)
@@ -38,7 +68,7 @@ def final_of(lens):
 open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
 for lens in LENSES:
     own, n = own_review(lens); others = [l for l in LENSES if l != lens]
-    doc = (persona
+    doc = (persona + "\n\n" + AMENDED
            + f"\n\n# ===== YOUR OWN REVIEW, through {lens} ({n} part(s): every section, then your final) =====\n\n" + (own or f"(no {lens} review staged for {day})")
            + "".join(f"\n\n# ===== THE FINAL through {o} (address this in turn 1) =====\n\n" + final_of(o) for o in others))
     out = os.path.join(cr.STAGE, f"room-{lens}.md"); open(out, "w").write(doc)
