@@ -99,7 +99,8 @@ const reply = DRY ? async () => `[STATUS] (dry run) ${NAME} would answer here.` 
 // ---- the seat loop ----------------------------------------------------------------------------
 const me = { name: NAME, role: `lens: ${L.label}`, color: L.color, initials: L.ini, client: 'cc', joinedAt: Date.now(), lastSeenAt: Date.now() };
 const joined = await post({ action:'join', code: CODE, participant: me, priorIdentity: { name: NAME, client: 'cc' } })
-  .catch(() => post({ action:'join', code: CODE, participant: me }));   // a restarted seat takes its old chair back const myName = joined.participant.name; log(`joined ${CODE} as ${myName}; mode=${joined.room.replyMode}; model=${L.model}`);
+  .catch(() => post({ action:'join', code: CODE, participant: me }));   // a restarted seat takes its old chair back
+const myName = joined.participant.name; log(`joined ${CODE} as ${myName}; mode=${joined.room.replyMode}; model=${L.model}`);
 let cursor = 0, turns = 0, pending = false, draft = null;   // anything already said (the host's opening) counts
 while (turns < MAX) {
   await post({ action:'presence', code: CODE, name: myName, until: Date.now() + 60000 }).catch(()=>{});
