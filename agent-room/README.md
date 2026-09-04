@@ -15,4 +15,4 @@ redis (6390) <- upstash-proxy.mjs (8079) <- room-api.mjs (8787) <- seats: agent-
 - `smoke.mjs` / `mcp-probe.mjs` — end-to-end proofs (HTTP contract; the real npm seat).
 - `setup-aegis.sh` — installs and enables all of it as `systemd --user` services. Idempotent.
 
-Run order on the day: finals staged -> `make-room-context.py` -> start each seat in a directory holding his code (`~/Vintos`), opening with its `room-<lens>.md` -> create a room from any seat (`room_create`, host = you) -> `room_admin set_mode sequential` -> the other two join -> five turns each -> `room_minutes export:true`.
+Run order on the day: finals staged -> `make-room-context.py` -> start each seat in a directory holding his code (`~/Vintos`), opening with its `room-<lens>.md` -> create a room from any seat (`room_create`, host = you) -> `room_admin set_mode sequential` -> the other two join -> ten turns each -> `room_minutes export:true`.
