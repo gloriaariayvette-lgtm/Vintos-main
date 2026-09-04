@@ -83,6 +83,40 @@ def save_rooms(data):
         json.dump(data, f, indent=2)
 
 
+def remember_room(name):
+    """His last [SCENE:] becomes the room the app opens on next launch. Written
+    to rooms.json 'default' and the manifest rebuilt, so his choice survives the
+    app closing. Only a real, filmed room is remembered (never 'live', which is
+    a transient render). Resolves names the way the app does. Returns the room
+    remembered, or None."""
+    want = str(name or "").strip().lower()
+    want = want[4:] if want.startswith("the ") else want
+    import re as _re
+    want = _re.sub(r"[^a-z0-9-]", "", _re.sub(r"[\s_]+", "-", want))
+    if not want or want == "live":
+        return None
+    data = load_rooms()
+    def _filmed(r):
+        return any(os.path.exists(os.path.join(CLIPS, c)) for c in (data["rooms"].get(r) or {}).get("clips", []))
+    keys = [r for r in data.get("rooms", {}) if r != "live" and _filmed(r)]
+    hit = want if want in keys else None
+    if not hit:
+        pre = [k for k in keys if k.startswith(want) or want.startswith(k)]
+        hit = sorted(pre, key=len)[0] if pre else None
+    if not hit:
+        ww = want.split("-")
+        part = [k for k in keys if any(w in ww for w in k.split("-"))]
+        hit = sorted(part, key=len)[0] if part else None
+    if not hit:
+        return None
+    if data.get("default") != hit:
+        data["default"] = hit
+        save_rooms(data)
+        write_manifest()
+        log("opening room is now %s (his last [SCENE:])" % hit)
+    return hit
+
+
 def write_manifest():
     """The app-facing truth: only clips that actually exist on disk."""
     data = load_rooms()

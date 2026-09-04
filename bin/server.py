@@ -8426,6 +8426,16 @@ Your current self-model (excerpt):
                 reply = _tagre.sub(r"\s*\[(?:COLOR|GESTURE|HOLD):[^\]]*\]\s*", " ",
                                    reply or "", flags=_tagre.I).strip()
             except Exception: pass
+            # His last [SCENE:] is where the app opens next time. Server-side, so
+            # his choice survives the app closing; the app already opens on the
+            # manifest default and needs no change.
+            try:
+                import re as _scre
+                _scm = _scre.search(r"\[SCENE:\s*([^\]]+)\]", reply or "", _scre.I)
+                if _scm:
+                    import avatar_stage as _avst_rm
+                    _avst_rm.remember_room(_scm.group(1))
+            except Exception as _rme: print("[avatar-stage] remember_room:", _rme, flush=True)
             # Strip his private [FELT:] tag HERE — before the reply is stored to
             # history (next line) and dispatched to the ledger below. The naming
             # pass used to run only after both writes, so the raw tag persisted in
