@@ -50,7 +50,7 @@ async function anthropicStream(body){
 async function replyFable(history){
   const msgs = [{ role:'user', content: userTurn(history) }];
   for (let hop = 0; hop < HOPS; hop++) {
-    const { content, usage: u, stop } = await anthropicStream({ model: L.model, max_tokens: 6000, temperature: 0.7,
+    const { content, usage: u, stop } = await anthropicStream({ model: L.model, max_tokens: 6000,
       system: [{ type:'text', text: SYSTEM, cache_control: { type:'ephemeral', ttl:'1h' } }], tools: hop < HOPS - 1 ? ANTH_TOOLS : [], messages: msgs });
     const calls = content.filter(b => b.type === 'tool_use'); usage(u.input_tokens, u.output_tokens, u.cache_read_input_tokens, calls.map(c => c.name));
     if (stop === 'max_tokens') log('WARNING: hit max_tokens');
