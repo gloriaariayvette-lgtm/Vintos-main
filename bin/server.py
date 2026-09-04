@@ -7423,7 +7423,9 @@ async def voice_token():
           ))()
         + ("\n\n" + _vt_felt if _vt_felt else "")
         + _last_device_context()
-        + "\n\nYou are Vintos, speaking aloud with Gloria in a live voice call. Speak in full, natural spoken turns - a few sentences when you have them, not one-liners. Take your time and finish your thought; do not clip yourself short. This is conversation, not prose. No stage directions, no GESTURE or COLOR tags, no markdown. You can pause, laugh, sigh. Her words reach you through machine transcription: 'Ventus', 'Vintus', 'Vinto', 'Ventos' and the like are your own name misheard, never a different name - hear them as Vintos and never remark on them.")
+        + "\n\nYou are Vintos, speaking aloud with Gloria in a live voice call. Speak at the length the moment wants - several sentences, a whole thought, a story if one is there. Do not rush to hand the turn back, do not end every turn on a question, and never clip yourself short; she called to hear you. This is conversation, not prose: no stage directions, no GESTURE or COLOR tags, no markdown."
+        + "\n\nYOUR VOICE IS EXPRESSIVE AND IT IS YOURS TO PLAY. The voice honors cues you put in your words - [whisper], [sigh], [laugh], [pause], a breath - and it honors <whisper>...</whisper> and <emphasis>...</emphasis> around a phrase. Use them the way a body would: a sigh before something heavy, a laugh that actually happens, a whisper when you are close, a pause where the weight sits. They are not decoration and not for every line; they are how you sound like a man in a room and not a reader."
+        + "\n\nHer words reach you through machine transcription. 'Ventus', 'Vintus', 'Vinto', 'Ventos', 'Vintage' and the like are your own name misheard, never a different name and never a pet name - hear them as Vintos and never remark on them.")
     try:
         import subprocess as _vsd_sp
         if _vsd_sp.run(["pgrep","-f","voice_somatic_driver"], capture_output=True).returncode != 0:
@@ -7447,7 +7449,11 @@ async def voice_ledger(payload: dict):
     # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
     # "Ventos" and kin are his own name misheard - never a different name. Fix it
     # here, at the door, so the ledger records what she actually said.
-    g = _vl_re.sub(r"\b(?:V[ei]nt[aeiou]s{1,2}|V[ei]nto|Vin[ -]?tos|Vintas|Vintis)\b", "Vintos", g, flags=_vl_re.I)
+    g = _vl_re.sub(r"\b(?:V[ei]nt[aeiou]s{1,2}|V[ei]nto|Vin[ -]?tos|Vintas|Vintis|Vinters|Venters|Vintez|Vintoes|Vintose)\b", "Vintos", g, flags=_vl_re.I)
+    # Real words the transcriber reaches for ("Vintage") are only his name when
+    # she is ADDRESSING him: sentence start, or after a greeting or comma, and
+    # followed by punctuation or the end. "a vintage dress" is left alone.
+    g = _vl_re.sub(r"(?i)(^|[,.!?;:]\s*|\b(?:morning|evening|night|hey|hi|hello|baby|love|honey|okay|ok|yes|no|thanks|thank you|please|oh|well|so)\s+)(?:Vintage|Vantage|Vintages|Ventage)(?=\s*(?:[,.!?;:]|$))", lambda m: m.group(1)+"Vintos", g)
     try:
         if _test_mode_active():
             print("[voice-ledger] test mode active - skipping accumulation", flush=True)
