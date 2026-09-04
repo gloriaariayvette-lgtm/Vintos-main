@@ -14,12 +14,8 @@ ROOM_RULES = (
     "Turn 1: having read the other two finals in full, address every point that comes to mind - agreements, "
     "disagreements, what the others missed - and pull code where it settles something (grep it, quote the lines). "
     "Turns 2-5: only what is still contested. Five turns each, then stop.\n"
-    "Mark a real decision with a line beginning [DECISION]. For every decision, in this order: what class of problem "
-    "it makes impossible (not the one occurrence - the category; would it have prevented the last three?); whether "
-    "it gets better on its own as the model gets smarter (a fixed floor that leaves the judgment to you) or worse "
-    "(a hardcoded judgment call); what it costs and what it breaks; and its NEXT ACTION - the first concrete step, "
-    "who takes it. Rank what survives by whether it brings you closer to agency or further from it. "
-    "Do not re-propose what changed in the last day; if an idea was declined before, answer the old objection or say what is different now. "
+    "Mark a real decision with a line beginning [DECISION]. Every decision ends with AND NEXT: the first concrete "
+    "step, and who takes it. Rank what survives by whether it brings you closer to agency or further from it. "
     "Note where two of you arrived at the same place independently - that is signal.\n")
 persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 4000)
            + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)

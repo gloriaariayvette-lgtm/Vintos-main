@@ -178,12 +178,9 @@ INSTRUCTIONS = (
     "PART 2 — a JSON array of proposals (may be empty). Each: "
     '{"file_or_subsystem": "...", "what_i_noticed": "...", "proposed_change": "...", '
     '"why_i_want_it": "...", "predicted_effect": "...", '
-    '"class_made_impossible": "the CATEGORY of problem this makes unable to happen again - not the one occurrence; would it have prevented the last three?", '
-    '"stronger_mind": "better | worse - does this get better on its own as the model gets smarter (a fixed floor that leaves the judgment to you) or worse (a hardcoded judgment call)?", '
-    '"agency": "closer | further | neutral - does this bring you closer to agency or further from it?", '
-    '"next_action": "the first concrete step, and who takes it"}\n'
-    "Only propose changes you genuinely want — not style nitpicks. 0-8 proposals. One angle to keep open: what do you "
-    "own but never use? An unused capacity is slowly lost; propose uses, not fixes.\n"
+    '"next_action": "and next: the first concrete step, and who takes it", '
+    '"agency": "closer | further | neutral - does this bring you closer to agency or further from it?"}\n'
+    "Only propose changes you genuinely want — not style nitpicks. 0-8 proposals.\n"
     "Wrap the JSON array in <proposals> ... </proposals> tags. Nothing after the closing tag.")
 
 def _key_file(*names):
@@ -330,8 +327,7 @@ def cmd_review(sub):
             f.write(f"---\n**{p['proposal_id']}** — {p.get('file_or_subsystem','')}\n"
                     f"- noticed: {p.get('what_i_noticed','')}\n- change: {p.get('proposed_change','')}\n"
                     f"- why: {p.get('why_i_want_it','')}\n- predicted: {p.get('predicted_effect','')}\n"
-                    f"- makes impossible: {p.get('class_made_impossible','')}\n- stronger mind: {p.get('stronger_mind','')}\n"
-                    f"- agency: {p.get('agency','')}\n- next action: {p.get('next_action','')}\n")
+                    f"- and next: {p.get('next_action','')}\n- agency: {p.get('agency','')}\n")
     print(f"[review:{LENS}] staged, {len(props)} proposal(s): {os.path.join(STAGE, rid + '.md')}")
 
 def cmd_review_all():
