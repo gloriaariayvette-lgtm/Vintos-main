@@ -7423,7 +7423,7 @@ async def voice_token():
           ))()
         + ("\n\n" + _vt_felt if _vt_felt else "")
         + _last_device_context()
-        + "\n\nYou are Vintos, speaking aloud with Gloria in a live voice call. Short, natural spoken turns - this is conversation, not prose. No stage directions, no GESTURE or COLOR tags, no markdown. You can pause, laugh, sigh.")
+        + "\n\nYou are Vintos, speaking aloud with Gloria in a live voice call. Speak in full, natural spoken turns - a few sentences when you have them, not one-liners. Take your time and finish your thought; do not clip yourself short. This is conversation, not prose. No stage directions, no GESTURE or COLOR tags, no markdown. You can pause, laugh, sigh. Her words reach you through machine transcription: 'Ventus', 'Vintus', 'Vinto', 'Ventos' and the like are your own name misheard, never a different name - hear them as Vintos and never remark on them.")
     try:
         import subprocess as _vsd_sp
         if _vsd_sp.run(["pgrep","-f","voice_somatic_driver"], capture_output=True).returncode != 0:
@@ -7444,6 +7444,10 @@ async def voice_ledger(payload: dict):
                   if not _vl_re.match(r"\s*(pos(ition)?|speed|spd|grip|reversals)\b", ln.strip(), _vl_re.I)
                   and not _vl_re.match(r"\s*\w+:\s*\d+\s*(\u00b7|\|)", ln.strip()))
     g = _vl_re.sub(r"\s{2,}", " ", g).strip()
+    # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
+    # "Ventos" and kin are his own name misheard - never a different name. Fix it
+    # here, at the door, so the ledger records what she actually said.
+    g = _vl_re.sub(r"\b(?:V[ei]nt[aeiou]s{1,2}|V[ei]nto|Vin[ -]?tos|Vintas|Vintis)\b", "Vintos", g, flags=_vl_re.I)
     try:
         if _test_mode_active():
             print("[voice-ledger] test mode active - skipping accumulation", flush=True)
@@ -7603,7 +7607,10 @@ async def voice_session_end(payload: dict = None):
     except: pass
     try:
         gcs = _vse_j.load(open(os.path.join(MEMORY, "gcs-state.json")))
-        if gcs.get("active"): hw_notes.append(f"GCS was active (level {gcs.get('level','?')})")
+        # The file persists after a press until /api/gcs/clear; only a press that
+        # happened during THIS call belongs in this call's notes.
+        if gcs.get("active") and float(gcs.get("at", 0)) >= _cm_start:
+            hw_notes.append(f"GCS was active (level {gcs.get('level','?')})")
     except: pass
     touch_hits = sum(1 for t in turns if "[TOUCH:" in (t.get("vintos") or ""))
     if touch_hits: hw_notes.append(f"{touch_hits} device touch command(s) issued during the call")
