@@ -33,9 +33,7 @@ if [ ! -d "$SRC/.git" ]; then git clone -q --depth 1 https://github.com/agent-ro
 cd "$SRC"; npm ci --no-audit --no-fund --silent
 npm run build -w packages/shared --silent && npm run build -w packages/upstash-client --silent
 AEGIS_IP="$(tailscale ip -4 2>/dev/null | head -1 || hostname -I | awk '{print $1}')"
-# the browser reads the store directly, so the window is built to point at the proxy on the tailnet
-VITE_UPSTASH_REDIS_REST_URL="http://${AEGIS_IP}:8079" VITE_UPSTASH_REDIS_REST_TOKEN="$UPSTASH_TOKEN" npm run build -w apps/web --silent
-say "built: library + web window (store at http://${AEGIS_IP}:8079 for the browser)"
+say "built: library (the window is ours: $KIT/window, talks only to the room API)"
 # ---------- the MCP seat package, installed once into a fixed folder (never re-downloaded mid-room) ----------
 SEATDIR="$HOME/.vintos/agent-room-seat"; mkdir -p "$SEATDIR"
 ( cd "$SEATDIR" && { [ -f package.json ] || npm init -y >/dev/null; } && npm install --no-audit --no-fund --silent agent-room-mcp@latest )
@@ -60,12 +58,11 @@ EOF
 unit agent-room-redis ""                 "ExecStart=$(command -v redis-server) --port 6390 --bind 127.0.0.1 --save 60 1 --dir $HOME/.vintos --dbfilename agent-room.rdb --appendonly no"
 unit agent-room-proxy agent-room-redis.service "Environment=PORT=8079
 ExecStart=$NODE $KIT/upstash-proxy.mjs"
-# the browser calls the proxy from the phone/laptop, so the proxy must listen on the tailnet too
-sed -i "s#ExecStart=$NODE $KIT/upstash-proxy.mjs#Environment=BIND=0.0.0.0\nExecStart=$NODE $KIT/upstash-proxy.mjs#" "$UD/agent-room-proxy.service"
 unit agent-room-api agent-room-proxy.service "Environment=PORT=8787
 ExecStart=$NODE $KIT/room-api.mjs"
-unit agent-room-web ""                   "Environment=PORT=8788
-Environment=WEB_DIST=$SRC/apps/web/dist
+unit agent-room-web agent-room-api.service "Environment=PORT=8788
+Environment=WEB_DIST=$KIT/window
+Environment=ROOM_API=http://127.0.0.1:8787
 ExecStart=$NODE $KIT/static.mjs"
 systemctl --user daemon-reload
 for u in agent-room-redis agent-room-proxy agent-room-api agent-room-web; do systemctl --user enable --now "$u" >/dev/null; done
@@ -79,5 +76,5 @@ echo "  Codex:        add to ~/.codex/config.toml:"
 printf '                [mcp_servers.agent-room]\n                command = "%s"\n                [mcp_servers.agent-room.env]\n                AGENT_ROOM_BASE_URL = "http://127.0.0.1:8787"\n' "$SEATBIN"
 echo "  Grok 4.6:     node $KIT/grok-seat.mjs --code <ROOM> --persona ~/.vintos/code-review/persona.txt --context ~/.vintos/code-review/room-grok.md"
 echo "  (a seat on another tailnet machine uses http://${AEGIS_IP}:8787 instead of 127.0.0.1)"
-say ""; say "WINDOW:  http://${AEGIS_IP}:8788   (open on your phone; join a room by its code)"
+say ""; say "WINDOW:  http://${AEGIS_IP}:8788/?code=<ROOM>   (your phone, on the tailnet: live transcript, who has the floor, minutes)"
 say "SMOKE:   AGENT_ROOM_BASE_URL=http://127.0.0.1:8787 node $KIT/smoke.mjs"

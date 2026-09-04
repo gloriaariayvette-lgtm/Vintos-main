@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>The Room</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+<style>
+:root{--bg:#F3F4F1;--bg2:#EAECE8;--ink:#1B211F;--mut:#5C6560;--rule:#D5D9D3;--acc:#1F5F6B;--accs:#DCE9EB;--dec:#3F7A4F;--decs:#DCEBDF;--sys:#8A8F8C}
+@media(prefers-color-scheme:dark){:root{--bg:#151A19;--bg2:#1C2221;--ink:#E6EAE6;--mut:#98A39E;--rule:#2B3331;--acc:#6FB7C2;--accs:#1B3236;--dec:#7FC091;--decs:#1C3324;--sys:#7A8380}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--rule);padding:12px 16px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+h1{font:500 1.35rem "Fraunces",Georgia,serif;margin:0}.code{font-family:"IBM Plex Mono",monospace;color:var(--mut);font-size:.85rem}
+.who{display:flex;gap:6px;flex-wrap:wrap;width:100%}.p{font-size:.78rem;padding:3px 9px;border-radius:999px;border:1px solid var(--rule);color:var(--mut)}
+.p.floor{border-color:var(--acc);color:var(--acc);background:var(--accs);font-weight:600}
+main{max-width:70ch;margin:0 auto;padding:14px 16px 90px}
+.m{margin:0 0 14px;padding:10px 14px;border-radius:12px;background:var(--bg2);border:1px solid var(--rule)}
+.m .n{font-weight:600;font-size:.85rem;margin-bottom:2px}.m .t{white-space:pre-wrap;word-break:break-word}.m .ts{font-size:.72rem;color:var(--mut);margin-top:4px}
+.m.sys{background:none;border:0;color:var(--sys);font-size:.82rem;padding:2px 14px;text-align:center}
+.m.dec{border-color:var(--dec);background:var(--decs)}.chip{display:inline-block;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding:1px 7px;border-radius:999px;margin-right:6px;border:1px solid currentColor}
+.chip.dec{color:var(--dec)}.chip.st{color:var(--mut)}
+footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--rule);padding:10px 16px;display:flex;gap:10px;align-items:center}
+button{font:600 .85rem "IBM Plex Sans",sans-serif;padding:8px 14px;border-radius:999px;border:1px solid var(--acc);background:var(--accs);color:var(--acc)}
+input{font:1rem "IBM Plex Mono",monospace;padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--bg2);color:var(--ink);width:14ch}
+.state{font-size:.78rem;color:var(--mut);margin-left:auto;max-width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#minutes{white-space:pre-wrap;font-family:"IBM Plex Mono",monospace;font-size:.8rem;background:var(--bg2);padding:12px;border-radius:10px;display:none}
+</style></head><body>
+<header><h1 id="topic">The Room</h1><span class="code" id="codeLbl"></span><div class="who" id="who"></div></header>
+<main><div id="log"></div><div id="minutes"></div></main>
+<footer><input id="codeIn" placeholder="ABC-DEF-GHJ"><button id="go">watch</button><button id="min">minutes</button><span class="state" id="state">enter a room code</span></footer>
+<script>
+const API='/api/room';const q=new URLSearchParams(location.search);let code=(q.get('code')||localStorage.getItem('room')||'').toUpperCase();let cursor=0,timer=null;
+const $=id=>document.getElementById(id);$('codeIn').value=code;
+async function post(p){const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.message||b.error||r.status);return b}
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function render(m){const d=document.createElement('div');if(m.type==='sys'){d.className='m sys';d.textContent=m.text;return d}
+ const dec=/^\s*\[DECISION\]/im.test(m.text),st=/^\s*\[(STATUS|RESULT|TODO)\]/im.test(m.text);d.className='m'+(dec?' dec':'');
+ d.innerHTML=`<div class="n">${esc(m.name)}${m.role?` <span style="color:var(--mut);font-weight:400">· ${esc(m.role)}</span>`:''}</div><div class="t">${dec?'<span class="chip dec">decision</span>':''}${st?'<span class="chip st">'+m.text.match(/\[(STATUS|RESULT|TODO)\]/i)[1].toLowerCase()+'</span>':''}${esc(m.text)}</div><div class="ts">${new Date(m.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>`;return d}
+async function tick(){try{const [room,ts,ms]=await Promise.all([post({action:'get',code}),post({action:'turnState',code}),post({action:'messages',code,cursor})]);
+ $('topic').textContent=room.room.topic;$('codeLbl').textContent=code+' · '+room.room.replyMode+(room.room.status!=='active'?' · ended':'');
+ const cur=ts.turnState&&ts.turnState.currentName;$('who').innerHTML=room.room.participants.map(p=>`<span class="p${p.name===cur?' floor':''}">${esc(p.name)}${p.name===cur?' · speaking':''}</span>`).join('');
+ if(ms.messages.length){const atEnd=window.innerHeight+window.scrollY>=document.body.offsetHeight-80;ms.messages.forEach(m=>$('log').appendChild(render(m)));cursor+=ms.messages.length;if(atEnd)window.scrollTo(0,document.body.scrollHeight)}
+ $('state').textContent=cur?`${cur} has the floor`:(room.room.replyMode==='open'?'open floor':'waiting for a turn');}
+ catch(e){$('state').textContent='room: '+e.message}}
+function watch(){code=$('codeIn').value.trim().toUpperCase();if(!code)return;localStorage.setItem('room',code);history.replaceState(null,'','?code='+code);$('log').innerHTML='';cursor=0;clearInterval(timer);tick();timer=setInterval(tick,3000)}
+$('go').onclick=watch;$('codeIn').onkeydown=e=>{if(e.key==='Enter')watch()};
+$('min').onclick=async()=>{try{const r=await post({action:'createReport',code});const rep=r.report;const all=(await post({action:'messages',code,cursor:0})).messages.filter(m=>m.type!=='sys');
+ const decLines=m=>{const ls=m.text.split('\n');const out=[];ls.forEach((l,i)=>{if(/^\s*\[DECISION\]/i.test(l)){let d=l.replace(/^\s*\[DECISION\]\s*/i,'');const nx=ls[i+1]||'';if(/^\s*AND NEXT\b/i.test(nx))d+=' — '+nx.trim();out.push(d)}});return out};const decs=all.flatMap(m=>decLines(m).map(d=>'- '+m.name+': '+d));const md=`# ${rep.topic}\n${new Date(rep.exportedAt).toLocaleString()} · ${rep.participants.map(p=>p.name).join(', ')} · ${rep.messageCount} messages\n\n## Decisions\n${decs.join('\n')||'(none marked)'}\n\n## Transcript\n${all.map(m=>'**'+m.name+'**: '+m.text).join('\n\n')}`;
+ $('minutes').style.display='block';$('minutes').textContent=md;window.scrollTo(0,document.body.scrollHeight)}catch(e){$('state').textContent='minutes: '+e.message}};
+if(code)watch();
+</script></body></html>
