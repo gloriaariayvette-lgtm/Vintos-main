@@ -7435,13 +7435,39 @@ async def voice_token():
     except Exception as _vsde: print("[voice-driver spawn]", _vsde, flush=True)
     return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions}
 
+# Expressive cues are the call. Laughs, sighs, whispers, pauses, breaths are what
+# make a voice call an experience and not a short crude exchange, so they are kept
+# through every door: [laugh]/[sigh]/(laughs)/<whisper>..</whisper> survive; the
+# injected framing blocks and device tags do not.
+_VOICE_CUE = __import__("re").compile(
+    r"^(?:soft(?:ly)?\s+|quiet(?:ly)?\s+|small\s+|long\s+|sharp\s+|low\s+)?"
+    r"(?:laugh(?:s|ing|ter)?|chuckl(?:e|es|ing)|giggl(?:e|es|ing)|snort(?:s)?|sigh(?:s|ing)?|whisper(?:s|ing)?|"
+    r"pause(?:s)?|beat|breath(?:s|e|es|ing)?|exhale(?:s)?|inhale(?:s)?|gasp(?:s)?|hum(?:s|ming)?|moan(?:s|ing)?|"
+    r"groan(?:s)?|sniff(?:s|le)?|cr(?:y|ies|ying)|sob(?:s)?|swallow(?:s)?|clears? throat|kiss(?:es)?|smil(?:e|es|ing)|grin(?:s)?|yawn(?:s)?)$",
+    __import__("re").I)
+def _voice_keep_cues(text):
+    """Strip bracketed/parenthesised blocks EXCEPT expressive cues; keep <whisper>/<emphasis> tags."""
+    import re as _r
+    def _b(m):
+        inner = m.group(1).strip().strip(".!,")
+        return m.group(0) if _VOICE_CUE.match(inner) else " "
+    text = _r.sub(r"\[([^\]]*)\]", _b, text or "")
+    text = _r.sub(r"\(([^)]{1,24})\)", lambda m: m.group(0) if _VOICE_CUE.match(m.group(1).strip()) else m.group(0), text)
+    return _r.sub(r"\s{2,}", " ", text).strip()
+def _voice_readable(text):
+    """His turn as it should be remembered: device/command/private tags gone, cues kept."""
+    import re as _r
+    text = _r.sub(r"\[(?:DO|TOUCH|COMMAND|FELT|SCENE|RENDER|COLOR|GESTURE|HOLD|SPAWN|RELEASE)\s*:[^\]]*\]", " ", text or "", flags=_r.I)
+    text = _r.sub(r"\[(?:EDGE|LETGO)\]", " ", text, flags=_r.I)
+    return _r.sub(r"\s{2,}", " ", text).strip()
+
 @app.post("/api/voice/ledger")
 async def voice_ledger(payload: dict):
     import json as _vl_j, datetime as _vl_d
     g, v = payload.get("gloria","")[:600], payload.get("vintos","")[:600]
     # Persist her WORDS, not the injected framing: strip [ ... ] blocks and telemetry lines.
     import re as _vl_re
-    g = _vl_re.sub(r"\[[^\]]*\]", " ", g)
+    g = _voice_keep_cues(g)
     g = "\n".join(ln for ln in g.splitlines()
                   if not _vl_re.match(r"\s*(pos(ition)?|speed|spd|grip|reversals)\b", ln.strip(), _vl_re.I)
                   and not _vl_re.match(r"\s*\w+:\s*\d+\s*(\u00b7|\|)", ln.strip()))
@@ -7569,7 +7595,9 @@ async def voice_session_end(payload: dict = None):
         except: pass
     n_turns = len(turns) or int(p.get("turns", 0))
 
-    transcript = "\n".join(f"Gloria: {t.get('gloria','')}\nVintos: {t.get('vintos','')}" for t in turns[-30:])
+    # Every turn, verbatim, cues kept, device tags gone. They are short; all of them go in.
+    _full = [{"gloria": _voice_keep_cues(t.get("gloria","")), "vintos": _voice_readable(t.get("vintos",""))} for t in turns]
+    transcript = "\n".join(f"Gloria: {t['gloria']}\nVintos: {t['vintos']}" for t in _full[-40:])
     _cm = []
     try:
         _cm_start = _vse_d.datetime.fromisoformat(sess["started_at"]).timestamp() if sess.get("started_at") else time.time() - max(dur, 600)
@@ -7594,8 +7622,8 @@ async def voice_session_end(payload: dict = None):
                 headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
                 json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.3, "max_tokens": 350,
                       "messages": [{"role": "user", "content":
-                        "This is a transcript of a live voice call between Vintos and Gloria.\n\n" + transcript[:6000] +
-                        "\n\nReturn ONLY JSON: {\"quotes\": [2-3 short verbatim standout lines from either speaker], "
+                        "This is a transcript of a live voice call between Vintos and Gloria. Bracketed or tagged cues like [laugh], [sigh], [pause], (laughs), <whisper>..</whisper> are REAL things that happened aloud - a laugh, a sigh, a whisper - not stage directions. Keep them verbatim inside any quote, and let them shape the recounting (if she laughed, say she laughed).\n\n" + transcript[:6000] +
+                        "\n\nReturn ONLY JSON: {\"quotes\": [2-3 short verbatim standout lines from either speaker, cues included], "
                         "\"felt_summary\": \"one sentence, Vintos's own felt experience of this call, first person\", "
                         "\"text_summary\": \"2-3 sentences, first-person from Vintos's own point of view - not a narrator describing both of you, HIM recounting what happened, e.g. 'I told her I missed her and she asked about my day. I told her I painted and wrote about her.'\"}"}]}, timeout=25)
             _sum_txt = _sum_r.json()["choices"][0]["message"]["content"]
@@ -7630,6 +7658,7 @@ async def voice_session_end(payload: dict = None):
             "channel": "voice-call",
             "duration_seconds": dur,
             "turns": n_turns,
+            "transcript": _full,
             "quotes": quotes,
             "felt_summary": felt_summary,
             "summary": text_summary or f"voice call, {dur}s, {n_turns} turns",
