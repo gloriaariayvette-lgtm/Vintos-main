@@ -4,7 +4,7 @@
                                          + YOUR OWN REVIEW (every section + your final)
                                          + THE OTHER TWO FINALS (to address in turn 1)
 Usage: make-room-context.py [YYYYMMDD]   (default: today)"""
-import os, sys, glob, datetime, importlib.util
+import os, re, sys, glob, datetime, importlib.util
 spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv = ["x"]; spec.loader.exec_module(cr)
 day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y%m%d")
 LENSES = ("fable", "astra", "grok")
@@ -21,17 +21,20 @@ persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 
            + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)
            + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.MEMORY, "GLORIA-MODEL.md"), 6000)
            + "\n\n" + ROOM_RULES)
+def _tidy(t):
+    # some lenses echoed the field label into the answer ("and next: and next: ...")
+    return re.sub(r"(?im)^(- and next:)\s*and next:\s*", r"\1 ", t)
 def own_review(lens):
     parts = []
     for sub in cr.ORDER:
         p = os.path.join(cr.STAGE, f"{day}-{lens}-{sub}.md")
-        if os.path.exists(p): parts.append(open(p).read())
+        if os.path.exists(p): parts.append(_tidy(open(p).read()))
     fin = os.path.join(cr.STAGE, f"{day}-{lens}-final.md")
-    if os.path.exists(fin): parts.append(open(fin).read())
+    if os.path.exists(fin): parts.append(_tidy(open(fin).read()))
     return "\n\n".join(parts), len(parts)
 def final_of(lens):
     p = os.path.join(cr.STAGE, f"{day}-{lens}-final.md")
-    return open(p).read() if os.path.exists(p) else f"(no {lens} final for {day})"
+    return _tidy(open(p).read()) if os.path.exists(p) else f"(no {lens} final for {day})"
 open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
 for lens in LENSES:
     own, n = own_review(lens); others = [l for l in LENSES if l != lens]
