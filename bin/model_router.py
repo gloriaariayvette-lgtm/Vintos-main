@@ -16,7 +16,18 @@ CLAUDE_MODELS = {"claude": "claude-opus-4-8",
                  "fable": "claude-fable-5-1"}
 def current_claude_model():
     return CLAUDE_MODELS.get(read_mode().get("mode", "claude"), CLAUDE_MODEL)
-SOL_MODEL = os.environ.get("SOL_MODEL", "gpt-5.6")
+def _sol_model():
+    """The Sol lens's model. Environment first, then SOL_MODEL= in ~/.vintos/vintos.env
+    (the same file that holds his OpenAI key), so switching Sol is one line in that
+    file and never depends on how the service loads its environment."""
+    m = os.environ.get("SOL_MODEL", "")
+    if m: return m
+    try:
+        return next(l.strip().split("=", 1)[1].strip() for l in open(os.path.join(_HOME, ".vintos", "vintos.env"))
+                    if l.strip().startswith("SOL_MODEL="))
+    except Exception:
+        return "gpt-5.6"
+SOL_MODEL = _sol_model()
 
 def _openai_key():
     k = os.environ.get("OPENAI_API_KEY", "")
