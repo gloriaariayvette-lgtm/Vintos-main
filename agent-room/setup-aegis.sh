@@ -65,7 +65,7 @@ Environment=WEB_DIST=$KIT/window
 Environment=ROOM_API=http://127.0.0.1:8787
 ExecStart=$NODE $KIT/static.mjs"
 systemctl --user daemon-reload
-for u in agent-room-redis agent-room-proxy agent-room-api agent-room-web; do systemctl --user enable --now "$u" >/dev/null; done
+for u in agent-room-redis agent-room-proxy agent-room-api agent-room-web; do systemctl --user enable "$u" >/dev/null; systemctl --user restart "$u"; done   # restart, so a re-run applies unit changes
 sleep 2
 say "services:"; for u in agent-room-redis agent-room-proxy agent-room-api agent-room-web; do printf '  %-18s %s\n' "$u" "$(systemctl --user is-active $u)"; done
 curl -s http://127.0.0.1:8787/health && echo "  room-api health ok"
