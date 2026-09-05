@@ -78,11 +78,17 @@ def main():
     scripts_m, bins_m = manifest()
     rows = []
     repo = {}
+    repo_links = {}
     for area in ("scripts", "bin"):
         d = os.path.join(SRC, area)
         for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
             if f.endswith((".py", ".sh")) and not f.startswith("."):
-                repo[(area, f)] = os.path.join(d, f)
+                fp = os.path.join(d, f)
+                if os.path.islink(fp):
+                    # a symlink committed to git is not a source file: it names where the live copy is on the
+                    # host. Comparing it to itself said "current" for every one of them (2026-09-05).
+                    repo_links[(area, f)] = os.readlink(fp); continue
+                repo[(area, f)] = fp
     # who references what: server + every manifested script + every repo script
     refs_mod, refs_file, by = set(), set(), {}
     for (area, f), p in repo.items():
@@ -96,7 +102,8 @@ def main():
         inst = os.path.join(DEST[area], f)
         in_manifest = f in (scripts_m if area == "scripts" else bins_m)
         exists = os.path.exists(inst)
-        state = ("current" if exists and sha(inst) == sha(p) else "STALE" if exists else "MISSING")
+        live = os.path.realpath(inst) if exists else inst    # a symlinked install is judged by the file it points at
+        state = ("current" if exists and sha(live) == sha(p) else "STALE" if exists else "MISSING")
         ref = referenced(f)
         if not in_manifest and not exists and not ref:
             state = "not-deployed"
@@ -105,14 +112,28 @@ def main():
         link = os.readlink(inst) if exists and os.path.islink(inst) else None
         rows.append({"area": area, "file": f, "manifest": in_manifest, "referenced": ref,
                      "referenced_by": sorted(by.get(f, set()) | by.get(f[:-3] if f.endswith(".py") else f, set()))[:4],
-                     "installed": inst if exists else None, "link": link, "state": state,
-                     "newer": newer_side(area, f, inst) if state == "STALE" else None})
+                     "installed": inst if exists else None, "live": live if exists else None, "link": link, "state": state,
+                     "newer": newer_side(area, f, live) if state == "STALE" else None})
     # host-only copies
     for area, d in DEST.items():
         for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
-            if f.endswith((".py", ".sh")) and (area, f) not in repo and not f.startswith("."):
+            if f.endswith((".py", ".sh")) and (area, f) not in repo and (area, f) not in repo_links and not f.startswith("."):
                 rows.append({"area": area, "file": f, "manifest": False, "referenced": False,
                              "referenced_by": [], "installed": os.path.join(d, f), "state": "host-only"})
+    if "--diffs" in sys.argv:
+        outd = sys.argv[sys.argv.index("--diffs") + 1] if len(sys.argv) > sys.argv.index("--diffs") + 1 and not sys.argv[sys.argv.index("--diffs") + 1].startswith("--") else os.path.join(HOME, ".vintos", "release-map")
+        os.makedirs(outd, exist_ok=True)
+        print("diffs: checkout (-) vs live host copy (+), written to", outd)
+        for r in sorted(rows, key=lambda r: (r["area"], r["file"])):
+            if r["state"] != "STALE": continue
+            rp = repo[(r["area"], r["file"])]
+            d = subprocess.run(["diff", "-u", rp, r["live"]], capture_output=True, text=True).stdout
+            plus = sum(1 for l in d.splitlines() if l.startswith("+") and not l.startswith("+++"))
+            minus = sum(1 for l in d.splitlines() if l.startswith("-") and not l.startswith("---"))
+            fn = os.path.join(outd, "%s__%s.diff" % (r["area"], r["file"]))
+            open(fn, "w").write(d)
+            print("  %-8s %-34s host has +%-4d -%-4d  %s" % (r["area"], r["file"], plus, minus, r.get("newer") or ""))
+        return
     if "--json" in sys.argv:
         print(json.dumps(rows, indent=1)); return
     order = {"MISSING": 0, "STALE": 1, "host-only": 2, "not-deployed": 3, "current": 4}
@@ -120,6 +141,7 @@ def main():
     counts = {}
     for r in rows: counts[r["state"]] = counts.get(r["state"], 0) + 1
     print("release map for %s" % SRC)
+    if repo_links: print("%d committed symlinks in the checkout were skipped as sources (they point at host paths)" % len(repo_links))
     print("installed roots: scripts -> %s, bin -> %s" % (DEST["scripts"], DEST["bin"]))
     print(" ".join("%s %d" % (k, v) for k, v in sorted(counts.items(), key=lambda kv: order.get(kv[0], 9))))
     print()
