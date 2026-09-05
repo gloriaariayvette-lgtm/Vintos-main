@@ -2426,7 +2426,7 @@ def main():
                             # on want["text"] (a key wants do not have) with a canned fallback that always
                             # moved Valence/Groundedness/Dominance (fable-wants-p6).
                             from emoclaw_utils import feel_about as _wfeel
-                            _wfelt = _wfeel(f"I wanted: {want.get('want', text)[:300]}\nWhat I did: {str(_final_note if '_final_note' in dir() else '')[:400] or str(actual_output or '')[:400]}",
+                            _wfelt = _wfeel(f"I wanted: {want.get('want', text)[:300]}\nWhat I did: {(str(_note or '') or str(_actual_output or ''))[:400]}",
                                             source="want-fulfilled")
                             log(f"  → fulfilled, felt: {_wfelt or 'nothing moved'}")
                         except Exception as _wfe:
