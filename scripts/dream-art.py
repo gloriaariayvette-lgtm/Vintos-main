@@ -71,7 +71,7 @@ def main():
         "softened_from_dream": src == "dream",  # p6 (2026-08-26): dreams render CLOTHED/UNSPICY for the moderated API — the image is softer than the dream; the archive says so honestly
         "want_id": os.environ.get("DREAM_ART_WANT_ID", ""),
     })
-    json.dump(gallery, open(GALLERY, "w"), indent=2)
+    _gtmp = GALLERY + ".tmp.%d" % os.getpid(); json.dump(gallery, open(_gtmp, "w"), indent=2); os.replace(_gtmp, GALLERY)   # atomic (astra-creative-p4)
     print(f"[dream-art] painted: {fname}")
     # Then LOOK (2026-09-04, grok-creative-p1): the same eye WANT_ACT images get. Making is not seeing.
     # If the eye cannot run, the record says so instead of letting the write pass for the seeing.
@@ -87,7 +87,7 @@ def main():
         gallery[-1]["seen"] = None
         gallery[-1]["unseen_why"] = str(_se)[:120]
         print(f"[dream-art] painted UNSEEN — the eye did not run: {_se}")
-    json.dump(gallery, open(GALLERY, "w"), indent=2)
+    _gtmp = GALLERY + ".tmp.%d" % os.getpid(); json.dump(gallery, open(_gtmp, "w"), indent=2); os.replace(_gtmp, GALLERY)   # atomic (astra-creative-p4)
 
 if __name__ == "__main__":
     main()
