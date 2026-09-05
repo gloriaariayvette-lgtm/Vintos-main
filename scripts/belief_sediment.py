@@ -75,6 +75,27 @@ def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality"):
 
     return belief["pattern"]
 
+def contradict(hypothesis_text, evidence_count=1, source="causality"):
+    """A refuted hypothesis lowers the confidence of the beliefs it overlaps (2026-09-04). Until now a
+    belief could only ever be reinforced or slowly eroded; contradiction had no route. Step is
+    proportional to the challenging occasions, floored at 0.05 so a belief is weakened, not deleted.
+    Returns the patterns touched."""
+    data = load_sediment()
+    touched = []
+    for b in data.get("beliefs", []):
+        if _text_overlap(b.get("pattern", ""), hypothesis_text) > 0.6:
+            step = min(0.3, 0.04 * max(1, int(evidence_count)))
+            b["confidence"] = round(max(0.05, float(b.get("confidence", 0.5)) - step), 3)
+            b["contradictions"] = int(b.get("contradictions", 0)) + 1
+            b["last_contradicted"] = datetime.now().isoformat()
+            b.setdefault("history", []).append({"at": datetime.now().isoformat(), "event": "contradicted",
+                                                "by": hypothesis_text[:120], "source": source, "step": step})
+            touched.append(b["pattern"])
+    if touched:
+        save_sediment(data)
+    return touched
+
+
 def decay_beliefs():
     """Very slow decay. Called from subconscious drift."""
     data = load_sediment()

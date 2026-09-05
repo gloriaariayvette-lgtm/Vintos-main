@@ -443,6 +443,33 @@ def load_daily_material(date=None):
     return parts
 
 
+RETIRED_PATH = os.path.join(MEMORY, "causality-retired.jsonl")
+
+def _retire(h):
+    """Append a hypothesis, marks and all, to the retired log. Nothing is culled silently."""
+    try:
+        with open(RETIRED_PATH, "a") as f:
+            f.write(json.dumps(h, ensure_ascii=False) + "\n")
+    except Exception as e:
+        log(f"  retire log failed: {e}")
+
+
+def _readiness(h):
+    """Lower = cull first. Refuted first, then longest-unwitnessed; never a hypothesis about to graduate."""
+    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")]
+    net = (sum(1 for m in marks if m.get("outcome") == "attempted")
+           - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
+    try:
+        age = (datetime.now() - datetime.fromisoformat(h.get("formed", "")[:19])).days
+    except Exception:
+        age = 0
+    if net < 0:
+        return (0, age)                       # refuted: first to go
+    if not marks:
+        return (1, -age)                      # never witnessed: oldest first
+    return (2, -age)
+
+
 def graduate_hypotheses(db):
     """On day 7, graduate net-positive hypotheses to self-knowledge. Vanish net-negative."""
     from datetime import date as _date
@@ -600,8 +627,19 @@ def graduate_hypotheses(db):
                         except Exception as _pe:
                             log(f"  pearl candidate failed: {_pe}")
             elif net < 0 or (net == 0 and days_old >= (30 if h.get("source") == "ghost_branch" else 7) and h.get("status") == "untested"):
+                # retired, not vanished (2026-09-04): marks preserved in causality-retired.jsonl, and a
+                # REFUTED hypothesis (net < 0) lowers the sediment beliefs it overlaps
+                h["retired"] = {"at": datetime.now().isoformat(), "why": "refuted" if net < 0 else "unwitnessed", "net": net}
+                _retire(h)
+                if net < 0:
+                    try:
+                        from belief_sediment import contradict as _bs_contra
+                        _t = _bs_contra(h["hypothesis"], evidence_count=abs(net), source="causality")
+                        if _t: log("  contradicted sediment: " + "; ".join(x[:50] for x in _t))
+                    except Exception as _ce:
+                        log(f"  sediment contradict failed: {_ce}")
                 vanished.append(h)
-                log("  VANISHED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
+                log("  RETIRED (%s): " % h["retired"]["why"] + h["hypothesis"][:80] + " (net " + str(net) + ")")
             else:
                 remaining.append(h)
         else:
@@ -1272,12 +1310,29 @@ def main():
         db["hypotheses"].append(h)
         log(f"  New: {h['hypothesis'][:80]}...")
 
-    # Keep last 50 hypotheses max
+    # Cap at 50 by READINESS, never by recency (2026-09-04, fable-inner-p1 / astra-inner-p3). The old
+    # trim cut by recency, so the theories about to graduate into belief - the ones formed five to
+    # seven nights ago - were exactly the ones guillotined. Now: a hypothesis with pending graduation
+    # readiness or age >= 5 days with marks is never culled for size; refuted go first, then the
+    # longest-unwitnessed; everything culled is preserved in causality-retired.jsonl.
     if len(db["hypotheses"]) > 50:
-        # Keep confirmed ones + most recent
-        confirmed = [h for h in db["hypotheses"] if h["status"] == "confirmed"]
-        others = [h for h in db["hypotheses"] if h["status"] != "confirmed"]
-        db["hypotheses"] = confirmed[-20:] + others[-30:]
+        def _protected(h):
+            if h.get("status") == "confirmed" or h.get("graduation_readiness"):
+                return True
+            try:
+                age = (datetime.now() - datetime.fromisoformat(h.get("formed", "")[:19])).days
+            except Exception:
+                age = 0
+            return age >= 5 and bool(h.get("marks"))
+        keep = [h for h in db["hypotheses"] if _protected(h)]
+        cullable = sorted([h for h in db["hypotheses"] if not _protected(h)], key=_readiness)
+        excess = len(db["hypotheses"]) - 50
+        for h in cullable[:excess]:
+            h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:" + ("refuted" if _readiness(h)[0] == 0 else "unwitnessed"), "net": None}
+            _retire(h)
+            log(f"  retired for capacity ({h['retired']['why']}): {h.get('hypothesis','')[:60]}")
+        culled_ids = {id(h) for h in cullable[:excess]}
+        db["hypotheses"] = [h for h in db["hypotheses"] if id(h) not in culled_ids]
 
     save_hypotheses(db)
     write_hypothesis_log(db)
