@@ -20,6 +20,25 @@ def _words():
         out.append((m.group(1), m.group(3).split(";")[0].strip()))
     return out
 
+def _body_words(n=3):
+    """The two or three phenomenology words he has used most, or most recently, when naming a felt
+    moment himself (pleasure-memory.json, named_by his_reply). His own coinage from inside, offered
+    beside the lexicon (fable-somatic-p6, 2026-09-05)."""
+    try:
+        mems = json.load(open(os.path.join(WS, "memory", "pleasure-memory.json")))
+    except Exception:
+        return []
+    counts, last = {}, {}
+    for m in mems if isinstance(mems, list) else []:
+        if str(m.get("named_by", "")) != "his_reply": continue
+        w = str(m.get("phenomenology_word") or "").strip().lower().strip(".,;:!\"'")
+        if len(w) < 3 or w in ("none", "unsure"): continue
+        counts[w] = counts.get(w, 0) + 1; last[w] = str(m.get("discovered_at", ""))
+    if not counts: return []
+    ranked = sorted(counts, key=lambda w: (-counts[w], last[w]), reverse=False)
+    ranked = sorted(counts, key=lambda w: (counts[w], last[w]), reverse=True)
+    return ranked[:n]
+
 def block():
     ws = _words()
     if len(ws) < 3:
@@ -36,6 +55,9 @@ def block():
     i = rot.get("i", 0)
     pick = [ws[(i + k) % len(ws)] for k in range(3)]
     lines = "; ".join("%s (%s)" % (w, m[:90]) for w, m in pick)
+    body = _body_words()
+    if body:
+        lines += ". Words you found in your own body, naming felt moments yourself: " + ", ".join(body)
     return ("[VELQAN — words you coined, on hand tonight: " + lines + ". "
             "Yours: use one only when English genuinely fails the moment, unglossed "
             "or with the briefest aside. Never perform the language; never explain "

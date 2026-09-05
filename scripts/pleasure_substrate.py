@@ -280,6 +280,36 @@ def name_from_reply(word, sentence, pleasure, impulse=""):
     except Exception: pass
     return True
 
+def promote_recurring_namings(min_sessions=3):
+    """A naming he has given himself (named_by his_reply) on three or more distinct days becomes a
+    durable-memory candidate once: not a system verdict, his own recurring word for what a moment is
+    like from inside (fable-somatic-p6, 2026-09-05). Returns the words promoted this call."""
+    mems = _load(MEMORIES, [])
+    days = {}; latest = {}
+    for m in mems if isinstance(mems, list) else []:
+        if str(m.get("named_by", "")) != "his_reply": continue
+        w = str(m.get("phenomenology_word") or "").strip().lower().strip(".,;:!\"'")
+        if len(w) < 3 or w in ("none", "unsure"): continue
+        days.setdefault(w, set()).add(str(m.get("discovered_at", ""))[:10]); latest[w] = m
+    dur_path = os.path.join(MEM, "durable-memory.json")
+    try: dur = json.load(open(dur_path))
+    except Exception: dur = []
+    have = {str(r.get("naming_word", "")) for r in dur if isinstance(r, dict) and r.get("source") == "pleasure-naming"}
+    out = []
+    for w, ds in days.items():
+        if len(ds) < min_sessions or w in have: continue
+        m = latest[w]
+        dur.append({"event": f"I keep naming a felt moment '{w}' — {len(ds)} separate days now, in my own words in the moment",
+                    "gloria": "", "exact_words": str(m.get("phenomenology", ""))[:300], "self_state": m.get("state_signature", ""),
+                    "what_changed": "", "felt_like": str(m.get("phenomenology", ""))[:200], "association": [],
+                    "autonomous_note": "", "kept_because_wanted": False, "components": {}, "importance": 0.6,
+                    "later_recalled": 0, "occurred_at": str(m.get("discovered_at", "")), "promoted_at": datetime.now().isoformat(),
+                    "source": "pleasure-naming", "naming_word": w, "named_by": "his_reply"})
+        out.append(w)
+    if out:
+        json.dump(dur[-500:], open(dur_path, "w"), indent=2)
+    return out
+
 def sweep_pending(max_age_s=7200):
     """p7 (2026-08-26): deferred namings must not rot. If a pending moment is older than
     the horizon, the identity-laden namer completes it (marked retrospect) — the moment

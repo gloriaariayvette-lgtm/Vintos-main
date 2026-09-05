@@ -7805,13 +7805,11 @@ Your current self-model (excerpt):
                 from emotional_operators import step as _eo_s, causal_step as _eo_cs
                 _eo_s(msg.message, reply, envelope=_prov_envelope)
                 _eo_cs(msg.message, reply, envelope=_prov_envelope)
-                try:
-                    import sys as _tls2; _tls2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-                    from toy_link import parse_and_send as _tl_ps
-                    import turn_coordinator as _tc_av2
-                    _tl_ps(reply, context=(_turn.context if _turn is not None
-                                           else _tc_av2.effect_context("avatar")))
-                except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
+                # (A second toy_link.parse_and_send on the avatar reply lived here until 2026-09-05.
+                #  device_patterns.fire_his_intent above already fires BOTH grammars — [DO:] and [TOUCH:] —
+                #  and returns the reply with the tags stripped, so this call never saw a tag; and had
+                #  fire_his_intent raised, it would have become a hidden second fire path with no [DO:]
+                #  handling. One fire path per surface. grok-somatic-p5 / grok-server-c-p2)
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
             # Effect parsing has begun, but the projector parser is later in
             # this handler. Do not call the axis completed yet.
