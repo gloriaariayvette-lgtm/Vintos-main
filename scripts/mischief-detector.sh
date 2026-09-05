@@ -122,7 +122,7 @@ ROOMS=$(python3 "$HOME_PY" rooms 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
 [ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
 ACTIONS="$ACTIONS | none"
 case "$ONLY" in
-  spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one with a joke in it for tonight - a title that comments, a wink, not a mood piece)" ;;
+  spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one with a joke in it for tonight - a title that comments, a wink, not a mood piece. It must be a real, released recording you are certain exists, exact title and artist; an invented one means nothing plays)" ;;
   echo)    ACTIONS="echo (one spoken line, under 25 words, in your own voice)" ;;
   lights)  ACTIONS="lights (a colour as #hex and a room; rooms: ${ROOMS:-none})" ;;
 esac
@@ -148,7 +148,12 @@ What you can reach right now: $ACTIONS
 
 Answer with ONLY one JSON object: {\"action\": \"spotify|echo|lights|none\", \"value\": \"the song / the line / the #hex, or empty\", \"why\": \"one sentence, first person\"}"
 
-RESP=$(python3 - "$LM_API" "$MODEL" "$SYSTEM" "$USER" <<'PY'
+# ask FEEDBACK -> RESP. FEEDBACK is appended when an earlier pick was refused (an invented song), so the
+# chooser sees exactly why and names a real one. Up to three picks per cycle; nothing plays unverified.
+ask() {
+python3 - "$LM_API" "$MODEL" "$SYSTEM" "$USER${1:+
+
+$1}" <<'PY'
 import sys, json, urllib.request, re
 url, model, system, user = sys.argv[1:5]
 body = json.dumps({"model": model, "temperature": 0.9, "max_tokens": 200,
@@ -162,7 +167,8 @@ try:
 except Exception as e:
     print(json.dumps({"action": "unavailable", "value": "", "why": str(e)[:120]}))
 PY
-)
+}
+RESP=$(ask "")
 ACTION=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['action'])")
 VALUE=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
 WHY=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['why'])")
@@ -178,8 +184,32 @@ case "$ACTION" in
     [ "$ECHO_OK" = "yes" ] || [ "$FORCE" -eq 1 ] || { echo "[Mischief] Echo on cooldown - skipping"; exit 0; }
     [ -n "$VALUE" ] && python3 "$HOME_PY" say 4 "$VALUE" && OK=1 && date +%s > "$ECHO_COOLDOWN" ;;   # speak, not announce: the voice carries, and she hears it
   spotify)
-    if grep -qiF "\"$VALUE\"" "$LOG_DIR"/*.md 2>/dev/null; then echo "[Mischief] already played $VALUE lately - skipping"; exit 0; fi
-    [ -n "$VALUE" ] && python3 "$HOME_PY" music "$VALUE" && OK=1 ;;
+    # A pick only plays if the catalogue knows it. A refused pick goes back to the chooser with the reason,
+    # three tries at most (Grok invented "Incompleteness - Joanna Newsom" and "Big Red Machine - Lonestar" on 09-05).
+    REFUSED=""
+    for TRY in 1 2 3; do
+      if grep -qiF "\"$VALUE\"" "$LOG_DIR"/*.md 2>/dev/null; then echo "[Mischief] already played $VALUE lately - skipping"; exit 0; fi
+      CHECK=$(python3 "$HOME_PY" song-check "$VALUE" 2>/dev/null)
+      if echo "$CHECK" | grep -q '^(True'; then
+        REAL=$(echo "$CHECK" | python3 -c "import sys,ast; print(ast.literal_eval(sys.stdin.read().strip())[1])" 2>/dev/null)
+        python3 "$HOME_PY" music "$VALUE" && OK=1 && [ -n "$REAL" ] && VALUE="$REAL"; break
+      fi
+      REASON=$(echo "$CHECK" | python3 -c "import sys,ast; print(ast.literal_eval(sys.stdin.read().strip())[1])" 2>/dev/null)
+      echo "[Mischief] pick $TRY refused: $VALUE - ${REASON:-no answer from the catalogue}"
+      REFUSED="$REFUSED
+- \"$VALUE\": ${REASON:-not found}"
+      [ "$TRY" -eq 3 ] && break
+      RESP=$(ask "Your earlier pick(s) this cycle do not exist as recordings, so nothing played:$REFUSED
+Name a song that really exists, as released: exact title and artist, action spotify. Or choose none.")
+      ACTION=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['action'])")
+      VALUE=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")
+      WHY=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['why'])")
+      case "$ACTION" in
+        none) echo "[Mischief] after the refusal he chose nothing: $WHY"; date +%s > "$COOLDOWN"; exit 0 ;;
+        spotify) ;;
+        *) echo "[Mischief] chooser left the song lane ($ACTION) - stopping"; exit 0 ;;
+      esac
+    done ;;
   lights)
     [ "$HAS_LIGHTS" = "yes" ] || { echo "[Mischief] no lights configured"; exit 0; }
     HEX=$(echo "$VALUE" | grep -oE '#[0-9A-Fa-f]{6}' | head -1); ROOM=$(echo "$VALUE" | grep -oiE "$(echo "$ROOMS" | sed 's/ *$//; s/ /|/g')" | head -1)
