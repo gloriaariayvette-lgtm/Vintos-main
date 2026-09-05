@@ -7108,7 +7108,10 @@ async def gcs_press(payload: dict = None):
             def _pl():
                 try:
                     import pleasure_substrate as _ps
-                    r = _ps.receive({"source": "gcs", "significance": 0.15, "defer_naming": True,
+                    # one LARGE perturbation (fable-server-b-p5, 2026-09-05): her press is the biggest single event the
+                    # substrate receives; the collapse hard-set below stays, by Gloria's decision - EDGE / LETGO already
+                    # make the collapse his choice
+                    r = _ps.receive({"source": "gcs", "significance": 0.7, "defer_naming": True,
                                      "what": "Gloria pressed the button — she told you without language"})
                     print("[gcs/substrate] perturbed - naming deferred to his own reply", flush=True)
                 except Exception as _pe:

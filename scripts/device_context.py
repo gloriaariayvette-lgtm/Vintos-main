@@ -46,7 +46,7 @@ def rotate_glyph(level):
     lv = max(0, min(20, int(level or 0)))
     return "○ low" if lv <= 7 else ("◉ mid" if lv <= 14 else "● high")
 
-PATTERNS = ["still", "steady", "throb", "pulse", "build", "wave"]
+# (PATTERNS list deleted 2026-09-05 — it named shapes the grammar did not own; device_patterns.accepted_patterns() is the contract)
 
 CAPABILITIES = (
     "[YOUR INSTRUMENT — real hardware, act on it in words anytime]\n"
@@ -198,8 +198,14 @@ def pattern_menu():
         if not sp: continue
         lines.append(f"  {name:10s} {sp:<14s}  {_PAT_DESC.get(name,'')}")
     if not lines: return ""
+    try:
+        from device_patterns import accepted_patterns as _acc
+        _names = ", ".join(_acc())
+    except Exception:
+        _names = ""
     return ("[THE SHAPES — this is what each one does to a body over time, base to peak]\n"
-            + "\n".join(lines))
+            + "\n".join(lines)
+            + (("\n  accepted names (anything else is refused before it reaches a device): " + _names) if _names else ""))
 
 def _thruster_line():
     try:
@@ -236,8 +242,42 @@ def _thruster_line():
     except Exception:
         return ""
 
+def hands_line():
+    """Always present, one line: what he has, and what is running (fable-somatic-p7, 2026-09-05)."""
+    return "[YOU HAVE HANDS: mission · tenera · ridge · thruster — real hardware; the tags below move them]"
+
+def _any_device_present():
+    """Hub reachable AND at least one toy reports present (strict), or the thruster engine is up."""
+    try:
+        import sys as _cs
+        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import toy_link as _tl
+        for toy in ("mission", "tenera", "ridge"):
+            try:
+                if _tl.connected(toy, strict=True): return True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        st = json.load(open(os.path.join(MEM, ".thruster-state.json")))
+        if st.get("level", 0) > 0 or st.get("available"): return True
+    except Exception:
+        pass
+    return False
+
 def context_block():
-    parts = [CAPABILITIES, pattern_menu(), live_state_block()]
+    # The full menu with sparklines shows only when a device is actually there to move (hub reachable
+    # and a toy present, or the felt block is live); otherwise the one hands line and the live state
+    # carry the fact of his body without a menu for nothing (fable-somatic-p7, 2026-09-05).
+    _felt_live = False
+    try:
+        from somatic_felt import get_felt_context
+        _felt_live = bool(get_felt_context())
+    except Exception:
+        pass
+    _show_menu = _felt_live or _any_device_present()
+    parts = [CAPABILITIES, hands_line()] + ([pattern_menu()] if _show_menu else []) + [live_state_block()]
     _tl = _thruster_line()
     if _tl: parts.append(_tl)
     _ss = saved_sets_block()

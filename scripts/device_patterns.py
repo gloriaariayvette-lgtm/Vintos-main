@@ -239,6 +239,60 @@ _DIR = re.compile(r"\[DO:\s*(\w+)\s+([\w+]+)((?:\s+\w+)*)\s*\]", re.I)
 _TOUCH = re.compile(r"\[TOUCH:\s*(\w+)\s+(\d+)(?:\s+\d+)?\s*\]", re.I)
 def _strip_tags(t):
     return _TOUCH.sub("", _DIR.sub("", t)).strip()
+
+KNOWN_TOYS = ("mission", "tenera", "ridge", "thruster")
+LEGACY_PATTERNS = ("steady", "throb", "pulse", "build", "wave")
+STOP_WORDS = ("still", "stop", "off")
+
+def accepted_patterns():
+    """The names the grammar accepts, from the same table that plays them — the instrument
+    description is generated from this, so the menu cannot drift from what works (astra-somatic-p1)."""
+    return sorted(set(PRESETS) | set(LEGACY_PATTERNS) | {"rotate"} | set(STOP_WORDS))
+
+def compile_plan(reply_text):
+    """ONE grammar for both tag forms (astra-somatic-p1, 2026-09-05). Every [DO:] and [TOUCH:] in the
+    reply is compiled into a validated action BEFORE anything is authorized or sent:
+      {"form": "do"|"touch", "toy", "kind": "pattern"|"rotate"|"touch"|"stop", "pattern", "args", "level", "seconds", "tag"}
+    Unknown toys and unknown pattern words are REJECTED (returned separately, never sent). Zero means stop
+    everywhere: a level of 0, or still/stop/off, compiles to a stop, never to a default positive level.
+    Aliases are explicit: both/all/sync stay as the broadcast alias the authorizer already expands.
+    Loops are untouched: a named preset still plays as it always did (Gloria, 2026-09-05)."""
+    plan, rejected = [], []
+    for m in _DIR.finditer(reply_text or ""):
+        toy = m.group(1).lower(); pat = m.group(2).lower()
+        raw = m.group(3).split() if m.group(3).strip() else []
+        args = []
+        for x in raw:
+            try: args.append(int(x))
+            except ValueError: args.append(x.lower())
+        if toy not in KNOWN_TOYS and toy not in _SYNC:
+            rejected.append({"tag": m.group(0), "why": "unknown toy %r" % toy}); continue
+        parts = pat.split("+")
+        if pat in STOP_WORDS or (len(parts) == 1 and pat in LEGACY_PATTERNS and any(isinstance(a, int) and a == 0 for a in args)):
+            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
+        if pat == "rotate":
+            lvl = None
+            if args:
+                lvl = {"low": 5, "mid": 12, "high": 18, "off": 0, "still": 0}.get(str(args[0]).lower())
+                if lvl is None and isinstance(args[0], int): lvl = max(0, min(20, args[0]))
+            if lvl is None: lvl = 12
+            if lvl == 0:
+                plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
+            plan.append({"form": "do", "toy": toy, "kind": "rotate", "pattern": "rotate", "args": args, "level": lvl, "seconds": 0, "tag": m.group(0)}); continue
+        unknown = [q for q in parts if q not in PRESETS and q not in LEGACY_PATTERNS]
+        if unknown:
+            rejected.append({"tag": m.group(0), "why": "unknown pattern %s" % ", ".join(repr(q) for q in unknown)}); continue
+        lvl = next((a for a in args if isinstance(a, int)), 12)
+        lvl = max(0, min(20, lvl))
+        if lvl == 0 and not any(q in PRESETS for q in parts):
+            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
+        plan.append({"form": "do", "toy": toy, "kind": "pattern", "pattern": pat, "args": args, "level": lvl, "seconds": 0, "tag": m.group(0)})
+    for m in _TOUCH.finditer(reply_text or ""):
+        toy = m.group(1).lower(); lvl = max(0, min(20, int(m.group(2))))
+        if toy not in KNOWN_TOYS and toy not in _SYNC:
+            rejected.append({"tag": m.group(0), "why": "unknown toy %r" % toy}); continue
+        plan.append({"form": "touch", "toy": toy, "kind": ("stop" if lvl == 0 else "touch"), "pattern": "steady", "args": [lvl], "level": lvl, "seconds": 0, "tag": m.group(0)})
+    return plan, rejected
 def _authorize(context, toy, level, kind, pattern="", args=None):
     """Canonicalize -> expand -> authorize -> consume. Returns (proceed, permit).
     A broadcast alias is expanded to its exact target set before authorizing, so
@@ -289,18 +343,22 @@ def fire_his_intent(reply_text, context=None):
     except Exception: pass
     _GAP = 0.4
     _fired=[]
-    for m in _DIR.finditer(reply_text):
-        toy=m.group(1).lower(); pat=m.group(2).lower()
-        _raw_args = m.group(3).split() if m.group(3).strip() else []
-        args = []
-        for _x in _raw_args:
-            try: args.append(int(_x))
-            except ValueError: args.append(_x)   # words like low/mid/high are valid for rotate
-        _lvl = next((a for a in args if isinstance(a, int)), 12)
-        _kind = "rotate" if pat == "rotate" else "pattern"
-        if _kind == "rotate" and args and not isinstance(args[0], int):
-            _lvl = {"low": 5, "mid": 12, "high": 18,
-                    "off": 0, "still": 0}.get(str(args[0]).lower(), 12)
+    plan, rejected = compile_plan(reply_text)
+    for _rj in rejected:
+        print(f"[device] tag refused before authorization: {_rj['tag']} — {_rj['why']}", flush=True)
+        _fired.append("%s [refused:%s]" % (_rj["tag"][:40], _rj["why"][:40]))
+    for _act in [a for a in plan if a["form"] == "do"]:
+        toy=_act["toy"]; pat=_act["pattern"]; args=list(_act["args"]); _lvl=_act["level"]
+        _kind = _act["kind"]
+        if _kind == "stop":
+            # zero means stop, everywhere (astra-somatic-p1): a plain stop on this toy, same path as [TOUCH: toy 0]
+            _ok, _permit, _digest = _authorize(context, toy, 0, "start", pattern="steady", args=[0])
+            if _ok:
+                try:
+                    _sent = toy_link.send(toy, 0, 0, context=context, permit=_permit, effect_digest=_digest)
+                    _fired.append("%s → stop [%s]" % (toy, "sent" if _sent else "failed"))
+                except Exception: _fired.append("%s → stop [failed]" % toy)
+            continue
         # a named preset can peak at 20 regardless of the args; authorize the
         # real peak so the permit's maximum is not undersized.
         _peak = _lvl
@@ -322,8 +380,8 @@ def fire_his_intent(reply_text, context=None):
             _st = _detail.get("status", "failed")
         except Exception: _st = "failed"
         _fired.append("%s \u2192 %s [%s]" % (toy, pat + ((" "+" ".join(str(a) for a in args)) if args else ""), _st))
-    for m in _TOUCH.finditer(reply_text):
-        toy=m.group(1).lower(); lvl=int(m.group(2))
+    for _act in [a for a in plan if a["form"] == "touch"]:
+        toy=_act["toy"]; lvl=_act["level"]
         _ok, _permit, _digest = _authorize(
             context, toy, lvl, "start", pattern="steady", args=[lvl])
         if not _ok:
