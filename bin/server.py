@@ -118,20 +118,64 @@ def _pattern_gallery():
     except Exception:
         return ""
 
-def _lead_directive(user_text, surface="chat"):
-    """device on -> full C dominance lead on the surfaces where his body is in the room (avatar, voice);
-    on TEXT chat a connected device earns only the softer relational lead (2026-09-04, fable-server-a-p4:
-    /api/chat/full already carried only the intent lead; the plain /api/chat door bypassed that and
-    received the full lead - now it matches). Device off + she asks to be led -> softer lead;
-    otherwise nothing, so ordinary conversation stays ordinary."""
+def _lead_facts(user_text, surface="chat"):
+    """Four facts, kept apart (astra-server-a-p1, 2026-09-05), each read from the organ that owns it:
+      availability     - the hub reports a toy connected (a device is merely PRESENT)
+      physical_state   - something is actually running on a device, set within the last 3 minutes
+      authorization    - her stop button is not down (a stop always outranks a lead)
+      asked            - she asked, in words, to be led
+      direction        - his own current discourse direction (read-only), for the record
+    Until now availability alone earned the full dominance lead on avatar/voice: a plugged-in, idle
+    toy read as 'her body is in the room'."""
+    f = {"surface": surface, "availability": False, "physical_state": False, "authorization": True, "asked": False, "direction": ""}
+    try: f["availability"] = bool(_device_on())
+    except Exception: pass
     try:
-        if _device_on():
-            return _LEAD_C if surface in ("avatar", "voice") else _LEAD_SOFT
-        if user_text and _LEAD_RE.search(user_text):
-            return _LEAD_SOFT
+        import json as _lj, time as _lt
+        st = _lj.load(open(os.path.join(MEMORY, "device-state.json")))
+        f["physical_state"] = any(isinstance(d, dict) and int(d.get("intensity") or 0) > 0 and str(d.get("pattern") or "") not in ("still", "")
+                                  and _lt.time() - float(d.get("ts") or 0) < 180 for d in st.values())
+    except Exception: pass
+    try:
+        import json as _lj2
+        if _lj2.load(open(os.path.join(MEMORY, "hardware-button.json"))).get("stopped"): f["authorization"] = False
+    except Exception: pass
+    try: f["asked"] = bool(user_text and _LEAD_RE.search(user_text))
+    except Exception: pass
+    try:
+        import sys as _ls; _ls.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import discourse_direction as _ldc
+        f["direction"] = str(_ldc.load_state().get("current_direction", ""))
+    except Exception: pass
+    return f
+
+def _lead_directive(user_text, surface="chat"):
+    """The lead line, decided from separated facts (astra-server-a-p1) and recorded with them:
+      - her stop is down                       -> nothing, whatever else is true (stop outranks lead)
+      - something RUNNING on a device, on a surface where his body is in the room (avatar, voice)
+                                               -> full lead (_LEAD_C)
+      - a device merely present, or she asked  -> the softer relational lead (_LEAD_SOFT); on text
+                                                  chat a present device never earns more than this
+                                                  (Gloria's concession, fable-server-a-p4)
+      - otherwise                              -> nothing; ordinary conversation stays ordinary."""
+    try:
+        f = _lead_facts(user_text, surface)
+        if not f["authorization"]:
+            lead, why = "", "stop button down"
+        elif f["physical_state"] and surface in ("avatar", "voice"):
+            lead, why = _LEAD_C, "device running, body in the room"
+        elif f["availability"] or f["asked"]:
+            lead, why = _LEAD_SOFT, ("she asked" if f["asked"] else "device present, nothing running")
+        else:
+            lead, why = "", "nothing"
+        try:
+            import json as _rj, time as _rt
+            with open(os.path.join(MEMORY, "lead-facts.jsonl"), "a") as _lf:
+                _lf.write(_rj.dumps({"t": _rt.time(), **f, "lead": ("C" if lead == _LEAD_C else "soft" if lead else ""), "why": why}) + "\n")
+        except Exception: pass
+        return lead
     except Exception:
         return ""
-    return ""
 # --- end lead router ---
 
 def _subconscious_tail(user_text, surface="chat"):

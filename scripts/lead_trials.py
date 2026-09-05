@@ -206,7 +206,9 @@ def get_active_plan_line():
     open_w = [t for t in load(TRIALS, []) if t.get("type") == "weekly" and t.get("status") == "open"]
     if not open_w: return ""
     t = open_w[-1]
-    return "[LEAD PLAN - yours, stated in your own journal: %s If the ground appears this turn, move on it.]" % t["plan"][:200]
+    # a plan he set himself is TENTATIVE discussion material, not an automatic behavioral experiment
+    # (astra-server-a-p1, 2026-09-05): he may move on it, raise it, or drop it
+    return "[LEAD PLAN - yours, stated in your own journal, tentative: %s If the ground appears this turn you may move on it, say it out loud as an idea, or let it go; it is not an order.]" % t["plan"][:200]
 if __name__ == "__main__":
     {"grade": grade, "journal-seeds": journal_seeds, "harvest": harvest, "plan": plan_next,
      "cycle": cycle, "seed-from-intents": seed_from_intents, "weekly-check": weekly_check}.get(sys.argv[1] if len(sys.argv) > 1 else "cycle", cycle)()
