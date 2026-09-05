@@ -54,10 +54,13 @@ def load_cold():
 def save_cold(data):
     json.dump(data, open(COLD_FILE, "w"), indent=2)
 
-def register_absence(description, source, intensity=0.4):
-    """Register a structural absence — something never reached, never resolved."""
+def register_absence(description, source, intensity=0.4, source_id=None):
+    """Register a structural absence — something never reached, never resolved. source_id (the want or
+    thread id) lets retire_reached() close it when the source is fulfilled (2026-09-04)."""
     data = load_cold()
     absences = data["absences"]
+    if source_id and any(a.get("source_id") == source_id and not a.get("reached") for a in absences):
+        return                                    # already registered for this very source; rescans are idempotent
 
     vec = embed(description)
 
@@ -76,6 +79,7 @@ def register_absence(description, source, intensity=0.4):
         "description": description[:200],
         "vector": vec,
         "source": source,
+        "source_id": source_id,
         "intensity": round(intensity, 3),
         "count": 1,
         "created": datetime.now().isoformat(),
@@ -88,6 +92,20 @@ def register_absence(description, source, intensity=0.4):
     data["absences"] = absences
     save_cold(data)
     log(f"Absence registered [{source}]: {description[:60]}")
+
+def retire_reached(source_id=None, text=None, how="reached"):
+    """The source was fulfilled or resolved: the absence is no longer an absence. Marked, not deleted;
+    the context and gravity readers skip it. Returns how many were retired."""
+    data = load_cold(); n = 0
+    for a in data["absences"]:
+        if a.get("reached"): continue
+        if (source_id and a.get("source_id") == source_id) or (text and a.get("description", "")[:120] == str(text)[:120]):
+            a["reached"] = how; a["reached_at"] = datetime.now().isoformat(); n += 1
+    if n: save_cold(data); log(f"Absence retired ({how}): {n}")
+    return n
+
+def _open(absences):
+    return [a for a in absences if not a.get("reached")]
 
 def get_absence_gravity(context_text, context_vec=None):
     """Return pull from nearby absences. High pull → curiosity boost, thread seeding."""
@@ -102,7 +120,7 @@ def get_absence_gravity(context_text, context_vec=None):
 
     max_pull = 0.0
     dominant = None
-    for a in data["absences"]:
+    for a in _open(data["absences"]):          # a reached absence pulls nothing
         if not a.get("vector"):
             continue
         sim = cosine_similarity(context_vec, a["vector"])
@@ -124,7 +142,7 @@ def build_from_unfulfilled():
         cutoff = (datetime.now() - timedelta(days=7)).isoformat()
         for w in wants:
             if w.get("timestamp", "") < cutoff:
-                register_absence(w.get("want", ""), source="unfulfilled-want", intensity=0.4)
+                register_absence(w.get("want", ""), source="unfulfilled-want", intensity=0.4, source_id=w.get("id"))
                 count += 1
     except: pass
 
@@ -145,7 +163,7 @@ def build_from_unfulfilled():
 def get_absence_context():
     """Return cold absence layer for context injection."""
     data = load_cold()
-    absences = sorted(data["absences"], key=lambda a: -a["intensity"])[:4]
+    absences = sorted(_open(data["absences"]), key=lambda a: -a["intensity"])[:4]
     if not absences:
         return ""
     lines = [f"- {a['description'][:90]} (intensity:{a['intensity']:.2f})" for a in absences]
