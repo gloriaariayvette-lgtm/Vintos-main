@@ -67,6 +67,8 @@ def run_step(capability, note, want=None):
     res["ended"] = time.time()
     return res
 
+MAKERS = ("make_art", "make_music", "make_video", "write_poem", "creative_write", "make_chart")
+
 def apply_result(want, step, res):
     """Write the envelope's truth onto the want. BLOCKED marks the WANT blocked
     (with cause and resume event) so the router skips it instead of hammering;
@@ -76,8 +78,15 @@ def apply_result(want, step, res):
         step["status"] = "completed"
         want.pop("blocked", None)
     elif res["result"] == "NO_RESULT":
-        step["status"] = "completed"
-        step["empty"] = True
+        # What an empty result means depends on the want (review, 2026-09-05): an inquiry that found
+        # nothing is complete; a making step with no artifact is not, and must not let steps_complete
+        # fulfil the want. The step stays pending with the empty attempt on record.
+        if step.get("capability") in MAKERS:
+            step["status"] = "pending"; step["empty"] = True
+            step["empty_note"] = "no artifact was produced - a making step does not complete on nothing"
+        else:
+            step["status"] = "completed"
+            step["empty"] = True
         want.pop("blocked", None)
     elif res["result"] == "BLOCKED":
         want["blocked"] = dict(res["block"], blocked_step=step.get("capability"),

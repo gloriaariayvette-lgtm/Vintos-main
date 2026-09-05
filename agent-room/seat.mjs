@@ -32,8 +32,9 @@ const usage = (i, o, c, tools) => log(`in:${i ?? '-'} out:${o ?? '-'} cached:${c
 
 // ---- Fable: Anthropic Messages, streamed, system cached 1h -------------------------------------
 const ANTH_TOOLS = OAI_TOOLS.map(t => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+const CALL_MS = 9 * 60 * 1000;   // one model call may not outlive the room's longest renewed turn (10 min); a hung fetch used to hold the seat forever (review P10)
 async function anthropicStream(body){
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{ 'content-type':'application/json', 'anthropic-version':'2023-06-01', 'x-api-key': KEY, 'anthropic-beta':'extended-cache-ttl-2025-04-11' }, body: JSON.stringify({ ...body, stream:true }) });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{ 'content-type':'application/json', 'anthropic-version':'2023-06-01', 'x-api-key': KEY, 'anthropic-beta':'extended-cache-ttl-2025-04-11' }, body: JSON.stringify({ ...body, stream:true }), signal: AbortSignal.timeout(CALL_MS) });
   if (!r.ok) throw new Error('anthropic ' + r.status + ' ' + (await r.text()).slice(0, 300));
   const blocks = [], u = {}; let buf = '', stop = null;
   for await (const chunk of r.body) { buf += Buffer.from(chunk).toString('utf8'); let i;
@@ -63,9 +64,12 @@ async function replyFable(history){
 // ---- Astra: OpenAI Responses, background + poll, prefix cached ---------------------------------
 const OAI_H = { 'content-type':'application/json', authorization: 'Bearer ' + KEY };
 async function oaiResponse(body){
-  let r = await fetch('https://api.openai.com/v1/responses', { method:'POST', headers: OAI_H, body: JSON.stringify({ ...body, background:true, store:true }) });
+  const t0 = Date.now();
+  let r = await fetch('https://api.openai.com/v1/responses', { method:'POST', headers: OAI_H, body: JSON.stringify({ ...body, background:true, store:true }), signal: AbortSignal.timeout(60000) });
   let d = await r.json(); if (!r.ok) throw new Error('openai ' + r.status + ' ' + JSON.stringify(d).slice(0, 300));
-  while (d.status === 'queued' || d.status === 'in_progress') { await new Promise(s => setTimeout(s, 5000)); d = await (await fetch('https://api.openai.com/v1/responses/' + d.id, { headers: OAI_H })).json(); }
+  while (d.status === 'queued' || d.status === 'in_progress') {
+    if (Date.now() - t0 > CALL_MS) { try { await fetch('https://api.openai.com/v1/responses/' + d.id + '/cancel', { method:'POST', headers: OAI_H, signal: AbortSignal.timeout(15000) }); } catch {} throw new Error('Astra call exceeded ' + (CALL_MS/60000) + ' min; cancelled'); }
+    await new Promise(s => setTimeout(s, 5000)); d = await (await fetch('https://api.openai.com/v1/responses/' + d.id, { headers: OAI_H, signal: AbortSignal.timeout(30000) })).json(); }
   if (d.status !== 'completed') throw new Error('Astra ' + d.status + ' ' + JSON.stringify(d.error || d.incomplete_details).slice(0, 300));
   return d;
 }
@@ -86,7 +90,7 @@ async function replyAstra(history){
 async function replyGrok(history){
   const msgs = [{ role:'system', content: SYSTEM }, { role:'user', content: userTurn(history) }];
   for (let hop = 0; hop < HOPS; hop++) {
-    const r = await fetch('https://api.x.ai/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', authorization:'Bearer ' + KEY }, body: JSON.stringify({ model: L.model, temperature: 0.6, max_tokens: 6000, messages: msgs, tools: OAI_TOOLS, tool_choice: hop < HOPS - 1 ? 'auto' : 'none' }) });
+    const r = await fetch('https://api.x.ai/v1/chat/completions', { method:'POST', headers:{ 'content-type':'application/json', authorization:'Bearer ' + KEY }, body: JSON.stringify({ model: L.model, temperature: 0.6, max_tokens: 6000, messages: msgs, tools: OAI_TOOLS, tool_choice: hop < HOPS - 1 ? 'auto' : 'none' }), signal: AbortSignal.timeout(CALL_MS) });
     const d = await r.json(); if (!r.ok) throw new Error('x.ai ' + r.status + ' ' + JSON.stringify(d).slice(0, 300));
     const m = d.choices[0].message, u = d.usage || {}; usage(u.prompt_tokens, u.completion_tokens, u.prompt_tokens_details?.cached_tokens, (m.tool_calls || []).map(t => t.function.name));
     if (!m.tool_calls?.length) return m.content || '';

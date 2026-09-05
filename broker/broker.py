@@ -218,6 +218,19 @@ def worktable():
     a = _j(os.path.join(ROOT, "active.json"), {})
     return {"active": bool(a.get("id")), "since": a.get("since")}   # content-free
 
+import contextlib as _ctx
+@_ctx.contextmanager
+def _table_lock():
+    """The one lock for active.json / project state read-modify-writes. keep() has used it since
+    KEEP landed; to_table, clear_table and set_state wrote the same files without it (review P03)."""
+    import fcntl
+    lock = open(os.path.join(ROOT, ".table.lock"), "a+")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    try:
+        yield
+    finally:
+        fcntl.flock(lock, fcntl.LOCK_UN); lock.close()
+
 def to_table(b):
     # Validate BEFORE writing anything. This wrote active.json first and only
     # then resolved the path, so a bogus id (a pasted "PROJECT_ID" placeholder)
@@ -228,12 +241,14 @@ def to_table(b):
     p = _j(proj_file)
     if not p:
         return {"error": "no such project"}
-    a = _j(os.path.join(ROOT, "active.json"), {})
-    if a.get("id") and a["id"] != b["id"]:
-        return {"error": "worktable occupied — rest, archive, or abandon it first (one locus of attention)"}
-    p["state"] = "ACTIVE"
-    _w(proj_file, p)
-    _w(os.path.join(ROOT, "active.json"), {"id": b["id"], "since": datetime.now().isoformat()})
+    with _table_lock():
+        a = _j(os.path.join(ROOT, "active.json"), {})
+        if a.get("id") and a["id"] != b["id"]:
+            return {"error": "worktable occupied — rest, archive, or abandon it first (one locus of attention)"}
+        p = _j(proj_file) or p
+        p["state"] = "ACTIVE"
+        _w(proj_file, p)
+        _w(os.path.join(ROOT, "active.json"), {"id": b["id"], "since": datetime.now().isoformat()})
     _ev(b["id"], "to_table")
     return {"ok": True}
 
@@ -241,8 +256,9 @@ def to_table(b):
 def clear_table(b=None):
     """Release the worktable. Recovery for a poisoned active.json — and honest:
     it records that the table was cleared rather than silently rewriting state."""
-    a = _j(os.path.join(ROOT, "active.json"), {}) or {}
-    _w(os.path.join(ROOT, "active.json"), {})
+    with _table_lock():
+        a = _j(os.path.join(ROOT, "active.json"), {}) or {}
+        _w(os.path.join(ROOT, "active.json"), {})
     _health("the worktable was cleared")
     return {"ok": True, "was": a.get("id", "")}
 
@@ -258,11 +274,13 @@ def set_state(b):
         return {"error": "BLOCKED requires a named obstruction"}
     if b["state"] == "ABANDONED_BY_CHOICE" and not b.get("note"):
         return {"error": "abandonment requires an authored closing note — 'I no longer want to continue, and I do not know why' is permitted"}
-    p["state"] = b["state"]; _w(os.path.join(_p(b["id"]), "project.json"), p)
+    with _table_lock():   # project state and the table release are one step, as in keep()
+        p = _j(os.path.join(_p(b["id"]), "project.json")) or p
+        p["state"] = b["state"]; _w(os.path.join(_p(b["id"]), "project.json"), p)
+        if b["state"] in ("RESTING", "ARCHIVED", "ABANDONED_BY_CHOICE"):
+            a = _j(os.path.join(ROOT, "active.json"), {})
+            if a.get("id") == b["id"]: _w(os.path.join(ROOT, "active.json"), {})
     _ev(b["id"], "state", {"to": b["state"], "note": b.get("note", "")})
-    if b["state"] in ("RESTING", "ARCHIVED", "ABANDONED_BY_CHOICE"):
-        a = _j(os.path.join(ROOT, "active.json"), {})
-        if a.get("id") == b["id"]: _w(os.path.join(ROOT, "active.json"), {})
     return {"ok": True}
 
 def keep(b):

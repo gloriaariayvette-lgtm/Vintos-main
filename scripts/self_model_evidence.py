@@ -113,7 +113,10 @@ def corrections():
             pass
         ids.append("wal:" + ts); lines.append("- " + str(e.get("content") or e.get("fact") or e)[:180])
     if not lines: return _res("empty", note="no correction newer than the watermark")
-    return _res("present", ids, "\n".join(lines[-20:]))
+    # ids and lines are zipped by record_corrections: truncate both the same way or a correction is
+    # filed under another correction's source (review P04, 2026-09-05)
+    ids, lines = ids[-20:], lines[-20:]
+    return _res("present", ids, "\n".join(lines))
 
 COLLECTORS = {"introspections": introspections, "self_review": self_review,
               "architectural_changes": architectural_changes, "corrections": corrections}

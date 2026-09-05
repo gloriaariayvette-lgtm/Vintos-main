@@ -61,7 +61,7 @@ TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
 TAG_RE = re.compile(r"\[[A-Z_]+(?::[^\]]*)?\]")
 MODELS = ("claude", "fable", "grok", "sol")
 
-READ_RE = re.compile(r"^\s*READ:\s*(\S+)\s*$", re.M)
+READ_RE = re.compile(r"^\s*READ:\s*(\S+?)(?::(\d+))?\s*$", re.M)   # READ: scripts/x.py  or  READ: scripts/x.py:400 (continue from line 400)
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
 GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
 GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
@@ -131,16 +131,27 @@ def needs_explicit(paths):
     return any(os.path.dirname(os.path.realpath(p)) == os.path.realpath(WORKSPACE) for p in paths)
 
 
-def do_read(rel, max_chars=14000):
+def do_read(rel, max_chars=14000, start=1):
+    """Numbered lines from `start`. A long file is cut at max_chars and the cut names the next line to
+    READ from, so a file is readable whole in pieces instead of only its head (review P09)."""
     p = resolve(rel)
     if not p:
         return "READ %s: not readable from this room (outside the roots, or a protected file)" % rel
     t = open(p, errors="replace").read()
     lines = t.split("\n")
-    body = "\n".join("%5d  %s" % (i + 1, l) for i, l in enumerate(lines))
-    if len(body) > max_chars:
-        body = body[:max_chars] + "\n... (truncated; GREP for the part you need)"
-    return "READ %s (%d lines):\n%s" % (os.path.relpath(p, HOME), len(lines), body)
+    try: start = max(1, int(start or 1))
+    except Exception: start = 1
+    lab = _label_path(p) or os.path.relpath(p, HOME)
+    out, used, i = [], 0, start - 1
+    while i < len(lines):
+        row = "%5d  %s" % (i + 1, lines[i])
+        if used + len(row) + 1 > max_chars: break
+        out.append(row); used += len(row) + 1; i += 1
+    body = "\n".join(out)
+    if i < len(lines):
+        body += "\n... (cut at line %d of %d; continue with READ: %s:%d)" % (i, len(lines), lab, i + 1)
+    head = "READ %s (%d lines%s):" % (lab, len(lines), (", from line %d" % start) if start > 1 else "")
+    return head + "\n" + body
 
 
 def do_gemma(task, material, max_chars=6000):
@@ -652,7 +663,7 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
         log.append({"role": "user", "content": message, "at": _now()})
         def _run_tools(text):
             out = []
-            for m in READ_RE.finditer(text): out.append(do_read(m.group(1)))
+            for m in READ_RE.finditer(text): out.append(do_read(m.group(1), start=m.group(2) or 1))
             for m in GREP_RE.finditer(text): out.append(do_grep(m.group(1)))
             for m in GEMMA_RE.finditer(text): out.append(do_gemma(m.group(1), "\n\n".join(out)))   # after READ/GREP, so the sub works on what was just pulled
             return out

@@ -230,14 +230,23 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     # Skip if message was flagged as too short (sentinel value)
     if actual_warmth == -1 or actual_tension == -1 or actual_valence == -1:
         return None
-    # Load stored prediction
-    if not os.path.exists(PREDICTION_FILE):
-        return None
-    
-    try:
-        with open(PREDICTION_FILE, 'r') as f:
-            prediction = json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
+    # Load the stored prediction through the ledger when it is present: the same locked record predict
+    # writes through, so the id compared below is the id the ledger holds, not a torn direct read
+    # (review: relational race, 2026-09-05 - consume-by-id already refused a replaced prediction; this
+    # closes the read side too)
+    prediction = None
+    if _PL is not None:
+        try: prediction = _PL.current("relational")
+        except Exception: prediction = None
+    if prediction is None:
+        if not os.path.exists(PREDICTION_FILE):
+            return None
+        try:
+            with open(PREDICTION_FILE, 'r') as f:
+                prediction = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+    if not isinstance(prediction, dict) or not prediction:
         return None
     # The id of the prediction THIS comparison actually looked at. Everything
     # below retires that id and nothing else: avatar starts this comparison
