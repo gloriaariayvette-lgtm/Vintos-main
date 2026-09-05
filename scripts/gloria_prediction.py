@@ -117,11 +117,14 @@ def main():
     # uncertainty (embedding-based) over the LLM's guessed confidence/novelty.
     # Keeps the LLM's readable 'predicted' sentence; grounds the numbers. Drop-in.
     jp = load(os.path.join(MEMORY, "jepa-prediction.json"), {})
-    if jp.get("source") == "jepa":
+    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True:
         out["confidence"] = round(float(jp.get("confidence", out["confidence"])), 3)
         out["novelty"]    = round(float(jp.get("novelty", out["novelty"])), 3)
         out["grounded_by"] = "jepa"
         out["jepa_nearest"] = str(jp.get("gloria_forecast_nearest", ""))[:160]
+    elif jp.get("source") == "jepa":
+        # the predictor ran but its variance gate did not qualify the numbers: keep the LLM's and say so
+        out["grounded_by"] = "llm"; out["jepa_declined"] = "variance not qualified"
 
     json.dump(out, open(OUT, "w"), indent=2)
 

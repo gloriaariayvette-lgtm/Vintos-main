@@ -37,7 +37,7 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
     """Stage 0→1: Write a new candidate pearl from therapy/mirror/causality insight."""
     # Filter meta-self-analytical irritants — these describe his nature, not genuine friction
     _meta_phrases = [
-        "analyze and justify", "seeks approval", "seeking approval", "seeks gloria",
+        "analyze and justify", "seeks approval", "seeking approval",
         "curated self-image", "perform and understand", "need to control how",
         "calculating how others perceive", "intellectualize him", "intellectualiz",
         "seeks external validation", "justify his actions", "justify their actions",
@@ -253,7 +253,17 @@ def check_candidate(candidate_id, response_text, source="chat"):
         except Exception as _pr_e:
             _pr_ok = False
             print(f"[Pearl] review error — HOLDING, unreviewed is not approved (retry next pass): {_pr_e}", file=__import__("sys").stderr)
-            _pr_ok = True
+            # (until 2026-09-04 the next line set _pr_ok = True: the message said HOLDING and the code approved)
+            try:
+                _pr_fp = os.path.join(MEMORY, "hallucination-flags.json")
+                try: _pr_flags = _pr_json.load(open(_pr_fp))
+                except: _pr_flags = []
+                if not any(f.get("candidate_id") == candidate_id and not f.get("reviewed") for f in _pr_flags):
+                    _pr_flags.append({"type": "pearl_held", "candidate_id": candidate_id, "held_reason": "reviewer_unreachable",
+                                      "error": str(_pr_e)[:160], "timestamp": __import__("datetime").datetime.now().isoformat(),
+                                      "reviewed": False})
+                    _pr_json.dump(_pr_flags, open(_pr_fp, "w"), indent=2)
+            except: pass
         if not _pr_ok:
             save_candidates(data)
             return "held"

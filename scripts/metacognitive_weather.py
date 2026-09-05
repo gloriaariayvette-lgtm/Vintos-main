@@ -33,8 +33,12 @@ def _fog():
     unglad = 0
     ch = _load("causality-hypotheses.json")
     if ch:
-        vals = ch.values() if isinstance(ch, dict) else ch
-        for v in vals:
+        # the file is {"hypotheses": [...]} (or a bare list); iterating the dict's values counted
+        # nothing that was a hypothesis, so fog.ungraduated was always 0 (2026-09-04)
+        vals = ch.get("hypotheses", []) if isinstance(ch, dict) else ch
+        if isinstance(ch, dict) and not isinstance(vals, list):
+            vals = [v for v in ch.values() if isinstance(v, dict)]
+        for v in (vals or []):
             if isinstance(v, dict) and not v.get("graduated", False):
                 unglad += 1
     ungradeable = 0

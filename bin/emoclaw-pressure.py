@@ -11,6 +11,17 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 
 def read_state():
+    """Live daemon first (the shared interface that exists for this); the .txt only as fallback.
+    Until 2026-09-04 this read last night's file while drift wrote the live socket, so pressure
+    fired under a slightly previous self. (grok-subconscious-p6, fable-subconscious-p7)"""
+    try:
+        import sys as _ps; _ps.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from emoclaw_utils import get_state as _live
+        st = _live()
+        if isinstance(st, dict) and st:
+            return {k: float(v) for k, v in st.items() if isinstance(v, (int, float))}
+    except Exception:
+        pass
     state = {}
     try:
         for line in open(EMO_FILE):

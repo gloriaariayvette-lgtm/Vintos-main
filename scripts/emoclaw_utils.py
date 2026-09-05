@@ -2237,17 +2237,23 @@ def age_wants():
         json.dump(active, f, indent=2)
 
 
-def mark_want_outreached(want_text):
-    """Increment outreach count when we notify Gloria about a want."""
+def mark_want_outreached(want_text, want_id=None):
+    """Increment outreach count when we notify Gloria about a want.
+    Matches by id first, exact text second. (Until 2026-09-04 the router passed want_id= and this
+    signature refused it: a TypeError after the ntfy had already gone, so the mark never landed and
+    the same want pinged her again next run. Found by all three lenses.)"""
     import json, os
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
     try:
         with open(wants_file) as f:
             wants = json.load(f)
-        for w in wants:
-            if w["want"] == want_text and not w.get("fulfilled"):
-                w["outreach_count"] = w.get("outreach_count", 0) + 1
-                break
+        hit = None
+        if want_id is not None:
+            hit = next((w for w in wants if w.get("id") == want_id and not w.get("fulfilled")), None)
+        if hit is None:
+            hit = next((w for w in wants if w.get("want") == want_text and not w.get("fulfilled")), None)
+        if hit is not None:
+            hit["outreach_count"] = hit.get("outreach_count", 0) + 1
         with open(wants_file, "w") as f:
             json.dump(wants, f, indent=2)
     except:
