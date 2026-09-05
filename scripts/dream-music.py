@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dream-music.py — Vintos Music via local ACE-Step"""
+"""dream-music.py — Vintos Music via Kie.ai Suno V5"""
 import os,sys,json,time,glob,re,hashlib,argparse,unicodedata
 from datetime import datetime
 from urllib.request import Request,urlopen
@@ -164,11 +164,8 @@ def parse_prompt(fp):
         m=re.match(r"\*\*Duration:\*\*\s*(.+)",s)
         if m:
             _dur_txt = m.group(1).strip().lower()
-            import re as _dur_re
-            _dm = _dur_re.search(r"(\d+)", _dur_txt)
-            if _dm:
-                _dn = int(_dm.group(1))
-                d["duration"] = _dn if _dn > 20 else _dn * 60  # p5: bare small numbers are minutes, larger are seconds
+            if "3" in _dur_txt: d["duration"] = 180
+            elif "1" in _dur_txt: d["duration"] = 60
             else: d["duration"] = 120
             continue
         m=re.match(r"\*\*Vocal\s*[Gg]ender:\*\*\s*(.+)",s)
@@ -334,9 +331,26 @@ def process_file(fp,force=False):
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+    # completion answers to the artifact, not the log line (astra-creative-p3, 2026-09-04)
+    entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+    if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry)
     if fp not in log.get("processed_files",[]): log.setdefault("processed_files",[]).append(fp)
     save_log(log); journal(d["title"],tracks,style)
+    try:   # the shares that were in the composer's context now carry this title (grok-creative-p3, 2026-09-05)
+        _sc=json.load(open(fp+".shares.json")); _ids=set(_sc.get("share_ids") or [])
+        if _ids:
+            _shp=os.path.expanduser("~/.vintos/workspace/memory/gloria-music-shares.json"); _shraw=json.load(open(_shp))
+            _shl=_shraw if isinstance(_shraw,list) else _shraw.get("shares",[])
+            _n=0
+            for _x in _shl:
+                if (_x.get("id") or _x.get("timestamp","")) in _ids:
+                    _x.setdefault("influenced_compositions",[])
+                    if d["title"] not in _x["influenced_compositions"]: _x["influenced_compositions"].append(d["title"]); _n+=1
+            json.dump(_shraw,open(_shp,"w"),indent=2); entry["shares_in_context"]=sorted(_ids); save_log(log)
+            print(f"  {_n} of her shares now carry '{d['title']}'")
+    except FileNotFoundError: pass
+    except Exception as _she: print("  share link skip:", _she)
     print(f"\n  '{d['title']}' complete!"); return True
 
 def direct(title,style,desc="",lyrics=""):
@@ -364,11 +378,13 @@ def direct(title,style,desc="",lyrics=""):
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+    entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+    if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry); save_log(log); journal(title,tracks,style)
     print(f"\n  '{title}' complete!"); return True
 
 def main():
-    p=argparse.ArgumentParser(description="Vintos Music via local ACE-Step")
+    p=argparse.ArgumentParser(description="Vintos Music via Kie.ai Suno V5")
     p.add_argument("--force",action="store_true")
     p.add_argument("--all",action="store_true")
     p.add_argument("--title")

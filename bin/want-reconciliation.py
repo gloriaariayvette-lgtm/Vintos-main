@@ -127,6 +127,17 @@ def main():
                 log(f"  absence retire skipped: {_ae}")
             log(f"FULFILLED ({res.get('channel')}): {w.get('want','')[:90]}")
             log(f"  evidence: {str(res.get('evidence',''))[:110]}")
+            try:   # what fulfilling it actually felt like, read from the lived evidence — one honest read,
+                   # not a blind nudge (fable-wants-p6, 2026-09-05)
+                import sys as _fs; _fp = os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")
+                if _fp not in _fs.path: _fs.path.insert(0, _fp)
+                from emoclaw_utils import feel_about as _feel
+                _quote = str(res.get("evidence", ""))[:800] or str(w.get("want", ""))[:400]
+                _felt = _feel(f"I wanted: {w.get('want','')[:200]}\nWhat actually happened: {_quote}", source="want-fulfilled/lived")
+                log(f"  felt: {_felt or 'nothing moved'}")
+                w["fulfillment_felt"] = str(_felt or "")[:200]
+            except Exception as _fe:
+                log(f"  feel skipped: {_fe}")
     if not fulfilled_now:
         log("Nothing newly fulfilled."); return
     ids = {w.get("id") for w in fulfilled_now}

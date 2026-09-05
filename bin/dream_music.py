@@ -337,6 +337,20 @@ def process_file(fp,force=False):
     log["generated"].append(entry)
     if fp not in log.get("processed_files",[]): log.setdefault("processed_files",[]).append(fp)
     save_log(log); journal(d["title"],tracks,style)
+    try:   # the shares that were in the composer's context now carry this title (grok-creative-p3, 2026-09-05)
+        _sc=json.load(open(fp+".shares.json")); _ids=set(_sc.get("share_ids") or [])
+        if _ids:
+            _shp=os.path.expanduser("~/.vintos/workspace/memory/gloria-music-shares.json"); _shraw=json.load(open(_shp))
+            _shl=_shraw if isinstance(_shraw,list) else _shraw.get("shares",[])
+            _n=0
+            for _x in _shl:
+                if (_x.get("id") or _x.get("timestamp","")) in _ids:
+                    _x.setdefault("influenced_compositions",[])
+                    if d["title"] not in _x["influenced_compositions"]: _x["influenced_compositions"].append(d["title"]); _n+=1
+            json.dump(_shraw,open(_shp,"w"),indent=2); entry["shares_in_context"]=sorted(_ids); save_log(log)
+            print(f"  {_n} of her shares now carry '{d['title']}'")
+    except FileNotFoundError: pass
+    except Exception as _she: print("  share link skip:", _she)
     print(f"\n  '{d['title']}' complete!"); return True
 
 def direct(title,style,desc="",lyrics=""):

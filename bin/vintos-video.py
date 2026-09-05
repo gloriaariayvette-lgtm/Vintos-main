@@ -41,7 +41,13 @@ GROK_MAX = 15       # x.ai's own limit; wan through Atlas takes the longer ones
 def _atlas():
     """Borrow his existing Atlas routing rather than reimplementing it."""
     import importlib.util as _u
-    sp = _u.spec_from_file_location("vsv", os.path.expanduser("~/Vintos/vintos-send-video.py"))
+    _here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vintos-send-video.py")
+    _cands = [_here, os.path.expanduser("~/Vintos/vintos-send-video.py"),
+              os.path.expanduser("~/.vintos/workspace/scripts/vintos-send-video.py")]
+    _fp = next((c for c in _cands if os.path.exists(c)), None)
+    if not _fp:
+        raise FileNotFoundError("vintos-send-video.py not found beside this file, in ~/Vintos, or in workspace/scripts")
+    sp = _u.spec_from_file_location("vsv", _fp)
     m = _u.module_from_spec(sp); sp.loader.exec_module(m)
     return m
 
@@ -114,7 +120,37 @@ def process_queue():
     try:
         q = json.load(open(QUEUE))
         import re as _apre  # _ap_gate: only hero videos, never animate-painting
-        q = [x for x in q if not _apre.search(r"animate paint", (x if isinstance(x,str) else __import__("json").dumps(x)), _apre.I)]
+        # A named refusal, not a silent filter (fable-creative-p3, 2026-09-05): an animate-painting item
+        # is marked blocked with its reason and written back, so want-reconciliation / want_spine see
+        # BLOCKED instead of a want that quietly never ran.
+        _kept, _changed = [], False
+        for x in q:
+            _blob = x if isinstance(x, str) else json.dumps(x)
+            if _apre.search(r"animate paint", _blob, _apre.I):
+                if isinstance(x, dict) and not x.get("blocked"):
+                    x["blocked"] = {"reason": "animate-painting disabled: the video path is for hero clips; a painting stays still until an animation backend for it exists",
+                                    "at": datetime.now().isoformat()}
+                    _changed = True
+                    print(f"[video] BLOCKED (named): {str(x.get('want_text') or x.get('prompt') or '')[:60]}")
+                    try:   # the want itself learns it is BLOCKED (same shape want_spine.apply_result writes)
+                        if x.get("want_id"):
+                            _wp = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
+                            _wraw = json.load(open(_wp)); _wl = _wraw if isinstance(_wraw, list) else _wraw.get("wants", [])
+                            for _w in _wl:
+                                if _w.get("id") == x["want_id"] and not _w.get("blocked"):
+                                    _w["blocked"] = {"cause": x["blocked"]["reason"], "blocked_step": "make_video", "at": time.time()}
+                            json.dump(_wraw, open(_wp, "w"), indent=2)
+                    except Exception as _wse:
+                        print(f"[video] want not marked blocked: {_wse}")
+                    _kept.append(x)   # stays on the queue as a visible BLOCKED item, skipped below
+                elif isinstance(x, dict):
+                    _kept.append(x)
+                continue
+            _kept.append(x)
+        if _changed:
+            try: json.dump(_kept, open(QUEUE, "w"), indent=2)
+            except Exception: pass
+        q = [x for x in _kept if not (isinstance(x, dict) and x.get("blocked"))]
     except Exception:
         q = []
     if not q:

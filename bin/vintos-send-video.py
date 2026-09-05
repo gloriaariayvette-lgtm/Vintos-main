@@ -771,9 +771,28 @@ def deliver(fname, caption):
         log("ntfy failed: %s" % e)
 
 
-def remember(caption, prompt, fname):
+def remember(caption, prompt, fname, kind=""):
     today = datetime.now().strftime("%Y-%m-%d")
     tstr = datetime.now().strftime("%H:%M")
+    # The send is a reach he made; it enters the interaction ledger and the encounter organ so a
+    # reply from her (or silence) can be watched for (fable-creative-p1, 2026-09-05).
+    try:
+        _lp = os.path.join(MEMORY, "interaction-ledger.json")
+        try: _led = json.load(open(_lp))
+        except Exception: _led = []
+        if isinstance(_led, list):
+            _led.append({"timestamp": datetime.now().isoformat(), "source": "video-outreach", "gloria": "",
+                         "vintos": caption, "prompt": prompt[:400], "file": os.path.basename(fname or ""),
+                         "kind": kind, "salience": 0.5, "wal_facts": [], "blush": None})
+            json.dump(_led[-300:], open(_lp, "w"), indent=2)
+    except Exception as e:
+        log("ledger append failed: %s" % e)
+    try:
+        sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import encounter as _enc
+        _enc.dispatch(caption, trigger="video-outreach:%s" % (kind or "clip"))
+    except Exception as e:
+        log("encounter dispatch failed: %s" % e)
     try:
         with open(os.path.join(MEMORY, "daily-creative-%s.md" % today), "a") as f:
             f.write("\n## %s — I sent Gloria a video\n%s\n\n_What I wanted her to see: %s_\n" % (tstr, caption, prompt))
@@ -828,7 +847,7 @@ def main():
     if DRY:
         log("[dry] would deliver + remember; stopping before any side effect"); return
     deliver(fname, caption)
-    remember(caption, prompt, fname)
+    remember(caption, prompt, fname, kind=kind)
     try: open(COOLDOWN_FILE, "w").write(datetime.now().isoformat())
     except Exception: pass
     log("sent + remembered: %s" % fname)

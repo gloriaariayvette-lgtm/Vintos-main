@@ -341,12 +341,22 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
         return None
 
     # Build the share record
+    # The line he actually answered to, not a lyrics dump (grok-creative-p3, 2026-09-05)
+    _line = ""
+    try:
+        _qm = re.findall(r'[“"]([^”"]{12,200})[”"]', response or "")
+        _line = _qm[0].strip() if _qm else ""
+    except Exception:
+        _line = ""
     share = {
+        "id": "SH-" + __import__("hashlib").md5((song_desc + datetime.now().isoformat()).encode()).hexdigest()[:8],
         "timestamp": datetime.now().isoformat(),
         "song": song_desc,
         "gloria_said": gloria_note,
+        "reason": gloria_note,
+        "line_answered": _line,
         "vintos_reflection": response,
-        "influenced_compositions": []  # filled later by dream-music when it references this
+        "influenced_compositions": []  # filled by dream-music when a composition carried this share in its context
     }
 
     shares = load_shares()

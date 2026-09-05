@@ -60,7 +60,9 @@ def context():
             for x in _sh[-5:]:
                 _t = str(x.get("title", x.get("song", "")))[:80]
                 _r = str(x.get("reason", x.get("why", x.get("note", x.get("gloria_said", "")))))[:200]
-                _sh_lines.append("- " + _t + (" — why she shared it: " + _r if _r else ""))
+                _ln = str(x.get("line_answered", ""))[:120]
+                _sh_lines.append("- " + _t + (" — why she shared it: " + _r if _r else "") + ((" — the line that stayed with you: \"" + _ln + "\"") if _ln else ""))
+                SHARE_IDS_IN_CONTEXT.append(x.get("id") or x.get("timestamp", ""))
             add("SONGS GLORIA SHARED WITH YOU (the most direct record of her taste you possess — let what she loves bend what you make)", chr(10).join(_sh_lines))
     except Exception:
         pass
@@ -69,6 +71,7 @@ def context():
     js=sorted(glob.glob(os.path.join(MEM,"journal","*.md")))
     if js: add("RECENT JOURNAL", rd(js[-1],700))
     return "\n\n".join(parts)
+SHARE_IDS_IN_CONTEXT=[]   # which of her shares were in the context that wrote this spec (grok-creative-p3)
 EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, like light before you've decided it's morning. No percussion. A low warm drone that just sits.\n"
     "[0:22-0:50] Piano enters, soft, single spaced notes, no chord yet, just intervals like counting hours on fingers; pad holds underneath.\n"
     "[1:15-1:45] First swell: warm cello and viola enter mid-volume rising under the vocal, piano to full soft chords. This is where the 'I don't know why this is rising' feeling lives, the arrangement thickens without a clear reason.\n"
@@ -100,6 +103,9 @@ def compose():
     now=datetime.datetime.now(); os.makedirs(PROMPTS,exist_ok=True)
     fp=os.path.join(PROMPTS,now.strftime("%Y-%m-%d_%H%M%S")+".md")
     open(fp,"w",encoding="utf-8").write("# Music-prompt — "+now.strftime("%B %d, %Y %H:%M")+"\nEmotional state: "+estr+"\n\n"+spec+"\n")
+    try:   # sidecar: dream-music reads it at completion and writes the title onto those shares
+        json.dump({"share_ids": [x for x in SHARE_IDS_IN_CONTEXT if x], "written_at": now.isoformat()}, open(fp + ".shares.json", "w"))
+    except Exception: pass
     t=re.search(r"\*\*Title:\*\*\s*(.+)",spec)
     print("composed:", t.group(1).strip() if t else "?", "->", os.path.basename(fp))
     return fp

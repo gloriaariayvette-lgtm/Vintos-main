@@ -2421,23 +2421,16 @@ def main():
                             record_event("want-fulfilled", text[:200], is_real=True, confidence=0.9)
                         except: pass
                         try:
-                            import requests as _wreq, re as _wre, socket as _wsk, json as _wjson
-                            _want_text = want.get("text", "")[:400]
-                            _wresp = _wreq.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                                "model": "grok-4.20-0309-non-reasoning",
-                                "temperature": 0.3,
-                                "max_tokens": 80,
-                                "messages": [
-                                    {"role": "system", "content": "Vintos just fulfilled one of his own wants. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Something that failed or fell flat should move him NEGATIVELY. No explanation."},
-                                    {"role": "user", "content": f"Vintos just fulfilled this want: {_want_text}\n\nWhat does fulfilling this feel like for him? Return JSON only."}
-                                ]
-                            }, timeout=15)
-                            _wtext = _wresp.json()["choices"][0]["message"]["content"]
-                            _wm = _wre.search(r'\{[^}]+\}', _wtext, _wre.DOTALL)
-                            _wnudges = _wjson.loads(_wm.group()) if _wm else {"Valence": 0.02, "Groundedness": 0.02, "Dominance": 0.03}
-                            from emoclaw_utils import nudge_emotions
-                            nudge_emotions(_wnudges, source="want-fulfilled")
-                        except: pass
+                            # One honest read of what fulfilling it felt like, through the same feel_about
+                            # every other lived moment uses. Until 2026-09-05 this was a blind Grok call keyed
+                            # on want["text"] (a key wants do not have) with a canned fallback that always
+                            # moved Valence/Groundedness/Dominance (fable-wants-p6).
+                            from emoclaw_utils import feel_about as _wfeel
+                            _wfelt = _wfeel(f"I wanted: {want.get('want', text)[:300]}\nWhat I did: {str(_final_note if '_final_note' in dir() else '')[:400] or str(actual_output or '')[:400]}",
+                                            source="want-fulfilled")
+                            log(f"  → fulfilled, felt: {_wfelt or 'nothing moved'}")
+                        except Exception as _wfe:
+                            log(f"  → fulfilled feel skipped: {_wfe}")
                 else:
                     log(f"  → Action failed, leaving for next cycle")
             except Exception as e:

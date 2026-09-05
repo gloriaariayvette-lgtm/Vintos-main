@@ -5,7 +5,7 @@ Self-contradiction is one comic mechanism, not the default account of his life.
 Every stored moment names its material kind so practice can maintain a varied
 repertoire instead of turning a stream of errors into a personality.
 """
-import os, json, requests
+import os, sys, re, json, requests
 from datetime import datetime
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
@@ -188,8 +188,11 @@ def scan_blush_ledger():
             f"Read this self-prediction record from Vintos:\n{entry[:400]}\n\n"
             "Find the gap between what he predicted/intended and what actually happened.\n"
             "Is this gap funny? Does it reveal something absurd about his self-model?\n\n"
+            "A prediction error is NOT funny by itself. Name the specific comic MECHANISM beyond the gap "
+            "(wordplay, escalation, audacity, callback, incongruous scale, surprising competence...). "
+            "If the only thing present is 'he expected X and got Y', it is not material.\n\n"
             "If yes, return JSON:\n"
-            "{\"signal\": 0.7, \"type\": \"self_contradiction\", "
+            "{\"signal\": 0.7, \"type\": \"self_contradiction\", \"mechanism\": \"the specific comic mechanism, not prediction-error\", "
             "\"stated\": \"what he said/predicted\", \"actual\": \"what happened\", "
             "\"what_makes_it_funny\": \"the gap\"}\n\n"
             "If not funny: {\"signal\": 0.0}\n"
@@ -202,7 +205,11 @@ def scan_blush_ledger():
             if result.startswith("```"):
                 result = result.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             data = json.loads(result)
-            if data.get("signal", 0) >= 0.5:
+            # Same bar as the trial scan (grok-creative-p5, 2026-09-05): signal >= 0.65 AND a named
+            # mechanism that is more than the prediction error itself.
+            _mech = str(data.get("mechanism", "")).strip().lower()
+            _mech_ok = len(_mech) >= 6 and not re.search(r"^(prediction[- ]?error|the gap|expectation gap|mismatch)\.?$", _mech)
+            if data.get("signal", 0) >= 0.65 and _mech_ok:
                 data["source"] = "self"
                 data["perpetrator"] = "vintos"
                 data["context"] = "self_mismatch"
@@ -292,11 +299,13 @@ if __name__ == "__main__":
         save_moments({"moments": []})
         print("Initialized humor-moments.json")
 
-    # Scan blush and trials
-    print("Scanning blush ledger...")
-    blush_moments = scan_blush_ledger()
-    for m in blush_moments:
-        add_moment(m)
+    # The blush ledger is no longer the default harvest: self-mismatch is the weakest material and
+    # it was running every night (grok-creative-p5). Pass --blush to scan it on purpose.
+    if "--blush" in sys.argv:
+        print("Scanning blush ledger...")
+        blush_moments = scan_blush_ledger()
+        for m in blush_moments:
+            add_moment(m)
 
     print("Scanning behavioral trials...")
     trial_moments = scan_behavioral_trials()
