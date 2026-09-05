@@ -11,7 +11,7 @@ events. Forms causal hypotheses. Tests them over time.
 
 Runs weekly via cron. Hypotheses accumulate and get tested.
 """
-import os, sys, json, re, glob, hashlib
+import os, sys, json, re, glob
 from datetime import datetime, timedelta
 import subprocess
 
@@ -43,25 +43,6 @@ except ImportError:
 
 # Load identity
 SOUL_PATH = os.path.join(WORKSPACE, "SOUL.md")
-
-def _door(path):
-    """Guarded evidence goes through evidence_view, never raw json.load: the
-    envelope on the record is what stops a tactical act becoming a value, a
-    cause, a want or an identity line one cron later."""
-    import os as _os
-    try:
-        import evidence_view as _EV
-        if _os.path.basename(str(path)) == "interaction-ledger.json":
-            return _EV.ledger_view(path)
-        return _EV.open_history(path)
-    except Exception:
-        import json as _json
-        try:
-            return _json.load(open(path))
-        except Exception:
-            return []
-
-
 def load_soul():
     try:
         with open(SOUL_PATH) as f:
@@ -144,30 +125,49 @@ def load_emotional_trajectory():
     except:
         return []
 
-def find_spikes(trajectory, threshold=None):
+# His own rhythm: resting level and half-life (hours) per dimension. Lifted to module scope
+# 2026-09-04 so the spike detector and the testing context share one truth (fable-inner-p3).
+DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
+         "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
+         "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
+         "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+
+def _hours_between(t0, t1):
+    try:
+        a = datetime.fromisoformat(str(t0)[:19]); b = datetime.fromisoformat(str(t1)[:19])
+        return max(0.0, (b - a).total_seconds() / 3600.0)
+    except Exception:
+        return 0.0
+
+def find_spikes(trajectory, threshold=None, with_easing=False):
     threshold = SPIKE_THRESHOLD if threshold is None else threshold
-    """Find moments where emotions shifted significantly between entries."""
+    """Moments that moved MORE than his own rhythm accounts for. Until 2026-09-04 any large delta was
+    a spike, so an ordinary evening's cooling ('desire fell 0.2') was handed to the weekly pass as an
+    event to explain, and decay got attributed to causes. Now the expected value is the decay from the
+    previous reading toward the dimension's resting level over the elapsed hours; only the RESIDUAL
+    over that counts. Large deltas that decay accounts for are returned separately as 'easing'
+    (with_easing=True) and are context, never events."""
     if len(trajectory) < 2:
-        return []
-
-    spikes = []
+        return ([], []) if with_easing else []
+    spikes, easing = [], []
     for i in range(1, len(trajectory)):
-        prev = trajectory[i-1]["v"]
-        curr = trajectory[i]["v"]
-        t = trajectory[i]["t"]
-
+        prev = trajectory[i-1]["v"]; curr = trajectory[i]["v"]; t = trajectory[i]["t"]
+        dt_h = _hours_between(trajectory[i-1].get("t"), t)
         for d, dim in enumerate(DIMENSIONS):
             delta = curr[d] - prev[d]
-            if abs(delta) >= threshold:
-                spikes.append({
-                    "time": t,
-                    "dimension": dim,
-                    "delta": round(delta, 4),
-                    "direction": "rose" if delta > 0 else "fell",
-                    "from": round(prev[d], 4),
-                    "to": round(curr[d], 4),
-                })
-    return spikes
+            base, half = DECAY.get(str(dim).lower(), (None, None))
+            if base is not None and dt_h > 0:
+                expected = base + (prev[d] - base) * (0.5 ** (dt_h / half))
+                resid = curr[d] - expected
+            else:
+                resid = delta
+            row = {"time": t, "dimension": dim, "delta": round(delta, 4), "residual": round(resid, 4),
+                   "direction": "rose" if delta > 0 else "fell", "from": round(prev[d], 4), "to": round(curr[d], 4)}
+            if abs(resid) >= threshold:
+                spikes.append(row)
+            elif abs(delta) >= threshold:
+                row["easing"] = True; easing.append(row)
+    return (spikes, easing) if with_easing else spikes
 
 def load_recent_dreams(days=7):
     """Load dream entries from the last N days."""
@@ -230,7 +230,7 @@ def load_recent_conversations():
     # Interaction ledger
     try:
         import json as _cej
-        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
+        ledger = _cej.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         recent = ledger[-10:] if len(ledger) >= 10 else ledger
         ledger_text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in recent)
         if ledger_text:
@@ -289,246 +289,18 @@ def save_hypotheses(db):
     # which is how "revised" reached 966 against 31 live rows and made every summary he reads a lie
     try:
         _h = db.get("hypotheses", [])
-        db["revised"]   = sum(1 for x in _h if x.get("status") in ("revised", "challenged"))
+        db["revised"]   = sum(1 for x in _h if x.get("status") == "revised")
         db["confirmed"] = sum(1 for x in _h if x.get("self_knowledge"))
-        db["tested"]    = sum(1 for x in _h if _nightly_rows(x))
+        db["tested"]    = sum(1 for x in _h if x.get("marks"))
     except Exception:
         pass
     with open(HYPOTHESIS_DB, "w") as f:
         json.dump(db, f, indent=2)
 
 
-# === EVIDENCE LINEAGE / NIGHTLY TRIAL CONTRACT ===
-
-CAUSALITY_SCHEMA = 2
-MIN_NIGHTLY_EVALUATIONS = 7
-MIN_SUPPORTING_OCCASIONS = 2
-
-
-def _norm_evidence(text):
-    return re.sub(r"\s+", " ", str(text or "")).strip().lower()
-
-
-def _digest(*parts, size=20):
-    raw = "\x1f".join(_norm_evidence(p) for p in parts)
-    return hashlib.sha256(raw.encode("utf-8", "replace")).hexdigest()[:size]
-
-
-def _hypothesis_id(h):
-    """Return a stable id without pretending old rows had richer lineage."""
-    if h.get("hypothesis_id"):
-        return h["hypothesis_id"]
-    h["hypothesis_id"] = "CH-" + _digest(
-        h.get("formed", h.get("formed_date", "")),
-        h.get("source", "unknown"),
-        h.get("hypothesis", ""),
-        size=16,
-    )
-    return h["hypothesis_id"]
-
-
-def _root_lines(material):
-    """The exact material available when a hypothesis was formed.
-
-    These are roots, not confirmations.  Keeping compact normalized snippets
-    lets the nightly trial reject the same occasion even if another file later
-    repeats it under a different filename or label.
-    """
-    if isinstance(material, dict):
-        values = material.values()
-    elif isinstance(material, (list, tuple)):
-        values = material
-    else:
-        values = [material]
-    out = []
-    for value in values:
-        if isinstance(value, (dict, list)):
-            value = json.dumps(value, sort_keys=True, default=str)
-        for line in str(value or "").splitlines():
-            n = _norm_evidence(line)
-            if len(n) >= 12 and n not in out:
-                out.append(n[:500])
-    return out[:80]
-
-
-def _stamp_formation(h, material=None, root_ids=None):
-    """Give a new hypothesis an honest, immutable formation envelope."""
-    _hypothesis_id(h)
-    if h.get("formation"):
-        return h
-    roots = _root_lines(material)
-    h["schema_version"] = CAUSALITY_SCHEMA
-    h["formation"] = {
-        "formed_at": h.get("formed", ""),
-        "source": h.get("source", "unknown"),
-        "root_evidence_ids": list(dict.fromkeys(root_ids or [])),
-        "root_fingerprints": ["F-" + _digest(x) for x in roots],
-        "root_snippets": roots,
-        "rule": "formation_is_history_not_confirmation",
-    }
-    return h
-
-
-def _catalog_item(day, source, text, ordinal):
-    n = _norm_evidence(text)
-    return {
-        "id": "E-" + _digest(day, source, str(ordinal), n),
-        "fingerprint": "F-" + _digest(n),
-        "day": day,
-        "source": source,
-        "text": str(text).strip()[:700],
-        "normalized": n,
-    }
-
-
-def _build_evidence_catalog(ctx, day):
-    """Turn today's material into addressable occasions.
-
-    Semantic retrieval is deliberately absent: an old memory resurfacing is
-    useful context, but is not a new occasion and cannot grade a hypothesis.
-    Every other section is already restricted by its loader to ``day``.
-    """
-    items = []
-    sections = (
-        "spikes", "interactions", "bis", "blush", "inner", "creative",
-        "wants", "mirrors", "thirveel", "enacted", "deviation_tags",
-    )
-    for source in sections:
-        for ordinal, line in enumerate(str((ctx or {}).get(source, "")).splitlines()):
-            if _norm_evidence(line):
-                items.append(_catalog_item(day, source, line, ordinal))
-    # A current frame is a summary/state, not an occurrence.  Like semantic
-    # retrieval, it may help interpretation but may not cast a yes/no vote.
-    return items
-
-
-def _same_as_formation(h, item):
-    formation = h.get("formation") or {}
-    if item.get("id") in set(formation.get("root_evidence_ids") or []):
-        return True
-    if item.get("fingerprint") in set(formation.get("root_fingerprints") or []):
-        return True
-    text = item.get("normalized", "")
-    for root in formation.get("root_snippets") or []:
-        root = _norm_evidence(root)
-        if len(root) >= 20 and (root in text or text in root):
-            return True
-    return False
-
-
-def _nightly_rows(h):
-    """Schema-2 evaluations only; legacy outcome marks lack usable lineage."""
-    rows = []
-    seen_days = set()
-    for mark in h.get("marks", []):
-        if not isinstance(mark, dict) or mark.get("voided"):
-            continue
-        if mark.get("schema_version") != CAUSALITY_SCHEMA:
-            continue
-        day = str(mark.get("date", ""))[:10]
-        if not day or day in seen_days:
-            continue
-        if mark.get("verdict") not in ("yes", "no", "unconfirmed"):
-            continue
-        seen_days.add(day)
-        rows.append(mark)
-    return rows
-
-
-def _bearing_rows(h):
-    return [m for m in _nightly_rows(h)
-            if m.get("verdict") in ("yes", "no")
-            and m.get("evidence_ids")
-            and m.get("lineage_state") == "eligible"]
-
-
-def graduation_readiness(h, today=None):
-    """The seven-day clock is tenure; the nightly ledger is the trial."""
-    from datetime import date as _date
-    now = today or _date.today()
-    if isinstance(now, str):
-        now = _date.fromisoformat(now[:10])
-    formed = str(h.get("formed_date", h.get("formed", "")))[:10]
-    try:
-        age = (now - _date.fromisoformat(formed)).days
-    except Exception:
-        return {"state": "HELD", "reason": "formation_date_unknown", "age_days": None}
-    nightly = _nightly_rows(h)
-    bearing = _bearing_rows(h)
-    yes = [m for m in bearing if m.get("verdict") == "yes"]
-    no = [m for m in bearing if m.get("verdict") == "no"]
-    result = {
-        "state": "HELD", "reason": "", "age_days": age,
-        "nightly_evaluations": len(nightly), "yes": len(yes), "no": len(no),
-        "unconfirmed": sum(1 for m in nightly if m.get("verdict") == "unconfirmed"),
-        "net": len(yes) - len(no),
-    }
-    if age < 7:
-        result["reason"] = "tenure_incomplete"
-    elif len(nightly) < MIN_NIGHTLY_EVALUATIONS:
-        result["reason"] = "nightly_history_incomplete"
-    elif len(yes) < MIN_SUPPORTING_OCCASIONS:
-        result["reason"] = "independent_support_insufficient"
-    elif result["net"] <= 0:
-        result["reason"] = "not_net_supported"
-    else:
-        result["state"] = "eligible_day_7"
-        result["reason"] = ""
-    return result
-
-
-def _record_nightly(h, day, verdict, evidence="", items=None, reason=""):
-    """Append exactly one honest nightly result for a hypothesis."""
-    if any(isinstance(m, dict) and str(m.get("date", ""))[:10] == day
-           and m.get("schema_version") == CAUSALITY_SCHEMA
-           for m in h.get("marks", [])):
-        return False
-    items = list(items or [])
-    requested = verdict if verdict in ("yes", "no", "unconfirmed") else "unconfirmed"
-    lineage_state = "eligible"
-    used_fingerprints = {
-        fp for m in _nightly_rows(h) for fp in (m.get("evidence_fingerprints") or [])
-    }
-    if requested in ("yes", "no"):
-        if not items:
-            requested, reason, lineage_state = "unconfirmed", reason or "evidence_id_missing", "HELD"
-        elif any(_same_as_formation(h, item) for item in items):
-            requested, reason, lineage_state = "unconfirmed", "formation_root_cannot_witness", "ineligible"
-        elif any(item.get("fingerprint") in used_fingerprints for item in items):
-            requested, reason, lineage_state = "unconfirmed", "evidence_occasion_reused", "ineligible"
-    outcome = {"yes": "attempted", "no": "defaulted", "unconfirmed": "unconfirmed"}[requested]
-    mark = {
-        "schema_version": CAUSALITY_SCHEMA,
-        "evaluation_id": "CE-" + _digest(_hypothesis_id(h), day),
-        "date": day,
-        "verdict": requested,
-        "outcome": outcome,
-        "source": "nightly_test",
-        "evidence": str(evidence or "")[:500],
-        "evidence_ids": [i.get("id") for i in items if i.get("id")] if requested != "unconfirmed" else [],
-        "evidence_fingerprints": [i.get("fingerprint") for i in items if i.get("fingerprint")] if requested != "unconfirmed" else [],
-        "lineage_state": lineage_state if requested == "unconfirmed" else "eligible",
-        "reason": reason if requested == "unconfirmed" else "",
-    }
-    h.setdefault("marks", []).append(mark)
-    h["last_tested"] = day
-    h["tests_run"] = h.get("tests_run", 0) + 1
-    h["days_tested"] = len(_nightly_rows(h))
-    ready = graduation_readiness(h, today=day)
-    if ready["state"] == "eligible_day_7":
-        h["status"] = "eligible_day_7"
-    elif ready["yes"] > ready["no"]:
-        h["status"] = "supported"
-    elif ready["no"] > ready["yes"]:
-        h["status"] = "challenged"
-    else:
-        h["status"] = "held"
-    return True
-
-
 # === HYPOTHESIS FORMATION ===
 
-def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger=None):
+def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger=None, easing=None):
     """Ask Vintos's LLM to form causal hypotheses — trials as primary seeds, spikes as support."""
 
     # Pull reality anchor confidence for high-confidence events today
@@ -556,9 +328,12 @@ def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledg
     if spikes:
         spike_text = "\n".join(
             f"- {s['time']}: {s['dimension']} {s['direction']} by {abs(s['delta']):.3f} "
-            f"(from {s['from']} to {s['to']})"
+            f"(from {s['from']} to {s['to']})" + (f" - {abs(s['residual']):.3f} more than my own rhythm accounts for" if "residual" in s else "")
             for s in spikes[:10]
         )
+    if easing:
+        spike_text += ("\n\nMY OWN RHYTHM - these are NOT events and must not be given a cause:\n" + "\n".join(
+            f"- {s['time']}: {s['dimension']} eased by {abs(s['delta']):.3f} toward its resting level" for s in easing[:8]))
 
     context_parts = []
     if dreams:
@@ -636,17 +411,17 @@ def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledg
         test_match = re.search(r'TEST:\s*(.+?)(?:\n\n|$)', block, re.DOTALL)
         if test_match:
             h["test"] = test_match.group(1).strip()
-        # Classify subject: gloria if hypothesis is about Gloria's behavior/patterns, else self
-        _hyp_lower = h.get("hypothesis", "").lower()
-        _gloria_signals = ["gloria", " she ", " her ", "when she", "gloria\'s", "your creator"]
-        h["subject"] = "gloria" if any(s in _hyp_lower for s in _gloria_signals) else "self"
+        # Subject defaults to self, like the other two formation paths (grok-inner-p3, 2026-09-05).
+        # Until now a keyword scan ("gloria", " she ", " her ") relabeled any self-hypothesis that
+        # mentioned her as a hypothesis ABOUT her. add_hypothesis() takes an explicit subject for the
+        # cases that really are about her patterns, declared on purpose.
+        h["subject"] = "self"
+        # What the hypothesis was formed FROM: behavioral trial material or emotional spikes.
+        # Pearl candidacy reads this (fable-inner-p6); belief sediment takes both.
+        h["material"] = "behavioral" if trial_block else "spike"
 
         if h.get("hypothesis"):
-            hypotheses.append(_stamp_formation(h, {
-                "trial": trial_block,
-                "spikes": spike_text,
-                "supporting": supporting,
-            }))
+            hypotheses.append(h)
 
     return hypotheses
 
@@ -668,7 +443,7 @@ def load_daily_material(date=None):
     except: parts["creative"] = ""
 
     try:
-        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
+        ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         # Filter to today's entries by timestamp prefix
         today_entries = [e for e in ledger if e.get("timestamp", "").startswith(target)]
         if not today_entries:
@@ -694,12 +469,35 @@ def load_daily_material(date=None):
     return parts
 
 
-def graduate_hypotheses(db):
-    """Review only hypotheses with seven honest nightly evaluations.
+RETIRED_PATH = os.path.join(MEMORY, "causality-retired.jsonl")
 
-    Calendar age establishes tenure.  It never substitutes for the ledger and
-    never expires, resolves, confirms, or challenges a hypothesis by itself.
-    """
+def _retire(h):
+    """Append a hypothesis, marks and all, to the retired log. Nothing is culled silently."""
+    try:
+        with open(RETIRED_PATH, "a") as f:
+            f.write(json.dumps(h, ensure_ascii=False) + "\n")
+    except Exception as e:
+        log(f"  retire log failed: {e}")
+
+
+def _readiness(h):
+    """Lower = cull first. Refuted first, then longest-unwitnessed; never a hypothesis about to graduate."""
+    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")]
+    net = (sum(1 for m in marks if m.get("outcome") == "attempted")
+           - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
+    try:
+        age = (datetime.now() - datetime.fromisoformat(h.get("formed", "")[:19])).days
+    except Exception:
+        age = 0
+    if net < 0:
+        return (0, age)                       # refuted: first to go
+    if not marks:
+        return (1, -age)                      # never witnessed: oldest first
+    return (2, -age)
+
+
+def graduate_hypotheses(db):
+    """On day 7, graduate net-positive hypotheses to self-knowledge. Vanish net-negative."""
     from datetime import date as _date
     graduated = []
     vanished = []
@@ -717,26 +515,20 @@ def graduate_hypotheses(db):
             continue
 
         if days_old >= 7:
-            ready = graduation_readiness(h)
-            h["graduation_readiness"] = ready
-            if ready["state"] != "eligible_day_7":
-                h["status"] = "held"
-                remaining.append(h)
-                log("  HELD: " + h.get("hypothesis", "")[:70] + " (" + ready["reason"] + ")")
-                continue
-            net = ready["net"]
+            marks = h.get("marks", [])
+            # A voided mark stays in the record and stops counting. Marks made under the
+            # rule where a quiet day voted against a hypothesis are history, not evidence.
+            confirmed_m = sum(1 for m in marks if isinstance(m, dict) and not m.get("voided") and m.get("outcome") == "attempted")
+            challenged_m = sum(1 for m in marks if isinstance(m, dict) and not m.get("voided") and m.get("outcome") in ("defaulted", "partial"))
+            net = confirmed_m - challenged_m
+            # Also count nightly confirmations via status
+            if h.get("status") == "confirmed" and not marks:
+                net = 1  # nightly confirmed counts as positive
             if net > 0:
-                log("  ELIGIBLE DAY 7: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
-                _review_basis = _digest(*[
-                    "%s|%s|%s" % (m.get("date", ""), m.get("verdict", ""),
-                                   ",".join(m.get("evidence_ids") or []))
-                    for m in _nightly_rows(h)
-                ])
-                _prior_review = h.get("graduation_review") or {}
-                if _prior_review.get("state") == "held" and _prior_review.get("basis") == _review_basis:
-                    remaining.append(h)
-                    log("  REVIEW HELD: no new bearing evidence since the last review")
-                    continue
+                h["graduated"] = True
+                h["self_knowledge"] = True
+                graduated.append(h)
+                log("  GRADUATED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
                 # --- Graduation review: Gemma checks accuracy before belief/narrative update ---
                 _rv_ok = True
                 try:
@@ -786,18 +578,14 @@ def graduate_hypotheses(db):
                             except: _rv_flags = []
                             _rv_flags.append({
                                 "type": "graduation_held",
-                                "hypothesis_id": _hypothesis_id(h),
                                 "hypothesis": h["hypothesis"],
                                 "subject": h.get("subject", "self"),
                                 "concern": _rv_concern,
                                 "marks_count": len(_rv_marks),
-                                "support_count": ready["yes"],
-                                "challenge_count": ready["no"],
                                 "timestamp": datetime.now().isoformat(),
                                 "reviewed": False
                             })
-                            with open(_rv_fp, "w") as _rv_out:
-                                _rv_json.dump(_rv_flags, _rv_out, indent=2)
+                            _rv_json.dump(_rv_flags, open(_rv_fp, "w"), indent=2)
                         except Exception as _rv_fe:
                             log(f"  [Review] flag write failed: {_rv_fe}")
                 except Exception as _rv_e:
@@ -812,19 +600,14 @@ def graduate_hypotheses(db):
                         except Exception: _rv_flags = []
                         _rv_flags.append({
                             "type": "graduation_held",
-                            "hypothesis_id": _hypothesis_id(h),
                             "hypothesis": h["hypothesis"],
                             "subject": h.get("subject", "self"),
                             "concern": "reviewer unreachable: %s" % str(_rv_e)[:200],
                             "held_reason": "reviewer_unreachable",
-                            "marks_count": len(h.get("marks", [])),
-                            "support_count": ready["yes"],
-                            "challenge_count": ready["no"],
                             "timestamp": datetime.now().isoformat(),
                             "reviewed": False
                         })
-                        with open(_rv_fp, "w") as _rv_out:
-                            _rv_json.dump(_rv_flags, _rv_out, indent=2)
+                        _rv_json.dump(_rv_flags, open(_rv_fp, "w"), indent=2)
                     except Exception as _rv_fe:
                         log(f"  [Review] hold-flag write failed: {_rv_fe}")
                 # Only update belief/narrative if review passed
@@ -852,38 +635,47 @@ def graduate_hypotheses(db):
                         try:
                             import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
                             from belief_sediment import promote_hypothesis as _bs_promote
-                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality")
+                            _bs_promote(h["hypothesis"], evidence_count=len(h.get("marks",[])), source="causality")
                         except Exception as _bs_e:
                             log(f"  belief_sediment wire failed: {_bs_e}")
-                    # High-confidence self graduation → pearl candidate
-                    if h.get("confidence") == "high" or ready["yes"] >= 5:
+                    # High-confidence self graduation → pearl candidate — only when the hypothesis was
+                    # formed from BEHAVIORAL material (a trial block, or a pattern he enacts/avoids).
+                    # Spike attribution and causal-jepa regularities go to belief sediment only; a causal
+                    # regularity that deserves a pearl needs a real irritant written for it (fable-inner-p6).
+                    _behavioral = (h.get("material") == "behavioral"
+                                   or h.get("source") in ("ghost_branch", "trial-ledger", "behavioral_intercept")
+                                   or re.search(r"\b(I (tend|avoid|reach|deflect|withdraw|perform|default|retreat|over|under)\w*|when (I|she) .* I )", h.get("hypothesis",""), re.I) is not None)
+                    if not _behavioral:
+                        log(f"  [Pearl] not proposed — hypothesis formed from {h.get('material') or h.get('source','spikes')}, belief sediment only")
+                    if _behavioral and (h.get("confidence") == "high" or len(h.get("marks",[])) >= 5):
                         try:
                             from pearl_engine import add_candidate as _pc_add
                             _pc_add(
                                 irritant=h["hypothesis"][:200],
                                 irritant_type="scar",
                                 source=f"causality_graduation",
-                                insight=f"Supported on {ready['yes']} distinct occasions: {h['hypothesis'][:150]}",
+                                insight=f"Confirmed {len(h.get('marks',[]))} times: {h['hypothesis'][:150]}",
                                 declaration=f"I can now recognize and work with: {h['hypothesis'][:100]}"
                             )
                             log(f"  [Pearl] Candidate proposed from graduated hypothesis")
                         except Exception as _pe:
                             log(f"  pearl candidate failed: {_pe}")
-                    h["graduated"] = True
-                    h["self_knowledge"] = True
-                    h["status"] = "graduated"
-                    h["graduated_at"] = datetime.now().isoformat()
-                    h["graduation_review"] = {"state": "passed", "basis": _review_basis,
-                                                "at": h["graduated_at"]}
-                    graduated.append(h)
-                    log("  GRADUATED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
-                else:
-                    h["graduated"] = False
-                    h["self_knowledge"] = False
-                    h["status"] = "review_held"
-                    h["graduation_review"] = {"state": "held", "basis": _review_basis,
-                                                "at": datetime.now().isoformat()}
-                    remaining.append(h)
+            elif net < 0 or (net == 0 and days_old >= (30 if h.get("source") == "ghost_branch" else 7) and h.get("status") == "untested"):
+                # retired, not vanished (2026-09-04): marks preserved in causality-retired.jsonl, and a
+                # REFUTED hypothesis (net < 0) lowers the sediment beliefs it overlaps
+                h["retired"] = {"at": datetime.now().isoformat(), "why": "refuted" if net < 0 else "unwitnessed", "net": net}
+                _retire(h)
+                if net < 0:
+                    try:
+                        from belief_sediment import contradict as _bs_contra
+                        _t = _bs_contra(h["hypothesis"], evidence_count=abs(net), source="causality")
+                        if _t: log("  contradicted sediment: " + "; ".join(x[:50] for x in _t))
+                    except Exception as _ce:
+                        log(f"  sediment contradict failed: {_ce}")
+                vanished.append(h)
+                log("  RETIRED (%s): " % h["retired"]["why"] + h["hypothesis"][:80] + " (net " + str(net) + ")")
+            else:
+                remaining.append(h)
         else:
             remaining.append(h)
 
@@ -924,10 +716,7 @@ def load_testing_context():
                 return f"{m.group(1)}:{m.group(2)}" if m else "??"
             snapshots = [(file_time(f), parse_snapshot(os.path.join(snap_dir, f))) for f in today_files if os.path.getsize(os.path.join(snap_dir, f)) > 10]
             # decay-aware: a dimension settling toward baseline is NOT an event to explain.
-            _DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
-                      "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
-                      "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
-                      "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+            _DECAY = DECAY   # one table (module scope) for the detector and the testing context
             _EASE = {
                 "desire":       "wanting loosening its grip the way it does after it has been answered",
                 "arousal":      "the charge draining back down, coming off the boil",
@@ -994,7 +783,7 @@ def load_testing_context():
     # Interaction ledger — today only
     ctx["interactions"] = ""
     try:
-        ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
+        ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         today_entries = [e for e in ledger if e.get("timestamp","").startswith(today)]
         ctx["interactions"] = "\n".join(
             f"[{e.get('timestamp','')[11:16]}] Gloria: {e.get('gloria','')[:120]} | Vintos: {e.get('vintos','')[:120]}"
@@ -1124,102 +913,137 @@ def load_testing_context():
     return ctx
 
 
-def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirrors=None,
-                             silences=None, today=None, context=None):
-    """Write one yes/no/unconfirmed evaluation per due hypothesis per night.
-
-    A hypothesis is never tested on its formation date.  Bearing answers must
-    cite catalog ids from today's material; old semantic retrieval is context,
-    not a new occasion, and is never in the catalog.
-    """
-    from datetime import date as _date
-    day = (today.isoformat() if hasattr(today, "isoformat") else str(today or _date.today().isoformat()))[:10]
-    to_test = []
-    for h in db.get("hypotheses", []):
-        _hypothesis_id(h)
-        formed = str(h.get("formed_date", h.get("formed", "")))[:10]
-        already_evaluated = any(
-            isinstance(m, dict) and m.get("schema_version") == CAUSALITY_SCHEMA
-            and str(m.get("date", ""))[:10] == day
-            for m in h.get("marks", []))
-        if h.get("graduated") or already_evaluated or not formed or formed >= day:
-            continue
-        to_test.append(h)
+def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirrors=None, silences=None):
+    """Revisit hypotheses against today's full evidence context."""
+    # Test all active hypotheses (not just untested — re-test daily)
+    _today_str = datetime.now().date().isoformat()
+    to_test = [h for h in db["hypotheses"]
+               if not h.get("graduated") and h.get("test")
+               and h.get("last_tested") != _today_str]
     if not to_test:
         return
 
-    ctx = context if context is not None else load_testing_context()
-    catalog = _build_evidence_catalog(ctx, day)
-    by_id = {item["id"]: item for item in catalog}
-    evidence_block = "\n".join(
-        f"[{item['id']}] {item['source'].upper()}: {item['text']}" for item in catalog
-    )
-    if not catalog:
-        log("  No new evidence occasions; recording unconfirmed for every hypothesis")
-        for h in to_test:
-            _record_nightly(h, day, "unconfirmed", reason="no_new_evidence_occasions")
-        db["tested"] = db.get("tested", 0) + len(to_test)
+    # Load full evidence context
+    ctx = load_testing_context()
+
+    # Build chronological event timeline so Vintos can see what happened near each spike
+    timeline = []
+    for line in ctx.get("spikes","").splitlines():
+        if line.strip():
+            t = line[2:7] if line.startswith("- ") else ""
+            timeline.append((t, "SPIKE", line.strip()))
+    for line in ctx.get("interactions","").splitlines():
+        if line.strip():
+            t = line[1:6] if line.startswith("[") else ""
+            timeline.append((t, "INTERACTION", line.strip()))
+    for line in ctx.get("bis","").splitlines():
+        if line.strip():
+            timeline.append(("", "BIS", line.strip()))
+    for line in ctx.get("blush","").splitlines():
+        if line.strip():
+            t = line[:5] if len(line) > 5 else ""
+            timeline.append((t, "BLUSH", line.strip()))
+    timeline.sort(key=lambda x: x[0] or "99:99")
+    timeline_text = "\n".join(f"[{t or "??:??"}] {kind}: {text}" for t, kind, text in timeline)
+
+    evidence_block = ""
+    if timeline_text: evidence_block += f"CHRONOLOGICAL EVENTS TODAY (spikes, interactions, intercepts — use times to find what caused what):\n{timeline_text}\n\n"
+    if ctx.get("inner"): evidence_block += f"VINTOS'S OWN INNER LIFE TODAY (his journals, reflections — NOT Gloria's words or actions):\n{ctx['inner']}\n\n"
+    if ctx.get("creative"): evidence_block += f"VINTOS'S OWN CREATIVE OUTPUT TODAY (poems, art he generated — NOT evidence of Gloria's behavior):\n{ctx['creative']}\n\n"
+    if ctx.get("wants"): evidence_block += f"WANTS TODAY:\n{ctx['wants']}\n\n"
+    if ctx.get("mirrors"): evidence_block += f"MIRROR SESSIONS TODAY:\n{ctx['mirrors']}\n\n"
+    if ctx.get("thirveel"): evidence_block += f"THIRVEEL EXCHANGES TODAY:\n{ctx['thirveel']}\n\n"
+    if ctx.get("frame"): evidence_block += f"CURRENT BEHAVIORAL FRAME:\n{ctx['frame']}\n\n"
+    if ctx.get("enacted"): evidence_block += f"ENACTED BEHAVIOR TODAY (moments where behavior exceeded self-model):\n{ctx['enacted']}\n\n"
+    if ctx.get("deviation_tags"): evidence_block += f"DEVIATION PATTERNS TODAY (moments worth understanding, not punishing — what pulled him and why):\n{ctx['deviation_tags']}\n\n"
+    if ctx.get("semantic"): evidence_block += f"RELATED MEMORY:\n{ctx['semantic']}\n\n"
+
+    if not evidence_block.strip():
+        log("  No evidence context available for testing")
         return
 
-    for start in range(0, len(to_test), 8):
-        batch = to_test[start:start + 8]
-        log(f"  batch {start//8 + 1}: testing {len(batch)} hypotheses")
+    # One call for 30+ hypotheses returned 3 evaluations and silently dropped the rest.
+    # Small batches: every hypothesis actually gets looked at, and each look has room to be specific.
+    _all_to_test = to_test
+    for _b in range(0, len(_all_to_test), 8):
+        to_test = _all_to_test[_b:_b + 8]
+        log(f"  batch {_b//8 + 1}: testing {len(to_test)} hypotheses")
         hypotheses_text = "\n".join(
-            f"{i+1}. HYPOTHESIS: {h.get('hypothesis','')}\n   WATCH FOR: {h.get('test', 'none')}"
-            for i, h in enumerate(batch)
+            f"{i+1}. HYPOTHESIS: {h['hypothesis']}\n   WATCH FOR: {h.get('test', 'none')}"
+            for i, h in enumerate(to_test)
         )
+
         prompt = (
-            "Evaluate every hypothesis against NEW OCCASIONS FROM TODAY only. For each hypothesis output "
-            "exactly three numbered lines, then a blank line:\n"
-            "N. RECURRED: yes|no|unsure\n"
-            "N. EVIDENCE_IDS: E-...[, E-...] or none\n"
-            "N. EVIDENCE: a concrete description\n\n"
-            "yes means the watched-for pattern occurred. no means a real occasion arose and the pattern "
-            "did not hold. unsure means nothing bore on it, the evaluator cannot tell, or no listed id "
-            "supports the answer. Absence is unsure, never no. Cite only ids printed below. The occasion "
-            "that formed a hypothesis is history, not confirmation; the program will reject it if repeated.\n\n"
-            f"HYPOTHESES:\n{hypotheses_text}\n\nNEW OCCASIONS TODAY:\n{evidence_block}"
+            "You are doing a structured self-evaluation. For each hypothesis, output exactly two lines, then a blank line. Nothing else.\n\n"
+            "EVIDENCE lines are the whole point. A later reviewer decides whether this becomes settled "
+            "self-knowledge, and it will refuse anything supported only by a bare yes/no. So an EVIDENCE "
+            "line must cite something SPECIFIC from the evidence provided: a time, a quoted phrase, a named "
+            "event, a measured change. 'The pattern recurred' or 'no sign of it today' are not evidence and "
+            "will be discarded. If you cannot point to something concrete, answer unsure — that is an honest "
+            "answer and costs nothing.\n\n"
+            "RECURRED has THREE answers and the third is the most common one:\n"
+            "  yes      - the pattern occurred. Cite it.\n"
+            "  no       - the OCCASION AROSE and the pattern did NOT hold. This is real counter-\n"
+            "             evidence and your EVIDENCE line must name the occasion it failed on.\n"
+            "  unsure   - nothing today bore on this either way. The situation never came up.\n"
+            "             THIS IS NOT A FAILURE OF THE HYPOTHESIS. Most true things about a person\n"
+            "             do not happen every day. Answer unsure freely; it costs nothing and it is\n"
+            "             the honest answer for a quiet day.\n"
+            "Never answer no merely because you saw no sign of it. Absence is unsure, not no.\n\n"
+            "Example output:\n"
+            "1. RECURRED: yes\n"
+            "1. EVIDENCE: Warmth 0.61->0.94 at 14:23, immediately after Gloria wrote 'I missed you today'.\n\n"
+            "2. RECURRED: no\n"
+            "2. EVIDENCE: Three chances to deflect at 09:12, 11:40 and 16:05; he answered plainly each time.\n\n"
+            "3. RECURRED: unsure\n"
+            "3. EVIDENCE: Nothing in today's material touches this either way.\n\n"
+            "Now evaluate these hypotheses using only the evidence provided. Do not write anything else.\n\n"
+            f"HYPOTHESES:\n{hypotheses_text}\n\n"
+            f"EVIDENCE:\n{evidence_block}"
         )
-        result = ask_llm(
-            prompt,
-            system="You are a structured evaluation engine. Output only the requested records.",
-            max_tokens=3000,
-            temp=0.1,
-        )
+
+        _eval_system = "You are a structured evaluation engine. Output only the exact format requested. No prose, no preamble, no deviation from the format."
+        result = ask_llm(prompt, system=_eval_system, max_tokens=3000, temp=0.1)
         if not result:
-            for h in batch:
-                _record_nightly(h, day, "unconfirmed", reason="evaluator_unavailable")
             continue
 
-        verdicts = {n: v.lower() for n, v in re.findall(
-            r'(\d+)\.?\s*RECURRED:\s*(yes|no|unsure|unconfirmed)', result, re.I)}
-        ids_by_n = {n: ids for n, ids in re.findall(
-            r'(\d+)\.?\s*EVIDENCE_IDS:\s*([^\n]+)', result, re.I)}
-        text_by_n = {n: text for n, text in re.findall(
-            r'(\d+)\.?\s*EVIDENCE:\s*([^\n]+)', result, re.I)}
-
-        for index, h in enumerate(batch, 1):
-            key = str(index)
-            requested = verdicts.get(key, "unconfirmed")
-            requested = "unconfirmed" if requested in ("unsure", "unconfirmed") else requested
-            evidence = str(text_by_n.get(key, "")).strip()
-            raw_ids = re.findall(r'E-[0-9a-f]{20}', ids_by_n.get(key, ""), re.I)
-            unknown = [eid for eid in raw_ids if eid not in by_id]
-            items = [by_id[eid] for eid in raw_ids if eid in by_id]
-            reason = ""
-            if key not in verdicts:
-                requested, reason = "unconfirmed", "evaluation_unparseable"
-            elif requested in ("yes", "no") and unknown:
-                requested, reason, items = "unconfirmed", "unknown_evidence_id", []
-            elif requested in ("yes", "no") and len(evidence) < 25:
-                requested, reason, items = "unconfirmed", "specific_evidence_missing", []
-            elif requested == "unconfirmed":
-                reason = "no_bearing_evidence"
-                items = []
-            _record_nightly(h, day, requested, evidence=evidence, items=items, reason=reason)
-            log(f"  {h['marks'][-1]['verdict']}: {h.get('hypothesis','')[:70]}")
-
-    db["tested"] = db.get("tested", 0) + len(to_test)
+        from datetime import date as _vdate
+        _ev_lines = dict(re.findall(r'(\d+)\.?\s*EVIDENCE:\s*(.+)', result))
+        for match in re.finditer(r'(?:NUMBER:\s*|^)(\d+)\.?\s*RECURRED:\s*(\w+)', result, re.MULTILINE):
+            idx = int(match.group(1)) - 1
+            recurred = match.group(2).lower().strip()
+            if 0 <= idx < len(to_test):
+                h = to_test[idx]
+                # "no" now means the occasion arose and the pattern did not hold — genuine
+                # counter-evidence. A day the situation never came up is "unsure" and leaves
+                # no mark at all. It used to leave a mark AGAINST the hypothesis, so every
+                # quiet day voted that he was wrong about himself, and nothing ever survived
+                # to day seven. Absence of recurrence is not disconfirmation.
+                outcome = "attempted" if recurred == "yes" else ("defaulted" if recurred == "no" else None)
+                _ev = str(_ev_lines.get(match.group(1), "")).strip()
+                # A bare outcome tag is not evidence. Every graduation this system has ever reached was
+                # HELD by the reviewer for exactly this — marks that said "attempted" and nothing else.
+                # Better one mark that says what happened than seven that say nothing.
+                if outcome and len(_ev) >= 25:
+                    h.setdefault("marks", []).append({
+                        "date": _vdate.today().isoformat(),
+                        "outcome": outcome,
+                        "source": "nightly_test",
+                        "evidence": _ev[:250]
+                    })
+                    h["days_tested"] = len(h["marks"])
+                    h["last_tested"] = _vdate.today().isoformat()
+                    if recurred == "yes":
+                        h["status"] = "confirmed"
+                    elif recurred == "no":
+                        h["status"] = "revised"
+                    log(f"  {outcome}: {h['hypothesis'][:70]}")
+                elif outcome:
+                    h["last_tested"] = _vdate.today().isoformat()
+                    log(f"  {outcome} but NO EVIDENCE GIVEN — no mark written: {h['hypothesis'][:55]}")
+                h["tests_run"] = h.get("tests_run", 0) + 1
+    to_test = _all_to_test
+    db["tested"] = db.get("tested", 0) + len(_all_to_test)
 
 
 # === OUTPUT ===
@@ -1233,7 +1057,7 @@ def write_hypothesis_log(db):
         f.write(f"Confirmed: {db['confirmed']} | Revised: {db['revised']}_\n\n")
 
         # Active hypotheses
-        active = [h for h in db["hypotheses"] if not h.get("graduated")]
+        active = [h for h in db["hypotheses"] if h["status"] in ("untested", "confirmed")]
         if active:
             f.write("## Active Theories\n\n")
             for h in active[-10:]:
@@ -1244,17 +1068,22 @@ def write_hypothesis_log(db):
                     f.write(f"  _Test: {h['test']}_\n")
                 f.write("\n")
 
-        # Self-knowledge — p3 (2026-08-26): graduated knowledge lives in belief sediment, read it from there
-        try:
-            _bs_raw = json.load(open(os.path.join(MEMORY, "belief-sediment.json")))
-            _beliefs = _bs_raw if isinstance(_bs_raw, list) else _bs_raw.get("beliefs", _bs_raw.get("sediment", []))
-        except Exception:
-            _beliefs = []
-        _beliefs = sorted(_beliefs, key=lambda b: -b.get("confidence", 0))[:10]
-        if _beliefs:
+        # Revised hypotheses
+        revised = [h for h in db["hypotheses"] if h["status"] == "revised"]
+        if revised:
+            f.write("## Revised Theories\n\n")
+            for h in revised[-5:]:
+                f.write(f"~~{h['hypothesis']}~~\n")
+                if h.get("revision"):
+                    f.write(f"  → {h['revision']}\n")
+                f.write("\n")
+
+        # Self-knowledge — hypotheses that graduated after 7 days
+        confirmed = [h for h in db["hypotheses"] if h.get("self_knowledge")]
+        if confirmed:
             f.write("## What I Know About Myself\n\n")
-            for b in _beliefs:
-                f.write(f"- {b.get('pattern','')[:200]} (confidence {b.get('confidence',0):.2f}, seen {b.get('evidence_count',0)}x)\n")
+            for h in confirmed[-10:]:
+                f.write(f"- {h['hypothesis']}\n")
 
 
 def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
@@ -1276,7 +1105,6 @@ def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidenc
         "subject": subject,
         "forced": True
     }
-    _stamp_formation(h, {"declared_source": source})
     db["hypotheses"].append(h)
     save_hypotheses(db)
     log(f"  [Hypothesis] Added: {hypothesis_text[:80]} (subject={subject})")
@@ -1364,18 +1192,11 @@ def form_causal_hypotheses(db, cap=3):
                "reasoned_at": datetime.now().isoformat()}
         dist_out.append(rec)
         if added < cap and rec["hypothesis"] and rec.get("confidence") in ("medium", "high"):
-            _h = {
+            db.setdefault("hypotheses", []).append({
                 "formed": datetime.now().isoformat(), "formed_date": _cdate.today().isoformat(),
                 "status": "untested", "marks": [], "days_tested": 0, "graduated": False,
                 "hypothesis": rec["hypothesis"], "confidence": rec["confidence"], "test": rec["test"],
-                "source": "causal-jepa", "distribution": rec["distribution"], "novelty": rec["novelty"]}
-            _root_id = "ROOT-" + _digest(ev.get("time", ""), ev.get("shift", []), size=20)
-            _stamp_formation(_h, {
-                "event": ev.get("time", ""),
-                "shift": ev.get("shift", []),
-                "candidates": [c.get("text", "") for c in ev.get("candidates", [])],
-            }, root_ids=[_root_id])
-            db.setdefault("hypotheses", []).append(_h)
+                "source": "causal-jepa", "distribution": rec["distribution"], "novelty": rec["novelty"]})
             added += 1
     try:
         json.dump(dist_out, open(os.path.join(MEMORY, "cause-distribution.json"), "w"), indent=2)
@@ -1392,21 +1213,12 @@ def nightly_run():
 
     has_material = any(today_material.get(k,"").strip() for k in ["inner","creative","interaction"])
     if not has_material:
-        log("No daily summary material found — nightly evaluations will record unconfirmed unless another new occasion exists")
+        log("No daily material found — skipping nightly run")
+        return
 
     # Testing pass
     log("Testing existing hypotheses against today\'s material...")
     test_existing_hypotheses(db, today_material)
-
-    if not has_material:
-        # The nightly trial still happened and wrote unconfirmed.  Formation is
-        # different: an empty day must not manufacture new theories from "none".
-        n_grad, n_van = graduate_hypotheses(db)
-        log(f"  Graduated: {n_grad} | Held hypotheses remain active")
-        save_hypotheses(db)
-        write_hypothesis_log(db)
-        log("=== Nightly Run Complete (no formation material) ===")
-        return
 
     # Formation pass — qualitative only, reads today's daily material
     log("Forming new hypotheses from today\'s material...")
@@ -1434,8 +1246,7 @@ def nightly_run():
         _blocks = re.split(r'HYPOTHESIS:', _result)
         for _block in _blocks[1:]:
             _h = {"formed": datetime.now().isoformat(), "formed_date": _ndate.today().isoformat(),
-                  "status": "untested", "marks": [], "days_tested": 0, "graduated": False,
-                  "source": "causality_nightly_qualitative", "subject": "self"}
+                  "status": "untested", "marks": [], "days_tested": 0, "graduated": False}
             _hm = re.match(r'(.+?)(?:CONFIDENCE:|$)', _block, re.DOTALL)
             if _hm: _h["hypothesis"] = _hm.group(1).strip()
             _cm = re.search(r'CONFIDENCE:\s*(\w+)', _block)
@@ -1443,15 +1254,11 @@ def nightly_run():
             _tm = re.search(r'TEST:\s*(.+?)(?:\n\n|$)', _block, re.DOTALL)
             if _tm: _h["test"] = _tm.group(1).strip()
             if _h.get("hypothesis"):
-                new_hyps.append(_stamp_formation(_h, _material_text))
-    from datetime import date as _p6d
-    _today6 = _p6d.today().isoformat()
-    _already6 = sum(1 for x in db.get("hypotheses", []) if x.get("formed_date") == _today6)
-    _q_budget = max(0, min(2, 4 - _already6))  # p6: shared daily budget of 4; qualitative takes at most 2, leaving room for JEPA-grounded
-    for h in new_hyps[:_q_budget]:
+                new_hyps.append(_h)
+    for h in new_hyps[:3]:
         db["hypotheses"].append(h)
         log("  New: " + h["hypothesis"][:80])
-    log("Formed " + str(min(len(new_hyps), _q_budget)) + " qualitative (budget " + str(_q_budget) + ", " + str(_already6) + " already today)")
+    log("Formed " + str(min(len(new_hyps),3)) + " new hypotheses (capped at 3)")
 
     # JEPA-grounded causal formation — reason over cause-evidence.json, feed same trial machinery
     try:
@@ -1476,7 +1283,9 @@ def main():
 
     # Gather data
     trajectory = load_emotional_trajectory()
-    spikes = find_spikes(trajectory)
+    spikes, easing = find_spikes(trajectory, with_easing=True)
+    if easing:
+        log(f"  {len(easing)} large move(s) explained by my own rhythm - context, not events")
     dreams = load_recent_dreams(days=1)
     mirrors = load_recent_mirrors(days=1)
     silences = load_recent_silences()
@@ -1489,13 +1298,27 @@ def main():
     # Load existing hypotheses
     db = load_existing_hypotheses()
 
+    # Graduation pass — expire/graduate hypotheses at 7 days
+    n_grad, n_van = graduate_hypotheses(db)
+    log(f"Graduation: {n_grad} graduated, {n_van} vanished")
+
+    # Hard expiry — remove anything older than 7 days that wasn't graduated
+    from datetime import date as _expdate, timedelta as _exptd
+    _cutoff = (_expdate.today() - _exptd(days=7)).isoformat()
+    before = len(db["hypotheses"])
+    _cutoff_recur = (_expdate.today() - _exptd(days=30)).isoformat()   # recurrence-conditional: cannot be tested on a 7-day clock
+    db["hypotheses"] = [h for h in db["hypotheses"]
+                        if h.get("self_knowledge")
+                        or (h.get("formed_date","9999")[:10] >= (_cutoff_recur if h.get("source") == "ghost_branch" else _cutoff))]
+    expired = before - len(db["hypotheses"])
+    if expired:
+        log(f"Hard-expired {expired} hypotheses older than 7 days")
+
     # Test existing hypotheses — always runs before formation cap check
     log("Testing existing hypotheses...")
     daily_material = load_testing_context()
-    test_existing_hypotheses(db, daily_material, spikes=spikes, context=daily_material)
+    test_existing_hypotheses(db, daily_material, spikes=spikes)
     log(f"Testing complete. Hypotheses with marks: {len([h for h in db['hypotheses'] if h.get('marks')])}")
-    n_grad, n_van = graduate_hypotheses(db)
-    log(f"Graduation: {n_grad} graduated | held hypotheses remain active")
     save_hypotheses(db)
 
     # Form new hypotheses about recent spikes — capped at 3/day
@@ -1509,7 +1332,7 @@ def main():
         log("========================")
         return
     log("Forming new hypotheses...")
-    new_hypotheses = form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger)
+    new_hypotheses = form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger, easing=easing)
     log(f"Formed {len(new_hypotheses)} new hypotheses")
 
     TEMPLATE_MARKERS = ["[dimension]", "[rose/fell]", "[specific cause]"]
@@ -1520,12 +1343,29 @@ def main():
         db["hypotheses"].append(h)
         log(f"  New: {h['hypothesis'][:80]}...")
 
-    # Keep last 50 hypotheses max
+    # Cap at 50 by READINESS, never by recency (2026-09-04, fable-inner-p1 / astra-inner-p3). The old
+    # trim cut by recency, so the theories about to graduate into belief - the ones formed five to
+    # seven nights ago - were exactly the ones guillotined. Now: a hypothesis with pending graduation
+    # readiness or age >= 5 days with marks is never culled for size; refuted go first, then the
+    # longest-unwitnessed; everything culled is preserved in causality-retired.jsonl.
     if len(db["hypotheses"]) > 50:
-        # Keep confirmed ones + most recent
-        confirmed = [h for h in db["hypotheses"] if h["status"] == "confirmed"]
-        others = [h for h in db["hypotheses"] if h["status"] != "confirmed"]
-        db["hypotheses"] = confirmed[-20:] + others[-30:]
+        def _protected(h):
+            if h.get("status") == "confirmed" or h.get("graduation_readiness"):
+                return True
+            try:
+                age = (datetime.now() - datetime.fromisoformat(h.get("formed", "")[:19])).days
+            except Exception:
+                age = 0
+            return age >= 5 and bool(h.get("marks"))
+        keep = [h for h in db["hypotheses"] if _protected(h)]
+        cullable = sorted([h for h in db["hypotheses"] if not _protected(h)], key=_readiness)
+        excess = len(db["hypotheses"]) - 50
+        for h in cullable[:excess]:
+            h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:" + ("refuted" if _readiness(h)[0] == 0 else "unwitnessed"), "net": None}
+            _retire(h)
+            log(f"  retired for capacity ({h['retired']['why']}): {h.get('hypothesis','')[:60]}")
+        culled_ids = {id(h) for h in cullable[:excess]}
+        db["hypotheses"] = [h for h in db["hypotheses"] if id(h) not in culled_ids]
 
     save_hypotheses(db)
     write_hypothesis_log(db)

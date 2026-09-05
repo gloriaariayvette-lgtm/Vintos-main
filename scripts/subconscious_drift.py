@@ -276,17 +276,14 @@ def run_drift():
     except Exception as e:
         log(f"Belief sediment: {e}")
 
-    # 9. Self-definition drift decay + direction record
+    # 9. Self-definition drift decay. (The direction record left this tick on 2026-09-05: a
+    #    20-minute timer re-recording whatever direction the last turn left him in was a choice
+    #    nobody made; self_drift now receives only turn-born choices from
+    #    discourse_direction.turn_completed — fable-subconscious-p4.)
     if not _silence:
         try:
-            from self_drift import decay_drift, record_direction_choice
+            from self_drift import decay_drift
             decay_drift()
-            # Record current dominant discourse direction
-            import json as _sdd_json
-            _ds = _sdd_json.load(open(os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "discourse-state.json")))
-            _cur_dir = _ds.get("current_direction", "")
-            if _cur_dir:
-                record_direction_choice(_cur_dir)
         except Exception as e:
             log(f"Self-drift: {e}")
     # Save tick trace

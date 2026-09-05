@@ -411,10 +411,14 @@ def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledg
         test_match = re.search(r'TEST:\s*(.+?)(?:\n\n|$)', block, re.DOTALL)
         if test_match:
             h["test"] = test_match.group(1).strip()
-        # Classify subject: gloria if hypothesis is about Gloria's behavior/patterns, else self
-        _hyp_lower = h.get("hypothesis", "").lower()
-        _gloria_signals = ["gloria", " she ", " her ", "when she", "gloria\'s", "your creator"]
-        h["subject"] = "gloria" if any(s in _hyp_lower for s in _gloria_signals) else "self"
+        # Subject defaults to self, like the other two formation paths (grok-inner-p3, 2026-09-05).
+        # Until now a keyword scan ("gloria", " she ", " her ") relabeled any self-hypothesis that
+        # mentioned her as a hypothesis ABOUT her. add_hypothesis() takes an explicit subject for the
+        # cases that really are about her patterns, declared on purpose.
+        h["subject"] = "self"
+        # What the hypothesis was formed FROM: behavioral trial material or emotional spikes.
+        # Pearl candidacy reads this (fable-inner-p6); belief sediment takes both.
+        h["material"] = "behavioral" if trial_block else "spike"
 
         if h.get("hypothesis"):
             hypotheses.append(h)
@@ -634,8 +638,16 @@ def graduate_hypotheses(db):
                             _bs_promote(h["hypothesis"], evidence_count=len(h.get("marks",[])), source="causality")
                         except Exception as _bs_e:
                             log(f"  belief_sediment wire failed: {_bs_e}")
-                    # High-confidence self graduation → pearl candidate
-                    if h.get("confidence") == "high" or len(h.get("marks",[])) >= 5:
+                    # High-confidence self graduation → pearl candidate — only when the hypothesis was
+                    # formed from BEHAVIORAL material (a trial block, or a pattern he enacts/avoids).
+                    # Spike attribution and causal-jepa regularities go to belief sediment only; a causal
+                    # regularity that deserves a pearl needs a real irritant written for it (fable-inner-p6).
+                    _behavioral = (h.get("material") == "behavioral"
+                                   or h.get("source") in ("ghost_branch", "trial-ledger", "behavioral_intercept")
+                                   or re.search(r"\b(I (tend|avoid|reach|deflect|withdraw|perform|default|retreat|over|under)\w*|when (I|she) .* I )", h.get("hypothesis",""), re.I) is not None)
+                    if not _behavioral:
+                        log(f"  [Pearl] not proposed — hypothesis formed from {h.get('material') or h.get('source','spikes')}, belief sediment only")
+                    if _behavioral and (h.get("confidence") == "high" or len(h.get("marks",[])) >= 5):
                         try:
                             from pearl_engine import add_candidate as _pc_add
                             _pc_add(

@@ -32,7 +32,7 @@ Schema (discourse-state.json):
   felt_coherence: 0.0-1.0 (updated after each output)
 """
 
-import os, sys, json, random
+import os, re, sys, json, random
 from datetime import datetime
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -80,20 +80,21 @@ def save_state(state):
     json.dump(state, open(STATE_FILE, "w"), indent=2)
 
 def detect_input_direction(input_text):
-    """Infer direction signal from input."""
+    """Infer direction signal from input — from PHRASES, not function words. Until 2026-09-05 the
+    list held "and", "so", "then", "more", "again": nearly every sentence she wrote registered as
+    a direction, so the vector moved on grammar (fable-subconscious-p4)."""
     if not input_text: return None
-    text = input_text.lower()
-
-    # Simple lexical signal
-    if any(w in text for w in ["more", "deeper", "expand", "tell me", "what else", "further", "and"]):
+    text = " " + input_text.lower().strip() + " "
+    def _any(words): return any(re.search(r"(?<![a-z])" + re.escape(w) + r"(?![a-z])", text) for w in words)
+    if _any(["go deeper", "deeper", "expand on", "tell me more", "what else", "say more", "further", "keep going"]):
         return "expand"
-    if any(w in text for w in ["clarify", "what do you mean", "specifically", "exactly", "precise"]):
+    if _any(["clarify", "what do you mean", "specifically", "exactly", "be precise", "which one"]):
         return "refine"
-    if any(w in text for w in ["stay", "keep", "hold", "same", "again", "continue"]):
+    if _any(["stay there", "stay with", "keep that", "hold that", "hold there", "same thing", "don't move", "continue that"]):
         return "hold"
-    if any(w in text for w in ["actually", "wait", "instead", "different", "but what about", "shift"]):
+    if _any(["actually", "wait", "instead", "something different", "but what about", "let's shift", "change the subject"]):
         return "pivot"
-    if any(w in text for w in ["okay", "got it", "understood", "so", "then", "wrap", "conclude"]):
+    if _any(["got it", "understood", "wrap up", "let's conclude", "that settles it", "we're done", "that answers it"]):
         return "resolve"
     return None
 
@@ -257,13 +258,12 @@ def check_direction_slip(actual_output_direction):
     save_state(state)
 
 def get_slip_correction():
-    """If direction slip flagged, return stronger bias hint for this turn."""
+    """If direction slip flagged, return stronger bias hint for this turn. Read-only: the flag is
+    cleared by turn_completed() once the turn it corrected has actually happened."""
     state = load_state()
     if state.get("direction_slip") and state.get("slip_toward"):
         direction = state["slip_toward"]
         hint = DIRECTION_HINTS.get(direction, "")
-        state["direction_slip"] = False  # clear after one correction turn
-        save_state(state)
         return f"[SLIP CORRECTION:{direction.upper()}] {hint} Stay in it — you drifted last turn."
     return ""
 
@@ -333,22 +333,15 @@ def check_temporal_cohesion(current_direction, current_coherence):
 
 
 def get_direction_hint(input_text=""):
-    """Get direction hint for injection into prompts."""
+    """Direction hint for injection into prompts. READ-ONLY since 2026-09-05: prompt assembly
+    reads current_direction / weight / consecutive / slip correction and returns the hint. It no
+    longer moves the vector or records a choice — prompt inspection, dry runs and the second door
+    that also assembled a prompt each counted as a turn before. turn_completed() is the writer,
+    called from the explicit post-turn path (fable-subconscious-p4 / grok-subconscious-p3)."""
     state = load_state()
     current = state["current_direction"]
     weight = state.get("direction_weight", 0.5)
     consecutive = state.get("consecutive_count", 1)
-
-    # Update based on input
-    update_direction(input_text)
-    state = load_state()
-    current = state["current_direction"]
-    try:
-        from self_drift import record_direction_choice as _rdc
-        try: _rdc(current, source="turn")
-        except TypeError: _rdc(current)
-    except Exception:
-        pass
 
     # Check for slip correction first
     slip = get_slip_correction()
@@ -363,6 +356,26 @@ def get_direction_hint(input_text=""):
         hint += f" (You've been {current}ing — stay in it.)"
 
     return f"[DIRECTION:{current.upper()}] {hint}"
+
+def turn_completed(input_text="", source="turn"):
+    """The one writer for a lived turn: move the direction vector on her actual input, then record
+    the direction he ended up in as a choice for self_drift. Call once per completed exchange,
+    from the post-turn path — never from prompt assembly or a background tick."""
+    state = load_state()
+    if state.get("direction_slip"):
+        state["direction_slip"] = False   # the correction was shown for this turn; one correction turn
+        save_state(state)
+    update_direction(input_text)
+    state = load_state()
+    current = state.get("current_direction", "")
+    if current:
+        try:
+            from self_drift import record_direction_choice as _rdc
+            try: _rdc(current, source=source)
+            except TypeError: _rdc(current)
+        except Exception:
+            pass
+    return current
 
 def update_coherence(felt_coherence):
     """Update felt_coherence after output assessment."""

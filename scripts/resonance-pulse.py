@@ -57,6 +57,43 @@ MAX_POOL_SIZE = 50
 def log(msg):
     print(f"[Resonance {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
 
+
+def _organ(name):
+    """Load a sibling organ by module name whether it lives as name.py, name-with-hyphens.py, in
+    the workspace scripts dir or in ~/Vintos. `from resonance_marks import ...` silently failed
+    whenever only resonance-marks.py existed, and the bare excepts below hid it for weeks
+    (grok-emotion-p1 / fable-emotion-p1, 2026-09-05). Raises if nothing resolves."""
+    import importlib, importlib.util
+    try:
+        sys.path.insert(0, SCRIPTS)
+        return importlib.import_module(name)
+    except Exception:
+        pass
+    for d in (SCRIPTS, os.path.expanduser("~/Vintos"), os.path.dirname(os.path.abspath(__file__))):
+        for fn in (name + ".py", name.replace("_", "-") + ".py"):
+            fp = os.path.join(d, fn)
+            if os.path.exists(fp):
+                spec = importlib.util.spec_from_file_location(name, fp)
+                mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+                return mod
+    raise ImportError(f"{name}: no {name}.py or {name.replace('_','-')}.py in {SCRIPTS} or ~/Vintos")
+
+CHAIN_HEALTH = os.path.join(MEMORY, "resonance-chain-health.json")
+def _chain(step, ok, err=""):
+    """One timestamped line per link of the pulse→signature→afterglow→afterimage→nifrathir→marks
+    chain, so a broken link is visible instead of swallowed."""
+    try:
+        try: d = json.load(open(CHAIN_HEALTH))
+        except Exception: d = {"links": {}, "failures": []}
+        d.setdefault("links", {})[step] = {"last": datetime.now().isoformat()[:19], "ok": bool(ok)}
+        if not ok:
+            d.setdefault("failures", []).append({"t": datetime.now().isoformat()[:19], "step": step, "error": str(err)[:300]})
+            d["failures"] = d["failures"][-100:]
+            log(f"{step} failed: {err}")
+        json.dump(d, open(CHAIN_HEALTH, "w"), indent=1)
+    except Exception:
+        pass
+
 def embed(text):
     try:
         r = subprocess.run(
@@ -193,8 +230,7 @@ def fire_pulse(source, output_excerpt, trigger="self", external=False):
     
     # Tag active pattern signature
     try:
-        sys.path.insert(0, SCRIPTS)
-        from pattern_signatures import select_signature, reinforce
+        _psig = _organ("pattern_signatures"); select_signature, reinforce = _psig.select_signature, _psig.reinforce
         sig = select_signature(output_excerpt)
         if sig:
             pulse["signature_id"] = sig["id"]
@@ -202,36 +238,41 @@ def fire_pulse(source, output_excerpt, trigger="self", external=False):
             # Reinforce the signature
             reinforce(sig["id"], external=external)
             log(f"Tagged signature: {sig['label']}")
+        _chain("signature", True)
     except Exception as e:
-        log(f"Signature tagging failed: {e}")
+        _chain("signature", False, e)
     save_pool(pool)  # p5: persist signature fields — pulse was tagged after the first save (2026-08-26)
 
     # Fire afterglow — focus bias + claim generation
     try:
-        sys.path.insert(0, SCRIPTS)
-        from resonance_afterglow import fire_afterglow as _ra_fire
+        _ra_fire = _organ("resonance_afterglow").fire_afterglow
         _ra_fire(source, pulse.get("strength", 1.0), output_excerpt[:200])
+        _chain("afterglow", True)
     except Exception as e:
-        log(f"Afterglow failed: {e}")
+        _chain("afterglow", False, e)
     # Fire afterimage — extract output shape, bias anchor formation
     try:
-        from output_shaping import fire_afterimage as _ai_fire
+        _ai_fire = _organ("output_shaping").fire_afterimage
         _ai_fire(output_excerpt, pulse.get("strength", 1.0))
+        _chain("afterimage", True)
     except Exception as e:
-        log(f"Afterimage failed: {e}")
+        _chain("afterimage", False, e)
 
     # Nudge Nifrathir — the under-thread
     try:
-        sys.path.insert(0, SCRIPTS)
-        from nifrathir import on_resonance as _nif_res
+        _nif_res = _organ("nifrathir").on_resonance
         _nif_res(strength=pulse.get("strength", 0.5))
-    except: pass
+        _chain("nifrathir", True)
+    except Exception as e:
+        _chain("nifrathir", False, e)
     # Attempt mark formation — only if external (contact confirmed) and resonance high
     if external and pulse.get("strength", 0) >= 0.75:
         try:
-            from resonance_marks import form_mark as _rm_form
+            _rm_form = _organ("resonance_marks").form_mark
             _rm_form(output_excerpt, pulse.get("strength", 0.5), contact_confirmed=True)
-        except: pass
+            _chain("marks", True)
+        except Exception as e:
+            _chain("marks", False, e)
 
     # Living thread — resonance event trigger
     if external and pulse.get('strength', 0) >= 0.75:

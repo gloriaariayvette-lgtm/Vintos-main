@@ -53,7 +53,7 @@ CLAIMS_FILE = os.path.join(MEMORY, "resonance-claims.json")
 SATISFACTION_FILE = os.path.join(MEMORY, "resonance-satisfaction.json")
 
 FOCUS_BIAS_DURATION_MINUTES = 35
-CONTRADICTION_THRESHOLD = -0.3
+CONTRADICTION_THRESHOLD = 0.05  # p3 (2026-08-26): nomic embeddings of short identity claims never reach -0.3; near-zero similarity is the real signature of opposed claims
 CONTRADICTION_PRESSURE_THRESHOLD = 3
 SATISFACTION_CAP = 1.0
 MAX_CLAIMS = 30
@@ -339,12 +339,35 @@ def decay_claims():
             c["fading"] = True
     save_claims(data)
     log(f"Decayed {len(data['claims'])} claims")
+    # Satisfaction is earned, not recorded: the weekly pass also lets it settle toward 0 (same 0.95,
+    # floor 0.0), so the initiation window and the affirmation fragments have to be re-earned
+    # (grok-emotion-p3, 2026-09-05). load_satisfaction's between-bump half-life still applies.
+    try:
+        sat = load_satisfaction()
+        before = float(sat.get("level", 0.0) or 0.0)
+        sat["level"] = round(max(0.0, before * 0.95), 3)
+        save_satisfaction(sat)
+        log(f"Satisfaction settled {before:.3f} -> {sat['level']:.3f}")
+    except Exception as e:
+        log(f"Satisfaction decay failed: {e}")
 
 # === SATISFACTION ===
 
 def load_satisfaction():
-    try: return json.load(open(SATISFACTION_FILE))
+    try: data = json.load(open(SATISFACTION_FILE))
     except: return {"level": 0.0, "history": []}
+    # p4 (2026-08-26): satisfaction decays between bumps (half-life ~3.5 days) — earned, not a recording
+    try:
+        hist = data.get("history", [])
+        if hist and data.get("level", 0) > 0:
+            import math as _m
+            last = datetime.fromisoformat(hist[-1]["timestamp"])
+            hours = (datetime.now() - last).total_seconds() / 3600.0
+            if hours > 1:
+                data["level"] = round(data["level"] * _m.exp(-hours / 120.0), 3)
+    except Exception:
+        pass
+    return data
 
 def save_satisfaction(data):
     json.dump(data, open(SATISFACTION_FILE, "w"), indent=2)
