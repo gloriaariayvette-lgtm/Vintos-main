@@ -5,8 +5,9 @@
                                          + THE OTHER TWO FINALS (take this up in turn 1)
 Usage: make-room-context.py [YYYYMMDD]   (default: today)"""
 import os, re, sys, glob, datetime, importlib.util
+_ARGS = list(sys.argv)   # captured BEFORE the review module import blanks argv (2026-09-05: the day was read after, so it was always today)
 spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv = ["x"]; spec.loader.exec_module(cr)
-day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y%m%d")
+day = _ARGS[1] if len(_ARGS) > 1 else datetime.datetime.now().strftime("%Y%m%d")
 LENSES = ("fable", "astra", "grok")
 TURNS = int(os.environ.get("ROOM_TURNS", "10"))
 ROOM_RULES = (
@@ -90,6 +91,8 @@ def _done_block():
 open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
 for lens in LENSES:
     own, n = own_review(lens); others = [l for l in LENSES if l != lens]
+    if n == 0:
+        raise SystemExit(f"no {lens} section reviews or final for {day} in {cr.STAGE} - refusing to build a room context with nothing in it")
     doc = (persona + "\n\n" + AMENDED + "\n\n" + _done_block()
            + f"\n\n# ===== YOUR OWN REVIEW, through {lens} ({n} part(s): every section, then your final) =====\n\n" + (own or f"(no {lens} review staged for {day})")
            + "".join(f"\n\n# ===== THE FINAL through {o} (address this in turn 1) =====\n\n" + final_of(o) for o in others))
