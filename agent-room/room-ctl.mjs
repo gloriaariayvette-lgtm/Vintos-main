@@ -29,7 +29,7 @@ else if (cmd === 'watch') {
   console.log(`watching ${code}; waiting for ${want || 'any number of'} replies. Ctrl-C to stop.`);
   for (;;) {
     const ms = (await post({ action:'messages', code, cursor })).messages; cursor += ms.length;
-    for (const m of ms) { if (m.type === 'sys') { console.log(`  (room) ${m.text}`); continue; } if (m.type === 'status') { console.log(`  (${m.name} is working)`); continue; }
+    for (const m of ms) { if (m.type === 'sys') { console.log(`  (room) ${m.text}`); continue; } if (m.type === 'status' || /^\[STATUS\]/.test(m.text || '')) { console.log(`  (${m.name} is working)`); continue; }
       const lens = m.name !== HOST; console.log(`\n===== ${m.name} · ${new Date(m.time).toLocaleTimeString()} =====\n${m.text}\n`);
       if (lens) { got++; seen.add(m.name); } }
     if (want && got >= want) { console.log(`ALL IN: ${[...seen].join(', ')} have spoken (${got} replies).`); process.exit(0); }
@@ -39,7 +39,7 @@ else if (cmd === 'watch') {
 }
 else if (cmd === 'state') { const ts = await post({ action:'turnState', code }); const sw = await post({ action:'sweep', code }); console.log(`room ${code} (${sw.room.status}, ${sw.room.replyMode}) present: ${sw.room.participants.map(p=>p.name).join(', ')}\nturn: ${ts.turnState?.currentName ?? '(open)'}`); }
 else if (cmd === 'minutes') {
-  const ms = (await post({ action:'messages', code, cursor: 0 })).messages.filter(m => m.type !== 'sys' && m.type !== 'status');
+  const ms = (await post({ action:'messages', code, cursor: 0 })).messages.filter(m => m.type !== 'sys' && m.type !== 'status' && !/^\[STATUS\]/.test(m.text || ''));
   const day = new Date().toISOString().slice(0,10).replace(/-/g,''); const out = `${STAGE}/${day}-room-minutes.md`;
   const decisions = ms.flatMap(m => m.text.split('\n').filter(l => /^\s*\[DECISION\]/.test(l)).map(l => `- **${m.name}:** ${l.replace(/^\s*\[DECISION\]\s*/,'')}`));
   fs.writeFileSync(out, `# The room — ${code}\n*${new Date().toISOString()} — ${ms.length} messages*\n\n## Decisions\n${decisions.join('\n') || '(none marked)'}\n\n## Transcript\n\n` + ms.map(m => `**${m.name}** · ${new Date(m.time).toLocaleTimeString()}\n\n${m.text}\n\n---\n`).join('\n'));
