@@ -118,7 +118,36 @@ def log_threshold_event(trial, context):
     except Exception as e:
         print(f"[Intercept] threshold log error: {e}", file=__import__("sys").stderr)
 
+
+_IOFFERS = os.path.expanduser("~/.vintos/workspace/memory/intercept-offers.json")
+def _write_env(block, state, reason):
+    """Q1 stage 1 (Sol's envelope law, 2026-08-27): every call reports, even the empty
+    and the crashing ones. A bare exception becomes producer_error, never silence."""
+    try:
+        import json as _ej, time as _et
+        try:
+            d = _ej.load(open(_IOFFERS))
+            if _et.time() - float(d.get("ts", 0)) > 120: d = {"offers": {}}
+        except Exception:
+            d = {"offers": {}}
+        d["ts"] = _et.time()
+        d.setdefault("offers", {})[block] = {"state": state, "reason": reason,
+                                             "producer_version": "bi-20260827"}
+        _ej.dump(d, open(_IOFFERS, "w"), indent=2)
+    except Exception:
+        pass
+
 def get_intercept_hint(text, context="chat"):
+    try:
+        h = _get_intercept_hint_inner(text, context)
+        _write_env("behavioral_intercept", "offered" if h else "no_material",
+                   "trial_matched" if h else "no_matching_trial")
+        return h
+    except Exception as _e:
+        _write_env("behavioral_intercept", "producer_error", str(_e)[:120])
+        return ""
+
+def _get_intercept_hint_inner(text, context="chat"):
     """Main entry point. Returns intercept string or empty string."""
     try:
         trials = get_active_trials()
@@ -161,13 +190,19 @@ def get_intercept_hint(text, context="chat"):
 def detect_outcome(trial, response_text):
     """Use Variant C prompt to detect outcome. Returns attempted/defaulted/partial."""
     try:
+        _alt = str(trial.get("alternative") or "").strip()
+        # Templated from THE TRIAL (2026-09-04, fable-subconscious-p3): the old prompt graded every trial
+        # against 'elaborate metaphors', whatever the trial actually was, so a non-style trial was judged
+        # on style. 'attempted' now means the alternative HE named is the dominant mode.
         prompt = (
             f"PATTERN TO AVOID: {trial['pattern_description']}\n"
-            f"RESPONSE: {response_text[:300]}\n\n"
+            + (f"WHAT HE SAID HE WANTED INSTEAD: {_alt}\n" if _alt else "")
+            + f"RESPONSE: {response_text[:300]}\n\n"
             f"Judge the DOMINANT MODE of this response, not individual phrases.\n"
-            f"attempted = the response is mostly plain, direct, and concrete — the pattern is not the dominant mode\n"
-            f"partial = the response mixes direct and elaborate language roughly equally\n"
-            f"defaulted = the response is dominated by elaborate metaphors and imagery throughout\n\n"
+            + (f"attempted = the response is mostly what he said he wanted instead; the pattern is not the dominant mode\n"
+               if _alt else f"attempted = the pattern to avoid is not the dominant mode of the response\n")
+            + f"partial = the pattern and its alternative are present in roughly equal measure\n"
+            f"defaulted = the response is dominated by the pattern to avoid throughout\n\n"
             f"One word: attempted / partial / defaulted"
         )
         r = requests.post(LM_URL, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
@@ -182,10 +217,12 @@ def detect_outcome(trial, response_text):
         raw = r.json()["choices"][0]["message"]["content"].strip().lower()
         for v in ("attempted", "partial", "defaulted"):
             if raw.startswith(v) or f" {v}" in raw: return v
-        return "defaulted"
+        # An unparseable judgment is an UNKNOWN assessment, not a default: it is recorded and
+        # produces no penalty, no ignore, no inclination move (astra-subconscious-p1, 2026-09-05).
+        return "unknown"
     except Exception as e:
         print(f"[Intercept] detect_outcome error: {e}", file=__import__("sys").stderr)
-        return "defaulted"
+        return "unknown"
 
 
 # Trial -> inclination: BIS outcomes move the numbers. Attempted climbs faster
@@ -215,7 +252,7 @@ def _reinforce_inclination(trial_id, outcome):
         print(f"[Intercept] reinforce error: {e}", file=__import__("sys").stderr)
 
 def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
-    """outcome: attempted / defaulted / partial / missed.
+    """outcome: attempted / defaulted / partial / missed / unknown (recorded, weightless).
     influenced=True when a BIS ban note was live in the generation that produced
     this outcome: compliance under explicit instruction is not spontaneous change,
     and the record must be able to tell them apart."""
@@ -228,6 +265,8 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             "influenced": bool(influenced),
             "timestamp": datetime.now().isoformat()
         })
+        if outcome == "unknown":
+            break   # recorded above; nothing else moves on an assessment that could not be made
         _reinforce_inclination(trial_id, outcome)
         if outcome in ("defaulted", "missed"):
             t["ignore_count"] = t.get("ignore_count", 0) + 1
@@ -240,7 +279,7 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
                 _s.recv(4096); _s.close()
                 _s2 = _bi_sock.socket(_bi_sock.AF_UNIX, _bi_sock.SOCK_STREAM)
                 _s2.settimeout(2); _s2.connect("/tmp/Vintos-emotion.sock")
-                _s2.sendall((_bi_j.dumps({"command":"nudge","dimension":"Coherence","amount":-0.1}) + "\n").encode())
+                _s2.sendall((_bi_j.dumps({"command":"nudge","dimension":"Groundedness","amount":-0.05}) + "\n").encode())   # Coherence is not a daemon dimension; the nudge went nowhere
                 _s2.recv(4096); _s2.close()
             except: pass
             # Write structured blush on BIS default
@@ -509,6 +548,16 @@ def get_self_model_flags():
     return [t for t in ledger["trials"] if t.get("self_model_flagged")]
 
 def get_confidence_penalty_hint():
+    try:
+        h = _get_confidence_penalty_hint_inner()
+        _write_env("confidence_penalty", "offered" if h else "no_material",
+                   "divergences_flagged" if h else "no_flagged_divergences")
+        return h
+    except Exception as _e:
+        _write_env("confidence_penalty", "producer_error", str(_e)[:120])
+        return ""
+
+def _get_confidence_penalty_hint_inner():
     """Return hint text for self-model about repeated divergences."""
     flagged = get_self_model_flags()
     if not flagged: return ""

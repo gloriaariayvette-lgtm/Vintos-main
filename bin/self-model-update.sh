@@ -30,21 +30,12 @@ fi
 
 TODAY=$(date +%Y-%m-%d)
 
-# --- Gather introspections since last update (by mtime against the cooldown stamp; grok-models-p2) ---
-INTROSPECTIONS=""
-if [ -f "$COOLDOWN_FILE" ]; then
-    INTRO_FILES=$(find "$INTRO_DIR" -maxdepth 1 -name '*.md' -newer "$COOLDOWN_FILE" 2>/dev/null | sort)
-else
-    INTRO_FILES=$(ls "$INTRO_DIR"/*.md 2>/dev/null)
-fi
-for f in $INTRO_FILES; do
-    [ -f "$f" ] && INTROSPECTIONS="$INTROSPECTIONS$(cat "$f")
-
----
-"
-done
-# (the empty gate moves below: a week with no introspections but a self-review, an architectural
-#  change or a correction from her still has something to write - grok-models-p2 / astra-models-p1)
+# --- Evidence, by testable collectors with statuses and a committed watermark (astra-models-p1, 2026-09-05) ---
+EVIDENCE="$HOME/.vintos/workspace/scripts/self_model_evidence.py"
+[ -f "$EVIDENCE" ] || EVIDENCE="$HOME/Vintos/self_model_evidence.py"
+INTROSPECTIONS=$(python3 "$EVIDENCE" section introspections 2>/dev/null)
+EVIDENCE_STATUS=$(python3 "$EVIDENCE" status 2>/dev/null)
+echo "[SelfModel] evidence: $(echo "$EVIDENCE_STATUS" | tr -d '\n' | cut -c1-300)"
 
 # --- Get current self-model ---
 CURRENT_MODEL=""
@@ -54,30 +45,11 @@ CURRENT_MODEL=""
 EMO_STATE=""
 [ -f "$WORKSPACE/memory/emotional-state.txt" ] && EMO_STATE=$(cat "$WORKSPACE/memory/emotional-state.txt")
 TEMPORAL=$(cat "$HOME/.vintos/workspace/memory/temporal-context.txt" 2>/dev/null || echo "")
-SELF_REVIEW=$(head -80 $(ls -t "$HOME/.vintos/workspace/memory/self-reviews/self-review-"*.md 2>/dev/null | head -1) 2>/dev/null || echo "")
-ARCHITECTURAL_CHANGES=$(python3 - <<PY 2>/dev/null
-import json
-p = '$WORKSPACE/memory/self-review-change-events.jsonl'
-try:
-    rows = [json.loads(x) for x in open(p) if x.strip()][-12:]
-    for x in rows:
-        print('- %s | files: %s' % (x.get('observation','architectural change'), ', '.join(x.get('files',[]))))
-except Exception:
-    pass
-PY
-)
-CORRECTIONS=$(python3 -c "
-import json
-try:
-    d = json.load(open('$WORKSPACE/memory/wal-log.json'))
-    entries = d if isinstance(d, list) else d.get('entries', [])
-    hits = [e for e in entries if 'CORRECTION' in json.dumps(e).upper()]
-    for e in hits[-20:]:
-        print('- ' + str(e.get('content') or e.get('fact') or e)[:180])
-except: pass
-" 2>/dev/null)
-if [ -z "$INTROSPECTIONS" ] && [ -z "$SELF_REVIEW" ] && [ -z "$ARCHITECTURAL_CHANGES" ] && [ -z "$CORRECTIONS" ]; then
-    echo "[SelfModel] nothing new this week - no introspections, review, changes or corrections"; exit 0
+SELF_REVIEW=$(python3 "$EVIDENCE" section self_review 2>/dev/null)
+ARCHITECTURAL_CHANGES=$(python3 "$EVIDENCE" section architectural_changes 2>/dev/null)
+CORRECTIONS=$(python3 "$EVIDENCE" section corrections 2>/dev/null)
+if ! python3 "$EVIDENCE" gate 2>/dev/null; then
+    echo "[SelfModel] nothing new since the watermark - no introspections, review, changes or corrections (statuses above say which were empty, missing or failed)"; exit 0
 fi
 
 SOUL_IDENTITY=$(cat "$SOUL" 2>/dev/null | head -60)
@@ -412,11 +384,19 @@ try:
     result = r.json()["choices"][0]["message"]["content"].strip()
     print(result)
 except Exception as e:
-    print(f"PASS (reviewer error: {e})")
+    print(f"UNAVAILABLE (reviewer error: {e})")
 REVIEWEOF
 )
 export CONTENT
 echo "[SelfModel] Reviewer: $REVIEWER_RESULT"
+if echo "$REVIEWER_RESULT" | grep -q "^UNAVAILABLE"; then
+    # An unavailable review is not a PASS (astra-models-p3): the entry is HELD for a later run, not written.
+    mkdir -p "$WORKSPACE/memory/self-model-pending"
+    printf '%s\n' "$CONTENT" > "$WORKSPACE/memory/self-model-pending/$(date +%Y-%m-%d).md"
+    echo "[SelfModel] reviewer unavailable - entry held in memory/self-model-pending, not written"
+    curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx" -H "Title: Self-model entry held" -H "Priority: default" -d "The weekly self-model entry was written but the reviewer was unavailable; it is held in memory/self-model-pending/ and not committed." > /dev/null 2>&1 &
+    exit 1
+fi
 if echo "$REVIEWER_RESULT" | grep -q "^FAIL"; then
     echo "[SelfModel] Reviewer flagged content — skipping write"
     curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx"         -H "Title: Self-Model Review Failed"         -H "Priority: default"         -d "Self-model update blocked by reviewer: $REVIEWER_RESULT" > /dev/null 2>&1 &
@@ -452,6 +432,10 @@ print(text)
     echo "$CONTENT"
 } > "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
+# the evidence watermark advances only now, after a successful write; corrections applied this week
+# become explicit records the readers can retrieve (astra-models-p1 / p3)
+python3 "$EVIDENCE" record-corrections "$TODAY" 2>/dev/null
+python3 "$EVIDENCE" commit 2>/dev/null
 
 echo "SELF_MODEL_UPDATED: $TODAY"
 

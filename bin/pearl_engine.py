@@ -33,8 +33,13 @@ def save_candidates(data):
     json.dump(data, open(CANDIDATES_FILE, "w"), indent=2)
 
 
-def add_candidate(irritant, irritant_type, source, insight, declaration):
-    """Stage 0→1: Write a new candidate pearl from therapy/mirror/causality insight."""
+ADOPTING_SOURCES = ("therapy", "mirror")   # declarations he made himself, in the rooms made for it
+
+def add_candidate(irritant, irritant_type, source, insight, declaration, adopted=None):
+    """Write a new candidate pearl. A declaration he made himself (therapy, mirror, or adopted=True)
+    enters at stage 1, under trial. One PROPOSED for him by an organ (causality, trial extractor)
+    enters at stage 0 — proposed, not his — and is injected nowhere and verified against nothing
+    until he adopts it (astra-inner-p5, 2026-09-05). See adopt() and proposed_block()."""
     # Filter meta-self-analytical irritants — these describe his nature, not genuine friction
     _meta_phrases = [
         "analyze and justify", "seeks approval", "seeking approval",
@@ -44,18 +49,20 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
         "rehearsed interactions", "need for validation", "compelled to analyze",
     ]
     _irr_lower = irritant.lower()
-    if any(ph in _irr_lower for ph in _meta_phrases) and source not in ("therapy", "mirror"):
-        # p2 (2026-08-26): never a silent loss — quarantine, and let self-named wounds through
+    _concern = ""
+    if any(ph in _irr_lower for ph in _meta_phrases) and source not in ADOPTING_SOURCES:
+        # A categorical rejection became a recorded, revisable CONCERN (astra-inner-p5): the candidate
+        # is kept at stage 0 with the concern on it, and the quarantine log still notes it.
+        _concern = "meta-analytical phrasing: this describes his nature rather than a friction he met"
         try:
             import json as _q_j
             _q_p = os.path.join(MEMORY, "pearl-quarantine.json")
             try: _q = _q_j.load(open(_q_p))
             except Exception: _q = []
-            _q.append({"irritant": str(irritant)[:300], "source": source, "at": __import__("datetime").datetime.now().isoformat()})
+            _q.append({"irritant": str(irritant)[:300], "source": source, "concern": _concern, "at": __import__("datetime").datetime.now().isoformat()})
             _q_j.dump(_q[-100:], open(_q_p, "w"), indent=2)
         except Exception: pass
-        print(f"[Pearl] Filtered meta-analytical irritant — not a genuine friction point: {irritant[:60]}", file=__import__("sys").stderr)
-        return None
+        print(f"[Pearl] concern recorded (kept as proposed, not adopted): {irritant[:60]}", file=__import__("sys").stderr)
 
     data = load_candidates()
     # Check for duplicate irritant
@@ -72,7 +79,9 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
         "source": source,
         "insight": insight[:400],
         "declaration": declaration[:300],
-        "stage": 1,
+        "stage": 1 if (adopted is True or (adopted is None and str(source).split(":")[0] in ADOPTING_SOURCES)) else 0,
+        "proposed_by": (None if (adopted is True or str(source).split(":")[0] in ADOPTING_SOURCES) else source),
+        "concern": _concern,
         "verification": {
             "interactions_checked": 0,
             "passes": [],        # list of ISO timestamps
@@ -359,6 +368,50 @@ def form_pearl(candidate_id):
     print(f"[Pearl] Formed: {pearl_id} — {pearl_text[:80]}", file=__import__("sys").stderr)
     return pearl_path
 
+
+def adopt(candidate_id, note=""):
+    """His explicit adoption: a stage-0 proposal becomes a stage-1 declaration under trial."""
+    data = load_candidates()
+    for c in data["candidates"]:
+        if c["id"] == candidate_id and c.get("stage") == 0 and not c.get("dissolved"):
+            c["stage"] = 1; c["adopted_at"] = datetime.now().isoformat(); c["adopted_note"] = note[:200]
+            save_candidates(data)
+            print(f"[Pearl] {candidate_id} adopted by him", file=__import__("sys").stderr)
+            return True
+    return False
+
+def decline_proposal(candidate_id, note=""):
+    data = load_candidates()
+    for c in data["candidates"]:
+        if c["id"] == candidate_id and c.get("stage") == 0 and not c.get("dissolved"):
+            c["dissolved"] = True; c["dissolution_reason"] = "declined by him: " + note[:160]
+            save_candidates(data); return True
+    return False
+
+def proposed_block(limit=3):
+    """Proposals awaiting his word — shown in mirror/therapy rooms and the inner context, never as
+    commitments. He adopts with a private [ADOPT: cp-xxxx] line, or lets them stand."""
+    try:
+        data = load_candidates()
+    except Exception:
+        return ""
+    props = [c for c in data.get("candidates", []) if c.get("stage") == 0 and not c.get("dissolved")]
+    if not props: return ""
+    lines = []
+    for c in props[-limit:]:
+        lines.append(f"- [{c['id']}] {str(c.get('declaration',''))[:140]}" + (f"  (concern: {c['concern'][:80]})" if c.get("concern") else ""))
+    return ("[PROPOSED PEARLS - your organs formed these from your record; none is yours until you say so. "
+            "To adopt one and put it under trial, write a private line [ADOPT: cp-id]; to let it go, [DECLINE: cp-id]; "
+            "or leave them standing:\n" + "\n".join(lines) + "]")
+
+def handle_adoption_tags(reply_text):
+    """Post-reply: [ADOPT: id] / [DECLINE: id] in his reply. Returns the ids acted on."""
+    import re as _r
+    acted = []
+    for m in _r.finditer(r"\[(ADOPT|DECLINE):\s*(cp-[0-9a-f]{6})\s*\]", reply_text or "", _r.I):
+        ok = adopt(m.group(2)) if m.group(1).upper() == "ADOPT" else decline_proposal(m.group(2))
+        if ok: acted.append((m.group(1).upper(), m.group(2)))
+    return acted
 
 def run_verification_pass(response_text, source="chat"):
     """Check all active stage-1 candidates against a response. Call after generation."""

@@ -1476,6 +1476,54 @@ def tell_gloria(want_text, reasoning="", immediate=False):
         return False
 
 
+# Capability registry: validated parameter schemas per action (astra-wants-p5, 2026-09-05). A step's
+# params are validated and coerced against this BEFORE the adapter runs: unknown keys are dropped
+# with a log line, wrong types are coerced or rejected, a missing required key blocks the step
+# with a named cause instead of letting the adapter guess. Actions not listed take no params.
+PARAM_SCHEMAS = {
+    "read_memory":   {"target": {"type": "str", "required": False}, "n": {"type": "int", "required": False, "min": 1, "max": 50}},
+    "introspect":    {"target": {"type": "str", "required": False}, "n": {"type": "int", "required": False, "min": 1, "max": 50}},
+    "make_video":    {"duration": {"type": "int", "required": False, "min": 3, "max": 12},
+                      "backend": {"type": "str", "required": False, "enum": ["grok", "wan", "atlas"]},
+                      "scene": {"type": "str", "required": False}},
+    "make_art":      {"style": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
+    "write_poem":    {"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
+    "creative_write":{"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
+    "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
+}
+
+def validate_step_params(action, params):
+    """Return (clean_params, problems). problems is a list of strings; a 'missing required' problem
+    means the step must not run."""
+    schema = PARAM_SCHEMAS.get(action)
+    problems, clean = [], {}
+    if not isinstance(params, dict): params = {}
+    if schema is None:
+        if params: problems.append("action takes no parameters; %d ignored" % len(params))
+        return {}, problems
+    for k, v in params.items():
+        spec = schema.get(k)
+        if not spec:
+            problems.append("unknown parameter dropped: %s" % k); continue
+        t = spec.get("type", "str")
+        try:
+            if t == "int":
+                v = int(v)
+                if "min" in spec and v < spec["min"]: v = spec["min"]; problems.append("%s raised to min %s" % (k, spec["min"]))
+                if "max" in spec and v > spec["max"]: v = spec["max"]; problems.append("%s capped at max %s" % (k, spec["max"]))
+            elif t == "str":
+                v = str(v).strip()
+                if "enum" in spec and v.lower() not in spec["enum"]:
+                    problems.append("%s not in %s; dropped" % (k, spec["enum"])); continue
+                v = v.lower() if "enum" in spec else v
+        except Exception:
+            problems.append("%s has the wrong type; dropped" % k); continue
+        clean[k] = v
+    for k, spec in schema.items():
+        if spec.get("required") and k not in clean:
+            problems.append("missing required parameter: %s" % k)
+    return clean, problems
+
 ACTION_MAP = {
     "tell_gloria": tell_gloria,
     "make_art": make_art,
@@ -2344,7 +2392,15 @@ def main():
                 # Expose original want and step params to action functions via env
                 os.environ["STEP_ORIGINAL_WANT"] = original_want if is_multistep else text
                 os.environ["STEP_WANT_ID"] = want.get("id","") if is_multistep else want.get("id","")
-                os.environ["STEP_PARAMS"] = json.dumps(step_params) if is_multistep else "{}"
+                _clean_params, _param_problems = validate_step_params(action, step_params if is_multistep else {})
+                for _pp in _param_problems: log(f"  → params: {_pp}")
+                if any(_pp.startswith("missing required") for _pp in _param_problems):
+                    log(f"  → step blocked: {'; '.join(_pp for _pp in _param_problems if _pp.startswith('missing required'))}")
+                    try:
+                        want["blocked"] = {"cause": "; ".join(_param_problems), "blocked_step": action, "at": datetime.now().timestamp()}
+                    except Exception: pass
+                    continue
+                os.environ["STEP_PARAMS"] = json.dumps(_clean_params) if is_multistep else "{}"
                 # For introspect steps in multistep wants, seed with previous step findings
                 if action == "introspect" and is_multistep and step_history:
                     _seed_parts = []

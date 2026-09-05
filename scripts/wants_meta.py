@@ -8,7 +8,7 @@ Records his verbatim wants-about-his-own-wants/behaviors/feelings, and routes:
               being a report, and everything downstream reads forgeries.
 Laws: verbatim extraction only; empty is the common correct result; nothing
 here suppresses a first-order want from outside. Fail-open."""
-import os, sys, json, re, glob, time, difflib
+import hashlib, os, sys, json, re, glob, time, difflib
 from datetime import datetime
 
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,22 +25,44 @@ def _load():
 
 def _save(d): json.dump(d[-60:], open(LEDGER, "w"), indent=2)
 
+def _active(x):
+    return str(x.get("status", "active")) == "active"
+
 def consult(want_text):
-    """At want-creation: his standing stance about this kind of want, or None."""
+    """At want-creation: his standing ACTIVE stance about this kind of want, or None. Competing
+    stances resolve by declared scope (the `about`) and then recency; a near-tie between two
+    different stances is returned as advisory ambiguity, not silently picked
+    (astra-wants-p6, 2026-09-05)."""
     wt = str(want_text or "").lower()
     if len(wt) < 8: return None
-    best, score = None, 0.0
+    scored = []
     for x in _load():
-        if x.get("target", "want") != "want": continue
-        about = str(x.get("about", "")).lower()
+        if x.get("target", "want") != "want" or not _active(x): continue
+        about = str(x.get("scope") or x.get("about", "")).lower()
         if not about: continue
         s = difflib.SequenceMatcher(None, wt[:120], about).ratio()
         if all(w in wt for w in about.split()[:2]): s = max(s, 0.55)
-        if s > score: best, score = x, s
-    if best and score >= 0.45:
-        return {"stance": best.get("stance"), "quote": best.get("quote", "")[:200],
-                "date": best.get("date")}
-    return None
+        scored.append((s, str(x.get("recorded", "")), x))
+    scored = [t for t in scored if t[0] >= 0.45]
+    if not scored: return None
+    scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    best = scored[0][2]
+    out = {"id": best.get("id"), "stance": best.get("stance"), "quote": best.get("quote", "")[:200],
+           "date": best.get("date"), "scope": best.get("scope") or best.get("about")}
+    if len(scored) > 1 and abs(scored[0][0] - scored[1][0]) < 0.05 and scored[1][2].get("stance") != best.get("stance"):
+        out["ambiguous_with"] = {"id": scored[1][2].get("id"), "stance": scored[1][2].get("stance"),
+                                 "quote": scored[1][2].get("quote", "")[:160]}
+        out["advisory"] = "two standing stances of different kinds fit this want about equally; neither governs"
+    return out
+
+def revoke(stance_id, reason=""):
+    """He (or Gloria, by hand) withdraws a stance: it stays on the record as revoked, never enforced."""
+    led = _load(); hit = None
+    for x in led:
+        if x.get("id") == stance_id:
+            x["status"] = "revoked"; x["revoked_at"] = datetime.now().isoformat(); x["revoked_reason"] = reason[:200]; hit = x
+    if hit: _save(led); log("revoked %s" % stance_id)
+    return hit
 
 def _propose_trial(entry):
     """A behavior-stance becomes a self-requested trial - his wish tested
@@ -118,11 +140,22 @@ def scan():
                         "i want to want", "i hate that i", "wish i did", "uneasy that i want")
             if not any(mk in _ql for mk in _markers):
                 log("dropped stance-less candidate: %s" % q[:60]); continue
-            entry = {"quote": q[:300], "stance": it.get("stance", ""),
+            entry = {"id": "ST-" + hashlib.md5((q[:120] + date).encode()).hexdigest()[:8],
+                     "quote": q[:300], "stance": it.get("stance", ""),
                      "about": str(it.get("about", ""))[:80],
+                     "scope": str(it.get("about", ""))[:80],     # explicit scope: what the stance governs
                      "target": it.get("target", "want"),
+                     "status": "active",
                      "date": date, "recorded": datetime.now().isoformat(),
                      "surfaced_at": 0}
+            # A newer stance about the SAME scope with a different kind supersedes the older active
+            # one: both stay on the record, only one governs (astra-wants-p6).
+            for old_x in led:
+                if not _active(old_x) or old_x.get("target") != entry["target"]: continue
+                sim = difflib.SequenceMatcher(None, str(old_x.get("scope") or old_x.get("about", "")).lower(), entry["scope"].lower()).ratio()
+                if sim >= 0.6 and old_x.get("stance") != entry["stance"]:
+                    old_x["status"] = "superseded"; old_x["superseded_by"] = entry["id"]; old_x["superseded_at"] = entry["recorded"]
+                    log("stance %s superseded by %s (%s -> %s)" % (old_x.get("id"), entry["id"], old_x.get("stance"), entry["stance"]))
             led.append(entry)
             seen.add(q[:80]); found += 1
             if entry["target"] == "behavior" and entry["stance"] in ("wish_less", "wish_more"):
@@ -134,7 +167,7 @@ def block():
     led = _load()
     if not led: return ""
     now = time.time()
-    fresh = [x for x in led if now - x.get("surfaced_at", 0) > 7 * 86400]
+    fresh = [x for x in led if _active(x) and now - x.get("surfaced_at", 0) > 7 * 86400]
     if not fresh: return ""
     if max((x.get("surfaced_at", 0) for x in led), default=0) > now - 86400: return ""
     x = sorted(fresh, key=lambda v: v.get("recorded", ""))[-1]
@@ -148,6 +181,8 @@ if __name__ == "__main__":
         print(consult(" ".join(sys.argv[2:])) or "(no standing second-order)")
     elif len(sys.argv) > 1 and sys.argv[1] == "block":
         print(block() or "(nothing standing)")
+    elif len(sys.argv) > 2 and sys.argv[1] == "revoke":
+        print(revoke(sys.argv[2], " ".join(sys.argv[3:])) or "(no such stance)")
     elif len(sys.argv) > 1 and sys.argv[1] == "list":
         for x in _load():
             print("%s %-8s %-9s %s" % (x.get("date"), x.get("target",""), x.get("stance"), x.get("quote", "")[:60]))

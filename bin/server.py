@@ -758,7 +758,7 @@ def _relational_compare(user_text):
 
 # _resolve_intent removed 2026-09-04 (grok-server-a-p6): its body had become a comment and a thread that did nothing.
 
-POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict",
+POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt",
                    "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
 
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
@@ -791,6 +791,11 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)
     _inline("curiosity", _cur)
     _inline("predict", lambda: _relational_predict(reply, writer_env, surface=surface, turn_id=turn_id))
+    def _adopt():
+        import pearl_engine as _pe
+        acted = _pe.handle_adoption_tags(reply)
+        if acted: print(f"[post_turn/{surface}] pearl proposals acted on: {acted}", flush=True)
+    _inline("adopt", _adopt)
     test_mode = False
     try: test_mode = bool(_test_mode_active())
     except Exception: pass

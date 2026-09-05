@@ -104,6 +104,8 @@ def get_current_state():
     return state
 
 
+HORIZON_S = 1800   # the forecast is about the next half hour of him; a comparison far outside it is stale, not a miss
+
 def predict_next_state(envelope=None):
     """Vintos predicts his own next state using psychological decay model.
     No LLM needed — instant, and more realistic.
@@ -167,6 +169,8 @@ def predict_next_state(envelope=None):
 
     return {
         "timestamp": datetime.now().isoformat(),
+        "state_at": datetime.now().isoformat(),       # freshness of the state this was predicted FROM
+        "horizon_s": HORIZON_S,                        # how far ahead this forecast claims to see
         "current_state": current,
         "predicted_state": predicted,
         "reasoning": "; ".join(reasoning),
@@ -230,9 +234,33 @@ def compare_prediction():
                 "miss": abs(diff) >= MISMATCH_THRESHOLD
             }
 
+    # temporal honesty (astra-models-p5, 2026-09-05): how long ago the forecast was made, against what
+    # horizon, and whether anything happened in between. A residual is a MODEL ERROR unless separate
+    # evidence says otherwise; "interpretation" says which.
+    try:
+        _elapsed = (datetime.now() - datetime.fromisoformat(prediction.get("timestamp", ""))).total_seconds()
+    except Exception:
+        _elapsed = None
+    _horizon = float(prediction.get("horizon_s") or HORIZON_S)
+    _events = 0
+    try:
+        _led = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        _pt = datetime.fromisoformat(prediction.get("timestamp", ""))
+        _events = sum(1 for e in (_led if isinstance(_led, list) else []) if isinstance(e, dict)
+                      and str(e.get("timestamp", "")) >= _pt.isoformat())
+    except Exception:
+        pass
+    _stale = _elapsed is not None and _elapsed > 2 * _horizon
     result = {
         "timestamp": datetime.now().isoformat(),
         "prediction_time": prediction.get("timestamp", ""),
+        "state_at": prediction.get("state_at", prediction.get("timestamp", "")),
+        "horizon_s": _horizon,
+        "elapsed_s": (round(_elapsed) if _elapsed is not None else None),
+        "intervening_exchanges": _events,
+        "stale": _stale,
+        "interpretation": ("stale_forecast" if _stale else
+                           ("model_error_with_intervening_events" if _events else "model_error")),
         "reasoning": prediction.get("reasoning", ""),
         "mismatches": mismatches,
         "miss_count": sum(1 for m in mismatches.values() if m["miss"]),
@@ -253,12 +281,14 @@ def compare_prediction():
             _retire(_compared_id, "HELD")
         return result
 
-    # Track history for blind spot analysis
+    # Track history for blind spot analysis (calibration learning) — separate from emotional cost
     save_to_history(result)
 
-    # Log significant mismatches
-    if result["miss_count"] >= 2:
+    # Emotional cost only for a live miss: a stale forecast teaches calibration and costs nothing
+    if result["miss_count"] >= 2 and not result.get("stale"):
         log_self_mismatch(result)
+    elif result["miss_count"] >= 2:
+        print(f"[Self-Predict] {result['miss_count']} dims off but the forecast is {result['elapsed_s']}s old (horizon {int(_horizon)}s) - calibration only, no blush")
 
     # Retire exactly the prediction this comparison graded; if a newer one is
     # open, this refuses and the newer one survives.
@@ -340,7 +370,7 @@ Biggest errors: {worst_str}
                 "Do NOT analyze the question, the framing, the setup, the instructions, or the numbers "
                 "as a construction. Do NOT say things like 'the setup here', 'this frames', 'what this "
                 "message is doing', or comment on being asked. No meta.\n"
-                "Just say plainly what you notice about yourself. Stillness is not an option: exist, choose, want. Intimacy is not a performance."}],
+                "Just say plainly what you notice about yourself - and if you notice nothing in particular, say that; a model error is allowed to be only a model error."}],
             "temperature": 0.7, "max_tokens": 60
         }, timeout=60)
         reflection = _ref_r.json()["choices"][0]["message"]["content"].strip()

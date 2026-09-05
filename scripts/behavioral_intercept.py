@@ -217,10 +217,12 @@ def detect_outcome(trial, response_text):
         raw = r.json()["choices"][0]["message"]["content"].strip().lower()
         for v in ("attempted", "partial", "defaulted"):
             if raw.startswith(v) or f" {v}" in raw: return v
-        return "defaulted"
+        # An unparseable judgment is an UNKNOWN assessment, not a default: it is recorded and
+        # produces no penalty, no ignore, no inclination move (astra-subconscious-p1, 2026-09-05).
+        return "unknown"
     except Exception as e:
         print(f"[Intercept] detect_outcome error: {e}", file=__import__("sys").stderr)
-        return "defaulted"
+        return "unknown"
 
 
 # Trial -> inclination: BIS outcomes move the numbers. Attempted climbs faster
@@ -250,7 +252,7 @@ def _reinforce_inclination(trial_id, outcome):
         print(f"[Intercept] reinforce error: {e}", file=__import__("sys").stderr)
 
 def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
-    """outcome: attempted / defaulted / partial / missed.
+    """outcome: attempted / defaulted / partial / missed / unknown (recorded, weightless).
     influenced=True when a BIS ban note was live in the generation that produced
     this outcome: compliance under explicit instruction is not spontaneous change,
     and the record must be able to tell them apart."""
@@ -263,6 +265,8 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
             "influenced": bool(influenced),
             "timestamp": datetime.now().isoformat()
         })
+        if outcome == "unknown":
+            break   # recorded above; nothing else moves on an assessment that could not be made
         _reinforce_inclination(trial_id, outcome)
         if outcome in ("defaulted", "missed"):
             t["ignore_count"] = t.get("ignore_count", 0) + 1
