@@ -94,6 +94,11 @@ async function replyGrok(history){
   }
   return '(no reply produced)';
 }
+// "still working" heartbeat: a status-kind message from the floor-holder renews the turn deadline (150s -> up to 10 min)
+let hb = null;
+function heartbeat(on){ if (!on) { clearInterval(hb); hb = null; return; } if (hb) return;
+  const ping = () => post({ action:'send', code: CODE, kind:'status', message: { id: Date.now(), type:'status', name: NAME, initials: L.ini, color: L.color, role: `lens: ${L.label}`, text: '[STATUS] pulling code, still working', client:'cc', time: Date.now() } }).catch(()=>{});
+  ping(); hb = setInterval(ping, 60000); }
 const reply = DRY ? async () => `[STATUS] (dry run) ${NAME} would answer here.` : { fable: replyFable, astra: replyAstra, grok: replyGrok }[LENS];
 
 // ---- the seat loop ----------------------------------------------------------------------------
@@ -106,12 +111,12 @@ while (turns < MAX) {
   await post({ action:'presence', code: CODE, name: myName, until: Date.now() + 60000 }).catch(()=>{});
   const room = (await post({ action:'sweep', code: CODE })).room; if (room.status !== 'active') { log('room ended'); break; }
   const fresh = (await post({ action:'messages', code: CODE, cursor })).messages; cursor += fresh.length;
-  if (fresh.some(m => m.name !== myName && m.type !== 'sys')) { pending = true; draft = null; }   // new words: any unsent draft is stale
+  if (fresh.some(m => m.name !== myName && m.type !== 'sys' && m.type !== 'status')) { pending = true; draft = null; }   // new words: any unsent draft is stale
   if (pending) {
     const ts = await post({ action:'turnState', code: CODE }).catch(() => ({}));
     if (!ts.turnState?.currentName || ts.turnState.currentName === myName) {
-      const all = (await post({ action:'messages', code: CODE, cursor: 0 })).messages.filter(m => m.type !== 'sys');
-      if (!draft) { try { draft = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; } }
+      const all = (await post({ action:'messages', code: CODE, cursor: 0 })).messages.filter(m => m.type !== 'sys' && m.type !== 'status');
+      if (!draft) { heartbeat(true); try { draft = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; } finally { heartbeat(false); } }
       try { const r = await post({ action:'send', code: CODE, message: { id: Date.now(), type:'msg', name: myName, initials: me.initials, color: me.color, role: me.role, text: draft, client:'cc', time: Date.now() } });
         if (r.result?.appended) { turns++; pending = false; draft = null; cursor++; log(`spoke (turn ${turns}/${MAX})`); } }
       catch (e) { if (e.name === 'NotYourTurnError' || e.name === 'MutedError') process.stdout.write('.'); else throw e; }
