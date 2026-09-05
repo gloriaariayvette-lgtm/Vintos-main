@@ -102,22 +102,29 @@ def rotate_line(level):
 
 def _fmt(toy, d):
     if not d: return f"{toy:8s} still"
-    try:
-        import sys as _cs
-        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from toy_link import connected as _tl_conn
-        if not _tl_conn(toy):
-            return f"{toy:8s} — switched off (not connected)"
-    except Exception:
-        pass
-    if time.time() - (d.get("ts") or 0) > 3600:
-        _hrs = int((time.time() - (d.get("ts") or 0)) / 3600)
-        return f"{toy:8s} idle — last set {_hrs}h ago, nothing running now"
-    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
-    ago = int(time.time() - d.get("ts", 0))
+    # Cheap facts first (2026-09-04, fable-somatic-p3): a still or idle entry needs no hub probe, so an
+    # ordinary conversation never waits on a 2s timeout to learn the hub is off.
     pat = d.get("pattern", "steady"); lvl = d.get("intensity", 0)
     if str(pat) in ("still", "", None) or lvl == 0:
         return f"{toy:8s} still"
+    if time.time() - (d.get("ts") or 0) > 3600:
+        _hrs = int((time.time() - (d.get("ts") or 0)) / 3600)
+        return f"{toy:8s} idle — last set {_hrs}h ago, nothing running now"
+    # Something claims to be running: now ask the hub, STRICTLY. A claim about her body must not
+    # lie when the hub is simply unreachable (grok-somatic-p4): unreachable is "unknown", not "running".
+    try:
+        import sys as _cs
+        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import toy_link as _tl
+        if not _tl.connected(toy, strict=True):
+            _fresh = (time.time() - float(_tl._status_cache.get("t", 0))) <= 10
+            if _fresh:
+                return f"{toy:8s} — switched off (not connected)"
+            return f"{toy:8s} — unknown (hub unreachable; last set {int(time.time() - d.get('ts', 0))}s ago, may or may not be running)"
+    except Exception:
+        pass
+    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
+    ago = int(time.time() - d.get("ts", 0))
     if str(toy) == "ridge" and d.get("channel") == "rotate":
         return f"{toy:8s} rotate   {rotate_glyph(lvl):8s} {ridge_shape()}   (set by {who}, {ago}s ago)"
     sp = spark(pat)
@@ -131,7 +138,13 @@ def _fmt(toy, d):
 def live_state_block():
     try: st = json.load(open(STATE))
     except Exception: st = {}
-    return "[RIGHT NOW ON EACH]\n" + "\n".join(_fmt(k, st.get(k)) for k in ("mission", "tenera", "ridge"))
+    head = "[RIGHT NOW ON EACH]"
+    try:   # her stop button, visible to him (fable-somatic-p2)
+        if json.load(open(os.path.join(os.path.dirname(STATE), "hardware-button.json"))).get("stopped"):
+            head += "\nSTOPPED — she took your hands off. Nothing is running until she presses again."
+    except Exception:
+        pass
+    return head + "\n" + "\n".join(_fmt(k, st.get(k)) for k in ("mission", "tenera", "ridge"))
 
 def saved_sets_block():
     """Recent, dedup'd sets that preceded a GCS press. Empty string if none."""

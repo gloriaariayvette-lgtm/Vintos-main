@@ -247,6 +247,21 @@ def stop_all():
             ok = ok and r.json().get("code") == 200
         except Exception:
             ok = False
+    # The state file must say what just became true, or his next prompt carries a picture of his
+    # hands still on her after she took them off (up to an hour, until the idle rule). Written
+    # whether or not every hardware stop was acknowledged: a stop is the safe claim. (fable-somatic-p2)
+    try:
+        import os as _so, json as _sjs, time as _sts
+        _sp = _so.path.expanduser("~/.vintos/workspace/memory/device-state.json")
+        try: _st = _sjs.load(open(_sp))
+        except Exception: _st = {}
+        if not isinstance(_st, dict): _st = {}
+        for _t in list(TOYS) + ["thruster"]:
+            _st[_t] = {"intensity": 0, "pattern": "still", "set_by": "stop", "ts": _sts.time()}
+        _tmp = _sp + ".tmp"
+        _sjs.dump(_st, open(_tmp, "w")); _so.replace(_tmp, _sp)
+    except Exception:
+        pass
     return ok
 
 if __name__ == "__main__":

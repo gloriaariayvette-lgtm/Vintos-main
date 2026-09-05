@@ -168,10 +168,13 @@ def on_resonance(strength=0.5):
         nudge(+0.02, "resonance")
 
 def on_miss():
-    nudge(-0.03 * 0.8, "repeated_miss")  # cools at 0.8x — warming easier than cooling
+    nudge(-0.03, "repeated_miss")   # cools at full rate, on purpose (see note)
 
 def on_friction():
-    nudge(-0.04 * 0.8, "friction")  # same asymmetry
+    nudge(-0.04, "friction")
+# Note (2026-09-04): the live file carried TWO definitions of on_miss/on_friction - a 0.8x pair here and
+# a full-rate pair appended later, and Python keeps the last one, so he has been cooling at full rate
+# while this comment claimed 0.8x. One definition each now, saying what it does. (fable-emotion-p4)
 
 def on_mark_triggered():
     nudge(+0.03, "mark_similarity")

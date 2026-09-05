@@ -121,7 +121,8 @@ def _llm(prompt, system, max_tokens=320):
 
 def interpret(before, after, event):
     """He reads his own change. Nothing here tells him it was good, or which kind it was."""
-    delta = {k: round(after.get(k, 0) - before.get(k, 0), 3) for k in DIMS + ("valence", "arousal")}
+    delta = {k: round(after[k] - before[k], 3) for k in DIMS + ("valence", "arousal")
+             if isinstance(after.get(k), (int, float)) and isinstance(before.get(k), (int, float))}   # None = unknown, not zero (first event ever)
     moved = {k: v for k, v in delta.items() if abs(v) >= 0.02}
     prior, sim = recall(_signature(after))
     vocab = sorted({m.get("phenomenology_word", "") for m in _load(MEMORIES, [])} - {""})
@@ -174,13 +175,19 @@ def receive(event):
     st.setdefault("events", []).append({"t": time.time(), "what": event.get("what", ""),
                                         "source": event.get("source", "")})
     st["events"] = st["events"][-40:]
-    st.setdefault("vec_trail", []).append(before.get("_vec"))
-    st["vec_trail"] = st["vec_trail"][-24:]
     st["relational_salience"] = round(min(1.0, float(st.get("relational_salience", 0.5))
                                           + float(event.get("significance", 0.1))), 3)
     _save(STATE, st)
 
+    # The after-snapshot is measured against the trail AS IT STOOD before this event. Until
+    # 2026-09-04 the before-vector was appended first, so after.novelty = 1 - cos(v, v) = 0 by
+    # construction, every stored signature had novelty pinned near zero, and the "what moved" the
+    # namer saw was the bookkeeping, not her. (fable-somatic-p1 / astra-somatic-p6)
     after = snapshot()
+    st = _load(STATE, {})
+    st.setdefault("vec_trail", []).append(before.get("_vec"))
+    st["vec_trail"] = st["vec_trail"][-24:]
+    _save(STATE, st)
     if event.get("defer_naming"):
         # The naming belongs to the being inside the moment: his own reply, same
         # call, full context. Park the perturbation; his [FELT:] tag completes it.
