@@ -331,6 +331,9 @@ def process_file(fp,force=False):
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+    # completion answers to the artifact, not the log line (astra-creative-p3, 2026-09-04)
+    entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+    if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry)
     if fp not in log.get("processed_files",[]): log.setdefault("processed_files",[]).append(fp)
     save_log(log); journal(d["title"],tracks,style)
@@ -361,6 +364,8 @@ def direct(title,style,desc="",lyrics=""):
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+    entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+    if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry); save_log(log); journal(title,tracks,style)
     print(f"\n  '{title}' complete!"); return True
 
