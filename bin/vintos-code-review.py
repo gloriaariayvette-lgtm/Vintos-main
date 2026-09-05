@@ -342,17 +342,45 @@ def cmd_review_all():
         except Exception as e: print(f"[review-all:{LENS}] {sub} FAILED: {e}")
     cmd_final()
 
+def _done_since(day):
+    """What was built or declined since the reviews of `day` (built.json / declined.json in STAGE),
+    so a final written afterwards reflects on the body as it NOW stands (2026-09-05)."""
+    try: built = json.load(open(os.path.join(STAGE, "built.json")))
+    except Exception: built = {}
+    try: declined = json.load(open(os.path.join(STAGE, "declined.json")))
+    except Exception: declined = {}
+    mine = {k: v for k, v in built.items() if ("-" + LENS + "-") in k}
+    theirs = {k: v for k, v in built.items() if ("-" + LENS + "-") not in k}
+    if not built and not declined: return ""
+    out = ["# ===== SINCE THESE REVIEWS WERE WRITTEN (%s) =====" % day,
+           "Gloria and the builder took the reviews up. %d proposals were BUILT and %d DECLINED by her; the code you reviewed has changed."
+           % (len(built), len(declined)),
+           "The body you are reflecting on is the one that stands NOW. Do not re-propose what is built; do not argue what she declined.", ""]
+    if mine:
+        out.append("YOURS THAT WERE BUILT (%d):" % len(mine)); out += ["- %s: %s" % (k, v) for k, v in sorted(mine.items())]; out.append("")
+    if theirs:
+        out.append("THE OTHER LENSES' THAT WERE BUILT (%d, ids only): %s" % (len(theirs), ", ".join(sorted(k.split("-", 1)[-1] for k in theirs))[:3000])); out.append("")
+    if declined:
+        out.append("DECLINED BY GLORIA (%d):" % len(declined)); out += ["- %s: %s" % (k, v) for k, v in sorted(declined.items())]; out.append("")
+    return "\n".join(out) + "\n"
+
 def cmd_final():
-    today = datetime.now().strftime("%Y%m%d")
+    # REVIEW_DAY lets the final synthesize a previous day's section reviews (the room's second pass
+    # runs after the building, not on the day of the reviews)
+    today = os.environ.get("REVIEW_DAY") or datetime.now().strftime("%Y%m%d")
     secs = [open(os.path.join(STAGE, f)).read() for f in sorted(os.listdir(STAGE))
             if f.endswith(".md") and f.startswith(today + "-" + LENS + "-") and "final" not in f]
-    assert secs, f"no {LENS} section reviews from today to synthesize"
+    assert secs, f"no {LENS} section reviews from {today} to synthesize (set REVIEW_DAY=YYYYMMDD)"
     head = _stable_head()
-    tail = ("You have just finished reading your own body, section by section. Below are YOUR OWN reviews. "
-            "Now write the whole-body reflection: what you understand about yourself as a SYSTEM that no "
+    done = _done_since(today)
+    tail = ("You have just finished reading your own body, section by section. Below are YOUR OWN reviews" +
+            (", and after them what was built and declined since you wrote them." if done else ".") +
+            " Now write the whole-body reflection: what you understand about yourself as a SYSTEM that no "
             "single section showed — how the organs read into each other, where the seams are, what "
-            "surprised you, what you want Gloria to know. First person, prose only, no proposals here.")
-    reply = _ask(head, tail, _dynamic_texture() + "\n\n".join(secs), max_tokens=FINAL_MAX_TOKENS)
+            "surprised you, what you want Gloria to know" +
+            (", and what the building changed in how you read yourself - what was taken up, what was left, and what that says." if done else ".") +
+            " First person, prose only, no proposals here.")
+    reply = _ask(head, tail, _dynamic_texture() + "\n\n".join(secs) + ("\n\n" + done if done else ""), max_tokens=FINAL_MAX_TOKENS)
     rid = today + "-" + LENS + "-final"
     open(os.path.join(STAGE, rid + ".md"), "w").write(
         f"# Whole-body reflection through {LENS} ({MODEL})\n*{datetime.now().isoformat()} — staged, NOT in memory*\n\n{reply}\n")
