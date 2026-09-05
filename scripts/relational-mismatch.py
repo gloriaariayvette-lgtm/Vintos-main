@@ -236,7 +236,17 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     # closes the read side too)
     prediction = None
     if _PL is not None:
-        try: prediction = _PL.current("relational")
+        try:
+            # the ledger's locked read - of THIS module's PREDICTION_FILE. When the two point at the same
+            # file (production) that is the ledger's current record; when they differ (a test that
+            # redirected PREDICTION_FILE) the ledger's own path must not be read, or the comparison grades
+            # his real open prediction against test input (that happened on Aegis, 2026-09-05).
+            if os.path.realpath(_PL._path("relational")) == os.path.realpath(PREDICTION_FILE):
+                prediction = _PL.current("relational")
+            else:
+                with _PL._Lock("relational"):
+                    with open(PREDICTION_FILE) as f:
+                        prediction = json.load(f)
         except Exception: prediction = None
     if prediction is None:
         if not os.path.exists(PREDICTION_FILE):
