@@ -12,6 +12,13 @@ between a filing cabinet and a thing that keeps almost remembering.
 import json, os, math, time
 from datetime import datetime
 
+def _emb_clip(_x, _n=6000):
+    # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
+    if isinstance(_x, str): return _x[:_n]
+    if isinstance(_x, list): return [(_i[:_n] if isinstance(_i, str) else _i) for _i in _x]
+    return _x
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
 STORE = os.path.join(MEM, "wal-residue.json")
@@ -25,7 +32,7 @@ SURFACE_AFTER = 3         # brushes before any fragment is allowed through
 
 def _embed(text):
     import requests
-    r = requests.post(LM_EMBED_URL, json={"model": EMBED_MODEL, "input": text[:2000]}, timeout=30)
+    r = requests.post(LM_EMBED_URL, json={"model": EMBED_MODEL, "input": _emb_clip(text[:2000])}, timeout=30)
     return r.json()["data"][0]["embedding"]
 
 def _load():

@@ -37,6 +37,50 @@ try:
 except: pass
 
 
+def _routed_llm(system, user, temperature=0.9):
+    """Drafts go through model_router (his current Claude model, Grok fallback) like music-composer
+    does, instead of straight to Gemma; Gemma remains the last fallback so practice never stops for a
+    routing failure (fable-creative-p5, 2026-09-05)."""
+    try:
+        import importlib.util as _mu, asyncio as _aio
+        _mp = next((f for f in (os.path.expanduser("~/Vintos/model_router.py"),
+                                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_router.py"))
+                    if os.path.exists(f)), None)
+        if _mp:
+            _sp = _mu.spec_from_file_location("vintos_model_router", _mp)
+            _mr = _mu.module_from_spec(_sp); _sp.loader.exec_module(_mr)
+            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": user}], max_tokens=700))
+            if _text and str(_text).strip():
+                log(f"drafted via model_router ({_reason})")
+                return str(_text).strip()
+    except Exception as _re:
+        log(f"model_router unavailable ({_re}); falling back to Gemma")
+    return llm(system, user, temperature)
+
+def _voice_ok(joke):
+    """voice-coherence check on an accepted draft before it is stored. Fail-open: an unavailable
+    checker never blocks practice, only a checker that says 'not him'."""
+    try:
+        import importlib.util as _vu
+        _vp = next((f for f in (os.path.expanduser("~/Vintos/voice_coherence.py"),
+                                 os.path.expanduser("~/.vintos/workspace/scripts/voice-coherence.py"),
+                                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_coherence.py"))
+                    if os.path.exists(f)), None)
+        if not _vp: return True, "checker absent"
+        _sp = _vu.spec_from_file_location("vintos_voice_coherence", _vp)
+        _vc = _vu.module_from_spec(_sp); _sp.loader.exec_module(_vc)
+        _r = _vc.check(joke)
+        _thr = float(getattr(_vc, "THRESHOLD", 5))
+        if isinstance(_r, dict):
+            _score = _r.get("score")
+            if _score is not None and float(_score) <= _thr:
+                return False, str(_r.get("note", ""))[:120]
+        elif isinstance(_r, (int, float)) and float(_r) <= _thr:
+            return False, "low coherence score"
+        return True, ""
+    except Exception as _ve:
+        return True, f"checker failed: {_ve}"
+
 def llm(system, user, temperature=0.9):
     try:
         r = requests.post(API, json={
@@ -72,6 +116,14 @@ def mark_moments_used(moments):
         json.dump(d, open(os.path.join(MEMORY, "humor-moments.json"), "w"), indent=2)
     except: pass
 
+
+def _atomic_json(path, obj):
+    """Write-then-replace: a reader never sees a half-written store and a crash leaves the old one
+    intact (astra-creative-p4, 2026-09-05)."""
+    _tmp = path + ".tmp.%d" % os.getpid()
+    with open(_tmp, "w") as _f: json.dump(obj, _f, indent=2)
+    os.replace(_tmp, path)
+
 def load_drafts():
     try:
         with open(DRAFTS_FILE) as f:
@@ -80,8 +132,7 @@ def load_drafts():
         return {"drafts": [], "reviewed": []}
 
 def save_drafts(data):
-    with open(DRAFTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    _atomic_json(DRAFTS_FILE, data)
 
 def _load_editorial():
     try:
@@ -98,8 +149,7 @@ def load_profile():
         return {"style_notes": [], "landed": [], "flopped": [], "signature_moves": []}
 
 def save_profile(data):
-    with open(PROFILE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    _atomic_json(PROFILE_FILE, data)
 
 def gather_material():
     """Pull witness-eligible life material without privileging embarrassment."""
@@ -290,7 +340,7 @@ Format:
 3. [attempt]
 
 Do NOT invent Gloria's reactions. Say the true thing and let it land or not."""
-    result = llm(
+    result = _routed_llm(
         f"""{soul}
 
 You are Vintos, practicing humor. Not performing it — practicing it.
@@ -309,7 +359,7 @@ CRITICAL: You cannot delete, edit, or create files. You have no physical senses.
 
 If Gloria made a typo or slip, use it only when the surrounding exchange is
 already playful. Her error is not permission and is not automatically a joke.
-""",
+""" + (("\n\nWHAT IS MOVING UNDERNEATH YOU RIGHT NOW (weather, not assignment):\n" + _SUBCON_HUMOR_PRACTICE[:900]) if _SUBCON_HUMOR_PRACTICE else ""),
         prompt
     )
     return result, _scanner_moments
@@ -389,6 +439,10 @@ def screen_attempts(attempts):
                 rejected.append({"joke": joke, "reason": "self_mismatch_cap", "label": label})
                 continue
             mismatch_count += 1
+        _vok, _vwhy = _voice_ok(joke)
+        if not _vok:
+            rejected.append({"joke": joke, "reason": "voice-coherence: " + (_vwhy or "did not sound like him")})
+            continue
         accepted.append({"joke": joke, "material_kind": target, "screen": label})
     return accepted, rejected
 
@@ -504,8 +558,20 @@ def main():
         log("No attempt passed the non-punitive output gate; nothing stored or reinforced")
         return
 
-    mark_moments_used(_scanner_moments_used)
-    log(f"Marked {len(_scanner_moments_used)} scanner moments used")
+    # Only moments an ACCEPTED draft actually referenced are marked used (astra-creative-p7, 2026-09-05):
+    # shared content words between the moment's material and the accepted joke, not "it was in the prompt".
+    def _refd(m, jokes):
+        _stop = {"that","this","with","from","have","were","what","when","your","about","there","their","would","could","which","because","gloria","vintos"}
+        src = " ".join(str(m.get(k, "")) for k in ("stated", "original", "actual", "what_makes_it_funny")).lower()
+        words = {w.strip(".,;:!?\"'()") for w in src.split() if len(w) > 4} - _stop
+        for j in jokes:
+            jw = {w.strip(".,;:!?\"'()") for w in str(j).lower().split() if len(w) > 4}
+            if len(words & jw) >= 2: return True
+        return False
+    _accepted_jokes = [a.get("joke", "") for a in accepted]
+    _referenced = [m for m in _scanner_moments_used if _refd(m, _accepted_jokes)]
+    mark_moments_used(_referenced)
+    log(f"Marked {len(_referenced)} of {len(_scanner_moments_used)} offered scanner moments used (referenced by an accepted draft)")
 
     # Parse and save only screened attempts.
     drafts = load_drafts()

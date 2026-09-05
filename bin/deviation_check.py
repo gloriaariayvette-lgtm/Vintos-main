@@ -10,6 +10,13 @@ Fast path: one embed call + dot products only.
 import os, sys, json, math, socket
 from datetime import datetime
 
+def _emb_clip(_x, _n=6000):
+    # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
+    if isinstance(_x, str): return _x[:_n]
+    if isinstance(_x, list): return [(_i[:_n] if isinstance(_i, str) else _i) for _i in _x]
+    return _x
+
+
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
@@ -25,7 +32,7 @@ ALIGNMENT_THRESHOLD = 0.28
 def embed(text):
     import requests
     r = requests.post(f"{LM_URL}/v1/embeddings",
-        json={"model":"text-embedding-nomic-embed-text-v1.5","input":text[:500]},
+        json={"model":"text-embedding-nomic-embed-text-v1.5","input":_emb_clip(text[:500])},
         headers={"Authorization":"Bearer lm-studio"}, timeout=20)
     _j = r.json()
     if "data" not in _j:

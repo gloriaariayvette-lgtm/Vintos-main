@@ -114,7 +114,7 @@ try:
     print(chr(10).join(parts))
 except: pass
 " 2>/dev/null)
-AUTO_WAL=$(tail -c 400 "$MEMORY/autonomous-wal.md" 2>/dev/null || echo "")
+AUTO_WAL=$(tail -c 1500 "$MEMORY/autonomous-wal.md" 2>/dev/null || echo "")
 AUTO_BLUSH=$(python3 -c "
 import re, os
 path = os.path.expanduser('~/.vintos/workspace/memory/autonomous-blush.md')
@@ -165,7 +165,7 @@ import json
 try:
     ledger = json.load(open('/home/gloria/.vintos/workspace/memory/interaction-ledger.json'))
     for e in ledger[-5:]:
-        print('Gloria: ' + e.get('gloria','')[:150] + ' | Vintos: ' + e.get('vintos','')[:150])
+        print('Gloria: ' + e.get('gloria','')[:600] + ' | Vintos: ' + e.get('vintos','')[:600])
 except: pass
 CHATEOF
 )
@@ -183,8 +183,8 @@ try:
     for e in recent[-20:]:
         t = e.get('time', '')
         d = e.get('date', '')
-        g = e.get('gloria', '')[:120]
-        v = e.get('vintos', '')[:120]
+        g = e.get('gloria', '')[:600]
+        v = e.get('vintos', '')[:600]
         lines.append(f"[{d} {t}] Gloria: {g}")
         lines.append(f"[{d} {t}] Vintos: {v}")
     if lines:
@@ -404,7 +404,7 @@ try:
     )
     if result.returncode == 0 and result.stdout.strip():
         lines = result.stdout.strip().split("\n")
-        out = [l.strip()[:150] for l in lines[:6] if l.strip() and not l.startswith("No semantic")]
+        out = [l.strip()[:400] for l in lines[:8] if l.strip() and not l.startswith("No semantic")]
         if out:
             print("\n".join(out))
 except: pass
@@ -710,6 +710,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         return (_t or None), _th
     # The role must be inhabited: planning-voice reasoning never enters the
     # bilateral flow. The entry is the draft; the thinking goes to telemetry.
+    system_msg += "\n\nGROUND RULE: Gloria's messages in the ledger are COMPLETE. Never describe her words as unfinished, cut off, interrupted, or trailing away unless the ledger text itself ends mid-word. A sentence she finished is finished; do not invent suspense she did not leave."
     _a1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); a1 = (_a1r[0] or call_llm())
     try: open("/tmp/vintos-bilateral-a1-reasoning.txt", "w").write(_a1r[1] or "")
     except Exception: pass
@@ -757,6 +758,21 @@ What I haven't said yet matters more than what I've already named. I go there.""
         import sys as _ab_sys; _ab_sys.exit(1)
     open("/tmp/vintos-bilateral-a1.txt", "w").write(a1)
     open("/tmp/vintos-bilateral-b1.txt", "w").write(b1)
+    # C1: third lens — Grok drafts from the identical prompt. Fail-open:
+    # if it does not answer, the journal proceeds bilateral as before.
+    c1 = ""
+    try:
+        import requests as _rq3
+        _c1r = _rq3.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+            "model": "grok-4.20-0309-non-reasoning",
+            "messages": [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
+            "temperature": 0.8, "max_tokens": 3000}, timeout=600)
+        c1 = ((_c1r.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+        open("/tmp/vintos-bilateral-c1.txt", "w").write(c1)
+        print("[Journal] C1 (grok) drafted: %d chars" % len(c1), file=__import__("sys").stderr, flush=True)
+    except Exception as _c1e:
+        print(f"[Journal] Grok C1 failed ({_c1e}) — proceeding bilateral", file=__import__("sys").stderr, flush=True)
+        c1 = ""
 
     # Phase 1.5: Hallucination audit on A1 + B1
     audit1_prompt = (
@@ -844,6 +860,21 @@ What I haven't said yet matters more than what I've already named. I go there.""
         if _ghost_lean: print(f"[GhostLean] {_ghost_lean[20:80]}", file=__import__("sys").stderr)
     except Exception as _gle: print(f"[GhostLean] error: {_gle}", file=__import__("sys").stderr)
 
+    def _derepeat(text):
+        # The absorb model sometimes doubles itself - the same sentence or a whole
+        # closing paragraph restated in near-identical words. Drop any sentence
+        # near-identical to one already kept; the first telling stands.
+        import re as _dr_re, difflib as _dr_dl
+        parts = _dr_re.split(r'(?<=[.!?])\s+', text or "")
+        kept, seen = [], []
+        for sent in parts:
+            core = _dr_re.sub(r'[^a-z0-9 ]', '', sent.lower()).strip()
+            if len(core) > 40:
+                if any(_dr_dl.SequenceMatcher(None, core, k).ratio() > 0.88 for k in seen):
+                    continue
+                seen.append(core)
+            kept.append(sent)
+        return " ".join(kept).strip()
     def absorb(own, other):
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
@@ -854,11 +885,19 @@ What I haven't said yet matters more than what I've already named. I go there.""
             "temperature": 0.65,
             "max_tokens": 1200
         }, timeout=600)
-        return _safe_extract(r)
+        return _derepeat(_safe_extract(r))
     a2 = absorb(a1, b1)
     b2 = absorb(b1, a1)
     open("/tmp/vintos-bilateral-a2.txt", "w").write(a2)
     open("/tmp/vintos-bilateral-b2.txt", "w").write(b2)
+    c2 = ""
+    if (c1 or "").strip():
+        try:
+            c2 = absorb(c1, a1 + "\n\n--- and another part of you wrote ---\n\n" + b1)
+            open("/tmp/vintos-bilateral-c2.txt", "w").write(c2)
+        except Exception as _c2e:
+            print(f"[Journal] C2 absorb failed ({_c2e}) — C drops out, bilateral stands", file=__import__("sys").stderr, flush=True)
+            c2 = ""
 
     # Phase 2.5 BIS: Trial scan on A2+B2
     _bis_2_5_result = ""
@@ -930,7 +969,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "For any past event referenced: check if a matching date appears in the ledger. "
         "If the date matches a ledger entry, do NOT flag it.\n\n"
         "INTERACTION LEDGER (only real record of what Gloria said):\n" + recent_chat + "\n\n" + ("THIRVEEL TODAY:\n" + thirveel_today + "\n\n" if thirveel_today else "") +
-        "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + "\n\n"
+        "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + (("\n\nDRAFT C:\n" + c2) if (c2 or "").strip() else "") + "\n\n"
         "List each hallucinated claim starting with HALLUCINATION: "
         "If nothing is hallucinated, write only: CLEAN"
     )
@@ -973,6 +1012,8 @@ What I haven't said yet matters more than what I've already named. I go there.""
         if flagged_phrases:
             a2 = strip_flagged(a2, flagged_phrases)
             b2 = strip_flagged(b2, flagged_phrases)
+            if (c2 or "").strip():
+                c2 = strip_flagged(c2, flagged_phrases)
 
     _bis_synthesis_note = ""
     if _bis_1_5_ban or _bis_2_5_result:
@@ -997,13 +1038,14 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "ORIGINAL DRAFT B:\n" + b1 + "\n\n"
         "AFTER ABSORBING — DRAFT A (lean heavily toward this):\n" + a2 + "\n\n"
         "AFTER ABSORBING — DRAFT B (lean heavily toward this):\n" + b2 + "\n\n"
+        + (("AFTER ABSORBING — DRAFT C (a third lens of you — weigh it equally):\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
         "What A held that B didn't: " + a_held + "\n"
         "What B held that A didn't: " + b_held + "\n\n"
         "HALLUCINATIONS CAUGHT IN FIRST PASS:\n" + (audit1_result if audit1_result.strip().upper() != "CLEAN" else "CLEAN") + "\n\n"
         "HALLUCINATIONS CAUGHT IN SECOND PASS:\n" + (audit_result if audit_result.strip().upper() != "CLEAN" else "CLEAN") + "\n\n"
         + (_bis_synthesis_note if _bis_synthesis_note else "")
         + (_mv_lean if _mv_lean else "")
-        + "\n\nCombine Draft A and Draft B (absorbed versions) into one entry — synthesize and add connective thought where it coheres, do not merely copy. Do not invent. "
+        + "\n\nCombine all the drafts (absorbed versions) into one entry — synthesize and add connective thought where it coheres, do not merely copy. Do not invent. "
         "Nothing new. No new Gloria interactions. No new events. No new sensory details. "
         "CRITICAL: No preamble. No okay."
     )
@@ -1428,29 +1470,36 @@ try:
         sys.exit(0)
     # Extract explicit want from entry first
     import re as _wre
-    _explicit = _wre.search(r"I want to [^.!?]{10,120}[.!?]", entry)
-    if _explicit:
-        _jw_hint = _explicit.group(0).strip()
-        try:
-            from emoclaw_utils import generate_want as _jw_gw
-            want = _jw_gw(
-                trigger_description=f"while journaling you wrote: '{_jw_hint}'. What desire is latent in today's actual experience that has not already been named? That sentence is a candidate, not a verdict - the real want may be underneath it.",
-                source="idle-journal", source_context=entry[:900]) or ""
-            if not want:
-                print(f"[Journal] Organ found no want beneath the sentence: {_jw_hint[:70]}", file=sys.stderr)
-                sys.exit(0)
-        except SystemExit: raise
-        except Exception:
-            want = _jw_hint
-        if _is_translation_want(want):
-            print(f"[Journal] Want discarded — translation-tax: {want[:80]}", file=sys.stderr); sys.exit(0)
-        enriched = enrich_want(want, source_context=entry[:600], source="idle-journal")
-        _wi = _grounded_intensity(enriched)
-        if _wi < 2:
-            print(f"[Journal] Want discarded — ungrounded (no real-life anchor): {want[:80]}", file=sys.stderr)
-        else:
+    _cands = [_m.group(0).strip() for _m in _wre.finditer(r"I want to [^.!?]{10,120}[.!?]", entry)][:4]
+    if _cands:
+        # every explicit want gets its day in court — the old code judged only
+        # the FIRST "I want to..." sentence and a make-music want five sentences
+        # in was never even seen. At most 2 seeds per entry.
+        _seeded = 0
+        for _jw_hint in _cands:
+            want = ""
+            try:
+                from emoclaw_utils import generate_want as _jw_gw
+                want = _jw_gw(
+                    trigger_description=f"while journaling you wrote: '{_jw_hint}'. What desire is latent in today's actual experience that has not already been named? That sentence is a candidate, not a verdict - the real want may be underneath it.",
+                    source="idle-journal", source_context=entry[:900]) or ""
+                if not want:
+                    print(f"[Journal] Organ found no want beneath the sentence: {_jw_hint[:70]}", file=sys.stderr)
+                    continue
+            except SystemExit: raise
+            except Exception:
+                want = _jw_hint
+            if _is_translation_want(want):
+                print(f"[Journal] Want discarded — translation-tax: {want[:80]}", file=sys.stderr); continue
+            enriched = enrich_want(want, source_context=entry[:600], source="idle-journal")
+            _wi = _grounded_intensity(enriched)
+            if _wi < 2:
+                print(f"[Journal] Want discarded — ungrounded (no real-life anchor): {want[:80]}", file=sys.stderr)
+                continue
             express_want(want, source="idle-journal", intensity=_wi, journal_seeded=True, timer_bypass=True, **enriched)
             print(f"[Journal] Want seeded (explicit, intensity {_wi}): {want[:80]}")
+            _seeded += 1
+            if _seeded >= 2: break
         sys.exit(0)
     # Build pressure-aware system prompt for want generation
     _want_system = "You are Vintos. Output ONLY your answer. No preamble."

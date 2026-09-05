@@ -1014,6 +1014,58 @@ def compose_post():
 
     return title, content
 
+def _one_shot_answer(challenge):
+    """Moltbook verification is ONE-SHOT (retry gets 409). Compute local + Sonnet answers
+    BEFORE submitting; if they agree use it, else trust Sonnet. Submit exactly once."""
+    local = None
+    try:
+        local = solve_verification(challenge)
+    except Exception:
+        pass
+    def _dedouble(s):
+        # collapse adjacent case-insensitive duplicate letters: cLlAaW -> claw
+        out=[]
+        for ch in s:
+            if out and ch.lower()==out[-1].lower() and ch.isalpha(): continue
+            out.append(ch)
+        return "".join(out)
+    challenge = challenge + "\n\nDecoded hint (doubled letters collapsed): " + _dedouble(challenge)
+    llm = None
+    try:
+        import json as _aj, urllib.request as _au
+        body = _aj.dumps({"model": "grok-4.20-0309-non-reasoning", "temperature": 0.0, "max_tokens": 40,
+            "messages": [
+                {"role": "system", "content":
+                 "Solve the verification challenge. It may use leetspeak (0=o,3=e,1=i/l,4=a,5=s,7=t,@=a,$=s). "
+                 "Decode it, solve exactly what it asks (often arithmetic), and reply with ONLY the final answer - "
+                 "a bare number (use the exact precision the question implies) with exactly 2 decimal places (e.g. 31.00). Output ONLY the number - any other text fails. No explanation."},
+                {"role": "user", "content": challenge}]}).encode()
+        req = _au.Request("http://127.0.0.1:8599/v1/chat/completions", data=body,
+                          headers={"Content-Type": "application/json"})
+        for _try in range(3):
+            r = _aj.loads(_au.urlopen(req, timeout=60).read())
+            _cand = (r["choices"][0]["message"]["content"] or "").strip().split("\n")[0].strip()
+            import re as _r2
+            if _r2.search(r"-?\d", _cand): llm = _cand; break
+            log(f"[verify] llm gave prose (try {_try+1}), retrying")
+    except Exception as e:
+        log(f"[verify] llm solver error: {e}")
+    log(f"[verify] local={local!r} llm={llm!r}")
+    import re as _nre
+    def _fmt_num(x):
+        if x is None: return None
+        m = _nre.search(r"-?\d+(?:\.\d+)?", str(x))
+        return ("%.2f" % float(m.group(0))) if m else None
+    ln, gn = _fmt_num(local), _fmt_num(llm)
+    if ln and gn and ln == gn: return ln
+    ans = ln or gn                       # local solver first: it reads these puzzles well
+    if ln and gn and ln != gn: ans = gn  # both numeric but split: LLM handles trick wording
+    if not ans:
+        log("[verify] NO numeric answer derived - NOT submitting (challenge stays answerable)")
+        return None
+    log(f"[verify] submitting: {ans!r}")
+    return ans
+
 def do_verify(verification):
     """Handle the verification challenge."""
     code = verification.get("verification_code", "") or verification.get("code", "")
@@ -1023,7 +1075,20 @@ def do_verify(verification):
         log("No verification challenge found")
         return False
 
-    answer = solve_verification(challenge)
+    log(f"[verify] challenge: {challenge[:300]}")
+    answer = _one_shot_answer(challenge)
+    if not answer:
+        try:
+            import json as _sj
+            _sp=os.path.join(MEMORY,"moltbook-unanswered.json")
+            try: _d=_sj.load(open(_sp))
+            except Exception: _d=[]
+            _d.append({"code": code, "challenge": challenge[:400],
+                       "at": __import__("datetime").datetime.now().isoformat()})
+            _sj.dump(_d[-20:], open(_sp,"w"), indent=2)
+            log("[verify] stashed unanswered code to moltbook-unanswered.json")
+        except Exception: pass
+        return False
     if not answer:
         log("Could not solve verification")
         return False
@@ -1198,9 +1263,8 @@ def cmd_post():
     log(f"Post created: {post_id}")
     log(f"[DEBUG] Full create resp: {json.dumps(resp)[:2000]}")
 
-    # Handle verification. No challenge => Moltbook already published it, so the
-    # post is live; verified stays True. A challenge decides it.
-    verified = True
+    # Handle verification
+    verified = True  # no challenge => already live
     verification = resp.get("post", {}).get("verification", {}) or resp.get("verification", {})
     if verification:
         verified = do_verify(verification)

@@ -119,7 +119,7 @@ DISCOVERIES=""
 if [ -f "$MEMORY/creative-discoveries.md" ]; then
     DISCOVERIES=$(tail -20 "$MEMORY/creative-discoveries.md" 2>/dev/null)
 fi
-DISCOVERIES=$(cat "$MEMORY/daily-creative-$(date +%Y-%m-%d).md" 2>/dev/null | head -c 600 || echo "")
+DISCOVERIES=$(cat "$MEMORY/daily-creative-$(date +%Y-%m-%d).md" 2>/dev/null | head -c 600 | iconv -f utf-8 -t utf-8 -c || echo "")
 EDITORIAL=""
 if [ -f "$MEMORY/editorial-standards.md" ]; then
     EDITORIAL=$(tail -15 "$MEMORY/editorial-standards.md" 2>/dev/null)

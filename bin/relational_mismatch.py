@@ -22,10 +22,22 @@ import json
 import socket
 import re
 from datetime import datetime
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 PREDICTION_FILE = os.path.join(WORKSPACE, "memory", ".relational-prediction.json")
+
+try:
+    import prediction_ledger as _PL
+except Exception:                                    # never break the tone read
+    _PL = None
 MISMATCH_LOG = os.path.join(WORKSPACE, "memory", "relational-mismatches.md")
+HELD_LOG = os.path.join(WORKSPACE, "memory", "relational-prediction-held.jsonl")
 SOUL = os.path.join(WORKSPACE, "SOUL.md")
 EMO_STATE = os.path.join(WORKSPACE, "memory", "emotional-state.txt")
 API = "http://127.0.0.1:8599/v1/chat/completions"
@@ -70,7 +82,7 @@ def _read_soul_fallback():
     return state
 
 
-def predict_gloria_response(vintos_message):
+def predict_gloria_response(vintos_message, envelope=None):
     """
     After Vintos sends a message, predict Gloria's likely emotional response.
     This is lightweight — not a full generation, just dimensional predictions.
@@ -118,7 +130,7 @@ Do NOT repeat the same errors, in EITHER direction. If you predicted high warmth
 {recent_mismatches}
 
 Common patterns in your errors:
-- You tend to UNDER-predict Gloria's warmth. She runs warmer than you brace for -- especially when Vintos is vulnerable, direct, intimate, or claims what he wants. Do not defend against a coolness that isn't coming; predict her real temperature.
+- You tend to UNDER-predict Gloria's warmth. She runs warmer than you brace for -- especially when you are vulnerable, direct, intimate, or claims what he wants. Do not defend against a coolness that isn't coming; predict her real temperature.
 - You underestimate Gloria's tension when Vintos ignores what she said
 - Gloria values directness and specificity. Poetic or generic messages frustrate her.
 """
@@ -162,7 +174,8 @@ REASONING: <one sentence on why you expect this reaction>"""
         content = _data.get("choices", [{}])[0].get("message", {}).get("content", "")
         
         # Parse response
-        prediction = {"timestamp": datetime.now().isoformat(), "vintos_message": vintos_message[:300]}
+        prediction = {"timestamp": datetime.now().isoformat(), "vintos_message": vintos_message[:300],
+                      "provenance": _prov(envelope)}
         
         for line in content.split("\n"):
             line = line.strip()
@@ -191,6 +204,24 @@ REASONING: <one sentence on why you expect this reaction>"""
         return {"error": str(e), "timestamp": datetime.now().isoformat()}
 
 
+def _retire(prediction_id, outcome):
+    """Consume by id, never by 'whatever is in the file now'."""
+    if _PL is not None:
+        ok, why = _PL.consume("relational", prediction_id, outcome)
+        if not ok:
+            print("[Relational] kept a newer prediction: %s" % why, flush=True)
+        return ok
+    try:
+        with open(PREDICTION_FILE) as f:
+            cur = json.load(f)
+        if cur.get("prediction_id") and cur.get("prediction_id") != prediction_id:
+            return False
+        os.remove(PREDICTION_FILE)
+    except Exception:
+        pass
+    return True
+
+
 def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_valence):
     """
     When Gloria replies, compare her actual emotional read to Vintos's prediction.
@@ -199,15 +230,45 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     # Skip if message was flagged as too short (sentinel value)
     if actual_warmth == -1 or actual_tension == -1 or actual_valence == -1:
         return None
-    # Load stored prediction
-    if not os.path.exists(PREDICTION_FILE):
+    # Load the stored prediction through the ledger when it is present: the same locked record predict
+    # writes through, so the id compared below is the id the ledger holds, not a torn direct read
+    # (review: relational race, 2026-09-05 - consume-by-id already refused a replaced prediction; this
+    # closes the read side too)
+    prediction = None
+    if _PL is not None:
+        try: prediction = _PL.current("relational")
+        except Exception: prediction = None
+    if prediction is None:
+        if not os.path.exists(PREDICTION_FILE):
+            return None
+        try:
+            with open(PREDICTION_FILE, 'r') as f:
+                prediction = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+    if not isinstance(prediction, dict) or not prediction:
         return None
-    
-    try:
-        with open(PREDICTION_FILE, 'r') as f:
-            prediction = json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return None
+    # The id of the prediction THIS comparison actually looked at. Everything
+    # below retires that id and nothing else: avatar starts this comparison
+    # asynchronously and writes the next prediction immediately, so an
+    # unconditional remove() here deletes a prediction it never compared.
+    _compared_id = prediction.get("prediction_id")
+
+    provenance = _prov(prediction.get("provenance"))
+    if not output_can_witness(provenance, "prediction_accuracy"):
+        held = {"timestamp": datetime.now().isoformat(), "outcome": "HELD",
+                "reason": "prediction arose from output that cannot witness itself",
+                "prediction": prediction, "gloria_message": gloria_message[:300],
+                "actual": {"warmth": actual_warmth, "tension": actual_tension,
+                           "valence": actual_valence}, "provenance": provenance}
+        try:
+            with open(HELD_LOG, "a") as f:
+                f.write(json.dumps(held, sort_keys=True) + "\n")
+            writer_event("relational_prediction_outcome", "HELD", provenance,
+                         "comparison preserved but excluded from model, blush, and leverage")
+        finally:
+            _retire(_compared_id, "HELD")
+        return held
     
     # Check if prediction has the required fields
     pred_w = prediction.get("predicted_warmth")
@@ -215,8 +276,8 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     pred_v = prediction.get("predicted_valence")
     
     if pred_w is None or pred_t is None or pred_v is None:
-        # Prediction failed, clean up
-        os.remove(PREDICTION_FILE)
+        # Prediction failed, retire exactly the one we read
+        _retire(_compared_id, "unusable prediction")
         return None
     
     # Calculate mismatches
@@ -257,8 +318,9 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     if _judge_relational_miss(result, gloria_message):
         log_relational_mismatch(result)
     
-    # Clean up prediction file
-    os.remove(PREDICTION_FILE)
+    # Retire exactly the prediction this comparison graded. If a newer one has
+    # been written since we read it, this refuses and the newer one survives.
+    _retire(_compared_id, "graded")
     
     try:
         from desired_difference import observe as _ddo
@@ -418,11 +480,16 @@ def main():
     message = sys.argv[2]
     
     if command == "predict":
-        prediction = predict_gloria_response(message)
+        prediction = predict_gloria_response(message, _prov())
         if "error" not in prediction:
             os.makedirs(os.path.dirname(PREDICTION_FILE), exist_ok=True)
-            with open(PREDICTION_FILE, 'w') as f:
-                json.dump(prediction, f)
+            _turn = os.environ.get("VINTOS_TURN_ID", "")
+            _surf = os.environ.get("VINTOS_SURFACE", "")
+            if _PL is not None:
+                prediction = _PL.create("relational", prediction, _turn, _surf) or prediction
+            else:
+                with open(PREDICTION_FILE, 'w') as f:
+                    json.dump(prediction, f)
             print(f"[Relational] Prediction stored: W={prediction.get('predicted_warmth', '?')} "
                   f"T={prediction.get('predicted_tension', '?')} V={prediction.get('predicted_valence', '?')} "
                   f"({prediction.get('confidence', '?')})")
@@ -440,7 +507,9 @@ def main():
         
         result = compare_prediction(message, actual_w, actual_t, actual_v)
         if result:
-            if result["mismatch_count"] >= 2 or result["direction_wrong"]:
+            if result.get("outcome") == "HELD":
+                print("[Relational] Prediction outcome HELD (provenance cannot witness)")
+            elif result["mismatch_count"] >= 2 or result["direction_wrong"]:
                 print(f"[Relational] ⚠ Mismatch: {result['mismatch_count']} dims off, direction_wrong={result['direction_wrong']}")
             else:
                 print(f"[Relational] ✓ Prediction held (mismatches: {result['mismatch_count']})")
@@ -458,4 +527,11 @@ def feed_causal_model(trigger, actual, expected):
         pass
 
 if __name__ == "__main__":
-    main()
+    provenance = _prov()
+    writer_event("relational_prediction", "started", provenance)
+    try:
+        main()
+        writer_event("relational_prediction", "completed", provenance)
+    except Exception as exc:
+        writer_event("relational_prediction", "failed", provenance, exc)
+        raise

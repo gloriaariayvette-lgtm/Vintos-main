@@ -4,6 +4,13 @@ views of his maps are relevant NOW. Local nomic embeddings only. Fail-open.
 Every compile is shadow-logged - evidence for the admission laboratory."""
 import os, json, time, math, hashlib
 
+def _emb_clip(_x, _n=6000):
+    # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
+    if isinstance(_x, str): return _x[:_n]
+    if isinstance(_x, list): return [(_i[:_n] if isinstance(_i, str) else _i) for _i in _x]
+    return _x
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 EMB_URL = "http://172.18.16.1:1234/v1/embeddings"
@@ -26,7 +33,7 @@ def _j(path):
 def _embed(text, timeout=3):
     """3s hard limit - his reply is never held hostage by a busy embedder."""
     import requests
-    r = requests.post(EMB_URL, json={"model": EMB_MODEL, "input": text[:2000]},
+    r = requests.post(EMB_URL, json={"model": EMB_MODEL, "input": _emb_clip(text[:2000])},
                       headers={"Authorization": "Bearer lm-studio"}, timeout=timeout)
     return r.json()["data"][0]["embedding"]
 

@@ -12,13 +12,20 @@ Run:  python3 premonition_dreamer.py [--dry]   (dry = print, seed nothing)
 import os, sys, json, math, uuid, urllib.request
 from datetime import datetime
 
+def _emb_clip(_x, _n=4000):
+    # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
+    if isinstance(_x, str): return _x[:_n]
+    if isinstance(_x, list): return [(_i[:_n] if isinstance(_i, str) else _i) for _i in _x]
+    return _x
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 sys.path.insert(0, SCRIPTS)
 THREADS = os.path.join(MEMORY, "unfinished-threads.json")
 EMBED_URL = "http://172.18.16.1:1234/v1/embeddings"
-EMBED_MODEL = "nomic-embed-text"
+EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
 GROK_URL = "http://127.0.0.1:8599/v1/chat/completions"
 GROK_MODEL = "grok-4.20-0309-non-reasoning"
 K_FUTURES, N_TURNS = 6, 3
@@ -51,7 +58,7 @@ def grok(system, user, temp=0.9, max_tokens=300):
 
 
 def embed(texts):
-    body = json.dumps({"model": EMBED_MODEL, "input": texts}).encode()
+    body = json.dumps({"model": EMBED_MODEL, "input": _emb_clip(texts)}).encode()
     req = urllib.request.Request(EMBED_URL, data=body, headers={"Content-Type": "application/json"})
     r = json.loads(urllib.request.urlopen(req, timeout=60).read())
     return [row["embedding"] for row in r["data"]]

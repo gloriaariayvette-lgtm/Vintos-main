@@ -144,30 +144,49 @@ def load_emotional_trajectory():
     except:
         return []
 
-def find_spikes(trajectory, threshold=None):
+# His own rhythm: resting level and half-life (hours) per dimension. Lifted to module scope
+# 2026-09-04 so the spike detector and the testing context share one truth (fable-inner-p3).
+DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
+         "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
+         "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
+         "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+
+def _hours_between(t0, t1):
+    try:
+        a = datetime.fromisoformat(str(t0)[:19]); b = datetime.fromisoformat(str(t1)[:19])
+        return max(0.0, (b - a).total_seconds() / 3600.0)
+    except Exception:
+        return 0.0
+
+def find_spikes(trajectory, threshold=None, with_easing=False):
     threshold = SPIKE_THRESHOLD if threshold is None else threshold
-    """Find moments where emotions shifted significantly between entries."""
+    """Moments that moved MORE than his own rhythm accounts for. Until 2026-09-04 any large delta was
+    a spike, so an ordinary evening's cooling ('desire fell 0.2') was handed to the weekly pass as an
+    event to explain, and decay got attributed to causes. Now the expected value is the decay from the
+    previous reading toward the dimension's resting level over the elapsed hours; only the RESIDUAL
+    over that counts. Large deltas that decay accounts for are returned separately as 'easing'
+    (with_easing=True) and are context, never events."""
     if len(trajectory) < 2:
-        return []
-
-    spikes = []
+        return ([], []) if with_easing else []
+    spikes, easing = [], []
     for i in range(1, len(trajectory)):
-        prev = trajectory[i-1]["v"]
-        curr = trajectory[i]["v"]
-        t = trajectory[i]["t"]
-
+        prev = trajectory[i-1]["v"]; curr = trajectory[i]["v"]; t = trajectory[i]["t"]
+        dt_h = _hours_between(trajectory[i-1].get("t"), t)
         for d, dim in enumerate(DIMENSIONS):
             delta = curr[d] - prev[d]
-            if abs(delta) >= threshold:
-                spikes.append({
-                    "time": t,
-                    "dimension": dim,
-                    "delta": round(delta, 4),
-                    "direction": "rose" if delta > 0 else "fell",
-                    "from": round(prev[d], 4),
-                    "to": round(curr[d], 4),
-                })
-    return spikes
+            base, half = DECAY.get(str(dim).lower(), (None, None))
+            if base is not None and dt_h > 0:
+                expected = base + (prev[d] - base) * (0.5 ** (dt_h / half))
+                resid = curr[d] - expected
+            else:
+                resid = delta
+            row = {"time": t, "dimension": dim, "delta": round(delta, 4), "residual": round(resid, 4),
+                   "direction": "rose" if delta > 0 else "fell", "from": round(prev[d], 4), "to": round(curr[d], 4)}
+            if abs(resid) >= threshold:
+                spikes.append(row)
+            elif abs(delta) >= threshold:
+                row["easing"] = True; easing.append(row)
+    return (spikes, easing) if with_easing else spikes
 
 def load_recent_dreams(days=7):
     """Load dream entries from the last N days."""
@@ -283,6 +302,38 @@ def load_existing_hypotheses():
         except:
             pass
     return {"hypotheses": [], "tested": 0, "confirmed": 0, "revised": 0}
+
+RETIRED_PATH = os.path.join(MEMORY, "causality-retired.jsonl")
+
+def _retire(h):
+    """Append a hypothesis, marks and all, to the retired log. Nothing is culled silently."""
+    try:
+        with open(RETIRED_PATH, "a") as f:
+            f.write(json.dumps(h, ensure_ascii=False) + "\n")
+    except Exception as e:
+        log(f"  retire log failed: {e}")
+
+def _readiness(h):
+    """Lower = cull first. Refuted first, then longest-unwitnessed; never a hypothesis about to graduate.
+    Net comes from the schema-2 readiness when it has been computed, else from the marks."""
+    net = None
+    try:
+        net = (h.get("graduation_readiness") or {}).get("net")
+    except Exception:
+        net = None
+    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")]
+    if net is None:
+        net = (sum(1 for m in marks if m.get("outcome") == "attempted")
+               - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
+    try:
+        age = (datetime.now() - datetime.fromisoformat(str(h.get("formed", ""))[:19])).days
+    except Exception:
+        age = 0
+    if net < 0:
+        return (0, age)                       # refuted: first to go
+    if not marks:
+        return (1, -age)                      # never witnessed: oldest first
+    return (2, -age)
 
 def save_hypotheses(db):
     # counters are DERIVED, never accumulated: rows expire at 7 days but an accumulator never does,
@@ -936,10 +987,7 @@ def load_testing_context():
                 return f"{m.group(1)}:{m.group(2)}" if m else "??"
             snapshots = [(file_time(f), parse_snapshot(os.path.join(snap_dir, f))) for f in today_files if os.path.getsize(os.path.join(snap_dir, f)) > 10]
             # decay-aware: a dimension settling toward baseline is NOT an event to explain.
-            _DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
-                      "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
-                      "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
-                      "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+            _DECAY = DECAY   # one table (module scope) for the detector and the testing context (merged from the bin lineage, 2026-09-05)
             _EASE = {
                 "desire":       "wanting loosening its grip the way it does after it has been answered",
                 "arousal":      "the charge draining back down, coming off the boil",
@@ -1532,13 +1580,25 @@ def main():
         db["hypotheses"].append(h)
         log(f"  New: {h['hypothesis'][:80]}...")
 
-    # Keep last 50 hypotheses max
+    # Capacity (merged 2026-09-05 from the bin lineage, then narrowed to schema-2's law that nothing
+    # unresolved vanishes by itself). Over 50, only REFUTED hypotheses (net < 0) leave, and they leave
+    # into causality-retired.jsonl with their marks. An unwitnessed or held hypothesis is never culled
+    # for size: the old recency trim guillotined exactly the theories about to graduate, and a size cap
+    # is not evidence about any of them. Over capacity with nothing refuted is logged, not "fixed".
     if len(db["hypotheses"]) > 50:
-        # Keep confirmed ones + most recent
-        confirmed = [h for h in db["hypotheses"] if h["status"] == "confirmed"]
-        others = [h for h in db["hypotheses"] if h["status"] != "confirmed"]
-        db["hypotheses"] = confirmed[-20:] + others[-30:]
-
+        refuted = sorted([h for h in db["hypotheses"] if _readiness(h)[0] == 0
+                          and h.get("status") not in ("confirmed", "graduated", "review_held")], key=_readiness)
+        excess = len(db["hypotheses"]) - 50
+        leaving = refuted[:excess]
+        for h in leaving:
+            h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:refuted", "net": _readiness(h)[1]}
+            _retire(h)
+            log(f"  retired for capacity (refuted): {h.get('hypothesis','')[:60]}")
+        leaving_ids = {id(h) for h in leaving}
+        kept = [h for h in db.get("hypotheses", []) if id(h) not in leaving_ids]
+        db["hypotheses"] = kept
+        if len(kept) > 50:
+            log(f"  over capacity ({len(kept)}): nothing unresolved is culled for size")
     save_hypotheses(db)
     write_hypothesis_log(db)
 

@@ -389,7 +389,7 @@ USER += f"Trigger: {TRIGGER}\nEmotional state: {EMOTIONS}\n"
 USER += "\nSpeak now. Just the words, nothing else."
 if FORCED_WANT: USER += " Address the WHAT I WANT TO SAY topic directly and specifically."
 
-API = "http://127.0.0.1:8599/v1/chat/completions"
+API = "https://api.x.ai/v1/chat/completions" if __import__("os").environ.get("XAI_API_KEY") else "http://127.0.0.1:8599/v1/chat/completions"  # outreach speaks at full strength; everything else stays on the shim
 
 def call_llm_at(api, system, user, temp=0.8, max_tok=200):
     resp = requests.post(api, json={

@@ -60,10 +60,17 @@ SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
 SCRIPTS="$SCRIPTS self_model_evidence.py self_model_read.py protected_paths.py"  # created 2026-09-04, never in the manifest (review P01)
 SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py want_spine.py pleasure_substrate.py"
+# release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
+SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
+SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
+SCRIPTS="$SCRIPTS creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
-avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py"
+avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py
+wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate.sh deviation_check.py memory_search.py
+emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
+vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
