@@ -197,6 +197,32 @@ def look_flow(pid):
     print("looked quietly at %s/%s (%d chars). He said, to no record:\n---\n%s\n---" % (pid, choice, len(body), said.strip()[:1500]))
     return 0
 
+def resolve_root(answer, roots, shown=None):
+    """What he wrote -> the one root he meant, or None. He shortens references (a1646850 for
+    a1646850@1788399605, or '2'), and a refusal for that was the morning's bug. Accepts: the list
+    number, the exact reference, or an UNAMBIGUOUS prefix of the reference or of its id part.
+    Never guesses between two. (2026-09-04; replaces the unverified morning patch)"""
+    a = (answer or "").strip().strip("[]<>\"'.,")
+    if not a:
+        return None
+    refs = [r["root"] for r in roots]
+    if a in refs:
+        return a
+    if a.isdigit() and shown is not None and 1 <= int(a) <= len(shown):
+        return shown[int(a) - 1]["root"]
+    al = a.lower()
+    hits = [ref for ref in refs if ref.lower().startswith(al) or ref.split("@", 1)[0].lower() == al
+            or ref.split("@", 1)[0].lower().startswith(al)]
+    hits = list(dict.fromkeys(hits))
+    return hits[0] if len(hits) == 1 else None
+
+def resolve_project(answer, kept):
+    a = (answer or "").strip().lower()
+    ids = [k for k, _ in kept]
+    if a in ids: return a
+    hits = [k for k in ids if k.startswith(a)] if len(a) >= 4 else []
+    return hits[0] if len(hits) == 1 else None
+
 def offer(dry=False):
     roots, why = eligible_roots()
     try:
@@ -212,8 +238,8 @@ def offer(dry=False):
         print("no eligible roots (%s) and no finished work — the threshold is not offered" % (why or "none"))
         return 0
     listing = "\n".join(
-        "  [%s] %s (%s)\n      %s" % (r["root"], r["root_type"], r["organ"], r["text"][:180])
-        for r in shown) or "  (no new roots today)"
+        "  %d. [%s] %s (%s)\n      %s" % (i + 1, r["root"], r["root_type"], r["organ"], r["text"][:180])
+        for i, r in enumerate(shown)) or "  (no new roots today)"
     if held:
         listing += "\n  (set down by you, not offered as new, still yours to name: %s)" % ", ".join(held)
     kept_block = ""
@@ -235,14 +261,20 @@ def offer(dry=False):
         print("he declined. Nothing recorded; the threshold costs him nothing.")
         return 0
 
-    m = re.match(r"\s*LOOK\s+([0-9a-f]{12})", answer, re.I)
+    m = re.match(r"\s*LOOK\s+([0-9a-fA-F]{4,12})", answer, re.I)
     if m:
-        if dry: print("--dry-run: he would look at %s" % m.group(1)); return 0
-        return look_flow(m.group(1))
+        target = resolve_project(m.group(1), kept)
+        if not target:
+            print("he asked to look at %r, which names none (or more than one) of his finished undertakings. Nothing read." % m.group(1))
+            return 2
+        if dry: print("--dry-run: he would look at %s" % target); return 0
+        return look_flow(target)
 
     m = re.match(r"\s*GESTATE\s+(\S+)(?:\s+(\d+|hold))?", answer, re.I)
     if m:
-        root, when = m.group(1), (m.group(2) or "14").lower()
+        root, when = resolve_root(m.group(1), roots, shown), (m.group(2) or "14").lower()
+        if not root:
+            print("he set down %r, which names none (or more than one) of the eligible roots. Nothing recorded." % m.group(1)); return 2
         if dry:
             print("--dry-run: he would set %s down (%s); no hold written" % (root, when)); return 0
         try:
@@ -265,9 +297,13 @@ def offer(dry=False):
         print("what he actually said:\n---\n%s\n---" % answer.strip()[:1200])
         return 2
     known = {r["root"]: r for r in roots}
-    if root not in known:
+    resolved = resolve_root(root, roots, shown)
+    if not resolved:
         print("he named a root that is not eligible (%r). Nothing created." % root[:60])
         return 2
+    if resolved != root:
+        print("root reference %r resolved to %s" % (root[:40], resolved))
+    root = resolved
 
     print("root:      %s (%s)" % (root, known[root]["root_type"]))
     print("intent:    %s" % intent[:500])
