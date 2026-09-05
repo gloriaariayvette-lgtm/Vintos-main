@@ -3622,14 +3622,15 @@ Gloria-specific additions:
             + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Something that failed or fell flat should move him NEGATIVELY. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
-            + "    nudges = json.loads(m.group()) if m else {'Connection': 0.02, 'Valence': 0.02}\n"
+            + "    nudges = json.loads(m.group()) if m else {}\n"
             + "except:\n"
-            + "    nudges = {'Connection': 0.02, 'Valence': 0.02}\n"
+            + "    nudges = {}   # a moment that cannot be read moves nothing (2026-09-04)\n"
             + "for dim, amt in nudges.items():\n"
             + "    try:\n"
             + "        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(2); s.connect('/tmp/Vintos-emotion.sock')\n"
             + "        s.sendall(json.dumps({'command': 'nudge', 'dimension': dim, 'amount': amt}).encode() + b'\\n'); s.recv(4096); s.close()\n"
             + "    except: pass\n"
+            + "import os\ntry: os.unlink(__file__)\nexcept Exception: pass\n"
         )
         _cn_tmp = _cntf.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
         _cn_tmp.write(_cn_code)
@@ -3664,19 +3665,8 @@ Gloria-specific additions:
     except Exception:
         pass
 
-    # Relational mismatch — predict Gloria's reaction to what Vintos just said
-    try:
-        import subprocess as _rp_sp
-        _rp_script = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-        _rp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_rp_script):
-            _rp_sp.Popen(
-                [_rp_venv, _rp_script, "predict", reply[:500]],
-                stdout=open("/tmp/relational-predict.log", "a"),
-                stderr=open("/tmp/relational-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
+    #  _relational_predict above already makes the one bound prediction for this turn.)
 
     # Silence contract — ask Vintos if he withheld anything (background)
     try:
@@ -4720,14 +4710,15 @@ Your current self-model (excerpt):
             + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Something that failed or fell flat should move him NEGATIVELY. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
-            + "    nudges = json.loads(m.group()) if m else {'Connection': 0.02, 'Valence': 0.02}\n"
+            + "    nudges = json.loads(m.group()) if m else {}\n"
             + "except:\n"
-            + "    nudges = {'Connection': 0.02, 'Valence': 0.02}\n"
+            + "    nudges = {}   # a moment that cannot be read moves nothing (2026-09-04)\n"
             + "for dim, amt in nudges.items():\n"
             + "    try:\n"
             + "        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(2); s.connect('/tmp/Vintos-emotion.sock')\n"
             + "        s.sendall(json.dumps({'command': 'nudge', 'dimension': dim, 'amount': amt}).encode() + b'\\n'); s.recv(4096); s.close()\n"
             + "    except: pass\n"
+            + "import os\ntry: os.unlink(__file__)\nexcept Exception: pass\n"
         )
         _cn_tmp = _cntf.NamedTemporaryFile(mode="w", suffix=".py", delete=False)
         _cn_tmp.write(_cn_code)
@@ -4762,19 +4753,8 @@ Your current self-model (excerpt):
     except Exception:
         pass
 
-    # Relational mismatch — predict Gloria's reaction to what Vintos just said
-    try:
-        import subprocess as _rp_sp
-        _rp_script = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-        _rp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_rp_script):
-            _rp_sp.Popen(
-                [_rp_venv, _rp_script, "predict", reply[:500]],
-                stdout=open("/tmp/relational-predict.log", "a"),
-                stderr=open("/tmp/relational-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
+    #  _relational_predict above already makes the one bound prediction for this turn.)
 
     # Silence contract — ask Vintos if he withheld anything (background)
     try:
@@ -4845,10 +4825,9 @@ Your current self-model (excerpt):
     except Exception:
         pass
     # Interaction ledger — unified record of exchange + felt texture + facts + corrections
-    try:
-        with open("/tmp/vintos-consent-note.txt", "w") as _cnf:
-            _cnf.write("YES")
-    except: pass
+    # (Until 2026-09-04 a "YES" was written to /tmp/vintos-consent-note.txt here, unconditionally,
+    #  before every ledger entry - and the ledger's fallback salience read that YES as a reason to
+    #  rate the exchange 0.65. Recording a conversation is not consent to anything; no note.)
     try:
         import subprocess as _led_sp
         _led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
@@ -5383,19 +5362,8 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     except Exception:
         pass
 
-    # Relational mismatch — predict Gloria's reaction to what Vintos just said
-    try:
-        import subprocess as _rp_sp
-        _rp_script = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-        _rp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_rp_script):
-            _rp_sp.Popen(
-                [_rp_venv, _rp_script, "predict", reply[:500]],
-                stdout=open("/tmp/relational-predict.log", "a"),
-                stderr=open("/tmp/relational-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
+    #  _relational_predict above already makes the one bound prediction for this turn.)
 
     # Deviation / alignment check — background thread, fires 8s after response
     try:

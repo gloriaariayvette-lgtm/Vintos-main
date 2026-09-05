@@ -336,18 +336,9 @@ def pick_question():
                     except Exception: _store = []
                     _qid = _live[0].get("id") or str(abs(hash(_q)))[:8]
                     if any(x.get("id") == _qid for x in _store):
+                        # Until 2026-09-04 this logged and fell through: appended again, pinged again,
+                        # collapsed twice. One send, ever. (fable-curiosity-p1 / grok-curiosity-p2)
                         log("already sent to her, not asking twice: %s" % _q[:70])
-                    try:
-                        from curiosity_debt import _load as _cd_load, _save as _cd_save
-                        _cd = _cd_load()
-                        for _x in _cd:
-                            if _x.get("id") == _qid or _x.get("question") == _q:
-                                _x["pull"] = 0.2
-                                _x["sent_to_gloria"] = True
-                        _cd_save(_cd)
-                        log("legacy sent item collapsed — queue released (p1)")
-                    except Exception as _hoe:
-                        log("handoff collapse failed: %s" % _hoe)
                         return None
                     _store.append({"id": _qid, "question": _q[:600], "object": _live[0].get("object", ""),
                                    "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
