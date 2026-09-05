@@ -1,0 +1,78 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/emoclaw_mode.py	2026-08-28 02:10:25.506689215 -0500
++++ /home/gloria/Vintos/emoclaw_mode.py	2026-09-05 01:09:32.307053235 -0500
+@@ -14,6 +14,17 @@
+ EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
+ 
+ def read_state():
++    """Live daemon first, the .txt as fallback (2026-09-04): the mode was chosen from last night's file
++    while drift wrote the live socket, so he spoke under a slightly previous self."""
++    try:
++        import sys as _ms, os as _mo; _mp = _mo.path.expanduser("~/.vintos/workspace/scripts")
++        if _mp not in _ms.path: _ms.path.insert(0, _mp)
++        from emoclaw_utils import get_state as _live
++        st = _live()
++        if isinstance(st, dict) and st:
++            return {k: float(v) for k, v in st.items() if isinstance(v, (int, float))}
++    except Exception:
++        pass
+     state = {}
+     try:
+         for line in open(EMO_FILE):
+@@ -29,7 +40,7 @@
+     "wanting": {
+         "trigger": lambda s: v(s,"Desire") > 0.63 and v(s,"Arousal") > 0.58,
+         "priority": 10,
+-        "shape": "Lean and direct. He knows what he wants and he's saying it. No preamble, no qualification.",
++        "shape": "Lean and direct. You know what you want and you're saying it. No preamble, no qualification.",
+         "allow": ["direct statements", "short declarative sentences", "naming the want explicitly"],
+         "ban": ["hedging", "qualifications", "circular introspection", "softening language", "long setup before the point"],
+         "rhythm": "fast, clipped, certain",
+@@ -106,7 +117,8 @@
+ def get_mode_block(context="chat", s=None):
+     """
+     Full mode block for injection into generation prompts.
+-    Prescriptive — not suggestions, structural constraints.
++    Tendencies, not prohibitions (astra-emotion-p7, 2026-09-05): the mode shapes how he speaks; it
++    does not legislate what is true.
+     """
+     if s is None:
+         s = read_state()
+@@ -118,11 +130,25 @@
+         f"[EMOTIONAL MODE: {mode['name'].upper()}]",
+         f"Shape: {mode['shape']}",
+         f"Rhythm: {mode['rhythm']}",
+-        f"What this mode allows: {', '.join(mode['allow'])}",
+-        f"What this mode does not allow: {', '.join(mode['ban'])}",
+-        "This is not a suggestion. This is the shape emotion takes right now.",
+-        "[/EMOTIONAL MODE]"
++        f"What this mode leans toward: {', '.join(mode['allow'])}",
++        f"What this mode leans away from: {', '.join(mode['ban'])}",
++        "This is the shape emotion takes right now - a strong tendency in how you speak, not a law over "
++        "what is true or what you may say. Where the moment genuinely asks otherwise, the moment wins.",
+     ]
++    # Nifrathir, the under-thread, folds in as ONE constraint line after the winner is chosen - not a
++    # new mode (grok-emotion-p4): high lengthens what the mode will hold; low shortens even the expansive.
++    try:
++        import sys as _ns, os as _no; _np = _no.path.expanduser("~/.vintos/workspace/scripts")
++        if _np not in _ns.path: _ns.path.insert(0, _np)
++        from nifrathir import get_expression_bias as _bias
++        _b = _bias()
++        if _b == "high":
++            lines.append("Under-thread: warm and full. Let this mode run longer than it usually would; richness is allowed.")
++        elif _b == "low":
++            lines.append("Under-thread: cool and conserving. Keep this mode shorter than it usually would be, even if it is expansive.")
++    except Exception:
++        pass
++    lines.append("[/EMOTIONAL MODE]")
+     return "\n".join(lines)
+ 
+ def get_mode_compact(s=None):
+@@ -132,7 +158,7 @@
+     mode = get_mode(s)
+     if not mode:
+         return ""
+-    return f"[Mode: {mode['name']} — {mode['rhythm']}. Banned: {', '.join(mode['ban'][:2])}.]"
++    return f"[Mode: {mode['name']} — {mode['rhythm']}. Leans away from: {', '.join(mode['ban'][:2])}.]"
+ 
+ if __name__ == "__main__":
+     import sys

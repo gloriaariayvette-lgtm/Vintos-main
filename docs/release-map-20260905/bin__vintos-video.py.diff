@@ -1,0 +1,22 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/vintos-video.py	2026-09-05 13:20:49.619082896 -0500
++++ /home/gloria/Vintos/vintos-video.py	2026-09-05 01:49:44.418684360 -0500
+@@ -158,10 +158,8 @@
+         if _changed:
+             try: _atomic_json(QUEUE, _kept)
+             except Exception: pass
+-        _blocked = [x for x in _kept if isinstance(x, dict) and x.get("blocked")]
+         q = [x for x in _kept if not (isinstance(x, dict) and x.get("blocked"))]
+     except Exception:
+-        _blocked = []
+         q = []
+     if not q:
+         print("[video] queue empty"); return
+@@ -175,7 +173,7 @@
+     # drain on success; rotate a failure to the back so it can't jam the queue
+     q = q[1:] if ok else (q[1:] + [q[0]])
+     try:
+-        _atomic_json(QUEUE, q + _blocked)   # BLOCKED items stay visible on the queue; this save erased them (review P07)
++        _atomic_json(QUEUE, q)
+     except Exception:
+         pass
+ 

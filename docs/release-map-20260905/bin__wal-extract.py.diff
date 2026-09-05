@@ -1,0 +1,29 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/wal-extract.py	2026-09-05 13:20:49.619082896 -0500
++++ /home/gloria/Vintos/wal-extract.py	2026-09-05 01:09:32.311200278 -0500
+@@ -248,19 +248,13 @@
+         _led_path = os.path.join(MEMORY, "interaction-ledger.json")
+         _led = json.load(open(_led_path))
+         if isinstance(_led, list) and _led:
+-            _tid = os.environ.get("VINTOS_TURN_ID", "")
+-            _cands = [x for x in _led[-12:] if _tid and x.get("turn_id") == _tid]   # its own turn, when both sides carry the id
+-            _by_age = not _cands   # only a legacy entry without a turn id falls back to "newest empty within 300s"
+-            for _le in (_cands or list(reversed(_led[-5:]))):
+-                if _by_age:
+-                    try:
+-                        _age = abs((now - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds())
+-                    except Exception:
+-                        continue
+-                    if _age > 300:
+-                        break
+-                    if _tid and _le.get("turn_id") and _le.get("turn_id") != _tid:
+-                        continue   # another turn's row is never this turn's home
++            for _le in reversed(_led[-5:]):
++                try:
++                    _age = abs((now - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds())
++                except Exception:
++                    continue
++                if _age > 300:
++                    break
+                 if not _le.get("wal_facts"):
+                     _le["wal_facts"] = [str(i.get("content", ""))[:400] for i in items]
+                     _le["wal_facts_backfilled"] = now.isoformat()

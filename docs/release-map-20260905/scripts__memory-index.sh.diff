@@ -1,0 +1,10 @@
+--- /home/gloria/.vintos/deploy/vintos-main/scripts/memory-index.sh	2026-08-28 02:10:25.523173822 -0500
++++ /home/gloria/Vintos/memory-index.sh	2026-07-05 14:19:39.745529406 -0500
+@@ -27,7 +27,6 @@
+     "$MEMORY_ROOT/self-model-drift" \
+     "$MEMORY_ROOT/absence-map" \
+     "$MEMORY_ROOT/meta-dreams" \
+-    "$MEMORY_ROOT/self-reviews" \
+     -name "*.md" 2>/dev/null)
+ 
+ for FILE in $FILES; do

@@ -1,0 +1,11 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/vintos-initiate.sh	2026-08-28 02:10:25.514931519 -0500
++++ /home/gloria/Vintos/vintos-initiate.sh	2026-09-04 12:45:37.150586888 -0500
+@@ -389,7 +389,7 @@
+ USER += "\nSpeak now. Just the words, nothing else."
+ if FORCED_WANT: USER += " Address the WHAT I WANT TO SAY topic directly and specifically."
+ 
+-API = "http://127.0.0.1:8599/v1/chat/completions"
++API = "https://api.x.ai/v1/chat/completions" if __import__("os").environ.get("XAI_API_KEY") else "http://127.0.0.1:8599/v1/chat/completions"  # outreach speaks at full strength; everything else stays on the shim
+ 
+ def call_llm_at(api, system, user, temp=0.8, max_tok=200):
+     resp = requests.post(api, json={

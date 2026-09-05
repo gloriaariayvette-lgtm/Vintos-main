@@ -1,0 +1,36 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/model_router.py	2026-09-05 13:46:49.163395856 -0500
++++ /home/gloria/Vintos/model_router.py	2026-09-05 13:21:01.837301091 -0500
+@@ -165,9 +165,6 @@
+     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+     return (text or None), think
+ 
+-ROUTE_BUDGET_S = float(os.environ.get("VINTOS_ROUTE_BUDGET_S", "150"))   # primary model, whole call
+-ROUTE_FLOOR_S = float(os.environ.get("VINTOS_ROUTE_FLOOR_S", "45"))      # the fallback always gets at least this
+-
+ async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
+     """Returns (reply, reasoning, model_used). The grok path is the safety net."""
+     if surface not in CLAUDE_SURFACES:
+@@ -186,21 +183,13 @@
+     if _consume_forced():
+         return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(forced)"
+     why = "grok(refusal)"
+-    import asyncio as _rb_aio, time as _rb_t
+-    _t0 = _rb_t.time()
+     try:
+-        # the primary gets at most the route budget; the safety net gets what is left, never less than a
+-        # floor. Before this the two stages could take 120s each while the caller had already given up
+-        # and answered "no reply formed" (review P10, 2026-09-05).
+-        reply, reasoning = await _rb_aio.wait_for(_claude(system_text, convo, params, reason), timeout=ROUTE_BUDGET_S)
++        reply, reasoning = await _claude(system_text, convo, params, reason)
+         if reply is not None:
+             return reply, reasoning, "claude:" + current_claude_model()
+-    except _rb_aio.TimeoutError:
+-        why = "grok(primary timed out at %ds)" % int(ROUTE_BUDGET_S)
+     except Exception as e:
+         why = "grok(error:%s)" % str(e)[:40]
+-    _left = max(ROUTE_FLOOR_S, ROUTE_BUDGET_S + ROUTE_FLOOR_S - (_rb_t.time() - _t0))
+-    return await _rb_aio.wait_for(_grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), timeout=_left), "", why
++    return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", why
+ 
+ 
+ GEMMA_ENDPOINT = "http://172.18.16.1:1234/v1/chat/completions"

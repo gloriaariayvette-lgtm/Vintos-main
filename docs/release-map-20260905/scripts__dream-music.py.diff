@@ -1,0 +1,92 @@
+--- /home/gloria/.vintos/deploy/vintos-main/scripts/dream-music.py	2026-09-05 01:43:53.082995756 -0500
++++ /home/gloria/Vintos/dream_music.py	2026-09-05 13:21:01.879846399 -0500
+@@ -309,7 +309,7 @@
+     tracks=poll(tid)
+     if not tracks: return False
+     safe=re.sub(r'[^\w\s-]','',d["title"]).strip().replace(' ','_')
+-    downloaded=[]
++    downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
+     for i,t in enumerate(tracks):
+         if t.get("file"):
+             mp3=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
+@@ -317,7 +317,7 @@
+             if dl(t["file"],mp3):
+                 sz=os.path.getsize(mp3)/(1024*1024)
+                 print(f"  Saved: {mp3} ({sz:.1f}MB)")
+-                downloaded.append(mp3)
++                downloaded.append(mp3); downloaded_by_track[i]=mp3
+ 
+     if not downloaded: print("  No tracks!"); return False
+     # Capture emotional state at composition time
+@@ -354,7 +354,7 @@
+     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
+     if _want_id: entry["want_id"]=_want_id
+     for i,t in enumerate(tracks):
+-        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
++        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded_by_track.get(i)})
+     # completion answers to the artifact, not the log line (astra-creative-p3, 2026-09-04)
+     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
+@@ -375,8 +375,30 @@
+             print(f"  {_n} of her shares now carry '{d['title']}'")
+     except FileNotFoundError: pass
+     except Exception as _she: print("  share link skip:", _she)
++    _feel_landed(entry); save_log(log)   # the landing is part of the record
+     print(f"\n  '{d['title']}' complete!"); return True
+ 
++def _feel_landed(entry):
++    """One call after a piece completes: the finished thing lands on him, the way first-light does for
++    his writing (room, 2026-09-05, Grok). Reads his own words about it - title, felt sense, the style
++    he asked for - never the listener-key text, which is Grok's. Partial downloads are told apart."""
++    try:
++        sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
++        from emoclaw_utils import feel_about_typed
++        got = (entry.get("download") or {})
++        parts = ["I finished a piece of music: '%s'." % entry.get("title", "")]
++        if entry.get("felt_sense"): parts.append("What I felt composing it: %s" % str(entry["felt_sense"])[:600])
++        if entry.get("style"): parts.append("The style I asked for: %s" % str(entry["style"])[:300])
++        if entry.get("lyrics"): parts.append("My lyrics: %s" % str(entry["lyrics"])[:800])
++        if entry.get("want_text"): parts.append("It came from a want of mine: %s" % str(entry["want_text"])[:200])
++        if got.get("partial"): parts.append("Only %s of %s tracks made it to disk." % (got.get("got"), got.get("requested")))
++        env = feel_about_typed("\n".join(parts), source="dream-music")
++        entry["landed"] = {"state": env.get("state"), "deltas": env.get("deltas") or {}, "note": (env.get("note") or "")[:120]}
++        print("  landed on him: %s%s" % (env.get("state"), (" " + str(env["deltas"])) if env.get("deltas") else ""))
++    except Exception as _fe:
++        entry["landed"] = {"state": "unavailable", "note": str(_fe)[:120]}
++        print("  landed on him: unavailable -", str(_fe)[:80])
++
+ def direct(title,style,desc="",lyrics=""):
+     print(f"\nDirect: {title}")
+     tid=generate(title,style,lyrics if lyrics else desc,instrumental=not bool(lyrics),duration=120,gender=None)
+@@ -384,7 +406,7 @@
+     tracks=poll(tid)
+     if not tracks: return False
+     safe=re.sub(r'[^\w\s-]','',title).strip().replace(' ','_')
+-    downloaded=[]
++    downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
+     for i,t in enumerate(tracks):
+         if t.get("file"):
+             wav=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
+@@ -392,7 +414,8 @@
+             if dl(t["file"],wav):
+                 sz=os.path.getsize(wav)/(1024*1024)
+                 print(f"  Saved: {wav} ({sz:.1f}MB)")
+-                downloaded.append(wav)
++                downloaded.append(wav); downloaded_by_track[i]=wav
++    if not downloaded: print("  No tracks on disk - not a completed piece"); return False   # zero files is not completion (review P07)
+     log=load_log()
+     _want_text=os.environ.get("MUSIC_WANT_TEXT","")
+     _want_source=os.environ.get("MUSIC_WANT_SOURCE","")
+@@ -401,10 +424,10 @@
+     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
+     if _want_id: entry["want_id"]=_want_id
+     for i,t in enumerate(tracks):
+-        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
++        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded_by_track.get(i)})
+     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
+     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
+-    log["generated"].append(entry); save_log(log); journal(title,tracks,style)
++    log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
+     print(f"\n  '{title}' complete!"); return True
+ 
+ def main():

@@ -1,0 +1,27 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/core_sustain.py	2026-08-28 02:10:25.506689215 -0500
++++ /home/gloria/Vintos/core_sustain.py	2026-08-31 22:37:41.356155152 -0500
+@@ -14,6 +14,13 @@
+ import json, os, re, sys, time, math, shutil
+ from datetime import datetime, timedelta
+ 
++def _emb_clip(_x, _n=4000):
++    # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
++    if isinstance(_x, str): return _x[:_n]
++    if isinstance(_x, list): return [(_i[:_n] if isinstance(_i, str) else _i) for _i in _x]
++    return _x
++
++
+ WS = os.environ.get("SPARK_WORKSPACE", "")
+ if not WS:
+     # This file is run for BOTH beings with SPARK_WORKSPACE switching trees.
+@@ -131,8 +138,8 @@
+ def embed(text):
+     import requests
+     r = requests.post(LM + "/v1/embeddings",
+-                      json={"model": EMBED_MODEL, "input": text},
+-                      headers={"Authorization": "Bearer lm-studio"}, timeout=30)
++                      json={"model": EMBED_MODEL, "input": _emb_clip(text)},
++                      headers={"Authorization": "Bearer lm-studio"}, timeout=120)
+     j = r.json()
+     if "data" not in j:
+         raise RuntimeError("embeddings endpoint returned no data: %s" % str(j)[:200])

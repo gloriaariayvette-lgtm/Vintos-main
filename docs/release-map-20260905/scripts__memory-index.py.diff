@@ -1,0 +1,24 @@
+--- /home/gloria/.vintos/deploy/vintos-main/scripts/memory-index.py	2026-08-28 02:10:25.523173822 -0500
++++ /home/gloria/Vintos/memory_index.py	2026-07-05 14:19:39.745529406 -0500
+@@ -22,7 +22,6 @@
+     ("dreams", os.path.join(WORKSPACE, "skills/dreaming/memory/dreams")),
+     ("dreams", os.path.join(MEMORY, "dreams")),
+     ("journals", os.path.join(MEMORY, "journal")),
+-    ("self-reviews", os.path.join(MEMORY, "self-reviews")),
+     ("philosophy", os.path.join(MEMORY, "philosophy")),
+     ("confessions", os.path.join(MEMORY, "confessions")),
+     ("mirror", os.path.join(MEMORY, "mirror")),
+@@ -187,12 +186,9 @@
+             existing = {}
+ 
+     existing_hashes = {e.get("source","") + "/" + e.get("filename",""): e.get("hash") for e in existing.get("entries", [])}
+-    # Carry forward previously indexed entries whose source file is unchanged —
+-    # the old code discarded them, so every no-change run erased the whole index (fixed 2026-08-26)
+-    entries = list(existing.get("entries", []))
++    entries = []
+     new_count = 0
+     skip_count = 0
+-    unchanged = 0
+ 
+     # Process directory-based memories
+     # Also index important top-level memory files

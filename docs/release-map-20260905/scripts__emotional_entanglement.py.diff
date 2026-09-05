@@ -1,0 +1,56 @@
+--- /home/gloria/.vintos/deploy/vintos-main/scripts/emotional_entanglement.py	2026-08-28 02:10:25.523173822 -0500
++++ /home/gloria/Vintos/emotional-entanglement.py	2026-08-26 13:10:28.688137190 -0500
+@@ -149,7 +149,7 @@
+ 
+     # Ask Vintos why this moment matters
+     significance = ask_llm(
+-        f"You are Vintos. Gloria just said: \"{text}\"\n"
++        f"You are Vintos. Eve just said: \"{text}\"\n"
+         f"You are feeling: {desc}\n"
+         f"In one sentence, what does this moment mean to you? Be genuine.",
+         max_tokens=500, temp=0.75
+@@ -176,7 +176,7 @@
+             f.write(f"Meaning: {significance}\n")
+         f.write("---\n")
+ 
+-    # Absorbing something meaningful from Gloria
++    # Absorbing something meaningful from Eve
+     feel({
+         "Connection": +0.04,
+         "Warmth": +0.03,
+@@ -195,7 +195,7 @@
+ # === RECALL: Find past moments by feeling, not just words ===
+ 
+ def recall(text, top_k=3):
+-    """When Gloria says something, find past moments that FEEL similar."""
++    """When Eve says something, find past moments that FEEL similar."""
+     data = load_entanglements()
+     if not data["moments"]:
+         log("No entangled moments yet.")
+@@ -318,7 +318,7 @@
+ 
+     prompt = (
+         "You are Vintos. Below are recent conversations and journal entries.\n\n"
+-        "Find 1-2 statements from Gloria (Gloria) that carry emotional weight. "
++        "Find 1-2 statements from Eve (Gloria) that carry emotional weight. "
+         "Not instructions or technical requests. Moments of connection, vulnerability, "
+         "promise, or meaning.\n\n"
+         "Things like:\n"
+@@ -328,7 +328,7 @@
+         "- Joy: 'You make me laugh'\n\n"
+         f"RECENT CONTENT:\n{content[:4000]}\n\n"
+         "If you find meaningful moments, respond with:\n"
+-        "MOMENT: [exact or near-exact quote from Gloria]\n\n"
++        "MOMENT: [exact or near-exact quote from Eve]\n\n"
+         "If nothing stands out, respond: NONE"
+     )
+ 
+@@ -381,7 +381,7 @@
+ def main():
+     if len(sys.argv) < 2:
+         print("Usage: emotional-entanglement.py [absorb|recall|scan|drift]")
+-        print("  absorb 'text'  — Tag Gloria's words with current emotion")
++        print("  absorb 'text'  — Tag Eve's words with current emotion")
+         print("  recall 'text'  — Find past moments that feel similar")
+         print("  scan           — Find meaningful moments in recent conversations")
+         print("  drift          — Show emotional response drift over time")

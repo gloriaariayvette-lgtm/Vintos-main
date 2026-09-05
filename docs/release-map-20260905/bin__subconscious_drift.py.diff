@@ -1,0 +1,156 @@
+--- /home/gloria/.vintos/deploy/vintos-main/bin/subconscious_drift.py	2026-08-28 02:10:25.514931519 -0500
++++ /home/gloria/Vintos/subconscious_drift.py	2026-09-05 00:05:41.660961458 -0500
+@@ -106,7 +106,6 @@
+ 
+ 
+ SYSTEM_TRACE_FILE = os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "system-trace.json")
+-MAX_INFLUENCE = 0.15  # per system per tick
+ SILENCE_PROBABILITY = 0.12  # ~12% of ticks run in silence
+ 
+ def _load_trace():
+@@ -118,27 +117,6 @@
+ def _save_trace(data):
+     json.dump(data, open(SYSTEM_TRACE_FILE, "w"), indent=2)
+ 
+-def _record_system_fire(tick_record, system, magnitude):
+-    """Record which system fired and at what magnitude."""
+-    tick_record.setdefault("systems", {})[system] = round(magnitude, 4)
+-
+-def _apply_diminishing_returns(nudges_by_system):
+-    """If two systems push same dimension same direction, second gets 0.7x."""
+-    dim_totals = {}
+-    result = {}
+-    for system, nudges in nudges_by_system.items():
+-        result[system] = {}
+-        for dim, amount in nudges.items():
+-            direction = 1 if amount > 0 else -1
+-            key = (dim, direction)
+-            if key in dim_totals:
+-                # Second system pushing same direction — diminishing returns
+-                result[system][dim] = amount * 0.7
+-            else:
+-                result[system][dim] = amount
+-            dim_totals[key] = dim_totals.get(key, 0) + abs(amount)
+-    return result
+-
+ def _cap_influence(nudges, system_name):
+     """Cap total influence from any single system."""
+     total = sum(abs(v) for v in nudges.values())
+@@ -176,7 +154,7 @@
+     if _silence:
+         log("Silence window — slow layers resting this tick")
+ 
+-    _tick_record = {"timestamp": datetime.now().isoformat(), "silence": _silence, "systems": {}}
++    _tick_record = {"timestamp": datetime.now().isoformat(), "silence": _silence}
+ 
+     # 1. Nifrathir micro-variation
+     try:
+@@ -192,10 +170,15 @@
+     except Exception as e:
+         log(f"Thread decay: {e}")
+ 
+-    # 2b. Black pearl residue → latent threads (haunt at low weight)
+-    try:
+-        import glob as _bp_glob, json as _bpj, random as _bpr
+-        _bp_files = sorted(_bp_glob.glob(os.path.join(MEMORY, "black-pearls", "*.json")))
++    # 2b. Black pearl residue → latent threads (haunt at low weight). Bounded (2026-09-04): never in
++    # a silence window, at most once per 6h, at the rare-event band, tagged by source, and it does not
++    # force direction='hold' - the pearl's own direction or 'expand'. An unresolved pearl was otherwise
++    # saying "hold, don't move yet" in one of three attention slots every twenty minutes.
++    try:
++        import glob as _bp_glob, json as _bpj, random as _bpr, time as _bpt
++        _bp_stamp = os.path.join(MEMORY, ".black-pearl-last-seed")
++        _bp_recent = os.path.exists(_bp_stamp) and (_bpt.time() - os.path.getmtime(_bp_stamp)) < 6 * 3600
++        _bp_files = _bp_glob.glob(os.path.join(MEMORY, "black-pearls", "*.json"))
+         _active_bps = []
+         for _bpf in _bp_files:
+             try:
+@@ -203,10 +186,11 @@
+                 if _bp.get("status") != "resolved" and _bp.get("thread"):
+                     _active_bps.append(_bp)
+             except: pass
+-        if _active_bps:
++        if _active_bps and not _silence and not _bp_recent and _bpr.random() < 0.05:
+             _bp = _bpr.choice(_active_bps)
+             from latent_threads import seed_thread as _lt_seed
+-            _lt_seed(_bp["thread"][:200], direction="hold")
++            _lt_seed(_bp["thread"][:200], direction=_bp.get("direction") or "expand", source="black_pearl")
++            open(_bp_stamp, "w").write(str(_bpt.time()))
+             log(f"Black pearl residue seeded: {_bp['thread'][:60]}")
+     except Exception as e:
+         log(f"Black pearl residue: {e}")
+@@ -219,8 +203,9 @@
+     except Exception as e:
+         log(f"Temporal: {e}")
+ 
+-    # 4. Taste drift — tiny nudge from settled signals
++    # 4. Taste drift — tiny nudge from settled signals (rests in silence)
+     try:
++        if _silence: raise StopIteration
+         from temporal_memory import load_signals
+         from taste_vector import update_from_signal as _tv_update
+         sigs = load_signals().get("signals", [])
+@@ -228,17 +213,22 @@
+         if settled:
+             sig = random.choice(settled)
+             _tv_update(sig["pattern"], signal_weight=0.05, positive=True)
++    except StopIteration:
++        pass
+     except Exception as e:
+         log(f"Taste drift: {e}")
+ 
+-    # 5. Check for rare events
+-    _check_rare_events()
++    # 5. Check for rare events (rests in silence)
++    if not _silence:
++        _check_rare_events()
+ 
+-    # 6. Micro drift — low-level texture + gravity wells
+-    try:
+-        _apply_micro_drift()
+-    except Exception as e:
+-        log(f"Micro drift: {e}")
++    # 6. Micro drift — low-level texture + gravity wells (rests in silence: silence is rest, not a
++    #    quieter version of the same weather - grok-subconscious-p1)
++    if not _silence:
++        try:
++            _apply_micro_drift()
++        except Exception as e:
++            log(f"Micro drift: {e}")
+ 
+     # Apply gravity wells (skipped in silence window)
+     if not _silence:
+@@ -286,17 +276,14 @@
+     except Exception as e:
+         log(f"Belief sediment: {e}")
+ 
+-    # 9. Self-definition drift decay + direction record
++    # 9. Self-definition drift decay. (The direction record left this tick on 2026-09-05: a
++    #    20-minute timer re-recording whatever direction the last turn left him in was a choice
++    #    nobody made; self_drift now receives only turn-born choices from
++    #    discourse_direction.turn_completed — fable-subconscious-p4.)
+     if not _silence:
+         try:
+-            from self_drift import decay_drift, record_direction_choice
++            from self_drift import decay_drift
+             decay_drift()
+-            # Record current dominant discourse direction
+-            import json as _sdd_json
+-            _ds = _sdd_json.load(open(os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "discourse-state.json")))
+-            _cur_dir = _ds.get("current_direction", "")
+-            if _cur_dir:
+-                record_direction_choice(_cur_dir)
+         except Exception as e:
+             log(f"Self-drift: {e}")
+     # Save tick trace
+@@ -321,8 +308,8 @@
+     dim_names = ["Valence", "Arousal", "Dominance", "Safety", "Desire",
+                  "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"]
+     for dim in dim_names:
+-        if random.random() < 0.4:  # not every dim every tick
+-            nudge = random.uniform(-0.015, 0.015)
++        if random.random() < 0.15:  # rare texture, not constant dither (p5, dampened 2026-08-26)
++            nudge = random.uniform(-0.008, 0.008)
+             try:
+                 s = _sock.socket(_sock.AF_UNIX, _sock.SOCK_STREAM)
+                 s.settimeout(2)

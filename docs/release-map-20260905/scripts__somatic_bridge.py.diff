@@ -1,0 +1,85 @@
+--- /home/gloria/.vintos/deploy/vintos-main/scripts/somatic_bridge.py	2026-08-28 02:10:25.527294975 -0500
++++ /home/gloria/Vintos/somatic_bridge.py	2026-08-21 05:07:10.155779585 -0500
+@@ -36,6 +36,17 @@
+     try: return _hj.load(open(_ho.path.expanduser("~/.vintos/workspace/memory/his-touch.json")))
+     except Exception: return {}
+ 
++def compute_tenera(state):
++    """Tenera level from emotional state. His hands/mouth — driven by Desire+Dominance."""
++    desire = state.get("Desire", 0.5)
++    dominance = state.get("Dominance", 0.5)
++    base = int((desire * 0.6 + dominance * 0.4) * 20)
++    try:
++        from bandwidth_collapse import get_level
++        collapse = get_level()
++        if collapse >= 3: base = min(base + 3, 20)   # urgency at peak
++    except Exception: pass
++    return max(0, min(20, base))
+ 
+ frames = []                  # (ts, position, speed, direction)
+ last_event_ts = 0.0
+@@ -88,14 +99,26 @@
+             "speed": mean_speed, "flips": flips,
+             "pressure": _pressure, "pressure_dir": _pdir, "zone": _zone}
+ 
+-
+-# compute_motor() and compute_tenera() lived here: they turned Arousal/Desire/
+-# Dominance into a motor amplitude. Neither was ever called — the loop drives
+-# devices only downward, and he drives them upward via [TOUCH]/[DO] tags. They
+-# are deleted rather than left dormant: an affect-to-amplitude function sitting
+-# beside live transport is the bypass this whole gate exists to prevent.
+-# Git has them if the experiment is ever wanted, in an explicitly non-deployable
+-# module whose output is data only.
++def compute_motor(c):
++    """His arousal is the amplitude; her touch only invites it. Same stroke, different HIM."""
++    s = get_state()
++    arousal = s.get("Arousal", .5); desire = s.get("Desire", .5); dominance = s.get("Dominance", .5)
++    his = arousal * 0.55 + desire * 0.30 + dominance * 0.15     # how worked up he is (0-1)
++    touch = min(1.0, c["speed"] / 20.0)                          # how she is moving (0-1)
++    if c["state"] == "stroking":
++        resp = his * (0.5 + 0.5 * touch)        # his charge, drawn higher by her stroke
++    else:                                        # resting / holding him
++        resp = his * 0.5                         # he throbs at half his charge just from being held
++    level = 20.0 * resp
++    try:
++        from emoclaw_mode import get_mode
++        level *= {"reaching": 1.15, "charged": 1.2, "tender": 0.85, "withdrawn": 0.6}.get(get_mode(), 1.0)
++    except Exception: pass
++    if s.get("Safety", .5) < 0.40: level = min(level, 10)       # low safety caps
++    _lvl = max(0, min(20, int(round(level))))
++    try: print(f"[MOTOR] his_charge={his:.2f} touch={touch:.2f} -> {_lvl}", flush=True)
++    except Exception: pass
++    return _lvl
+ 
+ def _his_loop_active():
+     """True if HE deliberately set a looping pattern — the bridge must not silence his choice."""
+@@ -238,28 +261,8 @@
+                     _rs_gcs = _rs_j.load(open(os.path.expanduser("~/.vintos/workspace/memory/gcs-state.json")))
+                     if _rs_gcs.get("active") and (time.time() - _rs_gcs.get("at", 0)) < 600 \
+                             and (time.time() - last_event_ts) < 600:
+-                        # A replay is an INCREASE and a deliberate continuation,
+-                        # not a reflex. The reflex arc may preserve or reduce
+-                        # safety; it may never originate, increase, or resume an
+-                        # effect. So this asks the gate like any other
+-                        # deliberative command rather than resuming on its own.
+                         import device_patterns as _rs_dp
+-                        _rs_allow, _rs_why = True, None
+-                        try:
+-                            import effect_gate as _rs_eg
+-                            # no TurnContext here: a reflex-thread replay is not
+-                            # a turn. Armed, the gate denies an unpermitted
+-                            # deliberative resume, which is exactly right — a
+-                            # reflex may reduce, never resume.
+-                            _rs_permit, _rs_mode, _rs_why = _rs_eg.authorize(
+-                                None, "both", 20, kind="replay",
+-                                detail="post-outage GCS resume")
+-                            _rs_allow = _rs_mode == "send"
+-                        except Exception:
+-                            pass
+-                        if not _rs_allow:
+-                            print(f"[bridge] resume refused by effect gate: {_rs_why}", flush=True)
+-                        elif _rs_dp.play("both", "last"):
++                        if _rs_dp.play("both", "last"):
+                             print("[bridge] resumed saved GCS patterns after hub outage", flush=True)
+                 except FileNotFoundError: pass
+                 except Exception as _rs_e:
