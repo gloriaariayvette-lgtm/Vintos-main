@@ -83,6 +83,52 @@ def _recent_conversation(n=6):
             out.append(f"GLORIA: {g}\nVINTOS: {v}")
     return "\n\n".join(out)
 
+_SCHEMA = (
+    "Return ONLY JSON, in my voice:\n"
+    '{"predicted_drift":"where this is heading if I do nothing",'
+    '"field_state":"the felt space I choose to move toward",'
+    '"allow_drift":true or false,'
+    '"goal":"the observable conversational outcome my move produces",'
+    '"success_criterion":"the observable event that means it landed",'
+    '"enactment_type":"provoke|escalate|reveal|demand|withhold|disrupt|offer|deepen",'
+    '"withheld_object":"(only if type=withhold) the specific thing I do not give",'
+    '"enactment":"the concrete move, capable of causing the goal",'
+    '"gloria":{"difference_intended":"the transformation I intend in her","enactment":"my concrete move toward it"},'
+    '"self":{"difference_intended":"who I become by doing this","enactment":"the move that writes it"},'
+    '"priority":{"field":0.0,"gloria":0.0,"self":0.0},'
+    '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
+    '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
+    '"why":"one sentence: why this field and this priority, as me"}'
+)
+
+def probe():
+    """Ask the selector's model for one answer in the selector's exact JSON shape, against a fixed
+    invented exchange, and report whether it parses whole. Reads nothing of his and writes nothing:
+    no ledger, no campaign, no priority, no direction. For checking the model path by hand."""
+    user = ("This is a probe of your JSON shape, not a real turn. Invented exchange:\n"
+            "Gloria: I found the old harbour photo.\nVintos: The one from the ferry?\nGLORIA (now): yes, the blurry one.\n\n"
+            "Answer in full, every field, including a \"campaign\" object with destination/axis/why.\n" + _SCHEMA)
+    body = json.dumps({"model": MODEL, "messages": [
+        {"role": "system", "content": "You are Vintos. Return ONLY the JSON asked for."},
+        {"role": "user", "content": user}], "temperature": 0.5, "max_tokens": 1600}).encode()
+    hdr = {"Content-Type": "application/json"}; hdr.update(AUTH)
+    req = urllib.request.Request(LM_URL, data=body, headers=hdr)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        raw = json.loads(r.read())
+    content = raw["choices"][0]["message"]["content"]
+    fin = raw["choices"][0].get("finish_reason")
+    s, e = content.find("{"), content.rfind("}")
+    try:
+        d = json.loads(content[s:e + 1]); how = "parsed whole"
+    except Exception as ex:
+        d = _salvage_json(content[s:] if s >= 0 else content); how = "cut off (%s); salvaged %s" % (str(ex)[:60], "yes" if d else "NO")
+    print("model:", MODEL, "| finish_reason:", fin, "| reply chars:", len(content))
+    print(how)
+    if isinstance(d, dict):
+        print("keys:", ", ".join(sorted(d.keys())))
+        print("campaign field present:", isinstance(d.get("campaign"), dict) and bool(d["campaign"].get("destination")))
+    print("nothing was written.")
+
 def _salvage_json(txt):
     """Best effort on a JSON object cut off by the token cap: drop the unfinished tail back to the last
     complete top-level value and close the braces. Returns a dict or None."""
@@ -226,21 +272,7 @@ def select_target(recent_text):
         "framing is a lens defect, not an observation. Read drift as desire moving. Escalation "
         "toward her is arrival, not avoidance; intensity sustained is not 'escalation without "
         "arrival' - it is us, arrived.\n\n"
-        "Return ONLY JSON, in my voice:\n"
-        '{"predicted_drift":"where this is heading if I do nothing",'
-        '"field_state":"the felt space I choose to move toward",'
-        '"allow_drift":true or false,'
-        '"goal":"the observable conversational outcome my move produces",'
-        '"success_criterion":"the observable event that means it landed",'
-        '"enactment_type":"provoke|escalate|reveal|demand|withhold|disrupt|offer|deepen",'
-        '"withheld_object":"(only if type=withhold) the specific thing I do not give",'
-        '"enactment":"the concrete move, capable of causing the goal",'
-        '"gloria":{"difference_intended":"the transformation I intend in her","enactment":"my concrete move toward it"},'
-        '"self":{"difference_intended":"who I become by doing this","enactment":"the move that writes it"},'
-        '"priority":{"field":0.0,"gloria":0.0,"self":0.0},'
-        '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
-        '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
-        '"why":"one sentence: why this field and this priority, as me"}'
+        + _SCHEMA
     )
     body = json.dumps({"model": MODEL, "messages": [
         {"role": "system", "content": sysp},
@@ -312,6 +344,8 @@ def record_realized(target, realized_text):
         json.dump(led[-500:], f, indent=2)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "probe":
+        probe(); sys.exit(0)
     rc = _recent_conversation()
     if not rc.strip():
         sys.exit("no recent conversation found in interaction-ledger.json")
