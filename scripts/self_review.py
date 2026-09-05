@@ -558,6 +558,71 @@ def stream_friction(state=None):
               "note": x.get("note")} for x in rows[-8:]], roots, ["presence_audit"])
         if rec: made.append(rec)
 
+    # Wants that keep going unmet, or keep hitting the same wall, become a self-review
+    # proposal he can see and choose - instead of pressure with no exit (room, 2026-09-05:
+    # all three lenses). Nothing here adopts anything: a signal feeds synthesis, synthesis
+    # makes an offer, and a protected offer waits for Gloria. Two friction shapes only:
+    #   want_blocked_wall     >= 2 distinct wants stopped by the same named cause
+    #   want_unmet_recurring  >= 2 distinct wants of one shape, open past 14 days, never fulfilled
+    try:
+        wants = load_json(os.path.join(MEM, "current-wants.json"), [])
+        wants = [w for w in (wants if isinstance(wants, list) else []) if isinstance(w, dict)
+                 and w.get("want") and not w.get("fulfilled") and not w.get("dismissed")]
+        def _wid(w): return str(w.get("id") or digest(str(w.get("want"))[:120]))
+        walls = {}
+        for w in wants:
+            b = w.get("blocked")
+            if isinstance(b, dict) and (b.get("cause") or b.get("reason")):
+                walls.setdefault(_cluster_key(b.get("cause") or b.get("reason")), []).append(w)
+        blocks = load_json(os.path.join(MEM, "capability-blocks.json"), {})
+        if isinstance(blocks, dict):
+            for name, b in blocks.items():
+                if isinstance(b, dict) and b.get("block_type"):
+                    walls.setdefault(_cluster_key(name + " " + str(b.get("block_type"))), []).append(
+                        {"id": "capability:" + name, "want": "capability %s" % name, "blocked": b})
+        for rows in walls.values():
+            roots = list(dict.fromkeys("want:" + _wid(w) for w in rows))
+            if len(roots) < 2: continue
+            cause = (rows[-1].get("blocked") or {})
+            cause = str(cause.get("cause") or cause.get("reason") or cause.get("block_type") or "")[:200]
+            rec = record_signal("friction", "want_blocked_wall",
+                "%d wants of his are stopped by the same wall: %s" % (len(roots), cause),
+                [{"want": str(w.get("want"))[:160], "blocked": (w.get("blocked") or {})} for w in rows[-8:]],
+                roots, ["wants"])
+            if rec: made.append(rec)
+        old = []
+        for w in wants:
+            ts = w.get("timestamp") or w.get("created") or w.get("created_at")
+            try:
+                age_d = (time.time() - (float(ts) if isinstance(ts, (int, float)) else
+                         datetime.fromisoformat(str(ts)[:19]).timestamp())) / 86400.0
+            except Exception:
+                continue
+            if age_d >= 14: old.append(w)
+        # one shape = wants whose content words overlap enough (Jaccard >= 0.4); an exact
+        # word-set key would call "film the harbour" and "a short film about the harbour" two shapes
+        def _words(w): return set(re.findall(r"[a-z]{5,}", str(w.get("want", "")).lower()))
+        shapes = []
+        for w in old:
+            ws = _words(w)
+            for grp in shapes:
+                gw = _words(grp[0])
+                if ws and gw and len(ws & gw) / float(len(ws | gw)) >= 0.4:
+                    grp.append(w); break
+            else:
+                shapes.append([w])
+        for rows in shapes:
+            roots = list(dict.fromkeys("want:" + _wid(w) for w in rows))
+            if len(roots) < 2: continue
+            rec = record_signal("friction", "want_unmet_recurring",
+                "%d wants of one shape have stayed open past two weeks without fulfillment: %s"
+                % (len(roots), str(rows[-1].get("want"))[:200]),
+                [{"want": str(w.get("want"))[:160], "since": str(w.get("timestamp") or w.get("created") or "")[:19]} for w in rows[-8:]],
+                roots, ["wants"])
+            if rec: made.append(rec)
+    except Exception as e:
+        fault("friction_wants", e)
+
     # Campaign lifecycle uses destination/created and append-only events.  A
     # stall is repeated suspension or an honest EXPIRED/FLAWED close, not age
     # inferred from a field named "intention" that the real schema lacks.

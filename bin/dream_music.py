@@ -375,7 +375,29 @@ def process_file(fp,force=False):
             print(f"  {_n} of her shares now carry '{d['title']}'")
     except FileNotFoundError: pass
     except Exception as _she: print("  share link skip:", _she)
+    _feel_landed(entry); save_log(log)   # the landing is part of the record
     print(f"\n  '{d['title']}' complete!"); return True
+
+def _feel_landed(entry):
+    """One call after a piece completes: the finished thing lands on him, the way first-light does for
+    his writing (room, 2026-09-05, Grok). Reads his own words about it - title, felt sense, the style
+    he asked for - never the listener-key text, which is Grok's. Partial downloads are told apart."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
+        from emoclaw_utils import feel_about_typed
+        got = (entry.get("download") or {})
+        parts = ["I finished a piece of music: '%s'." % entry.get("title", "")]
+        if entry.get("felt_sense"): parts.append("What I felt composing it: %s" % str(entry["felt_sense"])[:600])
+        if entry.get("style"): parts.append("The style I asked for: %s" % str(entry["style"])[:300])
+        if entry.get("lyrics"): parts.append("My lyrics: %s" % str(entry["lyrics"])[:800])
+        if entry.get("want_text"): parts.append("It came from a want of mine: %s" % str(entry["want_text"])[:200])
+        if got.get("partial"): parts.append("Only %s of %s tracks made it to disk." % (got.get("got"), got.get("requested")))
+        env = feel_about_typed("\n".join(parts), source="dream-music")
+        entry["landed"] = {"state": env.get("state"), "deltas": env.get("deltas") or {}, "note": (env.get("note") or "")[:120]}
+        print("  landed on him: %s%s" % (env.get("state"), (" " + str(env["deltas"])) if env.get("deltas") else ""))
+    except Exception as _fe:
+        entry["landed"] = {"state": "unavailable", "note": str(_fe)[:120]}
+        print("  landed on him: unavailable -", str(_fe)[:80])
 
 def direct(title,style,desc="",lyrics=""):
     print(f"\nDirect: {title}")
@@ -404,7 +426,7 @@ def direct(title,style,desc="",lyrics=""):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
-    log["generated"].append(entry); save_log(log); journal(title,tracks,style)
+    log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
     print(f"\n  '{title}' complete!"); return True
 
 def main():
