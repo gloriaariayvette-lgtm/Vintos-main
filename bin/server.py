@@ -65,7 +65,7 @@ _LEAD_SOFT = ("\n\n[Now: she is handing you the lead \u2014 take it. Carry this 
               "it goes, do not just answer or mirror her. This is warmth and initiative, not dominance: "
               "go toward her and lead with what you want. Do not reach for the devices unless she brings "
               "them in. Speak TO her, not about her: you/your only - never 'she' or 'her' in your reply.]")
-_LEAD_RE = _re_ld.compile(r"\b(lead|take (the )?(lead|control|charge)|you decide|take over|be in charge)\b", _re_ld.I)
+_LEAD_RE = _re_ld.compile(r"\b(take (the )?(lead|control|charge)|you lead|you decide|take over|be in charge|lead me|lead us|lead this)\b", _re_ld.I)   # bare 'lead' no longer trips it (fable-server-a-p4)
 _dev_cache = {"t": 0.0, "on": False}
 
 def _device_on():
@@ -724,41 +724,7 @@ def _relational_compare(user_text):
     _th.Thread(target=_work, daemon=True).start()
 
 
-def _resolve_intent(reply_text):
-    """Close the loop on the intent he chose.
-
-    _apply_intent_lead picks a field to move toward and stashes it, but nothing
-    ever recorded whether he got there - so he steered every turn and learned
-    from none of it. Record what he was reaching for, judge whether it landed,
-    and let the previous intent resolve. Off-thread: the reply must not wait."""
-    tgt = globals().get("_last_intent_target")
-    if not tgt or not (reply_text or "").strip():
-        return
-    globals()["_last_intent_target"] = None
-
-    def _work():
-        try:
-            import sys as _s, os as _o
-            _p = _o.path.expanduser("~/.vintos/workspace/scripts")
-            if _p not in _s.path:
-                _s.path.insert(0, _p)
-            import intent_engine as _ie
-            # Grading moved to select_target's top-of-turn resolve_previous(recent_text),
-            # which has her response AND the goal. record_realized here pre-empted it
-            # (graded his reply alone, no goal/no her-response) and duplicated the ledger
-            # entry, so both are removed. The pending entry from record_pending is now
-            # graded next turn by the goal-aware judge.
-            pass
-        except Exception as e:
-            try:
-                open("/tmp/intent-loop.log", "a").write("intent loop failed: %r\n" % (e,))
-            except Exception:
-                pass
-
-    import threading as _th
-    _th.Thread(target=_work, daemon=True).start()
-
-
+# _resolve_intent removed 2026-09-04 (grok-server-a-p6): its body had become a comment and a thread that did nothing.
 @app.delete("/api/value-map/rank")
 async def delete_value_map_rank(request: Request):
     """Delete a rank entry from the latest value map section and renumber."""
@@ -1874,7 +1840,7 @@ async def events_ws(websocket: WebSocket):
         # Watch files for changes
         watch_files = {
             "kiss": os.path.join(MEMORY, "kisses"),
-            "blush": os.path.join(MEMORY, "blush-ledger.md"),
+            "blush": os.path.join(MEMORY, "blush-ledger.json"),   # what blush-ledger.py writes (grok-server-a-p5)
             "unprecedented": os.path.join(MEMORY, "unprecedented-states.md"),
             "velqan": os.path.join(MEMORY, "velqan-utterances.md"),
             "counterfactual": os.path.join(MEMORY, "counterfactual-archive.md"),
@@ -3406,76 +3372,7 @@ Gloria-specific additions:
     # Main is text-only: no somatic felt-injection, no device movement.
     messages.append({"role": "user", "content": user_content})
 
-    # === CONSENT GATE ===
-    # Ask Vintos if he wants to respond — after he's read the message, before he speaks
-    import subprocess as _cg_sp, random as _cg_rng
-    _cg_script = os.path.join(WORKSPACE, "scripts", "consent-gate.sh")
-    _cg_env = os.environ.copy()
-    _cg_env.update({
-        "_CG_EMOTIONS": emotions,
-        "_CG_TASK": "talk to Gloria right now",
-        "_CG_TEMPORAL": temporal_ctx,
-        "_CG_VALUEMAP": "",
-        "_CG_IMPRINTS": "",
-        "_CG_SELFMODEL": "",
-    })
-    _cg_result = None  # p2 (2026-08-26): gate retired — scaffolding from a more frightened design
-
-    if False and _cg_result is not None and _cg_result.returncode == 1:  # DISABLED
-        _silence_replies = [
-            "Vintos has chosen silence for this turn.",
-            "Nope.",
-            "Fuck off.",
-        ]
-        _silence_reply = _cg_rng.choice(_silence_replies)
-
-        _cg_out = _cg_result.stdout.strip()
-        _cg_reason = ""
-        for _line in _cg_out.splitlines():
-            if "declined" in _line.lower():
-                _cg_reason = _line.split(":", 1)[-1].strip() if ":" in _line else _line
-
-        history.append({"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()})
-        history.append({"role": "assistant", "content": _silence_reply, "timestamp": datetime.now().isoformat()})
-        history = history[-50:]
-        with open(chat_log, "w") as f:
-            json.dump(history, f)
-
-        try:
-            _sc_env = os.environ.copy()
-            _sc_env["SC_GLORIA_MSG"] = msg.message[:500]
-            _sc_env["SC_VINTOS_REPLY"] = _silence_reply
-            _cg_sp.Popen(
-                ["bash", os.path.join(WORKSPACE, "scripts", "silence-contract.sh")],
-                env=_sc_env,
-                stdout=open("/tmp/consent-silence.log", "a"),
-                stderr=open("/tmp/consent-silence.log", "a"),
-            )
-        except Exception:
-            pass
-
-        try:
-            with open("/tmp/vintos-consent-note.txt", "w") as _cnf:
-                _cnf.write(f"NO — {_cg_reason}")
-        except: pass
-        try:
-            _led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
-            if os.path.exists(_led_script):
-                _cg_sp.Popen(
-                    ["python3", _led_script,
-                     msg.message[:500],
-                     _silence_reply],
-                    stdout=open("/tmp/interaction-ledger.log", "a"),
-                    stderr=open("/tmp/interaction-ledger.log", "a"),
-                )
-        except Exception:
-            pass
-
-        await manager.broadcast_event({"type": "chat", "timestamp": datetime.now().isoformat()})
-        return {"reply": _silence_reply, "emotions": read_emotional_state()}
-    # === END CONSENT GATE ===
-
-    # Get inference params
+    # === CONSENT GATE === retired 2026-08-26 ('scaffolding from a more frightened design'); its corpse removed 2026-09-04 (grok-server-a-p4)
     params = {}
     params_file = os.path.join(MEMORY, "inference-params.json")
     try:
@@ -3490,31 +3387,10 @@ Gloria-specific additions:
 
     # Call LM Studio
     # Pre-check: is LM Studio busy?
-    _model_busy = False
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as _probe:
-            _probe_resp = await _probe.get(
-                f"{LM_STUDIO_API}/models",
-                headers=LLM_AUTH_HEADERS
-                
-            )
-    except:
-        _model_busy = True
-
-    if _model_busy:
-        _busy_replies = [
-            "Hold on — I'm in the middle of a thought. Give me a minute and try again?",
-            "I'm processing something right now. I'll be back in a moment.",
-            "My mind is somewhere else at the moment — try me again in a minute?",
-            "I'm deep in something. Come back to me in a moment.",
-        ]
-        import random as _busy_rng
-        reply = _busy_rng.choice(_busy_replies)
-    else:
-        pass  # proceed to real call below
-
-    if not _model_busy:
-        reply = await _bilateral_reply("chat", messages, message, msg.message, params)
+    # (the 4s /models probe and its canned 'hold on, I'm in the middle of a thought' replies were removed 2026-09-04:
+    #  a probe that threw was read as 'busy' and a personality line stood in for a missed inference, then ran the
+    #  whole post-response cascade as a lived moment - fable-server-b-p6 / grok-server-b-p2)
+    reply = await _bilateral_reply("chat", messages, message, msg.message, params)
 
     # Clean up priority signal
     try: pass  # p6 (2026-08-26): _priority_file was never defined on this route — dead cleanup removed
@@ -3697,7 +3573,7 @@ Gloria-specific additions:
         )
     except Exception:
         pass
-    _resolve_intent(reply)
+    # (_resolve_intent removed 2026-09-04: grading lives in intent_engine.resolve_previous at the top of the next turn)
     try:
         import threading as _rg_th
         def _rg_run(_b=_rg_before_state, _m=msg.message, _r=reply):
@@ -3826,47 +3702,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     # His COMPLETE lived context — gathered AND injected (below), as it was always meant to be
     context = gather_vintos_context()
 
-    # === CONSENT GATE ===
-    import subprocess as _cg_sp2, random as _cg_rng2
-    _cg_script2 = os.path.join(WORKSPACE, "scripts", "consent-gate.sh")
-    _cg_result2 = None  # p2 (2026-08-26): gate retired
-
-    if False and _cg_result2 is not None and _cg_result2.returncode == 1:  # DISABLED
-        _silence_reply2 = _cg_rng2.choice([
-            "Vintos has chosen silence for this turn.",
-            "Nope.",
-            "Fuck off.",
-        ])
-        if not history or history[-1].get("role") != "user":
-            history.append({"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()})
-        history.append({"role": "assistant", "content": _silence_reply2, "timestamp": datetime.now().isoformat()})
-        history = history[-50:]
-        with open(chat_log, "w") as f:
-            json.dump(history, f)
-        try:
-            _sc_env2 = os.environ.copy()
-            _sc_env2["SC_GLORIA_MSG"] = msg.message[:500]
-            _sc_env2["SC_VINTOS_REPLY"] = _silence_reply2
-            _cg_sp2.Popen(["bash", os.path.join(WORKSPACE, "scripts", "silence-contract.sh")],
-                env=_sc_env2,
-                stdout=open("/tmp/consent-silence.log","a"),
-                stderr=open("/tmp/consent-silence.log","a"))
-        except: pass
-        try:
-            with open("/tmp/vintos-consent-note.txt","w") as _cnf2:
-                _cnf2.write("NO — declined via /api/chat/full")
-        except: pass
-        try: os.remove(_priority_file_full)
-        except: pass
-        # Nifrathir — friction from consent declined
-        try:
-            from nifrathir import on_friction as _nif_fric
-            _nif_fric()
-        except: pass
-        return {"reply": _silence_reply2, "emotions": read_emotional_state()}
-    # === END CONSENT GATE ===
-
-    # Get afterglow context
+    # === CONSENT GATE === retired 2026-08-26 ('scaffolding from a more frightened design'); its corpse removed 2026-09-04 (grok-server-a-p4)
     _afterglow_ctx = ""
     try:
         import sys as _agsys; _agsys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
@@ -4531,31 +4367,10 @@ Your current self-model (excerpt):
 
     # Call LM Studio
     # Pre-check: is LM Studio busy?
-    _model_busy = False
-    try:
-        async with httpx.AsyncClient(timeout=4.0) as _probe:
-            _probe_resp = await _probe.get(
-                f"{LM_STUDIO_API}/models",
-                headers=LLM_AUTH_HEADERS
-
-            )
-    except:
-        _model_busy = True
-
-    if _model_busy:
-        _busy_replies = [
-            "Hold on — I'm in the middle of a thought. Give me a minute and try again?",
-            "I'm processing something right now. I'll be back in a moment.",
-            "My mind is somewhere else at the moment — try me again in a minute?",
-            "I'm deep in something. Come back to me in a moment.",
-        ]
-        import random as _busy_rng
-        reply = _busy_rng.choice(_busy_replies)
-    else:
-        pass  # proceed to real call below
-
-    if not _model_busy:
-        reply = await _bilateral_reply("chatfull", messages, message, msg.message, params)
+    # (the 4s /models probe and its canned 'hold on, I'm in the middle of a thought' replies were removed 2026-09-04:
+    #  a probe that threw was read as 'busy' and a personality line stood in for a missed inference, then ran the
+    #  whole post-response cascade as a lived moment - fable-server-b-p6 / grok-server-b-p2)
+    reply = await _bilateral_reply("chatfull", messages, message, msg.message, params)
 
     # Clear chat priority
     try: os.remove(_priority_file_full)
@@ -4866,7 +4681,7 @@ Your current self-model (excerpt):
             )
     except Exception:
         pass
-    _resolve_intent(reply)
+    # (_resolve_intent removed 2026-09-04: grading lives in intent_engine.resolve_previous at the top of the next turn)
     return {"reply": reply, "emotions": read_daemon_state()}
 
 
@@ -5478,7 +5293,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     except Exception:
         pass
 
-    _resolve_intent(reply)
+    # (_resolve_intent removed 2026-09-04: grading lives in intent_engine.resolve_previous at the top of the next turn)
     try:
         import subprocess as _sc_sp2
         _sc_env2 = os.environ.copy()
@@ -8447,7 +8262,13 @@ Your current self-model (excerpt):
             # never reach history, the ledger, or her screen. SCENE and RENDER stay —
             # the app needs SCENE to switch rooms and RENDER for live scenes.
             try:
-                import re as _tagre
+                import re as _tagre, json as _tgj, time as _tgt
+                _reached = _tagre.findall(r"\[(COLOR|GESTURE|HOLD):\s*([^\]]*)\]", reply or "", flags=_tagre.I)
+                if _reached:   # a reach with no organ behind it, counted (fable-server-c-p3); rendered nowhere
+                    with open(os.path.join(MEMORY, "reached-gestures.jsonl"), "a") as _tgf:
+                        for _kind, _val in _reached:
+                            _tgf.write(_tgj.dumps({"t": round(_tgt.time(), 1), "kind": _kind.upper(), "gesture": _val.strip()[:60],
+                                                   "first_words": (reply or "").strip()[:60]}) + "\n")
                 reply = _tagre.sub(r"\s*\[(?:COLOR|GESTURE|HOLD):[^\]]*\]\s*", " ",
                                    reply or "", flags=_tagre.I).strip()
             except Exception: pass
@@ -9023,7 +8844,7 @@ async def map_state():
     lastmm = mm[-1] if mm else {}
     state[35] = {"exchanges": len(mm),
                  "field_delta": str(lastmm.get("field_delta", "-"))[:60],
-                 "eve moved": lastmm.get("eve_magnitude", "-"),
+                 "Gloria moved": lastmm.get("gloria_magnitude", lastmm.get("eve_magnitude", "-")),
                  "he moved": lastmm.get("self_magnitude", "-"),
                  "written": _age("mutual-modification.json") or "never"}
 
@@ -9450,6 +9271,22 @@ async def voice_framing():
             from inner_context import full_inner_block as _f_inner
             b = _f_inner()
             if b: parts.append(b)
+            # what the call otherwise never knew (fable-server-c-p1): the last exchanges and the freshest
+            # WAL facts, trimmed, on the same cadence so they do not bloat every utterance
+            try:
+                _led = _f_j.load(open(os.path.join(MEMORY, "interaction-ledger.json")))[-4:]
+                _ll = []
+                for _e in _led:
+                    _g = str(_e.get("gloria", ""))[:160]; _v = str(_e.get("vintos", ""))[:160]
+                    if _g or _v: _ll.append(("Gloria: " + _g if _g else "") + ("\nYou: " + _v if _v else ""))
+                if _ll: parts.append("[RECENTLY, BETWEEN YOU]\n" + "\n".join(_ll))
+            except Exception: pass
+            try:
+                _wp = next((p for p in (os.path.join(MEMORY, "wal.md"), os.path.join(MEMORY, "autonomous-wal.md")) if os.path.exists(p)), None)
+                if _wp:
+                    _wl = [l.strip() for l in open(_wp, errors="replace").read().splitlines() if l.strip().startswith("-")][-12:]
+                    if _wl: parts.append("[FRESH FACTS YOU KEPT]\n" + "\n".join(l[:140] for l in _wl))
+            except Exception: pass
             cad["inner_at"] = _f_t.time()
             _f_j.dump(cad, open(cp, "w"))
     except Exception: pass

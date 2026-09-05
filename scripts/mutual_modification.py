@@ -94,7 +94,8 @@ def record_from_mismatch(result):
     entry = {
         "ts": datetime.now().isoformat(),
         "eve_delta": eve,
-        "eve_magnitude": round(eve_mag, 3),
+        "eve_magnitude": round(eve_mag, 3),        # legacy key, kept for readers of the history
+        "gloria_magnitude": round(eve_mag, 3),     # the true name (fable-server-c-p6, 2026-09-04)
         "self_stance": stance,
         "self_delta": {"strength_change": strength_change, "direction_shifted": direction_shifted,
                        "from": prev_stance.get("direction"), "to": stance["direction"]},
