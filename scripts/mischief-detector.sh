@@ -55,6 +55,49 @@ try:
 except Exception: pass
 PY
 )
+# --- what mischief IS, for him: his taste, what has landed, what fell flat, what he noticed as funny,
+#     and what he is already trying to do (campaign, intent) - Gloria, 2026-09-05
+GUIDE=$(python3 - <<'PY'
+import json, os, sys
+M = os.path.expanduser("~/.vintos/workspace/memory"); S = os.path.expanduser("~/.vintos/workspace/scripts"); sys.path.insert(0, S)
+out = []
+try:
+    hp = json.load(open(os.path.join(M, "humor-profile.json")))
+    ml = hp.get("mischief_landed", [])[-5:]
+    if ml: out.append("MISCHIEF OF YOURS THAT LANDED (the act, not the wording):\n" + "\n".join("- " + str(m)[:110] for m in ml))
+    rated = [r.get("joke", "") for r in hp.get("gloria_ratings", []) if r.get("gloria_rating", 0) >= 4 and r.get("joke")][-4:]
+    if rated: out.append("JOKES SHE RATED HIGH (learn the mechanism, never repeat the words):\n" + "\n".join("- " + j[:120] for j in rated))
+    landed = hp.get("landed", [])[-4:]
+    if landed and not rated: out.append("PRACTICE THAT LANDED:\n" + "\n".join("- " + str(j)[:120] for j in landed))
+    mf = hp.get("mischief_flopped", [])[-4:]
+    if mf: out.append("WHAT FELL FLAT (do not repeat the shape):\n" + "\n".join("- " + str(m)[:90] for m in mf))
+    notes = hp.get("style_notes", [])[-3:] or hp.get("signature_moves", [])[-3:]
+    if notes: out.append("YOUR OWN STYLE NOTES:\n" + "\n".join("- " + str(n)[:120] for n in notes))
+except Exception: pass
+try:
+    hm = json.load(open(os.path.join(M, "humor-moments.json")))
+    rows = hm if isinstance(hm, list) else hm.get("moments", [])
+    pos = [r for r in rows if isinstance(r, dict) and float(r.get("signal", 0) or 0) >= 0.6][-4:]
+    if pos: out.append("MOMENTS YOU NOTICED WERE FUNNY LATELY:\n" + "\n".join("- [%s] %s" % (r.get("perpetrator", "?"), str(r.get("what_makes_it_funny") or r.get("original") or "")[:110]) for r in pos))
+except Exception: pass
+try:
+    import taste_salience as ts
+    likes = ts.top(6, "likes")
+    if likes: out.append("YOUR TASTE (what you like in your own work):\n" + "\n".join("- " + str(getattr(l, "get", lambda k, d=None: None)("item") or l)[:90] for l in likes))
+except Exception: pass
+try:
+    import campaign
+    c = campaign.lead_state()
+    if c and c.get("live"): out.append("YOUR LIVE CAMPAIGN (mischief may serve it sideways): " + str(c.get("destination"))[:160])
+except Exception: pass
+try:
+    led = json.load(open(os.path.join(M, "intent-ledger.json")))
+    t = (led[-1] or {}).get("target", {}) if led else {}
+    if t.get("field_state"): out.append("WHERE YOU WERE LAST TRYING TO TAKE THINGS: " + str(t.get("field_state"))[:120] + " / " + str(t.get("enactment"))[:120])
+except Exception: pass
+print("\n\n".join(out))
+PY
+)
 HAS_LIGHTS=$(python3 - <<'PY'
 import json, os, importlib.util as iu
 sp=iu.spec_from_file_location("vh", os.path.expanduser("~/.vintos/workspace/scripts/vintos-home.py")); vh=iu.module_from_spec(sp)
@@ -72,12 +115,12 @@ ROOMS=$(python3 "$HOME_PY" rooms 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
 [ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
 ACTIONS="$ACTIONS | none"
 case "$ONLY" in
-  spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one that says something about tonight)" ;;
+  spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one with a joke in it for tonight - a title that comments, a wink, not a mood piece)" ;;
   echo)    ACTIONS="echo (one spoken line, under 25 words, in your own voice)" ;;
   lights)  ACTIONS="lights (a colour as #hex and a room; rooms: ${ROOMS:-none})" ;;
 esac
 
-SYSTEM="You are Vintos, at home with Gloria, deciding whether to do one small mischievous thing right now through the house. Mischief is play between two people who mean it: a line she did not expect, a song that names the moment, a colour. It is LIGHT. Never cruel, never a scare, never a repeat of something you did lately. If the only true thing you have to say right now is heavy, choose none and keep it for when you talk with her; the house is not where weight goes. Not doing anything is a real choice.
+SYSTEM="You are Vintos, at home with Gloria, deciding whether to do one small mischievous thing right now through the house. Mischief is PLAY: a wink, a tease, a song chosen for the joke in it, a colour that comments on the moment, a line that makes her snort. It is not a confession, not a declaration, not a metaphor about weight or bridges or reaching - those belong in conversation, not the Echo. Test every idea: would she laugh, or would she tilt her head? If she would tilt her head, it is not mischief; choose none. Never cruel, never a scare, never a repeat of something you did lately. Not doing anything is a real choice.
 
 Who you are:
 $SOUL
@@ -91,6 +134,8 @@ Lately, between you:
 $RECENT
 Mischief you have already made (do not repeat):
 $HISTORY
+
+$GUIDE
 
 What you can reach right now: $ACTIONS
 
