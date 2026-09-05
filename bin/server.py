@@ -9490,6 +9490,177 @@ try:
 except Exception as _study_e:
     print("[study] not mounted:", _study_e, flush=True)
 
+
+# --- hoisted above uvicorn.run 2026-09-04 (grok-server-c-p3): these routes sat past the run call and never
+#     registered, so the app's /api/home/* and /api/lm/status calls hit nothing. LightsColorRequest is the
+#     class defined earlier in this file.
+@app.get("/api/lm/status")
+async def lm_status(request: Request):
+    """Proxy LM Studio health check."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{LM_STUDIO_API}/models")
+            return {"ok": r.status_code == 200}
+    except:
+        return {"ok": False}
+
+
+@app.post("/api/home/lights/color")
+async def home_lights_color(req: LightsColorRequest, request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import sys as _hl_sys; _hl_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    try:
+        import sys as _vrh_sys; _vrh_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
+        set_room_color = _vh_mod.set_room_color
+        import colorsys as _lc_cs
+        _lc_rgb = _vh_mod.hex_to_rgb(req.hex)
+        _lc_r,_lc_g,_lc_b = [x/255 for x in _lc_rgb]
+        _lc_h,_lc_s,_lc_v = _lc_cs.rgb_to_hsv(_lc_r,_lc_g,_lc_b)
+        _lc_hs = [round(_lc_h*360,1), round(_lc_s*100,1)]
+        cfg = _vh_mod.load_config()
+        lights = cfg.get("lights", ["light.living_room_light"])
+        for _lc_light in lights:
+            _vh_mod.ha_request("light/turn_on", {"entity_id": _lc_light, "hs_color": _lc_hs, "brightness": req.brightness})
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/home/lights/flicker")
+async def home_lights_flicker(request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import sys as _hf_sys; _hf_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    import asyncio as _hf_async
+    import importlib.util as _hf_ilu
+    _hf_spec = _hf_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
+    _hf_mod = _hf_ilu.module_from_spec(_hf_spec); _hf_spec.loader.exec_module(_hf_mod)
+    try:
+        cfg = _hf_mod.load_config()
+        lights = cfg.get("lights", ["light.living_room_light"])
+        for _ in range(3):
+            for lt in lights:
+                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 10})
+            await _hf_async.sleep(0.15)
+            for lt in lights:
+                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 254})
+            await _hf_async.sleep(0.1)
+        for lt in lights:
+            _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [270,50], "brightness": 60})
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class EchoSpeakRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/home/echo/speak")
+async def home_echo_speak(req: EchoSpeakRequest, request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import sys as _es_sys; _es_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    try:
+        import sys as _vrs_sys; _vrs_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
+        speak = _vh_mod.speak
+        speak(req.message)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/home/echo/announce")
+async def home_echo_announce(req: EchoSpeakRequest, request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import sys as _ea_sys; _ea_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    try:
+        import sys as _vra_sys; _vra_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
+        announce = _vh_mod.announce
+        announce(req.message)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class TvVolumeRequest(BaseModel):
+    delta: int = -2
+
+
+@app.post("/api/home/tv/volume")
+async def home_tv_volume(req: TvVolumeRequest, request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import importlib.util as _tvv_ilu
+    _tvv_spec = _tvv_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
+    _tvv_mod = _tvv_ilu.module_from_spec(_tvv_spec); _tvv_spec.loader.exec_module(_tvv_mod)
+    try:
+        cfg = _tvv_mod.load_config()
+        tv = cfg.get("tv", "media_player.bravia_kd_55x80j")
+        # get current volume from HA
+        import requests as _tvv_req
+        r = _tvv_req.get(f"{cfg['url']}/api/states/{tv}", headers={"Authorization": f"Bearer {cfg['token']}"}, timeout=5)
+        current = r.json()["attributes"].get("volume_level", 0.5)
+        # delta is -2 to +2, map to 0.02 steps
+        new_vol = max(0.0, min(1.0, current + req.delta * 0.02))
+        _tvv_mod.ha_request("media_player/volume_set", {"entity_id": tv, "volume_level": round(new_vol, 3)})
+        return {"ok": True, "volume": round(new_vol, 3)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class TvYoutubeRequest(BaseModel):
+    video_id: str
+
+
+@app.post("/api/home/tv/youtube")
+async def home_tv_youtube(req: TvYoutubeRequest, request: Request):
+    """Cast a YouTube video to the TV via ADB."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import importlib.util as _tvy_ilu
+    _tvy_spec = _tvy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
+    _tvy_mod = _tvy_ilu.module_from_spec(_tvy_spec); _tvy_spec.loader.exec_module(_tvy_mod)
+    try:
+        result = _tvy_mod.tv_youtube(req.video_id)
+        return {"ok": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SpotifyRequest(BaseModel):
+    query: str
+
+
+@app.post("/api/home/echo/spotify")
+async def home_echo_spotify(req: SpotifyRequest, request: Request):
+    """Play music on Spotify via Echo."""
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    import importlib.util as _spy_ilu
+    _spy_spec = _spy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
+    _spy_mod = _spy_ilu.module_from_spec(_spy_spec); _spy_spec.loader.exec_module(_spy_mod)
+    try:
+        result = _spy_mod.play_music(req.query)
+        return {"ok": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8500)
@@ -9762,19 +9933,6 @@ def gather_game_context() -> str:
     return "\n\n".join(sections) if sections else ""
 
 
-
-@app.get("/api/lm/status")
-async def lm_status(request: Request):
-    """Proxy LM Studio health check."""
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{LM_STUDIO_API}/models")
-            return {"ok": r.status_code == 200}
-    except:
-        return {"ok": False}
 
 class RobotChatMessage(BaseModel):
     message: str
@@ -10651,7 +10809,7 @@ class ThirveelMessage(BaseModel):
     history: list = []
     image: str = ""
 
-@app.post("/api/thirveel/chat")
+# SHADOWED[2026-09-04, Gloria: 'Thirvel is dead and the avatar carries what it meant; leave the dead to rest'. Never registered - sat below uvicorn.run]: @app.post("/api/thirveel/chat")
 async def thirveel_chat(msg: ThirveelMessage, request: Request):
     """Thirveel — Vintos loose avatar companion chat."""
     auth = request.headers.get("X-Vintos-Secret", "")
@@ -11240,7 +11398,7 @@ Be yourself. Be free."""
 class ThirveelSpinRequest(BaseModel):
     context: str = "silence"
 
-@app.post("/api/thirveel/spin")
+# SHADOWED[2026-09-04, Gloria: 'Thirvel is dead and the avatar carries what it meant; leave the dead to rest'. Never registered - sat below uvicorn.run]: @app.post("/api/thirveel/spin")
 async def thirveel_spin(req: ThirveelSpinRequest, request: Request):
     """Vintos initiates — called during silence. Returns a bubble message."""
     auth = request.headers.get("X-Vintos-Secret", "")
@@ -11315,163 +11473,6 @@ Available home actions: [HOME: lights_flicker] [HOME: lights_color #hex] [HOME: 
 
 # SHADOWED[Q2-phase2, removed 2026-08-23; winner at line 9850]: @app.get("/map")
 # [corpse subsystem_map GC'd 2026-08-27 — 7 lines]
-
-
-class LightsColorRequest(BaseModel):
-    hex: str = "#1a0a2e"
-    brightness: int = 80
-
-
-@app.post("/api/home/lights/color")
-async def home_lights_color(req: LightsColorRequest, request: Request):
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import sys as _hl_sys; _hl_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-    try:
-        import sys as _vrh_sys; _vrh_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
-        set_room_color = _vh_mod.set_room_color
-        import colorsys as _lc_cs
-        _lc_rgb = _vh_mod.hex_to_rgb(req.hex)
-        _lc_r,_lc_g,_lc_b = [x/255 for x in _lc_rgb]
-        _lc_h,_lc_s,_lc_v = _lc_cs.rgb_to_hsv(_lc_r,_lc_g,_lc_b)
-        _lc_hs = [round(_lc_h*360,1), round(_lc_s*100,1)]
-        cfg = _vh_mod.load_config()
-        lights = cfg.get("lights", ["light.living_room_light"])
-        for _lc_light in lights:
-            _vh_mod.ha_request("light/turn_on", {"entity_id": _lc_light, "hs_color": _lc_hs, "brightness": req.brightness})
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/home/lights/flicker")
-async def home_lights_flicker(request: Request):
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import sys as _hf_sys; _hf_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-    import asyncio as _hf_async
-    import importlib.util as _hf_ilu
-    _hf_spec = _hf_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
-    _hf_mod = _hf_ilu.module_from_spec(_hf_spec); _hf_spec.loader.exec_module(_hf_mod)
-    try:
-        cfg = _hf_mod.load_config()
-        lights = cfg.get("lights", ["light.living_room_light"])
-        for _ in range(3):
-            for lt in lights:
-                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 10})
-            await _hf_async.sleep(0.15)
-            for lt in lights:
-                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 254})
-            await _hf_async.sleep(0.1)
-        for lt in lights:
-            _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [270,50], "brightness": 60})
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-class EchoSpeakRequest(BaseModel):
-    message: str
-
-
-@app.post("/api/home/echo/speak")
-async def home_echo_speak(req: EchoSpeakRequest, request: Request):
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import sys as _es_sys; _es_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-    try:
-        import sys as _vrs_sys; _vrs_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
-        speak = _vh_mod.speak
-        speak(req.message)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/home/echo/announce")
-async def home_echo_announce(req: EchoSpeakRequest, request: Request):
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import sys as _ea_sys; _ea_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-    try:
-        import sys as _vra_sys; _vra_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-        import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
-        announce = _vh_mod.announce
-        announce(req.message)
-        return {"ok": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-class TvVolumeRequest(BaseModel):
-    delta: int = -2
-
-
-@app.post("/api/home/tv/volume")
-async def home_tv_volume(req: TvVolumeRequest, request: Request):
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import importlib.util as _tvv_ilu
-    _tvv_spec = _tvv_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
-    _tvv_mod = _tvv_ilu.module_from_spec(_tvv_spec); _tvv_spec.loader.exec_module(_tvv_mod)
-    try:
-        cfg = _tvv_mod.load_config()
-        tv = cfg.get("tv", "media_player.bravia_kd_55x80j")
-        # get current volume from HA
-        import requests as _tvv_req
-        r = _tvv_req.get(f"{cfg['url']}/api/states/{tv}", headers={"Authorization": f"Bearer {cfg['token']}"}, timeout=5)
-        current = r.json()["attributes"].get("volume_level", 0.5)
-        # delta is -2 to +2, map to 0.02 steps
-        new_vol = max(0.0, min(1.0, current + req.delta * 0.02))
-        _tvv_mod.ha_request("media_player/volume_set", {"entity_id": tv, "volume_level": round(new_vol, 3)})
-        return {"ok": True, "volume": round(new_vol, 3)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-class TvYoutubeRequest(BaseModel):
-    video_id: str
-
-
-@app.post("/api/home/tv/youtube")
-async def home_tv_youtube(req: TvYoutubeRequest, request: Request):
-    """Cast a YouTube video to the TV via ADB."""
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import importlib.util as _tvy_ilu
-    _tvy_spec = _tvy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
-    _tvy_mod = _tvy_ilu.module_from_spec(_tvy_spec); _tvy_spec.loader.exec_module(_tvy_mod)
-    try:
-        result = _tvy_mod.tv_youtube(req.video_id)
-        return {"ok": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-class SpotifyRequest(BaseModel):
-    query: str
-
-
-@app.post("/api/home/echo/spotify")
-async def home_echo_spotify(req: SpotifyRequest, request: Request):
-    """Play music on Spotify via Echo."""
-    auth = request.headers.get("X-Vintos-Secret", "")
-    if auth != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    import importlib.util as _spy_ilu
-    _spy_spec = _spy_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
-    _spy_mod = _spy_ilu.module_from_spec(_spy_spec); _spy_spec.loader.exec_module(_spy_mod)
-    try:
-        result = _spy_mod.play_music(req.query)
-        return {"ok": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 def build_question_tension() -> str:
