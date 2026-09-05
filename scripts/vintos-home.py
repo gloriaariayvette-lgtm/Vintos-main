@@ -36,7 +36,7 @@ import requests
 
 CONFIG_FILE = os.path.expanduser("~/.vintos/workspace/memory/homeassistant-config.json")
 FALLBACK_CONFIG = os.path.expanduser("~/.openclaw/workspace/memory/homeassistant-config.json")
-TV_ADB = os.environ.get("VINTOS_TV_ADB", "192.168.1.68:5555")
+TV_ADB = os.environ.get("VINTOS_TV_ADB", "192.168.1.70:5555")   # Bravia after the move, 2026-09-05 (MAC 1c:d6:be:ee:1d:db); .68 is another device now
 
 
 def load_config():
