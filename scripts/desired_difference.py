@@ -6,6 +6,20 @@ graduate into a causality question ("is this still the same intention?") with li
 Nothing here instruments Gloria beyond what she freely shows in conversation."""
 import os, json, time, hashlib, urllib.request
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
+
+def _queue_bring_up(q):
+    """causality-bring-up.json is the record; .pending-causality-queue.json is what his chat prompt
+    reads (server: CAUSALITY HYPOTHESIS TO TEST TODAY). Until 2026-09-05 only the record was written."""
+    try:
+        import json as _qj, os as _qo
+        qp = _qo.path.join(MEM, ".pending-causality-queue.json")
+        try: queue = _qj.load(open(qp))
+        except Exception: queue = []
+        if not isinstance(queue, list): queue = []
+        if q not in queue:
+            queue.append(q); _qj.dump(queue[-6:], open(qp, "w"), indent=2)
+    except Exception: pass
+
 DIFF=os.path.join(MEM,"gloria-difference.json")
 PRESS=os.path.join(MEM,"intent-pressure.json")
 API="http://127.0.0.1:8599/v1/chat/completions"
@@ -167,7 +181,7 @@ def _graduate(e):
         d=_jload(p,[])
         if isinstance(d,dict): d.setdefault("items",[]).append({"ts":time.time(),"question":q,"source":"intent_pressure"})
         else: d.append({"ts":time.time(),"question":q,"source":"intent_pressure"})
-        _jsave(p,d)
+        _jsave(p,d); _queue_bring_up(q)
     except Exception: pass
 def field_verdict(target,verdict):
     """Hook for intent_engine.resolve_previous - failed field targets get heavier."""

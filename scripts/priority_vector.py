@@ -13,6 +13,20 @@ from datetime import datetime
 
 WS = os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
+
+def _queue_bring_up(q):
+    """causality-bring-up.json is the record; .pending-causality-queue.json is what his chat prompt
+    reads (server: CAUSALITY HYPOTHESIS TO TEST TODAY). Until 2026-09-05 only the record was written."""
+    try:
+        import json as _qj, os as _qo
+        qp = _qo.path.join(MEM, ".pending-causality-queue.json")
+        try: queue = _qj.load(open(qp))
+        except Exception: queue = []
+        if not isinstance(queue, list): queue = []
+        if q not in queue:
+            queue.append(q); _qj.dump(queue[-6:], open(qp, "w"), indent=2)
+    except Exception: pass
+
 LOG = os.path.join(MEM, "priority-vector-log.jsonl")
 STATE = os.path.join(MEM, "priority-vector-state.json")
 AXES = ("field", "gloria", "self")
@@ -98,6 +112,7 @@ def declare():
                 if isinstance(d, dict): d.setdefault("items", []).append({"ts": time.time(), "question": q, "source": "priority_vector"})
                 else: d.append({"ts": time.time(), "question": q, "source": "priority_vector"})
                 json.dump(d, open(p, "w"), indent=2)
+                _queue_bring_up(q)
                 why.append("override streak graduated to causality head")
                 stk = {"axis": None, "n": 0}
             except Exception: pass

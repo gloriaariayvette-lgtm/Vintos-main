@@ -33,7 +33,7 @@ def load(p, d):
 def rid(e):
     return hashlib.md5((str(e.get("timestamp","")) + str(e.get("content",""))[:40]).encode()).hexdigest()[:10]
 
-def score(user_msg, reply):
+def score(user_msg, reply, at=None):
     system = ("You strictly evaluate PRESENCE in a reply. Given what Gloria said and how Vintos replied, "
               "rate four things 0.0-1.0. CALIBRATION IS MANDATORY: scores above 0.85 are RARE "
               "- reserve them for replies that would surprise even a generous reader. A typical good "
@@ -51,7 +51,7 @@ def score(user_msg, reply):
     try:
         import sys as _cas; _cas.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from campaign import audit_line as _cal
-        _camp = _cal()
+        _camp = _cal(at)   # the campaign live WHEN the reply was written, not now
     except Exception:
         _camp = ""
     if _camp:
@@ -98,7 +98,7 @@ def main():
         pending.append((_id, um, e.get("content", ""), e.get("timestamp", "")))
     added = 0
     for _id, um, reply, ts in pending[-MAX_PER_RUN:]:
-        s = score(um, reply)
+        s = score(um, reply, ts)
         if not s:
             continue
         rec = {"id": _id, "timestamp": ts or datetime.now(timezone.utc).isoformat(),

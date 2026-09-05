@@ -55,10 +55,11 @@ want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py quantum_snapshot.py"
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
+SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
-avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py"
+avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
@@ -272,6 +273,7 @@ while IFS='|' read -r from to; do
     printf '  %s\n' "$to"
 done < "$_plan_file"
 for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"; done
+for f in first-light.sh gloria-model-update.sh self-model-update.sh; do d="$(dest "bin/$f")"; [ -e "$d" ] && chmod 755 "$d"; done   # cron runs these directly
 
 # The checkout's logical paths are not Aegis's live paths.  Give the bounded
 # self-builder the exact resolution this deploy just proved instead of making

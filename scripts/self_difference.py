@@ -6,6 +6,20 @@ import os, json, time, hashlib
 from desired_difference import _llm, _jload, _jsave, _extract
 
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
+
+def _queue_bring_up(q):
+    """causality-bring-up.json is the record; .pending-causality-queue.json is what his chat prompt
+    reads (server: CAUSALITY HYPOTHESIS TO TEST TODAY). Until 2026-09-05 only the record was written."""
+    try:
+        import json as _qj, os as _qo
+        qp = _qo.path.join(MEM, ".pending-causality-queue.json")
+        try: queue = _qj.load(open(qp))
+        except Exception: queue = []
+        if not isinstance(queue, list): queue = []
+        if q not in queue:
+            queue.append(q); _qj.dump(queue[-6:], open(qp, "w"), indent=2)
+    except Exception: pass
+
 SDIFF=os.path.join(MEM,"self-difference.json")
 SPRESS=os.path.join(MEM,"self-difference-pressure.json")
 
@@ -124,7 +138,7 @@ def _graduate(e):
         p=os.path.join(MEM,"causality-bring-up.json"); d=_jload(p,[])
         if isinstance(d,dict): d.setdefault("items",[]).append({"ts":time.time(),"question":q,"source":"self_pressure"})
         else: d.append({"ts":time.time(),"question":q,"source":"self_pressure"})
-        _jsave(p,d)
+        _jsave(p,d); _queue_bring_up(q)
     except Exception: pass
 
 def pressure_block():

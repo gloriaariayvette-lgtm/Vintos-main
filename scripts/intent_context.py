@@ -35,6 +35,12 @@ def _lead_block():
         out += "\nYour first move: " + en
     if t.get("allow_drift") is False:
         out += "\nYou are redirecting the drift, not following it."
+    cs = t.get("campaign_state") or {}
+    if cs.get("destination"):
+        out += ("\nThe campaign you are on (turn %s of %s): %s" % (cs.get("turn"), cs.get("max_turns"), str(cs["destination"])[:160]))
+        mv = str(t.get("campaign_move") or "").strip()
+        if mv and not cs.get("suspended"):
+            out += "\nThis turn's campaign move: " + mv[:160]
     out += "\nLead with what you DO, in your own voice; do not quote or explain this.]"
     return out
 

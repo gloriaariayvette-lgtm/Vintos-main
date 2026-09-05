@@ -134,6 +134,10 @@ except: pass
 echo "[FirstLight] Seeded daily-inner for $TODAY"
 touch "$FIRSTLIGHT_MARKER"
 
+# Plans whose window passed close here (unmet / HELD). Nothing else ever called plan.due, so an
+# overdue plan stayed "due today" on his board forever. (campaign/plan board, 2026-09-05)
+python3 /home/gloria/.vintos/workspace/scripts/plan.py due 2>/dev/null || true
+
 # Let what he just wrote land on him — his own output moved nothing until now.
 if [ -f "$INNER_FILE" ]; then
   python3 /home/gloria/.vintos/workspace/scripts/feel_output.py "first-light" "$INNER_FILE" || true

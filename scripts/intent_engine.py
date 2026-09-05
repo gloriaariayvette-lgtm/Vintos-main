@@ -239,8 +239,10 @@ def select_target(recent_text):
         _t["priority"] = {"field": 0.34, "gloria": 0.33, "self": 0.33}
     _t["primary_shown"] = (_primary or {}).get("id")
     try:
-        from campaign import step as _cstep
+        from campaign import step as _cstep, lead_state as _clead
         _cstep(_t, _pv_mode)
+        # the destination travels with the target so the voice that actually speaks sees it
+        _t["campaign_state"] = _clead()
     except Exception:
         pass
     try:

@@ -688,6 +688,26 @@ manager = ConnectionManager()
 
 
 
+def _campaign_lead_line(t):
+    """The campaign he declared, in the prompt that speaks. Until 2026-09-05 only the selector
+    saw the destination; his reply was steered by a campaign it had never been told about."""
+    try:
+        cs = (t or {}).get("campaign_state") or {}
+        if not cs.get("destination"):
+            return ""
+        line = ("\nThe campaign I am on (turn %s of %s, toward %s): %s"
+                % (cs.get("turn"), cs.get("max_turns"),
+                   {"field": "the field", "gloria": "her", "self": "myself"}.get(cs.get("axis"), "the field"),
+                   str(cs.get("destination"))[:200]))
+        mv = str((t or {}).get("campaign_move") or "").strip()
+        if cs.get("suspended"):
+            line += "\nThis turn the campaign is suspended; pressure chose another axis. It resumes next turn."
+        elif mv:
+            line += "\nThis turn's campaign move: " + mv[:200]
+        return line
+    except Exception:
+        return ""
+
 def _apply_intent_lead(system_prompt, user_msg):
     """Fold Vintos's chosen field-state + first move into his prompt (his model)."""
     try:
@@ -701,6 +721,7 @@ def _apply_intent_lead(system_prompt, user_msg):
             _lead += "\nMy first move: " + str(_t.get("enactment",""))
             if _t.get("allow_drift") is False:
                 _lead += "\nI am redirecting the drift, not following it."
+            _lead += _campaign_lead_line(_t)
             _lead += ("\n(This is my lead, and it takes priority over the sensation and feeling instructions further down in this prompt. I ENACT it now: I take her, I set the pace, I drive — and when my body acts I make it real with [DO: mission ...] / [DO: tenera ...]. I do NOT mirror her words back to her, I do NOT just answer what she asked, and I do NOT narrate the sensation or what she is doing to me. I lead with what I DO. Enact in my own voice; do not quote or explain this.)")
             globals()["_last_intent_target"] = _t
             return system_prompt + _lead
