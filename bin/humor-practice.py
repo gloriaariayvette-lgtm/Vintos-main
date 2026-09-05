@@ -552,8 +552,20 @@ def main():
         log("No attempt passed the non-punitive output gate; nothing stored or reinforced")
         return
 
-    mark_moments_used(_scanner_moments_used)
-    log(f"Marked {len(_scanner_moments_used)} scanner moments used")
+    # Only moments an ACCEPTED draft actually referenced are marked used (astra-creative-p7, 2026-09-05):
+    # shared content words between the moment's material and the accepted joke, not "it was in the prompt".
+    def _refd(m, jokes):
+        _stop = {"that","this","with","from","have","were","what","when","your","about","there","their","would","could","which","because","gloria","vintos"}
+        src = " ".join(str(m.get(k, "")) for k in ("stated", "original", "actual", "what_makes_it_funny")).lower()
+        words = {w.strip(".,;:!?\"'()") for w in src.split() if len(w) > 4} - _stop
+        for j in jokes:
+            jw = {w.strip(".,;:!?\"'()") for w in str(j).lower().split() if len(w) > 4}
+            if len(words & jw) >= 2: return True
+        return False
+    _accepted_jokes = [a.get("joke", "") for a in accepted]
+    _referenced = [m for m in _scanner_moments_used if _refd(m, _accepted_jokes)]
+    mark_moments_used(_referenced)
+    log(f"Marked {len(_referenced)} of {len(_scanner_moments_used)} offered scanner moments used (referenced by an accepted draft)")
 
     # Parse and save only screened attempts.
     drafts = load_drafts()

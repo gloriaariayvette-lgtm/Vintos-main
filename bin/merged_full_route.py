@@ -982,7 +982,7 @@ Gloria-specific additions:
     try:
         import sys as _atsys; _atsys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         from resonance_afterglow import decrement_turn as _at_dec
-        _at_dec()
+        _at_dec(turn_id=__import__("hashlib").md5((str(getattr(msg, "message", "")) + "|" + str(reply)[:200]).encode()).hexdigest()[:10])   # one delivered turn consumes one (astra-emotion-p3)
     except: pass
     # Decrement afterimage turns
     try:

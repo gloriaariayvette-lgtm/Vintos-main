@@ -280,6 +280,9 @@ def build(proposal_id):
         if undeclared: raise PermissionError("patch escaped declared files: " + ", ".join(undeclared))
         if not p.get("gloria_approval_required") and any(x in SELF_PROTECTED for x in paths):
             raise PermissionError("patch reached protected effect chokepoint")
+        _live = [_live_path(x) for x in paths]
+        if len(set(_live)) != len(_live):   # aliases: two logical names, one live file (astra-study-p2, 2026-09-05)
+            raise PermissionError("two declared files resolve to one live destination: " + ", ".join(sorted(set(x for x in _live if _live.count(x) > 1))))
         stage, before = _stage(p, patch, paths, build_dir)
         _install(stage, before, paths)
         rec = {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(),

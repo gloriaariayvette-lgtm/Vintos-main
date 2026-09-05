@@ -140,10 +140,13 @@ def fire_afterglow(source, strength, excerpt=""):
     # Generate a claim from this resonant state
     generate_claim(source, strength, excerpt)
 
-def decrement_turn():
-    """Call after each chat turn to track remaining focus bias turns."""
+def decrement_turn(turn_id=None):
+    """Call after each DELIVERED chat turn to consume one focus-bias turn. A turn_id repeated (the same
+    exchange assembled twice, a retry) consumes nothing (astra-emotion-p3, 2026-09-05)."""
     state = load_afterglow()
     if not state.get("active"): return
+    if turn_id and state.get("last_turn_id") == turn_id: return
+    if turn_id: state["last_turn_id"] = turn_id
     state["turns_remaining"] = max(0, state.get("turns_remaining", 0) - 1)
     if state["turns_remaining"] == 0:
         state["active"] = False

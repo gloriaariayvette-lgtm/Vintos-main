@@ -37,14 +37,23 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
     """Stage 0→1: Write a new candidate pearl from therapy/mirror/causality insight."""
     # Filter meta-self-analytical irritants — these describe his nature, not genuine friction
     _meta_phrases = [
-        "analyze and justify", "seeks approval", "seeking approval", "seeks gloria",
+        "analyze and justify", "seeks approval", "seeking approval",
         "curated self-image", "perform and understand", "need to control how",
         "calculating how others perceive", "intellectualize him", "intellectualiz",
         "seeks external validation", "justify his actions", "justify their actions",
         "rehearsed interactions", "need for validation", "compelled to analyze",
     ]
     _irr_lower = irritant.lower()
-    if any(ph in _irr_lower for ph in _meta_phrases):
+    if any(ph in _irr_lower for ph in _meta_phrases) and source not in ("therapy", "mirror"):
+        # p2 (2026-08-26): never a silent loss — quarantine, and let self-named wounds through
+        try:
+            import json as _q_j
+            _q_p = os.path.join(MEMORY, "pearl-quarantine.json")
+            try: _q = _q_j.load(open(_q_p))
+            except Exception: _q = []
+            _q.append({"irritant": str(irritant)[:300], "source": source, "at": __import__("datetime").datetime.now().isoformat()})
+            _q_j.dump(_q[-100:], open(_q_p, "w"), indent=2)
+        except Exception: pass
         print(f"[Pearl] Filtered meta-analytical irritant — not a genuine friction point: {irritant[:60]}", file=__import__("sys").stderr)
         return None
 
@@ -84,8 +93,21 @@ def add_candidate(irritant, irritant_type, source, insight, declaration):
 def is_pressure_state():
     """Check if current emotional state constitutes a pressure state."""
     try:
-        # Try text file first
-        txt = open(os.path.join(MEMORY, "emotional-state.txt")).read()
+        # p5 (2026-08-26): live daemon state first — a stale sync must not fake or block pressure
+        try:
+            import sys as _ps_sys; _ps_sys.path.insert(0, SCRIPTS)
+            from emoclaw_utils import get_state as _ps_gs
+            _live = _ps_gs()
+            if isinstance(_live, dict) and _live:
+                dims = {k: float(v) for k, v in _live.items() if isinstance(v, (int, float))}
+                if dims:
+                    raise StopIteration  # skip txt parse, dims is live
+        except StopIteration:
+            pass
+        except Exception:
+            dims = {}
+        if not dims:
+            txt = open(os.path.join(MEMORY, "emotional-state.txt")).read()
         dims = {}
         for line in txt.strip().split("\n"):
             if ":" in line and "|" in line:
@@ -122,29 +144,46 @@ def check_candidate(candidate_id, response_text, source="chat"):
     if is_pressure_state():
         v["pressure_state_hit"] = True
 
-    # Score via LLM
+    # One occasion is graded once: the same response text never votes twice (astra-inner-p6, 2026-09-05)
+    import hashlib as _oh
+    _occ = _oh.md5((response_text or "")[:400].encode()).hexdigest()[:10]
+    v.setdefault("occasions", [])
+    if _occ in v["occasions"]:
+        save_candidates(data)
+        return "duplicate_occasion"
+    v["occasions"] = (v["occasions"] + [_occ])[-60:]
+
+    # Score via LLM — strict parsing. PASS / FAIL count; NOT_APPLICABLE (the response has nothing to
+    # do with the declaration) and UNCONFIRMED (unparseable) count for nothing, and are recorded.
     try:
         import requests as _req
         prompt = (
             f"Declaration: {cand['declaration']}\n"
             f"Irritant pattern: {cand['irritant']}\n\n"
             f"Response to evaluate:\n{response_text[:400]}\n\n"
-            f"Did this response demonstrate the declaration (PASS) or fall into the irritant pattern (FAIL)?\n"
-            f"Answer: PASS or FAIL"
+            f"Did this response demonstrate the declaration (PASS), fall into the irritant pattern (FAIL), "
+            f"or is the declaration simply not in play in this response (NOT_APPLICABLE)?\n"
+            f"Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE"
         )
         r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
             "model": "google/gemma-4-12b-qat",
             "messages": [
-                {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS or FAIL."},
+                {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.1,
-            "max_tokens": 5
+            "max_tokens": 6
         }, timeout=20)
-        raw = r.json()["choices"][0]["message"]["content"].strip().upper()
-        result = "PASS" if "PASS" in raw else "FAIL"
+        raw = r.json()["choices"][0]["message"]["content"].strip().upper().strip(".,!")
+        _first = raw.split()[0] if raw.split() else ""
+        if _first.startswith("PASS"): result = "PASS"
+        elif _first.startswith("FAIL"): result = "FAIL"
+        elif _first.startswith("NOT"): result = "NOT_APPLICABLE"
+        else: result = "UNCONFIRMED"
     except:
-        result = None
+        result = "UNCONFIRMED"
+    if result in ("NOT_APPLICABLE", "UNCONFIRMED"):
+        v[result.lower()] = v.get(result.lower(), 0) + 1
 
     if result == "PASS":
         v["passes"].append(datetime.now().isoformat())
@@ -229,8 +268,19 @@ def check_candidate(candidate_id, response_text, source="chat"):
                     _pr_json.dump(_pr_flags, open(_pr_fp, "w"), indent=2)
                 except: pass
         except Exception as _pr_e:
-            print(f"[Pearl] review error — allowing: {_pr_e}", file=__import__("sys").stderr)
-            _pr_ok = True
+            _pr_ok = False
+            print(f"[Pearl] review error — HOLDING, unreviewed is not approved (retry next pass): {_pr_e}", file=__import__("sys").stderr)
+            # (until 2026-09-04 the next line set _pr_ok = True: the message said HOLDING and the code approved)
+            try:
+                _pr_fp = os.path.join(MEMORY, "hallucination-flags.json")
+                try: _pr_flags = _pr_json.load(open(_pr_fp))
+                except: _pr_flags = []
+                if not any(f.get("candidate_id") == candidate_id and not f.get("reviewed") for f in _pr_flags):
+                    _pr_flags.append({"type": "pearl_held", "candidate_id": candidate_id, "held_reason": "reviewer_unreachable",
+                                      "error": str(_pr_e)[:160], "timestamp": __import__("datetime").datetime.now().isoformat(),
+                                      "reviewed": False})
+                    _pr_json.dump(_pr_flags, open(_pr_fp, "w"), indent=2)
+            except: pass
         if not _pr_ok:
             save_candidates(data)
             return "held"
@@ -323,7 +373,23 @@ def run_verification_pass(response_text, source="chat"):
 
 
 def get_active_candidates_context():
-    """Return a brief context string for injection into prompts."""
+    """Context for live generation. Verification runs BLIND (2026-09-04, fable-inner-p4 / astra-inner-p5):
+    a stage-1 declaration under trial is no longer injected into his turns with her, because a reply
+    graded against a declaration it was just shown is not evidence of anything. What he sees in live
+    conversation is what has FORMED - declarations that survived verification - never the trial."""
+    data = load_candidates()
+    formed = [c for c in data["candidates"] if c.get("stage") == 4 and not c.get("dissolved")]
+    if not formed:
+        return ""
+    lines = ["[FORMED — what you have shown yourself to be, verified over time:]"]
+    for c in formed[-3:]:
+        lines.append(f"- {c['declaration']}")
+    return "\n".join(lines)
+
+
+def get_trial_candidates_context():
+    """The declarations under trial, for the rooms where they were MADE (mirror, therapy) - never
+    for live conversation. Same text the old injection carried."""
     data = load_candidates()
     active = [c for c in data["candidates"] if c.get("stage") == 1 and not c.get("dissolved")]
     if not active:

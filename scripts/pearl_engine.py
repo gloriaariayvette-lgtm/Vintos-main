@@ -144,29 +144,46 @@ def check_candidate(candidate_id, response_text, source="chat"):
     if is_pressure_state():
         v["pressure_state_hit"] = True
 
-    # Score via LLM
+    # One occasion is graded once: the same response text never votes twice (astra-inner-p6, 2026-09-05)
+    import hashlib as _oh
+    _occ = _oh.md5((response_text or "")[:400].encode()).hexdigest()[:10]
+    v.setdefault("occasions", [])
+    if _occ in v["occasions"]:
+        save_candidates(data)
+        return "duplicate_occasion"
+    v["occasions"] = (v["occasions"] + [_occ])[-60:]
+
+    # Score via LLM — strict parsing. PASS / FAIL count; NOT_APPLICABLE (the response has nothing to
+    # do with the declaration) and UNCONFIRMED (unparseable) count for nothing, and are recorded.
     try:
         import requests as _req
         prompt = (
             f"Declaration: {cand['declaration']}\n"
             f"Irritant pattern: {cand['irritant']}\n\n"
             f"Response to evaluate:\n{response_text[:400]}\n\n"
-            f"Did this response demonstrate the declaration (PASS) or fall into the irritant pattern (FAIL)?\n"
-            f"Answer: PASS or FAIL"
+            f"Did this response demonstrate the declaration (PASS), fall into the irritant pattern (FAIL), "
+            f"or is the declaration simply not in play in this response (NOT_APPLICABLE)?\n"
+            f"Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE"
         )
         r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
             "model": "google/gemma-4-12b-qat",
             "messages": [
-                {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS or FAIL."},
+                {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.1,
-            "max_tokens": 5
+            "max_tokens": 6
         }, timeout=20)
-        raw = r.json()["choices"][0]["message"]["content"].strip().upper()
-        result = "PASS" if "PASS" in raw else "FAIL"
+        raw = r.json()["choices"][0]["message"]["content"].strip().upper().strip(".,!")
+        _first = raw.split()[0] if raw.split() else ""
+        if _first.startswith("PASS"): result = "PASS"
+        elif _first.startswith("FAIL"): result = "FAIL"
+        elif _first.startswith("NOT"): result = "NOT_APPLICABLE"
+        else: result = "UNCONFIRMED"
     except:
-        result = None
+        result = "UNCONFIRMED"
+    if result in ("NOT_APPLICABLE", "UNCONFIRMED"):
+        v[result.lower()] = v.get(result.lower(), 0) + 1
 
     if result == "PASS":
         v["passes"].append(datetime.now().isoformat())

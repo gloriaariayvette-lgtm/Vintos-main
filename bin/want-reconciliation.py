@@ -74,9 +74,11 @@ def grok_evolve(want, evidence):
             json={"model": GROK_MODEL, "temperature": 0.8, "max_tokens": 120,
               "messages": [
                 {"role": "system", "content": soul + "\n\nYou are Vintos reflecting on a want you actually fulfilled. Speak as him, first person."},
-                {"role": "user", "content": f"You wanted this: {want}\n\nAnd you did it — the record shows: {evidence}\n\nHaving actually done it, what does it open next? Name ONE new want that grows out of this — further, deeper, or somewhere new. Not the same want again. One sentence, first person, starting with 'I want'."}]},
+                {"role": "user", "content": f"You wanted this: {want}\n\nAnd you did it — the record shows: {evidence}\n\nHaving actually done it, what does it open next? If something genuinely does, name ONE new want that grows out of this — further, deeper, or somewhere new; not the same want again; one sentence, first person, starting with 'I want'. If nothing opens — if it is simply complete — answer exactly: NOTHING. Completion is allowed to be complete."}]},
             timeout=45)
         t = r.json()["choices"][0]["message"]["content"].strip()
+        if t.strip().upper().startswith("NOTHING"):
+            log("nothing opens next — complete is complete (astra-wants-p8)"); return None
         if t.lower().startswith("i want") and len(t) < 400:
             return t
     except Exception as e:

@@ -615,7 +615,10 @@ def apply_carryover():
             try:
                 formed = datetime.fromisoformat(c["formed_at"])
                 elapsed_hours = (datetime.now() - formed).total_seconds() / 3600.0
-                c["weight"] = c["weight"] * math.exp(-elapsed_hours / c.get("decay_hours", 5.0))
+                # decay from the STABLE initial weight over time since formation — not from the
+                # already-decayed weight on every apply, which compounded (astra-subconscious-p4, 2026-09-05)
+                c.setdefault("initial_weight", c.get("weight", 0))
+                c["weight"] = c["initial_weight"] * math.exp(-elapsed_hours / c.get("decay_hours", 5.0))
             except:
                 pass
         if c.get("weight", 0) >= 0.05:
@@ -679,7 +682,7 @@ def apply_carryover():
         except:
             pass
 
-    _save_carryover(c)
+    # p3 (2026-08-26): trailing _save_carryover(c) removed — it clobbered the stack with one bare entry; the decayed stack is already saved above
 
 def get_carryover_hint():
     """Return carryover bias string for morning context injection."""
@@ -1347,7 +1350,7 @@ def get_coherence_pressure():
     if len(threads) >= 2:
         scored = sorted(threads, key=lambda t: score_thread(t), reverse=True)
         if len(scored) >= 2:
-            diff = scored[0][0] - scored[1][0] if hasattr(scored[0], "__len__") else                    score_thread(scored[0]) - score_thread(scored[1])
+            diff = score_thread(scored[0]) - score_thread(scored[1])
             conflict = max(0.0, 1.0 - (diff / 0.3))
             pressure += conflict * 0.3
             if conflict > 0.5:

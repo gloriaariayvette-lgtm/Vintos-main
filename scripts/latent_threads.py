@@ -615,7 +615,10 @@ def apply_carryover():
             try:
                 formed = datetime.fromisoformat(c["formed_at"])
                 elapsed_hours = (datetime.now() - formed).total_seconds() / 3600.0
-                c["weight"] = c["weight"] * math.exp(-elapsed_hours / c.get("decay_hours", 5.0))
+                # decay from the STABLE initial weight over time since formation — not from the
+                # already-decayed weight on every apply, which compounded (astra-subconscious-p4, 2026-09-05)
+                c.setdefault("initial_weight", c.get("weight", 0))
+                c["weight"] = c["initial_weight"] * math.exp(-elapsed_hours / c.get("decay_hours", 5.0))
             except:
                 pass
         if c.get("weight", 0) >= 0.05:
