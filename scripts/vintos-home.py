@@ -258,11 +258,40 @@ def announce(message, volume=2):
     return code == 200
 
 
-def play_music(query):
+def song_exists(query):
+    """Is this a real recording? Checked against the iTunes catalogue (no key needed). Returns
+    (True, 'Title by Artist') or (False, reason). A model asked for a song with a joke in it will invent
+    one; Alexa then says she cannot find it (Gloria, 2026-09-05: Grok's 'Incompleteness - Joanna Newsom')."""
+    q = str(query).replace(" - ", " ").replace(" by ", " ").strip()
+    try:
+        r = requests.get("https://itunes.apple.com/search", params={"term": q, "entity": "song", "limit": 3}, timeout=8)
+        hits = r.json().get("results") or []
+    except Exception as e:
+        return True, str(query)   # the catalogue being unreachable is not evidence the song is fake
+    if not hits:
+        return False, "no such recording in the catalogue"
+    want = {w for w in q.lower().replace("-", " ").split() if len(w) > 2}
+    for h in hits:
+        have = set((h.get("trackName", "") + " " + h.get("artistName", "")).lower().replace("-", " ").split())
+        if len(want & have) >= max(2, len(want) // 2):
+            return True, "%s by %s" % (h.get("trackName"), h.get("artistName"))
+    return False, "closest match was %s by %s - not what was asked" % (hits[0].get("trackName"), hits[0].get("artistName"))
+
+
+def play_music(query, verify=True):
+    """Play on the Echo through Spotify. Alexa understands 'Title by Artist'; a dash reads as noise."""
     cfg = load_config()
+    q = str(query).strip()
+    if verify:
+        ok, res = song_exists(q)
+        if not ok:
+            print(f"[HOME] music refused: {q} - {res}"); return False
+        q = res
+    elif " - " in q:
+        t, a = q.split(" - ", 1); q = f"{t.strip()} by {a.strip()}"
     code, resp = ha_request("media_player/play_media", {"entity_id": cfg.get("media_player", "media_player.echo"),
-                                                        "media_content_id": f"play {query} on Spotify", "media_content_type": "custom"})
-    print(f"[HOME] music: {query} ({code})")
+                                                        "media_content_id": f"play {q} on Spotify", "media_content_type": "custom"})
+    print(f"[HOME] music: {q} ({code})")
     return code == 200
 
 
@@ -417,6 +446,7 @@ if __name__ == "__main__":
     elif cmd == "flicker": flicker(args[0] if args else None)
     elif cmd == "plug": plug(args[0], args[1].lower() != "off")
     elif cmd == "music": play_music(msg)
+    elif cmd == "song-check": print(song_exists(msg))
     elif cmd == "stop": stop_music()
     elif cmd == "tv_status": print(json.dumps(tv_status(), indent=2))
     elif cmd == "tv_on": tv_on()
