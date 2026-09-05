@@ -156,6 +156,14 @@ def main():
             why.append("in manifest - deploy will refresh it" if r["manifest"] else "NOT in manifest - deploy will NOT refresh it" + (", referenced by " + ", ".join(r["referenced_by"]) if r["referenced"] else ""))
         if r.get("link"): why.append("symlink -> " + r["link"])
         print("%-12s %-8s %-38s %s" % (r["state"], r["area"], r["file"], "; ".join(why)))
+    # names the code spawns or loads by file name that exist in NEITHER the checkout nor the host
+    # (the vintos-home.py class: every home route loaded a path with nothing at it)
+    known = {r["file"] for r in rows} | {f for (_, f) in repo_links}
+    nowhere = sorted(f for f in refs_file if f not in known and not any(os.path.exists(os.path.join(d, f)) for d in DEST.values())
+                     and f not in ("deploy-atelier.sh", "release-map.py"))
+    if nowhere:
+        print("REFERENCED BY NAME, EXISTS NOWHERE (%d):" % len(nowhere))
+        for f in nowhere: print("   %s  <- %s" % (f, ", ".join(sorted(by.get(f, set())))[:120]))
     missing_ref = [r for r in rows if r["state"] == "MISSING" and r["referenced"]]
     stale_unmanifested = [r for r in rows if r["state"] == "STALE" and not r["manifest"] and r["referenced"]]
     print()
