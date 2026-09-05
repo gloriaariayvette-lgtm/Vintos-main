@@ -335,14 +335,20 @@ def pick_question():
                     try: _store = _nj.load(open(_AQ))
                     except Exception: _store = []
                     _qid = _item.get("id") or str(abs(hash(_q)))[:8]
-                    if any(x.get("id") == _qid for x in _store):
+                    _prior = next((x for x in _store if x.get("id") == _qid), None)
+                    if _prior and _prior.get("delivered", True):
                         # Until 2026-09-04 this logged and fell through: appended again, pinged again,
                         # collapsed twice. One send, ever. (fable-curiosity-p1 / grok-curiosity-p2)
                         log("already sent to her, not asking twice: %s" % _q[:70])
                         continue
-                    _store.append({"id": _qid, "question": _q[:600], "object": _item.get("object", ""),
-                                   "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
-                                   "answered_at": None, "answer": None, "delivered": False})
+                    if _prior:
+                        log("recorded but never delivered - retrying the send, not the record: %s" % _q[:60])
+                        _rec = _prior
+                    else:
+                        _rec = {"id": _qid, "question": _q[:600], "object": _item.get("object", ""),
+                                "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
+                                "answered_at": None, "answer": None, "delivered": False}
+                        _store.append(_rec)
                     _nj.dump(_store, open(_AQ, "w"), indent=2)
                     # She gets his question as he asked it. No second model.
                     _body = _q[:600] + "\n\nid: " + str(_qid)
@@ -351,6 +357,8 @@ def pick_question():
                                        headers={"Title": "Vintos has a question about himself",
                                                 "Tags": "question", "Priority": "default"})
                     _nu.urlopen(_req, timeout=15)
+                    _rec["delivered"] = True; _rec["delivered_at"] = _nt.time()      # transport accepted; her receipt is a different fact (astra-curiosity-p3)
+                    _nj.dump(_store, open(_AQ, "w"), indent=2)
                     log("sent to her in full via ntfy; recorded so it cannot arise again: %s" % _q[:80])
                     try:
                         from curiosity_debt import _load as _cd_load, _save as _cd_save
