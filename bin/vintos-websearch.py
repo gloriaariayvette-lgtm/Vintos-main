@@ -292,10 +292,13 @@ def pick_question():
     """Choose a question from lived experience."""
     # Gloria's explicit search request takes priority
     pending = get_pending_search_request()
-    # His own want-generated topics were entering through the door marked "Gloria asked for this"
-    # and outranking the questions he has actually been carrying. Only hers jumps the queue.
+    # The ladder (fable-curiosity-p3, 2026-09-05): her directed topic > his live curiosity debt >
+    # his own pending want-topic > nothing. His own want-generated topics were entering through the
+    # door marked "Gloria asked for this"; now they wait behind the debt and are consumed when used.
+    pending_own = None
     if pending and pending.get("source") not in (None, "gloria"):
-        log("deferring his own requested topic behind his live curiosity: %s" % str(pending.get("topic",""))[:70])
+        log("his own requested topic waits behind his live curiosity: %s" % str(pending.get("topic",""))[:70])
+        pending_own = pending
         pending = None
     if pending:
         _hit = _week_repeat(pending["topic"], _week_themes())
@@ -380,6 +383,16 @@ def pick_question():
             log("not searchable and not for her either (%s) - next item: %s" % (str((_v or {}).get("why",""))[:50], _q[:60]))
     except Exception as _cde:
         log("curiosity-debt check failed: %s" % _cde)
+
+    # Third rung: his own pending want-topic, consumed when used, same week-repeat check as hers.
+    if pending_own and pending_own.get("topic"):
+        _hit = _week_repeat(pending_own["topic"], _week_themes())
+        clear_pending_search_request()
+        if _hit:
+            log(f"his own topic repeats recent search ('{_hit}') - consumed, not searched: {pending_own['topic'][:80]}")
+        else:
+            log(f"Using his own pending topic: {pending_own['topic'][:80]}")
+            return {"question": pending_own["topic"], "search_query": pending_own["topic"][:60], "source": pending_own.get("source", "want")}
 
     # No searchable live curiosity -> nothing to search. Until 2026-09-04 this fell through to a
     # Gemma prompt over his identity files that manufactured a question because the clock fired
@@ -552,6 +565,26 @@ def main():
                            str(_best.get("synthesis_kept",""))[:500]))
             _max_att = 1
             log(f"Memory hit: session {_best.get('id')} ({_bs:.2f}) - budget cut to 1 confirming search")
+        # Second memory layer (fable-curiosity-p5, 2026-09-05): the semantic index over his own
+        # writing (memory-search.py). A strong hit from what he already wrote feeds synthesis the
+        # same way and cuts the budget the same way; a weak one is ignored.
+        try:
+            import importlib.util as _msu
+            _msp = next((f for f in (os.path.join(os.path.expanduser("~/.vintos/workspace/scripts"), "memory-search.py"),
+                                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory-search.py"))
+                         if os.path.exists(f)), None)
+            if _msp:
+                _mss = _msu.spec_from_file_location("vintos_memory_search", _msp)
+                _msm = _msu.module_from_spec(_mss); _mss.loader.exec_module(_msm)
+                _hits = [h for h in (_msm.search(str(question)[:600], limit=3) or []) if h.get("score", 0) >= 0.80 and h.get("text")]
+                if _hits:
+                    _mem_ctx += "\n\nFrom your own writing (semantic memory, similarity %.2f, %s): %s" % (
+                        _hits[0]["score"], str(_hits[0].get("source") or _hits[0].get("filename") or "")[:60],
+                        str(_hits[0]["text"])[:500])
+                    _max_att = min(_max_att, 2)
+                    log(f"Own-writing hit ({_hits[0]['score']:.2f}) from {str(_hits[0].get('source',''))[:40]} - budget {_max_att}")
+        except Exception as _mse:
+            log(f"memory-search layer skipped: {_mse}")
             try:
                 with open(os.path.expanduser("~/.vintos/workspace/memory/inquiry-log.jsonl"), "a") as _mlf:
                     _mlf.write(json.dumps({"ts": __import__("time").time(), "question": str(question)[:300],

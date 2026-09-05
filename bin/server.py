@@ -3488,6 +3488,9 @@ Gloria-specific additions:
         try:
             import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
         except Exception: pass
+        try:
+            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
+        except Exception: pass
         try: _relational_predict(reply, surface="chat")
         except Exception: pass
 
@@ -4518,6 +4521,9 @@ Your current self-model (excerpt):
         try:
             import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
         except Exception: pass
+        try:
+            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
+        except Exception: pass
         try: _relational_predict(reply, surface="chat")
         except Exception: pass
 
@@ -5125,6 +5131,9 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         _relational_compare(msg.message)
         try:
             import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
+        except Exception: pass
+        try:
+            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
         except Exception: pass
         try: _relational_predict(reply, surface="chat")
         except Exception: pass
@@ -8243,6 +8252,9 @@ Your current self-model (excerpt):
             _relational_compare(msg.message)
             try:
                 import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
+            except Exception: pass
+            try:
+                import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
             except Exception: pass
             try: _relational_predict(reply, _prov_writer_env, surface="avatar",
                                         turn_id=(_turn.turn_id if _turn is not None else ""))

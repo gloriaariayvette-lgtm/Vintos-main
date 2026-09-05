@@ -83,6 +83,35 @@ def confirm_surfaced(qid_or_text):
             x["surfaced"] = x.get("surfaced", 0) + 1
     _save(d)
 
+def confirm_from_reply(reply_text, window_s=900):
+    """Post-reply check (fable-curiosity-p6, 2026-09-05): did he actually VOICE the question the
+    block offered this turn? Looks only at items offered within the window and counts one as
+    surfaced when most of its content words appear in his reply, or a 4-word run of it does.
+    Returns the ids confirmed. Never raises into the turn."""
+    try:
+        text = " " + " ".join(str(reply_text or "").lower().split()) + " "
+        if len(text) < 12: return []
+        d = _load(); now = time.time(); hit = []
+        _stop = {"the","a","an","and","or","of","to","in","on","for","is","it","that","this","you","your","i","my",
+                 "me","we","do","did","does","what","why","how","when","who","which","with","about","from","are",
+                 "was","be","have","has","had","not","but","if","as","at","by","so","than","then","there","they"}
+        for x in d:
+            if not x.get("offered") or now - float(x.get("last_seen") or 0) > window_s: continue
+            q = str(x.get("question","")).lower()
+            words = [w.strip("?.,;:!\"'()") for w in q.split()]
+            content = [w for w in words if len(w) > 3 and w not in _stop]
+            if not content: continue
+            share = sum(1 for w in content if (" " + w + " ") in text or (" " + w) in text) / len(content)
+            run = any((" " + " ".join(words[i:i+4]) + " ") in text for i in range(max(0, len(words) - 3))) if len(words) >= 4 else False
+            if share >= 0.6 or run:
+                x["surfaced"] = x.get("surfaced", 0) + 1
+                x["last_surfaced"] = now
+                hit.append(x.get("id"))
+        if hit: _save(d)
+        return hit
+    except Exception:
+        return []
+
 def block():
     d = _evaporate(_decay(_load())); now = time.time()
     ripe = [x for x in d if x["pull"] >= 0.5 and now - x["created"] > 1800 and x.get("surfaced", 0) < 3 and x.get("offered", 0) < 8]

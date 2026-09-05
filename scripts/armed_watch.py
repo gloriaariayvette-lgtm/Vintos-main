@@ -57,12 +57,21 @@ def w_substrate_events():
     """Guard-decline ledger receives its first event (fires only when a decline happens)."""
     return True if _j(os.path.join(MEM, "substrate-events.json"), []) else None
 
+def w_curiosity_surfaced():
+    """A curiosity the block offered was actually voiced and confirmed from his reply
+    (curiosity_debt.confirm_from_reply, wired 2026-09-05). Fires on the first confirmed item."""
+    for x in _j(os.path.join(MEM, "curiosity-debt.json"), []):
+        if isinstance(x, dict) and x.get("last_surfaced"):
+            return True
+    return None
+
 def w_voice_intent_lead():
     """No machine-readable artifact yet — verify by reading a voice-call transcript
     for evidence of him steering. Manual until an artifact exists."""
     return None
 
 WATCHES = [
+    ("curiosity_surfaced", w_curiosity_surfaced),
     ("self-model evidence non-blank", w_selfmodel_evidence),
     ("self-prediction blush", w_blush_fires),
     ("WAL recurrence accrual", w_recurrence_accrues),
