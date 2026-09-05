@@ -339,7 +339,7 @@ def pick_question():
                         # Until 2026-09-04 this logged and fell through: appended again, pinged again,
                         # collapsed twice. One send, ever. (fable-curiosity-p1 / grok-curiosity-p2)
                         log("already sent to her, not asking twice: %s" % _q[:70])
-                continue
+                        continue
                     _store.append({"id": _qid, "question": _q[:600], "object": _item.get("object", ""),
                                    "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
                                    "answered_at": None, "answer": None, "delivered": False})
