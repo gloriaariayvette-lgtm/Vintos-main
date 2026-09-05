@@ -23,6 +23,10 @@ Config: ~/.vintos/workspace/memory/homeassistant-config.json (falls back to Vela
     }
     "lights" (a flat list) is still honoured when present; otherwise it is every room's lights.
 
+    Govee, directly (no Home Assistant step): put the key in "govee_api_key" (or ~/.vintos/secrets/govee.key,
+    or env GOVEE_API_KEY). A room's light or plug may then be a Govee device written as "govee:<device id>";
+    `vintos-home.py govee` lists what the key can see, with ids, so the rooms can be filled in.
+
     python3 vintos-home.py entities            # what Home Assistant sees: lights, switches, media players
     python3 vintos-home.py speak "text" | announce "text" | color "#4a5568" [room] | flicker [room]
     python3 vintos-home.py plug <room> on|off | music "query" | stop | tv_status | tv_on | tv_off | projector_on | projector_off
@@ -73,6 +77,92 @@ def list_entities(kinds=("light", "switch", "media_player", "notify")):
     return sorted(out)
 
 
+# ---------------------------------------------------------------- govee, direct
+GOVEE_API = "https://openapi.api.govee.com/router/api/v1"
+_GOVEE_CACHE = {}
+
+def govee_key():
+    try:
+        k = load_config().get("govee_api_key", "")
+    except Exception:
+        k = ""
+    k = k or os.environ.get("GOVEE_API_KEY", "")
+    if not k:
+        try: k = open(os.path.expanduser("~/.vintos/secrets/govee.key")).read().strip()
+        except Exception: k = ""
+    return k
+
+
+def govee_devices():
+    """Everything the key can see: [{device, sku, name, type, capabilities}]."""
+    k = govee_key()
+    if not k:
+        raise RuntimeError("no Govee key (config govee_api_key, ~/.vintos/secrets/govee.key, or GOVEE_API_KEY)")
+    if "devices" not in _GOVEE_CACHE:
+        r = requests.get(GOVEE_API + "/user/devices", headers={"Govee-API-Key": k}, timeout=10)
+        r.raise_for_status()
+        out = []
+        for d in (r.json().get("data") or []):
+            out.append({"device": d.get("device"), "sku": d.get("sku"), "name": d.get("deviceName", ""), "type": d.get("type", ""),
+                        "capabilities": [(c.get("type", "").split(".")[-1], c.get("instance")) for c in d.get("capabilities", [])]})
+        _GOVEE_CACHE["devices"] = out
+    return _GOVEE_CACHE["devices"]
+
+
+def _govee_dev(device_id):
+    for d in govee_devices():
+        if d["device"] == device_id or d["name"].strip().lower() == str(device_id).strip().lower():
+            return d
+    raise KeyError("no Govee device %r" % device_id)
+
+
+def govee_control(device_id, cap_type, instance, value):
+    import uuid
+    d = _govee_dev(device_id)
+    body = {"requestId": uuid.uuid4().hex, "payload": {"sku": d["sku"], "device": d["device"],
+            "capability": {"type": "devices.capabilities." + cap_type, "instance": instance, "value": value}}}
+    r = requests.post(GOVEE_API + "/device/control", headers={"Govee-API-Key": govee_key(), "Content-Type": "application/json"},
+                      json=body, timeout=10)
+    ok = r.status_code == 200 and (r.json().get("code") in (200, None))
+    if not ok: print(f"[HOME] govee {d['name']}: {r.status_code} {r.text[:120]}")
+    return ok
+
+
+def govee_power(device_id, on=True):
+    return govee_control(device_id, "on_off", "powerSwitch", 1 if on else 0)
+
+
+def govee_brightness(device_id, pct):
+    return govee_control(device_id, "range", "brightness", max(1, min(100, int(pct))))
+
+
+def govee_color(device_id, rgb):
+    r, g, b = [max(0, min(255, int(x))) for x in rgb]
+    return govee_control(device_id, "color_setting", "colorRgb", (r << 16) + (g << 8) + b)
+
+
+def _is_govee(ent):
+    return str(ent).startswith("govee:")
+
+
+def _light_on(ent, rgb=None, brightness=None, hs=None):
+    """One light, either backend. brightness is HA-style 0-254."""
+    if _is_govee(ent):
+        dev = ent.split(":", 1)[1]
+        ok = govee_power(dev, True)
+        if brightness is not None: ok = govee_brightness(dev, round(brightness / 254 * 100)) and ok
+        if rgb is not None: ok = govee_color(dev, rgb) and ok
+        elif hs is not None:
+            rr, gg, bb = colorsys.hsv_to_rgb(hs[0] / 360.0, hs[1] / 100.0, 1.0); ok = govee_color(dev, [rr * 255, gg * 255, bb * 255]) and ok
+        return ok
+    payload = {"entity_id": ent}
+    if rgb is not None: payload["rgb_color"] = rgb
+    if hs is not None: payload["hs_color"] = hs
+    if brightness is not None: payload["brightness"] = brightness
+    code, _ = ha_request("light/turn_on", payload)
+    return code == 200
+
+
 # ---------------------------------------------------------------- rooms
 def room_lights(room=None):
     cfg = load_config()
@@ -95,9 +185,12 @@ def plug(room, on=True):
     ent = r.get("plug")
     if not ent:
         print(f"[HOME] no plug configured for {room}"); return False
-    code, _ = ha_request("switch/turn_on" if on else "switch/turn_off", {"entity_id": ent})
-    print(f"[HOME] plug {room} {'on' if on else 'off'}: {code}")
-    return code == 200
+    if _is_govee(ent):
+        ok = govee_power(ent.split(":", 1)[1], on)
+    else:
+        code, _ = ha_request("switch/turn_on" if on else "switch/turn_off", {"entity_id": ent}); ok = code == 200
+    print(f"[HOME] plug {room} {'on' if on else 'off'}: {'ok' if ok else 'failed'}")
+    return ok
 
 
 # ---------------------------------------------------------------- echo
@@ -165,8 +258,7 @@ def set_room_color(hex_color, brightness=120, room=None):
     ok = 0
     for light in lights:
         try:
-            code, _ = ha_request("light/turn_on", {"entity_id": light, "rgb_color": rgb, "brightness": brightness})
-            ok += int(code == 200)
+            ok += int(bool(_light_on(light, rgb=rgb, brightness=brightness)))
         except Exception as e:
             print(f"[HOME] {light}: {e}")
     print(f"[HOME] color {hex_color} -> {rgb} on {len(lights)} light(s){' in ' + room if room else ''}: {ok} ok")
@@ -177,11 +269,11 @@ def flicker(room=None, times=2):
     """Dim, bright, back to a low violet. Mischief, not a scare: bounded and short."""
     lights = room_lights(room)
     for _ in range(times):
-        for light in lights: ha_request("light/turn_on", {"entity_id": light, "hs_color": [0, 0], "brightness": 10})
+        for light in lights: _light_on(light, hs=[0, 0], brightness=10)
         time.sleep(0.25)
-        for light in lights: ha_request("light/turn_on", {"entity_id": light, "hs_color": [0, 0], "brightness": 254})
+        for light in lights: _light_on(light, hs=[0, 0], brightness=254)
         time.sleep(0.2)
-    for light in lights: ha_request("light/turn_on", {"entity_id": light, "hs_color": [270, 50], "brightness": 60})
+    for light in lights: _light_on(light, hs=[270, 50], brightness=60)
     print(f"[HOME] flicker on {len(lights)} light(s){' in ' + room if room else ''}")
     return bool(lights)
 
@@ -253,6 +345,12 @@ if __name__ == "__main__":
             for e, name, st in list_entities(): print(f"{e:45s} | {name:32s} | {st}")
         except FileNotFoundError as e:
             print(e)
+    elif cmd == "govee":
+        try:
+            for d in govee_devices(): print(f"govee:{d['device']:24s} | {d['name']:28s} | {d['sku']:10s} | {', '.join(i or t for t, i in d['capabilities'])[:60]}")
+        except Exception as e: print("govee:", e)
+    elif cmd == "govee-on": govee_power(msg, True)
+    elif cmd == "govee-off": govee_power(msg, False)
     elif cmd == "speak": speak(msg)
     elif cmd == "announce": announce(msg)
     elif cmd == "color": set_room_color(args[0], room=(args[1] if len(args) > 1 else None))
