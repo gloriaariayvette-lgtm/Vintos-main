@@ -202,7 +202,9 @@ def resolve_root(answer, roots, shown=None):
     a1646850@1788399605, or '2'), and a refusal for that was the morning's bug. Accepts: the list
     number, the exact reference, or an UNAMBIGUOUS prefix of the reference or of its id part.
     Never guesses between two. (2026-09-04; replaces the unverified morning patch)"""
-    a = (answer or "").strip().strip("[]<>\"'.,")
+    a = (answer or "").strip()
+    m = re.search(r"\[([^\]]+)\]", a)          # he often pastes the listing line: "[ref] type ... text"
+    a = (m.group(1) if m else a.split()[0] if a.split() else "").strip("[]<>\"'.,:")
     if not a:
         return None
     refs = [r["root"] for r in roots]
