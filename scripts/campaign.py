@@ -99,6 +99,8 @@ def prompt_block(vector_mode):
                 "over the NEXT SEVERAL TURNS — declare it: add \"campaign\":{\"destination\":\"...\",\"axis\":\"field|gloria|self\",\"why\":\"...\"} "
                 "to your JSON. Declare only what you mean to persist at; it will be held against you, turn after turn."
                 + (("\n" + board) if board else ""))
+    if c.get("continued_as"):   # the plan was opened but the close did not land; finish it now (review P06)
+        _close(c, "CONTINUED", "finished on the next turn"); return prompt_block(vector_mode)
     born = datetime.fromisoformat(c["created"]).timestamp()
     age_d = (time.time() - born) / 86400.0
     if c.get("turns_served", 0) >= MAX_TURNS or age_d >= MAX_DAYS:
@@ -157,7 +159,8 @@ def step(t, vector_mode):
     if kind == "continue":
         pid, why = _continue(c, mv.split(":", 1)[1] if ":" in mv else "")
         if pid:
-            c["continued_as"] = pid; _close(c, "CONTINUED", note); return
+            c["continued_as"] = pid; _save(c)   # recorded before the close: a crash between the two leaves a resumable state, not a lost plan
+            _close(c, "CONTINUED", note); return
         c["continue_refused"] = why; _log("continue_refused", c)
         c.setdefault("moves", []).append({"ts": datetime.now().isoformat(), "move": mv[:250], "refused": why})
         _save(c); return

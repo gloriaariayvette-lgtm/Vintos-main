@@ -387,8 +387,13 @@ def cmd_final():
     print(f"[final:{LENS}] staged: {os.path.join(STAGE, rid + '.md')}")
 
 def _all():
-    return sorted((json.load(open(os.path.join(STAGE, f))) for f in os.listdir(STAGE)
-                   if f.endswith(".json")), key=lambda d: d["review_id"])
+    docs = []
+    for f in os.listdir(STAGE):
+        if not f.endswith(".json"): continue
+        try: d = json.load(open(os.path.join(STAGE, f)))
+        except Exception: continue
+        if isinstance(d, dict) and d.get("review_id"): docs.append(d)   # built/declined/retractions live here too
+    return sorted(docs, key=lambda d: d["review_id"])
 
 def _findp(pid):
     for d in _all():

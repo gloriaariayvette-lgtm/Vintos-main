@@ -2544,16 +2544,18 @@ def _spine_wrap(_name, _fn):
                 log(f"  → block on {_name} cleared: tool answered again")
             return out
         except (FileNotFoundError, PermissionError) as e:
-            bt, rev = "TOOL_UNAVAILABLE", "tool or path restored"
+            bt, rev, err = "TOOL_UNAVAILABLE", "tool or path restored", e
         except (ConnectionError, TimeoutError, OSError) as e:
-            bt, rev = "RESOURCE_UNREACHABLE", "endpoint reachable again"
+            bt, rev, err = "RESOURCE_UNREACHABLE", "endpoint reachable again", e
         except Exception as e:
             log(f"  → {_name} FAILED (not blocked): {str(e)[:120]}")
             return False
-        blocks[_name] = {"block_type": bt, "evidence": str(e)[:250],
+        # `e` is unbound once its except clause ends; the block record below raised NameError instead of
+        # being written, so no block was ever recorded (review, 2026-09-05)
+        blocks[_name] = {"block_type": bt, "evidence": str(err)[:250],
                          "resume_event": rev, "at": __import__("time").time()}
         json.dump(blocks, open(_SPINE_BLOCKS, "w"), indent=1)
-        log(f"  → BLOCKED ({_name}): {bt} — {str(e)[:100]}")
+        log(f"  → BLOCKED ({_name}): {bt} — {str(err)[:100]}")
         try:
             import want_checkpoints as _cp2
             _cp2.create(want_text, _name, "blocked", bt)

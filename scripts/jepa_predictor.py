@@ -248,7 +248,7 @@ def train():
         opt.step()
         if epoch % 100 == 0:
             log(f"epoch {epoch} loss {loss.item():.4f}")
-    torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None}, MODEL)
+    torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None, "training_sources": _srcs}, MODEL)
     log(f"trained on {len(X)} pairs (presence_trained={Xp is not None}); saved {MODEL}")
 
 def _cos(a, b):
@@ -346,7 +346,10 @@ def predict():
            "empirical_calibration": "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; logvars appear COLLAPSED (~0.998 constant) - uncalibrated, may not steer"}
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
-    out["training_sources"] = _srcs   # what the gloria head learned from, per source (fable-models-p5)
+    try:   # _srcs was train()-local: every predict raised NameError here before the forecast was saved (review P05)
+        out["training_sources"] = (ck.get("training_sources") if isinstance(ck, dict) else None) or training_sources(turns)
+    except Exception as _tse:
+        out["training_sources"] = {"unavailable": str(_tse)[:80]}
     json.dump(out, open(OUT, "w"), indent=2)
     # calibration ledger: one line per prediction, BOTH signals (repaired logvar-relative confidence
     # AND legacy decode_similarity) plus raw predicted embeddings, so the audit can test which one -

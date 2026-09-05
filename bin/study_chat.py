@@ -71,6 +71,15 @@ EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\n
 
 
 # ── files ────────────────────────────────────────────────────────────────────
+def _label_path(path):
+    """Absolute path -> 'label/rest' under the root that holds it (the form resolve() and READ accept), else None."""
+    real = os.path.realpath(path)
+    for label, root in ROOTS.items():
+        r = os.path.realpath(root)
+        if real.startswith(r + os.sep):
+            return label + "/" + os.path.relpath(real, r)
+    return None
+
 def resolve(rel, for_edit=False):
     """'scripts/x.py' or 'house/server.py' (or a bare name found in either root)
     -> absolute path, or None if outside the roots or a protected file. Secrets are never resolved;
@@ -175,13 +184,16 @@ def do_grep(pattern, max_lines=60):
                 if SECRET_DENY.search(os.path.basename(path)) or ".bak" in path:
                     continue
                 # one destination policy for listing, reading, searching and editing (astra-study-p1):
-                # a hit in a file READ would refuse is not shown either
+                # a hit in a file READ would refuse is not shown either. The label is the form resolve()
+                # accepts ('scripts/x.py', 'house/server.py'): a HOME-relative path was not, so every hit
+                # was dropped by this very filter (review D01, 2026-09-05).
+                lab = _label_path(path)
                 try:
-                    if not resolve(os.path.relpath(path, HOME) if path.startswith(HOME) else path):
+                    if not lab or not resolve(lab):
                         continue
                 except Exception:
                     continue
-                out.append("%s:%s:%s" % (os.path.relpath(path, HOME) if path.startswith(HOME) else path, lineno, text))
+                out.append("%s:%s:%s" % (lab, lineno, text))
     except Exception as e:
         return "GREP failed: %s" % e
     if not out:
@@ -237,6 +249,25 @@ def propose_edits(edits, why=""):
     os.makedirs(PENDING_DIR, exist_ok=True)
     open(os.path.join(PENDING_DIR, pid + ".json"), "w").write(json.dumps(rec, ensure_ascii=False, indent=1))
     return pid, None
+
+def _match_pending(edits):
+    """The id of an unapplied proposal whose edits are exactly these (same files, old and new text), else None."""
+    try:
+        want = set()
+        for e in edits or []:
+            p = resolve(str(e.get("file", "")), for_edit=True)
+            if not p: return None
+            want.add((os.path.relpath(p, HOME), _sha(str(e.get("old", ""))), _sha(str(e.get("new", "")))))
+        if not want: return None
+        for f in sorted(glob.glob(os.path.join(PENDING_DIR, "SP-*.json")), key=os.path.getmtime, reverse=True):
+            try: rec = json.load(open(f))
+            except Exception: continue
+            if rec.get("applied_at"): continue
+            have = set((x["file"], x["old_sha"], x["new_sha"]) for x in rec.get("edits", []))
+            if have == want: return rec["id"]
+    except Exception:
+        return None
+    return None
 
 def apply_pending(pid, confirm=None):
     """Apply a stored proposal by id. Refuses if any target file changed since the proposal was made."""
@@ -581,7 +612,14 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
         body = await request.json()
         edits = body.get("edits") or ([{"file": body.get("file"), "old": body.get("old"), "new": body.get("new")}]
                                       if body.get("file") else [])
-        ok, msg = apply_edits(edits, body.get("confirm"))
+        # Approval binds to a stored proposal (astra-study-p5): raw edits reached apply_edits directly here,
+        # bypassing the immutable pending record and its file-hash check (review D01, 2026-09-05). A raw
+        # edit set is now matched to an unapplied proposal with the same files and hashes; no match, no apply.
+        pid = body.get("pending_id") or _match_pending(edits)
+        if pid:
+            ok, msg = apply_pending(pid, body.get("confirm"))
+        else:
+            ok, msg = False, "no stored proposal matches these edits - he proposes, the record is made, then you approve it"
         log = load_log()
         log.append({"role": "system", "content": ("Gloria approved - " if ok else "Not applied - ") + msg, "at": _now()})
         save_log(log)

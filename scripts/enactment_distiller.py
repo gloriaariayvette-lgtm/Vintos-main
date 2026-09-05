@@ -352,6 +352,17 @@ def process(response_text, gloria_msg="", context="chat"):
     events = [e for e in events if _is_capability(e.get('identity_candidate', ''))]
     if not events:
         return
+    if str(context).startswith("ghost"):
+        # A ghost branch is what he did NOT say. Its behaviours are hypothetical and must not become
+        # proto-pearls, self-statements or emotion (review D03, 2026-09-05). Recorded apart, marked.
+        try:
+            with open(os.path.join(MEMORY, "ghost-enactments.jsonl"), "a") as f:
+                for e in events:
+                    f.write(json.dumps({**e, "hypothetical": True, "context": context, "at": datetime.now().isoformat()}) + "\n")
+            print(f"[ED] {len(events)} hypothetical event(s) from {context} recorded, not enacted", flush=True)
+        except Exception:
+            pass
+        return
 
     proto_db = load_proto_pearls()
     prune_proto_pearls(proto_db)

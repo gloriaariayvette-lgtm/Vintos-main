@@ -247,7 +247,16 @@ STOP_WORDS = ("still", "stop", "off")
 def accepted_patterns():
     """The names the grammar accepts, from the same table that plays them — the instrument
     description is generated from this, so the menu cannot drift from what works (astra-somatic-p1)."""
-    return sorted(set(PRESETS) | set(LEGACY_PATTERNS) | {"rotate"} | set(STOP_WORDS))
+    return sorted(set(PRESETS) | set(LEGACY_PATTERNS) | {"rotate", "last", "saved"} | set(STOP_WORDS))   # last/saved: replay, which play() has always supported
+
+def _stop_local(toy):
+    """Cancel the local pattern thread(s) for a toy (or every toy for a broadcast alias) before a stop is sent."""
+    names = list(toy_link.TOYS) + ["thruster"] if toy in _SYNC else [toy]
+    for t in names:
+        ev = _threads.get(t)
+        if ev:
+            try: ev.set()
+            except Exception: pass
 
 def compile_plan(reply_text):
     """ONE grammar for both tag forms (astra-somatic-p1, 2026-09-05). Every [DO:] and [TOUCH:] in the
@@ -260,6 +269,10 @@ def compile_plan(reply_text):
     plan, rejected = [], []
     for m in _DIR.finditer(reply_text or ""):
         toy = m.group(1).lower(); pat = m.group(2).lower()
+        if pat in ("last", "saved"):
+            if toy not in KNOWN_TOYS and toy not in _SYNC:
+                rejected.append({"tag": m.group(0), "why": "unknown toy %r" % toy}); continue
+            plan.append({"form": "do", "toy": toy, "kind": "pattern", "pattern": pat, "args": [], "level": 12, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
         raw = m.group(3).split() if m.group(3).strip() else []
         args = []
         for x in raw:
@@ -269,7 +282,7 @@ def compile_plan(reply_text):
             rejected.append({"tag": m.group(0), "why": "unknown toy %r" % toy}); continue
         parts = pat.split("+")
         if pat in STOP_WORDS or (len(parts) == 1 and pat in LEGACY_PATTERNS and any(isinstance(a, int) and a == 0 for a in args)):
-            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
+            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
         if pat == "rotate":
             lvl = None
             if args:
@@ -277,21 +290,24 @@ def compile_plan(reply_text):
                 if lvl is None and isinstance(args[0], int): lvl = max(0, min(20, args[0]))
             if lvl is None: lvl = 12
             if lvl == 0:
-                plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
-            plan.append({"form": "do", "toy": toy, "kind": "rotate", "pattern": "rotate", "args": args, "level": lvl, "seconds": 0, "tag": m.group(0)}); continue
+                plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
+            plan.append({"form": "do", "toy": toy, "kind": "rotate", "pattern": "rotate", "args": args, "level": lvl, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
         unknown = [q for q in parts if q not in PRESETS and q not in LEGACY_PATTERNS]
         if unknown:
             rejected.append({"tag": m.group(0), "why": "unknown pattern %s" % ", ".join(repr(q) for q in unknown)}); continue
         lvl = next((a for a in args if isinstance(a, int)), 12)
         lvl = max(0, min(20, lvl))
         if lvl == 0 and not any(q in PRESETS for q in parts):
-            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0)}); continue
-        plan.append({"form": "do", "toy": toy, "kind": "pattern", "pattern": pat, "args": args, "level": lvl, "seconds": 0, "tag": m.group(0)})
+            plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
+        plan.append({"form": "do", "toy": toy, "kind": "pattern", "pattern": pat, "args": args, "level": lvl, "seconds": 0, "tag": m.group(0), "_pos": m.start()})
     for m in _TOUCH.finditer(reply_text or ""):
         toy = m.group(1).lower(); lvl = max(0, min(20, int(m.group(2))))
         if toy not in KNOWN_TOYS and toy not in _SYNC:
             rejected.append({"tag": m.group(0), "why": "unknown toy %r" % toy}); continue
-        plan.append({"form": "touch", "toy": toy, "kind": ("stop" if lvl == 0 else "touch"), "pattern": "steady", "args": [lvl], "level": lvl, "seconds": 0, "tag": m.group(0)})
+        plan.append({"form": "touch", "toy": toy, "kind": ("stop" if lvl == 0 else "touch"), "pattern": "steady", "args": [lvl], "level": lvl, "seconds": 0, "tag": m.group(0), "_pos": m.start()})
+    # his order, not "all DO then all TOUCH" (review P03): a stop written after a start must stay after it
+    plan.sort(key=lambda a: a.get("_pos", 0))
+    for a in plan: a.pop("_pos", None)
     return plan, rejected
 def _authorize(context, toy, level, kind, pattern="", args=None):
     """Canonicalize -> expand -> authorize -> consume. Returns (proceed, permit).
@@ -352,6 +368,7 @@ def fire_his_intent(reply_text, context=None):
         _kind = _act["kind"]
         if _kind == "stop":
             # zero means stop, everywhere (astra-somatic-p1): a plain stop on this toy, same path as [TOUCH: toy 0]
+            _stop_local(toy)   # a running local pattern loop would re-send after the 0 (review P03)
             _ok, _permit, _digest = _authorize(context, toy, 0, "start", pattern="steady", args=[0])
             if _ok:
                 try:

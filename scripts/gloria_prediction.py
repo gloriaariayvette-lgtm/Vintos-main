@@ -127,7 +127,7 @@ def main():
         _jp_fresh = (_jp_age is not None and _jp_age < 7200 and (not jp.get("context_last_event") or jp.get("context_last_event") in _last_ids))
     except Exception:
         _jp_fresh = False
-    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True and _jp_fresh:
+    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True and _jp_fresh and jp.get("steering_allowed") is True:
         out["confidence"] = round(float(jp.get("confidence", out["confidence"])), 3)
         out["novelty"]    = round(float(jp.get("novelty", out["novelty"])), 3)
         out["grounded_by"] = "jepa"
@@ -135,7 +135,8 @@ def main():
     elif jp.get("source") == "jepa":
         # the predictor ran but its numbers do not qualify here: keep the LLM's and say exactly why
         out["grounded_by"] = "llm"
-        out["jepa_declined"] = ("stale or different context" if jp.get("variance_qualified") is True else
+        out["jepa_declined"] = ("not calibrated to steer (steering_allowed false)" if jp.get("steering_allowed") is not True else
+                                "stale or different context" if jp.get("variance_qualified") is True else
                                 str((jp.get("qualification") or {}).get("gloria") or "variance not qualified"))
 
     json.dump(out, open(OUT, "w"), indent=2)

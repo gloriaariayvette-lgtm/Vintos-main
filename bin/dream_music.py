@@ -309,7 +309,7 @@ def process_file(fp,force=False):
     tracks=poll(tid)
     if not tracks: return False
     safe=re.sub(r'[^\w\s-]','',d["title"]).strip().replace(' ','_')
-    downloaded=[]
+    downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
             mp3=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
@@ -317,7 +317,7 @@ def process_file(fp,force=False):
             if dl(t["file"],mp3):
                 sz=os.path.getsize(mp3)/(1024*1024)
                 print(f"  Saved: {mp3} ({sz:.1f}MB)")
-                downloaded.append(mp3)
+                downloaded.append(mp3); downloaded_by_track[i]=mp3
 
     if not downloaded: print("  No tracks!"); return False
     # Capture emotional state at composition time
@@ -354,7 +354,7 @@ def process_file(fp,force=False):
     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
-        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"suno_id":t.get("id"),"audio_url":t.get("file"),"local_file":downloaded_by_track.get(i)})
     # completion answers to the artifact, not the log line (astra-creative-p3, 2026-09-04)
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
@@ -406,7 +406,7 @@ def direct(title,style,desc="",lyrics=""):
     tracks=poll(tid)
     if not tracks: return False
     safe=re.sub(r'[^\w\s-]','',title).strip().replace(' ','_')
-    downloaded=[]
+    downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
             wav=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
@@ -414,7 +414,8 @@ def direct(title,style,desc="",lyrics=""):
             if dl(t["file"],wav):
                 sz=os.path.getsize(wav)/(1024*1024)
                 print(f"  Saved: {wav} ({sz:.1f}MB)")
-                downloaded.append(wav)
+                downloaded.append(wav); downloaded_by_track[i]=wav
+    if not downloaded: print("  No tracks on disk - not a completed piece"); return False   # zero files is not completion (review P07)
     log=load_log()
     _want_text=os.environ.get("MUSIC_WANT_TEXT","")
     _want_source=os.environ.get("MUSIC_WANT_SOURCE","")
@@ -423,7 +424,7 @@ def direct(title,style,desc="",lyrics=""):
     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
-        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded[i] if i<len(downloaded) else None})
+        entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded_by_track.get(i)})
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)

@@ -885,10 +885,21 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     voice_coherence."""
     import subprocess as _pt_sp, json as _pt_j, time as _pt_t
     skip = set(skip or ())
-    ran, skipped, failed = [], sorted(skip), []
+    ran, launched, skipped, failed = [], [], sorted(skip), []
     gloria_text = gloria_text or ""; reply = reply or ""
+    # dry-run is a property of the TURN when the coordinator opened one (astra-server-b-p6); the global
+    # flag is only the fallback for doors that did not pass it. Decided FIRST: until 2026-09-05 the
+    # inline effects (emotion nudge, prediction, adoption, marks) ran before this was read, so a
+    # test-mode turn still moved his live state and only the background writers were held.
+    if test_mode is None:
+        test_mode = False
+        try: test_mode = bool(_test_mode_active())
+        except Exception: pass
+    test_mode = bool(test_mode)
     def _inline(name, fn):
         if name in skip: return
+        if test_mode:
+            skipped.append(name + ":test_mode"); return
         try: fn(); ran.append(name)
         except Exception as e: failed.append(name); print(f"[post_turn/{surface}] {name}: {e}", flush=True)
     _inline("nudge_gloria", lambda: nudge_emotions_from_text(gloria_text, source="gloria"))
@@ -909,13 +920,6 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         import hashlib as _mh, resonance_marks as _rmk
         _rmk.activate_from_reply(reply, _mh.md5((surface + "|" + gloria_text[:200] + "|" + reply[:200]).encode()).hexdigest()[:10])
     _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
-    # dry-run is a property of the TURN when the coordinator opened one (astra-server-b-p6); the global
-    # flag is only the fallback for doors that did not pass it
-    if test_mode is None:
-        test_mode = False
-        try: test_mode = bool(_test_mode_active())
-        except Exception: pass
-    test_mode = bool(test_mode)
     venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
     def _bg(name, argv, log, needs_venv=False):
         if name in skip: return
@@ -932,7 +936,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             _env["VINTOS_SURFACE"] = str(surface); _env["VINTOS_TURN_ID"] = str(turn_id or "")
             kw["env"] = _env
             _pt_sp.Popen([exe] + argv[1:], **kw)
-            ran.append(name)
+            launched.append(name)   # a process started, not a writer finished: completion is the writer's own record
             if on_writer:
                 try: on_writer(True)
                 except Exception: pass
@@ -949,8 +953,8 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     _bg("voice_coherence", ["", os.path.join(SC, "voice-coherence.py"), "check", reply[:500]], "/tmp/voice-coherence.log")
     try:
         with open(os.path.join(MEMORY, "post-turn-record.jsonl"), "a") as f:
-            f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "ran": ran, "skipped": skipped,
-                                 "failed": failed, "test_mode": test_mode}) + "\n")
+            f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "turn_id": turn_id or "", "ran": ran,
+                                 "launched": launched, "skipped": skipped, "failed": failed, "test_mode": test_mode}) + "\n")
     except Exception:
         pass
     return {"ran": ran, "skipped": skipped, "failed": failed}
@@ -9129,9 +9133,8 @@ async def home_echo_spotify(req: SpotifyRequest, request: Request):
 
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8500)
+# (direct launch moved to the end of the module, 2026-09-05: gather_vintos_context and the routes
+#  registered after this point were undefined when the file was run as a script)
 
 
 # === Mobile App Routes ===
@@ -11116,3 +11119,8 @@ def gather_game_context() -> str:
 # ── FRAGMENTS ──
 class FragmentRequest(BaseModel):
     text: str
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8500)

@@ -63,7 +63,7 @@ SURFACES = {"chat", "avatar"}
 class Turn:
     __slots__ = ("turn_id", "surface", "barrier", "capsule_block", "commitment",
                  "project_id", "context", "test_mode", "stage", "lifecycle",
-                 "_disposed")
+                 "_disposed", "_writers")   # _writers: note_writer set it on a slotted object and raised every time (review D02)
 
     def __init__(self, turn_id, surface, barrier, capsule_block, commitment,
                  project_id, context, test_mode):
