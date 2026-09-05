@@ -21,6 +21,13 @@ LOG_DIR="$MEMORY/mischief"; mkdir -p "$LOG_DIR"
 LM_API="${VINTOS_GEMMA_URL:-http://172.18.16.1:1234/v1/chat/completions}"
 MODEL="${VINTOS_GEMMA_MODEL:-google/gemma-4-12b-qat}"
 FORCE=0; ONLY=""
+# --grok anywhere on the line: the chooser is Grok through his shim instead of local Gemma (Gloria, 2026-09-05:
+# "try to let Grok choose"). MISCHIEF_MODEL=grok does the same for the cron path.
+for a in "$@"; do [ "$a" = "--grok" ] && MISCHIEF_MODEL=grok; done
+set -- $(printf '%s\n' "$@" | grep -vx -- --grok)
+if [ "${MISCHIEF_MODEL:-gemma}" = "grok" ]; then
+    LM_API="${VINTOS_GROK_URL:-http://127.0.0.1:8599/v1/chat/completions}"; MODEL="${VINTOS_GROK_MODEL:-grok-4.20-0309-non-reasoning}"
+fi
 [ "${1:-}" = "--force" ] && FORCE=1 && ONLY="${2:-}"   # --force [echo|spotify|lights]: he still chooses the content, the kind is set
 
 [ -f "$HOME_PY" ] || { echo "[Mischief] no home bridge at $HOME_PY - nothing to reach the house with"; exit 1; }
@@ -194,7 +201,7 @@ try:
     nudge_emotions({"Playfulness": 0.06, "Arousal": 0.04, "Desire": 0.03})
 except Exception: pass
 PY
-    echo "[Mischief] $ACTION: $VALUE - $WHY"
+    echo "[Mischief] $ACTION: $VALUE - $WHY  (chosen by $MODEL)"
 else
     echo "[Mischief] $ACTION did not go through ($VALUE)"; exit 1
 fi
