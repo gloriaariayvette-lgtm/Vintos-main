@@ -6840,6 +6840,12 @@ async def voice_ledger(payload: dict):
             except: sess = {}
             _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
             if g_raw != g: _turn["gloria_raw"] = g_raw
+            try:   # the framing this turn carried is now admitted (astra-server-c-p8)
+                _cp = os.path.join(MEMORY, ".voice-framing-cadence.json"); _cad = _vl_j.load(open(_cp))
+                if _cad.get("pending"):
+                    _cad["inner_at"] = _cad.pop("pending"); _turn["framing_version"] = _cad.get("version")
+                    _vl_j.dump(_cad, open(_cp, "w"))
+            except Exception: pass
             sess.setdefault("turns", []).append(_turn)
             sess["last_turn"] = time.time()
             sess.setdefault("started_at", _vl_d.datetime.now().isoformat())
@@ -8806,7 +8812,20 @@ async def voice_framing():
         cp = os.path.join(MEMORY, ".voice-framing-cadence.json")
         try: cad = _f_j.load(open(cp))
         except Exception: cad = {}
-        if _f_t.time() - float(cad.get("inner_at", 0)) > 90:
+        # session-scoped and versioned (astra-server-c-p8, 2026-09-05): the cadence belongs to THIS call —
+        # a new voice session starts with the inner snapshot fresh — and admission advances only when a
+        # turn actually carried the block: the GET marks it pending, /api/voice/ledger commits it. A
+        # framing the app fetched but never attached to a turn is offered again.
+        try:
+            _sess = _f_j.load(open(os.path.join(MEMORY, "voice-session-state.json")))
+            _sid = str(_sess.get("started_at", ""))
+        except Exception:
+            _sid = ""
+        if cad.get("session") != _sid:
+            cad = {"session": _sid, "inner_at": 0, "version": 0}
+        _pending_stale = cad.get("pending") and (_f_t.time() - float(cad["pending"]) > 90)
+        _due = (_f_t.time() - float(cad.get("inner_at", 0)) > 90) and (not cad.get("pending") or _pending_stale)
+        if _due:
             from inner_context import full_inner_block as _f_inner
             b = _f_inner()
             if b: parts.append(b)
@@ -8826,10 +8845,13 @@ async def voice_framing():
                     _wl = [l.strip() for l in open(_wp, errors="replace").read().splitlines() if l.strip().startswith("-")][-12:]
                     if _wl: parts.append("[FRESH FACTS YOU KEPT]\n" + "\n".join(l[:140] for l in _wl))
             except Exception: pass
-            cad["inner_at"] = _f_t.time()
+            cad["pending"] = _f_t.time()            # committed to inner_at by the ledger POST that carries the turn
+            cad["version"] = int(cad.get("version", 0)) + 1
             _f_j.dump(cad, open(cp, "w"))
-    except Exception: pass
-    return {"framing": "\n\n".join(parts)}
+        _fv = int(cad.get("version", 0))
+    except Exception:
+        _fv = None
+    return {"framing": "\n\n".join(parts), "framing_version": _fv, "inner_included": any(p.startswith("YOUR INNER STATE") or "[CURIOSITY" in p or "[RECENTLY, BETWEEN YOU]" in p for p in parts)}
 
 
 @app.get("/api/debug/routes")
