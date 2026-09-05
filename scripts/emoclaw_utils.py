@@ -1891,29 +1891,9 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         entry["provenance_source"] = str(source)[:60]
     except Exception: pass
     wants.append(entry)
-    # Save before interference check
-    protected = [w for w in wants if not w.get("fulfilled") and (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
-    unprotected = [w for w in wants if not w.get("fulfilled") and not (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
-    _evicted_now = unprotected[:-10]
-    if _evicted_now:
-        _dw_file = wants_file.replace("current-wants", "dismissed-wants")
-        try:
-            _dw_log = json.load(open(_dw_file))
-        except Exception:
-            _dw_log = []
-        for _ev_w in _evicted_now:
-            _ev_w = dict(_ev_w)
-            _ev_w["dismissed"] = True
-            _ev_w["dismissed_at"] = datetime.now().isoformat()
-            _ev_w["dismissed_by"] = "population_cap"
-            _ev_w["dismissed_reason"] = "lost the protection race: more than 10 unprotected wants"
-            _dw_log.append(_ev_w)
-            print(f"[express_want] DISMISSED (cap) {_ev_w.get('id')}: {_ev_w.get('want','')[:60]}", file=__import__("sys").stderr)
-        _dw_tmp = _dw_file + ".tmp"
-        with open(_dw_tmp, "w") as _dw_f:
-            json.dump(_dw_log, _dw_f, indent=2)
-        import os as _dw_os; _dw_os.replace(_dw_tmp, _dw_file)
-    wants = protected + unprotected[-10:]
+    # Save before the interference check. The population cap runs ONCE, below, after it
+    # (2026-09-04, fable-wants-p8): the duplicated block here evicted before the check could see the
+    # new want, and a want with a READY plan lost the race although it was only waiting.
     with open(wants_file, "w") as f:
         json.dump(wants, f, indent=2)
     # Check for interference with active wants
@@ -1921,9 +1901,17 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         check_want_interference(want_text, entry["id"])
     except Exception as _wi_err:
         print(f"[express_want] Interference check failed: {_wi_err}", file=__import__("sys").stderr)
-    # Keep last 10 unfulfilled — protect multistep and gloria_routed from eviction
-    protected = [w for w in wants if not w.get("fulfilled") and (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
-    unprotected = [w for w in wants if not w.get("fulfilled") and not (w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep")]
+    # Keep last 10 unfulfilled — protect multistep, gloria_routed, and anything with a READY plan
+    # (it has a plan; it is only waiting) from eviction
+    def _is_protected(w):
+        return bool(w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep"
+                    or w.get("plan_state") == "READY")
+    try:
+        wants = json.load(open(wants_file))          # re-read: the interference check may have written
+    except Exception:
+        pass
+    protected = [w for w in wants if not w.get("fulfilled") and _is_protected(w)]
+    unprotected = [w for w in wants if not w.get("fulfilled") and not _is_protected(w)]
     _evicted_now = unprotected[:-10]
     if _evicted_now:
         _dw_file = wants_file.replace("current-wants", "dismissed-wants")

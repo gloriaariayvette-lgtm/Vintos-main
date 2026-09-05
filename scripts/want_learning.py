@@ -125,7 +125,11 @@ def _evict(store, fresh_ids):
 
 def main():
     now = datetime.now(timezone.utc).isoformat()
-    fulfilled = [w for w in load(FULFILLED, []) if isinstance(w, dict) and w.get("want")]
+    fulfilled = [w for w in load(FULFILLED, []) if isinstance(w, dict) and w.get("want")
+                 # a want that merely aged out (fulfilled_by 'age_wants...') resolved nothing; distilling a
+                 # lesson from it manufactured relief or regret (2026-09-04, fable-wants-p7 / astra-wants-p4)
+                 and not str(w.get("fulfilled_by", "")).startswith("age_wants")
+                 and not w.get("auto_graduated")]
     state = load(STATE, {}); processed = set(state.get("processed", []))
     todo = [w for w in fulfilled if _wid(w) not in processed][-MAX_PER_RUN:]
 
