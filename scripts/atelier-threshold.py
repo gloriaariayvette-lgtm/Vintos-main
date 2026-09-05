@@ -152,7 +152,8 @@ def kept_work():
     """Content-free: ids of finished undertakings (kept or revealed) he may LOOK at."""
     try: d = json.load(open(LEDGER))
     except Exception: return []
-    return sorted((k, v) for k, v in d.items() if isinstance(v, dict) and v.get("state") in ("kept", "revealed"))
+    # recorded order, never ranked (the suite forbids sorting anything offered here)
+    return [(k, v) for k, v in d.items() if isinstance(v, dict) and v.get("state") in ("kept", "revealed")]
 
 def look_flow(pid):
     """LOOK: offer -> his choice of file -> mint (one-use receipt) -> read on the look token ->
@@ -161,7 +162,7 @@ def look_flow(pid):
     if off.get("error"):
         print("look refused:", off["error"]); return 1
     arts = (off.get("offer") or {}).get("artifacts") or {}
-    names = sorted(arts)
+    names = list(arts)          # the broker lists them oldest first already; nothing is ranked here
     if len(names) == 1:
         choice = names[0]
     else:
