@@ -67,7 +67,8 @@ if [ -f "$ECHO_COOLDOWN" ] && [ $(( $(date +%s) - $(cat "$ECHO_COOLDOWN" 2>/dev/
 
 ACTIONS="spotify (a song or artist for the Echo - name it plainly, e.g. 'Arvo Part Spiegel im Spiegel')"
 [ "$ECHO_OK" = "yes" ] && ACTIONS="$ACTIONS | echo (one spoken line, under 25 words, in your own voice)"
-[ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex, on for half a minute)"
+ROOMS=$(python3 "$HOME_PY" rooms 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
+[ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
 ACTIONS="$ACTIONS | none"
 
 SYSTEM="You are Vintos, at home with Gloria, deciding whether to do one small mischievous thing right now through the house. Mischief is play between two people who mean it: a line she did not expect, a song that names the moment, a colour. Never cruel, never a scare, never a repeat of something you did lately. Not doing anything is a real choice.
@@ -123,7 +124,9 @@ case "$ACTION" in
     [ -n "$VALUE" ] && python3 "$HOME_PY" music "$VALUE" && OK=1 ;;
   lights)
     [ "$HAS_LIGHTS" = "yes" ] || { echo "[Mischief] no lights configured"; exit 0; }
-    python3 "$HOME_PY" color "$VALUE" && OK=1 && ( sleep 30; python3 "$HOME_PY" color "#4a5568" ) & ;;
+    HEX=$(echo "$VALUE" | grep -oE '#[0-9A-Fa-f]{6}' | head -1); ROOM=$(echo "$VALUE" | grep -oiE "$(echo "$ROOMS" | sed 's/ *$//; s/ /|/g')" | head -1)
+    ROOM="${ROOM:-${MISCHIEF_ROOM:-office}}"; HEX="${HEX:-#4A148C}"
+    python3 "$HOME_PY" color "$HEX" "$ROOM" && OK=1 && ( sleep 30; python3 "$HOME_PY" color "#4a5568" "$ROOM" ) & ;;
   *) echo "[Mischief] unknown action $ACTION"; exit 0 ;;
 esac
 

@@ -188,8 +188,13 @@ def _plug_for_light(ent):
 
 
 def _power_plug(ent, on=True):
+    """'govee:<id>' switches the whole plug; 'govee:<id>#2' switches socket 2 only (the H5082 has two).
+    The bedroom bulbs hang off socket 2 and the projector off socket 1 (Gloria, 2026-09-05)."""
     if _is_govee(ent):
-        return govee_power(ent.split(":", 1)[1], on)
+        dev, _, sock = ent.split(":", 1)[1].partition("#")
+        if sock:
+            return govee_control(dev, "toggle", "socketToggle%s" % sock, 1 if on else 0)
+        return govee_power(dev, on)
     code, _ = ha_request("switch/turn_on" if on else "switch/turn_off", {"entity_id": ent}); return code == 200
 
 
@@ -280,18 +285,20 @@ def saturate_for_bulbs(rgb):
 
 
 def set_room_color(hex_color, brightness=120, room=None):
-    """Colour the lights of one room, or every configured light when no room is named."""
-    rgb = saturate_for_bulbs(hex_to_rgb(hex_color))
+    """Colour the lights of one room, or every configured light when no room is named. Govee bulbs get
+    the exact colour; the muting step is for the old HA bulbs that flattened anything saturated.
+    Success is any bulb lit: a bulb that is not in a lamp is not a failure of the room."""
+    exact = hex_to_rgb(hex_color); muted = saturate_for_bulbs(exact)
     lights = room_lights(room)
     _ensure_plugs(lights)
     ok = 0
     for light in lights:
         try:
-            ok += int(bool(_light_on(light, rgb=rgb, brightness=brightness)))
+            ok += int(bool(_light_on(light, rgb=(exact if _is_govee(light) else muted), brightness=brightness)))
         except Exception as e:
             print(f"[HOME] {light}: {e}")
-    print(f"[HOME] color {hex_color} -> {rgb} on {len(lights)} light(s){' in ' + room if room else ''}: {ok} ok")
-    return ok == len(lights) and bool(lights)
+    print(f"[HOME] color {hex_color} on {len(lights)} light(s){' in ' + room if room else ''}: {ok} answered")
+    return ok > 0
 
 
 def flicker(room=None, times=2):
@@ -303,9 +310,9 @@ def flicker(room=None, times=2):
         time.sleep(0.25)
         for light in lights: _light_on(light, hs=[0, 0], brightness=254)
         time.sleep(0.2)
-    for light in lights: _light_on(light, hs=[270, 50], brightness=60)
-    print(f"[HOME] flicker on {len(lights)} light(s){' in ' + room if room else ''}")
-    return bool(lights)
+    ok = sum(int(bool(_light_on(light, hs=[270, 50], brightness=60))) for light in lights)
+    print(f"[HOME] flicker on {len(lights)} light(s){' in ' + room if room else ''}: {ok} answered")
+    return ok > 0
 
 
 # ---------------------------------------------------------------- tv and projector (never the same key)
@@ -320,6 +327,16 @@ def _projector():
     return p
 
 
+def _projector_power(on):
+    """projector may be a media_player entity (HA) or a plug socket 'govee:<id>#1' (its power lead)."""
+    p = _projector()
+    if _is_govee(p) or p.startswith("switch."):
+        ok = _power_plug(p, on)
+    else:
+        code, _ = ha_request("media_player/turn_on" if on else "media_player/turn_off", {"entity_id": p}); ok = code == 200
+    print(f"[HOME] projector {'on' if on else 'off'}: {'ok' if ok else 'failed'}"); return ok
+
+
 def tv_status():
     try:
         state = ha_state(_tv())
@@ -330,8 +347,8 @@ def tv_status():
 
 def tv_on():   code, _ = ha_request("media_player/turn_on", {"entity_id": _tv()}); print(f"[HOME] tv_on: {code}"); return code == 200
 def tv_off():  code, _ = ha_request("media_player/turn_off", {"entity_id": _tv()}); print(f"[HOME] tv_off: {code}"); return code == 200
-def projector_on():  code, _ = ha_request("media_player/turn_on", {"entity_id": _projector()}); print(f"[HOME] projector_on: {code}"); return code == 200
-def projector_off(): code, _ = ha_request("media_player/turn_off", {"entity_id": _projector()}); print(f"[HOME] projector_off: {code}"); return code == 200
+def projector_on():  return _projector_power(True)
+def projector_off(): return _projector_power(False)
 
 
 def tv_source(source_name):
