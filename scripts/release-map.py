@@ -23,6 +23,25 @@ SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if "--src" in sys.argv: SRC = os.path.abspath(sys.argv[sys.argv.index("--src") + 1])
 DEST = {"scripts": os.path.join(HOME, ".vintos", "workspace", "scripts"), "bin": os.path.join(HOME, "Vintos")}
 
+def repo_commit_time(rel):
+    try:
+        out = subprocess.run(["git", "-C", SRC, "log", "-1", "--format=%ct", "--", rel], capture_output=True, text=True, timeout=10).stdout.strip()
+        return int(out) if out else None
+    except Exception:
+        return None
+
+def newer_side(area, f, inst):
+    """For a STALE row: is the checkout or the host copy the newer one? A host-newer file was edited on
+    Aegis (by hand, by the Study, or by an older deploy of a newer branch) and must be diffed, not overwritten."""
+    try: host_t = os.path.getmtime(inst)
+    except Exception: return "unknown"
+    repo_t = repo_commit_time(area + "/" + f)
+    if repo_t is None: return "unknown"
+    import datetime as _dt
+    if host_t > repo_t + 60:
+        return "HOST NEWER (edited on host %s)" % _dt.datetime.fromtimestamp(host_t).strftime("%m-%d %H:%M")
+    return "checkout newer"
+
 def sha(p):
     try: return hashlib.sha256(open(p, "rb").read()).hexdigest()[:12]
     except Exception: return None
@@ -81,9 +100,13 @@ def main():
         ref = referenced(f)
         if not in_manifest and not exists and not ref:
             state = "not-deployed"
+        if f in ("deploy-atelier.sh", "release-map.py"):
+            continue   # run from the checkout, never installed; naming themselves is not a reference
+        link = os.readlink(inst) if exists and os.path.islink(inst) else None
         rows.append({"area": area, "file": f, "manifest": in_manifest, "referenced": ref,
                      "referenced_by": sorted(by.get(f, set()) | by.get(f[:-3] if f.endswith(".py") else f, set()))[:4],
-                     "installed": inst if exists else None, "state": state})
+                     "installed": inst if exists else None, "link": link, "state": state,
+                     "newer": newer_side(area, f, inst) if state == "STALE" else None})
     # host-only copies
     for area, d in DEST.items():
         for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
@@ -107,7 +130,9 @@ def main():
             why.append("in manifest" if r["manifest"] else "NOT in manifest")
             if r["referenced"]: why.append("referenced by " + ", ".join(r["referenced_by"]))
         if r["state"] == "STALE":
+            why.append(r.get("newer") or "")
             why.append("in manifest - deploy will refresh it" if r["manifest"] else "NOT in manifest - deploy will NOT refresh it" + (", referenced by " + ", ".join(r["referenced_by"]) if r["referenced"] else ""))
+        if r.get("link"): why.append("symlink -> " + r["link"])
         print("%-12s %-8s %-38s %s" % (r["state"], r["area"], r["file"], "; ".join(why)))
     missing_ref = [r for r in rows if r["state"] == "MISSING" and r["referenced"]]
     stale_unmanifested = [r for r in rows if r["state"] == "STALE" and not r["manifest"] and r["referenced"]]
@@ -118,6 +143,10 @@ def main():
     if stale_unmanifested:
         print("REFERENCED, INSTALLED, BUT THE DEPLOY NEVER REFRESHES THEM (%d):" % len(stale_unmanifested))
         for r in stale_unmanifested: print("   %s/%s" % (r["area"], r["file"]))
+    host_newer = [r for r in rows if r["state"] == "STALE" and str(r.get("newer", "")).startswith("HOST")]
+    if host_newer:
+        print("HOST COPY NEWER THAN THE CHECKOUT (%d) - diff before any install; these may hold repairs git never saw:" % len(host_newer))
+        for r in host_newer: print("   %s/%s  %s%s" % (r["area"], r["file"], r["newer"], "  (IN MANIFEST: the next deploy overwrites it)" if r["manifest"] else ""))
     if not missing_ref and not stale_unmanifested:
         print("every referenced file is on this host and the deploy keeps it current.")
 
