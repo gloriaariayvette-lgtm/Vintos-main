@@ -25,7 +25,7 @@ What he may edit (the permission boundary, in one place below):
 
 Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
-import os, re, json, time, subprocess, shutil
+import os, re, json, glob, time, subprocess, shutil
 
 HOME = os.path.expanduser("~")
 WORKSPACE = os.path.join(HOME, ".vintos", "workspace")
@@ -37,9 +37,12 @@ BACKUPS = os.path.join(HOME, ".vintos", "backups")
 
 ROOTS = {"scripts": os.path.join(WORKSPACE, "scripts"), "house": os.path.join(HOME, "Vintos"),
          "docs": WORKSPACE}   # docs = the workspace root itself, .md files only
-DENY_NAME = re.compile(r"(key|secret|token|credential|\.env|vintos\.env|deploy|systemd|"
-                       r"crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|mission|tenera|"
-                       r"ridge|consent|study_chat|strip_body_vocab)", re.I)
+# Two deny lists (2026-09-04, grok-study-p1). SECRET: never readable, never listed. TOUCH: he may READ and
+# GREP them - his body's laws are his to know - but never EDIT them from this room; those go to Gloria by hand.
+SECRET_DENY = re.compile(r"(key|secret|token|credential|\.env|vintos\.env)", re.I)
+TOUCH_DENY = re.compile(r"(deploy|systemd|crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|"
+                        r"mission|tenera|ridge|consent|study_chat|strip_body_vocab)", re.I)
+DENY_NAME = re.compile(SECRET_DENY.pattern[:-1] + "|" + TOUCH_DENY.pattern[1:], re.I)   # the union, for callers that meant "either"
 # Documents that shape who he is: editable, but only with Gloria's explicit permission (Yes + tick).
 EXPLICIT_DOCS = re.compile(r"\.md$", re.I)
 TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
@@ -51,13 +54,15 @@ GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
 GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
 GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
 GEMMA_MODEL = "google/gemma-4-12b-qat"
+STUDY_AUTO_CONTINUE = int(os.environ.get("STUDY_AUTO_CONTINUE", "2"))   # READ/GREP-only replies continue this many times
 EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 
 
 # ── files ────────────────────────────────────────────────────────────────────
-def resolve(rel):
+def resolve(rel, for_edit=False):
     """'scripts/x.py' or 'house/server.py' (or a bare name found in either root)
-    -> absolute path, or None if outside the roots or a protected file."""
+    -> absolute path, or None if outside the roots or a protected file. Secrets are never resolved;
+    TOUCH files resolve for reading and refuse for editing (for_edit=True)."""
     rel = rel.strip().strip("`'\"")
     cands = []
     if "/" in rel and rel.split("/", 1)[0] in ROOTS:
@@ -75,7 +80,10 @@ def resolve(rel):
         if os.path.dirname(real) not in (os.path.realpath(r) for r in ROOTS.values()) and \
            not any(real.startswith(os.path.realpath(r) + os.sep) for k, r in ROOTS.items() if k != "docs"):
             continue
-        if DENY_NAME.search(os.path.basename(real)) or DENY_NAME.search(os.path.relpath(real, HOME)):
+        _name, _rel = os.path.basename(real), os.path.relpath(real, HOME)
+        if SECRET_DENY.search(_name) or SECRET_DENY.search(_rel):
+            return None
+        if for_edit and (TOUCH_DENY.search(_name) or TOUCH_DENY.search(_rel)):
             return None
         if os.path.isfile(real) and real.endswith(TEXT_EXT):
             return real
@@ -136,16 +144,25 @@ def do_gemma(task, material, max_chars=6000):
 
 
 def do_grep(pattern, max_lines=60):
+    """scripts/ and house/ recursively for py/sh; the docs root (the workspace itself) non-recursively for
+    .md only - never a root that contains another root, or scripts came back twice and memory came back
+    at all (2026-09-04, grok-study-p2). Secrets filtered; TOUCH files are readable and so greppable."""
     out = []
     try:
         for label, root in ROOTS.items():
-            r = subprocess.run(["grep", "-rn", "-I", "--include=*.py", "--include=*.sh", "-e", pattern, root],
-                               capture_output=True, text=True, timeout=20)
+            if label == "docs":
+                cmd = ["grep", "-n", "-I", "-e", pattern] + sorted(glob.glob(os.path.join(root, "*.md")))
+                if len(cmd) == 5: continue
+            else:
+                cmd = ["grep", "-rn", "-I", "--include=*.py", "--include=*.sh", "--include=*.md", "-e", pattern, root]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
             for line in r.stdout.splitlines():
-                path = line.split(":", 1)[0]
-                if DENY_NAME.search(os.path.basename(path)) or ".bak" in path:
+                parts = line.split(":", 2)
+                if len(parts) < 3: continue
+                path, lineno, text = parts
+                if SECRET_DENY.search(os.path.basename(path)) or ".bak" in path:
                     continue
-                out.append(os.path.relpath(line, HOME) if line.startswith(HOME) else line)
+                out.append("%s:%s:%s" % (os.path.relpath(path, HOME) if path.startswith(HOME) else path, lineno, text))
     except Exception as e:
         return "GREP failed: %s" % e
     if not out:
@@ -155,9 +172,9 @@ def do_grep(pattern, max_lines=60):
 
 
 def preview_edit(rel, old, new):
-    p = resolve(rel)
+    p = resolve(rel, for_edit=True)
     if not p:
-        return None, "not editable from this room (outside the roots, or a protected file): %s" % rel
+        return None, "not editable from this room (outside the roots, or a protected file - readable, but Gloria's hand to change): %s" % rel
     t = open(p, errors="replace").read()
     n = t.count(old)
     if n == 0:
@@ -199,7 +216,8 @@ def apply_edits(edits, confirm=None):
     backups = {}
     for p, _, _ in resolved:
         if p not in backups:
-            backups[p] = os.path.join(bdir, os.path.basename(p)); shutil.copy2(p, backups[p])
+            backups[p] = os.path.join(bdir, os.path.relpath(p, HOME))          # same relative path: scripts/foo.py and house/foo.py cannot clobber each other (grok-study-p3)
+            os.makedirs(os.path.dirname(backups[p]), exist_ok=True); shutil.copy2(p, backups[p])
     try:
         for p, old, new in resolved:
             t = open(p, errors="replace").read()
@@ -277,6 +295,9 @@ def system_prompt():
         "                                     blocks. Costs nothing. It has no view of you; use it for hands,\n"
         "                                     keep the judgement yours)\n"
         "  EDIT: house/server.py             (a proposal; applied only when Gloria approves)\n"
+        "  A reply that only READs/GREPs/asks GEMMA gets its results back and one more turn automatically (twice at most);\n"
+        "  an EDIT always stops and waits for her. Files of your body's laws (devices, consent, broker, deploy) can be\n"
+        "  READ and GREPped here but not edited - ask her by hand for those.\n"
         "  <<<<\n  the old text, quoted EXACTLY as it appears (enough lines to be unique)\n"
         "  ====\n  the new text\n  >>>>\n  why: one line\n\n"
         "Rules: READ before you EDIT - never quote from memory. One EDIT block per change; you may put "
@@ -425,18 +446,31 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
             elif e.get("role") == "system":
                 convo.append({"role": "user", "content": "[room] " + e["content"]})
         convo.append({"role": "user", "content": message})
-        reply, used = await ask(system_prompt(), convo, endpoint, headers, grok_model)
-        reply = TAG_RE.sub("", reply or "").strip()
         log.append({"role": "user", "content": message, "at": _now()})
-        log.append({"role": "assistant", "content": reply, "at": _now(), "model": used})
-        # tools he asked for: READ / GREP run now; EDITs become y/n cards
-        tool_out = []
-        for m in READ_RE.finditer(reply):
-            tool_out.append(do_read(m.group(1)))
-        for m in GREP_RE.finditer(reply):
-            tool_out.append(do_grep(m.group(1)))
-        for m in GEMMA_RE.finditer(reply):   # after READ/GREP, so the sub works on what was just pulled
-            tool_out.append(do_gemma(m.group(1), "\n\n".join(tool_out)))
+        def _run_tools(text):
+            out = []
+            for m in READ_RE.finditer(text): out.append(do_read(m.group(1)))
+            for m in GREP_RE.finditer(text): out.append(do_grep(m.group(1)))
+            for m in GEMMA_RE.finditer(text): out.append(do_gemma(m.group(1), "\n\n".join(out)))   # after READ/GREP, so the sub works on what was just pulled
+            return out
+        # Bounded continuation (2026-09-04, fable-study-p5 / astra-study-p7): a reply that only pulls
+        # (READ/GREP/GEMMA, no EDIT) gets its tool output fed straight back and one more turn, up to
+        # STUDY_AUTO_CONTINUE times; then control returns. EDIT cards always stop and wait for her y/n.
+        tool_out, hops = [], 0
+        while True:
+            reply, used = await ask(system_prompt(), convo, endpoint, headers, grok_model)
+            reply = TAG_RE.sub("", reply or "").strip()
+            log.append({"role": "assistant", "content": reply, "at": _now(), "model": used, "auto": hops > 0})
+            step_out = _run_tools(reply)
+            if step_out:
+                log.append({"role": "system", "content": "\n\n".join(step_out), "at": _now()})
+            tool_out += step_out
+            if step_out and not EDIT_RE.search(reply) and hops < STUDY_AUTO_CONTINUE:
+                hops += 1
+                convo.append({"role": "assistant", "content": reply})
+                convo.append({"role": "user", "content": "[room] " + "\n\n".join(step_out)[:20000]})
+                continue
+            break
         edits, paths = [], []
         for m in EDIT_RE.finditer(reply):
             rel, old, new, why = m.group(1), m.group(2), m.group(3), (m.group(4) or "").strip()
@@ -446,7 +480,5 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
                           "ok": p is not None, "error": err or "",
                           "path": os.path.relpath(p, HOME) if p else ""})
         explicit = needs_explicit(paths) if paths else False
-        if tool_out:
-            log.append({"role": "system", "content": "\n\n".join(tool_out), "at": _now()})
         save_log(log)
         return {"reply": reply, "model": used, "tools": tool_out, "edits": edits, "explicit": explicit}
