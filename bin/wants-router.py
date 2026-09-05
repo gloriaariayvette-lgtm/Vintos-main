@@ -73,7 +73,7 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
             _final_note = step_history[-1].get("note","") if step_history else ""
             # the ORIGINAL want string, as the recovery branch already does; `text` here is the last
             # step's text, so the want stayed live and learning drank a ghost (2026-09-04)
-            fulfill_want(want.get("want", text), note=_final_note[:200], fulfilled_by=action_name)
+            fulfill_want(want.get("want", text), note=_final_note[:200], fulfilled_by=action_name, want_id=want.get("id"))
             if want.get("journal_seeded"):
                 try:
                     import sys as _edw_sys; _edw_sys.path.insert(0, SCRIPTS)
@@ -90,7 +90,7 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
             log(f"  → Advanced to step {_next_idx + 1}")
     else:
         # Normal single-step want
-        fulfill_want(text, note=_note, fulfilled_by=action_name)
+        fulfill_want(want.get("want", text), note=_note, fulfilled_by=action_name, want_id=want.get("id"))
         if want.get("journal_seeded"):
             try:
                 import sys as _edw2_sys; _edw2_sys.path.insert(0, SCRIPTS)
@@ -2140,7 +2140,7 @@ def main():
                     _dismiss_want_with_reason(want, _haiku)
                 else:
                     log(f"  → All steps complete, marking fulfilled")
-                    fulfill_want(want.get("want",""), note=(_haiku or _final_note)[:200], fulfilled_by=_final_cap)
+                    fulfill_want(want.get("want",""), note=(_haiku or _final_note)[:200], fulfilled_by=_final_cap, want_id=want.get("id"))
                 continue
             
             current_step = steps[current_step_index]
@@ -2153,7 +2153,7 @@ def main():
                     if _verdict == "dismissed":
                         _dismiss_want_with_reason(want, _haiku)
                     else:
-                        fulfill_want(want.get("want", ""), note=(_haiku or _final_note), fulfilled_by="multistep")
+                        fulfill_want(want.get("want", ""), note=(_haiku or _final_note), fulfilled_by="multistep", want_id=want.get("id"))
                     if want.get("journal_seeded"):
                         try:
                             import sys as _rec_sys; _rec_sys.path.insert(0, SCRIPTS)
@@ -2390,7 +2390,9 @@ def main():
                             actual_output=_actual_output,
                         )
                     else:
-                        _mark_attempt(text, action_name)
+                        _mark_attempt(text, action_name, want_id=want.get("id"))
+                        try: _maybe_scar_unfulfilled(want)     # was defined and never called (fable-wants-p5)
+                        except Exception as _sc_e: log(f"  scar check failed: {_sc_e}")
                     if action == "introspect":
                         with open(os.path.join(MEMORY, ".introspect-last-run"), "w") as _cd_wf:
                             _cd_wf.write(str(datetime.now().timestamp()))
@@ -2514,10 +2516,10 @@ for _sp_n in list(ACTION_MAP):
     ACTION_MAP[_sp_n] = _spine_wrap(_sp_n, ACTION_MAP[_sp_n])
 # === END SPINE DOOR ========================================================
 
-def _mark_attempt(text, action_name):
+def _mark_attempt(text, action_name, want_id=None):
     """Verification-failed branch, extracted from the dispatch megablock.
-    Increments attempt_count on the matching want; the second failure spawns an
-    echo, a third on an echo escalates to third-order. Body unchanged."""
+    Increments attempt_count on the matching want (by id first, 2026-09-04); the second failure
+    spawns an echo, a third on an echo escalates to third-order; repeated attempts may scar."""
     log(f"  \u2192 Verification failed \u2014 marking attempt, not fulfilled")
     try:
         import json as _aw_json
@@ -2525,7 +2527,7 @@ def _mark_attempt(text, action_name):
         _wdata = _aw_json.load(open(_wf))
         _aw_target = None
         for _w in _wdata:
-            if _w.get("want","")[:60] == text[:60]:
+            if (want_id and _w.get("id") == want_id) or (not want_id and _w.get("want","")[:60] == text[:60]):
                 _w["attempt_count"] = _w.get("attempt_count", 0) + 1
                 _w["last_attempt"] = datetime.now().isoformat()
                 _w["last_capability"] = action_name

@@ -98,7 +98,7 @@ If none were fulfilled, reply: []"""
         for idx in fulfilled_indices:
             if 1 <= idx <= len(wants):
                 want = wants[idx - 1]
-                fulfill_want(want["want"])
+                fulfill_want(want["want"], want_id=want.get("id"))
                 log(f"Fulfilled via conversation: {want['want'][:60]}")
 
         if not fulfilled_indices:

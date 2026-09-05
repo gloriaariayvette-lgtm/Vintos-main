@@ -2316,8 +2316,10 @@ def get_unfulfilled_wants():
     except:
         return []
 
-def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
-    """Mark a want as fulfilled. Emotional resolution — the relief of getting what you wanted."""
+def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
+    """Mark a want as fulfilled. Emotional resolution — the relief of getting what you wanted.
+    Matches by id first (2026-09-04), exact text second: text drifts through steps, echoes and
+    rewrites, and a want that never matched stayed live while learning drank a ghost."""
     import json, os
     from datetime import datetime
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
@@ -2325,8 +2327,10 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False):
         with open(wants_file) as f:
             wants = json.load(f)
         fulfilled_intensity = 3
-        for w in wants:
-            if w["want"] == want_text and not w.get("fulfilled"):
+        _by_id = [w for w in wants if want_id and w.get("id") == want_id and not w.get("fulfilled")]
+        _pool = _by_id if _by_id else [w for w in wants if w.get("want") == want_text and not w.get("fulfilled")]
+        for w in _pool:
+            if True:
                 # Artifact-class wants are proven by a file, never by a sentence;
                 # without one on disk, record the unverified state and refuse to
                 # call it lived. His words cannot witness a file (house law).
