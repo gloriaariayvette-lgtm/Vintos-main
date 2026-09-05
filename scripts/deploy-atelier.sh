@@ -54,12 +54,12 @@ house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
 SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py quantum_snapshot.py"
-SCRIPTS="$SCRIPTS intent_context.py"
+SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py"
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # ---------------------------------------------------------------- preflight
