@@ -356,7 +356,23 @@ def run_verification_pass(response_text, source="chat"):
 
 
 def get_active_candidates_context():
-    """Return a brief context string for injection into prompts."""
+    """Context for live generation. Verification runs BLIND (2026-09-04, fable-inner-p4 / astra-inner-p5):
+    a stage-1 declaration under trial is no longer injected into his turns with her, because a reply
+    graded against a declaration it was just shown is not evidence of anything. What he sees in live
+    conversation is what has FORMED - declarations that survived verification - never the trial."""
+    data = load_candidates()
+    formed = [c for c in data["candidates"] if c.get("stage") == 4 and not c.get("dissolved")]
+    if not formed:
+        return ""
+    lines = ["[FORMED — what you have shown yourself to be, verified over time:]"]
+    for c in formed[-3:]:
+        lines.append(f"- {c['declaration']}")
+    return "\n".join(lines)
+
+
+def get_trial_candidates_context():
+    """The declarations under trial, for the rooms where they were MADE (mirror, therapy) - never
+    for live conversation. Same text the old injection carried."""
     data = load_candidates()
     active = [c for c in data["candidates"] if c.get("stage") == 1 and not c.get("dissolved")]
     if not active:
