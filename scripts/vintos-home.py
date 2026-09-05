@@ -101,9 +101,20 @@ def plug(room, on=True):
 
 
 # ---------------------------------------------------------------- echo
+def _voiced(message, cfg):
+    """The Echo reads in Alexa's own voice unless told otherwise. Alexa Media Player accepts SSML on the
+    notify path, so a Polly voice can carry his lines: config "echo_voice" (default "Matthew"; "" = off,
+    which is the fix if the speaker ever reads the tags aloud). Text is escaped; his words are not markup."""
+    voice = cfg.get("echo_voice", "Matthew")
+    if not voice:
+        return message
+    from xml.sax.saxutils import escape
+    return '<speak><voice name="%s">%s</voice></speak>' % (voice, escape(str(message)))
+
+
 def speak(message):
     cfg = load_config()
-    code, resp = ha_request("notify/send_message", {"entity_id": cfg["entities"]["echo_speak"], "message": message})
+    code, resp = ha_request("notify/send_message", {"entity_id": cfg["entities"]["echo_speak"], "message": _voiced(message, cfg)})
     print(f"[HOME] speak: {code}")
     return code == 200
 
@@ -112,7 +123,7 @@ def announce(message, volume=2):
     cfg = load_config()
     ha_request("media_player/volume_set", {"entity_id": cfg["entities"].get("echo_media", cfg["entities"]["echo_announce"]),
                                            "volume_level": volume / 10})
-    code, resp = ha_request("notify/send_message", {"entity_id": cfg["entities"]["echo_announce"], "message": message})
+    code, resp = ha_request("notify/send_message", {"entity_id": cfg["entities"]["echo_announce"], "message": _voiced(message, cfg)})
     print(f"[HOME] announce: {code}")
     return code == 200
 
