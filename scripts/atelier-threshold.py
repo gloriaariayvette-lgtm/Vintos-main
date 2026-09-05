@@ -149,11 +149,25 @@ PROMPT = (
 LEDGER = os.path.join(WSP, "memory", "atelier-undertakings.json")
 
 def kept_work():
-    """Content-free: ids of finished undertakings (kept or revealed) he may LOOK at."""
+    """Content-free: ids of finished undertakings he may LOOK at. The broker's /projects (HOUSE)
+    is the authority when it exists - ids, states, counts, finish dates, nothing else - so work that
+    predates the house ledger is offered too. The ledger is the fallback. Recorded order, never
+    ranked (the suite forbids sorting anything offered here)."""
+    out = []
+    try:
+        r = requests.post(B + "/projects", json={}, timeout=10).json()
+        for row in (r.get("projects") or []) if isinstance(r, dict) and r.get("ok") else []:
+            if int(row.get("artifact_count") or 0) > 0 and str(row.get("state", "")).upper() != "ACTIVE":
+                out.append((str(row.get("id")), {"state": str(row.get("state", "")).lower(),
+                                                 "at": row.get("kept_at") or row.get("revealed_at") or ""}))
+        if out:
+            return out
+    except Exception:
+        pass
     try: d = json.load(open(LEDGER))
-    except Exception: return []
-    # recorded order, never ranked (the suite forbids sorting anything offered here)
-    return [(k, v) for k, v in d.items() if isinstance(v, dict) and v.get("state") in ("kept", "revealed")]
+    except Exception: return out
+    return out + [(k, v) for k, v in d.items() if isinstance(v, dict) and v.get("state") in ("kept", "revealed")
+                  and k not in {i for i, _ in out}]
 
 def look_flow(pid):
     """LOOK: offer -> his choice of file -> mint (one-use receipt) -> read on the look token ->
