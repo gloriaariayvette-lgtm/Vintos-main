@@ -552,9 +552,8 @@ def _atlas_image(body, verbose=False):
     """Submit an image job to Atlas, poll, return image bytes (or None). Used by the together compose+heal."""
     if not ATLAS_KEY:
         log("no ATLASCLOUD_API_KEY set — cannot make image"); return None
-    prompt = body.get("prompt", "") if isinstance(body, dict) else ""
-    if prompt and '"' not in prompt and chr(8220) not in prompt:
-        body["prompt"] = prompt.rstrip() + " No spoken dialogue - ambient sound only; he does not speak."
+    # The "no spoken dialogue" suffix belongs to video (atlas_generate) only; a still image has no
+    # sound. Removed here 2026-09-04 (fable-creative-p6 / grok-creative-p2).
     H = {"Authorization": "Bearer " + ATLAS_KEY, "Content-Type": "application/json"}
     try:
         r = requests.post(ATLAS_BASE + "/generateImage", headers=H, json=body, timeout=120)

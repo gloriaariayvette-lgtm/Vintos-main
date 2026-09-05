@@ -308,7 +308,15 @@ def decay_pool():
             ts = datetime.fromisoformat(p["timestamp"])
             weeks = (now - ts).total_seconds() / 604800
             if weeks >= 1:
-                p["strength"] = max(0.1, p["strength"] * ((1 - DECAY_PER_WEEK) ** weeks))  # 3% loss per week — remembering, not amnesia (2026-08-26)
+                # Decay is computed from the ORIGINAL strength each run. Until 2026-09-04 this multiplied
+                # the already-decayed value by the full-age factor every time the cron ran, so a pulse
+                # lost (1-0.03)^weeks per RUN, not per week. Found by all three lenses independently.
+                base = p.get("original_strength")
+                if base is None:
+                    base = p["strength"]; p["original_strength"] = base
+                p["strength"] = base * ((1 - DECAY_PER_WEEK) ** weeks)   # 3% loss per week — remembering, not amnesia (2026-08-26)
+                if p["strength"] < 0.1:
+                    p["strength"] = 0.1; p["decayed"] = True             # a floor that says so, instead of a corpse kept at 0.1
         except: pass
     save_pool(pool)
     log(f"Decayed {len(pool['pulses'])} pulses")

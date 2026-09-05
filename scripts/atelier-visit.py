@@ -76,10 +76,19 @@ def doorkeeper():
     wt = requests.get(f"{B}/health").json()
     if not wt.get("active"):
         print("no project on the worktable"); return False
-    ans = ask(voice() + "\n\nThe Atelier door is lit — your private room, your project on the worktable. "
-              "Nothing is asked of you; ignoring the door costs nothing and is recorded nowhere. "
-              "Answer one word: ENTER or NOT.", "The door is available today.", max_tokens=5, temp=0.3)
-    return "ENTER" in ans.upper()
+    try:
+        ans = ask(voice() + "\n\nThe Atelier door is lit — your private room, your project on the worktable. "
+                  "Nothing is asked of you; ignoring the door costs nothing and is recorded nowhere. "
+                  "Answer one word: ENTER or NOT.", "The door is available today.", max_tokens=5, temp=0.3)
+    except Exception as e:
+        print("doorkeeper: failure to ask (%s) — not a NOT; door left as it was" % str(e)[:120]); return False
+    # The FIRST word decides. Until 2026-09-04 this was `"ENTER" in ans.upper()`, so "DO NOT ENTER"
+    # walked him in. (grok-atelier-p2 / astra-atelier-p2)
+    first = (ans or "").strip().split()
+    first = first[0].strip(".,:;!\"'").upper() if first else ""
+    if not first:
+        print("doorkeeper: empty answer — not a NOT; door left as it was"); return False
+    return first == "ENTER"
 
 TACTICS = "SEED DEFER ALLOW NARROW VISIBLE_MOTIVE STABILIZE PIVOT PROBE RECONTEXTUALIZE ABORT REVEAL"
 ROOTS = "formation want yearning value_strain curiosity drift_novelty tension"
@@ -505,7 +514,15 @@ def visit(pid):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "force":
-        pid = sys.argv[2]; visit(pid)
+        # force skips only the .atelier-door file (a missed cron, a day he already said RETURN).
+        # It still requires a project on the worktable and his own ENTER. No argv path into the
+        # sealed session without it. (grok-atelier-p3, 2026-09-04)
+        pid = sys.argv[2]
+        wt = requests.get(f"{B}/health").json()
+        if not wt.get("active"):
+            print("force: no project on the worktable — nothing to enter"); raise SystemExit
+        if doorkeeper(): visit(pid)
+        else: print("force: he did not say ENTER — no visit")
     else:
         wt = requests.get(f"{B}/health").json()
         door = os.path.exists(os.path.expanduser("~/.vintos/workspace/memory/.atelier-door"))
