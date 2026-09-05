@@ -71,6 +71,15 @@ def main():
     # Check for laugh signals
     if not any(sig in gloria_said for sig in LAUGH_SIGNALS):
         sys.exit(0)
+    # A laugh word inside a complaint or a negation is not a laugh (astra-creative-p8, 2026-09-05):
+    # "not funny", "that wasn't funny", "lol no stop", "ugh" - leave the association unknown.
+    import re as _nr
+    _neg = _nr.search(r"\b(not|n't|wasn't|isn't|never|stop|ugh|annoying|please don't|why would you|seriously)\b", gloria_said)
+    _near_neg = _nr.search(r"\b(not|n't|wasn't|isn't|never)\b\W+(\w+\W+){0,3}(funny|laugh|lol|haha)", gloria_said) or \
+                _nr.search(r"(funny|laugh|lol|haha)\W+(\w+\W+){0,3}\b(not|no|stop)\b", gloria_said)
+    if _near_neg or (_neg and not _nr.search(r"😂|🤣|hahaha|lmao", gloria_said)):
+        print("[HumorReaction] laugh signal inside a negation or complaint - association left unknown")
+        sys.exit(0)
     
     # Find recent mischief
     recent = find_recent_mischief(within_hours=3)

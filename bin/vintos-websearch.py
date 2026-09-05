@@ -468,9 +468,12 @@ OUTPUT:"""
     )
     return response
 
-def save_discovery(question, query, results, synthesis):
-    """Save to discoveries file and structured log."""
+def save_discovery(question, query, results, synthesis, session=None):
+    """Save to discoveries file and structured log. `session` is the inquiry session dict: its id,
+    outcome, remaining unknown and the evidence references travel with the record so a finding is
+    never later mistaken for a settled fact (astra-curiosity-p6, 2026-09-05)."""
     now = datetime.now()
+    session = session or {}
 
     # Markdown file
     with open(DISCOVERIES_FILE, "a") as f:
@@ -495,7 +498,11 @@ def save_discovery(question, query, results, synthesis):
         "question": question,
         "query": query,
         "results_count": len(results),
-        "synthesis": synthesis
+        "synthesis": synthesis,
+        "session_id": session.get("id"),
+        "outcome": session.get("outcome"),
+        "remaining_unknown": str(session.get("remaining_unknown") or "")[:300],
+        "evidence": [r.get("url") for r in results[:5] if isinstance(r, dict) and r.get("url")],
     })
     log_data["searches"] = log_data["searches"][-100:]
     with open(SEARCH_LOG, "w") as f:
@@ -694,7 +701,7 @@ def main():
         log(f"Synthesis: {synthesis[:100]}...")
 
     # Save
-    save_discovery(question, query, results, synthesis)
+    save_discovery(question, query, results, synthesis, session=_ses)
 
     # Growth reflection
     growth = llm(
@@ -748,7 +755,9 @@ No explanation."""
     if wal_content and _clean_question:
         with open(WAL_FILE, "a") as f:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-            f.write(f"- [{ts}] **CONTEXT**: Web search on \"{_clean_question}\": {wal_content[:200]}\n")
+            _oc = str(_ses.get("outcome", "")) if isinstance(_ses, dict) else ""
+            _tag = "" if _oc in ("", "ANSWERED") else f" [{_oc.lower()}]"
+            f.write(f"- [{ts}] **CONTEXT**: Web search on \"{_clean_question}\"{_tag}: {wal_content[:200]}\n")
         wal_log_path = os.path.join(MEMORY, "wal-log.json")
         try:
             with open(wal_log_path) as wlf:
@@ -758,7 +767,10 @@ No explanation."""
         wal_data["entries"].append({
             "timestamp": datetime.now().isoformat(),
             "type": "context",
-            "content": f"Web search on \"{_clean_question}\": {wal_content[:200]}",
+            "content": f"Web search on \"{_clean_question}\"{_tag}: {wal_content[:200]}",
+            "inquiry_session": (_ses.get("id") if isinstance(_ses, dict) else None),
+            "inquiry_outcome": _oc or None,
+            "remaining_unknown": (str(_ses.get("remaining_unknown") or "")[:200] if isinstance(_ses, dict) else ""),
             "importance": 0.6,
             "promoted": False
         })

@@ -100,6 +100,7 @@ def main():
         try: grade = float(d["grade_of_previous"])
         except Exception: grade = None
     out = {
+        "prediction_id": "GP-" + __import__("uuid").uuid4().hex[:8],   # stable identity for grading (astra-models-p4)
         "predicted": str(d.get("predicted", ""))[:280],
         "confidence": round(float(d.get("confidence", 0.5) or 0.5), 3),
         "novelty": round(float(d.get("novelty", 0.5) or 0.5), 3),
@@ -131,7 +132,8 @@ def main():
     log = load(HIST, [])
     # record the grade of what we predicted last time, then this new prediction
     previous_held = bool(prev.get("predicted") and not prev.get("may_grade", True))
-    log.append({"at": now, "graded_previous": (round(grade, 3) if grade is not None else None),
+    log.append({"at": now, "prediction_id": out["prediction_id"], "graded_prediction_id": prev.get("prediction_id"),
+                "graded_previous": (round(grade, 3) if grade is not None else None),
                 "grade_outcome": "HELD" if previous_held else ("graded" if grade is not None else "unknown"),
                 "predicted": out["predicted"], "confidence": out["confidence"],
                 "novelty": out["novelty"], "may_grade": out["may_grade"],

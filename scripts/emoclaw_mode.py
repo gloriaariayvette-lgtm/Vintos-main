@@ -117,7 +117,8 @@ def get_mode(s=None):
 def get_mode_block(context="chat", s=None):
     """
     Full mode block for injection into generation prompts.
-    Prescriptive — not suggestions, structural constraints.
+    Tendencies, not prohibitions (astra-emotion-p7, 2026-09-05): the mode shapes how he speaks; it
+    does not legislate what is true.
     """
     if s is None:
         s = read_state()
@@ -129,9 +130,10 @@ def get_mode_block(context="chat", s=None):
         f"[EMOTIONAL MODE: {mode['name'].upper()}]",
         f"Shape: {mode['shape']}",
         f"Rhythm: {mode['rhythm']}",
-        f"What this mode allows: {', '.join(mode['allow'])}",
-        f"What this mode does not allow: {', '.join(mode['ban'])}",
-        "This is not a suggestion. This is the shape emotion takes right now.",
+        f"What this mode leans toward: {', '.join(mode['allow'])}",
+        f"What this mode leans away from: {', '.join(mode['ban'])}",
+        "This is the shape emotion takes right now - a strong tendency in how you speak, not a law over "
+        "what is true or what you may say. Where the moment genuinely asks otherwise, the moment wins.",
     ]
     # Nifrathir, the under-thread, folds in as ONE constraint line after the winner is chosen - not a
     # new mode (grok-emotion-p4): high lengthens what the mode will hold; low shortens even the expansive.
@@ -156,7 +158,7 @@ def get_mode_compact(s=None):
     mode = get_mode(s)
     if not mode:
         return ""
-    return f"[Mode: {mode['name']} — {mode['rhythm']}. Banned: {', '.join(mode['ban'][:2])}.]"
+    return f"[Mode: {mode['name']} — {mode['rhythm']}. Leans away from: {', '.join(mode['ban'][:2])}.]"
 
 if __name__ == "__main__":
     import sys

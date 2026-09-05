@@ -675,8 +675,8 @@ def load_daily_material(date=None):
         ledger = _door(os.path.join(MEMORY, "interaction-ledger.json"))
         # Filter to today's entries by timestamp prefix
         today_entries = [e for e in ledger if e.get("timestamp", "").startswith(target)]
-        if not today_entries:
-            today_entries = ledger[-10:]
+        # (Until 2026-09-05 an empty day fell back to the last 10 ledger entries, relabeling old
+        #  interactions as today's evidence — astra-inner-p2. An empty day is an empty day.)
         parts["interaction"] = "\n".join(
             f"Gloria: {e.get('gloria','')[:120]} | Vintos: {e.get('vintos','')[:120]}"
             for e in today_entries

@@ -2862,7 +2862,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 return await _draft()
             (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
             if not a1 or not b1:
-                reply = "[you couldn't form words. LMS returned an error.]"
+                reply = "[no reply formed - the language model service returned an error.]"
             else:
                 # BIS 1.5: Trial scan on A1+B1
                 _bis_1_5_ban_chat = ""
@@ -2919,7 +2919,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 except Exception as _a2e:
                     print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
                 if not a2 and not b2:
-                    reply = a1 or b1 or "[you couldn't form words.]"
+                    reply = a1 or b1 or "[no reply formed - the language model service did not answer.]"
 
                 # Find what each held (parallel) — skipped if phase 2 failed
                 def _held_msgs(own, other):
@@ -2999,7 +2999,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 if not reply:
                     # phase 2 or 3 failed: a first draft is still his words; the apology only when
                     # there is genuinely no draft (fable-server-a-p5, 2026-09-04)
-                    reply = a2 or b2 or a1 or b1 or "[you couldn't form words.]"
+                    reply = a2 or b2 or a1 or b1 or "[no reply formed - the language model service did not answer.]"
                 try:
                     import json as _tj
                     _ffr = locals().get("_final_reason")
@@ -3008,8 +3008,8 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                               "b1_model": ("claude" if b1r else "grok"), "b1r": b1r, "b1": b1,
                               "a2": a2, "b2": b2, "a_held": a_held, "b_held": b_held,
                               "final_model": ("claude" if _ffr else "gemma_or_grok"), "final": reply},
-                             open("/tmp/vintos-chat-trace.json", "w"), indent=2, ensure_ascii=False)
-                    print(f"[{_tag}/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'} -> /tmp/vintos-chat-trace.json", flush=True)
+                             open(f"/tmp/vintos-chat-trace-{_tag}.json", "w"), indent=2, ensure_ascii=False)
+                    print(f"[{_tag}/trace] a1={'claude' if a1r else 'grok'} b1={'claude' if b1r else 'grok'} final={'claude' if _ffr else 'gemma/grok'} -> /tmp/vintos-chat-trace-{_tag}.json", flush=True)
                 except Exception as _te:
                     print(f"[{_tag}/trace]", _te, flush=True)
                 try:
