@@ -358,6 +358,30 @@ def look_mint(b):
     return {"ok": True, "look_capability": mint_look(pid, [actual]), "sha256": actual}
 
 
+def list_projects(b=None):
+    """Content-free: every project's id, state, artifact count, and when it
+    finished if it did. No intent, no titles, no filenames, no notes — the
+    house reads this to offer LOOK on work that predates its own ledger."""
+    out = []
+    pdir = os.path.join(ROOT, "projects")
+    for pid in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
+        if not _PID_RE.match(pid):
+            continue
+        p = _j(os.path.join(pdir, pid, "project.json"), {}) or {}
+        if not p:
+            continue
+        ad = os.path.join(pdir, pid, "artifacts")
+        n = len(os.listdir(ad)) if os.path.isdir(ad) else 0
+        row = {"id": pid, "state": str(p.get("state", "")), "artifact_count": n}
+        if p.get("kept_at"):
+            row["kept_at"] = p["kept_at"]
+        if p.get("visibility") == "revealed":
+            man = _j(os.path.join(pdir, pid, "reveal", "manifest.json"), {}) or {}
+            row["revealed_at"] = p.get("settled_at") or man.get("prepared", "")
+        out.append(row)
+    return {"ok": True, "projects": out}
+
+
 def open_visit(b):
     pid, who = b["id"], b.get("as", "vintos")
     _p(pid)          # canonical + contained, BEFORE anything is minted or written
@@ -709,7 +733,7 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/settle": settle, "/settlement/verify": verify_settlement,
           "/lineage/fingerprint": lineage_fingerprint, "/manifest": manifest, "/report": report, "/door": door, "/worktable_id": worktable_id,
           "/gate/knock": gate_knock, "/gate/decide": gate_decide,
-          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint}
+          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint, "/projects": list_projects}
 
 try:
     from stratagem_store import ROUTES as _SG
@@ -746,6 +770,7 @@ POLICY = {
     "/gate/knock": HOUSE, "/gate/decide": HOUSE,   # consent knock: his own note only, held-door only
     "/state/kept": VISIT,                          # finished-and-mine: his hand, inside a visit, never a cron
     "/look/offer": HOUSE, "/look/mint": HOUSE,     # content-free receipt; mint consumes it once
+    "/projects": HOUSE,                            # ids, states, counts, finish dates — nothing else
     "/lineage/fingerprint": OPEN,                        # a digest, never the key
     "/manifest": OPEN,                                   # counts + a hash, never content
     "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
