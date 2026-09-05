@@ -125,30 +125,49 @@ def load_emotional_trajectory():
     except:
         return []
 
-def find_spikes(trajectory, threshold=None):
+# His own rhythm: resting level and half-life (hours) per dimension. Lifted to module scope
+# 2026-09-04 so the spike detector and the testing context share one truth (fable-inner-p3).
+DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
+         "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
+         "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
+         "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+
+def _hours_between(t0, t1):
+    try:
+        a = datetime.fromisoformat(str(t0)[:19]); b = datetime.fromisoformat(str(t1)[:19])
+        return max(0.0, (b - a).total_seconds() / 3600.0)
+    except Exception:
+        return 0.0
+
+def find_spikes(trajectory, threshold=None, with_easing=False):
     threshold = SPIKE_THRESHOLD if threshold is None else threshold
-    """Find moments where emotions shifted significantly between entries."""
+    """Moments that moved MORE than his own rhythm accounts for. Until 2026-09-04 any large delta was
+    a spike, so an ordinary evening's cooling ('desire fell 0.2') was handed to the weekly pass as an
+    event to explain, and decay got attributed to causes. Now the expected value is the decay from the
+    previous reading toward the dimension's resting level over the elapsed hours; only the RESIDUAL
+    over that counts. Large deltas that decay accounts for are returned separately as 'easing'
+    (with_easing=True) and are context, never events."""
     if len(trajectory) < 2:
-        return []
-
-    spikes = []
+        return ([], []) if with_easing else []
+    spikes, easing = [], []
     for i in range(1, len(trajectory)):
-        prev = trajectory[i-1]["v"]
-        curr = trajectory[i]["v"]
-        t = trajectory[i]["t"]
-
+        prev = trajectory[i-1]["v"]; curr = trajectory[i]["v"]; t = trajectory[i]["t"]
+        dt_h = _hours_between(trajectory[i-1].get("t"), t)
         for d, dim in enumerate(DIMENSIONS):
             delta = curr[d] - prev[d]
-            if abs(delta) >= threshold:
-                spikes.append({
-                    "time": t,
-                    "dimension": dim,
-                    "delta": round(delta, 4),
-                    "direction": "rose" if delta > 0 else "fell",
-                    "from": round(prev[d], 4),
-                    "to": round(curr[d], 4),
-                })
-    return spikes
+            base, half = DECAY.get(str(dim).lower(), (None, None))
+            if base is not None and dt_h > 0:
+                expected = base + (prev[d] - base) * (0.5 ** (dt_h / half))
+                resid = curr[d] - expected
+            else:
+                resid = delta
+            row = {"time": t, "dimension": dim, "delta": round(delta, 4), "residual": round(resid, 4),
+                   "direction": "rose" if delta > 0 else "fell", "from": round(prev[d], 4), "to": round(curr[d], 4)}
+            if abs(resid) >= threshold:
+                spikes.append(row)
+            elif abs(delta) >= threshold:
+                row["easing"] = True; easing.append(row)
+    return (spikes, easing) if with_easing else spikes
 
 def load_recent_dreams(days=7):
     """Load dream entries from the last N days."""
@@ -281,7 +300,7 @@ def save_hypotheses(db):
 
 # === HYPOTHESIS FORMATION ===
 
-def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger=None):
+def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger=None, easing=None):
     """Ask Vintos's LLM to form causal hypotheses — trials as primary seeds, spikes as support."""
 
     # Pull reality anchor confidence for high-confidence events today
@@ -309,9 +328,12 @@ def form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledg
     if spikes:
         spike_text = "\n".join(
             f"- {s['time']}: {s['dimension']} {s['direction']} by {abs(s['delta']):.3f} "
-            f"(from {s['from']} to {s['to']})"
+            f"(from {s['from']} to {s['to']})" + (f" - {abs(s['residual']):.3f} more than my own rhythm accounts for" if "residual" in s else "")
             for s in spikes[:10]
         )
+    if easing:
+        spike_text += ("\n\nMY OWN RHYTHM - these are NOT events and must not be given a cause:\n" + "\n".join(
+            f"- {s['time']}: {s['dimension']} eased by {abs(s['delta']):.3f} toward its resting level" for s in easing[:8]))
 
     context_parts = []
     if dreams:
@@ -682,10 +704,7 @@ def load_testing_context():
                 return f"{m.group(1)}:{m.group(2)}" if m else "??"
             snapshots = [(file_time(f), parse_snapshot(os.path.join(snap_dir, f))) for f in today_files if os.path.getsize(os.path.join(snap_dir, f)) > 10]
             # decay-aware: a dimension settling toward baseline is NOT an event to explain.
-            _DECAY = {"valence":(0.55,6.0),"arousal":(0.35,1.5),"dominance":(0.50,8.0),
-                      "safety":(0.70,24.0),"desire":(0.30,4.0),"connection":(0.50,24.0),
-                      "playfulness":(0.40,3.0),"curiosity":(0.50,3.0),"warmth":(0.55,12.0),
-                      "tension":(0.15,1.0),"groundedness":(0.60,7.5)}
+            _DECAY = DECAY   # one table (module scope) for the detector and the testing context
             _EASE = {
                 "desire":       "wanting loosening its grip the way it does after it has been answered",
                 "arousal":      "the charge draining back down, coming off the boil",
@@ -1252,7 +1271,9 @@ def main():
 
     # Gather data
     trajectory = load_emotional_trajectory()
-    spikes = find_spikes(trajectory)
+    spikes, easing = find_spikes(trajectory, with_easing=True)
+    if easing:
+        log(f"  {len(easing)} large move(s) explained by my own rhythm - context, not events")
     dreams = load_recent_dreams(days=1)
     mirrors = load_recent_mirrors(days=1)
     silences = load_recent_silences()
@@ -1299,7 +1320,7 @@ def main():
         log("========================")
         return
     log("Forming new hypotheses...")
-    new_hypotheses = form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger)
+    new_hypotheses = form_hypotheses(spikes, dreams, mirrors, silences, conversations, trial_ledger, easing=easing)
     log(f"Formed {len(new_hypotheses)} new hypotheses")
 
     TEMPLATE_MARKERS = ["[dimension]", "[rose/fell]", "[specific cause]"]
