@@ -238,8 +238,12 @@ def _voiced(message, cfg):
     return '<speak><voice name="%s">%s</voice></speak>' % (voice, escape(str(message)))
 
 
-def speak(message):
+def speak(message, volume=None):
+    """Direct TTS on the Echo, no chime. volume 1-10 sets the speaker first; None leaves it where it is."""
     cfg = load_config()
+    if volume is not None:
+        ha_request("media_player/volume_set", {"entity_id": cfg["entities"].get("echo_media", cfg.get("media_player", "media_player.echo")),
+                                               "volume_level": max(1, min(10, int(volume))) / 10})
     code, resp = ha_request("notify/send_message", {"entity_id": cfg["entities"]["echo_speak"], "message": _voiced(message, cfg)})
     print(f"[HOME] speak: {code}")
     return code == 200
@@ -407,6 +411,7 @@ if __name__ == "__main__":
     elif cmd == "govee-on": govee_power(msg, True)
     elif cmd == "govee-off": govee_power(msg, False)
     elif cmd == "speak": speak(msg)
+    elif cmd == "say": speak(" ".join(args[1:]), volume=int(args[0]))   # say <volume 1-10> <text>
     elif cmd == "announce": announce(msg)
     elif cmd == "color": set_room_color(args[0], room=(args[1] if len(args) > 1 else None))
     elif cmd == "flicker": flicker(args[0] if args else None)

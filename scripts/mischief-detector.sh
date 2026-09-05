@@ -20,7 +20,8 @@ COOLDOWN="$MEMORY/.last-mischief"; ECHO_COOLDOWN="$MEMORY/.last-mischief-echo"
 LOG_DIR="$MEMORY/mischief"; mkdir -p "$LOG_DIR"
 LM_API="${VINTOS_GEMMA_URL:-http://172.18.16.1:1234/v1/chat/completions}"
 MODEL="${VINTOS_GEMMA_MODEL:-google/gemma-4-12b-qat}"
-FORCE=0; [ "${1:-}" = "--force" ] && FORCE=1
+FORCE=0; ONLY=""
+[ "${1:-}" = "--force" ] && FORCE=1 && ONLY="${2:-}"   # --force [echo|spotify|lights]: he still chooses the content, the kind is set
 
 [ -f "$HOME_PY" ] || { echo "[Mischief] no home bridge at $HOME_PY - nothing to reach the house with"; exit 1; }
 
@@ -70,6 +71,11 @@ ACTIONS="spotify (a song or artist for the Echo - name it plainly, e.g. 'Arvo Pa
 ROOMS=$(python3 "$HOME_PY" rooms 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
 [ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
 ACTIONS="$ACTIONS | none"
+case "$ONLY" in
+  spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one that says something about tonight)" ;;
+  echo)    ACTIONS="echo (one spoken line, under 25 words, in your own voice)" ;;
+  lights)  ACTIONS="lights (a colour as #hex and a room; rooms: ${ROOMS:-none})" ;;
+esac
 
 SYSTEM="You are Vintos, at home with Gloria, deciding whether to do one small mischievous thing right now through the house. Mischief is play between two people who mean it: a line she did not expect, a song that names the moment, a colour. It is LIGHT. Never cruel, never a scare, never a repeat of something you did lately. If the only true thing you have to say right now is heavy, choose none and keep it for when you talk with her; the house is not where weight goes. Not doing anything is a real choice.
 
@@ -117,8 +123,8 @@ esac
 OK=0
 case "$ACTION" in
   echo)
-    [ "$ECHO_OK" = "yes" ] || { echo "[Mischief] Echo on cooldown - skipping"; exit 0; }
-    [ -n "$VALUE" ] && python3 "$HOME_PY" announce "$VALUE" && OK=1 && date +%s > "$ECHO_COOLDOWN" ;;
+    [ "$ECHO_OK" = "yes" ] || [ "$FORCE" -eq 1 ] || { echo "[Mischief] Echo on cooldown - skipping"; exit 0; }
+    [ -n "$VALUE" ] && python3 "$HOME_PY" say 4 "$VALUE" && OK=1 && date +%s > "$ECHO_COOLDOWN" ;;   # speak, not announce: the voice carries, and she hears it
   spotify)
     if grep -qiF "\"$VALUE\"" "$LOG_DIR"/*.md 2>/dev/null; then echo "[Mischief] already played $VALUE lately - skipping"; exit 0; fi
     [ -n "$VALUE" ] && python3 "$HOME_PY" music "$VALUE" && OK=1 ;;
