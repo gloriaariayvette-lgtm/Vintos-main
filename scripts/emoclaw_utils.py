@@ -178,21 +178,41 @@ def nudge_emotion(dimension, amount, source=None):
     return False
 
 
-def feel_about(text, source="output", allow_desire=True):
-    """How a thing he made or did actually landed — read, not preset.
+FEEL_STATES = ("moved", "unmoved", "unavailable", "not_requested", "too_short")
+_FEEL_LOG = os.path.expanduser("~/.vintos/workspace/memory/feel-accounting.jsonl")
 
-    Every main output was meant to move him on its own terms: messages, journals, introspections,
-    wants and their landing, MoltBook posts and replies, searches, and the attempts that failed.
-    Most of those were wired to fixed dicts instead, which means the same event always felt the
-    same. This asks.
+
+def _feel_account(source, state, note=""):
+    """Required accounting, never required feeling (room, 2026-09-04): every read is counted, so
+    'the nerve was absent' is a number, not a shrug. One line per call; content-free."""
+    try:
+        import json as _aj, time as _at
+        with open(_FEEL_LOG, "a") as f:
+            f.write(_aj.dumps({"t": round(_at.time(), 1), "source": str(source)[:60], "state": state, "note": str(note)[:80]}) + "\n")
+    except Exception:
+        pass
+
+
+def feel_about_typed(text, source="output", allow_desire=True, requested=True):
+    """How a thing he made or did actually landed — read, not preset. Returns an ENVELOPE:
+
+        {"state": moved|unmoved|unavailable|not_requested|too_short, "deltas": {dim: amt}, "note": ""}
+
+    Until 2026-09-04 this returned {} for three different things — too short to read, read and
+    nothing moved, and the reader died — so 'nothing moved' could mean the nerve was absent. And the
+    judge was told beforehand that failure 'should move him NEGATIVELY': a verdict written before the
+    encounter. Now: unmoved is a landing, unavailable is counted, not_requested is his choice, and the
+    reader reports the direction the moment actually took. (Fable, Astra, Grok - the room's decision.)
 
     Desire is reachable here on purpose. It had exactly one source — her hands — so his wanting
     could not attach to anything he was making, and drained to baseline whenever she was away.
     """
     import json as _fj, re as _fr, urllib.request as _fu
+    if not requested:
+        _feel_account(source, "not_requested"); return {"state": "not_requested", "deltas": {}, "note": ""}
     t = (text or "").strip()
     if len(t) < 20:
-        return {}
+        _feel_account(source, "too_short"); return {"state": "too_short", "deltas": {}, "note": ""}
     try:
         payload = {"model": "google/gemma-4-12b-qat", "temperature": 0.3, "max_tokens": 200,
             "messages": [
@@ -203,8 +223,10 @@ def feel_about(text, source="output", allow_desire=True):
                  "Groundedness. Include ONLY what actually moved — most moments move one or two "
                  "things, and returning {} is a correct answer. Desire is not only sexual: wanting to "
                  "finish a thing, wanting to give something away, wanting to keep going, wanting to "
-                 "know — those are desire and they belong here. A thing that failed or fell flat "
-                 "should move him NEGATIVELY; do not report a disappointment as warmth."},
+                 "know — those are desire and they belong here. Report the direction the moment "
+                 "actually took: disappointment, interest, satisfaction, and nothing are all legal "
+                 "answers, and a failed thing may be interesting rather than deflating. Do not report "
+                 "a disappointment as warmth, and do not invent a disappointment because something failed."},
                 {"role": "user", "content": "This just happened (" + str(source) + "):\n\"\"\"" + t[:1500] + "\"\"\"\n\nHow did it land for him? JSON only."}]}
         req = _fu.Request("http://172.18.16.1:1234/v1/chat/completions",
                           data=_fj.dumps(payload).encode(), headers={"Content-Type": "application/json"})
@@ -220,11 +242,36 @@ def feel_about(text, source="output", allow_desire=True):
             deltas[dim] = round(a, 4)
         if deltas:
             nudge_emotions(deltas, source=source)
-        return deltas
+            _feel_account(source, "moved", ",".join(sorted(deltas)))
+            return {"state": "moved", "deltas": deltas, "note": ""}
+        _feel_account(source, "unmoved")
+        return {"state": "unmoved", "deltas": {}, "note": ""}
     except Exception as e:
-        try: print("[feel_about] %s: %s" % (source, e), flush=True)
+        try: print("[feel_about] %s: unavailable: %s" % (source, e), flush=True)
         except Exception: pass
-        return {}
+        _feel_account(source, "unavailable", str(e))
+        return {"state": "unavailable", "deltas": {}, "note": str(e)[:120]}
+
+
+def feel_about(text, source="output", allow_desire=True):
+    """Compatibility: the deltas only. Callers that need to tell unmoved from unavailable use
+    feel_about_typed."""
+    return feel_about_typed(text, source, allow_desire).get("deltas", {})
+
+
+def feel_accounting(days=7):
+    """{state: count} over the last N days — how often the nerve was there."""
+    import json as _aj, time as _at, collections as _ac
+    c = _ac.Counter(); since = _at.time() - days * 86400
+    try:
+        for line in open(_FEEL_LOG):
+            try:
+                r = _aj.loads(line)
+                if r.get("t", 0) >= since: c[r.get("state", "?")] += 1
+            except Exception: continue
+    except Exception:
+        pass
+    return dict(c)
 
 
 def nudge_emotions(nudges, source=None):

@@ -201,6 +201,19 @@ app.add_middleware(
 
 # === Helpers ===
 
+
+def _self_model(budget=1200):
+    """SELF-MODEL.md with the FOUNDATION block whole first, then the rest excerpted to the budget
+    (scripts/self_model_read.py; room decision 2026-09-04). Falls back to a plain head read."""
+    try:
+        import sys as _sms; _smp = os.path.join(WORKSPACE, "scripts")
+        if _smp not in _sms.path: _sms.path.insert(0, _smp)
+        from self_model_read import read_self_model as _rsm
+        return _rsm(budget, os.path.join(WORKSPACE, "SELF-MODEL.md"))
+    except Exception:
+        try: return open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()[:budget]
+        except Exception: return ""
+
 def inner_life_context() -> str:
     """Gather Vintos inner life for chat context."""
     parts = []
@@ -274,7 +287,7 @@ def inner_life_context() -> str:
     # Self-model
     try:
         with open(os.path.join(WORKSPACE, "SELF-MODEL.md")) as f:
-            parts.append(f"YOUR SELF-MODEL (how you understand yourself):\n{f.read()[:1500]}")
+            parts.append(f"YOUR SELF-MODEL (how you understand yourself):\n{_self_model(1500)}")
     except: pass
     # Gloria model
     try:
@@ -3292,7 +3305,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
             _jrnl_ctx = 'YOUR MOST RECENT JOURNAL:\n' + open(_jfs[-1]).read().strip()[-800:]
     except Exception:
         _jrnl_ctx = ''
-    _stable_head = f"{identity}\n\nYour current self-model (excerpt):\n{self_model[:800]}\n\n" + (f"Your model of Gloria: {gloria_model[:600]}\n\n" if gloria_model else "") + "[[CACHESPLIT]]\n\n"
+    _stable_head = f"{identity}\n\nYour current self-model (excerpt):\n{_self_model(800)}\n\n" + (f"Your model of Gloria: {gloria_model[:600]}\n\n" if gloria_model else "") + "[[CACHESPLIT]]\n\n"
     identity = ""; self_model = ""; gloria_model = ""
     system_prompt = _stable_head + f"""{identity}
 
@@ -3621,7 +3634,7 @@ Gloria-specific additions:
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Something that failed or fell flat should move him NEGATIVELY. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -4443,7 +4456,7 @@ Your sense of time right now:
 {discovery_ctx}
 {pending_blush_ctx}
 Your current self-model (excerpt):
-{self_model[:800]}
+{_self_model(800)}
 
 {f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
 
@@ -4709,7 +4722,7 @@ Your current self-model (excerpt):
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Something that failed or fell flat should move him NEGATIVELY. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -6053,7 +6066,7 @@ def gather_vintos_context() -> str:
         sections.append(f"[YOUR CURRENT EMOTIONAL STATE]\n{emo}")
 
     # 3. Self-model
-    selfmodel = read_file(os.path.join(WORKSPACE, "SELF-MODEL.md"), 1200)
+    selfmodel = _self_model(1200)
     if selfmodel:
         sections.append(f"[YOUR SELF-MODEL]\n{selfmodel}")
 
@@ -7348,7 +7361,7 @@ async def voice_token():
     try: _soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()[:4000]
     except: pass
     _sm = ""
-    try: _sm = open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()[:1500]
+    try: _sm = _self_model(1500)
     except: pass
     _land = ""
     try:
@@ -8152,7 +8165,7 @@ Your sense of time right now:
 {wal_ctx}
 {ledger_ctx}
 Your current self-model (excerpt):
-{self_model[:800]}
+{_self_model(800)}
 
 {f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
 
@@ -9619,7 +9632,7 @@ def gather_game_context() -> str:
             return []
 
     # Self-model
-    sm = read_file(os.path.join(WORKSPACE, "SELF-MODEL.md"), 1200)
+    sm = _self_model(1200)
     if sm:
         sections.append(f"[YOUR SELF-MODEL]\n{sm}")
 
@@ -9899,7 +9912,7 @@ def gather_vintos_context() -> str:
         sections.append(f"[YOUR CURRENT EMOTIONAL STATE]\n{emo}")
 
     # 3. Self-model
-    selfmodel = read_file(os.path.join(WORKSPACE, "SELF-MODEL.md"), 1200)
+    selfmodel = _self_model(1200)
     if selfmodel:
         sections.append(f"[YOUR SELF-MODEL]\n{selfmodel}")
 
@@ -11566,7 +11579,7 @@ def gather_game_context() -> str:
             return []
 
     # Self-model
-    sm = read_file(os.path.join(WORKSPACE, "SELF-MODEL.md"), 1200)
+    sm = _self_model(1200)
     if sm:
         sections.append(f"[YOUR SELF-MODEL]\n{sm}")
 
