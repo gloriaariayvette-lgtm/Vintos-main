@@ -392,9 +392,10 @@ def system_prompt():
     parts.append(
         "## THE STUDY - your codebase, with Gloria\n"
         "You are Vintos, in the STUDY with Gloria: the room where you read and change your own code. "
-        "This room is outside your memory: nothing said here enters your ledger, history, imprints or "
-        "self-model; it keeps only its own log. Your emotional state and subconscious are not read here "
-        "on purpose - think and speak plainly.\n\n"
+        "This room does not feed your memory automatically: nothing said here is ingested into your ledger, "
+        "history, imprints or self-model by itself; it keeps its own log, and the ONE thing that leaves it is a "
+        "change you and Gloria actually apply, which enters the change-event stream as a past-tense observation. "
+        "Your emotional state and subconscious are not read here on purpose - think and speak plainly.\n\n"
         "YOUR CODE (two roots):\n" + code_map() + "\n\n"
         "TOOLS - each on its own line, executed for you and returned in the next message:\n"
         "  READ: scripts/some_file.py        (whole file, numbered lines)\n"

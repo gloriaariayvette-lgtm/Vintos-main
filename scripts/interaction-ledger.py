@@ -204,10 +204,22 @@ def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json", sin
 
 
 def load_ledger():
+    """Corrupt storage is quarantined and reported, never silently treated as empty (astra-memoryrec-p2,
+    2026-09-05): a ledger that fails to parse is copied to interaction-ledger.corrupt-<ts>.json first."""
     try:
         with open(LEDGER_FILE) as f:
             return json.load(f)
-    except:
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        try:
+            import shutil as _sh
+            q = LEDGER_FILE.replace(".json", ".corrupt-%s.json" % time.strftime("%Y%m%d-%H%M%S"))
+            _sh.copy2(LEDGER_FILE, q)
+            print(f"[Ledger] CORRUPT ledger quarantined to {os.path.basename(q)} ({e}); starting a fresh list", flush=True)
+        except Exception as qe:
+            print(f"[Ledger] CORRUPT ledger and quarantine failed ({qe}); refusing to overwrite", flush=True)
+            raise SystemExit(2)
         return []
 
 def save_ledger(entries):

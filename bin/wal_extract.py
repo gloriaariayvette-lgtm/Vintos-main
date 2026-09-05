@@ -189,8 +189,14 @@ def _main(envelope=None):
         try:
             with open(WAL_LOG) as f:
                 log_data = json.load(f)
-        except:
-            pass
+        except Exception as _ce:
+            # corrupt storage is quarantined, not silently replaced by an empty log (astra-memoryrec-p2)
+            try:
+                import shutil as _sh
+                _q = WAL_LOG.replace(".json", ".corrupt-%s.json" % now.strftime("%Y%m%d-%H%M%S"))
+                _sh.copy2(WAL_LOG, _q); print(f"[WAL] CORRUPT wal-log quarantined to {os.path.basename(_q)} ({_ce})")
+            except Exception as _qe:
+                print(f"[WAL] CORRUPT wal-log and quarantine failed ({_qe}); not writing"); return
 
     import difflib as _dl
     for item in items:
