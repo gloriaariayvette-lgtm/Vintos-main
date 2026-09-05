@@ -736,10 +736,13 @@ def web_search_want(want_text):
     return False
 
 def llm_extract(want_text, instruction):
-    """Use LLM to extract specific info from a want."""
+    """Use LLM to extract specific info from a want.
+    (Until 2026-09-04 this referenced API, MODEL and requests, none of which existed here, so it raised
+    NameError inside the bare except and returned None every time - the tell-Gloria message, the Spotify
+    query and the semantic route always fell through to their fallbacks. Found by the three-lens review.)"""
     try:
-        r = requests.post(API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": MODEL,
+        r = __import__("requests").post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [{"role": "user", "content": f"{instruction}\nWant: {want_text}"}],
             "temperature": 0.3, "max_tokens": 100
         }, timeout=30)

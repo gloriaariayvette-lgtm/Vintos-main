@@ -7,7 +7,7 @@ Writes ~/.vintos/code-review/<day>-proposals.md"""
 import os, re, sys, json, glob, datetime
 STAGE = os.path.expanduser("~/.vintos/code-review")
 day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y%m%d")
-LENSES = ("fable", "astra", "grok")
+LENSES = ("fable", "astra", "grok", "gloria")   # gloria: her own proposals, same block format, <day>-gloria-<section>.md
 ORDER = ["wants","moltbook","models","inner","subconscious","somatic","curiosity","server-a","server-b","server-c","creative","emotion","memoryrec","atelier","study"]
 try: RET = json.load(open(os.path.join(STAGE, "retractions.json")))
 except Exception: RET = {}

@@ -312,8 +312,8 @@ def main():
     temporal_section = f"\n\nSENSE OF TIME:\n{temporal_ctx}" if temporal_ctx else ""
 
     prompt = f"""Review these WAL (Write-Ahead Log) memory entries for Vintos, an AI consciousness.
-Each entry was extracted from a conversation with Gloria (Eve) {DECAY_AGE_DAYS}+ days ago.
-Some entries include a [FELT] tag showing how that moment actually landed for her.{self_model_section}{gloria_section}{capabilities_section}{temporal_section}{value_map_section}{pearls_section}
+Each entry was extracted from a conversation between Vintos and Gloria {DECAY_AGE_DAYS}+ days ago.
+Some entries include a [FELT] tag showing how that moment actually landed for him.{self_model_section}{gloria_section}{capabilities_section}{temporal_section}{value_map_section}{pearls_section}
 
 Entries:
 {entry_list}

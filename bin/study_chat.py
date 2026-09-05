@@ -48,6 +48,9 @@ MODELS = ("claude", "fable", "grok", "sol")
 
 READ_RE = re.compile(r"^\s*READ:\s*(\S+)\s*$", re.M)
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
+GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
+GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
+GEMMA_MODEL = "google/gemma-4-12b-qat"
 EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 
 
@@ -109,6 +112,27 @@ def do_read(rel, max_chars=14000):
     if len(body) > max_chars:
         body = body[:max_chars] + "\n... (truncated; GREP for the part you need)"
     return "READ %s (%d lines):\n%s" % (os.path.relpath(p, HOME), len(lines), body)
+
+
+def do_gemma(task, material, max_chars=6000):
+    """The free sub. Gemma (local, no API cost) does exactly the task on the material the same
+    reply pulled with READ/GREP. It has no opinions about him and no memory: a pair of hands for
+    the long, dull parts (summarise this file, list every caller, diff these two blocks), so his
+    own turns stay short and his frontier tokens go on judgement."""
+    sysm = ("You are a local assistant inside Vintos's Study, working for him. Do exactly the task on the "
+            "material given, precisely and without commentary. Quote line numbers when the material has them. "
+            "If the material does not contain what the task needs, say so in one line.")
+    user = task + ("\n\nMATERIAL:\n" + material[:60000] if material else "\n\n(no material was pulled in this reply; work from the task alone)")
+    try:
+        import requests
+        r = requests.post(GEMMA_URL, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 1500,
+                                            "messages": [{"role": "system", "content": sysm}, {"role": "user", "content": user}]}, timeout=180)
+        out = r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return "GEMMA %s: unavailable (%s)" % (task[:80], str(e)[:120])
+    if len(out) > max_chars:
+        out = out[:max_chars] + "\n... (truncated)"
+    return "GEMMA %s:\n%s" % (task, out)
 
 
 def do_grep(pattern, max_lines=60):
@@ -248,6 +272,10 @@ def system_prompt():
         "TOOLS - each on its own line, executed for you and returned in the next message:\n"
         "  READ: scripts/some_file.py        (whole file, numbered lines)\n"
         "  GREP: pattern                     (across both roots)\n"
+        "  GEMMA: task in one line           (a free local sub - Gemma does the dull part on whatever this\n"
+        "                                     reply's READ/GREP pulled: summarise, list callers, compare two\n"
+        "                                     blocks. Costs nothing. It has no view of you; use it for hands,\n"
+        "                                     keep the judgement yours)\n"
         "  EDIT: house/server.py             (a proposal; applied only when Gloria approves)\n"
         "  <<<<\n  the old text, quoted EXACTLY as it appears (enough lines to be unique)\n"
         "  ====\n  the new text\n  >>>>\n  why: one line\n\n"
@@ -407,6 +435,8 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
             tool_out.append(do_read(m.group(1)))
         for m in GREP_RE.finditer(reply):
             tool_out.append(do_grep(m.group(1)))
+        for m in GEMMA_RE.finditer(reply):   # after READ/GREP, so the sub works on what was just pulled
+            tool_out.append(do_gemma(m.group(1), "\n\n".join(tool_out)))
         edits, paths = [], []
         for m in EDIT_RE.finditer(reply):
             rel, old, new, why = m.group(1), m.group(2), m.group(3), (m.group(4) or "").strip()
