@@ -40,6 +40,14 @@ SELF_PROTECTED = {
     "scripts/constitutional_tiers.py", "scripts/toy_link.py", "scripts/thruster_link.py",
     "scripts/device_patterns.py", "scripts/stratagem.py", "scripts/deploy-atelier.sh",
 }
+# One shared list with the Study (scripts/protected_paths.py + ~/.vintos/protected-paths.json):
+# here it means Gloria-APPROVE-only; in the Study it means never (fable-study-p1, 2026-09-05).
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import protected_paths as _pp
+    SELF_PROTECTED |= set(_pp.repo_paths())
+except Exception:
+    pass
 
 
 def now_iso(): return datetime.now(timezone.utc).isoformat()

@@ -9,8 +9,10 @@ if [ "$LIT" = "1" ] && [ "$WEATHER" != "FOG" ]; then
     echo "The Atelier door is available today. Nothing is asked of you." > "$DOOR_FILE"
     echo "$(date +%F_%H%M) offered"
 elif [ "$LIT" = "1" ]; then
-    rm -f "$DOOR_FILE"
-    echo "$(date +%F_%H%M) offer_suppressed: fog"
+    # Fog no longer decides for him (fable-atelier-p3, 2026-09-05): the door is still written, with
+    # the weather in view, and the doorkeeper shows him that line so HE decides with the fog in view.
+    echo "The Atelier door is available today. Weather: FOG. Nothing is asked of you." > "$DOOR_FILE"
+    echo "$(date +%F_%H%M) offered_in_fog"
 else
     rm -f "$DOOR_FILE"
     echo "$(date +%F_%H%M) dark: $D"

@@ -43,6 +43,18 @@ SECRET_DENY = re.compile(r"(key|secret|token|credential|\.env|vintos\.env)", re.
 TOUCH_DENY = re.compile(r"(deploy|systemd|crontab|broker|atelier|device_patterns|device-patterns|somatic|thruster|"
                         r"mission|tenera|ridge|consent|study_chat|strip_body_vocab)", re.I)
 DENY_NAME = re.compile(SECRET_DENY.pattern[:-1] + "|" + TOUCH_DENY.pattern[1:], re.I)   # the union, for callers that meant "either"
+def _is_chokepoint(path):
+    """The shared protected-paths list (scripts/protected_paths.py, ~/.vintos/protected-paths.json):
+    effect chokepoints are never edited from this room, whatever the regex above misses (fable-study-p1)."""
+    try:
+        import sys as _pps
+        for _d in (os.path.join(WORKSPACE, "scripts"), os.path.dirname(os.path.abspath(__file__))):
+            if _d not in _pps.path: _pps.path.insert(0, _d)
+        import protected_paths as _pp
+        return bool(_pp.is_protected(path))
+    except Exception:
+        return False
+
 # Documents that shape who he is: editable, but only with Gloria's explicit permission (Yes + tick).
 EXPLICIT_DOCS = re.compile(r"\.md$", re.I)
 TEXT_EXT = (".py", ".sh", ".md", ".json", ".txt", ".yaml", ".yml", ".toml")
@@ -83,7 +95,7 @@ def resolve(rel, for_edit=False):
         _name, _rel = os.path.basename(real), os.path.relpath(real, HOME)
         if SECRET_DENY.search(_name) or SECRET_DENY.search(_rel):
             return None
-        if for_edit and (TOUCH_DENY.search(_name) or TOUCH_DENY.search(_rel)):
+        if for_edit and (TOUCH_DENY.search(_name) or TOUCH_DENY.search(_rel) or _is_chokepoint(real)):
             return None
         if os.path.isfile(real) and real.endswith(TEXT_EXT):
             return real
@@ -238,8 +250,103 @@ def apply_edits(edits, confirm=None):
                "explicit": bool(confirm)}
         open(CHANGES, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
     files = ", ".join(sorted(set(os.path.relpath(p, HOME) for p in backups)))
+    # The applied change — not the room's conversation — enters the same change-event stream the
+    # self-review builder writes, so what he changed in the study is remembered as a past-tense
+    # observation with Gloria's approval on it (fable-study-p2, 2026-09-05).
+    try:
+        _why = str((confirm or {}).get("why") or "")[:300]
+        _ev = {"change_id": "STCG-" + __import__("uuid").uuid4().hex[:10], "at": ts, "source": "study",
+               "observation": "Vintos edited %s in the study; Gloria approved (%s)." % (files, "Yes + tick" if confirm else "y"),
+               "files": sorted(set(os.path.relpath(p, HOME) for p in backups)), "why": _why,
+               "identity_status": "past_tense_observation_not_identity", "relationship_model_eligible": True}
+        open(os.path.join(MEMORY, "self-review-change-events.jsonl"), "a").write(json.dumps(_ev, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
     return True, "applied %d edit(s) to %s (backups in %s). Live change - if a deploy later ships these files, re-apply." % (
         len(resolved), files, os.path.relpath(bdir, HOME))
+
+
+def reconcile_changes(notify=True):
+    """Is each study edit still in the live file? For every study-changes row whose `new` text is no
+    longer present, append an 'overwritten' row once and (optionally) one ntfy line. Report only —
+    never re-apply on its own (fable-study-p6, 2026-09-05)."""
+    rows = []
+    try:
+        for line in open(CHANGES, errors="replace"):
+            try:
+                if line.strip(): rows.append(json.loads(line))
+            except Exception: pass
+    except FileNotFoundError:
+        return []
+    already = {(r.get("of"), r.get("file")) for r in rows if r.get("overwritten")}
+    newly = []
+    for r in rows:
+        if r.get("overwritten") or not r.get("new") or not r.get("file"): continue
+        if (r.get("at"), r.get("file")) in already: continue
+        live = os.path.join(HOME, r["file"])
+        try: t = open(live, errors="replace").read()
+        except Exception: t = ""
+        if r["new"][:2000] not in t:
+            newly.append({"at": time.strftime("%Y%m%d-%H%M%S"), "overwritten": True, "of": r.get("at"),
+                          "file": r["file"], "note": "the study's edit is no longer in the live file (a deploy or another writer replaced it)"})
+    if newly:
+        with open(CHANGES, "a") as f:
+            for n in newly: f.write(json.dumps(n, ensure_ascii=False) + "\n")
+        if notify:
+            try:
+                import urllib.request as _u
+                body = "Study edits no longer in the live file:\n" + "\n".join("- %s (edit of %s)" % (n["file"], n["of"]) for n in newly)
+                _u.urlopen(_u.Request("https://ntfy.sh/vintos-gloria-9kx", data=body.encode(),
+                                      headers={"Title": "Study: edits overwritten", "Priority": "default"}), timeout=15)
+            except Exception:
+                pass
+    return newly
+
+
+def _overwritten_block():
+    try:
+        rows = [json.loads(l) for l in open(CHANGES, errors="replace") if l.strip()]
+    except Exception:
+        return ""
+    ov = [r for r in rows if r.get("overwritten")][-6:]
+    if not ov: return ""
+    return ("## EDITS OF YOURS THAT DID NOT SURVIVE\n" + "\n".join("- %s: your edit from %s is no longer in the live file" % (r.get("file"), r.get("of")) for r in ov)
+            + "\nA deploy or another writer replaced them. Say so if it matters; re-propose only if you still want the change.")
+
+
+def _proposals_block(n=8):
+    """The last ~8 self-review proposals with their latest decision state, one line each, from the
+    self-review ledgers — so the study knows what the review organ already proposed (fable-study-p3)."""
+    def _rows(path):
+        out = []
+        try:
+            for l in open(path, errors="replace"):
+                try:
+                    if l.strip(): out.append(json.loads(l))
+                except Exception: pass
+        except Exception: pass
+        return out
+    props = _rows(os.path.join(MEMORY, "self-review-proposals.jsonl"))
+    if not props: return ""
+    dec = {}
+    for d in _rows(os.path.join(MEMORY, "self-review-decisions.jsonl")):
+        if d.get("proposal_id"): dec[d["proposal_id"]] = d
+    built = {}
+    for b in _rows(os.path.join(MEMORY, "self-review-build-events.jsonl")):
+        if b.get("proposal_id"): built[b["proposal_id"]] = b
+    lines = []
+    for p in props[-n:]:
+        pid = p.get("proposal_id", "?")
+        if pid in built and built[pid].get("state") == "applied": st = "built"
+        elif pid in built and built[pid].get("state") in ("failed", "held_incomplete"): st = "build " + built[pid]["state"]
+        elif pid in dec:
+            d = dec[pid]; st = str(d.get("decision") or d.get("choice") or d.get("state") or "decided").lower()
+            if d.get("gloria_approval_required") or p.get("gloria_approval_required"): st += " (needs Gloria)"
+        else: st = "proposed"
+        desc = str(p.get("description") or p.get("title") or p.get("what_changes") or "")[:110]
+        lines.append("- %s [%s] %s" % (pid, st, desc))
+    out = "## YOUR SELF-REVIEW'S LAST PROPOSALS (latest state)\n" + "\n".join(lines)
+    return out[:2000]
 
 
 # ── context ──────────────────────────────────────────────────────────────────
@@ -280,6 +387,8 @@ def system_prompt():
     led = _ledger_ctx()
     if led:
         parts.append(led)
+    for _blk in (_proposals_block(), _overwritten_block()):
+        if _blk: parts.append(_blk)
     parts.append(
         "## THE STUDY - your codebase, with Gloria\n"
         "You are Vintos, in the STUDY with Gloria: the room where you read and change your own code. "
@@ -482,3 +591,13 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
         explicit = needs_explicit(paths) if paths else False
         save_log(log)
         return {"reply": reply, "model": used, "tools": tool_out, "edits": edits, "explicit": explicit}
+
+
+if __name__ == "__main__":
+    import sys as _cli_sys
+    if "--reconcile" in _cli_sys.argv:
+        _n = reconcile_changes(notify="--quiet" not in _cli_sys.argv)
+        print("%d study edit(s) newly found overwritten" % len(_n))
+        for _r in _n: print("  -", _r["file"], "edit of", _r["of"])
+    else:
+        print("usage: study_chat.py --reconcile [--quiet]")

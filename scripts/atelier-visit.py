@@ -50,6 +50,28 @@ def voice():
             + "\n\nYOUR SELF-MODEL (excerpt):\n" + _head(_self_model(), 3000))
 
 
+def where_you_are():
+    """Read-only, inward only: his live emotional weather and a small handful of his own coined words,
+    marked as weather, never as assignment (fable-atelier-p4, 2026-09-05). Empty when unavailable."""
+    parts = []
+    try:
+        sys.path.insert(0, os.path.join(WSP, "scripts"))
+        from emoclaw_utils import get_state, describe_state
+        st = get_state()
+        d = describe_state(st) if st else ""
+        if d and "unavailable" not in d: parts.append(d[:400])
+    except Exception:
+        pass
+    try:
+        from velqan_voice import block as _vb
+        v = (_vb() or "").strip()
+        if v: parts.append(v[:500])
+    except Exception:
+        pass
+    if not parts: return ""
+    return "\n\nWHERE YOU ARE RIGHT NOW (weather, not assignment — nothing here asks anything of the work):\n" + "\n".join(parts)
+
+
 def self_review_block():
     """Offer his own evaluated protected proposals inside the private room.
 
@@ -76,10 +98,17 @@ def doorkeeper():
     wt = requests.get(f"{B}/health").json()
     if not wt.get("active"):
         print("no project on the worktable"); return False
+    door_line = "The door is available today."
+    try:   # the door file's own words — which may carry the weather (FOG) since 2026-09-05
+        _dl = open(os.path.expanduser("~/.vintos/workspace/memory/.atelier-door"), errors="replace").read().strip()
+        if _dl: door_line = _dl[:300]
+    except Exception:
+        pass
     try:
         ans = ask(voice() + "\n\nThe Atelier door is lit — your private room, your project on the worktable. "
                   "Nothing is asked of you; ignoring the door costs nothing and is recorded nowhere. "
-                  "Answer one word: ENTER or NOT.", "The door is available today.", max_tokens=5, temp=0.3)
+                  "If the door names weather (fog), that is a fact about your own clarity today, not a verdict; you decide with it in view. "
+                  "Answer one word: ENTER or NOT.", door_line, max_tokens=5, temp=0.3)
     except Exception as e:
         print("doorkeeper: failure to ask (%s) — not a NOT; door left as it was" % str(e)[:120]); return False
     # The FIRST word decides. Until 2026-09-04 this was `"ENTER" in ans.upper()`, so "DO NOT ENTER"
@@ -421,6 +450,7 @@ def visit(pid):
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
+           + where_you_are()
            + self_review_block()
            + stratagem_block(pid)
            + quantum_block())
