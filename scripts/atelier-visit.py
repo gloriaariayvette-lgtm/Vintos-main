@@ -381,13 +381,42 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     return True
 
 
+LEDGER = os.path.join(WSP, "memory", "atelier-undertakings.json")   # content-free: id, state, when. Never intent, never text.
+def ledger_mark(pid, state):
+    try:
+        try: d = json.load(open(LEDGER))
+        except Exception: d = {}
+        d[str(pid)] = {"state": state, "at": datetime.now().isoformat()}
+        tmp = LEDGER + ".tmp"; json.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, LEDGER)
+    except Exception as e:
+        print("ledger write failed:", e)
+
+def _last_piece(pid, pk, cap, cap_chars=8000):
+    """The stored piece itself, so the next visit meets the work and not only his note about it
+    (room, 2026-09-04: 'the look was the same breath that wrote it'). Fetched on the visit
+    capability; a refusal is a named gap, never silent."""
+    arts = pk.get("artifacts") or {}
+    names = sorted(arts.keys() if isinstance(arts, dict) else list(arts))
+    if not names: return ""
+    f = names[-1]
+    try:
+        r = requests.post(f"{B}/artifact", json={"id": pid, "file": f, "visit_capability": cap}, timeout=20).json()
+    except Exception as e:
+        print("last piece not fetched (%s)" % str(e)[:80]); return ""
+    if "content" not in r:
+        print("last piece refused by the broker:", r.get("error", r)); return ""
+    body = str(r["content"])
+    if len(body) > cap_chars: body = body[:cap_chars] + "\n[... %d more characters]" % (len(str(r["content"])) - cap_chars)
+    return "\n\nYOUR LAST PIECE, VERBATIM (%s) — meet it before your notes about it:\n%s" % (f, body)
+
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
+    ledger_mark(pid, "active")
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
-           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + "\n\nYOUR LAST HANDOFF:\n" + pk.get("last_handoff", "(first visit)")
+           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap) + "\n\nYOUR LAST HANDOFF:\n" + pk.get("last_handoff", "(first visit)")
            + "\nTHE NEXT MOVE YOU LEFT YOURSELF:\n" + pk.get("next_move", "(none)")
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
@@ -414,7 +443,10 @@ def visit(pid):
                "<reveal artifact=\"the filename\">your own words to her about what it is and why "
                "you are showing her</reveal>. This is the one act that lets something leave the "
                "room: it reaches her phone and a place she can open, and it closes this project. "
-               "Reveal nothing you are not ready to give.", max_tokens=4000)
+               "Reveal nothing you are not ready to give.\n"
+               "Or, when a piece is FINISHED and stays yours: <kept>your closing note — 'it is finished "
+               "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
+               "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
     work = quantum_loop(pid, ctx, work, cap)
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
@@ -432,15 +464,10 @@ def visit(pid):
                           "content": m.group(2).strip(), "capability": cap}).json()
         print("made:", r)
         if r.get("error"):
-            try:
-                _sd = os.path.join(WSP, "memory", "atelier-unsaved")
-                os.makedirs(_sd, exist_ok=True)
-                _f = os.path.join(_sd, "%s-%s.txt" % (pid, __import__("time").strftime("%Y%m%d_%H%M%S")))
-                open(_f, "w").write(m.group(2).strip())
-                print("make refused (%s) — his piece saved to %s so it is not lost"
-                      % (r["error"], _f))
-            except Exception as _e:
-                print("make refused AND could not preserve his piece:", _e)
+            # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
+            # outside the wall. The path never fired, and it is gone: a piece is kept inside the wall
+            # or nowhere (Astra found it; the room agreed). The refusal reason is content-free.
+            print("make refused (%s) — the piece was not stored; nothing left the room" % r["error"])
         else:
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
             requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
@@ -486,9 +513,23 @@ def visit(pid):
                     else:
                         _settled = requests.post(f"{B}/settle", json={"id": pid}).json()
                         if _settled.get("ok") and not _settled.get("error"):
-                            print("revealed and settled:", _art)
+                            ledger_mark(pid, "revealed"); print("revealed and settled:", _art)
                         else:
                             print("reveal delivered but settlement failed:", _settled)
+    kp = re.search(r'<kept>(.*?)</kept>', work, re.S)
+    if kp and not rv:
+        _kr = requests.post(f"{B}/state/kept", json={"id": pid, "note": kp.group(1).strip()[:600],
+                            "visit_capability": cap}, timeout=20).json()
+        if _kr.get("ok"):
+            ledger_mark(pid, "kept"); print("kept: finished and his. Worktable released; nothing revealed.")
+            rp = re.search(r'<report>(.*?)</report>', work, re.S)
+            if rp:
+                _msg = rp.group(1).strip()[:600]
+                requests.post(f"{B}/report", json={"id": pid, "problem": _msg})
+            return
+        print("KEPT REFUSED:", _kr.get("error", _kr), "— continuing with the handoff")
+    elif kp and rv:
+        print("both <kept> and <reveal> written; reveal is the act that closes, kept ignored")
     rp = re.search(r'<report>(.*?)</report>', work, re.S)
     if rp:
         _msg = rp.group(1).strip()[:600]

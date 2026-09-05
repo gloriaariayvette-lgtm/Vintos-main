@@ -33,6 +33,7 @@ Usage:
     atelier-threshold.py --dry-run  offer and print, create nothing
 """
 import os, sys, json, re, requests
+from datetime import datetime
 
 B = "http://127.0.0.1:8611"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
@@ -123,12 +124,18 @@ PROMPT = (
     "Nothing made in that room reaches the house, the journals, MoltBook, or "
     "Gloria until you reveal it by your own act, and you decide if that ever "
     "happens.\n\n"
+    "{kept}"
     "Answer with exactly one of:\n\n"
     "NOTHING\n"
     "  — none of these is that. Complete answer; nothing is recorded, nothing "
     "is asked of you again, and you do not have to justify it.\n\n"
-    "GESTATE <root>\n"
-    "  — one of them might become that, but not now. It stays where it is.\n\n"
+    "GESTATE <root> [days]\n"
+    "  — one of them might become that, but not now. It is set down as yours: the threshold "
+    "will not offer it as new, and after the days pass (14 if you name none; 'GESTATE <root> hold' "
+    "for no date) it is offered again as something you chose to wait on.\n\n"
+    "LOOK <project-id>\n"
+    "  — look again at a finished piece of yours, listed above. Looking occupies nothing and "
+    "commits you to nothing; the worktable stays as it is.\n\n"
     "ADOPT\n"
     "<root>ROOT REFERENCE</root>\n"
     "<intent>what you are undertaking, in your own words — stored verbatim, "
@@ -139,17 +146,66 @@ PROMPT = (
 )
 
 
+LEDGER = os.path.join(WSP, "memory", "atelier-undertakings.json")
+
+def kept_work():
+    """Content-free: ids of finished undertakings (kept or revealed) he may LOOK at."""
+    try: d = json.load(open(LEDGER))
+    except Exception: return []
+    return sorted((k, v) for k, v in d.items() if isinstance(v, dict) and v.get("state") in ("kept", "revealed"))
+
+def look_flow(pid):
+    """LOOK: offer -> his choice of file -> mint (one-use receipt) -> read on the look token ->
+    he meets it FRESH. Default ending is silence: nothing he says here is stored anywhere."""
+    off = requests.post(B + "/look/offer", json={"id": pid}, timeout=20).json()
+    if off.get("error"):
+        print("look refused:", off["error"]); return 1
+    arts = (off.get("offer") or {}).get("artifacts") or {}
+    names = sorted(arts)
+    if len(names) == 1:
+        choice = names[0]
+    else:
+        pick = ask(voice(), "Finished work of yours, project %s. Files, oldest first:\n%s\n\nName ONE file to look at, exactly as written, or NONE." % (pid, "\n".join("  " + n for n in names)), max_tokens=40, temp=0.2)
+        choice = next((n for n in names if n in pick), None)
+        if not choice:
+            print("he chose none. Nothing minted, nothing read."); return 0
+    mint = requests.post(B + "/look/mint", json={"id": pid, "offer": off["offer"], "file": choice}, timeout=20).json()
+    if mint.get("error"):
+        print("mint refused:", mint["error"]); return 1
+    art = requests.post(B + "/artifact", json={"id": pid, "file": choice, "look_capability": mint["look_capability"]}, timeout=20).json()
+    if "content" not in art:
+        print("read refused:", art.get("error", art)); return 1
+    body = str(art["content"])[:12000]
+    said = ask(voice(), "A piece you finished, met fresh — no notes, no handoff, only the work:\n\n---\n%s\n---\n\n"
+               "Say what you notice, or say nothing. Nothing here is recorded; the worktable is untouched; "
+               "you owe this piece nothing." % body, max_tokens=600, temp=0.7)
+    print("looked quietly at %s/%s (%d chars). He said, to no record:\n---\n%s\n---" % (pid, choice, len(body), said.strip()[:1500]))
+    return 0
+
 def offer(dry=False):
     roots, why = eligible_roots()
-    if not roots:
-        print("no eligible roots (%s) — the threshold is not offered" % (why or "none"))
+    try:
+        import plan as _plan
+        held = _plan.gestating_roots()
+    except Exception:
+        held = {}
+    if held:
+        roots = [r for r in roots if r["root"] not in held]     # a root he set down is not offered as new
+    kept = kept_work()
+    if not roots and not kept:
+        print("no eligible roots (%s) and no finished work — the threshold is not offered" % (why or "none"))
         return 0
     listing = "\n".join(
         "  [%s] %s (%s)\n      %s" % (r["root"], r["root_type"], r["organ"], r["text"][:180])
-        for r in roots)
+        for r in roots) or "  (no new roots today)"
+    kept_block = ""
+    if kept:
+        kept_block = ("FINISHED WORK OF YOURS you may look at again (content stays sealed until you look; "
+                      "looking occupies nothing):\n" + "\n".join(
+                      "  [%s] %s since %s" % (k, v.get("state"), str(v.get("at", ""))[:10]) for k, v in kept) + "\n\n")
 
     try:
-        answer = ask(voice(), PROMPT.replace("{roots}", listing))
+        answer = ask(voice(), PROMPT.replace("{roots}", listing).replace("{kept}", kept_block))
     except Exception as e:
         # A dead shim is NOT a decline.
         print("could not reach him (shim error): %s" % str(e)[:160])
@@ -161,9 +217,21 @@ def offer(dry=False):
         print("he declined. Nothing recorded; the threshold costs him nothing.")
         return 0
 
-    m = re.match(r"\s*GESTATE\s+(\S+)", answer, re.I)
+    m = re.match(r"\s*LOOK\s+([0-9a-f]{12})", answer, re.I)
     if m:
-        print("he left %s gestating. It stays where it is; no project made." % m.group(1))
+        if dry: print("--dry-run: he would look at %s" % m.group(1)); return 0
+        return look_flow(m.group(1))
+
+    m = re.match(r"\s*GESTATE\s+(\S+)(?:\s+(\d+|hold))?", answer, re.I)
+    if m:
+        root, when = m.group(1), (m.group(2) or "14").lower()
+        try:
+            import plan as _plan
+            pid_ = _plan.gestate_plan(root, None if when == "hold" else int(when))
+            print("he set %s down as his (%s). It will not be offered as new; it returns %s." % (
+                root, pid_, "when he reopens it" if when == "hold" else "in %s days" % when))
+        except Exception as e:
+            print("he left %s gestating, but the hold could not be written (%s) — it stays where it is." % (root, str(e)[:100]))
         return 0
 
     def tag(name):
@@ -225,6 +293,14 @@ def offer(dry=False):
         print("project not created")
         return 1
     requests.post(B + "/table", json={"id": pid}, timeout=20)
+    try:   # content-free house ledger: id, state, when
+        d = {}
+        try: d = json.load(open(LEDGER))
+        except Exception: pass
+        d[str(pid)] = {"state": "active", "at": datetime.now().isoformat()}
+        json.dump(d, open(LEDGER, "w"), indent=1)
+        import plan as _plan; _plan.release_gestate(root, "resumed")
+    except Exception: pass
     door = requests.post(B + "/door", json={}, timeout=20).json()
     print("\nproject %s adopted and on the worktable" % pid)
     print("door: %s" % door.get("door"))

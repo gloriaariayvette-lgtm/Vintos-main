@@ -86,6 +86,41 @@ def self_plan(text, outcome, window_days=7):
     return _create("self", text, outcome, window_days)
 
 
+# ---- gestate: "not now" as an act, not NOTHING with manners (room, 2026-09-04) ----
+# A held root. due = date | manual (far future). Never 'unmet'; never surfaced by block();
+# the threshold excludes it while held and offers it again, as his, when due.
+MANUAL_DUE = "9999-12-31T00:00:00"
+
+def gestate_plan(root, days=None):
+    rows = load()
+    for p in rows:
+        if p["kind"] == "gestate" and p["state"] in OPEN and p.get("root") == root:
+            # extending replaces the condition and keeps the hold (Astra: extension never terminates)
+            p["due"] = (datetime.now() + timedelta(days=int(days))).isoformat() if days else MANUAL_DUE
+            p["history"].append({"at": _now(), "event": "extended", "detail": ("%sd" % days) if days else "manual"})
+            save(rows); log("%s gestate extended: %s" % (p["plan_id"], root)); return p["plan_id"]
+    pid = "PL-" + uuid.uuid4().hex[:6]
+    rows.append({"plan_id": pid, "kind": "gestate", "state": "open", "root": root,
+                 "text": "held: %s" % root, "outcome_condition": "he reopens it, or the date arrives",
+                 "her_quote": None, "created": _now(),
+                 "due": (datetime.now() + timedelta(days=int(days))).isoformat() if days else MANUAL_DUE,
+                 "evidence": None, "history": [{"at": _now(), "event": "opened", "detail": "gestate"}]})
+    save(rows); log("%s gestate: %s (%s)" % (pid, root, ("%sd" % days) if days else "manual")); return pid
+
+def gestating_roots():
+    """{root: plan} for roots still held (due not yet reached). Due ones are eligible again."""
+    now = _now()
+    return {p["root"]: p for p in load() if p["kind"] == "gestate" and p["state"] in OPEN and p["due"] > now}
+
+def release_gestate(root, how="resumed"):
+    rows = load()
+    for p in rows:
+        if p["kind"] == "gestate" and p["state"] in OPEN and p.get("root") == root:
+            p["state"] = how; p["history"].append({"at": _now(), "event": how, "detail": ""})
+            save(rows); return True
+    return False
+
+
 def mutual_plan(text, outcome, her_quote, window_days=7):
     return _create("mutual", text, outcome, window_days, her_quote)
 
@@ -114,6 +149,8 @@ def due(judge=None):
     for p in rows:
         if p["state"] not in OPEN or p["due"] > now:
             continue
+        if p["kind"] == "gestate":
+            continue          # a held root has no 'unmet'; when due it is simply eligible again
         if p["kind"] == "self":
             p["state"] = "unmet"
             p["history"].append({"at": now, "event": "unmet",
@@ -133,7 +170,7 @@ def due(judge=None):
 
 
 def open_plans():
-    return [p for p in load() if p["state"] in OPEN]
+    return [p for p in load() if p["state"] in OPEN and p["kind"] != "gestate"]   # holds are not obligations
 
 
 def block():
