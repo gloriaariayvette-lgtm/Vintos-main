@@ -116,6 +116,14 @@ def mark_moments_used(moments):
         json.dump(d, open(os.path.join(MEMORY, "humor-moments.json"), "w"), indent=2)
     except: pass
 
+
+def _atomic_json(path, obj):
+    """Write-then-replace: a reader never sees a half-written store and a crash leaves the old one
+    intact (astra-creative-p4, 2026-09-05)."""
+    _tmp = path + ".tmp.%d" % os.getpid()
+    with open(_tmp, "w") as _f: json.dump(obj, _f, indent=2)
+    os.replace(_tmp, path)
+
 def load_drafts():
     try:
         with open(DRAFTS_FILE) as f:
@@ -124,8 +132,7 @@ def load_drafts():
         return {"drafts": [], "reviewed": []}
 
 def save_drafts(data):
-    with open(DRAFTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    _atomic_json(DRAFTS_FILE, data)
 
 def _load_editorial():
     try:
@@ -142,8 +149,7 @@ def load_profile():
         return {"style_notes": [], "landed": [], "flopped": [], "signature_moves": []}
 
 def save_profile(data):
-    with open(PROFILE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    _atomic_json(PROFILE_FILE, data)
 
 def gather_material():
     """Pull witness-eligible life material without privileging embarrassment."""

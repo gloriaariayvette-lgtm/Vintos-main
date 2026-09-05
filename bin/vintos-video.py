@@ -38,6 +38,14 @@ def paint_keyframe(text):
 MAX_SECONDS = 110   # his call, up to just under two minutes.
 GROK_MAX = 15       # x.ai's own limit; wan through Atlas takes the longer ones
 
+
+def _atomic_json(path, obj):
+    """Write-then-replace: a reader never sees a half-written store and a crash leaves the old one
+    intact (astra-creative-p4, 2026-09-05)."""
+    _tmp = path + ".tmp.%d" % os.getpid()
+    with open(_tmp, "w") as _f: json.dump(obj, _f, indent=2)
+    os.replace(_tmp, path)
+
 def _atlas():
     """Borrow his existing Atlas routing rather than reimplementing it."""
     import importlib.util as _u
@@ -148,7 +156,7 @@ def process_queue():
                 continue
             _kept.append(x)
         if _changed:
-            try: json.dump(_kept, open(QUEUE, "w"), indent=2)
+            try: _atomic_json(QUEUE, _kept)
             except Exception: pass
         q = [x for x in _kept if not (isinstance(x, dict) and x.get("blocked"))]
     except Exception:
@@ -165,7 +173,7 @@ def process_queue():
     # drain on success; rotate a failure to the back so it can't jam the queue
     q = q[1:] if ok else (q[1:] + [q[0]])
     try:
-        json.dump(q, open(QUEUE, "w"), indent=2)
+        _atomic_json(QUEUE, q)
     except Exception:
         pass
 

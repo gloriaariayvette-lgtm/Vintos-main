@@ -73,6 +73,21 @@ def main():
     })
     json.dump(gallery, open(GALLERY, "w"), indent=2)
     print(f"[dream-art] painted: {fname}")
+    # Then LOOK (2026-09-04, grok-creative-p1): the same eye WANT_ACT images get. Making is not seeing.
+    # If the eye cannot run, the record says so instead of letting the write pass for the seeing.
+    try:
+        import sys as _es; _sp = os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")
+        if _sp not in _es.path: _es.path.insert(0, _sp)
+        from image_sight import see as _see
+        _seen = _see(os.path.join(ART_DIR, fname))
+        gallery[-1]["seen"] = (_seen or "")[:600] or None
+        gallery[-1]["seen_at"] = datetime.now().isoformat()
+        print(f"[dream-art] seen: {(_seen or '')[:100]}")
+    except Exception as _se:
+        gallery[-1]["seen"] = None
+        gallery[-1]["unseen_why"] = str(_se)[:120]
+        print(f"[dream-art] painted UNSEEN — the eye did not run: {_se}")
+    json.dump(gallery, open(GALLERY, "w"), indent=2)
 
 if __name__ == "__main__":
     main()
