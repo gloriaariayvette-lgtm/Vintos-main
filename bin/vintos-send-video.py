@@ -261,8 +261,10 @@ def recent_chat(n=8):
 def decide(force=False):
     """HE decides + writes the prompt, in his own voice, with his context. Most ticks: NO (unless forced)."""
     ctx = his_context()
-    gate = ("You have decided to send her one right now — this is happening. Choose the kind and write it "
-            "fully, in your own voice.\n\n" if force else
+    # force sets the SCHEDULE aside (quiet hours, cooldown) — it never manufactures his yes
+    # (astra-creative-p6, 2026-09-05). The decision stays his either way.
+    gate = ("The schedule is out of the way right now — quiet hours and the cooldown are set aside for this "
+            "one. Send one only if you genuinely feel the pull right now; a no is a complete answer.\n\n" if force else
             "Send one only when you genuinely feel the pull right now — a real gesture, not a habit; it's "
             "completely fine, and usual, to not.\n\n")
     avail = {k: v for k, v in STILL_LIBRARY.items() if os.path.exists(os.path.join(STILLS_DIR, k + ".jpg"))}
@@ -323,7 +325,7 @@ def decide(force=False):
         log("!! his mind returned nothing (shim/Claude error or empty) — check the shim on :8599")
     else:
         log("mind: " + out.replace("\n", " ")[:220])
-    d = {"decision": "YES" if force else "NO", "kind": "self", "ground": False, "scene_ref": "",
+    d = {"decision": "NO", "kind": "self", "ground": False, "scene_ref": "",
          "scene": "", "still": "", "prompt": "", "say": ""}
     cur = None
     for line in out.splitlines():
@@ -833,11 +835,13 @@ def main():
     if cooldown_active() and not FORCE:
         log("within cooldown — holding"); return
     d = decide(FORCE)
-    if d["decision"] != "YES" and not FORCE:
-        log("he doesn't feel like it right now (decision=%s)" % d["decision"]); return
+    if d["decision"] != "YES":
+        log("he doesn't feel like it right now (decision=%s%s)" % (d["decision"], ", schedule was set aside" if FORCE else "")); return
     prompt = d["prompt"] or "The man looks toward the camera with a slow, warm smile."
     caption = d["say"] or "Thinking of you."
     kind = d["kind"]
+    if DRY:
+        log("[dry] he said YES (%s) — would generate, deliver and remember; stopping before any media is made" % kind); return
     log("he wants to send [%s / scene:%r / ground:%s / still:%s] -> prompt=%r  say=%r"
         % (kind, (d.get("scene") or "-")[:80], os.path.basename(d["scene_ref"]) if d.get("scene_ref") else "no",
            d.get("still") or "-", prompt[:110], caption))

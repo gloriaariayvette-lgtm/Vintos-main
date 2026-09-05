@@ -43,10 +43,16 @@ def record(question, pull=0.6, source="chat", object=None, kind=None, reason=Non
     _save(d)
 
 def _decay(d):
+    """Decay applies once per elapsed hour, from last_decayed_at — not from last_seen on every read.
+    Until 2026-09-05 each block() call re-applied the whole interval since the item was last offered,
+    so a question read often decayed many times over (astra-curiosity-p1)."""
     now = time.time()
     for x in d:
-        age_h = max(0, (now - x.get("last_seen", now)) / 3600.0)
-        x["pull"] = round(x.get("pull", 0) * (0.97 ** age_h), 3)
+        since = x.get("last_decayed_at") or x.get("last_seen") or x.get("created") or now
+        age_h = max(0, (now - since) / 3600.0)
+        if age_h >= 0.25:
+            x["pull"] = round(x.get("pull", 0) * (0.97 ** age_h), 3)
+            x["last_decayed_at"] = now
     keep = []
     for x in d:
         if x["pull"] <= 0.15:

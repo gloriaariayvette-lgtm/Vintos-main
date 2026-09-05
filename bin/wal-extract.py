@@ -199,6 +199,13 @@ def _main(envelope=None):
         for _e in log_data["entries"]:
             if _e.get("promoted") or _e.get("type") != item.get("type", "fact"): continue
             if _dl.SequenceMatcher(None, _c.lower(), _e.get("content", "").lower()).ratio() > 0.82:
+                # similarity NOMINATES a duplicate; a flipped negation vetoes the merge — "she likes X"
+                # and "she does not like X" are a contradiction to keep, not one fact recurring
+                # (astra-memoryrec-p4, 2026-09-05)
+                _neg = lambda t: bool(re.search(r"\b(not|never|no longer|n't|doesn't|don't|isn't|won't|didn't|hates?)\b", t.lower()))
+                if _neg(_c) != _neg(_e.get("content", "")):
+                    print(f"[WAL] near-duplicate with flipped polarity kept separate: {_c[:60]}")
+                    continue
                 _dup = _e; break
         if _dup is not None:
             _dup["recurrence"] = _dup.get("recurrence", 0) + 1

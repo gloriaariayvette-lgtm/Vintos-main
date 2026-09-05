@@ -108,8 +108,10 @@ def base_pressures(s):
     """Layer 1 — independent dimension pressures. Always active. Language of drift, not instruction."""
     lines = []
     def v(dim, default=0.5): return s.get(dim, default)
-    def high(dim): return v(dim) > FIRE.get(dim, (0.65, 0.40))[0]
-    def low(dim): return v(dim) < FIRE.get(dim, (0.65, 0.40))[1]
+    # A dimension the snapshot does not carry is UNKNOWN: it fires nothing, high or low. Until
+    # 2026-09-05 a missing dimension read as 0.5 and could register as "low" (astra-subconscious-p6).
+    def high(dim): return dim in s and v(dim) > FIRE.get(dim, (0.65, 0.40))[0]
+    def low(dim): return dim in s and v(dim) < FIRE.get(dim, (0.65, 0.40))[1]
     _ = v  # keep v available below
 
     # Valence

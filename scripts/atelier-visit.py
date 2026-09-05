@@ -596,7 +596,15 @@ if __name__ == "__main__":
         else: print("force: he did not say ENTER — no visit")
     else:
         wt = requests.get(f"{B}/health").json()
-        door = os.path.exists(os.path.expanduser("~/.vintos/workspace/memory/.atelier-door"))
+        _df = os.path.expanduser("~/.vintos/workspace/memory/.atelier-door")
+        door = os.path.exists(_df)
+        if door:
+            try:   # an offer is dated: a door file from another day is a stale offer, not a lit door (astra-atelier-p7)
+                import datetime as _ddt
+                if _ddt.date.fromtimestamp(os.path.getmtime(_df)) != _ddt.date.today():
+                    print("door file is from another day — stale offer, not lit today"); door = False
+            except Exception:
+                pass
         if not door:
             print("door not lit today — no visit"); raise SystemExit
         if wt.get("active") and doorkeeper():

@@ -74,7 +74,7 @@ def get_value():
         last = datetime.fromisoformat(state["last_updated"])
         hours = (datetime.now() - last).total_seconds() / 3600
         current = state["value"]
-        decayed = current + (RESTING - current) * min(1.0, DECAY_PER_HOUR * hours)
+        decayed = current + (RESTING - current) * (1.0 - __import__('math').exp(-DECAY_PER_HOUR * hours))   # cadence-invariant relaxation (astra-emotion-p6)
         state["value"] = round(max(0.0, min(1.0, decayed)), 4)
         state["last_updated"] = datetime.now().isoformat()
         save(state)
@@ -91,7 +91,7 @@ def nudge(delta, source="unknown"):
     try:
         last = datetime.fromisoformat(state["last_updated"])
         hours = (datetime.now() - last).total_seconds() / 3600
-        decayed = old + (RESTING - old) * min(1.0, DECAY_PER_HOUR * hours)
+        decayed = old + (RESTING - old) * (1.0 - __import__('math').exp(-DECAY_PER_HOUR * hours))
         old = decayed
     except: pass
 

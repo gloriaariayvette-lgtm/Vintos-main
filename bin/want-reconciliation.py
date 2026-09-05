@@ -94,7 +94,11 @@ def main():
         log("No evidence corpus — skipping."); return
     log(f"{len(active)} active want(s); checking up to {MAX_CHECKS}.")
     fulfilled_now = []
+    # Least-recently-checked first, so persistent early rows do not monopolize every run
+    # (astra-wants-p3, 2026-09-05); each checked want is stamped.
+    active.sort(key=lambda w: str(w.get("reconcile_checked_at", "")))
     for w in active[:MAX_CHECKS]:
+        w["reconcile_checked_at"] = datetime.now().isoformat()
         res = gemma_check(w.get("want", ""), evidence)
         if res:
             # A make-want is proven by a file, not by Gemma reading his words. If
@@ -139,6 +143,8 @@ def main():
             except Exception as _fe:
                 log(f"  feel skipped: {_fe}")
     if not fulfilled_now:
+        try: json.dump(wants, open(wants_path, "w"), indent=2)   # the checked-at stamps persist even when nothing fulfilled
+        except Exception as _se: log(f"stamp save skipped: {_se}")
         log("Nothing newly fulfilled."); return
     ids = {w.get("id") for w in fulfilled_now}
     store = load(os.path.join(MEMORY, "fulfilled-wants.json"), [])

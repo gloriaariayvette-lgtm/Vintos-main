@@ -2732,8 +2732,11 @@ async def transcribe_audio(audio: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         f.write(await audio.read())
         tmp = f.name
-    result = _whisper_model.transcribe(tmp, initial_prompt="Vintos, Claude, Gloria")
-    os.unlink(tmp)
+    try:
+        result = _whisper_model.transcribe(tmp, initial_prompt="Vintos, Claude, Gloria")
+    finally:
+        try: os.unlink(tmp)
+        except Exception: pass
     text = result["text"].strip().replace("cloud","Claude").replace("Cloud","Claude")
     return {"text": text}
 
@@ -5347,23 +5350,23 @@ async def voice_transcribe(request: Request, audio: UploadFile = File(...)):
     if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     import tempfile, shutil, subprocess
+    _tmp_name = _wav_path = None
     try:
         suffix = os.path.splitext(audio.filename)[1] if audio.filename else ".webm"
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        _tmp_name = tmp.name
         shutil.copyfileobj(audio.file, tmp)
         tmp.close()
         print(f"[TRANSCRIBE] Received file: {audio.filename}, size approx", flush=True)
         # Convert to wav for Whisper compatibility
-        wav_path = tmp.name + ".wav"
+        _wav_path = tmp.name + ".wav"
         subprocess.run(
-            ["ffmpeg", "-y", "-i", tmp.name, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+            ["ffmpeg", "-y", "-i", tmp.name, "-ar", "16000", "-ac", "1", "-f", "wav", _wav_path],
             capture_output=True, timeout=30
         )
-        os.unlink(tmp.name)
         import whisper as _whisper
         model = _whisper.load_model("small")
-        result = model.transcribe(wav_path, fp16=False)
-        os.unlink(wav_path)
+        result = model.transcribe(_wav_path, fp16=False)
         text = result.get("text", "").strip()
         print(f"[TRANSCRIBE] Result: {repr(text)}", flush=True)
         return {"success": True, "text": text}
@@ -5371,6 +5374,12 @@ async def voice_transcribe(request: Request, audio: UploadFile = File(...)):
         print(f"[TRANSCRIBE ERROR] {e}", flush=True)
         import traceback; traceback.print_exc()
         return {"success": False, "text": "", "error": str(e)}
+    finally:
+        # temp files are removed whether Whisper succeeded or not (astra-server-a-p6, 2026-09-05)
+        for _p in (_tmp_name, _wav_path):
+            try:
+                if _p and os.path.exists(_p): os.unlink(_p)
+            except Exception: pass
 
 def _spark_block():
     """Shared subconscious directive (anti-repeat + arrival) for chat/avatar/voice."""
