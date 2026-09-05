@@ -40,6 +40,7 @@ echo "[SelfModel] evidence: $(echo "$EVIDENCE_STATUS" | tr -d '\n' | cut -c1-300
 # --- Get current self-model ---
 CURRENT_MODEL=""
 [ -f "$MODEL_FILE" ] && CURRENT_MODEL=$(cat "$MODEL_FILE")
+MODEL_MTIME_AT_READ=$(stat -c %Y "$MODEL_FILE" 2>/dev/null || echo "")
 
 # --- Get emotional state ---
 EMO_STATE=""
@@ -430,7 +431,14 @@ print(text)
     echo "## $TODAY"
     echo ""
     echo "$CONTENT"
-} > "$MODEL_FILE"
+} > "$MODEL_FILE.tmp.$$"
+# durable commit (astra-models-p8): the new model lands whole or not at all; a concurrent edit to the
+# file since we read it is preserved as a sibling rather than silently overwritten
+if [ -f "$MODEL_FILE" ] && [ -n "$MODEL_MTIME_AT_READ" ] && [ "$(stat -c %Y "$MODEL_FILE" 2>/dev/null)" != "$MODEL_MTIME_AT_READ" ]; then
+    cp "$MODEL_FILE" "$MODEL_FILE.edited-during-generation.$(date +%Y%m%d-%H%M%S)"
+    echo "[SelfModel] SELF-MODEL.md changed while this entry was being written - the concurrent version is kept beside it"
+fi
+mv -f "$MODEL_FILE.tmp.$$" "$MODEL_FILE"
 date +%s > "$COOLDOWN_FILE"
 # the evidence watermark advances only now, after a successful write; corrections applied this week
 # become explicit records the readers can retrieve (astra-models-p1 / p3)

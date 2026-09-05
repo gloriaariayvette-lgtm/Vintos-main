@@ -12,7 +12,7 @@ before-image.  Any failure leaves the live body unchanged and is recorded.
 The builder's successful event is a past-tense architectural observation.  It
 may feed Reciprocal Modification; it is never itself an identity verdict.
 """
-import json
+import json, hashlib
 import os
 import re
 import shutil
@@ -185,7 +185,21 @@ def _source_block(files):
     return "\n\n".join(parts)
 
 
+def _sandbox_env(build_dir):
+    """Regression runs get no credentials, a disposable HOME, and no live tree on the import path
+    (astra-study-p3, 2026-09-05). Network is not blocked at the OS level from here; what can be
+    stripped is stripped, and the record says so."""
+    env = {k: v for k, v in os.environ.items()
+           if not re.search(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API)", k, re.I)}
+    home = os.path.join(build_dir, "sandbox-home"); os.makedirs(home, exist_ok=True)
+    env["HOME"] = home
+    env["PYTHONPYCACHEPREFIX"] = os.path.join(build_dir, "pycache")
+    env["PYTHONPATH"] = os.path.join(build_dir, "stage", "scripts")
+    env["VINTOS_SANDBOX"] = "1"
+    return env
+
 def _stage(p, patch, files, build_dir):
+    checks = []   # every check actually executed, with its result (astra-study-p6)
     stage = os.path.join(build_dir, "stage")
     before = os.path.join(build_dir, "before")
     os.makedirs(stage, exist_ok=True); os.makedirs(before, exist_ok=True)
@@ -207,8 +221,8 @@ def _stage(p, patch, files, build_dir):
         if not os.path.exists(staged): raise RuntimeError("deletion refused: " + rel)
         if rel.endswith(".py"):
             c = subprocess.run([sys.executable, "-m", "py_compile", staged],
-                               capture_output=True, text=True, timeout=60,
-                               env={**os.environ, "PYTHONPYCACHEPREFIX": os.path.join(build_dir, "pycache")})
+                               capture_output=True, text=True, timeout=60, env=_sandbox_env(build_dir))
+            checks.append({"check": "py_compile", "file": rel, "ok": c.returncode == 0, "sha": hashlib.sha256(open(staged, "rb").read()).hexdigest()[:16]})
             if c.returncode: raise RuntimeError("syntax check failed for %s: %s" % (rel, c.stderr[-1000:]))
     # Recursive reviewer changes must arrive with their own executable test.
     if "scripts/self_review.py" in files or "scripts/self_review_builder.py" in files:
@@ -216,10 +230,10 @@ def _stage(p, patch, files, build_dir):
         if not tests: raise RuntimeError("reviewer may revise itself, but only with a self-review regression test")
         for rel in tests:
             t = subprocess.run([sys.executable, os.path.join(stage, rel)], cwd=stage,
-                               capture_output=True, text=True, timeout=180,
-                               env={**os.environ, "PYTHONPYCACHEPREFIX": os.path.join(build_dir, "pycache")})
+                               capture_output=True, text=True, timeout=180, env=_sandbox_env(build_dir))
+            checks.append({"check": "regression", "file": rel, "ok": t.returncode == 0, "sandbox": "no credentials, disposable HOME, stage-only import path; network not blocked"})
             if t.returncode: raise RuntimeError("self-review regression failed: " + (t.stderr or t.stdout)[-1500:])
-    return stage, before
+    return stage, before, checks
 
 
 def _install(stage, before, files):
@@ -283,12 +297,15 @@ def build(proposal_id):
         _live = [_live_path(x) for x in paths]
         if len(set(_live)) != len(_live):   # aliases: two logical names, one live file (astra-study-p2, 2026-09-05)
             raise PermissionError("two declared files resolve to one live destination: " + ", ".join(sorted(set(x for x in _live if _live.count(x) > 1))))
-        stage, before = _stage(p, patch, paths, build_dir)
+        stage, before, _checks = _stage(p, patch, paths, build_dir)
         _install(stage, before, paths)
         rec = {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(),
                "state": "applied", "decision_id": d.get("decision_id"), "files": paths,
                "backup": before, "patch_sha256": __import__("hashlib").sha256(patch.encode()).hexdigest(),
-               "tests": "syntax_checked" + (" + self_review_regression" if any("test_self_review" in x for x in paths) else "")}
+               "tests": "syntax_checked" + (" + self_review_regression" if any("test_self_review" in x for x in paths) else ""),
+               "checks": _checks,                       # what was actually executed, file by file (astra-study-p6)
+               "evidence": {"installed_on_disk": True, "behavior_verified": bool([c for c in _checks if c["check"] == "regression"]),
+                            "runtime_activated": "unknown until the owning service restarts or reimports"}}
         append(BUILDS, rec)
         append(CHANGES, {"change_id": "SRCG-" + uuid.uuid4().hex[:10], "at": rec["at"],
                          "proposal_id": proposal_id, "build_id": build_id,

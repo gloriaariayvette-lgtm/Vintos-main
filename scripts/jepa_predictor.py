@@ -63,8 +63,25 @@ def encoder():
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer(EMB_MODEL, trust_remote_code=True)
 
+def _rid(e):  # must match presence_audit.py's rid()
+    return hashlib.md5((str(e.get("timestamp","")) + str(e.get("content",""))[:40]).encode()).hexdigest()[:10]
+
+VALID_ROLES = ("user", "assistant")
+
 def turns_of(hist):
-    return [e for e in hist if isinstance(e, dict) and e.get("content")]
+    """Chat-history turns with a stable event identity. Unknown roles are rejected, not guessed
+    (astra-models-p7, 2026-09-05)."""
+    out = []
+    for e in hist:
+        if not isinstance(e, dict) or not e.get("content"): continue
+        if e.get("role") not in VALID_ROLES:
+            continue
+        t = dict(e)
+        t.setdefault("source", "chat"); t.setdefault("surface", e.get("surface", "chat"))
+        t["event_id"] = e.get("event_id") or _rid(e)
+        t["speaker"] = "gloria" if e.get("role") == "user" else "vintos"
+        out.append(t)
+    return out
 
 LEDGER_FLOOR_FILE = os.path.join(MEMORY, "jepa-ledger-floor.txt")   # optional ISO timestamp: ledger entries before it are not us
 
@@ -96,8 +113,11 @@ def _ledger_turns():
                 dropped += 1; continue
             if floor and ts and ts < floor:
                 dropped += 1; continue
-            if g and g != "--source": out.append({"role": "user", "content": g, "timestamp": ts, "source": "ledger:" + src})
-            if v and v != "voice":    out.append({"role": "assistant", "content": v, "timestamp": ts, "source": "ledger:" + src})
+            _sf = str(e.get("surface") or "ledger")
+            if g and g != "--source": out.append({"role": "user", "content": g, "timestamp": ts, "source": "ledger:" + src, "surface": _sf,
+                                                   "speaker": "gloria", "event_id": _rid({"timestamp": ts, "content": g}), "turn_id": e.get("turn_id", "")})
+            if v and v != "voice":    out.append({"role": "assistant", "content": v, "timestamp": ts, "source": "ledger:" + src, "surface": _sf,
+                                                   "speaker": "vintos", "event_id": _rid({"timestamp": ts, "content": v}), "turn_id": e.get("turn_id", "")})
     if dropped:
         log(f"ledger: {dropped} transplanted/pre-floor entries kept out of training")
     return out
@@ -107,10 +127,14 @@ def training_turns():
     carries `source` ('chat' or 'ledger:<origin>') so train() can report what the gloria head
     actually learned from (fable-models-p5)."""
     chat = turns_of(load(CHAT, []))
-    for t in chat:
-        if isinstance(t, dict): t.setdefault("source", "chat")
-    seen = {str(t.get("content", ""))[:80] for t in chat}
-    merged = chat + [t for t in _ledger_turns() if str(t.get("content", ""))[:80] not in seen]
+    # dedupe by stable event identity (timestamp + content head), with the content head alone as the
+    # documented fallback for entries that carry no timestamp (astra-models-p7)
+    seen = {t["event_id"] for t in chat} | {str(t.get("content", ""))[:80] for t in chat if not t.get("timestamp")}
+    merged = list(chat)
+    for t in _ledger_turns():
+        key = t["event_id"] if t.get("timestamp") else str(t.get("content", ""))[:80]
+        if key in seen or str(t.get("content", ""))[:80] in seen: continue
+        seen.add(key); merged.append(t)
     merged.sort(key=lambda t: str(t.get("timestamp", "")))
     return merged
 
@@ -124,16 +148,26 @@ def training_sources(turns):
     total = sum(counts.values()) or 1
     return {"gloria_turns": total, "by_source": {k: {"n": n, "share": round(n / total, 3)} for k, n in sorted(counts.items())}}
 
-def _rid(e):  # must match presence_audit.py's rid()
-    return hashlib.md5((str(e.get("timestamp","")) + str(e.get("content",""))[:40]).encode()).hexdigest()[:10]
 
 def build_pairs(turns, enc):
     import numpy as np
     ctx_txt, tgt_txt, head = [], [], []
     for i in range(CTX_TURNS, len(turns)):
+        tgt = turns[i]
+        # imported (ledger-origin) exchanges may teach the gloria head her language; they are never a
+        # target for HIS head — another being's replies are not him (astra-models-p7)
+        if tgt.get("role") == "assistant" and str(tgt.get("source", "chat")).startswith("ledger:"):
+            continue
+        # a context window must not straddle a conversational boundary of more than a day
+        try:
+            _t0 = str(turns[i - CTX_TURNS].get("timestamp", ""))[:10]; _t1 = str(tgt.get("timestamp", ""))[:10]
+            if _t0 and _t1 and _t0 != _t1 and abs((__import__("datetime").date.fromisoformat(_t1) - __import__("datetime").date.fromisoformat(_t0)).days) > 1:
+                continue
+        except Exception:
+            pass
         ctx_txt.append(" \n".join(str(t.get("content", ""))[:300] for t in turns[i - CTX_TURNS:i]))
-        tgt_txt.append(str(turns[i].get("content", ""))[:400])
-        head.append(1 if turns[i].get("role") == "assistant" else 0)   # 1=self, 0=gloria
+        tgt_txt.append(str(tgt.get("content", ""))[:400])
+        head.append(1 if tgt.get("role") == "assistant" else 0)   # 1=self, 0=gloria
     if not ctx_txt:
         return None
     X = np.asarray(enc.encode(ctx_txt, show_progress_bar=False), dtype="float32")
@@ -290,7 +324,20 @@ def predict():
         presence = {"predicted": round(p, 3), "confidence": (_cp if _cp is not None else 0.5),
                     "novelty": round(min(1.0, abs(p - base)), 3)}
 
+    def _qual(c):   # per-head qualification state, explicit (astra-models-p6)
+        return "qualified" if c is not None else ("unavailable" if _lv_mean is None else "unqualified_spreadless")
+    try:
+        _ck_id = hashlib.md5((str(os.path.getmtime(MODEL)) + str(os.path.getsize(MODEL))).encode()).hexdigest()[:10]
+    except Exception:
+        _ck_id = None
     out = {"source": "jepa",
+           "prediction_id": "JP-" + __import__("uuid").uuid4().hex[:8],
+           "predicted_at": __import__("datetime").datetime.now().isoformat(),
+           "context_id": hashlib.md5(ctx.encode()).hexdigest()[:12],           # which exchange window this forecast is about
+           "context_last_event": (turns[-1].get("event_id") if turns else None),
+           "checkpoint_id": _ck_id,
+           "qualification": {"gloria": _qual(_cg), "self": _qual(_cs), "presence": _qual(_cp)},
+           "steering_allowed": False,   # until a held-out or prospective evaluation says the uncertainty is calibrated (jepa-calibration.json)
            # backward-compatible top-level = the gloria triple (gloria_prediction + latent read these)
            "confidence": gloria["confidence"], "novelty": gloria["novelty"],
            "gloria_forecast_nearest": gloria["nearest"],

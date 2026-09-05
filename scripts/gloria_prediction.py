@@ -118,18 +118,32 @@ def main():
     # uncertainty (embedding-based) over the LLM's guessed confidence/novelty.
     # Keeps the LLM's readable 'predicted' sentence; grounds the numbers. Drop-in.
     jp = load(os.path.join(MEMORY, "jepa-prediction.json"), {})
-    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True:
+    # fusion needs compatible targets AND fresh matching context (astra-models-p6): the JEPA forecast
+    # must be about the current exchange window (its last event is in what we just read) and recent.
+    _jp_fresh = False
+    try:
+        _jp_age = (datetime.now(timezone.utc) - datetime.fromisoformat(str(jp.get("predicted_at"))).replace(tzinfo=timezone.utc)).total_seconds() if jp.get("predicted_at") else None
+        _last_ids = {hashlib.md5((str(e.get("timestamp","")) + str(e.get("content",""))[:40]).encode()).hexdigest()[:10] for e in recent}
+        _jp_fresh = (_jp_age is not None and _jp_age < 7200 and (not jp.get("context_last_event") or jp.get("context_last_event") in _last_ids))
+    except Exception:
+        _jp_fresh = False
+    if jp.get("source") == "jepa" and jp.get("variance_qualified") is True and _jp_fresh:
         out["confidence"] = round(float(jp.get("confidence", out["confidence"])), 3)
         out["novelty"]    = round(float(jp.get("novelty", out["novelty"])), 3)
         out["grounded_by"] = "jepa"
         out["jepa_nearest"] = str(jp.get("gloria_forecast_nearest", ""))[:160]
     elif jp.get("source") == "jepa":
-        # the predictor ran but its variance gate did not qualify the numbers: keep the LLM's and say so
-        out["grounded_by"] = "llm"; out["jepa_declined"] = "variance not qualified"
+        # the predictor ran but its numbers do not qualify here: keep the LLM's and say exactly why
+        out["grounded_by"] = "llm"
+        out["jepa_declined"] = ("stale or different context" if jp.get("variance_qualified") is True else
+                                str((jp.get("qualification") or {}).get("gloria") or "variance not qualified"))
 
     json.dump(out, open(OUT, "w"), indent=2)
 
     log = load(HIST, [])
+    # idempotent by prediction id (astra-models-p8): a prediction already graded is not graded again
+    if prev.get("prediction_id") and any(r.get("graded_prediction_id") == prev.get("prediction_id") for r in log if isinstance(r, dict)):
+        grade = None
     # record the grade of what we predicted last time, then this new prediction
     previous_held = bool(prev.get("predicted") and not prev.get("may_grade", True))
     log.append({"at": now, "prediction_id": out["prediction_id"], "graded_prediction_id": prev.get("prediction_id"),

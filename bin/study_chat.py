@@ -174,6 +174,13 @@ def do_grep(pattern, max_lines=60):
                 path, lineno, text = parts
                 if SECRET_DENY.search(os.path.basename(path)) or ".bak" in path:
                     continue
+                # one destination policy for listing, reading, searching and editing (astra-study-p1):
+                # a hit in a file READ would refuse is not shown either
+                try:
+                    if not resolve(os.path.relpath(path, HOME) if path.startswith(HOME) else path):
+                        continue
+                except Exception:
+                    continue
                 out.append("%s:%s:%s" % (os.path.relpath(path, HOME) if path.startswith(HOME) else path, lineno, text))
     except Exception as e:
         return "GREP failed: %s" % e
@@ -206,6 +213,51 @@ def _syntax_ok(p):
     return r.returncode == 0, (r.stderr or r.stdout)[-300:]
 
 
+PENDING_DIR = os.path.join(MEMORY, "study-pending")
+
+def _sha(text):
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
+
+def propose_edits(edits, why=""):
+    """Store an immutable pending proposal: id, exact edit hashes, expected file hashes, required
+    approval level (astra-study-p5, 2026-09-05). Applying is by id, and re-verifies the hashes."""
+    import uuid
+    resolved = []
+    for e in edits:
+        p, err = preview_edit(str(e.get("file", "")), str(e.get("old", "")), str(e.get("new", "")))
+        if err: return None, err
+        resolved.append((p, str(e.get("old", "")), str(e.get("new", ""))))
+    if not resolved: return None, "nothing to propose"
+    pid = "SP-" + uuid.uuid4().hex[:8]
+    rec = {"id": pid, "at": time.strftime("%Y%m%d-%H%M%S"), "why": why[:300],
+           "approval": "explicit" if needs_explicit([p for p, _, _ in resolved]) else "yes",
+           "edits": [{"file": os.path.relpath(p, HOME), "old_sha": _sha(o), "new_sha": _sha(n), "old": o, "new": n,
+                      "file_sha_expected": _sha(open(p, errors="replace").read())} for p, o, n in resolved]}
+    os.makedirs(PENDING_DIR, exist_ok=True)
+    open(os.path.join(PENDING_DIR, pid + ".json"), "w").write(json.dumps(rec, ensure_ascii=False, indent=1))
+    return pid, None
+
+def apply_pending(pid, confirm=None):
+    """Apply a stored proposal by id. Refuses if any target file changed since the proposal was made."""
+    try:
+        rec = json.load(open(os.path.join(PENDING_DIR, str(pid) + ".json")))
+    except Exception:
+        return False, "no pending proposal %s" % pid
+    if rec.get("applied_at"): return False, "%s was already applied at %s" % (pid, rec["applied_at"])
+    for e in rec["edits"]:
+        p = os.path.join(HOME, e["file"])
+        try: cur = _sha(open(p, errors="replace").read())
+        except Exception: return False, "cannot read %s" % e["file"]
+        if cur != e["file_sha_expected"]:
+            return False, "%s changed since the proposal (expected %s, now %s) - propose again from the current file" % (e["file"], e["file_sha_expected"], cur)
+    ok, msg = apply_edits([{"file": e["file"], "old": e["old"], "new": e["new"]} for e in rec["edits"]],
+                          confirm=confirm if rec.get("approval") == "explicit" else (confirm or {"yes": "yes", "checked": True}))
+    if ok:
+        rec["applied_at"] = time.strftime("%Y%m%d-%H%M%S"); rec["confirm"] = {k: v for k, v in (confirm or {}).items() if k != "why"}
+        open(os.path.join(PENDING_DIR, str(pid) + ".json"), "w").write(json.dumps(rec, ensure_ascii=False, indent=1))
+    return ok, msg
+
 def apply_edits(edits, confirm=None):
     """Gloria's approval on a set of edits. All or nothing: every edit must match,
     all are backed up, all applied, every file syntax-checked; any failure rolls
@@ -221,7 +273,8 @@ def apply_edits(edits, confirm=None):
         return False, "nothing to apply"
     if needs_explicit([p for p, _, _ in resolved]):
         c = confirm or {}
-        if str(c.get("yes", "")).strip().lower() != "yes" or not c.get("checked"):
+        # a literal boolean, not anything truthy (astra-study-p5)
+        if str(c.get("yes", "")).strip().lower() != "yes" or c.get("checked") is not True:
             return False, "this needs explicit permission: type Yes and tick the box"
     ts = time.strftime("%Y%m%d-%H%M%S")
     bdir = os.path.join(BACKUPS, "study-" + ts); os.makedirs(bdir, exist_ok=True)
@@ -247,7 +300,9 @@ def apply_edits(edits, confirm=None):
     os.makedirs(MEMORY, exist_ok=True)
     for p, old, new in resolved:
         rec = {"at": ts, "file": os.path.relpath(p, HOME), "backup": backups[p], "old": old[:2000], "new": new[:2000],
-               "explicit": bool(confirm)}
+               "explicit": bool(confirm),
+               "before_sha": _sha(open(backups[p], errors="replace").read()), "after_sha": _sha(open(p, errors="replace").read()),
+               "txn": "study-" + ts}   # pinned before/after images per transaction (astra-study-p4)
         open(CHANGES, "a").write(json.dumps(rec, ensure_ascii=False) + "\n")
     files = ", ".join(sorted(set(os.path.relpath(p, HOME) for p in backups)))
     # The applied change — not the room's conversation — enters the same change-event stream the

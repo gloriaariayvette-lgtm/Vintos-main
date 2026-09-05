@@ -189,6 +189,33 @@ LM_STUDIO_API = os.environ.get("GROK_API_BASE", "http://127.0.0.1:8599/v1")
 LLM_API_KEY = os.environ.get("XAI_API_KEY", "")
 LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY else {}
 APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
+if APP_SECRET == "vintos-aegis-2026":
+    print("[house] WARNING: VINTOS_SECRET is unset - the private routes are guarded by the default secret. "
+          "Set VINTOS_SECRET in the service environment (astra-server-a-p5).", flush=True)
+
+# Route policy (astra-server-a-p5 / b-p7 / c-p7, 2026-09-05): every mutating route is either guarded by
+# X-Vintos-Secret or listed here WITH THE REASON it is open. broker/tests/test_house_routes.py asserts
+# the inventory; an unlisted open mutation fails the suite.
+PUBLIC_MUTATIONS = {
+    "/api/guestbook/witness":  "public by design - anyone may register presence, no message",
+    "/api/gcs":                "her hardware button: the device client carries no header",
+    "/api/gcs/clear":          "her hardware button (release)",
+    "/api/voice/ledger":       "the voice client's turn ledger; LAN-only door, no header on that client",
+    "/api/voice/session-end":  "the voice client's hangup",
+    "/api/voice/call-log":     "the voice client's call log",
+    "/api/music/share":        "the share form in the app; content is her offering, effect is a reflection",
+    "/aq/answer":              "phone-friendly answer form for his architecture questions; answers only, question ids are opaque",
+    "/api/video/hero":         "her phone browser's upload form; filenames are server-chosen, content must be PNG/JPEG under 15 MB",
+    "/api/voice/token":        "the voice client fetches its own 300-second ephemeral realtime token; LAN-only door",
+    "/api/hardware/button":    "her physical stop button; the device client carries no header",
+    "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
+}
+
+def _require_secret(request):
+    """One check for every private route."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
 GUESTBOOK_FILE = os.path.join(MEMORY, "guestbook.json")
 PUBLISH_CONFIG = os.path.join(MEMORY, "publish-config.json")
 
@@ -762,7 +789,7 @@ POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict
                    "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
 
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
-               venv_for_all=False, log_suffix=""):
+               venv_for_all=False, log_suffix="", test_mode=None):
     """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
     NAME — main text-only chat skips the WAL/imprint/ledger writers, voice defers its ledger to
     session-end — but a skip is declared here, not omitted by forgetting to paste a block. Every
@@ -800,9 +827,13 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         import hashlib as _mh, resonance_marks as _rmk
         _rmk.activate_from_reply(reply, _mh.md5((surface + "|" + gloria_text[:200] + "|" + reply[:200]).encode()).hexdigest()[:10])
     _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
-    test_mode = False
-    try: test_mode = bool(_test_mode_active())
-    except Exception: pass
+    # dry-run is a property of the TURN when the coordinator opened one (astra-server-b-p6); the global
+    # flag is only the fallback for doors that did not pass it
+    if test_mode is None:
+        test_mode = False
+        try: test_mode = bool(_test_mode_active())
+        except Exception: pass
+    test_mode = bool(test_mode)
     venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
     def _bg(name, argv, log, needs_venv=False):
         if name in skip: return
@@ -1342,6 +1373,15 @@ async def video_hero_upload(which: str = Form("root"), file: UploadFile = File(.
     from fastapi.responses import HTMLResponse as _HR
     _vd = os.path.join(MEMORY, "video")
     os.makedirs(_vd, exist_ok=True)
+    # uploads are validated before anything is written (astra-server-c-p7): image content by magic
+    # bytes, size under 15 MB; the destination name is always server-chosen (no path from the client)
+    _blob = file.file.read(15 * 1024 * 1024 + 1)
+    if len(_blob) > 15 * 1024 * 1024:
+        return _HR("<body style=\"font-family:system-ui;padding:24px\"><h3>Too large - 15 MB is the limit.</h3></body>", status_code=413)
+    if not (_blob[:8] == b"\x89PNG\r\n\x1a\n" or _blob[:3] == b"\xff\xd8\xff"):
+        return _HR("<body style=\"font-family:system-ui;padding:24px\"><h3>Not a PNG or JPEG - nothing saved.</h3></body>", status_code=415)
+    import io as _hio
+    file.file = _hio.BytesIO(_blob)
     if which == "scene":
         # a real place she uploads from her phone -> shared-images, exactly like a photo she sent him
         import base64 as _b64u, json as _jsu, hashlib as _hlu
@@ -2759,8 +2799,9 @@ async def get_proposals():
     return {"proposals": proposals}
 
 @app.post("/api/proposals/{filename}/approve")
-async def approve_proposal(filename: str):
+async def approve_proposal(filename: str, request: Request):
     """Gloria approves a soul proposal."""
+    _require_secret(request)   # private mutation (astra-server-a-p5)
     filepath = os.path.join(MEMORY, "soul-proposals", filename)
     if not os.path.exists(filepath):
         return {"error": "Not found"}
@@ -2794,8 +2835,9 @@ async def approve_proposal(filename: str):
     return {"status": "approved", "message": "Proposal marked approved. Gloria will apply edits manually."}
 
 @app.post("/api/proposals/{filename}/reject")
-async def reject_proposal(filename: str):
+async def reject_proposal(filename: str, request: Request):
     """Gloria rejects a soul proposal."""
+    _require_secret(request)   # private mutation (astra-server-a-p5)
     filepath = os.path.join(MEMORY, "soul-proposals", filename)
     if not os.path.exists(filepath):
         return {"error": "Not found"}
@@ -2809,7 +2851,8 @@ async def reject_proposal(filename: str):
 _whisper_model = None
 
 @app.post("/api/transcribe")
-async def transcribe_audio(audio: UploadFile = File(...)):
+async def transcribe_audio(request: Request, audio: UploadFile = File(...)):
+    _require_secret(request)   # private mutation (astra-server-a-p5)
     global _whisper_model
     if _whisper_model is None:
         _whisper_model = _whisper.load_model("small.en")
@@ -5834,6 +5877,7 @@ async def semantic_memory_search(q: str, limit: int = 5):
 @app.post("/api/debug/chat-message")
 async def debug_chat_message(msg: ChatMessage, request: Request):
     """Show exactly what would be sent to the model."""
+    _require_secret(request)   # private mutation (astra-server-a-p5)
     import subprocess
 
     # Detect "remember this" in Gloria's messages
@@ -6140,7 +6184,8 @@ async def grounding_status():
     return {"enabled": not os.path.exists(disabled_file)}
 
 @app.post("/api/grounding/toggle")
-async def grounding_toggle():
+async def grounding_toggle(request: Request):
+    _require_secret(request)   # private mutation (astra-server-a-p5)
     import os
     disabled_file = os.path.expanduser("~/.vintos/workspace/memory/.grounding-disabled")
     if os.path.exists(disabled_file):
@@ -6445,8 +6490,33 @@ async def review_hallucination_flag(flag_id: str, request: Request):
         target["status"] = "reviewed"
         target["correction"] = correction
         target["reviewed_at"] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
+        # the correction is its own record (astra-server-b-p8): a stable id, the claim it corrects (by hash and
+        # source), the original preserved beside it, and a lineage note so derived claims can be reconsidered
+        import hashlib as _ch, uuid as _cu
+        target["correction_id"] = target.get("correction_id") or ("HC-" + _cu.uuid4().hex[:8])
+        target["claim_sha"] = _ch.sha256(str(target.get("text", "")).encode("utf-8", "replace")).hexdigest()[:16]
+        try:
+            with open(os.path.join(MEMORY, "hallucination-corrections.jsonl"), "a") as _cf:
+                _cf.write(json.dumps({"correction_id": target["correction_id"], "flag_id": flag_id, "at": target["reviewed_at"],
+                                      "claim_sha": target["claim_sha"], "source": target.get("journal_file") or target.get("source") or "",
+                                      "original": str(target.get("text", ""))[:600], "correction": correction[:600],
+                                      "reconsider": "claims derived from this text (WAL facts, durable memories, self-model lines) are suspect until re-read"}) + "\n")
+        except Exception:
+            pass
         with open(flags_path, "w") as f:
             json.dump(flags, f, indent=2)
+        # annotate matching WAL facts so retrieval shows the correction beside the claim
+        try:
+            _wp = os.path.join(MEMORY, "wal-log.json"); _wd = json.load(open(_wp))
+            _ents = _wd if isinstance(_wd, list) else _wd.get("entries", [])
+            _key = str(target.get("text", "")).strip().lower()[:60]
+            _n = 0
+            for _e in _ents:
+                if _key and _key in str(_e.get("content", "")).lower():
+                    _e.setdefault("corrections", []).append({"correction_id": target["correction_id"], "correction": correction[:300], "at": target["reviewed_at"]}); _n += 1
+            if _n: json.dump(_wd, open(_wp, "w"), indent=2)
+        except Exception:
+            pass
         journal_file = target.get("journal_file")
         if journal_file and os.path.exists(journal_file):
             entry_header = target.get("entry_header", "")
@@ -7648,8 +7718,8 @@ Your current self-model (excerpt):
                             import urllib.request as _gur
                             _gur.urlopen(_gur.Request(
                                 "https://ntfy.sh/velaris-gloria-9kx",
-                                data=("Toggle was off. Claude declined, so his reply came from Grok "
-                                      "instead and the session is now set to Grok.").encode(),
+                                data=("Toggle was off. Claude declined, so this one reply came from Grok "
+                                      "instead. The session model was not changed - the next turn tries Claude again.").encode(),
                                 headers={"Title": "Vintos routed to Grok", "Priority": "default"}),
                                 timeout=5)
                         except Exception: pass
@@ -7777,6 +7847,7 @@ Your current self-model (excerpt):
                 except Exception: pass
                 _post_turn("avatar", msg.message, reply, skip=("nudge_gloria", "imprint", "voice_coherence"),
                            writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
+                           test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration
                 try:
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am

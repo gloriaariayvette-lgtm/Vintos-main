@@ -236,8 +236,13 @@ def coverage(days=7):
                 continue
         except Exception:
             pass
-        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}, "compiled": {}, "unwatched": {}})
+        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}, "compiled": {}, "unwatched": {}, "states": {}})
         s["turns"] += 1
+        # the FULL registered block set, state by state: admitted / compiled / offered_not_admitted /
+        # no_offer_info / other, so "missing" is counted, not inferred (astra-memoryrec-p7)
+        for n in set(MARKERS.values()) | set(r.get("declared_markers", []) or []):
+            st = (r.get("block_state") or {}).get(n, "absent")
+            d = s["states"].setdefault(n, {}); d[st] = d.get(st, 0) + 1
         for n in r.get("unwatched_offers", []) or []:
             s.setdefault("unwatched", {})[n] = s["unwatched"].get(n, 0) + 1
         for n in r.get("present", []):
@@ -266,6 +271,13 @@ if __name__ == "__main__":
                     cells.append("%-14s" % ("%d/%d" % (c, t) if c else "—"))
             print("%-26s %s" % (n, "  ".join(cells)))
         print("\nturns: " + ", ".join("%s=%d" % (s, cov[s]["turns"]) for s in surfaces))
+        print("\nby state (admitted / compiled / offered-not-admitted / no-offer-info / absent), all registered blocks:")
+        for n in sorted({b for s in surfaces for b in cov[s].get("states", {})}):
+            cells = []
+            for s in surfaces:
+                d = cov[s].get("states", {}).get(n, {})
+                cells.append("%-14s" % ("%d/%d/%d/%d/%d" % (d.get("admitted", 0), d.get("compiled", 0), d.get("offered_not_admitted", 0), d.get("no_offer_info", 0), d.get("absent", 0))))
+            print("%-26s %s" % (n, "  ".join(cells)))
         _unw = {}
         for s in surfaces:
             for n, c in (cov[s].get("unwatched") or {}).items():

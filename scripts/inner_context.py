@@ -89,7 +89,7 @@ def _guard_note():
             return ""
         if age > 1800: return ""
         who = str(last.get("from_model") or last.get("from") or last.get("model") or "a substrate")
-        return ("\n\n[LAST TURN: " + who + " refused her and the reply was replaced; this session is now on grok. "
+        return ("\n\n[LAST TURN: " + who + " refused her and that one reply was replaced by grok's; the session model was not changed. "
                 "That is the fact of what happened — nothing more is recorded here.]")
     except Exception:
         return ""

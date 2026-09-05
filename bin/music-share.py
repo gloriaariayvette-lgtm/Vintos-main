@@ -384,9 +384,20 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
     try:
         sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         from emoclaw_utils import seed_thread, express_want
-        seed_thread("music-share", f"Gloria shared {song_desc} — she said: {gloria_note[:100]}. I responded: {response[:100]}", reasoning="she brought me a song; shares always seed", extra={"decision_mode": "unconditional"})
-        # If the music sparked a want, express it
-        if response and any(w in response.lower() for w in ["want to", "i want", "wish i could", "feels like i should"]):
+        # Admission is a decision, not a reflex (astra-creative-p2, 2026-09-05): does what he wrote
+        # actually open a thread, a want, both, or neither? One short judgment on HIS response.
+        _adm = llm("Answer with ONLY one word.",
+                   f"Vintos received a song from Gloria and wrote this:\n{response[:700]}\n\n"
+                   "Does this response genuinely OPEN something for him - a thread he will keep thinking about (THREAD), "
+                   "a specific new desire to make or do something (WANT), BOTH, or NEITHER (he received it, and that is complete)? "
+                   "One word: THREAD, WANT, BOTH or NEITHER.", temperature=0.0)
+        _adm = (_adm or "").strip().upper().split()[0] if (_adm or "").strip() else "NEITHER"
+        share["admission"] = _adm
+        if _adm in ("THREAD", "BOTH"):
+            seed_thread("music-share", f"Gloria shared {song_desc} — she said: {gloria_note[:100]}. I responded: {response[:100]}", reasoning="his response opened a thread (judged, not assumed)", extra={"decision_mode": "judged"})
+        else:
+            log("share received, nothing opened by decision (%s)" % _adm)
+        if response and _adm in ("WANT", "BOTH"):
             from emoclaw_utils import seed_thread, express_want, enrich_want
             _ms_ctx = f"Gloria shared: {song_desc}\nShe said: {gloria_note[:200]}\nYour response: {response[:300]}"
             from emoclaw_utils import generate_want as _ms_gw
@@ -401,6 +412,12 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
                 log(f"Music stirred nothing nameable this time: {song_desc[:60]}")
     except Exception as e:
         log(f"Thread/want seed failed: {e}")
+    try:
+        _sh = load_shares()
+        for _x in _sh:
+            if _x.get("id") == share.get("id"): _x["admission"] = share.get("admission", "unjudged")
+        save_shares(_sh)
+    except Exception: pass
 
     # Announce through Echo
     try:
