@@ -83,6 +83,31 @@ def _recent_conversation(n=6):
             out.append(f"GLORIA: {g}\nVINTOS: {v}")
     return "\n\n".join(out)
 
+def _salvage_json(txt):
+    """Best effort on a JSON object cut off by the token cap: drop the unfinished tail back to the last
+    complete top-level value and close the braces. Returns a dict or None."""
+    txt = str(txt or "")
+    for cut in range(len(txt), 0, -1):
+        if txt[cut - 1] not in ",}\"]0123456789el":   # a value can only end on one of these
+            continue
+        frag = txt[:cut].rstrip().rstrip(",")
+        depth = 0; instr = False; esc = False
+        for ch in frag:
+            if instr:
+                if esc: esc = False
+                elif ch == "\\": esc = True
+                elif ch == '"': instr = False
+            elif ch == '"': instr = True
+            elif ch == "{": depth += 1
+            elif ch == "}": depth -= 1
+        if instr or depth <= 0:
+            continue
+        try:
+            return json.loads(frag + "}" * depth)
+        except Exception:
+            continue
+    return None
+
 def select_target(recent_text):
     try:
         resolve_previous(recent_text)
@@ -220,14 +245,25 @@ def select_target(recent_text):
     body = json.dumps({"model": MODEL, "messages": [
         {"role": "system", "content": sysp},
         {"role": "user", "content": user}],
-        "temperature": 0.5, "max_tokens": 800}).encode()
+        "temperature": 0.5, "max_tokens": 1600}).encode()   # 800 cut the JSON off mid-field once the three axes and the campaign were asked for (2026-09-05)
     hdr = {"Content-Type": "application/json"}
     hdr.update(AUTH)
     req = urllib.request.Request(LM_URL, data=body, headers=hdr)
     with urllib.request.urlopen(req, timeout=60) as r:
         content = json.loads(r.read())["choices"][0]["message"]["content"]
     s, e = content.find("{"), content.rfind("}")
-    _t = json.loads(content[s:e + 1])
+    try:
+        _t = json.loads(content[s:e + 1])
+    except Exception as _je:
+        # A cut-off reply used to die here, inside a caller's bare except: no lead, no ledger entry, no
+        # campaign, and nothing said. Keep the raw text where it can be read, then salvage what parsed.
+        try:
+            with open("/tmp/intent-select-fail.log", "a") as _f:
+                _f.write("%s %s\n%s\n---\n" % (datetime.now().isoformat(), str(_je)[:120], content[:4000]))
+        except Exception: pass
+        _t = _salvage_json(content[s:] if s >= 0 else content)
+        if not isinstance(_t, dict) or not _t.get("field_state"):
+            raise
     for _ax in ("gloria", "self"):
         if not isinstance(_t.get(_ax), dict): _t[_ax] = {}
     _pr = _t.get("priority") or {}
