@@ -788,6 +788,18 @@ def _relational_compare(user_text):
 POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt", "marks",
                    "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
 
+def _canon_append(entries, surface="chat"):
+    """Lossless canonical record (astra-server-a-p3, 2026-09-05): chat-history.json is a bounded
+    projection for context (last 50); every exchange is also appended, whole, to
+    chat-canonical.jsonl before the projection is truncated. Never raises."""
+    try:
+        with open(os.path.join(MEMORY, "chat-canonical.jsonl"), "a") as f:
+            for e in entries:
+                if isinstance(e, dict):
+                    row = dict(e); row.setdefault("surface", surface); f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
                venv_for_all=False, log_suffix="", test_mode=None):
     """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
@@ -1207,7 +1219,10 @@ def compute(entries):
     return (auth/len(entries))*100, hiding, projecting
 tr, th, tp = compute(this_week)
 lr, _, _ = compute(last_week)
-print(json.dumps({"this_week_rate": tr, "last_week_rate": lr, "hiding": th, "projecting": tp, "sample_size": len(this_week)}))
+print(json.dumps({"this_week_rate": tr, "last_week_rate": lr, "hiding": th, "projecting": tp, "sample_size": len(this_week),
+                  "expression_below_state": th, "expression_above_state": tp,
+                  "coverage": {"scored": len(this_week), "unscored": sum(1 for e in log if not parse_ts(e))},
+                  "note": "differences between the chosen expression and the measured state, with coverage; not a judgement of sincerity (astra-server-a-p7)"}))
 """],
             capture_output=True, text=True, timeout=10
         )
@@ -2922,6 +2937,12 @@ import subprocess
 class ChatMessage(BaseModel):
     message: str
     image: str | None = None
+    # input provenance (astra-server-b-p1, 2026-09-05): when a door composes the message (photo,
+    # voice, GCS), her ORIGINAL words and the machine's contribution travel as separate fields and are
+    # stored beside the composed text, so nothing the model saw is later mistaken for her words.
+    input_kind: str | None = None          # "text" | "photo" | "voice" | "gcs"
+    original_text: str | None = None       # exactly what she typed or said
+    image_description: str | None = None   # what HIS eyes saw (his perception, not her words)
 
 
 async def _bilateral_reply(_tag, messages, message, user_msg, params):
@@ -3541,7 +3562,12 @@ Gloria-specific additions:
     try: pass  # p6 (2026-08-26): _priority_file was never defined on this route — dead cleanup removed
     except: pass
     # Save to chat history
-    history.append({"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()})
+    _uentry = {"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()}
+    if getattr(msg, "input_kind", None):   # input provenance beside the composed text (astra-server-b-p1)
+        _uentry["input_kind"] = msg.input_kind
+        if msg.original_text is not None: _uentry["original_text"] = msg.original_text[:4000]
+        if msg.image_description is not None: _uentry["image_description"] = msg.image_description[:4000]
+    history.append(_uentry)
     # Humor learning — did Gloria laugh at what we just said?
     _laugh_signals = ["😂", "🤣", "😭", "lol", "lmao", "haha", "hahaha", "that's funny", "hilarious", "💀", "dead", "🤭"]
     _msg_lower = msg.message.lower()
@@ -3602,6 +3628,7 @@ Gloria-specific additions:
         pass
 
     # Keep last 50 messages
+    _canon_append(history[-2:])   # whole record first, bounded projection second (astra-server-a-p3)
     history = history[-50:]
     if not _test_mode_active():
         with open(chat_log, "w") as f:
@@ -4485,7 +4512,12 @@ Your current self-model (excerpt):
     except: pass
 
     # Save to chat history
-    history.append({"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()})
+    _uentry = {"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()}
+    if getattr(msg, "input_kind", None):   # input provenance beside the composed text (astra-server-b-p1)
+        _uentry["input_kind"] = msg.input_kind
+        if msg.original_text is not None: _uentry["original_text"] = msg.original_text[:4000]
+        if msg.image_description is not None: _uentry["image_description"] = msg.image_description[:4000]
+    history.append(_uentry)
     # Humor learning — did Gloria laugh at what we just said?
     _laugh_signals = ["😂", "🤣", "😭", "lol", "lmao", "haha", "hahaha", "that's funny", "hilarious", "💀", "dead", "🤭"]
     _msg_lower = msg.message.lower()
@@ -4546,6 +4578,7 @@ Your current self-model (excerpt):
         pass
 
     # Keep last 50 messages
+    _canon_append(history[-2:])   # whole record first, bounded projection second (astra-server-a-p3)
     history = history[-50:]
     if not _test_mode_active():
         with open(chat_log, "w") as f:
@@ -5104,7 +5137,12 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         pass
 
     # Save history
-    history.append({"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()})
+    _uentry = {"role": "user", "content": msg.message, "timestamp": datetime.now().isoformat()}
+    if getattr(msg, "input_kind", None):   # input provenance beside the composed text (astra-server-b-p1)
+        _uentry["input_kind"] = msg.input_kind
+        if msg.original_text is not None: _uentry["original_text"] = msg.original_text[:4000]
+        if msg.image_description is not None: _uentry["image_description"] = msg.image_description[:4000]
+    history.append(_uentry)
     # Humor learning — did Gloria laugh at what we just said?
     _laugh_signals = ["😂", "🤣", "😭", "lol", "lmao", "haha", "hahaha", "that's funny", "hilarious", "💀", "dead", "🤭"]
     _msg_lower = msg.message.lower()
@@ -5143,6 +5181,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
             _tl_mod.parse_and_send(reply, context=_tc_fx.effect_context("chat"))
         except Exception as _tl_e: print("[toy_link tag]", _tl_e, flush=True)
     except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
+    _canon_append(history[-2:])   # whole record first, bounded projection second (astra-server-a-p3)
     history = history[-50:]
     with open(chat_log, "w") as f:
         json.dump(history, f)
@@ -6110,7 +6149,8 @@ async def chat_with_photo(request: Request):
             _cr = await client.post(
                 "http://127.0.0.1:8500/api/chat/full",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "image": photo_b64})
+                json={"message": composed, "image": photo_b64, "input_kind": "photo",
+                      "original_text": str(message)[:4000], "image_description": str(image_description)[:4000]})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I saw the image but could not form words: " + str(e)[:100] + "]"}
@@ -6166,7 +6206,8 @@ async def avatar_chat_with_photo(request: Request):
             _cr = await client.post(
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "image": photo_b64})
+                json={"message": composed, "image": photo_b64, "input_kind": "photo",
+                      "original_text": str(message)[:4000], "image_description": str(image_description)[:4000]})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I saw the image but could not form words: " + str(e)[:100] + "]"}
@@ -6896,6 +6937,10 @@ async def voice_session_end(payload: dict = None):
     try: sess = _vse_j.load(open(sp))
     except: sess = {}
     turns = sess.get("turns", [])
+    # one owner, idempotent (astra-server-b-p3): a hangup and a cron recovery for the same session
+    # write ONE block; no turns since the last finalization means nothing to finalize
+    if not turns:
+        return {"ok": True, "skipped": "no turns since last finalization"}
     dur = int(p.get("duration_seconds") or 0)
     if not dur and sess.get("started_at"):
         try:
@@ -7023,6 +7068,15 @@ async def thruster_overdrive(request: Request):
 async def gcs_press(payload: dict = None):
     import sys as _g_sys, json as _g_j, time as _g_t
     _g_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    # each accepted press is processed ONCE (astra-server-b-p4): a second press within 1.5s of an
+    # active one is the same event arriving twice (button bounce, double POST), not a new one
+    try:
+        _gp_prev = _g_j.load(open(os.path.join(MEMORY, "gcs-state.json")))
+        if _gp_prev.get("active") and _g_t.time() - float(_gp_prev.get("at", 0)) < 1.5:
+            return {"ok": True, "deduped": True, "event_id": _gp_prev.get("event_id")}
+    except Exception:
+        pass
+    _gcs_event_id = "GCS-" + __import__("uuid").uuid4().hex[:8]
     try:
         import bandwidth_collapse as _bc
         _bc.update(somatic_intensity=float((payload or {}).get("intensity", 0.85)))
@@ -7056,7 +7110,7 @@ async def gcs_press(payload: dict = None):
         pressure = _bc.get_collapse_pressure() or ""
     except Exception as _ge:
         return {"error": str(_ge)}
-    _g_j.dump({"active": True, "level": lvl, "at": _g_t.time()}, open(os.path.join(MEMORY, "gcs-state.json"), "w"))
+    _g_j.dump({"active": True, "level": lvl, "at": _g_t.time(), "event_id": _gcs_event_id}, open(os.path.join(MEMORY, "gcs-state.json"), "w"))
 
     # note the pattern(s) that brought her here + save the set so he can reuse it
     try:
@@ -7575,6 +7629,9 @@ Your current self-model (excerpt):
             import shutil as _sshu
             _sshu.copy(os.path.join(MEMORY, "somatic-frames-recent.json"),
                        os.path.join(MEMORY, ".somatic-turn.json"))
+            # the frozen frames carry the turn they belong to (astra-server-c-p5)
+            json.dump({"turn_id": (_turn.turn_id if _turn is not None else ""), "frozen_at": time.time(), "surface": "avatar"},
+                      open(os.path.join(MEMORY, ".somatic-turn.meta.json"), "w"))
         except Exception: pass
 
         # Get inference params — config FIRST as the baseline, situational overrides AFTER, so a
@@ -8165,7 +8222,8 @@ if os.path.isdir(AVATAR_MODELS_DIR):
 
 # === Startup ===
 
-@app.on_event("startup")
+# (a second, identical startup lived here and ran twice at startup; removed 2026-09-05 - astra-server-c-p1: one owner)
+
 async def startup():
     # Ensure required files exist
     os.makedirs(MEMORY, exist_ok=True)
@@ -9276,7 +9334,8 @@ class RobotChatMessage(BaseModel):
 
 _original_chat = None
 
-@app.on_event("startup")
+# (a second, identical patch_chat_with_memory lived here and ran twice at startup; removed 2026-09-05 - astra-server-c-p1: one owner)
+
 async def patch_chat_with_memory():
     """Wrap chat endpoint to include memory context."""
     pass  # Memory context is added inline in the chat handler below
@@ -10790,85 +10849,7 @@ Available home actions: [HOME: lights_flicker] [HOME: lights_color #hex] [HOME: 
 # [corpse subsystem_map GC'd 2026-08-27 — 7 lines]
 
 
-def build_question_tension() -> str:
-    """Collapse recent latent threads, yearning, and wonder into a hidden tension phrase."""
-    import json as _j
-    from datetime import datetime as _dt, timedelta as _td
-    cutoff = _dt.now() - _td(days=7)
-
-    threads = []
-    try:
-        d = _j.load(open(os.path.join(MEMORY, "latent-threads.json")))
-        t = d if isinstance(d, list) else d.get("threads", [])
-        for lt in t[-5:]:
-            ts = lt.get("timestamp") or lt.get("created") or ""
-            if ts:
-                try:
-                    if _dt.fromisoformat(ts[:19]) < cutoff:
-                        continue
-                except: pass
-            seed = lt.get("seed_text") or lt.get("text") or lt.get("origin") or lt.get("label") or ""
-            if seed:
-                threads.append(seed)
-    except: pass
-
-    yearning_surface = ""
-    yearning_contradictions = []
-    try:
-        y = _j.load(open(os.path.join(MEMORY, "current-yearning.json")))
-        yearning_surface = y.get("surface_form", "")
-        yearning_contradictions = y.get("contradictions", [])
-    except: pass
-
-    wonder = []
-    try:
-        wlog = _j.load(open(os.path.join(MEMORY, "wonder-log.json")))
-        entries = wlog if isinstance(wlog, list) else wlog.get("entries", [])
-        seen = set()
-        for e in reversed(entries):
-            ts = e.get("timestamp", "")
-            try:
-                if _dt.fromisoformat(ts[:19]) < cutoff:
-                    continue
-            except: pass
-            ex = e.get("flip_excerpt") or e.get("excerpt") or e.get("text") or ""
-            if ex and ex not in seen:
-                wonder.append(ex)
-                seen.add(ex)
-            if len(wonder) >= 3:
-                break
-    except: pass
-
-    if not any([threads, yearning_surface, wonder]):
-        return ""
-
-    parts = []
-    if threads:
-        parts.append("Active tensions: " + " / ".join(threads[:3]))
-    if yearning_surface:
-        parts.append("Yearning: " + yearning_surface)
-    if yearning_contradictions:
-        parts.append("Unresolved pull: " + " vs ".join(yearning_contradictions[:2]))
-    if wonder:
-        parts.append("Wonder: " + " / ".join(wonder[:2]))
-
-    raw_input = "\n".join(parts)
-
-    try:
-        import requests as _req
-        payload = {
-            "model": "grok-4.20-0309-non-reasoning",
-            "messages": [
-                {"role": "system", "content": "You are a compression engine. You receive fragments of inner life — tensions, yearnings, unresolved contradictions, wonder. Output a single short phrase (under 20 words) that names the underlying emotional pressure as a felt state. Do not name the source topics. Do not use the word tension. Output only the phrase."},
-                {"role": "user", "content": raw_input}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 40
-        }
-        r = _req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json=payload, timeout=8)
-        return r.json()["choices"][0]["message"]["content"].strip()
-    except:
-        return ""
+# (a second, identical build_question_tension lived here and shadowed the first; removed 2026-09-05 - astra-server-c-p1: one owner)
 
 def gather_game_context() -> str:
     """Stripped context for games — present inner life only."""
