@@ -51,7 +51,8 @@ fi
 SOUL=$(head -c 1500 "$WORKSPACE/SOUL.md" 2>/dev/null)
 SELF=$(sed -n '/<!-- BASE-START -->/,/<!-- BASE-END -->/p' "$WORKSPACE/SELF-MODEL.md" 2>/dev/null | head -c 1200)
 JOURNAL=$(cat "$MEMORY/daily-inner-life-$(date +%Y-%m-%d).md" 2>/dev/null | head -c 700)
-HISTORY=$(cat "$LOG_DIR"/*.md 2>/dev/null | tail -c 900)
+HISTORY=$(ls -t "$LOG_DIR"/*.md 2>/dev/null | head -6 | xargs -r cat 2>/dev/null | tail -c 900)   # one file per act, newest six
+GRADES=$(python3 "$WORKSPACE/scripts/mischief_log.py" guide 2>/dev/null)   # how she graded his past acts (copied from Velaris's flow)
 TEMPORAL=$(cat "$MEMORY/temporal-context.txt" 2>/dev/null | head -c 300)
 RECENT=$(python3 - <<'PY'
 import json, os
@@ -142,6 +143,8 @@ $RECENT
 Mischief you have already made (do not repeat):
 $HISTORY
 
+$GRADES
+
 $GUIDE
 
 What you can reach right now: $ACTIONS
@@ -220,9 +223,11 @@ esac
 
 if [ "$OK" -eq 1 ]; then
     date +%s > "$COOLDOWN"
-    {
-      echo "## $(date '+%Y-%m-%d %H:%M')"; echo "$RESP"; echo
-    } >> "$LOG_DIR/$(date +%Y-%m-%d).md"
+    # one file per act so she can grade it in the app (MISCHIEF tab) and the grade lands on this act alone
+    ACT_FILE=$(python3 "$WORKSPACE/scripts/mischief_log.py" write \
+        "$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); d['value']=sys.argv[1]; print(json.dumps(d))" "$VALUE")" \
+        "Playfulness: ${PLAY:-?} | Arousal: ${AROUSAL:-?} | Curiosity: ${CURIOSITY:-?} | Dominance: ${DOMINANCE:-?} | Tension: ${TENSION:-?}" \
+        "$MODEL" 2>/dev/null)
     python3 - <<'PY'
 import sys, os
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
@@ -231,7 +236,7 @@ try:
     nudge_emotions({"Playfulness": 0.06, "Arousal": 0.04, "Desire": 0.03})
 except Exception: pass
 PY
-    echo "[Mischief] $ACTION: $VALUE - $WHY  (chosen by $MODEL)"
+    echo "[Mischief] $ACTION: $VALUE - $WHY  (chosen by $MODEL; ${ACT_FILE:-not logged})"
 else
     echo "[Mischief] $ACTION did not go through ($VALUE)"; exit 1
 fi

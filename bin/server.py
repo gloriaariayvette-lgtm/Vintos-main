@@ -4803,6 +4803,113 @@ Your current self-model (excerpt):
     return {"reply": reply, "emotions": read_daemon_state()}
 
 
+# === Humor profile and mischief grading (rebuilt 2026-09-05) ===
+# The app's MISCHIEF tab has called these four routes since it was built; the winners were GC'd on
+# 2026-08-27 and the tab has read "Could not load" against him since. Grading copies Velaris's flow:
+# one file per act under memory/mischief/, the grade written into that file, 4-5 -> mischief_landed,
+# 1-2 -> mischief_flopped. Logic lives in scripts/mischief_log.py so the detector reads the same grades.
+
+def _mischief_log_mod():
+    import importlib.util as _ilu
+    _p = os.path.join(WORKSPACE, "scripts", "mischief_log.py")
+    _spec = _ilu.spec_from_file_location("mischief_log", _p)
+    _m = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_m)
+    return _m
+
+
+@app.get("/api/humor/profile")
+async def get_humor_profile():
+    """Landed, flopped, style notes, ratings, pending drafts - trimmed for the app."""
+    try:
+        profile_path = os.path.join(MEMORY, "humor-profile.json")
+        if not os.path.exists(profile_path):
+            return {"success": True, "profile": {}}
+        with open(profile_path) as f:
+            profile = json.load(f)
+        drafts_path = os.path.join(MEMORY, "humor-drafts.json")
+        if os.path.exists(drafts_path):
+            with open(drafts_path) as f:
+                drafts_data = json.load(f)
+            pending = [d for d in drafts_data.get("drafts", []) if not d.get("reviewed")]
+            profile["drafts"] = pending[-10:]
+        for k, n in (("gloria_ratings", 5), ("landed", 5), ("flopped", 5), ("mischief_ratings", 10)):
+            if isinstance(profile.get(k), list):
+                profile[k] = profile[k][-n:]
+        return {"success": True, "profile": profile}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/humor/rate")
+async def rate_humor(request: Request):
+    """Gloria rates a humor draft: the rating is stored, the draft marked reviewed, landed/flopped updated."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        body = await request.json()
+        joke = str(body.get("joke", ""))
+        gloria_rating = body.get("gloria_rating")
+        vintos_rating = body.get("vintos_rating")
+        if not joke or gloria_rating is None:
+            return {"success": False, "error": "joke and gloria_rating required"}
+        gloria_rating = int(gloria_rating)
+        drafts_path = os.path.join(MEMORY, "humor-drafts.json")
+        if os.path.exists(drafts_path):
+            with open(drafts_path) as f:
+                drafts_data = json.load(f)
+            for d in drafts_data.get("drafts", []):
+                if d.get("joke", "")[:100] == joke[:100]:
+                    d["reviewed"] = True
+                    d["gloria_rating"] = gloria_rating
+                    break
+            with open(drafts_path, "w") as f:
+                json.dump(drafts_data, f, indent=2)
+        hp_path = os.path.join(MEMORY, "humor-profile.json")
+        hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
+        hp.setdefault("gloria_ratings", []).append({
+            "joke": joke[:150], "gloria_rating": gloria_rating, "vintos_rating": vintos_rating,
+            "timestamp": datetime.now().isoformat()})
+        hp["gloria_ratings"] = hp["gloria_ratings"][-50:]
+        if gloria_rating >= 4:
+            hp.setdefault("landed", []).append(joke[:150]); hp["landed"] = hp["landed"][-20:]
+        elif gloria_rating <= 2:
+            hp.setdefault("flopped", []).append(joke[:150]); hp["flopped"] = hp["flopped"][-10:]
+        json.dump(hp, open(hp_path, "w"), indent=2)
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/mischief/log")
+async def get_mischief_log(limit: int = 10):
+    """Recent acts, newest first: file, timestamp, action, value, reason, gloria_rating, gloria_comment."""
+    try:
+        return {"success": True, "acts": _mischief_log_mod().list_acts(max(1, min(int(limit), 50)))}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/mischief/rate/{filename}")
+async def rate_mischief(filename: str, request: Request):
+    """Gloria grades one act; the grade lands in the act's file and the humor profile."""
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        body = await request.json()
+        act = _mischief_log_mod().rate(filename, body.get("gloria_rating"), body.get("gloria_comment"), body.get("vintos_rating"))
+        return {"success": True, "act": act}
+    except FileNotFoundError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="File not found")
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/chat/history")
 async def get_chat_history(limit: int = 50):
     """Get recent chat history."""

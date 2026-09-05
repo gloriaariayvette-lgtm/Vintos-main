@@ -66,7 +66,7 @@ SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py
 SCRIPTS="$SCRIPTS creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
-SCRIPTS="$SCRIPTS mischief-detector.sh"   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
+SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py"   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
 BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
