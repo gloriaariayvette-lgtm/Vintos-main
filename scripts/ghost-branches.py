@@ -725,7 +725,10 @@ def log_artifacts(thread, ghost_results, resolutions, primary_resolved, appendag
                 "ghost_id": f"branch_{r['axis']['id']}_{TODAY}",
                 "lean": r["axis"]["id"],
                 "resolved": resolutions.get(r["axis"]["id"], False),
-                "triggers": r.get("triggers", [])
+                "triggers": r.get("triggers", []),
+                # the full output is kept for RESOLVED ghosts — the words that broke the pattern are
+                # the evidence, not the lean statistic (fable-subconscious-p2, 2026-09-05)
+                "output": (r.get("output") or "") if resolutions.get(r["axis"]["id"], False) else "",
             }
             for r in ghost_results if r
         ],
@@ -733,6 +736,20 @@ def log_artifacts(thread, ghost_results, resolutions, primary_resolved, appendag
     })
     existing["runs"] = existing["runs"][-90:]
     json.dump(existing, open(ARTIFACTS_FILE, "w"), indent=2)
+    # Hand each resolved ghost's output to the enactment pipeline tagged ghost:<lean>, so it counts
+    # as evidence he broke the pattern (enactment_distiller.process scans for enacted behavior and
+    # feeds proto-pearls / self-statements / causality). Never raises into the run.
+    for r in ghost_results:
+        try:
+            if not r or not r.get("output") or not resolutions.get(r["axis"]["id"], False):
+                continue
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
+            from enactment_distiller import process as _ed_process
+            _ed_process(r["output"], gloria_msg=thread.get("thread", "")[:400], context=f"ghost:{r['axis']['id']}")
+            print(f"[Ghost] resolved ghost handed to enactment pipeline as ghost:{r['axis']['id']}", flush=True)
+        except Exception as _ee:
+            print(f"[Ghost] enactment handoff failed ({r.get('axis',{}).get('id','?')}): {_ee}", flush=True)
 
 
 def main():

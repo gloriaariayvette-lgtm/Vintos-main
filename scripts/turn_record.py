@@ -115,13 +115,36 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
                 offers.update(io.get("offers", {}))
         except Exception:
             pass
+        # Offering organs may DECLARE their opening marker in the offer payload
+        # ({"marker": "[MY BLOCK", "block": "my_block"}); those are checked alongside the
+        # hardcoded table instead of being invisible to it (grok-memoryrec-p7, 2026-09-05).
+        declared = {}
+        for _mod, _o in list(offers.items()):
+            try:
+                _mk = (_o or {}).get("marker")
+                if _mk and isinstance(_mk, str) and _mk.startswith("[") and _mk not in MARKERS:
+                    _nm = (_o.get("block") or _mod)
+                    declared[_mk] = _nm
+                    MOD_FOR.setdefault(_nm, _mod)
+            except Exception:
+                pass
+        for marker, name in declared.items():
+            i = text.find(marker)
+            if i >= 0 and name not in present:
+                present.append(name)
+                j = text.find("\n\n", i)
+                sizes[name] = (len(text) - i) if j < 0 else (j - i)
+        # organs that offered this turn but have no marker anywhere — the record could never
+        # see whether they landed. Stored per row; coverage() prints them as a footer
+        # (fable-memoryrec-p6, 2026-09-05).
+        unwatched = sorted(set(offers.keys()) - set(MOD_FOR.values()))
         block_state = {}
         influences = {}
         offer_reasons = {}      # Sol's law: each transition carries its reason
         producer_versions = {}  # epochs: policy never learns across a producer repair
         tiers = {}
         satisfied_by = {}       # stage 3: compilation is a recorded event, not a disappearance
-        for name in set(MARKERS.values()):
+        for name in set(MARKERS.values()) | set(declared.values()):
             if _tiers:
                 t = _tiers.tier_of(name, surface)
                 if t:
@@ -155,7 +178,9 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
             "approx_tokens": len(text) // 4,
             "user_chars": len(user_msg or ""),
             "present": sorted(present),
-            "absent": sorted({n for n in MARKERS.values()} - set(present)),
+            "absent": sorted(({n for n in MARKERS.values()} | set(declared.values())) - set(present)),
+            "declared_markers": sorted(declared.values()),
+            "unwatched_offers": unwatched,
             "sizes": sizes,
             "block_state": block_state,
             "influences": influences,
@@ -211,8 +236,10 @@ def coverage(days=7):
                 continue
         except Exception:
             pass
-        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}, "compiled": {}})
+        s = out.setdefault(r["surface"], {"turns": 0, "blocks": {}, "compiled": {}, "unwatched": {}})
         s["turns"] += 1
+        for n in r.get("unwatched_offers", []) or []:
+            s.setdefault("unwatched", {})[n] = s["unwatched"].get(n, 0) + 1
         for n in r.get("present", []):
             s["blocks"][n] = s["blocks"].get(n, 0) + 1
         for n, contract in (r.get("satisfied_by") or {}).items():
@@ -239,6 +266,13 @@ if __name__ == "__main__":
                     cells.append("%-14s" % ("%d/%d" % (c, t) if c else "—"))
             print("%-26s %s" % (n, "  ".join(cells)))
         print("\nturns: " + ", ".join("%s=%d" % (s, cov[s]["turns"]) for s in surfaces))
+        _unw = {}
+        for s in surfaces:
+            for n, c in (cov[s].get("unwatched") or {}).items():
+                _unw[n] = _unw.get(n, 0) + c
+        if _unw:
+            print("\norgans offering with no marker (offered, never visible to this record): "
+                  + ", ".join("%s x%d" % (n, c) for n, c in sorted(_unw.items(), key=lambda kv: -kv[1])))
     else:
         try:
             for line in list(open(RECORD))[-10:]:

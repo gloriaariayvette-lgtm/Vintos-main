@@ -66,27 +66,63 @@ def encoder():
 def turns_of(hist):
     return [e for e in hist if isinstance(e, dict) and e.get("content")]
 
+LEDGER_FLOOR_FILE = os.path.join(MEMORY, "jepa-ledger-floor.txt")   # optional ISO timestamp: ledger entries before it are not us
+
+def _ledger_floor():
+    """Timestamp floor for ledger training turns. If memory/jepa-ledger-floor.txt holds an ISO
+    timestamp, ledger entries older than it are treated as transplanted (another being's exchanges)
+    and kept out of training (grok-models-p5, 2026-09-05). No file = no floor."""
+    try:
+        v = open(LEDGER_FLOOR_FILE).read().strip()
+        return v if v else ""
+    except Exception:
+        return ""
+
 def _ledger_turns():
-    """The conversation ledger holds the IMPLANTED exchanges — how Gloria actually responds
-    (transplanted from Bold). Chat-history is sparse; these teach the gloria head her real voice.
-    Filters the broken '--source voice' junk. TRAINING only — predict() still uses live chat."""
+    """Interaction-ledger exchanges as training turns, each carrying its SOURCE. Entries marked
+    transplanted/implanted (or older than the ledger floor) are dropped: the gloria head trains on
+    live us, not on another being's exchanges. Filters the broken '--source voice' junk.
+    TRAINING only — predict() still uses live chat."""
     led = load(os.path.join(MEMORY, "interaction-ledger.json"), [])
+    floor = _ledger_floor()
     out = []
+    dropped = 0
     if isinstance(led, list):
         for e in led:
             if not isinstance(e, dict): continue
             g, v, ts = e.get("gloria"), e.get("vintos"), e.get("timestamp", "")
-            if g and g != "--source": out.append({"role": "user", "content": g, "timestamp": ts})
-            if v and v != "voice":    out.append({"role": "assistant", "content": v, "timestamp": ts})
+            src = str(e.get("source") or e.get("origin") or "ledger").lower()
+            if e.get("transplanted") or e.get("implanted") or src in ("bold", "transplant", "transplanted", "implant", "implanted"):
+                dropped += 1; continue
+            if floor and ts and ts < floor:
+                dropped += 1; continue
+            if g and g != "--source": out.append({"role": "user", "content": g, "timestamp": ts, "source": "ledger:" + src})
+            if v and v != "voice":    out.append({"role": "assistant", "content": v, "timestamp": ts, "source": "ledger:" + src})
+    if dropped:
+        log(f"ledger: {dropped} transplanted/pre-floor entries kept out of training")
     return out
 
 def training_turns():
-    """chat-history + the implanted ledger exchanges, deduped, time-ordered — the corpus of Gloria."""
+    """chat-history + ledger exchanges, deduped, time-ordered — the corpus of Gloria. Every turn
+    carries `source` ('chat' or 'ledger:<origin>') so train() can report what the gloria head
+    actually learned from (fable-models-p5)."""
     chat = turns_of(load(CHAT, []))
+    for t in chat:
+        if isinstance(t, dict): t.setdefault("source", "chat")
     seen = {str(t.get("content", ""))[:80] for t in chat}
     merged = chat + [t for t in _ledger_turns() if str(t.get("content", ""))[:80] not in seen]
     merged.sort(key=lambda t: str(t.get("timestamp", "")))
     return merged
+
+def training_sources(turns):
+    """Proportion of gloria-head (user) turns per source. Written into jepa-prediction.json."""
+    counts = {}
+    for t in turns:
+        if t.get("role") != "user": continue
+        src = str(t.get("source") or "unknown")
+        counts[src] = counts.get(src, 0) + 1
+    total = sum(counts.values()) or 1
+    return {"gloria_turns": total, "by_source": {k: {"n": n, "share": round(n / total, 3)} for k, n in sorted(counts.items())}}
 
 def _rid(e):  # must match presence_audit.py's rid()
     return hashlib.md5((str(e.get("timestamp","")) + str(e.get("content",""))[:40]).encode()).hexdigest()[:10]
@@ -143,7 +179,9 @@ def train():
     turns = training_turns()                    # chat-history + implanted ledger (Gloria's real voice)
     if len(turns) <= CTX_TURNS + 2:
         log(f"not enough history ({len(turns)} turns)"); return
-    log(f"training corpus: {len(turns)} turns ({len(turns_of(load(CHAT, [])))} chat + ledger)")
+    _srcs = training_sources(turns)
+    log(f"training corpus: {len(turns)} turns ({len(turns_of(load(CHAT, [])))} chat + ledger); gloria-head sources: "
+        + ", ".join(f"{k} {v['share']:.0%}" for k, v in _srcs["by_source"].items()))
     enc = encoder()
     X, Y, H = build_pairs(turns, enc)
     Xt, Yt, Ht = torch.tensor(X), torch.tensor(Y), torch.tensor(H).long()
@@ -261,6 +299,7 @@ def predict():
            "empirical_calibration": "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; logvars appear COLLAPSED (~0.998 constant) - uncalibrated, may not steer"}
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
+    out["training_sources"] = _srcs   # what the gloria head learned from, per source (fable-models-p5)
     json.dump(out, open(OUT, "w"), indent=2)
     # calibration ledger: one line per prediction, BOTH signals (repaired logvar-relative confidence
     # AND legacy decode_similarity) plus raw predicted embeddings, so the audit can test which one -

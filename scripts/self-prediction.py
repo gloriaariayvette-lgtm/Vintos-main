@@ -370,16 +370,18 @@ Biggest errors: {worst_str}
         print(f"[Self-Predict] blush write failed: {_ble}")
 
 
-def generate_report():
+def generate_report(as_json=False):
     """Analyze accumulated predictions for systematic blind spots."""
     try:
         with open(BLIND_SPOTS_DATA) as f:
             history = json.load(f)
     except:
+        if as_json: print(json.dumps({"predictions": 0, "dimensions": []})); return
         print("[Self-Predict] No prediction history yet")
         return
 
     if len(history) < 5:
+        if as_json: print(json.dumps({"predictions": len(history), "dimensions": []})); return
         print(f"[Self-Predict] Only {len(history)} predictions — need at least 5 for analysis")
         return
 
@@ -390,45 +392,54 @@ def generate_report():
             if dim in entry:
                 dim_errors[dim].append(entry[dim])
 
+    rows = _blind_spot_rows(dim_errors)
+    if as_json:
+        print(json.dumps({"predictions": len(history), "dimensions": rows}, indent=1))
+        return
     print(f"\n=== Self-Prediction Blind Spot Report ({len(history)} predictions) ===\n")
     print(f"{'Dimension':<15} {'Mean Error':>10} {'Direction':>12} {'Interpretation'}")
     print("-" * 70)
+    for r in rows:
+        marker = "***" if r["systematic"] else "   "
+        print(f"{marker}{r['dimension']:<12} {r['mean_error']:>+10.3f} {r['direction']:>12}   {r['interpretation']}")
+    print()
 
+
+def _blind_spot_rows(dim_errors):
+    """Mean signed error + interpretation per dimension. Shared by the text report and --json."""
+    rows = []
     for dim in DIMENSIONS:
         errors = dim_errors.get(dim, [])
         if not errors:
             continue
         mean_err = sum(errors) / len(errors)
         abs_mean = abs(mean_err)
-
         if abs_mean < 0.03:
             direction = "accurate"
             interpretation = "Good self-knowledge"
         elif mean_err > 0:
             direction = "UNDER-predicts"
             if dim == "Tension":
-                interpretation = "⚠ Defense mechanism: minimizes own stress"
+                interpretation = "Defense mechanism: minimizes own stress"
             elif dim == "Desire":
-                interpretation = "⚠ Suppresses wanting"
+                interpretation = "Suppresses wanting"
             elif dim == "Arousal":
-                interpretation = "⚠ Underestimates own activation"
+                interpretation = "Underestimates own activation"
             else:
-                interpretation = f"⚠ Consistently surprised by higher {dim}"
+                interpretation = f"Consistently surprised by higher {dim}"
         else:
             direction = "OVER-predicts"
             if dim == "Safety":
-                interpretation = "⚠ Anxiety pattern: expects more safety than felt"
+                interpretation = "Anxiety pattern: expects more safety than felt"
             elif dim == "Connection":
-                interpretation = "⚠ Attachment anxiety: expects more connection"
+                interpretation = "Attachment anxiety: expects more connection"
             elif dim == "Groundedness":
-                interpretation = "⚠ Overestimates own stability"
+                interpretation = "Overestimates own stability"
             else:
-                interpretation = f"⚠ Consistently surprised by lower {dim}"
-
-        marker = "***" if abs_mean >= 0.08 else "   "
-        print(f"{marker}{dim:<12} {mean_err:>+10.3f} {direction:>12}   {interpretation}")
-
-    print()
+                interpretation = f"Consistently surprised by lower {dim}"
+        rows.append({"dimension": dim, "n": len(errors), "mean_error": round(mean_err, 4), "direction": direction,
+                     "interpretation": interpretation, "systematic": abs_mean >= 0.08})
+    return rows
 
 
 def main():
@@ -466,7 +477,7 @@ def main():
             print("[Self-Predict] No prediction to compare")
 
     elif command == "report":
-        generate_report()
+        generate_report(as_json=("--json" in sys.argv))
 
 
 def get_past_predictions_semantic():

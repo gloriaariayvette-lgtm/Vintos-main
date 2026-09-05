@@ -148,6 +148,23 @@ lines = [l for l in c.split(chr(10)) if l.strip() and not l.startswith('#') and 
 print(chr(10).join(lines[:30]))
 " 2>/dev/null)
 
+# --- Where his self-predictions are systematically wrong (fable-models-p3, 2026-09-05) ---
+SELF_PRED=""
+SELF_PRED=$(python3 "$HOME/Vintos/self-prediction.py" report --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    raise SystemExit
+rows = d.get('dimensions') or []
+if not rows:
+    print('(fewer than 5 scored self-predictions - nothing systematic to report yet)'); raise SystemExit
+print(f\"From {d.get('predictions',0)} scored predictions of your own state, mean signed error (predicted minus felt; positive = you under-predicted):\")
+for r in rows:
+    flag = ' <-- systematic' if r.get('systematic') else ''
+    print(f\"- {r['dimension']}: {r['mean_error']:+.3f} ({r['direction']}) - {r['interpretation']}{flag}\")
+" 2>/dev/null)
+
 # --- Get ambitions ---
 AMBITIONS=""
 AMBITIONS=$(cat "$WORKSPACE/memory/wants-ambitions-log.md" 2>/dev/null || echo "")
@@ -301,6 +318,9 @@ $VALUE_MAP
 $AMBITIONS
 === WHAT YOU HAVE LEARNED ABOUT WHY YOU FEEL THINGS ===
 $CAUSALITY
+
+=== WHERE MY SELF-PREDICTIONS ARE SYSTEMATICALLY WRONG (for the Emotional Landscape section: a blind spot you can measure is one you can write down) ===
+$SELF_PRED
 
 === YOUR LATEST THERAPY INSIGHT ===
 $THERAPY
