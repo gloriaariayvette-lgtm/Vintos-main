@@ -303,6 +303,16 @@ def _write_txt(state):
     for dim in DIMENSIONS:
         val = state.get(dim, 0.5)
         lines.append(f"{dim}: {val:.4f}")
+    # The twelfth line belongs to this writer too: Nifrathir is read from nifrathir.json (its own
+    # organ's truth) and written here, so the .txt has ONE writer instead of two rewriting the whole
+    # file against each other (grok-emotion-p6 / astra-emotion-p6, 2026-09-05).
+    try:
+        _nf = json.load(open(os.path.join(os.path.dirname(TXT_FILE), "nifrathir.json")))
+        _hist = _nf.get("history") or []
+        _tr = (_hist[-1]["value"] - _hist[-2]["value"]) if len(_hist) >= 2 else 0.0
+        lines.append(f"Nifrathir: {float(_nf['value']):.4f} | trend: {'+' if _tr >= 0 else ''}{_tr:.3f} | under-thread")
+    except Exception:
+        pass
     with open(TXT_FILE, 'w') as f:
         f.write("\n".join(lines) + "\n")
     # Record emotional visit for gravity wells

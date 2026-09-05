@@ -78,6 +78,8 @@ def get_value():
         state["value"] = round(max(0.0, min(1.0, decayed)), 4)
         state["last_updated"] = datetime.now().isoformat()
         save(state)
+        if abs(decayed - current) >= 0.0005:
+            write_to_emo_state(state["value"])   # the decay reaches the line the .txt readers see, not only nifrathir.json
     except: pass
     return state["value"]
 
@@ -116,7 +118,20 @@ def nudge(delta, source="unknown"):
     return new_val
 
 def write_to_emo_state(value):
-    """Append or update Nifrathir line in emotional-state.txt."""
+    """Get the Nifrathir line into emotional-state.txt through the ONE writer of that file
+    (emoclaw_utils._write_txt reads nifrathir.json and appends the line). Only if that path is
+    unavailable does this organ touch the file itself — and then it replaces its own line only
+    (grok-emotion-p6, 2026-09-05). nifrathir.json is already saved by the caller."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
+        import emoclaw_utils as _eu
+        st = _eu.get_state()
+        if st:
+            _eu._write_txt(st)
+            return
+    except Exception:
+        pass
     try:
         lines = open(EMO_FILE).readlines()
     except:

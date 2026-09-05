@@ -51,13 +51,15 @@ _FULL = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification"
          ("architecture_answers", "block"), ("curiosity_debt", "block"),
          ("unsaid_questions", "block"), ("session_map", "block"),
          ("social_calibration", "block"), ("repair_case", "block"),
-         ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("intent_context", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block")]
+         ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("intent_context", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
+         ("pleasure_substrate", "context_block")]   # what is still in him from a named moment, his own words (grok-somatic-p6, 2026-09-05)
 
 _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification", "get_field_hint"),
             ("mutual_simulation", "get_interaction_hint"), ("world_model", "get_world_block"),
             ("relational_head", "get_relational_hint"), ("withheld_head", "get_withheld_hint"),
             ("presence_audit", "forecast_block"), ("repair_case", "block"),
-            ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("velqan_voice", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block")]
+            ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("velqan_voice", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
+            ("pleasure_substrate", "context_block")]
 
 def _atelier_door_line():
     """One content-free sentence when the door is lit. Never repeats project content;

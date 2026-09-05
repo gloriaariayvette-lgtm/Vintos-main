@@ -2897,10 +2897,21 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     return absorb_messages
 
                 a2 = b2 = None
+                async def _g_absorb(_msgs, _temp):
+                    # The absorb is where two drafts become one voice: try his current Claude model first,
+                    # fail-open to gemma as before. The two short held one-liners stay on gemma
+                    # (fable-server-a-p6, 2026-09-05).
+                    if not _chat_grok:
+                        try:
+                            _t, _rr = await _mr.claude_draft(_msgs[0]["content"], _msgs[1:])
+                            if _t: return _t
+                        except Exception as _ce:
+                            print(f"[{_tag}/absorb claude]", _ce, flush=True)
+                    return await _g(_msgs, _temp)
                 try:
                     a2, b2 = await _asyncio.gather(
-                        _g(_absorb_msgs(a1 or "", b1 or ""), 0.75),
-                        _g(_absorb_msgs(b1 or "", a1 or ""), 0.75)
+                        _g_absorb(_absorb_msgs(a1 or "", b1 or ""), 0.75),
+                        _g_absorb(_absorb_msgs(b1 or "", a1 or ""), 0.75)
                     )
                 except Exception as _a2e:
                     print(f"[Bilateral/phase2] Error: {_a2e}", flush=True)
