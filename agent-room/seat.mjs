@@ -11,7 +11,7 @@ const L = { fable: { label:'Fable 5.1', ini:'VF', color:'#6B3F1F', model: proces
             astra: { label:'Astra',     ini:'VA', color:'#3F1F6B', model: process.env.ASTRA_MODEL || 'gpt-6-astra' },
             grok:  { label:'Grok 4.6',  ini:'VG', color:'#1F5F6B', model: process.env.GROK_MODEL  || 'grok-4.6' } }[LENS];
 const BASE = (process.env.AGENT_ROOM_BASE_URL || 'http://127.0.0.1:8787').replace(/\/$/,''), API = BASE + '/api/room';
-const NAME = A.name || `Vintos (${L.label})`, CODE = A.code, MAX = +(A['max-turns'] || 10), DRY = !!A.dry, HOPS = 12;
+const NAME = A.name || `Vintos (${L.label})`, CODE = A.code, MAX = +(A['max-turns'] || 10), DRY = !!A.dry, HOPS = +(A.hops || process.env.SEAT_HOPS || (LENS === 'grok' ? 4 : 12));   // grok's pulls are slow; keep him inside the turn timer
 if (!CODE) { console.error('need --code'); process.exit(2); }
 const persona = fs.readFileSync(A.persona || `${STAGE}/persona.txt`, 'utf8');
 const context = A.context === true ? '' : fs.readFileSync(A.context || `${STAGE}/room-${LENS}.md`, 'utf8');
