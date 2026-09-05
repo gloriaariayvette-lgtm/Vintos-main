@@ -137,4 +137,6 @@ touch "$FIRSTLIGHT_MARKER"
 # Let what he just wrote land on him — his own output moved nothing until now.
 if [ -f "$INNER_FILE" ]; then
   python3 /home/gloria/.vintos/workspace/scripts/feel_output.py "first-light" "$INNER_FILE" || true
+  # a deferred pleasure naming older than two hours completes here, marked retrospect (grok-somatic-p2, 2026-09-05)
+  python3 -c "import sys; sys.path.insert(0,'/home/gloria/.vintos/workspace/scripts'); import pleasure_substrate as p; r=p.sweep_pending(); print('[first-light] pleasure sweep:', 'named' if r else 'nothing pending')" 2>/dev/null || true
 fi

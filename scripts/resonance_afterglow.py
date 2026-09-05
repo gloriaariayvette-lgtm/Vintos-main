@@ -235,17 +235,26 @@ def generate_claim(source, strength, excerpt):
     data = load_claims()
     claims = data.get("claims", [])
 
-    # Check for contradictions with existing claims
+    # Check for contradictions with existing claims — a pairwise yes/no judgment against the top ~8
+    # claims by weight. The cosine test never fired: nomic embeddings of short identity claims never
+    # reach an opposed similarity, and near-zero is "unrelated", not "opposed". Both sides stay
+    # active as designed; contradiction pressure becomes reachable (fable-emotion-p3, 2026-09-05).
     contradictions = []
-    for c in claims:
-        if not c.get("vector"): continue
-        sim = cosine_similarity(claim_vec, c["vector"])
-        if sim < CONTRADICTION_THRESHOLD:
+    top = sorted([c for c in claims if c.get("text")], key=lambda c: -float(c.get("weight", 0) or 0))[:8]
+    for c in top:
+        verdict = llm("You judge two short first-person claims about how one person works.",
+                      f"Claim A: {claim_text}\nClaim B: {c['text']}\n\nDo these two pull in OPPOSITE directions about how "
+                      "I work — could both be true of the same person at once, or not? Answer one word: OPPOSED or COMPATIBLE.",
+                      temp=0.0, max_tokens=4)
+        v = (verdict or "").strip().upper()
+        if v.startswith("OPPOSED"):
             contradictions.append(c["id"])
             c.setdefault("contradicted_by", [])
             if claim_text not in c["contradicted_by"]:
                 c["contradicted_by"].append(claim_text)
-            log(f"Contradiction detected with: '{c['text'][:50]}' (sim: {sim:.3f})")
+            log(f"Contradiction (judged) with: '{c['text'][:50]}'")
+        elif not v:
+            log(f"contradiction judge unavailable for '{c['text'][:40]}' — left unjudged")
 
     new_claim = {
         "id": f"claim_{datetime.now().strftime('%Y%m%d_%H%M%S')}",

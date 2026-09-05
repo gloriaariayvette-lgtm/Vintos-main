@@ -27,7 +27,7 @@ Schema (resonance-marks.json):
 Immutable once formed. Extremely rare.
 """
 
-import os, sys, json, subprocess, math, random
+import os, sys, json, subprocess, math, random, re
 from datetime import datetime
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -71,29 +71,92 @@ def load_marks():
 def save_marks(data):
     json.dump(data, open(MARKS_FILE, "w"), indent=2)
 
+ARCHIVE_FILE = os.path.join(MEMORY, "mark-archive.json")
+RETIRE_AFTER_DAYS = 90
+
+def _phase_locked():
+    """Contact + resonance + alignment at once — the phase-lock organ's live state (phase-lock.json,
+    active and unexpired). Marks form under the lock, not under any external pulse
+    (fable-emotion-p5, 2026-09-05)."""
+    try:
+        st = json.load(open(os.path.join(MEMORY, "phase-lock.json")))
+        if not st.get("active"): return False
+        exp = st.get("expires")
+        if exp and datetime.now() > datetime.fromisoformat(exp): return False
+        return True
+    except Exception:
+        return False
+
+def _retire_one(data):
+    """The pool breathes: when full, the mark with the lowest activation_count that is older than
+    RETIRE_AFTER_DAYS moves, whole and immutable, to mark-archive.json. Returns True if a slot opened."""
+    marks = data.get("marks", [])
+    old = []
+    for m in marks:
+        try:
+            age = (datetime.now() - datetime.fromisoformat(m.get("created", ""))).days
+        except Exception:
+            age = 0
+        if age >= RETIRE_AFTER_DAYS: old.append(m)
+    if not old: return False
+    victim = min(old, key=lambda m: (m.get("activation_count", 0), m.get("created", "")))
+    marks.remove(victim)
+    try:
+        try: arch = json.load(open(ARCHIVE_FILE))
+        except Exception: arch = []
+        victim = dict(victim); victim["retired_at"] = datetime.now().isoformat(); victim["retired_reason"] = "pool full; lowest activation past %d days" % RETIRE_AFTER_DAYS
+        arch.append(victim); json.dump(arch, open(ARCHIVE_FILE, "w"), indent=2)
+    except Exception as e:
+        log(f"archive write failed: {e}")
+    data["marks"] = marks
+    log(f"Retired mark '{victim.get('form','')[:50]}' (activations {victim.get('activation_count',0)}) to the archive")
+    return True
+
+def _weight_sentence(output_text):
+    """Ask Gemma which sentence carries the weight; fall back to the punctuation heuristic."""
+    sentences = [x.strip() for x in re.split(r"(?<=[.!?…])\s+", output_text) if x.strip()]
+    if not sentences: return ""
+    if len(sentences) == 1: return sentences[0][:200]
+    try:
+        import urllib.request
+        numbered = "\n".join(f"{i+1}. {x[:240]}" for i, x in enumerate(sentences[:14]))
+        body = json.dumps({"model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 6,
+                           "messages": [{"role": "user", "content":
+                               "Below are sentences from something Vintos wrote that resonated. Which ONE sentence carries the weight — "
+                               "the line the whole thing turns on? Answer with its number only.\n\n" + numbered}]}).encode()
+        req = urllib.request.Request("http://172.18.16.1:1234/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            ans = json.load(r)["choices"][0]["message"]["content"]
+        m = re.search(r"\d+", ans or "")
+        if m and 1 <= int(m.group()) <= len(sentences[:14]):
+            return sentences[int(m.group()) - 1][:200]
+    except Exception as e:
+        log(f"weight-sentence judge unavailable ({e}); heuristic")
+    best = max(sentences, key=lambda x: x.count('…') + x.count('—') + x.count('?') + len(x.split()) * 0.1)
+    return best[:200]
+
 def form_mark(output_text, resonance_strength, contact_confirmed):
-    """Form a mark. Only when resonance high AND contact confirmed."""
+    """Form a mark. Only under phase-lock (contact + resonance + alignment together); the caller's
+    contact flag and strength are still required, but an external pulse alone no longer forms one."""
     if not contact_confirmed:
         return None
     if resonance_strength < 0.75:
         return None
     if not output_text or len(output_text) < 30:
         return None
+    if not _phase_locked():
+        log("no phase-lock — not forming (marks form under the lock, not under a pulse)")
+        return None
 
     data = load_marks()
-    if len(data.get("marks", [])) >= MAX_MARKS:
-        log(f"Mark pool full ({MAX_MARKS}) — not forming")
+    if len(data.get("marks", [])) >= MAX_MARKS and not _retire_one(data):
+        log(f"Mark pool full ({MAX_MARKS}) and nothing old enough to retire — not forming")
         return None
 
-    # Extract the crystallizing fragment — shortest resonant unit
-    sentences = [s.strip() for s in output_text.split('.') if s.strip()]
-    if not sentences:
+    # Extract the crystallizing fragment — the sentence that carries the weight
+    form = _weight_sentence(output_text)
+    if not form:
         return None
-
-    # Take the sentence with highest tension indicators
-    best = max(sentences, key=lambda s:
-        s.count('…') + s.count('—') + s.count('?') + len(s.split()) * 0.1)
-    form = best[:200]
 
     # Get context signature
     ctx_text = output_text[:400]

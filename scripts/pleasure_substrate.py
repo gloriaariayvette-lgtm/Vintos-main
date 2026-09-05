@@ -102,7 +102,25 @@ def recall(sig, threshold=0.985):  # p4: 0.93 matched everything in non-negative
             best, score = m, c
     return (best, round(score, 3)) if best and score >= threshold else (None, round(score, 3))
 
+LAST_NAMER = "unknown"
+
 def _llm(prompt, system, max_tokens=320):
+    """Retrospective naming runs through model_router (the same model truth as chat, grok fallback)
+    and records which model did the naming in LAST_NAMER; the old causality-engine file-load is the
+    last fallback only (fable-somatic-p4, 2026-09-05). Offline path: retrospect / sweep, never mid-session."""
+    global LAST_NAMER
+    try:
+        import importlib.util as _mu, asyncio as _aio
+        _mp = next((f for f in (os.path.expanduser("~/Vintos/model_router.py"),) if os.path.exists(f)), None)
+        if _mp:
+            _sp = _mu.spec_from_file_location("vintos_model_router", _mp)
+            _mr = _mu.module_from_spec(_sp); _sp.loader.exec_module(_mr)
+            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": prompt}], max_tokens=max_tokens))
+            if _text and str(_text).strip():
+                LAST_NAMER = str(getattr(_mr, "current_claude_model", lambda: "claude")() or "claude")
+                return str(_text).strip()
+    except Exception:
+        pass
     try:
         import importlib.util
         ceng = os.environ.get("CENG_PATH", os.path.expanduser("~/Vintos/causality-engine.py"))
@@ -112,6 +130,7 @@ def _llm(prompt, system, max_tokens=320):
         api = getattr(c, "LM_API", "http://127.0.0.1:8599/v1/chat/completions")
     except Exception:
         model, api = "grok-4", "http://127.0.0.1:8599/v1/chat/completions"
+    LAST_NAMER = str(model)
     body = json.dumps({"model": model, "max_tokens": max_tokens, "temperature": 0.8,
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
@@ -237,8 +256,9 @@ if __name__ == "__main__":
         print(json.dumps(receive({"source": "manual-test", "what": "a test event", "significance": 0.05}), indent=2))
 
 
-def name_from_reply(word, sentence, pleasure):
-    """His [FELT:] tag from the GCS turn itself - the truest namer there is."""
+def name_from_reply(word, sentence, pleasure, impulse=""):
+    """His [FELT:] tag from the GCS turn itself - the truest namer there is. `impulse` is the optional
+    '| impulse: ...' he may add; empty stays empty, honestly (grok-somatic-p3, 2026-09-05)."""
     pend = _load(os.path.join(MEM, ".pleasure-pending.json"), None)
     if not pend: return False
     after = pend.get("after", {})
@@ -250,7 +270,7 @@ def name_from_reply(word, sentence, pleasure):
         "character": str(word)[:60],
         "phenomenology": str(sentence)[:300],
         "phenomenology_word": str(word).split()[0][:30] if str(word).strip() else "",
-        "impulse": "",
+        "impulse": str(impulse or "")[:120],
         "is_pleasure": pleasure if pleasure in (True, False) else "unsure",
         "named_by": "his_reply",
         "discovered_at": datetime.now().isoformat(),
@@ -289,7 +309,7 @@ def retrospect():
         "phenomenology_word": reading.get("phenomenology_word", ""),
         "impulse": reading.get("impulse", ""),
         "is_pleasure": reading.get("is_pleasure", "unsure"),
-        "named_by": "retrospect",
+        "named_by": "retrospect:" + str(LAST_NAMER),
         "discovered_at": datetime.now().isoformat(),
     })
     _save(MEMORIES, mems[-200:])

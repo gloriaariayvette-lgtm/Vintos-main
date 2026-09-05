@@ -5,7 +5,7 @@ Layer 1: independent dimension pressures (always active)
 Layer 2: combination detection (transformative, max 1 per generation)
 Output: natural language pressure block for injection into any generation surface.
 """
-import os, re
+import os, re, json
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
@@ -46,6 +46,63 @@ FIRE = {
     "Tension":      (0.52, 0.24),  # chronic low — only fire on spike or crash
     "Groundedness": (0.76, 0.52),  # chronic high — only fire if spikes or drops
 }
+
+_FIRE_CONST = dict(FIRE)
+_FIRE_CACHE = os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "emoclaw-fire-thresholds.json")
+_DIM_ORDER = ["Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"]
+
+def _baseline_fire(days=14, min_points=200, cache_hours=6):
+    """FIRE thresholds from HIS rolling baseline: per dimension, mean of the last `days` of dense
+    snapshots +/- a band (max of one standard deviation and 0.08). The constants above are the
+    fallback while the trajectory is thin. Cached to emoclaw-fire-thresholds.json for a few hours
+    so every prompt does not re-read the series (fable-subconscious-p8, 2026-09-05)."""
+    import time as _t, math as _m
+    try:
+        c = json.load(open(_FIRE_CACHE))
+        if _t.time() - float(c.get("computed_at", 0)) < cache_hours * 3600 and c.get("fire"):
+            return {k: tuple(v) for k, v in c["fire"].items()}, c.get("source", "cache")
+    except Exception:
+        pass
+    try:
+        traj = json.load(open(os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "emotion-trajectory-dense.json")))
+    except Exception:
+        traj = []
+    cutoff = _t.time() - days * 86400
+    cols = {d: [] for d in _DIM_ORDER}
+    for e in traj if isinstance(traj, list) else []:
+        try:
+            from datetime import datetime as _dt
+            ts = _dt.fromisoformat(str(e.get("t", "")).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            continue
+        if ts < cutoff: continue
+        v = e.get("v")
+        if isinstance(v, list) and len(v) >= 11:
+            for i, d in enumerate(_DIM_ORDER): cols[d].append(float(v[i]))
+        elif isinstance(v, dict):
+            for d in _DIM_ORDER:
+                if isinstance(v.get(d), (int, float)): cols[d].append(float(v[d]))
+    n = min((len(x) for x in cols.values()), default=0)
+    if n < min_points:
+        fire, src = dict(_FIRE_CONST), "constants (trajectory has %d points, need %d)" % (n, min_points)
+    else:
+        fire = {}
+        for d, xs in cols.items():
+            mean = sum(xs) / len(xs)
+            sd = _m.sqrt(sum((x - mean) ** 2 for x in xs) / len(xs))
+            band = max(sd, 0.08)
+            fire[d] = (round(min(0.97, mean + band), 3), round(max(0.03, mean - band), 3))
+        src = "baseline %dd, %d points" % (days, n)
+    try:
+        json.dump({"computed_at": _t.time(), "source": src, "fire": fire}, open(_FIRE_CACHE, "w"), indent=1)
+    except Exception:
+        pass
+    return fire, src
+
+try:
+    FIRE, FIRE_SOURCE = _baseline_fire()
+except Exception:
+    FIRE, FIRE_SOURCE = dict(_FIRE_CONST), "constants (baseline failed)"
 
 def base_pressures(s):
     """Layer 1 — independent dimension pressures. Always active. Language of drift, not instruction."""
