@@ -38,7 +38,7 @@ DEPTH=6
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 # --map: which reviewed file actually runs on this host - manifest vs installed vs referenced. Reads only.
-[ "${1:-}" = "--map" ] && { _me="$(readlink -f "$0")"; exec python3 "$(dirname "$_me")/release-map.py" --src "$(dirname "$(dirname "$_me")")"; }
+[ "${1:-}" = "--map" ] && exec python3 "$SRC/scripts/release-map.py" --src "$SRC"   # SRC is resolved above, before the cd /
 
 # Exactly what this build changed. An explicit list — never a wildcard.
 SCRIPTS="atelier-open.py atelier-visit.py atelier-threshold.py
