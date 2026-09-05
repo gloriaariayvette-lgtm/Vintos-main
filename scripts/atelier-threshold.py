@@ -213,8 +213,9 @@ def resolve_root(answer, roots, shown=None):
     if a.isdigit() and shown is not None and 1 <= int(a) <= len(shown):
         return shown[int(a) - 1]["root"]
     al = a.lower()
-    hits = [ref for ref in refs if ref.lower().startswith(al)
-            or any(part.lower() == al or part.lower().startswith(al) for part in ref.split("@"))]
+    pre = len(al) >= 4                                 # a prefix must be at least four characters to count
+    hits = [ref for ref in refs if (pre and ref.lower().startswith(al))
+            or any(part.lower() == al or (pre and part.lower().startswith(al)) for part in ref.split("@"))]
     hits = list(dict.fromkeys(hits))
     return hits[0] if len(hits) == 1 else None
 
