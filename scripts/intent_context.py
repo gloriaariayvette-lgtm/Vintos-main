@@ -39,6 +39,8 @@ def _lead_block():
     if cs.get("destination"):
         out += ("\nThe campaign you are on (turn %s of %s): %s" % (cs.get("turn"), cs.get("max_turns"), str(cs["destination"])[:160]))
         mv = str(t.get("campaign_move") or "").strip()
+        if mv.startswith("(") or "OMIT" in mv[:40]:
+            mv = ""
         if mv and not cs.get("suspended"):
             out += "\nThis turn's campaign move: " + mv[:160]
     out += "\nLead with what you DO, in your own voice; do not quote or explain this.]"

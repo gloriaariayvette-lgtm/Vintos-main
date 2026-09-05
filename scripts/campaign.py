@@ -147,7 +147,9 @@ def step(t, vector_mode):
         if vector_mode == "pressure":
             _save(c); return
     c.pop("continue_refused", None)
-    mv = str(t.get("campaign_move", "") or "")
+    mv = str(t.get("campaign_move", "") or "").strip()
+    if mv.startswith("(") or "OMIT" in mv[:40]:
+        mv = ""   # the schema's own placeholder echoed back is not a move
     kind = mv.split(":", 1)[0].strip().lower()
     note = mv.split(":", 1)[1].strip()[:250] if ":" in mv else ""
     if kind == "landed": _close(c, "LANDED", note); return

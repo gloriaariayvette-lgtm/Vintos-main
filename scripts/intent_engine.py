@@ -98,6 +98,8 @@ _SCHEMA = (
     '"priority":{"field":0.0,"gloria":0.0,"self":0.0},'
     '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
     '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
+    '"campaign":"(OMIT unless the CAMPAIGN block above says none is live AND you mean to declare one) {\"destination\":\"...\",\"axis\":\"field|gloria|self\",\"why\":\"...\"}",'
+    '"campaign_move":"(OMIT unless a campaign is live) advance: ... | hold: ... | revise: ... | flawed: ... | landed: ... | continue: ... | ... | days",'
     '"why":"one sentence: why this field and this priority, as me"}'
 )
 

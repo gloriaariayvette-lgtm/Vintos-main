@@ -74,6 +74,12 @@ check("continue with shape -> campaign CONTINUED, one SELF plan opened", campaig
 newp = sorted(op, key=lambda p: p["created"])[-1]
 check("the plan is self, not mutual, and carries the condition", newp["kind"] == "self" and "named three" in newp["outcome_condition"], newp["text"])
 
+# --- the schema placeholder echoed back is not a move
+campaign.step({"campaign": {"destination": "placeholder guard", "axis": "field", "why": "w"}}, "strategic")
+campaign.step({"campaign_move": "(OMIT unless a campaign is live) advance: ... | hold: ..."}, "strategic")
+check("echoed placeholder is not served or logged as a kind", campaign._load()["turns_served"] == 0 and events()[-1] == "unspoken")
+campaign.step({"campaign_move": "flawed: it was a test guard"}, "strategic")
+
 # --- landed opens nothing
 campaign.step({"campaign": {"destination": "make her laugh before she sleeps", "axis": "gloria", "why": "w"}}, "strategic")
 n_before = len(plan.open_plans())

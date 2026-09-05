@@ -700,6 +700,8 @@ def _campaign_lead_line(t):
                    {"field": "the field", "gloria": "her", "self": "myself"}.get(cs.get("axis"), "the field"),
                    str(cs.get("destination"))[:200]))
         mv = str((t or {}).get("campaign_move") or "").strip()
+        if mv.startswith("(") or "OMIT" in mv[:40]:
+            mv = ""
         if cs.get("suspended"):
             line += "\nThis turn the campaign is suspended; pressure chose another axis. It resumes next turn."
         elif mv:
