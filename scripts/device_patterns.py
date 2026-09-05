@@ -289,8 +289,8 @@ def compile_plan(reply_text):
                 lvl = {"low": 5, "mid": 12, "high": 18, "off": 0, "still": 0}.get(str(args[0]).lower())
                 if lvl is None and isinstance(args[0], int): lvl = max(0, min(20, args[0]))
             if lvl is None: lvl = 12
-            if lvl == 0:
-                plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "still", "args": [], "level": 0, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
+            if lvl == 0:   # a rotation zero stays on the rotation channel (P03-02): Rotate:0, never Vibrate:0
+                plan.append({"form": "do", "toy": toy, "kind": "stop", "pattern": "rotate", "args": [], "level": 0, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
             plan.append({"form": "do", "toy": toy, "kind": "rotate", "pattern": "rotate", "args": args, "level": lvl, "seconds": 0, "tag": m.group(0), "_pos": m.start()}); continue
         unknown = [q for q in parts if q not in PRESETS and q not in LEGACY_PATTERNS]
         if unknown:
@@ -363,18 +363,43 @@ def fire_his_intent(reply_text, context=None):
     for _rj in rejected:
         print(f"[device] tag refused before authorization: {_rj['tag']} — {_rj['why']}", flush=True)
         _fired.append("%s [refused:%s]" % (_rj["tag"][:40], _rj["why"][:40]))
-    for _act in [a for a in plan if a["form"] == "do"]:
+    def _stop_targets(toy):
+        """The concrete devices a stop reaches: an alias expands to every toy plus the thruster (P03-03)."""
+        return (list(toy_link.TOYS) + ["thruster"]) if toy in _SYNC else [toy]
+    # ONE pass, in the order he wrote the tags (P03-01): the compiler sorts by position, and an executor
+    # that ran every DO before every TOUCH undid that, so '[TOUCH: ridge 8] [DO: ridge stop]' stopped first.
+    for _act in plan:
         toy=_act["toy"]; pat=_act["pattern"]; args=list(_act["args"]); _lvl=_act["level"]
         _kind = _act["kind"]
         if _kind == "stop":
-            # zero means stop, everywhere (astra-somatic-p1): a plain stop on this toy, same path as [TOUCH: toy 0]
-            _stop_local(toy)   # a running local pattern loop would re-send after the 0 (review P03)
-            _ok, _permit, _digest = _authorize(context, toy, 0, "start", pattern="steady", args=[0])
-            if _ok:
+            # zero means stop, everywhere (astra-somatic-p1): the same path as [TOUCH: toy 0]
+            _stop_local(toy)   # a running local pattern loop would re-send after the 0
+            _ok, _permit, _digest = _authorize(context, toy, 0, "start", pattern=("rotate" if pat == "rotate" else "steady"), args=[0])
+            if not _ok:
+                continue
+            for _t in _stop_targets(toy):   # the alias itself is not a device key (P03-03); each target gets its own zero
                 try:
-                    _sent = toy_link.send(toy, 0, 0, context=context, permit=_permit, effect_digest=_digest)
-                    _fired.append("%s → stop [%s]" % (toy, "sent" if _sent else "failed"))
-                except Exception: _fired.append("%s → stop [failed]" % toy)
+                    if pat == "rotate":
+                        _sent = toy_link.rotate(_t, 0, 0, context=context, permit=_permit, effect_digest=_digest)
+                    else:
+                        _sent = toy_link.send(_t, 0, 0, context=context, permit=_permit, effect_digest=_digest)
+                    _fired.append("%s → %s [%s]" % (_t, "rotate stop" if pat == "rotate" else "stop", "sent" if _sent else "failed"))
+                except Exception as _se:
+                    _fired.append("%s → %s [failed]" % (_t, "rotate stop" if pat == "rotate" else "stop"))
+            continue
+        if _act["form"] == "touch":
+            lvl = _lvl
+            _ok, _permit, _digest = _authorize(context, toy, lvl, "start", pattern="steady", args=[lvl])
+            if not _ok:
+                continue
+            if _fired: time.sleep(_GAP)
+            _detail = {}
+            _st = "failed"
+            try:
+                play(toy, "steady", [lvl], permit=_permit, effect_digest=_digest, outcome=_detail)
+                _st = _detail.get("status", "failed")
+            except Exception: _st = "failed"
+            _fired.append("%s \u2192 %s [%s]" % (toy, lvl, _st))
             continue
         # a named preset can peak at 20 regardless of the args; authorize the
         # real peak so the permit's maximum is not undersized.
@@ -397,21 +422,6 @@ def fire_his_intent(reply_text, context=None):
             _st = _detail.get("status", "failed")
         except Exception: _st = "failed"
         _fired.append("%s \u2192 %s [%s]" % (toy, pat + ((" "+" ".join(str(a) for a in args)) if args else ""), _st))
-    for _act in [a for a in plan if a["form"] == "touch"]:
-        toy=_act["toy"]; lvl=_act["level"]
-        _ok, _permit, _digest = _authorize(
-            context, toy, lvl, "start", pattern="steady", args=[lvl])
-        if not _ok:
-            continue
-        if _fired: time.sleep(_GAP)
-        _detail = {}
-        _st = "failed"
-        try:
-            play(toy, "steady", [lvl], permit=_permit,
-                 effect_digest=_digest, outcome=_detail)
-            _st = _detail.get("status", "failed")
-        except Exception: _st = "failed"
-        _fired.append("%s \u2192 %s [%s]" % (toy, lvl, _st))
     if _fired:
         try:
             json.dump({"type":"command","text":" \u00b7 ".join(_fired),"channel":"device","ts":time.time()},
@@ -421,9 +431,12 @@ def fire_his_intent(reply_text, context=None):
             with open(os.path.join(MEM, "effect-receipts.jsonl"), "a") as _rf:
                 for _line in _fired:
                     _st = _line.rsplit("[", 1)[-1].rstrip("]") if "[" in _line else "unknown"
+                    # 'started' is a local thread that has not yet sent anything (P02-04): it is recorded as
+                    # started, with no transport claim; only a synchronous sent/ok/playing is 'transport accepted'
                     _rf.write(json.dumps({"t": time.time(), "kind": "pattern", "text": _line[:120],
-                                          "outcome": ("submitted" if _st in ("ok", "sent", "playing", "started") else _st[:40]),
+                                          "outcome": ("submitted" if _st in ("ok", "sent", "playing") else "started" if _st == "started" else _st[:40]),
                                           "turn_id": os.environ.get("VINTOS_TURN_ID", ""), "surface": os.environ.get("VINTOS_SURFACE", ""),
-                                          "claim": "transport accepted" if _st in ("ok", "sent", "playing", "started") else "see detail"}) + "\n")
+                                          "claim": ("transport accepted" if _st in ("ok", "sent", "playing") else
+                                                    "local pattern started; no transport result yet" if _st == "started" else "see detail")}) + "\n")
         except Exception: pass
     return _strip_tags(reply_text)
