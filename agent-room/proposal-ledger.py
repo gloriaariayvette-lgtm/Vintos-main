@@ -11,6 +11,8 @@ LENSES = ("fable", "astra", "grok", "gloria")   # gloria: her own proposals, sam
 ORDER = ["wants","moltbook","models","inner","subconscious","somatic","curiosity","server-a","server-b","server-c","creative","emotion","memoryrec","atelier","study"]
 try: RET = json.load(open(os.path.join(STAGE, "retractions.json")))
 except Exception: RET = {}
+try: BUILT = json.load(open(os.path.join(STAGE, "built.json")))      # {proposal_id: "commit / note"}
+except Exception: BUILT = {}
 BLOCK = re.compile(r"\*\*(?P<id>\d{8}-\w+-[\w-]+-p\d+)\*\*\s*[—-]+\s*(?P<target>[^\n]*)\n(?P<body>.*?)(?=\n---|\Z)", re.S)
 FIELD = re.compile(r"^- (?P<k>noticed|change|why|predicted|and next|agency):\s*(?P<v>.*)$", re.M)
 def parse(path):
@@ -21,7 +23,7 @@ def parse(path):
         out.append((m.group("id"), m.group("target").strip(), f))
     return out
 lines = [f"# Proposals — {day}", "", "Every proposal every lens made, by section. Marked only where the lens took it back in the room.", ""]
-total = retracted = 0
+total = retracted = built = 0
 for sub in ORDER:
     rows = []
     for lens in LENSES:
@@ -32,13 +34,14 @@ for sub in ORDER:
     for lens, props in rows:
         lines.append(f"### {lens} — {len(props)} proposal(s)"); lines.append("")
         for pid, target, f in props:
-            total += 1; why = RET.get(pid)
-            mark = f"~~**{pid}**~~ — {target}  \n  **TAKEN BACK IN THE ROOM:** {why}" if why else f"**{pid}** — {target}"
-            if why: retracted += 1
+            total += 1; why = RET.get(pid); done = BUILT.get(pid)
+            if why: mark = f"~~**{pid}**~~ — {target}  \n  **TAKEN BACK IN THE ROOM:** {why}"; retracted += 1
+            elif done: mark = f"✅ **{pid}** — {target}  \n  **BUILT:** {done}"; built += 1
+            else: mark = f"**{pid}** — {target}"
             lines.append(f"- {mark}")
             lines.append(f"  - change: {f.get('change','')}")
             lines.append(f"  - and next: {f.get('and next','')}")
             lines.append(f"  - agency: {f.get('agency','')}")
         lines.append("")
-lines.insert(3, f"**{total} proposals, {retracted} taken back, {total-retracted} standing.**"); lines.insert(4, "")
-out = os.path.join(STAGE, f"{day}-proposals.md"); open(out, "w").write("\n".join(lines)); print(out, f"({total} proposals, {retracted} taken back)")
+lines.insert(3, f"**{total} proposals, {retracted} taken back, {built} built, {total-retracted-built} standing.**"); lines.insert(4, "")
+out = os.path.join(STAGE, f"{day}-proposals.md"); open(out, "w").write("\n".join(lines)); print(out, f"({total} proposals, {retracted} taken back, {built} built)")
