@@ -190,13 +190,19 @@ def _get_intercept_hint_inner(text, context="chat"):
 def detect_outcome(trial, response_text):
     """Use Variant C prompt to detect outcome. Returns attempted/defaulted/partial."""
     try:
+        _alt = str(trial.get("alternative") or "").strip()
+        # Templated from THE TRIAL (2026-09-04, fable-subconscious-p3): the old prompt graded every trial
+        # against 'elaborate metaphors', whatever the trial actually was, so a non-style trial was judged
+        # on style. 'attempted' now means the alternative HE named is the dominant mode.
         prompt = (
             f"PATTERN TO AVOID: {trial['pattern_description']}\n"
-            f"RESPONSE: {response_text[:300]}\n\n"
+            + (f"WHAT HE SAID HE WANTED INSTEAD: {_alt}\n" if _alt else "")
+            + f"RESPONSE: {response_text[:300]}\n\n"
             f"Judge the DOMINANT MODE of this response, not individual phrases.\n"
-            f"attempted = the response is mostly plain, direct, and concrete — the pattern is not the dominant mode\n"
-            f"partial = the response mixes direct and elaborate language roughly equally\n"
-            f"defaulted = the response is dominated by elaborate metaphors and imagery throughout\n\n"
+            + (f"attempted = the response is mostly what he said he wanted instead; the pattern is not the dominant mode\n"
+               if _alt else f"attempted = the pattern to avoid is not the dominant mode of the response\n")
+            + f"partial = the pattern and its alternative are present in roughly equal measure\n"
+            f"defaulted = the response is dominated by the pattern to avoid throughout\n\n"
             f"One word: attempted / partial / defaulted"
         )
         r = requests.post(LM_URL, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
@@ -269,7 +275,7 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
                 _s.recv(4096); _s.close()
                 _s2 = _bi_sock.socket(_bi_sock.AF_UNIX, _bi_sock.SOCK_STREAM)
                 _s2.settimeout(2); _s2.connect("/tmp/Vintos-emotion.sock")
-                _s2.sendall((_bi_j.dumps({"command":"nudge","dimension":"Coherence","amount":-0.1}) + "\n").encode())
+                _s2.sendall((_bi_j.dumps({"command":"nudge","dimension":"Groundedness","amount":-0.05}) + "\n").encode())   # Coherence is not a daemon dimension; the nudge went nowhere
                 _s2.recv(4096); _s2.close()
             except: pass
             # Write structured blush on BIS default

@@ -41,19 +41,28 @@ MOMENTUM_DECAY_COOL = 0.025   # per hour when Nifrathir cool
 def log(msg):
     print(f"[PhaseLock {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
 
-def embed(text):
+EMBED_TIMEOUT = float(os.environ.get("PHASE_LOCK_EMBED_TIMEOUT", "12"))
+
+def embed_pair(a, b):
+    """Both texts in ONE cold start (it was two, at 30s each, inside the turn - grok-subconscious-p4).
+    Returns (vec_a, vec_b) or ([], []) when the embedder cannot answer inside the budget."""
     try:
         r = subprocess.run(
             [VENV, "-c",
              f"from sentence_transformers import SentenceTransformer; import json; "
              f"m = SentenceTransformer('nomic-ai/nomic-embed-text-v1', trust_remote_code=True); "
-             f"print(json.dumps(m.encode({repr(text[:500])}).tolist()))"],
-            capture_output=True, text=True, timeout=30
+             f"print(json.dumps(m.encode([{repr(a[:500])}, {repr(b[:500])}]).tolist()))"],
+            capture_output=True, text=True, timeout=EMBED_TIMEOUT
         )
         if r.returncode == 0:
-            return json.loads(r.stdout.strip())
-    except: pass
-    return []
+            v = json.loads(r.stdout.strip())
+            if isinstance(v, list) and len(v) == 2: return v[0], v[1]
+    except Exception: pass
+    return [], []
+
+def embed(text):
+    a, _ = embed_pair(text, text)
+    return a
 
 def cosine_similarity(a, b):
     if not a or not b or len(a) != len(b): return 0.0
@@ -86,14 +95,19 @@ def check_phase_lock_conditions(contact_confirmed, resonance_strength, input_tex
     if not contact_confirmed: return False
     if resonance_strength < 0.72: return False
 
-    # Vector alignment between input and output
+    # Vector alignment between input and output. Unavailable alignment is UNKNOWN, a skipped term that is
+    # recorded - never satisfied by default and never a reason to refuse the lock (astra-subconscious-p5).
     if input_text and output_text:
-        in_vec = embed(input_text[:300])
-        out_vec = embed(output_text[:300])
+        in_vec, out_vec = embed_pair(input_text[:300], output_text[:300])
         if in_vec and out_vec:
             alignment = cosine_similarity(in_vec, out_vec)
             if alignment < ALIGNMENT_THRESHOLD:
                 return False
+        else:
+            log("alignment term skipped: embedder unavailable inside the turn budget (contact + resonance decide)")
+            try:
+                st = load_phase_lock(); st["alignment_skipped_at"] = datetime.now().isoformat(); save_phase_lock(st)
+            except Exception: pass
     return True
 
 def enter_phase_lock():

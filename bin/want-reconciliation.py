@@ -118,6 +118,13 @@ def main():
             w["fulfillment_note"] = str(res.get("evidence", ""))[:400]
             w["fulfilled_by"] = f"reconciliation/{res.get('channel','other')}"
             fulfilled_now.append(w)
+            try:   # the absence this want registered is reached now (fable-subconscious-p6)
+                import sys as _as; _ap = os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")
+                if _ap not in _as.path: _as.path.insert(0, _ap)
+                from absence_map_cold import retire_reached as _retire
+                _retire(source_id=w.get("id"), text=w.get("want", ""))
+            except Exception as _ae:
+                log(f"  absence retire skipped: {_ae}")
             log(f"FULFILLED ({res.get('channel')}): {w.get('want','')[:90]}")
             log(f"  evidence: {str(res.get('evidence',''))[:110]}")
     if not fulfilled_now:
