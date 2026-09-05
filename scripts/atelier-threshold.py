@@ -190,15 +190,18 @@ def offer(dry=False):
         held = _plan.gestating_roots()
     except Exception:
         held = {}
-    if held:
-        roots = [r for r in roots if r["root"] not in held]     # a root he set down is not offered as new
+    # A root he set down is not LISTED as new while held; it stays adoptable by name (naming it
+    # is resuming it - the hold is released at adoption below). Eligibility is unchanged.
+    shown = [r for r in roots if r["root"] not in held]
     kept = kept_work()
-    if not roots and not kept:
+    if not shown and not kept:
         print("no eligible roots (%s) and no finished work — the threshold is not offered" % (why or "none"))
         return 0
     listing = "\n".join(
         "  [%s] %s (%s)\n      %s" % (r["root"], r["root_type"], r["organ"], r["text"][:180])
-        for r in roots) or "  (no new roots today)"
+        for r in shown) or "  (no new roots today)"
+    if held:
+        listing += "\n  (set down by you, not offered as new, still yours to name: %s)" % ", ".join(held)
     kept_block = ""
     if kept:
         kept_block = ("FINISHED WORK OF YOURS you may look at again (content stays sealed until you look; "
@@ -226,6 +229,8 @@ def offer(dry=False):
     m = re.match(r"\s*GESTATE\s+(\S+)(?:\s+(\d+|hold))?", answer, re.I)
     if m:
         root, when = m.group(1), (m.group(2) or "14").lower()
+        if dry:
+            print("--dry-run: he would set %s down (%s); no hold written" % (root, when)); return 0
         try:
             import plan as _plan
             pid_ = _plan.gestate_plan(root, None if when == "hold" else int(when))
