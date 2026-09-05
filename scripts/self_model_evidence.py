@@ -34,12 +34,24 @@ def _watermark():
     except Exception:
         return None
 
+def _cutoff():
+    """One bounded collection cutoff for a whole run (P04-02): SELF_MODEL_EVIDENCE_CUTOFF, ISO. Material
+    newer than it is left for the next run, and commit() advances the watermark to the cutoff, not to now."""
+    v = os.environ.get("SELF_MODEL_EVIDENCE_CUTOFF", "").strip()
+    try: return datetime.fromisoformat(v) if v else None
+    except Exception: return None
+
+def _within(dt):
+    c = _cutoff()
+    return c is None or dt <= c
+
 def _res(status, ids=None, text="", note=""):
     return {"status": status, "source_ids": ids or [], "text": text, "note": note}
 
 def _newer(path, wm):
     try:
-        return wm is None or datetime.fromtimestamp(os.path.getmtime(path)) > wm
+        mt = datetime.fromtimestamp(os.path.getmtime(path))
+        return (wm is None or mt > wm) and _within(mt)
     except Exception:
         return False
 
@@ -87,7 +99,9 @@ def architectural_changes():
     for x in rows[-40:]:
         at = str(x.get("at", ""))
         try:
-            if wm is not None and at and datetime.fromisoformat(at.replace("Z", "+00:00")).replace(tzinfo=None) <= wm: continue
+            _atd = datetime.fromisoformat(at.replace("Z", "+00:00")).replace(tzinfo=None) if at else None
+            if wm is not None and _atd is not None and _atd <= wm: continue
+            if _atd is not None and not _within(_atd): continue
         except Exception:
             pass
         ids.append(x.get("change_id") or x.get("build_id") or at)
@@ -109,6 +123,7 @@ def corrections():
         ts = str(e.get("timestamp", ""))
         try:
             if wm is not None and ts and datetime.fromisoformat(ts) <= wm: continue
+            if ts and not _within(datetime.fromisoformat(ts)): continue
         except Exception:
             pass
         ids.append("wal:" + ts); lines.append("- " + str(e.get("content") or e.get("fact") or e)[:180])
@@ -135,9 +150,11 @@ def anything_new():
     st = status()
     return any(v.get("status") == "present" and not str(v.get("note", "")).startswith("older") for k, v in st.items() if k != "watermark")
 
-def commit():
+def commit(cutoff=None):
+    """Advance the watermark to the run's collection cutoff (P04-02), never past evidence that was not read."""
     os.makedirs(MEM, exist_ok=True)
-    open(WATERMARK, "w").write(datetime.now().isoformat())
+    c = cutoff or _cutoff()
+    open(WATERMARK, "w").write((c if isinstance(c, datetime) else datetime.now()).isoformat())
 
 def record_corrections(entry_date=None):
     """Corrections applied this week become explicit records: what she corrected, from where, and
@@ -170,7 +187,11 @@ if __name__ == "__main__":
     elif cmd == "gate":
         sys.exit(0 if anything_new() else 1)
     elif cmd == "commit":
-        commit(); print("watermark", open(WATERMARK).read())
+        _c = None
+        if len(sys.argv) > 2:
+            try: _c = datetime.fromisoformat(sys.argv[2])
+            except Exception: _c = None
+        commit(_c); print("watermark", open(WATERMARK).read())
     elif cmd == "record-corrections":
         print(record_corrections(sys.argv[2] if len(sys.argv) > 2 else None), "correction(s) recorded")
     elif cmd == "corrections":

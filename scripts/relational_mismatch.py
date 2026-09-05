@@ -222,7 +222,7 @@ def _retire(prediction_id, outcome):
     return True
 
 
-def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_valence):
+def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_valence, prediction=None):
     """
     When Gloria replies, compare her actual emotional read to Vintos's prediction.
     Log meaningful mismatches — not every surprise, only structural model failures.
@@ -234,8 +234,11 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     # writes through, so the id compared below is the id the ledger holds, not a torn direct read
     # (review: relational race, 2026-09-05 - consume-by-id already refused a replaced prediction; this
     # closes the read side too)
-    prediction = None
-    if _PL is not None:
+    # a snapshot captured at the call boundary (P04-09) is THE prediction this reply answers; only a legacy
+    # caller without one selects whatever is current
+    if not (isinstance(prediction, dict) and prediction):
+        prediction = None
+    if prediction is None and _PL is not None:
         try:
             # the ledger's locked read - of THIS module's PREDICTION_FILE. When the two point at the same
             # file (production) that is the ledger's current record; when they differ (a test that
@@ -515,7 +518,13 @@ def main():
         actual_t = float(sys.argv[4])
         actual_v = float(sys.argv[5])
         
-        result = compare_prediction(message, actual_w, actual_t, actual_v)
+        _snap = None
+        try:
+            _sv = os.environ.get("RELATIONAL_PREDICTION_SNAPSHOT", "")
+            _snap = json.loads(_sv) if _sv else None
+        except Exception:
+            _snap = None
+        result = compare_prediction(message, actual_w, actual_t, actual_v, prediction=_snap)
         if result:
             if result.get("outcome") == "HELD":
                 print("[Relational] Prediction outcome HELD (provenance cannot witness)")

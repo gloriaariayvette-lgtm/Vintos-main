@@ -60,7 +60,8 @@ def main():
     if word not in ("RETURN", "HOLD"):
         print("gate: no RETURN/HOLD as the first word (%r) — not a HOLD; the door is left exactly as it was" % text[:80]); return 0
     decision = "return" if word == "RETURN" else "held"
-    out = requests.post(B + "/gate/decide", json={"decision": decision}, timeout=15).json()
+    out = requests.post(B + "/gate/decide", json={"decision": decision, "project": k.get("project", ""),
+                                                  "table_since": k.get("table_since", "")}, timeout=15).json()   # bound to what was asked (P03-04)
     print("gate: he said %s — %s" % (word, text[:140]))
     print("gate: recorded %s" % out)
     return 0

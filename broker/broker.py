@@ -300,6 +300,7 @@ def keep(b):
     lock = open(os.path.join(ROOT, ".table.lock"), "a+")
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
+        p = _j(proj) or p   # re-read INSIDE the lock (P02-05): a holder that saved while KEEP waited is not undone
         p["state"] = "KEPT"; p["kept_at"] = datetime.now().isoformat()
         _w(proj, p)
         a = _j(os.path.join(ROOT, "active.json"), {}) or {}
@@ -724,21 +725,29 @@ def gate_knock(b=None):
         return {"error": "door is not held — nothing to ask"}
     h = _j(os.path.join(_p(a["id"]), "handoff.json"), {})
     _ev(a["id"], "gate_knock")
-    return {"ok": True, "note": h.get("text", ""), "at": h.get("at", "")}
+    # the answer must name what was asked about (P03-04): project and the worktable generation it sat on
+    return {"ok": True, "note": h.get("text", ""), "at": h.get("at", ""), "project": a["id"], "table_since": a.get("since", "")}
 
 def gate_decide(b):
     """His answer to the knock: 'return' lights the door; 'held' keeps it dark.
     A held door is a standing choice only if it keeps being chosen."""
     d = str(b.get("decision", "")).strip().lower()
     if d not in ("return", "held"): return {"error": "decision must be 'return' or 'held'"}
-    a = _j(os.path.join(ROOT, "active.json"), {})
-    if not a.get("id"): return {"error": "empty worktable"}
-    p = _j(os.path.join(_p(a["id"]), "project.json"), {})
-    if str(p.get("next_return", "held")).strip() != "held":
-        return {"error": "door is not held"}
-    if d == "return":
-        p["next_return"] = "tomorrow"
-        _w(os.path.join(_p(a["id"]), "project.json"), p)
+    asked = str(b.get("project", "")).strip(); since = str(b.get("table_since", "")).strip()
+    if not asked:
+        return {"error": "a decision names the project it was asked about (knock returns it)"}
+    with _table_lock():   # validated against the table as it is NOW, under the lock (P03-04)
+        a = _j(os.path.join(ROOT, "active.json"), {})
+        if not a.get("id"): return {"error": "empty worktable"}
+        if a["id"] != asked or (since and str(a.get("since", "")) != since):
+            _ev(asked, "gate_decision_stale", {"decision": d, "table_now": a.get("id")})
+            return {"error": "stale decision: it was asked about %s, the worktable now holds %s - nothing changed" % (asked, a["id"])}
+        p = _j(os.path.join(_p(a["id"]), "project.json"), {})
+        if str(p.get("next_return", "held")).strip() != "held":
+            return {"error": "door is not held"}
+        if d == "return":
+            p["next_return"] = "tomorrow"
+            _w(os.path.join(_p(a["id"]), "project.json"), p)
     _ev(a["id"], "gate_decision", {"decision": d})
     _health("the held door was asked; he answered")
     return {"ok": True, "decision": d}

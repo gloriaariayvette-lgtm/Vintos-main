@@ -29,6 +29,10 @@ if [ -f "$COOLDOWN_FILE" ]; then
 fi
 
 TODAY=$(date +%Y-%m-%d)
+# one collection cutoff for the whole run (P04-02): every collector reads up to it, and the watermark
+# advances TO it after a successful install - evidence arriving during generation waits for next week
+CUTOFF=$(date -Iseconds)
+export SELF_MODEL_EVIDENCE_CUTOFF="$CUTOFF"
 
 # --- Evidence, by testable collectors with statuses and a committed watermark (astra-models-p1, 2026-09-05) ---
 EVIDENCE="$HOME/.vintos/workspace/scripts/self_model_evidence.py"
@@ -403,6 +407,13 @@ if echo "$REVIEWER_RESULT" | grep -q "^FAIL"; then
     curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx"         -H "Title: Self-Model Review Failed"         -H "Priority: default"         -d "Self-model update blocked by reviewer: $REVIEWER_RESULT" > /dev/null 2>&1 &
     exit 1
 fi
+# only an explicit PASS installs (P04-04): an empty reply, prose, or 'PASSING' is not a verdict - held like UNAVAILABLE
+if ! echo "$REVIEWER_RESULT" | grep -qE '^PASS([[:space:][:punct:]]|$)'; then
+    mkdir -p "$WORKSPACE/memory/self-model-pending"
+    printf '%s\n' "$CONTENT" > "$WORKSPACE/memory/self-model-pending/$(date +%Y-%m-%d).md"
+    echo "[SelfModel] reviewer reply was not PASS or FAIL ($(echo "$REVIEWER_RESULT" | head -c 80)) - entry held, not written"
+    exit 1
+fi
 # --- Archive the previous model, only now that a write will follow (fable-models-p6) ---
 if [ -f "$MODEL_FILE" ]; then
     ARCHIVE_DIR="$WORKSPACE/memory/self-model-history"
@@ -438,12 +449,17 @@ if [ -f "$MODEL_FILE" ] && [ -n "$MODEL_MTIME_AT_READ" ] && [ "$(stat -c %Y "$MO
     cp "$MODEL_FILE" "$MODEL_FILE.edited-during-generation.$(date +%Y%m%d-%H%M%S)"
     echo "[SelfModel] SELF-MODEL.md changed while this entry was being written - the concurrent version is kept beside it"
 fi
-mv -f "$MODEL_FILE.tmp.$$" "$MODEL_FILE"
+if ! mv -f "$MODEL_FILE.tmp.$$" "$MODEL_FILE"; then
+    # a failed install consumes nothing (P04-03): no cooldown, no watermark, no correction records; retry next run
+    echo "[SelfModel] install of the new model FAILED - previous model kept, evidence not consumed"
+    rm -f "$MODEL_FILE.tmp.$$"
+    exit 1
+fi
 date +%s > "$COOLDOWN_FILE"
-# the evidence watermark advances only now, after a successful write; corrections applied this week
-# become explicit records the readers can retrieve (astra-models-p1 / p3)
+# the evidence watermark advances only now, after a successful write, and only to the run's cutoff; the
+# corrections recorded are the ones collected up to that same cutoff (astra-models-p1 / p3, P04-02)
 python3 "$EVIDENCE" record-corrections "$TODAY" 2>/dev/null
-python3 "$EVIDENCE" commit 2>/dev/null
+python3 "$EVIDENCE" commit "$CUTOFF" 2>/dev/null
 
 echo "SELF_MODEL_UPDATED: $TODAY"
 

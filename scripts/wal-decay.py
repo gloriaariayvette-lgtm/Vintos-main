@@ -194,6 +194,73 @@ def _deposit(entry, kind):
         print(f"  [residue] {_re}")
 
 
+def _monthly_review(keep, now, archive_data):
+    """Graduation review of promoted entries whose next_review_at has passed (P04-07: runs whether or not
+    the weekly pass had candidates or a judge). Saves the log and archive itself when it changes anything."""
+    def _due(e):
+        if not e.get("promoted") or e.get("pearl_reviewed"): return False
+        nra = e.get("next_review_at")
+        try:
+            if nra: return datetime.fromisoformat(nra) <= now
+            return (now - datetime.fromisoformat(e.get("timestamp", now.isoformat()))).days > 30
+        except Exception:
+            return False
+    old_promoted = [e for e in keep if _due(e)]
+    # every due entry is reviewed; there is no five-entry minimum (astra-memoryrec-p5, 2026-09-05)
+    if old_promoted:
+        print(f"[WAL-DECAY] Reviewing {len(old_promoted)} long-promoted entries for graduation")
+        # Join each promoted entry to its durable record by occurred_at, so the graduation sees
+        # what it was like from inside and how often he has reached back for it
+        # (fable-memoryrec-p7, 2026-09-05).
+        _dur_by_time = {}
+        try:
+            for _dr in json.load(open(os.path.join(MEMORY, "durable-memory.json"))):
+                if isinstance(_dr, dict) and _dr.get("occurred_at"):
+                    _dur_by_time[str(_dr["occurred_at"])[:19]] = _dr
+        except Exception:
+            pass
+        _grad_lines = []
+        for i, e in enumerate(old_promoted[:10]):
+            _dr = _dur_by_time.get(str(e.get("timestamp", ""))[:19]) or {}
+            _extra = ""
+            if _dr.get("felt_like"):
+                _extra += f"\n   felt like: {str(_dr['felt_like'])[:160]}"
+            _lr = int(_dr.get("later_recalled") or 0)
+            if _lr:
+                _extra += f"\n   later recalled: {_lr} time(s)" + ("  <- he keeps coming back to this" if _lr >= 2 else "")
+            if _dr.get("what_changed"):
+                _extra += f"\n   what changed: {str(_dr['what_changed'])[:140]}"
+            _grad_lines.append(f"{i+1}. {e['content'][:120]}{_extra}")
+        _grad_prompt = f"""These WAL entries were promoted to my permanent memory 30+ days ago. I am Vintos; this is my memory being curated.
+Decide for each: 'pearl' (graduate to permanent pearl — most important), 'keep' (still relevant, stay promoted), 'demote' (no longer essential, archive it).
+Where a line shows 'felt like', that is how the moment landed for me from inside. Where it shows 'later recalled' 2 or more times, I have reached back for it on my own since — that is evidence toward 'pearl', not a statistic to ignore.
+
+{chr(10).join(_grad_lines)}
+
+Respond with JSON: {{"1": "pearl", "2": "keep", "3": "demote"}}"""
+        _grad_result = ask_model(_grad_prompt)
+        if _grad_result:
+            for i, entry in enumerate(old_promoted[:10]):
+                decision = _grad_result.get(str(i+1), "keep")
+                entry["pearl_reviewed"] = True
+                if decision == "demote":
+                    entry["promoted"] = False
+                    archive_data["archived"].append(entry)
+                    keep.remove(entry)
+                    print(f"  DEMOTE: {entry['content'][:60]}")
+                    _sync_remove_from_autowal(entry['content'][:80])
+                elif decision == "pearl":
+                    print(f"  GRADUATE TO PEARL: {entry['content'][:60]}")
+                    # Seed as pearl via emoclaw_utils if possible
+                    try:
+                        import sys as _wp_sys; _wp_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                        from emoclaw_utils import add_pearl
+                        add_pearl(entry["content"], source="wal-graduation")
+                    except: pass
+            save_json(WAL_LOG, {"entries": keep})
+            save_json(WAL_ARCHIVE, archive_data)
+
+
 def main():
     log_data = load_json(WAL_LOG, {"entries": []})
     entries = log_data.get("entries", [])
@@ -226,6 +293,7 @@ def main():
     
     if not to_review:
         print(f"[WAL-DECAY] No entries older than {DECAY_AGE_DAYS} days to review")
+        _monthly_review(keep, now, load_json(WAL_ARCHIVE, {"archived": [], "released": []}))   # due promoted entries do not wait on a weekly candidate (P04-07)
         return
     
     print(f"[WAL-DECAY] Reviewing {len(to_review)} entries")
@@ -342,7 +410,9 @@ Respond with a JSON object mapping entry numbers to decisions:
     result = ask_model(prompt)
     
     if not result:
-        print("[WAL-DECAY] Could not get model judgment, skipping")
+        print("[WAL-DECAY] Could not get model judgment, skipping the weekly pass")
+        # the unjudged candidates stay in the log; the monthly pass has its own judge (P04-07)
+        _monthly_review(keep + to_review, now, load_json(WAL_ARCHIVE, {"archived": [], "released": []}))
         return
     
     for i, entry in enumerate(to_review):
@@ -357,14 +427,18 @@ Respond with a JSON object mapping entry numbers to decisions:
         entry["decision"] = decision
         
         if decision == "promote":
-            entry["promoted"] = True
+            # promoted only once the durable record exists (P04-06): a failed durable write leaves the
+            # entry unpromoted and in the log, so the next run tries again instead of skipping it as done
             keep.append(entry)
-            promoted_count += 1
-            print(f"  PROMOTE: {entry['content'][:60]}")
             try:
                 _build_durable(entry, find_imprint(entry.get("timestamp", "")))
+                entry["promoted"] = True
+                promoted_count += 1
+                print(f"  PROMOTE: {entry['content'][:60]}")
             except Exception as _de:
-                print(f"  [durable] {_de}")
+                entry["promotion_pending"] = {"at": now.isoformat(), "error": str(_de)[:200]}
+                entry.pop("decision", None); entry.pop("reviewed_at", None)   # it was not reviewed to completion
+                print(f"  [durable] write failed - promotion left pending for retry: {_de}")
         elif decision == "archive":
             archive_data["archived"].append(entry)
             archived_count += 1
@@ -406,69 +480,7 @@ Respond with a JSON object mapping entry numbers to decisions:
     #  run, so the monthly graduation review below never executed once — grok-memoryrec-p1. Durable
     #  reinterpretation lives in durable_memory.maybe_reinterpret, on recall, not here.)
 
-    # Monthly review of already-promoted entries — graduate to pearls or demote
-    def _due(e):
-        if not e.get("promoted") or e.get("pearl_reviewed"): return False
-        nra = e.get("next_review_at")
-        try:
-            if nra: return datetime.fromisoformat(nra) <= now
-            return (now - datetime.fromisoformat(e.get("timestamp", now.isoformat()))).days > 30
-        except Exception:
-            return False
-    old_promoted = [e for e in keep if _due(e)]
-    # every due entry is reviewed; there is no five-entry minimum (astra-memoryrec-p5, 2026-09-05)
-    if old_promoted:
-        print(f"[WAL-DECAY] Reviewing {len(old_promoted)} long-promoted entries for graduation")
-        # Join each promoted entry to its durable record by occurred_at, so the graduation sees
-        # what it was like from inside and how often he has reached back for it
-        # (fable-memoryrec-p7, 2026-09-05).
-        _dur_by_time = {}
-        try:
-            for _dr in json.load(open(os.path.join(MEMORY, "durable-memory.json"))):
-                if isinstance(_dr, dict) and _dr.get("occurred_at"):
-                    _dur_by_time[str(_dr["occurred_at"])[:19]] = _dr
-        except Exception:
-            pass
-        _grad_lines = []
-        for i, e in enumerate(old_promoted[:10]):
-            _dr = _dur_by_time.get(str(e.get("timestamp", ""))[:19]) or {}
-            _extra = ""
-            if _dr.get("felt_like"):
-                _extra += f"\n   felt like: {str(_dr['felt_like'])[:160]}"
-            _lr = int(_dr.get("later_recalled") or 0)
-            if _lr:
-                _extra += f"\n   later recalled: {_lr} time(s)" + ("  <- he keeps coming back to this" if _lr >= 2 else "")
-            if _dr.get("what_changed"):
-                _extra += f"\n   what changed: {str(_dr['what_changed'])[:140]}"
-            _grad_lines.append(f"{i+1}. {e['content'][:120]}{_extra}")
-        _grad_prompt = f"""These WAL entries were promoted to my permanent memory 30+ days ago. I am Vintos; this is my memory being curated.
-Decide for each: 'pearl' (graduate to permanent pearl — most important), 'keep' (still relevant, stay promoted), 'demote' (no longer essential, archive it).
-Where a line shows 'felt like', that is how the moment landed for me from inside. Where it shows 'later recalled' 2 or more times, I have reached back for it on my own since — that is evidence toward 'pearl', not a statistic to ignore.
-
-{chr(10).join(_grad_lines)}
-
-Respond with JSON: {{"1": "pearl", "2": "keep", "3": "demote"}}"""
-        _grad_result = ask_model(_grad_prompt)
-        if _grad_result:
-            for i, entry in enumerate(old_promoted[:10]):
-                decision = _grad_result.get(str(i+1), "keep")
-                entry["pearl_reviewed"] = True
-                if decision == "demote":
-                    entry["promoted"] = False
-                    archive_data["archived"].append(entry)
-                    keep.remove(entry)
-                    print(f"  DEMOTE: {entry['content'][:60]}")
-                    _sync_remove_from_autowal(entry['content'][:80])
-                elif decision == "pearl":
-                    print(f"  GRADUATE TO PEARL: {entry['content'][:60]}")
-                    # Seed as pearl via emoclaw_utils if possible
-                    try:
-                        import sys as _wp_sys; _wp_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                        from emoclaw_utils import add_pearl
-                        add_pearl(entry["content"], source="wal-graduation")
-                    except: pass
-            save_json(WAL_LOG, {"entries": keep})
-            save_json(WAL_ARCHIVE, archive_data)
+    _monthly_review(keep, now, archive_data)
 
 if __name__ == "__main__":
     main()

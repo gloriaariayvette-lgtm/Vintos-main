@@ -66,8 +66,21 @@ MEMORY_FILES = [
 
 
 def chunk_text(text, max_chars=500):
-    """Split text into chunks, trying to break at paragraph boundaries."""
+    """Split text into chunks, trying to break at paragraph boundaries.
+    (The body below sat stranded after another function's return until 2026-09-05, so this returned
+    None and every caller failed iterating it - review P04-08.)"""
     paragraphs = text.split("\n\n")
+    chunks = []
+    current = ""
+    for para in paragraphs:
+        if len(current) + len(para) > max_chars and current:
+            chunks.append(current.strip())
+            current = para
+        else:
+            current += "\n\n" + para if current else para
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks
 
 def extract_indexable_json(path, source_type):
     """Extract human-readable strings from structured JSON memory files.
@@ -139,17 +152,6 @@ def extract_indexable_json(path, source_type):
                     results.append((f"[scar/{bias}] {text}", text))
 
     return results
-    chunks = []
-    current = ""
-    for para in paragraphs:
-        if len(current) + len(para) > max_chars and current:
-            chunks.append(current.strip())
-            current = para
-        else:
-            current += "\n\n" + para if current else para
-    if current.strip():
-        chunks.append(current.strip())
-    return chunks
 
 
 def file_hash(path):

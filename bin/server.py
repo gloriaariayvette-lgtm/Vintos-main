@@ -801,13 +801,26 @@ def _relational_compare(user_text):
     txt = (user_text or "").strip()
     if not txt:
         return
+    # The prediction this reply answers is chosen NOW, before the tone read (P04-09): _post_turn writes the
+    # next prediction right after this call, and a comparison that selected 'current' after its own delay
+    # graded the forecast for the NEXT reply. The snapshot travels to the CLI; consume-by-id still protects a newer record.
+    _snap = None
+    try:
+        import sys as _pls, json as _plj
+        _plp = os.path.join(WORKSPACE, "scripts")
+        if _plp not in _pls.path: _pls.path.insert(0, _plp)
+        import prediction_ledger as _PLm
+        _cur = _PLm.current("relational")
+        _snap = _plj.dumps(_cur) if isinstance(_cur, dict) and _cur else None
+    except Exception:
+        _snap = None
 
     def _work():
         try:
             import subprocess as _sp, os as _o, re as _re, json as _j
             script = _o.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
             pred = _o.path.join(MEMORY, ".relational-prediction.json")
-            if not (_o.path.exists(script) and _o.path.exists(pred)):
+            if not (_o.path.exists(script) and (_o.path.exists(pred) or _snap)):
                 return
             # Sentinel by default: a failed or unparseable tone read must NOT become
             # "what Gloria felt". Hardcoded 0.5/0.35/0.6 were being graded as her real
@@ -839,8 +852,10 @@ def _relational_compare(user_text):
                 except Exception as _tre:
                     print(f"[Relational] tone read FAILED ({_tre}) - skipping comparison", flush=True)
             _venv = _o.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
+            _cenv = dict(_o.environ)
+            if _snap: _cenv["RELATIONAL_PREDICTION_SNAPSHOT"] = _snap
             _out = _sp.run([_venv, script, "compare", txt, str(w), str(t), str(v)],
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True, timeout=90, env=_cenv)
             if _out.stdout.strip():
                 print("[Relational] " + _out.stdout.strip(), flush=True)
         except Exception as e:
