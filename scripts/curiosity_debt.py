@@ -14,7 +14,9 @@ LEDGER = os.path.join(MEM, "interaction-ledger.json")
 def _load():
     try: return json.load(open(PATH))
     except Exception: return []
-def _save(d): json.dump(d[-40:], open(PATH, "w"), indent=1)
+def _save(d):
+    _tmp = PATH + ".tmp.%d" % os.getpid()
+    json.dump(d[-40:], open(_tmp, "w"), indent=1); os.replace(_tmp, PATH)   # atomic replace (astra-curiosity-p7)
 
 RETIRED = os.path.join(MEM, "curiosity-retired.json")
 def _retired():

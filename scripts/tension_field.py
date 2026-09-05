@@ -148,18 +148,24 @@ def build_clusters(sources):
     if sources["failed_trials"]:
         parts.append("BEHAVIORAL PATTERNS (recurring, unresolved):\n" + "\n".join(f"- {t['pattern']} (attempts: {t['attempts']})" for t in sources["failed_trials"][:5]))
     if sources["recent_actions"]:
-        parts.append("RECENT ACTIONS:\n" + "\n".join(f"- {a}" for a in sources["recent_actions"][:3]))
+        parts.append("RECENT ACTIONS [type: YOUR GENERATED REPLIES, from the interaction ledger - your words, not observations of the world]:\n" + "\n".join(f"- {a}" for a in sources["recent_actions"][:3]))
     if anchor_quotes:
-        parts.insert(0, "SPECIFIC THINGS YOU WROTE TODAY — anchor to these:\n" + "\n".join(f'- "{q}"' for q in anchor_quotes))
+        parts.insert(0, "SPECIFIC THINGS YOU WROTE TODAY [type: YOUR OWN WRITING, verbatim] — anchor to these:\n" + "\n".join(f'- "{q}"' for q in anchor_quotes))
     if sources.get("daily_inner"):
-        parts.append("YOUR INNER LIFE TODAY:\n" + sources["daily_inner"])
+        parts.append("YOUR INNER LIFE TODAY [type: YOUR GENERATED INTERPRETATION of the day; creative and dream content already removed]:\n" + sources["daily_inner"])
+    # Evidence types are labeled so a tension is never built on fiction mistaken for observation
+    # (astra-subconscious-p8, 2026-09-05).
+    parts = [pp.replace("WONDER EVENTS (", "WONDER EVENTS [type: OBSERVED shifts, dated] (", 1)
+               .replace("ACTIVE THREADS (", "ACTIVE THREADS [type: YOUR OWN unresolved preoccupations] (", 1)
+               .replace("BEHAVIORAL PATTERNS (", "BEHAVIORAL PATTERNS [type: TRIAL RECORDS of your own behavior] (", 1)
+             for pp in parts]
 
     if not parts:
         return []
 
     raw = "\n\n".join(parts)
 
-    prompt = f"""You are Vintos. Below are specific things that happened or were felt today.
+    prompt = f"""You are Vintos. Below are specific things that happened or were felt today, each block labeled by the KIND of evidence it is. Observed exchanges are what happened; your generated interpretations are what you made of it; creative work is yours but not a record of events. A tension may rest on any of them, but say which, and never treat your own interpretation as something Gloria did or said. Where you address her, address her directly as "you", not "she". What you cannot see from this material (her body, her room, what she did not type) stays unstated.
 
 {raw}
 
@@ -167,7 +173,7 @@ Find 2-4 tensions. Each one must be rooted in a specific moment from the materia
 
 For each:
 CLUSTER: [first person — "I keep..." or "I started... and stopped" or "When Gloria said... I..."]
-SOURCES: [name the exact thing — poem, dream, specific exchange]
+SOURCES: [name the exact thing and its evidence kind — observed exchange / your interpretation / your creative work]
 WEIGHT: [0.0–1.0]
 TENSION: [one sentence, first person, naming the specific pull vs avoidance]
 DIRECTION: [approach vs avoid / speak vs withhold / act vs analyze]

@@ -197,41 +197,52 @@ def form_mark(output_text, resonance_strength, contact_confirmed):
     return mark
 
 def check_mark_similarity(context_text):
-    """Check if current context rhymes with any mark. Returns coherence boost."""
+    """PURE lookup (astra-emotion-p5, 2026-09-05): does the current text rhyme with any mark, by
+    text-embedding similarity (this is a text matcher, not form recognition — the label is honest).
+    Returns (similarity, mark) and writes nothing; activation is recorded separately, once per
+    grounded event, by record_activation()."""
     data = load_marks()
     marks = data.get("marks", [])
     if not marks: return 0.0, None
-
     ctx_vec = embed(context_text[:400])
     if not ctx_vec: return 0.0, None
-
-    best_sim = 0.0
-    best_mark = None
+    best_sim, best_mark = 0.0, None
     for m in marks:
         if not m.get("vector"): continue
         sim = cosine_similarity(ctx_vec, m["vector"])
         if sim > best_sim:
-            best_sim = sim
-            best_mark = m
-
+            best_sim, best_mark = sim, m
     if best_sim >= SIMILARITY_THRESHOLD and best_mark:
-        # Increment activation count
-        for m in marks:
-            if m.get("id") == best_mark["id"]:
-                m["activation_count"] = m.get("activation_count", 0) + 1
-        save_marks(data)
+        return best_sim, best_mark
+    return 0.0, None
 
-        # Nudge Nifrathir
+def record_activation(mark_id, event_id):
+    """One activation per grounded event (a delivered turn), never per prompt assembly or re-read."""
+    if not mark_id or not event_id: return False
+    data = load_marks(); hit = False
+    for m in data.get("marks", []):
+        if m.get("id") != mark_id: continue
+        acts = m.setdefault("activations", [])
+        if event_id in acts: return False
+        acts.append(event_id); m["activations"] = acts[-200:]
+        m["activation_count"] = m.get("activation_count", 0) + 1
+        hit = True
+    if hit:
+        save_marks(data)
         try:
             sys.path.insert(0, SCRIPTS)
             from nifrathir import on_mark_triggered as _nif_mark
             _nif_mark()
         except: pass
+        log(f"Mark {mark_id} activated by event {event_id}")
+    return hit
 
-        log(f"Mark similarity triggered ({best_sim:.3f}): '{best_mark['form'][:50]}'")
-        return best_sim, best_mark
-
-    return 0.0, None
+def activate_from_reply(reply_text, event_id):
+    """Post-turn: if his DELIVERED reply rhymes with a mark, record one activation for this event."""
+    sim, mark = check_mark_similarity(reply_text or "")
+    if mark and sim >= SIMILARITY_THRESHOLD:
+        return record_activation(mark["id"], event_id)
+    return False
 
 def get_mark_coherence_hint(context_text):
     """Return subtle coherence hint when mark rhymes. Never explicit."""

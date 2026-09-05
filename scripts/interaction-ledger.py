@@ -435,6 +435,8 @@ def main():
 
     entry = {
         "timestamp": datetime.now().isoformat(),
+        "surface": os.environ.get("VINTOS_SURFACE", ""),                 # which door this exchange came through (astra-memoryrec-p1)
+        "turn_id": os.environ.get("VINTOS_TURN_ID", "") or (provenance.get("turn_id", "") if isinstance(provenance, dict) else ""),
         "gloria": gloria_said,
         "vintos": vintos_said + _device_marks(),
         "consent": consent_note,

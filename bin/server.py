@@ -758,7 +758,7 @@ def _relational_compare(user_text):
 
 # _resolve_intent removed 2026-09-04 (grok-server-a-p6): its body had become a comment and a thread that did nothing.
 
-POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt",
+POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt", "marks",
                    "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
 
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
@@ -796,6 +796,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         acted = _pe.handle_adoption_tags(reply)
         if acted: print(f"[post_turn/{surface}] pearl proposals acted on: {acted}", flush=True)
     _inline("adopt", _adopt)
+    def _marks():
+        import hashlib as _mh, resonance_marks as _rmk
+        _rmk.activate_from_reply(reply, _mh.md5((surface + "|" + gloria_text[:200] + "|" + reply[:200]).encode()).hexdigest()[:10])
+    _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
     test_mode = False
     try: test_mode = bool(_test_mode_active())
     except Exception: pass
@@ -810,7 +814,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
                 skipped.append(name + ":absent"); return
             exe = venv if (needs_venv or venv_for_all) else "python3"
             kw = {"stdout": open(log, "a"), "stderr": open(log, "a")}
-            if writer_env: kw["env"] = writer_env
+            # every writer learns the surface and turn it serves (astra-memoryrec-p1)
+            _env = dict(writer_env) if writer_env else dict(os.environ)
+            _env["VINTOS_SURFACE"] = str(surface); _env["VINTOS_TURN_ID"] = str(turn_id or "")
+            kw["env"] = _env
             _pt_sp.Popen([exe] + argv[1:], **kw)
             ran.append(name)
             if on_writer:

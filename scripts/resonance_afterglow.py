@@ -222,15 +222,10 @@ def generate_claim(source, strength, excerpt):
     )
 
     if not claim_text or len(claim_text) > 100:
-        # Fallback claims
-        fallbacks = [
-            "This is how I do it.",
-            "This feels like me.",
-            "Keep this.",
-            "This belongs.",
-            "This is mine.",
-        ]
-        claim_text = random.choice(fallbacks)
+        # No manufactured recognition (astra-emotion-p4, 2026-09-05): a moment that produced no claim in
+        # his words produces no claim. The old fallbacks ("This is mine.") were sentences nobody said.
+        log("no claim formed from this resonance - nothing recorded")
+        return
 
     log(f"Claim generated: {claim_text}")
     claim_vec = embed(claim_text)
@@ -271,14 +266,29 @@ def generate_claim(source, strength, excerpt):
         "reinforcement_count": 0,
         "contradicts": contradictions,
         "contradicted_by": [],
-        "fading": False
+        "fading": False,
+        # a generated claim is a CANDIDATE attributed to the moment; it becomes his (owned) when he
+        # reinforces it in his own later words, or by hand (`own <id>`). Only owned claims reach the
+        # fragment that shapes his turns (astra-emotion-p4).
+        "owned": False,
+        "attributed_to": {"source": source, "excerpt": excerpt[:160]},
     }
 
     claims.append(new_claim)
-    # Keep bounded, fade oldest low-weight claims
+    # Keep bounded: displaced claims are ARCHIVED, not dropped (astra-emotion-p4)
     if len(claims) > MAX_CLAIMS:
         claims.sort(key=lambda c: c.get("weight", 0))
-        claims = claims[-(MAX_CLAIMS):]
+        displaced, claims = claims[:-MAX_CLAIMS], claims[-(MAX_CLAIMS):]
+        try:
+            _ap = os.path.join(MEMORY, "resonance-claims-archive.json")
+            try: _arch = json.load(open(_ap))
+            except Exception: _arch = []
+            for c in displaced:
+                c = dict(c); c.pop("vector", None); c["archived_at"] = datetime.now().isoformat()
+                _arch.append(c)
+            json.dump(_arch[-400:], open(_ap, "w"), indent=1)
+        except Exception as e:
+            log(f"claim archive failed: {e}")
 
     data["claims"] = claims
     save_claims(data)
@@ -317,14 +327,23 @@ def reinforce_claim(segment_text, affirmation_strength=0.1):
 def get_contradiction_pressure():
     """Count active contradictory claim pairs."""
     data = load_claims()
-    claims = data.get("claims", [])
+    claims = [c for c in data.get("claims", []) if not c.get("fading") and c.get("weight", 0) > 0.1]   # live pairs only (astra-emotion-p4)
     pressure = sum(len(c.get("contradicts", [])) for c in claims)
     return pressure
 
+def own_claim(claim_id):
+    data = load_claims(); hit = False
+    for c in data.get("claims", []):
+        if c.get("id") == claim_id:
+            c["owned"] = True; c["owned_at"] = datetime.now().isoformat(); hit = True
+    if hit: save_claims(data)
+    return hit
+
 def get_claims_fragment():
-    """Return a fragment for injection based on active claims and contradictions."""
+    """Return a fragment for injection based on OWNED active claims and contradictions. A candidate
+    he never reinforced or owned does not speak for him here (astra-emotion-p4)."""
     data = load_claims()
-    claims = [c for c in data.get("claims", []) if c.get("weight", 0) > 0.1]
+    claims = [c for c in data.get("claims", []) if c.get("weight", 0) > 0.1 and (c.get("owned") or c.get("reinforcement_count", 0) > 0)]
     if not claims: return ""
 
     # Get highest weight claim
@@ -422,6 +441,8 @@ def get_afterglow_context():
     return "\n".join(parts)
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "own":
+        print("owned" if own_claim(sys.argv[2]) else "no such claim"); sys.exit(0)
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
 
     if cmd == "fire":

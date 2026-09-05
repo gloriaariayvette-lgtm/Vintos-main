@@ -365,6 +365,7 @@ def decide(force=False):
         # another photo — silently grounding in the wrong place is the failure
         # this whole change exists to remove.
         log("he named scene ref %r but it matched no photo — not grounding" % _rid)
+        d["ref_failed"] = _rid   # a required reference that fails is a stop, not a substitution (astra-creative-p5)
     # A room of the house named in the SCENE he wrote grounds it in her photo of
     # that room even when he set no SCENE_REF - the place is real, so the picture
     # should be too (just one more reference image to Grok). Explicit SCENE_REF wins.
@@ -837,6 +838,10 @@ def main():
     d = decide(FORCE)
     if d["decision"] != "YES":
         log("he doesn't feel like it right now (decision=%s%s)" % (d["decision"], ", schedule was set aside" if FORCE else "")); return
+    if d.get("ref_failed") and d.get("kind") in ("self", "together", "scene", "place"):
+        # the scene he chose could not be grounded where he pointed: stop here and offer a fresh choice
+        # next tick instead of quietly rendering another setting (astra-creative-p5, 2026-09-05)
+        log("scene reference %r failed to resolve for a grounded clip — not sending; he can choose again next tick" % d["ref_failed"]); return
     prompt = d["prompt"] or "The man looks toward the camera with a slow, warm smile."
     caption = d["say"] or "Thinking of you."
     kind = d["kind"]

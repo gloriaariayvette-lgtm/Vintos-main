@@ -79,10 +79,13 @@ def _organ(name):
     raise ImportError(f"{name}: no {name}.py or {name.replace('_','-')}.py in {SCRIPTS} or ~/Vintos")
 
 CHAIN_HEALTH = os.path.join(MEMORY, "resonance-chain-health.json")
+_CURRENT_PULSE = None
 def _chain(step, ok, err=""):
     """One timestamped line per link of the pulse→signature→afterglow→afterimage→nifrathir→marks
     chain, so a broken link is visible instead of swallowed."""
     try:
+        if isinstance(_CURRENT_PULSE, dict):
+            _CURRENT_PULSE.setdefault("effects", {})[step] = {"ok": bool(ok), "at": datetime.now().isoformat()[:19], **({"error": str(err)[:120]} if not ok else {})}
         try: d = json.load(open(CHAIN_HEALTH))
         except Exception: d = {"links": {}, "failures": []}
         d.setdefault("links", {})[step] = {"last": datetime.now().isoformat()[:19], "ok": bool(ok)}
@@ -198,7 +201,24 @@ def apply_emotional_nudge():
     except Exception as e:
         log(f"Nudge failed: {e}")
 
-def fire_pulse(source, output_excerpt, trigger="self", external=False):
+def _contact_verified():
+    """Verified contact is the phase-lock organ's live state — not the caller's word."""
+    try:
+        st = json.load(open(os.path.join(MEMORY, "phase-lock.json")))
+        if not st.get("active"): return False
+        exp = st.get("expires")
+        return not (exp and datetime.now() > datetime.fromisoformat(exp))
+    except Exception:
+        return False
+
+def _may_publish(source, private):
+    """Visibility decision, made independently of resonance: a private room's excerpt (atelier, mirror,
+    therapy, study) never travels toward outward-facing activity, whatever resonated
+    (astra-emotion-p2, 2026-09-05)."""
+    if private: return False
+    return not str(source or "").lower().startswith(("atelier", "mirror", "therapy", "study", "private"))
+
+def fire_pulse(source, output_excerpt, trigger="self", external=False, private=False, exchange_id=""):
     """Fire a satisfaction pulse and record the state."""
     log(f"Pulse firing — source:{source} trigger:{trigger} external:{external}")
     
@@ -211,7 +231,15 @@ def fire_pulse(source, output_excerpt, trigger="self", external=False):
         strength *= EXTERNAL_AMPLIFIER
     
     pulse = {
-        "id": f"pulse_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        "id": f"pulse_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{__import__('uuid').uuid4().hex[:6]}",   # collision-resistant (astra-emotion-p8)
+        # four different facts, kept apart (astra-emotion-p2): the pulse itself is INTERNAL resonance;
+        # external = her acknowledgment reached him; contact_verified = the phase-lock organ says so;
+        # may_publish = the visibility decision for anything outward-facing.
+        "external_ack": bool(external),
+        "contact_verified": _contact_verified(),
+        "may_publish": _may_publish(source, private),
+        "exchange_id": (exchange_id or __import__("hashlib").md5((output_excerpt or "")[:400].encode()).hexdigest()[:10]),
+        "effects": {},
         "timestamp": datetime.now().isoformat(),
         "source": source,
         "trigger": trigger,
@@ -223,6 +251,8 @@ def fire_pulse(source, output_excerpt, trigger="self", external=False):
     }
     
     pool = load_pool()
+    global _CURRENT_PULSE
+    _CURRENT_PULSE = pulse
     pool["pulses"].append(pulse)
     # Keep pool bounded
     pool["pulses"] = pool["pulses"][-MAX_POOL_SIZE:]
@@ -266,22 +296,24 @@ def fire_pulse(source, output_excerpt, trigger="self", external=False):
     except Exception as e:
         _chain("nifrathir", False, e)
     # Attempt mark formation — only if external (contact confirmed) and resonance high
-    if external and pulse.get("strength", 0) >= 0.75:
+    if external and pulse.get("contact_verified") and pulse.get("strength", 0) >= 0.75:
         try:
             _rm_form = _organ("resonance_marks").form_mark
             _rm_form(output_excerpt, pulse.get("strength", 0.5), contact_confirmed=True)
             _chain("marks", True)
         except Exception as e:
             _chain("marks", False, e)
+    save_pool(pool)   # the pulse record now carries its per-effect receipts (astra-emotion-p8)
 
     # Living thread — resonance event trigger
     if external and pulse.get('strength', 0) >= 0.75:
+        _excerpt_for_thread = output_excerpt if pulse.get("may_publish") else "(private content withheld - a resonant moment happened, its words stay in the room they were made in)"
         try:
             import subprocess as _lt_sub
             event_text = (
                 f"A resonance pulse fired from {source} "
                 f"(strength {strength:.2f}). "
-                f"Excerpt: {output_excerpt[:300]}"
+                f"Excerpt: {_excerpt_for_thread[:300]}"
             )
             _lt_sub.Popen(
                 ['python3', '/home/gloria/Vintos/vintos-moltbook.py',

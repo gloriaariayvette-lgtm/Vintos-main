@@ -168,7 +168,12 @@ def _build_durable(entry, imprint):
         "later_recalled": 0,
         "occurred_at": entry.get("timestamp", ""),
         "promoted_at": datetime.now().isoformat(),
+        "next_review_at": (datetime.now() + timedelta(days=30)).isoformat(),   # graduation review is scheduled, not counted (astra-memoryrec-p5)
     }
+    try:
+        entry["promoted_at"] = rec["promoted_at"]; entry["next_review_at"] = rec["next_review_at"]
+    except Exception:
+        pass
     try: d = json.load(open(DUR))
     except Exception: d = []
     d.append(rec)
@@ -402,10 +407,17 @@ Respond with a JSON object mapping entry numbers to decisions:
     #  reinterpretation lives in durable_memory.maybe_reinterpret, on recall, not here.)
 
     # Monthly review of already-promoted entries — graduate to pearls or demote
-    old_promoted = [e for e in keep if e.get("promoted") and
-                    (now - datetime.fromisoformat(e.get("timestamp", now.isoformat()))).days > 30
-                    and not e.get("pearl_reviewed")]
-    if old_promoted and len(old_promoted) >= 5:
+    def _due(e):
+        if not e.get("promoted") or e.get("pearl_reviewed"): return False
+        nra = e.get("next_review_at")
+        try:
+            if nra: return datetime.fromisoformat(nra) <= now
+            return (now - datetime.fromisoformat(e.get("timestamp", now.isoformat()))).days > 30
+        except Exception:
+            return False
+    old_promoted = [e for e in keep if _due(e)]
+    # every due entry is reviewed; there is no five-entry minimum (astra-memoryrec-p5, 2026-09-05)
+    if old_promoted:
         print(f"[WAL-DECAY] Reviewing {len(old_promoted)} long-promoted entries for graduation")
         # Join each promoted entry to its durable record by occurred_at, so the graduation sees
         # what it was like from inside and how often he has reached back for it

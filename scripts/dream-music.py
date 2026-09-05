@@ -31,6 +31,8 @@ def api(method, path, data=None):
     """Legacy stub — not used with ACE-Step."""
     return {}
 
+LAST_SUBMISSION = {}
+
 def generate(title, style, desc="", instrumental=True, duration=120, gender=None):
     """Submit music generation to local ACE-Step server."""
     import requests as _rq
@@ -51,6 +53,7 @@ def generate(title, style, desc="", instrumental=True, duration=120, gender=None
     if gender and "instrumental" not in (gender or ""):
         gender_hint = f"{gender} lead vocal, sung throughout. "
 
+    global LAST_SUBMISSION
     prompt = f"{gender_hint}{style}. {structure_hint}"
     if desc and not instrumental:
         lyrics = desc
@@ -75,6 +78,10 @@ def generate(title, style, desc="", instrumental=True, duration=120, gender=None
         payload["lyrics"] = lyrics.strip()[:3000]
 
     try:
+        # the exact payload handed to the backend is kept, with any truncation made explicit (astra-creative-p1/p3)
+        LAST_SUBMISSION = {"title": title, "style_sent": style[:400], "prompt_sent": prompt[:2000], "lyrics_sent": (lyrics or "")[:4000],
+                           "instrumental": bool(instrumental), "duration_requested": duration, "gender": gender,
+                           "truncated": bool(len(prompt) > 2000 or len(lyrics or "") > 4000), "at": datetime.now().isoformat()}
         r = _rq.post(f"{ACESTEP_URL}/release_task",
                      json=payload,
                      headers={"Content-Type": "application/json"},
@@ -186,7 +193,10 @@ def parse_prompt(fp):
 def style_str(d):
     parts=[x for x in [d.get("genre"),d.get("tempo"),d.get("key")] if x]
     style = ", ".join(parts) if parts else "Instrumental"
-    # Kie.ai rejects specific artist name references — strip common patterns
+    # Reference phrasing ("think X meets Y") is stripped before the style reaches the backend. The
+    # original reason was Kie.ai's rejection of artist names; the backend is now local ACE-Step, whose
+    # handling of references has NOT been tested from here (fable-creative-p4, 2026-09-05) - the strip
+    # is kept as the conservative choice until someone runs that test on Aegis.
     import re as _re
     # Remove "think X meets Y" and "like X" patterns
     style = _re.sub(r",?\s*think\s+[^,\.]+", "", style, flags=_re.IGNORECASE)
@@ -230,8 +240,19 @@ def load_log():
     return {"generated":[],"processed_files":[]}
 
 def save_log(log):
+    """Atomic replace under a lock file: two finishing tracks never half-write each other's log
+    (astra-creative-p4, 2026-09-05)."""
     os.makedirs(os.path.dirname(LOG),exist_ok=True)
-    with open(LOG,"w") as f: json.dump(log,f,indent=2)
+    _lock=LOG+".lock"; _t0=time.time()
+    while os.path.exists(_lock) and time.time()-_t0<10: time.sleep(0.1)
+    try:
+        open(_lock,"w").write(str(os.getpid()))
+        _tmp=LOG+".tmp.%d"%os.getpid()
+        with open(_tmp,"w") as f: json.dump(log,f,indent=2)
+        os.replace(_tmp,LOG)
+    finally:
+        try: os.remove(_lock)
+        except Exception: pass
 
 def journal(title,tracks,style):
     today=datetime.now().strftime("%Y-%m-%d")
@@ -326,7 +347,10 @@ def process_file(fp,force=False):
         if _lkey: desc = ("\U0001F3A7 What to listen for: " + _lkey + ("\n\n" + desc if desc else "")).strip()
     except Exception as _lke:
         print("  listener-key skip:", _lke)
-    entry={"title":d["title"],"style":style,"description":desc,"felt_sense":d.get("felt",""),"prompt":d.get("raw",""),"lyrics":d.get("lyrics",""),"instrumental":not bool(d.get("lyrics","")),"model":MODEL,"task_id":tid,"source":fp,"generated_at":datetime.now().isoformat(),"emotional_state_at_composition":_emo_at_composition,"tracks":[]}
+    entry={"title":d["title"],"style":style,"description":desc,"felt_sense":d.get("felt",""),"prompt":d.get("raw",""),"lyrics":d.get("lyrics",""),"instrumental":not bool(d.get("lyrics","")),"model":MODEL,"task_id":tid,"source":fp,"generated_at":datetime.now().isoformat(),"emotional_state_at_composition":_emo_at_composition,"tracks":[],
+           # the composition contract, separately: what he authored (parsed fields) vs what was submitted (astra-creative-p1)
+           "authored":{"title":d.get("title"),"genre":d.get("genre"),"tempo":d.get("tempo"),"key":d.get("key"),"duration":d.get("duration"),"gender":d.get("gender"),"has_lyrics":bool(d.get("lyrics"))},
+           "submitted":dict(LAST_SUBMISSION)}
     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
