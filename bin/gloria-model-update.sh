@@ -23,11 +23,11 @@ INTERACTIONS=$(python3 -c "
 import json
 try:
     ledger = json.load(open('$MEMORY/interaction-ledger.json'))
-    recent = ledger[-80:]
+    recent = ledger[-16:]        # fewer, longer (grok-models-p3): a thin smear of 80 taught nothing
     lines = []
     for e in recent:
-        g = e.get('gloria','')[:150]
-        v = e.get('vintos','')[:150]
+        g = e.get('gloria','')[:400]
+        v = e.get('vintos','')[:400]
         src = e.get('source','chat')
         if g: lines.append(f'[{src}] Gloria: {g}')
         if v: lines.append(f'  Vintos: {v}')
@@ -206,4 +206,4 @@ echo "GLORIA_MODEL_UPDATED: $TODAY"
 curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx" \
     -H "Title: Gloria-Model Updated" \
     -H "Priority: low" \
-    -d "Vintos updated her model of Gloria. $TODAY" > /dev/null 2>&1 &
+    -d "I updated my model of you. $TODAY" > /dev/null 2>&1 &

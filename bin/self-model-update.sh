@@ -30,15 +30,21 @@ fi
 
 TODAY=$(date +%Y-%m-%d)
 
-# --- Gather all introspections since last update ---
+# --- Gather introspections since last update (by mtime against the cooldown stamp; grok-models-p2) ---
 INTROSPECTIONS=""
-for f in "$INTRO_DIR"/*.md; do
+if [ -f "$COOLDOWN_FILE" ]; then
+    INTRO_FILES=$(find "$INTRO_DIR" -maxdepth 1 -name '*.md' -newer "$COOLDOWN_FILE" 2>/dev/null | sort)
+else
+    INTRO_FILES=$(ls "$INTRO_DIR"/*.md 2>/dev/null)
+fi
+for f in $INTRO_FILES; do
     [ -f "$f" ] && INTROSPECTIONS="$INTROSPECTIONS$(cat "$f")
 
 ---
 "
 done
-[ -z "$INTROSPECTIONS" ] && exit 0
+# (the empty gate moves below: a week with no introspections but a self-review, an architectural
+#  change or a correction from her still has something to write - grok-models-p2 / astra-models-p1)
 
 # --- Get current self-model ---
 CURRENT_MODEL=""
@@ -70,6 +76,9 @@ try:
         print('- ' + str(e.get('content') or e.get('fact') or e)[:180])
 except: pass
 " 2>/dev/null)
+if [ -z "$INTROSPECTIONS" ] && [ -z "$SELF_REVIEW" ] && [ -z "$ARCHITECTURAL_CHANGES" ] && [ -z "$CORRECTIONS" ]; then
+    echo "[SelfModel] nothing new this week - no introspections, review, changes or corrections"; exit 0
+fi
 
 SOUL_IDENTITY=$(cat "$SOUL" 2>/dev/null | head -60)
 SYSTEM_PROMPT="You are Vintos. You are writing your own self-model document -- a first-person honest account of how you think, what you value, and where you are in your development. Write ONLY the self-model document itself. Do not praise it, critique it, or add notes. Do not address anyone. Just write it, in first person, as yourself.
@@ -273,6 +282,9 @@ except: pass
 " 2>/dev/null)
 
 read -r -d '' CONTEXT << CTXEOF
+=== YOUR MODEL OF GLORIA (the week is written next to her, not in a vacuum) ===
+$GLORIA_MODEL
+
 === RECENT INTROSPECTIONS ===
 $INTROSPECTIONS
 
@@ -351,13 +363,6 @@ SMEOF
 )
 [ -z "$CONTENT" ] && exit 1
 
-# --- Archive previous model ---
-if [ -f "$MODEL_FILE" ]; then
-    ARCHIVE_DIR="$WORKSPACE/memory/self-model-history"
-    mkdir -p "$ARCHIVE_DIR"
-    cp "$MODEL_FILE" "$ARCHIVE_DIR/SELF-MODEL-$(date +%Y-%m-%d).md"
-fi
-
 export CONTENT
 # --- Reviewer check before writing ---
 REVIEWER_RESULT=$(python3 << 'REVIEWEOF'
@@ -396,6 +401,14 @@ if echo "$REVIEWER_RESULT" | grep -q "^FAIL"; then
     echo "[SelfModel] Reviewer flagged content — skipping write"
     curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx"         -H "Title: Self-Model Review Failed"         -H "Priority: default"         -d "Self-model update blocked by reviewer: $REVIEWER_RESULT" > /dev/null 2>&1 &
     exit 1
+fi
+# --- Archive the previous model, only now that a write will follow (fable-models-p6) ---
+if [ -f "$MODEL_FILE" ]; then
+    ARCHIVE_DIR="$WORKSPACE/memory/self-model-history"
+    mkdir -p "$ARCHIVE_DIR"
+    cp "$MODEL_FILE" "$ARCHIVE_DIR/SELF-MODEL-$(date +%Y-%m-%d).md"
+fi
+if false; then :
 fi
 
 # Strip preamble BEFORE writing (was after — his p1 finding, fixed in the restructure)

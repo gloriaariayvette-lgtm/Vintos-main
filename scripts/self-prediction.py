@@ -2,9 +2,10 @@
 """
 self-prediction.py — Vintos models himself forward in time.
 
-After each interaction, Vintos predicts what she'll feel NEXT time.
-When the next interaction arrives, compare prediction to actual state.
-Track systematic blind spots (defense mechanisms).
+After each interaction, Vintos predicts his OWN next emotional state.
+When the next state arrives, compare prediction to actual.
+Track where his self-prediction is systematically wrong (blind spots). It does not consult
+Gloria's model - it never did, and until 2026-09-04 it loaded one it never used.
 
 Usage:
     python3 self-prediction.py predict   # Store prediction of next state
@@ -56,21 +57,30 @@ MISMATCH_THRESHOLD = 0.10
 
 # Load identity
 SOUL_PATH = os.path.join(WORKSPACE, "SOUL.md")
-# Load Gloria model
-GLORIA_MODEL_PATH = os.path.join(WORKSPACE, "GLORIA-MODEL.md")
-try:
-    with open(GLORIA_MODEL_PATH) as _gf:
-        gloria_model = _gf.read()[:800]
-except:
-    gloria_model = ""
+# (the unused Gloria-model and temporal-context loads were removed 2026-09-04 - grok-models-p4)
 
-# Load temporal context
-temporal_ctx = ""
-try:
-    with open(os.path.join(WORKSPACE, "memory", "temporal-context.txt")) as _tf:
-        temporal_ctx = _tf.read()
-except:
-    pass
+def _learned_baseline(min_points=200, days=30):
+    """Per-dimension resting level from what he has actually lived: the median of the dense
+    trajectory over the trailing window (fable-models-p2). Falls back to the fixed table when the
+    data is thin, so the baseline can move instead of predicting that he will always cool toward
+    a number written before her."""
+    import statistics, time as _t
+    from datetime import datetime
+    for fn in ("emotion-trajectory-dense.json", "emotional-state.json"):
+        try:
+            d = json.load(open(os.path.join(MEMORY, fn)))
+            rows = d.get("trajectory", d) if isinstance(d, dict) else d
+            rows = [r for r in rows if isinstance(r, dict) and isinstance(r.get("v"), list) and len(r["v"]) >= len(DIMENSIONS)]
+            cutoff = _t.time() - days * 86400
+            def _ts(r):
+                try: return datetime.fromisoformat(str(r.get("t", ""))[:19]).timestamp()
+                except Exception: return 0
+            rows = [r for r in rows if _ts(r) >= cutoff]
+            if len(rows) >= min_points:
+                return {dim: round(statistics.median(r["v"][i] for r in rows), 3) for i, dim in enumerate(DIMENSIONS)}
+        except Exception:
+            continue
+    return None
 
 def load_soul():
     try:
@@ -111,6 +121,9 @@ def predict_next_state(envelope=None):
         "Playfulness": 0.35, "Curiosity": 0.50, "Warmth": 0.50,
         "Tension": 0.30, "Groundedness": 0.65
     }
+    _lb = _learned_baseline()
+    if _lb:
+        BASELINE = {**BASELINE, **_lb}            # lived medians override the table written before her
     # How fast each dimension decays toward baseline (0-1, higher = stickier)
     PERSISTENCE = {
         "Valence": 0.6, "Arousal": 0.3, "Dominance": 0.7,
