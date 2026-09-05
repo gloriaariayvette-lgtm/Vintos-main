@@ -159,6 +159,11 @@ with Env() as e:
     ctx = EG.TurnContext("t1", "avatar")
     open(os.path.join(e.tmp, ".effect-gate-armed"), "w").write("")
     EG.ARMED_FLAG = os.path.join(e.tmp, ".effect-gate-armed")
+    # the gate also reads the live test-mode flag and the live stop button; on Aegis with
+    # test mode on, a "clean armed context" read would_send. Isolate every file the gate reads.
+    EG.TEST_MODE_FLAG = os.path.join(e.tmp, ".test-mode")
+    EG.STOP_BUTTON = os.path.join(e.tmp, "hardware-button.json")
+    EG.MEM = e.tmp
     permit, mode, _ = EG.authorize(ctx, "mission", 12, kind="pattern",
                                    targets={"mission"}, digest="d")
     check("permit granted for a clean armed context", mode == "send" and permit, mode)
