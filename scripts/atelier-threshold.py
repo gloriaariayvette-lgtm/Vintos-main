@@ -213,8 +213,8 @@ def resolve_root(answer, roots, shown=None):
     if a.isdigit() and shown is not None and 1 <= int(a) <= len(shown):
         return shown[int(a) - 1]["root"]
     al = a.lower()
-    hits = [ref for ref in refs if ref.lower().startswith(al) or ref.split("@", 1)[0].lower() == al
-            or ref.split("@", 1)[0].lower().startswith(al)]
+    hits = [ref for ref in refs if ref.lower().startswith(al)
+            or any(part.lower() == al or part.lower().startswith(al) for part in ref.split("@"))]
     hits = list(dict.fromkeys(hits))
     return hits[0] if len(hits) == 1 else None
 
