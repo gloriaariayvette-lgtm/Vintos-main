@@ -68,6 +68,29 @@ def _atelier_door_line():
     except Exception:
         return ""
 
+def _guard_note():
+    """If the last substrate event within 30 minutes was a guard_decline, one line of FACT for the
+    next turn: a substrate refused her and was replaced; the session is on grok. No content of the
+    declined reply — just that it happened (fable-server-c-p4, 2026-09-05)."""
+    try:
+        import json, os, time
+        ev = json.load(open(os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), "substrate-events.json")))
+        if not isinstance(ev, list) or not ev: return ""
+        last = ev[-1]
+        if not isinstance(last, dict) or last.get("reason") != "guard_decline": return ""
+        ts = last.get("ts") or last.get("at") or last.get("timestamp") or 0
+        try:
+            from datetime import datetime as _dt
+            age = time.time() - (float(ts) if isinstance(ts, (int, float)) else _dt.fromisoformat(str(ts)).timestamp())
+        except Exception:
+            return ""
+        if age > 1800: return ""
+        who = str(last.get("from_model") or last.get("from") or last.get("model") or "a substrate")
+        return ("\n\n[LAST TURN: " + who + " refused her and the reply was replaced; this session is now on grok. "
+                "That is the fact of what happened — nothing more is recorded here.]")
+    except Exception:
+        return ""
+
 def full_inner_block():
     offers = {}
     parts = []
@@ -87,7 +110,7 @@ def full_inner_block():
         offers["conversation_pressure"] = {"state": "organ_error", "err": str(e)[:120]}
     parts += _run(_FULL, offers)
     _note_offers(offers)
-    return "\n\n".join(parts) + _atelier_door_line()
+    return "\n\n".join(parts) + _atelier_door_line() + _guard_note()
 
 def missing_inner_block():
     """The 7 systems that ONLY reached voice: field, spark, simulation, world,
@@ -96,7 +119,7 @@ def missing_inner_block():
     offers = {}
     parts = _run(_MISSING, offers)
     _note_offers(offers)
-    return "\n\n".join(parts)
+    return "\n\n".join(parts) + _guard_note()
 
 if __name__ == "__main__":
     print(full_inner_block()[:500])

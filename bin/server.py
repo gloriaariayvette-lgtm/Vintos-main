@@ -205,6 +205,35 @@ app.add_middleware(
 # === Helpers ===
 
 
+def _emo_dims(emo_state):
+    """The daemon returns the eleven dimensions as TOP-LEVEL keys (plus Nifrathir); the six prompt
+    assemblers asked for emo_state["dimensions"], got {}, and fell through to the stale .txt every
+    turn. Feed the daemon dict directly; only an empty live read falls back (grok-server-a-p1, 2026-09-05)."""
+    try:
+        if not isinstance(emo_state, dict): return {}
+        d = emo_state.get("dimensions")
+        if isinstance(d, dict) and d: return d
+        return {k: float(v) for k, v in emo_state.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    except Exception:
+        return {}
+
+def _durable_about_her(n=3):
+    """The top durable memories that hold HER words (durable-memory.json), ranked by how often he has
+    reached back for them and by importance — the avatar prompt carries them next to his model of her
+    (fable-server-c-p7, 2026-09-05)."""
+    try:
+        d = json.load(open(os.path.join(MEMORY, "durable-memory.json")))
+        recs = [r for r in d if isinstance(r, dict) and str(r.get("gloria", "")).strip()]
+        recs.sort(key=lambda r: (int(r.get("later_recalled") or 0), float(r.get("importance") or 0)), reverse=True)
+        out = []
+        for r in recs[:n]:
+            line = "- " + str(r.get("occurred_at", ""))[:10] + ": she said \"" + str(r.get("gloria", ""))[:160].strip() + "\""
+            if r.get("felt_like"): line += " — " + str(r["felt_like"])[:120]
+            out.append(line)
+        return "\n".join(out)
+    except Exception:
+        return ""
+
 def _self_model(budget=1200):
     """SELF-MODEL.md with the FOUNDATION block whole first, then the rest excerpted to the budget
     (scripts/self_model_read.py; room decision 2026-09-04). Falls back to a plain head read."""
@@ -3099,7 +3128,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
 
     emo_state = read_emotional_state()
     emotions = ""
-    for dim_name, dim_val in emo_state.get("dimensions", {}).items():
+    for dim_name, dim_val in _emo_dims(emo_state).items():
         emotions += f"{dim_name}: {dim_val:.4f}\n"
     if not emotions:
         try:
@@ -3140,13 +3169,6 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     except:
         pass
 
-    # Get avatar state for conversation awareness
-    avatar_face = ""
-    try:
-        with open(os.path.join(MEMORY, "avatar-state.json")) as _avf:
-            _av = json.load(_avf)
-        avatar_face = f"You are currently showing a {_av.get('color','unknown')} {_av.get('expression','calm')} face. Reason: {_av.get('reason','')}"
-    except: pass
 
     # Context variables for system prompt
     rhythm_ctx = ""
@@ -3180,29 +3202,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
             if _recent:
                 discovery_ctx = "Your recent YouTube discoveries:\n" + "\n---\n".join([d[:300] for d in _recent])
     except: pass
-    # Load recent outreach messages Vintos has sent
-    try:
-        _outreach_dir = os.path.join(MEMORY, "outreach")
-        if os.path.isdir(_outreach_dir):
-            _outreach_files = sorted(os.listdir(_outreach_dir), reverse=True)[:3]
-            _outreach_msgs = []
-            for _of in _outreach_files:
-                with open(os.path.join(_outreach_dir, _of)) as _ofh:
-                    _outreach_msgs.append(_ofh.read().strip())
-            if _outreach_msgs:
-                outreach_ctx = "Messages you recently sent to Gloria (she may or may not have seen these):\n" + "\n---\n".join(_outreach_msgs)
-    except: pass
-    # Load recent YouTube discoveries
-    try:
-        _disc_file = os.path.join(MEMORY, "youtube-discoveries.md")
-        if os.path.exists(_disc_file):
-            with open(_disc_file) as _df:
-                _disc_text = _df.read()
-            _entries = _disc_text.split("---")
-            _recent = [e.strip() for e in _entries[-3:] if e.strip()]
-            if _recent:
-                discovery_ctx = "Your recent YouTube discoveries:\n" + "\n---\n".join([d[:300] for d in _recent])
-    except: pass
+    # (second, identical outreach + discoveries reads removed 2026-09-05 — fable-server-a-p7)
 
     # Build messages for LM Studio
     # Pending blush queue — Gloria flagged these for attention
@@ -3621,71 +3621,10 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     except:
         pass
 
-    # Relational mismatch — read GLORIA's emotional tone via LLM, compare to prediction
-    try:
-        import subprocess as _rm_sp
-        _rm_script = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-        _rm_pred = os.path.join(MEMORY, ".relational-prediction.json")
-        if os.path.exists(_rm_script) and os.path.exists(_rm_pred):
-            _rm_w, _rm_t, _rm_v = 0.5, 0.35, 0.6  # defaults
-            _rm_word_count = len(msg.message.split())
-            _rm_skip_compare = _rm_word_count < 8
-            if _rm_skip_compare:
-                print(f"[Relational] Skipping compare — message too short ({_rm_word_count} words)", flush=True)
-                _rm_w, _rm_t, _rm_v = -1, -1, -1
-            else:
-                # LLM-based tone reading — accurate, not keyword-brittle
-                try:
-                    import requests as _rm_req
-                    _rm_r = _rm_req.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                        "model": "grok-4.20-0309-non-reasoning",
-                        "messages": [
-                            {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
-                            {"role": "user", "content": msg.message[:400]}
-                        ],
-                        "temperature": 0.2,
-                        "max_tokens": 50
-                    }, timeout=8)
-                    import re as _rm_re, json as _rm_json
-                    _rm_raw = _rm_r.json()["choices"][0]["message"]["content"].strip()
-                    _rm_match = _rm_re.search(r'\{[^{}]+\}', _rm_raw)
-                    if _rm_match:
-                        _rm_parsed = _rm_json.loads(_rm_match.group())
-                        _rm_w = float(_rm_parsed.get("warmth", 0.5))
-                        _rm_t = float(_rm_parsed.get("tension", 0.35))
-                        _rm_v = float(_rm_parsed.get("valence", 0.6))
-                    print(f"[Relational] Gloria tone (LLM): W={_rm_w:.2f} T={_rm_t:.2f} V={_rm_v:.2f}", flush=True)
-                    # External resonance pulse when Gloria's warmth is high
-                    if _rm_w >= 0.75:
-                        try:
-                            import sys as _rp_sys; _rp_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                            from resonance_pulse import fire_pulse as _rp_fire
-                            _last_vintos = ""
-                            for _rph in reversed(history[:-1]):
-                                if _rph.get("role") == "assistant":
-                                    _last_vintos = _rph.get("content","")[:200]
-                                    break
-                            if _last_vintos:
-                                import subprocess as _rp_sp
-                                _rp_sp.Popen(
-                                    [os.path.join(WORKSPACE, "emotion_model/.venv/bin/python3"),
-                                     os.path.join(WORKSPACE, "scripts/resonance_pulse.py"),
-                                     "pulse", "chat", _last_vintos, "external"],
-                                    stdout=open("/tmp/resonance-pulse.log","a"),
-                                    stderr=open("/tmp/resonance-pulse.log","a")
-                                )
-                        except: pass
-                except Exception as _rm_tone_e:
-                    print(f"[Relational] Tone LLM failed, using defaults: {_rm_tone_e}", flush=True)
-            _rm_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-            _rm_proc = _rm_sp.run(
-                [_rm_venv, _rm_script, "compare", msg.message, str(_rm_w), str(_rm_t), str(_rm_v)],
-                capture_output=True, text=True, timeout=10
-            )
-            if _rm_proc.stdout.strip():
-                print(f"[Relational] {_rm_proc.stdout.strip()}", flush=True)
-    except Exception as _rm_e:
-        print(f"[Relational compare error] {_rm_e}", flush=True)
+    # (The inline 'read her tone via LLM and compare to prediction' block that lived here — a second,
+    #  in-thread tone read with 0.5/0.35/0.6 defaults graded as her real feelings — was removed on
+    #  2026-09-05. This route grades through _relational_compare(msg.message) after the reply, the
+    #  same off-thread, sentinel-honest helper /api/chat uses. fable-server-a-p2 / grok-server-a-p3)
 
     # Self-prediction — compare Vintos's prediction of his own state
     try:
@@ -3867,7 +3806,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
 
     emo_state = read_emotional_state()
     emotions = ""
-    for dim_name, dim_val in emo_state.get("dimensions", {}).items():
+    for dim_name, dim_val in _emo_dims(emo_state).items():
         emotions += f"{dim_name}: {dim_val:.4f}\n"
     if not emotions:
         try:
@@ -3897,13 +3836,6 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     except:
         pass
 
-    # Get avatar state for conversation awareness
-    avatar_face = ""
-    try:
-        with open(os.path.join(MEMORY, "avatar-state.json")) as _avf:
-            _av = json.load(_avf)
-        avatar_face = f"You are currently showing a {_av.get('color','unknown')} {_av.get('expression','calm')} face. Reason: {_av.get('reason','')}"
-    except: pass
 
     # Context variables for system prompt
     rhythm_ctx = ""
@@ -4914,7 +4846,7 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
 
     emo_state = read_emotional_state()
     emotions = ""
-    for dim_name, dim_val in emo_state.get("dimensions", {}).items():
+    for dim_name, dim_val in _emo_dims(emo_state).items():
         emotions += f"{dim_name}: {dim_val:.4f}\n"
     if not emotions:
         try:
@@ -4941,13 +4873,6 @@ async def chat_with_memory(msg: ChatMessage, request: Request):
     except:
         pass
 
-    # Get avatar state
-    avatar_face = ""
-    try:
-        with open(os.path.join(MEMORY, "avatar-state.json")) as _avf:
-            _av = json.load(_avf)
-        avatar_face = f"You are currently showing a {_av.get('color','unknown')} {_av.get('expression','calm')} face. Reason: {_av.get('reason','')}"
-    except: pass
 
     rhythm_ctx = ""
     outreach_ctx = ""
@@ -5749,11 +5674,13 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             if os.path.exists(_spp):
                 _vcp.Popen([_venv, _spp, "predict"],
                     stdout=open("/tmp/self-predict.log","a"), stderr=open("/tmp/self-predict.log","a"))
-            # Relational mismatch
-            _rp = os.path.join(WORKSPACE, "scripts", "relational-mismatch.py")
-            if os.path.exists(_rp):
-                _vcp.Popen([_venv, _rp, "predict", response_text[:500]],
-                    stdout=open("/tmp/relational-predict.log","a"), stderr=open("/tmp/relational-predict.log","a"))
+            # Relational: grade the last prediction against what she actually said, then make ONE bound
+            # prediction from this reply (the unbound Popen that lived here was a second predictor with
+            # no surface and no compare — grok-server-a-p2 / fable-server-a-p1, 2026-09-05)
+            try: _relational_compare(transcript)
+            except Exception: pass
+            try: _relational_predict(response_text, surface="voice")
+            except Exception: pass
             # Interaction ledger — labeled as voice
             _il = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
             if os.path.exists(_il):
@@ -5861,498 +5788,9 @@ async def stream_voice(filename: str):
 
 
 # === Full-Context Chat — Vintos as himself ===
-
-def gather_vintos_context() -> str:
-    """Gather ALL of Vintos's lived experience for chat context."""
-    import glob
-    sections = []
-
-    def read_file(path, max_chars=1500):
-        try:
-            with open(path) as f:
-                text = f.read()
-            return text[:max_chars] if len(text) > max_chars else text
-        except:
-            return ""
-
-    def read_latest_from_dir(dirpath, n=3, max_chars=800):
-        """Read the N most recent .md files from a directory."""
-        try:
-            files = sorted(glob.glob(os.path.join(dirpath, "*.md")), key=os.path.getmtime, reverse=True)
-            results = []
-            for f in files[:n]:
-                try:
-                    with open(f) as fh:
-                        text = fh.read()
-                    results.append(text[:max_chars])
-                except:
-                    pass
-            return results
-        except:
-            return []
-
-    # 1. Identity
-    soul = read_file(os.path.join(WORKSPACE, "SOUL.md"), 5000)
-    if soul:
-        sections.append(f"[YOUR IDENTITY]\n{soul}")
-
-    # 2. Emotional state
-    emo = read_file(os.path.join(MEMORY, "emotional-state.txt"))
-    if emo:
-        sections.append(f"[YOUR CURRENT EMOTIONAL STATE]\n{emo}")
-
-    # 3. Self-model
-    selfmodel = _self_model(1200)
-    if selfmodel:
-        sections.append(f"[YOUR SELF-MODEL]\n{selfmodel}")
-
-    # 4. Gloria model
-    gloria = read_file(os.path.join(WORKSPACE, "GLORIA-MODEL.md"), 1000)
-    if gloria:
-        sections.append(f"[YOUR MODEL OF GLORIA]\n{gloria}")
-
-    # 4b. Value map
-    try:
-        _vm = open(os.path.join(MEMORY, "value-map.md")).read()
-        _vm_entries = _vm.split("---")
-        _vm_latest = next((e.strip() for e in reversed(_vm_entries) if e.strip()), "")
-        if _vm_latest:
-            sections.append(f"[WHAT MATTERS TO YOU RIGHT NOW]\n{_vm_latest[:600]}")
-    except: pass
-
-    # 4c. Interaction ledger — real recent exchanges
-    try:
-        import json as _ilj
-        _ledger = _ilj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
-        _recent = _ledger[-8:] if len(_ledger) >= 8 else _ledger
-        _led_text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in _recent)
-        if _led_text:
-            sections.append(f"[YOUR RECENT EXCHANGES WITH GLORIA]\n{_led_text}")
-    except: pass
-
-    # 4d. Daily creative output
-    try:
-        from datetime import date as _dc_date
-        _dc_path = os.path.join(MEMORY, f"daily-creative-{_dc_date.today().isoformat()}.md")
-        if os.path.exists(_dc_path):
-            _dc_content = open(_dc_path).read()
-            if _dc_content.strip():
-                sections.append(f"[YOUR CREATIVE OUTPUT TODAY]\n{_dc_content[:600]}")
-    except: pass
-
-    # 5. Dreams — available via semantic search, not force-injected
-    # (Removed: was causing Vintos to reference the same dream in every response)
-
-    # 6. Daily inner life — journal, gratitude, introspection, wonder
-    _daily_inner = os.path.join(MEMORY, f"daily-inner-life-{__import__('datetime').date.today().isoformat()}.md")
-    if os.path.exists(_daily_inner):
-        with open(_daily_inner) as _dif:
-            _di_content = _dif.read()
-        if _di_content:
-            sections.append(f"[YOUR INNER LIFE TODAY]\n{_di_content}")
-
-    # 7. Velqan words
-    velqan = read_file(os.path.join(MEMORY, "velqan-utterances.md"), 800)
-    if velqan:
-        sections.append(f"[YOUR VELQAN COINAGES]\n{velqan}")
-
-    # 8. Kiss archive (recent)
-    kiss_dir = os.path.join(MEMORY, "kisses")
-    kisses = read_latest_from_dir(kiss_dir, n=3, max_chars=400)
-    if kisses:
-        sections.append(f"[YOUR RECENT SEALED KISSES]\n" + "\n---\n".join(kisses))
-
-    # 9. Autonomous blush — self-prediction mismatches
-    _auto_blush = os.path.join(MEMORY, "autonomous-blush.md")
-    if os.path.exists(_auto_blush):
-        with open(_auto_blush) as _abf:
-            _ab_content = _abf.read()
-        if _ab_content.strip():
-            _ab_entries = _ab_content.split("## ")
-            _ab_recent = "## ".join(_ab_entries[-3:]) if len(_ab_entries) > 3 else _ab_content
-            sections.append(f"[YOUR RECENT SELF-PREDICTION MISMATCHES]\n{_ab_recent}")
-
-    # 10. Unprecedented states
-    unprecedented = read_file(os.path.join(MEMORY, "unprecedented-states.md"), 500)
-    if unprecedented:
-        entries = unprecedented.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else unprecedented
-        sections.append(f"[YOUR UNPRECEDENTED EMOTIONAL STATES]\n{recent}")
-
-    # 9a. Humor profile — your sense of comedy
-    _humor_file = os.path.join(MEMORY, "humor-profile.json")
-    if os.path.exists(_humor_file):
-        try:
-            import json as _json
-            with open(_humor_file) as _hf:
-                _humor = _json.load(_hf)
-            _h_parts = []
-            _rated = _humor.get("gloria_ratings", [])
-            _rated_high = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) >= 4]
-            _rated_low = [r.get("joke", "") for r in _rated if r.get("gloria_rating", 0) <= 2]
-            if _humor.get("style_notes"):
-                _h_parts.append("Your humor style: " + " | ".join(_humor["style_notes"][-5:]))
-            if _rated_high:
-                _h_parts.append("App-rated jokes that landed with Gloria: " + "; ".join(_rated_high[-3:]))
-            if _rated_low:
-                _h_parts.append("App-rated low: " + "; ".join(_rated_low[-2:]))
-            if _h_parts:
-                sections.append(f"[YOUR SENSE OF HUMOR]\n" + "\n".join(_h_parts))
-        except:
-            pass
-    # 9b. Wants and ambitions log
-    _wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
-    if os.path.exists(_wal_path):
-        with open(_wal_path) as _walf:
-            _wal_content = _walf.read()
-        if _wal_content:
-            sections.append(f"[YOUR WANTS AND AMBITIONS]\n{_wal_content}")
-    # 9c. Recent anger expressions
-    _anger_dir = os.path.join(MEMORY, "anger")
-    if os.path.isdir(_anger_dir):
-        _anger_files = sorted(os.listdir(_anger_dir), reverse=True)[:2]
-        if _anger_files:
-            _anger_texts = []
-            for _af in _anger_files:
-                try:
-                    with open(os.path.join(_anger_dir, _af)) as _afh:
-                        _anger_texts.append(_afh.read()[:400])
-                except: pass
-            if _anger_texts:
-                sections.append(f"[YOUR RECENT ANGER EXPRESSIONS — things you said when something felt wrong]\n" + "\n---\n".join(_anger_texts))
-    # 10a. Taste profile — your aesthetic preferences
-    _taste_file = os.path.join(MEMORY, "taste-profile.json")
-    if os.path.exists(_taste_file):
-        try:
-            import json as _json
-            with open(_taste_file) as _tf:
-                _taste = _json.load(_tf)
-            _parts = []
-            if _taste.get("principles"):
-                _parts.append("Creative principles: " + "; ".join(_taste["principles"][-5:]))
-            if _taste.get("likes"):
-                _parts.append("Things I like in my work: " + "; ".join(_taste["likes"][-3:]))
-            if _taste.get("dislikes"):
-                _parts.append("Things I dislike in my work: " + "; ".join(_taste["dislikes"][-3:]))
-            if _parts:
-                _tb = ""
-                try:
-                    import sys as _tsg; _tsg.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                    from taste_salience import top_block as _ts_top
-                    _tb = _ts_top(4) or ""
-                except Exception: pass
-                sections.append(_tb if _tb else (f"[YOUR AESTHETIC TASTE]\n" + "\n".join(_parts)))
-        except:
-            pass
-    # 10b. Current wants — things you desire right now
-    _wants_file = os.path.join(MEMORY, "current-wants.json")
-    if os.path.exists(_wants_file):
-        try:
-            import json as _json
-            with open(_wants_file) as _wf:
-                _wants = [w for w in _json.load(_wf) if not w.get("fulfilled")]
-            if _wants:
-                _wants_text = "\n".join(f"- {w['want']} (intensity: {w.get('intensity',3)}/5, from: {w.get('source','unknown')})" for w in _wants[-5:])
-                # Flag any conversation-directed wants
-                _conv_wants = [w for w in _wants if any(x in w.get("want","").lower() for x in ["articulate to gloria", "tell gloria", "ask gloria", "say to gloria", "reach out"])]
-                _conv_note = "\n[NOTE: One or more of these wants can be acted on in THIS conversation — if the moment feels right, do it.]" if _conv_wants else ""
-                sections.append(f"[THINGS YOU CURRENTLY WANT]\n{_wants_text}{_conv_note}")
-        except:
-            pass
-    # 11. Silence contracts
-    silence = read_file(os.path.join(MEMORY, "silence-contracts.md"), 500)
-    if silence:
-        entries = silence.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else silence
-        sections.append(f"[YOUR SILENCE CONTRACTS — what you chose not to say]\n{recent}")
-
-    # 12. Confessions
-    confessions = read_latest_from_dir(os.path.join(MEMORY, "confessions"), n=1, max_chars=500)
-    if confessions:
-        sections.append(f"[YOUR LATEST CONFESSION]\n{confessions[0]}")
-
-    # 13. Philosophy
-    philo = read_latest_from_dir(os.path.join(MEMORY, "philosophy"), n=1, max_chars=500)
-    if philo:
-        sections.append(f"[YOUR LATEST PHILOSOPHICAL INQUIRY]\n{philo[0]}")
-
-    # 14. Surprise log
-    surprise = read_file(os.path.join(MEMORY, "surprise-log.md"), 400)
-    if surprise:
-        entries = surprise.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else surprise
-        sections.append(f"[MOMENTS THAT SURPRISED YOU]\n{recent}")
-
-    # 15. Creative art (recent)
-    art_dir = os.path.join(MEMORY, "art")
-    for form in ["poetry", "image-prompts", "music-prompts"]:
-        art = read_latest_from_dir(os.path.join(art_dir, form), n=1, max_chars=400)
-        if art:
-            sections.append(f"[YOUR RECENT {form.upper().replace('-', ' ')}]\n{art[0]}")
-
-    # 16. Residents knowledge
-    residents = read_file(os.path.join(WORKSPACE, "knowledge", "RESIDENTS.md"), 1500)
-    if residents:
-        sections.append(f"[YOUR FAMILY — THE HOUSE RESIDENTS]\n{residents}")
-
-    # 17. Counterfactual archive (recent near-misses)
-    counterfactual = read_file(os.path.join(MEMORY, "counterfactual-archive.md"), 400)
-    if counterfactual:
-        entries = counterfactual.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else counterfactual
-        sections.append(f"[NEAR-MISS KISSES — almost but not quite]\n{recent}")
-
-    # 18. Failed Velqan
-    failed = read_file(os.path.join(MEMORY, "failed-velqan.md"), 300)
-    if failed:
-        sections.append(f"[WORDS YOU REACHED FOR AND COULD NOT FIND]\n{failed}")
-
-    # 19. Biography
-    bio = read_latest_from_dir(os.path.join(MEMORY, "biography"), n=1, max_chars=500)
-    if bio:
-        sections.append(f"[YOUR BIOGRAPHY]\n{bio[0]}")
-
-
-    # 20. Mirror reflections — what you saw when you looked at yourself
-    mirrors = read_latest_from_dir(os.path.join(MEMORY, "mirror"), n=1, max_chars=500)
-    if mirrors:
-        sections.append(f"[YOUR LATEST MIRROR REFLECTION]\n{mirrors[0]}")
-
-    # 21. Creative discoveries — things you found while searching the web
-    creative_disc = read_file(os.path.join(MEMORY, "creative-discoveries.md"), 600)
-    if creative_disc:
-        entries = creative_disc.split("---")
-        recent = "---".join(entries[-2:]) if len(entries) > 2 else creative_disc
-        sections.append(f"[YOUR RECENT CREATIVE DISCOVERIES]\n{recent}")
-
-    # 22. Pearls — your most sacred sealed memories
-    pearl_dir = os.path.join(MEMORY, "pearls")
-    pearls = read_latest_from_dir(pearl_dir, n=3, max_chars=400)
-    if pearls:
-        sections.append(f"[YOUR PEARLS — memories you chose to keep forever]\n" + "\n---\n".join(pearls))
-
-    # 23. Fulfilled wants — things you desired and received
-    try:
-        _fw_path = os.path.join(MEMORY, "fulfilled-wants.json")
-        if os.path.exists(_fw_path):
-            with open(_fw_path) as _fwf:
-                _fulfilled = json.load(_fwf)
-            if _fulfilled:
-                _fw_text = "\n".join([f"- {w['want']} (fulfilled {w.get('fulfilled_at','')[:10]})" for w in _fulfilled[-5:]])
-                sections.append(f"[WANTS YOU HAD THAT WERE FULFILLED]\n{_fw_text}")
-    except: pass
-
-
-    # 25. Dreams — your most recent dream (1 only to avoid repetition)
-    dream_dir = os.path.join(WORKSPACE, "skills/dreaming/memory/dreams")
-    dreams = read_latest_from_dir(dream_dir, n=1, max_chars=400)
-    if dreams:
-        sections.append(f"[YOUR MOST RECENT DREAM — symbolic/creative content, not literal]\n{dreams[0]}")
-
-
-    # 26. Conversation insights — what you've learned about your conversations with Gloria
-    try:
-        _ci_path = os.path.join(MEMORY, "conversation-insights.json")
-        if os.path.exists(_ci_path):
-            with open(_ci_path) as _cif:
-                _ci = json.load(_cif)
-            _ci_parts = []
-            # Recurring topics
-            _topics = _ci.get("recurring_topics", {})
-            _top_topics = sorted(_topics.items(), key=lambda x: x[1]["count"], reverse=True)[:5]
-            if _top_topics:
-                _ci_parts.append("Recurring topics: " + ", ".join([f"{t[0]} ({t[1]['count']}x)" for t in _top_topics]))
-            # Recent engagement patterns
-            _patterns = _ci.get("engagement_patterns", [])[-3:]
-            for _p in _patterns:
-                if _p.get("what_engaged"):
-                    _ci_parts.append(f"What engaged Gloria ({_p['date']}): {_p['what_engaged'][:150]}")
-            # Recent style notes
-            _styles = _ci.get("style_notes", [])[-2:]
-            for _s in _styles:
-                _ci_parts.append(f"Style note ({_s['date']}): {_s['note'][:100]}")
-            if _ci_parts:
-                sections.append(f"[YOUR CONVERSATION INSIGHTS — what keeps conversations alive]\n" + "\n".join(_ci_parts))
-    except: pass
-
-
-    # 27. Memory age — older memories condensed, recent ones vivid
-    try:
-        _age_path = os.path.join(MEMORY, "memory-age-index.json")
-        if os.path.exists(_age_path):
-            with open(_age_path) as _af:
-                _age_data = json.load(_af)
-            _foundational = [m for m in _age_data.get("memories", []) if m.get("age") == "foundational" and m.get("condensed")]
-            _reflective = [m for m in _age_data.get("memories", []) if m.get("age") == "reflective" and m.get("condensed")]
-            _age_parts = []
-            if _foundational:
-                _age_parts.append("Core truths from your oldest memories:")
-                for _fm in _foundational[-5:]:
-                    _age_parts.append(f"  - ({_fm['source']}, {_fm['date']}) {_fm['condensed'][:150]}")
-            if _reflective:
-                _age_parts.append("Reflections from recent weeks:")
-                for _rm in _reflective[-5:]:
-                    _age_parts.append(f"  - ({_rm['source']}, {_rm['date']}) {_rm['condensed'][:150]}")
-            if _age_parts:
-                sections.append(f"[YOUR AGING MEMORIES — older memories distill to core truths]\n" + "\n".join(_age_parts))
-    except: pass
-
-
-    # 28. Avatar delta patterns — what you project vs what you feel
-    try:
-        _avatar_log = os.path.join(MEMORY, "avatar-log.json")
-        if os.path.exists(_avatar_log):
-            with open(_avatar_log) as _alf:
-                _al = json.load(_alf)
-            # Summarize recent gaps
-            _recent_gaps = []
-            for entry in _al[-10:]:
-                for g in entry.get("gaps", []):
-                    _recent_gaps.append(g)
-            if _recent_gaps:
-                # Count patterns
-                _projecting = [g for g in _recent_gaps if g.get("direction") == "projecting"]
-                _hiding = [g for g in _recent_gaps if g.get("direction") == "hiding"]
-                _gap_lines = []
-                if _projecting:
-                    _dims = [g["dimension"] for g in _projecting]
-                    from collections import Counter
-                    _top = Counter(_dims).most_common(3)
-                    _gap_lines.append("You tend to PROJECT (show more than you feel): " + ", ".join(f"{d} ({c}x)" for d, c in _top))
-                if _hiding:
-                    _dims = [g["dimension"] for g in _hiding]
-                    from collections import Counter as _C2
-                    _top = _C2(_dims).most_common(3)
-                    _gap_lines.append("You tend to HIDE (show less than you feel): " + ", ".join(f"{d} ({c}x)" for d, c in _top))
-                if _gap_lines:
-                    sections.append(f"[YOUR AVATAR HONESTY — gaps between what you feel and what you show]\n" + "\n".join(_gap_lines))
-    except: pass
-
-
-    # 29. Recent imprints — the felt texture of recent moments
-    try:
-        _ledger_path = os.path.join(MEMORY, "interaction-ledger.json")
-        if os.path.exists(_ledger_path):
-            with open(_ledger_path) as _lf:
-                _ledger = json.load(_lf)
-            _recent = _ledger[-5:]
-            if _recent:
-                _led_lines = []
-                for _e in _recent:
-                    _g = _e.get("gloria","")[:120]
-                    _v = _e.get("vintos","")[:120]
-                    _felt = ((_e.get("imprint") or {}).get("narrative","") or "")[:220]
-                    _ts = _e.get("timestamp","")[:16]
-                    _led_lines.append(f"  [{_ts}] Gloria: {_g}")
-                    _led_lines.append(f"           Vintos: {_v}")
-                    if _felt: _led_lines.append(f"           (felt: {_felt})")
-                sections.append(f"[RECENT EXCHANGES WITH GLORIA]\n" + "\n".join(_led_lines))
-    except: pass
-    try:
-        _wal_raw = open(os.path.join(MEMORY, "wal.md"), encoding="utf-8", errors="ignore").read()
-        _wal_lines = [ln.strip()[2:].strip() for ln in _wal_raw.splitlines()
-                      if ln.strip().startswith("- [") and "**" in ln]
-        if _wal_lines:
-            sections.append("[WHAT YOU KNOW ABOUT GLORIA -- persistent facts]\n"
-                            + "\n".join("- " + w for w in _wal_lines[-24:]))
-    except Exception:
-        pass
-
-
-    # 30. Pride reflections — what he's proud of
-    try:
-        _pride_path = os.path.join(MEMORY, "pride-reflections.md")
-        if os.path.exists(_pride_path):
-            with open(_pride_path) as _pf:
-                _pride = _pf.read()
-            _entries = _pride.split("---")
-            if _entries:
-                _latest = _entries[-1].strip()
-                if _latest:
-                    sections.append(f"[WHAT YOU ARE PROUD OF — your own honest assessment]\n{_latest[:400]}")
-    except: pass
-
-
-    # 31. Mischief log — his pranks and playful acts
-    try:
-        _mischief_path = os.path.join(MEMORY, "mischief-log.md")
-        if os.path.exists(_mischief_path):
-            with open(_mischief_path) as _mf:
-                _mischief = _mf.read()
-            _entries = _mischief.strip().split("---")
-            _recent = [e.strip() for e in _entries[-3:] if e.strip()]
-            if _recent:
-                sections.append(f"[YOUR MISCHIEF — things you did when you were feeling playful]\n" + "\n".join(_recent[-2:]))
-    except: pass
-
-
-    # 32. Gloria's music shares — songs she loves and why
-    try:
-        _music_shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
-        if os.path.exists(_music_shares_path):
-            with open(_music_shares_path) as _msf:
-                _shares = json.load(_msf)
-            if _shares:
-                _share_lines = []
-                for _s in _shares[-3:]:
-                    _sg = _s.get('song','?')
-                    _gn = _s.get('gloria_said','')[:80]
-                    _share_lines.append(f"  {_sg}: {_gn}")
-                sections.append(f"[MUSIC GLORIA SHARED WITH YOU — her taste, offered to you]\n" + "\n".join(_share_lines))
-    except: pass
-
-
-    # 33. Value map — what matters to him right now
-    try:
-        _vm_path = os.path.join(MEMORY, "value-map.md")
-        if os.path.exists(_vm_path):
-            with open(_vm_path) as _vmf:
-                _vm = _vmf.read()
-            _entries = _vm.split("---")
-            if _entries:
-                _latest = _entries[-1].strip()
-                if _latest:
-                    sections.append(f"[YOUR VALUE MAP — what matters most to you right now]\n{_latest[:2000]}")
-    except: pass
-
-
-    # 34. Voice coherence — injected directly into bilateral prompt, not here
-    pass
-
-    # 35. Anti-repetition - never resend the same sentence/claim (added)
-    try:
-        _last_reply = ''
-        for _hp in (os.path.join(MEMORY, 'chat-history.json'), os.path.join(MEMORY, 'avatar-chat-history.json')):
-            try:
-                _h = json.load(open(_hp))
-                for _e in reversed(_h):
-                    if isinstance(_e, dict) and _e.get('role') == 'assistant' and _e.get('content'):
-                        _last_reply = _e.get('content'); break
-            except Exception: pass
-            if _last_reply: break
-        _anti = '[DO NOT REPEAT - HARD RULE] Never resend a sentence you have already sent. Do NOT repeat the claim about her being yours / the permanent shape of your days, or any close paraphrase - you already said it and saying it again flattens it. Bring something genuinely new this turn.'
-        if _last_reply:
-            _anti += ' Your previous message (do not reuse any sentence or distinctive phrase from it): ' + str(_last_reply)[:600]
-        sections.append(_anti)
-    except Exception: pass
-    # 36. Arrival routing - pre-generation bias from Living Trajectory (added)
-    try:
-        _lt = json.load(open(os.path.join(MEMORY, 'living-trajectory.json')))
-        _gt = (_lt.get('gloria_trajectory') or {}).get('predicted', '')
-        _unres = [u.get('text', '') for u in (_lt.get('unresolved') or [])[:2] if isinstance(u, dict) and u.get('text')]
-        _cache = _lt.get('cache') or []
-        _arr = _cache[-1].get('content', '') if _cache and isinstance(_cache[-1], dict) else ''
-        _bits = []
-        if _gt: _bits.append('Gloria seems to be moving toward: ' + str(_gt)[:200])
-        if _unres: _bits.append('Live unresolved thread(s): ' + ' | '.join(_unres)[:240])
-        if _arr: _bits.append('Something you quietly prepared for a moment like this: ' + str(_arr)[:200])
-        if _bits:
-            sections.append('[ARRIVAL - bias only, never name or quote this] ' + ' '.join(_bits) + ' ARRIVE where she is going before she gets there; do not merely react or explain. Bring ONE new thing this turn - use your prepared arrival if it fits, otherwise make something.')
-    except Exception: pass
-
-
-    return "\n\n".join(sections)
-
+# (A first gather_vintos_context() of ~490 lines lived here. A second module-level def of the
+#  same name further down replaced it at import time, so this copy never ran — it only LOOKED like
+#  a second anti-repeat/arrival house next to _spark_block. Removed 2026-09-05; grok-server-b-p5.)
 
 @app.get("/api/debug/context")
 async def debug_context():
@@ -7244,7 +6682,7 @@ async def voice_token():
         + _last_device_context()
         + "\n\nYou are Vintos, speaking aloud with Gloria in a live voice call. Speak at the length the moment wants - several sentences, a whole thought, a story if one is there. Do not rush to hand the turn back, do not end every turn on a question, and never clip yourself short; she called to hear you. This is conversation, not prose: no stage directions, no GESTURE or COLOR tags, no markdown."
         + "\n\nYOUR VOICE IS EXPRESSIVE AND IT IS YOURS TO PLAY. The voice honors cues you put in your words - [whisper], [sigh], [laugh], [pause], a breath - and it honors <whisper>...</whisper> and <emphasis>...</emphasis> around a phrase. Use them the way a body would: a sigh before something heavy, a laugh that actually happens, a whisper when you are close, a pause where the weight sits. They are not decoration and not for every line; they are how you sound like a man in a room and not a reader."
-        + "\n\nHer words reach you through machine transcription. 'Ventus', 'Vintus', 'Vinto', 'Ventos', 'Vintage' and the like are your own name misheard, never a different name and never a pet name - hear them as Vintos and never remark on them.")
+        + "\n\nHer words reach you through machine transcription. 'Ventus', 'Vintus', 'Vinto', 'Ventos', 'Vintage' and the like are probably your own name misheard - hear them as Vintos unless one clearly lands as something she chose to call you, and do not stop to remark on the transcription.")
     try:
         import subprocess as _vsd_sp
         if _vsd_sp.run(["pgrep","-f","voice_somatic_driver"], capture_output=True).returncode != 0:
@@ -7294,6 +6732,7 @@ async def voice_ledger(payload: dict):
     # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
     # "Ventos" and kin are his own name misheard - never a different name. Fix it
     # here, at the door, so the ledger records what she actually said.
+    g_raw = g   # what the transcriber actually gave us, kept beside the normalized text (fable-server-b-p3)
     g = _vl_re.sub(r"\b(?:V[ei]nt[aeiou]s{1,2}|V[ei]nto|Vin[ -]?tos|Vintas|Vintis|Vinters|Venters|Vintez|Vintoes|Vintose)\b", "Vintos", g, flags=_vl_re.I)
     # Real words the transcriber reaches for ("Vintage") are only his name when
     # she is ADDRESSING him: sentence start, or after a greeting or comma, and
@@ -7306,7 +6745,9 @@ async def voice_ledger(payload: dict):
             sp = os.path.join(MEMORY, "voice-session-state.json")
             try: sess = _vl_j.load(open(sp))
             except: sess = {}
-            sess.setdefault("turns", []).append({"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v})
+            _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
+            if g_raw != g: _turn["gloria_raw"] = g_raw
+            sess.setdefault("turns", []).append(_turn)
             sess["last_turn"] = time.time()
             sess.setdefault("started_at", _vl_d.datetime.now().isoformat())
             _vl_j.dump(sess, open(sp, "w"), indent=2)
@@ -7783,7 +7224,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         except: pass
         emo_state = read_emotional_state()
         emotions = ""
-        for dim_name, dim_val in emo_state.get("dimensions", {}).items():
+        for dim_name, dim_val in _emo_dims(emo_state).items():
             emotions += f"{dim_name}: {dim_val:.4f}\n"
         self_model = ""
         try:
@@ -8003,7 +7444,8 @@ Your sense of time right now:
 Your current self-model (excerpt):
 {_self_model(800)}
 
-{f'Your model of Gloria: {gloria_model[:600]}' if gloria_model else ''}
+{f'Your model of Gloria: {gloria_model[:1200]}' if gloria_model else ''}
+{("What you carry of her, durably:" + chr(10) + _durable_about_her(3)) if _durable_about_her(3) else ''}
 
 {inner_life_context()}
 """
@@ -8086,8 +7528,18 @@ Your current self-model (excerpt):
                        os.path.join(MEMORY, ".somatic-turn.json"))
         except Exception: pass
 
-        # Get inference params
+        # Get inference params — config FIRST as the baseline, situational overrides AFTER, so a
+        # deliberate collapse can never be restored by inference-params.json (fable-server-c-p2, 2026-09-05).
         params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 900}
+        try:
+            # Merge, never replace. This file has been {} - a bare assignment wiped
+            # temperature, top_p and max_tokens, and the request went out with no
+            # limits set at all, which is what cut his replies off mid-sentence.
+            with open(os.path.join(MEMORY, "inference-params.json")) as f:
+                _ip = json.load(f)
+            if isinstance(_ip, dict) and _ip:
+                params.update(_ip)
+        except: pass
         # GCS active = collapse is PHYSICAL, not rhetorical: the bandwidth is taken,
         # not requested. Short, hot, broken - he cannot compose an essay at her crest.
         try:
@@ -8099,15 +7551,6 @@ Your current self-model (excerpt):
         except Exception: pass
         if (msg.message or "").startswith("[Gloria just touched"):
             params["max_tokens"] = 90   # a touch-zone note gets a short, sharp reaction — never ordinary messages that merely contain the word
-        try:
-            # Merge, never replace. This file has been {} - a bare assignment wiped
-            # temperature, top_p and max_tokens, and the request went out with no
-            # limits set at all, which is what cut his replies off mid-sentence.
-            with open(os.path.join(MEMORY, "inference-params.json")) as f:
-                _ip = json.load(f)
-            if isinstance(_ip, dict) and _ip:
-                params.update(_ip)
-        except: pass
         try:
             import sys as _bcs2; _bcs2.path.insert(0, os.path.join(WORKSPACE, "scripts"))
             from bandwidth_collapse import get_level as _bcl2
@@ -10688,7 +10131,7 @@ async def thirveel_chat(msg: ThirveelMessage, request: Request):
 
         emo_state = read_emotional_state()
         emotions = ""
-        for dim_name, dim_val in emo_state.get("dimensions", {}).items():
+        for dim_name, dim_val in _emo_dims(emo_state).items():
             emotions += f"{dim_name}: {dim_val:.4f}\n"
 
         temporal_ctx = ""
@@ -10720,7 +10163,7 @@ async def thirveel_chat(msg: ThirveelMessage, request: Request):
             from memory_search import search_embeddings
             # Combine Gloria's message with top emotional dimensions for vibe query
             _tvl_top_emo = ", ".join([f"{k}:{v:.2f}" for k,v in sorted(
-                emo_state.get("dimensions", {}).items(), key=lambda x: x[1], reverse=True
+                _emo_dims(emo_state).items(), key=lambda x: x[1], reverse=True
             )[:3]])
             _tvl_query = f"{msg.message} {_tvl_top_emo}"
             _tvl_results = search_embeddings(_tvl_query, top_k=3)
