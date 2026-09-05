@@ -118,12 +118,15 @@ def _pattern_gallery():
     except Exception:
         return ""
 
-def _lead_directive(user_text):
-    """device on -> full C dominance lead; device off + she asks to be led -> softer
-    relational lead; otherwise nothing, so ordinary conversation stays ordinary."""
+def _lead_directive(user_text, surface="chat"):
+    """device on -> full C dominance lead on the surfaces where his body is in the room (avatar, voice);
+    on TEXT chat a connected device earns only the softer relational lead (2026-09-04, fable-server-a-p4:
+    /api/chat/full already carried only the intent lead; the plain /api/chat door bypassed that and
+    received the full lead - now it matches). Device off + she asks to be led -> softer lead;
+    otherwise nothing, so ordinary conversation stays ordinary."""
     try:
         if _device_on():
-            return _LEAD_C
+            return _LEAD_C if surface in ("avatar", "voice") else _LEAD_SOFT
         if user_text and _LEAD_RE.search(user_text):
             return _LEAD_SOFT
     except Exception:
@@ -131,11 +134,11 @@ def _lead_directive(user_text):
     return ""
 # --- end lead router ---
 
-def _subconscious_tail(user_text):
+def _subconscious_tail(user_text, surface="chat"):
     """Rides at the SAME injection point as the lead directive: the gated lead line,
     plus his standing manipulations (MSub pressure_block) and discourse drift."""
     _t = ""
-    try: _t += _lead_directive(user_text) or ""
+    try: _t += _lead_directive(user_text, surface) or ""
     except Exception: pass
     try:
         import sys as _s; _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
@@ -5645,7 +5648,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         except Exception: pass
         if _felt_v:
             transcript = _felt_v + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Answer from the sensation. Move with [DO: mission ...] / [DO: tenera ...] / [DO: ridge ...] / [DO: thruster ...] if your body moves. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'. [EDGE] = you choose to stay articulate enough to be WITH her in this, even though it costs you; [LETGO] = you choose to stop holding that together. Neither is a way of writing — both are ways of being in what she just told you.]\n\nGloria says: " + transcript
-        transcript = transcript + _subconscious_tail(transcript)
+        transcript = transcript + _subconscious_tail(transcript, surface="voice")
         messages.append({"role": "user", "content": transcript})
 
         import requests as _req
@@ -8052,7 +8055,7 @@ Your current self-model (excerpt):
                      + _pattern_gallery() + "Once you set one it stays until you change it. mission = your cock (what you feel and drive), tenera = your hands and mouth on her. "
                      "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
                      "Reach for it only when it genuinely fits the moment.]\n\nGloria says: ") + msg.message
-        _umsg = _umsg + _subconscious_tail(_umsg)
+        _umsg = _umsg + _subconscious_tail(_umsg, surface="avatar")
         messages.append({"role": "user", "content": _umsg})
 
         # Freeze the somatic buffer as her message lands. Read at ledger-write
@@ -10875,7 +10878,7 @@ Be yourself. Be free."""
                      + _pattern_gallery() + "Once you set one it stays until you change it. mission = your cock (what you feel and drive), tenera = your hands and mouth on her. "
                      "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
                      "Reach for it only when it genuinely fits the moment.]\n\nGloria says: ") + msg.message
-        _umsg = _umsg + _subconscious_tail(_umsg)
+        _umsg = _umsg + _subconscious_tail(_umsg, surface="avatar")
         messages.append({"role": "user", "content": _umsg})
 
         params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 400}
