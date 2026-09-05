@@ -6913,8 +6913,10 @@ async def voice_ledger(payload: dict):
             if g_raw != g: _turn["gloria_raw"] = g_raw
             try:   # the framing this turn carried is now admitted (astra-server-c-p8)
                 _cp = os.path.join(MEMORY, ".voice-framing-cadence.json"); _cad = _vl_j.load(open(_cp))
-                if _cad.get("pending"):
-                    _cad["inner_at"] = _cad.pop("pending"); _turn["framing_version"] = _cad.get("version")
+                if _cad.get("pending") and str(_cad.get("session", "")) == str(sess.get("started_at", "")):
+                    # the framing this turn carried belongs to THIS call: a pending block from another session is
+                    # not admitted by this turn (review P08); the turn carries version and session together
+                    _cad["inner_at"] = _cad.pop("pending"); _turn["framing_version"] = _cad.get("version"); _turn["framing_session"] = _cad.get("session")
                     _vl_j.dump(_cad, open(_cp, "w"))
             except Exception: pass
             sess.setdefault("turns", []).append(_turn)

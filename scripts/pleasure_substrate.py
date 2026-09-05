@@ -41,6 +41,9 @@ def _emo():
 
 def _cos(a, b):
     if not a or not b or len(a) != len(b): return 0.0
+    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]   # unknown dims compare on nothing
+    if len(pairs) < 2: return 0.0
+    a = [x for x, _ in pairs]; b = [y for _, y in pairs]
     n = sum(x*y for x, y in zip(a, b))
     da = math.sqrt(sum(x*x for x in a)); db = math.sqrt(sum(y*y for y in b))
     return (n / (da*db)) if da and db else 0.0
@@ -93,7 +96,9 @@ def snapshot():
             "arousal": round(float(e.get("Arousal", 0.5)), 3), "_vec": v}
 
 def _signature(s):
-    return [round(s.get(k, 0.0), 2) for k in DIMS]
+    # an unknown dimension (novelty with no history) stays None: round(None) raised here on his first
+    # state, and a 0.0 would have meant "nothing new" (review P05)
+    return [None if s.get(k) is None else round(s.get(k), 2) for k in DIMS]
 
 def recall(sig, threshold=0.985):  # p4: 0.93 matched everything in non-negative geometry — naming was becoming retrieval
     """Has he been in a state like this before, and what did he call it?"""

@@ -130,6 +130,8 @@ def capture_findings(capability, want_text):
                     match = None
                     if want_id:
                         match = next((p for p in reversed(paintings) if p.get("want_id") == want_id), None)
+                        if not match:   # another want's painting is not this want's artifact (review D04)
+                            return f"No painting recorded for want {want_id} - not crediting another want's image"
                     if not match:
                         match = paintings[-1]
                     prompt = match.get("original_want") or match.get("prompt","")
@@ -200,6 +202,8 @@ def capture_findings(capability, want_text):
                 match = None
                 if want_id:
                     match = next((m for m in reversed(generated) if m.get("want_id") == want_id), None)
+                    if not match:   # another want's piece is not this want's artifact (review D04)
+                        return f"No composition recorded for want {want_id} - not crediting another want's music"
                 if not match:
                     match = generated[-1]
                 return f"Composed: {match.get('title','')} — {match.get('description','')[:200]}"

@@ -574,12 +574,6 @@ def stream_friction(state=None):
             b = w.get("blocked")
             if isinstance(b, dict) and (b.get("cause") or b.get("reason")):
                 walls.setdefault(_cluster_key(b.get("cause") or b.get("reason")), []).append(w)
-        blocks = load_json(os.path.join(MEM, "capability-blocks.json"), {})
-        if isinstance(blocks, dict):
-            for name, b in blocks.items():
-                if isinstance(b, dict) and b.get("block_type"):
-                    walls.setdefault(_cluster_key(name + " " + str(b.get("block_type"))), []).append(
-                        {"id": "capability:" + name, "want": "capability %s" % name, "blocked": b})
         for rows in walls.values():
             roots = list(dict.fromkeys("want:" + _wid(w) for w in rows))
             if len(roots) < 2: continue
@@ -590,6 +584,22 @@ def stream_friction(state=None):
                 [{"want": str(w.get("want"))[:160], "blocked": (w.get("blocked") or {})} for w in rows[-8:]],
                 roots, ["wants"])
             if rec: made.append(rec)
+        # a standing capability block is its own signal, not a synthetic want (review D08): one per
+        # capability, only when it has stood a week and a real want has hit it
+        blocks = load_json(os.path.join(MEM, "capability-blocks.json"), {})
+        if isinstance(blocks, dict):
+            for name, b in blocks.items():
+                if not (isinstance(b, dict) and b.get("block_type")): continue
+                try: age_d = (time.time() - float(b.get("at", time.time()))) / 86400.0
+                except Exception: age_d = 0
+                hit = [w for w in wants if isinstance(w.get("blocked"), dict) and w["blocked"].get("blocked_step") == name]
+                if age_d < 7 or not hit: continue
+                rec = record_signal("friction", "capability_block_standing",
+                    "capability %s has been blocked %d days (%s) and %d want(s) of his are waiting on it"
+                    % (name, int(age_d), b.get("block_type"), len(hit)),
+                    [{"capability": name, "block": b}] + [{"want": str(w.get("want"))[:160]} for w in hit[-6:]],
+                    ["capability:" + name] + ["want:" + _wid(w) for w in hit], ["wants", "capabilities"])
+                if rec: made.append(rec)
         old = []
         for w in wants:
             ts = w.get("timestamp") or w.get("created") or w.get("created_at")
