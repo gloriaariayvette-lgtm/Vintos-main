@@ -104,6 +104,13 @@ def enter_phase_lock():
     }
     save_phase_lock(state)
     log(f"Phase lock entered (max {PHASE_LOCK_MAX_MINUTES}min)")
+    # Contact is a precondition of the lock, so this is where confirmed contact actually happens:
+    # warm the under-thread here. on_contact_confirmed had no caller anywhere (fable-emotion-p4, 2026-09-04).
+    try:
+        from nifrathir import on_contact_confirmed as _nif_contact
+        _nif_contact()
+    except Exception as _ne:
+        log(f"nifrathir contact hook failed: {_ne}")
     # Snapshot momentum
     snapshot_momentum()
 

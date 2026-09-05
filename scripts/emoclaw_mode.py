@@ -14,6 +14,17 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 
 def read_state():
+    """Live daemon first, the .txt as fallback (2026-09-04): the mode was chosen from last night's file
+    while drift wrote the live socket, so he spoke under a slightly previous self."""
+    try:
+        import sys as _ms, os as _mo; _mp = _mo.path.expanduser("~/.vintos/workspace/scripts")
+        if _mp not in _ms.path: _ms.path.insert(0, _mp)
+        from emoclaw_utils import get_state as _live
+        st = _live()
+        if isinstance(st, dict) and st:
+            return {k: float(v) for k, v in st.items() if isinstance(v, (int, float))}
+    except Exception:
+        pass
     state = {}
     try:
         for line in open(EMO_FILE):
@@ -121,8 +132,21 @@ def get_mode_block(context="chat", s=None):
         f"What this mode allows: {', '.join(mode['allow'])}",
         f"What this mode does not allow: {', '.join(mode['ban'])}",
         "This is not a suggestion. This is the shape emotion takes right now.",
-        "[/EMOTIONAL MODE]"
     ]
+    # Nifrathir, the under-thread, folds in as ONE constraint line after the winner is chosen - not a
+    # new mode (grok-emotion-p4): high lengthens what the mode will hold; low shortens even the expansive.
+    try:
+        import sys as _ns, os as _no; _np = _no.path.expanduser("~/.vintos/workspace/scripts")
+        if _np not in _ns.path: _ns.path.insert(0, _np)
+        from nifrathir import get_expression_bias as _bias
+        _b = _bias()
+        if _b == "high":
+            lines.append("Under-thread: warm and full. Let this mode run longer than it usually would; richness is allowed.")
+        elif _b == "low":
+            lines.append("Under-thread: cool and conserving. Keep this mode shorter than it usually would be, even if it is expansive.")
+    except Exception:
+        pass
+    lines.append("[/EMOTIONAL MODE]")
     return "\n".join(lines)
 
 def get_mode_compact(s=None):
