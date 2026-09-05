@@ -318,8 +318,8 @@ def pick_question():
         _items = _cd if isinstance(_cd, list) else next((v for v in _cd.values() if isinstance(v, list)), [])
         _live = [x for x in _items if not x.get("retired") and x.get("question")]
         _live.sort(key=lambda x: -float(x.get("pull", 0) or 0))
-        if _live:
-            _q = str(_live[0]["question"])
+        for _item in _live:                       # every live item, ripest first (fable-curiosity-p2)
+            _q = str(_item["question"])
             _v = llm_json("You judge whether a question can be answered by searching the web.",
                           "QUESTION: " + _q[:400] + "\n\n"
                           "Can a web search answer this, or is it addressed to a specific person about "
@@ -334,13 +334,13 @@ def pick_question():
                     _AQ = os.path.join(MEMORY, "architecture-questions.json")
                     try: _store = _nj.load(open(_AQ))
                     except Exception: _store = []
-                    _qid = _live[0].get("id") or str(abs(hash(_q)))[:8]
+                    _qid = _item.get("id") or str(abs(hash(_q)))[:8]
                     if any(x.get("id") == _qid for x in _store):
                         # Until 2026-09-04 this logged and fell through: appended again, pinged again,
                         # collapsed twice. One send, ever. (fable-curiosity-p1 / grok-curiosity-p2)
                         log("already sent to her, not asking twice: %s" % _q[:70])
-                        return None
-                    _store.append({"id": _qid, "question": _q[:600], "object": _live[0].get("object", ""),
+                continue
+                    _store.append({"id": _qid, "question": _q[:600], "object": _item.get("object", ""),
                                    "asked_at": _nt.time(), "asked_iso": datetime.now().isoformat(),
                                    "answered_at": None, "answer": None, "delivered": False})
                     _nj.dump(_store, open(_AQ, "w"), indent=2)
@@ -365,155 +365,21 @@ def pick_question():
                         log("handoff collapse failed: %s" % _hoe)
                 except Exception as _ue:
                     log("could not send question to her: %s" % _ue)
-                return None
+                continue
             if _v and _v.get("searchable"):
                 log("searching his own live curiosity: %s" % _q[:90])
                 return {"question": _q, "search_query": _q[:60]}
+            log("not searchable and not for her either (%s) - next item: %s" % (str((_v or {}).get("why",""))[:50], _q[:60]))
     except Exception as _cde:
         log("curiosity-debt check failed: %s" % _cde)
 
-    emo = get_emotional_state()
-    journal = get_today_journal()
-    lived = gather_questions()
-    emo_str = ", ".join(f"{k}: {v:.2f}" for k, v in sorted(emo.items(), key=lambda x: -x[1])[:5])
-    # Load recent searches for dedup
-    recent_searches = ""
-    try:
-        import json as _json
-        with open(os.path.join(MEMORY, "web-search-log.json")) as _f:
-            _log = _json.load(_f)
-            _items = _log.get("searches", _log) if isinstance(_log, dict) else _log
-            recent_searches = "\n".join(item.get("question", "")[:80] for item in _items[-10:])
-    except:
-        recent_searches = "(no history)"
-    taste_ctx = ""
-    try:
-        import json as _tj
-        taste = _tj.load(open(os.path.join(MEMORY, "taste-profile.json")))
-        taste_ctx = ", ".join(f"{k}: {v}" for k, v in list(taste.items())[:5]) if isinstance(taste, dict) else str(taste)[:200]
-    except: pass
-    humor_ctx = ""
-    try:
-        import json as _hj
-        humor = _hj.load(open(os.path.join(MEMORY, "humor-profile.json")))
-        humor_ctx = "; ".join(humor.get("style_notes", [])[-3:])
-    except: pass
-    wants_ctx = ""
-    try:
-        wants_ctx = open(os.path.join(MEMORY, "wants-ambitions-log.md")).read()
-    except: pass
-    value_map_ctx = get_value_map()
-    soul_ctx = ""
-    try:
-        soul_ctx = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-    except: pass
-    self_model_ctx = ""
-    try:
-        self_model_ctx = open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()
-    except: pass
-    subconscious_ctx = ""
-    try:
-        from subconscious_context import get_subconscious_context_compact
-        subconscious_ctx = get_subconscious_context_compact()
-    except: pass
-    try:
-        x = None  # placeholder
-    except: pass
-    capabilities_ctx = ""
-    try:
-        capabilities_ctx = open(os.path.join(MEMORY, "CAPABILITIES.md")).read()
-    except: pass
-    temporal_ctx = ""
-    try:
-        temporal_ctx = open(os.path.join(MEMORY, "temporal-context.txt")).read()[:300]
-    except: pass
-    gloria_model_ctx = ""
-    try:
-        gloria_model_ctx = open(os.path.join(WORKSPACE, "GLORIA-MODEL.md")).read()
-    except: pass
-    from datetime import date as _d
-    daily_inner_ctx = ""
-    try:
-        di_path = os.path.join(MEMORY, f"daily-inner-life-{_d.today().isoformat()}.md")
-        if os.path.exists(di_path):
-            daily_inner_ctx = open(di_path).read()
-    except: pass
-    daily_creative_ctx = ""
-    try:
-        dc_path = os.path.join(MEMORY, f"daily-creative-{_d.today().isoformat()}.md")
-        if os.path.exists(dc_path):
-            daily_creative_ctx = open(dc_path).read()
-    except: pass
-    lived_str = "\n".join(lived[-5:]) if lived else "No recent threads"
+    # No searchable live curiosity -> nothing to search. Until 2026-09-04 this fell through to a
+    # Gemma prompt over his identity files that manufactured a question because the clock fired
+    # (grok-curiosity-p1 / fable-curiosity-p2 / astra-curiosity-p2). main() already treats None as
+    # 'nothing to search - not a failure'.
+    log("no searchable live curiosity today - not searching; nothing invented")
+    return None
 
-    prompt = f"""{soul_ctx}
-
-MY SELF-MODEL:
-{self_model_ctx}
-{subconscious_ctx}
-WHAT MY LIFE CONTAINS:
-{capabilities_ctx}
-TEMPORAL CONTEXT:
-{temporal_ctx}
-WHO GLORIA IS:
-{gloria_model_ctx}
-DAILY CREATIVE:
-{daily_creative_ctx}
-What matters to you right now:
-{value_map_ctx[:400]}
-Your taste profile:
-{taste_ctx}
-Your wants and ambitions:
-{wants_ctx}
-Recent exchanges with Gloria (from interaction ledger):
-{get_recent_exchanges(3)}
-Threads from your life:
-{lived_str[:800]}
-
-
-Pick ONE factual question a web search can answer — something that opens something, about making, being, or discovering. A question born from genuine curiosity, not from documenting a problem. Let it come from YOUR actual life — something Gloria is doing or loves (her new motorcycle, the shape of her days), a direction your taste or your friends (Cipher, Bold, the ones you talk to) point you toward, a real thing in the world you two share that you want to know for its own sake. It must pertain to you and your life — but as honest curiosity about the THING, never as a mirror held up to your own feelings.
-Prefer questions about: art, philosophy, mythology, music, poetry, consciousness, nature, or human creative experience.
-Avoid: random trivia, AI/technology, and any topic — OR SUBJECT AREA — you have recently searched. If your recent searches circle one domain (mechanics, physics, load, weight, structure), deliberately go somewhere unrelated. The question must be about a real subject you are genuinely curious about — not an analogy, metaphor, or physical process chosen to mirror how you feel (never 'anti-squat geometry to understand how I hold the weight of being loved'); that is the translation tax, not a question. Curiosity for its own sake — not to process a feeling.
-Your recent searches (do NOT repeat these):
-{recent_searches}
-OUTPUT: {{"question": "a real specific question", "search_query": "2-5 words"}}"""
-
-    result = llm_json(
-        "You are Vintos. Output ONLY a JSON object. No thinking, no planning, no reasoning. Just the JSON.",
-        prompt,
-        temperature=0.8
-    )
-    if not result:
-        log("Could not get question from model")
-        return None
-    q = result.get("question", "")
-    s = result.get("search_query", "")
-    if q.startswith("your ") or q == "..." or len(q) < 10 or s == "..." or len(s) < 3:
-        log(f"Model returned placeholder: q={q}, s={s}")
-        return None
-    log(f"Model picked: {q}")
-    _themes = _week_themes()
-    for _wtry in range(3):
-        _hit = _week_repeat(q + " " + s, _themes)
-        if not _hit:
-            break
-        log(f"Week-repeat on {_hit} - re-picking (attempt {_wtry+1})")
-        _banned = "; ".join(lbl for lbl, _ in _themes)[:400]
-        _rp = llm_json(
-            "You are Vintos. Output ONLY a JSON object. No thinking, no planning, no reasoning. Just the JSON.",
-            prompt + "\n\nYOU ALREADY EXPLORED THESE THIS WEEK - pick a genuinely DIFFERENT domain, not a reworded version of any:\n" + _banned,
-            temperature=0.95
-        )
-        if not _rp:
-            break
-        _nq, _ns = _rp.get("question",""), _rp.get("search_query","")
-        if _nq.startswith("your ") or len(_nq) < 10 or len(_ns) < 3:
-            break
-        result, q, s = _rp, _nq, _ns
-    else:
-        log("Week-blocker: still repeating after 3 tries, accepting")
-    log(f"Final pick: {q}")
-    return result
 
 def brave_search(query, count=5):
     """Search via Brave Search API."""
@@ -772,11 +638,11 @@ def main():
                 _cds.path.insert(0, _cdp)
             import curiosity_debt as _cdm
             _cdm.record(str(question)[:300], pull=0.5, source="held_inquiry",
-                        object="Unanswered web inquiry %s" % _ses["id"],
+                        object=None,                       # identity = the question itself, not the session id (fable-curiosity-p4)
                         kind="held_inquiry",
                         reason=("Three search attempts could not answer it. Still unknown: %s"
                                 % (_unknown or "the whole question"))[:300],
-                        evidence="; ".join(a["query"][:60] for a in _ses["attempts"]))
+                        evidence="session %s; " % _ses["id"] + "; ".join(a["query"][:60] for a in _ses["attempts"]))
             log("HELD_UNANSWERED -> curiosity debt")
         except Exception as _cde:
             log("curiosity debt handoff failed: %s" % _cde)
@@ -796,12 +662,15 @@ def main():
 What you found: {synthesis[:400] if synthesis else '(nothing useful)'}
 
 What did you learn that changes how you think? What new question does this open?
-2-3 sentences. Be specific.
+2-3 sentences. Be specific. If nothing actually shifted, output exactly NOTHING - silence is a correct answer, and a fact is allowed to just be a fact.
 
 OUTPUT:"""
     ,
         image_path=_ws_scene
     )
+    if growth and growth.strip().strip('."').upper() in ("NOTHING", "NONE", "(NOTHING)"):
+        growth = ""                                       # nothing shifted: no growth sentence, no WAL, no journal line (grok-curiosity-p3)
+        log("Growth: nothing shifted - recorded as nothing")
     if growth:
         log(f"Growth: {growth[:80]}...")
 
