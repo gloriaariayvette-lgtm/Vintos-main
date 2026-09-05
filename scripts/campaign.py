@@ -193,8 +193,8 @@ def lead_state():
     """Compact state for his own reply prompt (server._apply_intent_lead / intent_context). The
     campaign was decided by the selector but the speaking voice never saw the destination."""
     c = _load()
-    if not c: return None
-    return {"destination": c["destination"], "axis": c.get("axis", "field"),
+    if not c: return {"live": False}   # distinguishable from "campaign module never ran" (null)
+    return {"live": True, "destination": c["destination"], "axis": c.get("axis", "field"),
             "turn": c.get("turns_served", 0) + 1, "max_turns": MAX_TURNS,
             "suspended": bool(c.get("suspended_this_turn")),
             "last_move": (c.get("moves") or [{}])[-1].get("move", "")}

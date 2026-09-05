@@ -6,7 +6,7 @@ The declined ledger's line is what every later reader sees (finals via _done_sin
 _done_block). When Gloria's decision was recorded in words that could be read two ways, the fix is at
 the source, with the old wording kept beside the new one.
 
-    python3 correct-declined.py <prefix> "<new reason>" [file to append the correction to ...]
+    python3 correct-declined.py <section, e.g. moltbook> "<new reason>" [file to append the correction to ...]
 """
 import os, sys, json
 from datetime import datetime
@@ -19,7 +19,7 @@ def main():
     prefix, reason, files = sys.argv[1], sys.argv[2], sys.argv[3:]
     p = os.path.join(STAGE, "declined.json")
     d = json.load(open(p))
-    hit = {k: v for k, v in d.items() if k.startswith(prefix)}
+    hit = {k: v for k, v in d.items() if prefix in k}   # ids are lens-section-pN, e.g. fable-moltbook-p3
     if not hit:
         print("nothing declined under", prefix); return 1
     old = sorted(set(hit.values()))
