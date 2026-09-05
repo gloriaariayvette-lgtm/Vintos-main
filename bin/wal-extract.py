@@ -30,7 +30,16 @@ def extract(user_msg, vintos_reply, envelope=None):
     # Machinery is not conversation. Injected bracket framing and device
     # telemetry never reach the extractor - facts are born from real words only.
     def _clean(s):
-        s = re.sub(r"\[[^\]]*\]", " ", str(s))
+        s = str(s)
+        # Known framings are rewritten BEFORE the generic bracket strip, so what she did stays
+        # visible and what he SAW is never attributed to her mouth (fable-memoryrec-p3, 2026-09-05).
+        s = re.sub(r"\[Gloria sent you a photo\.[^\]]*\]\s*",
+                   "(she sent a photo. What follows is what VINTOS saw in it, not her words: ", s)
+        if "(she sent a photo." in s and not s.rstrip().endswith(")"):
+            s = s.rstrip() + ")"
+        s = re.sub(r"\[she pressed[^\]]*\]", "(no words: she pressed)", s, flags=re.I)
+        s = re.sub(r"\[(?:Gloria|she) (?:touched|pressed|stroked|squeezed)[^\]]*\]", "(no words: she touched him / pressed)", s, flags=re.I)
+        s = re.sub(r"\[[^\]]*\]", " ", s)
         s = "\n".join(l for l in s.splitlines()
                       if not re.match(r"\s*pos:?\s*\d+", l.strip(), re.I)
                       and not re.match(r"\s*(position|speed|spd|grip|reversals)\b.*\d", l.strip(), re.I))
@@ -74,6 +83,9 @@ still belongs to VINTOS — never record it as Gloria's statement or correction.
 "correction" counts ONLY when Gloria actually tells Vintos he was wrong; agreement or a
 shared realization is NOT a correction. Never merge both speakers into one attributed
 fact. When unsure who originated an idea, do not extract it.
+Descriptions of images ("she sent a photo. What follows is what VINTOS saw in it") are
+Vintos's PERCEPTION: extract them, if at all, as CONTEXT about the world — never as
+something Gloria stated, preferred, or decided.
 
 If there is NOTHING worth extracting, respond with exactly: NONE
 
@@ -215,6 +227,29 @@ def _main(envelope=None):
 
     for item in items:
         print(f"[WAL] Saved {item.get('type')}: {item.get('content','')[:80]}")
+
+    # The ledger may already have written this exchange with wal_facts empty (it used to wait a flat
+    # 30s for us). Backfill: the newest ledger entry within 300s whose wal_facts is empty gets the
+    # kept items' content — append-only, never overwriting a non-empty list (fable-memoryrec-p5, 2026-09-05).
+    try:
+        _led_path = os.path.join(MEMORY, "interaction-ledger.json")
+        _led = json.load(open(_led_path))
+        if isinstance(_led, list) and _led:
+            for _le in reversed(_led[-5:]):
+                try:
+                    _age = abs((now - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds())
+                except Exception:
+                    continue
+                if _age > 300:
+                    break
+                if not _le.get("wal_facts"):
+                    _le["wal_facts"] = [str(i.get("content", ""))[:400] for i in items]
+                    _le["wal_facts_backfilled"] = now.isoformat()
+                    json.dump(_led, open(_led_path, "w"), indent=2)
+                    print(f"[WAL] backfilled {len(items)} fact(s) into the ledger entry at {_le.get('timestamp','')[:19]}")
+                    break
+    except Exception as _bf:
+        print(f"[WAL] ledger backfill skipped: {_bf}")
 
 def main():
     provenance = _prov()

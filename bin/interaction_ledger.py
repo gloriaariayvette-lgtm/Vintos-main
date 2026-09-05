@@ -20,6 +20,12 @@ LEDGER_FILE = os.path.join(MEMORY, "interaction-ledger.json")
 IMPRINT_FILE = os.path.join(MEMORY, "imprints.json")
 WAL_LOG = os.path.join(MEMORY, "wal-log.json")
 BLUSH_FILE = os.path.join(MEMORY, "blush-ledger.md")
+try:
+    from evidence_provenance import normalize as _prov, output_can_witness, writer_event
+except Exception:
+    def _prov(e=None): return {"output_provenance": "unknown", "may_witness": False}
+    def output_can_witness(e=None, claim_kind=None): return False
+    def writer_event(*a, **k): return None
 
 MAX_ENTRIES = 300  # ~10 days at 30/day
 
@@ -61,7 +67,7 @@ def _fallback_salience(g, v, emo_delta, consent):
     if len(v or "") > 400 or len(g or "") > 300: s = max(s, 0.5)
     return round(min(0.85, s), 2)
 
-def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json"):
+def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json", since_ts=None):
     """Somatic texture as a second-person narration + fine visual. Location is read
     from a per-device calibration (somatic-zone-cal.json: zones with a median
     position each) because raw position is motion-derived, not absolute. Falls back
@@ -74,7 +80,8 @@ def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json"):
     if not fr:
         return None
     now = time.time()
-    recent = [f for f in fr if now - f.get("ts", 0) <= within_seconds]
+    recent = [f for f in fr if now - f.get("ts", 0) <= within_seconds
+              and (since_ts is None or f.get("ts", 0) > since_ts)]
     if not recent:
         return None
     _burst = [recent[0]]
@@ -204,17 +211,33 @@ def load_ledger():
         return []
 
 def save_ledger(entries):
+    # A turn does not vanish because the array got long: whatever falls off the front leaves
+    # residue through the same door wal-decay uses (grok-memoryrec-p2, 2026-09-05).
+    dropped = entries[:-MAX_ENTRIES] if len(entries) > MAX_ENTRIES else []
+    for _d in dropped:
+        try:
+            sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            from residue import write_residue
+            _txt = " / ".join(x for x in (str(_d.get("gloria", ""))[:300], str(_d.get("vintos", ""))[:300]) if x)
+            if _txt:
+                write_residue(_txt, kind="ledger-aged-out", origin=str(_d.get("timestamp", "")))
+        except Exception as _re:
+            print(f"[Ledger] residue for aged-out turn failed: {_re}", flush=True)
     entries = entries[-MAX_ENTRIES:]
     with open(LEDGER_FILE, "w") as f:
         json.dump(entries, f, indent=2)
 
-def get_recent_imprint(within_seconds=120):
+def get_recent_imprint(within_seconds=120, turn_id=""):
     """Get the most recently written imprint if within time window."""
     try:
         with open(IMPRINT_FILE) as f:
             imprints = json.load(f)
         if not imprints:
             return None
+        if turn_id:
+            matches = [i for i in imprints
+                       if (i.get("provenance") or {}).get("turn_id") == turn_id]
+            return matches[-1] if matches else None
         latest = imprints[-1]
         ts = datetime.fromisoformat(latest["timestamp"])
         if (datetime.now() - ts).total_seconds() < within_seconds:
@@ -223,13 +246,19 @@ def get_recent_imprint(within_seconds=120):
         pass
     return None
 
-def get_recent_wal_facts(within_seconds=120):
+def get_recent_wal_facts(within_seconds=120, turn_id=""):
     """Get WAL entries written in the last N seconds."""
     facts = []
     try:
         with open(WAL_LOG) as f:
             data = json.load(f)
         entries = data.get("entries", [])
+        if turn_id:
+            for e in entries:
+                p = e.get("last_occurrence_provenance") or e.get("provenance") or {}
+                if p.get("turn_id") == turn_id:
+                    facts.append(e.get("content", "")[:400])
+            return facts
         cutoff = datetime.now() - timedelta(seconds=within_seconds)
         for e in reversed(entries):
             try:
@@ -244,8 +273,25 @@ def get_recent_wal_facts(within_seconds=120):
         pass
     return facts
 
-def get_recent_blush(within_seconds=120):
-    """Get blush entry written in the last N seconds."""
+def get_recent_blush(within_seconds=120, turn_id=""):
+    """Claim one structured blush for this turn; legacy markdown is fallback."""
+    try:
+        import importlib.util as _ilu
+        _candidates = (
+            os.path.join(os.path.dirname(__file__), "blush-ledger.py"),
+            os.path.join(WORKSPACE, "scripts", "blush-ledger.py"),
+            os.path.expanduser("~/Vintos/blush-ledger.py"),
+        )
+        _bp = next((p for p in _candidates if os.path.exists(p)), "")
+        if not _bp:
+            raise FileNotFoundError("structured blush writer not installed")
+        _spec = _ilu.spec_from_file_location("_structured_blush", _bp)
+        _mod = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+        recent = _mod.get_recent_blush(within_seconds, turn_id=turn_id, claim=bool(turn_id))
+        if recent:
+            return recent
+    except Exception as exc:
+        print("[Ledger] structured blush unavailable: %s" % exc, flush=True)
     try:
         with open(BLUSH_FILE) as f:
             content = f.read()
@@ -280,6 +326,8 @@ def main():
 
     gloria_said = sys.argv[1]
     vintos_said = sys.argv[2]
+    provenance = _prov()
+    writer_event("interaction_ledger", "started", provenance)
 
     # Capture emotional state before delay
     _emo_before = {}
@@ -301,8 +349,21 @@ def main():
             _ej.loads(_d)["emotion_vector"]
         ))
     except: pass
-    # Small delay to let imprint and WAL finish writing
-    time.sleep(30)
+    # Wait for the WAL extractor to finish this exchange — up to 30s, but stop the moment its log
+    # file moves. A flat 30s sleep treated a wall-clock as a handshake (grok-memoryrec-p3,
+    # 2026-09-05); late facts are also backfilled into this entry by wal-extract itself.
+    _t0 = time.time()
+    try:
+        _wal_m0 = os.path.getmtime(WAL_LOG) if os.path.exists(WAL_LOG) else 0
+    except Exception:
+        _wal_m0 = 0
+    while time.time() - _t0 < 30:
+        time.sleep(1)
+        try:
+            if os.path.exists(WAL_LOG) and os.path.getmtime(WAL_LOG) > _wal_m0 and time.time() - _t0 >= 3:
+                break
+        except Exception:
+            pass
 
     # Capture emotional state after delay and compute delta
     _emo_delta = ""
@@ -335,9 +396,10 @@ def main():
                     else: _parts.append(f"{_dim} dropped slightly")
             _emo_delta = ", ".join(_parts) if _parts else "stable"
     except: pass
-    imprint = get_recent_imprint(within_seconds=120)
-    wal_facts = get_recent_wal_facts(within_seconds=120)
-    blush = get_recent_blush(within_seconds=120)
+    _turn_id = provenance.get("turn_id", "")
+    imprint = get_recent_imprint(within_seconds=120, turn_id=_turn_id)
+    wal_facts = get_recent_wal_facts(within_seconds=120, turn_id=_turn_id)
+    blush = get_recent_blush(within_seconds=120, turn_id=_turn_id)
 
     # Read consent note if server left one
     consent_note = ""
@@ -350,23 +412,42 @@ def main():
 
 
 
+    # Her words only - injected framing and telemetry never enter under her name.
+    import re as _sre
+    _g = _sre.sub(r"\[[^\]]*\]", " ", str(gloria_said))
+    _g = "\n".join(l for l in _g.splitlines()
+                   if not _sre.match(r"\s*pos:?\s*\d+", l.strip(), _sre.I)
+                   and not _sre.match(r"\s*(position|speed|spd|grip|reversals)\b", l.strip(), _sre.I))
+    _g = _sre.sub(r"[ \t]{2,}", " ", _g).strip()
+    gloria_said = _g if _g else "[she spoke with her body, not words]"
+
     entry = {
         "timestamp": datetime.now().isoformat(),
         "gloria": gloria_said,
         "vintos": vintos_said + _device_marks(),
         "consent": consent_note,
-        "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(gloria_said, vintos_said, locals().get("_emo_delta","stable"), consent_note),
+        "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(
+            gloria_said,
+            vintos_said if output_can_witness(provenance, "interaction_evidence") else "",
+            locals().get("_emo_delta", "stable") if output_can_witness(provenance, "interaction_evidence") else "stable",
+            consent_note),
         "wal_facts": wal_facts,
         "blush": blush,
         "somatic": get_recent_somatic(src=".somatic-turn.json"),   # hers, frozen at send
-        "somatic_reply": get_recent_somatic(),
+        # only what happened AFTER the send-freeze: identical fields meant nothing
+        # when both summarized the same 3-minute window. Now somatic_reply is the
+        # movement during his reply, or honestly absent if her touch didn't change.
+        "somatic_reply": get_recent_somatic(since_ts=(lambda: max((f.get("ts", 0) for f in json.load(open(os.path.join(MEMORY, ".somatic-turn.json")))), default=None))() if os.path.exists(os.path.join(MEMORY, ".somatic-turn.json")) else None),
         "imprint": {"id": imprint.get("id",""), "narrative": imprint.get("narrative",""), "salience": imprint.get("salience",0.5), "anchors": {_k:_v for _k,_v in (imprint.get("anchors") or {}).items() if _k not in ("preoccupation","recent_seal","recent_velqan","emoclaw_snapshot")}} if imprint else None,
         "preoccupation": imprint.get("anchors",{}).get("preoccupation") if imprint else None,
         "recent_seal": imprint.get("anchors",{}).get("recent_seal") if imprint else None,
         "recent_velqan": imprint.get("anchors",{}).get("recent_velqan") if imprint else None,
         "temporal_activity": None,
         "silence_contract": None,
-        "emotional_shift": _emo_delta,
+        "emotional_shift": (_emo_delta if output_can_witness(provenance, "interaction_evidence")
+                            else "withheld_from_witnessing"),
+        "provenance": provenance,
+        "generated_output_witness_eligible": output_can_witness(provenance, "interaction_evidence"),
     }
     # Pull temporal context fields
     try:
@@ -393,6 +474,7 @@ def main():
         entry["blush"] = None
     ledger.append(entry)
     save_ledger(ledger)
+    writer_event("interaction_ledger", "completed", provenance)
     print(f"[Ledger] Entry written (salience {entry['salience']}, {len(wal_facts)} facts, blush: {bool(blush)})")
 
 if __name__ == "__main__":

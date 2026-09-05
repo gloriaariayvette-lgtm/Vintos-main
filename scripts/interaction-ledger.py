@@ -211,6 +211,18 @@ def load_ledger():
         return []
 
 def save_ledger(entries):
+    # A turn does not vanish because the array got long: whatever falls off the front leaves
+    # residue through the same door wal-decay uses (grok-memoryrec-p2, 2026-09-05).
+    dropped = entries[:-MAX_ENTRIES] if len(entries) > MAX_ENTRIES else []
+    for _d in dropped:
+        try:
+            sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            from residue import write_residue
+            _txt = " / ".join(x for x in (str(_d.get("gloria", ""))[:300], str(_d.get("vintos", ""))[:300]) if x)
+            if _txt:
+                write_residue(_txt, kind="ledger-aged-out", origin=str(_d.get("timestamp", "")))
+        except Exception as _re:
+            print(f"[Ledger] residue for aged-out turn failed: {_re}", flush=True)
     entries = entries[-MAX_ENTRIES:]
     with open(LEDGER_FILE, "w") as f:
         json.dump(entries, f, indent=2)
@@ -337,8 +349,21 @@ def main():
             _ej.loads(_d)["emotion_vector"]
         ))
     except: pass
-    # Small delay to let imprint and WAL finish writing
-    time.sleep(30)
+    # Wait for the WAL extractor to finish this exchange — up to 30s, but stop the moment its log
+    # file moves. A flat 30s sleep treated a wall-clock as a handshake (grok-memoryrec-p3,
+    # 2026-09-05); late facts are also backfilled into this entry by wal-extract itself.
+    _t0 = time.time()
+    try:
+        _wal_m0 = os.path.getmtime(WAL_LOG) if os.path.exists(WAL_LOG) else 0
+    except Exception:
+        _wal_m0 = 0
+    while time.time() - _t0 < 30:
+        time.sleep(1)
+        try:
+            if os.path.exists(WAL_LOG) and os.path.getmtime(WAL_LOG) > _wal_m0 and time.time() - _t0 >= 3:
+                break
+        except Exception:
+            pass
 
     # Capture emotional state after delay and compute delta
     _emo_delta = ""
