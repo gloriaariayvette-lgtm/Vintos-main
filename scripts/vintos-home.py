@@ -301,8 +301,9 @@ def set_room_color(hex_color, brightness=120, room=None):
     return ok > 0
 
 
-def flicker(room=None, times=2):
-    """Dim, bright, back to a low violet. Mischief, not a scare: bounded and short."""
+def flicker(room=None, times=1):
+    """Dim, bright, back to a low violet. Mischief, not a scare: bounded and short. One pass by default:
+    the Govee cloud reaches bulbs one at a time, so two passes over three bulbs read as a storm."""
     lights = room_lights(room)
     _ensure_plugs(lights)
     for _ in range(times):
