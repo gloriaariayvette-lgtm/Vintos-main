@@ -124,7 +124,7 @@ def get_statement_context():
         lines.append(f"- {s['text']} ({s['confidence']:.2f}){doubt}")
     if not lines:
         return ""
-    return "SELF-STATEMENTS (what he believes about himself):\n" + "\n".join(lines)
+    return "SELF-STATEMENTS (what I believe about myself):\n" + "\n".join(lines)
 
 def get_direction_bias_from_statements():
     """Top identity statement biases direction and tone."""

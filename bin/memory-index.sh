@@ -27,6 +27,7 @@ FILES=$(find "$DREAM_DIR" \
     "$MEMORY_ROOT/self-model-drift" \
     "$MEMORY_ROOT/absence-map" \
     "$MEMORY_ROOT/meta-dreams" \
+    "$MEMORY_ROOT/self-reviews" \
     -name "*.md" 2>/dev/null)
 
 for FILE in $FILES; do
