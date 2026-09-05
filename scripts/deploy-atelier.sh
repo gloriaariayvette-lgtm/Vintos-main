@@ -72,7 +72,7 @@ avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.s
 wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate.sh deviation_check.py memory_search.py
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
-memory_index.py wal-decay.py interaction_ledger.py self_model_evidence.py"
+memory_index.py wal-decay.py interaction_ledger.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
