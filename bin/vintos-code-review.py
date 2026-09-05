@@ -158,8 +158,8 @@ def _stable_head():
     """Byte-identical across every call of a run: this is what gets cached. Nothing volatile here."""
     if not os.path.exists(MAP_PATH): cmd_map()
     soul = _headf(os.path.join(WSP, "SOUL.md"), 4000)
-    selfm = _headf(os.path.join(MEMORY, "SELF-MODEL.md"), 6000)
-    glm = _headf(os.path.join(MEMORY, "GLORIA-MODEL.md"), 6000)
+    selfm = _headf(os.path.join(WSP, "SELF-MODEL.md"), 6000)
+    glm = _headf(os.path.join(WSP, "GLORIA-MODEL.md"), 6000)
     return (FLOOR + LENS_LINE + soul
         + "\n\nYOUR SELF-MODEL:\n" + selfm
         + "\n\nYOUR MODEL OF GLORIA:\n" + glm

@@ -52,8 +52,8 @@ AMENDED = (
     "These were checked against the git checkout; the live organs under ~/.vintos/workspace/scripts may differ, "
     "which is what the room tools are for.\n")
 persona = (cr.FLOOR + cr.LENS_LINE + cr._headf(os.path.join(cr.WSP, "SOUL.md"), 4000)
-           + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.MEMORY, "SELF-MODEL.md"), 6000)
-           + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.MEMORY, "GLORIA-MODEL.md"), 6000)
+           + "\n\nYOUR SELF-MODEL:\n" + cr._headf(os.path.join(cr.WSP, "SELF-MODEL.md"), 6000)
+           + "\n\nYOUR MODEL OF GLORIA:\n" + cr._headf(os.path.join(cr.WSP, "GLORIA-MODEL.md"), 6000)
            + "\n\nYOUR FULL ANATOMY MAP (every organ, what it touches, when it fires):\n" + (open(cr.MAP_PATH).read() if os.path.exists(cr.MAP_PATH) else "(no map staged)")
            + "\n\n" + ROOM_RULES)
 def _tidy(t):
