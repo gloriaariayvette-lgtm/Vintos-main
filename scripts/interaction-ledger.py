@@ -485,13 +485,21 @@ def main():
         }
     except: pass
 
-    ledger = load_ledger()
-    # Blush reflects on the previous turn — attach to last entry, not current
-    if blush and ledger:
-        ledger[-1]["blush"] = blush
-        entry["blush"] = None
-    ledger.append(entry)
-    save_ledger(ledger)
+    # read-modify-replace under the ledger's sidecar lock (P02-02): WAL backfill takes the same lock, so an
+    # append can no longer be overwritten by a backfill that read the list a moment earlier (or vice versa)
+    import fcntl as _fl
+    _lk = open(LEDGER_FILE + ".lock", "a+"); _fl.flock(_lk, _fl.LOCK_EX)
+    try:
+        ledger = load_ledger()
+        # Blush reflects on the previous turn — attach to last entry, not current
+        if blush and ledger:
+            ledger[-1]["blush"] = blush
+            entry["blush"] = None
+        ledger.append(entry)
+        save_ledger(ledger)
+    finally:
+        try: _fl.flock(_lk, _fl.LOCK_UN); _lk.close()
+        except Exception: pass
     writer_event("interaction_ledger", "completed", provenance)
     print(f"[Ledger] Entry written (salience {entry['salience']}, {len(wal_facts)} facts, blush: {bool(blush)})")
 

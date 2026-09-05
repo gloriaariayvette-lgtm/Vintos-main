@@ -143,15 +143,16 @@ def _main(envelope=None):
     if not result or result.upper().startswith("NONE"):
         return
 
-    # Parse extractions
+    # Parse extractions. Malformed model output is a WRITER FAILURE (P02-03), not a quiet no-material
+    # return: the wrapper's failed branch records it, so lifecycle readers can tell it from a real NONE.
     try:
         clean = re.sub(r"```json\s*|```\s*", "", result).strip()
         items = json.loads(clean)
         if not isinstance(items, list):
             items = [items]
-    except:
+    except Exception as _pe:
         print(f"[WAL] Could not parse: {result[:200]}")
-        return
+        raise ValueError("WAL extractor returned malformed JSON: %s" % str(_pe)[:80])
 
     # Importance is no longer one extractor's one-shot verdict. It is derived from components,
     # and a thing he simply WANTS to keep survives on that alone — no utility justification.
@@ -178,10 +179,7 @@ def _main(envelope=None):
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%d %H:%M")
 
-    # Write to WAL markdown (hot facts — readable by briefing, pearls, context)
-    with open(WAL_FILE, "a") as f:
-        for item in items:
-            f.write(f"- [{timestamp}] **{item.get('type','fact').upper()}**: {item.get('content','')}\n")
+    _md_lines = []   # WAL markdown is written after the replay decision below (P04-05)
 
     # Write to structured log
     log_data = {"entries": []}
@@ -213,12 +211,22 @@ def _main(envelope=None):
                     print(f"[WAL] near-duplicate with flipped polarity kept separate: {_c[:60]}")
                     continue
                 _dup = _e; break
+        _tid = str((provenance or {}).get("turn_id") or "")
         if _dup is not None:
+            # replaying ONE exchange is not recurrence (P04-05): a turn id already counted on this fact
+            # adds nothing - no count, no fresher timestamp, no second markdown line. Legacy rows and
+            # turns without an id stay as they were: identity is never inferred from equal text alone.
+            if _tid and _tid in (_dup.get("source_turns") or []):
+                print(f"[WAL] replay of turn {_tid} - already counted: {_c[:70]}")
+                continue
             _dup["recurrence"] = _dup.get("recurrence", 0) + 1
             _dup["timestamp"] = now.isoformat()
             _dup["last_occurrence_provenance"] = provenance
+            if _tid: _dup.setdefault("source_turns", []).append(_tid); _dup["source_turns"] = _dup["source_turns"][-50:]
+            _md_lines.append(f"- [{timestamp}] **{item.get('type','fact').upper()}**: {_c}\n")
             print(f"[WAL] Recurred (x{_dup['recurrence']}): {_c[:70]}")
             continue
+        _md_lines.append(f"- [{timestamp}] **{item.get('type','fact').upper()}**: {_c}\n")
         log_data["entries"].append({
             "timestamp": now.isoformat(),
             "type": item.get("type", "fact"),
@@ -230,6 +238,7 @@ def _main(envelope=None):
                                         and item.get("importance", 0) < 0.6),
             "promoted": False  # Becomes True when pearl selection picks it up
             ,"provenance": provenance
+            ,"source_turns": ([_tid] if _tid else [])   # the turns counted on this fact (P04-05)
         })
 
     # Keep log from growing unbounded — trim to last 200 entries
@@ -237,6 +246,9 @@ def _main(envelope=None):
 
     with open(WAL_LOG, "w") as f:
         json.dump(log_data, f, indent=2)
+    if _md_lines:
+        with open(WAL_FILE, "a") as f:
+            f.writelines(_md_lines)
 
     for item in items:
         print(f"[WAL] Saved {item.get('type')}: {item.get('content','')[:80]}")
@@ -246,27 +258,33 @@ def _main(envelope=None):
     # kept items' content — append-only, never overwriting a non-empty list (fable-memoryrec-p5, 2026-09-05).
     try:
         _led_path = os.path.join(MEMORY, "interaction-ledger.json")
-        _led = json.load(open(_led_path))
-        if isinstance(_led, list) and _led:
-            _tid = os.environ.get("VINTOS_TURN_ID", "")
-            _cands = [x for x in _led[-12:] if _tid and x.get("turn_id") == _tid]   # its own turn, when both sides carry the id
-            _by_age = not _cands   # only a legacy entry without a turn id falls back to "newest empty within 300s"
-            for _le in (_cands or list(reversed(_led[-5:]))):
-                if _by_age:
-                    try:
-                        _age = abs((now - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds())
-                    except Exception:
-                        continue
-                    if _age > 300:
+        import fcntl as _fl
+        _lk = open(_led_path + ".lock", "a+"); _fl.flock(_lk, _fl.LOCK_EX)   # one lock with the ledger's own append (P02-02)
+        try:
+            _led = json.load(open(_led_path))
+            if isinstance(_led, list) and _led:
+                _tid = os.environ.get("VINTOS_TURN_ID", "")
+                _cands = [x for x in _led[-12:] if _tid and x.get("turn_id") == _tid]   # its own turn, when both sides carry the id
+                _by_age = not _cands   # only a legacy entry without a turn id falls back to "newest empty within 300s"
+                for _le in (_cands or list(reversed(_led[-5:]))):
+                    if _by_age:
+                        try:
+                            _age = abs((now - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds())
+                        except Exception:
+                            continue
+                        if _age > 300:
+                            break
+                        if _tid and _le.get("turn_id") and _le.get("turn_id") != _tid:
+                            continue   # another turn's row is never this turn's home
+                    if not _le.get("wal_facts"):
+                        _le["wal_facts"] = [str(i.get("content", ""))[:400] for i in items]
+                        _le["wal_facts_backfilled"] = now.isoformat()
+                        json.dump(_led, open(_led_path, "w"), indent=2)
+                        print(f"[WAL] backfilled {len(items)} fact(s) into the ledger entry at {_le.get('timestamp','')[:19]}")
                         break
-                    if _tid and _le.get("turn_id") and _le.get("turn_id") != _tid:
-                        continue   # another turn's row is never this turn's home
-                if not _le.get("wal_facts"):
-                    _le["wal_facts"] = [str(i.get("content", ""))[:400] for i in items]
-                    _le["wal_facts_backfilled"] = now.isoformat()
-                    json.dump(_led, open(_led_path, "w"), indent=2)
-                    print(f"[WAL] backfilled {len(items)} fact(s) into the ledger entry at {_le.get('timestamp','')[:19]}")
-                    break
+        finally:
+            try: _fl.flock(_lk, _fl.LOCK_UN); _lk.close()
+            except Exception: pass
     except Exception as _bf:
         print(f"[WAL] ledger backfill skipped: {_bf}")
 

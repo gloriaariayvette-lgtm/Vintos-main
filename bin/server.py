@@ -887,6 +887,9 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     skip = set(skip or ())
     ran, launched, skipped, failed = [], [], sorted(skip), []
     gloria_text = gloria_text or ""; reply = reply or ""
+    # ONE effective turn id (P02-01): an explicit argument wins; otherwise the id the caller already put in
+    # writer_env stands. Before this the child env was overwritten with '' whenever the argument was omitted.
+    turn_id = str(turn_id or (writer_env or {}).get("VINTOS_TURN_ID") or "")
     # dry-run is a property of the TURN when the coordinator opened one (astra-server-b-p6); the global
     # flag is only the fallback for doors that did not pass it. Decided FIRST: until 2026-09-05 the
     # inline effects (emotion nudge, prediction, adoption, marks) ran before this was read, so a
@@ -933,7 +936,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             kw = {"stdout": open(log, "a"), "stderr": open(log, "a")}
             # every writer learns the surface and turn it serves (astra-memoryrec-p1)
             _env = dict(writer_env) if writer_env else dict(os.environ)
-            _env["VINTOS_SURFACE"] = str(surface); _env["VINTOS_TURN_ID"] = str(turn_id or "")
+            _env["VINTOS_SURFACE"] = str(surface); _env["VINTOS_TURN_ID"] = turn_id
             kw["env"] = _env
             _pt_sp.Popen([exe] + argv[1:], **kw)
             launched.append(name)   # a process started, not a writer finished: completion is the writer's own record
@@ -953,7 +956,7 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     _bg("voice_coherence", ["", os.path.join(SC, "voice-coherence.py"), "check", reply[:500]], "/tmp/voice-coherence.log")
     try:
         with open(os.path.join(MEMORY, "post-turn-record.jsonl"), "a") as f:
-            f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "turn_id": turn_id or "", "ran": ran,
+            f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "turn_id": turn_id, "ran": ran,
                                  "launched": launched, "skipped": skipped, "failed": failed, "test_mode": test_mode}) + "\n")
     except Exception:
         pass
