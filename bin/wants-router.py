@@ -71,7 +71,9 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
             # All steps complete — fulfill the want
             _ms_json.dump(_ms_wants, open(_ms_path, "w"), indent=2)
             _final_note = step_history[-1].get("note","") if step_history else ""
-            fulfill_want(text, note=_final_note[:200], fulfilled_by=action_name)
+            # the ORIGINAL want string, as the recovery branch already does; `text` here is the last
+            # step's text, so the want stayed live and learning drank a ghost (2026-09-04)
+            fulfill_want(want.get("want", text), note=_final_note[:200], fulfilled_by=action_name)
             if want.get("journal_seeded"):
                 try:
                     import sys as _edw_sys; _edw_sys.path.insert(0, SCRIPTS)
@@ -638,7 +640,7 @@ def echo_announce(want_text):
     """Tell Gloria something through the Echo."""
     import subprocess
     # Extract what he wants to say
-    msg = llm_extract(want_text, "What does she want to tell Gloria? Extract the message in 1-2 sentences.")
+    msg = llm_extract(want_text, "What does he want to tell Gloria? Extract the message in 1-2 sentences.")
     if msg:
         subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "speak", msg],
                       capture_output=True, timeout=15)
@@ -1640,6 +1642,7 @@ def be_silent(want_text):
         log(f"Silence failed: {e}")
         return False
 ACTION_MAP["be_silent"] = be_silent
+ACTION_MAP["be_mischievous"] = be_mischievous   # was generated as an action name but never routable (grok-wants-p2)
 def introspect(want_text):
     """He wants to understand something — write a focused journal entry about it."""
     import requests as _req
@@ -2587,6 +2590,9 @@ def _open_gloria_discussion(want, text):
         log(f"  → Posted to discussion board")
     except Exception as _dpe:
         log(f"  → Discussion post failed: {_dpe}")
+    # Mark BEFORE the ntfy: if anything below fails, the want is still marked and cannot re-ping her.
+    try: mark_want_outreached(want.get("want", text), want_id=want.get("id"))
+    except Exception as _mwo_e: log(f"  → mark_want_outreached failed: {_mwo_e}")
     # Send ONE ntfy
     try:
         import requests as _ntfy_req
@@ -2600,7 +2606,6 @@ def _open_gloria_discussion(want, text):
     except Exception as _ne:
         log(f"  → ntfy failed: {_ne}")
     # Mark gloria_routed and outreached
-    mark_want_outreached(want.get("want", text), want_id=want.get("id"))
     # Update want in file to set gloria_routed=True
     try:
         import json as _grj
