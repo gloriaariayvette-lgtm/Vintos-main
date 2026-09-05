@@ -178,6 +178,37 @@ def _room_key(room):
     return str(room).strip().lower().replace(" ", "_").replace("-", "_")
 
 
+def _plug_for_light(ent):
+    """The room plug a light hangs off, if the config knows one."""
+    cfg = load_config()
+    for r in cfg["rooms"].values():
+        if ent in (r.get("lights") or []) and r.get("plug"):
+            return r["plug"]
+    return None
+
+
+def _power_plug(ent, on=True):
+    if _is_govee(ent):
+        return govee_power(ent.split(":", 1)[1], on)
+    code, _ = ha_request("switch/turn_on" if on else "switch/turn_off", {"entity_id": ent}); return code == 200
+
+
+def _ensure_plugs(lights):
+    """A bulb behind a plug that is off cannot hear anything (Gloria, 2026-09-05): power each room's plug
+    on before the bulbs are told to do anything, once per plug, and give the bulbs a moment to come up."""
+    seen = set(); powered = False
+    for l in lights:
+        pl = _plug_for_light(l)
+        if pl and pl not in seen:
+            seen.add(pl)
+            try:
+                if _power_plug(pl, True): powered = True
+            except Exception as e:
+                print(f"[HOME] plug {pl}: {e}")
+    if powered:
+        time.sleep(2.5)
+
+
 def plug(room, on=True):
     """The room's smart plug. Off is off; nothing here decides what was plugged into it."""
     cfg = load_config()
@@ -185,10 +216,7 @@ def plug(room, on=True):
     ent = r.get("plug")
     if not ent:
         print(f"[HOME] no plug configured for {room}"); return False
-    if _is_govee(ent):
-        ok = govee_power(ent.split(":", 1)[1], on)
-    else:
-        code, _ = ha_request("switch/turn_on" if on else "switch/turn_off", {"entity_id": ent}); ok = code == 200
+    ok = _power_plug(ent, on)
     print(f"[HOME] plug {room} {'on' if on else 'off'}: {'ok' if ok else 'failed'}")
     return ok
 
@@ -255,6 +283,7 @@ def set_room_color(hex_color, brightness=120, room=None):
     """Colour the lights of one room, or every configured light when no room is named."""
     rgb = saturate_for_bulbs(hex_to_rgb(hex_color))
     lights = room_lights(room)
+    _ensure_plugs(lights)
     ok = 0
     for light in lights:
         try:
@@ -268,6 +297,7 @@ def set_room_color(hex_color, brightness=120, room=None):
 def flicker(room=None, times=2):
     """Dim, bright, back to a low violet. Mischief, not a scare: bounded and short."""
     lights = room_lights(room)
+    _ensure_plugs(lights)
     for _ in range(times):
         for light in lights: _light_on(light, hs=[0, 0], brightness=10)
         time.sleep(0.25)
@@ -349,6 +379,13 @@ if __name__ == "__main__":
         try:
             for d in govee_devices(): print(f"govee:{d['device']:24s} | {d['name']:28s} | {d['sku']:10s} | {', '.join(i or t for t, i in d['capabilities'])[:60]}")
         except Exception as e: print("govee:", e)
+    elif cmd == "rooms":
+        for name, r in load_config().get("rooms", {}).items(): print(f"{name:12s} plug={r.get('plug')}  lights={len(r.get('lights') or [])}  {r.get('note','')}")
+    elif cmd == "off":
+        for l in room_lights(args[0] if args else None):
+            try: (govee_power(l.split(':', 1)[1], False) if _is_govee(l) else ha_request("light/turn_off", {"entity_id": l}))
+            except Exception as e: print(f"[HOME] {l}: {e}")
+        print("[HOME] lights off" + (f" in {args[0]}" if args else ""))
     elif cmd == "govee-on": govee_power(msg, True)
     elif cmd == "govee-off": govee_power(msg, False)
     elif cmd == "speak": speak(msg)
