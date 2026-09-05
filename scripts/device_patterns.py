@@ -342,4 +342,13 @@ def fire_his_intent(reply_text, context=None):
             json.dump({"type":"command","text":" \u00b7 ".join(_fired),"channel":"device","ts":time.time()},
                       open(os.path.join(MEM,"command-bubble.json"),"w"))
         except Exception: pass
+        try:   # structured receipts beside the bubble text (astra-somatic-p8): what was submitted, what failed
+            with open(os.path.join(MEM, "effect-receipts.jsonl"), "a") as _rf:
+                for _line in _fired:
+                    _st = _line.rsplit("[", 1)[-1].rstrip("]") if "[" in _line else "unknown"
+                    _rf.write(json.dumps({"t": time.time(), "kind": "pattern", "text": _line[:120],
+                                          "outcome": ("submitted" if _st in ("ok", "sent", "playing", "started") else _st[:40]),
+                                          "turn_id": os.environ.get("VINTOS_TURN_ID", ""), "surface": os.environ.get("VINTOS_SURFACE", ""),
+                                          "claim": "transport accepted" if _st in ("ok", "sent", "playing", "started") else "see detail"}) + "\n")
+        except Exception: pass
     return _strip_tags(reply_text)

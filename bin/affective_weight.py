@@ -30,6 +30,13 @@ def update(warmth_delta=0.0, scar_delta=0.0, investment_delta=0.0, event=""):
     _save(d)
     return d["total_weight"]
 
+def get():
+    """The components, for readers that need numbers rather than a line (pleasure_substrate reads
+    investment here as relational salience — one owner, fable-somatic-p5)."""
+    d = _load()
+    return {"warmth": d.get("warmth_component", 0.5), "scar": d.get("scar_component", 0.5),
+            "investment": d.get("investment_component", 0.5), "total": d.get("total_weight", 0.5)}
+
 def get_weight_context():
     d = _load()
     if d.get("total_weight", 0) < 0.3: return ""

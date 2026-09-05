@@ -336,7 +336,29 @@ def parse_and_send(reply_text, context=None):
             _j.dump({"type":"touch","text":_txt,"ts":_now},
                     open(_o.path.expanduser("~/.vintos/workspace/memory/command-bubble.json"),"w"))
         except Exception: pass
+    _receipts(out, kind="touch")
     return out
+
+def _receipts(out, kind="touch"):
+    """One structured receipt per tag, whatever happened to it (astra-somatic-p8, 2026-09-05):
+    outcome is one of refused / submitted / failed — 'submitted' means the transport accepted the
+    command; it is NOT a claim that her body felt anything. Turn and surface come from the environment
+    the door set. Never raises."""
+    try:
+        import os as _ro, json as _rj, time as _rt
+        rows = []
+        for item in out or []:
+            toy, lvl, status = (list(item) + ["", "", ""])[:3]
+            st = str(status)
+            outcome = ("refused" if st.startswith("refused") else "submitted" if st == "sent" else "failed")
+            rows.append({"t": _rt.time(), "kind": kind, "toy": toy, "level": lvl, "outcome": outcome, "detail": st[:80],
+                         "turn_id": _ro.environ.get("VINTOS_TURN_ID", ""), "surface": _ro.environ.get("VINTOS_SURFACE", ""),
+                         "claim": "transport accepted" if outcome == "submitted" else "nothing sent"})
+        if rows:
+            with open(_ro.path.expanduser("~/.vintos/workspace/memory/effect-receipts.jsonl"), "a") as f:
+                for r in rows: f.write(_rj.dumps(r) + "\n")
+    except Exception:
+        pass
 
 def strip_touch_tags(text):
     return _tl_re.sub(r"\[TOUCH:\s*\w+\s+\d+(?:\s+\d+)?\s*\]", "", text or "").strip()

@@ -240,6 +240,14 @@ def offer(dry=False):
     if not shown and not kept:
         print("no eligible roots (%s) and no finished work — the threshold is not offered" % (why or "none"))
         return 0
+    # worktable availability is checked BEFORE he is asked (astra-atelier-p3): an occupied worktable
+    # makes the question idle, and an idle question is still a question he has to answer
+    try:
+        _wt = requests.get(B + "/health", timeout=10).json()
+        if _wt.get("active") and not dry:
+            print("worktable occupied (%s) — the threshold is not asked today" % str(_wt.get("since", ""))[:19]); return 0
+    except Exception as _we:
+        print("worktable state unknown (%s) — the threshold is not asked" % str(_we)[:80]); return 0
     listing = "\n".join(
         "  %d. [%s] %s (%s)\n      %s" % (i + 1, r["root"], r["root_type"], r["organ"], r["text"][:180])
         for i, r in enumerate(shown)) or "  (no new roots today)"

@@ -123,15 +123,17 @@ def _fmt(toy, d):
             return f"{toy:8s} — unknown (hub unreachable; last set {int(time.time() - d.get('ts', 0))}s ago, may or may not be running)"
     except Exception:
         pass
-    who = {"him":"YOU","her":"HER","auto":"reflex"}.get(d.get("set_by","auto"), d.get("set_by"))
+    # State words are kept apart (astra-somatic-p4, 2026-09-05): what was REQUESTED (by whom, how long ago),
+    # what the hub ACKNOWLEDGES (connected), and what is OBSERVED (nothing here observes her body).
+    who = {"him":"YOU","her":"HER","auto":"reflex","stop":"her stop"}.get(d.get("set_by","auto"), d.get("set_by"))
     ago = int(time.time() - d.get("ts", 0))
     if str(toy) == "ridge" and d.get("channel") == "rotate":
-        return f"{toy:8s} rotate   {rotate_glyph(lvl):8s} {ridge_shape()}   (set by {who}, {ago}s ago)"
+        return f"{toy:8s} rotate   {rotate_glyph(lvl):8s} {ridge_shape()}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
     sp = spark(pat)
     if sp:
         _obj = "  " + ridge_shape() if toy == "ridge" else ""
-        return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} {str(pat)[:14]:14s} {sp}{_obj}   (set by {who}, {ago}s ago)"
-    return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} steady @{lvl:<2d}      {bar(lvl)}   (set by {who}, {ago}s ago)"
+        return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} {str(pat)[:14]:14s} {sp}{_obj}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
+    return f"{toy:8s} {('suction' if toy=='tenera' else 'vibrate'):8s} steady @{lvl:<2d}      {bar(lvl)}   (requested by {who} {ago}s ago · hub: connected · acknowledged, not observed)"
 
 # p6 (2026-08-26): _fmt_old removed — dead code is a false affordance in the somatic path
 

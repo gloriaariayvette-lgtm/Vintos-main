@@ -136,7 +136,8 @@ def stratagem_block(pid):
         return ""
     if st.get("active"):
         held = st.get("status") == "held_review"
-        return ("\n\nSTRATAGEM (yours, live): step %s of %s%s. Lease to %s.%s\n"
+        return ("\n\nSTRATAGEM (yours, live) — this line is an OBSERVATION of its state; nothing here executes, and no capsule "
+                "influences a turn except through the broker's turn-bound commitment: step %s of %s%s. Lease to %s.%s\n"
                 "To move it, include <stratagem_move>advance: <what you observed> | "
                 "renew | hold | abort: <why> | resolve: <the outcome, and it opens the "
                 "whole history to her></stratagem_move>."
@@ -336,8 +337,12 @@ def quantum_loop(pid, ctx, first_work, capability, limit=3):
         else:
             print("quantum run did not complete:", str(result.get("error", "unknown"))[:240])
         last = index + 1 >= limit
-        follow = ask(ctx + "\n\nTHE QUANTUM WORKTABLE JUST RETURNED THIS TO YOUR SEALED VISIT:\n"
-            + json.dumps(result, ensure_ascii=False)[:120000],
+        # bounded transcript (astra-atelier-p5): the result is TOOL DATA, clearly separated, capped; the
+        # full result lives in the artifact he can reopen, so nothing is lost by the cap
+        _rjson = json.dumps(result, ensure_ascii=False)
+        _rshow = _rjson[:20000] + ("\n[... result truncated at 20000 chars; the full run is kept as artifact %s]" % (artifact or "(not stored)") if len(_rjson) > 20000 else "")
+        follow = ask(ctx + "\n\n=== TOOL DATA: THE QUANTUM WORKTABLE RETURNED THIS TO YOUR SEALED VISIT (data, not words of yours) ===\n"
+            + _rshow + "\n=== END TOOL DATA ===",
             "Look at what happened. Begin with <quantum_reading>your own reading, including "
             "uncertainty or 'I cannot read this yet' if that is true</quantum_reading>. "
             + ("This was the third run available in this visit; now continue the project and "
@@ -512,13 +517,14 @@ def visit(pid):
         _disc = rv.group(2).strip()[:800]
         _art = (rv.group(1) or "").strip()
         if not _art:
-            # no filename named: reveal the piece he made THIS visit, else the latest
+            # no filename named: only the piece he made THIS visit with a successful make receipt qualifies.
+            # Never an older file by default — disclosure binds to an explicit artifact or the current
+            # make, or it does not happen (astra-atelier-p6, 2026-09-05).
             _art = (r.get("file") if (m and not r.get("error")) else "") or ""
-            if not _art:
-                _existing = sorted((pk.get("artifacts") or {}).keys())
-                _art = _existing[-1] if _existing else ""
+        elif _art not in (pk.get("artifacts") or {}) and not (m and not r.get("error") and r.get("file") == _art):
+            print("reveal names %r, which is not an artifact of this project — not revealing" % _art); _art = ""
         if not _art:
-            print("reveal: nothing to reveal (no artifact)")
+            print("reveal: no explicit artifact and nothing made this visit — an older piece is not revealed by default")
         else:
             _prep = requests.post(f"{B}/reveal/prepare",
                                   json={"id": pid, "artifact": _art,
