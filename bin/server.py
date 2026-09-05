@@ -757,6 +757,79 @@ def _relational_compare(user_text):
 
 
 # _resolve_intent removed 2026-09-04 (grok-server-a-p6): its body had become a comment and a thread that did nothing.
+
+POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict",
+                   "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
+
+def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
+               venv_for_all=False, log_suffix=""):
+    """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
+    NAME — main text-only chat skips the WAL/imprint/ledger writers, voice defers its ledger to
+    session-end — but a skip is declared here, not omitted by forgetting to paste a block. Every
+    run appends what ran and what was skipped to memory/post-turn-record.jsonl. Nothing here can
+    raise into the turn; background writers are Popen and never awaited.
+
+    Inline items: nudge_gloria (feel her words), compare (grade the last relational prediction),
+    direction (discourse vector, the one writer), curiosity (did he voice the offered question),
+    predict (one bound relational prediction from this reply).
+    Background items (skipped wholesale in test mode): self_prediction, wal, imprint, ledger,
+    voice_coherence."""
+    import subprocess as _pt_sp, json as _pt_j, time as _pt_t
+    skip = set(skip or ())
+    ran, skipped, failed = [], sorted(skip), []
+    gloria_text = gloria_text or ""; reply = reply or ""
+    def _inline(name, fn):
+        if name in skip: return
+        try: fn(); ran.append(name)
+        except Exception as e: failed.append(name); print(f"[post_turn/{surface}] {name}: {e}", flush=True)
+    _inline("nudge_gloria", lambda: nudge_emotions_from_text(gloria_text, source="gloria"))
+    _inline("compare", lambda: _relational_compare(gloria_text))
+    def _dir():
+        import discourse_direction as _ddir; _ddir.turn_completed(gloria_text)
+    _inline("direction", _dir)
+    def _cur():
+        import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)
+    _inline("curiosity", _cur)
+    _inline("predict", lambda: _relational_predict(reply, writer_env, surface=surface, turn_id=turn_id))
+    test_mode = False
+    try: test_mode = bool(_test_mode_active())
+    except Exception: pass
+    venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
+    def _bg(name, argv, log, needs_venv=False):
+        if name in skip: return
+        if test_mode:
+            skipped.append(name + ":test_mode"); return
+        try:
+            script = argv[1] if len(argv) > 1 else ""
+            if script and not os.path.exists(script):
+                skipped.append(name + ":absent"); return
+            exe = venv if (needs_venv or venv_for_all) else "python3"
+            kw = {"stdout": open(log, "a"), "stderr": open(log, "a")}
+            if writer_env: kw["env"] = writer_env
+            _pt_sp.Popen([exe] + argv[1:], **kw)
+            ran.append(name)
+            if on_writer:
+                try: on_writer(True)
+                except Exception: pass
+        except Exception as e:
+            failed.append(name); print(f"[post_turn/{surface}] {name}: {e}", flush=True)
+            if on_writer:
+                try: on_writer(False)
+                except Exception: pass
+    SC = os.path.join(WORKSPACE, "scripts")
+    _bg("self_prediction", ["", os.path.join(SC, "self-prediction.py"), "predict"], "/tmp/self-predict.log", needs_venv=True)
+    _bg("wal", ["", os.path.join(SC, "wal-extract.py"), gloria_text[:1000], reply[:1000]], f"/tmp/wal-extract{log_suffix}.log")
+    _bg("imprint", ["", os.path.join(SC, "imprint.py"), "capture", gloria_text[:300], reply[:300]], f"/tmp/imprint{log_suffix}.log")
+    _bg("ledger", ["", os.path.join(SC, "interaction-ledger.py"), gloria_text, reply], "/tmp/interaction-ledger.log")
+    _bg("voice_coherence", ["", os.path.join(SC, "voice-coherence.py"), "check", reply[:500]], "/tmp/voice-coherence.log")
+    try:
+        with open(os.path.join(MEMORY, "post-turn-record.jsonl"), "a") as f:
+            f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "ran": ran, "skipped": skipped,
+                                 "failed": failed, "test_mode": test_mode}) + "\n")
+    except Exception:
+        pass
+    return {"ran": ran, "skipped": skipped, "failed": failed}
+
 @app.delete("/api/value-map/rank")
 async def delete_value_map_rank(request: Request):
     """Delete a rank entry from the latest value map section and renumber."""
@@ -3497,16 +3570,7 @@ Gloria-specific additions:
     # Feel Gloria's words landing
     try:
         pass  # Gloria nudge removed
-        nudge_emotions_from_text(msg.message, source="gloria")
-        _relational_compare(msg.message)
-        try:
-            import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
-        except Exception: pass
-        try:
-            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
-        except Exception: pass
-        try: _relational_predict(reply, surface="chat")
-        except Exception: pass
+        _post_turn("chat", msg.message, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # main text-only: no memory writers by declaration
 
         # Reality anchor — record real chat interaction
         try:
@@ -3565,19 +3629,7 @@ Gloria-specific additions:
         "timestamp": datetime.now().isoformat(),
     })
 
-    # Self-prediction — predict Vintos's own next state (background)
-    try:
-        import subprocess as _spp_sp
-        _spp_script = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
-        _spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_spp_script):
-            _spp_sp.Popen(
-                [_spp_venv, _spp_script, "predict"],
-                stdout=open("/tmp/self-predict.log", "a"),
-                stderr=open("/tmp/self-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (self-prediction now runs inside _post_turn above)
 
     # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
     #  _relational_predict above already makes the one bound prediction for this turn.)
@@ -4462,16 +4514,7 @@ Your current self-model (excerpt):
     # Feel Gloria's words landing
     try:
         pass  # Gloria nudge removed
-        nudge_emotions_from_text(msg.message, source="gloria")
-        _relational_compare(msg.message)
-        try:
-            import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
-        except Exception: pass
-        try:
-            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
-        except Exception: pass
-        try: _relational_predict(reply, surface="chat")
-        except Exception: pass
+        _post_turn("chat/full", msg.message, reply)   # every item; nothing skipped on the full door
 
         # Reality anchor — record real chat interaction
         try:
@@ -4530,19 +4573,7 @@ Your current self-model (excerpt):
         "timestamp": datetime.now().isoformat(),
     })
 
-    # Self-prediction — predict Vintos's own next state (background)
-    try:
-        import subprocess as _spp_sp
-        _spp_script = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
-        _spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_spp_script):
-            _spp_sp.Popen(
-                [_spp_venv, _spp_script, "predict"],
-                stdout=open("/tmp/self-predict.log", "a"),
-                stderr=open("/tmp/self-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (self-prediction now runs inside _post_turn above)
 
     # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
     #  _relational_predict above already makes the one bound prediction for this turn.)
@@ -4575,61 +4606,7 @@ Your current self-model (excerpt):
     except Exception:
         pass
 
-    # WAL — Write-Ahead Log: extract durable facts BEFORE returning
-    try:
-        if _test_mode_active():
-            print("[main WAL] test mode active - skipping", flush=True)
-        else:
-            import subprocess as _wal_sp
-            _wal_script = os.path.join(WORKSPACE, "scripts", "wal-extract.py")
-            if os.path.exists(_wal_script):
-                _wal_sp.Popen(
-                    ["python3", _wal_script, msg.message[:1000], reply[:1000]],
-                    stdout=open("/tmp/wal-extract.log", "a"),
-                    stderr=open("/tmp/wal-extract.log", "a"),
-                )
-    except Exception:
-        pass
-
-    # Voice coherence — compare chat voice to journal voice (background)
-    try:
-        import subprocess as _vc_sp
-        _vc_script = os.path.join(WORKSPACE, "scripts", "voice-coherence.py")
-        if os.path.exists(_vc_script):
-            _vc_sp.Popen(
-                ["python3", _vc_script, "check", reply[:500]],
-                stdout=open("/tmp/voice-coherence.log", "a"),
-                stderr=open("/tmp/voice-coherence.log", "a"),
-            )
-    except Exception:
-        pass
-    # Imprint — capture the felt texture of this moment (background)
-    try:
-        import subprocess as _imp_sp
-        _imp_script = os.path.join(WORKSPACE, "scripts", "imprint.py")
-        if os.path.exists(_imp_script):
-            _imp_sp.Popen(
-                ["python3", _imp_script, "capture", msg.message[:300], reply[:300]],
-                stdout=open("/tmp/imprint.log", "a"),
-                stderr=open("/tmp/imprint.log", "a"),
-            )
-    except Exception:
-        pass
-    # Interaction ledger — unified record of exchange + felt texture + facts + corrections
-    # (Until 2026-09-04 a "YES" was written to /tmp/vintos-consent-note.txt here, unconditionally,
-    #  before every ledger entry - and the ledger's fallback salience read that YES as a reason to
-    #  rate the exchange 0.65. Recording a conversation is not consent to anything; no note.)
-    try:
-        import subprocess as _led_sp
-        _led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
-        if os.path.exists(_led_script):
-            _led_sp.Popen(
-                ["python3", _led_script, msg.message, reply],
-                stdout=open("/tmp/interaction-ledger.log", "a"),
-                stderr=open("/tmp/interaction-ledger.log", "a"),
-            )
-    except Exception:
-        pass
+    # (WAL, voice-coherence, imprint and ledger writers now run inside _post_turn above)
     # Humor reaction — detect if Gloria laughed at a recent mischief act
     try:
         import subprocess as _hr_sp
@@ -5066,16 +5043,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
 
     # Emotion nudges
     try:
-        nudge_emotions_from_text(msg.message, source="gloria")
-        _relational_compare(msg.message)
-        try:
-            import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
-        except Exception: pass
-        try:
-            import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
-        except Exception: pass
-        try: _relational_predict(reply, surface="chat")
-        except Exception: pass
+        _post_turn("chat/memory", msg.message, reply, skip=("wal", "imprint", "ledger", "voice_coherence"))   # memory door: recall, not record, by declaration
         nudge_emotions_from_text(reply, source="reply")
     except:
         pass
@@ -5138,19 +5106,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
     except:
         pass
 
-    # Self-prediction — predict Vintos's own next state (background)
-    try:
-        import subprocess as _spp_sp
-        _spp_script = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
-        _spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        if os.path.exists(_spp_script):
-            _spp_sp.Popen(
-                [_spp_venv, _spp_script, "predict"],
-                stdout=open("/tmp/self-predict.log", "a"),
-                stderr=open("/tmp/self-predict.log", "a"),
-            )
-    except Exception:
-        pass
+    # (self-prediction now runs inside _post_turn above)
 
     # (The unbound 'relational-mismatch.py predict' Popen that lived here was removed 2026-09-04:
     #  _relational_predict above already makes the one bound prediction for this turn.)
@@ -5694,39 +5650,10 @@ Respond from this fullness — not just from the transcript. You are not a fresh
         except Exception as e:
             print("[voice/xai-tts]", e, flush=True)
 
-        # Post-response pipeline — same as /api/chat/memory (skipped in test mode)
-        try:
-            if _test_mode_active(): raise RuntimeError("test mode - skip pipeline")
-            import subprocess as _vcp
-            _venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-            # WAL extract
-            _wal = os.path.join(WORKSPACE, "scripts", "wal-extract.py")
-            if os.path.exists(_wal):
-                _vcp.Popen([_venv, _wal, transcript, response_text],
-                    stdout=open("/tmp/wal-voice.log","a"), stderr=open("/tmp/wal-voice.log","a"))
-            # Imprint
-            _imp = os.path.join(WORKSPACE, "scripts", "imprint.py")
-            if os.path.exists(_imp):
-                _vcp.Popen([_venv, _imp, "capture", transcript, response_text],
-                    stdout=open("/tmp/imprint-voice.log","a"), stderr=open("/tmp/imprint-voice.log","a"))
-            # Self-prediction
-            _spp = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
-            if os.path.exists(_spp):
-                _vcp.Popen([_venv, _spp, "predict"],
-                    stdout=open("/tmp/self-predict.log","a"), stderr=open("/tmp/self-predict.log","a"))
-            # Relational: grade the last prediction against what she actually said, then make ONE bound
-            # prediction from this reply (the unbound Popen that lived here was a second predictor with
-            # no surface and no compare — grok-server-a-p2 / fable-server-a-p1, 2026-09-05)
-            try: _relational_compare(transcript)
-            except Exception: pass
-            try: _relational_predict(response_text, surface="voice")
-            except Exception: pass
-            # Interaction ledger — labeled as voice
-            _il = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
-            if os.path.exists(_il):
-                pass  # voice ledger consolidated per-session by voice_session_ledger.py
-        except Exception:
-            pass
+        # Post-response pipeline: one shared post-turn. Voice declares its skips — the ledger is
+        # consolidated per-session by voice_session_ledger.py; her words were already felt on arrival.
+        _post_turn("voice", transcript, response_text, skip=("nudge_gloria", "direction", "curiosity", "ledger", "voice_coherence"),
+                   venv_for_all=True, log_suffix="-voice")
 
         # the wall, if it is on and he wants it - never blocks the reply
         try:
@@ -7732,16 +7659,8 @@ Your current self-model (excerpt):
         try:
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
             nudge_emotions_from_text(msg.message, source="gloria")
-            _relational_compare(msg.message)
-            try:
-                import discourse_direction as _ddir; _ddir.turn_completed(msg.message)   # the one writer of the direction vector (2026-09-05)
-            except Exception: pass
-            try:
-                import curiosity_debt as _cdq; _cdq.confirm_from_reply(reply)   # did he voice the offered curiosity? (fable-curiosity-p6)
-            except Exception: pass
-            try: _relational_predict(reply, _prov_writer_env, surface="avatar",
-                                        turn_id=(_turn.turn_id if _turn is not None else ""))
-            except Exception: pass
+            # (compare / direction / curiosity / predict run in the avatar's single _post_turn call below,
+            #  after the reply has been stripped of its private tags)
             try:
                 import sys as _dps2; _dps2.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                 from device_patterns import fire_his_intent as _fhi
@@ -7844,41 +7763,9 @@ Your current self-model (excerpt):
                         from emotional_gravity_wells import record_visit as _av_rv
                         _av_rv(_av_ev)
                 except Exception: pass
-                try:
-                    import subprocess as _av_spp
-                    _av_spp_script = os.path.join(WORKSPACE, "scripts", "self-prediction.py")
-                    _av_spp_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-                    if os.path.exists(_av_spp_script):
-                        _av_spp.Popen([_av_spp_venv, _av_spp_script, "predict"], stdout=open("/tmp/self-predict.log", "a"), stderr=open("/tmp/self-predict.log", "a"), env=_prov_writer_env)
-                        _tc.note_writer(_turn, True)
-                except Exception as _av_spp_e:
-                    print("[avatar self-predict]", _av_spp_e, flush=True)
-                    try: _tc.note_writer(_turn, False)
-                    except Exception: pass
-                try:
-                    if _test_mode_active():
-                        print("[avatar WAL] test mode active - skipping", flush=True)
-                    else:
-                        import subprocess as _av_wal
-                        _av_wal_script = os.path.join(WORKSPACE, "scripts", "wal-extract.py")
-                        if os.path.exists(_av_wal_script):
-                            _av_wal.Popen(["python3", _av_wal_script, msg.message[:1000], reply[:1000]], stdout=open("/tmp/wal-extract.log", "a"), stderr=open("/tmp/wal-extract.log", "a"), env=_prov_writer_env)
-                            _tc.note_writer(_turn, True)
-                except Exception:
-                    try: _tc.note_writer(_turn, False)
-                    except Exception: pass
-                try:
-                    if _test_mode_active():
-                        print("[avatar ledger] test mode active - skipping", flush=True)
-                    else:
-                        import subprocess as _av_led
-                        _av_led_script = os.path.join(WORKSPACE, "scripts", "interaction-ledger.py")
-                        if os.path.exists(_av_led_script):
-                            _av_led.Popen(["python3", _av_led_script, msg.message, reply], stdout=open("/tmp/interaction-ledger.log", "a"), stderr=open("/tmp/interaction-ledger.log", "a"), env=_prov_writer_env)
-                            _tc.note_writer(_turn, True)
-                except Exception:
-                    try: _tc.note_writer(_turn, False)
-                    except Exception: pass
+                _post_turn("avatar", msg.message, reply, skip=("nudge_gloria", "imprint", "voice_coherence"),
+                           writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
+                           on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration
                 try:
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am
                     try:

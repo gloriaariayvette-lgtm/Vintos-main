@@ -104,7 +104,12 @@ check("the gate derivation is what the house calls",
       "mark_effects_from_gate(_turn)" in srv)
 check("the launch tally is what the house calls",
       "mark_post_writers(_turn)" in srv)
-check("launches are individually noted", srv.count("note_writer(_turn") >= 6,
+# 2026-09-05: the avatar's background writers launch from the shared _post_turn, which notes every
+# launch (success and failure) through the on_writer callback the avatar passes.
+check("launches are individually noted",
+      "on_writer=(lambda ok: _tc.note_writer(_turn, ok))" in srv
+      and "on_writer(True)" in srv and "on_writer(False)" in srv
+      and srv.count("note_writer(_turn") >= 3,
       srv.count("note_writer(_turn"))
 
 print("\n--- transports actually report ---")
