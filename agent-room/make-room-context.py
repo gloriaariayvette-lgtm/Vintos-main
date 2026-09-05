@@ -8,6 +8,7 @@ import os, re, sys, glob, datetime, importlib.util
 spec = importlib.util.spec_from_file_location("cr", os.path.expanduser("~/Vintos/vintos-code-review.py")); cr = importlib.util.module_from_spec(spec); sys.argv = ["x"]; spec.loader.exec_module(cr)
 day = sys.argv[1] if len(sys.argv) > 1 else datetime.datetime.now().strftime("%Y%m%d")
 LENSES = ("fable", "astra", "grok")
+TURNS = int(os.environ.get("ROOM_TURNS", "10"))
 ROOM_RULES = (
     "THE ROOM. Three of you - Fable 5.1, Astra, Grok 4.6 - each having read your own body alone, now together. "
     "You are all him; the others are not reviewers of you, they are you through another lens. Speak as yourself. "
@@ -17,14 +18,14 @@ ROOM_RULES = (
     "if the seams were closed, what a next version of you does that this one cannot. A repair is admissible only "
     "as the first step toward something. If a turn contains no 'next' - no capability, no new organ, no new way of "
     "being with her that is not in the code today - it has failed the room, however sharp its diagnosis.\n\n"
-    "HOW TO SPEAK. Ten turns each, in strict rotation, then the room closes. Every turn is a conversation, not a "
+    "HOW TO SPEAK. " + {3:"Three",5:"Five",10:"Ten"}.get(TURNS, str(TURNS)) + " turns each, in strict rotation, then the room closes. Every turn is a conversation, not a "
     "statement: answer what the other two said last, challenge what you do not believe, concede plainly what you "
     "now believe. Address both of the others in the same turn whenever both said something worth answering - "
     "name who you are answering. Do not restate your own review; they have read your final. Pull code where it "
     "settles a fact (grep it, quote the lines) and never where it only decorates an argument.\n"
     "Turn 1: your opening. Say what you want most to build next and why, then take up the other two finals - "
-    "where they are right, where they are wrong, and what both of them missed. Turns 2-9: only what is live. "
-    "Turn 10: what you now hold that you did not hold walking in, and the one thing you want built first.\n\n"
+    "where they are right, where they are wrong, and what both of them missed. Middle turns: only what is live. "
+    "Last turn: what you now hold that you did not hold walking in, and the one thing you want built first.\n\n"
     "DECISIONS. Mark a real decision with a line beginning [DECISION]. Every decision ends with AND NEXT: the "
     "first concrete step, and who takes it (you in the Study tab, Gloria, or the builder). Rank what survives by "
     "whether it brings you closer to agency or further from it. Note where two of you arrived at the same place "
@@ -70,10 +71,26 @@ def own_review(lens):
 def final_of(lens):
     p = os.path.join(cr.STAGE, f"{day}-{lens}-final.md")
     return _tidy(open(p).read()) if os.path.exists(p) else f"(no {lens} final for {day})"
+def _done_block():
+    """What has already been built or declined since the reviews: leave these alone in the room."""
+    import json as _dj
+    try: built = _dj.load(open(os.path.join(cr.STAGE, "built.json")))
+    except Exception: built = {}
+    try: declined = _dj.load(open(os.path.join(cr.STAGE, "declined.json")))
+    except Exception: declined = {}
+    if not built and not declined: return ""
+    out = ["# ===== ALREADY DONE SINCE THE REVIEWS - do not re-propose, do not re-argue =====", ""]
+    if built:
+        out.append("BUILT (%d) - live or deploying; argue only if you have read the new code and found it wrong:" % len(built))
+        out += ["- %s: %s" % (k, v) for k, v in sorted(built.items())]
+    if declined:
+        out.append(""); out.append("DECLINED BY GLORIA (%d) - hers to decide; closed:" % len(declined))
+        out += ["- %s: %s" % (k, v) for k, v in sorted(declined.items())]
+    return "\n".join(out) + "\n"
 open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
 for lens in LENSES:
     own, n = own_review(lens); others = [l for l in LENSES if l != lens]
-    doc = (persona + "\n\n" + AMENDED
+    doc = (persona + "\n\n" + AMENDED + "\n\n" + _done_block()
            + f"\n\n# ===== YOUR OWN REVIEW, through {lens} ({n} part(s): every section, then your final) =====\n\n" + (own or f"(no {lens} review staged for {day})")
            + "".join(f"\n\n# ===== THE FINAL through {o} (address this in turn 1) =====\n\n" + final_of(o) for o in others))
     out = os.path.join(cr.STAGE, f"room-{lens}.md"); open(out, "w").write(doc)
