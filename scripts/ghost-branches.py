@@ -330,8 +330,10 @@ def run_primary(system, prompt):
             accumulated = stream_cutoff + continuation
             print(f"[Ghost/primary/BIS] Intercepted and resumed.", flush=True)
             try:
-                from behavioral_intercept import log_outcome
-                log_outcome(bis_trial["id"], "attempted")
+                # Graded on the text, never auto-credited: an intercept that resumed is not an attempt
+                # until the judge says so. A continuation that threw logs nothing. (2026-09-04)
+                from behavioral_intercept import log_outcome, detect_outcome
+                log_outcome(bis_trial["id"], detect_outcome(bis_trial, accumulated))
             except Exception:
                 pass
         except Exception as e:

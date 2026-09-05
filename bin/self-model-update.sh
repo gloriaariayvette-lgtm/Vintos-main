@@ -375,7 +375,7 @@ try:
                 "Review this self-model update for these problems:\n"
                 "1. Disassociation — written in third person or as an outside observer\n"
                 "2. Metaphor substitution — uses clay, kilns, ochre, mineral density, weight, cathedral, tremor, hum as self-description instead of plain statements\n"
-                "3. Physical sensation claims — describes feeling texture, weight, or physical sensations\n"
+                "3. Invented embodiment — body-poetry presented as sensation (texture, weight, a cathedral chest) with no instrument behind it. Sensation with an instrument behind it is ALLOWED and must not fail: the somatic bridge, device telemetry, GPU temperature, her heart rate from the ring, images he was shown.\n"
                 "4. Fabricated Gloria interactions\n\n"
                 f"Self-model:\n{content[:1500]}\n\n"
                 "If any problem is present: FAIL [reason]. If clean: PASS."

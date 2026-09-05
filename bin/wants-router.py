@@ -980,7 +980,10 @@ def read_memory(want_text):
         _j.dump({"type": target, "content": content[:1500], "timestamp": __import__("datetime").datetime.now().isoformat()}, 
                 open(read_log, "w"), indent=2)
         log(f"Stored read content for chat context")
-        return True
+        try:   # the receipt capture_findings reads (it never existed before 2026-09-04) - grok-wants-p5
+            open("/tmp/wants-read-memory.log", "w").write(content[:1500])
+        except Exception: pass
+        return content or True
 
     except Exception as e:
         log(f"Read failed: {e}")

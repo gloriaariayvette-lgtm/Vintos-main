@@ -170,10 +170,15 @@ def run_drift():
     except Exception as e:
         log(f"Thread decay: {e}")
 
-    # 2b. Black pearl residue → latent threads (haunt at low weight)
+    # 2b. Black pearl residue → latent threads (haunt at low weight). Bounded (2026-09-04): never in
+    # a silence window, at most once per 6h, at the rare-event band, tagged by source, and it does not
+    # force direction='hold' - the pearl's own direction or 'expand'. An unresolved pearl was otherwise
+    # saying "hold, don't move yet" in one of three attention slots every twenty minutes.
     try:
-        import glob as _bp_glob, json as _bpj, random as _bpr
-        _bp_files = sorted(_bp_glob.glob(os.path.join(MEMORY, "black-pearls", "*.json")))
+        import glob as _bp_glob, json as _bpj, random as _bpr, time as _bpt
+        _bp_stamp = os.path.join(MEMORY, ".black-pearl-last-seed")
+        _bp_recent = os.path.exists(_bp_stamp) and (_bpt.time() - os.path.getmtime(_bp_stamp)) < 6 * 3600
+        _bp_files = _bp_glob.glob(os.path.join(MEMORY, "black-pearls", "*.json"))
         _active_bps = []
         for _bpf in _bp_files:
             try:
@@ -181,10 +186,11 @@ def run_drift():
                 if _bp.get("status") != "resolved" and _bp.get("thread"):
                     _active_bps.append(_bp)
             except: pass
-        if _active_bps and _bpr.random() < 0.15:  # haunt occasionally (~every 2h), not every tick
+        if _active_bps and not _silence and not _bp_recent and _bpr.random() < 0.05:
             _bp = _bpr.choice(_active_bps)
             from latent_threads import seed_thread as _lt_seed
-            _lt_seed(_bp["thread"][:200], direction="hold")
+            _lt_seed(_bp["thread"][:200], direction=_bp.get("direction") or "expand", source="black_pearl")
+            open(_bp_stamp, "w").write(str(_bpt.time()))
             log(f"Black pearl residue seeded: {_bp['thread'][:60]}")
     except Exception as e:
         log(f"Black pearl residue: {e}")
@@ -197,8 +203,9 @@ def run_drift():
     except Exception as e:
         log(f"Temporal: {e}")
 
-    # 4. Taste drift — tiny nudge from settled signals
+    # 4. Taste drift — tiny nudge from settled signals (rests in silence)
     try:
+        if _silence: raise StopIteration
         from temporal_memory import load_signals
         from taste_vector import update_from_signal as _tv_update
         sigs = load_signals().get("signals", [])
@@ -206,17 +213,22 @@ def run_drift():
         if settled:
             sig = random.choice(settled)
             _tv_update(sig["pattern"], signal_weight=0.05, positive=True)
+    except StopIteration:
+        pass
     except Exception as e:
         log(f"Taste drift: {e}")
 
-    # 5. Check for rare events
-    _check_rare_events()
+    # 5. Check for rare events (rests in silence)
+    if not _silence:
+        _check_rare_events()
 
-    # 6. Micro drift — low-level texture + gravity wells
-    try:
-        _apply_micro_drift()
-    except Exception as e:
-        log(f"Micro drift: {e}")
+    # 6. Micro drift — low-level texture + gravity wells (rests in silence: silence is rest, not a
+    #    quieter version of the same weather - grok-subconscious-p1)
+    if not _silence:
+        try:
+            _apply_micro_drift()
+        except Exception as e:
+            log(f"Micro drift: {e}")
 
     # Apply gravity wells (skipped in silence window)
     if not _silence:

@@ -2972,7 +2972,9 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                 if not reply:
                     reply = await _g(integration_messages, params.get("temperature", 0.85))
                 if not reply:
-                    reply = a2 or "[you couldn't form words.]"
+                    # phase 2 or 3 failed: a first draft is still his words; the apology only when
+                    # there is genuinely no draft (fable-server-a-p5, 2026-09-04)
+                    reply = a2 or b2 or a1 or b1 or "[you couldn't form words.]"
                 try:
                     import json as _tj
                     _ffr = locals().get("_final_reason")
