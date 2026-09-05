@@ -199,6 +199,10 @@ def get_recent_somatic(within_seconds=180, src="somatic-frames-recent.json", sin
 
     return {"frames": len(recent), "duration_s": dur, "tempo": tempo, "visual": _visual,
             "avg_speed": avg, "peak_speed": peak, "speed": _ss,
+            # measurement, not observation (astra-memoryrec-p6): when it was sampled, over what window,
+            # from which device stream, and that positions are device-space until a calibration says otherwise
+            "measured_at": datetime.now().isoformat(), "window_s": dur, "source": src,
+            "space": ("calibrated zones" if _cal else "device-space; anatomical placement is inferred, not measured"),
             "position_range": [_lo, _hi], "median": _med,
             "cadence": round(_rate, 2), "calibrated": bool(_cal), "summary": narr}
 

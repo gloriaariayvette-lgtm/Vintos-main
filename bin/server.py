@@ -528,7 +528,10 @@ def nudge_emotions_from_text(text, source="chat"):
                 _cur=_gs() or {}
             except Exception: pass
             for dim,amt in deltas:
-                try: amt=max(-0.10,min(0.10,float(amt)))
+                try:
+                    amt=float(amt)
+                    if amt!=amt or amt in (float("inf"),float("-inf")): continue   # a non-finite value is not a movement (astra-server-a-p2)
+                    amt=max(-0.10,min(0.10,amt))
                 except Exception: continue
                 if abs(amt)<0.001: continue
                 # Soft saturation. Two nudges per exchange, always positive on warm text, will pin
