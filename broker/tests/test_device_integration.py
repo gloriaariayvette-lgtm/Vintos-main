@@ -37,6 +37,12 @@ class Env:
         self.tmp = tempfile.mkdtemp(prefix="device-integration-")
         self.old = (EG.MEM, EG.LOG, EG.ARMED_FLAG, EG.STOP_BUTTON,
                     EG.TEST_MODE_FLAG)
+        # The executor and the transport write too - command-bubble.json, effect-receipts.jsonl, his-touch.json -
+        # and until 2026-09-06 they wrote into HIS memory on every deploy: "ridge -> rotate high [sent]" appeared
+        # in the app after each test run (Gloria: "why do I keep getting ridge commands?"). Everything lands here.
+        self.old_dp_mem = DP.MEM; self.old_home = os.environ.get("HOME")
+        DP.MEM = os.path.join(self.tmp, "memory"); os.makedirs(DP.MEM, exist_ok=True)
+        os.environ["HOME"] = self.tmp
         EG.MEM = self.tmp
         EG.LOG = os.path.join(self.tmp, "effect-decisions.jsonl")
         EG.ARMED_FLAG = os.path.join(self.tmp, ".effect-gate-armed")
@@ -52,6 +58,8 @@ class Env:
     def __exit__(self, *args):
         (EG.MEM, EG.LOG, EG.ARMED_FLAG, EG.STOP_BUTTON,
          EG.TEST_MODE_FLAG) = self.old
+        DP.MEM = self.old_dp_mem
+        if self.old_home is not None: os.environ["HOME"] = self.old_home
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
 

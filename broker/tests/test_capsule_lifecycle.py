@@ -164,6 +164,7 @@ with Env() as e:
     EG.TEST_MODE_FLAG = os.path.join(e.tmp, ".test-mode")
     EG.STOP_BUTTON = os.path.join(e.tmp, "hardware-button.json")
     EG.MEM = e.tmp
+    EG.LOG = os.path.join(e.tmp, "effect-decisions.jsonl")   # its permits used to land in his real effect-gate.jsonl (t1/mission rows on 09-05)
     permit, mode, _ = EG.authorize(ctx, "mission", 12, kind="pattern",
                                    targets={"mission"}, digest="d")
     check("permit granted for a clean armed context", mode == "send" and permit, mode)
