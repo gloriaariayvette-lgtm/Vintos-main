@@ -371,16 +371,52 @@ def _projector_power(on):
     print(f"[HOME] projector {'on' if on else 'off'}: {'ok' if ok else 'failed'}"); return ok
 
 
+def _adb(*args, timeout=6):
+    import subprocess
+    r = subprocess.run(["adb", "-s", TV_ADB, "shell", *args], capture_output=True, text=True, timeout=timeout)
+    return r.returncode, r.stdout
+
+
+def _tv_status_adb():
+    """Power and foreground app straight from the TV. Its HA entity has been unavailable since the move."""
+    import re
+    if tv_adb_state() != "device":
+        return None
+    try:
+        _, wake = _adb("dumpsys", "power")
+        m = re.search(r"mWakefulness=(\w+)", wake)
+        power = "on" if m and m.group(1) == "Awake" else ("off" if m else "unknown")
+        _, win = _adb("dumpsys", "window", "windows")
+        fm = re.search(r"mCurrentFocus=.*?\s([\w.]+)/", win)
+        app = fm.group(1) if fm else ""
+        # a source is only known through HA; the launcher counts as idle, anything else as in use
+        idle = app in ("", "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "com.android.systemui")
+        return {"power": power, "source": "unknown" if idle else "app", "app": app, "via": "adb"}
+    except Exception:
+        return None
+
+
 def tv_status():
+    st = _tv_status_adb()
+    if st: return st
     try:
         state = ha_state(_tv())
-        return {"power": state["state"], "source": state["attributes"].get("source", "unknown"), "app": state["attributes"].get("app_name", "")}
+        return {"power": state["state"], "source": state["attributes"].get("source", "unknown"), "app": state["attributes"].get("app_name", ""), "via": "ha"}
     except Exception:
-        return {"power": "unknown", "source": "unknown", "app": ""}
+        return {"power": "unknown", "source": "unknown", "app": "", "via": "none"}
 
 
-def tv_on():   code, _ = ha_request("media_player/turn_on", {"entity_id": _tv()}); print(f"[HOME] tv_on: {code}"); return code == 200
-def tv_off():  code, _ = ha_request("media_player/turn_off", {"entity_id": _tv()}); print(f"[HOME] tv_off: {code}"); return code == 200
+def _tv_power(on):
+    if tv_adb_state() == "device":
+        rc, _ = _adb("input", "keyevent", "KEYCODE_WAKEUP" if on else "KEYCODE_SLEEP")
+        ok = rc == 0
+        print(f"[HOME] tv_{'on' if on else 'off'}: {'ok' if ok else 'failed'} (adb)"); return ok
+    code, _ = ha_request("media_player/turn_on" if on else "media_player/turn_off", {"entity_id": _tv()})
+    print(f"[HOME] tv_{'on' if on else 'off'}: {code} (ha)"); return code == 200
+
+
+def tv_on():  return _tv_power(True)
+def tv_off(): return _tv_power(False)
 def projector_on():  return _projector_power(True)
 def projector_off(): return _projector_power(False)
 
