@@ -13,7 +13,7 @@ DevTools binds to localhost on Windows, so the client runs there too: a Windows 
 for /json, websocket-client for the socket), started from WSL exactly the way desktop_winpy does it.
 Needs, once on the Windows side:  python.exe -m pip install --user websocket-client
 
-CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | back | dismiss | play | shot out.jpg
+CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | scrollto TEXT | back | dismiss | play | shot out.jpg
 """
 from __future__ import annotations
 
@@ -233,8 +233,33 @@ elif op == "elements":
     print(json.dumps(with_tab(f)))
 elif op == "text":
     def f(c, t):
-        txt = c.eval("(document.body && document.body.innerText || '').replace(/\\n{3,}/g,'\\n\\n').slice(0, %d)" % int(req.get("max_text", 6000)))
-        return {"state": state(c, t), "text": txt}
+        # what is on screen now, and a map of the page's sections: the first N characters of the whole page said
+        # "ingredients" while the reviews were on screen, and nobody could see it (2026-09-06)
+        d = c.eval(r"""(()=>{
+          const lim=%d; const vis=[]; let n=0;
+          const w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          while (w.nextNode() && n < lim) { const tn=w.currentNode; const s=(tn.nodeValue||'').replace(/\s+/g,' ').trim(); if(!s) continue;
+            const p=tn.parentElement; if(!p) continue; const tag=p.tagName; if(tag==='SCRIPT'||tag==='STYLE'||tag==='NOSCRIPT') continue;
+            const r=p.getBoundingClientRect(); if(r.bottom<0||r.top>innerHeight||r.width===0) continue;
+            const cs=getComputedStyle(p); if(cs.visibility==='hidden'||cs.display==='none') continue;
+            vis.push(s); n+=s.length+1; }
+          const outline=[]; for (const h of document.querySelectorAll('h1,h2,h3,h4,[role="heading"]')) { const s=(h.innerText||'').replace(/\s+/g,' ').trim(); if(!s) continue;
+            const r=h.getBoundingClientRect(); if(r.width===0&&r.height===0) continue;
+            outline.push({text:s.slice(0,70), y:Math.round(r.top+scrollY), onscreen:r.bottom>0&&r.top<innerHeight}); if(outline.length>=40) break; }
+          return {visible: vis.join('\n').slice(0, lim), outline};})()""" % int(req.get("max_text", 6000)))
+        return {"state": state(c, t, sample=False), "text": d.get("visible", ""), "outline": d.get("outline", [])}
+    print(json.dumps(with_tab(f)))
+elif op == "scrollto":
+    def f(c, t):
+        q = req.get("text", "")
+        hit = c.eval(r"""(q=>{q=q.toLowerCase(); const els=[...document.querySelectorAll('h1,h2,h3,h4,[role="heading"],section,[id],[aria-label]')];
+          const label=e=>((e.innerText||'').slice(0,120)+' '+(e.id||'')+' '+(e.getAttribute('aria-label')||'')).toLowerCase();
+          let e=els.find(x=>/^h[1-4]$/i.test(x.tagName)&&label(x).includes(q))||els.find(x=>label(x).includes(q));
+          if(!e) return null; e.scrollIntoView({block:'start'}); window.scrollBy(0,-80); return (e.innerText||e.id||q).slice(0,80);})(%s)""" % json.dumps(q))
+        if hit is None and q:
+            hit = c.eval("window.find(%s) ? 'text match' : null" % json.dumps(q))
+        time.sleep(0.6)
+        return {"ok": hit is not None, "found": hit, "state": state(c, t, sample=False)}
     print(json.dumps(with_tab(f)))
 elif op == "click":
     def f(c, t):
@@ -379,6 +404,7 @@ class EdgeBrowser:
     def click(self, n: int) -> Dict[str, Any]: return self._call("click", n=int(n))
     def type(self, n: int, text: str, enter: bool = False) -> Dict[str, Any]: return self._call("type", n=int(n), text=text, enter=bool(enter))
     def scroll(self, px: int) -> Dict[str, Any]: return self._call("scroll", px=int(px), timeout=20)
+    def scrollto(self, text: str) -> Dict[str, Any]: return self._call("scrollto", text=str(text)[:80], timeout=20)
     def key(self, key: str) -> Dict[str, Any]: return self._call("key", key=key, timeout=20)
     def play(self) -> Dict[str, Any]: return self._call("play", timeout=25)
     def back(self) -> Dict[str, Any]: return self._call("back", timeout=30)
@@ -397,7 +423,9 @@ if __name__ == "__main__":
     elif cmd == "elements":
         d = b.elements(); print(json.dumps(d["state"], indent=2))
         for i, e in enumerate(d["elements"]): print(f"[{i}] {e['kind']:6s} {e['text'][:100]}")
-    elif cmd == "text": print(b.text()["text"][:3000])
+    elif cmd == "text":
+        d = b.text(); print("SECTIONS:"); [print(f"  {o['y']:6d} {'ON SCREEN ' if o['onscreen'] else '          '}{o['text']}") for o in d.get("outline", [])]; print("VISIBLE:\n" + d["text"][:3000])
+    elif cmd == "scrollto": print(json.dumps(b.scrollto(" ".join(a[1:])), indent=2))
     elif cmd == "media": print(json.dumps(b.state().get("media"), indent=2))
     elif cmd == "click": print(json.dumps(b.click(int(a[1])), indent=2))
     elif cmd == "type": print(json.dumps(b.type(int(a[1]), " ".join(a[2:]), enter=True), indent=2))

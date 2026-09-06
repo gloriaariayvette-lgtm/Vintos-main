@@ -34,7 +34,11 @@ class FakeBrowser:
         if getattr(self, "popup", False):
             els = els + [{"kind": "button", "text": "No Thanks", "ontop": True, "popup": True}, {"kind": "popup", "text": "Would You Like to Send This Recipe to Yourself?", "marker": True, "popup": True}]
         return {"state": self._st(), "elements": els}
-    def text(self): return {"state": self._st(), "text": f"{self.title}\nsome page text"}
+    def text(self): return {"state": self._st(), "text": f"{self.title}\nsome page text", "outline": [{"text": "Ingredients", "y": 900, "onscreen": self.scrolled < 500}, {"text": "Reviews", "y": 14000, "onscreen": self.scrolled >= 13000}]}
+    def scrollto(self, text):
+        for o in self.text()["outline"]:
+            if text.lower() in o["text"].lower(): self.scrolled = o["y"] - 80; return {"ok": True, "found": o["text"], "state": self._st()}
+        return {"ok": False, "found": None, "state": self._st()}
     def click(self, n):
         self.log.append(("click", n)); self.history.append((self.url, self.title, self.media))
         if "results" in self.url and n == 2:
@@ -122,6 +126,13 @@ pl = planner_from([{"action": "dismiss"}, {"action": "goto", "url": "https://www
 r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
 check("a pop-up is named as covering the page, its items are marked, dismiss clears it and numbering is unchanged",
       r.status == "completed" and "POP-UP COVERING THE PAGE" in pl.seen[0]["summary"] and "[pop-up]" in pl.seen[0]["summary"] and "No Thanks" in pl.seen[1]["last"] and "POP-UP" not in pl.seen[1]["summary"], (r, pl.seen[0]["summary"][:400]))
+
+fb = FakeBrowser(); seen_ver = []
+def ver2(task, claim, st, text, outline=None): seen_ver.append(outline); return (any(o["text"] == "Reviews" and o["onscreen"] for o in (outline or [])), "reviews heading on screen")
+pl = planner_from([{"action": "goto", "url": "https://www.allrecipes.com/recipe/1/mug-cake"}, {"action": "scrollto", "text": "reviews"}, {"action": "done", "summary": "reviews on screen"}])
+r = BA.run("open the recipe and scroll to the reviews section", fb, pl, max_steps=10, should_stop=lambda: False, verifier=ver2)
+check("sections map: scrollto reaches a heading and the checker sees it ON SCREEN, completing without a done", r.status == "completed" and "completion check" in r.reason
+      and fb.scrolled == 13920 and seen_ver and seen_ver[-1][1]["onscreen"] and "14000px            Reviews" in pl.seen[1]["summary"], (r, fb.scrolled, pl.seen[-1]["summary"][-400:]))
 
 a = BA.parse_action('{"observed":"results","action":"click","n":2,"reason":"r"}\n{"action":"play"}')
 check("parse: first object wins", a["action"] == "click" and a["n"] == 2)

@@ -25,7 +25,7 @@ from urllib import request as urlrequest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import desktop_agent as DA
 
-ACTIONS = {"goto", "click", "type", "scroll", "key", "play", "back", "dismiss", "wait", "done", "fail"}
+ACTIONS = {"goto", "click", "type", "scroll", "scrollto", "key", "play", "back", "dismiss", "wait", "done", "fail"}
 WEB_HINT = re.compile(r"\b(youtube|browser|website|web ?site|web|search (for|the web)|video|review|url|https?://|google|recipe|reddit|wikipedia|tab|page|site|amazon|spotify web|open .{0,30}\.(com|org|net))\b", re.I)
 
 
@@ -48,7 +48,7 @@ def page_type(url: str) -> str:
     return "web page"
 
 
-def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str) -> str:
+def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str, outline: Optional[List[Dict[str, Any]]] = None) -> str:
     media = st.get("media")
     if media:
         playing = media.get("present") and not media.get("paused") and not media.get("ended")
@@ -68,7 +68,10 @@ def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str) -> s
     for i, e in enumerate(elements):
         flag = ("" if e.get("ontop", True) else " (below the fold)") + (" [pop-up]" if e.get("popup") and not e.get("marker") else "")
         lines.append(f"[{i}] {e.get('kind', '?')}: {e.get('text', '')[:110]}{flag}")
-    lines += ["", "PAGE TEXT (excerpt):", (text or "")[:2500]]
+    if outline:
+        lines += ["", "SECTIONS OF THIS PAGE (heading, position in px, whether on screen now):"]
+        lines += [f"  {o.get('y', 0)}px {'ON SCREEN' if o.get('onscreen') else '         '}  {o.get('text', '')}" for o in outline[:40]]
+    lines += ["", "TEXT VISIBLE ON SCREEN NOW:", (text or "")[:2500]]
     return "\n".join(lines)
 
 
@@ -93,7 +96,7 @@ How to think, in order:
 2. What did my last action do? If LAST RESULT says NO CHANGE, that action does not work here: do something different (another item, scroll, back, a different kind of item).
 3. What is the one action that makes progress now?
 
-Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "button"/"link" are clickable, "popup" marks a pop-up covering the page. "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
+Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "button"/"link" are clickable, "popup" marks a pop-up covering the page. "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. To reach a section of the page, use scrollto with a word from its heading (the SECTIONS list shows what exists and what is on screen); "on screen" means that section's heading is in the viewport now. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
 Write a short notes line each step (what you learned, what to avoid); it is shown to you next step.
 
 Answer with one JSON object only:
@@ -101,6 +104,7 @@ Answer with one JSON object only:
 {{"observed":"...","notes":"...","action":"click","n":3,"reason":"..."}}
 {{"observed":"...","notes":"...","action":"type","n":0,"text":"words","enter":true,"reason":"..."}}
 {{"observed":"...","notes":"...","action":"scroll","px":700,"reason":"..."}}
+{{"observed":"...","notes":"...","action":"scrollto","text":"Reviews","reason":"..."}}
 {{"observed":"...","notes":"...","action":"back","reason":"..."}}
 {{"observed":"...","notes":"...","action":"dismiss","reason":"close the pop-up covering the page"}}
 {{"observed":"...","notes":"...","action":"key","key":"Escape","reason":"..."}}
@@ -171,7 +175,7 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
         if should_stop(): return DA.RunResult("stopped", "stop requested", step - 1, calls, job_id)
         try:
             page = browser.elements(); st = page.get("state") or {}; elements = page.get("elements") or []
-            text = browser.text().get("text", "")
+            tx = browser.text(); text = tx.get("text", ""); outline = tx.get("outline") or []
         except Exception as exc:
             return DA.RunResult("failed", "browser read failed: " + str(exc)[:200], step - 1, calls, job_id)
         page_hash = hashlib.sha256((str(st.get("url")) + "|" + str(st.get("title")) + "|" + (text or "")[:3000] + "|" + str(int(st.get("scrollY", 0) or 0) // 200)).encode()).hexdigest()[:16]
@@ -195,10 +199,11 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 return DA.RunResult("completed", why, step, calls, job_id)
         elif verifier is not None and step >= 3 and (step - 3) % 4 == 0:
             calls += 1
-            ok, why = verifier(task, "the task as stated is complete", st, text)
+            try: ok, why = verifier(task, "the task as stated is complete", st, text, outline)
+            except TypeError: ok, why = verifier(task, "the task as stated is complete", st, text)
             DA._audit({"job_id": job_id, "step": step, "mode": "browser", "check": {"complete": bool(ok), "why": str(why)[:200]}})
             if ok: return DA.RunResult("completed", "completion check: " + str(why)[:300], step, calls, job_id)
-        summary = _summary(st, elements, text)
+        summary = _summary(st, elements, text, outline)
         try:
             try: action = planner(task, summary, step, last_result, recent, notes)
             except TypeError: action = planner(task, summary, step, last_result, recent)
@@ -221,7 +226,8 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                     last_result = "DONE REJECTED: " + why; last_sig = ""; recent.append({"step": step, "action": {"action": "done"}, "result": last_result}); continue
             elif verifier is not None:
                 calls += 1
-                ok, why = verifier(task, summary_txt, st, text)
+                try: ok, why = verifier(task, summary_txt, st, text, outline)
+                except TypeError: ok, why = verifier(task, summary_txt, st, text)
                 DA._audit({"job_id": job_id, "step": step, "mode": "browser", "verify": {"claimed": summary_txt[:200], "confirmed": bool(ok), "why": str(why)[:200]}})
                 if not ok:
                     last_result = "DONE REJECTED: " + str(why)[:200]; last_sig = ""; recent.append({"step": step, "action": {"action": "done"}, "result": last_result}); continue
@@ -252,6 +258,9 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 last_result = (f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + f" -> {r['state'].get('title')}") if r.get("ok") else "type failed: " + str(r.get("error"))
             elif kind == "scroll":
                 px = max(-3000, min(3000, int(action.get("px", 700)))); browser.scroll(px); last_result = f"scrolled {px}"
+            elif kind == "scrollto":
+                r = browser.scrollto(str(action.get("text", ""))[:80])
+                last_result = (f"scrolled to '{r.get('found')}'" if r.get("ok") else f"no section or text matching '{action.get('text')}' on this page; see the SECTIONS list")
             elif kind == "dismiss":
                 r = browser.dismiss(); last_result = f"dismiss: {r.get('how')} -> now on: {r['state'].get('title')}"
             elif kind == "back":
@@ -274,8 +283,10 @@ class GemmaPageVerifier:
     def __init__(self, endpoint: str = DA.GEMMA_API, model: str = DA.GEMMA_MODEL, timeout: float = 60.0):
         self.endpoint, self.model, self.timeout = endpoint, model, timeout
 
-    def __call__(self, task: str, claim: str, st: Dict[str, Any], text: str) -> Tuple[bool, str]:
-        prompt = (f"TASK: {task}\nCLAIM: {claim}\nPAGE URL: {st.get('url')}\nPAGE TITLE: {st.get('title')}\nPAGE TEXT (excerpt):\n{(text or '')[:3000]}\n\n"
+    def __call__(self, task: str, claim: str, st: Dict[str, Any], text: str, outline: Optional[List[Dict[str, Any]]] = None) -> Tuple[bool, str]:
+        secs = "\n".join(f"  {'ON SCREEN' if o.get('onscreen') else '         '} {o.get('text', '')}" for o in (outline or [])[:40])
+        prompt = (f"TASK: {task}\nCLAIM: {claim}\nPAGE URL: {st.get('url')}\nPAGE TITLE: {st.get('title')}\nSCROLL: {st.get('scrollY', 0)} of {st.get('height', 0)}\n"
+                  f"SECTIONS OF THE PAGE (which are on screen now):\n{secs}\nTEXT VISIBLE ON SCREEN NOW:\n{(text or '')[:3000]}\n\n"
                   "Does the page state show that the claim is true and the task is complete? Any error, wrong page, or missing result means NO. "
                   'Answer one JSON object only: {"verified": true|false, "seen": "one sentence"}')
         body = json.dumps({"model": self.model, "temperature": 0.0, "max_tokens": 120, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
