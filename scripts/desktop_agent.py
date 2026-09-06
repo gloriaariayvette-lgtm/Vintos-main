@@ -45,8 +45,11 @@ GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
 
 ALLOWED_ACTIONS = {
     "move", "click", "double_click", "right_click", "drag", "scroll",
-    "type", "press", "hotkey", "wait", "launch", "focus", "done", "fail",
+    "type", "press", "hotkey", "wait", "launch", "focus", "open_url", "done", "fail",
 }
+URL_RE = re.compile(r"^https?://[^\s\"'<>]{4,2000}$", re.I)
+DEFAULT_MAX_STEPS = 60      # a video hunt is: open search, scroll, pick, wait for playback, verify - not 3 steps
+HARD_MAX_STEPS = 150
 # the window title each launched app shows, so launch can wait for it and give it the keyboard
 WINDOW_TITLES = {"notepad": "Notepad", "calc": "Calculator", "mspaint": "Paint", "explorer": "File Explorer",
                  "msedge": "Edge", "chrome": "Chrome", "spotify": "Spotify", "ms-settings:": "Settings", "wt": "Terminal"}
@@ -198,8 +201,15 @@ class PyAutoGUIBackend:
             return f"drag ({x1},{y1}) to ({x2},{y2})"
         if kind == "scroll":
             amount = max(-12, min(12, int(action.get("amount", 0))))
-            self.pg.scroll(amount)
+            if "x" in action and "y" in action:
+                x, y = self._scaled(action, image_size, desktop_size, "x", "y"); self.pg.moveTo(x, y, duration=.1)
+            self.pg.scroll(amount * 3)
             return f"scroll {amount}"
+        if kind == "open_url":
+            url = str(action.get("url", "")).strip()
+            if not URL_RE.match(url): raise ValueError("open_url needs a full http(s) address")
+            subprocess.Popen(["xdg-open", url], start_new_session=True); time.sleep(2.0)
+            return f"opened {url[:80]}"
         if kind == "type":
             text = str(action.get("text", ""))[:4000]
             if not text: raise ValueError("empty text")
@@ -227,7 +237,7 @@ class PyAutoGUIBackend:
             self.pg.hotkey(*keys)
             return "hotkey " + "+".join(keys)
         if kind == "wait":
-            seconds = max(.1, min(5.0, float(action.get("seconds", 1))))
+            seconds = max(.1, min(8.0, float(action.get("seconds", 1))))
             time.sleep(seconds)
             return f"waited {seconds:g}s"
         if kind == "launch":
@@ -270,17 +280,19 @@ Return one JSON object only. Coordinates are pixels in the screenshot you see, n
 Allowed shapes:
 {{"action":"click|double_click|right_click|move","x":123,"y":456,"reason":"..."}}
 {{"action":"drag","x":1,"y":2,"to_x":3,"to_y":4,"duration":0.6,"reason":"..."}}
-{{"action":"scroll","amount":-5,"reason":"..."}}
+{{"action":"scroll","amount":-5,"x":800,"y":400,"reason":"..."}}   (negative = down; x,y optional: where to scroll)
+{{"action":"open_url","url":"https://www.youtube.com/results?search_query=...","reason":"..."}}   (opens in the browser; the fastest way to reach a site or a search)
 {{"action":"type","text":"exact text","reason":"..."}}
 {{"action":"press","key":"enter","reason":"..."}}
 {{"action":"hotkey","keys":["ctrl","l"],"reason":"..."}}
 {{"action":"launch","app":"notepad","reason":"..."}}   (apps: {", ".join(sorted(set(LAUNCHABLE)))})
 {{"action":"focus","title":"Calculator","reason":"..."}}   (bring a window to the front by its title before typing into it)
-{{"action":"wait","seconds":1,"reason":"..."}}
+{{"action":"wait","seconds":3,"reason":"..."}}   (up to 8: after open_url, launch, or a click that loads a page, wait before deciding)
 {{"action":"done","summary":"what visibly proves completion"}}
 {{"action":"fail","reason":"why the task cannot be completed"}}
 
-To open an application use launch, or press "win", type its name, press enter. Do not hunt for tiny taskbar icons. Keys go to the ACTIVE window only: check DESKTOP "active_window" before type/press/hotkey, and use focus (or click the window) when it is not the one you mean. If the same action did nothing, do something different.
+To open an application use launch, or press "win", type its name, press enter. To reach a website or a search, use open_url with the full address (a YouTube search is https://www.youtube.com/results?search_query=WORDS). Do not hunt for tiny taskbar icons. Keys go to the ACTIVE window only: check DESKTOP "active_window" before type/press/hotkey, and use focus (or click the window) when it is not the one you mean.
+Long tasks: work in stages and keep going until the task itself is done - opening the site is not done, finding the thing is not done, the thing playing or posted or visible IS done. Scroll to see more when what you want is not on screen; read titles before clicking; click the thumbnail or title of the exact result you chose; after a page loads, wait, then look again. For a video, done means the player is visibly playing that video. If the same action did nothing twice, do something different.
 Do not claim success unless it is verified: for anything visible, the current screenshot must show it. The mouse cursor is NOT drawn in screenshots - for cursor position use the DESKTOP "mouse" field (true desktop pixels) together with LAST RESULT. If the task is already done, return done now; do not repeat an action that already succeeded. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
         body = json.dumps({
             "model": self.model,
@@ -349,7 +361,7 @@ class RunResult:
 
 
 def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str, Any]],
-             max_steps: int = 40, interval: float = .25, dry_run: bool = False,
+             max_steps: int = DEFAULT_MAX_STEPS, interval: float = .25, dry_run: bool = False,
              should_stop: Callable[[], bool] = _stop_requested,
              job_id: Optional[str] = None,
              progress: Optional[Callable[[int, int], None]] = None,
@@ -393,8 +405,8 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
         sig = json.dumps({k: v for k, v in action.items() if k != "reason"},
                          sort_keys=True, ensure_ascii=False)
         repeated = repeated + 1 if sig == last_action_sig else 0
-        if repeated >= 3:
-            return RunResult("failed", "same action repeated four times", step, calls, job_id)
+        if repeated >= (7 if kind == "scroll" else 3):   # eight identical scrolls is a page you should not be on; four identical anything else is a stall
+            return RunResult("failed", "same action repeated %d times" % (repeated + 1), step, calls, job_id)
         last_action_sig = sig
         try:
             last_result = backend.execute(action, image_size)
@@ -403,7 +415,26 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
         recent.append({"step": step, "action": action, "result": last_result})
         if should_stop(): return RunResult("stopped", "stop requested", step, calls, job_id)
         time.sleep(max(0.0, min(interval, 2.0)))
+        if kind in ("open_url", "launch", "click", "double_click", "press") and not dry_run:
+            _settle(backend, should_stop)
     return RunResult("failed", f"maximum {max_steps} steps reached", max_steps, calls, job_id)
+
+
+def _settle(backend: DesktopBackend, should_stop: Callable[[], bool], max_wait: float = 6.0, quiet: float = 0.9) -> None:
+    """After an action that may load something, wait until two captures in a row match (the page stopped
+    changing) or max_wait passes. Costs no Gemma calls; saves the decision that would have been made on a
+    half-drawn page."""
+    t0 = time.time(); last = None
+    while time.time() - t0 < max_wait:
+        if should_stop(): return
+        try:
+            shot, _i, _d = backend.capture()
+        except Exception:
+            return
+        h = hashlib.sha256(shot).hexdigest()
+        if h == last: return
+        last = h
+        time.sleep(quiet)
 
 
 @contextlib.contextmanager
@@ -439,7 +470,7 @@ def pick_backend() -> DesktopBackend:
     return PyAutoGUIBackend()
 
 
-def run_task(task: str, max_steps: int = 40, interval: float = .25,
+def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .25,
              dry_run: bool = False, job_id: Optional[str] = None) -> RunResult:
     job_id = job_id or uuid.uuid4().hex[:12]
     with _exclusive_run():
@@ -465,7 +496,7 @@ def run_task(task: str, max_steps: int = 40, interval: float = .25,
         return result
 
 
-def start_task(task: str, max_steps: int = 40) -> Dict[str, Any]:
+def start_task(task: str, max_steps: int = DEFAULT_MAX_STEPS) -> Dict[str, Any]:
     current = read_state()
     if current.get("status") in ("starting", "running", "stopping"):
         return {"accepted": False, "reason": "a desktop task is already active", "state": current}
@@ -535,7 +566,7 @@ def register(app: Any, secret: str) -> None:
     @app.post("/api/desktop/start")
     async def desktop_start(request: Request):
         auth(request); body = await request.json()
-        return start_task(str(body.get("task", "")), max(1, min(100, int(body.get("max_steps", 40)))))
+        return start_task(str(body.get("task", "")), max(1, min(HARD_MAX_STEPS, int(body.get("max_steps", DEFAULT_MAX_STEPS)))))
 
     @app.post("/api/desktop/stop")
     async def desktop_stop(request: Request):
@@ -572,14 +603,14 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
     run.add_argument("--task", required=True)
-    run.add_argument("--max-steps", type=int, default=40)
+    run.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS)
     run.add_argument("--interval", type=float, default=.25)
     run.add_argument("--dry-run", action="store_true")
     run.add_argument("--job-id")
     sub.add_parser("status"); sub.add_parser("stop"); sub.add_parser("doctor")
     args = parser.parse_args()
     if args.command == "run":
-        result = run_task(args.task, max(1, min(args.max_steps, 100)), args.interval,
+        result = run_task(args.task, max(1, min(args.max_steps, HARD_MAX_STEPS)), args.interval,
                           args.dry_run, args.job_id)
         print(json.dumps(dataclasses.asdict(result), ensure_ascii=False))
         return 0 if result.status in ("completed", "dry_run", "stopped") else 1

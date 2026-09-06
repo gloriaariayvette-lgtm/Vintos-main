@@ -54,7 +54,12 @@ elif op == "execute":
     elif kind == "right_click": pyautogui.rightClick(a["x"], a["y"]); res = "right_click"
     elif kind == "drag":
         pyautogui.moveTo(a["x"], a["y"], duration=.15); pyautogui.dragTo(a["to_x"], a["to_y"], duration=min(float(a.get("duration", .6)), 3.0), button="left"); res = "drag"
-    elif kind == "scroll": pyautogui.scroll(int(a["amount"])); res = "scroll"
+    elif kind == "scroll":
+        if "x" in a and "y" in a: pyautogui.moveTo(a["x"], a["y"], duration=.1)
+        pyautogui.scroll(int(a["amount"]) * 120); res = "scroll %d" % int(a["amount"])   # Windows wheel units: 120 per notch
+    elif kind == "open_url":
+        import subprocess, time
+        subprocess.Popen(["cmd", "/c", "start", "", a["url"]]); time.sleep(2.5); res = "opened " + a["url"][:80]
     elif kind == "type":
         text = a["text"]
         # keystrokes for short plain text (a paste of "12+7" is Invalid input to Calculator; keys are what a
@@ -191,6 +196,12 @@ class WindowsPythonBackend:
             a["to_x"], a["to_y"] = self._scaled(action, image_size, "to_x", "to_y"); a["duration"] = action.get("duration", .6)
         elif kind == "scroll":
             a["amount"] = max(-12, min(12, int(action.get("amount", 0))))
+            if "x" in action and "y" in action: a["x"], a["y"] = self._scaled(action, image_size, "x", "y")
+        elif kind == "open_url":
+            import desktop_agent
+            url = str(action.get("url", "")).strip()
+            if not desktop_agent.URL_RE.match(url): raise ValueError("open_url needs a full http(s) address")
+            a["url"] = url
         elif kind == "type":
             a["text"] = str(action.get("text", ""))[:4000]
             if not a["text"]: raise ValueError("empty text")
@@ -201,7 +212,7 @@ class WindowsPythonBackend:
             a["keys"] = [str(k).lower() for k in action.get("keys", [])][:4]
             if not a["keys"] or not all(re.fullmatch(r"[a-z0-9_+\-]{1,24}", k) for k in a["keys"]): raise ValueError("invalid hotkey")
         elif kind == "wait":
-            s = max(.1, min(5.0, float(action.get("seconds", 1)))); time.sleep(s); return f"waited {s:g}s"
+            s = max(.1, min(8.0, float(action.get("seconds", 1)))); time.sleep(s); return f"waited {s:g}s"
         elif kind == "launch":
             import desktop_agent
             name = str(action.get("app", "")).lower().strip()

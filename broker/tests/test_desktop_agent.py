@@ -46,7 +46,7 @@ for bad in ('{"action":"shell","cmd":"rm"}', "no json here", '["click"]'):
 b = FakeBackend()
 r = DA.run_loop("open x", b, planner_from([{"action": "click", "x": 1, "y": 1}, {"action": "type", "text": "hi"}, {"action": "done", "summary": "open"}]),
                 max_steps=10, interval=0, should_stop=lambda: False)
-check("loop: one action per fresh screenshot, done ends it", r.status == "completed" and r.steps == 3 and b.n == 3 and len(b.done) == 2 and r.gemma_calls == 3, r)
+check("loop: one action per fresh screenshot, done ends it", r.status == "completed" and r.steps == 3 and b.n >= 3 and len(b.done) == 2 and r.gemma_calls == 3, r)
 b = FakeBackend()
 r = DA.run_loop("t", b, planner_from([{"action": "fail", "reason": "no such app"}]), max_steps=10, interval=0, should_stop=lambda: False)
 check("loop: fail ends with Gemma's reason", r.status == "failed" and r.reason == "no such app" and not b.done)
@@ -117,6 +117,26 @@ check("launch: every launchable app has a window title to wait for", all(DA.WIND
 a = DA.parse_action('{"action":"focus","title":"Calculator"}'); check("parse: focus accepted", a["action"] == "focus")
 try: wp.execute({"action": "focus", "title": "  "}, (10, 10)); check("focus: empty title refused", False)
 except ValueError: check("focus: empty title refused", True)
+
+# --- long tasks: open_url, positional scroll, scroll tolerance, settle
+a = DA.parse_action('{"action":"open_url","url":"https://www.youtube.com/results?search_query=cats"}')
+check("parse: open_url accepted", a["action"] == "open_url")
+for bad in ("javascript:alert(1)", "file:///etc/passwd", "youtube.com"):
+    try: wp.execute({"action": "open_url", "url": bad}, (10, 10)); check(f"open_url refuses {bad}", False)
+    except ValueError: check(f"open_url refuses {bad}", True)
+b = FakeBackend()
+r = DA.run_loop("scroll a feed", b, planner_from([{"action": "scroll", "amount": -5, "reason": str(i)} for i in range(6)] + [{"action": "done", "summary": "seen"}]),
+                max_steps=12, interval=0, should_stop=lambda: False)
+check("loop: six identical scrolls are work, not a stall", r.status == "completed" and len(b.done) == 6, (r, len(b.done)))
+b = FakeBackend()
+r = DA.run_loop("scroll forever", b, planner_from([{"action": "scroll", "amount": -5} for i in range(12)]), max_steps=12, interval=0, should_stop=lambda: False)
+check("loop: eight identical scrolls end the job", r.status == "failed" and "repeated 8" in r.reason, r)
+class Settling(FakeBackend):
+    def __init__(self): super().__init__(); self.seq = iter([b"a", b"b", b"c", b"c", b"c"])
+    def capture(self): self.n += 1; return (next(self.seq, b"c"), (800, 450), (1600, 900))
+sb = Settling(); t0 = __import__("time").time(); DA._settle(sb, lambda: False, max_wait=3.0, quiet=0.05)
+check("settle: waits until two captures match, then returns", sb.n >= 3 and __import__("time").time() - t0 < 2.5, sb.n)
+check("defaults: a long task budget", DA.DEFAULT_MAX_STEPS >= 60 and DA.HARD_MAX_STEPS >= DA.DEFAULT_MAX_STEPS)
 
 # --- backend choice
 check("backend: Windows only on WSL with powershell.exe", DW.available() is False or (os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()))

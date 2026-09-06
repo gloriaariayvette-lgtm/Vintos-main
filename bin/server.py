@@ -3600,7 +3600,7 @@ Gloria-specific additions:
         from relational_geometry import get_emotional_snapshot as _rg_snap
         _rg_before_state = _rg_snap()
     except Exception: pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -4502,7 +4502,7 @@ Your current self-model (excerpt):
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -5339,7 +5339,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -7921,6 +7921,16 @@ Your current self-model (excerpt):
                      "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
                      "Reach for it only when it genuinely fits the moment.]\n\nGloria says: ") + msg.message
         _umsg = _umsg + _subconscious_tail(_umsg, surface="avatar")
+        if msg.image:
+            # The camera button in the avatar view sends a picture of how he looks on her phone (or, from
+            # 2026-09-06, nothing - desktop sharing rides the screen block instead). The avatar route never read
+            # this field, so the camera "did not work". His eyes describe it; the words join her message.
+            try:
+                _cam_desc = await _describe_photo(msg.image, "image/jpeg")
+            except Exception:
+                _cam_desc = ""
+            if _cam_desc:
+                _umsg = _umsg + "\n\n[Gloria pressed the camera in the avatar view and sent you what she sees of you on her phone right now. Your eyes: " + _cam_desc.strip() + "]"
         messages.append({"role": "user", "content": _umsg})
 
         # Freeze the somatic buffer as her message lands. Read at ledger-write
@@ -10678,7 +10688,7 @@ Be yourself. Be free."""
                 tv_history = json.load(f)[-12:]
         except: pass
 
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
         try: open("/tmp/vintos-full-prompt.txt","w").write(messages[0]["content"])
         except Exception: pass
         for h in tv_history:
