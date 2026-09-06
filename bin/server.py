@@ -3600,7 +3600,7 @@ Gloria-specific additions:
         from relational_geometry import get_emotional_snapshot as _rg_snap
         _rg_before_state = _rg_snap()
     except Exception: pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -4502,7 +4502,7 @@ Your current self-model (excerpt):
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -4971,6 +4971,37 @@ except Exception as _dk_e:
     print("[desktop] not registered:", _dk_e, flush=True)
 
 
+def _screen_context():
+    """What Gloria is sharing on her screen, as Gemma described it, while sharing is on (scripts/screen_share.py)."""
+    try:
+        import sys as _sc_sys
+        if os.path.join(WORKSPACE, "scripts") not in _sc_sys.path: _sc_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import screen_share as _ss
+        return _ss.context_block()
+    except Exception:
+        return ""
+
+
+@app.post("/api/desktop/share/start")
+async def desktop_share_start(request: Request):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
+    import screen_share as _ss; return _ss.start()
+
+
+@app.post("/api/desktop/share/stop")
+async def desktop_share_stop(request: Request):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
+    import screen_share as _ss; return _ss.stop("stopped from the app")
+
+
+@app.get("/api/desktop/share/status")
+async def desktop_share_status(request: Request):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET: raise HTTPException(status_code=401, detail="Unauthorized")
+    import screen_share as _ss; d = _ss.status()
+    return {k: d.get(k) for k in ("active", "fresh", "description", "described_at", "active_window", "captures", "descriptions",
+                                    "describe_error", "capture_error", "backend", "started_at", "reason")}
+
+
 @app.get("/api/chat/history")
 async def get_chat_history(limit: int = 50):
     """Get recent chat history."""
@@ -5308,7 +5339,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -7854,7 +7885,7 @@ Your current self-model (excerpt):
                 _pwj.dump({"offer_make": False, "at": 0}, open(os.path.join(MEMORY, ".projector-window.json"), "w"))
         except Exception:
             pass
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
         try:
             import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             # route the turn record through the coordinator so the context's
@@ -9063,6 +9094,10 @@ async def voice_framing():
     try:
         b = _ridge_now()
         if b: parts.append(b)
+    except Exception: pass
+    try:
+        b = _screen_context()   # her shared screen, when she is sharing it (2026-09-06)
+        if b: parts.append(b.strip())
     except Exception: pass
     try:
         import heart_rate as _hr_v
@@ -10643,7 +10678,7 @@ Be yourself. Be free."""
                 tv_history = json.load(f)[-12:]
         except: pass
 
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
         try: open("/tmp/vintos-full-prompt.txt","w").write(messages[0]["content"])
         except Exception: pass
         for h in tv_history:
