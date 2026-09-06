@@ -25,7 +25,7 @@ from urllib import request as urlrequest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import desktop_agent as DA
 
-ACTIONS = {"goto", "click", "type", "scroll", "key", "play", "back", "wait", "done", "fail"}
+ACTIONS = {"goto", "click", "type", "scroll", "key", "play", "back", "dismiss", "wait", "done", "fail"}
 WEB_HINT = re.compile(r"\b(youtube|browser|website|web ?site|web|search (for|the web)|video|review|url|https?://|google|recipe|reddit|wikipedia|tab|page|site|amazon|spotify web|open .{0,30}\.(com|org|net))\b", re.I)
 
 
@@ -60,10 +60,13 @@ def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str) -> s
     else:
         m = "VIDEO ELEMENT: none on this page"
     lines = [f"URL: {st.get('url')}", f"PAGE TYPE: {page_type(st.get('url', ''))}", f"TITLE: {st.get('title')}", m,
-             f"SCROLL: {st.get('scrollY', 0)} of {st.get('height', 0)} (viewport {st.get('inner', 0)})", "",
-             "THINGS ON THE PAGE, in page order (number, kind, label):"]
+             f"SCROLL: {st.get('scrollY', 0)} of {st.get('height', 0)} (viewport {st.get('inner', 0)})"]
+    popup = next((e for e in elements if e.get("marker")), None)
+    if popup:
+        lines.append(f"POP-UP COVERING THE PAGE: \"{popup.get('text', '')[:120]}\" -- the page behind it cannot be used until it is closed. Use dismiss (or click its close/No Thanks item, marked [pop-up]) unless the task needs this pop-up.")
+    lines += ["", "THINGS ON THE PAGE, in page order (number, kind, label):"]
     for i, e in enumerate(elements):
-        flag = "" if e.get("ontop", True) else " (below the fold)"
+        flag = ("" if e.get("ontop", True) else " (below the fold)") + (" [pop-up]" if e.get("popup") and not e.get("marker") else "")
         lines.append(f"[{i}] {e.get('kind', '?')}: {e.get('text', '')[:110]}{flag}")
     lines += ["", "PAGE TEXT (excerpt):", (text or "")[:2500]]
     return "\n".join(lines)
@@ -90,7 +93,7 @@ How to think, in order:
 2. What did my last action do? If LAST RESULT says NO CHANGE, that action does not work here: do something different (another item, scroll, back, a different kind of item).
 3. What is the one action that makes progress now?
 
-Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "button"/"link" are clickable. "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
+Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "button"/"link" are clickable, "popup" marks a pop-up covering the page. "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
 Write a short notes line each step (what you learned, what to avoid); it is shown to you next step.
 
 Answer with one JSON object only:
@@ -99,6 +102,7 @@ Answer with one JSON object only:
 {{"observed":"...","notes":"...","action":"type","n":0,"text":"words","enter":true,"reason":"..."}}
 {{"observed":"...","notes":"...","action":"scroll","px":700,"reason":"..."}}
 {{"observed":"...","notes":"...","action":"back","reason":"..."}}
+{{"observed":"...","notes":"...","action":"dismiss","reason":"close the pop-up covering the page"}}
 {{"observed":"...","notes":"...","action":"key","key":"Escape","reason":"..."}}
 {{"observed":"...","notes":"...","action":"play","reason":"..."}}
 {{"observed":"...","notes":"...","action":"wait","seconds":2,"reason":"..."}}
@@ -248,6 +252,8 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 last_result = (f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + f" -> {r['state'].get('title')}") if r.get("ok") else "type failed: " + str(r.get("error"))
             elif kind == "scroll":
                 px = max(-3000, min(3000, int(action.get("px", 700)))); browser.scroll(px); last_result = f"scrolled {px}"
+            elif kind == "dismiss":
+                r = browser.dismiss(); last_result = f"dismiss: {r.get('how')} -> now on: {r['state'].get('title')}"
             elif kind == "back":
                 r = browser.back(); last_result = f"went back -> now on: {r['state'].get('title')} ({page_type(r['state'].get('url', ''))})"
             elif kind == "key":

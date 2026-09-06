@@ -31,6 +31,8 @@ class FakeBrowser:
             els = [{"kind": "button", "text": "Play", "ontop": True}, {"kind": "link", "text": "Subscribe", "ontop": True}]
         else:
             els = [{"kind": "field", "text": "Search", "ontop": True}]
+        if getattr(self, "popup", False):
+            els = els + [{"kind": "button", "text": "No Thanks", "ontop": True, "popup": True}, {"kind": "popup", "text": "Would You Like to Send This Recipe to Yourself?", "marker": True, "popup": True}]
         return {"state": self._st(), "elements": els}
     def text(self): return {"state": self._st(), "text": f"{self.title}\nsome page text"}
     def click(self, n):
@@ -43,6 +45,8 @@ class FakeBrowser:
         else:
             self.history.pop(); return {"ok": True, "changed": False, "state": self._st()}
         return {"ok": True, "changed": True, "state": self._st()}
+    def dismiss(self):
+        self.popup = False; return {"ok": True, "how": "clicked 'No Thanks'", "state": self._st()}
     def back(self):
         if self.history: self.url, self.title, self.media = self.history.pop()
         return {"ok": True, "state": self._st()}
@@ -112,6 +116,12 @@ check("play pressed but the clock not moving is not playing", not BA.video_done(
 st["media"].update(currentTime=3, advancing=True)
 check("a moving clock is playing", BA.video_done(st, TASK)[0])
 check("page types from addresses", "CHANNEL" in BA.page_type("https://www.youtube.com/@x") and "WATCH" in BA.page_type("https://www.youtube.com/watch?v=1") and "SHORTS" in BA.page_type("https://www.youtube.com/shorts/1") and "SEARCH RESULTS" in BA.page_type("https://www.youtube.com/results?search_query=a"))
+
+fb = FakeBrowser(); fb.popup = True
+pl = planner_from([{"action": "dismiss"}, {"action": "goto", "url": "https://www.youtube.com/results?search_query=x"}, {"action": "click", "n": 2}, {"action": "play"}])
+r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
+check("a pop-up is named as covering the page, its items are marked, dismiss clears it and numbering is unchanged",
+      r.status == "completed" and "POP-UP COVERING THE PAGE" in pl.seen[0]["summary"] and "[pop-up]" in pl.seen[0]["summary"] and "No Thanks" in pl.seen[1]["last"] and "POP-UP" not in pl.seen[1]["summary"], (r, pl.seen[0]["summary"][:400]))
 
 a = BA.parse_action('{"observed":"results","action":"click","n":2,"reason":"r"}\n{"action":"play"}')
 check("parse: first object wins", a["action"] == "click" and a["n"] == 2)

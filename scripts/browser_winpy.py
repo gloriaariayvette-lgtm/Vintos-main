@@ -13,7 +13,7 @@ DevTools binds to localhost on Windows, so the client runs there too: a Windows 
 for /json, websocket-client for the socket), started from WSL exactly the way desktop_winpy does it.
 Needs, once on the Windows side:  python.exe -m pip install --user websocket-client
 
-CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | back | play | shot out.jpg
+CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | back | dismiss | play | shot out.jpg
 """
 from __future__ import annotations
 
@@ -106,9 +106,19 @@ ELEMENTS_JS = r"""
   const dest = h => { h = h || ''; if (/\/watch\?v=|vimeo\.com\/\d|dailymotion\.com\/video/.test(h)) return 'video';
     if (/\/shorts\//.test(h)) return 'short'; if (/youtube\.com\/(@|channel\/|c\/|user\/)/.test(h)) return 'channel';
     if (/youtube\.com\/playlist\?list=/.test(h)) return 'playlist'; return ''; };
+  // a pop-up covering the page (newsletter, "send this recipe to yourself", cookie wall): the things inside it are
+  // what can be clicked; the page behind is not reachable until it is closed
+  let overlay = null;
+  for (const d of document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog[open], [class*="modal" i], [id*="modal" i], [class*="popup" i], [class*="overlay" i], [class*="lightbox" i]')) {
+    if (!vis(d)) continue; const r = d.getBoundingClientRect(); const s = getComputedStyle(d);
+    if ((s.position === 'fixed' || s.position === 'absolute' || d.getAttribute('role') === 'dialog' || d.getAttribute('aria-modal') === 'true') && r.width * r.height > innerWidth * innerHeight * 0.08) {
+      if (!overlay || parseInt(s.zIndex || 0) >= parseInt(getComputedStyle(overlay).zIndex || 0)) overlay = d;
+    }
+  }
   const out = []; const seen = new Set();
   const nodes = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]');
-  for (const e of nodes) {
+  const ordered = overlay ? [...overlay.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]'), ...nodes] : [...nodes];
+  for (const e of ordered) {
     if (!vis(e)) continue;
     let tag = e.tagName.toLowerCase(); let kind = tag;
     let text = (e.innerText || e.value || e.getAttribute('aria-label') || e.getAttribute('placeholder') || e.title || e.alt || '').replace(/\s+/g, ' ').trim();
@@ -129,9 +139,13 @@ ELEMENTS_JS = r"""
       else if (tag === 'a' || e.getAttribute('role') === 'link') kind = 'link';
     }
     const r = e.getBoundingClientRect();
-    out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight});
+    out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight, popup: !!(overlay && overlay.contains(e))});
     e.setAttribute('data-vintos-n', String(out.length - 1));
     if (out.length >= %d) break;
+  }
+  if (overlay) {
+    const t = (overlay.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    out.push({kind: 'popup', text: t, href: '', x: 0, y: 0, ontop: true, popup: true, marker: true});   // appended: item numbers stay aligned with data-vintos-n
   }
   return out;
 })()
@@ -238,6 +252,24 @@ elif op == "click":
             c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(e) e.click();})()" % n); how = "js"; changed = wait_change(c, before, 3.0)
         if changed: wait_load(c, 6); settle_media(c)
         return {"ok": True, "changed": changed, "how": how, "state": state(c, t)}
+    print(json.dumps(with_tab(f)))
+elif op == "dismiss":
+    def f(c, t):
+        before = signature(c)
+        hit = c.eval(r"""(()=>{const rx=/^(close|dismiss|no thanks|no, thanks|not now|maybe later|reject|reject all|decline|skip|continue without|x|×|✕)$/i;
+          const cands=[...document.querySelectorAll('button, [role="button"], a[href], [aria-label]')].filter(e=>{const r=e.getBoundingClientRect(); return r.width>4&&r.height>4&&r.bottom>0&&r.top<innerHeight;});
+          const label=e=>((e.getAttribute('aria-label')||e.title||e.innerText||'').replace(/\s+/g,' ').trim());
+          let b=cands.find(e=>rx.test(label(e)))||cands.find(e=>/close|dismiss/i.test(label(e))||/close|dismiss/i.test(e.className||''));
+          if(!b) return null; const r=b.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2), label:label(b).slice(0,60)};})()""")
+        how = "nothing found"
+        if hit:
+            mouse_click(c, hit["x"], hit["y"]); how = "clicked '%s'" % hit["label"]
+            if not wait_change(c, before, 2.0): hit = None
+        if not hit:
+            for typ in ("keyDown", "keyUp"):
+                c.call("Input.dispatchKeyEvent", type=typ, key="Escape", code="Escape", windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
+            how += "; pressed Escape"; wait_change(c, before, 1.5)
+        return {"ok": True, "how": how, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "back":
     def f(c, t):
@@ -350,6 +382,7 @@ class EdgeBrowser:
     def key(self, key: str) -> Dict[str, Any]: return self._call("key", key=key, timeout=20)
     def play(self) -> Dict[str, Any]: return self._call("play", timeout=25)
     def back(self) -> Dict[str, Any]: return self._call("back", timeout=30)
+    def dismiss(self) -> Dict[str, Any]: return self._call("dismiss", timeout=20)
     def shot(self) -> bytes: return base64.b64decode(self._call("shot").get("jpeg", ""))
     def activate(self) -> Dict[str, Any]: return self._call("activate", timeout=10)
 
@@ -371,5 +404,6 @@ if __name__ == "__main__":
     elif cmd == "scroll": print(json.dumps(b.scroll(int(a[1]) if len(a) > 1 else 600), indent=2))
     elif cmd == "play": print(json.dumps(b.play(), indent=2))
     elif cmd == "back": print(json.dumps(b.back(), indent=2))
+    elif cmd == "dismiss": print(json.dumps(b.dismiss(), indent=2))
     elif cmd == "shot": open(a[1], "wb").write(b.shot()); print("wrote", a[1])
     else: print(__doc__)
