@@ -256,7 +256,7 @@ Allowed shapes:
 {{"action":"done","summary":"what visibly proves completion"}}
 {{"action":"fail","reason":"why the task cannot be completed"}}
 
-Do not claim success unless the current screenshot visibly verifies it. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
+Do not claim success unless it is verified: for anything visible, the current screenshot must show it. The mouse cursor is NOT drawn in screenshots - for cursor position use the DESKTOP "mouse" field (true desktop pixels) together with LAST RESULT. If the task is already done, return done now; do not repeat an action that already succeeded. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
         body = json.dumps({
             "model": self.model,
             "messages": [{"role": "user", "content": [
