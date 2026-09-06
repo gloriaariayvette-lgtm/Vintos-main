@@ -15,7 +15,7 @@ def check(n, ok, d=""):
 class FakeBrowser:
     """A tiny YouTube: a results page with three videos, a watch page whose video starts paused until play()."""
     def __init__(self):
-        self.url = "about:blank"; self.title = ""; self.media = None; self.log = []; self.scrolled = 0
+        self.url = "about:blank"; self.title = ""; self.media = None; self.log = []; self.scrolled = 0; self.history = []
     def ensure(self): return {"ok": True}
     def activate(self): return {"ok": True}
     def _st(self): return {"url": self.url, "title": self.title, "media": self.media, "scrollY": self.scrolled, "height": 4000, "inner": 900}
@@ -34,24 +34,31 @@ class FakeBrowser:
         return {"state": self._st(), "elements": els}
     def text(self): return {"state": self._st(), "text": f"{self.title}\nsome page text"}
     def click(self, n):
-        self.log.append(("click", n))
+        self.log.append(("click", n)); self.history.append((self.url, self.title, self.media))
         if "results" in self.url and n == 2:
             self.url = "https://www.youtube.com/watch?v=abc"; self.title = "Thug Cat knocks glass off table - YouTube"
             self.media = {"present": True, "paused": True, "ended": False, "currentTime": 0, "duration": 31}
+        elif "results" in self.url and n == 1:
+            self.url = "https://www.youtube.com/@dogchannel"; self.title = "Dog Channel - YouTube"; self.media = None
+        else:
+            self.history.pop(); return {"ok": True, "changed": False, "state": self._st()}
+        return {"ok": True, "changed": True, "state": self._st()}
+    def back(self):
+        if self.history: self.url, self.title, self.media = self.history.pop()
         return {"ok": True, "state": self._st()}
     def type(self, n, text, enter=False): self.log.append(("type", n, text)); return {"ok": True, "state": self._st()}
     def scroll(self, px): self.scrolled += px; return {"ok": True, "state": self._st()}
     def key(self, k): return {"ok": True, "state": self._st()}
     def play(self):
-        if self.media: self.media.update(paused=False, currentTime=2)
+        if self.media: self.media.update(paused=False, currentTime=2, advancing=True)
         return {"ok": True, "result": "played", "state": self._st()}
     def shot(self): return b"jpeg"
 
 
 def planner_from(script):
     it = iter(script); seen = []
-    def plan(task, summary, step, last_result, recent):
-        seen.append({"step": step, "summary": summary, "last": last_result}); return next(it)
+    def plan(task, summary, step, last_result, recent, notes=""):
+        seen.append({"step": step, "summary": summary, "last": last_result, "notes": notes}); return next(it)
     plan.seen = seen; return plan
 
 TASK = "search YouTube for cat knocks glass off table and play the first real one"
@@ -86,6 +93,25 @@ def ver(task, claim, st, text): checks.append(claim); return (claim == "the task
 pl = planner_from([{"action": "scroll", "px": 500, "reason": str(i)} for i in range(12)])
 r = BA.run("open the recipe website and leave a review", fb, pl, max_steps=12, should_stop=lambda: False, verifier=ver)
 check("non-video task: the periodic page check completes it", r.status == "completed" and "completion check" in r.reason, (r, checks))
+
+fb = FakeBrowser()
+pl = planner_from([{"action": "goto", "url": "https://www.youtube.com/results?search_query=x"},
+                   {"action": "click", "n": 1, "notes": "item 1 was a channel, not a video"}, {"action": "back"}, {"action": "click", "n": 2}, {"action": "play"}])
+r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
+check("wrong turn: a channel page is named as such, back returns to the results, the run completes",
+      r.status == "completed" and "CHANNEL page" in pl.seen[2]["summary"] and "went back" in pl.seen[3]["last"] and "SEARCH RESULTS" in pl.seen[3]["summary"], (r, [x["last"] for x in pl.seen]))
+check("the model's notes are carried to the next steps", pl.seen[2]["notes"] == "item 1 was a channel, not a video" and pl.seen[4]["notes"] == pl.seen[2]["notes"], [x["notes"] for x in pl.seen])
+
+fb = FakeBrowser()
+pl = planner_from([{"action": "goto", "url": "https://www.youtube.com/results?search_query=x"}, {"action": "click", "n": 0}, {"action": "click", "n": 2}, {"action": "play"}])
+r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
+check("an action that changed nothing is reported as NO CHANGE, and a different choice is not punished", r.status == "completed" and pl.seen[2]["last"].startswith("NO CHANGE"), (r, [x["last"] for x in pl.seen]))
+
+st = {"title": "t", "media": {"present": True, "paused": False, "ended": False, "currentTime": 0, "duration": 45, "advancing": False}}
+check("play pressed but the clock not moving is not playing", not BA.video_done(st, TASK)[0] and "clock" in BA.video_done(st, TASK)[1])
+st["media"].update(currentTime=3, advancing=True)
+check("a moving clock is playing", BA.video_done(st, TASK)[0])
+check("page types from addresses", "CHANNEL" in BA.page_type("https://www.youtube.com/@x") and "WATCH" in BA.page_type("https://www.youtube.com/watch?v=1") and "SHORTS" in BA.page_type("https://www.youtube.com/shorts/1") and "SEARCH RESULTS" in BA.page_type("https://www.youtube.com/results?search_query=a"))
 
 a = BA.parse_action('{"observed":"results","action":"click","n":2,"reason":"r"}\n{"action":"play"}')
 check("parse: first object wins", a["action"] == "click" and a["n"] == 2)

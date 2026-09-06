@@ -13,7 +13,7 @@ DevTools binds to localhost on Windows, so the client runs there too: a Windows 
 for /json, websocket-client for the socket), started from WSL exactly the way desktop_winpy does it.
 Needs, once on the Windows side:  python.exe -m pip install --user websocket-client
 
-CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | shot out.jpg
+CLI:  browser_winpy.py ensure | tabs | goto URL | elements | text | media | click N | type N TEXT | scroll PX | back | play | shot out.jpg
 """
 from __future__ import annotations
 
@@ -101,21 +101,24 @@ ELEMENTS_JS = r"""
 (() => {
   const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
     return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none' && r.bottom > 0 && r.top < innerHeight * 3; };
-  const isWatch = h => /\/watch\?v=|\/shorts\/|\/video\/|vimeo\.com\/\d|dailymotion\.com\/video/.test(h || '');
+  // where a link goes decides what it is: a watch page is a video, /shorts/ a short, a channel a channel, a
+  // playlist a playlist. YouTube's wrappers change every few months; destinations do not.
+  const dest = h => { h = h || ''; if (/\/watch\?v=|vimeo\.com\/\d|dailymotion\.com\/video/.test(h)) return 'video';
+    if (/\/shorts\//.test(h)) return 'short'; if (/youtube\.com\/(@|channel\/|c\/|user\/)/.test(h)) return 'channel';
+    if (/youtube\.com\/playlist\?list=/.test(h)) return 'playlist'; return ''; };
   const out = []; const seen = new Set();
-  // YouTube keeps changing its result markup (ytd-video-renderer, then yt-lockup-view-model); a video is any link to
-  // a watch page with a label, whatever it is wrapped in
   const nodes = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]');
   for (const e of nodes) {
     if (!vis(e)) continue;
     let tag = e.tagName.toLowerCase(); let kind = tag;
     let text = (e.innerText || e.value || e.getAttribute('aria-label') || e.getAttribute('placeholder') || e.title || e.alt || '').replace(/\s+/g, ' ').trim();
-    if (tag === 'a' && isWatch(e.href)) {
-      kind = 'video';
+    const d = tag === 'a' ? dest(e.href) : '';
+    if (d) {
+      kind = d;
       const h = e.querySelector('h3, #video-title, [class*="title"]');
       if (h && (h.innerText || '').trim()) text = h.innerText.replace(/\s+/g, ' ').trim();
       if (!text) continue;
-      const vkey = 'video|' + e.href.replace(/&.*$/, '');
+      const vkey = kind + '|' + e.href.replace(/[&#].*$/, '');
       if (seen.has(vkey)) continue; seen.add(vkey);
     } else {
       if (!text && !['input','textarea'].includes(tag)) continue;
@@ -145,26 +148,55 @@ def with_tab(fn):
     finally:
         c.close()
 
-def state(c, t):
+MEDIA_JS = """(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return null;
+  const score=v=>{const r=v.getBoundingClientRect(); const onscreen=r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;
+    return (v.currentTime>0?1000:0)+(!v.paused&&!v.ended?100:0)+(v.readyState>=2?10:0)+(onscreen?1:0)+Math.min(v.currentTime,9)/10;};
+  const v=vs.slice().sort((a,b)=>score(b)-score(a))[0];
+  return {present:true, count:vs.length, paused:v.paused, ended:v.ended, currentTime:Math.round(v.currentTime*10)/10, duration:Math.round(v.duration||0), readyState:v.readyState, src:(v.currentSrc||'').slice(0,80)};})()"""
+
+def media_state(c, sample=True):
+    # the player actually on screen, not the first in the DOM (Shorts keeps several preloaded), and "playing" is a
+    # clock that moves between two reads, not a flag that play was pressed (2026-09-06)
+    m = c.eval(MEDIA_JS)
+    if not m: return None
+    if sample and not m.get("paused") and not m.get("ended"):
+        t1 = m.get("currentTime", 0); time.sleep(1.2); m2 = c.eval(MEDIA_JS) or m
+        m2["advancing"] = float(m2.get("currentTime", 0)) > float(t1); m2["currentTime"] = round(m2.get("currentTime", 0)); return m2
+    m["advancing"] = False; m["currentTime"] = round(m.get("currentTime", 0)); return m
+
+def signature(c):
+    return c.eval("(()=>{const t=(document.body&&document.body.innerText||'').slice(0,4000); let h=0; for(const ch of t){h=(h*31+ch.charCodeAt(0))>>>0;} return location.href+'|'+document.title+'|'+h+'|'+Math.round(scrollY/200);})()")
+
+def wait_change(c, before, secs):
+    for _ in range(int(secs * 4)):
+        time.sleep(0.25)
+        try:
+            if signature(c) != before: return True
+        except Exception: pass
+    return False
+
+def wait_load(c, secs=15):
+    for _ in range(int(secs * 4)):
+        time.sleep(0.25)
+        try:
+            if c.eval("document.readyState") == "complete": break
+        except Exception: pass
+    time.sleep(0.8)
+
+def mouse_click(c, x, y):
+    c.call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+    c.call("Input.dispatchMouseEvent", type="mousePressed", x=x, y=y, button="left", clickCount=1)
+    c.call("Input.dispatchMouseEvent", type="mouseReleased", x=x, y=y, button="left", clickCount=1)
+
+def state(c, t, sample=True):
     info = c.eval("({url: location.href, title: document.title, scrollY: Math.round(scrollY), height: Math.round(document.documentElement.scrollHeight), inner: innerHeight})") or {}
-    # the one that is actually playing, not the first in the DOM: YouTube Shorts keeps several preloaded players and
-    # the first reports 0s of 0s forever (2026-09-06)
-    media = c.eval("""(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return null;
-      const score=v=>{const r=v.getBoundingClientRect(); const onscreen=r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;
-        return (v.currentTime>0?1000:0)+(!v.paused&&!v.ended?100:0)+(v.readyState>=2?10:0)+(onscreen?1:0)+Math.min(v.currentTime,9)/10;};
-      const v=vs.slice().sort((a,b)=>score(b)-score(a))[0];
-      return {present:true, count:vs.length, paused:v.paused, ended:v.ended, currentTime:Math.round(v.currentTime), duration:Math.round(v.duration||0), readyState:v.readyState, src:(v.currentSrc||'').slice(0,80)};})()""")
-    return {"tab": t["id"], "url": info.get("url"), "title": info.get("title"), "scrollY": info.get("scrollY"), "height": info.get("height"), "inner": info.get("inner"), "media": media}
+    return {"tab": t["id"], "url": info.get("url"), "title": info.get("title"), "scrollY": info.get("scrollY"), "height": info.get("height"), "inner": info.get("inner"), "media": media_state(c, sample)}
 
 if op == "ensure": print(json.dumps(ensure()))
 elif op == "tabs": print(json.dumps([{"id": t["id"], "title": t.get("title"), "url": t.get("url")} for t in tabs()]))
 elif op == "goto":
     def f(c, t):
-        c.call("Page.navigate", url=req["url"])
-        for _ in range(60):
-            time.sleep(0.25)
-            if c.eval("document.readyState") == "complete": break
-        time.sleep(0.8)
+        c.call("Page.navigate", url=req["url"]); wait_load(c)
         return state(c, t)
     print(json.dumps(with_tab(f)))
 elif op == "state": print(json.dumps(with_tab(state)))
@@ -181,13 +213,23 @@ elif op == "text":
 elif op == "click":
     def f(c, t):
         n = int(req["n"])
-        ok = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return 'missing'; e.scrollIntoView({block:'center'}); e.click(); return 'clicked';})()" % n)
-        if ok == "missing": return {"ok": False, "error": "element %d is gone; list elements again" % n}
-        for _ in range(24):
-            time.sleep(0.25)
-            if c.eval("document.readyState") == "complete": break
-        time.sleep(1.0)
-        return {"ok": True, "state": state(c, t)}
+        info = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return null; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2), href:(e.tagName==='A'&&/^https?:/.test(e.href))?e.href:''};})()" % n)
+        if not info: return {"ok": False, "error": "element %d is gone; list elements again" % n}
+        before = signature(c); how = "mouse"
+        # what a person does: a real pointer click at the element; synthetic .click() is swallowed by half of
+        # YouTube's components and lands on the wrong wrapper for the other half (a channel page, 2026-09-06)
+        mouse_click(c, info["x"], info["y"])
+        changed = wait_change(c, before, 4.0)
+        if not changed and info.get("href"):
+            c.call("Page.navigate", url=info["href"]); wait_load(c); how = "navigate"; changed = signature(c) != before
+        elif not changed:
+            c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(e) e.click();})()" % n); how = "js"; changed = wait_change(c, before, 3.0)
+        if changed: wait_load(c, 6)
+        return {"ok": True, "changed": changed, "how": how, "state": state(c, t)}
+    print(json.dumps(with_tab(f)))
+elif op == "back":
+    def f(c, t):
+        before = signature(c); c.eval("history.back()"); wait_change(c, before, 5.0); wait_load(c, 6); return {"ok": True, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "type":
     def f(c, t):
@@ -214,8 +256,13 @@ elif op == "key":
     print(json.dumps(with_tab(f)))
 elif op == "play":
     def f(c, t):
-        r = c.eval("(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return 'no video'; const on=v=>{const r=v.getBoundingClientRect(); return r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;}; const v=vs.find(on)||vs[0]; v.muted=false; v.play(); return 'played';})()")
-        time.sleep(1.5); return {"ok": True, "result": r, "state": state(c, t)}
+        r = c.eval("(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return 'no video'; const on=v=>{const r=v.getBoundingClientRect(); return r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;}; const v=vs.find(on)||vs[0]; v.muted=false; v.play().catch(()=>{}); return 'played';})()")
+        m = media_state(c) if r != "no video" else None
+        if m and not m.get("advancing"):
+            # the site's own button, a real click, as a person would
+            btn = c.eval("(()=>{const b=document.querySelector('.ytp-large-play-button, button.ytp-play-button, [aria-label=\"Play\"], [title=\"Play\"]'); if(!b) return null; const r=b.getBoundingClientRect(); return r.width>0?{x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}:null;})()")
+            if btn: mouse_click(c, btn["x"], btn["y"]); r = "played via the page's play button"
+        time.sleep(0.5); return {"ok": True, "result": r, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "shot":
     def f(c, t):
@@ -289,7 +336,8 @@ class EdgeBrowser:
     def type(self, n: int, text: str, enter: bool = False) -> Dict[str, Any]: return self._call("type", n=int(n), text=text, enter=bool(enter))
     def scroll(self, px: int) -> Dict[str, Any]: return self._call("scroll", px=int(px), timeout=20)
     def key(self, key: str) -> Dict[str, Any]: return self._call("key", key=key, timeout=20)
-    def play(self) -> Dict[str, Any]: return self._call("play", timeout=20)
+    def play(self) -> Dict[str, Any]: return self._call("play", timeout=25)
+    def back(self) -> Dict[str, Any]: return self._call("back", timeout=30)
     def shot(self) -> bytes: return base64.b64decode(self._call("shot").get("jpeg", ""))
     def activate(self) -> Dict[str, Any]: return self._call("activate", timeout=10)
 
@@ -310,5 +358,6 @@ if __name__ == "__main__":
     elif cmd == "type": print(json.dumps(b.type(int(a[1]), " ".join(a[2:]), enter=True), indent=2))
     elif cmd == "scroll": print(json.dumps(b.scroll(int(a[1]) if len(a) > 1 else 600), indent=2))
     elif cmd == "play": print(json.dumps(b.play(), indent=2))
+    elif cmd == "back": print(json.dumps(b.back(), indent=2))
     elif cmd == "shot": open(a[1], "wb").write(b.shot()); print("wrote", a[1])
     else: print(__doc__)
