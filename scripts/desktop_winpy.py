@@ -66,6 +66,9 @@ elif op == "execute":
         res = "typed %d" % len(text)
     elif kind == "press": pyautogui.press(a["key"]); res = "pressed " + a["key"]
     elif kind == "hotkey": pyautogui.hotkey(*a["keys"]); res = "hotkey " + "+".join(a["keys"])
+    elif kind == "launch":
+        import subprocess, time
+        subprocess.Popen("start \"\" " + a["app"], shell=True); time.sleep(1.5); res = "launched " + a["app"]
     else: raise ValueError("unknown action " + kind)
     print(json.dumps({"ok": True, "result": res}))
 else:
@@ -169,6 +172,11 @@ class WindowsPythonBackend:
             if not a["keys"] or not all(re.fullmatch(r"[a-z0-9_+\-]{1,24}", k) for k in a["keys"]): raise ValueError("invalid hotkey")
         elif kind == "wait":
             s = max(.1, min(5.0, float(action.get("seconds", 1)))); time.sleep(s); return f"waited {s:g}s"
+        elif kind == "launch":
+            import desktop_agent
+            app = desktop_agent.LAUNCHABLE.get(str(action.get("app", "")).lower().strip())
+            if not app: raise ValueError("app not in the launch list")
+            a["app"] = app
         else:
             raise ValueError("action is not executable: " + kind)
         d = _call({"op": "execute", "action": a}, timeout=30.0)

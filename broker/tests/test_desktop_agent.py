@@ -93,6 +93,14 @@ for bad in (["win", "r"], ["ctrl"], ["nope"], ["a;b"]):
     try: DW.sendkeys_sequence(bad); check(f"keys refuse {bad}", False)
     except ValueError: check(f"keys refuse {bad}", True)
 
+# --- launch
+a = DA.parse_action('{"action":"launch","app":"notepad"}')
+check("parse: launch accepted", a["action"] == "launch")
+wp = __import__("desktop_winpy").WindowsPythonBackend.__new__(__import__("desktop_winpy").WindowsPythonBackend); wp._size = (10, 10); wp.max_image_width = 1600
+try: wp.execute({"action": "launch", "app": "cmd"}, (10, 10)); check("launch: app outside the list refused", False)
+except ValueError: check("launch: app outside the list refused", True)
+check("launch: names resolve to executables", DA.LAUNCHABLE["notepad"] == "notepad" and DA.LAUNCHABLE["browser"] == "msedge")
+
 # --- backend choice
 check("backend: Windows only on WSL with powershell.exe", DW.available() is False or (os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()))
 

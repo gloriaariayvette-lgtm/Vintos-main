@@ -45,8 +45,12 @@ GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
 
 ALLOWED_ACTIONS = {
     "move", "click", "double_click", "right_click", "drag", "scroll",
-    "type", "press", "hotkey", "wait", "done", "fail",
+    "type", "press", "hotkey", "wait", "launch", "done", "fail",
 }
+# apps he may open by name, one step, instead of hunting taskbar icons a few pixels wide (2026-09-06)
+LAUNCHABLE = {"notepad": "notepad", "calculator": "calc", "calc": "calc", "paint": "mspaint", "mspaint": "mspaint",
+              "explorer": "explorer", "files": "explorer", "edge": "msedge", "browser": "msedge", "chrome": "chrome",
+              "spotify": "spotify", "settings": "ms-settings:", "terminal": "wt", "wsl": "wt"}
 KEY_RE = re.compile(r"^[a-z0-9_+\-]{1,24}$", re.I)
 
 
@@ -223,6 +227,12 @@ class PyAutoGUIBackend:
             seconds = max(.1, min(5.0, float(action.get("seconds", 1))))
             time.sleep(seconds)
             return f"waited {seconds:g}s"
+        if kind == "launch":
+            app = LAUNCHABLE.get(str(action.get("app", "")).lower().strip())
+            if not app: raise ValueError("app not in the launch list")
+            subprocess.Popen([app], start_new_session=True)
+            time.sleep(1.5)
+            return f"launched {app}"
         raise ValueError("action is not executable: " + kind)
 
 
@@ -252,10 +262,12 @@ Allowed shapes:
 {{"action":"type","text":"exact text","reason":"..."}}
 {{"action":"press","key":"enter","reason":"..."}}
 {{"action":"hotkey","keys":["ctrl","l"],"reason":"..."}}
+{{"action":"launch","app":"notepad","reason":"..."}}   (apps: {", ".join(sorted(set(LAUNCHABLE)))})
 {{"action":"wait","seconds":1,"reason":"..."}}
 {{"action":"done","summary":"what visibly proves completion"}}
 {{"action":"fail","reason":"why the task cannot be completed"}}
 
+To open an application use launch, or press "win", type its name, press enter. Do not hunt for tiny taskbar icons. If the same click did nothing, do something different.
 Do not claim success unless it is verified: for anything visible, the current screenshot must show it. The mouse cursor is NOT drawn in screenshots - for cursor position use the DESKTOP "mouse" field (true desktop pixels) together with LAST RESULT. If the task is already done, return done now; do not repeat an action that already succeeded. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
         body = json.dumps({
             "model": self.model,

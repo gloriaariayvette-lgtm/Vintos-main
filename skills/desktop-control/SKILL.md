@@ -33,4 +33,5 @@ CLI (from `~/.vintos/workspace/scripts`):
 
 ## Not yet
 - No prompt affordance tells him this exists. Giving him the tag in a surface's prompt is Gloria's switch.
-- The Windows key cannot be sent through SendKeys; app-level shortcuts work.
+- Through Windows Python the Windows key works (`press win`), and `launch` opens a short list of apps by name.
+- The PowerShell backend cannot send the Windows key; it is only a fallback.
