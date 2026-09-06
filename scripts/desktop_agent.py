@@ -272,13 +272,14 @@ class GemmaPlanner:
 TASK: {task}
 STEP: {step}
 SCREENSHOT PIXELS: {image_size[0]} x {image_size[1]}
+ACTIVE WINDOW TITLE: {desktop.get('active_window') or 'unknown'}   (a YouTube watch page is titled "<video title> - YouTube"; a results page is titled "<search> - YouTube")
 DESKTOP: {json.dumps(desktop, ensure_ascii=False)}
 LAST RESULT: {last_result or 'none'}
 RECENT ACTIONS: {json.dumps(recent[-5:], ensure_ascii=False)}
 
-Return one JSON object only. Coordinates are pixels in the screenshot you see, not percentages.
+First look at THIS screenshot and the window title and decide what state you are actually in - not what you expected after the last action. If the task's finishing condition is visible right now, return done immediately. Return one JSON object only (never two), with an "observed" field: one sentence of what the screen shows now. Coordinates are pixels in the screenshot you see, not percentages.
 Allowed shapes:
-{{"action":"click|double_click|right_click|move","x":123,"y":456,"reason":"..."}}
+{{"observed":"...","action":"click|double_click|right_click|move","x":123,"y":456,"reason":"..."}}
 {{"action":"drag","x":1,"y":2,"to_x":3,"to_y":4,"duration":0.6,"reason":"..."}}
 {{"action":"scroll","amount":-5,"x":800,"y":400,"reason":"..."}}   (negative = down; x,y optional: where to scroll)
 {{"action":"open_url","url":"https://www.youtube.com/results?search_query=...","reason":"..."}}   (opens in the browser; the fastest way to reach a site or a search)
@@ -340,12 +341,20 @@ def parse_action(raw: str) -> Dict[str, Any]:
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S)
+    value = None
     try:
         value = json.loads(text)
     except Exception:
-        match = re.search(r"\{.*\}", text, flags=re.S)
-        if not match: raise ValueError("Gemma returned no JSON object")
-        value = json.loads(match.group(0))
+        # take the FIRST complete object; Gemma sometimes appends a second one (2026-09-06: "Extra data")
+        start = text.find("{")
+        dec = json.JSONDecoder()
+        while start != -1 and value is None:
+            try:
+                value, _end = dec.raw_decode(text[start:])
+            except Exception:
+                start = text.find("{", start + 1)
+        if value is None: raise ValueError("Gemma returned no JSON object")
+    if isinstance(value, list) and value and isinstance(value[0], dict): value = value[0]
     if not isinstance(value, dict) or value.get("action") not in ALLOWED_ACTIONS:
         raise ValueError("Gemma returned an unsupported action")
     return value
@@ -372,12 +381,40 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
     last_action_sig = ""
     repeated = 0
     calls = 0
+    sigs: list[str] = []            # every action signature, for A-B-A-B cycle detection
+    screens: list[str] = []         # every screenshot hash, to tell Gemma when it is back where it was
+    planner_errors = 0
     for step in range(1, max_steps + 1):
         if should_stop(): return RunResult("stopped", "stop requested", step - 1, calls, job_id)
         shot, image_size, _desktop_size = backend.capture()
         digest = hashlib.sha256(shot).hexdigest()[:16]
+        if digest in screens[:-1]:
+            last_result = (last_result + " | NOTE: this screen is one you were on before (step %d); your last action brought you back rather than forward."
+                           % (screens.index(digest) + 1))
+        screens.append(digest)
         if should_stop(): return RunResult("stopped", "stop requested", step - 1, calls, job_id)
-        action = planner(task, shot, image_size, backend.describe(), step, last_result, recent)
+        # every fourth step from the third on, ask the narrower question outright: is the task already done?
+        # (the cat video played and the loop never knew - Gemma kept "seeing" the results page, 2026-09-06)
+        if verifier is not None and not dry_run and step >= 3 and (step - 3) % 4 == 0:
+            calls += 1
+            try:
+                ok, why = verifier(task, "the task as stated is complete", shot, image_size)
+            except Exception as exc:
+                ok, why = False, str(exc)[:120]
+            _audit({"job_id": job_id, "step": step, "screen": digest, "check": {"complete": bool(ok), "why": str(why)[:200]}})
+            if ok:
+                return RunResult("completed", "completion check: " + str(why)[:300], step, calls, job_id)
+        try:
+            action = planner(task, shot, image_size, backend.describe(), step, last_result, recent)
+            planner_errors = 0
+        except Exception as exc:
+            planner_errors += 1
+            calls += 1
+            _audit({"job_id": job_id, "step": step, "screen": digest, "planner_error": str(exc)[:200]})
+            if planner_errors >= 3:
+                return RunResult("failed", "the model answered unusably three times running: " + str(exc)[:200], step, calls, job_id)
+            last_result = "PLANNER ERROR: your last answer was not one valid JSON action (%s). Answer with exactly one JSON object." % str(exc)[:120]
+            continue
         calls += 1
         if progress: progress(step, calls)
         if should_stop(): return RunResult("stopped", "stop requested", step - 1, calls, job_id)
@@ -402,12 +439,18 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
             return RunResult("completed", summary, step, calls, job_id)
         if kind == "fail": return RunResult("failed", str(action.get("reason", "Gemma stopped")), step, calls, job_id)
         if dry_run: return RunResult("dry_run", json.dumps(action, ensure_ascii=False), step, calls, job_id)
-        sig = json.dumps({k: v for k, v in action.items() if k != "reason"},
+        sig = json.dumps({k: v for k, v in action.items() if k not in ("reason", "observed")},
                          sort_keys=True, ensure_ascii=False)
         repeated = repeated + 1 if sig == last_action_sig else 0
         if repeated >= (7 if kind == "scroll" else 3):   # eight identical scrolls is a page you should not be on; four identical anything else is a stall
             return RunResult("failed", "same action repeated %d times" % (repeated + 1), step, calls, job_id)
         last_action_sig = sig
+        sigs.append(sig)
+        # an A-B-A-B (or A-B-C-A-B-C) cycle is the same stall wearing two hats: clicks that flip between two windows
+        for period in (2, 3):
+            n = period * 3
+            if len(sigs) >= n and kind != "scroll" and all(sigs[-1 - i] == sigs[-1 - i - period] for i in range(n - period)):
+                return RunResult("failed", "cycling through the same %d actions three times" % period, step, calls, job_id)
         try:
             last_result = backend.execute(action, image_size)
         except Exception as exc:

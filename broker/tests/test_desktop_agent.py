@@ -74,7 +74,9 @@ check("loop: an action error is fed back to the model, not fatal", r.status == "
 b = FakeBackend()
 verdicts = iter([(False, "Invalid input is showing"), (True, "19 is showing")])
 seen_claims = []
-def fake_verifier(task, claim, shot, size): seen_claims.append((claim, shot)); return next(verdicts)
+def fake_verifier(task, claim, shot, size):
+    if claim == "the task as stated is complete": return (False, "periodic check: not yet")   # the loop's own check, not a done claim
+    seen_claims.append((claim, shot)); return next(verdicts)
 pl = planner_from([{"action": "type", "text": "12+7"}, {"action": "done", "summary": "19 is shown"}, {"action": "press", "key": "enter"}, {"action": "done", "summary": "19 is shown"}])
 r = DA.run_loop("calc", b, pl, max_steps=8, interval=0, should_stop=lambda: False, verifier=fake_verifier)
 check("verify: a false done is rejected and fed back, a true one completes", r.status == "completed" and len(seen_claims) == 2
@@ -137,6 +139,36 @@ class Settling(FakeBackend):
 sb = Settling(); t0 = __import__("time").time(); DA._settle(sb, lambda: False, max_wait=3.0, quiet=0.05)
 check("settle: waits until two captures match, then returns", sb.n >= 3 and __import__("time").time() - t0 < 2.5, sb.n)
 check("defaults: a long task budget", DA.DEFAULT_MAX_STEPS >= 60 and DA.HARD_MAX_STEPS >= DA.DEFAULT_MAX_STEPS)
+
+# --- what the cat video taught: two JSONs, cycles, revisits, planner errors, periodic completion check
+a = DA.parse_action('{"observed":"results page","action":"click","x":1,"y":2,"reason":"r"}\n{"action":"done","summary":"x"}')
+check("parse: two objects -> the first one, not a crash", a["action"] == "click")
+b = FakeBackend()
+r = DA.run_loop("t", b, planner_from([{"action": "click", "x": 1, "y": 1}, {"action": "click", "x": 9, "y": 9}] * 4 + [{"action": "done", "summary": "s"}]),
+                max_steps=20, interval=0, should_stop=lambda: False)
+check("loop: an A-B-A-B cycle ends the job before the sixth action runs", r.status == "failed" and "cycling" in r.reason and len(b.done) == 5, (r, len(b.done)))
+class TwoScreens(FakeBackend):
+    def capture(self): self.n += 1; return (b"S%d" % (self.n % 2), (800, 450), (1600, 900))
+tb = TwoScreens()
+pl = planner_from([{"action": "click", "x": 1, "y": 1}, {"action": "click", "x": 2, "y": 2}, {"action": "done", "summary": "s"}])
+DA.run_loop("t", tb, pl, max_steps=5, interval=0, should_stop=lambda: False)
+check("loop: returning to a screen seen before is announced to the model", any("one you were on before" in x["last"] for x in pl.seen), [x["last"] for x in pl.seen])
+def flaky(task, shot, image_size, desktop, step, last_result, recent):
+    flaky.n = getattr(flaky, "n", 0) + 1
+    if flaky.n == 1: raise ValueError("Extra data")
+    return {"action": "done", "summary": "s"} if flaky.n >= 2 else None
+b = FakeBackend()
+r = DA.run_loop("t", b, flaky, max_steps=5, interval=0, should_stop=lambda: False)
+check("loop: a planner error is fed back once, then the run continues", r.status == "completed" and r.steps == 2, r)
+def always_bad(*a, **k): raise ValueError("garbage")
+r = DA.run_loop("t", FakeBackend(), always_bad, max_steps=8, interval=0, should_stop=lambda: False)
+check("loop: three unusable answers running end the job with the reason", r.status == "failed" and "three times" in r.reason and r.steps == 3, r)
+b = FakeBackend()
+checks = []
+def completion_verifier(task, claim, shot, size): checks.append(claim); return (True, "the player is playing the cat video") if len(checks) >= 1 else (False, "no")
+pl = planner_from([{"action": "scroll", "amount": -3, "reason": str(i)} for i in range(10)])
+r = DA.run_loop("play the cat video", b, pl, max_steps=10, interval=0, should_stop=lambda: False, verifier=completion_verifier)
+check("loop: the periodic completion check finishes a task the model never called done", r.status == "completed" and "completion check" in r.reason and r.steps == 3 and checks[0] == "the task as stated is complete", (r, checks))
 
 # --- backend choice
 check("backend: Windows only on WSL with powershell.exe", DW.available() is False or (os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()))
