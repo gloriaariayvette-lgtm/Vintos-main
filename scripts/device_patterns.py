@@ -359,6 +359,7 @@ def fire_his_intent(reply_text, context=None):
     except Exception: pass
     _GAP = 0.4
     _fired=[]
+    _quiet_zero=[]   # alias-stop zeros to devices that were not there: receipts, not the bubble
     plan, rejected = compile_plan(reply_text)
     for _rj in rejected:
         print(f"[device] tag refused before authorization: {_rj['tag']} — {_rj['why']}", flush=True)
@@ -383,9 +384,18 @@ def fire_his_intent(reply_text, context=None):
                         _sent = toy_link.rotate(_t, 0, 0, context=context, permit=_permit, effect_digest=_digest)
                     else:
                         _sent = toy_link.send(_t, 0, 0, context=context, permit=_permit, effect_digest=_digest)
-                    _fired.append("%s → %s [%s]" % (_t, "rotate stop" if pat == "rotate" else "stop", "sent" if _sent else "failed"))
+                    # the zero still goes to every target (a stop is a reduction, harmless where nothing is
+                    # there), but the bubble only names devices that took it: a 'ridge → stop [failed]' for a
+                    # ridge that is not even switched on read to Gloria as a ridge command out of nowhere (09-05)
+                    if _sent or _t == toy:
+                        _fired.append("%s → %s [%s]" % (_t, "rotate stop" if pat == "rotate" else "stop", "sent" if _sent else "failed"))
+                    else:
+                        _quiet_zero.append(_t)
                 except Exception as _se:
-                    _fired.append("%s → %s [failed]" % (_t, "rotate stop" if pat == "rotate" else "stop"))
+                    if _t == toy:
+                        _fired.append("%s → %s [failed]" % (_t, "rotate stop" if pat == "rotate" else "stop"))
+                    else:
+                        _quiet_zero.append(_t)
             continue
         if _act["form"] == "touch":
             lvl = _lvl
@@ -429,7 +439,7 @@ def fire_his_intent(reply_text, context=None):
         except Exception: pass
         try:   # structured receipts beside the bubble text (astra-somatic-p8): what was submitted, what failed
             with open(os.path.join(MEM, "effect-receipts.jsonl"), "a") as _rf:
-                for _line in _fired:
+                for _line in _fired + ["%s → stop [absent]" % _t for _t in _quiet_zero]:
                     _st = _line.rsplit("[", 1)[-1].rstrip("]") if "[" in _line else "unknown"
                     # 'started' is a local thread that has not yet sent anything (P02-04): it is recorded as
                     # started, with no transport claim; only a synchronous sent/ok/playing is 'transport accepted'

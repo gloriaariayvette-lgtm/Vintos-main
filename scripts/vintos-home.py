@@ -386,9 +386,15 @@ def _tv_status_adb():
         _, wake = _adb("dumpsys", "power")
         m = re.search(r"mWakefulness=(\w+)", wake)
         power = "on" if m and m.group(1) == "Awake" else ("off" if m else "unknown")
-        _, win = _adb("dumpsys", "window", "windows")
-        fm = re.search(r"mCurrentFocus=.*?\s([\w.]+)/", win)
-        app = fm.group(1) if fm else ""
+        app = ""
+        _, win = _adb("dumpsys", "window")
+        for pat in (r"mCurrentFocus=Window\{[^}]*?\s([a-zA-Z][\w.]+)/", r"mFocusedApp=.*?\s([a-zA-Z][\w.]+)/"):
+            fm = re.search(pat, win)
+            if fm: app = fm.group(1); break
+        if not app:   # newer Android reports the front task here instead
+            _, act = _adb("dumpsys", "activity", "activities")
+            fm = re.search(r"(?:topResumedActivity|mResumedActivity|ResumedActivity)[^\n]*?\s([a-zA-Z][\w.]+)/", act)
+            if fm: app = fm.group(1)
         # a source is only known through HA; the launcher counts as idle, anything else as in use
         idle = app in ("", "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "com.android.systemui")
         return {"power": power, "source": "unknown" if idle else "app", "app": app, "via": "adb"}
