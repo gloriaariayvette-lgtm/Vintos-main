@@ -138,6 +138,9 @@ def with_tab(fn):
     t = pick_tab(req.get("tab")); c = CDP(t["webSocketDebuggerUrl"])
     try:
         c.call("Page.enable"); c.call("Runtime.enable")
+        # a background tab neither loads nor plays media: front and focused before anything is read or done
+        try: c.call("Page.bringToFront"); c.call("Emulation.setFocusEmulationEnabled", enabled=True)
+        except Exception: pass
         return fn(c, t)
     finally:
         c.close()
@@ -257,19 +260,38 @@ def call(op: str, timeout: float = 60.0, _retry: bool = False, **kw) -> Dict[str
 
 
 class EdgeBrowser:
-    """The interface browser_agent drives. Every method returns plain data; nothing is guessed from pixels."""
+    """The interface browser_agent drives. Every method returns plain data; nothing is guessed from pixels.
+
+    One tab for the whole job: Edge lists tabs in a shifting order, and a driver that takes "the first tab" on every
+    call read one tab and clicked another once three were open (2026-09-06)."""
+    def __init__(self, tab: Optional[str] = None): self.tab = tab
+
+    def _tab(self) -> Optional[str]:
+        ts = call("tabs", timeout=15)
+        ids = [t["id"] for t in ts]
+        if self.tab not in ids:
+            self.tab = ids[0] if ids else None
+        return self.tab
+
+    def _call(self, op: str, timeout: float = 60.0, **kw) -> Dict[str, Any]:
+        d = call(op, timeout=timeout, tab=self._tab(), **kw)
+        st = d.get("state") if isinstance(d, dict) else None
+        if isinstance(st, dict) and st.get("tab"): self.tab = st["tab"]
+        elif isinstance(d, dict) and d.get("tab"): self.tab = d["tab"]
+        return d
+
     def ensure(self) -> Dict[str, Any]: return call("ensure", timeout=30)
-    def goto(self, url: str) -> Dict[str, Any]: return call("goto", url=url)
-    def state(self) -> Dict[str, Any]: return call("state", timeout=20)
-    def elements(self) -> Dict[str, Any]: return call("elements")
-    def text(self) -> Dict[str, Any]: return call("text")
-    def click(self, n: int) -> Dict[str, Any]: return call("click", n=int(n))
-    def type(self, n: int, text: str, enter: bool = False) -> Dict[str, Any]: return call("type", n=int(n), text=text, enter=bool(enter))
-    def scroll(self, px: int) -> Dict[str, Any]: return call("scroll", px=int(px), timeout=20)
-    def key(self, key: str) -> Dict[str, Any]: return call("key", key=key, timeout=20)
-    def play(self) -> Dict[str, Any]: return call("play", timeout=20)
-    def shot(self) -> bytes: return base64.b64decode(call("shot").get("jpeg", ""))
-    def activate(self) -> Dict[str, Any]: return call("activate", timeout=10)
+    def goto(self, url: str) -> Dict[str, Any]: return self._call("goto", url=url)
+    def state(self) -> Dict[str, Any]: return self._call("state", timeout=20)
+    def elements(self) -> Dict[str, Any]: return self._call("elements")
+    def text(self) -> Dict[str, Any]: return self._call("text")
+    def click(self, n: int) -> Dict[str, Any]: return self._call("click", n=int(n))
+    def type(self, n: int, text: str, enter: bool = False) -> Dict[str, Any]: return self._call("type", n=int(n), text=text, enter=bool(enter))
+    def scroll(self, px: int) -> Dict[str, Any]: return self._call("scroll", px=int(px), timeout=20)
+    def key(self, key: str) -> Dict[str, Any]: return self._call("key", key=key, timeout=20)
+    def play(self) -> Dict[str, Any]: return self._call("play", timeout=20)
+    def shot(self) -> bytes: return base64.b64decode(self._call("shot").get("jpeg", ""))
+    def activate(self) -> Dict[str, Any]: return self._call("activate", timeout=10)
 
 
 if __name__ == "__main__":
