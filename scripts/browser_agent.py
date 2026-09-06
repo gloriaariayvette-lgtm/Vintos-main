@@ -116,7 +116,8 @@ Answer with one JSON object only:
 {{"observed":"...","notes":"...","action":"play","reason":"..."}}
 {{"observed":"...","notes":"...","action":"wait","seconds":2,"reason":"..."}}
 {{"observed":"...","notes":"...","action":"done","summary":"what in the page state proves it"}}
-{{"observed":"...","notes":"...","action":"fail","reason":"..."}}"""
+{{"observed":"...","notes":"...","action":"fail","reason":"...","evidence":"exact words from the page that prove it"}}
+Fail is for a wall the PAGE shows: its visible text or a pop-up saying sign-in/log-in is required for this action, an error message, a missing feature. A "Log In" link in a header is not a wall; a form you have not yet tried is not a wall. Quote the page in "evidence"; a fail without page evidence is rejected."""
         body = json.dumps({"model": self.model, "temperature": 0.1, "max_tokens": 320,
                            "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
         req = urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"})
@@ -197,7 +198,7 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
         page_hash = hashlib.sha256((str(st.get("url")) + "|" + str(st.get("title")) + "|" + (text or "")[:3000] + "|" + str(int(st.get("scrollY", 0) or 0) // 200)).encode()).hexdigest()[:16]
         # did the last action change anything? the model is told plainly, and the same dead action is not tried forever
         if step > 1:
-            if page_hashes and page_hash == page_hashes[-1] and not last_result.startswith(("DONE REJECTED", "ACTION ERROR", "PLANNER ERROR")) and not last_result.startswith("waited"):
+            if page_hashes and page_hash == page_hashes[-1] and not last_result.startswith(("DONE REJECTED", "FAIL REJECTED", "ACTION ERROR", "PLANNER ERROR", "RE-PLANNED")) and not last_result.startswith("waited"):
                 stalls = stalls + 1 if last_sig else 1
                 last_result = ("NO CHANGE: " + last_result + " -- the page is exactly as before. That action does nothing here; choose something different"
                                + (" (another item, scroll, back)" if stalls == 1 else "; you have now tried it %d times" % stalls))
@@ -269,7 +270,15 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                     last_result = "DONE REJECTED: " + str(why)[:200]; last_sig = ""; recent.append({"step": step, "action": {"action": "done"}, "result": last_result}); continue
             return DA.RunResult("completed", summary_txt, step, calls, job_id)
         if kind == "fail":
-            return DA.RunResult("failed", str(action.get("reason", "model stopped")), step, calls, job_id)
+            # a wall must be on the page, in words, the same way done must be a fact: the model gave up at a
+            # header "Log In" link once (2026-09-06)
+            ev = re.sub(r"\s+", " ", str(action.get("evidence", ""))).strip().lower()
+            haystack = re.sub(r"\s+", " ", (text or "") + " " + " ".join(e.get("text", "") for e in elements)).lower()
+            if len(ev) < 8 or ev[:60] not in haystack:
+                stuck += 1
+                last_result = "FAIL REJECTED: the page does not show that. Quote the exact words on the page that block you, or keep going (try the form; a Log In link is not a wall)"
+                recent.append({"step": step, "action": {"action": "fail", "reason": str(action.get("reason", ""))[:100]}, "result": last_result}); continue
+            return DA.RunResult("failed", str(action.get("reason", "model stopped"))[:300] + " (page says: \"" + ev[:120] + "\")", step, calls, job_id)
         sig = json.dumps({k: v for k, v in action.items() if k not in ("reason", "observed", "notes")}, sort_keys=True)
         if sig != last_sig: stalls = 0
         last_sig = sig
@@ -360,7 +369,7 @@ class GemmaReflector:
 
 TASK: {task}
 
-Break it into ordered sub-goals. For each, think what a website usually REQUIRES before it lets that happen (examples: a review form needs a star rating chosen AND text entered before Submit becomes clickable; posting anywhere usually needs a sign-in; a search needs Enter or the search button; a video page needs play). Put those requirements into the steps so they are not discovered by trial and error. Say how the finished state can be recognised on the page.
+Break it into ordered sub-goals. For each, think what a website usually REQUIRES before it lets that happen (examples: a review form needs a star rating chosen AND text entered before Submit becomes clickable; a search needs Enter or the search button; a video page needs play). Put those requirements into the steps so they are not discovered by trial and error. Do not assume a sign-in is needed: only the page can say that, and only when it is tried. Say how the finished state can be recognised on the page.
 
 Answer one JSON object only:
 {{"plan": ["1. ...", "2. ...", "..."], "done_when": "what the page will show", "avoid": ["..."]}}"""

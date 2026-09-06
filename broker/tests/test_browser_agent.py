@@ -86,9 +86,9 @@ r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
 check("video task: a false done is rejected by the fact, and the run continues to real completion", r.status == "completed" and any("DONE REJECTED" in x["last"] for x in pl.seen), [x["last"] for x in pl.seen])
 
 fb = FakeBrowser()
-pl = planner_from([{"action": "goto", "url": "javascript:alert(1)"}, {"action": "click", "n": 99}, {"action": "fail", "reason": "lost"}])
+pl = planner_from([{"action": "goto", "url": "javascript:alert(1)"}, {"action": "click", "n": 99}, {"action": "fail", "reason": "lost", "evidence": "some page text"}])
 r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
-check("bad url and bad item number are errors fed back, not crashes; fail ends with the reason", r.status == "failed" and r.reason == "lost"
+check("bad url and bad item number are errors fed back, not crashes; fail ends with the reason", r.status == "failed" and r.reason.startswith("lost")
       and "ACTION ERROR" in pl.seen[1]["last"] and ("?" in pl.seen[2]["last"] or "ERROR" in pl.seen[2]["last"]), [x["last"] for x in pl.seen])
 
 fb = FakeBrowser()
@@ -177,6 +177,11 @@ site = ReviewSite(); rf = FakeReflector(); rf.blocked = "the site demands a sign
 pl = planner_from([{"action": "click", "n": 3}] * 8)
 r = BA.run("leave a review", site, pl, max_steps=12, should_stop=lambda: False, verifier=ver3, reflector=rf)
 check("the slow thinker can declare the task blocked, and the run ends saying why", r.status == "failed" and r.reason.startswith("blocked: the site demands a sign-in"), r)
+
+site = ReviewSite(); rf = FakeReflector()
+pl = planner_from([{"action": "fail", "reason": "The site requires a sign-in", "evidence": "Log in to continue"}, {"action": "type", "n": 0, "text": "Rubbery and sad."}, {"action": "click", "n": 1}, {"action": "click", "n": 3}, {"action": "done", "summary": "submitted"}])
+r = BA.run("leave a 1 star review", site, pl, max_steps=12, should_stop=lambda: False, verifier=ver3, reflector=rf)
+check("a fail with no such words on the page is rejected and the run goes on to finish", r.status == "completed" and "FAIL REJECTED" in pl.seen[1]["last"], (r, pl.seen[1]["last"]))
 
 a = BA.parse_action('{"observed":"results","action":"click","n":2,"reason":"r"}\n{"action":"play"}')
 check("parse: first object wins", a["action"] == "click" and a["n"] == 2)
