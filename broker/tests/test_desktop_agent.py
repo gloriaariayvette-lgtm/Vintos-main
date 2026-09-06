@@ -151,7 +151,9 @@ class TwoScreens(FakeBackend):
     def capture(self): self.n += 1; return (b"S%d" % (self.n % 2), (800, 450), (1600, 900))
 tb = TwoScreens()
 pl = planner_from([{"action": "click", "x": 1, "y": 1}, {"action": "click", "x": 2, "y": 2}, {"action": "done", "summary": "s"}])
-DA.run_loop("t", tb, pl, max_steps=5, interval=0, should_stop=lambda: False)
+_settle_real = DA._settle; DA._settle = lambda *a, **k: None   # the settle wait also captures; keep the screen sequence exact here
+try: DA.run_loop("t", tb, pl, max_steps=5, interval=0, should_stop=lambda: False)
+finally: DA._settle = _settle_real
 check("loop: returning to a screen seen before is announced to the model", any("one you were on before" in x["last"] for x in pl.seen), [x["last"] for x in pl.seen])
 def flaky(task, shot, image_size, desktop, step, last_result, recent):
     flaky.n = getattr(flaky, "n", 0) + 1
