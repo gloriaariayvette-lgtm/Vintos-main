@@ -188,6 +188,18 @@ def mouse_click(c, x, y):
     c.call("Input.dispatchMouseEvent", type="mousePressed", x=x, y=y, button="left", clickCount=1)
     c.call("Input.dispatchMouseEvent", type="mouseReleased", x=x, y=y, button="left", clickCount=1)
 
+def settle_media(c, secs=6.0):
+    # a watch page takes a few seconds to start; reading it at once says "not playing" and the model leaves a
+    # good video (two of them, 2026-09-06). Wait for the clock to move, up to a bound.
+    try:
+        if not c.eval("/\\/watch\\?v=|\\/shorts\\//.test(location.href)"): return
+    except Exception: return
+    end = time.time() + secs
+    while time.time() < end:
+        m = c.eval(MEDIA_JS)
+        if m and not m.get("paused") and float(m.get("currentTime", 0)) >= 1: return
+        time.sleep(0.5)
+
 def state(c, t, sample=True):
     info = c.eval("({url: location.href, title: document.title, scrollY: Math.round(scrollY), height: Math.round(document.documentElement.scrollHeight), inner: innerHeight})") or {}
     return {"tab": t["id"], "url": info.get("url"), "title": info.get("title"), "scrollY": info.get("scrollY"), "height": info.get("height"), "inner": info.get("inner"), "media": media_state(c, sample)}
@@ -196,7 +208,7 @@ if op == "ensure": print(json.dumps(ensure()))
 elif op == "tabs": print(json.dumps([{"id": t["id"], "title": t.get("title"), "url": t.get("url")} for t in tabs()]))
 elif op == "goto":
     def f(c, t):
-        c.call("Page.navigate", url=req["url"]); wait_load(c)
+        c.call("Page.navigate", url=req["url"]); wait_load(c); settle_media(c)
         return state(c, t)
     print(json.dumps(with_tab(f)))
 elif op == "state": print(json.dumps(with_tab(state)))
@@ -224,7 +236,7 @@ elif op == "click":
             c.call("Page.navigate", url=info["href"]); wait_load(c); how = "navigate"; changed = signature(c) != before
         elif not changed:
             c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(e) e.click();})()" % n); how = "js"; changed = wait_change(c, before, 3.0)
-        if changed: wait_load(c, 6)
+        if changed: wait_load(c, 6); settle_media(c)
         return {"ok": True, "changed": changed, "how": how, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "back":
@@ -262,7 +274,7 @@ elif op == "play":
             # the site's own button, a real click, as a person would
             btn = c.eval("(()=>{const b=document.querySelector('.ytp-large-play-button, button.ytp-play-button, [aria-label=\"Play\"], [title=\"Play\"]'); if(!b) return null; const r=b.getBoundingClientRect(); return r.width>0?{x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)}:null;})()")
             if btn: mouse_click(c, btn["x"], btn["y"]); r = "played via the page's play button"
-        time.sleep(0.5); return {"ok": True, "result": r, "state": state(c, t)}
+        settle_media(c, 5.0); return {"ok": True, "result": r, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "shot":
     def f(c, t):
