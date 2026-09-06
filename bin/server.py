@@ -3617,9 +3617,10 @@ Gloria-specific additions:
         pass
     try:
         import requests as _rq
-        _state = _rq.get("http://127.0.0.1:8500/api/robot/state",
+        # his body's bridge (robot_bridge.py, 8404) - not 8500, which is this server calling itself (dead since 08-23)
+        _state = _rq.get(os.environ.get("VINTOS_ROBOT_BRIDGE", "http://127.0.0.1:8404") + "/api/robot/state",
             headers={"X-Vintos-Secret": APP_SECRET}, timeout=2).json()
-        _b64_frame = _state.get("frame_b64")
+        _b64_frame = _state.get("frame_b64") if _state.get("frame_fresh") else None   # a stale frame is not what the room looks like now
         if _b64_frame:
             user_content = [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": _b64_frame}},

@@ -66,8 +66,9 @@ SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py
 SCRIPTS="$SCRIPTS creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
-SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py"   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
-BINS="server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
+SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py"
+SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"   # his body: the bridge the Pi reports to, and its subconscious (donated from Velaris 2026-09-05)   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
+BINS="robot-pi-repoint.sh server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py
@@ -75,7 +76,7 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # ---------------------------------------------------------------- preflight
@@ -317,6 +318,21 @@ say
 
 # The collision detector is continuous by design.  systemd only supervises
 # that process; elapsed time is not a review signal.
+say "== robot bridge =="
+ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
+if [ -f "$ROBOT_UNIT_SRC" ]; then
+    mkdir -p "$(dirname -- "$ROBOT_UNIT_DST")"
+    [ -f "$ROBOT_UNIT_DST" ] && cp -p "$ROBOT_UNIT_DST" "$BACKUP/$ROBOT_UNIT_NAME.service" 2>/dev/null || true
+    install -m 644 "$ROBOT_UNIT_SRC" "$ROBOT_UNIT_DST" || die "failed to install $ROBOT_UNIT_DST"
+    systemctl --user daemon-reload
+    if systemctl --user enable "$ROBOT_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$ROBOT_UNIT_NAME" >/dev/null 2>&1; then
+        say "  $ROBOT_UNIT_NAME active: $(systemctl --user is-active "$ROBOT_UNIT_NAME" 2>/dev/null) (port ${VINTOS_ROBOT_PORT:-8404})"
+    else
+        say "  bridge installed but did not start - run: systemctl --user enable $ROBOT_UNIT_NAME && systemctl --user restart $ROBOT_UNIT_NAME"
+    fi
+fi
+say
+
 say "== self-review watcher =="
 mkdir -p "$(dirname -- "$REVIEW_UNIT_DST")"
 if [ -f "$REVIEW_UNIT_DST" ]; then
