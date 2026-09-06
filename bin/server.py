@@ -4911,6 +4911,49 @@ async def rate_mischief(filename: str, request: Request):
         return {"success": False, "error": str(e)}
 
 
+# === His body: thin proxies to the robot bridge (scripts/robot_bridge.py, 8404) ===
+# A body tab in the app talks to the server it already knows; the bridge holds the state and the queue.
+_ROBOT_BRIDGE = os.environ.get("VINTOS_ROBOT_BRIDGE", "http://127.0.0.1:8404")
+
+
+@app.post("/api/robot/chat")
+async def robot_chat_proxy(request: Request):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    body = await request.json()
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as _c:
+            r = await _c.post(_ROBOT_BRIDGE + "/api/robot/chat", json=body,
+                              headers={"X-Vintos-Secret": APP_SECRET, "X-Vintos-Source": "app"})
+        return r.json()
+    except Exception as e:
+        return {"ok": False, "why": f"bridge unreachable: {str(e)[:100]}", "speech": ""}
+
+
+@app.get("/api/robot/voice/latest")
+async def robot_voice_latest_proxy(request: Request):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as _c:
+            r = await _c.get(_ROBOT_BRIDGE + "/api/robot/voice/latest", headers={"X-Vintos-Secret": APP_SECRET})
+        return r.json()
+    except Exception:
+        return {}
+
+
+@app.get("/api/robot/state")
+async def robot_state_proxy(request: Request, frame: int = 0):
+    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as _c:
+            r = await _c.get(_ROBOT_BRIDGE + f"/api/robot/state?frame={int(bool(frame))}", headers={"X-Vintos-Secret": APP_SECRET})
+        return r.json()
+    except Exception as e:
+        return {"ok": False, "why": f"bridge unreachable: {str(e)[:100]}"}
+
+
 @app.get("/api/chat/history")
 async def get_chat_history(limit: int = 50):
     """Get recent chat history."""

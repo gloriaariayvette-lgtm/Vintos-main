@@ -71,7 +71,7 @@ def ingest_sensor(payload, now=None):
         if "sonar_cm" in payload:
             try: _state["sonar_cm"] = float(payload["sonar_cm"])
             except Exception: pass
-        for k in ("room_description", "room", "objects", "face_detected", "cat_detected", "lidar", "battery", "pose"):
+        for k in ("room_description", "room", "objects", "face_detected", "cat_detected", "lidar", "battery", "pose", "somatics", "motor_state"):
             if k in payload:
                 _state["extra"][k] = payload[k]
         if payload.get("room_description"):
@@ -457,8 +457,48 @@ def voice_latest():
         return {}
 
 
+VOICE_DIR = os.path.join(MEMORY, "voice")
+KOKORO_VOICE = os.environ.get("VINTOS_VOICE_MODEL", "am_adam")
+
+
+def kokoro_file(text, now=None):
+    """His voice as a wav in memory/voice/, the file his server streams at /api/voice/stream/<name>. The phone
+    in the body tab polls /api/robot/voice/latest and plays whatever filename is newest. Returns the filename or
+    None when Kokoro is not available here."""
+    now = now or time.time()
+    try:
+        import warnings; warnings.filterwarnings("ignore")
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        import numpy as np, soundfile as sf
+        from kokoro import KPipeline
+    except Exception:
+        return None
+    try:
+        pipe = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device="cpu")
+        chunks = [a for _g, _p, a in pipe(text[:1000], voice=KOKORO_VOICE, speed=1.05)]
+        if not chunks:
+            return None
+        os.makedirs(VOICE_DIR, exist_ok=True)
+        fname = "robot-voice-" + datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M%S") + ".wav"
+        sf.write(os.path.join(VOICE_DIR, fname), np.concatenate(chunks), 24000)
+        return fname
+    except Exception:
+        return None
+
+
 def default_speaker(text):
-    """His voice in the room: the Echo, in his voice, through vintos-home. The Pi has no speaker wired today."""
+    """His voice out of the body: a Kokoro wav for the phone in the body tab (Gloria, 2026-09-05: "the robot is
+    currently using my phone as the speaker"); the Echo only when Kokoro cannot render here."""
+    now = time.time()
+    fname = kokoro_file(text, now)
+    try:
+        cur = voice_latest()
+        cur.update({"text": text[:200], "timestamp": datetime.fromtimestamp(now).isoformat(), "filename": fname})
+        json.dump(cur, open(VOICE_LATEST, "w"), indent=2)
+    except Exception:
+        pass
+    if fname:
+        return True
     import importlib.util as iu
     p = os.path.join(WORKSPACE, "scripts", "vintos-home.py")
     sp = iu.spec_from_file_location("vintos_home", p); vh = iu.module_from_spec(sp); sp.loader.exec_module(vh)

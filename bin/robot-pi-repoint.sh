@@ -25,7 +25,8 @@ set -e
 AEGIS_TS="$1"; PORT="$2"; SECRET="$3"; F=/home/pi/velaris-pi-client.py
 B="$F.bak-vintos-$(date +%Y%m%d-%H%M%S)"; cp "$F" "$B"
 # every bridge URL, whatever port it carried; the header name; the secret by its variable and its literal
-sed -i -E "s#http://100\.72\.225\.119:(8403|8500)#http://${AEGIS_TS}:${PORT}#g; s#X-Velaris-Secret#X-Vintos-Secret#g" "$F"
+# whatever bridge it pointed at last (Aegis, or the Mac while Gemma lived there): any host on a bridge port
+sed -i -E "s#http://[0-9.]+:(8403|8500|8404)#http://${AEGIS_TS}:${PORT}#g; s#X-Velaris-Secret#X-Vintos-Secret#g" "$F"
 sed -i -E "s#^SECRET *= *['\"][^'\"]*['\"]#SECRET = \"${SECRET}\"#" "$F"
 sed -i -E "s#'velaris-aegis-2026'#'${SECRET}'#g" "$F"
 python3 -m py_compile "$F" && echo "client compiles"
