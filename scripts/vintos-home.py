@@ -475,7 +475,7 @@ if __name__ == "__main__":
     elif cmd == "tv_on": tv_on()
     elif cmd == "tv_off": tv_off()
     elif cmd == "tv_source": tv_source(msg)
-    elif cmd == "tv_youtube": tv_youtube(msg)
+    elif cmd == "tv_youtube": tv_youtube(args[0], int(args[1]) if len(args) > 1 else 7)
     elif cmd == "projector_on": projector_on()
     elif cmd == "projector_off": projector_off()
     else: print(f"Unknown command: {cmd}")
