@@ -71,9 +71,34 @@ elif op == "execute":
         res = "typed %d" % len(text)
     elif kind == "press": pyautogui.press(a["key"]); res = "pressed " + a["key"]
     elif kind == "hotkey": pyautogui.hotkey(*a["keys"]); res = "hotkey " + "+".join(a["keys"])
-    elif kind == "launch":
+    elif kind in ("launch", "focus"):
         import subprocess, time
-        subprocess.Popen("start \"\" " + a["app"], shell=True); time.sleep(1.5); res = "launched " + a["app"]
+        title = a.get("title", "")
+        if kind == "launch":
+            subprocess.Popen("start \"\" " + a["app"], shell=True)
+        # a window opened from a background process does not get the keyboard: wait for it and bring it to
+        # the front, or every keystroke lands in whatever had focus (Gloria's terminal, 2026-09-06)
+        focused = ""
+        try:
+            import pygetwindow as gw
+            deadline = time.time() + (6.0 if kind == "launch" else 2.0)
+            while time.time() < deadline and not focused:
+                wins = [w for w in gw.getAllWindows() if w.title and title.lower() in w.title.lower()]
+                if wins:
+                    w = wins[0]
+                    try:
+                        if w.isMinimized: w.restore()
+                        w.activate()
+                    except Exception:
+                        pass
+                    time.sleep(0.4)
+                    aw = gw.getActiveWindow()
+                    if aw and title.lower() in (aw.title or "").lower(): focused = aw.title
+                else:
+                    time.sleep(0.3)
+        except Exception:
+            pass
+        res = ("launched %s" % a["app"] if kind == "launch" else "focus %s" % title) + (", focused: " + focused if focused else ", NOT focused - click the window first")
     else: raise ValueError("unknown action " + kind)
     print(json.dumps({"ok": True, "result": res}))
 else:
@@ -179,9 +204,13 @@ class WindowsPythonBackend:
             s = max(.1, min(5.0, float(action.get("seconds", 1)))); time.sleep(s); return f"waited {s:g}s"
         elif kind == "launch":
             import desktop_agent
-            app = desktop_agent.LAUNCHABLE.get(str(action.get("app", "")).lower().strip())
+            name = str(action.get("app", "")).lower().strip()
+            app = desktop_agent.LAUNCHABLE.get(name)
             if not app: raise ValueError("app not in the launch list")
-            a["app"] = app
+            a["app"] = app; a["title"] = desktop_agent.WINDOW_TITLES.get(app, name)
+        elif kind == "focus":
+            a["title"] = str(action.get("title", ""))[:80]
+            if not a["title"].strip(): raise ValueError("focus needs a window title")
         else:
             raise ValueError("action is not executable: " + kind)
         d = _call({"op": "execute", "action": a}, timeout=30.0)

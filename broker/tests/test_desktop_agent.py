@@ -113,6 +113,10 @@ wp = __import__("desktop_winpy").WindowsPythonBackend.__new__(__import__("deskto
 try: wp.execute({"action": "launch", "app": "cmd"}, (10, 10)); check("launch: app outside the list refused", False)
 except ValueError: check("launch: app outside the list refused", True)
 check("launch: names resolve to executables", DA.LAUNCHABLE["notepad"] == "notepad" and DA.LAUNCHABLE["browser"] == "msedge")
+check("launch: every launchable app has a window title to wait for", all(DA.WINDOW_TITLES.get(v) for v in DA.LAUNCHABLE.values()), DA.LAUNCHABLE)
+a = DA.parse_action('{"action":"focus","title":"Calculator"}'); check("parse: focus accepted", a["action"] == "focus")
+try: wp.execute({"action": "focus", "title": "  "}, (10, 10)); check("focus: empty title refused", False)
+except ValueError: check("focus: empty title refused", True)
 
 # --- backend choice
 check("backend: Windows only on WSL with powershell.exe", DW.available() is False or (os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()))

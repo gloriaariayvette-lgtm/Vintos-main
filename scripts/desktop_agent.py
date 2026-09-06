@@ -45,8 +45,11 @@ GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
 
 ALLOWED_ACTIONS = {
     "move", "click", "double_click", "right_click", "drag", "scroll",
-    "type", "press", "hotkey", "wait", "launch", "done", "fail",
+    "type", "press", "hotkey", "wait", "launch", "focus", "done", "fail",
 }
+# the window title each launched app shows, so launch can wait for it and give it the keyboard
+WINDOW_TITLES = {"notepad": "Notepad", "calc": "Calculator", "mspaint": "Paint", "explorer": "File Explorer",
+                 "msedge": "Edge", "chrome": "Chrome", "spotify": "Spotify", "ms-settings:": "Settings", "wt": "Terminal"}
 # apps he may open by name, one step, instead of hunting taskbar icons a few pixels wide (2026-09-06)
 LAUNCHABLE = {"notepad": "notepad", "calculator": "calc", "calc": "calc", "paint": "mspaint", "mspaint": "mspaint",
               "explorer": "explorer", "files": "explorer", "edge": "msedge", "browser": "msedge", "chrome": "chrome",
@@ -233,6 +236,15 @@ class PyAutoGUIBackend:
             subprocess.Popen([app], start_new_session=True)
             time.sleep(1.5)
             return f"launched {app}"
+        if kind == "focus":
+            title = str(action.get("title", ""))[:80]
+            try:
+                import pygetwindow as gw
+                wins = [w for w in gw.getAllWindows() if w.title and title.lower() in w.title.lower()]
+                if wins: wins[0].activate(); return f"focus {title}"
+            except Exception:
+                pass
+            raise RuntimeError("no window titled like " + repr(title))
         raise ValueError("action is not executable: " + kind)
 
 
@@ -263,11 +275,12 @@ Allowed shapes:
 {{"action":"press","key":"enter","reason":"..."}}
 {{"action":"hotkey","keys":["ctrl","l"],"reason":"..."}}
 {{"action":"launch","app":"notepad","reason":"..."}}   (apps: {", ".join(sorted(set(LAUNCHABLE)))})
+{{"action":"focus","title":"Calculator","reason":"..."}}   (bring a window to the front by its title before typing into it)
 {{"action":"wait","seconds":1,"reason":"..."}}
 {{"action":"done","summary":"what visibly proves completion"}}
 {{"action":"fail","reason":"why the task cannot be completed"}}
 
-To open an application use launch, or press "win", type its name, press enter. Do not hunt for tiny taskbar icons. If the same click did nothing, do something different.
+To open an application use launch, or press "win", type its name, press enter. Do not hunt for tiny taskbar icons. Keys go to the ACTIVE window only: check DESKTOP "active_window" before type/press/hotkey, and use focus (or click the window) when it is not the one you mean. If the same action did nothing, do something different.
 Do not claim success unless it is verified: for anything visible, the current screenshot must show it. The mouse cursor is NOT drawn in screenshots - for cursor position use the DESKTOP "mouse" field (true desktop pixels) together with LAST RESULT. If the task is already done, return done now; do not repeat an action that already succeeded. Prefer visible UI and shortcuts over guessing coordinates. After every action you will receive a new screenshot. Never emit shell commands or multiple actions."""
         body = json.dumps({
             "model": self.model,
