@@ -16,7 +16,7 @@ def imp(turn, sal, narr="felt"):
 json.dump([], open(L.IMPRINT_FILE, "w"))
 def late(): time.sleep(1.5); json.dump([imp("t-1", 0.8)], open(L.IMPRINT_FILE, "w"))
 threading.Thread(target=late, daemon=True).start()
-t0 = time.time(); got = L.wait_for_imprint("t-1", max_wait=6, step=0.25); dt = time.time() - t0
+t0 = time.monotonic(); got = L.wait_for_imprint("t-1", max_wait=6, step=0.25); dt = time.monotonic() - t0   # monotonic: the wall clock stepped backwards mid-test once (2026-09-06)
 check("ledger waits for its own turn's imprint", got is not None and got["salience"] == 0.8 and 1.0 < dt < 5, (got, dt))
 check("no turn id: no waiting", L.wait_for_imprint("", max_wait=6) is None or True)
 t0 = time.time(); check("bounded: gives up on a turn whose imprint never comes", L.wait_for_imprint("t-none", max_wait=1, step=0.25) is None and time.time() - t0 < 3)

@@ -276,8 +276,8 @@ def wait_for_imprint(turn_id, max_wait=45, step=2.0):
     imprint = get_recent_imprint(within_seconds=120, turn_id=turn_id)
     if imprint or not turn_id:
         return imprint
-    deadline = time.time() + max_wait
-    while time.time() < deadline:
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
         time.sleep(step)
         imprint = get_recent_imprint(within_seconds=120, turn_id=turn_id)
         if imprint:

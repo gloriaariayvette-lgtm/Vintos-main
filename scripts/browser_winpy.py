@@ -152,7 +152,7 @@ ELEMENTS_JS = r"""
     const disabled = !!(ctrl.disabled || e.getAttribute('aria-disabled') === 'true' || ctrl.getAttribute('aria-disabled') === 'true');
     const selected = (ctrl.checked === true) || ['aria-checked','aria-pressed','aria-selected'].some(a => (e.getAttribute(a) || ctrl.getAttribute(a)) === 'true');
     let value = '';
-    if (kind === 'field') value = (e.isContentEditable ? (e.innerText || '') : (e.value || '')).replace(/\s+/g, ' ').trim().slice(0, 90);
+    if (kind === 'field') { const full = (e.isContentEditable ? (e.innerText || '') : (e.value || '')).replace(/\s+/g, ' ').trim(); value = full.length > 70 ? full.slice(0, 40) + ' ... ' + full.slice(-20) + ' (' + full.length + ' chars)' : full; }
     else if (kind === 'select') value = (e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : '').slice(0, 60);
     out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight, popup: !!(overlay && overlay.contains(e)), disabled, selected, value});
     e.setAttribute('data-vintos-n', String(out.length - 1));
@@ -279,12 +279,27 @@ elif op == "scrollto":
 elif op == "click":
     def f(c, t):
         n = int(req["n"])
-        info = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return null; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2), href:(e.tagName==='A'&&/^https?:/.test(e.href))?e.href:''};})()" % n)
+        # scroll it into view, then check what is really under the pointer: a star hidden behind a sticky bar
+        # or a notification banner sent a mouse click to a category link and a footer link (2026-09-06)
+        info = c.eval(r"""(n=>{const e=document.querySelector('[data-vintos-n="'+n+'"]'); if(!e) return null;
+          const centre=()=>{const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2), w:r.width, h:r.height};};
+          const under=p=>{const t=document.elementFromPoint(p.x,p.y); return t&&(e.contains(t)||t.contains(e)||(e.tagName==='LABEL'&&e.control&&(e.control===t||e.control.contains(t))));};
+          e.scrollIntoView({block:'center'}); let p=centre(); let clear=under(p);
+          if(!clear){ window.scrollBy(0,-160); p=centre(); clear=under(p); }
+          if(!clear){ window.scrollBy(0,320); p=centre(); clear=under(p); }
+          const t=document.elementFromPoint(p.x,p.y); const blocker=(!clear&&t)?((t.innerText||t.getAttribute('aria-label')||t.tagName||'').replace(/\s+/g,' ').trim().slice(0,60)):'';
+          return {x:p.x, y:p.y, clear, blocker, href:(e.tagName==='A'&&/^https?:/.test(e.href))?e.href:'', label:e.tagName==='LABEL'};})(%d)""" % n)
         if not info: return {"ok": False, "error": "element %d is gone; list elements again" % n}
         before = signature(c); how = "mouse"
-        # what a person does: a real pointer click at the element; synthetic .click() is swallowed by half of
-        # YouTube's components and lands on the wrong wrapper for the other half (a channel page, 2026-09-06)
-        mouse_click(c, info["x"], info["y"])
+        if info.get("clear"):
+            # what a person does: a real pointer click at the element; synthetic .click() is swallowed by half of
+            # YouTube's components and lands on the wrong wrapper for the other half (a channel page, 2026-09-06)
+            mouse_click(c, info["x"], info["y"])
+        else:
+            # covered by something else: click the element itself (a label forwards to its control) rather than
+            # whatever is on top of it
+            c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return; if(e.tagName==='LABEL'&&e.control){e.control.click();} else {e.click();}})()" % n)
+            how = "js (pointer spot covered by '%s')" % info.get("blocker", "")
         changed = wait_change(c, before, 4.0)
         if not changed and info.get("href"):
             c.call("Page.navigate", url=info["href"]); wait_load(c); how = "navigate"; changed = signature(c) != before
@@ -328,12 +343,13 @@ elif op == "type":
             c.call("Input.dispatchKeyEvent", type=typ, key="a", code="KeyA", windowsVirtualKeyCode=65, nativeVirtualKeyCode=65, modifiers=2)
         c.call("Input.insertText", text=text)
         time.sleep(0.2)
-        readback = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return ''; return (e.isContentEditable?(e.innerText||''):(e.value||'')).replace(/\\s+/g,' ').trim().slice(0,120);})()" % n)
+        readback = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return ''; return (e.isContentEditable?(e.innerText||''):(e.value||'')).replace(/\\s+/g,' ').trim().slice(0,4000);})()" % n)
         if req.get("enter"):
             for typ in ("keyDown", "keyUp"):
                 c.call("Input.dispatchKeyEvent", type=typ, key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
             time.sleep(1.5)
-        return {"ok": True, "value": readback, "state": state(c, t)}
+        want = " ".join(text.split())
+        return {"ok": True, "value": readback, "complete": readback == want, "chars": len(readback), "wanted": len(want), "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "scroll":
     def f(c, t):

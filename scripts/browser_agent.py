@@ -98,7 +98,7 @@ WHAT THE PAGE IS NOW:
 How to think, in order:
 1. Where am I in the PLAN? Which plan step is next? Read PAGE TYPE. Is this the kind of page that step needs? If you landed somewhere wrong (a channel page when you wanted a video, an ad, a login wall), the correct move is back, then a different choice. Never repeat a choice that led somewhere wrong.
 2. What did my last action do? If LAST RESULT says NO CHANGE, that action does not work here: do something different (another item, scroll, back, a different kind of item). If a button is DISABLED, clicking it is useless: the page is waiting for something else first (a rating not chosen, a required field empty, a box unticked, a sign-in). Find and do that thing.
-3. Read the state next to each item: a field shows what it holds now, "(selected)" means already chosen. Trust these over your memory: if a field you typed into reads (empty), the text is gone and must be typed again.
+3. Read the state next to each item: a field shows what it holds now (long text is shown as its start ... end and its length; that is not truncation), "(selected)" means already chosen. Trust these over your memory: if a field you typed into reads (empty), the text is gone and must be typed again, or it was the wrong field.
 4. What is the one action that makes progress now?
 
 Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "select" a drop-down, "button"/"link" are clickable, "star" is one star of a rating (click the one for the rating you want), "option" is a choice (radio, tick box, tab). "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. To reach a section of the page, use scrollto with a word from its heading (the SECTIONS list shows what exists and what is on screen); "on screen" means that section's heading is in the viewport now. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
@@ -304,7 +304,11 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             elif kind == "type":
                 n = int(action.get("n")); r = browser.type(n, str(action.get("text", ""))[:500], enter=bool(action.get("enter", False)))
                 if r.get("ok"):
-                    last_result = f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + (f"; the field now reads \"{str(r.get('value'))[:80]}\"" if r.get("value") is not None else "") + f" -> {r['state'].get('title')}"
+                    v = str(r.get("value") or "")
+                    held = (f"; the field now holds ALL {r.get('chars')} characters of the text" if r.get("complete") else
+                            f"; the field holds {r.get('chars')} of the {r.get('wanted')} characters wanted" if r.get("chars") is not None else
+                            f"; the field now reads \"{v[:80]}\"" if v else "; the field reads EMPTY afterwards - this field does not take text; find another")
+                    last_result = f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + held + f" -> {r['state'].get('title')}"
                 else: last_result = "type failed: " + str(r.get("error"))
             elif kind == "scroll":
                 px = max(-3000, min(3000, int(action.get("px", 700)))); browser.scroll(px); last_result = f"scrolled {px}"
