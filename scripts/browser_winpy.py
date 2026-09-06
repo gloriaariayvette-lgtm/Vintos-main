@@ -50,25 +50,33 @@ def ensure():
     cands = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
              os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Microsoft\Edge\Application\msedge.exe")]
     exe = next((c for c in cands if os.path.exists(c)), "msedge")
+    # sync off and first-run off: Edge's sync-confirmation pop-up came back as the first "page", goto navigated it,
+    # and Edge dropped the port (2026-09-06)
     subprocess.Popen([exe, "--remote-debugging-port=%d" % port, "--user-data-dir=" + prof, "--no-first-run", "--no-default-browser-check",
+                      "--disable-sync", "--disable-features=msSyncConfirmation,msEdgeSignInOnFirstRun,msImplicitSignin",
                       "--remote-allow-origins=*", "--new-window", "about:blank"], close_fds=True)
     for _ in range(40):
         time.sleep(0.25)
         if alive(): return {"ok": True, "launched": True, "profile": prof}
     return {"ok": False, "error": "Edge did not open its debugging port"}
 
+def is_web(t):
+    u = (t.get("url") or "").lower()
+    return t.get("type") == "page" and not u.startswith(("edge://", "chrome://", "devtools://", "chrome-extension://", "extension://"))
+
 def tabs():
-    return [t for t in jget("/json") if t.get("type") == "page"]
+    return [t for t in jget("/json") if is_web(t)]
+
+def new_tab():
+    return json.loads(urllib.request.urlopen(urllib.request.Request(BASE + "/json/new?about:blank", method="PUT"), timeout=5).read())
 
 def pick_tab(tid=None):
+    # only real web tabs: Edge's own dialogs and settings pages are "page" type too, and navigating one kills the session
     ts = tabs()
-    if not ts:
-        t = json.loads(urllib.request.urlopen(urllib.request.Request(BASE + "/json/new?about:blank", method="PUT"), timeout=5).read())
-        return t
     if tid:
         for t in ts:
             if t["id"] == tid: return t
-    return ts[0]
+    return ts[0] if ts else new_tab()
 
 class CDP:
     def __init__(self, ws_url):
@@ -213,7 +221,7 @@ def available() -> bool:
         return False
 
 
-def call(op: str, timeout: float = 60.0, **kw) -> Dict[str, Any]:
+def call(op: str, timeout: float = 60.0, _retry: bool = False, **kw) -> Dict[str, Any]:
     py = desktop_winpy.find_python()
     if not py:
         raise RuntimeError("no python.exe reachable from WSL")
@@ -221,7 +229,13 @@ def call(op: str, timeout: float = 60.0, **kw) -> Dict[str, Any]:
     proc = subprocess.run([py, "-c", _HELPER], input=json.dumps(req).encode("utf-8"), capture_output=True, timeout=timeout)
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise RuntimeError("browser helper: " + (err[-1] if err else "failed")[:300])
+        last = (err[-1] if err else "failed")
+        # Edge closed (or was never open): open it and try the same call once more
+        if op != "ensure" and not _retry and ("10061" in last or "refused" in last.lower() or "not connect" in last.lower()):
+            e = call("ensure", timeout=30)
+            if e.get("ok"):
+                return call(op, timeout=timeout, _retry=True, **kw)
+        raise RuntimeError("browser helper: " + last[:300])
     lines = [l for l in proc.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
     return json.loads(lines[-1])
 
