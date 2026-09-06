@@ -67,7 +67,8 @@ SCRIPTS="$SCRIPTS creative-expression.sh dream-music.py humor_practice.py tensio
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py"
-SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"   # his body: the bridge the Pi reports to, and its subconscious (donated from Velaris 2026-09-05)   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
+SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
+SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py"   # his hands on the Windows desktop, through PowerShell from WSL (2026-09-06)   # his body: the bridge the Pi reports to, and its subconscious (donated from Velaris 2026-09-05)   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
 BINS="robot-pi-repoint.sh purge-test-residue.py server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
@@ -76,7 +77,7 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # ---------------------------------------------------------------- preflight

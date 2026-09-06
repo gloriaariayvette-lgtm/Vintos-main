@@ -938,6 +938,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
         import hashlib as _mh, resonance_marks as _rmk
         _rmk.activate_from_reply(reply, _mh.md5((surface + "|" + gloria_text[:200] + "|" + reply[:200]).encode()).hexdigest()[:10])
     _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
+    def _desktop():
+        if _desktop_agent is not None and "[DESKTOP:" in (reply or "").upper():
+            _desktop_agent.extract_and_start(reply, surface)
+    _inline("desktop", _desktop)   # [DESKTOP: task] starts one bounded desktop job; [DESKTOP: STOP] ends it
     venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
     def _bg(name, argv, log, needs_venv=False):
         if name in skip: return
@@ -4952,6 +4956,19 @@ async def robot_state_proxy(request: Request, frame: int = 0):
         return r.json()
     except Exception as e:
         return {"ok": False, "why": f"bridge unreachable: {str(e)[:100]}"}
+
+
+# === His hands on the Windows desktop (scripts/desktop_agent.py + desktop_windows.py, 2026-09-06) ===
+# fresh screenshot -> one Gemma decision -> one bounded action -> repeat; authenticated start/status/stop.
+try:
+    import sys as _dk_sys
+    if os.path.join(WORKSPACE, "scripts") not in _dk_sys.path: _dk_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import desktop_agent as _desktop_agent
+    _desktop_agent.register(app, APP_SECRET)
+    print("[desktop] routes registered", flush=True)
+except Exception as _dk_e:
+    _desktop_agent = None
+    print("[desktop] not registered:", _dk_e, flush=True)
 
 
 @app.get("/api/chat/history")
