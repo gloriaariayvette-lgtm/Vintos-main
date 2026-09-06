@@ -40,8 +40,12 @@ class Env:
         # The executor and the transport write too - command-bubble.json, effect-receipts.jsonl, his-touch.json -
         # and until 2026-09-06 they wrote into HIS memory on every deploy: "ridge -> rotate high [sent]" appeared
         # in the app after each test run (Gloria: "why do I keep getting ridge commands?"). Everything lands here.
-        self.old_dp_mem = DP.MEM; self.old_home = os.environ.get("HOME")
+        import device_context as DC
+        self.old_dp_mem = (DP.MEM, DP.HIS, DC.MEM, DC.STATE); self.old_home = os.environ.get("HOME")
         DP.MEM = os.path.join(self.tmp, "memory"); os.makedirs(DP.MEM, exist_ok=True)
+        # import-time constants: HIS and device_context.STATE were still his real files after the first fix
+        # (device-state.json got a fresh 'ridge rotate 18 set_by him' on the very next deploy, 2026-09-06)
+        DP.HIS = os.path.join(DP.MEM, "his-touch.json"); DC.MEM = DP.MEM; DC.STATE = os.path.join(DP.MEM, "device-state.json")
         os.environ["HOME"] = self.tmp
         EG.MEM = self.tmp
         EG.LOG = os.path.join(self.tmp, "effect-decisions.jsonl")
@@ -58,7 +62,8 @@ class Env:
     def __exit__(self, *args):
         (EG.MEM, EG.LOG, EG.ARMED_FLAG, EG.STOP_BUTTON,
          EG.TEST_MODE_FLAG) = self.old
-        DP.MEM = self.old_dp_mem
+        import device_context as DC
+        DP.MEM, DP.HIS, DC.MEM, DC.STATE = self.old_dp_mem
         if self.old_home is not None: os.environ["HOME"] = self.old_home
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
