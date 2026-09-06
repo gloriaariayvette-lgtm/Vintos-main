@@ -524,10 +524,23 @@ def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .2
         _state(status="running", pid=os.getpid(), job_id=job_id, task=task,
                step=0, started_at=time.time(), reason="")
         try:
-            result = run_loop(task, pick_backend(), GemmaPlanner(), max_steps,
-                              interval, dry_run, job_id=job_id,
-                              progress=lambda step, calls: _state(step=step, gemma_calls=calls),
-                              verifier=GemmaVerifier())
+            use_browser = False
+            if not dry_run and os.environ.get("VINTOS_DESKTOP_MODE", "").lower() != "pixels":
+                try:
+                    import browser_agent, browser_winpy
+                    use_browser = browser_agent.looks_like_web(task) and browser_winpy.available()
+                except Exception:
+                    use_browser = False
+            if use_browser:
+                # a task about the web is driven by the page's structure, not by pixels (2026-09-06)
+                _state(mode="browser")
+                result = browser_agent.run_task(task, max_steps, job_id=job_id)
+            else:
+                _state(mode="pixels")
+                result = run_loop(task, pick_backend(), GemmaPlanner(), max_steps,
+                                  interval, dry_run, job_id=job_id,
+                                  progress=lambda step, calls: _state(step=step, gemma_calls=calls),
+                                  verifier=GemmaVerifier())
         except KeyboardInterrupt:
             result = RunResult("stopped", "interrupted", 0, 0, job_id)
         except Exception as exc:
@@ -628,6 +641,11 @@ def doctor() -> Dict[str, Any]:
         action = GemmaPlanner()("Inspection only: look at the current screen, take no action, and return fail.",
                                 shot, image, backend.describe(), 1, "doctor: do not act", [])
         out.update({"gemma_ok": True, "gemma_action": action.get("action")})
+        try:
+            import browser_winpy
+            out["browser"] = "ready (websocket-client present)" if browser_winpy.available() else "missing: python.exe -m pip install --user websocket-client"
+        except Exception as _bx:
+            out["browser"] = "unavailable: " + str(_bx)[:80]
     except Exception as exc:
         out.update({"ok": False, "gemma_ok": False, "error": str(exc)})
         try:
