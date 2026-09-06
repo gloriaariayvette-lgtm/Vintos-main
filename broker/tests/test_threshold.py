@@ -21,6 +21,9 @@ def check(n, ok, d=""):
 
 TMP = tempfile.mkdtemp(prefix="thresh-")
 EP = os.path.join(TMP, "episodes.jsonl")
+# the undertakings ledger is an import-time path into HIS memory; without this the suite wrote a fake
+# undertaking ("aaaaaaaaaaaa", active) into atelier-undertakings.json on every deploy (found 2026-09-06)
+TH.WSP = TMP; TH.LEDGER = os.path.join(TMP, "atelier-undertakings.json")
 
 class FO:
     OUT = EP

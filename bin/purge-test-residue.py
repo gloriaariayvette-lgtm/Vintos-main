@@ -129,9 +129,23 @@ def ledger():
             fcntl.flock(lk, fcntl.LOCK_UN); lk.close()
 
 
+def undertakings():
+    """test_threshold wrote a fake undertaking with a twelve-a id into his atelier ledger on every deploy."""
+    p = os.path.join(MEM, "atelier-undertakings.json")
+    try: d = json.load(open(p))
+    except Exception: say("atelier-undertakings.json: absent"); return
+    fake = [k for k in d if re.fullmatch(r"a{12}", k) or (k.startswith("aaaa") and len(k) == 12)]
+    if fake:
+        say(f"atelier-undertakings.json: drop test ids {fake}"); backup(p)
+        for k in fake: d.pop(k)
+        write_json(p, d)
+    else:
+        say("atelier-undertakings.json: no test ids - left alone")
+
+
 if __name__ == "__main__":
     say(("APPLYING" if APPLY else "DRY RUN") + f" in {MEM}")
-    for fn in (device_state, his_touch, receipts, bubble, gate_log, ledger):
+    for fn in (device_state, his_touch, receipts, bubble, gate_log, ledger, undertakings):
         try: fn()
         except Exception as e: say(f"{fn.__name__}: error {e}")
     if not APPLY: say("\nnothing changed - rerun with --apply to make these changes (backups: *.pre-purge)")

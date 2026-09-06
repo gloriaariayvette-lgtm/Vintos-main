@@ -31,6 +31,10 @@ tmp = tempfile.mkdtemp(prefix="prov-test-")
 try:
     old_events, old_memory = EP.EVENTS, EP.MEMORY
     EP.MEMORY, EP.EVENTS = tmp, os.path.join(tmp, "writer-events.jsonl")
+    # the relational compare below reaches prediction_ledger; without this it appended consume_refused rows to
+    # HIS relational/self prediction ledgers on every deploy (found 2026-09-06 while hunting the ridge leak)
+    import prediction_ledger as _PL
+    old_pl_memory = _PL.MEMORY; _PL.MEMORY = tmp
     tactical = {"turn_id": "t-1", "surface": "avatar",
                 "input_provenance": "counterpart_verbatim",
                 "output_provenance": "stratagem_influenced", "may_witness": False,
@@ -104,6 +108,7 @@ try:
     check("HELD relational prediction creates no mismatch evidence", not os.path.exists(RM.MISMATCH_LOG))
 finally:
     EP.EVENTS, EP.MEMORY = old_events, old_memory
+    _PL.MEMORY = old_pl_memory
     os.environ.pop(EP.ENV_KEY, None)
     shutil.rmtree(tmp, ignore_errors=True)
 
