@@ -36,8 +36,12 @@ def looks_like_web(task: str) -> bool:
 def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str) -> str:
     media = st.get("media")
     if media:
-        m = ("VIDEO ELEMENT: " + ("PLAYING" if media.get("present") and not media.get("paused") and not media.get("ended") else "present but paused/ended" if media.get("present") else "none")
-             + f" (position {media.get('currentTime', 0)}s of {media.get('duration', 0)}s)")
+        playing = media.get("present") and not media.get("paused") and not media.get("ended")
+        pos = int(media.get("currentTime", 0) or 0)
+        # the same rule video_done applies: playing means the clock is moving, not just that play was pressed
+        word = ("PLAYING" if playing and pos >= 1 else "starting (play pressed, clock still at 0s: wait 2 seconds and look again)" if playing
+                else "present but paused/ended" if media.get("present") else "none")
+        m = f"VIDEO ELEMENT: {word} (position {pos}s of {media.get('duration', 0)}s)"
     else:
         m = "VIDEO ELEMENT: none on this page"
     lines = [f"URL: {st.get('url')}", f"TITLE: {st.get('title')}", m,
@@ -109,7 +113,9 @@ def video_done(st: Dict[str, Any], task: str) -> Tuple[bool, str]:
     m = (st or {}).get("media") or {}
     if m.get("present") and not m.get("paused") and not m.get("ended") and int(m.get("currentTime", 0) or 0) >= 1:
         return True, f"video playing: '{st.get('title')}' at {m.get('currentTime')}s"
-    return False, "no video is playing" if not m.get("present") else "the video is present but not playing"
+    if not m.get("present"): return False, "no video is playing"
+    if not m.get("paused") and not m.get("ended"): return False, "the video's clock is still at 0s: wait 2 seconds, then look again"
+    return False, "the video is present but not playing: use play"
 
 
 def is_video_task(task: str) -> bool:

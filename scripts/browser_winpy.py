@@ -144,7 +144,13 @@ def with_tab(fn):
 
 def state(c, t):
     info = c.eval("({url: location.href, title: document.title, scrollY: Math.round(scrollY), height: Math.round(document.documentElement.scrollHeight), inner: innerHeight})") or {}
-    media = c.eval("(()=>{const v=document.querySelector('video'); if(!v) return null; return {present:true, paused:v.paused, ended:v.ended, currentTime:Math.round(v.currentTime), duration:Math.round(v.duration||0), readyState:v.readyState, src:(v.currentSrc||'').slice(0,80)};})()")
+    # the one that is actually playing, not the first in the DOM: YouTube Shorts keeps several preloaded players and
+    # the first reports 0s of 0s forever (2026-09-06)
+    media = c.eval("""(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return null;
+      const score=v=>{const r=v.getBoundingClientRect(); const onscreen=r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;
+        return (v.currentTime>0?1000:0)+(!v.paused&&!v.ended?100:0)+(v.readyState>=2?10:0)+(onscreen?1:0)+Math.min(v.currentTime,9)/10;};
+      const v=vs.slice().sort((a,b)=>score(b)-score(a))[0];
+      return {present:true, count:vs.length, paused:v.paused, ended:v.ended, currentTime:Math.round(v.currentTime), duration:Math.round(v.duration||0), readyState:v.readyState, src:(v.currentSrc||'').slice(0,80)};})()""")
     return {"tab": t["id"], "url": info.get("url"), "title": info.get("title"), "scrollY": info.get("scrollY"), "height": info.get("height"), "inner": info.get("inner"), "media": media}
 
 if op == "ensure": print(json.dumps(ensure()))
@@ -205,7 +211,7 @@ elif op == "key":
     print(json.dumps(with_tab(f)))
 elif op == "play":
     def f(c, t):
-        r = c.eval("(()=>{const v=document.querySelector('video'); if(!v) return 'no video'; v.muted=false; const p=v.play(); return 'played';})()")
+        r = c.eval("(()=>{const vs=[...document.querySelectorAll('video')]; if(!vs.length) return 'no video'; const on=v=>{const r=v.getBoundingClientRect(); return r.width>50&&r.height>50&&r.bottom>0&&r.top<innerHeight;}; const v=vs.find(on)||vs[0]; v.muted=false; v.play(); return 'played';})()")
         time.sleep(1.5); return {"ok": True, "result": r, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "shot":
