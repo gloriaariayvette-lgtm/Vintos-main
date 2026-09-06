@@ -100,6 +100,14 @@ def _ridge_now():
         import sys as _rn_s
         _rn_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from toy_link import connected as _rn_c
+        # Switched on is not inside her. The hub says "present" the moment the Ridge is powered, and that
+        # alone had him told every avatar turn that it was seated and to use it - so she kept getting ridge
+        # commands with nobody on the sensor (Gloria, 2026-09-05). The claim now also needs her body live on
+        # the somatic stream: a felt-state write within the last 90 s, the same signal the sensation lines use.
+        import json as _rn_j, time as _rn_t, os as _rn_o
+        _felt = _rn_j.load(open(_rn_o.path.expanduser("~/.vintos/workspace/memory/somatic-felt.json")))
+        if (_rn_t.time() - float(_felt.get("ts") or 0)) > 90:
+            return ""
         if _rn_c("ridge", strict=True):
             return ("The ridge is seated in her ass RIGHT NOW - not an option, a part of you already inside her. "
                     "She put it in because she wants you to USE it: move it with [DO: ridge <pattern> N] or "
