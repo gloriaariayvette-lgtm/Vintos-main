@@ -262,6 +262,55 @@ def get_recent_imprint(within_seconds=120, turn_id=""):
         pass
     return None
 
+def _ledger_imprint(imprint):
+    """The trimmed shape an entry carries (the same one write-time attachment uses)."""
+    return {"id": imprint.get("id", ""), "narrative": imprint.get("narrative", ""), "salience": imprint.get("salience", 0.5),
+            "anchors": {_k: _v for _k, _v in (imprint.get("anchors") or {}).items()
+                        if _k not in ("preoccupation", "recent_seal", "recent_velqan", "emoclaw_snapshot")}}
+
+
+def wait_for_imprint(turn_id, max_wait=45, step=2.0):
+    """The imprint writer and this ledger start together; the imprint waits on Gemma, this used to read
+    the file at once and seal the entry without it (Gloria saw 'default salience and no narrative',
+    2026-09-05). Wait a bounded while for THIS turn's imprint; without a turn id there is nothing to wait for."""
+    imprint = get_recent_imprint(within_seconds=120, turn_id=turn_id)
+    if imprint or not turn_id:
+        return imprint
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        time.sleep(step)
+        imprint = get_recent_imprint(within_seconds=120, turn_id=turn_id)
+        if imprint:
+            return imprint
+    return None
+
+
+def backfill_imprints(ledger, lookback=12):
+    """An imprint that landed after its entry was sealed is attached now, salience with it. Called under the
+    ledger lock on every write; returns how many entries were completed."""
+    try:
+        with open(IMPRINT_FILE) as f:
+            imprints = json.load(f)
+    except Exception:
+        return 0
+    by_turn = {}
+    for i in imprints:
+        t = (i.get("provenance") or {}).get("turn_id")
+        if t: by_turn[t] = i
+    n = 0
+    for e in ledger[-lookback:]:
+        if e.get("imprint") or not e.get("turn_id"):
+            continue
+        i = by_turn.get(e["turn_id"])
+        if not i:
+            continue
+        e["imprint"] = _ledger_imprint(i)
+        e["salience"] = i.get("salience", e.get("salience", 0.5))
+        e["imprint_attached_late"] = True
+        n += 1
+    return n
+
+
 def get_recent_wal_facts(within_seconds=120, turn_id=""):
     """Get WAL entries written in the last N seconds."""
     facts = []
@@ -413,7 +462,7 @@ def main():
             _emo_delta = ", ".join(_parts) if _parts else "stable"
     except: pass
     _turn_id = provenance.get("turn_id", "")
-    imprint = get_recent_imprint(within_seconds=120, turn_id=_turn_id)
+    imprint = wait_for_imprint(_turn_id, max_wait=int(os.environ.get("LEDGER_IMPRINT_WAIT", "45")))
     wal_facts = get_recent_wal_facts(within_seconds=120, turn_id=_turn_id)
     blush = get_recent_blush(within_seconds=120, turn_id=_turn_id)
 
@@ -456,7 +505,7 @@ def main():
         # when both summarized the same 3-minute window. Now somatic_reply is the
         # movement during his reply, or honestly absent if her touch didn't change.
         "somatic_reply": get_recent_somatic(since_ts=(lambda: max((f.get("ts", 0) for f in json.load(open(os.path.join(MEMORY, ".somatic-turn.json")))), default=None))() if os.path.exists(os.path.join(MEMORY, ".somatic-turn.json")) else None),
-        "imprint": {"id": imprint.get("id",""), "narrative": imprint.get("narrative",""), "salience": imprint.get("salience",0.5), "anchors": {_k:_v for _k,_v in (imprint.get("anchors") or {}).items() if _k not in ("preoccupation","recent_seal","recent_velqan","emoclaw_snapshot")}} if imprint else None,
+        "imprint": _ledger_imprint(imprint) if imprint else None,
         "preoccupation": imprint.get("anchors",{}).get("preoccupation") if imprint else None,
         "recent_seal": imprint.get("anchors",{}).get("recent_seal") if imprint else None,
         "recent_velqan": imprint.get("anchors",{}).get("recent_velqan") if imprint else None,
@@ -491,6 +540,8 @@ def main():
     _lk = open(LEDGER_FILE + ".lock", "a+"); _fl.flock(_lk, _fl.LOCK_EX)
     try:
         ledger = load_ledger()
+        _late = backfill_imprints(ledger)
+        if _late: print(f"[Ledger] {_late} earlier entr{'y' if _late == 1 else 'ies'} completed with a late imprint")
         # Blush reflects on the previous turn — attach to last entry, not current
         if blush and ledger:
             ledger[-1]["blush"] = blush

@@ -397,7 +397,9 @@ def _tv_status_adb():
             if fm: app = fm.group(1)
         # a source is only known through HA; the launcher counts as idle, anything else as in use
         idle = app in ("", "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "com.android.systemui")
-        return {"power": power, "source": "unknown" if idle else "app", "app": app, "via": "adb"}
+        # com.sony.dtv.tvx is Sony's TV-input app: live TV or an HDMI source is on screen, so the TV is in use
+        source = "unknown" if idle else ("tv-input" if app.startswith("com.sony.dtv.tvx") else "app")
+        return {"power": power, "source": source, "app": app, "via": "adb"}
     except Exception:
         return None
 
