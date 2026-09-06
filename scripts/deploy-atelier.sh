@@ -68,7 +68,7 @@ SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
-SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py"   # his hands on the Windows desktop, through PowerShell from WSL (2026-09-06)   # his body: the bridge the Pi reports to, and its subconscious (donated from Velaris 2026-09-05)   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
+SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py desktop_winpy.py"   # his hands on the Windows desktop, through PowerShell from WSL (2026-09-06)   # his body: the bridge the Pi reports to, and its subconscious (donated from Velaris 2026-09-05)   # be_mischievous and subconscious_drift called it; it existed nowhere for him (2026-09-05)
 BINS="robot-pi-repoint.sh purge-test-residue.py server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py

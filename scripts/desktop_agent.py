@@ -356,9 +356,16 @@ def pick_backend() -> DesktopBackend:
     is reachable the Windows backend drives it; otherwise the PyAutoGUI backend (a real Linux session)."""
     if os.environ.get("VINTOS_DESKTOP_BACKEND", "").lower() == "pyautogui":
         return PyAutoGUIBackend()
-    try:
+    forced = os.environ.get("VINTOS_DESKTOP_BACKEND", "").lower()
+    try:   # first choice: Windows Python + PyAutoGUI (Defender treats it as an ordinary program)
+        import desktop_winpy
+        if forced in ("", "winpy") and desktop_winpy.available():
+            return desktop_winpy.WindowsPythonBackend()
+    except Exception:
+        pass
+    try:   # second: PowerShell (Defender blocked its user32 declarations on Aegis, 2026-09-06; kept for hosts where it passes)
         import desktop_windows
-        if desktop_windows.available():
+        if forced in ("", "powershell") and desktop_windows.available():
             return desktop_windows.WindowsBackend()
     except Exception:
         pass
@@ -481,6 +488,14 @@ def doctor() -> Dict[str, Any]:
         out.update({"gemma_ok": True, "gemma_action": action.get("action")})
     except Exception as exc:
         out.update({"ok": False, "gemma_ok": False, "error": str(exc)})
+        try:
+            import desktop_winpy
+            py = desktop_winpy.find_python()
+            out["windows_python"] = py or "not found on PATH from WSL"
+            if py and not desktop_winpy.available():
+                out["hint"] = "install on the Windows side once: %s -m pip install --user pyautogui pillow pyperclip pygetwindow" % os.path.basename(py)
+        except Exception:
+            pass
     return out
 
 
