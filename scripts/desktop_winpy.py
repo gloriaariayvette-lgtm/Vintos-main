@@ -57,12 +57,17 @@ elif op == "execute":
     elif kind == "scroll": pyautogui.scroll(int(a["amount"])); res = "scroll"
     elif kind == "type":
         text = a["text"]
-        try:
-            import pyperclip, time
-            prev = pyperclip.paste(); pyperclip.copy(text); pyautogui.hotkey("ctrl", "v"); time.sleep(.1); pyperclip.copy(prev)
-        except Exception:
-            if not text.isascii(): raise
-            pyautogui.write(text, interval=.01)
+        # keystrokes for short plain text (a paste of "12+7" is Invalid input to Calculator; keys are what a
+        # person does); the clipboard only for long or non-ASCII text
+        if text.isascii() and len(text) <= 120:
+            pyautogui.write(text, interval=.02)
+        else:
+            try:
+                import pyperclip, time
+                prev = pyperclip.paste(); pyperclip.copy(text); pyautogui.hotkey("ctrl", "v"); time.sleep(.1); pyperclip.copy(prev)
+            except Exception:
+                if not text.isascii(): raise
+                pyautogui.write(text, interval=.01)
         res = "typed %d" % len(text)
     elif kind == "press": pyautogui.press(a["key"]); res = "pressed " + a["key"]
     elif kind == "hotkey": pyautogui.hotkey(*a["keys"]); res = "hotkey " + "+".join(a["keys"])

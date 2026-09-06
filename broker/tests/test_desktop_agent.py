@@ -70,6 +70,19 @@ pl = planner_from([{"action": "press", "key": "boom"}, {"action": "done", "summa
 r = DA.run_loop("t", b, pl, max_steps=5, interval=0, should_stop=lambda: False)
 check("loop: an action error is fed back to the model, not fatal", r.status == "completed" and pl.seen[1]["last"].startswith("ACTION ERROR"), pl.seen)
 
+# --- done is verified against a fresh screenshot
+b = FakeBackend()
+verdicts = iter([(False, "Invalid input is showing"), (True, "19 is showing")])
+seen_claims = []
+def fake_verifier(task, claim, shot, size): seen_claims.append((claim, shot)); return next(verdicts)
+pl = planner_from([{"action": "type", "text": "12+7"}, {"action": "done", "summary": "19 is shown"}, {"action": "press", "key": "enter"}, {"action": "done", "summary": "19 is shown"}])
+r = DA.run_loop("calc", b, pl, max_steps=8, interval=0, should_stop=lambda: False, verifier=fake_verifier)
+check("verify: a false done is rejected and fed back, a true one completes", r.status == "completed" and len(seen_claims) == 2
+      and pl.seen[2]["last"].startswith("DONE REJECTED") and "Invalid input" in pl.seen[2]["last"] and len(b.done) == 2, (r, pl.seen, len(b.done)))
+check("verify: the check looked at a fresh screenshot, not the one Gemma decided on", seen_claims[0][1] != pl.seen[1]["shot"])
+vrows = [json.loads(l) for l in open(DA.LOG_FILE) if "verify" in l]
+check("verify: both checks are in the audit", len(vrows) == 2 and vrows[0]["verify"]["confirmed"] is False and vrows[1]["verify"]["confirmed"] is True)
+
 # --- audit never holds typed text
 rows = [json.loads(l) for l in open(DA.LOG_FILE)]
 typed = [x for x in rows if x.get("action", {}).get("action") == "type"]

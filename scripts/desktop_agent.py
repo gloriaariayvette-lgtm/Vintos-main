@@ -285,6 +285,32 @@ Do not claim success unless it is verified: for anything visible, the current sc
         return parse_action(raw)
 
 
+class GemmaVerifier:
+    """A second, narrower question to the same model: does THIS screenshot show what was claimed? Yes or no."""
+    def __init__(self, endpoint: str = GEMMA_API, model: str = GEMMA_MODEL, timeout: float = 60.0):
+        self.endpoint, self.model, self.timeout = endpoint, model, timeout
+
+    def __call__(self, task: str, claim: str, screenshot: bytes, image_size: Tuple[int, int]) -> Tuple[bool, str]:
+        encoded = base64.b64encode(screenshot).decode("ascii")
+        prompt = (f"TASK: {task}\nCLAIM: {claim}\n\nLook only at this screenshot. Does it visibly show that the claim is true "
+                  "and the task is complete? Any error message, wrong value, or missing result means NO. "
+                  'Answer with one JSON object only: {"verified": true|false, "seen": "what the screenshot actually shows, one sentence"}')
+        body = json.dumps({"model": self.model, "temperature": 0.0, "max_tokens": 120,
+                           "messages": [{"role": "user", "content": [
+                               {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + encoded}},
+                               {"type": "text", "text": prompt}]}]}).encode("utf-8")
+        req = urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with urlrequest.urlopen(req, timeout=self.timeout) as response:
+                payload = json.loads(response.read())
+            raw = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+            m = re.search(r"\{.*\}", raw, flags=re.S)
+            d = json.loads(m.group(0)) if m else {}
+            return bool(d.get("verified")), str(d.get("seen", raw))[:200]
+        except Exception as exc:
+            return False, "verifier unavailable: " + str(exc)[:120]
+
+
 def parse_action(raw: str) -> Dict[str, Any]:
     text = raw.strip()
     if text.startswith("```"):
@@ -313,7 +339,8 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
              max_steps: int = 40, interval: float = .25, dry_run: bool = False,
              should_stop: Callable[[], bool] = _stop_requested,
              job_id: Optional[str] = None,
-             progress: Optional[Callable[[int, int], None]] = None) -> RunResult:
+             progress: Optional[Callable[[int, int], None]] = None,
+             verifier: Optional[Callable[..., Tuple[bool, str]]] = None) -> RunResult:
     job_id = job_id or uuid.uuid4().hex[:12]
     recent: list[Dict[str, Any]] = []
     last_result = ""
@@ -332,7 +359,22 @@ def run_loop(task: str, backend: DesktopBackend, planner: Callable[..., Dict[str
         kind = action["action"]
         _audit({"job_id": job_id, "step": step, "screen": digest,
                 "action": _auditable_action(action)})
-        if kind == "done": return RunResult("completed", str(action.get("summary", "done")), step, calls, job_id)
+        if kind == "done":
+            summary = str(action.get("summary", "done"))
+            if verifier is not None and not dry_run:
+                # Gemma claimed 19 was showing while Calculator said Invalid input (2026-09-06): a claim of done is
+                # checked against a fresh screenshot by a separate yes/no question before it is believed
+                shot2, size2, _ = backend.capture()
+                calls += 1
+                ok, why = verifier(task, summary, shot2, size2)
+                _audit({"job_id": job_id, "step": step, "screen": hashlib.sha256(shot2).hexdigest()[:16],
+                        "verify": {"claimed": summary[:200], "confirmed": bool(ok), "why": str(why)[:200]}})
+                if not ok:
+                    last_result = "DONE REJECTED: a fresh look at the screen does not show it - " + str(why)[:200]
+                    recent.append({"step": step, "action": action, "result": last_result})
+                    last_action_sig = ""
+                    continue
+            return RunResult("completed", summary, step, calls, job_id)
         if kind == "fail": return RunResult("failed", str(action.get("reason", "Gemma stopped")), step, calls, job_id)
         if dry_run: return RunResult("dry_run", json.dumps(action, ensure_ascii=False), step, calls, job_id)
         sig = json.dumps({k: v for k, v in action.items() if k != "reason"},
@@ -397,7 +439,8 @@ def run_task(task: str, max_steps: int = 40, interval: float = .25,
         try:
             result = run_loop(task, pick_backend(), GemmaPlanner(), max_steps,
                               interval, dry_run, job_id=job_id,
-                              progress=lambda step, calls: _state(step=step, gemma_calls=calls))
+                              progress=lambda step, calls: _state(step=step, gemma_calls=calls),
+                              verifier=GemmaVerifier())
         except KeyboardInterrupt:
             result = RunResult("stopped", "interrupted", 0, 0, job_id)
         except Exception as exc:
