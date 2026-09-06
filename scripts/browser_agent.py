@@ -66,7 +66,11 @@ def _summary(st: Dict[str, Any], elements: List[Dict[str, Any]], text: str, outl
         lines.append(f"POP-UP COVERING THE PAGE: \"{popup.get('text', '')[:120]}\" -- the page behind it cannot be used until it is closed. Use dismiss (or click its close/No Thanks item, marked [pop-up]) unless the task needs this pop-up.")
     lines += ["", "THINGS ON THE PAGE, in page order (number, kind, label):"]
     for i, e in enumerate(elements):
-        flag = ("" if e.get("ontop", True) else " (below the fold)") + (" [pop-up]" if e.get("popup") and not e.get("marker") else "")
+        if e.get("marker"): continue
+        flag = ("" if e.get("ontop", True) else " (below the fold)") + (" [pop-up]" if e.get("popup") else "")
+        flag += (" (DISABLED - greyed out; something it needs is missing)" if e.get("disabled") else "") + (" (selected)" if e.get("selected") else "")
+        if e.get("kind") in ("field", "select"):
+            flag += f' = "{e.get("value")}"' if e.get("value") else " = (empty)"
         lines.append(f"[{i}] {e.get('kind', '?')}: {e.get('text', '')[:110]}{flag}")
     if outline:
         lines += ["", "SECTIONS OF THIS PAGE (heading, position in px, whether on screen now):"]
@@ -84,7 +88,7 @@ class GemmaTextPlanner:
 
 TASK: {task}
 STEP: {step}
-YOUR NOTES FROM EARLIER STEPS: {notes or '(none yet)'}
+{notes or 'PLAN: (none yet)'}
 LAST RESULT: {last_result or 'none'}
 RECENT ACTIONS: {json.dumps(recent[-6:], ensure_ascii=False)}
 
@@ -92,12 +96,13 @@ WHAT THE PAGE IS NOW:
 {summary}
 
 How to think, in order:
-1. Where am I? Read PAGE TYPE. Is this the kind of page the next part of the task needs? If you landed somewhere wrong (a channel page when you wanted a video, an ad, a login wall), the correct move is back, then a different choice. Never repeat a choice that led somewhere wrong.
-2. What did my last action do? If LAST RESULT says NO CHANGE, that action does not work here: do something different (another item, scroll, back, a different kind of item).
-3. What is the one action that makes progress now?
+1. Where am I in the PLAN? Which plan step is next? Read PAGE TYPE. Is this the kind of page that step needs? If you landed somewhere wrong (a channel page when you wanted a video, an ad, a login wall), the correct move is back, then a different choice. Never repeat a choice that led somewhere wrong.
+2. What did my last action do? If LAST RESULT says NO CHANGE, that action does not work here: do something different (another item, scroll, back, a different kind of item). If a button is DISABLED, clicking it is useless: the page is waiting for something else first (a rating not chosen, a required field empty, a box unticked, a sign-in). Find and do that thing.
+3. Read the state next to each item: a field shows what it holds now, "(selected)" means already chosen. Trust these over your memory: if a field you typed into reads (empty), the text is gone and must be typed again.
+4. What is the one action that makes progress now?
 
-Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "button"/"link" are clickable, "popup" marks a pop-up covering the page. "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. To reach a section of the page, use scrollto with a word from its heading (the SECTIONS list shows what exists and what is on screen); "on screen" means that section's heading is in the viewport now. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
-Write a short notes line each step (what you learned, what to avoid); it is shown to you next step.
+Rules: choose items by their NUMBER from the list; never invent numbers. Kinds: "video" opens a watch page, "short" a short clip, "channel" a creator's profile (not a video), "playlist" a list, "field" is typable, "select" a drop-down, "button"/"link" are clickable, "star" is one star of a rating (click the one for the rating you want), "option" is a choice (radio, tick box, tab). "First result" means the lowest-numbered item of the right kind. To search a site, use goto with the search URL (YouTube: https://www.youtube.com/results?search_query=WORDS ; Google: https://www.google.com/search?q=WORDS). To watch a video: click a "video" item; on the watch page, if VIDEO ELEMENT is not PLAYING, use play. If nothing suitable is listed, scroll (positive = down) and look again. To reach a section of the page, use scrollto with a word from its heading (the SECTIONS list shows what exists and what is on screen); "on screen" means that section's heading is in the viewport now. Done means the task's finishing condition is TRUE in the page state above (for a video: VIDEO ELEMENT says PLAYING, clock moving, and the TITLE is the right video); the system checks the facts and rejects a false done.
+Write a short notes line each step (what you learned, what to avoid, which plan step is done); it is shown to you next step.
 
 Answer with one JSON object only:
 {{"observed":"one sentence: where I am and what my last action did","notes":"what to remember","action":"goto","url":"https://...","reason":"..."}}
@@ -157,19 +162,30 @@ def is_video_task(task: str) -> bool:
 
 def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: int = DA.DEFAULT_MAX_STEPS,
         should_stop: Callable[[], bool] = DA._stop_requested, job_id: Optional[str] = None,
-        progress: Optional[Callable[[int, int], None]] = None, verifier: Optional[Callable[..., Tuple[bool, str]]] = None) -> DA.RunResult:
-    """One step: read the page, decide, act, measure what changed. An action that changed nothing is reported as
+        progress: Optional[Callable[[int, int], None]] = None, verifier: Optional[Callable[..., Tuple[bool, str]]] = None,
+        reflector: Optional[Any] = None) -> DA.RunResult:
+    """Two speeds of thought. The fast one (planner) picks one action a step. The slow one (reflector) draws up a
+    plan before step 1 and is called back when the loop is stuck: the same page not moving on, done rejected,
+    the checker saying no twice on the same page, a button clicked while disabled. It diagnoses from the full
+    history and the page and hands the fast one a corrected plan; it can also declare the task blocked.
+
+    One step: read the page, decide, act, measure what changed. An action that changed nothing is reported as
     NO CHANGE with what to try instead; the same no-change action three times running, or the same two pages
     alternating three times, ends the job. Repeating an action that DOES change the page is allowed (next, next,
     next). The model's notes are carried from step to step so it can remember what led somewhere wrong."""
     job_id = job_id or uuid.uuid4().hex[:12]
     recent: List[Dict[str, Any]] = []; last_result = ""; calls = 0; errors = 0; notes = ""
     last_sig = ""; stalls = 0; page_hashes: List[str] = []
+    plan: Dict[str, Any] = {}; stuck = 0; last_reflect_step = -10; reflections = 0; verifier_no_on: List[str] = []
     ens = browser.ensure()
     if not ens.get("ok"):
         return DA.RunResult("failed", "browser: " + str(ens.get("error", "could not start")), 0, 0, job_id)
     try: browser.activate()
     except Exception: pass
+    if reflector is not None:
+        calls += 1
+        plan = reflector.plan(task) or {}
+        DA._audit({"job_id": job_id, "step": 0, "mode": "browser", "plan": plan.get("plan", []), "done_when": plan.get("done_when", ""), "error": plan.get("error", "")})
     text = ""
     for step in range(1, max_steps + 1):
         if should_stop(): return DA.RunResult("stopped", "stop requested", step - 1, calls, job_id)
@@ -188,9 +204,13 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 if stalls >= 3: return DA.RunResult("failed", "same action repeated 3 times with no change: " + last_sig[:80], step - 1, calls, job_id)
             else:
                 stalls = 0
+        # stuck: no new ground for a while. New ground resets it.
+        if page_hash in page_hashes and step > 1: stuck += 1
+        else: stuck = max(0, stuck - 1)
+        if last_result.startswith(("NO CHANGE", "DONE REJECTED")): stuck += 1
         page_hashes.append(page_hash)
-        if len(page_hashes) >= 6 and all(page_hashes[-1 - i] == page_hashes[-1 - i - 2] for i in range(4)) and page_hashes[-1] != page_hashes[-2]:
-            return DA.RunResult("failed", "bouncing between the same two pages three times", step - 1, calls, job_id)
+        bouncing = len(page_hashes) >= 6 and all(page_hashes[-1 - i] == page_hashes[-1 - i - 2] for i in range(4)) and page_hashes[-1] != page_hashes[-2]
+        if bouncing: stuck += 2
         # a video task finishes on a fact, without asking anyone
         if is_video_task(task):
             ok, why = video_done(st, task)
@@ -203,9 +223,25 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             except TypeError: ok, why = verifier(task, "the task as stated is complete", st, text)
             DA._audit({"job_id": job_id, "step": step, "mode": "browser", "check": {"complete": bool(ok), "why": str(why)[:200]}})
             if ok: return DA.RunResult("completed", "completion check: " + str(why)[:300], step, calls, job_id)
+            verifier_no_on.append(page_hash)
+            if len(verifier_no_on) >= 2 and verifier_no_on[-1] == verifier_no_on[-2]: stuck += 2
         summary = _summary(st, elements, text, outline)
+        # the slow thought, when the fast one is going in circles
+        if reflector is not None and stuck >= 3 and step - last_reflect_step >= 3:
+            calls += 1; reflections += 1; last_reflect_step = step
+            r = reflector.reflect(task, recent, summary, plan.get("plan", []), notes) or {}
+            DA._audit({"job_id": job_id, "step": step, "mode": "browser", "reflection": {k: r.get(k) for k in ("diagnosis", "plan", "avoid", "blocked", "error")}})
+            if r.get("blocked"):
+                return DA.RunResult("failed", "blocked: " + r["blocked"], step, calls, job_id)
+            if r.get("plan"):
+                plan = {**plan, "plan": r["plan"], "diagnosis": r.get("diagnosis", ""), "avoid": r.get("avoid", [])}
+                last_result = ("RE-PLANNED after being stuck. Diagnosis: " + str(r.get("diagnosis", ""))[:300] + " -- follow the new PLAN from its first step."
+                               + (f" (your last action: {last_result[:200]})" if last_result else ""))
+                stuck = 0; last_sig = ""
+            if reflections >= 4:
+                return DA.RunResult("failed", "stuck four times over; last diagnosis: " + str(r.get("diagnosis", ""))[:200], step, calls, job_id)
         try:
-            try: action = planner(task, summary, step, last_result, recent, notes)
+            try: action = planner(task, summary, step, last_result, recent, _notes_block(plan, notes))
             except TypeError: action = planner(task, summary, step, last_result, recent)
             errors = 0
         except Exception as exc:
@@ -248,6 +284,9 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             elif kind == "click":
                 n = int(action.get("n")); label = elements[n]["text"][:60] if 0 <= n < len(elements) else "?"
                 ckind = elements[n].get("kind", "") if 0 <= n < len(elements) else ""
+                if 0 <= n < len(elements) and elements[n].get("disabled"):
+                    stuck += 1
+                    raise ValueError(f"[{n}] '{label}' is DISABLED: the page will not accept it until its requirements are met (a rating chosen? required text present? a box ticked? signed in?). Do that first")
                 r = browser.click(n)
                 if r.get("ok"):
                     last_result = f"clicked [{n}] {ckind} '{label}' -> now on: {r['state'].get('title')} ({page_type(r['state'].get('url', ''))})"
@@ -255,7 +294,9 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 else: last_result = "click failed: " + str(r.get("error"))
             elif kind == "type":
                 n = int(action.get("n")); r = browser.type(n, str(action.get("text", ""))[:500], enter=bool(action.get("enter", False)))
-                last_result = (f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + f" -> {r['state'].get('title')}") if r.get("ok") else "type failed: " + str(r.get("error"))
+                if r.get("ok"):
+                    last_result = f"typed into [{n}]" + (" and pressed enter" if action.get("enter") else "") + (f"; the field now reads \"{str(r.get('value'))[:80]}\"" if r.get("value") is not None else "") + f" -> {r['state'].get('title')}"
+                else: last_result = "type failed: " + str(r.get("error"))
             elif kind == "scroll":
                 px = max(-3000, min(3000, int(action.get("px", 700)))); browser.scroll(px); last_result = f"scrolled {px}"
             elif kind == "scrollto":
@@ -276,6 +317,96 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
         recent.append({"step": step, "action": {k: v for k, v in action.items() if k not in ("observed", "notes")}, "result": last_result[:160]})
         if should_stop(): return DA.RunResult("stopped", "stop requested", step, calls, job_id)
     return DA.RunResult("failed", f"maximum {max_steps} steps reached", max_steps, calls, job_id)
+
+
+class GemmaReflector:
+    """The slow thought. Before step 1 it turns the task into a plan of sub-goals with the preconditions each one
+    usually has (a review needs a rating AND text before submit lights up; a comment needs a sign-in). When the
+    loop is stuck it is given the whole history and the page and asked for a diagnosis and a revised plan. Gemma
+    by default; VINTOS_BROWSER_REFLECT=sonnet hands only this call to Sonnet (larger decisions, her rule)."""
+    def __init__(self, endpoint: str = DA.GEMMA_API, model: str = DA.GEMMA_MODEL, timeout: float = 90.0):
+        self.endpoint, self.model, self.timeout = endpoint, model, timeout
+        self.use_sonnet = os.environ.get("VINTOS_BROWSER_REFLECT", "").lower() == "sonnet"
+
+    def _ask(self, prompt: str) -> str:
+        if self.use_sonnet:
+            try:
+                sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
+                import server as _srv  # type: ignore
+                key = _srv._anthropic_key()
+                body = json.dumps({"model": "claude-sonnet-5", "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+                req = urlrequest.Request("https://api.anthropic.com/v1/messages", data=body, headers={"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
+                with urlrequest.urlopen(req, timeout=self.timeout) as r:
+                    payload = json.loads(r.read())
+                return "".join(b.get("text", "") for b in payload.get("content", []))
+            except Exception:
+                pass   # fall through to Gemma
+        body = json.dumps({"model": self.model, "temperature": 0.2, "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+        with urlrequest.urlopen(urlrequest.Request(self.endpoint, data=body, headers={"Content-Type": "application/json"}), timeout=self.timeout) as r:
+            payload = json.loads(r.read())
+        return (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+
+    @staticmethod
+    def _parse(raw: str) -> Dict[str, Any]:
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I | re.S)
+        m = re.search(r"\{.*\}", text, flags=re.S)
+        d = json.loads(m.group(0)) if m else {}
+        plan = [str(x)[:160] for x in (d.get("plan") or []) if str(x).strip()][:10]
+        return {"diagnosis": str(d.get("diagnosis", ""))[:400], "plan": plan, "avoid": [str(x)[:120] for x in (d.get("avoid") or [])][:6],
+                "blocked": str(d.get("blocked", ""))[:200]}
+
+    def plan(self, task: str) -> Dict[str, Any]:
+        prompt = f"""You are planning how to do a task in a web browser, before touching it.
+
+TASK: {task}
+
+Break it into ordered sub-goals. For each, think what a website usually REQUIRES before it lets that happen (examples: a review form needs a star rating chosen AND text entered before Submit becomes clickable; posting anywhere usually needs a sign-in; a search needs Enter or the search button; a video page needs play). Put those requirements into the steps so they are not discovered by trial and error. Say how the finished state can be recognised on the page.
+
+Answer one JSON object only:
+{{"plan": ["1. ...", "2. ...", "..."], "done_when": "what the page will show", "avoid": ["..."]}}"""
+        try:
+            d = self._parse(self._ask(prompt))
+            return d
+        except Exception as exc:
+            return {"diagnosis": "", "plan": [], "avoid": [], "blocked": "", "error": str(exc)[:120]}
+
+    def reflect(self, task: str, history: List[Dict[str, Any]], summary: str, plan: List[str], notes: str) -> Dict[str, Any]:
+        hist = "\n".join(f"  step {h.get('step')}: {json.dumps(h.get('action'), ensure_ascii=False)[:120]} -> {str(h.get('result', ''))[:140]}" for h in history[-14:])
+        prompt = f"""A small model is driving a browser and is STUCK. You are the slower, careful thinker. Work out WHY, then give it a corrected plan.
+
+TASK: {task}
+THE PLAN IT WAS FOLLOWING: {json.dumps(plan, ensure_ascii=False)}
+ITS OWN NOTES: {notes or '(none)'}
+WHAT IT DID AND WHAT HAPPENED (oldest first):
+{hist}
+
+THE PAGE RIGHT NOW:
+{summary[:5000]}
+
+Think it through:
+- Which sub-goal is it failing at? What exactly did it expect that did not happen?
+- What is the page telling it? Look at DISABLED buttons (the page is waiting for something), fields reading (empty) after it typed (the text was lost, likely a reload or a reset), items marked (selected) or not (a rating never registered), pop-ups, sign-in walls, error messages in the visible text.
+- Is there a precondition it skipped? A different control that does the same job? A wrong page it should leave?
+- If the task truly cannot be done (a sign-in wall with no account, the thing does not exist), say so in "blocked".
+
+Answer one JSON object only:
+{{"diagnosis": "two or three sentences: what went wrong and why", "plan": ["1. the concrete next actions from THIS page, in order", "2. ...", "..."], "avoid": ["what not to repeat"], "blocked": "" or "why the task cannot be completed"}}"""
+        try:
+            return self._parse(self._ask(prompt))
+        except Exception as exc:
+            return {"diagnosis": "", "plan": [], "avoid": [], "blocked": "", "error": str(exc)[:120]}
+
+
+def _notes_block(plan: Dict[str, Any], notes: str) -> str:
+    lines = []
+    if plan.get("plan"):
+        lines.append("PLAN (follow in order; say in notes which step you are on):")
+        lines += ["  " + p for p in plan["plan"]]
+    if plan.get("done_when"): lines.append("DONE WHEN: " + str(plan["done_when"])[:200])
+    if plan.get("diagnosis"): lines.append("DIAGNOSIS OF WHY YOU WERE STUCK: " + plan["diagnosis"])
+    if plan.get("avoid"): lines.append("AVOID: " + "; ".join(plan["avoid"]))
+    lines.append("YOUR NOTES FROM EARLIER STEPS: " + (notes or "(none yet)"))
+    return "\n".join(lines)
 
 
 class GemmaPageVerifier:
@@ -303,7 +434,7 @@ class GemmaPageVerifier:
 def run_task(task: str, max_steps: int = DA.DEFAULT_MAX_STEPS, job_id: Optional[str] = None) -> DA.RunResult:
     import browser_winpy
     return run(task, browser_winpy.EdgeBrowser(), GemmaTextPlanner(), max_steps, job_id=job_id,
-               progress=lambda step, calls: DA._state(step=step, gemma_calls=calls, mode="browser"), verifier=GemmaPageVerifier())
+               progress=lambda step, calls: DA._state(step=step, gemma_calls=calls, mode="browser"), verifier=GemmaPageVerifier(), reflector=GemmaReflector())
 
 
 if __name__ == "__main__":

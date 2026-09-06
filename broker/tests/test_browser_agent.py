@@ -108,7 +108,7 @@ pl = planner_from([{"action": "goto", "url": "https://www.youtube.com/results?se
 r = BA.run(TASK, fb, pl, max_steps=10, should_stop=lambda: False)
 check("wrong turn: a channel page is named as such, back returns to the results, the run completes",
       r.status == "completed" and "CHANNEL page" in pl.seen[2]["summary"] and "went back" in pl.seen[3]["last"] and "SEARCH RESULTS" in pl.seen[3]["summary"], (r, [x["last"] for x in pl.seen]))
-check("the model's notes are carried to the next steps", pl.seen[2]["notes"] == "item 1 was a channel, not a video" and pl.seen[4]["notes"] == pl.seen[2]["notes"], [x["notes"] for x in pl.seen])
+check("the model's notes are carried to the next steps", "item 1 was a channel, not a video" in pl.seen[2]["notes"] and "item 1 was a channel" in pl.seen[4]["notes"], [x["notes"] for x in pl.seen])
 
 fb = FakeBrowser()
 pl = planner_from([{"action": "goto", "url": "https://www.youtube.com/results?search_query=x"}, {"action": "click", "n": 0}, {"action": "click", "n": 2}, {"action": "play"}])
@@ -133,6 +133,50 @@ pl = planner_from([{"action": "goto", "url": "https://www.allrecipes.com/recipe/
 r = BA.run("open the recipe and scroll to the reviews section", fb, pl, max_steps=10, should_stop=lambda: False, verifier=ver2)
 check("sections map: scrollto reaches a heading and the checker sees it ON SCREEN, completing without a done", r.status == "completed" and "completion check" in r.reason
       and fb.scrolled == 13920 and seen_ver and seen_ver[-1][1]["onscreen"] and "14000px            Reviews" in pl.seen[1]["summary"], (r, fb.scrolled, pl.seen[-1]["summary"][-400:]))
+
+class ReviewSite(FakeBrowser):
+    """A recipe page whose Submit stays disabled until a star is chosen; typing works only through the driver."""
+    def __init__(self):
+        super().__init__(); self.url = "https://www.allrecipes.com/recipe/1/mug-cake"; self.title = "Mug Cake Recipe"; self.star = 0; self.review = ""; self.submitted = False
+    def elements(self):
+        els = [{"kind": "field", "text": "My Review", "ontop": True, "value": self.review},
+               {"kind": "star", "text": "Rate 1 star", "ontop": True, "selected": self.star == 1}, {"kind": "star", "text": "Rate 5 stars", "ontop": True, "selected": self.star == 5},
+               {"kind": "button", "text": "SUBMIT", "ontop": True, "disabled": not (self.star and self.review)}]
+        return {"state": self._st(), "elements": els}
+    def text(self): return {"state": self._st(), "text": "Reviews (2,131)\n" + ("Thanks! Your review was submitted." if self.submitted else "My Review"), "outline": []}
+    def click(self, n):
+        self.log.append(("click", n))
+        if n in (1, 2): self.star = 1 if n == 1 else 5; return {"ok": True, "changed": True, "state": self._st()}
+        if n == 3 and self.star and self.review: self.submitted = True; return {"ok": True, "changed": True, "state": self._st()}
+        return {"ok": True, "changed": False, "state": self._st()}
+    def type(self, n, text, enter=False):
+        self.log.append(("type", n, text)); self.review = text if n == 0 else self.review; return {"ok": True, "value": self.review, "state": self._st()}
+
+class FakeReflector:
+    def __init__(self): self.plans = 0; self.reflections = 0; self.blocked = ""
+    def plan(self, task): self.plans += 1; return {"plan": ["1. choose a star rating", "2. type the review", "3. click SUBMIT"], "done_when": "the page thanks you", "avoid": []}
+    def reflect(self, task, history, summary, plan, notes):
+        self.reflections += 1; self.last_summary = summary
+        return {"diagnosis": "SUBMIT is disabled because no star has been chosen.", "plan": ["1. click the 'Rate 1 star' item", "2. click SUBMIT"], "avoid": ["clicking a disabled button"], "blocked": self.blocked}
+
+site = ReviewSite(); rf = FakeReflector(); vchecks = []
+def ver3(task, claim, st, text, outline=None): vchecks.append(text); return ("submitted" in text, "thanks line present" if "submitted" in text else "no thanks line")
+# the fast model types, then hammers the disabled Submit; after the re-plan it clicks the star and submits
+pl = planner_from([{"action": "type", "n": 0, "text": "Rubbery and sad."}, {"action": "click", "n": 3}, {"action": "click", "n": 3}, {"action": "click", "n": 3},
+                   {"action": "click", "n": 1}, {"action": "click", "n": 3}, {"action": "done", "summary": "review submitted"}])
+r = BA.run("open the recipe and leave a 1 star review saying 'Rubbery and sad.'", site, pl, max_steps=12, should_stop=lambda: False, verifier=ver3, reflector=rf)
+check("a plan is drawn up before step 1 and shown to the fast model", rf.plans == 1 and "PLAN (follow in order" in pl.seen[0]["notes"] and "choose a star rating" in pl.seen[0]["notes"], pl.seen[0]["notes"])
+check("the page report shows the disabled button, the chosen star, and what the field holds",
+      "SUBMIT (DISABLED" in pl.seen[1]["summary"] and 'My Review = "Rubbery and sad."' in pl.seen[1]["summary"] and "Rate 1 star (selected)" in pl.seen[5]["summary"], pl.seen[1]["summary"][-400:])
+check("clicking a disabled button is refused with the reason, not sent to the page", any("is DISABLED" in x["last"] for x in pl.seen) and ("click", 3) not in site.log[:2], [x["last"][:100] for x in pl.seen])
+check("stuck brings the slow thinker in, whose diagnosis and new plan reach the fast model", rf.reflections >= 1 and any("RE-PLANNED" in x["last"] and "no star has been chosen" in x["last"] for x in pl.seen)
+      and any("click the 'Rate 1 star' item" in x["notes"] for x in pl.seen), [x["last"][:80] for x in pl.seen])
+check("and the review goes through", r.status == "completed" and site.submitted and site.star == 1, r)
+
+site = ReviewSite(); rf = FakeReflector(); rf.blocked = "the site demands a sign-in and there is no account"
+pl = planner_from([{"action": "click", "n": 3}] * 8)
+r = BA.run("leave a review", site, pl, max_steps=12, should_stop=lambda: False, verifier=ver3, reflector=rf)
+check("the slow thinker can declare the task blocked, and the run ends saying why", r.status == "failed" and r.reason.startswith("blocked: the site demands a sign-in"), r)
 
 a = BA.parse_action('{"observed":"results","action":"click","n":2,"reason":"r"}\n{"action":"play"}')
 check("parse: first object wins", a["action"] == "click" and a["n"] == 2)

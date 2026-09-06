@@ -116,8 +116,10 @@ ELEMENTS_JS = r"""
     }
   }
   const out = []; const seen = new Set();
-  const nodes = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]');
-  const ordered = overlay ? [...overlay.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]'), ...nodes] : [...nodes];
+  const SEL = 'a[href], button, input, textarea, select, label, [role="button"], [role="link"], [role="textbox"], [role="radio"], [role="checkbox"], [role="option"], [role="tab"], [role="menuitem"], [role="switch"], [aria-checked], [aria-pressed], [aria-selected], [contenteditable="true"]';
+  const nodes = document.querySelectorAll(SEL);
+  const ordered = overlay ? [...overlay.querySelectorAll(SEL), ...nodes] : [...nodes];
+  const STAR = /star|rating|rate/i;
   for (const e of ordered) {
     if (!vis(e)) continue;
     let tag = e.tagName.toLowerCase(); let kind = tag;
@@ -131,15 +133,28 @@ ELEMENTS_JS = r"""
       const vkey = kind + '|' + e.href.replace(/[&#].*$/, '');
       if (seen.has(vkey)) continue; seen.add(vkey);
     } else {
-      if (!text && !['input','textarea'].includes(tag)) continue;
-      const key = kind + '|' + text.slice(0, 80) + '|' + (e.href || '');
+      const role = e.getAttribute('role') || '';
+      const itype = tag === 'input' ? (e.type || 'text').toLowerCase() : '';
+      if (tag === 'label' && e.control && (e.control.type === 'text' || e.control.type === 'email' || e.control.tagName === 'TEXTAREA')) continue;   // a label for a text field: the field itself is listed
+      if (tag === 'input' && (itype === 'hidden' || itype === 'submit' && !text)) continue;
+      if (!text && !['input','textarea'].includes(tag)) { const al = e.querySelector('[aria-label], svg title'); text = al ? (al.getAttribute('aria-label') || al.textContent || '').trim() : ''; if (!text) continue; }
+      const key = kind + '|' + text.slice(0, 80) + '|' + (e.href || '') + '|' + (e.id || '');
       if (seen.has(key)) continue; seen.add(key);
-      if (tag === 'input' || tag === 'textarea' || e.getAttribute('role') === 'textbox' || e.getAttribute('contenteditable') === 'true') kind = 'field';
-      else if (tag === 'button' || e.getAttribute('role') === 'button') kind = 'button';
-      else if (tag === 'a' || e.getAttribute('role') === 'link') kind = 'link';
+      if ((tag === 'input' && !['radio','checkbox','button','submit','reset','image','range','color','file'].includes(itype)) || tag === 'textarea' || role === 'textbox' || e.getAttribute('contenteditable') === 'true') kind = 'field';
+      else if (tag === 'select') kind = 'select';
+      else if (tag === 'label' || ['radio','checkbox','option','tab','menuitem','switch'].includes(role) || (tag === 'input' && ['radio','checkbox'].includes(itype)) || e.hasAttribute('aria-checked') || e.hasAttribute('aria-selected')) kind = STAR.test(text + ' ' + (e.className || '') + ' ' + (e.id || '')) ? 'star' : 'option';
+      else if (tag === 'button' || role === 'button' || (tag === 'input' && ['button','submit','image'].includes(itype)) || e.hasAttribute('aria-pressed')) kind = 'button';
+      else if (tag === 'a' || role === 'link') kind = 'link';
     }
     const r = e.getBoundingClientRect();
-    out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight, popup: !!(overlay && overlay.contains(e))});
+    // the state a person sees: greyed out, already chosen, what a field holds
+    const ctrl = (e.tagName === 'LABEL' && e.control) ? e.control : e;
+    const disabled = !!(ctrl.disabled || e.getAttribute('aria-disabled') === 'true' || ctrl.getAttribute('aria-disabled') === 'true');
+    const selected = (ctrl.checked === true) || ['aria-checked','aria-pressed','aria-selected'].some(a => (e.getAttribute(a) || ctrl.getAttribute(a)) === 'true');
+    let value = '';
+    if (kind === 'field') value = (e.isContentEditable ? (e.innerText || '') : (e.value || '')).replace(/\s+/g, ' ').trim().slice(0, 90);
+    else if (kind === 'select') value = (e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : '').slice(0, 60);
+    out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight, popup: !!(overlay && overlay.contains(e)), disabled, selected, value});
     e.setAttribute('data-vintos-n', String(out.length - 1));
     if (out.length >= %d) break;
   }
@@ -303,14 +318,22 @@ elif op == "back":
 elif op == "type":
     def f(c, t):
         n = int(req["n"]); text = req["text"]
-        ok = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return 'missing'; e.scrollIntoView({block:'center'}); e.focus(); if(e.isContentEditable){e.textContent='';} else {e.value='';} return 'ok';})()" % n)
+        ok = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return 'missing'; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)};})()" % n)
         if ok == "missing": return {"ok": False, "error": "field %d is gone; list elements again" % n}
+        # click into the field like a person, select what is there with a real Ctrl+A, then type: setting .value
+        # behind a framework's back leaves the page believing the field is empty (the review that "vanished", 2026-09-06)
+        mouse_click(c, ok["x"], ok["y"]); time.sleep(0.15)
+        c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(e) e.focus();})()" % n)
+        for typ in ("keyDown", "keyUp"):
+            c.call("Input.dispatchKeyEvent", type=typ, key="a", code="KeyA", windowsVirtualKeyCode=65, nativeVirtualKeyCode=65, modifiers=2)
         c.call("Input.insertText", text=text)
+        time.sleep(0.2)
+        readback = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return ''; return (e.isContentEditable?(e.innerText||''):(e.value||'')).replace(/\\s+/g,' ').trim().slice(0,120);})()" % n)
         if req.get("enter"):
             for typ in ("keyDown", "keyUp"):
                 c.call("Input.dispatchKeyEvent", type=typ, key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
             time.sleep(1.5)
-        return {"ok": True, "state": state(c, t)}
+        return {"ok": True, "value": readback, "state": state(c, t)}
     print(json.dumps(with_tab(f)))
 elif op == "scroll":
     def f(c, t):
@@ -422,7 +445,9 @@ if __name__ == "__main__":
     elif cmd == "goto": print(json.dumps(b.goto(a[1]), indent=2))
     elif cmd == "elements":
         d = b.elements(); print(json.dumps(d["state"], indent=2))
-        for i, e in enumerate(d["elements"]): print(f"[{i}] {e['kind']:6s} {e['text'][:100]}")
+        for i, e in enumerate(d["elements"]):
+            extra = (" (disabled)" if e.get("disabled") else "") + (" (selected)" if e.get("selected") else "") + (f" = \"{e['value']}\"" if e.get("value") else "")
+            print(f"[{i}] {e['kind']:6s} {e['text'][:100]}{extra}")
     elif cmd == "text":
         d = b.text(); print("SECTIONS:"); [print(f"  {o['y']:6d} {'ON SCREEN ' if o['onscreen'] else '          '}{o['text']}") for o in d.get("outline", [])]; print("VISIBLE:\n" + d["text"][:3000])
     elif cmd == "scrollto": print(json.dumps(b.scrollto(" ".join(a[1:])), indent=2))
