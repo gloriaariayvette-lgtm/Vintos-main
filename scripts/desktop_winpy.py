@@ -78,9 +78,12 @@ def find_python() -> str:
         p = shutil.which(c)
         if p:
             return p
-    for p in ("/mnt/c/Windows/py.exe",):
-        if os.path.exists(p):
-            return p
+    import glob
+    # not on PATH yet (a fresh install, a terminal opened before it): the usual homes, newest version first
+    homes = glob.glob("/mnt/c/Users/*/AppData/Local/Programs/Python/Python3*/python.exe") + glob.glob("/mnt/c/Python3*/python.exe") \
+        + glob.glob("/mnt/c/Users/*/AppData/Local/Microsoft/WindowsApps/python3*.exe") + ["/mnt/c/Windows/py.exe"]
+    for p in sorted((h for h in homes if os.path.exists(h)), reverse=True):
+        return p
     return ""
 
 
