@@ -20,10 +20,11 @@ def _auth(request):
 
 
 def _context(request):
-    """The turn context his server passes along, when it does; the Pi and cron never have one."""
-    tid = request.headers.get("X-Vintos-Turn", "")
-    if not tid:
-        return None
+    """An EFFECT-ONLY turn context for the robot surface, the way voice gets one: authority for the body's
+    actions, never a capsule. Without it an ARMED gate denies every no-context command and silently takes
+    his body away (effect_gate's own words). Test mode still turns sends into would_send; the hardware stop
+    and reductions still rule. A turn id from his server is carried when present."""
+    tid = request.headers.get("X-Vintos-Turn", "") or None
     try:
         from turn_coordinator import effect_context
         return effect_context("robot", turn_id=tid)
@@ -81,7 +82,7 @@ async def command(request: Request):
 @app.post("/api/robot/stop")
 async def stop(request: Request):
     _auth(request)
-    return rc.stop(context=None, source=request.headers.get("X-Vintos-Source", "server"))
+    return rc.stop(context=_context(request), source=request.headers.get("X-Vintos-Source", "server"))
 
 
 @app.post("/api/robot/intent")

@@ -414,6 +414,12 @@ def chat(message, history=None, context=None, now=None, caller=None, speaker=Non
     """She spoke to him through the body. SONNET 5 answers (the larger decision, the speaking); the body's
     current frame is attached when fresh. One command at most, through queue_command. Returns the receipt."""
     now = now or time.time()
+    if context is None:   # a spoken turn through the body is a turn: effect-only authority, never a capsule
+        try:
+            from turn_coordinator import effect_context
+            context = effect_context("robot")
+        except Exception:
+            context = None
     s = public_state(now)
     msgs = []
     for h in (history or [])[-8:]:

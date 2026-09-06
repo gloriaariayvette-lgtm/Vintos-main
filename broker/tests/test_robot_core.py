@@ -11,6 +11,14 @@ os.environ["SPARK_WORKSPACE"] = TMP
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import robot_core as rc; import robot_subconscious as rs
 assert rc.MEMORY == MEM and rs.MEMORY == MEM
+# the gate his body answers to is ARMED on Aegis (test mode is on there): point every flag it reads into the
+# scratch dir so this suite exercises the body's own refusals, not the host's arming - the gate's arming is
+# covered by its own suite. Also: a gate that denies armed no-context moves is the production truth.
+import effect_gate as EG
+EG.MEM = MEM; EG.ARMED_FLAG = os.path.join(MEM, "nonexistent-armed"); EG.TEST_MODE_FLAG = os.path.join(MEM, "nonexistent-test-mode")
+EG.STOP_BUTTON = os.path.join(MEM, "hardware-button.json")
+for _n in ("LOG", "LOG_FILE", "GATE_LOG", "DECISION_LOG", "LEDGER"):
+    if hasattr(EG, _n) and isinstance(getattr(EG, _n), str): setattr(EG, _n, os.path.join(MEM, os.path.basename(getattr(EG, _n))))
 R = []
 def check(n, ok, d=""):
     R.append(ok); print(("PASS " if ok else "FAIL ") + n + ("" if ok else f"  -- {d}"))
@@ -61,6 +69,14 @@ rc.ingest_sensor({"frame_b64": FRAME, "sonar_cm": 80, "cat_detected": True}, now
 r = rc.queue_command({"command": "move_forward"}, now=T + 200)
 check("cat detected: frozen", r["status"] == "refused" and "cat" in r["why"], r)
 rc.ingest_sensor({"frame_b64": FRAME, "sonar_cm": 80, "cat_detected": False}, now=T + 300)
+
+# --- the gate, armed: a move with no turn context is refused; stop still passes
+open(EG.ARMED_FLAG, "w").close()
+r = rc.queue_command({"command": "turn_left"}, now=T + 300)
+check("armed gate, no context: movement refused with the gate's reason", r["status"] == "refused" and "no turn context" in str(r["why"]), r)
+r = rc.stop(source="test")
+check("armed gate: stop still goes through", r["status"] == "queued", r); rc.take_pending(now=T + 300)
+os.remove(EG.ARMED_FLAG)
 
 # --- reply parsing
 p = rc.parse_reply('I see you by the plant. [EYES: happy]\n{"command": "move_forward", "duration_ms": 700, "goal": "reach her", "subgoal": "cross the rug", "confidence": 0.7, "reason": "she called me", "impulses": "wait | nod"}')
