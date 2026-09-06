@@ -183,7 +183,10 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             if kind == "goto":
                 url = str(action.get("url", "")).strip()
                 if not DA.URL_RE.match(url): raise ValueError("goto needs a full http(s) address")
-                r = browser.goto(url); last_result = f"goto -> {r.get('title')}"
+                if url.rstrip("/") == str(st.get("url", "")).rstrip("/"):
+                    last_result = "ALREADY on that page; going there again changes nothing. Choose from the list above: click a number (a video is kind \"video\") or scroll to see more"
+                else:
+                    r = browser.goto(url); last_result = f"goto -> {r.get('title')}"
             elif kind == "click":
                 n = int(action.get("n")); label = elements[n]["text"][:60] if 0 <= n < len(elements) else "?"
                 r = browser.click(n)

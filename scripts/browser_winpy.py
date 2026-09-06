@@ -101,23 +101,33 @@ ELEMENTS_JS = r"""
 (() => {
   const vis = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
     return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none' && r.bottom > 0 && r.top < innerHeight * 3; };
+  const isWatch = h => /\/watch\?v=|\/shorts\/|\/video\/|vimeo\.com\/\d|dailymotion\.com\/video/.test(h || '');
   const out = []; const seen = new Set();
-  const nodes = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"], ytd-video-renderer, ytd-compact-video-renderer');
+  // YouTube keeps changing its result markup (ytd-video-renderer, then yt-lockup-view-model); a video is any link to
+  // a watch page with a label, whatever it is wrapped in
+  const nodes = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [contenteditable="true"]');
   for (const e of nodes) {
     if (!vis(e)) continue;
     let tag = e.tagName.toLowerCase(); let kind = tag;
-    if (tag.startsWith('ytd-')) { if (!e.querySelector('a#video-title, #video-title')) continue; kind = 'video'; }
-    const el = kind === 'video' ? e.querySelector('a#video-title, #video-title') : e;
-    const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.title || el.alt || '').replace(/\s+/g, ' ').trim();
-    if (!text && !['input','textarea'].includes(tag)) continue;
-    const key = kind + '|' + text.slice(0, 80) + '|' + (el.href || '');
-    if (seen.has(key)) continue; seen.add(key);
-    const r = el.getBoundingClientRect();
-    if (tag === 'input' || tag === 'textarea' || e.getAttribute('role') === 'textbox' || e.getAttribute('contenteditable') === 'true') kind = 'field';
-    else if (tag === 'button' || e.getAttribute('role') === 'button') kind = kind === 'video' ? 'video' : 'button';
-    else if (tag === 'a' || e.getAttribute('role') === 'link') kind = kind === 'video' ? 'video' : 'link';
-    out.push({kind, text: text.slice(0, 140), href: (el.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight});
-    el.setAttribute('data-vintos-n', String(out.length - 1));
+    let text = (e.innerText || e.value || e.getAttribute('aria-label') || e.getAttribute('placeholder') || e.title || e.alt || '').replace(/\s+/g, ' ').trim();
+    if (tag === 'a' && isWatch(e.href)) {
+      kind = 'video';
+      const h = e.querySelector('h3, #video-title, [class*="title"]');
+      if (h && (h.innerText || '').trim()) text = h.innerText.replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const vkey = 'video|' + e.href.replace(/&.*$/, '');
+      if (seen.has(vkey)) continue; seen.add(vkey);
+    } else {
+      if (!text && !['input','textarea'].includes(tag)) continue;
+      const key = kind + '|' + text.slice(0, 80) + '|' + (e.href || '');
+      if (seen.has(key)) continue; seen.add(key);
+      if (tag === 'input' || tag === 'textarea' || e.getAttribute('role') === 'textbox' || e.getAttribute('contenteditable') === 'true') kind = 'field';
+      else if (tag === 'button' || e.getAttribute('role') === 'button') kind = 'button';
+      else if (tag === 'a' || e.getAttribute('role') === 'link') kind = 'link';
+    }
+    const r = e.getBoundingClientRect();
+    out.push({kind, text: text.slice(0, 140), href: (e.href || '').slice(0, 200), x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), ontop: r.top >= 0 && r.bottom <= innerHeight});
+    e.setAttribute('data-vintos-n', String(out.length - 1));
     if (out.length >= %d) break;
   }
   return out;
