@@ -402,17 +402,39 @@ def tv_play_safe(action_desc, callback):
     callback(); return True
 
 
-def tv_youtube(video_id, volume=7):
-    """YouTube on the Bravia through ADB. The TV only: the projector has no ADB address here."""
+def tv_adb_state():
+    """'device' when the Bravia is paired and listening; 'unauthorized' when the allow prompt on the TV has not
+    been accepted; 'offline'/'absent' otherwise. Velaris's emulator is on the same adb server, so every command
+    names the TV with -s; a bare `adb shell` would be refused as ambiguous and used to read as ok."""
     import subprocess
     try:
         subprocess.run(["adb", "connect", TV_ADB], capture_output=True, timeout=5)
-        subprocess.run(["adb", "shell", f"media volume --stream 3 --set {volume}"], capture_output=True, timeout=5)
-        result = subprocess.run(["adb", "shell", "am", "start", "-a", "android.intent.action.VIEW",
+        out = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=5).stdout
+    except Exception as e:
+        return f"absent ({e})"
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == TV_ADB:
+            return parts[1]
+    return "absent"
+
+
+def tv_youtube(video_id, volume=7):
+    """YouTube on the Bravia through ADB. The TV only: the projector has no ADB address here.
+    Returns True only when the TV is paired and Android confirmed the start."""
+    import subprocess
+    state = tv_adb_state()
+    if state != "device":
+        hint = " - accept the 'Allow USB debugging' prompt on the TV" if state == "unauthorized" else ""
+        print(f"[HOME] tv_youtube refused: TV at {TV_ADB} is {state}{hint}"); return False
+    try:
+        subprocess.run(["adb", "-s", TV_ADB, "shell", f"media volume --stream 3 --set {int(volume)}"], capture_output=True, timeout=5)
+        result = subprocess.run(["adb", "-s", TV_ADB, "shell", "am", "start", "-a", "android.intent.action.VIEW",
                                  "-d", f"https://www.youtube.com/watch?v={video_id}", "com.google.android.youtube.tv"],
                                 capture_output=True, text=True, timeout=10)
-        ok = "Error" not in result.stderr
-        print(f"[HOME] tv_youtube: {video_id} ({'ok' if ok else result.stderr[:200]})"); return ok
+        blob = (result.stdout + result.stderr)
+        ok = result.returncode == 0 and "Starting:" in blob and "rror" not in blob
+        print(f"[HOME] tv_youtube: {video_id} ({'ok' if ok else blob.strip()[:200] or 'no confirmation from the TV'})"); return ok
     except Exception as e:
         print(f"[HOME] tv_youtube failed: {e}"); return False
 
@@ -447,6 +469,7 @@ if __name__ == "__main__":
     elif cmd == "plug": plug(args[0], args[1].lower() != "off")
     elif cmd == "music": play_music(msg)
     elif cmd == "song-check": print(song_exists(msg))
+    elif cmd == "tv_adb": print(tv_adb_state())
     elif cmd == "stop": stop_music()
     elif cmd == "tv_status": print(json.dumps(tv_status(), indent=2))
     elif cmd == "tv_on": tv_on()
