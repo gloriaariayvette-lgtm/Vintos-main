@@ -333,17 +333,34 @@ elif op == "back":
 elif op == "type":
     def f(c, t):
         n = int(req["n"]); text = req["text"]
-        ok = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return 'missing'; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)};})()" % n)
+        # same pointer check as click: a field under a sticky bar took the click on the bar's link instead and the
+        # page went elsewhere (2026-09-06)
+        ok = c.eval(r"""(n=>{const e=document.querySelector('[data-vintos-n="'+n+'"]'); if(!e) return 'missing';
+          const centre=()=>{const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2)};};
+          const under=p=>{const t=document.elementFromPoint(p.x,p.y); return t&&(e.contains(t)||t.contains(e));};
+          e.scrollIntoView({block:'center'}); let p=centre(); let clear=under(p);
+          if(!clear){ window.scrollBy(0,-160); p=centre(); clear=under(p); }
+          if(!clear){ window.scrollBy(0,320); p=centre(); clear=under(p); }
+          return {x:p.x, y:p.y, clear};})(%d)""" % n)
         if ok == "missing": return {"ok": False, "error": "field %d is gone; list elements again" % n}
         # click into the field like a person, select what is there with a real Ctrl+A, then type: setting .value
         # behind a framework's back leaves the page believing the field is empty (the review that "vanished", 2026-09-06)
-        mouse_click(c, ok["x"], ok["y"]); time.sleep(0.15)
+        if ok.get("clear"): mouse_click(c, ok["x"], ok["y"]); time.sleep(0.15)
         c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(e) e.focus();})()" % n)
         for typ in ("keyDown", "keyUp"):
             c.call("Input.dispatchKeyEvent", type=typ, key="a", code="KeyA", windowsVirtualKeyCode=65, nativeVirtualKeyCode=65, modifiers=2)
         c.call("Input.insertText", text=text)
         time.sleep(0.2)
-        readback = c.eval("(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return ''; return (e.isContentEditable?(e.innerText||''):(e.value||'')).replace(/\\s+/g,' ').trim().slice(0,4000);})()" % n)
+        READ = "(()=>{const e=document.querySelector('[data-vintos-n=\"%d\"]'); if(!e) return ''; return (e.isContentEditable?(e.innerText||''):(e.value||'')).replace(/\\s+/g,' ').trim().slice(0,4000);})()" % n
+        readback = c.eval(READ)
+        if not readback:
+            # the keystroke route did not land (focus refused, a custom editor): set the value the way a framework
+            # notices, through the native setter plus input and change events, then read back again
+            c.eval(r"""(v=>{const e=document.querySelector('[data-vintos-n="%d"]'); if(!e) return; e.focus();
+              if(e.isContentEditable){ e.textContent=v; }
+              else { const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype; const d=Object.getOwnPropertyDescriptor(proto,'value'); if(d&&d.set) d.set.call(e,v); else e.value=v; }
+              e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));})(%s)""" % (n, json.dumps(text)))
+            time.sleep(0.2); readback = c.eval(READ)
         if req.get("enter"):
             for typ in ("keyDown", "keyUp"):
                 c.call("Input.dispatchKeyEvent", type=typ, key="Enter", code="Enter", windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
