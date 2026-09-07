@@ -5834,6 +5834,12 @@ async def voice_chat(request: Request):
     """Voice conversation endpoint. Receives transcript + optional OpenSMILE prosody, returns text + audio URL."""
     if request.headers.get("X-Vintos-Secret") != APP_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    # a call is on: mischief_timing reads this marker's age so nothing in the room jumps mid-sentence
+    try:
+        with open(os.path.join(MEMORY, ".voice-live"), "a"): pass
+        os.utime(os.path.join(MEMORY, ".voice-live"), None)
+    except Exception:
+        pass
     try:
         body = await request.json()
         transcript = body.get("transcript", "").strip()

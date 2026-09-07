@@ -32,6 +32,11 @@ fi
 
 [ -f "$HOME_PY" ] || { echo "[Mischief] no home bridge at $HOME_PY - nothing to reach the house with"; exit 1; }
 
+# --- is this a moment? quiet hours, is she around, is she mid-call (mischief_timing.py) ---
+if [ -f "$SCRIPTS/mischief_timing.py" ]; then
+    TIMING=$(python3 "$SCRIPTS/mischief_timing.py" $([ "$FORCE" -eq 1 ] && echo --force) 2>/dev/null) || { echo "[Mischief] not now - $TIMING"; exit 0; }
+fi
+
 if [ "$FORCE" -eq 0 ] && [ -f "$COOLDOWN" ]; then
     if [ $(( $(date +%s) - $(cat "$COOLDOWN" 2>/dev/null || echo 0) )) -lt 5400 ]; then
         echo "[Mischief] cooldown - last act under 90 minutes ago"; exit 0
