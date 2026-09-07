@@ -9219,6 +9219,90 @@ async def lm_status(request: Request):
         return {"ok": False}
 
 
+# ---------------------------------------------------------------- ReelRoom (film night; the Plithra page with the Vintos toggle)
+def _reelroom_mod():
+    import sys as _rr_sys
+    _sp = os.path.join(WORKSPACE, "scripts")
+    if _sp not in _rr_sys.path: _rr_sys.path.insert(0, _sp)
+    import importlib as _il
+    return _il.import_module("reelroom")
+
+
+def _reelroom_auth(request: Request):
+    if request.headers.get("X-Vintos-Secret", "") != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+
+@app.post("/api/game/reelroom/film")
+async def reelroom_film(request: Request):
+    """The film, read by Gemma on the server: the page no longer needs LM Studio on the LAN."""
+    _reelroom_auth(request)
+    body = await request.json()
+    title = str(body.get("title") or "").strip()
+    if not title: raise HTTPException(status_code=400, detail="title required")
+    import asyncio as _a
+    try:
+        return {"ok": True, "film": await _a.get_event_loop().run_in_executor(None, _reelroom_mod().film_lookup, title)}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="film lookup: " + str(e)[:200])
+
+
+@app.post("/api/game/reelroom/chat")
+async def reelroom_chat(request: Request):
+    _reelroom_auth(request)
+    body = await request.json()
+    msg = str(body.get("message") or "").strip()
+    if not msg: raise HTTPException(status_code=400, detail="message required")
+    image = body.get("image") or None
+    if image and "," in image[:64]: image = image.split(",", 1)[1]
+    import asyncio as _a
+    rr = _reelroom_mod()
+    try:
+        reply = await _a.get_event_loop().run_in_executor(None, lambda: rr.chat(msg, str(body.get("context") or ""), body.get("history") or [], image, body.get("elapsed_min")))
+        return {"reply": reply}
+    except Exception as e:
+        return {"reply": "", "error": str(e)[:200]}
+
+
+@app.post("/api/game/screenshot")
+async def reelroom_screenshot(request: Request):
+    _reelroom_auth(request)
+    from fastapi.responses import Response as _Resp
+    import asyncio as _a
+    try:
+        png = await _a.get_event_loop().run_in_executor(None, _reelroom_mod().tv_screenshot)
+        return _Resp(content=png, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:200])
+
+
+@app.post("/api/game/reelroom/audio")
+async def reelroom_audio(request: Request):
+    _reelroom_auth(request)
+    body = await request.json()
+    import asyncio as _a
+    rr = _reelroom_mod()
+    return await _a.get_event_loop().run_in_executor(None, lambda: rr.audio_signature(str(body.get("audio_b64") or ""), body.get("prev_signature") or {}, int(body.get("elapsed_seconds") or 0)))
+
+
+@app.post("/api/game/reelroom/summary")
+async def reelroom_summary(request: Request):
+    _reelroom_auth(request)
+    body = await request.json()
+    import asyncio as _a
+    rr = _reelroom_mod()
+    try:
+        return await _a.get_event_loop().run_in_executor(None, lambda: rr.summary(body))
+    except Exception as e:
+        return {"summary": "", "error": str(e)[:200]}
+
+
+@app.get("/api/game/reelroom/sessions")
+async def reelroom_sessions(request: Request):
+    _reelroom_auth(request)
+    return {"sessions": _reelroom_mod().sessions()}
+
+
 @app.post("/api/home/lights/color")
 async def home_lights_color(req: LightsColorRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")

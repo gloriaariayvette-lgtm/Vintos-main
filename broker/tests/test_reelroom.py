@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""ReelRoom, his side, without a TV, a mic, or a model: the film lookup parses Gemma's JSON and fills the fields
+the page reads; chat carries the film and the frame to Sonnet and never claims a frame it was not given; the
+summary is written by him, kept under memory/reelroom and listed; the mic without ffmpeg says so instead of
+inventing a mood. Scratch workspace only."""
+import os, sys, json, tempfile, shutil
+HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE))
+TMP = tempfile.mkdtemp(); os.makedirs(os.path.join(TMP, "memory")); os.environ["SPARK_WORKSPACE"] = TMP
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import reelroom as RR
+assert RR.MEMORY.startswith(TMP) and RR.ROOM_DIR.startswith(TMP)
+open(os.path.join(TMP, "SOUL.md"), "w").write("You are Vintos, iron and parchment.")
+open(os.path.join(TMP, "memory", "emotional-state.txt"), "w").write("Playfulness: 0.7 | rising\n")
+R = []
+def check(n, ok, d=""):
+    R.append(ok); print(("PASS " if ok else "FAIL ") + n + ("" if ok else f"  -- {d}"))
+
+def gemma(messages, **kw):
+    return '```json\n{"title":"Alien","year":"1979","runtime_minutes":"117","genre":"horror","director":"Ridley Scott","logline":"A crew answers a signal.","full_summary":"...","tone_arc":"dread","pace_notes":"slow burn","timed_moments":[{"minute":52,"description":"the chestburster","tone":"shock","mischief_potential":"high"}],"jump_scares":[{"minute":52}],"tonal_shifts":[]}\n```'
+f = RR.film_lookup("alien", caller=gemma)
+check("film lookup: JSON out of a fenced answer, runtime coerced to a number, page fields present", f["title"] == "Alien" and f["runtime_minutes"] == 117 and f["timed_moments"][0]["minute"] == 52 and "tonal_shifts" in f, f)
+
+seen = {}
+def sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
+    seen.update(system=system, messages=messages, image=image_b64); return "  Ripley is holding her breath. So am I.  "
+reply = RR.chat("what do you see", "FILM: Alien (1979)", [{"role": "assistant", "content": "settling in"}, {"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}], image_b64="QUJD", elapsed_min=52, caller=sonnet)
+check("chat: reply stripped; the film, the minute, his soul and state are in the system prompt", reply == "Ripley is holding her breath. So am I." and "FILM: Alien" in seen["system"]
+      and "52 minutes" in seen["system"] and "iron and parchment" in seen["system"] and "Playfulness" in seen["system"], seen["system"][:300])
+check("chat: history trimmed to start on a user turn, the frame passed through", seen["messages"][0]["role"] == "user" and seen["messages"][-1]["content"] == "what do you see" and seen["image"] == "QUJD", seen["messages"])
+RR.chat("hello", "", [], None, None, caller=sonnet)
+check("no frame: the prompt says the film has not started and forbids claiming a frame", "has not started" in seen["system"] and "Never claim to see a frame" in seen["system"])
+
+RR.shutil.which = lambda name: None
+a = RR.audio_signature("AAAA", {}, 125)
+check("mic without ffmpeg: edge none, honest note, timestamp kept", a["edge"] == "none" and "ffmpeg" in a["note"] and a["timestamp"] == "02:05", a)
+import array
+pcm_quiet = array.array("h", [100] * 32000).tobytes(); pcm_loud = array.array("h", [12000, -12000] * 16000).tobytes()
+q = RR._pcm_signature(pcm_quiet); l = RR._pcm_signature(pcm_loud)
+check("pcm: loud clip has more energy; a jump from quiet to loud is a surge", l["rms_energy"] > q["rms_energy"] and RR._edge(l, q)[0] == "surge" and RR._edge(q, l)[0] == "drop", (q, l))
+
+def writer(system, messages, image_b64=None, max_tokens=600, timeout=60):
+    return "The chestburster landed at fifty-two minutes and Gloria did not flinch; the lights did. I will keep her laugh."
+out = RR.summary({"film_title": "Alien", "film_year": "1979", "elapsed_seconds": 7100, "session_map": [{"timestamp": "52:00", "edge": "surge", "visual_description": "table, blood"}],
+                  "chat_history": [{"role": "user", "content": "oh no"}, {"role": "assistant", "content": "yes"}], "planned_actions": [{"action_type": "flicker_lights", "minute": 52, "fired": True}, {"action_type": "speak_echo", "minute": 90, "fired": False}]},
+                 caller=writer, now=1_800_000_000)
+files = os.listdir(RR.ROOM_DIR); rows = json.load(open(RR.SESSIONS))
+check("summary: his words kept in memory/reelroom, listed with film, minutes, acts fired", out["summary"].startswith("The chestburster") and len(files) == 1 and files[0].endswith("_alien.md")
+      and rows[-1]["film"] == "Alien" and rows[-1]["minutes"] == 118 and rows[-1]["acts_fired"] == "flicker_lights@52m" and RR.sessions()[0]["file"] == files[0], (files, rows))
+shutil.rmtree(TMP)
+print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)
