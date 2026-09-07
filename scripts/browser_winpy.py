@@ -405,7 +405,7 @@ def call(op: str, timeout: float = 60.0, _retry: bool = False, **kw) -> Dict[str
         err = proc.stderr.decode("utf-8", "replace").strip().splitlines()
         last = (err[-1] if err else "failed")
         # Edge closed (or was never open): open it and try the same call once more
-        if op != "ensure" and not _retry and ("10061" in last or "refused" in last.lower() or "not connect" in last.lower()):
+        if op != "ensure" and not _retry and any(k in last for k in ("10061", "10053", "10054", "refused", "Connection aborted", "not connect", "ConnectionReset")):
             e = call("ensure", timeout=30)
             if e.get("ok"):
                 return call(op, timeout=timeout, _retry=True, **kw)
