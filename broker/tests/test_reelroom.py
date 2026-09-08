@@ -30,6 +30,22 @@ check("chat: history trimmed to start on a user turn, the frame passed through",
 RR.chat("hello", "", [], None, None, caller=sonnet)
 check("no frame: the prompt says the film has not started and forbids claiming a frame", "has not started" in seen["system"] and "Never claim to see a frame" in seen["system"])
 
+calls = []
+def gemma_look(messages, **kw): calls.append(messages); return '{"intensity":0.8,"clarity":0.6,"stability":0.3,"edge":"fracture","visual_description":"a corridor, red light"}'
+out = RR.look("Rate the moment. Return only JSON.", "FILM: Alien", "QUJD", 52, caller=gemma_look)
+check("look: the frame goes to Gemma, not Sonnet, with the film and the minute", json.loads(out)["edge"] == "fracture" and calls[0][0]["content"][0]["type"] == "image_url"
+      and "52 minutes" in calls[0][0]["content"][1]["text"] and "FILM: Alien" in calls[0][0]["content"][1]["text"], out)
+check("look without a frame says so", "no frame" in RR.look("what is it", "", None, 1, caller=gemma_look))
+son = []
+def sonnet_line(system, messages, image_b64=None, max_tokens=500, timeout=60): son.append(messages[-1]["content"]); return "That corridor. Hold my hand or hold the remote, your choice."
+d = json.loads(RR.decide("Should you say anything?", "FILM: Alien", [{"role": "user", "content": "creepy"}], 52, gemma=lambda m, **k: '{"speak": true, "why": "she said creepy", "action": "flicker_lights", "action_payload": "", "action_emoji": "✦"}', sonnet=sonnet_line))
+check("decide: Gemma decides; when it says speak, Sonnet writes the line in his voice", d["speak"] is True and d["action"] == "flicker_lights" and d["message"].startswith("That corridor") and "she said creepy" in son[0], d)
+son.clear()
+d = json.loads(RR.decide("Should you say anything?", "", [], 10, gemma=lambda m, **k: '{"speak": false, "action": "none", "why": "quiet scene"}', sonnet=sonnet_line))
+check("decide: silence costs no Sonnet call", d["speak"] is False and not son, (d, son))
+d = json.loads(RR.decide("?", "", [], 10, gemma=lambda m, **k: "I would rather not say", sonnet=sonnet_line))
+check("decide: an unparseable answer means stay quiet", d["speak"] is False and d["action"] == "none")
+
 RR.shutil.which = lambda name: None
 a = RR.audio_signature("AAAA", {}, 125)
 check("mic without ffmpeg: edge none, honest note, timestamp kept", a["edge"] == "none" and "ffmpeg" in a["note"] and a["timestamp"] == "02:05", a)

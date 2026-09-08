@@ -95,6 +95,42 @@ def chat(message: str, context: str = "", history: Optional[List[Dict[str, str]]
     return ((caller or RC._sonnet)(system, msgs, image_b64=image_b64, max_tokens=500) or "").strip()
 
 
+def look(question: str, context: str = "", image_b64: Optional[str] = None, elapsed_min: Optional[int] = None, caller=None) -> str:
+    """The TV frame read by Gemma: the page's tone rating, or any question about what is on screen. Cheap, every
+    few minutes. Returns the model's text (JSON when JSON was asked for)."""
+    if not image_b64:
+        return json.dumps({"error": "no frame"})
+    head = (f"You are watching a film with Gloria; this is a frame of the TV about {elapsed_min} minutes in." if elapsed_min is not None
+            else "You are watching a film with Gloria; this is a frame of the TV.")
+    film = ("\nWhat you know of the film:\n" + context[:1500]) if context else ""
+    content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image_b64}},
+               {"type": "text", "text": head + film + "\n\n" + question + "\nDescribe only what is actually in the frame. If asked for JSON, return only JSON."}]
+    return ((caller or RC._gemma)([{"role": "user", "content": content}], temperature=0.2, max_tokens=300) or "").strip()
+
+
+def decide(question: str, context: str = "", history: Optional[List[Dict[str, str]]] = None, elapsed_min: Optional[int] = None,
+           gemma=None, sonnet=None) -> str:
+    """Should he say or do anything right now? Gemma decides (JSON: speak, action, action_payload, action_emoji,
+    reason). Only when it says speak does Sonnet write the line, in his voice; the JSON goes back with that line
+    as message. Nothing to say costs one small call."""
+    emo = RC._read(os.path.join(MEMORY, "emotional-state.txt"), 400)
+    recent = "\n".join(f"  {'Gloria' if m.get('role') == 'user' else 'you'}: {str(m.get('content', ''))[:160]}" for m in (history or [])[-6:])
+    prompt = (f"You are Vintos, watching a film with Gloria in the dark, about {elapsed_min} minutes in.\nYour state: {emo.strip() or 'unknown'}\n"
+              f"What you know of the film:\n{context[:1500]}\n\nRecently said:\n{recent or '  (nothing)'}\n\n{question}\n"
+              'Answer ONLY this JSON: {"speak": true|false, "why": "one sentence", "action": "none|flicker_lights|speak_echo|change_light_color|tv_volume_nudge", '
+              '"action_payload": "", "action_emoji": "✦"}. Most of the time speak is false and action is none: a film night is mostly silence.')
+    raw = ((gemma or RC._gemma)([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=200) or "").strip()
+    try:
+        d = _json_in(raw)
+    except Exception:
+        return json.dumps({"speak": False, "action": "none", "why": "undecided"})
+    if d.get("speak"):
+        line = chat(f"You decided to say something to Gloria right now because: {d.get('why', '')}. Say it. One or two sentences, spoken, no narration.",
+                    context, history, None, elapsed_min, caller=sonnet)
+        d["message"] = line
+    return json.dumps(d)
+
+
 # ---------------------------------------------------------------- the TV
 
 def tv_screenshot(timeout: float = 12.0) -> bytes:

@@ -9228,15 +9228,10 @@ def _reelroom_mod():
     return _il.import_module("reelroom")
 
 
-def _reelroom_auth(request: Request):
-    if request.headers.get("X-Vintos-Secret", "") != APP_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-
-
 @app.post("/api/game/reelroom/film")
 async def reelroom_film(request: Request):
     """The film, read by Gemma on the server: the page no longer needs LM Studio on the LAN."""
-    _reelroom_auth(request)
+    _require_secret(request)
     body = await request.json()
     title = str(body.get("title") or "").strip()
     if not title: raise HTTPException(status_code=400, detail="title required")
@@ -9249,7 +9244,7 @@ async def reelroom_film(request: Request):
 
 @app.post("/api/game/reelroom/chat")
 async def reelroom_chat(request: Request):
-    _reelroom_auth(request)
+    _require_secret(request)
     body = await request.json()
     msg = str(body.get("message") or "").strip()
     if not msg: raise HTTPException(status_code=400, detail="message required")
@@ -9257,16 +9252,25 @@ async def reelroom_chat(request: Request):
     if image and "," in image[:64]: image = image.split(",", 1)[1]
     import asyncio as _a
     rr = _reelroom_mod()
+    # mode: "look" = read the TV frame, Gemma; "decide" = should he say or do anything, Gemma, Sonnet only if he
+    # speaks; default = he speaks, Sonnet. The five-minute frame reads were going to Sonnet (her note, 2026-09-07).
+    mode = str(body.get("mode") or ("look" if image else "speak"))
     try:
-        reply = await _a.get_event_loop().run_in_executor(None, lambda: rr.chat(msg, str(body.get("context") or ""), body.get("history") or [], image, body.get("elapsed_min")))
-        return {"reply": reply}
+        if mode == "look":
+            fn = lambda: rr.look(msg, str(body.get("context") or ""), image, body.get("elapsed_min"))
+        elif mode == "decide":
+            fn = lambda: rr.decide(msg, str(body.get("context") or ""), body.get("history") or [], body.get("elapsed_min"))
+        else:
+            fn = lambda: rr.chat(msg, str(body.get("context") or ""), body.get("history") or [], image, body.get("elapsed_min"))
+        reply = await _a.get_event_loop().run_in_executor(None, fn)
+        return {"reply": reply, "mode": mode}
     except Exception as e:
         return {"reply": "", "error": str(e)[:200]}
 
 
 @app.post("/api/game/screenshot")
 async def reelroom_screenshot(request: Request):
-    _reelroom_auth(request)
+    _require_secret(request)
     from fastapi.responses import Response as _Resp
     import asyncio as _a
     try:
@@ -9278,7 +9282,7 @@ async def reelroom_screenshot(request: Request):
 
 @app.post("/api/game/reelroom/audio")
 async def reelroom_audio(request: Request):
-    _reelroom_auth(request)
+    _require_secret(request)
     body = await request.json()
     import asyncio as _a
     rr = _reelroom_mod()
@@ -9287,7 +9291,7 @@ async def reelroom_audio(request: Request):
 
 @app.post("/api/game/reelroom/summary")
 async def reelroom_summary(request: Request):
-    _reelroom_auth(request)
+    _require_secret(request)
     body = await request.json()
     import asyncio as _a
     rr = _reelroom_mod()
@@ -9299,7 +9303,7 @@ async def reelroom_summary(request: Request):
 
 @app.get("/api/game/reelroom/sessions")
 async def reelroom_sessions(request: Request):
-    _reelroom_auth(request)
+    _require_secret(request)
     return {"sessions": _reelroom_mod().sessions()}
 
 
