@@ -5966,6 +5966,9 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             system = _apply_intent_lead(system, transcript)
         except Exception as _il_e:
             print(f"[voice] intent lead failed: {_il_e}", flush=True)
+        # her shared screen, when she is sharing it: this path is the "Chat live" call too (2026-09-07)
+        try: system = system + _screen_context()
+        except Exception: pass
         messages = [{"role": "system", "content": system}]
         for turn in voice_history[-6:]:
             messages.append({"role": "user", "content": turn.get("user", "")})
