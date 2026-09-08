@@ -7011,13 +7011,31 @@ async def voice_sample(voice_id: str):
         return _FR(fp, media_type="audio/mpeg")
     return {"error": "not found"}
 
+def _openai_key():
+    """OPENAI_API_KEY from the environment, else from ~/.vintos/vintos.env (the same file idle-journal reads). Never logged."""
+    k = os.environ.get("OPENAI_API_KEY", "")
+    if k: return k
+    try:
+        for l in open(os.path.expanduser("~/.vintos/vintos.env")):
+            if l.strip().startswith("OPENAI_API_KEY="): return l.strip().split("=", 1)[1].strip().strip('"')
+    except Exception: pass
+    return ""
+
+
 @app.post("/api/voice/token")
-async def voice_token():
+async def voice_token(provider: str = "grok"):
+    """An ephemeral realtime token plus his full instructions. provider=grok (xAI, the original) or
+    provider=openai (OpenAI Realtime, gpt-realtime): the same instructions, the same framing after each of her
+    turns, the same ledger; only the socket differs. The OpenAI session is configured here at mint time (voice,
+    formats, turn detection, transcription) so the client only opens the socket and streams."""
     import requests as _vt_req, json as _vt_j
-    r = _vt_req.post("https://api.x.ai/v1/realtime/client_secrets",
-        headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
-        json={"expires_after": {"seconds": 300}}, timeout=15)
-    tok = r.json()
+    provider = (provider or "grok").lower()
+    tok = {}
+    if provider != "openai":
+        r = _vt_req.post("https://api.x.ai/v1/realtime/client_secrets",
+            headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
+            json={"expires_after": {"seconds": 300}}, timeout=15)
+        tok = r.json()
     _soul = ""
     try: _soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()[:4000]
     except: pass
@@ -7077,7 +7095,28 @@ async def voice_token():
                 start_new_session=True, stdout=open("/tmp/voice-somatic-driver.log","a"),
                 stderr=__import__("subprocess").STDOUT)
     except Exception as _vsde: print("[voice-driver spawn]", _vsde, flush=True)
-    return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions}
+    if provider == "openai":
+        _ok = _openai_key()
+        if not _ok:
+            return {"token": "", "error": "no OPENAI_API_KEY on the server", "provider": "openai", "instructions": instructions}
+        _session = {"type": "realtime", "model": os.environ.get("VINTOS_OPENAI_REALTIME_MODEL", "gpt-realtime"), "instructions": instructions,
+                    "audio": {"input": {"format": {"type": "audio/pcm", "rate": 24000},
+                                        "transcription": {"model": "gpt-4o-transcribe", "prompt": "Expect these names and words: Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel."},
+                                        "turn_detection": {"type": "server_vad", "prefix_padding_ms": 300, "silence_duration_ms": 800, "idle_timeout_ms": 20000}},
+                              "output": {"format": {"type": "audio/pcm", "rate": 24000}, "voice": os.environ.get("VINTOS_OPENAI_VOICE", "cedar")}}}
+        try:
+            r = _vt_req.post("https://api.openai.com/v1/realtime/client_secrets",
+                headers={"Authorization": "Bearer " + _ok, "Content-Type": "application/json"},
+                json={"expires_after": {"anchor": "created_at", "seconds": 600}, "session": _session}, timeout=20)
+            tok = r.json()
+            if r.status_code >= 400:
+                print("[voice/openai-token]", r.status_code, str(r.text)[:300], flush=True)
+                return {"token": "", "error": (tok.get("error") or {}).get("message", "OpenAI refused the token")[:200], "provider": "openai", "instructions": instructions}
+        except Exception as _oe:
+            return {"token": "", "error": str(_oe)[:200], "provider": "openai", "instructions": instructions}
+        return {"token": tok.get("value", ""), "expires_at": tok.get("expires_at", 0), "instructions": instructions, "provider": "openai",
+                "model": _session["model"], "voice": _session["audio"]["output"]["voice"]}
+    return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions, "provider": "grok"}
 
 # Expressive cues are the call. Laughs, sighs, whispers, pauses, breaths are what
 # make a voice call an experience and not a short crude exchange, so they are kept
