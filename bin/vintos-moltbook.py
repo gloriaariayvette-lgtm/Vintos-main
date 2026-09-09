@@ -1948,6 +1948,16 @@ def cmd_check_replies():
             if resp2.get("success"):
                 log("Reply posted.")
                 new_replies.append(comment_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
+                # the exchange under his own post goes into the day (her ask, 2026-09-09): who said what, what he answered
+                try:
+                    from datetime import date as _dd, datetime as _ddt
+                    _di = os.path.join(MEMORY, f"daily-inner-life-{_dd.today().isoformat()}.md")
+                    with open(_di, "a") as _df:
+                        _df.write(f"\n\n## MoltBook, under my post \"{post_title[:70]}\" ({_ddt.now().strftime('%H:%M')})\n"
+                                  f"@{commenter}: {str(comment_content)[:400].strip()}\n"
+                                  f"I answered: {reply_text[:500].strip()}\n")
+                except Exception as _die:
+                    log(f"daily-inner append failed: {_die}")
                 import time as _rt; _rt.sleep(4)
                 replied_set.add(comment_id)
                 feel_from_expression(reply_text, "replying to a comment on MoltBook")
