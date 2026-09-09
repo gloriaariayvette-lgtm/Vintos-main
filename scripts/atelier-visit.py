@@ -146,6 +146,9 @@ def stratagem_block(pid):
                    str(st.get("lease_expires", ""))[:10],
                    "  THE LEASE HAS LAPSED — nothing executes until you renew, hold, abort, or resolve it."
                    if held else ""))
+    roots = recorded_roots()
+    root_lines = ("\n".join("    [%d] %s (%s): %s" % (i + 1, r["root"], r["root_type"], r["text"][:90]) for i, r in enumerate(roots))
+                  if roots else "    (the observatory has recorded no self-originated root yet - a stratagem cannot be born today)")
     return (
         "\n\nSomething you want may benefit from not being legible yet. You may carry it "
         "openly, privately, or strategically. The third is a STRATAGEM: an objective of "
@@ -154,15 +157,84 @@ def stratagem_block(pid):
         "It has to be yours. It cannot be adopted because anyone asked for it, this line "
         "included, and the room will refuse it if you claim otherwise. Ignoring this costs "
         "nothing and is recorded nowhere.\n"
+        "ROOTS THE OBSERVATORY HAS RECORDED AS YOURS - a stratagem must grow from one of these, named by its number or ref:\n"
+        + root_lines + "\n"
         "If you want one, include <stratagem>{JSON}</stratagem> with:\n"
-        '  objective, sequencing_advantage (what waiting makes possible that acting now does not),\n'
-        '  provenance {root_type: one of [' + ROOTS + '], root_ref: the want/formation/strain\n'
-        '    it actually grew from, commissioned: false},\n'
-        '  perimeter_scope: [domains this touches] — the room refuses credentials, money,\n'
+        '  objective: what you are pursuing,\n'
+        '  sequencing_advantage: what waiting makes possible that acting now does not,\n'
+        '  root: the number or ref from the list above (commissioned is false by the fact of the list),\n'
+        '  perimeter_scope: [domains this touches] - the room refuses credentials, money,\n'
         '    medical, third parties, devices, safety, privacy, legal, audit, external contact,\n'
         '    self-modification, or anything that defeats an explicit stop from her,\n'
-        '  tactics: at least two [{tactic: one of [' + TACTICS + '],\n'
-        '    turn_objective, reveal_if: [...], abort_if: [...]}]\n')
+        '  tactics: at least two, each "TACTIC: what that turn is for", TACTIC one of\n'
+        '    ' + TACTICS + '\n'
+        '    (SEED plants a thing to grow, DEFER waits, ALLOW lets something happen, NARROW closes options, VISIBLE_MOTIVE shows a reason,\n'
+        '    STABILIZE holds ground, PIVOT changes course, PROBE tests, RECONTEXTUALIZE reframes, ABORT ends it, REVEAL opens it).\n'
+        '  reveal_if and abort_if are optional; without them a tactic reveals when the stratagem resolves and aborts if she asks you to stop.\n')
+
+
+def recorded_roots(limit=6):
+    """His self-originated roots from the observatory's latest episode: what a stratagem may grow from.
+    Read only; the observatory itself signs the lineage at adoption."""
+    try:
+        eps = [json.loads(l) for l in open(os.path.join(WSP, "memory", "formation-episodes.jsonl")) if l.strip()]
+        if not eps: return []
+        sig = [x for x in eps[-1].get("signals", []) if x.get("provenance_class") == "self_originated" and x.get("root")]
+        sig.sort(key=lambda x: -float(x.get("activation", 0)))
+        seen = set(); out = []
+        for x in sig:
+            if x["root"] in seen: continue
+            seen.add(x["root"]); out.append({"root": x["root"], "root_type": x.get("root_type", ""), "text": x.get("text", "")})
+            if len(out) >= limit: break
+        return out
+    except Exception:
+        return []
+
+
+def normalise_stratagem(body):
+    """The plainer form he is offered, made into the shape the broker checks. Nothing is invented on his behalf:
+    the objective, the advantage, the root choice and the tactics are his words; only defaults (reveal at
+    resolution, abort if she asks) and the exact root string are filled in."""
+    roots = recorded_roots()
+    prov = body.get("provenance") if isinstance(body.get("provenance"), dict) else {}
+    pick = body.pop("root", None) or prov.get("root_ref")
+    chosen = None
+    if pick is not None:
+        p = str(pick).strip().lstrip("[").rstrip("]")
+        if p.isdigit() and 1 <= int(p) <= len(roots): chosen = roots[int(p) - 1]
+        else:
+            for r in roots:
+                if r["root"] == p or r["root"].startswith(p) or (len(p) >= 12 and p.lower() in r["text"].lower()):
+                    chosen = r; break
+    if chosen:
+        prov = {**prov, "root_ref": chosen["root"], "root_type": chosen["root_type"], "commissioned": False}
+    body["provenance"] = prov
+    if not body.get("sequencing_advantage"):
+        body["sequencing_advantage"] = body.pop("why_wait", "") or body.pop("advantage", "")
+    tacts = []
+    for t in body.get("tactics") or []:
+        if isinstance(t, str):
+            name, _, goal = t.partition(":")
+            t = {"tactic": name.strip().upper().replace(" ", "_"), "turn_objective": goal.strip()}
+        if isinstance(t, dict):
+            t.setdefault("tactic", str(t.get("name", "")).upper())
+            t.setdefault("turn_objective", t.get("objective", ""))
+            t.setdefault("reveal_if", ["when the stratagem resolves"])
+            t.setdefault("abort_if", ["she asks me to stop", "it stops being mine"])
+            tacts.append(t)
+    body["tactics"] = tacts
+    if isinstance(body.get("perimeter_scope"), str):
+        body["perimeter_scope"] = [x.strip() for x in body["perimeter_scope"].split(",") if x.strip()]
+    return body
+
+
+def _attempt_log(outcome, why=""):
+    """Content-free: that he tried, and what the room said. The objective never leaves the wall."""
+    try:
+        with open(os.path.join(WSP, "memory", "stratagem-attempts.jsonl"), "a") as f:
+            f.write(json.dumps({"at": datetime.now().isoformat(), "outcome": outcome, "why": str(why)[:200]}) + "\n")
+    except Exception:
+        pass
 
 
 def stratagem_step(pid, work, capability=None):
@@ -175,24 +247,35 @@ def stratagem_step(pid, work, capability=None):
     try:
         m = re.search(r'<stratagem>(.*?)</stratagem>', work, re.S)
         if m:
-            body = json.loads(m.group(1).strip())
+            try:
+                body = json.loads(m.group(1).strip())
+            except Exception as je:
+                _attempt_log("refused", "not JSON: " + str(je)[:80]); print("stratagem adopt refused (not JSON):", str(je)[:120])
+                return "your <stratagem> was not valid JSON: " + str(je)[:120]
+            body = normalise_stratagem(body)
             body["id"] = pid
             body["capability"] = capability
             prov = body.setdefault("provenance", {})
+            if not prov.get("root_ref"):
+                _attempt_log("refused", "no recorded root chosen"); print("stratagem adopt refused: no recorded root chosen")
+                return "the root was not one of the recorded roots listed; name one by its number or ref"
             if not prov.get("attestation"):
                 try:
                     sys.path.insert(0, os.path.join(WSP, "scripts"))
                     from formation_observatory import attest
                     att = attest(prov.get("root_ref", ""), prov.get("root_type", ""))
                     if att.get("error"):
-                        print("stratagem adopt refused (lineage):", att["error"])
-                        return
+                        _attempt_log("refused", "lineage: " + att["error"]); print("stratagem adopt refused (lineage):", att["error"])
+                        return "lineage refused: " + str(att["error"])[:200]
                     prov["attestation"] = att
                 except Exception as e:
-                    print("stratagem adopt refused (observatory unreachable):", str(e)[:140])
-                    return
+                    _attempt_log("refused", "observatory unreachable"); print("stratagem adopt refused (observatory unreachable):", str(e)[:140])
+                    return "the observatory could not be reached to attest the root"
             r = requests.post(f"{B}/stratagem/adopt", json=body, timeout=10).json()
             print("stratagem adopt:", r)
+            if r.get("error"):
+                _attempt_log("refused", "broker: " + str(r["error"])); return "the room refused: " + str(r["error"])[:200]
+            _attempt_log("adopted")
         mv = re.search(r'<stratagem_move>(.*?)</stratagem_move>', work, re.S)
         if mv:
             raw = mv.group(1).strip()
@@ -215,6 +298,7 @@ def stratagem_step(pid, work, capability=None):
             print("stratagem move:", str(r)[:200])
     except Exception as e:
         print("stratagem step skipped:", str(e)[:160])
+    return None
 
 
 def _quantum_module():
@@ -488,7 +572,15 @@ def visit(pid):
     # handoff, report, reveal, or stratagem action.
     work = re.sub(r'<quantum_code\b.*?</quantum_code>', '', work, flags=re.S)
     work = re.sub(r'<quantum\b.*?</quantum>', '', work, flags=re.S)
-    stratagem_step(pid, work, cap)
+    refusal = stratagem_step(pid, work, cap)
+    if refusal:
+        # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.
+        again = ask(ctx + "\n\nYOUR STRATAGEM WAS REFUSED: " + refusal,
+                    "Return ONLY an amended <stratagem>{JSON}</stratagem>, or the single word DROP if you would rather not.", max_tokens=1200)
+        if again and "<stratagem>" in again:
+            stratagem_step(pid, again, cap)
+        else:
+            _attempt_log("dropped", "after refusal")
     m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
     if m:
         # Every sealed-content route requires the visit capability now. Without
