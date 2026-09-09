@@ -238,12 +238,30 @@ def fetch_lyrics(song_desc):
         return None
 
 
+def _load_whisper(_whisper, size="small"):
+    """The GPU first; the CPU when the GPU cannot run it. Aegis's torch has no kernel for its card ("no kernel
+    image is available"), so every weight copy failed and Whisper died before hearing a note (2026-09-09)."""
+    import io, contextlib
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
+            m = _whisper.load_model(size)
+        import torch
+        if torch.cuda.is_available():
+            # a load can "succeed" and still hold broken weights: one tiny forward proves the kernels exist
+            torch.zeros(1).cuda() + 1
+        return m
+    except Exception as e:
+        log("whisper on the GPU failed (%s); using the CPU" % str(e).splitlines()[0][:90])
+        return _whisper.load_model(size, device="cpu")
+
+
 def analyze_audio(mp3_path):
     """Transcribe lyrics and extract acoustic features from an audio file."""
     result = {"lyrics": None, "acoustic": None}
     try:
         import whisper as _whisper
-        model = _whisper.load_model("small")
+        model = _load_whisper(_whisper)
         transcript = model.transcribe(mp3_path, fp16=False)
         text = transcript.get("text", "").strip()
         if text and len(text) > 20:
@@ -469,8 +487,8 @@ def check(audio_path=None):
     print("  using " + audio_path)
     try:
         import whisper as _w, time as _t
-        t0 = _t.time(); model = _w.load_model("small"); t1 = _t.time()
-        step("whisper model 'small' loads", True, "%.0fs" % (t1 - t0))
+        t0 = _t.time(); model = _load_whisper(_w); t1 = _t.time()
+        step("whisper model 'small' loads", True, "%.0fs on %s" % (t1 - t0, getattr(model, "device", "?")))
         tr = model.transcribe(audio_path, fp16=False); text = (tr.get("text") or "").strip()
         step("whisper transcribes", len(text) > 20, "%d chars in %.0fs: %s" % (len(text), _t.time() - t1, text[:120].replace(chr(10), " ")))
     except Exception as e:

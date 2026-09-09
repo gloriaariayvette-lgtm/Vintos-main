@@ -6629,7 +6629,7 @@ async def music_share_audio(
         result = subprocess.run(
             ["python3", os.path.join(WORKSPACE, "scripts", "music-share.py"),
              song, note, "--audio", tmp.name],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=900,   # a CPU transcription of a whole song needs minutes
         )
         os.unlink(tmp.name)
         shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
