@@ -256,10 +256,21 @@ def _load_whisper(_whisper, size="small"):
         return _whisper.load_model(size, device="cpu")
 
 
-def analyze_audio(mp3_path):
-    """Transcribe lyrics and extract acoustic features from an audio file."""
+def clean_transcript(song_desc, text):
+    """Whisper's hearing, corrected by Gemma knowing which song it is: misheard words, lines restored."""
+    out = llm("You are correcting a speech-to-text transcript of a song's lyrics. You know the song. Fix misheard words to the real "
+              "lyrics where you are sure, restore line breaks as verse lines, drop repeated fragments. Return only the lyrics.",
+              f"Song: {song_desc}\n\nTranscript:\n{text[:2500]}")
+    return out.strip() if out and len(out) > 40 else text
+
+
+def analyze_audio(mp3_path, transcribe=True):
+    """Acoustic features from an audio file, and Whisper's transcription when asked for."""
     result = {"lyrics": None, "acoustic": None}
+    if not transcribe:
+        log("skipping Whisper: the written lyrics were found")
     try:
+        if not transcribe: raise RuntimeError("not needed")
         import whisper as _whisper
         model = _load_whisper(_whisper)
         transcript = model.transcribe(mp3_path, fp16=False)
@@ -270,7 +281,7 @@ def analyze_audio(mp3_path):
         else:
             log("Whisper returned no usable text")
     except Exception as e:
-        log(f"Whisper failed: {e}")
+        if str(e) != "not needed": log(f"Whisper failed: {e}")
     try:
         import librosa, numpy as np
         y, sr = librosa.load(mp3_path, sr=None, mono=True, duration=60)
@@ -301,15 +312,15 @@ def share_song(song_desc, gloria_note, audio_path=None):
     """Process a shared song — Vintos reads about it and responds."""
     
     # If audio file provided, use Whisper + librosa. Otherwise fall back to fetch_lyrics.
+    # the written lyrics first: a released song's words exist, and Whisper's guess through a mix is a poor
+    # substitute ("Beaking bad", 2026-09-09). Whisper only when the song cannot be found, and then cleaned up
+    # by Gemma with the title in hand. The breakdown always comes from the file.
     audio_analysis = None; lyrics_source = "none"
+    lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
     if audio_path and os.path.exists(audio_path):
-        audio_analysis = analyze_audio(audio_path)
-        lyrics_text = audio_analysis.get("lyrics")
-        lyrics_source = "whisper" if lyrics_text else "none"
-        if not lyrics_text:
-            lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
-    else:
-        lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
+        audio_analysis = analyze_audio(audio_path, transcribe=not lyrics_text)
+        if not lyrics_text and audio_analysis.get("lyrics"):
+            lyrics_text = clean_transcript(song_desc, audio_analysis["lyrics"]); lyrics_source = "whisper"
     log(f"lyrics source: {lyrics_source}; acoustic: {'yes' if audio_analysis and audio_analysis.get('acoustic') else 'no'}")
     lyrics_section = ""
     if lyrics_text:
