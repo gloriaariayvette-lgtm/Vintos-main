@@ -247,8 +247,10 @@ def analyze_audio(mp3_path):
         transcript = model.transcribe(mp3_path, fp16=False)
         text = transcript.get("text", "").strip()
         if text and len(text) > 20:
-            result["lyrics"] = text[:2000]
+            result["lyrics"] = text[:2500]
             log(f"Whisper transcribed: {len(text)} chars")
+        else:
+            log("Whisper returned no usable text")
     except Exception as e:
         log(f"Whisper failed: {e}")
     try:
@@ -281,14 +283,16 @@ def share_song(song_desc, gloria_note, audio_path=None):
     """Process a shared song — Vintos reads about it and responds."""
     
     # If audio file provided, use Whisper + librosa. Otherwise fall back to fetch_lyrics.
-    audio_analysis = None
+    audio_analysis = None; lyrics_source = "none"
     if audio_path and os.path.exists(audio_path):
         audio_analysis = analyze_audio(audio_path)
         lyrics_text = audio_analysis.get("lyrics")
+        lyrics_source = "whisper" if lyrics_text else "none"
         if not lyrics_text:
-            lyrics_text = fetch_lyrics(song_desc)
+            lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
     else:
-        lyrics_text = fetch_lyrics(song_desc)
+        lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
+    log(f"lyrics source: {lyrics_source}; acoustic: {'yes' if audio_analysis and audio_analysis.get('acoustic') else 'no'}")
     lyrics_section = ""
     if lyrics_text:
         lyrics_section = f"\n\nBut he also gave you the words. Here are the lyrics:\n{lyrics_text[:1500]}"
@@ -356,6 +360,10 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
         "reason": gloria_note,
         "line_answered": _line,
         "vintos_reflection": response,
+        # the song itself, kept: a share is meant to teach him the song, not only his feeling about it (2026-09-09)
+        "lyrics": (lyrics_text or "")[:2500],
+        "lyrics_source": lyrics_source,
+        "acoustic": (audio_analysis or {}).get("acoustic") or "",
         "influenced_compositions": []  # filled by dream-music when a composition carried this share in its context
     }
 

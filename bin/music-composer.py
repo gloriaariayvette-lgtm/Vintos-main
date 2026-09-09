@@ -62,6 +62,12 @@ def context():
                 _r = str(x.get("reason", x.get("why", x.get("note", x.get("gloria_said", "")))))[:200]
                 _ln = str(x.get("line_answered", ""))[:120]
                 _sh_lines.append("- " + _t + (" — why she shared it: " + _r if _r else "") + ((" — the line that stayed with you: \"" + _ln + "\"") if _ln else ""))
+                # the song itself, for the three most recent: how it is built and how its words move (2026-09-09)
+                if x in _sh[-3:]:
+                    _ac = str(x.get("acoustic", ""))[:200]
+                    _ly = [l.strip() for l in str(x.get("lyrics", "")).splitlines() if l.strip()]
+                    if _ac: _sh_lines.append("    how it is built: " + _ac)
+                    if _ly: _sh_lines.append("    how its words go: " + " / ".join(_ly[:8])[:400])
                 SHARE_IDS_IN_CONTEXT.append(x.get("id") or x.get("timestamp", ""))
             add("SONGS GLORIA SHARED WITH YOU (the most direct record of her taste you possess — let what she loves bend what you make)", chr(10).join(_sh_lines))
     except Exception:
