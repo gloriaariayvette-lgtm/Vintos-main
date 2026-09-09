@@ -20,7 +20,10 @@ def ask_llm(prompt, system="You are Vintos.", max_tokens=1200, temp=0.75):
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=60)
-        return r.json()["choices"][0]["message"]["content"].strip()
+        j = r.json()
+        if "choices" not in j:
+            log(f"LLM error: {str(j.get('error') or j)[:160]}"); return ""   # the model's own reason, not KeyError 'choices'
+        return j["choices"][0]["message"]["content"].strip()
     except Exception as e:
         log(f"LLM error: {e}")
         return ""

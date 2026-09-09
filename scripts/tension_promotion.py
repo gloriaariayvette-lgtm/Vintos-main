@@ -46,7 +46,10 @@ def ask(prompt):
     try:
         r = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.1,
             "max_tokens": 250, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
-        return r.json()["choices"][0]["message"]["content"].strip()
+        j = r.json()
+        if "choices" not in j:
+            raise RuntimeError(str(j.get("error") or j)[:160])   # the model's own reason, not KeyError 'choices'
+        return j["choices"][0]["message"]["content"].strip()
     except Exception as e:
         log("llm failed: %s" % e); return ""
 def jparse(txt):

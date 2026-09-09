@@ -132,7 +132,10 @@ def llm_json(system, prompt):
             "temperature": 0.85,
             "max_tokens": 400
         }, timeout=60)
-        msg = r.json()["choices"][0]["message"]
+        _j = r.json()
+        if "choices" not in _j:
+            raise RuntimeError("LLM returned no choices: " + str(_j.get("error") or _j)[:160])
+        msg = _j["choices"][0]["message"]
         for field in ["content", "reasoning"]:
             text = msg.get(field, "") or ""
             if not text.strip():
