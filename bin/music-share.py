@@ -408,6 +408,20 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
     log(f"Gloria: {gloria_note}")
     log(f"Vintos: {response[:100]}")
 
+    # the share goes into the day (her ask, 2026-09-09): the song, why she shared it, what he heard in it, what he said
+    try:
+        _di = os.path.join(MEMORY, f"daily-inner-life-{datetime.now().strftime('%Y-%m-%d')}.md")
+        _ly = [l.strip() for l in (lyrics_text or "").splitlines() if l.strip()]
+        with open(_di, "a") as _df:
+            _df.write(f"\n\n## Gloria shared a song: {song_desc} ({datetime.now().strftime('%H:%M')})\n"
+                      f"She said: {gloria_note}\n"
+                      + (f"How it is built: {share['acoustic']}\n" if share.get("acoustic") else "")
+                      + (f"Its words ({lyrics_source}): " + " / ".join(_ly[:6])[:400] + "\n" if _ly else "")
+                      + (f"The line that stayed: \"{_line}\"\n" if _line else "")
+                      + f"What I said: {response.strip()[:700]}\n")
+    except Exception as _die:
+        log(f"daily-inner append failed: {_die}")
+
     # Also create an imprint
     try:
         import subprocess

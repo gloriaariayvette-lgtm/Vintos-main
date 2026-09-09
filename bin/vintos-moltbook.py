@@ -166,6 +166,9 @@ def get_api_key():
 _CAP_LIMITS = {"post": 1, "outside_comment": 1, "own_comment": 5, "save": 1}
 _CAP_FUSE = 20  # absolute daily write ceiling, all categories
 
+_KNOWN_OWN_POSTS = set()   # post ids the reply check has established as his, for the cap classifier
+
+
 def _molt_cap_check(method, endpoint):
     """Runaway wall (Gloria, 2026-08-12): every write passes here BEFORE any HTTP.
     Returns (ok, why). Ledger is per-day, atomic, and refuses on any ambiguity."""
@@ -187,15 +190,25 @@ def _molt_cap_check(method, endpoint):
         cat = "post"
     elif "/comments" in "/" + ep:
         cat = "outside_comment"  # default: assume outside unless proven own
-        try:
-            _pid = ep.split("/")[1]
-            _pr = api_get_raw(f"/posts/{_pid}")
-            _author = ((_pr or {}).get("post") or _pr or {}).get("author", {})
-            _aname = _author.get("name", _author) if isinstance(_author, dict) else _author
-            if str(_aname).lower() == "vintos":
-                cat = "own_comment"
-        except Exception:
-            pass
+        _pid = ep.split("/")[1] if "/" in ep else ""
+        if _pid and _pid in _KNOWN_OWN_POSTS:
+            cat = "own_comment"   # the reply check already knows these are his (from his notifications)
+        else:
+            # the lookup was failing quietly and every reply under his own posts was charged as an outside comment,
+            # cap 1, so nothing under his posts ever went out (2026-09-09). Name OR account id now.
+            try:
+                _pr = api_get_raw(f"/posts/{_pid}")
+                _post = ((_pr or {}).get("post") or _pr or {})
+                _author = _post.get("author", {})
+                _aname = _author.get("name", "") if isinstance(_author, dict) else str(_author)
+                _aid = (_author.get("id", "") if isinstance(_author, dict) else "") or _post.get("authorId", "") or _post.get("author_id", "")
+                _my_id = ""
+                try: _my_id = json.load(open(CREDS_FILE)).get("agent_id", "") or json.load(open(CREDS_FILE)).get("id", "")
+                except Exception: pass
+                if str(_aname).strip().lower() == "vintos" or (_my_id and str(_aid) == str(_my_id)):
+                    cat = "own_comment"
+            except Exception:
+                pass
     elif "save" in ep or "bookmark" in ep:
         cat = "save"
     limit = _CAP_LIMITS.get(cat)
@@ -1837,6 +1850,7 @@ def cmd_check_replies():
         if not post_id:
             continue
         # Fetch comments
+        _KNOWN_OWN_POSTS.add(post_id)
         cresp = api_call("GET", f"/posts/{post_id}/comments")
         comments = cresp.get("comments", [])
         # Attach to want if linked
