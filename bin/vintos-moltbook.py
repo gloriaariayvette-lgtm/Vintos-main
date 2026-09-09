@@ -1845,8 +1845,9 @@ def cmd_check_replies():
         for comment in comments:
             comment_id = comment.get("id")
             commenter = comment.get("author", {}).get("name", "")
-            # Never reply to own comments
-            if commenter == agent_name:
+            # Never reply to own comments. Moltbook reports him as "vintos", the config says "Vintos": the exact
+            # compare let him answer himself and spend the day's cap on it (2026-09-09)
+            if commenter.strip().lower() == agent_name.strip().lower():
                 continue
             if comment_id in replied_set:
                 continue
@@ -2018,7 +2019,7 @@ def cmd_check_replies():
     for _mp in _mention_posts:
         _mp_id = _mp.get("id")
         _mp_author = _mp.get("author", {}).get("name", "")
-        if not _mp_id or _mp_author == agent_name:
+        if not _mp_id or str(_mp_author).strip().lower() == str(agent_name).strip().lower():
             continue
         _mp_ctx = get_vintos_context()
         _mp_content = _mp.get("content", "")[:400]
