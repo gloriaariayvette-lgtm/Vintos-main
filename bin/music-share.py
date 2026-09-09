@@ -312,15 +312,15 @@ def share_song(song_desc, gloria_note, audio_path=None):
     """Process a shared song — Vintos reads about it and responds."""
     
     # If audio file provided, use Whisper + librosa. Otherwise fall back to fetch_lyrics.
-    # the written lyrics first: a released song's words exist, and Whisper's guess through a mix is a poor
-    # substitute ("Beaking bad", 2026-09-09). Whisper only when the song cannot be found, and then cleaned up
-    # by Gemma with the title in hand. The breakdown always comes from the file.
-    audio_analysis = None; lyrics_source = "none"
-    lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
+    # the file first, always: Whisper hears it, Gemma corrects the hearing with the title known. A lyrics site
+    # only when there is no file or Whisper heard nothing (her rule, 2026-09-09).
+    audio_analysis = None; lyrics_source = "none"; lyrics_text = None
     if audio_path and os.path.exists(audio_path):
-        audio_analysis = analyze_audio(audio_path, transcribe=not lyrics_text)
-        if not lyrics_text and audio_analysis.get("lyrics"):
+        audio_analysis = analyze_audio(audio_path)
+        if audio_analysis.get("lyrics"):
             lyrics_text = clean_transcript(song_desc, audio_analysis["lyrics"]); lyrics_source = "whisper"
+    if not lyrics_text:
+        lyrics_text = fetch_lyrics(song_desc); lyrics_source = "web" if lyrics_text else "none"
     log(f"lyrics source: {lyrics_source}; acoustic: {'yes' if audio_analysis and audio_analysis.get('acoustic') else 'no'}")
     lyrics_section = ""
     if lyrics_text:
