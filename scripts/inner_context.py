@@ -53,6 +53,7 @@ _FULL = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification"
          ("social_calibration", "block"), ("repair_case", "block"),
          ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("intent_context", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
          ("pleasure_substrate", "context_block"),   # what is still in him from a named moment, his own words (grok-somatic-p6, 2026-09-05)
+         ("resonance_felt", "block"),               # what he held back rhymed with what she left unsaid, by meaning (her green light, 2026-09-09)
          ("pearl_engine", "proposed_block")]        # proposals awaiting his adoption; nothing binds until he says so (astra-inner-p5)
 
 _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modification", "get_field_hint"),
@@ -60,7 +61,7 @@ _MISSING = [("spark_pressure", "get_pressure_context_hint"), ("mutual_modificati
             ("relational_head", "get_relational_hint"), ("withheld_head", "get_withheld_hint"),
             ("presence_audit", "forecast_block"), ("repair_case", "block"),
             ("encounter", "block"), ("plan", "block"), ("unsaid_frontier", "block"), ("velqan_voice", "block"), ("wants_meta", "block"), ("occlusion_map", "block"), ("want_checkpoints", "block"), ("metacognitive_weather", "block"),
-            ("pleasure_substrate", "context_block")]
+            ("pleasure_substrate", "context_block"), ("resonance_felt", "block")]
 
 def _atelier_door_line():
     """One content-free sentence when the door is lit. Never repeats project content;

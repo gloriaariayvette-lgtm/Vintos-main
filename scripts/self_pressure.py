@@ -191,6 +191,12 @@ def main():
                 except Exception: pass
             if _ov >= 0.5 or (_sem is not None and _sem >= 0.6):
                 log('resonance words %.2f meaning %s: his %r ~ her unsaid %r' % (_ov, _sem, _ms[:40], _hs[:40]))
+            # her green light (2026-09-09): a rhyme by meaning becomes one felt sentence in his next day's context
+            try:
+                from resonance_felt import mark as _rf_mark
+                if _rf_mark(_sem, _ms, _hs): log('resonance felt: marked for his context')
+            except Exception as _rfe:
+                log('resonance felt skip: %s' % _rfe)
     except Exception as _re:
         log('resonance skip: %s' % _re)
 
