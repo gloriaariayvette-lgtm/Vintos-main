@@ -68,7 +68,13 @@ def spark():
 # ---------------------------------------------------------------- Manip
 def manip():
     log = jsonl("priority-vector-log.jsonl"); st = load("priority-vector-state.json", None); led = load("intent-ledger.json", [])
-    verdicts = [e for e in (led if isinstance(led, list) else []) if isinstance(e, dict) and e.get("verdict")]
+    # a closed verdict is "realized": a string, or a per-axis dict (field / gloria / self)
+    verdicts = []; gloria_axis = 0
+    for e in (led if isinstance(led, list) else []):
+        r = e.get("realized") if isinstance(e, dict) else None
+        if isinstance(r, str) and r in ("YES", "PARTIAL", "NO"): verdicts.append(e)
+        elif isinstance(r, dict) and any(v in ("YES", "PARTIAL", "NO") for v in r.values()):
+            verdicts.append(e); gloria_axis += 1 if r.get("gloria") in ("YES", "PARTIAL", "NO") else 0
     modes = {}
     for e in log: modes[e.get("mode", "?")] = modes.get(e.get("mode", "?"), 0) + 1
     r = {"declarations": len(log), "modes": modes, "last": log[-1] if log else None, "state": st is not None,
@@ -79,7 +85,8 @@ def manip():
     elif modes.get("pressure"): status = "HAS FIRED: %d declarations, %d in pressure mode (the gravitational override has taken a turn)" % (len(log), modes["pressure"])
     else: status = "RUNNING, STRATEGY ONLY: %d declarations, the neglect override has never crossed 1.5" % len(log)
     gates = []
-    if r["verdicts"] < 3: gates.append("receptivity needs 3 Gloria-axis verdicts, has %d: weights are provisional" % r["verdicts"])
+    r["gloria_axis_verdicts"] = gloria_axis
+    if gloria_axis < 3: gates.append("receptivity needs 3 Gloria-axis verdicts in the last 60, has %d (%d closed verdicts in all): Gloria weight is provisional" % (gloria_axis, r["verdicts"]))
     if r["gloria_difference"] is None: gates.append("gloria-difference.json never written (desired_difference has not run)")
     elif r["gloria_difference"] > 72 * 3600: gates.append("gloria-difference.json stale: " + fmt_age(r["gloria_difference"]))
     r["status"] = status; r["gates"] = gates; OUT["manip"] = r
