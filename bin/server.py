@@ -6582,6 +6582,18 @@ class MusicShareRequest(_MSBase):
     song: str
     note: str
 
+def _music_share_log(song, result):
+    """The share script's own lines (whisper, librosa, lyrics source) were captured and thrown away, so a failed
+    transcription left no trace (2026-09-09). Kept in ~/.vintos/logs/music-share.log."""
+    try:
+        _ld = os.path.expanduser("~/.vintos/logs"); os.makedirs(_ld, exist_ok=True)
+        with open(os.path.join(_ld, "music-share.log"), "a") as _f:
+            _f.write("=== %s  %s  rc=%s\n%s\n%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), song, result.returncode,
+                                                     (result.stdout or "")[-4000:], (result.stderr or "")[-2000:]))
+    except Exception:
+        pass
+
+
 @app.post("/api/music/share")
 async def music_share(req: MusicShareRequest):
     """Gloria shares a song with Vintos. Returns her reflection."""
@@ -6592,6 +6604,7 @@ async def music_share(req: MusicShareRequest):
              req.song, req.note],
             capture_output=True, text=True, timeout=120,
         )
+        _music_share_log(req.song, result)
         # Load the share that was just saved
         shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
         with open(shares_path) as f:
@@ -6631,6 +6644,7 @@ async def music_share_audio(
              song, note, "--audio", tmp.name],
             capture_output=True, text=True, timeout=900,   # a CPU transcription of a whole song needs minutes
         )
+        _music_share_log(song, result)
         os.unlink(tmp.name)
         shares_path = os.path.join(MEMORY, "gloria-music-shares.json")
         with open(shares_path) as f:

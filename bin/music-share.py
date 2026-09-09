@@ -366,8 +366,11 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
     # The line he actually answered to, not a lyrics dump (grok-creative-p3, 2026-09-05)
     _line = ""
     try:
-        _qm = re.findall(r'[“"]([^”"]{12,200})[”"]', response or "")
-        _line = _qm[0].strip() if _qm else ""
+        _qm = [q.strip() for q in re.findall(r'[“"]([^”"]{12,200})[”"]', response or "")]
+        # the quote must be the song's, not his own phrase in quotation marks: prefer one found in the lyrics
+        _lyr = re.sub(r"\s+", " ", (lyrics_text or "")).lower()
+        _in = [q for q in _qm if re.sub(r"\s+", " ", q).lower().strip(".,!?") in _lyr]
+        _line = (_in or _qm or [""])[0]
     except Exception:
         _line = ""
     share = {
