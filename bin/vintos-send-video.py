@@ -58,6 +58,7 @@ US_COMPOSE_MODEL = os.environ.get("VINTOS_US_COMPOSE", "google/nano-banana-2/ref
 HER_PHOTO = os.path.join(HERO_DIR, "her-photo.jpg")
 HAIR_HEAL = os.environ.get("VINTOS_HAIR_HEAL",
     "change the woman's hair to a rich dark brunette (dark brown), same length and wavy style")
+HER_HAIR_LINE = os.environ.get("VINTOS_HER_HAIR", "The woman's hair is a rich dark red, and stays dark red throughout.")
 ATLAS_RES = os.environ.get("ATLAS_RES", "720P")
 ATLAS_DUR = int(os.environ.get("ATLAS_DUR", "10"))
 NEG_PROMPT = ("camera cut, shot change, scene change, transition, jump cut, rapid editing, montage, "
@@ -737,13 +738,15 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
         # dynamic 'us': compose the two of them into his described scene (nano holds both), heal the recurring
         # blonde drift to brunette, then animate. Falls back to the fixed couple base if the compose fails.
         if DRY:
-            log("[dry] kind=together  SCENE=%r  -> compose us (%s) + brunette heal, then animate (%s)"
+            log("[dry] kind=together  SCENE=%r  -> compose us (%s), then animate (%s); her hair colour stated in the video prompt"
                 % (scene[:120], US_COMPOSE_MODEL, model))
             log("[dry] his motion prompt:\n      %s" % prompt)
             return "DRY"
         still = compose_us(scene, verbose=CHECK)
         if still:
-            heal_hair(still, verbose=CHECK)
+            # one image request, not two: the hair-colour heal pass is gone; her hair colour is stated in the
+            # video prompt instead and Grok carries it (2026-09-09)
+            prompt = HER_HAIR_LINE + " " + prompt
         else:
             log("us compose failed — falling back to the fixed couple base"); still = select_still("together")
     else:

@@ -69,7 +69,7 @@ SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
 SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py desktop_winpy.py screen_share.py browser_winpy.py browser_agent.py"   # his hands, eyes and browser on the Windows desktop (2026-09-06)
-BINS="robot-pi-repoint.sh purge-test-residue.py server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
+BINS="robot-pi-repoint.sh purge-test-residue.py resonance-rescore.py server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py

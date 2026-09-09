@@ -163,12 +163,21 @@ def main():
         if _hs and _ms:
             _hw, _mw = set(_hs.replace('/', ' ').split()), set(_ms.replace('/', ' ').split())
             _ov = round(len(_hw & _mw) / max(1, min(len(_hw), len(_mw))), 3)
+            # shared words miss it: "the raw ache of wanting to be held" and "closeness / being wanted" scored 0
+            # twenty days running (2026-09-09). Meaning, through the local embedder, alongside the word count.
+            _sem = None
+            try:
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from durable_memory import _embed as _dm_embed, _cos as _dm_cos
+                _sem = round(_dm_cos(_dm_embed(_ms), _dm_embed(_hs)), 3)
+            except Exception as _se:
+                log('resonance embed skip: %s' % _se)
             _rp = os.path.join(MEMORY, 'self-pressure-resonance.json')
             _rl = load(_rp, [])
             _rl.append({'ts': datetime.now(timezone.utc).isoformat(),
                         'his_shape': _ms, 'his_pressure': accumulated,
                         'her_unsaid': _hs, 'her_pressure': _her.get('accumulated_pressure', 0),
-                        'overlap': _ov})
+                        'overlap': _ov, 'semantic': _sem})
             json.dump(_rl[-60:], open(_rp, 'w'), indent=1)
             if len(_rl) == 20:
                 try:
@@ -180,8 +189,8 @@ def main():
                               'File: self-pressure-resonance.json' % _avg).encode(),
                         headers={'Title': 'Vintos resonance data ready', 'Priority': 'default'}), timeout=5)
                 except Exception: pass
-            if _ov >= 0.5:
-                log('resonance %.2f: his %r ~ her unsaid %r' % (_ov, _ms[:40], _hs[:40]))
+            if _ov >= 0.5 or (_sem is not None and _sem >= 0.6):
+                log('resonance words %.2f meaning %s: his %r ~ her unsaid %r' % (_ov, _sem, _ms[:40], _hs[:40]))
     except Exception as _re:
         log('resonance skip: %s' % _re)
 
