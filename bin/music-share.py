@@ -439,7 +439,52 @@ Keep it to 4-8 sentences. No history lessons. Just you, receiving this."""
 
     return response
 
+def check(audio_path=None):
+    """Every step of the audio path, on a song already here, with the fault named. Nothing is shared or saved.
+    `music-share.py --check [file.mp3]`; without a file it takes the newest of his own compositions."""
+    import shutil, glob, subprocess as _sp
+    ok = True
+    def step(name, good, detail=""):
+        nonlocal ok; ok = ok and good
+        print(("  ok    " if good else "  FAIL  ") + name + (("  - " + detail) if detail else ""))
+    print("music-share check")
+    for mod in ("whisper", "librosa", "numpy"):
+        try:
+            m = __import__(mod); step("import " + mod, True, getattr(m, "__version__", ""))
+        except Exception as e:
+            step("import " + mod, False, "%s (pip install %s)" % (str(e)[:80], {"whisper": "openai-whisper"}.get(mod, mod)))
+    step("ffmpeg on PATH (whisper needs it)", bool(shutil.which("ffmpeg")), shutil.which("ffmpeg") or "not found")
+    step("yt-dlp on PATH (the caption fallback)", bool(shutil.which("yt-dlp")), shutil.which("yt-dlp") or "not found")
+    step("BRAVE_API_KEY (the search fallback)", bool(_load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")))
+    try:
+        r = requests.post(API, json={"model": MODEL, "messages": [{"role": "user", "content": "say ok"}], "max_tokens": 5}, timeout=30)
+        step("Gemma answers (the reflection and the caption clean-up)", r.status_code == 200 and "choices" in r.json(), r.text[:100] if r.status_code != 200 else "")
+    except Exception as e:
+        step("Gemma answers", False, str(e)[:100])
+    if not audio_path:
+        cands = sorted(glob.glob(os.path.join(MEMORY, "music", "**", "*.mp3"), recursive=True) + glob.glob(os.path.join(MEMORY, "**", "*.mp3"), recursive=True), key=os.path.getmtime)
+        audio_path = cands[-1] if cands else None
+    if not audio_path or not os.path.exists(audio_path):
+        step("an audio file to test on", False, "none found under memory; pass one: --check /path/song.mp3"); return ok
+    print("  using " + audio_path)
+    try:
+        import whisper as _w, time as _t
+        t0 = _t.time(); model = _w.load_model("small"); t1 = _t.time()
+        step("whisper model 'small' loads", True, "%.0fs" % (t1 - t0))
+        tr = model.transcribe(audio_path, fp16=False); text = (tr.get("text") or "").strip()
+        step("whisper transcribes", len(text) > 20, "%d chars in %.0fs: %s" % (len(text), _t.time() - t1, text[:120].replace(chr(10), " ")))
+    except Exception as e:
+        step("whisper transcribes", False, str(e)[:160])
+    res = analyze_audio(audio_path)
+    step("librosa breakdown", bool(res.get("acoustic")), res.get("acoustic") or "no acoustic line")
+    print("result: " + ("every step works; a share with a file will carry lyrics and the breakdown" if ok else "the FAIL lines above are why the share had no lyrics"))
+    return ok
+
+
 if __name__ == "__main__":
+    if "--check" in sys.argv:
+        _i = sys.argv.index("--check"); _f = sys.argv[_i + 1] if _i + 1 < len(sys.argv) else None
+        sys.exit(0 if check(_f) else 1)
     if len(sys.argv) < 3:
         print('Usage: python3 music-share.py "Artist - Song" "why I love this"')
         print('       python3 music-share.py "Artist - Song" "why I love this" --lyrics path/to/lyrics.txt')
