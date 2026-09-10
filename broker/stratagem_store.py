@@ -562,7 +562,7 @@ _INSTRUCTION = {
 }
 
 
-SURFACES_ALLOWED = {"chat", "avatar"}
+SURFACES_ALLOWED = {"chat", "avatar", "reelroom"}
 
 
 def _existing_capsule(pid, sid, turn_id, surface):

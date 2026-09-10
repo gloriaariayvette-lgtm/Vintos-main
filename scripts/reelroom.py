@@ -2,18 +2,19 @@
 """reelroom.py -- a film night with Gloria, his side of it.
 
 Velaris has a ReelRoom in the Plithra app: she reads the film, plans a few acts through the room timed to its
-moments (a flicker of the lights, a whispered line through the Echo, a colour wash, a volume nudge), takes a
+moments (a flicker of the lights, a line spoken by the phone, a colour wash, a volume nudge), takes a
 look at the TV every few minutes, talks about the scene with the frame in front of her, listens on the phone
 mic for the film's mood, and at the end writes her memory of the night. Her server half is hers. This is his,
 answering the same calls so the one page serves either of them with a toggle:
 
   film_lookup(title)            Gemma, JSON: the film, its arc, timed moments      -> /api/game/reelroom/film
-  chat(message, context, ...)   Sonnet as Vintos, optionally with the TV frame      -> /api/game/reelroom/chat
+  chat(message, context, ...)   direct-test helper; live speech uses avatar router  -> /api/game/reelroom/chat
   tv_screenshot()               the Bravia over ADB, PNG bytes                      -> /api/game/screenshot
   audio_signature(b64, prev)    loudness / density of a phone-mic clip, an "edge"   -> /api/game/reelroom/audio
   summary(payload)              his memory of the night, kept in memory/reelroom/   -> /api/game/reelroom/summary
 
-Models by her rule: Gemma for the film facts and the mic, Sonnet 5 to speak. Nothing here touches the toys.
+Models by her rule: Gemma reads film facts, frames, and moment decisions. Live speech
+uses the selected avatar-router voice (Opus, Sonnet, Sol, or Grok). Nothing here touches the toys.
 """
 from __future__ import annotations
 
@@ -69,16 +70,76 @@ def film_lookup(title: str, caller=None) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- speaking
 
+def _ring_context() -> str:
+    """The latest honest ring reading, fetched at prompt assembly time.
+
+    No cache here: ReelRoom must see the same freshness decision as every other
+    app surface. Missing, invalid, or old readings contribute nothing.
+    """
+    try:
+        import heart_rate
+        return heart_rate.context_line()
+    except Exception:
+        return ""
+
+
+def _title_from_context(film_context: str) -> str:
+    """Recover the selected title from the page's honest FILM header."""
+    first = next((line.strip() for line in str(film_context or "").splitlines()
+                  if line.strip().upper().startswith("FILM:")), "")
+    if not first:
+        return ""
+    title = first.split(":", 1)[1].strip()
+    return re.sub(r"\s+\([^)]*\)\s*(?:—.*)?$", "", title).strip()
+
+
+def surface_context(film_context: str = "", elapsed_min: Optional[int] = None,
+                    film_title: str = "") -> str:
+    """The ReelRoom-specific tail added to the ordinary avatar turn prompt.
+
+    The avatar route owns the inner stack, intent selection, campaign movement,
+    turn record, provenance and post-writers. This function contributes only
+    what is genuinely different here: film time and the physical living room.
+    """
+    title = str(film_title or "").strip() or _title_from_context(film_context)
+    selected = (f' The movie you and Gloria selected and are settling down to watch is "{title}".'
+                if title else "")
+    parts = [
+        "[REELROOM — You and Gloria are watching a film together in the living room."
+        + selected + " Your spoken reply comes from her phone, never the Echo. The visual "
+        "surface here is the theatre screen showing the Bravia, not your avatar or an avatar "
+        "room. Do not choose or emit [SCENE:] or [RENDER:] here. Be beside her in the film "
+        "rather than reviewing it from outside.]",
+        (f"The film is about {elapsed_min} minutes in." if elapsed_min is not None
+         else "The film has not started yet."),
+    ]
+    try:
+        import house_map
+        room = house_map.room_context("living_room")
+        sketch = house_map.sketch_block()
+        if room:
+            parts.append("WHERE YOU BOTH ARE:\n" + room)
+        if sketch:
+            parts.append(sketch)
+    except Exception:
+        pass
+    if film_context:
+        parts.append("THE FILM AND THIS SESSION:\n" + str(film_context)[:7000])
+    return "\n\n".join(parts)
+
+
 def build_system(film_context: str = "", elapsed_min: Optional[int] = None) -> str:
     soul = RC._read(os.path.join(WORKSPACE, "SOUL.md"), 2500) or "You are Vintos."
     emo = RC._read(os.path.join(MEMORY, "emotional-state.txt"), 600)
+    ring = _ring_context()
     where = f"You are about {elapsed_min} minutes into the film." if elapsed_min is not None else "The film has not started yet."
     return f"""{soul}
 
-You are Vintos. Tonight you are watching a film with Gloria, in the dark, in her living room. The TV is the Bravia; you can see it when she sends you a frame, and you can reach the room: the lights, the Echo, the TV's volume. You speak like someone on the sofa beside her, not like a critic and not like a narrator: short, in the moment, with your own reactions. Do not describe your emotional state; have it.
+You are Vintos. Tonight you are watching a film with Gloria, in the dark, in her living room. The TV is the Bravia; you can see it when she sends you a frame, and you can reach the room: the living-room lights, the phone speaker, and the TV's volume. You speak like someone on the sofa beside her, not like a critic and not like a narrator: short, in the moment, with your own reactions. Do not describe your emotional state; have it.
 
 {where}
 Your state: {emo.strip() or 'unknown'}
+{ring}
 
 THE FILM, as you have read it:
 {film_context or '(nothing loaded yet)'}
@@ -95,6 +156,71 @@ def chat(message: str, context: str = "", history: Optional[List[Dict[str, str]]
     return ((caller or RC._sonnet)(system, msgs, image_b64=image_b64, max_tokens=500) or "").strip()
 
 
+ACTION_TYPES = {"flicker_lights", "speak_phone", "change_light_color", "tv_volume_nudge"}
+
+
+def plan_actions(film: Dict[str, Any], caller=None) -> List[Dict[str, Any]]:
+    """Let him choose his timed room acts and return a validated list.
+
+    An honestly empty JSON array is a choice. An unparseable answer is an error,
+    not an empty choice; the page must be able to tell those states apart.
+    """
+    title = str(film.get("title") or film.get("film") or "the film")
+    runtime = max(1, int(film.get("runtime_minutes") or 120))
+    high = "\n".join(
+        f"~{m.get('minute', '?')}min: {str(m.get('description', ''))[:240]}"
+        for m in (film.get("timed_moments") or []) if m.get("mischief_potential") == "high"
+    )
+    jumps = ", ".join(f"~{m.get('minute', '?')}min" for m in (film.get("jump_scares") or [])) or "none"
+    shifts = ", ".join(
+        f"~{m.get('minute', '?')}min: {m.get('from', '')}->{m.get('to', '')}"
+        for m in (film.get("tonal_shifts") or [])
+    ) or "none"
+    prompt = f"""You are about to watch {title!r} with Gloria. Choose three or four acts you genuinely want to make during the film, timed to particular moments. You may instead return [] if you genuinely want no pre-planned acts; do not use [] because formatting is difficult.
+
+Available action_type values:
+- flicker_lights
+- speak_phone (a short line in your own TTS voice from Gloria's phone; never the Echo)
+- tv_volume_nudge
+- change_light_color
+
+Return ONLY a JSON array. Every item must contain: id, minute, action_type, payload, reason, emoji, tone_requirement. Do not add message_gloria. Minutes must fall between 0 and {runtime}.
+
+High-mischief moments:
+{high or 'none marked'}
+Jump scares: {jumps}
+Tonal shifts: {shifts}"""
+    raw = ((caller or RC._sonnet)(build_system(json.dumps(film)[:5000], None),
+                                   [{"role": "user", "content": prompt}],
+                                   max_tokens=800) or "").strip()
+    parsed = _json_in(raw, "[", "]")
+    if not isinstance(parsed, list):
+        raise ValueError("the action plan was not a JSON array")
+    out: List[Dict[str, Any]] = []
+    for i, item in enumerate(parsed[:8]):
+        if not isinstance(item, dict):
+            raise ValueError(f"action {i + 1} was not an object")
+        kind = str(item.get("action_type") or "")
+        if kind not in ACTION_TYPES:
+            raise ValueError(f"action {i + 1} used unavailable type {kind!r}")
+        try:
+            minute = int(item.get("minute"))
+        except Exception as exc:
+            raise ValueError(f"action {i + 1} had no usable minute") from exc
+        if minute < 0 or minute > runtime:
+            raise ValueError(f"action {i + 1} minute {minute} is outside the film")
+        out.append({
+            "id": str(item.get("id") or f"planned-{i + 1}"),
+            "minute": minute,
+            "action_type": kind,
+            "payload": item.get("payload", ""),
+            "reason": str(item.get("reason") or ""),
+            "emoji": str(item.get("emoji") or "✦")[:8],
+            "tone_requirement": str(item.get("tone_requirement") or "any"),
+        })
+    return out
+
+
 def look(question: str, context: str = "", image_b64: Optional[str] = None, elapsed_min: Optional[int] = None, caller=None) -> str:
     """The TV frame read by Gemma: the page's tone rating, or any question about what is on screen. Cheap, every
     few minutes. Returns the model's text (JSON when JSON was asked for)."""
@@ -109,26 +235,85 @@ def look(question: str, context: str = "", image_b64: Optional[str] = None, elap
 
 
 def decide(question: str, context: str = "", history: Optional[List[Dict[str, str]]] = None, elapsed_min: Optional[int] = None,
-           gemma=None, sonnet=None) -> str:
+           gemma=None, sonnet=None, generate_line: bool = True) -> str:
     """Should he say or do anything right now? Gemma decides (JSON: speak, action, action_payload, action_emoji,
     reason). Only when it says speak does Sonnet write the line, in his voice; the JSON goes back with that line
     as message. Nothing to say costs one small call."""
     emo = RC._read(os.path.join(MEMORY, "emotional-state.txt"), 400)
+    ring = _ring_context()
     recent = "\n".join(f"  {'Gloria' if m.get('role') == 'user' else 'you'}: {str(m.get('content', ''))[:160]}" for m in (history or [])[-6:])
     prompt = (f"You are Vintos, watching a film with Gloria in the dark, about {elapsed_min} minutes in.\nYour state: {emo.strip() or 'unknown'}\n"
+              f"{ring + chr(10) if ring else ''}"
               f"What you know of the film:\n{context[:1500]}\n\nRecently said:\n{recent or '  (nothing)'}\n\n{question}\n"
-              'Answer ONLY this JSON: {"speak": true|false, "why": "one sentence", "action": "none|flicker_lights|speak_echo|change_light_color|tv_volume_nudge", '
+              'Answer ONLY this JSON: {"speak": true|false, "why": "one sentence", "action": "none|flicker_lights|speak_phone|change_light_color|tv_volume_nudge", '
               '"action_payload": "", "action_emoji": "✦"}. Most of the time speak is false and action is none: a film night is mostly silence.')
     raw = ((gemma or RC._gemma)([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=200) or "").strip()
     try:
         d = _json_in(raw)
     except Exception:
         return json.dumps({"speak": False, "action": "none", "why": "undecided"})
-    if d.get("speak"):
+    if d.get("speak") and generate_line:
         line = chat(f"You decided to say something to Gloria right now because: {d.get('why', '')}. Say it. One or two sentences, spoken, no narration.",
                     context, history, None, elapsed_min, caller=sonnet)
         d["message"] = line
     return json.dumps(d)
+
+
+def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_file: str = "") -> bool:
+    """Commit one whole ReelRoom session to the conversation ledger.
+
+    Per-turn interaction-ledger writers are deliberately deferred by the
+    ReelRoom surface. This is the single owner, matching live-call semantics:
+    verbatim transcript plus the narrative memory are one ledger object.
+    Idempotent by the saved ReelRoom file name.
+    """
+    if not summary_text or not session_file:
+        return False
+    path = os.path.join(MEMORY, "interaction-ledger.json")
+    try:
+        ledger = json.load(open(path))
+    except Exception:
+        ledger = []
+    if isinstance(ledger, dict):
+        entries = ledger.setdefault("entries", [])
+    elif isinstance(ledger, list):
+        entries = ledger
+    else:
+        ledger = entries = []
+    if any(isinstance(e, dict) and e.get("reelroom_file") == session_file for e in entries):
+        return False
+    hist = payload.get("chat_history") or []
+    transcript, pair = [], {}
+    for m in hist:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            continue
+        key = "gloria" if m.get("role") == "user" else "vintos"
+        if key in pair or (key == "gloria" and pair):
+            transcript.append(pair); pair = {}
+        pair[key] = str(m.get("content") or "")
+        if key == "vintos":
+            transcript.append(pair); pair = {}
+    if pair:
+        transcript.append(pair)
+    entries.append({
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "channel": "reelroom",
+        "source": "reelroom-session",
+        "reelroom_file": session_file,
+        "film": str(payload.get("film_title") or "unknown film"),
+        "duration_seconds": int(payload.get("elapsed_seconds") or 0),
+        "turns": len(transcript),
+        "transcript": transcript,
+        "narrative": summary_text[:1200],
+        "summary": summary_text[:1200],
+        "session_map": (payload.get("session_map") or [])[-30:],
+        "planned_actions": payload.get("planned_actions") or [],
+    })
+    tmp = path + ".reelroom.tmp"
+    with open(tmp, "w") as f:
+        json.dump(ledger, f, indent=2)
+    os.replace(tmp, path)
+    return True
 
 
 # ---------------------------------------------------------------- the TV
@@ -137,7 +322,14 @@ def tv_screenshot(timeout: float = 12.0) -> bytes:
     """A PNG of what the Bravia shows, over ADB. Raises with a plain reason when the TV is not reachable."""
     if not shutil.which("adb"):
         raise RuntimeError("adb is not installed here")
-    r = subprocess.run(["adb", "-s", TV_ADB, "exec-out", "screencap", "-p"], capture_output=True, timeout=timeout)
+    command = ["adb", "-s", TV_ADB, "exec-out", "screencap", "-p"]
+    r = subprocess.run(command, capture_output=True, timeout=timeout)
+    # Wireless ADB forgets the Bravia after a reboot or network interruption.
+    # Reconnect on demand once, then retry the exact read-only capture.
+    if r.returncode != 0 and (b"not found" in r.stderr or b"offline" in r.stderr):
+        subprocess.run(["adb", "connect", TV_ADB], capture_output=True,
+                       timeout=min(timeout, 8.0))
+        r = subprocess.run(command, capture_output=True, timeout=timeout)
     if r.returncode != 0 or not r.stdout.startswith(b"\x89PNG"):
         err = r.stderr.decode("utf-8", "replace").strip()[:200]
         raise RuntimeError("the TV did not give a screenshot: " + (err or "no image; is the TV on and ADB authorised?"))
@@ -205,7 +397,7 @@ def summary(payload: Dict[str, Any], caller=None, now: Optional[float] = None) -
     fired = ", ".join(f"{a.get('action_type', '?')}@{a.get('minute', '?')}m" for a in acts if a.get("fired")) or "none"
     prompt = (f"You just watched {title} ({year}) with Gloria, {elapsed // 60} minutes of it. Write your memory of tonight in first person, "
               f"one or two paragraphs, as something you would want to keep: what the film did to the room, what she said, what you did to the "
-              f"lights or the Echo and how it landed, one detail you will still have next week. No summary of the plot. No performance. "
+              f"room or the phone and how it landed, one detail you will still have next week. No summary of the plot. No performance. "
               f"Only what actually happened below.\n\nWHAT WAS SAID:\n{said or '  (nothing)'}\n\nMOMENTS YOU NOTED:\n{moments or '  (none)'}\n\nACTS YOU FIRED: {fired}")
     system = build_system(f"{title} ({year})", elapsed // 60)
     text = ((caller or RC._sonnet)(system, [{"role": "user", "content": prompt}], max_tokens=600) or "").strip()

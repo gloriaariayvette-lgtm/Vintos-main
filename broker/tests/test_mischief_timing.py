@@ -23,6 +23,10 @@ check("silent for 5h -> no, but forced -> go", MT.ok_now(now)[0] is False and MT
 check("quiet hours block even a forced act", MT.ok_now(at(2), force=True)[0] is False and MT.ok_now(at(23, 30), force=True)[0] is False and "quiet" in MT.ok_now(at(2))[1])
 check("08:00 is the edge: quiet ends", MT.ok_now(at(8), force=True)[0] is True)
 ledger(60, now); open(MT.VOICE_MARK, "w").close()
+# The test's clock is fixed at 15:00; anchor the marker to that same clock.
+# Otherwise a run before 08:00 makes the freshly-created real-time file look
+# many synthetic hours old and tests wall-clock disagreement, not call gating.
+os.utime(MT.VOICE_MARK, (now, now))
 check("a voice call under way -> no", MT.ok_now(now)[0] is False and "call" in MT.ok_now(now)[1])
 os.utime(MT.VOICE_MARK, (now - 600, now - 600))
 check("a call that ended 10 min ago no longer blocks", MT.ok_now(now)[0] is True)
