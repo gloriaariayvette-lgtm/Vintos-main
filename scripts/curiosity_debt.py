@@ -26,22 +26,29 @@ def _retire(x, reason):
     r = _retired(); r[x["id"]] = {"object": x.get("object",""), "when": time.time(), "reason": reason}
     json.dump(r, open(RETIRED, "w"), indent=1)
 
-def record(question, pull=0.6, source="chat", object=None, kind=None, reason=None, evidence=None):
+def record(question, pull=0.6, source="chat", object=None, kind=None, reason=None, evidence=None, occasion=None):
     q = (question or "").strip()
     if len(q) < 6: return
     h0 = hashlib.md5((object or q).lower().encode()).hexdigest()[:8]
     r = _retired().get(h0)
     if r and time.time() - r.get("when", 0) < 30*86400: return   # cooling down, no reseed
     d = _load(); h = hashlib.md5((object or q).lower().encode()).hexdigest()[:8]; now = time.time()
+    # review 253: pull grows from NEW source occasions, never from re-reading the same one. The occasion
+    # is the caller's occurrence id, else the evidence text itself; a repeat is seen, not counted.
+    occ = str(occasion or hashlib.md5((evidence or source or "").lower().encode()).hexdigest()[:8])
     ex = next((x for x in d if x["id"] == h), None)
     if ex:
-        ex["pull"] = min(1.0, ex.get("pull", 0.5) + 0.12); ex["last_seen"] = now
+        ex["last_seen"] = now
+        if occ in ex.setdefault("occasions", []):
+            _save(d); return
+        ex["occasions"] = (ex["occasions"] + [occ])[-40:]
+        ex["pull"] = min(1.0, ex.get("pull", 0.5) + 0.12)
         if evidence: ex["evidence"] = evidence
     else:
         d.append({"id": h, "question": q[:300], "object": (object or "")[:80],
                   "kind": kind or source, "reason": reason or "", "evidence": (evidence or "")[:200],
                   "pull": pull, "created": now, "last_seen": now, "surfaced": 0,
-                  "target": "gloria"})
+                  "occasions": [occ], "target": "gloria"})
     _save(d)
 
 def _decay(d):

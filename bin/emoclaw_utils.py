@@ -2477,10 +2477,18 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
                         _goal_prefix = w.get("source","").replace("ambition:","").strip()[:50]
                         for _g in _amb.get("goals", []):
                             if _goal_prefix in _g.get("goal","")[:50]:
-                                _g["progress"] = "Completed"
-                                _g["completed_at"] = datetime.now().isoformat()
-                                if note:
-                                    _g["completion_note"] = note
+                                # review 233: an ambition progresses by fulfilled wants; it completes only when
+                                # its own required count is met (default 3), never on the first success
+                                _ids = _g.setdefault("fulfilled_want_ids", [])
+                                if w.get("id") and w["id"] not in _ids: _ids.append(w["id"])
+                                _need = int(_g.get("wants_required", 3) or 3)
+                                if len(_ids) >= _need:
+                                    _g["progress"] = "Completed"
+                                    _g["completed_at"] = datetime.now().isoformat()
+                                    if note:
+                                        _g["completion_note"] = note
+                                else:
+                                    _g["progress"] = "making progress (%d/%d wants fulfilled)" % (len(_ids), _need)
                                 if w.get("id"):
                                     _g["fulfilled_want_id"] = w["id"]
                         json.dump(_amb, open(_amb_path,"w"), indent=2)

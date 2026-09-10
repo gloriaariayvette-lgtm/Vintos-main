@@ -446,7 +446,14 @@ def screen_attempts(attempts):
         accepted.append({"joke": joke, "material_kind": target, "screen": label})
     return accepted, rejected
 
-def _rating_for(joke, ratings):
+def _rating_for(joke, ratings, joke_id=None, by_id=None):
+    """review 211: join by joke_id when the rating carries one; the prefix join is the fallback for
+    ratings that arrived without an id."""
+    if joke_id and by_id and joke_id in by_id:
+        try:
+            return int(by_id[joke_id])
+        except (TypeError, ValueError):
+            return None
     key = joke[:80]
     for rated, score in ratings.items():
         if key in rated or rated in key:
@@ -464,6 +471,7 @@ def review_drafts():
     profile.setdefault("landed", []); profile.setdefault("flopped", [])
     ratings = {r.get("joke", "")[:80]: r.get("gloria_rating")
                for r in profile.get("gloria_ratings", []) if r.get("joke")}
+    by_id = {r.get("joke_id"): r.get("gloria_rating") for r in profile.get("gloria_ratings", []) if r.get("joke_id")}   # review 211
     unreviewed = [d for d in drafts["drafts"] if not d.get("self_reviewed")]
 
     if unreviewed:
@@ -498,7 +506,7 @@ def review_drafts():
     for d in drafts["drafts"]:
         if d.get("app_rating_applied"):
             continue
-        score = _rating_for(d.get("joke", ""), ratings)
+        score = _rating_for(d.get("joke", ""), ratings, joke_id=d.get("joke_id"), by_id=by_id)
         if score is None:
             d["reception"] = "ungraded"
             d["gloria_rated"] = False
@@ -584,6 +592,7 @@ def main():
         joke = row["joke"]
         drafts["drafts"].append({
             "joke": joke,
+            "joke_id": "J-" + __import__("hashlib").sha256((joke + date.today().isoformat()).encode()).hexdigest()[:10],   # review 211: identity, not prefix
             "date": date.today().isoformat(),
             "reviewed": False,
             "score": None,

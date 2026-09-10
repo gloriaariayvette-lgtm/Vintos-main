@@ -72,6 +72,11 @@ def complete(want, how, by, note="", evidence=None):
         except Exception as e:
             row["result"] = "fulfill_want unavailable: %s" % str(e)[:80]; _log(row); return row
         _fw(text, note=note, fulfilled_by=by, want_id=wid)
+        try:   # review 240/265: a fulfilled want is evidence; a held plan it names reopens
+            import plan as _plan
+            row["reopened_plans"] = _plan.reopen_on_evidence(text, source="want:%s" % (wid or ""))
+        except Exception:
+            pass
         wants2, still = _find({"id": wid, "want": text})
         row["result"] = "fulfilled" if still is None else ("refused: %s" % (still.get("artifact_unverified", {}).get("why") if isinstance(still, dict) and still.get("artifact_unverified") else "still live"))
         _log(row); return row

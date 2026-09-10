@@ -89,6 +89,10 @@ def _ledger_has(want_id):
                 if _st in ("done", "complete", "completed", "finished") or (_fn and os.path.exists(os.path.join(os.path.dirname(path), os.path.basename(_fn)))):
                     return True
                 continue
+            # review 278: an entry whose manifest says the file did not validate is a failed make, not proof
+            _v = e.get("validated")
+            if isinstance(_v, dict) and _v.get("ok") is False:
+                continue
             return True
     return False
 

@@ -241,6 +241,37 @@ def style_str(d):
             print(f"  Style rewrite failed: {_e}")
     return style
 
+def _landing_begin(tid, title, n_tracks):
+    """review 301: a landing record written BEFORE the download. A crash between here and the entry
+    leaves {state: landing, task_id} in the log; pending_landings() names it and the next run can poll the
+    same task id again instead of losing the piece or calling it complete."""
+    try:
+        log=load_log(); log.setdefault("landings",[])
+        log["landings"]=[l for l in log["landings"] if l.get("task_id")!=tid]
+        log["landings"].append({"task_id":tid,"title":title,"tracks":n_tracks,"state":"landing","at":datetime.now().isoformat()})
+        save_log(log)
+    except Exception as _le: print("  landing record not written:", _le)
+
+def _landing_done(tid, files):
+    try:
+        log=load_log()
+        for l in log.get("landings",[]):
+            if l.get("task_id")==tid: l["state"]="landed"; l["files"]=[os.path.basename(f) for f in files]; l["landed_at"]=datetime.now().isoformat()
+        save_log(log)
+    except Exception as _le: print("  landing record not closed:", _le)
+
+def pending_landings(max_age_h=48):
+    """Landings that began and never closed (state landing): the pieces a crash left mid-air."""
+    out=[]
+    try:
+        for l in load_log().get("landings",[]):
+            if l.get("state")=="landing":
+                try: age=(datetime.now()-datetime.fromisoformat(l["at"])).total_seconds()/3600
+                except Exception: age=0
+                if age<=max_age_h: out.append(l)
+    except Exception: pass
+    return out
+
 def load_log():
     if os.path.exists(LOG):
         try:
@@ -323,6 +354,7 @@ def process_file(fp,force=False):
     tracks=poll(tid)
     if not tracks: return False
     safe=re.sub(r'[^\w\s-]','',d["title"]).strip().replace(' ','_')
+    _landing_begin(tid, d["title"], len(tracks))   # review 301: the landing exists on disk before any byte lands
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
@@ -442,6 +474,7 @@ def direct(title,style,desc="",lyrics=""):
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
+    _landing_done(tid, downloaded)
     print(f"\n  '{title}' complete!"); return True
 
 def main():

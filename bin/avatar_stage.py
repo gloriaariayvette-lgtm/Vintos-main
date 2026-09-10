@@ -365,7 +365,9 @@ def _slot_id(slot):
     return str(slot or "default")
 
 def _new_status():
-    return {"status": "idle", "prompt": "", "started": 0.0, "finished": 0.0, "seconds": 0.0, "error": ""}
+    # review 321: generation is the token this render (and its playback) carries; owner is the turn or
+    # caller that started it. A status from another generation is not this render's.
+    return {"status": "idle", "prompt": "", "started": 0.0, "finished": 0.0, "seconds": 0.0, "error": "", "generation": "", "owner": "", "playback_id": ""}
 
 def _slot_update(sid, **kw):
     with _LIVE_LOCK:
@@ -497,7 +499,8 @@ def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None
             busy = True
         else:
             busy = False
-            _LIVE_SLOTS[sid] = dict(_new_status(), status="rendering", prompt=prompt, kind=kind,
+            _gen = "G-" + __import__("uuid").uuid4().hex[:10]
+            _LIVE_SLOTS[sid] = dict(_new_status(), status="rendering", prompt=prompt, kind=kind, generation=_gen, owner=sid, playback_id=_gen,
                                     started=time.time())
             if sid in _LIVE_ORDER:
                 _LIVE_ORDER.remove(sid)

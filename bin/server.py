@@ -4948,6 +4948,7 @@ async def rate_humor(request: Request):
     try:
         body = await request.json()
         joke = str(body.get("joke", ""))
+        joke_id = str(body.get("joke_id") or "")   # review 211: the app may name the draft; the prefix join is the fallback
         gloria_rating = body.get("gloria_rating")
         vintos_rating = body.get("vintos_rating")
         if not joke or gloria_rating is None:
@@ -4958,7 +4959,8 @@ async def rate_humor(request: Request):
             with open(drafts_path) as f:
                 drafts_data = json.load(f)
             for d in drafts_data.get("drafts", []):
-                if d.get("joke", "")[:100] == joke[:100]:
+                if (joke_id and d.get("joke_id") == joke_id) or (not joke_id and d.get("joke", "")[:100] == joke[:100]):
+                    joke_id = joke_id or d.get("joke_id", "")
                     d["reviewed"] = True
                     d["gloria_rating"] = gloria_rating
                     break
@@ -4967,7 +4969,7 @@ async def rate_humor(request: Request):
         hp_path = os.path.join(MEMORY, "humor-profile.json")
         hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
         hp.setdefault("gloria_ratings", []).append({
-            "joke": joke[:150], "gloria_rating": gloria_rating, "vintos_rating": vintos_rating,
+            "joke": joke[:150], "joke_id": joke_id or None, "gloria_rating": gloria_rating, "vintos_rating": vintos_rating,
             "timestamp": datetime.now().isoformat()})
         hp["gloria_ratings"] = hp["gloria_ratings"][-50:]
         if gloria_rating >= 4:

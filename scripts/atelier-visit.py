@@ -457,6 +457,25 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     reads, and a notification to her phone in HIS words. Revealed content is,
     by his own act, allowed out — so it is stored in the clear here."""
     medium = artifact.rsplit("_", 1)[-1].split(".")[0] if "_" in artifact else "write"
+    # review 287: what leaves the room is the bytes the digest was prepared for. When the manifest names a
+    # file and a digest, the file is hashed now; a mismatch refuses the reveal and records why.
+    try:
+        import hashlib as _rh
+        _want_sha = (manifest or {}).get("sha256") or ""
+        _cands = [p for p in ((manifest or {}).get("abs_path"), (manifest or {}).get("path"),
+                              os.path.join(WSP, "memory", "atelier", str(artifact)), os.path.join(WSP, "memory", "art", str(artifact))) if p]
+        _fp = next((p for p in _cands if os.path.isfile(p)), None)
+        if _want_sha and _fp:
+            _have = _rh.sha256(open(_fp, "rb").read()).hexdigest()
+            if _have != _want_sha:
+                print("reveal refused: bytes on disk (%s) do not match the prepared digest (%s)" % (_have[:12], _want_sha[:12]))
+                with open(os.path.join(WSP, "memory", "atelier-reveal-refusals.jsonl"), "a") as _rf:
+                    _rf.write(json.dumps({"at": datetime.now().isoformat(), "artifact": artifact, "prepared": _want_sha, "on_disk": _have}) + "\n")
+                return False
+        elif medium != "write" and not _want_sha:
+            print("reveal note: no prepared digest for %s; recorded as unverified" % artifact)
+    except Exception as _dme:
+        print("reveal digest check failed:", _dme)
     store = os.path.join(WSP, "memory", "atelier-reveals.json")
     if os.path.exists(store):
         try:
@@ -479,6 +498,7 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
         "content": content if medium == "write" else "",
         "media_pending": medium != "write",        # non-text rendering is app-side follow-up
         "sha256": (manifest or {}).get("sha256", ""),
+        "bytes_verified": bool((manifest or {}).get("sha256")),   # review 287: True only when the digest above was checked against the file
         "artifact": artifact,
     })
     try:

@@ -32,8 +32,22 @@ def create(want_text, capability, kind, detail=""):
         if c["state"] == "pending" and c["want_text"][:60] == str(want_text)[:60]:
             return c["id"]   # one pending choice per want
     cid = "CP-" + uuid.uuid4().hex[:6]
+    # review 252: what the pursuit had found, what blocked it, and what the next step would be travel on
+    # the checkpoint itself (from the want's own step history), so his choice is made on the record
+    findings, next_step = "", ""
+    try:
+        for w in _load(WANTS, []):
+            if str(w.get("want", ""))[:60] != str(want_text)[:60]: continue
+            hist = w.get("step_history") or []
+            findings = str(hist[-1].get("findings", ""))[:300] if hist else ""
+            steps = w.get("steps") or []; idx = int(w.get("current_step_index", 0) or 0)
+            if idx < len(steps): next_step = "%s: %s" % (steps[idx].get("capability", ""), str(steps[idx].get("note", ""))[:160])
+            break
+    except Exception:
+        pass
     cps.append({"id": cid, "want_text": str(want_text)[:250], "capability": capability,
                 "kind": kind, "detail": str(detail)[:200],
+                "findings": findings, "blocker": (str(detail)[:200] if kind in ("blocked", "failed", "empty_result") else ""), "next_step": next_step,
                 "created": datetime.now().isoformat(), "state": "pending",
                 "decision": None, "his_words": ""})
     _save(cps)

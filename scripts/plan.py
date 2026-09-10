@@ -24,7 +24,7 @@ WHAT IT REFUSES
   did not happen; the ledger does not assign that to her.
   Elapsed time closes a window. It never decides what the window contained.
 """
-import os, sys, json, uuid
+import os, re, sys, json, uuid
 from datetime import datetime, timedelta
 
 # A module belongs to the tree it lives in. Defaulting to a hardcoded workspace
@@ -111,6 +111,24 @@ def gestating_roots():
     """{root: plan} for roots still held (due not yet reached). Due ones are eligible again."""
     now = _now()
     return {p["root"]: p for p in load() if p["kind"] == "gestate" and p["state"] in OPEN and p["due"] > now}
+
+def reopen_on_evidence(evidence_text, source="evidence"):
+    """review 240/265: a gestating (held) plan whose root the new evidence names is released as
+    'resumed:evidence' with the evidence quoted in its history - never relabelled as delay, never silent.
+    Returns the roots reopened."""
+    words = set(w for w in re.findall(r"[a-z0-9']+", str(evidence_text or "").lower()) if len(w) > 3)
+    if not words: return []
+    out = []
+    for p in load():
+        if p["kind"] == "gestate" and p["state"] in OPEN and p.get("root"):
+            rw = set(w for w in re.findall(r"[a-z0-9']+", str(p["root"]).lower()) if len(w) > 3)
+            if rw and len(rw & words) / float(len(rw)) >= 0.5:
+                rows = load()
+                for q in rows:
+                    if q is not p and q.get("id") == p.get("id"):
+                        q["state"] = "resumed"; q["history"].append({"at": _now(), "event": "resumed:evidence", "detail": str(evidence_text)[:160], "source": source})
+                save(rows); _outcome(p["root"], "released", "resumed:evidence"); out.append(p["root"])
+    return out
 
 def release_gestate(root, how="resumed"):
     rows = load()
