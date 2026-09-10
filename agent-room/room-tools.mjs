@@ -4,7 +4,10 @@ const H = process.env.HOME;
 export const ROOTS = (process.env.ROOM_ROOTS ? process.env.ROOM_ROOTS.split(':') : [
   `${H}/Vintos`, `${H}/.vintos/workspace/scripts`, `${H}/.vintos/deploy/vintos-main`, `${H}/.vintos/deploy/velaris-main`, `${H}/.vintos/code-review`,
 ]).map(p => path.resolve(p)).filter(p => fs.existsSync(p));
-function inside(p){ const r = path.resolve(String(p).replace(/^~(?=\/|$)/, H)); return ROOTS.some(root => r === root || r.startsWith(root + path.sep)) ? r : null; }
+// review 368: containment is judged on the REAL path (symlinks resolved) against the roots' real paths,
+// so a link inside a root that points outside it is outside, and a link into a root is inside.
+const REAL_ROOTS = ROOTS.map(r => { try { return fs.realpathSync(r); } catch { return r; } });
+function inside(p){ const lex = path.resolve(String(p).replace(/^~(?=\/|$)/, H)); let r; try { r = fs.realpathSync(lex); } catch { r = lex; } return REAL_ROOTS.some(root => r === root || r.startsWith(root + path.sep)) ? r : null; }
 export const TOOLS = [
   { type:'function', function:{ name:'grep', description:'Search his code. Regex over the room roots (his organs and the repos). Returns file:line: text, max 60 hits.',
       parameters:{ type:'object', properties:{ pattern:{type:'string'}, path:{type:'string', description:'optional file or directory to limit to'} }, required:['pattern'] } } },

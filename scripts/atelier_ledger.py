@@ -75,3 +75,37 @@ def broker_state(base="http://127.0.0.1:8611", timeout=3):
         return {"broker": "up", "project": w.get("id") or None, "active": bool(h.get("active"))}
     except Exception as e:
         return {"broker": "up", "project": None, "active": bool(h.get("active")), "worktable": "unreadable: %s" % str(e)[:60]}
+
+
+def inspect(pid, base="http://127.0.0.1:8611", timeout=3, house_header=None):
+    """review 328: one view of an undertaking from the house side: the house ledger's state and history,
+    the broker's content-free row (state, artifact count, kept/revealed dates) when the broker answers,
+    the reveal records naming this artifact, and the refusals. Never intent, never text."""
+    out = {"id": str(pid), "house": _read().get(str(pid)), "broker": None, "reveals": [], "refusals": [], "blockers": []}
+    try:
+        import urllib.request, json as _j
+        req = urllib.request.Request(base + "/projects", data=b"{}", headers={"Content-Type": "application/json", **({"X-Atelier-House": house_header} if house_header else {})})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            rows = _j.loads(r.read().decode() or "[]")
+        rows = rows.get("projects", rows) if isinstance(rows, dict) else rows
+        out["broker"] = next((x for x in rows if str(x.get("id")) == str(pid)), None)
+    except Exception as e:
+        out["broker"] = {"unavailable": str(e)[:80]}
+    try:
+        for rv in json.load(open(os.path.join(MEMORY, "atelier-reveals.json"))):
+            if isinstance(rv, dict) and str(pid) in str(rv.get("artifact", "")):
+                out["reveals"].append({k: rv.get(k) for k in ("revealed_at", "medium", "sha256", "bytes_verified", "artifact")})
+    except Exception:
+        pass
+    try:
+        for ln in open(os.path.join(MEMORY, "atelier-reveal-refusals.jsonl")):
+            r = json.loads(ln)
+            if str(pid) in str(r.get("artifact", "")): out["refusals"].append(r)
+    except Exception:
+        pass
+    h = out["house"] or {}
+    if h.get("state") == "active" and out["broker"] and isinstance(out["broker"], dict) and out["broker"].get("state") in ("held", "aborted"):
+        out["blockers"].append("house says active, broker says %s" % out["broker"]["state"])
+    if out["refusals"]:
+        out["blockers"].append("%d reveal(s) refused on digest mismatch" % len(out["refusals"]))
+    return out

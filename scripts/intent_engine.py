@@ -419,8 +419,8 @@ def _judge_realized(target, reply_text, her_text=""):
             if v in raw:
                 return v
     except Exception:
-        pass
-    return "NO"
+        return "HELD"   # review 222: the judge failing is not a verdict on the intent; HELD is retried, NO is a rejection
+    return "HELD"       # an answer outside the vocabulary is no verdict either
 
 def resolve_previous(recent_text=""):
     led = _load("intent-ledger.json")

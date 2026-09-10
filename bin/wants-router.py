@@ -44,10 +44,20 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
             log(f"  → step feel failed: {_fse}")
         step_history = want.get("step_history", [])
         from datetime import datetime as _dt_findings
+        # review 232: the receipt says what kind of evidence this capability left - a file it names, a
+        # text it returned, or nothing - so a step is never "done" on the strength of a sentence alone
+        _rcpt = {"capability": action, "kind": "none", "ref": ""}
+        try:
+            import re as _rr
+            _m = _rr.search(r"receipt:\s*(\S+)", str(findings or ""), _rr.I)
+            if _m and os.path.exists(_m.group(1)): _rcpt = {"capability": action, "kind": "file", "ref": _m.group(1)}
+            elif str(findings or "").strip(): _rcpt = {"capability": action, "kind": "text", "ref": str(findings)[:80]}
+        except Exception: pass
         step_history.append({
             "step": current_step_index,
             "capability": action,
             "findings": findings,
+            "receipt": _rcpt,
             "note": _note if _note else "",
             "completed_at": _dt_findings.now().isoformat()
         })

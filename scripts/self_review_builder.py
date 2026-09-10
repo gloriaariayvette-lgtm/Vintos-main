@@ -339,6 +339,18 @@ def build(proposal_id):
         if len(set(_live)) != len(_live):   # aliases: two logical names, one live file (astra-study-p2, 2026-09-05)
             raise PermissionError("two declared files resolve to one live destination: " + ", ".join(sorted(set(x for x in _live if _live.count(x) > 1))))
         stage, before, _checks = _stage(p, patch, paths, build_dir)
+        # review 351: right before install, the decision is re-read (a revocation since the build started
+        # refuses the install) and every live file is re-hashed against the before-image the stage was
+        # cut from (a source that moved under the build refuses the install; nothing is overwritten blind)
+        _d2 = latest_decision(proposal_id)
+        if not _d2 or _d2.get("decision_id") != d.get("decision_id") or not _eligible(p, _d2)[0]:
+            raise PermissionError("decision changed or revoked since the build started (%s -> %s); not installed"
+                                  % (d.get("decision_id"), (_d2 or {}).get("decision_id")))
+        for rel in paths:
+            _bak = os.path.join(before, rel); _lv = _live_path(rel)
+            if os.path.exists(_bak) and os.path.exists(_lv):
+                if hashlib.sha256(open(_bak, "rb").read()).hexdigest() != hashlib.sha256(open(_lv, "rb").read()).hexdigest():
+                    raise PermissionError("live source %s changed since the stage was cut; not installed over it" % rel)
         _install(stage, before, paths)
         rec = {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(),
                "state": "applied", "decision_id": d.get("decision_id"), "files": paths,
