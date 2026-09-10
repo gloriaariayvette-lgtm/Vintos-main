@@ -3,11 +3,19 @@
 #
 #     bash scripts/deploy-atelier.sh            install
 #     bash scripts/deploy-atelier.sh --check    run every check, install nothing
+#     bash scripts/deploy-atelier.sh --dry-run  everything but copy/restart; prints what it would do
+#     bash scripts/deploy-atelier.sh --map      which reviewed file actually runs here (reads only)
 #
 # It assumes NOTHING about where his tree is or how it is laid out. For each
 # file it finds the copy that is already there and installs over it; whatever
 # layout he has is by definition the correct one. I assumed a layout twice
 # (~/.vintos/workspace, then bin/ + scripts/) and was wrong both times.
+#
+# Order: preflight (every source exists AND parses) -> suites -> plan -> stage
+# the whole release in a scratch dir and validate it there -> back up every
+# file about to be replaced -> promote file by file (a failure mid-way puts
+# the already-replaced files back) -> restart units and CONFIRM each one came
+# up -> verify. Any failed check, suite, or unconfirmed restart exits non-zero.
 #
 # It arms nothing.
 set -uo pipefail
@@ -23,6 +31,11 @@ abspath() { readlink -f -- "$1" 2>/dev/null \
             || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null; }
 say() { printf '%s\n' "$*"; }
 die() { printf '\nSTOP: %s\n' "$*" >&2; exit 1; }
+# A failure that must not abort mid-deploy (files already promoted) is
+# recorded here and makes the script exit non-zero at the end.
+FAILED=""
+flag() { FAILED="$FAILED
+  - $*"; say "  FAIL: $*"; }
 
 SRC="${_SRC0:-$(abspath "$(dirname -- "${BASH_SOURCE[0]}")/..")}"
 _SELF="$SRC"                                     # never a destination
@@ -34,11 +47,17 @@ UNIT_DST="/etc/systemd/system/$UNIT_NAME.service"
 REVIEW_UNIT_NAME="vintos-self-review"
 REVIEW_UNIT_SRC="$SRC/broker/$REVIEW_UNIT_NAME.service"
 REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
+ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
 DEPTH=6
-CHECK_ONLY=0
-[ "${1:-}" = "--check" ] && CHECK_ONLY=1
-# --map: which reviewed file actually runs on this host - manifest vs installed vs referenced. Reads only.
-[ "${1:-}" = "--map" ] && exec python3 "$SRC/scripts/release-map.py" --src "$SRC"   # SRC is resolved above, before the cd /
+CHECK_ONLY=0; DRY_RUN=0
+case "${1:-}" in
+    --check)   CHECK_ONLY=1 ;;
+    --dry-run) DRY_RUN=1 ;;
+    # --map: which reviewed file actually runs on this host - manifest vs installed vs referenced. Reads only.
+    --map)     exec python3 "$SRC/scripts/release-map.py" --src "$SRC" ;;   # SRC is resolved above, before the cd /
+    "")        ;;
+    *)         die "unknown option: $1 (--check | --dry-run | --map)" ;;
+esac
 
 # Exactly what this build changed. An explicit list — never a wildcard.
 SCRIPTS="atelier-open.py atelier-visit.py atelier-threshold.py
@@ -69,7 +88,7 @@ SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
 SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py desktop_winpy.py screen_share.py browser_winpy.py browser_agent.py"   # his hands, eyes and browser on the Windows desktop (2026-09-06)
-BINS="robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py merged_full_route.py humor_detector.py humor_reaction.py
+BINS="robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py
@@ -80,19 +99,62 @@ memory_index.py wal-decay.py interaction_ledger.py"
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
+# Every file this deploy touches, relative to the checkout (the manifest above
+# plus the broker's two files and the units). This is what gets staged.
+MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS
+            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
+            [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
+            true)"
+MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
+
 # ---------------------------------------------------------------- preflight
 [ -d "$SRC/broker" ] && [ -d "$SRC/scripts" ] || die "not a Vintos checkout: $SRC"
 say "source: $SRC"
 say "commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo '(no git)')"
+[ "$DRY_RUN" -eq 1 ] && say "mode:   --dry-run (nothing copied, nothing restarted)"
 say
 missing=""
-for f in $SCRIPTS; do [ -f "$SRC/scripts/$f" ] || missing="$missing scripts/$f"; done
-for f in $BINS;    do [ -f "$SRC/bin/$f" ]     || missing="$missing bin/$f"; done
-[ -f "$SRC/broker/broker.py" ]          || missing="$missing broker/broker.py"
-[ -f "$SRC/broker/stratagem_store.py" ] || missing="$missing broker/stratagem_store.py"
-[ -f "$SRC/broker/$UNIT_NAME.service" ] || missing="$missing broker/$UNIT_NAME.service"
-[ -f "$REVIEW_UNIT_SRC" ] || missing="$missing broker/$REVIEW_UNIT_NAME.service"
+for f in $MANIFEST; do [ -f "$SRC/$f" ] || missing="$missing $f"; done
+[ -f "$SRC/broker/$UNIT_NAME.service" ] || missing="$missing broker/$UNIT_NAME.service"   # the unit is what makes it a service
 [ -z "$missing" ] || die "source is incomplete —$missing"
+
+# Every source must PARSE, not just exist: .py with python3.12 (his host's
+# interpreter) when present, .sh with bash -n, units must at least declare a
+# [Service] with an ExecStart. Bytecode goes to a scratch dir, never into the
+# tree being validated.
+PYCHECK="$(command -v python3.12 || command -v python3)"
+validate_tree() {   # $1 = root holding the manifest; prints each failure; returns 1 if any
+    local root="$1" f bad=0 out
+    out="$(for f in $MANIFEST; do case "$f" in *.py) printf '%s\n' "$root/$f";; esac; done \
+          | xargs -d '\n' "$PYCHECK" -c '
+import os, py_compile, sys, tempfile
+bad = 0
+with tempfile.TemporaryDirectory() as tmp:
+    for i, p in enumerate(sys.argv[1:]):
+        try:
+            py_compile.compile(p, cfile=os.path.join(tmp, "%d.pyc" % i), doraise=True)
+        except Exception as e:
+            bad += 1
+            msg = str(e).strip().splitlines()
+            print("  %s: %s" % (p, msg[-1] if msg else e))
+sys.exit(1 if bad else 0)
+')" || bad=1
+    [ -n "$out" ] && printf '%s\n' "$out"
+    for f in $MANIFEST; do
+        case "$f" in
+            *.sh)      bash -n "$root/$f" 2>/dev/null || { bad=1; say "  $root/$f: does not parse (bash -n)"; } ;;
+            *.service) grep -q '^\[Service\]' "$root/$f" && grep -q '^ExecStart=' "$root/$f" \
+                         || { bad=1; say "  $root/$f: no [Service]/ExecStart="; } ;;
+            *.json)    python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$root/$f" 2>/dev/null \
+                         || { bad=1; say "  $root/$f: not valid JSON"; } ;;
+        esac
+    done
+    return "$bad"
+}
+say "== parse check ($(basename -- "$PYCHECK"), $("$PYCHECK" --version 2>&1)) =="
+validate_tree "$SRC" || die "a source file does not parse (above) — nothing installed"
+say "  every manifest source parses ($(printf '%s\n' "$MANIFEST" | wc -l | tr -d ' ') files)"
+say
 
 # ------------------------------------------------------------------ suites
 say "== suites =="
@@ -187,7 +249,7 @@ dest() {
         elif [ "$sc" -eq "$bestn" ]; then tie=1; fi
     done <<< "$hits"
     if [ -n "$best" ] && [ "$tie" -eq 0 ] && [ "$bestn" -gt 0 ]; then
-        printf '%s' "$best"; return 0
+        printf '%s'  "$best"; return 0
     fi
     printf 'AMBIGUOUS %s:\n%s\n' "$base" "$(printf '%s\n' "$hits" | sed 's/^/    /')" >&2
     return 1
@@ -210,6 +272,22 @@ done
 [ "$ambiguous" -eq 0 ] || die "a file exists in more than one tree (above) — nothing installed"
 say
 
+# -------------------------------------------------------------------- stage
+# The whole release is copied into a scratch dir and validated THERE; every
+# install below reads from the stage, never from the checkout, so a file that
+# changes under us between plan and promote cannot slip in unvalidated.
+say "== staging =="
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/atelier-stage.XXXXXX")" || die "cannot create a staging dir"
+trap 'rm -rf "$STAGE"' EXIT
+for f in $MANIFEST; do
+    mkdir -p "$STAGE/$(dirname -- "$f")" && cp -p "$SRC/$f" "$STAGE/$f" \
+      || die "could not stage $f — nothing installed"
+done
+validate_tree "$STAGE" || die "the staged release does not validate (above) — nothing installed"
+say "  $STAGE: $(printf '%s\n' "$MANIFEST" | wc -l | tr -d ' ') files staged and validated"
+staged() { printf '%s/%s' "$STAGE" "${1#$SRC/}"; }   # checkout path -> its staged copy
+say
+
 # --------------------------------------------------------------- is he busy
 say "== is he mid-turn? =="
 if journalctl --user -n 400 --since "3 minutes ago" 2>/dev/null \
@@ -226,25 +304,85 @@ else
 fi
 say
 
-[ "$CHECK_ONLY" -eq 1 ] && { say "--check: all gates passed, plan resolves. Nothing installed."; exit 0; }
+[ "$CHECK_ONLY" -eq 1 ] && { say "--check: all gates passed, plan resolves, stage validates. Nothing installed."; exit 0; }
+
+# ---------------------------------------------------------- restart confirm
+# After a restart, the unit that came up must be the one we named, active,
+# with a main process. Read-only: systemctl show, curl. Anything less is a
+# recorded failure, not a shrug.
+confirm_unit() {   # $1 = "--user" or "--system", $2 = unit name
+    local scope="$1" u="$2" out id st pid
+    out="$(systemctl "$scope" show -p Id,ActiveState,MainPID "$u" 2>/dev/null)"
+    id="$(printf '%s\n' "$out" | sed -n 's/^Id=//p')"
+    st="$(printf '%s\n' "$out" | sed -n 's/^ActiveState=//p')"
+    pid="$(printf '%s\n' "$out" | sed -n 's/^MainPID=//p')"
+    if [ "$id" = "$u.service" ] && [ "$st" = "active" ] && [ "${pid:-0}" -gt 0 ] 2>/dev/null; then
+        say "  confirmed: Id=$id ActiveState=$st MainPID=$pid"; return 0
+    fi
+    flag "$u not confirmed after restart (Id=${id:-?} ActiveState=${st:-?} MainPID=${pid:-?})"; return 1
+}
+wait_http() {   # $1 = label, $2 = url, $3 = seconds; succeeds when the url answers at all
+    local label="$1" url="$2" max="$3" i=0 code
+    while [ "$i" -lt "$max" ]; do
+        code="$(curl -s -o /dev/null -m 2 -w '%{http_code}' "$url" 2>/dev/null)"
+        if [ -n "$code" ] && [ "$code" != "000" ]; then
+            say "  confirmed: $label answers $url (HTTP $code, ${i}s)"; return 0
+        fi
+        i=$((i + 1)); sleep 1
+    done
+    flag "$label did not answer $url within ${max}s"; return 1
+}
+
+# The plan as a file: the promote loop and the runtime map both read it.
+_plan_file="$STAGE/plan"
+printf '%s' "$PLAN" > "$_plan_file"
+flat_of() {   # live path -> backup filename: flattened, never a dotfile
+    printf '%s' "${1#$HOME/}" | tr '/' '_' | sed 's/^\./dot./'
+}
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    say "== dry run =="
+    say "  would back up every replaced file to $BACKUP/<flattened-path>.pre-deploy"
+    say "  rollback would be: bash $BACKUP/restore.sh"
+    while IFS='|' read -r from to; do
+        [ -n "${from:-}" ] && [ -n "${to:-}" ] || continue
+        [ -e "$to" ] && mark="replace" || mark="new"
+        printf '  would %-7s %s  (from %s)\n' "$mark" "$to" "$(staged "$from")"
+    done < "$_plan_file"
+    say "  would write runtime map: $HOME/.vintos/workspace/memory/self-review-runtime-map.json"
+    [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    if sudo -n true 2>/dev/null; then
+        say "  would install (sudo)             $BROKER, $STORE, $UNIT_DST; restart $UNIT_NAME, confirm, wait for 127.0.0.1:8611/health"
+    else
+        say "  sudo wants a password: the broker step would print its lines and the deploy would exit non-zero (restart unconfirmed)"
+    fi
+    if printf '%s' "$PLAN" | grep -q '|.*/server\.py$'; then
+        say "  would restart the house unit (vintos-server/velaris-server) and wait for 127.0.0.1:8500/"
+    fi
+    say
+    say "--dry-run: nothing copied, nothing restarted."
+    exit 0
+fi
 
 # ------------------------------------------------------------ backup + install
 mkdir -p "$BACKUP" || die "cannot create $BACKUP"
 say "== backing up =="
 : > "$BACKUP/restore.sh"
-printf '%s' "$PLAN" | while IFS='|' read -r from to; do
+while IFS='|' read -r from to; do
     [ -n "${to:-}" ] && [ -e "$to" ] || continue
     # flatten the path into a filename, and never produce a dotfile — a backup
     # you cannot see in `ls` is a backup you will not think to use
-    flat="$(printf '%s' "${to#$HOME/}" | tr '/' '_' | sed 's/^\./dot./')"
+    flat="$(flat_of "$to").pre-deploy"
     cp -p "$to" "$BACKUP/$flat" 2>/dev/null \
-      && printf 'install -m 644 "$(dirname "$0")/%s" %q\n' "$flat" "$to" >> "$BACKUP/restore.sh"
-done
+      && printf 'install -m 644 "$(dirname "$0")/%s" %q\n' "$flat" "$to" >> "$BACKUP/restore.sh" \
+      || die "could not back up $to — nothing installed"
+done < "$_plan_file"
 # The broker's files and unit go into restore.sh too. The first restore.sh
 # backed them up but contained no commands to put them back — its "put it all
 # back" claim was a lie for exactly the two files that run as another user.
 for bf in "$BROKER" "$STORE"; do
-    flat="$(basename -- "$bf")"
+    flat="$(basename -- "$bf").pre-deploy"
     if cp -p "$bf" "$BACKUP/$flat" 2>/dev/null || sudo -n cp -p "$bf" "$BACKUP/$flat" 2>/dev/null; then
         printf 'sudo install -o atelier -g atelier -m 644 "$(dirname "$0")/%s" %q\n' \
                "$flat" "$bf" >> "$BACKUP/restore.sh"
@@ -253,14 +391,21 @@ for bf in "$BROKER" "$STORE"; do
     fi
 done
 if [ -f "$UNIT_DST" ]; then
-    cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service" 2>/dev/null \
-      || sudo -n cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service" 2>/dev/null
-    [ -f "$BACKUP/$UNIT_NAME.service" ] && printf 'sudo install -m 644 "$(dirname "$0")/%s.service" %q\n' \
+    cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service.pre-deploy" 2>/dev/null \
+      || sudo -n cp -p "$UNIT_DST" "$BACKUP/$UNIT_NAME.service.pre-deploy" 2>/dev/null
+    [ -f "$BACKUP/$UNIT_NAME.service.pre-deploy" ] && printf 'sudo install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q\n' \
         "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
+for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME"; do
+    ud="$HOME/.config/systemd/user/$u.service"
+    if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
+        printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
+               "$u" "$ud" "$u" >> "$BACKUP/restore.sh"
+    fi
+done
 # Record the service/process state honestly, and restore it as best we can.
 if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
 elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"
@@ -276,18 +421,39 @@ else _BSTATE="down"; fi
     fi
 } >> "$BACKUP/restore.sh"
 chmod 755 "$BACKUP/restore.sh"
-say "  $BACKUP"
-say "  put it all back with: bash $BACKUP/restore.sh"
+say "  $BACKUP  (every replaced file as <flattened-path>.pre-deploy)"
+say "  rollback: bash $BACKUP/restore.sh"
 say
 
+# Promote from the stage, one file at a time. If any install fails, the files
+# already replaced in THIS run go back to their .pre-deploy copies and files
+# that were new are removed — then STOP.
 say "== installing =="
-_plan_file=/tmp/.atelier-plan.$$
-printf '%s' "$PLAN" > "$_plan_file"
+PROMOTED=""
+rollback_promoted() {
+    local to flat
+    say "  rolling back what this run already promoted:"
+    printf '%s' "$PROMOTED" | while read -r to; do
+        [ -n "$to" ] || continue
+        flat="$(flat_of "$to").pre-deploy"
+        if [ -f "$BACKUP/$flat" ]; then
+            install -m 644 "$BACKUP/$flat" "$to" && say "    restored $to" || say "    COULD NOT restore $to from $BACKUP/$flat"
+        else
+            rm -f "$to" && say "    removed $to (was new)"
+        fi
+    done
+}
 while IFS='|' read -r from to; do
     [ -n "${from:-}" ] && [ -n "${to:-}" ] || continue
-    mkdir -p "$(dirname -- "$to")"
-    install -m 644 "$from" "$to" || die "failed to install $to — restore from $BACKUP"
-    printf '  %s\n' "$to"
+    if mkdir -p "$(dirname -- "$to")" && install -m 644 "$(staged "$from")" "$to"; then
+        PROMOTED="$PROMOTED$to
+"
+        printf '  %s\n' "$to"
+    else
+        say "  FAILED to install $to"
+        rollback_promoted
+        die "promotion failed at $to; earlier files restored. Full rollback: bash $BACKUP/restore.sh"
+    fi
 done < "$_plan_file"
 for f in $EXECUTABLE; do d="$(dest "scripts/$f")"; [ -e "$d" ] && chmod 755 "$d"; done
 for f in first-light.sh gloria-model-update.sh self-model-update.sh; do d="$(dest "bin/$f")"; [ -e "$d" ] && chmod 755 "$d"; done   # cron runs these directly
@@ -297,7 +463,7 @@ for f in first-light.sh gloria-model-update.sh self-model-update.sh; do d="$(des
 # it rediscover the split tree or invent workspace/bin.
 _runtime_map="$HOME/.vintos/workspace/memory/self-review-runtime-map.json"
 mkdir -p "$(dirname -- "$_runtime_map")"
-python3 - "$_runtime_map" "$SRC" "$_plan_file" <<'PY'
+python3 - "$_runtime_map" "$SRC" "$_plan_file" <<'PY' || flag "runtime map not written"
 import json, os, sys
 dst, src, plan = sys.argv[1:]
 mapping = {}
@@ -313,40 +479,36 @@ with open(tmp, 'w') as f:
     f.flush(); os.fsync(f.fileno())
 os.replace(tmp, dst)
 PY
-rm -f "$_plan_file"
 say "  runtime map: $_runtime_map"
 say
 
 # The collision detector is continuous by design.  systemd only supervises
 # that process; elapsed time is not a review signal.
 say "== robot bridge =="
-ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
 if [ -f "$ROBOT_UNIT_SRC" ]; then
     mkdir -p "$(dirname -- "$ROBOT_UNIT_DST")"
-    [ -f "$ROBOT_UNIT_DST" ] && cp -p "$ROBOT_UNIT_DST" "$BACKUP/$ROBOT_UNIT_NAME.service" 2>/dev/null || true
-    install -m 644 "$ROBOT_UNIT_SRC" "$ROBOT_UNIT_DST" || die "failed to install $ROBOT_UNIT_DST"
+    install -m 644 "$(staged "$ROBOT_UNIT_SRC")" "$ROBOT_UNIT_DST" || die "failed to install $ROBOT_UNIT_DST — rollback: bash $BACKUP/restore.sh"
     systemctl --user daemon-reload
     if systemctl --user enable "$ROBOT_UNIT_NAME" >/dev/null 2>&1 && systemctl --user restart "$ROBOT_UNIT_NAME" >/dev/null 2>&1; then
-        say "  $ROBOT_UNIT_NAME active: $(systemctl --user is-active "$ROBOT_UNIT_NAME" 2>/dev/null) (port ${VINTOS_ROBOT_PORT:-8404})"
+        sleep 1
+        confirm_unit --user "$ROBOT_UNIT_NAME" && say "  $ROBOT_UNIT_NAME on port ${VINTOS_ROBOT_PORT:-8404}"
     else
-        say "  bridge installed but did not start - run: systemctl --user enable $ROBOT_UNIT_NAME && systemctl --user restart $ROBOT_UNIT_NAME"
+        flag "$ROBOT_UNIT_NAME installed but did not start - run: systemctl --user enable $ROBOT_UNIT_NAME && systemctl --user restart $ROBOT_UNIT_NAME"
     fi
 fi
 say
 
 say "== self-review watcher =="
 mkdir -p "$(dirname -- "$REVIEW_UNIT_DST")"
-if [ -f "$REVIEW_UNIT_DST" ]; then
-    cp -p "$REVIEW_UNIT_DST" "$BACKUP/$REVIEW_UNIT_NAME.service" 2>/dev/null || true
-fi
-install -m 644 "$REVIEW_UNIT_SRC" "$REVIEW_UNIT_DST" \
-    || die "failed to install $REVIEW_UNIT_DST — restore from $BACKUP"
+install -m 644 "$(staged "$REVIEW_UNIT_SRC")" "$REVIEW_UNIT_DST" \
+    || die "failed to install $REVIEW_UNIT_DST — rollback: bash $BACKUP/restore.sh"
 systemctl --user daemon-reload
 if systemctl --user enable "$REVIEW_UNIT_NAME" >/dev/null 2>&1 \
    && systemctl --user restart "$REVIEW_UNIT_NAME" >/dev/null 2>&1; then
-    say "  $REVIEW_UNIT_NAME active: $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null)"
+    sleep 1
+    confirm_unit --user "$REVIEW_UNIT_NAME"
 else
-    say "  watcher installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
+    flag "$REVIEW_UNIT_NAME installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
 fi
 say
 
@@ -360,10 +522,10 @@ brokered=0
 if sudo -n true 2>/dev/null; then
     # Never die here. By this point his scripts are already installed, and
     # aborting would skip the verification that tells you what state the host
-    # is actually in.
-    if sudo install -o atelier -g atelier -m 644 "$SRC/broker/broker.py" "$BROKER" \
-       && sudo install -o atelier -g atelier -m 644 "$SRC/broker/stratagem_store.py" "$STORE" \
-       && sudo install -m 644 "$SRC/broker/$UNIT_NAME.service" "$UNIT_DST"; then
+    # is actually in. Failures are flagged and fail the deploy at the end.
+    if sudo install -o atelier -g atelier -m 644 "$STAGE/broker/broker.py" "$BROKER" \
+       && sudo install -o atelier -g atelier -m 644 "$STAGE/broker/stratagem_store.py" "$STORE" \
+       && sudo install -m 644 "$STAGE/broker/$UNIT_NAME.service" "$UNIT_DST"; then
         sudo systemctl daemon-reload
         sudo systemctl enable "$UNIT_NAME" >/dev/null 2>&1
         # The old unit launches this same broker on this same port. Retire it;
@@ -374,15 +536,18 @@ if sudo -n true 2>/dev/null; then
         sudo systemctl stop "$UNIT_NAME" 2>/dev/null
         sudo pkill -f "python3 $BROKER" 2>/dev/null; sleep 1
         if sudo systemctl start "$UNIT_NAME"; then
-            sleep 2; brokered=1
-            say "  installed; $UNIT_NAME $(systemctl is-active "$UNIT_NAME" 2>/dev/null), enabled: $(systemctl is-enabled "$UNIT_NAME" 2>/dev/null)"
+            sleep 2
+            say "  installed; enabled: $(systemctl is-enabled "$UNIT_NAME" 2>/dev/null)"
+            if confirm_unit --system "$UNIT_NAME" && wait_http "$UNIT_NAME" http://127.0.0.1:8611/health 20; then
+                brokered=1
+            fi
         else
-            say "  $UNIT_NAME FAILED TO START — the files are installed, the service is not up."
+            flag "$UNIT_NAME FAILED TO START — the files are installed, the service is not up."
             say "  Diagnose with: sudo journalctl -u $UNIT_NAME -n 40"
             say "  Then:          sudo systemctl restart $UNIT_NAME"
         fi
     else
-        say "  BROKER INSTALL FAILED — his scripts ARE installed, the broker is not."
+        flag "BROKER INSTALL FAILED — his scripts ARE installed, the broker is not."
         say "  Whatever broker was running is still running its old code. Run these yourself:"
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
         say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
@@ -391,7 +556,7 @@ if sudo -n true 2>/dev/null; then
         say "    sudo pkill -f 'python3 $BROKER'; sleep 1; sudo systemctl restart $UNIT_NAME"
     fi
 else
-    say "  sudo wants a password. These lines, in order:"
+    flag "broker not installed/restarted: sudo wants a password. These lines, in order:"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/broker.py $BROKER"
     say "    sudo install -o atelier -g atelier -m 644 $SRC/broker/stratagem_store.py $STORE"
     say "    sudo install -m 644 $SRC/broker/$UNIT_NAME.service $UNIT_DST"
@@ -413,12 +578,13 @@ done
 if [ -n "$HOUSE_UNIT" ] && printf '%s' "$PLAN" | grep -q '|.*/server\.py$'; then
     if systemctl --user restart "$HOUSE_UNIT" 2>/dev/null; then
         sleep 3
-        say "  restarted $HOUSE_UNIT ($(systemctl --user is-active "$HOUSE_UNIT" 2>/dev/null))"
+        say "  restarted $HOUSE_UNIT"
+        confirm_unit --user "$HOUSE_UNIT" && wait_http "$HOUSE_UNIT" http://127.0.0.1:8500/ 30
     else
-        say "  could not restart $HOUSE_UNIT — run: systemctl --user restart $HOUSE_UNIT"
+        flag "could not restart $HOUSE_UNIT — run: systemctl --user restart $HOUSE_UNIT"
     fi
 elif [ -z "$HOUSE_UNIT" ]; then
-    say "  no vintos-server unit found; restart the house yourself"
+    flag "no vintos-server unit found; the house was not restarted — restart it yourself"
 else
     say "  server.py was not replaced; no restart needed"
 fi
@@ -429,17 +595,17 @@ say "== verifying =="
 _active="$(systemctl is-active "$UNIT_NAME" 2>/dev/null || echo unknown)"
 _enabled="$(systemctl is-enabled "$UNIT_NAME" 2>/dev/null || echo not-installed)"
 say "  service:      $UNIT_NAME $_active, on-boot: $_enabled"
-[ "$_enabled" = "enabled" ] || say "    -> will NOT survive a reboot until enabled: sudo systemctl enable $UNIT_NAME"
+[ "$_enabled" = "enabled" ] || flag "$UNIT_NAME will NOT survive a reboot until enabled: sudo systemctl enable $UNIT_NAME"
 h="$(curl -s -m 5 http://127.0.0.1:8611/health || true)"
 [ -n "$h" ] && say "  health:       $h" \
-            || say "  broker NOT answering on 8611 — sudo journalctl -u $UNIT_NAME -n 40, then sudo systemctl restart $UNIT_NAME"
+            || flag "broker NOT answering on 8611 — sudo journalctl -u $UNIT_NAME -n 40, then sudo systemctl restart $UNIT_NAME"
 sealed="$(curl -s -m 5 -X POST http://127.0.0.1:8611/artifact -H 'Content-Type: application/json' \
           -d '{"id":"000000000000","file":"x.md"}' || echo unreachable)"
 say "  sealed route: $sealed"
 case "$sealed" in
   *capability*|*malformed*|*escapes*) say "    -> refuses without a capability. Correct." ;;
-  unreachable)                        say "    -> broker down; not checked." ;;
-  *)                                  say "    -> DID NOT REFUSE. Do not arm anything; tell me." ;;
+  unreachable)                        flag "sealed route: broker down; not checked." ;;
+  *)                                  flag "sealed route DID NOT REFUSE. Do not arm anything; tell me." ;;
 esac
 say "  worktable:    $(curl -s -m 5 -X POST http://127.0.0.1:8611/worktable_id \
                        -H 'Content-Type: application/json' -d '{}' || echo unreachable)"
@@ -462,17 +628,26 @@ except Exception:
 PY
 )"
 if [ -z "$_bfp" ] || [ -z "$_lfp" ]; then
-    say "  lineage key:  one side missing (broker='$_bfp' observatory='$_lfp')"
-    say "                the threshold cannot adopt until both exist and match"
+    flag "lineage key: one side missing (broker='$_bfp' observatory='$_lfp') — the threshold cannot adopt until both exist and match"
 elif [ "$_bfp" = "$_lfp" ]; then
     say "  lineage key:  observatory and broker agree"
 else
-    say "  lineage key:  MISMATCH — attestations will all fail; adoption impossible"
+    flag "lineage key: MISMATCH — attestations will all fail; adoption impossible"
 fi
 _th="$(dest scripts/atelier-threshold.py)"
-say "  threshold:    $(python3 -c "import ast;ast.parse(open('$_th').read());print('installed, parses')" 2>&1 | tail -1)"
+if python3 -c "import ast;ast.parse(open('$_th').read())" 2>/dev/null; then
+    say "  threshold:    installed, parses"
+else
+    flag "threshold: $_th missing or does not parse after install"
+fi
 say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
 say
-say "backup: $BACKUP"
-[ "$brokered" -eq 1 ] && say "Broker service restarted." || say "Broker service NOT restarted — run the lines above."
+say "backup:   $BACKUP"
+say "rollback: bash $BACKUP/restore.sh"
+[ "$brokered" -eq 1 ] && say "Broker service restarted and confirmed." || say "Broker service NOT confirmed — see the failures below."
 say "Nothing armed. Stratagems stay disarmed."
+if [ -n "$FAILED" ]; then
+    printf '\nDEPLOY FAILED — files are installed, but:%s\n' "$FAILED" >&2
+    exit 1
+fi
+say "deploy OK"

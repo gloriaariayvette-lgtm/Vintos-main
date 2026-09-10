@@ -52,7 +52,7 @@ dep = rd("scripts", "deploy-atelier.sh")
 
 check("deploy installs the unit file",
       'UNIT_NAME="vintos-atelier"' in dep
-      and re.search(r'install -m 644 "\$SRC/broker/\$UNIT_NAME\.service" "\$UNIT_DST"', dep)
+      and re.search(r'install -m 644 "\$(?:SRC|STAGE)/broker/\$UNIT_NAME\.service" "\$UNIT_DST"', dep)
       and "systemctl daemon-reload" in dep)
 check("deploy enables the unit (reboot survival)", re.search(r"systemctl enable\s+\"?\$UNIT_NAME", dep))
 check("deploy starts/restarts via systemd, not nohup", "nohup" not in dep)
