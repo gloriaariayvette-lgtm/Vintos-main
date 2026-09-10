@@ -7520,6 +7520,10 @@ async def voice_session_end(payload: dict = None):
         entries.append({
             "timestamp": _vse_d.datetime.now().isoformat(),
             "channel": "voice-call",
+            # review 73: the same keys the text consumers read (source, surface, turn_id, gloria, vintos),
+            # so one reader serves both; the call-specific fields stay beside them
+            "source": "voice-session", "surface": "voice", "turn_id": str(sess.get("started_at") or ""),
+            "gloria": (_full[0]["gloria"] if _full else "")[:500], "vintos": (_full[-1]["vintos"] if _full else "")[:500],
             "duration_seconds": dur,
             "turns": n_turns,
             "transcript": _full,

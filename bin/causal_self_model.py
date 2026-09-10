@@ -24,6 +24,14 @@ MAX_ENTRIES = 40
 
 def load_model():
     try:
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from store_guard import load_json as _sg_load
+    except Exception:
+        _sg_load = None
+    if _sg_load is not None:   # review 47: a corrupt model is quarantined, never silently emptied
+        d = _sg_load(MODEL_FILE, {"entries": []}, reader="causal-self-model")
+        return d if isinstance(d, dict) and "entries" in d else {"entries": []}
+    try:
         return json.load(open(MODEL_FILE))
     except:
         return {"entries": []}

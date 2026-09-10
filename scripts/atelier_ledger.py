@@ -54,3 +54,24 @@ def reconcile(broker_rows):
         if h and b and h != b and not (h == "active" and b in ("open", "tabled", "in_progress")):
             out.append({"id": pid, "house": h, "broker": b})
     return out
+
+
+def broker_state(base="http://127.0.0.1:8611", timeout=3):
+    """review 81: three different answers, never confused: {"broker": "unavailable"} when the socket
+    does not answer, {"broker": "up", "project": None} when it answers and holds nothing, and
+    {"broker": "up", "project": <id>} when a project is on the worktable. The house reads this before
+    deciding a LOOK or a threshold, so a dead broker never reads as an empty atelier."""
+    try:
+        import urllib.request, json as _j
+        with urllib.request.urlopen(base + "/health", timeout=timeout) as r:
+            h = _j.loads(r.read().decode() or "{}")
+    except Exception as e:
+        return {"broker": "unavailable", "why": str(e)[:80], "project": None}
+    try:
+        import urllib.request, json as _j
+        req = urllib.request.Request(base + "/worktable", data=b"{}", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            w = _j.loads(r.read().decode() or "{}")
+        return {"broker": "up", "project": w.get("id") or None, "active": bool(h.get("active"))}
+    except Exception as e:
+        return {"broker": "up", "project": None, "active": bool(h.get("active")), "worktable": "unreadable: %s" % str(e)[:60]}

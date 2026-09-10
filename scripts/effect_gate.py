@@ -566,15 +566,19 @@ if __name__ == "__main__":
         print("commanded:", dict(_commanded))
 
 
-def send_result(context, toy, ok, why=""):
+def send_result(context, toy, ok, why="", permit=None):
     """The transport's REAL outcome, recorded against the turn.
 
     authorize() says what was allowed; this says what the device actually did.
     Without it, the lifecycle axis was written from the reply text — every
     nonempty reply became effects=completed even when the send failed or no
     effect was ever attempted (Sol's overclaim finding)."""
+    # review 91: the receipt names the permit (effect id) it executed under, so a device outcome can be
+    # joined to the decision that authorized it; None for a reduction or a legacy call without a permit
     _log(turn_id=str(getattr(context, "turn_id", "") or ""),
-         decision="send_result", toy=str(toy), ok=bool(ok), why=str(why)[:80])
+         decision="send_result", toy=str(toy), ok=bool(ok), why=str(why)[:80],
+         effect_id=(getattr(permit, "effect_id", None) if permit is not None else None),
+         permit_digest=(getattr(permit, "digest", None) if permit is not None else None))
 
 
 def turn_effects(turn_id, tail=600):

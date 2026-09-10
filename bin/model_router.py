@@ -253,6 +253,13 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         return res
     async def grok_stage(tag, timeout=None):
         _tg0 = _rb_t.time()
+        try:   # review 79: a provider call reserves against the day's paid budget first; refused -> held, named
+            import compute_admission as _ca
+            _ok, _why = _ca.reserve_paid("model_router:%s" % surface, "xai", grok_model)
+            if not _ok:
+                return GR.make_result("xai", model=grok_model, status="held", reason=_why)
+        except ImportError:
+            pass
         try:
             coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)

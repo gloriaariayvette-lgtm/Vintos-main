@@ -296,10 +296,17 @@ def build_projection(existing, sources, embed, now=None, embed_model=EMBED_MODEL
         try:
             texts = chunks_for(source, path)
             for i, chunk in enumerate(texts):
-                vec = embed(chunk[:2000])
-                if not isinstance(vec, list) or (embed_dims and len(vec) != embed_dims):
-                    raise ValueError("embedding has %s dims, projection expects %s"
-                                     % (len(vec) if isinstance(vec, list) else "?", embed_dims))
+                # review 103: one chunk's failed embedding is marked on that chunk (embed_failed), never
+                # a reason to drop the source or to serve the chunk as if embedded; it is retried next run
+                _fail = ""
+                try:
+                    vec = embed(chunk[:2000])
+                    if not isinstance(vec, list) or (embed_dims and len(vec) != embed_dims):
+                        _fail = "embedding has %s dims, projection expects %s" % (len(vec) if isinstance(vec, list) else "?", embed_dims); vec = None
+                except Exception as _ee:
+                    _fail = str(_ee)[:160]; vec = None
+                if _fail:
+                    stats["embed_failed"] = stats.get("embed_failed", 0) + 1
                 entries.append({
                     "source": source,
                     "path": path,
@@ -307,6 +314,7 @@ def build_projection(existing, sources, embed, now=None, embed_model=EMBED_MODEL
                     "chunk_index": i,
                     "text": chunk[:800],
                     "embedding": vec,
+                    "embed_failed": _fail or None,
                     "revision": rev,
                     "kind": kind,
                     "embed_model": embed_model,

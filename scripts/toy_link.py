@@ -127,14 +127,14 @@ def _claim_or_release(toy, level, permit):
         pass
 
 
-def _report(context, toy, ok, why=""):
+def _report(context, toy, ok, why="", permit=None):
     """The transport's real outcome, into the gate log for THIS turn. Only when
     a context exists — bare reflex calls stay out of the lifecycle record."""
     if context is None:
         return
     try:
         import effect_gate
-        effect_gate.send_result(context, toy, ok, why)
+        effect_gate.send_result(context, toy, ok, why, permit=permit)
     except Exception:
         pass
 
@@ -153,11 +153,11 @@ def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
             _ok = _th_set(level, seconds)
             if _ok:
                 _note(toy, level); _claim_or_release(toy, level, permit)
-            _report(context, toy, _ok, "" if _ok else "thruster set_speed failed")
+            _report(context, toy, _ok, "" if _ok else "thruster set_speed failed", permit=permit)
             return _ok
         if toy in TOYS and not connected(toy):
             print(f"[toy_link] {toy} not connected — skipping", flush=True)
-            _report(context, toy, False, "not connected")
+            _report(context, toy, False, "not connected", permit=permit)
             return False
         action = f"{ACTIONS[toy]}:{max(0, min(20, int(level)))}"
         try:
@@ -166,11 +166,11 @@ def send(toy, level, seconds=0, context=None, permit=None, effect_digest=None):
             _ok = r.json().get("code") == 200
             if _ok:
                 _note(toy, level); _claim_or_release(toy, level, permit)
-            _report(context, toy, _ok, "" if _ok else "device code != 200")
+            _report(context, toy, _ok, "" if _ok else "device code != 200", permit=permit)
             return _ok
         except Exception as e:
             print(f"[toy_link] send failed: {e}", flush=True)
-            _report(context, toy, False, str(e))
+            _report(context, toy, False, str(e), permit=permit)
             return False
 
 def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
@@ -189,11 +189,11 @@ def send_pattern(toy, strengths, interval_ms=250, seconds=0, func=None,
         _ok = _th_pat(strengths, interval_ms, seconds)
         if _ok:
             _note(toy, _peak); _claim_or_release(toy, _peak, permit)
-        _report(context, toy, _ok, "" if _ok else "thruster pattern failed")
+        _report(context, toy, _ok, "" if _ok else "thruster pattern failed", permit=permit)
         return _ok
     if toy in TOYS and not connected(toy):
         print(f"[toy_link] {toy} not connected — skipping", flush=True)
-        _report(context, toy, False, "not connected")
+        _report(context, toy, False, "not connected", permit=permit)
         return False
     vals = [max(0, min(20, int(round(x)))) for x in strengths] or [0]
     letter = func or (_PFUNC.get(toy, "v") if toy else "v")
@@ -231,11 +231,11 @@ def rotate(toy, level, seconds=0, context=None, permit=None, effect_digest=None)
         _ok = r.json().get("code") == 200
         if _ok:
             _note(toy, lvl); _claim_or_release(toy, lvl, permit)
-        _report(context, toy, _ok, "" if _ok else "device code != 200")
+        _report(context, toy, _ok, "" if _ok else "device code != 200", permit=permit)
         return _ok
     except Exception as e:
         print(f"[toy_link] rotate failed: {e}", flush=True)
-        _report(context, toy, False, str(e))
+        _report(context, toy, False, str(e), permit=permit)
         return False
 
 def stop_all(reason="stop_all"):

@@ -93,7 +93,9 @@ legacy = {"entries": [{"source": "journal", "filename": "x.md", "chunk": "old sh
 check("a version-1 index is still served as it was", len(MS.serve_entries(legacy)) == 1)
 try:
     bad = MI.build_projection({}, MI.discover_sources(WS), lambda t: [0.1] * 3, now="t6")
-    check("a wrong-dims embedding is an error, not an entry", bad[1]["errors"] >= 1 and bad[0]["entries"] == [], bad[1])
+    # review 103: the chunk is kept, marked embed_failed with the reason, carries no vector, and is never served
+    check("a wrong-dims embedding is marked on the chunk, carries no vector, and is not served",
+          bad[1].get("embed_failed", 0) >= 1 and all(e.get("embedding") is None and e.get("embed_failed") for e in bad[0]["entries"]) and MS.serve_entries(bad[0]) == [], bad[1])
 except Exception as e:
     check("a wrong-dims embedding is an error, not an entry", False, e)
 

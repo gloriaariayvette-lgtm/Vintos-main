@@ -2389,6 +2389,13 @@ def get_unfulfilled_wants():
     """Read current wants."""
     import json, os
     wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
+    try:   # review 47: a store that does not parse is quarantined and reported, not served as empty
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import load_json as _sg_load
+        wants = _sg_load(wants_file, [], reader="get_unfulfilled_wants")
+        return [w for w in wants if isinstance(w, dict) and not w.get("fulfilled") and not w.get("dismissed")]
+    except Exception:
+        pass
     try:
         with open(wants_file) as f:
             return [w for w in json.load(f) if not w.get("fulfilled") and not w.get("dismissed")]

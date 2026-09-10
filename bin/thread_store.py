@@ -60,6 +60,12 @@ def load_pool(path=None):
             obj = json.load(f)
     except Exception as e:
         _say("pool unreadable (%s): %s" % (path, e))
+        try:   # review 47: the unreadable pool is kept beside itself and reported; the writers still refuse (None)
+            import sys as _sg_s; _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from store_guard import load_json as _sg_load
+            _sg_load(path, None, reader="thread_store.load_pool")
+        except Exception:
+            pass
         return None
     lst = _as_list(obj)
     if lst is None:

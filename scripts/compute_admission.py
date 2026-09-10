@@ -116,6 +116,33 @@ class Admission:
             self._lock.close(); self._lock = None
         return False
 
+PAID_PER_DAY = int(os.environ.get("VINTOS_PAID_PER_DAY", "400"))
+
+def paid_today(provider=None):
+    """Reservations made today for paid/remote work, from the ledger (a refusal is not a reservation)."""
+    day = datetime.now().strftime("%Y-%m-%d"); n = 0
+    try:
+        for ln in open(_ledger()):
+            try: r = json.loads(ln)
+            except Exception: continue
+            if r.get("class") == "paid" and r.get("stage") == "reserved" and str(r.get("at", "")).startswith(day) and (provider is None or r.get("provider") == provider):
+                n += 1
+    except Exception:
+        pass
+    return n
+
+def reserve_paid(organ, provider, model="", units=1, cap=None):
+    """review 79: before paid or remote work, a reservation against the day's cap. (ok, why). A refused
+    reservation is recorded (stage=refused) and the caller holds; a granted one is the ledger row the
+    later usage line joins to. Foreground callers still never wait here - the cap is the only refusal."""
+    cap = PAID_PER_DAY if cap is None else int(cap)
+    used = paid_today(provider)
+    if used + int(units) > cap:
+        record(organ, cls="paid", provider=provider, model=model, stage="refused", extra={"units": int(units), "used_today": used, "cap": cap})
+        return False, "paid budget: %d of %d reservations used today for %s; %d more refused" % (used, cap, provider, int(units))
+    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"units": int(units), "used_today": used + int(units), "cap": cap})
+    return True, "reserved %d (%d/%d today)" % (int(units), used + int(units), cap)
+
 def admit(cls, organ="", wait_s=None, provider="", model="", stage=""):
     return Admission(cls, organ, wait_s, provider, model, stage)
 

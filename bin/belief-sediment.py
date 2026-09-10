@@ -18,6 +18,14 @@ MAX_BELIEFS = 30
 
 def load_sediment():
     try:
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from store_guard import load_json as _sg_load
+    except Exception:
+        _sg_load = None
+    if _sg_load is not None:   # review 47: corrupt sediment is quarantined, never silently emptied
+        d = _sg_load(SEDIMENT_FILE, {"beliefs": []}, reader="belief-sediment")
+        return d if isinstance(d, dict) and "beliefs" in d else {"beliefs": []}
+    try:
         return json.load(open(SEDIMENT_FILE))
     except:
         return {"beliefs": []}

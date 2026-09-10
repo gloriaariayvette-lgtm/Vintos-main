@@ -81,6 +81,14 @@ def normalize(vec):
 
 def load_taste_vector():
     try:
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import load_json as _sg_load   # review 47
+        tv = _sg_load(TASTE_VECTOR_FILE, None, reader="taste-vector")
+        if isinstance(tv, dict) and "vector" in tv:
+            tv.setdefault("aversions", []); return tv
+    except Exception:
+        pass
+    try:
         with open(TASTE_VECTOR_FILE) as f:
             tv = json.load(f)
         tv.setdefault("aversions", [])

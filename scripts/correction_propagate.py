@@ -74,6 +74,24 @@ def propagate(correction_id, original, correction, at=""):
             _mark(e, correction_id, correction, at); e["imprint"] = False; n += 1
             touched.append({"projection": "causal-self-model", "key": e.get("tendency", "")[:80], "was": str(e.get("tendency", ""))[:160]})
     if n: _save("causal-self-model.json", cm)
+    # pearls (graduated durable claims as files): a pearl restating the claim gets a correction footer, never a rewrite
+    pdir = os.path.join(MEMORY, "pearls")
+    try:
+        for f in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
+            if not f.endswith(".md"):
+                continue
+            p = os.path.join(pdir, f)
+            try:
+                txt = open(p).read()
+            except Exception:
+                continue
+            body = txt.split("\n---\n", 1)[0]
+            if _overlap(original, body) >= FLOOR and ("**Corrected:** " + correction_id) not in txt:
+                with open(p, "a") as fh:
+                    fh.write("**Corrected:** %s (%s) - %s\n" % (correction_id, at, str(correction)[:300]))
+                touched.append({"projection": "pearl", "key": f, "was": body.strip().splitlines()[-1][:160] if body.strip() else ""})
+    except Exception:
+        pass
     rec = {"correction_id": correction_id, "at": at, "original": str(original)[:400], "correction": str(correction)[:400], "touched": touched}
     os.makedirs(MEMORY, exist_ok=True)
     with open(os.path.join(MEMORY, "correction-propagation.jsonl"), "a") as f:
