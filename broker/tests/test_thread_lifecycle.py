@@ -255,8 +255,11 @@ check("originals point at the woven thread", by_id("t00").get("woven_into") == w
 
 # ── hygiene ───────────────────────────────────────────────────────────
 real_vintos = os.path.join(REAL_HOME, ".vintos")
+def _mtime(p):
+    try: return os.path.getmtime(p)
+    except OSError: return 0.0          # a dangling symlink is not a write
 check("nothing was written under the real ~/.vintos", not os.path.exists(real_vintos) or not any(
-    os.path.getmtime(os.path.join(dp, f)) > os.path.getmtime(TMP) for dp, _, fs in os.walk(real_vintos) for f in fs))
+    _mtime(os.path.join(dp, f)) > os.path.getmtime(TMP) for dp, _, fs in os.walk(real_vintos) for f in fs))
 
 shutil.rmtree(TMP, ignore_errors=True)
 for f in ("/tmp/dream-thread1-id.txt", "/tmp/dream-thread2-id.txt", "/tmp/dream-raw.txt"):
