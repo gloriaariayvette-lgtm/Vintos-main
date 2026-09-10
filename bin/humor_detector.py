@@ -8,6 +8,18 @@ repertoire instead of turning a stream of errors into a personality.
 import os, sys, re, json, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 MOMENTS_FILE = os.path.join(MEMORY, "humor-moments.json")
 LM = "http://172.18.16.1:1234/v1/chat/completions"
@@ -18,8 +30,9 @@ def load_moments():
 
 def save_moments(data):
     data["moments"] = data["moments"][-100:]  # keep last 100
-    with open(MOMENTS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    if not _sg_write(MOMENTS_FILE, data, "humor-detector"):
+        with open(MOMENTS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
 def llm(prompt, temp=0.3, max_tokens=150):
     try:

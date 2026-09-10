@@ -7,6 +7,18 @@ disclosure sentence acknowledges. The broker only stores and enforces."""
 import os, sys, json, re, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 B = "http://127.0.0.1:8611"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
@@ -546,7 +558,7 @@ def ledger_mark(pid, state):
         try: d = json.load(open(LEDGER))
         except Exception: d = {}
         d[str(pid)] = {"state": state, "at": datetime.now().isoformat()}
-        tmp = LEDGER + ".tmp"; json.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, LEDGER)
+        _sg_write(LEDGER, d, "atelier-visit") or (json.dump(d, open(LEDGER + ".tmp", "w"), indent=1), os.replace(LEDGER + ".tmp", LEDGER))
     except Exception as e:
         print("ledger write failed:", e)
 

@@ -10,6 +10,18 @@ import json, os, sys, re, random
 from datetime import datetime, date, timedelta
 import urllib.request
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY    = os.path.join(WORKSPACE, "memory")
 SCRIPTS   = os.path.join(WORKSPACE, "scripts")
@@ -529,7 +541,7 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
         if "hypotheses" not in causality:
             causality = {"hypotheses": []}
         causality["hypotheses"].append(entry)
-        json.dump(causality, open(CAUSALITY_FILE, "w"), indent=2)
+        (_sg_write(CAUSALITY_FILE, causality, "ghost-branches.py") or json.dump(causality, open(CAUSALITY_FILE, "w"), indent=2))
         print(f"[Ghost] Hypothesis seeded: {hypothesis_text}", flush=True)
     except Exception as e:
         print(f"[Ghost] Causality seed error: {e}", flush=True)
@@ -575,7 +587,7 @@ def mark_recurrence_evidence(thread_type, resolutions):
             h["contradictions"] = h.get("contradictions", 0) + 1
         touched += 1
     if touched:
-        json.dump(db, open(CAUSALITY_FILE, "w"), indent=2)
+        (_sg_write(CAUSALITY_FILE, db, "ghost-branches.py") or json.dump(db, open(CAUSALITY_FILE, "w"), indent=2))
         print(f"[Ghost] Recurrence evidence recorded on {touched} prior hypothesis/es", flush=True)
 
 

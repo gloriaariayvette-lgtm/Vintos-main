@@ -34,6 +34,15 @@ def _load(p, d):
 
 
 def _atomic(p, obj):
+    """review 46: a store more than one organ writes goes through store_guard.locked_update; the plain
+    atomic write below is the fallback when the guard is unavailable."""
+    try:
+        sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from store_guard import locked_update as _lu
+        _lu(p, lambda _cur: obj, reader="want_completion")
+        return
+    except Exception:
+        pass
     tmp = p + ".tmp"; json.dump(obj, open(tmp, "w"), indent=2); os.replace(tmp, p)
 
 

@@ -10,6 +10,18 @@ Fast path: one embed call + dot products only.
 import os, sys, json, math, socket
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 def _emb_clip(_x, _n=6000):
     # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
     if isinstance(_x, str): return _x[:_n]
@@ -321,7 +333,7 @@ def check(reply_text, gloria_msg=""):
                 for e in data["core"]:
                     if e["name"] == violating_core["name"]:
                         e["violation_count"] = e.get("violation_count",0) + 1
-                json.dump(data, open(CORE_FILE,"w"), indent=2)
+                (_sg_write(CORE_FILE, data, "deviation_check.py") or json.dump(data, open(CORE_FILE,"w"), indent=2))
             except: pass
 
         # Nudge BIS sensitivity via behavioral-intercept
@@ -376,7 +388,7 @@ def check(reply_text, gloria_msg=""):
                     if _e.get("name") == _ac.get("name"):
                         _e["reinforcement_count"] = _e.get("reinforcement_count", 0) + 1
                         _e["confidence"] = min(0.99, _e.get("confidence", 0.5) + 0.01)
-                json.dump(_cd, open(CORE_FILE, "w"), indent=2)
+                (_sg_write(CORE_FILE, _cd, "deviation_check.py") or json.dump(_cd, open(CORE_FILE, "w"), indent=2))
             except Exception:
                 pass
 
@@ -448,7 +460,7 @@ def check(reply_text, gloria_msg=""):
                         e["reinforcement_count"] = e.get("reinforcement_count",0) + 1
                         # (door 4 removed 2026-08-09 — Vrika: Core reinforcement stays Core
                         # reinforcement; aspiration never promotes directly to identity)
-                json.dump(data, open(CORE_FILE,"w"), indent=2)
+                (_sg_write(CORE_FILE, data, "deviation_check.py") or json.dump(data, open(CORE_FILE,"w"), indent=2))
             except: pass
     else:
         clear_resolution_state()

@@ -29,6 +29,18 @@ CLI:
 """
 import os, sys, json, time, hashlib, subprocess, argparse
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 STAGE = os.path.join(WORKSPACE, "memory", "avatar-stage")
 CLIPS = os.path.join(STAGE, "clips")
@@ -125,8 +137,9 @@ def write_manifest():
         clips = [c for c in cfg.get("clips", []) if os.path.exists(os.path.join(CLIPS, c))]
         out["rooms"][name] = {"clips": clips, "pose": cfg.get("pose", "")}
     os.makedirs(STAGE, exist_ok=True)
-    with open(MANIFEST, "w") as f:
-        json.dump(out, f, indent=2)
+    if not _sg_write(MANIFEST, out, "avatar_stage"):
+        with open(MANIFEST, "w") as f:
+            json.dump(out, f, indent=2)
     log("manifest: %d rooms, %d clips" % (len(out["rooms"]),
         sum(len(r["clips"]) for r in out["rooms"].values())))
     return out

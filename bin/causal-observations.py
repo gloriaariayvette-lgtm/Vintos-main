@@ -1,6 +1,18 @@
 import json, os
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 OBS_PATH = os.path.join(MEMORY, "causal-observations.json")
 
@@ -11,8 +23,8 @@ def load_observations():
         return {"observations": []}
 
 def save_observations(data):
-    with open(OBS_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    if not _sg_write(OBS_PATH, data, "causal-observations"):
+            json.dump(data, f, indent=2)
 
 def add_observation(dimension, direction, delta, context_snippet, source="causality-engine"):
     data = load_observations()

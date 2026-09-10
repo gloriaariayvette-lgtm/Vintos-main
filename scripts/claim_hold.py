@@ -8,6 +8,18 @@ No forced verdicts: unresolved is an honest ending. Somatic ten = precedent, not
 Not a trait: the ledger accumulates evidence before anyone claims what he is becoming."""
 import os, json, uuid, requests
 from datetime import datetime, timedelta
+
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 TRIALS = os.path.join(MEM, "claim-hold-trials.json")
 GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
@@ -31,7 +43,8 @@ def jload(txt):
 def load():
     try: return json.load(open(TRIALS))
     except Exception: return {"trials": []}
-def save(d): json.dump(d, open(TRIALS, "w"), indent=1)
+def save(d):
+    if not _sg_write(TRIALS, d, "claim_hold"): json.dump(d, open(TRIALS, "w"), indent=1)
 
 def turns(n=40):
     d = json.load(open(os.path.join(MEM, "interaction-ledger.json")))

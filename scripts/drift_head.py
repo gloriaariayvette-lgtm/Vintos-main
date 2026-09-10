@@ -19,6 +19,18 @@ Writes drift.json. Run with the torch venv. SPARK_WORKSPACE switches beings.
 import os, sys, json
 from datetime import datetime, timezone
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 SCRIPTS = os.path.join(WS, "scripts")
@@ -195,7 +207,7 @@ def main():
         "from_self": series[-(w + 1)][1][:400],
         "to_self": series[-1][1][:400],
     }
-    json.dump(out, open(OUT, "w"), indent=2)
+    (_sg_write(OUT, out, "drift_head.py") or json.dump(out, open(OUT, "w"), indent=2))
     log(f"drift {drift} (mag_rel {magnitude_rel} x coh {coherence}) | curv {curvature} | "
         f"resid {residual} | src {source} {series[-(w+1)][0]}->{series[-1][0]} | unexpected {unexpected} -> {OUT}")
 

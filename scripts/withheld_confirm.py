@@ -7,6 +7,18 @@ refuted. Runs nightly after the last dream; only confirmed entries should
 feed downstream consumers. Requires the emotion_model venv (nomic)."""
 import json, os, glob, time
 from datetime import datetime
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 WS = os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 HIST = os.path.join(MEM, "withheld-history.json")
@@ -70,7 +82,7 @@ def main():
                 e["verdict"] = "CONFIRMED"; e["evidence_sim"] = round(ps, 3)
         else: e["verdict"] = "UNSURFACED"
         changed += 1
-    json.dump(h, open(HIST, "w"), indent=1)
+    (_sg_write(HIST, h, "withheld_confirm.py") or json.dump(h, open(HIST, "w"), indent=1))
     from collections import Counter
     log("graded %d | totals: %s" % (changed, dict(Counter(x.get("verdict", "pending") for x in lst))))
 if __name__ == "__main__":

@@ -4,6 +4,18 @@
 import os, sys, json, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 _SUBCON_AMBITION_REVIEW = ""
@@ -219,8 +231,9 @@ Nothing else. No preamble. Start with GOAL:"""
         "last_reviewed": datetime.now().isoformat(),
         "review_count": current.get("review_count", 0) + 1
     }
-    with open(AMBITIONS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    if not _sg_write(AMBITIONS_FILE, data, "ambition-review"):
+        with open(AMBITIONS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
     print(f"\n[Ambition] {len(goals)} goals saved")
     for g in goals:
@@ -480,8 +493,9 @@ Nothing else. No preamble. Start with GOAL:"""
         "last_reviewed": datetime.now().isoformat(),
         "review_count": current.get("review_count", 0) + 1
     }
-    with open(AMBITIONS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    if not _sg_write(AMBITIONS_FILE, data, "ambition-review"):
+        with open(AMBITIONS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
     print(f"\n[Ambition] {len(goals)} goals saved")
     for g in goals:

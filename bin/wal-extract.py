@@ -13,6 +13,18 @@ WAL entries are promoted to pearls during weekly pearl selection.
 import sys, os, json, re, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 WAL_FILE = os.path.join(MEMORY, "wal.md")
@@ -244,8 +256,9 @@ def _main(envelope=None):
     # Keep log from growing unbounded — trim to last 200 entries
     log_data["entries"] = log_data["entries"][-600:]
 
-    with open(WAL_LOG, "w") as f:
-        json.dump(log_data, f, indent=2)
+    if not _sg_write(WAL_LOG, log_data, "wal-extract"):
+        with open(WAL_LOG, "w") as f:
+            json.dump(log_data, f, indent=2)
     if _md_lines:
         with open(WAL_FILE, "a") as f:
             f.writelines(_md_lines)

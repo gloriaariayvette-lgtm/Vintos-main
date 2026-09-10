@@ -10,6 +10,18 @@ Not declared (that's the value map). Formed from pattern.
 import os, json, math
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
@@ -31,7 +43,7 @@ def load_sediment():
         return {"beliefs": []}
 
 def save_sediment(data):
-    json.dump(data, open(SEDIMENT_FILE, "w"), indent=2)
+    (_sg_write(SEDIMENT_FILE, data, "belief_sediment.py") or json.dump(data, open(SEDIMENT_FILE, "w"), indent=2))
 
 def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hypothesis_id=None, evidence_ids=None):
     """Promote a graduated hypothesis into belief sediment.

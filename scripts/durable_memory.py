@@ -9,6 +9,18 @@ meant accumulates a history: "I thought this meant X. I was wrong. Actually X wa
 import json, os, math, sys
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 def _emb_clip(_x, _n=6000):
     # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
     if isinstance(_x, str): return _x[:_n]
@@ -28,7 +40,8 @@ def _load():
     try: return json.load(open(STORE))
     except Exception: return []
 
-def _save(d): json.dump(d[-500:], open(STORE, "w"), indent=2)
+def _save(d):
+    if not _sg_write(STORE, d[-500:], "durable_memory"): json.dump(d[-500:], open(STORE, "w"), indent=2)
 
 def _embed(text):
     import requests

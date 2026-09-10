@@ -6,6 +6,18 @@ Fracture: pressure > 0.85 across 3+ deviation events -> sealed, scar, inversion.
 Discomfort, never prohibition. No phantom identity voice: no match, no line."""
 import os, json
 from datetime import datetime
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 IMPRINTS = os.path.join(MEMORY, "commitment-imprints.json")
 MATCH_T = 0.55
@@ -15,7 +27,7 @@ FRACTURE_N = 3
 def _load():
     try: return json.load(open(IMPRINTS))
     except Exception: return {"imprints": []}
-def _save(d): json.dump(d, open(IMPRINTS, "w"), indent=1)
+def _save(d): (_sg_write(IMPRINTS, d, "commitment_spine.py") or json.dump(d, open(IMPRINTS, "w"), indent=1))
 
 def evaluate_reply(reply_text, reply_vec, dev_score, embed_fn, cos_fn):
     """Called once from deviation-check. Returns (matches, felt_line or None)."""

@@ -19,6 +19,18 @@ Options: --no-ref (pure text-to-image, don't face-lock to the hero), --model <id
 """
 import os, sys, json, time, base64, shutil
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 HERO_DIR = os.path.join(MEMORY, "video")
@@ -418,7 +430,7 @@ def _save(label, data):
     try: man = json.load(open(MANIFEST))
     except Exception: pass
     man[label] = {"file": path, "set": PROMPTS.get(label, ("", ""))[0], "bytes": len(data)}
-    json.dump(man, open(MANIFEST, "w"), indent=2)
+    (_sg_write(MANIFEST, man, "gen_hero_stills.py") or json.dump(man, open(MANIFEST, "w"), indent=2))
     log("   saved %s (%d bytes)" % (path, len(data)))
 
 

@@ -14,6 +14,18 @@ rewarded: continuing is not arrival, abandoning is not avoidance.
 import os, sys, json, time, uuid
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 STORE = os.path.join(MEM, "pursuit-checkpoints.json")
@@ -23,7 +35,15 @@ def _load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
-def _save(d): json.dump(d[-40:], open(STORE, "w"), indent=1)
+def _save(d):
+    rows = d[-40:]
+    try:   # review 46: shared store, one locked write
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import locked_update as _lu
+        _lu(STORE, lambda _c: rows, reader="want_checkpoints"); return
+    except Exception:
+        pass
+    json.dump(rows, open(STORE, "w"), indent=1)
 
 def create(want_text, capability, kind, detail=""):
     """kind: blocked | failed | empty_result | outward_gate"""
@@ -110,7 +130,7 @@ def decide(decision, his_words=""):
                 w["fulfilled_by"] = "his_choice"
             break
         if wants is not None:
-            json.dump(wants, open(WANTS, "w"), indent=2)
+            (_sg_write(WANTS, wants, "want_checkpoints.py") or json.dump(wants, open(WANTS, "w"), indent=2))
     except Exception as e:
         print("[checkpoints] want update failed:", e)
     _save(cps)

@@ -15,6 +15,12 @@ def _load():
     try: return json.load(open(PATH))
     except Exception: return []
 def _save(d):
+    try:   # review 46: shared store (the block, the confirmations and the searcher all write it)
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import locked_update as _lu
+        _lu(F, lambda _c: d[-40:], reader="curiosity_debt"); return
+    except Exception:
+        pass
     _tmp = PATH + ".tmp.%d" % os.getpid()
     json.dump(d[-40:], open(_tmp, "w"), indent=1); os.replace(_tmp, PATH)   # atomic replace (astra-curiosity-p7)
 

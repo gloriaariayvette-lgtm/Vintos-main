@@ -42,6 +42,18 @@ BEHIND THE ARMING FLAG (~/.vintos/workspace/memory/.effect-gate-armed):
 import os, json, time, threading, uuid
 from datetime import datetime, timedelta
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 ARMED_FLAG = os.path.join(MEM, ".effect-gate-armed")
 LOG = os.path.join(MEM, "effect-gate.jsonl")
@@ -248,7 +260,10 @@ def _log(**row):
 
 
 def _atomic_write_json(path, obj):
-    """Write obj to path via tmp+replace so a reader never sees a torn file."""
+    """Write obj to path via tmp+replace so a reader never sees a torn file. review 46: hardware-button
+    and the gate's state have another writer (the server's button route), so the write takes the lock."""
+    if _sg_write(path, obj, "effect_gate"):
+        return
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     tmp = "%s.%d.tmp" % (path, os.getpid())
     with open(tmp, "w") as f:

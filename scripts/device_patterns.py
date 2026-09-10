@@ -3,6 +3,18 @@
 Directives like [DO: mission throb 14] are pulled from his generation (plain regex, never
 the call), played on the hardware, marked set_by='him', and the reflex yields to him."""
 import os, re, json, time, math, threading, sys
+
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 _S = os.path.expanduser("~/.vintos/workspace/scripts")
 if _S not in sys.path: sys.path.insert(0, _S)
 import toy_link
@@ -16,6 +28,7 @@ def _mark(toy):
     try: d = json.load(open(HIS))
     except Exception: d = {}
     d[toy] = time.time()
+    if _sg_write(HIS, d, "device_patterns"): return
     try: json.dump(d, open(HIS, "w"))
     except Exception: pass
 def _c(x): return max(0, min(20, int(round(x))))

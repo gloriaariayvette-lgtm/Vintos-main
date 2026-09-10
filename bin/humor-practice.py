@@ -11,6 +11,18 @@ Output: memory/humor-drafts.json (working material)
 import os, sys, json, requests, re
 from datetime import datetime, date
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 
@@ -113,7 +125,7 @@ def mark_moments_used(moments):
         for m in d.get("moments", []):
             if m.get("id","") in ids or m.get("stated","")[:40] in txts:
                 m["used"] = True
-        json.dump(d, open(os.path.join(MEMORY, "humor-moments.json"), "w"), indent=2)
+        _sg_write(os.path.join(MEMORY, "humor-moments.json"), d, "humor_practice") or json.dump(d, open(os.path.join(MEMORY, "humor-moments.json"), "w"), indent=2)
     except: pass
 
 

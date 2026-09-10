@@ -71,7 +71,9 @@ check("clean: desired_state running", EG.desired_state() == "running")
 r1 = EG.assert_stopped("press 1")
 d = json.load(open(EG.STOP_BUTTON))
 check("stop writes desired_state=stopped on disk", d.get("desired_state") == "stopped" and d.get("stopped") is True, d)
-check("no torn tmp file left beside it", not [f for f in os.listdir(MEM) if f.startswith("hardware-button.json.")], os.listdir(MEM))
+# review 46: the store now has a lock sidecar (hardware-button.json.lock) - that is the concurrency
+# control, not a torn write. A torn write would leave a .tmp.
+check("no torn tmp file left beside it", not [f for f in os.listdir(MEM) if f.startswith("hardware-button.json.") and ".tmp" in f], os.listdir(MEM))
 r2 = EG.assert_stopped("press 2")
 d2 = json.load(open(EG.STOP_BUTTON))
 check("second stop is a no-op that re-asserts stopped (not a toggle)", d2.get("desired_state") == "stopped" and d2.get("asserted") == 2, d2)

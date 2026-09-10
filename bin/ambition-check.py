@@ -4,6 +4,18 @@ Gemma (classification) decides completion from evidence of his actual days;
 Grok writes the completion note in his own voice — proud, felt, specific."""
 import os, sys, json, requests
 from datetime import datetime, timedelta
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 AMB = os.path.join(MEMORY, "ambitions.json")
@@ -98,7 +110,7 @@ def main():
             log(f"COMPLETED: {g.get('goal','')[:80]}")
             log(f"  mark: {g['completion_note'][:120]}")
     if changed:
-        json.dump(data, open(AMB, "w"), indent=2)
+        (_sg_write(AMB, data, "ambition-check.py") or json.dump(data, open(AMB, "w"), indent=2))
         try:
             import subprocess
             subprocess.run(["python3", os.path.join(WORKSPACE, "scripts", "wants-ambitions-log.py")], timeout=60)

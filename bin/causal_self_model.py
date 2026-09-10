@@ -16,6 +16,18 @@ Format:
 import os, json
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
@@ -37,7 +49,7 @@ def load_model():
         return {"entries": []}
 
 def save_model(data):
-    json.dump(data, open(MODEL_FILE, "w"), indent=2)
+    (_sg_write(MODEL_FILE, data, "causal_self_model.py") or json.dump(data, open(MODEL_FILE, "w"), indent=2))
 
 def _text_overlap(a, b):
     wa = set(a.lower().split())
@@ -346,7 +358,7 @@ def _write_imprint(entry):
                     "evidence": entry.get("evidence", [])},   # review 107: the occurrences and quotes travel with it
         "reinforcements": [{"observed_at": d} for d in entry.get("evidence_dates", [])],
         "friction": 0.0, "last_friction": None, "friction_events": [], "fracture": None})
-    json.dump(data, open(IMPRINTS_FILE, "w"), indent=1)
+    (_sg_write(IMPRINTS_FILE, data, "causal_self_model.py") or json.dump(data, open(IMPRINTS_FILE, "w"), indent=1))
     print("[Spine] Commitment imprint formed (earned): %s" % entry.get("tendency","")[:60])
 
 def promote_to_commitment_imprint(pattern_text, confidence=0.6, source="behavioral-intercept"):

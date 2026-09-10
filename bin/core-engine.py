@@ -14,6 +14,18 @@ Usage:
 import os, sys, json, math
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 def _emb_clip(_x, _n=4000):
     # nomic ctx is 2048 tokens; oversized input WEDGES LM Studio. Clip before sending.
     if isinstance(_x, str): return _x[:_n]
@@ -319,7 +331,7 @@ def bootstrap():
         "core": core_entries
     }
 
-    open(CORE_FILE, "w").write(json.dumps(output, indent=2))
+    _sg_write(CORE_FILE, output, "core-engine") or open(CORE_FILE, "w").write(json.dumps(output, indent=2))
     log(f"Core written: {len(core_entries)} elements → {CORE_FILE}")
 
     for e in core_entries:

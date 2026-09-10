@@ -41,6 +41,16 @@ def _as_list(obj):
     return None
 
 
+def _locked_write(path, obj):
+    """review 46: the pool has many writers; the write happens under an exclusive lock on the pool."""
+    try:
+        import sys as _sg_s; _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import locked_update as _lu
+        _lu(path, lambda _c: obj, reader="thread_store"); return True
+    except Exception:
+        return False
+
+
 def _atomic_write(path, obj):
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -93,7 +103,7 @@ def save_pool(threads, path=None, reason=""):
             _say("REFUSING write%s: would shrink pool %d -> %d (shrink guard)"
                  % ((" (" + reason + ")") if reason else "", n_before, n_after))
             return False
-    _atomic_write(path, threads)
+    if not _locked_write(path, threads): _atomic_write(path, threads)
     return True
 
 
@@ -184,5 +194,5 @@ def append_retired(entries, path=None):
         if not n.get("retired_at"):
             n["retired_at"] = stamp
         existing.append(n)
-    _atomic_write(path, existing)
+    if not _locked_write(path, existing): _atomic_write(path, existing)
     return existing

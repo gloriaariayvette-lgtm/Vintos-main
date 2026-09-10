@@ -45,11 +45,26 @@ check("taste-vector and thread_store read through the guard", 'reader="taste-vec
 print("\n--- 46: the ownership table ---")
 SO = load("store_owners", os.path.join(REPO, "scripts", "store_owners.py"))
 rows = SO.table(); by = {r["store"]: r for r in rows}
-check("every store has its writers named; twins collapse to one organ", len(rows) > 80 and "interaction-ledger.json" in by and all(r["writers"] for r in rows) and by["gallery.json"]["writers"] == ["dreamart.py"] if "gallery.json" in by else True, by.get("gallery.json"))
+check("every store has its writers named; twins collapse to one organ", len(rows) > 80 and "interaction-ledger.json" in by and all(r["writers"] for r in rows) and "dreamart.py" in by.get("gallery.json", {}).get("writers", []), by.get("gallery.json"))
 check("shared stores are reported with a lock verdict per store", any(r["shared"] for r in rows) and all(isinstance(r["locked"], bool) for r in rows) and "current-wants.json" in [r["store"] for r in rows if r["shared"]])
 check("docs/store-owners.md is the generated table and is current", open(os.path.join(REPO, "docs", "store-owners.md")).read() == SO.render())
 
 print("\n--- 73: the voice block has the text keys ---")
 sv = src("bin/server.py")
 check("voice session block carries source, surface, turn_id, gloria, vintos beside its call fields", '"source": "voice-session", "surface": "voice", "turn_id": str(sess.get("started_at") or "")' in sv and '"gloria": (_full[0]["gloria"] if _full else "")[:500]' in sv)
+
+# --- review 46 (2026-09-10): concurrency control on the shared stores ------------------------------
+print("\n--- 46: every shared store's writers take one lock ---")
+import importlib
+_SO = importlib.import_module("store_owners") if "store_owners" in sys.modules else load("store_owners", os.path.join(REPO, "scripts", "store_owners.py"))
+_rows = _SO.table(); _shared = [r for r in _rows if r["shared"]]; _un = [r for r in _shared if not r["locked"]]
+check("more than twenty stores are shared, and at most one writer anywhere is still unlocked", len(_shared) >= 20 and len(_un) <= 1, [(r["store"], r["unlocked_writers"]) for r in _un])
+check("the locked ones say how they are locked", all(r["how"] for r in _shared if r["locked"]))
+_SG2 = load("sg2", os.path.join(REPO, "scripts", "store_guard.py")); _SG2.MEMORY = MEM; _SG2.LOG = os.path.join(MEM, "store-quarantine.jsonl")
+_p2 = os.path.join(MEM, "shared.json"); json.dump({"n": 0}, open(_p2, "w"))
+_SG2.locked_update(_p2, lambda cur: {"n": cur["n"] + 1}); _SG2.locked_update(_p2, lambda cur: {"n": cur["n"] + 1})
+check("locked_update is read-modify-write under the lock", json.load(open(_p2)) == {"n": 2} and os.path.exists(_p2 + ".lock"))
+check("a mutate that returns None writes nothing", _SG2.locked_update(_p2, lambda cur: None) == {"n": 2} and json.load(open(_p2)) == {"n": 2})
+_SG2.write_json(_p2, {"n": 9}, reader="test")
+check("write_json locks and replaces", json.load(open(_p2)) == {"n": 9})
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

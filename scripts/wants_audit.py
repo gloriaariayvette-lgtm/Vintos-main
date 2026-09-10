@@ -18,6 +18,18 @@
 import json, os, sys
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 CURRENT = os.path.join(MEMORY, "current-wants.json")
@@ -100,7 +112,7 @@ def main():
         keep = [w for w in current if not (isinstance(w, dict)
                 and (w.get("fulfilled") or w.get("dismissed"))
                 and w.get("id") in fulfilled_ids)]
-        json.dump(keep, open(CURRENT, "w"), indent=2)
+        (_sg_write(CURRENT, keep, "wants_audit.py") or json.dump(keep, open(CURRENT, "w"), indent=2))
         print("\nremoved %d corpses from current-wants (all still archived in fulfilled-wants)"
               % (len(current) - len(keep)))
     else:

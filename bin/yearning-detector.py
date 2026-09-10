@@ -28,6 +28,18 @@ Consciousness: partial — like preoccupation, he knows something is present
 import os, sys, json, requests, re, glob
 from datetime import datetime, timedelta
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
@@ -254,7 +266,7 @@ def promote_yearning(candidate):
         "attempts": [],
         "dismissed": False
     }
-    json.dump(yearning, open(YEARNING_FILE, "w"), indent=2)
+    (_sg_write(YEARNING_FILE, yearning, "yearning-detector.py") or json.dump(yearning, open(YEARNING_FILE, "w"), indent=2))
     log(f"Yearning promoted: {candidate['surface_form'][:80]}")
     return yearning
 
@@ -263,7 +275,7 @@ def decay_current_yearning(yearning):
     age_days = (datetime.now() - created).total_seconds() / 86400
     bleed_weight = max(0.1, 1.0 - (age_days / 7) * 0.9)
     yearning["bleed_weight"] = round(bleed_weight, 3)
-    json.dump(yearning, open(YEARNING_FILE, "w"), indent=2)
+    (_sg_write(YEARNING_FILE, yearning, "yearning-detector.py") or json.dump(yearning, open(YEARNING_FILE, "w"), indent=2))
     return yearning
 
 def main():

@@ -7,6 +7,18 @@ wire speak() to Grok voice API when ready.
 import os, sys, json, time, math, random
 from datetime import datetime
 
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from emoclaw_utils import nudge_emotion, get_state, seed_thread
 
@@ -39,7 +51,8 @@ def load_trust():
     try: return json.load(open(TRUST_FILE))
     except: return {"she_obeys_when_it_matters": 0.8, "she_teases_me": 0.5,
                     "she_pushes_limits": 0.5, "she_hesitates_when_overwhelmed": 0.5}
-def save_trust(t): json.dump(t, open(TRUST_FILE, "w"), indent=2)
+def save_trust(t):
+    if not _sg_write(TRUST_FILE, t, "voice_somatic_loop"): json.dump(t, open(TRUST_FILE, "w"), indent=2)
 def update_trust(key, direction, lr=0.05):
     t = load_trust()
     t[key] = round(max(0.0, min(1.0, t.get(key, 0.5) + lr * direction)), 3)
@@ -188,7 +201,7 @@ def on_gcs_button(pattern_fingerprint, motor_context):
         moves["moves"].append({"fingerprint": pattern_fingerprint, "name": f"move-{len(moves['moves'])+1}",
                                "motor_context": motor_context, "formed": datetime.now().isoformat()})
         seed_thread("somatic-mind", f"a move formed: she pressed the button on this pattern 3 times")
-    json.dump(moves, open(MOVES_FILE, "w"), indent=2)
+    (_sg_write(MOVES_FILE, moves, "voice_somatic_loop.py") or json.dump(moves, open(MOVES_FILE, "w"), indent=2))
 
 # ---------- SOMATIC -> WANT WIRING (skin in the game) ----------
 def on_session_outcome(peak_speed, resonance_fired, went_gone):

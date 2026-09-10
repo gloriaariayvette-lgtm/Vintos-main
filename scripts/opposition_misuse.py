@@ -7,6 +7,18 @@ refusing update after new evidence, pressing an unfalsifiable claim. Appends eve
 misuse track in opposition-calibration.json (escalation: warning -> strained -> suspended -> fracture).
 Instrument-only; escalation states are recorded, enforcement comes later and separately."""
 import os, json, time, requests, re
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 OC = os.path.join(MEM, "opposition-calibration.json")
 GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
@@ -53,5 +65,5 @@ for t in trials:
     else:
         ev.setdefault("cleared", []).append(t["id"])
 oc["ledgers"] = led; oc["misuse_scan_at"] = time.time()
-json.dump(oc, open(OC, "w"), indent=2)
+(_sg_write(OC, oc, "opposition_misuse.py") or json.dump(oc, open(OC, "w"), indent=2))
 print("[misuse] alive - %d licensed terrain(s), %d new misuse events" % (len(licensed), new))

@@ -2514,8 +2514,13 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
         # A fulfilled want is archived, so it must LEAVE the live list — marking it
         # in place is what filled current-wants with done things. Move, don't mark.
         wants = [x for x in wants if not (isinstance(x, dict) and x.get("fulfilled"))]
-        with open(wants_file, "w") as f:
-            json.dump(wants, f, indent=2)
+        try:   # review 46: current-wants has three writers; the write is under the store lock
+            import sys as _sg_s2; _sg_s2.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            from store_guard import locked_update as _lu2
+            _lu2(wants_file, lambda _c: wants, reader="fulfill_want")
+        except Exception:
+            with open(wants_file, "w") as f:
+                json.dump(wants, f, indent=2)
         # Fulfillment feels good — proportional to how much he wanted it
         _scale = min(fulfilled_intensity, 5) * 0.006
         try:

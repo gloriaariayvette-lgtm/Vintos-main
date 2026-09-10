@@ -1,6 +1,18 @@
 import json, os, requests
 from datetime import datetime, timedelta
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 OBS_PATH = os.path.join(MEMORY, "causal-observations.json")
 HYP_PATH = os.path.join(MEMORY, "causality-hypotheses.json")
@@ -23,10 +35,10 @@ def load_hypotheses():
     except: return {"hypotheses": [], "tested": 0, "confirmed": 0, "revised": 0}
 
 def save_observations(data):
-    with open(OBS_PATH, "w") as f: json.dump(data, f, indent=2)
+    _sg_write(OBS_PATH, data, "causal-cluster") or [None for _ in [1] if not open(OBS_PATH, "w").write(json.dumps(data, indent=2))]
 
 def save_hypotheses(data):
-    with open(HYP_PATH, "w") as f: json.dump(data, f, indent=2)
+    _sg_write(HYP_PATH, data, "causal-cluster") or [None for _ in [1] if not open(HYP_PATH, "w").write(json.dumps(data, indent=2))]
 
 def cluster_observations():
     """Group unclustered observations by emotional outcome similarity."""

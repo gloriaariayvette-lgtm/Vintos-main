@@ -16,6 +16,18 @@ SPARK_WORKSPACE + CENG_PATH switch beings.
 import os, sys, json, re, subprocess, importlib.util
 from datetime import datetime, timezone
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 DRIFT = os.path.join(MEMORY, "drift.json")
@@ -107,7 +119,7 @@ def main():
         d["shift_type"] = str(parsed.get("shift_type", "")).lower()
         d["significant"] = bool(parsed.get("significant", False))
     d["reasoned_at"] = datetime.now(timezone.utc).isoformat()
-    json.dump(d, open(DRIFT, "w"), indent=2)
+    (_sg_write(DRIFT, d, "drift_reason.py") or json.dump(d, open(DRIFT, "w"), indent=2))
     log(f"drift {d.get('drift')} [{d.get('shift_type','?')}] significant={d.get('significant')}")
     log(f"  \"{d.get('characterization', d.get('characterization_raw',''))[:150]}\"")
 

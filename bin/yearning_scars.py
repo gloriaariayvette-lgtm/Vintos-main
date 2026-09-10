@@ -23,6 +23,18 @@ Also callable standalone to audit current scars.
 import os, sys, json, requests, re, subprocess
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 LM = "http://172.18.16.1:1234/v1/chat/completions"
@@ -224,7 +236,7 @@ def add_near_success(description, intensity):
         if intensity >= NEAR_SUCCESS_THRESHOLD:
             y["attempt_rate"] = min(0.4, y.get("attempt_rate", 0.1) + 0.05)
             log(f"Near-success ({intensity:.2f}) — attempt_rate now {y['attempt_rate']:.2f}")
-        json.dump(y, open(YEARNING_FILE, "w"), indent=2)
+        (_sg_write(YEARNING_FILE, y, "yearning_scars.py") or json.dump(y, open(YEARNING_FILE, "w"), indent=2))
     except Exception as e:
         log(f"Failed to record near-success: {e}")
 

@@ -58,6 +58,31 @@ def save_json(path, obj, indent=2):
     os.replace(tmp, path)
 
 
+def write_json(path, obj, reader="", indent=2):
+    """review 46: lock, then write atomically. The one-liner for a saver that already holds the whole
+    object. Falls back to a plain atomic write only if the lock cannot be taken."""
+    try:
+        return locked_update(path, lambda _cur: obj, reader=reader)
+    except Exception:
+        save_json(path, obj, indent=indent); return obj
+
+
+def locked_update(path, mutate, default=None, reader=""):
+    """review 46: the one read-modify-write for a store more than one organ writes. Under an exclusive
+    flock on <path>.lock: load (quarantining a corrupt file), hand the object to `mutate`, write what it
+    returns atomically. `mutate` returning None means no change and nothing is written."""
+    import fcntl
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path + ".lock", "a+") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        cur = load_json(path, default if default is not None else [], reader=reader)
+        out = mutate(cur)
+        if out is None:
+            return cur
+        save_json(path, out)
+        return out
+
+
 def quarantined(limit=20):
     out = []
     try:

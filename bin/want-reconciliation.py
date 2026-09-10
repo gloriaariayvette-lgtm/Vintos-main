@@ -8,6 +8,18 @@
 import os, sys, json, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
@@ -151,7 +163,7 @@ def main():
     ids = {w.get("id") for w in fulfilled_now}
     store = load(os.path.join(MEMORY, "fulfilled-wants.json"), [])
     store.extend(fulfilled_now)
-    json.dump(store, open(os.path.join(MEMORY, "fulfilled-wants.json"), "w"), indent=2)
+    _sg_write(os.path.join(MEMORY, "fulfilled-wants.json"), store, "want-reconciliation") or json.dump(store, open(os.path.join(MEMORY, "fulfilled-wants.json"), "w"), indent=2)
     json.dump([w for w in wants if w.get("id") not in ids], open(wants_path, "w"), indent=2)
     log(f"Moved {len(fulfilled_now)} want(s) to fulfilled-wants.json.")
     try:

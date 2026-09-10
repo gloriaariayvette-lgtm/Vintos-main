@@ -6,6 +6,18 @@ withheld-history.json. Feeds silence/thread-triage/gloria-model via get_withheld
 import os, sys, json, re
 from datetime import datetime, timezone
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 CHAT = os.path.join(MEMORY, "chat-history-merged.json")
@@ -154,7 +166,7 @@ def get_withheld_hint():
         for e in reversed(hist):
             if isinstance(e, dict) and e.get("source_hash") == d.get("source_hash"):
                 e["surfaced"] = int(e.get("surfaced", 0)) + 1
-                json.dump(hist, open(HIST, "w"), indent=2)
+                (_sg_write(HIST, hist, "withheld_head.py") or json.dump(hist, open(HIST, "w"), indent=2))
                 break
     except Exception:
         pass

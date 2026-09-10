@@ -68,6 +68,11 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
         # Just save the updated want with step_history
         import json as _ms_json
         _ms_path = os.path.join(MEMORY, "current-wants.json")
+        try:   # review 46: current-wants has three writers; the write goes through the store lock
+            import sys as _sg_s; _sg_s.path.insert(0, SCRIPTS)
+            from store_guard import locked_update as _lu
+        except Exception:
+            _lu = None
         _ms_wants = _ms_json.load(open(_ms_path))
         for _ms_w in _ms_wants:
             if _ms_w.get("id") == want.get("id"):
@@ -79,7 +84,7 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
         _total_steps = len(want.get("steps", []))
         if _next_idx >= _total_steps:
             # All steps complete — fulfill the want
-            _ms_json.dump(_ms_wants, open(_ms_path, "w"), indent=2)
+            (_lu(_ms_path, lambda _c: _ms_wants, reader="wants-router") if _lu else _ms_json.dump(_ms_wants, open(_ms_path, "w"), indent=2))
             _final_note = step_history[-1].get("note","") if step_history else ""
             # the ORIGINAL want string, as the recovery branch already does; `text` here is the last
             # step's text, so the want stayed live and learning drank a ghost (2026-09-04)
@@ -96,7 +101,7 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
                 if _ms_w.get("id") == want.get("id"):
                     _ms_w["current_step_index"] = _next_idx
                     break
-            _ms_json.dump(_ms_wants, open(_ms_path, "w"), indent=2)
+            (_lu(_ms_path, lambda _c: _ms_wants, reader="wants-router") if _lu else _ms_json.dump(_ms_wants, open(_ms_path, "w"), indent=2))
             log(f"  → Advanced to step {_next_idx + 1}")
     else:
         # Normal single-step want

@@ -26,6 +26,18 @@ provenance-valid, uninfluenced, non-invalid) - and UNREBUTTED is absence of bloc
 Thresholds are gates, not epistemology. SPARK_WORKSPACE switches beings."""
 import os, sys, json, re, hashlib, requests
 from datetime import datetime, timedelta
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
@@ -90,7 +102,7 @@ def open_influence_window(tension_id, kind):
             t.setdefault("influence_windows", []).append(
                 {"start": datetime.now().isoformat(), "end": None, "kind": kind})
             t["history"].append({"at": datetime.now().isoformat(), "event": "influence window OPENED (%s) by serving consumer" % kind})
-            json.dump(led, open(LEDGER, "w"), indent=2); return True
+            (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2)); return True
     return False
 def close_influence_window(tension_id):
     led = load(LEDGER, None)
@@ -100,7 +112,7 @@ def close_influence_window(tension_id):
             for w in t.get("influence_windows", []):
                 if w.get("end") is None: w["end"] = datetime.now().isoformat()
             t["history"].append({"at": datetime.now().isoformat(), "event": "influence window CLOSED"})
-            json.dump(led, open(LEDGER, "w"), indent=2); return True
+            (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2)); return True
     return False
 def gather_sources():
     out = {"E1": [], "E2": [], "E3": []}
@@ -337,7 +349,7 @@ def main():
                 t["status"] = "CONFIRMED"
                 t["history"].append({"at": now, "event": "CONFIRMED (unrebutted + earned)", "evidence": [e["evidence_id"] for e in sup]})
                 log("%s -> CONFIRMED" % t["tension_id"])
-    json.dump(led, open(LEDGER, "w"), indent=2)
+    (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2))
     counts = {}
     for t in led["tensions"]: counts[t["status"]] = counts.get(t["status"], 0) + 1
     log("done: %s" % counts)

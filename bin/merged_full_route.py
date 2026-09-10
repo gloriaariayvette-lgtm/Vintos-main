@@ -1,3 +1,15 @@
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 # /api/chat/full — Main chat (phone). Rebuilt 2026-07-10.
 # Everything the working full route did + the newer subconscious stack and bilateral
 # engine + gather_vintos_context() actually injected (it was gathered and dropped).
@@ -1075,7 +1087,7 @@ Gloria-specific additions:
                     break
             if _sr_topic and len(_sr_topic) > 3:
                 _sr_file = os.path.join(MEMORY, "pending-search-request.json")
-                with open(_sr_file, "w") as _srf:
+                with open(_sr_file, "w") as _srf:   # review 46: also written by the server and the router; see docs/store-owners.md
                     json.dump({
                         "topic": _sr_topic,
                         "requested_at": datetime.now().isoformat(),

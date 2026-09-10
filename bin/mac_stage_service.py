@@ -11,6 +11,18 @@ Started by the LaunchAgent com.vintos.stage (port 8511).
 import os, sys, json, hashlib, subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 HOME = os.path.expanduser("~")
 STAGE = os.path.join(HOME, "VintosStage")
 CLIPS = os.path.join(STAGE, "clips")
@@ -237,7 +249,7 @@ def live_render(prompt, images=None, motion="", together=False):
     except Exception:
         man = {"default": "", "rooms": {}}
     man.setdefault("rooms", {})["live"] = {"clips": ["live.mp4"], "pose": prompt[:120]}
-    json.dump(man, open(MANIFEST, "w"), indent=2)
+    (_sg_write(MANIFEST, man, "mac_stage_service.py") or json.dump(man, open(MANIFEST, "w"), indent=2))
     return open(out, "rb").read(), None
 
 

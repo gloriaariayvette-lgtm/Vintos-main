@@ -5,6 +5,18 @@ Failed intentions accumulate weight and haunt target selection; at weight 5 they
 graduate into a causality question ("is this still the same intention?") with lineage.
 Nothing here instruments Gloria beyond what she freely shows in conversation."""
 import os, json, time, hashlib, urllib.request
+
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 
 def _queue_bring_up(q):
@@ -39,6 +51,7 @@ def _jload(p,d):
     try: return json.load(open(p))
     except Exception: return d
 def _jsave(p,d):
+    if _sg_write(p, d, "desired_difference"): return
     try: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
     except Exception: pass
 def _extract(t):

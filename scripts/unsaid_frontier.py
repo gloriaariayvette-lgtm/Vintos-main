@@ -19,6 +19,18 @@ refusal does not refute it. Recurrence is history, never truth. Fail-open.
 import os, sys, json, re
 from datetime import datetime, timezone
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY = os.path.join(WS, "memory")
 LIN = os.path.join(MEMORY, "withheld-lineage.json")
@@ -108,7 +120,7 @@ def deliberate():
                 if choice == "KEEP_PRIVATE": L["muted"] = True
                 if choice == "WRONG_READING": L["contested"] = True
                 if choice == "HELD": L["held_at_origins"] = len(set(L.get("origins", [])))
-        json.dump(lins, open(LIN, "w"), indent=2)
+        (_sg_write(LIN, lins, "unsaid_frontier.py") or json.dump(lins, open(LIN, "w"), indent=2))
     except Exception:
         pass
     _save(items)

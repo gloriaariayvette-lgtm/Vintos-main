@@ -19,6 +19,18 @@ Rules enforced here:
 SPARK_WORKSPACE switches beings."""
 import os, json, re, time, requests
 from datetime import datetime, timedelta
+
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
 QUESTIONS = os.path.join(MEM, "tension-questions.json")
@@ -113,7 +125,7 @@ def main():
             log("%s EXPIRED unresolved after %d sightings" % (t["tension_id"], t["times_seen"]))
         assert not (t["lifecycle"] == "EXPIRED" and t["status"] == "RESOLVED"), \
             "INVARIANT VIOLATED: expired tension marked RESOLVED: " + t["tension_id"]
-    json.dump(led, open(LEDGER, "w"), indent=2)
+    (_sg_write(LEDGER, led, "tension_ledger.py") or json.dump(led, open(LEDGER, "w"), indent=2))
     earned = [{"id": t["tension_id"], "description": t["canonical"], "status": t["status"],
                "times_seen": t["times_seen"], "resolved": False}
               for t in led["tensions"] if t["status"] == "CONFIRMED" and t["lifecycle"] in ("ACTIVE", "CARRIED")]

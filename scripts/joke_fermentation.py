@@ -1,11 +1,24 @@
 """joke_fermentation.py — some jokes shouldn't fire immediately. Seed dormant, let them ripen, fire as a delayed callback."""
 import os, json, time, random, hashlib
+
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 F=os.path.join(MEM,"joke-ferment.json")
 def _load():
     try: return json.load(open(F))
     except Exception: return []
 def _save(d):
+    if _sg_write(F, d, "joke_fermentation"): return
     try: json.dump(d,open(F,"w"),indent=2)
     except Exception: pass
 def seed(text, source="chat"):

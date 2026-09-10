@@ -6,6 +6,18 @@ GCS button during resonance locks it. Nonresonant moves fade out.
 import os, json, time
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 MOVES_FILE = os.path.join(MEMORY, "moves.json")
 FADE_SESSIONS = 5      # sessions without resonance before fade begins
@@ -17,7 +29,7 @@ def load():
 
 def save(d):
     os.makedirs(MEMORY, exist_ok=True)
-    json.dump(d, open(MOVES_FILE, "w"), indent=2)
+    (_sg_write(MOVES_FILE, d, "moves.py") or json.dump(d, open(MOVES_FILE, "w"), indent=2))
 
 def on_gcs_press(mission_level, tenera_level, resonance_strength):
     """Called when GCS pressed. If resonance is live, lock as candidate."""

@@ -12,6 +12,18 @@ propagation record naming what it touched, so a later reader can see the correct
 """
 import os, re, sys, json, time
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 FLOOR = 0.5   # share of the claim's words a projection must carry to be derived from it
@@ -34,7 +46,9 @@ def _load(name, default):
 
 
 def _save(name, obj):
-    p = os.path.join(MEMORY, name); tmp = p + ".tmp"
+    p = os.path.join(MEMORY, name)
+    if _sg_write(p, obj, "correction_propagate"): return
+    tmp = p + ".tmp"
     json.dump(obj, open(tmp, "w"), indent=2); os.replace(tmp, p)
 
 

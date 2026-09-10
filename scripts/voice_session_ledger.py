@@ -14,6 +14,18 @@ switch beings.
 import os, sys, json, subprocess, importlib.util
 from datetime import datetime, timezone
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 SCRIPTS = os.path.join(WS, "scripts")
@@ -138,7 +150,7 @@ def main():
         log(f"session {key} ({len(sess)} turns) -> one block + thread: {narration[:70]}")
 
     if added:
-        json.dump(ledger[-MAX_ENTRIES:], open(LEDGER, "w"), indent=2)
+        _sg_write(LEDGER, ledger[-MAX_ENTRIES:], "voice_session_ledger") or json.dump(ledger[-MAX_ENTRIES:], open(LEDGER, "w"), indent=2)
     json.dump({"done": sorted(done)[-500:], "updated": datetime.now(timezone.utc).isoformat()},
               open(STATE, "w"), indent=2)
     if added:

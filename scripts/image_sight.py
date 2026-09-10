@@ -8,6 +8,18 @@ Dream-born images are not sighted here - they are weather, not acts."""
 import os, json, base64, subprocess, requests
 from datetime import datetime
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 GALLERY = os.path.join(MEMORY, "art", "gallery.json")
@@ -117,7 +129,7 @@ def main():
         for x in latest:
             if x.get("image") in by_img: by_img[x.get("image")].update({}) 
         merged = [by_img.get(x.get("image"), x) if x.get("image") in by_img else x for x in latest]
-        json.dump(merged, open(GALLERY, "w"), indent=2)
+        (_sg_write(GALLERY, merged, "image_sight.py") or json.dump(merged, open(GALLERY, "w"), indent=2))
 
 if __name__ == "__main__":
     main()

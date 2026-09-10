@@ -3800,7 +3800,7 @@ Gloria-specific additions:
                     _sr_topic = msg.message[_idx + len(_t):].strip().strip(".,!?")
                     break
             if _sr_topic and len(_sr_topic) > 3:
-                _sr_file = os.path.join(MEMORY, "pending-search-request.json")
+                _sr_file = os.path.join(MEMORY, "pending-search-request.json")   # review 46: shared with the router and the searcher; see docs/store-owners.md
                 with open(_sr_file, "w") as _srf:
                     json.dump({
                         "topic": _sr_topic,
@@ -4756,7 +4756,7 @@ Your current self-model (excerpt):
                     _sr_topic = msg.message[_idx + len(_t):].strip().strip(".,!?")
                     break
             if _sr_topic and len(_sr_topic) > 3:
-                _sr_file = os.path.join(MEMORY, "pending-search-request.json")
+                _sr_file = os.path.join(MEMORY, "pending-search-request.json")   # review 46: shared with the router and the searcher; see docs/store-owners.md
                 with open(_sr_file, "w") as _srf:
                     json.dump({
                         "topic": _sr_topic,
@@ -7848,7 +7848,13 @@ async def hardware_button(request: Request):
         try:
             _tmp = _HW_BTN + ".tmp"
             import json as _hbj
-            _hbj.dump({"stopped": False, "desired_state": "running"}, open(_tmp, "w")); os.replace(_tmp, _HW_BTN)
+            # review 46: hardware-button has two writers (this route and effect_gate); both take the store lock
+            try:
+                import sys as _hb_s; _hb_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                from store_guard import write_json as _hb_wj
+                _hb_wj(_HW_BTN, {"stopped": False, "desired_state": "running"}, reader="server:button")
+            except Exception:
+                _hbj.dump({"stopped": False, "desired_state": "running"}, open(_tmp, "w")); os.replace(_tmp, _HW_BTN)
         except Exception: pass
     return {"stopped": False, "desired_state": "running", "was": _was, "device_stop_result": None}
 

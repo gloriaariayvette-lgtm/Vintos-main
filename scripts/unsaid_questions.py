@@ -1,5 +1,17 @@
 """unsaid_questions.py — questions Vintos almost asked Gloria. Scored by persistence; survive long enough and it's earned."""
 import os, json, time, requests, hashlib
+
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 F=os.path.join(MEM,"unsaid-questions.json")
 LM="http://172.18.16.1:1234/v1/chat/completions"
@@ -7,6 +19,7 @@ def _load():
     try: return json.load(open(F))
     except Exception: return []
 def _save(d):
+    if _sg_write(F, d[-30:], "unsaid_questions"): return
     try: json.dump(d[-30:],open(F,"w"),indent=2)
     except Exception: pass
 def _recent(n=4):

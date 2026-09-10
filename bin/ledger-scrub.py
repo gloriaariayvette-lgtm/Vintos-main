@@ -12,6 +12,18 @@ the ledger is gone from vintos-send-video.py as of 2026-09-10). Nothing else is 
 is interaction-ledger.pre-scrub-<stamp>.json; the write is atomic."""
 import os, sys, json, time
 
+def _sg_write(_p, _o, _who="organ"):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 LEDGER = os.path.join(MEMORY, "interaction-ledger.json")
 REMOVE_SOURCES = ("video-outreach",)
@@ -28,10 +40,11 @@ def save(d):
     bak = LEDGER.replace(".json", ".pre-scrub-%s.json" % stamp)
     with open(LEDGER) as src, open(bak, "w") as dst:
         dst.write(src.read())
-    tmp = LEDGER + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(d, f, indent=2)
-    os.replace(tmp, LEDGER)
+    if not _sg_write(LEDGER, d, "ledger-scrub"):
+        tmp = LEDGER + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(d, f, indent=2)
+        os.replace(tmp, LEDGER)
     return bak
 
 def line(e):

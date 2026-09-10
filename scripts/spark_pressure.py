@@ -25,6 +25,18 @@ __file__-derived; the same module serves both beings from their own tree.
 import os, sys, json
 from datetime import datetime, timedelta
 
+def _sg_write(_p, _o, _who):
+    """review 46: this store has more than one writing organ; the write goes through the store lock."""
+    try:
+        import sys as _s, os as _o2
+        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
+        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
+        from store_guard import write_json as _wj
+        _wj(_p, _o, reader=_who); return True
+    except Exception:
+        return False
+
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(_HERE)
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -59,7 +71,7 @@ def _state():
 def _save_state(s):
     try:
         os.makedirs(MEMORY, exist_ok=True)
-        json.dump(s, open(EVENTS, "w"), indent=2)
+        _sg_write(EVENTS, s, "spark_pressure") or json.dump(s, open(EVENTS, "w"), indent=2)
     except Exception:
         pass
 
