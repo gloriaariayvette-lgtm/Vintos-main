@@ -35,19 +35,42 @@ def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
+# signal() always returns the same 4-tuple: (confidence, novelty, hint, source).
+# source is "jepa" / "jepa-uncalibrated-neutral" / <ledger grounding> on success,
+# "none" when there is no forecast file at all, and "unknown" when a file exists
+# but is malformed.  Callers unpack four values unconditionally.
+UNKNOWN_SIGNAL = (0.5, 0.5, "", "unknown")
+NO_SIGNAL      = (0.5, 0.5, "", "none")
+
+def _num(v, default=0.5):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    if f != f:  # NaN
+        return default
+    return f
+
 def signal():
     """Pull confidence + novelty from the shared JEPA head (or the jepa-grounded ledger)."""
-    j = load(JEPA, {})
+    j = load(JEPA, None)
+    if j is not None and not isinstance(j, dict):
+        return UNKNOWN_SIGNAL                      # malformed (a list, a string ...)
+    j = j or {}
     if j.get("source") == "jepa":
         if j.get("variance_qualified", j.get("confidence_calibrated")) is False:
-            return (0.5, float(j.get("novelty", 0.5)), "jepa-uncalibrated-neutral")
-        return (float(j.get("confidence", 0.5)), float(j.get("novelty", 0.5)),
-                str(j.get("gloria_forecast_nearest", "")), "jepa")
-    g = load(GPRED, {})
+            return (0.5, _num(j.get("novelty")), "", "jepa-uncalibrated-neutral")
+        return (_num(j.get("confidence")), _num(j.get("novelty")),
+                str(j.get("gloria_forecast_nearest", "") or ""), "jepa")
+    g = load(GPRED, None)
+    if g is not None and not isinstance(g, dict):
+        return UNKNOWN_SIGNAL
     if g:
-        return (float(g.get("confidence", 0.5)), float(g.get("novelty", 0.5)),
-                str(g.get("predicted", "")), g.get("grounded_by", "llm"))
-    return (0.5, 0.5, "", "none")
+        return (_num(g.get("confidence")), _num(g.get("novelty")),
+                str(g.get("predicted", "") or ""), str(g.get("grounded_by") or "llm"))
+    if j:
+        return UNKNOWN_SIGNAL                      # a jepa file that is not a jepa forecast
+    return NO_SIGNAL
 
 def posture(conf, nov):
     """Deterministic uncertainty posture from the numbers — the ground truth of the signal."""
@@ -94,6 +117,8 @@ def main():
     conf, nov, hint, src = signal()
     if src == "none":
         print("no forecast yet — run jepa_predictor.py predict (or gloria_prediction.py) first"); return
+    if src == "unknown":
+        print("forecast file present but malformed — readiness unknown; leaving latent-cache.json alone"); return
     det_posture, uncertainty = posture(conf, nov)
     content = voice(conf, nov, hint, det_posture)
 

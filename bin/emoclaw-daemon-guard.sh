@@ -2,12 +2,26 @@
 # emoclaw-daemon-guard.sh — Start EmoClaw daemon safely.
 # Prevents duplicate instances. Use this instead of launching daemon directly.
 #
-# Usage: bash emoclaw-daemon-guard.sh [start|stop|status]
+# Usage: bash emoclaw-daemon-guard.sh [ensure|start|stop|status|restart]
+#   (no argument) / ensure — the cron entry point: if the daemon is down, request a
+#   start (systemctl --user start $UNIT when that unit exists, else launch daemon.py
+#   the way the unit would), with a bounded retry. Idempotent when already running.
+# See docs/emoclaw-daemon.md for ownership, socket and protocol.
 
-PID_FILE="/tmp/Vintos-emotion.pid"
-SOCK_PATH="/tmp/Vintos-emotion.sock"
-DAEMON_DIR="$HOME/.vintos/workspace/emotion_model"
+PID_FILE="${EMOCLAW_PID_FILE:-/tmp/Vintos-emotion.pid}"
+SOCK_PATH="${EMOCLAW_SOCK_PATH:-/tmp/Vintos-emotion.sock}"
+DAEMON_DIR="${EMOCLAW_DAEMON_DIR:-$HOME/.vintos/workspace/emotion_model}"
 DAEMON_CMD="python3 daemon.py"
+UNIT="${EMOCLAW_UNIT:-vintos-emotion.service}"
+DAEMON_LOG="${EMOCLAW_DAEMON_LOG:-/tmp/emoclaw-daemon.log}"
+STATE_FILE="${EMOCLAW_STATE_FILE:-$HOME/.vintos/workspace/memory/emotional-state.json}"
+ENSURE_RETRIES="${EMOCLAW_ENSURE_RETRIES:-3}"
+ENSURE_WAIT="${EMOCLAW_ENSURE_WAIT:-2}"
+
+glog() {
+    # one line per event, to the daemon's existing log path
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [EmoClaw Guard] $*" >> "$DAEMON_LOG" 2>/dev/null
+}
 
 status() {
     if [ -f "$PID_FILE" ]; then
@@ -86,14 +100,14 @@ start() {
     fi
 
     # Start daemon
-    cd "$DAEMON_DIR" || { echo "[EmoClaw Guard] Cannot cd to $DAEMON_DIR"; exit 1; }
+    cd "$DAEMON_DIR" || { echo "[EmoClaw Guard] Cannot cd to $DAEMON_DIR"; glog "cannot cd to $DAEMON_DIR"; return 1; }
     source .venv/bin/activate 2>/dev/null
 
 
     # Always restore emotion_vector from last trajectory entry
     python3 -c "
 import json
-path = '/home/gloria/.vintos/workspace/memory/emotional-state.json'
+path = '$STATE_FILE'
 try:
     with open(path) as f:
         d = json.load(f)
@@ -109,7 +123,8 @@ except Exception as e:
     print(f'[EmoClaw Guard] State restore failed: {e}')
 "
 
-    PYTHONPATH=.. nohup .venv/bin/python3 daemon.py >> /tmp/emoclaw-daemon.log 2>&1 &
+    PY=".venv/bin/python3"; [ -x "$PY" ] || PY="python3"
+    PYTHONPATH=.. nohup "$PY" daemon.py >> "$DAEMON_LOG" 2>&1 &
     NEW_PID=$!
     echo "$NEW_PID" > "$PID_FILE"
     echo "[EmoClaw Guard] Started daemon PID $NEW_PID"
@@ -119,13 +134,53 @@ except Exception as e:
     if kill -0 "$NEW_PID" 2>/dev/null; then
         echo "[EmoClaw Guard] Daemon healthy"
     else
-        echo "[EmoClaw Guard] WARNING: Daemon died immediately! Check /tmp/emoclaw-daemon.log"
+        echo "[EmoClaw Guard] WARNING: Daemon died immediately! Check $DAEMON_LOG"
         rm -f "$PID_FILE"
         return 1
     fi
 }
 
-case "${1:-status}" in
+unit_exists() {
+    command -v systemctl >/dev/null 2>&1 || return 1
+    systemctl --user list-unit-files "$UNIT" 2>/dev/null | grep -q "^$UNIT"
+}
+
+# Request a start the way the daemon is normally owned: the user unit if it is
+# installed, otherwise the direct launch above. Returns non-zero if the request failed.
+request_start() {
+    if unit_exists; then
+        glog "daemon down — requesting systemctl --user start $UNIT"
+        systemctl --user start "$UNIT" >/dev/null 2>&1
+    else
+        glog "daemon down — unit $UNIT not installed, launching $DAEMON_DIR/daemon.py directly"
+        start >/dev/null
+    fi
+}
+
+ensure() {
+    # Idempotent: a running daemon means nothing to do and no log line.
+    if status >/dev/null 2>&1; then
+        echo "[EmoClaw Guard] Daemon running — nothing to do"
+        return 0
+    fi
+    local attempt=1
+    while [ "$attempt" -le "$ENSURE_RETRIES" ]; do
+        request_start
+        sleep "$ENSURE_WAIT"
+        if status >/dev/null 2>&1; then
+            glog "daemon up after start request (attempt $attempt/$ENSURE_RETRIES)"
+            echo "[EmoClaw Guard] Daemon started (attempt $attempt)"
+            return 0
+        fi
+        attempt=$((attempt + 1))
+    done
+    glog "daemon still down after $ENSURE_RETRIES start attempts — giving up until next run"
+    echo "[EmoClaw Guard] Daemon still down after $ENSURE_RETRIES attempts (see $DAEMON_LOG)"
+    return 1
+}
+
+case "${1:-ensure}" in
+    ensure) ensure ;;
     start)  start ;;
     stop)   stop ;;
     status) status ;;
@@ -135,6 +190,6 @@ case "${1:-status}" in
         start
         ;;
     *)
-        echo "Usage: emoclaw-daemon-guard.sh [start|stop|status|restart]"
+        echo "Usage: emoclaw-daemon-guard.sh [ensure|start|stop|status|restart]"
         ;;
 esac

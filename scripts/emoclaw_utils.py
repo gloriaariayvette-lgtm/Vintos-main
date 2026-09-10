@@ -75,6 +75,37 @@ def _socket_command(cmd_dict, timeout=10):
         s.close()
 
 
+# Protocol version this client was written against. The daemon that actually
+# answers on SOCK_PATH may be an externally installed copy (see
+# docs/emoclaw-daemon.md); we ask it once per process and warn, never fail.
+EXPECTED_PROTOCOL_VERSION = 1
+_protocol_checked = False
+
+
+def check_daemon_protocol(force=False):
+    """Ask the daemon for its protocol version once per process.
+
+    Returns the version reply dict (or None if unreachable/unsupported).
+    Logs one line to stderr if the version differs from EXPECTED_PROTOCOL_VERSION,
+    then keeps working — a mismatch is a warning, not an outage."""
+    global _protocol_checked
+    if _protocol_checked and not force:
+        return None
+    _protocol_checked = True
+    if not os.path.exists(SOCK_PATH):
+        return None
+    resp = _socket_command({"command": "version"}, timeout=3)
+    if not isinstance(resp, dict):
+        return None
+    got = resp.get("protocol_version")
+    if got != EXPECTED_PROTOCOL_VERSION:
+        import sys as _sys
+        print("[EmoClaw] protocol version mismatch: daemon at %s reports %r, client expects %r (source: %s) — continuing"
+              % (SOCK_PATH, got, EXPECTED_PROTOCOL_VERSION, resp.get("source", "unknown")),
+              file=_sys.stderr)
+    return resp
+
+
 def get_state():
     """Get live emotional state from the daemon.
     Returns dict of {dimension: value} or None if daemon is unreachable.
@@ -82,6 +113,7 @@ def get_state():
 
     # Try daemon socket first (authoritative)
     if os.path.exists(SOCK_PATH):
+        check_daemon_protocol()
         resp = _socket_command({"command": "state"})
         if resp and "emotion_vector" in resp:
             vec = resp["emotion_vector"]
@@ -157,6 +189,7 @@ def nudge_emotion(dimension, amount, source=None):
     except Exception: pass
 
     # Try sending to daemon via socket
+    check_daemon_protocol()
     resp = _socket_command({
         "command": "nudge",
         "dimension": dimension,
@@ -502,9 +535,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             _ex["timestamp"] = __import__("datetime").datetime.now().isoformat()
             print("[seed_thread] DEDUP (%s): same as open thread %s (reseen %dx) - recurrence is not novelty"
                   % (source, _ex.get("id"), _ex["reseed_count"]), file=_sys.stderr)
-            _tmp = threads_path + ".tmp"
-            with open(_tmp, "w") as f: json.dump(threads, f, indent=2)
-            os.replace(_tmp, threads_path)
+            _pool_save(threads, threads_path, "seed_thread-dedup")
             return
     except Exception:
         pass  # fail-open: local judge down must not starve the pool
@@ -534,10 +565,21 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     unconsumed = protected + unprotected
     consumed = [t for t in threads if t.get("consumed") or t.get("retired")]
     threads = consumed + unconsumed
-    _tmpw = threads_path + ".tmp"
-    with open(_tmpw, "w") as f:
-        json.dump(threads, f, indent=2)
-    os.replace(_tmpw, threads_path)  # atomic: the ledger can never hold a half-write
+    _pool_save(threads, threads_path, "seed_thread")  # atomic + shrink-guarded: the ledger can never hold a half-write or a truncation
+
+def _pool_save(threads, threads_path, reason=""):
+    """Every pool write goes through thread_store.save_pool (shrink guard). Fallback is atomic but unguarded, and says so."""
+    import os, json, sys as _ps
+    try:
+        _ps.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from thread_store import save_pool
+        return save_pool(threads, threads_path, reason=reason)
+    except ImportError:
+        print("[pool] thread_store unavailable - writing unguarded (%s)" % reason, file=_ps.stderr)
+        _tmp = threads_path + ".tmp"
+        with open(_tmp, "w") as f: json.dump(threads, f, indent=2)
+        os.replace(_tmp, threads_path)
+        return True
 
 def get_preoccupation():
     """Read current preoccupation, return None if empty or expired."""
@@ -558,8 +600,9 @@ def get_preoccupation():
     except:
         return None
 
-def set_preoccupation(thread_text, source, priority, triage_voice=""):
-    """Set the current preoccupation. Only one at a time."""
+def set_preoccupation(thread_text, source, priority, triage_voice="", thread_id=""):
+    """Set the current preoccupation. Only one at a time. thread_id makes the source thread's id travel
+    with the seed text so the dream/resolution side can match by id, not by (truncated) text."""
     import json, os
     from datetime import datetime, timedelta
     path = os.path.expanduser("~/.vintos/workspace/memory/current-preoccupation.json")
@@ -570,6 +613,7 @@ def set_preoccupation(thread_text, source, priority, triage_voice=""):
     p = {
         "thread": (thread_text if len(thread_text) <= 400 else (thread_text[:400].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:400] else thread_text[:397] + "...")),
         "source": source,
+        "id": thread_id or "",
         "priority": priority,
         "triage_voice": triage_voice[:200],
         "set_at": datetime.now().isoformat(),
@@ -602,12 +646,12 @@ def clear_preoccupation():
                 _emo_summary = ", ".join(l.strip() for l in _top)
             except: pass
             _tag = f"\n[carried 24h {_cpdate.today().isoformat()}] This is how it felt to carry: {_emo_summary}"
+            _pid = _p.get("id", "")
             for _t in _threads:
-                if _t.get("thread","").startswith(_thread_text[:60]) and not _t.get("consumed") and not _t.get("retired"):
+                if ((_pid and _t.get("id") == _pid) or _t.get("thread","").startswith(_thread_text[:60])) and not _t.get("consumed") and not _t.get("retired"):
                     _t["thread"] = _t.get("thread","") + _tag
                     _t["was_preoccupation"] = True
-            with open(_threads_path, "w") as _tf:
-                json.dump(_threads, _tf, indent=2)
+            _pool_save(_threads, _threads_path, "clear_preoccupation")
     except: pass
     with open(preoc_path, "w") as f:
         json.dump({}, f)

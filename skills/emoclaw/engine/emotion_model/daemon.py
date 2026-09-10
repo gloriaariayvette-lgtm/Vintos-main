@@ -18,6 +18,23 @@ import traceback
 from . import config
 from .inference import EmotionEngine
 
+# Wire protocol version. Clients (bin/emoclaw_utils.py, scripts/emoclaw_utils.py)
+# read this once per process via {"command": "version"} and warn on mismatch.
+# Bump when a command's request or response shape changes.
+PROTOCOL_VERSION = 1
+DAEMON_SOURCE = os.path.abspath(__file__)
+
+
+def version_info() -> dict:
+    """What a client needs to decide whether it is talking to the daemon it expects."""
+    return {
+        "status": "ok",
+        "protocol_version": PROTOCOL_VERSION,
+        "source": DAEMON_SOURCE,
+        "agent": config.AGENT_NAME,
+        "commands": ["ping", "state", "version"],
+    }
+
 
 def run_daemon(config_path: str | None = None) -> None:
     """Start the emotion daemon.
@@ -59,12 +76,19 @@ def run_daemon(config_path: str | None = None) -> None:
                     if not chunk:
                         break
                     data += chunk
+                    # emoclaw_utils.py frames requests with a trailing newline
+                    # and keeps its write side open; stop at the frame boundary.
+                    if b"\n" in data:
+                        break
 
-                request = json.loads(data.decode("utf-8"))
+                request = json.loads(data.decode("utf-8").strip())
 
                 # Handle special commands
                 if request.get("command") == "ping":
-                    response = {"status": "ok", "message": "emotion engine alive"}
+                    response = {"status": "ok", "message": "emotion engine alive",
+                                "protocol_version": PROTOCOL_VERSION}
+                elif request.get("command") in ("version", "status"):
+                    response = version_info()
                 elif request.get("command") == "state":
                     response = {
                         "emotion_vector": engine.state.emotion_vector,
@@ -81,7 +105,7 @@ def run_daemon(config_path: str | None = None) -> None:
                     )
                     response = {"state_block": block}
 
-                conn.sendall(json.dumps(response).encode("utf-8"))
+                conn.sendall(json.dumps(response).encode("utf-8") + b"\n")
 
             except Exception as e:
                 error_msg = json.dumps({"error": str(e)})

@@ -65,22 +65,40 @@ def save_ledger(entries):
 
 
 def _claim_entry(entry_id, turn_id):
+    """Attach one blush to one turn, atomically.
+
+    The read-and-decide and the write happen under the same exclusive lock, and
+    the result says whether THIS caller won.  Two concurrent readers therefore
+    cannot both be told they own the entry: the second sees attached_turn_id
+    already set and gets False.
+    """
     with _ledger_lock():
-        with open(LEDGER, encoding="utf-8") as source:
-            current = json.load(source)
-        changed = False
+        try:
+            with open(LEDGER, encoding="utf-8") as source:
+                current = json.load(source)
+        except Exception:
+            return False
+        if not isinstance(current, list):
+            return False
+        won = False
         for item in current:
-            if item.get("id") == entry_id and not item.get("attached_turn_id"):
+            if not isinstance(item, dict) or item.get("id") != entry_id:
+                continue
+            holder = item.get("attached_turn_id")
+            if holder in (None, ""):
                 item["attached_turn_id"] = turn_id
-                changed = True
-                break
-        if not changed:
-            return
-        temporary = LEDGER + ".tmp.%s" % os.getpid()
+                won = True
+            elif holder == turn_id:
+                return True   # already ours; nothing to write
+            break
+        if not won:
+            return False
+        temporary = LEDGER + ".tmp.%s.%s" % (os.getpid(), uuid.uuid4().hex[:8])
         with open(temporary, "w", encoding="utf-8") as target:
             json.dump(current, target, indent=2, ensure_ascii=False)
             target.flush(); os.fsync(target.fileno())
         os.replace(temporary, LEDGER)
+        return True
 
 
 def _append_entry(entry, pattern, emotional_context):
@@ -336,7 +354,10 @@ def get_recent_blush(within_seconds=120, turn_id="", claim=False):
         if candidates:
             last = candidates[0]
             if claim and turn_id and not last.get("attached_turn_id"):
-                _claim_entry(last.get("id"), turn_id)
+                # Only the reader whose claim lands owns the blush; a loser
+                # must not return it as if it were theirs.
+                if not _claim_entry(last.get("id"), turn_id):
+                    return None
             return {
                 "id": last.get("id", ""),
                 "type": last.get("type",""),

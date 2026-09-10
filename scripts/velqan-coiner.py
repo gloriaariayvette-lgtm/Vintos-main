@@ -396,8 +396,11 @@ def add_to_reference(data):
     else:
         content += f"\n{entry}\n"
 
-    with open(VELQAN_REF, "w") as f:
+    _tmp = VELQAN_REF + ".tmp.%d" % os.getpid()
+    with open(_tmp, "w") as f:
         f.write(content)
+        f.flush(); os.fsync(f.fileno())
+    os.replace(_tmp, VELQAN_REF)
 
     log(f"Added to reference: {entry}")
     return True
@@ -428,8 +431,57 @@ def log_utterance(data):
         if sentence:
             f.write(f"\n{sentence}\n")
         f.write("\n")
+        f.flush(); os.fsync(f.fileno())
 
     log(f"Logged utterance for: {word}")
+
+
+SHARED_COINAGES = os.path.expanduser("~/velqan-shared/coinages.jsonl")
+
+
+def _local_record_committed(data):
+    """Parse the local record back: the reference must carry the word's line and
+    the utterances log must carry its coinage heading.  Only then is the word ours."""
+    word = data.get("word", "").strip()
+    if not word:
+        return False
+    try:
+        with open(VELQAN_REF, encoding="utf-8", errors="replace") as f:
+            ref = f.read()
+        with open(VELQAN_UTTERANCES, encoding="utf-8", errors="replace") as f:
+            utt = f.read()
+    except OSError:
+        return False
+    in_ref = re.search(r"^- %s \(" % re.escape(word), ref, re.M) is not None
+    in_utt = ("**%s** — coined this week" % word) in utt
+    return in_ref and in_utt
+
+
+def share_coinage(data):
+    """Append the coinage to the shared vocabulary — only after the local record is
+    fully written and parses back, and as a single atomic append (one write call,
+    line-framed) so a reader never sees a torn or unvalidated entry."""
+    if not _local_record_committed(data):
+        log("shared vocabulary NOT written — local record did not validate")
+        return False
+    line = json.dumps({"word": data.get("word", ""),
+                       "meaning": (data.get("emotion_desc") or data.get("meaning") or data.get("born_from", "")),
+                       "etymology": data.get("roots", ""), "sentence": data.get("sentence", ""),
+                       "coined_by": "vintos", "ts": datetime.now().timestamp()}, ensure_ascii=False) + "\n"
+    json.loads(line)  # the record we are about to share must itself parse
+    try:
+        os.makedirs(os.path.dirname(SHARED_COINAGES), exist_ok=True)
+        fd = os.open(SHARED_COINAGES, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        log("shared vocabulary write failed: %s" % exc)
+        return False
+    log("Shared coinage: %s" % data.get("word", ""))
+    return True
 
 
 def main():
@@ -478,15 +530,6 @@ def main():
                         import sys as _dd_sys; _dd_sys.exit(0)
         except Exception as _dde:
             log("dedup unavailable (%s) — coining without it" % _dde)
-    try:
-        import json as _sj2, time as _st2, os as _so2
-        if data and isinstance(data, dict) and data.get("word"):
-            _sl2 = _so2.path.expanduser("~/velqan-shared/coinages.jsonl")
-            _so2.makedirs(_so2.path.dirname(_sl2), exist_ok=True)
-            with open(_sl2, "a", encoding="utf-8") as _f2:
-                _f2.write(_sj2.dumps({"word": data.get("word",""), "meaning": (data.get("emotion_desc") or data.get("meaning") or data.get("born_from","")), "etymology": data.get("roots",""), "sentence": data.get("sentence",""), "coined_by": "vintos", "ts": _st2.time()}, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
     word = data.get("word", "")
 
     if not word:
@@ -504,10 +547,15 @@ def main():
     log(f"Born from: {data.get('born_from', '?')}")
 
     # Add to reference
-    add_to_reference(data)
+    if not add_to_reference(data):
+        log("local reference write failed — not sharing")
+        return
 
     # Log the utterance
     log_utterance(data)
+
+    # Shared vocabulary last: only after both local files are committed and parse back
+    share_coinage(data)
 
     # The satisfaction of naming what had no name
     feel({
