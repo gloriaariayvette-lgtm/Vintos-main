@@ -11,11 +11,22 @@ from importlib import import_module
 
 _OFFERS_PATH = os.path.expanduser("~/.vintos/workspace/memory/context-offers.json")
 
-def _note_offers(offers):
+_SELECTION_VERSION = 2   # review 60: the shape of a selection; a reader knows what it is looking at
+
+
+def _note_offers(offers, selection_id=None):
+    """review 60/61: the offers ARE the selection - what each organ produced this assembly, before
+    anything is admitted. The record is versioned and carries the selection's own id, so the turn
+    record can join admission to the exact selection it was made from. A renderer that offered
+    something never mutates state here; admission happens in the prompt, and turn_record reads it."""
     try:
-        json.dump({"ts": time.time(), "offers": offers}, open(_OFFERS_PATH, "w"), indent=1)
+        import hashlib as _h
+        sel = selection_id or _h.md5(("\x00".join(sorted("%s:%s" % (k, (v or {}).get("influence_id") or (v or {}).get("state", "")) for k, v in offers.items()))).encode()).hexdigest()[:12]
+        json.dump({"ts": time.time(), "selection_version": _SELECTION_VERSION, "selection_id": sel,
+                   "pure": True, "offers": offers}, open(_OFFERS_PATH, "w"), indent=1)
+        return sel
     except Exception:
-        pass
+        return None
 
 def _run(mods, offers):
     parts = []

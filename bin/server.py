@@ -318,7 +318,13 @@ def _self_model(budget=1200):
         except Exception: return ""
 
 def inner_life_context() -> str:
-    """Gather Vintos inner life for chat context."""
+    """Gather Vintos inner life for chat context.
+
+    review 64: this is the ONE assembler of the inner layer for every surface. The organs offer
+    (inner_context records what each offered, as a pure versioned selection); this function admits;
+    turn_record writes which blocks were admitted, their excerpts and the reason for each omission.
+    No other function assembles a second inner context - the shadowed duplicate was removed (b8afed3).
+    """
     parts = []
     # Gloria's live pulse from her ring — first, because a body reading is the
     # most present thing here. Silent when no fresh reading exists.
@@ -2069,6 +2075,27 @@ async def get_pearls():
             except: pass
     except: pass
     return result
+
+@app.get("/api/system/capabilities")
+async def system_capabilities(request: Request):
+    """review 319: the live capability list (the router's own), so no client keeps a fixed copy that
+    hides a route or invents one. Guarded like every other system route."""
+    _require_secret(request)
+    try:
+        import importlib.util as _cu, sys as _cs
+        _p = os.path.join(WORKSPACE, "scripts", "wants-router.py")
+        if not os.path.exists(_p):
+            _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wants-router.py")
+        _spec = _cu.spec_from_file_location("_wr_caps", _p)
+        _m = _cu.module_from_spec(_spec); _cs.modules["_wr_caps"] = _m
+        _spec.loader.exec_module(_m)
+        caps = [{"action": c.get("action"), "description": c.get("desc"), "keywords": (c.get("keywords") or [])[:8]}
+                for c in getattr(_m, "CAPABILITIES", [])]
+    except Exception as e:
+        return {"ok": False, "error": "capability list unavailable: %s" % str(e)[:120], "capabilities": []}
+    return {"ok": True, "count": len(caps), "capabilities": caps,
+            "note": "the router's own list; a client carrying a fixed copy will drift from this"}
+
 
 @app.get("/api/system/status")
 async def get_system_status(request: Request):

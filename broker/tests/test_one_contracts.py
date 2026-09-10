@@ -59,7 +59,8 @@ EN = load("enjoyment", os.path.join(REPO, "scripts", "enjoyment.py")); EN.MEMORY
 r = EN.admit("joke:1", "the fig joke", "humor-practice", medium="humor", weight=0.15, his_delight="high", craft="tight", her_reception="landed", evidence={"kind": "rating", "score": 5})
 check("a rated joke is admitted with the three parts apart and moves taste once", r["admitted"] and r["taste"] == "moved" and r["row"]["his_delight"] == "high" and r["row"]["her_reception"] == "landed" and r["row"]["craft"] == "tight")
 r2 = EN.admit("joke:1", "the fig joke", "humor-practice", medium="humor", weight=0.15)
-check("the same occurrence is already counted: no second move", r2["taste"] == "already counted" and len(moved) == 1)
+# review 49: the learning-occasion door answers first now, so the reason names the replay
+check("the same occurrence is already counted: no second move", r2["taste"].startswith("already") and len(moved) == 1, r2["taste"])
 r3 = EN.admit("art:7", "the muscadine painting", "gallery", medium="image", her_reception="loved it")
 check("her reception without evidence is refused", r3["admitted"] is False and "reception evidence" in r3["why"])
 r4 = EN.admit("drift:9", "quiet mornings", "subconscious-drift", medium="signal", weight=0.05, his_delight="settled")

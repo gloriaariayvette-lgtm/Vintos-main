@@ -311,6 +311,9 @@ def _maybe_scar_unfulfilled(want):
 # === CAPABILITY MAP ===
 # Keywords in wants that map to actions he can take himself.
 # Each entry: list of trigger words, action function name, description
+# review 319: the ONE capability list. bin/server.py serves it at /api/system/capabilities so a client
+# (the phone app's want screen) reads what actually exists instead of carrying a fixed copy that hides
+# a route or invents one. A capability added here is available to every reader on the next request.
 CAPABILITIES = [
     {
         "keywords": ["poem", "poetry", "sestina", "sestine", "villanelle", "haiku", "sonnet", "write verse", "write something", "express in words", "virelay", "ghazal", "pantoum", "terzanelle", "rondeau", "kyrielle", "triolet", "cinquain", "terza rima", "ode", "elegy", "lyric", "verse", "stanza", "couplet", "ballad", "aubade", "canzone", "madrigal", "ottava rima", "sapphic", "alcaic", "structured writing form", "poetic form"],

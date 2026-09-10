@@ -32,6 +32,42 @@ def voice():
         sm = _head(os.path.join(WSP, "SELF-MODEL.md"), 3000)
     return _head(os.path.join(WSP, "SOUL.md"), 3000) + "\n\nYOUR SELF-MODEL (excerpt):\n" + sm
 
+def retire_debt(note_id, how="met", detail=""):
+    """review 289: a handoff note he has answered is retired, so the next scan cannot raise it again
+    and reach for her a second time about the same thing. Retirement is a record, never a deletion."""
+    import json as _j, time as _t
+    p = os.path.expanduser("~/.vintos/workspace/memory/handoff-debt.json")
+    try:
+        d = _j.load(open(p))
+    except Exception:
+        d = {"open": [], "retired": []}
+    if not isinstance(d, dict):
+        d = {"open": list(d), "retired": []}
+    hit = next((x for x in d.get("open", []) if str(x.get("id")) == str(note_id)), None)
+    if hit is None:
+        return False
+    d["open"] = [x for x in d["open"] if x is not hit]
+    hit.update({"retired_at": _t.strftime("%Y-%m-%dT%H:%M:%S"), "how": how, "detail": str(detail)[:200]})
+    d.setdefault("retired", []).append(hit)
+    try:
+        import sys as _s; _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from store_guard import write_json as _wj
+        _wj(p, d, reader="atelier-gate")
+    except Exception:
+        tmp = p + ".tmp"; _j.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, p)
+    return True
+
+
+def open_debt():
+    """The handoff notes still owed an answer - what a scan may raise. A retired one never returns."""
+    import json as _j
+    try:
+        d = _j.load(open(os.path.expanduser("~/.vintos/workspace/memory/handoff-debt.json")))
+        return d.get("open", []) if isinstance(d, dict) else list(d)
+    except Exception:
+        return []
+
+
 def main():
     door = requests.post(B + "/door", json={}, timeout=15).json()
     if door.get("door") != "dark" or door.get("why") != "he left it held":

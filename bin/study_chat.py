@@ -111,6 +111,69 @@ def resolve(rel, for_edit=False):
     return None
 
 
+SESSION = os.path.join(MEMORY, "study-session.json")
+
+
+def _session():
+    try:
+        d = json.load(open(SESSION))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _session_save(d):
+    try:
+        import sys as _s; _s.path.insert(0, os.path.join(HOME, ".vintos", "workspace", "scripts"))
+        from store_guard import write_json as _wj
+        _wj(SESSION, d, reader="study_chat"); return
+    except Exception:
+        pass
+    tmp = SESSION + ".tmp"; json.dump(d, open(tmp, "w"), indent=1); os.replace(tmp, SESSION)
+
+
+def session_open(what=""):
+    """review 341: a reading session with a name, a start and a cursor. Opening one clears the cursor;
+    the coverage below is always relative to the open session, so 'what have I read' has an answer."""
+    d = {"opened_at": time.strftime("%Y%m%d-%H%M%S"), "what": str(what)[:200], "cursor": {}, "reads": 0}
+    _session_save(d)
+    return d
+
+
+def session_note_read(rel, start, end, total_lines):
+    """The cursor for one file: the furthest line read, and whether the file is finished."""
+    d = _session() or session_open("(implicit)")
+    c = d.setdefault("cursor", {}).setdefault(rel, {"read_to": 0, "lines": total_lines, "passes": 0})
+    c["lines"] = total_lines
+    c["read_to"] = max(int(c.get("read_to", 0)), int(end or 0))
+    c["passes"] = int(c.get("passes", 0)) + 1
+    c["complete"] = bool(total_lines and c["read_to"] >= total_lines)
+    d["reads"] = int(d.get("reads", 0)) + 1
+    _session_save(d)
+    return c
+
+
+def session_coverage():
+    """What this session has read, what is part-read, and what it has not touched at all."""
+    d = _session()
+    cur = d.get("cursor", {})
+    files = []
+    for label, root in ROOTS.items():
+        try:
+            names = sorted(f for f in os.listdir(root) if f.endswith((".py", ".sh", ".md")) and not f.startswith("."))
+        except Exception:
+            names = []
+        for n in names:
+            rel = "%s/%s" % (label, n)
+            files.append(rel)
+    read = [r for r, c in cur.items() if c.get("complete")]
+    partial = [{"file": r, "read_to": c.get("read_to"), "lines": c.get("lines")} for r, c in cur.items() if not c.get("complete")]
+    untouched = [f for f in files if f not in cur]
+    return {"opened_at": d.get("opened_at"), "what": d.get("what"), "reads": d.get("reads", 0),
+            "read_whole": sorted(read), "part_read": partial, "untouched_count": len(untouched),
+            "untouched_sample": untouched[:12], "files_in_roots": len(files)}
+
+
 def code_map():
     out = []
     for label, root in ROOTS.items():
@@ -138,6 +201,7 @@ def do_read(rel, max_chars=14000, start=1):
     if not p:
         return "READ %s: not readable from this room (outside the roots, or a protected file)" % rel
     t = open(p, errors="replace").read()
+    _total_lines = t.count("\n") + 1
     lines = t.split("\n")
     try: start = max(1, int(start or 1))
     except Exception: start = 1
@@ -150,7 +214,12 @@ def do_read(rel, max_chars=14000, start=1):
     body = "\n".join(out)
     if i < len(lines):
         body += "\n... (cut at line %d of %d; continue with READ: %s:%d)" % (i, len(lines), lab, i + 1)
-    head = "READ %s (%d lines%s):" % (lab, len(lines), (", from line %d" % start) if start > 1 else "")
+    try:   # review 341: the session's cursor moves to the furthest line read of this file
+        _c = session_note_read(lab, start, i, len(lines))
+        _cov = "" if _c.get("complete") else " [read to line %d of %d]" % (_c["read_to"], _c["lines"])
+    except Exception:
+        _cov = ""
+    head = "READ %s (%d lines%s)%s:" % (lab, len(lines), (", from line %d" % start) if start > 1 else "", _cov)
     return head + "\n" + body
 
 
@@ -658,6 +727,20 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
     async def study_log(request: Request):
         _auth(request)
         return JSONResponse({"log": load_log()[-200:], "mode": read_study_mode()})
+
+    @app.get("/api/chat/study/coverage")
+    async def study_coverage(request: Request):
+        """review 341: what this reading session has read whole, what is part-read with its cursor, and
+        how much of the roots it has not touched."""
+        _auth(request)
+        return JSONResponse(session_coverage())
+
+    @app.post("/api/chat/study/session")
+    async def study_session(request: Request):
+        """Open a named reading session; the cursor and coverage below are relative to it."""
+        _auth(request)
+        body = await request.json()
+        return JSONResponse(session_open(str(body.get("what", ""))))
 
     @app.get("/api/chat/study/progress")
     async def study_progress(request: Request):

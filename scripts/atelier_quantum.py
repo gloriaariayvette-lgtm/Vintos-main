@@ -59,7 +59,14 @@ def request(body, timeout=900):
         done = subprocess.run(_command(cfg), input=json.dumps(body), text=True,
                               capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "configured": True, "error": "QLab timed out"}
+        # review 175: the shared retry policy decides, not this module's own numbers
+        try:
+            import sys as _rp_s, os as _rp_o; _rp_s.path.insert(0, _rp_o.path.dirname(_rp_o.path.abspath(__file__)))
+            from retry_policy import should_retry as _sr
+            _retry, _wait, _why = _sr("transport", 1, "timeout")
+        except Exception:
+            _retry, _wait, _why = False, 0, "retry policy unavailable"
+        return {"ok": False, "configured": True, "error": "QLab timed out", "retry": _retry, "retry_after_s": _wait, "retry_why": _why}
     except Exception as e:
         return {"ok": False, "configured": True, "error": "QLab doorway failed: %s" % e}
     if done.returncode and not done.stdout.strip():

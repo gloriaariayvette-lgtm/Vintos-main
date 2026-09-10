@@ -525,6 +525,11 @@ def save_discovery(question, query, results, synthesis, session=None):
         "session_id": session.get("id"),
         "outcome": session.get("outcome"),
         "remaining_unknown": str(session.get("remaining_unknown") or "")[:300],
+        # review 284: what the earlier attempts actually ESTABLISHED travels with the continuation, so a
+        # next pass builds on the claims already supported instead of asking the same question again
+        "established": [{"claim": str(a.get("synthesis", ""))[:200], "grade": a.get("graded"),
+                         "sources": [str(s)[:120] for s in (a.get("sources") or [])][:3]}
+                        for a in (session.get("attempts") or []) if a.get("graded") in ("ANSWERED", "PARTIAL")][-4:],
         "evidence": [r.get("url") for r in results[:5] if isinstance(r, dict) and r.get("url")],
     })
     log_data["searches"] = log_data["searches"][-100:]

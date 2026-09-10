@@ -47,6 +47,12 @@ def record(question, pull=0.6, source="chat", object=None, kind=None, reason=Non
         ex["last_seen"] = now
         if occ in ex.setdefault("occasions", []):
             _save(d); return
+        try:   # review 49: the one learning-occasion door; a replay of this occasion teaches nothing new
+            import learning_occasion as _lo
+            if not _lo.teach("curiosity:" + h, occ)["first"]:
+                _save(d); return
+        except ImportError:
+            pass
         ex["occasions"] = (ex["occasions"] + [occ])[-40:]
         ex["pull"] = min(1.0, ex.get("pull", 0.5) + 0.12)
         if evidence: ex["evidence"] = evidence
