@@ -368,11 +368,20 @@ def turn_completed(input_text="", source="turn"):
     update_direction(input_text)
     state = load_state()
     current = state.get("current_direction", "")
-    if current:
+    # review 220: a direction reached BY a control (a mode block, a lead plan, a stratagem) is that
+    # control's own effect, not evidence that this is how he tends. Only a lived turn is a choice.
+    if current and source in ("turn", "chat", "voice", "avatar"):
         try:
             from self_drift import record_direction_choice as _rdc
             try: _rdc(current, source=source)
             except TypeError: _rdc(current)
+        except Exception:
+            pass
+    elif current:
+        try:
+            with open(os.path.join(MEMORY, "control-effects.jsonl"), "a") as _cf:
+                _cf.write(json.dumps({"at": datetime.now().isoformat(), "direction": current, "source": source,
+                                      "note": "a control produced this direction; not recorded as his choice"}) + "\n")
         except Exception:
             pass
     return current

@@ -302,7 +302,8 @@ def compare_prediction():
         import sys as _gcs; _gcs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _gcs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
         import grading_contract as _gc
         _gc.record("self_state", _compared_id, "STALE" if result.get("stale") else "GRADED", predicted=predicted, actual=actual,
-                   interpretation="%s; %d/%d dims off" % (result.get("interpretation", ""), result["miss_count"], result["total_dims"]), provenance=provenance)
+                   interpretation="%s; %d/%d dims off" % (result.get("interpretation", ""), result["miss_count"], result["total_dims"]), provenance=provenance,
+                   horizon_s=_horizon, elapsed_s=_elapsed)   # review 200/205: matched horizon
     except Exception: pass
     return result
 

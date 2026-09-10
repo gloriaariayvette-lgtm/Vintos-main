@@ -42,6 +42,9 @@ def admit(occurrence_id, text, source, medium="", weight=0.3, positive=True, his
     except Exception as e:
         taste = "taste organ unavailable: %s" % str(e)[:80]
     row["taste"] = taste
+    if taste == "moved":   # review 215: admission through this door is the candidate's promotion
+        try: candidate(occurrence_id, text, medium, "promoted", rating=her_reception or his_delight, why="admitted to taste")
+        except Exception: pass
     try:
         os.makedirs(MEMORY, exist_ok=True)
         with open(LEDGER, "a") as f:
@@ -49,6 +52,40 @@ def admit(occurrence_id, text, source, medium="", weight=0.3, positive=True, his
     except OSError:
         pass
     return {"admitted": True, "taste": taste, "row": row}
+
+
+CANDIDATE_STATES = ("proposed", "used", "rated", "promoted", "dropped")
+
+
+def candidate(occurrence_id, text, medium="", state="proposed", rating=None, why=""):
+    """review 215: a preference candidate moves through named states - proposed (he made it), used (it
+    was actually put in front of her), rated (she or he graded it), promoted (it became taste: admitted
+    through the door above) or dropped (with a reason). Every move is appended; nothing is overwritten,
+    so a revised rating is a new row, not a rewrite."""
+    if state not in CANDIDATE_STATES:
+        raise ValueError("state %r not in %s" % (state, CANDIDATE_STATES))
+    row = {"occurrence_id": str(occurrence_id), "text": str(text)[:300], "medium": medium, "state": state,
+           "rating": rating, "why": str(why)[:200], "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    try:
+        os.makedirs(MEMORY, exist_ok=True)
+        with open(os.path.join(MEMORY, "taste-candidates.jsonl"), "a") as f:
+            f.write(json.dumps(row) + "\n")
+    except OSError:
+        pass
+    return row
+
+
+def candidate_history(occurrence_id=None):
+    """Every move of every candidate, or of one; the last row is its current state."""
+    out = []
+    try:
+        for ln in open(os.path.join(MEMORY, "taste-candidates.jsonl")):
+            try: r = json.loads(ln)
+            except Exception: continue
+            if occurrence_id is None or r.get("occurrence_id") == str(occurrence_id): out.append(r)
+    except Exception:
+        pass
+    return out
 
 
 def ledger(limit=50, medium=None):

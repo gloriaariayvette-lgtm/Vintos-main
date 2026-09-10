@@ -279,6 +279,12 @@ def predict():
     turns = turns_of(load(CHAT, []))
     if len(turns) < 2:
         log("no context"); return
+    # review 184: the context a forecast is made from is live exchange only. A turn below the ledger
+    # floor (transplanted from another being) or marked imported never shapes a forecast about her.
+    _floor = _ledger_floor()
+    turns = [t for t in turns if not t.get("imported") and (not _floor or str(t.get("timestamp", "")) >= _floor or not t.get("timestamp"))]
+    if len(turns) < 2:
+        log("no live context above the ledger floor"); return
     enc = encoder()
     ctx = " \n".join(str(t.get("content", ""))[:300] for t in turns[-CTX_TURNS:])
     xe = np.asarray(enc.encode([ctx], show_progress_bar=False), dtype="float32")
@@ -326,6 +332,13 @@ def predict():
 
     def _qual(c):   # per-head qualification state, explicit (astra-models-p6)
         return "qualified" if c is not None else ("unavailable" if _lv_mean is None else "unqualified_spreadless")
+    # review 202/207: whether a head may steer is the CALIBRATION verdict on held-out evidence against
+    # versioned criteria, never the variance spread. Withheld and insufficient are named, not silent.
+    try:
+        import calibration as _cal
+        _cal_v = {h: _cal.verdict(h) for h in ("gloria", "self")}
+    except Exception as _ce:
+        _cal_v = {h: {"state": "INSUFFICIENT", "why": "calibration module unavailable: %s" % str(_ce)[:60]} for h in ("gloria", "self")}
     try:
         _ck_id = hashlib.md5((str(os.path.getmtime(MODEL)) + str(os.path.getsize(MODEL))).encode()).hexdigest()[:10]
     except Exception:
@@ -337,13 +350,14 @@ def predict():
            "context_last_event": (turns[-1].get("event_id") if turns else None),
            "checkpoint_id": _ck_id,
            "qualification": {"gloria": _qual(_cg), "self": _qual(_cs), "presence": _qual(_cp)},
-           "steering_allowed": False,   # until a held-out or prospective evaluation says the uncertainty is calibrated (jepa-calibration.json)
+           "steering_allowed": all(v.get("state") == "RELEASED" for v in _cal_v.values()),
+           "calibration": _cal_v,   # per head: RELEASED / WITHHELD / INSUFFICIENT, with the numbers and the criteria version
            # backward-compatible top-level = the gloria triple (gloria_prediction + latent read these)
            "confidence": gloria["confidence"], "novelty": gloria["novelty"],
            "gloria_forecast_nearest": gloria["nearest"],
            "gloria": gloria, "self": self_h, "presence": presence,
            "variance_qualified": (_cg is not None),
-           "empirical_calibration": "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
+           "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; logvars appear COLLAPSED (~0.998 constant) - uncalibrated, may not steer"}
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
     try:   # _srcs was train()-local: every predict raised NameError here before the forecast was saved (review P05)

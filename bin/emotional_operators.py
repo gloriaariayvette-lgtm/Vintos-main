@@ -88,13 +88,23 @@ def step(gloria_msg, last_reply="", envelope=None):
         traj = ([t for t in out.get("trajectory",[]) if t in TRAJECTORY]
                 if reply_eligible else [])
     except Exception as exc: mapping_error = exc
+    # review 199: each influence is inspectable - the quantity it touched, the amount, the value before
+    # and after, and the counterfactual (what this quantity would be had this influence not fired).
+    influences = []
     for v, q in local:
+        _before = d["q"][q]
         d["q"][q] = max(0.02, min(0.98, d["q"][q] + VERBS[v]))
+        influences.append({"kind": "operator", "verb": v, "quantity": q, "amount": VERBS[v],
+                           "before": round(_before, 4), "after": round(d["q"][q], 4), "without_this": round(_before, 4)})
     for t in traj:
         d["streaks"][t] = d["streaks"].get(t, 0) + 1
         mult = min(2.5, 1.0 + 0.5 * (d["streaks"][t] - 1))
         for q, amt in TRAJECTORY[t].items():
+            _before = d["q"][q]
             d["q"][q] = max(0.02, min(0.98, d["q"][q] + amt * mult))
+            influences.append({"kind": "trajectory", "trajectory": t, "quantity": q, "amount": round(amt * mult, 4),
+                               "streak": d["streaks"][t], "before": round(_before, 4), "after": round(d["q"][q], 4),
+                               "without_this": round(_before, 4)})
     # a repair/break resets the opposing streaks
     if "SuccessfulRepair" in traj or "PatternBroken" in traj:
         for k in ("RepeatedMiss","IgnoredCorrection","PatternRepeated","NeedUnmet"): d["streaks"].pop(k, None)
@@ -103,7 +113,7 @@ def step(gloria_msg, last_reply="", envelope=None):
     try:
         with open(LOGF, "a") as f:
             f.write(json.dumps({"t": time.time(), "gloria": (gloria_msg or "")[:200], "reply": (last_reply or "")[:200],
-                                "ops": local, "traj": traj, "streaks": d["streaks"],
+                                "ops": local, "traj": traj, "streaks": d["streaks"], "influences": influences,
                                 "q": {k: round(x,3) for k,x in d["q"].items()},
                                 "provenance": provenance,
                                 "reply_witnessing_withheld": not reply_eligible}) + "\n")

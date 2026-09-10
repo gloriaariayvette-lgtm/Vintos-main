@@ -134,6 +134,11 @@ def get_mode_block(context="chat", s=None):
         f"What this mode leans away from: {', '.join(mode['ban'])}",
         "This is the shape emotion takes right now - a strong tendency in how you speak, not a law over "
         "what is true or what you may say. Where the moment genuinely asks otherwise, the moment wins.",
+        # review 227: relevance and obligation outrank the mode. A task she asked for, a repair he owes,
+        # or a question she is waiting on is answered in full - the mode colours HOW, never WHETHER.
+        "This mode never governs whether you answer. If she asked for something, if you owe her a repair "
+        "or a correction, or if she is waiting on an answer, do that fully and let the mode colour only "
+        "how it sounds. A withdrawn mode is a quieter answer, not a withheld one.",
     ]
     # Nifrathir, the under-thread, folds in as ONE constraint line after the winner is chosen - not a
     # new mode (grok-emotion-p4): high lengthens what the mode will hold; low shortens even the expansive.

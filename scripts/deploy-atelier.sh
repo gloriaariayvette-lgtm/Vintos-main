@@ -94,6 +94,7 @@ SCRIPTS="$SCRIPTS entry_owners.py"   # reviews 1/6/7/22/26, 2026-09-10
 SCRIPTS="$SCRIPTS store_guard.py store_owners.py"   # reviews 46/47, 2026-09-10
 SCRIPTS="$SCRIPTS untested_report.py health_view.py"   # reviews 388/389, 2026-09-10
 SCRIPTS="$SCRIPTS source_cache.py"   # review 162, 2026-09-10
+SCRIPTS="$SCRIPTS calibration.py jepa_calibration_audit.py idempotency.py"   # reviews 202/207/80, 2026-09-10
 SCRIPTS="$SCRIPTS diagnostic_contract.py subsystem_audit.py causality-engine.py self_difference.py priority_vector.py campaign.py self_review_builder.py"   # diagnostics and the causality door, 2026-09-10
 SCRIPTS="$SCRIPTS identity_revisions.py capability-view.py claim_hold.py tension_promotion.py"   # identity revisions and the capability view, 2026-09-10
 SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served views and inspectable maps, 2026-09-10

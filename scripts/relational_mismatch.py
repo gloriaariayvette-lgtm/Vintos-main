@@ -418,7 +418,11 @@ def _judge_relational_miss(result, gloria_message):
         verdict = _json.loads(m.group())
         if verdict.get("reach_and_miss") is True:
             result["reach_summary"] = verdict.get("what_she_reached_for", "")
+            # review 218: the label is about HIM - what his forecast missed - never a claim that he
+            # changed her or led her. A residual is his model's error, not her movement.
             result["pattern_hint"] = "failed_to_meet_reach"
+            result["label_scope"] = "his_model_error"
+            result["not_a_claim_about"] = "her state changing, or him having led or changed her"
             return True
         return False
     except Exception:

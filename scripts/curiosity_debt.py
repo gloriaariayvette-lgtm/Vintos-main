@@ -88,15 +88,26 @@ def _evaporate(d):
         out.append(x)
     return out
 
-def confirm_surfaced(qid_or_text):
+def confirm_surfaced(qid_or_text, evidence=None):
     """p4 (2026-08-26): only a question actually voiced counts as surfaced.
-    Call from the post-reply path with the question id or a fragment of its text."""
+    Call from the post-reply path with the question id or a fragment of its text.
+    review 230: the loop closes on evidence that the output reached her - the reply text it was found
+    in (or an explicit evidence string). Without evidence nothing is counted, and the attempt is recorded."""
     d = _load()
     q = str(qid_or_text).lower()
+    hit = []
     for x in d:
         if x.get("id") == qid_or_text or (len(q) > 8 and q in x.get("question", "").lower()):
+            if not evidence:
+                x.setdefault("unevidenced_confirms", []).append(time.time())
+                x["unevidenced_confirms"] = x["unevidenced_confirms"][-10:]
+                continue
             x["surfaced"] = x.get("surfaced", 0) + 1
+            x.setdefault("surfaced_evidence", []).append({"at": time.time(), "evidence": str(evidence)[:200]})
+            x["surfaced_evidence"] = x["surfaced_evidence"][-10:]
+            hit.append(x.get("id"))
     _save(d)
+    return hit
 
 def confirm_from_reply(reply_text, window_s=900, turn_id=None):
     """Post-reply check (fable-curiosity-p6, 2026-09-05): did he actually VOICE the question the

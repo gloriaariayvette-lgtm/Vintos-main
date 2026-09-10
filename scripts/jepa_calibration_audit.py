@@ -50,13 +50,22 @@ def main():
     def bins(conf, err):
         idx = np.argsort(conf); k = len(idx) // 3
         return [round(float(np.mean([err[i] for i in part])), 4) for part in (idx[:k], idx[k:2 * k], idx[2 * k:]) if len(part)]
-    res = {"n_joined": n}
+    # review 207: the verdict is computed on a HELD-OUT slice (the latest third by time), never on the
+    # rows the head's own thresholds were shaped by. The full-sample numbers stay beside them.
+    try:
+        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import calibration as _cal
+        hold, hold_why = _cal.holdout(rows, by="time")
+    except Exception:
+        hold, hold_why = rows[-max(1, len(rows) // 3):], "latest third (calibration module unavailable)"
+    res = {"n_joined": n, "n_holdout": len(hold), "holdout": hold_why, "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown"}
     for ax in ("g", "s"):
-        conf = [r[ax + "_conf"] for r in rows]; dsim = [r[ax + "_dsim"] for r in rows]; e = [r[ax + "_err"] for r in rows]
+        conf = [r[ax + "_conf"] for r in hold]; dsim = [r[ax + "_dsim"] for r in hold]; e = [r[ax + "_err"] for r in hold]
         wb = [r["iso"][:16] for r in rows if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
         res[ax] = {"monotonicity_conf_vs_err": spear(conf, e), "bins_low_mid_high_err": bins(conf, e),
                    "CONTROL_dsim_vs_err": spear(dsim, e), "wrong_but_confident": wb[:5]}
-    res["axis_lockstep_corr"] = spear([r["g_conf"] for r in rows], [r["s_conf"] for r in rows])
+    res["axis_lockstep_corr"] = spear([r["g_conf"] for r in hold], [r["s_conf"] for r in hold])
+    res["full_sample"] = {ax: {"monotonicity_conf_vs_err": spear([r[ax + "_conf"] for r in rows], [r[ax + "_err"] for r in rows])} for ax in ("g", "s")}
     res["reading"] = ("conf beats control if monotonicity is more negative than CONTROL; equal-or-neither = variance without usefulness. "
                       "lockstep near 1.0 = one global signal wearing two names.")
     json.dump(res, open(OUT, "w"), indent=2)
