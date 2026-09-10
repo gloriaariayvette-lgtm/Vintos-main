@@ -328,6 +328,11 @@ def inner_life_context() -> str:
         _hrl = _hr_i.context_line()
         if _hrl: parts.append(_hrl)
     except Exception: pass
+    try:   # review 94: a fresh change in something he senses, within its limits, once
+        import sensor_reactions as _sr_i
+        _srl = _sr_i.context_line()
+        if _srl: parts.append(_srl)
+    except Exception: pass
     # Avatar face removed from chat context
     # Pearls
     try:
@@ -9422,6 +9427,11 @@ async def voice_framing():
     try:
         import heart_rate as _hr_v
         b = _hr_v.context_line()
+        if b: parts.append(b)
+    except Exception: pass
+    try:
+        import sensor_reactions as _sr_v
+        b = _sr_v.context_line()
         if b: parts.append(b)
     except Exception: pass
     try:

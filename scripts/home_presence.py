@@ -106,10 +106,17 @@ def main():
     hit = probe()
     if hit is None:
         print("[presence] not configured (memory/home-presence-config.json)"); return
-    st = decide(_load(STATE, {}), hit)
+    prev = _load(STATE, {})
+    st = decide(prev, hit)
     try:
         os.makedirs(MEMORY, exist_ok=True)
         json.dump(st, open(STATE, "w"), indent=2)
+    except Exception:
+        pass
+    try:                                             # review 94: home/away flips may move him, within limits
+        import sensor_reactions as _sr
+        if "home" in prev:
+            _sr.observe("presence", bool(st.get("home")), at=st.get("checked"))
     except Exception:
         pass
     print("[presence] %s (misses=%s)" % ("seen - home" if hit else "not seen", st.get("misses", 0)))

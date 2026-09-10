@@ -75,6 +75,11 @@ def record(payload):
                                 "source": rec["source"]}) + "\n")
     except OSError:
         pass
+    try:                                             # review 94: a fresh change may move him, within limits
+        import sensor_reactions as _sr
+        _sr.observe("heart_rate", bpm, at=rec["observed_ts"])
+    except Exception:
+        pass
     return True, {"stored": True, "bpm": bpm}
 
 
