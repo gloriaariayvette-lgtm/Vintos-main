@@ -166,6 +166,7 @@ def bump(text,amount,kind="field"):
     e=db.get(k) or {"text":text[:220],"kind":kind,"weight":0.0,"count":0,
                     "first":time.time(),"lineage":[]}
     e["weight"]=round(e["weight"]+amount,2); e["count"]+=1; e["last"]=time.time()
+    if e.get("overridden"): e["lineage"].append({"reopened":time.time(),"after":e["overridden"]}); e.pop("overridden",None)
     if e["weight"]>=5.0:
         _graduate(e)
         e["lineage"].append({"graduated":time.time(),"at_weight":e["weight"]})
@@ -188,7 +189,22 @@ def field_verdict(target,verdict):
     if verdict=="NO": bump(str((target or {}).get("field_state","")),1.0,kind="field")
     elif verdict=="PARTIAL": bump(str((target or {}).get("field_state","")),0.5,kind="field")
     elif verdict=="YES": relieve(str((target or {}).get("field_state","")))
+    elif verdict in ("CORRECTED","WRONG_READING"): override(str((target or {}).get("field_state","")),"her correction: "+verdict,source="correction")
+    elif verdict in ("KEEP_PRIVATE","PRIVATE"): override(str((target or {}).get("field_state","")),"legitimate privacy: "+verdict,source="privacy")
 
+def override(text,reason,source="correction"):
+    """review 188: her correction, or a legitimate privacy mark (KEEP_PRIVATE / WRONG_READING) on the
+    same intention, sets its standing pressure to zero with the reason kept - it no longer stands in
+    front of him. Lineage kept, never silent; a later miss may bump it again from zero."""
+    text=(text or "").strip()
+    if len(text)<8: return None
+    db=_jload(PRESS,{}); k=hashlib.md5(text.lower().encode()).hexdigest()[:8]
+    e=db.get(k)
+    if not e: return None
+    e.setdefault("lineage",[]).append({"overridden":time.time(),"from_weight":e.get("weight",0),
+                                       "reason":str(reason)[:200],"source":source})
+    e["weight"]=0.0; e["overridden"]={"at":time.time(),"reason":str(reason)[:200],"source":source}
+    db[k]=e; _jsave(PRESS,db); return e
 def relieve(text):
     """A landed intent takes weight off - earned relief, lineage kept, never silent."""
     text=(text or "").strip()
@@ -202,7 +218,7 @@ def relieve(text):
 def pressure_block():
     db=_jload(PRESS,{})
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
-    rows=[r for r in rows if r.get("weight",0)>=1.0][:3]
+    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden")][:3]
     if not rows: return ""
     lines=["- (weight %.1f, %d misses, last missed %dd ago) %s"%(r["weight"],r["count"],max(0,int((time.time()-r.get("last",time.time()))/86400)),r["text"]) for r in rows]
     return ("INTENTIONS THAT KEEP FAILING - they weigh on you now; resting is not "

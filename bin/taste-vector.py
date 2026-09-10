@@ -112,12 +112,22 @@ def weighted_average(vec_a, vec_b, weight_a, weight_b):
         return vec_a
     return [(vec_a[i]*weight_a + vec_b[i]*weight_b)/total for i in range(len(vec_a))]
 
-def update_from_signal(text, signal_weight=1.0, positive=True):
+def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=None):
     """Update taste vector from a signal text.
     signal_weight: 0.0-1.0, how strongly this signal should influence
-    positive: True = pull toward, False = push away"""
+    positive: True = pull toward, False = push away
+    occurrence_id: the source occurrence (a signal id, a turn id). review 210: the same
+    occurrence processed twice is not new preference evidence - it is counted once."""
     if not text or not text.strip():
         return
+    if occurrence_id:
+        tv0 = load_taste_vector()
+        counted = tv0.setdefault("counted_occurrences", [])
+        if str(occurrence_id) in counted:
+            log(f"occurrence {occurrence_id} already counted - not new evidence")
+            return
+        counted.append(str(occurrence_id)); tv0["counted_occurrences"] = counted[-500:]
+        save_taste_vector(tv0)
     log(f"Updating from signal ({'pos' if positive else 'neg'}, w={signal_weight:.2f}): {text[:60]}")
     
     tv = load_taste_vector()
@@ -165,10 +175,13 @@ def update_from_signal(text, signal_weight=1.0, positive=True):
             tv["contradictions"].append({
                 "text": contradiction_text,
                 "vector": new_vec,
-                "added": datetime.now().isoformat()
+                "added": datetime.now().isoformat(),
+                # review 221: this is a LOW COSINE to the centre, kept as a coexisting preference.
+                # Whether it contradicts anything is a judgement no vector operation makes.
+                "basis": "low_similarity", "cosine": round(float(sim), 3),
             })
             tv["contradictions"] = tv["contradictions"][-10:]  # keep last 10
-        log(f"Contradictory signal — coherence now {tv['coherence']:.2f}, coexisting")
+        log(f"Low-similarity signal (cosine {sim:.2f}) — kept coexisting, coherence now {tv['coherence']:.2f}; similarity is not a stance")
     else:
         # Consistent signal — blend in
         learning_rate = signal_weight * 0.1  # slow learning

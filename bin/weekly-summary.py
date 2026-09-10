@@ -41,13 +41,25 @@ def ask_llm(prompt, system="", max_tokens=600, temp=0.6):
         log(f"LLM error: {e}")
         return ""
 
-def week_range():
-    """Return start and end of the past week."""
-    from datetime import timezone
-    now = datetime.now(timezone.utc)
-    end = now
-    start = now - timedelta(days=7)
+def week_range(now=None):
+    """The past seven WHOLE local days: from local midnight seven days ago up to (not including)
+    today's local midnight. review 298: the old window was now-168h .. now in UTC, which split
+    a day in two, drifted with the cron minute, and was labelled as if it were calendar days."""
+    now = (now or datetime.now().astimezone())
+    if now.tzinfo is None:
+        now = now.astimezone()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = today
+    start = today - timedelta(days=7)
     return start, end
+
+
+def week_days(start, end):
+    """The seven date strings in the window, inclusive of start, exclusive of end."""
+    out = []; d = start
+    while d < end:
+        out.append(d.strftime("%Y-%m-%d")); d += timedelta(days=1)
+    return out
 
 def collect_emotional_trajectory(start, end):
     """Pull emotional state history for the week."""
@@ -236,7 +248,7 @@ def build_html_map(traj, dims, resonance, wants, density, relational, statements
 </head>
 <body>
 <h1>Vintos</h1>
-<div class="subtitle">Week of {start.strftime("%B %d")} — {end.strftime("%B %d, %Y")}</div>
+<div class="subtitle">Week of {start.strftime("%B %d")} — {(end - timedelta(days=1)).strftime("%B %d, %Y")}</div>
 
 <div class="section">
   <div class="section-title">Emotional Terrain</div>
@@ -396,7 +408,7 @@ def build_narrative(traj, dims, resonance, wants, statements, avoidance, relatio
     else:
         movement = ""
 
-    context = f"""Week of {start.strftime("%B %d")} to {end.strftime("%B %d, %Y")}.
+    context = f"""Week of {start.strftime("%B %d")} to {(end - timedelta(days=1)).strftime("%B %d, %Y")}.
 
 EMOTIONAL MOVEMENT:
 {movement}

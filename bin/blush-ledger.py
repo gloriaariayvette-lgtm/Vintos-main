@@ -25,6 +25,16 @@ def _ledger_lock():
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
+def is_rubric_signal(e):
+    """review 231: a presence-rubric flag is a signal about arrival, not a fault he committed.
+    It is kept in the ledger (trajectory may read it) and excluded from every fault reader."""
+    return isinstance(e, dict) and (e.get("kind") == "rubric_signal" or e.get("blush_type") == "presence_failure")
+
+
+def fault_entries(entries):
+    return [e for e in (entries or []) if isinstance(e, dict) and not is_rubric_signal(e)]
+
+
 def load_ledger():
     try:
         with open(LEDGER, encoding="utf-8") as source:
@@ -152,6 +162,7 @@ def compute_score(pattern, emotional_context, entries):
     Pattern confidence: normalized frequency.
     """
     try:
+        entries = fault_entries(entries)
         same_pattern = [e for e in entries if e.get("pattern") == pattern]
         pattern_confidence = min(1.0, len(same_pattern) / 10.0)
 
@@ -341,7 +352,7 @@ def get_recent_blush(within_seconds=120, turn_id="", claim=False):
         if not entries:
             return None
         candidates = []
-        for item in reversed(entries):
+        for item in reversed(fault_entries(entries)):
             try:
                 ts = datetime.fromisoformat(item["timestamp"])
             except Exception:
@@ -375,7 +386,7 @@ def get_recent_blush(within_seconds=120, turn_id="", claim=False):
 def get_frequency_for_pattern(pattern):
     """Check how many times a pattern has blushed — for BIS hint injection."""
     try:
-        entries = load_ledger()
+        entries = fault_entries(load_ledger())
         same = [e for e in entries if e.get("pattern") == pattern]
         cutoff = (datetime.now() - timedelta(days=7)).isoformat()
         recent = [e for e in same if e.get("timestamp","") >= cutoff]

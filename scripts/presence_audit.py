@@ -113,7 +113,10 @@ def main():
                 from blush_ledger import write_blush as _wb
                 _pp = _insp.signature(_wb).parameters
                 _pat = ("presence_" + (s.get("note", "") or "flat")[:40]).lower().replace(" ", "_")[:60]
+                # review 231: a low presence score is a RUBRIC SIGNAL. It may inform trajectory; the
+                # blush and causality readers ignore kind=rubric_signal as evidence of a fault.
                 _cand = {"blush_type": "presence_failure", "pattern": _pat, "source": "presence_audit",
+                         "extra": {"kind": "rubric_signal"},
                          "detail": f"presence {s['composite']:.2f}: {s.get('note','')}"[:200],
                          "note": s.get("note", "")[:120], "strength": 0.5, "severity": 0.5,
                          "text": f"answered at low presence ({s['composite']:.2f})"}

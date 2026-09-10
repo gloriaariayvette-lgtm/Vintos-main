@@ -163,7 +163,9 @@ def discover():
             "_members": mem,
         })
 
-    # transitions: order basins by the time their configs were filed; consecutive distinct basins => edges
+    # review 221: these edges are the ORDER IN WHICH CONFIGURATIONS WERE FILED - consecutive distinct
+    # basins in filing time. They are not observed transitions and not lived movement between basins;
+    # every basin record says so (edge_basis), and readers must not present them as transitions.
     labeled = []   # (time, basin_index)
     for bi, b in enumerate(basins):
         for i in b["_members"]:
@@ -180,6 +182,7 @@ def discover():
             edges[(name_to_bi[u], name_to_bi[v])] = edges.get((name_to_bi[u], name_to_bi[v]), 0) + 1
 
     for bi, b in enumerate(basins):
+        b["edge_basis"] = "filing order of configurations (not observed transitions)"
         b["emerges_after"] = sorted([basins[a]["name"] for (a, v), w in edges.items() if v == bi],
                                     key=lambda n: -sum(w for (a2, v2), w in edges.items()
                                                        if v2 == bi and basins[a2]["name"] == n))[:4]

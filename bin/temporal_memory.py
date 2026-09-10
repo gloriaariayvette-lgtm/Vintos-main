@@ -163,7 +163,7 @@ def _settling_event(sig):
         try:
             sys.path.insert(0, SCRIPTS)
             from taste_vector import update_from_signal as _tv_update
-            _tv_update(pattern, signal_weight=0.3, positive=True)
+            _tv_update(pattern, signal_weight=0.3, positive=True, occurrence_id=sig.get("id"))
         except: pass
 
     # Update latent thread direction

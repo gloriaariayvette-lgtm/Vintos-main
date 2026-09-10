@@ -1954,7 +1954,7 @@ def _persist_plan_fields(want):
         rows = current if isinstance(current, list) else current.get("wants", [])
         keys = ("steps", "current_step_index", "step_history", "plan_contract",
                 "plan_state", "plan_attempts", "planned_at", "plan_block",
-                "plan_normalization")
+                "plan_normalization", "budget_used")
         for row in rows:
             if row.get("id") == want.get("id"):
                 for key in keys:
@@ -2004,6 +2004,7 @@ def _ensure_plan(want, force=False):
         except Exception:
             pass
     want["plan_attempts"] = int(want.get("plan_attempts", 0)) + 1
+    _spend(want, "plan_generations")
     try:
         from emoclaw_utils import generate_steps
         steps = generate_steps(
@@ -2243,6 +2244,7 @@ def main():
             step_params = current_step.get("params", {})
             
             log(f"  → Multistep: executing step {current_step_index + 1}/{len(steps)}: {step_capability}")
+            _spend(want, "steps_run"); _persist_plan_fields(want)
             
             # Original want text — never overwritten by step history
             original_want = want.get("want", "")
@@ -2570,6 +2572,19 @@ def _spine_wrap(_name, _fn):
 for _sp_n in list(ACTION_MAP):
     ACTION_MAP[_sp_n] = _spine_wrap(_sp_n, ACTION_MAP[_sp_n])
 # === END SPINE DOOR ========================================================
+
+def _spend(want, what, n=1):
+    """review 241: budget_used is the want's own running account (attempts, plan generations,
+    steps run). A retry reads it and continues; nothing here or in _ensure_plan resets it, and it
+    is persisted under the want's own id only."""
+    try:
+        b = want.setdefault("budget_used", {})
+        b[what] = int(b.get(what, 0)) + int(n)
+        b["updated"] = datetime.now().isoformat()
+    except Exception:
+        pass
+    return want
+
 
 def _mark_attempt(text, action_name, want_id=None):
     """Verification-failed branch, extracted from the dispatch megablock.

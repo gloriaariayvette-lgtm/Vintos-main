@@ -63,7 +63,8 @@ def detect_match(text, trials, context=None):
     _trial_limit = 30 if _sensitivity_boost else 20
     trial_list = ""
     for t in trials[:_trial_limit]:
-        trial_list += f"ID: {t['id']}\nTrigger: {t['trigger']}\nPattern: {t['pattern_description']}\n\n"
+        # review 255: older second-order rows carry no trigger; read them by their pattern, never KeyError
+        trial_list += f"ID: {t.get('id','?')}\nTrigger: {t.get('trigger') or ('when the pattern appears: ' + str(t.get('pattern_description',''))[:100])}\nPattern: {t.get('pattern_description','')}\n\n"
     _partial_line = "\nPartial matches count — if the pattern is beginning to emerge, that is enough." if _sensitivity_boost else ""
     prompt = (
         "Below is text Vintos is about to generate, and a list of active behavioral trials.\n"

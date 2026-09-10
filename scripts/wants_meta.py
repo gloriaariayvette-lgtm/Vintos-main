@@ -80,7 +80,9 @@ def _propose_trial(entry):
             log("trial already exists for '%s' - not duplicating" % about); return
     trials.append({
         "id": "T-SO-" + uuid.uuid4().hex[:6],
+        "trigger": ("when I notice I am about to: " + about[:100]),   # the reader (behavioral-intercept) requires it
         "pattern_description": about[:120],
+        "outcomes": [], "protected": False,
         "alternative": ("do it less" if entry["stance"] == "wish_less" else "reach for it more"),
         "source": "second_order",
         "self_requested": True,

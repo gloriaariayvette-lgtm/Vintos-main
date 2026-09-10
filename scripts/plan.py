@@ -117,7 +117,7 @@ def release_gestate(root, how="resumed"):
     for p in rows:
         if p["kind"] == "gestate" and p["state"] in OPEN and p.get("root") == root:
             p["state"] = how; p["history"].append({"at": _now(), "event": how, "detail": ""})
-            save(rows); return True
+            save(rows); _outcome(root, "released", how); return True
     return False
 
 
@@ -136,8 +136,41 @@ def met(plan_id, evidence):
         p["state"] = "met"
         p["evidence"] = {"text": evidence[:400], "at": _now()}
         p["history"].append({"at": _now(), "event": "met", "detail": evidence[:120]})
-        save(rows); log("%s met" % plan_id); return True
+        save(rows); log("%s met" % plan_id); _outcome(plan_id, "met", evidence); return True
     return False
+
+
+def held(plan_id, reason):
+    """review 234: when the want a plan rested on is dismissed, its store failed, or it cannot be
+    found, the plan is HELD with that reason. Never met: met needs evidence (see met())."""
+    rows = load()
+    for p in rows:
+        if p["plan_id"] != plan_id or p["state"] not in OPEN:
+            continue
+        p["state"] = "held"
+        p["history"].append({"at": _now(), "event": "held", "detail": str(reason)[:160]})
+        save(rows); log("%s HELD - %s" % (plan_id, str(reason)[:60])); _outcome(plan_id, "held", reason); return True
+    return False
+
+
+def _outcome(plan_id, outcome, detail=""):
+    """review 274: plan outcomes (met / held / released) are appended for readiness to read, so a
+    posture formed while work was held is recomputed from what actually happened."""
+    try:
+        p = os.path.join(MEMORY, "plan-outcomes.jsonl")
+        with open(p, "a") as f:
+            f.write(json.dumps({"at": _now(), "plan_id": plan_id, "outcome": outcome, "detail": str(detail)[:160]}) + "\n")
+        # the readiness posture that stood while this was held is stale now; drop it so the next
+        # latent-preparation run rebuilds it from the outcome (never a silent hold)
+        cp = os.path.join(MEMORY, "latent-cache.json")
+        if os.path.exists(cp):
+            cache = json.load(open(cp))
+            if isinstance(cache, list):
+                kept = [c for c in cache if not (isinstance(c, dict) and c.get("type") == "readiness")]
+                if len(kept) != len(cache):
+                    tmp = cp + ".tmp"; json.dump(kept, open(tmp, "w"), indent=2); os.replace(tmp, cp)
+    except Exception:
+        pass
 
 
 def due(judge=None):
@@ -200,6 +233,8 @@ def main():
     elif cmd == "mutual":
         print(mutual_plan(sys.argv[2], sys.argv[3], sys.argv[4],
                           int(sys.argv[5]) if len(sys.argv) > 5 else 7) or "not created")
+    elif cmd == "held":
+        print(held(sys.argv[2], " ".join(sys.argv[3:]) or "held by hand"))
     elif cmd == "met":
         print("ok" if met(sys.argv[2], sys.argv[3]) else "not found or already closed")
     else:

@@ -113,6 +113,26 @@ def voice(conf, nov, hint, det_posture):
         print("gemma error (using deterministic posture):", e)
     return det_posture
 
+def recent_plan_outcomes(hours=48, now=None):
+    """review 274: what actually happened to held work lately (met / held / released), from
+    plan-outcomes.jsonl, so the posture is recomputed from outcomes rather than staying held."""
+    p = os.path.join(MEMORY, "plan-outcomes.jsonl")
+    out = []
+    try:
+        cutoff = (now or datetime.now()).timestamp() - hours * 3600
+        for l in open(p):
+            if not l.strip(): continue
+            r = json.loads(l)
+            try:
+                if datetime.fromisoformat(str(r.get("at"))[:26]).timestamp() < cutoff: continue
+            except Exception:
+                pass
+            out.append({"plan_id": r.get("plan_id"), "outcome": r.get("outcome"), "at": r.get("at")})
+    except Exception:
+        return []
+    return out[-6:]
+
+
 def main():
     conf, nov, hint, src = signal()
     if src == "none":
@@ -131,6 +151,7 @@ def main():
         "novelty": round(nov, 3),
         "uncertainty": uncertainty,
         "source_signal": src,                      # jepa | llm(grounded) | ...
+        "plan_outcomes": recent_plan_outcomes(),    # review 274: held work that met/released, in the posture
         "generated_at": now.isoformat(),
         "source": "latent-preparation",
     }
