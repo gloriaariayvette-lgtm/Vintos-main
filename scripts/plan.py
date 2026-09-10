@@ -160,6 +160,10 @@ def _outcome(plan_id, outcome, detail=""):
         p = os.path.join(MEMORY, "plan-outcomes.jsonl")
         with open(p, "a") as f:
             f.write(json.dumps({"at": _now(), "plan_id": plan_id, "outcome": outcome, "detail": str(detail)[:160]}) + "\n")
+        try:   # review 225: the one outcome record too
+            import sys as _ojs; _ojs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import outcome_join as _oj
+            _oj.record("plan", plan_id, outcome, {"detail": str(detail)[:160]})
+        except Exception: pass
         # the readiness posture that stood while this was held is stale now; drop it so the next
         # latent-preparation run rebuilds it from the outcome (never a silent hold)
         cp = os.path.join(MEMORY, "latent-cache.json")

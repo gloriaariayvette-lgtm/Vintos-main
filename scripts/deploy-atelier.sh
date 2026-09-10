@@ -87,6 +87,7 @@ SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
 SCRIPTS="$SCRIPTS sensor_reactions.py"   # review 94, 2026-09-10
+SCRIPTS="$SCRIPTS grading_contract.py outcome_join.py enjoyment.py"   # reviews 208/217/225, 2026-09-10
 SCRIPTS="$SCRIPTS diagnostic_contract.py subsystem_audit.py causality-engine.py self_difference.py priority_vector.py campaign.py self_review_builder.py"   # diagnostics and the causality door, 2026-09-10
 SCRIPTS="$SCRIPTS identity_revisions.py capability-view.py claim_hold.py tension_promotion.py"   # identity revisions and the capability view, 2026-09-10
 SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served views and inspectable maps, 2026-09-10

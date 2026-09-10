@@ -212,7 +212,9 @@ def run_drift():
         settled = [s for s in sigs if s.get("phase") == "settled" and s.get("pattern")]
         if settled:
             sig = random.choice(settled)
-            _tv_update(sig["pattern"], signal_weight=0.05, positive=True, occurrence_id=("drift:" + str(sig.get("id") or sig.get("created_at") or sig["pattern"][:40])))
+            # review 217: the one door into taste
+            import enjoyment as _enj
+            _enj.admit("drift:" + str(sig.get("id") or sig.get("created_at") or sig["pattern"][:40]), sig["pattern"], "subconscious-drift", medium="signal", weight=0.05, positive=True, his_delight="settled")
     except StopIteration:
         pass
     except Exception as e:

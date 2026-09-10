@@ -525,6 +525,11 @@ def review_drafts():
             log(f"APP-RATED LOW ({score}): {d['joke'][:60]}")
         else:
             d["reception"] = "neutral"
+        try:   # review 217: her rating is reception evidence; it enters the one enjoyment door, kept apart from his delight and the craft
+            import enjoyment as _enj
+            _enj.admit("joke:" + d["joke"][:80], d["joke"][:300], "humor-practice", medium="humor", weight=0.15 if score >= 4 else 0.05, positive=score >= 3,
+                       his_delight=delight, her_reception=d["reception"], craft=(d.get("self_review") or {}).get("craft"), evidence={"kind": "rating", "score": score, "date": d.get("date", "")})
+        except Exception: pass
         try:
             from affective_weight import record_outcome
             record_outcome(pattern_text=d["joke"][:150], action_type="echo_humor",

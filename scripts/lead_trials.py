@@ -35,10 +35,13 @@ def grade():
     Runs as a background subprocess kicked at the next turn. Trial is discarded after judgment."""
     ot = load(OPEN, None)
     if not ot: return
-    led_ = load(os.path.join(MEM, "interaction-ledger.json"), [])
-    lst = led_ if isinstance(led_, list) else next((v for v in led_.values() if isinstance(v, list)), [])
-    if len(lst) <= ot.get("ledger_len", 0): return  # his reply not in ledger yet - judge next kick
-    ex = lst[ot["ledger_len"]] if ot["ledger_len"] < len(lst) else lst[-1]
+    # review 225: the one join - the exchange this trial is judged against comes from outcome_join
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import outcome_join as _oj
+        ex = _oj.exchange_at(index=ot.get("ledger_len", 0)) or _oj.latest_exchange()
+    except Exception:
+        ex = None
+    if not ex or ex["index"] < ot.get("ledger_len", 0): return  # his reply not in ledger yet - judge next kick
     g, v = str(ex.get("gloria", ""))[:400], str(ex.get("vintos", ""))[:600]
     os.remove(OPEN)  # single-use: the trial dies now, whatever the verdict
     if not v: return
@@ -60,6 +63,10 @@ def grade():
            "at": datetime.now().isoformat(), "consumed": True,
            "note": "single-use: no accumulation, no pressure"}
     trials.append(rec); save(TRIALS, trials[-300:])
+    try:   # review 208 / 225: the one grade record and the one outcome record
+        import grading_contract as _gc; _gc.record("lead", rec["id"], "GRADED", predicted=ptxt[:200], actual=rec["where"], interpretation=d["verdict"])
+        _oj.record("lead", rec["id"], d["verdict"], {"exchange_index": ex["index"], "where": rec["where"]})
+    except Exception: pass
     print("[lead] turn trial %s: %s" % (d["verdict"], rec["where"][:60]))
     if d["verdict"] == "LED":
         p = jparse(ask(

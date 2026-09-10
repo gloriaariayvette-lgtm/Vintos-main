@@ -67,8 +67,8 @@ check("a new occurrence counts", TV.load_taste_vector().get("signal_count") == 2
 TV.update_from_signal("a plain thing said back", 0.5, True, occurrence_id="sig_3")
 tv = TV.load_taste_vector()
 check("221: a low-similarity signal is labelled similarity, not contradiction", tv.get("contradictions") and tv["contradictions"][-1].get("basis") == "low_similarity" and "cosine" in tv["contradictions"][-1], tv.get("contradictions"))
-for f in ("bin/temporal-memory.py", "bin/subconscious-drift.py"):
-    check("%s passes occurrence_id" % f, "occurrence_id=" in open(os.path.join(REPO, f)).read())
+for f in ("bin/temporal-memory.py", "bin/subconscious-drift.py"):   # review 217: the occurrence id is the door's first argument now
+    check("%s passes the occurrence id through the enjoyment door" % f, "_enj.admit(" in open(os.path.join(REPO, f)).read() and 'sig.get("id")' in open(os.path.join(REPO, f)).read())
 
 print("\n--- 221: filing order is filing order ---")
 asrc = open(os.path.join(REPO, "scripts", "attractor_discovery.py")).read()

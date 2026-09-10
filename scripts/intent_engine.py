@@ -362,11 +362,17 @@ if __name__ == "__main__":
 SOCK = "/tmp/Vintos-emotion.sock"
 
 def _last_own_reply():
-    led = _load("interaction-ledger.json")
-    if not isinstance(led, list) or not led:
-        return ""
-    e = led[-1]
-    return e.get("velaris") or e.get("vintos") or e.get("reply") or ""
+    """review 225: the one join (outcome_join) finds the exchange; this keeps its old shape."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import outcome_join as _oj
+        ex = _oj.latest_exchange()
+        return ex["vintos"] if ex else ""
+    except Exception:
+        led = _load("interaction-ledger.json")
+        if not isinstance(led, list) or not led:
+            return ""
+        e = led[-1]
+        return e.get("velaris") or e.get("vintos") or e.get("reply") or ""
 
 def _nudge_valence(amount):
     try:
@@ -439,6 +445,9 @@ def resolve_previous(recent_text=""):
                 with open(LEDGER, "w") as f: json.dump(led[-500:], f, indent=2)
                 return
         last["realized"] = verdict
+        try:
+            import outcome_join as _oj2; _oj2.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], verdict, {"axis": "single"})
+        except Exception: pass
         if verdict in ("YES", "PARTIAL", "NO"):
             try:
                 from desired_difference import field_verdict as _ddfv
@@ -488,6 +497,9 @@ def resolve_previous(recent_text=""):
             for axis in ("field", "gloria", "self"):
                 if r.get(axis) is None: r[axis] = "HELD"
     last["realized"] = r
+    try:
+        import outcome_join as _oj3; _oj3.record("intent", str(tgt.get("goal") or tgt.get("field_state", ""))[:120], dict(r), {"axis": "field/gloria/self"})
+    except Exception: pass
     with open(LEDGER, "w") as f:
         json.dump(led[-500:], f, indent=2)
 

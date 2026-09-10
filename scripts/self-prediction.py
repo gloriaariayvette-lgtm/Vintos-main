@@ -279,6 +279,11 @@ def compare_prediction():
                          "comparison preserved but excluded from learning")
         finally:
             _retire(_compared_id, "HELD")
+        try:
+            import sys as _gcs; _gcs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _gcs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            import grading_contract as _gc
+            _gc.record("self_state", _compared_id, "HELD", predicted=predicted, actual=actual, interpretation=result.get("interpretation", ""), provenance=provenance)
+        except Exception: pass
         return result
 
     # Track history for blind spot analysis (calibration learning) — separate from emotional cost
@@ -293,6 +298,12 @@ def compare_prediction():
     # Retire exactly the prediction this comparison graded; if a newer one is
     # open, this refuses and the newer one survives.
     _retire(_compared_id, "graded")
+    try:   # review 208: the one grade record beside this module's own history
+        import sys as _gcs; _gcs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _gcs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import grading_contract as _gc
+        _gc.record("self_state", _compared_id, "STALE" if result.get("stale") else "GRADED", predicted=predicted, actual=actual,
+                   interpretation="%s; %d/%d dims off" % (result.get("interpretation", ""), result["miss_count"], result["total_dims"]), provenance=provenance)
+    except Exception: pass
     return result
 
 

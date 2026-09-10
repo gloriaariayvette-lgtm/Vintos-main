@@ -281,6 +281,12 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
                          "comparison preserved but excluded from model, blush, and leverage")
         finally:
             _retire(_compared_id, "HELD")
+        try:
+            import sys as _gcs; _gcs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _gcs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            import grading_contract as _gc
+            _gc.record("relational", _compared_id, "HELD", predicted={"warmth": prediction.get("predicted_warmth"), "tension": prediction.get("predicted_tension"), "valence": prediction.get("predicted_valence")},
+                       actual={"warmth": actual_warmth, "tension": actual_tension, "valence": actual_valence}, interpretation="cannot witness itself", provenance=provenance)
+        except Exception: pass
         return held
     
     # Check if prediction has the required fields
@@ -349,6 +355,13 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
         _mm.record_from_mismatch(result)
     except Exception:
         pass
+    try:   # review 208: the one grade record beside this module's own
+        import sys as _gcs; _gcs.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _gcs.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import grading_contract as _gc
+        _gc.record("relational", _compared_id, "GRADED", predicted={k: result[k]["predicted"] for k in ("warmth", "tension", "valence")},
+                   actual={k: result[k]["actual"] for k in ("warmth", "tension", "valence")},
+                   interpretation="miss x%d%s" % (result["mismatch_count"], ", direction wrong" if result["direction_wrong"] else ""), provenance=provenance)
+    except Exception: pass
 
     return result
 

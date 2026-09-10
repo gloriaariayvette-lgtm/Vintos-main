@@ -162,8 +162,8 @@ def _settling_event(sig):
     if pattern:
         try:
             sys.path.insert(0, SCRIPTS)
-            from taste_vector import update_from_signal as _tv_update
-            _tv_update(pattern, signal_weight=0.3, positive=True, occurrence_id=sig.get("id"))
+            import enjoyment as _enj   # review 217: the one door into taste
+            _enj.admit(sig.get("id"), pattern, "temporal-memory", medium="signal", weight=0.3, positive=True, his_delight="pattern settled")
         except: pass
 
     # Update latent thread direction
