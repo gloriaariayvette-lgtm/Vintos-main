@@ -7808,13 +7808,14 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     # effect gate this route runs for its device commands (kind "live_scene"),
     # and the render owns THIS turn's slot - never a single global one another
     # session could clobber.
-    try:
-        import avatar_stage as _avst_g
-        asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
-                                               f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                                               slot=(_turn.turn_id if _turn is not None else None),
-                                               admit=_avatar_scene_admit(_turn, _tc)))
-    except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
+    if _surface != "reelroom":
+        try:
+            import avatar_stage as _avst_g
+            asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
+                                                   f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
+                                                   slot=(_turn.turn_id if _turn is not None else None),
+                                                   admit=_avatar_scene_admit(_turn, _tc)))
+        except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
     message = msg.message
     try:
         # Load full context — same as main chat

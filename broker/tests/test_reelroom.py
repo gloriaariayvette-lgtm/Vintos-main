@@ -69,6 +69,21 @@ decision_prompts = []
 RR.decide("?", "", [], 10, gemma=lambda m, **k: decision_prompts.append(m[0]["content"]) or '{"speak": false, "action": "none"}', sonnet=sonnet_line)
 check("decide: spontaneous actions name phone speech and never offer Echo speech", "speak_phone" in decision_prompts[0] and "speak_echo" not in decision_prompts[0])
 
+class _Proc:
+    def __init__(self, code=0, out=b"", err=b""):
+        self.returncode, self.stdout, self.stderr = code, out, err
+_adb_calls = []
+def _adb_run(command, **kwargs):
+    _adb_calls.append(command)
+    if command[1] == "connect": return _Proc(out=b"connected")
+    if len(_adb_calls) == 1: return _Proc(1, err=b"device not found")
+    return _Proc(out=b"\x89PNG\r\nframe")
+_old_which, _old_run = RR.shutil.which, RR.subprocess.run
+RR.shutil.which, RR.subprocess.run = lambda name: "/usr/bin/adb", _adb_run
+check("TV capture reconnects wireless ADB once and retries the frame",
+      RR.tv_screenshot().startswith(b"\x89PNG") and _adb_calls[1] == ["adb", "connect", RR.TV_ADB], _adb_calls)
+RR.shutil.which, RR.subprocess.run = _old_which, _old_run
+
 RR.shutil.which = lambda name: None
 a = RR.audio_signature("AAAA", {}, 125)
 check("mic without ffmpeg: edge none, honest note, timestamp kept", a["edge"] == "none" and "ffmpeg" in a["note"] and a["timestamp"] == "02:05", a)

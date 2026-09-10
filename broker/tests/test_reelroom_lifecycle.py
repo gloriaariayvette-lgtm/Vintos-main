@@ -25,6 +25,8 @@ check("session end owns one idempotent transcript plus narrative commit",
       "def append_session_ledger" in RR and '"reelroom_file"' in RR and '"transcript"' in RR and '"narrative"' in RR)
 check("the living-room spatial map is explicit", 'house_map.room_context("living_room")' in RR and "house_map.sketch_block()" in RR)
 check("ring is read at prompt assembly", "def _ring_context" in RR and "heart_rate.context_line()" in RR)
+check("ReelRoom owns the theatre screen instead of avatar-scene generation",
+      'if _surface != "reelroom":' in SERVER and "_avst_g.scene_gate" in SERVER)
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

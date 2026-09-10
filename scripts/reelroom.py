@@ -305,7 +305,14 @@ def tv_screenshot(timeout: float = 12.0) -> bytes:
     """A PNG of what the Bravia shows, over ADB. Raises with a plain reason when the TV is not reachable."""
     if not shutil.which("adb"):
         raise RuntimeError("adb is not installed here")
-    r = subprocess.run(["adb", "-s", TV_ADB, "exec-out", "screencap", "-p"], capture_output=True, timeout=timeout)
+    command = ["adb", "-s", TV_ADB, "exec-out", "screencap", "-p"]
+    r = subprocess.run(command, capture_output=True, timeout=timeout)
+    # Wireless ADB forgets the Bravia after a reboot or network interruption.
+    # Reconnect on demand once, then retry the exact read-only capture.
+    if r.returncode != 0 and (b"not found" in r.stderr or b"offline" in r.stderr):
+        subprocess.run(["adb", "connect", TV_ADB], capture_output=True,
+                       timeout=min(timeout, 8.0))
+        r = subprocess.run(command, capture_output=True, timeout=timeout)
     if r.returncode != 0 or not r.stdout.startswith(b"\x89PNG"):
         err = r.stderr.decode("utf-8", "replace").strip()[:200]
         raise RuntimeError("the TV did not give a screenshot: " + (err or "no image; is the TV on and ADB authorised?"))
