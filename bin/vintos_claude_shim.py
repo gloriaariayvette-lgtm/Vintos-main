@@ -15,6 +15,8 @@ Install:  python3 vintos_claude_shim.py --install  (writes+enables systemd --use
 """
 import os, sys, json, time, hashlib, socket, urllib.request, urllib.error
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+for _gp in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.vintos/workspace/scripts"), os.path.expanduser("~/.vintos/workspace/bin")):
+    if os.path.isdir(_gp) and _gp not in sys.path: sys.path.insert(0, _gp)   # gen_result.py may be installed beside either twin on the host
 import gen_result as GR   # the one stage/result contract shared with model_router (review 43)
 
 HOST, PORT = "127.0.0.1", 8599

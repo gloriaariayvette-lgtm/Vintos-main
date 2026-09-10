@@ -4,7 +4,8 @@ Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES /
 import os, sys, json, hashlib
 from datetime import datetime
 import httpx
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+for _gp in (os.path.dirname(os.path.abspath(__file__)), os.path.expanduser("~/.vintos/workspace/scripts"), os.path.expanduser("~/.vintos/workspace/bin")):
+    if os.path.isdir(_gp) and _gp not in sys.path: sys.path.insert(0, _gp)   # gen_result.py may be installed beside either twin on the host
 import gen_result as GR   # the one stage/result contract shared with vintos_claude_shim (review 43)
 make_result, RESULT_STATUSES = GR.make_result, GR.STATUSES
 USAGE_LOG = os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl")
