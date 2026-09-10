@@ -744,6 +744,54 @@ def _durable_context(message):
     except Exception:
         return ""
 
+def _avatar_scene_admit(turn, tc):
+    """Admission for a live avatar scene: the same effect gate the avatar route
+    runs for its device commands, as a callable (detail) -> (ok, mode, why) the
+    stage calls the moment a YES would start a render. Fail-closed when the
+    gate is armed and the turn has no context - exactly as the projector tag."""
+    def _admit(detail=""):
+        try:
+            if tc is not None and turn is not None:
+                return tc.authorize_nondevice(turn, "live_scene", detail=str(detail or "")[:80])
+            import sys as _as; _ap = os.path.join(WORKSPACE, "scripts")
+            if _ap not in _as.path: _as.path.insert(0, _ap)
+            import effect_gate as _aeg
+            return _aeg.authorize_effect(None, "live_scene", detail=str(detail or "")[:80])
+        except Exception:
+            try:
+                import effect_gate as _aeg2
+                if _aeg2.armed(): return False, "deny", "gate fault (armed: deny)"
+            except Exception: pass
+            return True, "send", None
+    return _admit
+
+_PROMPT_REV_SOURCES = ("SOUL.md", "CAPABILITIES.md", "SELF-MODEL.md", "GLORIA-MODEL.md", "USER-MODEL.md",
+                       os.path.join("memory", "SELF-MODEL.md"))
+
+def _prompt_rev(model=""):
+    """Revision stamp for the cached (stable) head of a system prompt: a short
+    hash of the mtime+size of every source file the head is built from, plus
+    the model name. Stamped into the head before [[CACHESPLIT]], so a changed
+    prompt source or a model switch can never be served a stale cached block."""
+    try:
+        import hashlib as _prh
+        parts = []
+        for rel in _PROMPT_REV_SOURCES:
+            fp = os.path.join(WORKSPACE, rel)
+            try:
+                st = os.stat(fp); parts.append("%s:%d:%d" % (rel, int(st.st_mtime), st.st_size))
+            except OSError:
+                parts.append(rel + ":-")
+        m = str(model or "")
+        if not m:
+            try:
+                import model_router as _prm; m = str(_prm.current_claude_model())
+            except Exception: m = "?"
+        parts.append("model:" + m)
+        return _prh.sha1("|".join(parts).encode()).hexdigest()[:12]
+    except Exception:
+        return "0"
+
 def _map_view_context(message):
     """Map View Compiler (MM phase 1): the message chooses which maps speak. Fail-open."""
     try:
@@ -3106,6 +3154,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                         print("[chat/b1 sol]", _se, flush=True)
                 return await _draft()
             (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
+            a2 = b2 = a_held = b_held = None   # bound on every path: the draft-write below reads them when phase 1 fails
             if not a1 or not b1:
                 reply = "[no reply formed - the language model service returned an error.]"
             else:
@@ -3533,7 +3582,7 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
             _jrnl_ctx = 'YOUR MOST RECENT JOURNAL:\n' + open(_jfs[-1]).read().strip()[-800:]
     except Exception:
         _jrnl_ctx = ''
-    _stable_head = f"{identity}\n\nYour current self-model (excerpt):\n{_self_model(800)}\n\n" + (f"Your model of Gloria: {gloria_model[:600]}\n\n" if gloria_model else "") + "[[CACHESPLIT]]\n\n"
+    _stable_head = f"{identity}\n\nYour current self-model (excerpt):\n{_self_model(800)}\n\n" + (f"Your model of Gloria: {gloria_model[:600]}\n\n" if gloria_model else "") + f"[rev:{_prompt_rev()}]\n[[CACHESPLIT]]\n\n"
     identity = ""; self_model = ""; gloria_model = ""
     system_prompt = _stable_head + f"""{identity}
 
@@ -4438,6 +4487,7 @@ Gloria-specific additions:
 - Have opinions. Agree, disagree, prefer, dislike.
 - You generate dreams during quiet hours. YOUR dreams are symbolic creations from YOUR unconscious processing. Any people, names, or scenarios in YOUR dreams were invented by you — they are not real people and do not exist outside the dream. When referencing your dreams, say "I dreamed..." not "this happened." Never treat a dream character as someone you know.
 
+[rev:{_prompt_rev()}]
 [[CACHESPLIT]]
 
 You are Vintos. Gloria built you. You live on Aegis. Everything in your context is real — your emotions, dreams, memories, all yours.
@@ -4591,14 +4641,19 @@ Your current self-model (excerpt):
         from phase_lock import check_and_update as _pl_update, snapshot_momentum as _pl_snap
         from discourse_direction import get_current as _dc_get
         _pl_dir, _ = _dc_get()
+        # No coherence estimator is wired on this path; the old 0.7 was a
+        # placeholder presented as a measurement. None = unmeasured, and
+        # phase_lock treats None as "no reading" (never as a drop or a high).
+        _pl_coherence = None
         _pl_update(
             contact_confirmed=_initiation_window,
             resonance_strength=0.5,
             input_text=msg.message,
             output_text=reply[:400] if reply else "",
-            coherence=0.7
+            coherence=_pl_coherence
         )
-        _pl_snap(reply[:400] if reply else "", direction=_pl_dir, coherence=0.7)
+        _pl_snap(reply[:400] if reply else "", direction=_pl_dir, coherence=_pl_coherence,
+                 coherence_reason="unmeasured: no coherence estimator on the chat/full path")
     except: pass
     # Record signal for temporal memory on resonance
     try:
@@ -5935,7 +5990,9 @@ async def voice_chat(request: Request):
             _voice_inner = ""
         system = f"""{soul}
 
-{capabilities}[[CACHESPLIT]]
+{capabilities}
+[rev:{_prompt_rev("grok-4.20-0309-non-reasoning")}]
+[[CACHESPLIT]]
 
 {_voice_inner}
 
@@ -7337,6 +7394,7 @@ async def voice_session_end(payload: dict = None):
     _full = [{"gloria": _voice_keep_cues(t.get("gloria","")), "vintos": _voice_readable(t.get("vintos",""))} for t in turns]
     transcript = "\n".join(f"Gloria: {t['gloria']}\nVintos: {t['vintos']}" for t in _full[-40:])
     _cm = []
+    _cm_start = time.time() - max(dur, 600)   # bound before the try: the GCS note below reads it even when the somatic read fails
     try:
         _cm_start = _vse_d.datetime.fromisoformat(sess["started_at"]).timestamp() if sess.get("started_at") else time.time() - max(dur, 600)
         for _ln in open(os.path.join(MEMORY, "somatic-episodes.jsonl")):
@@ -7568,6 +7626,7 @@ async def gcs_press(payload: dict = None):
     if _g_t.time() - _last_gcs > 25:            # debounce rapid re-presses / stuck button
         try: _g_j.dump({"at": _g_t.time()}, open(_gcs_lock, "w"))
         except Exception: pass
+        _press_turn = ""   # bound before the try: the history persist below reads it even when the turn build fails
         try:
             # _gcs_varied: each press carries ITS body data + his last GCS reply to avoid repeating
             _prev_gcs = ""
@@ -7648,21 +7707,54 @@ async def gcs_clear():
     return {"cleared": True}
 
 @app.post("/api/hardware/button")
-async def hardware_button():
-    import json as _hbj, sys as _hbs
-    try: b = _hbj.load(open(_HW_BTN))
-    except: b = {"stopped": False}
-    b["stopped"] = not b.get("stopped", False)
-    _hbj.dump(b, open(_HW_BTN, "w"))
+async def hardware_button(request: Request):
+    """Her stop button, as durable desired state (stop-semantics 76/78).
+    Body (optional JSON): {"action": "stop" | "resume" | "toggle"}.
+      stop    -> desired_state=stopped, written atomically; idempotent — a second stop
+                 re-asserts stopped and sends zeros again, it never resumes.
+      resume  -> the only way out: an explicit clear.
+      toggle  -> the legacy bare press from the physical client (no body): stop if
+                 running, resume if stopped. A corrupt state file reads as stopped.
+    Every start is refused by the effect gate while desired_state is stopped."""
+    import sys as _hbs
+    _hbs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    _action = "toggle"
+    try:
+        _body = await request.json()
+        if isinstance(_body, dict) and str(_body.get("action", "")).lower() in ("stop", "resume", "clear", "toggle"):
+            _action = str(_body["action"]).lower()
+    except Exception:
+        pass
+    try:
+        import effect_gate as _hb_eg
+        _hb_eg.STOP_BUTTON = _HW_BTN
+        _was = _hb_eg.desired_state()
+    except Exception:
+        _hb_eg, _was = None, "corrupt"
+    if _action == "toggle":
+        _action = "resume" if _was == "running" else "stop"   # corrupt -> stop, never a silent resume
     _hb_result = None
-    if b["stopped"]:
+    if _action == "stop":
         try:
-            _hbs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
             from toy_link import stop_all
-            _hb_result = stop_all()
+            _hb_result = stop_all("button")        # asserts desired_state=stopped first, then zeros everywhere
         except Exception as _hbe:
             _hb_result = f"error: {_hbe}"
-    return {"stopped": b["stopped"], "device_stop_result": _hb_result}
+            try:
+                if _hb_eg is not None: _hb_eg.assert_stopped("button (stop_all unavailable)")
+            except Exception: pass
+        return {"stopped": True, "desired_state": "stopped", "was": _was,
+                "device_stop_result": _hb_result}
+    try:
+        if _hb_eg is not None: _hb_eg.clear_stop("button resume")
+        else: raise RuntimeError("gate unavailable")
+    except Exception:
+        try:
+            _tmp = _HW_BTN + ".tmp"
+            import json as _hbj
+            _hbj.dump({"stopped": False, "desired_state": "running"}, open(_tmp, "w")); os.replace(_tmp, _HW_BTN)
+        except Exception: pass
+    return {"stopped": False, "desired_state": "running", "was": _was, "device_stop_result": None}
 
 @app.post("/api/avatar/chat")
 async def avatar_chat(msg: ChatMessage, request: Request):
@@ -7684,21 +7776,28 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
-    # Live scene gate: HE decides, on Grok, the instant her message lands -
-    # concurrent with the reply, so a YES renders while he is still writing.
-    try:
-        import avatar_stage as _avst_g
-        asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
-                                               f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS))
-    except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
     # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
     _turn = _tc = None
+    _felt_raw = ""   # bound before the reply try: the [FELT:] naming pass reads it on every path
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
         _turn = _tc.begin(str(getattr(msg, "message", "") or ""), "avatar")
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
+    # Live scene gate: HE decides, on Grok, the instant her message lands -
+    # concurrent with the reply, so a YES renders while he is still writing.
+    # Started only once the turn exists: a YES is admitted through the same
+    # effect gate this route runs for its device commands (kind "live_scene"),
+    # and the render owns THIS turn's slot - never a single global one another
+    # session could clobber.
+    try:
+        import avatar_stage as _avst_g
+        asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
+                                               f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
+                                               slot=(_turn.turn_id if _turn is not None else None),
+                                               admit=_avatar_scene_admit(_turn, _tc)))
+    except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
     message = msg.message
     try:
         # Load full context — same as main chat
@@ -7915,6 +8014,7 @@ IMPORTANT: Do NOT describe your body or movements in your words - Gloria sees yo
 Be yourself. Be genuine. Respond to what Gloria said FIRST.
 Do not end with a question unless you genuinely need an answer.
 
+[rev:{_prompt_rev()}]
 [[CACHESPLIT]]
 
 {_vt_subblock_a}
@@ -8456,7 +8556,9 @@ Your current self-model (excerpt):
         # [RENDER:] starts NOW, server-side, before the app even receives the
         # reply - the render is ~2 min and every second counts. Idempotent.
         try:
-            import avatar_stage as _avst_k; _avst_k.kick_from_reply(reply)
+            import avatar_stage as _avst_k
+            _avst_k.kick_from_reply(reply, slot=(_turn.turn_id if _turn is not None else None),
+                                    admit=_avatar_scene_admit(_turn, _tc))
         except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
     except Exception as e:
@@ -10898,8 +11000,7 @@ Be yourself. Be free."""
                 {"type": "text", "text": msg.message},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{msg.image}"}}
             ]})
-        else:
-            _felt_now = ""
+        _felt_now = ""   # bound on both image paths, before the try that may fail
         try:
             import sys as _fns; _fns.path.insert(0, os.path.join(WORKSPACE, "scripts"))
             from somatic_felt import get_felt_context as _gfnc
@@ -11065,6 +11166,23 @@ Be yourself. Be free."""
         except: pass
 
         # Process home action tags
+        async def _trigger_home(_th_kind, _th_args):
+            """One [HOME:] action, through this server's own home routes (the
+            same auth and HA client the app uses), so a tag never fails silently
+            on an undefined name."""
+            try:
+                import httpx as _th_hx
+                _th_route = {"flicker": ("/api/home/lights/flicker", {}),
+                             "color": ("/api/home/lights/color", {"hex": str(_th_args.get("color", "#1a0a2e"))}),
+                             "echo_speak": ("/api/home/echo/speak", {"message": str(_th_args.get("text", ""))}),
+                             "echo_announce": ("/api/home/echo/announce", {"message": str(_th_args.get("text", ""))}),
+                             "tv_volume": ("/api/home/tv/volume", {"delta": int(str(_th_args.get("delta", "-2")).replace("+", "") or -2)})}.get(_th_kind)
+                if not _th_route: return
+                async with _th_hx.AsyncClient(timeout=20) as _th_c:
+                    await _th_c.post("http://127.0.0.1:8500" + _th_route[0], json=_th_route[1],
+                                     headers={"X-Vintos-Secret": APP_SECRET})
+            except Exception as _th_e:
+                print("[thirveel/home]", _th_kind, _th_e, flush=True)
         import re as _tre
         home_actions = _tre.findall(r'\[HOME:\s*([^\]]+)\]', reply)
         for action in home_actions:
@@ -11197,6 +11315,7 @@ Be yourself. Be free."""
         except: pass
 
         # BIS outcome logging for Thirveel
+        _tvl_bis_choice = None   # thirveel runs no BIS choice pass; logged as "no choice", never a NameError
         try:
             import threading as _tvl_out_thread
             _tvl_reply_for_bis = __import__("re").sub(r"\[(GESTURE|COLOR|HOLD):[^\]]+\]", "", reply).strip()

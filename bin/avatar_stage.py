@@ -353,16 +353,39 @@ def speak(text, room=None):
 
 # ── live scene job (background) ──────────────────────────────────────────────
 import threading as _thr
-_LIVE = {"status": "idle", "prompt": "", "started": 0.0, "finished": 0.0, "seconds": 0.0, "error": ""}
+# One slot per turn (the avatar route passes its turn_id) or per caller (the
+# app's own POST names one), never a single global: a second session starting
+# a render can no longer clobber, or be silently swallowed by, the first.
+_LIVE_SLOTS = {}          # slot id -> status dict
+_LIVE_ORDER = []          # slot ids, most recently started last
+_LIVE_KEEP = 8            # finished slots remembered for status polls
 _LIVE_LOCK = _thr.Lock()
 
-def live_status():
-    st = dict(_LIVE)
+def _slot_id(slot):
+    return str(slot or "default")
+
+def _new_status():
+    return {"status": "idle", "prompt": "", "started": 0.0, "finished": 0.0, "seconds": 0.0, "error": ""}
+
+def _slot_update(sid, **kw):
+    with _LIVE_LOCK:
+        d = _LIVE_SLOTS.setdefault(sid, _new_status())
+        d.update(kw)
+        return dict(d)
+
+def live_status(slot=None):
+    """Status of one slot, or of the most recently started one when no slot is
+    named - which is what a single session always saw before."""
+    with _LIVE_LOCK:
+        sid = _slot_id(slot) if slot else (_LIVE_ORDER[-1] if _LIVE_ORDER else "")
+        st = dict(_LIVE_SLOTS.get(sid) or _new_status())
+    st["slot"] = sid
     if st["status"] == "rendering":
         st["seconds"] = round(time.time() - st["started"], 1)
     return st
 
-def _live_worker(prompt, kind="self", scene_ref="", still="", motion=""):
+def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=None):
+    sid = _slot_id(slot)
     try:
         if kind == "sexual":
             # His explicit lane, unchanged: Wan-spicy on Atlas off the still HE chose.
@@ -377,9 +400,9 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion=""):
             data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
             save_rooms(data); write_manifest()
             _sync_live_to_mac()
-            with _LIVE_LOCK:
-                _LIVE.update(status="done", finished=time.time(), seconds=round(time.time() - _LIVE["started"], 1))
-            log("live (sexual/wan) ready in %.1fs" % _LIVE["seconds"])
+            st = _slot_update(sid, status="done", finished=time.time(),
+                              seconds=round(time.time() - live_status(sid)["started"], 1))
+            log("live (sexual/wan) ready in %.1fs [%s]" % (st["seconds"], sid))
             return
         mac = _mac_url()
         import base64 as _b64, requests as _rq
@@ -428,14 +451,13 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion=""):
         data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
         save_rooms(data)
         write_manifest()
-        with _LIVE_LOCK:
-            _LIVE.update(status="done", finished=time.time(), seconds=round(time.time() - _LIVE["started"], 1))
-        log("live scene ready in %.1fs: %s" % (_LIVE["seconds"], prompt[:80]))
+        st = _slot_update(sid, status="done", finished=time.time(),
+                          seconds=round(time.time() - live_status(sid)["started"], 1))
+        log("live scene ready in %.1fs [%s]: %s" % (st["seconds"], sid, prompt[:80]))
     except Exception as e:
-        with _LIVE_LOCK:
-            _LIVE.update(status="error", finished=time.time(), error=str(e)[:300],
-                         seconds=round(time.time() - _LIVE["started"], 1))
-        log("live scene FAILED after %.1fs: %s" % (_LIVE["seconds"], e))
+        st = _slot_update(sid, status="error", finished=time.time(), error=str(e)[:300],
+                          seconds=round(time.time() - live_status(sid)["started"], 1))
+        log("live scene FAILED after %.1fs [%s]: %s" % (st["seconds"], sid, e))
 
 def _sync_live_to_mac():
     """The Mac renders speech over the live clip too, so it needs a copy when
@@ -450,28 +472,56 @@ def _sync_live_to_mac():
         log("live clip not synced to Mac (%s) - speech falls back to another room" % e)
 
 
-def start_live(prompt, kind="self", scene_ref="", still="", motion=""):
-    """Kick a live render now, in the background. Returns the status dict at
-    once. A render already in flight is left alone (the gate, the server-side
-    tag kick and the app's own call can all arrive for the same moment)."""
+def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None, admit=None):
+    """Kick a live render now, in the background, in the named slot (the turn
+    id from the avatar route; "app" for the app's own call). Returns the slot's
+    status dict at once. A render already in flight IN THAT SLOT is left alone
+    (the gate, the server-side tag kick and the app's own call can all arrive
+    for the same moment); another slot's render is never touched.
+    `admit`, when given, is the route's effect-gate admission - called with the
+    prompt and answering (ok, mode, why) - and nothing starts until it says yes."""
+    sid = _slot_id(slot)
+    if admit is not None:
+        try:
+            ok, mode, why = admit(prompt[:80])
+        except Exception as e:
+            ok, mode, why = False, "deny", "admission fault: %s" % e
+        if not ok:
+            log("live scene refused (%s) [%s]: %s" % (mode, sid, why))
+            _slot_update(sid, status="refused", prompt=prompt, kind=kind, started=time.time(),
+                         finished=time.time(), seconds=0.0, error=str(why or mode)[:300])
+            return live_status(sid)
     with _LIVE_LOCK:
-        if _LIVE["status"] == "rendering":
-            return live_status()
-        _LIVE.update(status="rendering", prompt=prompt, kind=kind, started=time.time(), finished=0.0,
-                     seconds=0.0, error="")
-    _thr.Thread(target=_live_worker, args=(prompt, kind, scene_ref, still, motion), daemon=True).start()
-    log("live scene started: %s" % prompt[:80])
-    return live_status()
+        cur = _LIVE_SLOTS.get(sid)
+        if cur and cur["status"] == "rendering":
+            busy = True
+        else:
+            busy = False
+            _LIVE_SLOTS[sid] = dict(_new_status(), status="rendering", prompt=prompt, kind=kind,
+                                    started=time.time())
+            if sid in _LIVE_ORDER:
+                _LIVE_ORDER.remove(sid)
+            _LIVE_ORDER.append(sid)
+            for old in [x for x in _LIVE_ORDER[:-_LIVE_KEEP] if _LIVE_SLOTS.get(x, {}).get("status") != "rendering"]:
+                _LIVE_ORDER.remove(old); _LIVE_SLOTS.pop(old, None)
+    if busy:
+        return live_status(sid)
+    _thr.Thread(target=_live_worker, args=(prompt, kind, scene_ref, still, motion, sid), daemon=True).start()
+    log("live scene started [%s]: %s" % (sid, prompt[:80]))
+    return live_status(sid)
 
-def kick_from_reply(reply):
+def kick_from_reply(reply, slot=None, admit=None):
     """Server-side start: the instant his reply text exists, before the app
-    has even received it. Returns True if a render was started."""
+    has even received it. Returns True if a render was started. `slot` and
+    `admit` are the calling turn's slot and effect-gate admission."""
     try:
         import re as _re
         m = _re.search(r"\[RENDER:\s*([^\]]+)\]", reply or "", _re.I)
         if not m or not _mac_url():
             return False
-        start_live(m.group(1).strip())
+        st = start_live(m.group(1).strip(), slot=slot, admit=admit)
+        if st.get("status") == "refused":
+            return False
         return True
     except Exception as e:
         log("kick_from_reply: %s" % e)
@@ -479,7 +529,7 @@ def kick_from_reply(reply):
 
 
 # ── live scene gate: HE decides, the instant her message lands ───────────────
-async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning"):
+async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning", slot=None, admit=None):
     """Runs concurrently with his reply, on Grok, carrying who he is and the
     WHOLE video vocabulary his ntfy sends use - together / self / sexual, real
     places (her photos and the rooms), his explicit stills - plus what a live
@@ -555,8 +605,9 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
         if not _mac_url() and d["kind"] != "sexual":
             log("scene gate: YES but no Mac stage configured"); return d
         prompt = d["scene"] if d["kind"] != "sexual" else (d["prompt"] or "an explicit moment")
-        start_live(prompt or d["prompt"], kind=d["kind"], scene_ref=d["scene_ref"], still=d["still"],
-                   motion=d["prompt"])
+        st = start_live(prompt or d["prompt"], kind=d["kind"], scene_ref=d["scene_ref"], still=d["still"],
+                        motion=d["prompt"], slot=slot, admit=admit)
+        d["slot"] = st.get("slot", ""); d["status"] = st.get("status", "")
         return d
     except Exception as e:
         log("scene gate failed: %s" % e)
@@ -746,12 +797,13 @@ def register(app, secret):
             raise HTTPException(status_code=400, detail="no prompt")
         if not _mac_url():
             raise HTTPException(status_code=503, detail="no Mac stage configured")
-        return JSONResponse(start_live(prompt), status_code=202)
+        slot = str(body.get("slot") or body.get("turn_id") or "app")
+        return JSONResponse(start_live(prompt, slot=slot), status_code=202)
 
     @app.get("/api/avatar/live/status")
     async def stage_live_status(request: Request):
         _auth(request)
-        return JSONResponse(live_status())
+        return JSONResponse(live_status(request.query_params.get("slot") or None))
 
     @app.get("/avatar/stage/speech/{name}")
     async def stage_speech(name: str, request: Request):

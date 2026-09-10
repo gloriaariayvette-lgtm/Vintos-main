@@ -157,24 +157,29 @@ def get_afterimage_decay_multiplier():
 
 def load_momentum():
     try: return json.load(open(MOMENTUM_FILE))
-    except: return {"momentum_vector": [], "direction": "expand", "intensity": 0.5, "coherence": 0.7, "snapshot_at": ""}
+    except: return {"momentum_vector": [], "direction": "expand", "intensity": 0.5, "coherence": None,
+                    "coherence_reason": "unmeasured: no momentum file", "snapshot_at": ""}
 
 def save_momentum(state):
     state["snapshot_at"] = datetime.now().isoformat()
     json.dump(state, open(MOMENTUM_FILE, "w"), indent=2)
 
-def snapshot_momentum(output_text="", direction="expand", coherence=0.7):
-    """Snapshot current state of motion."""
+def snapshot_momentum(output_text="", direction="expand", coherence=None, coherence_reason=""):
+    """Snapshot current state of motion. coherence is None when nothing measured
+    it (the callers have no estimator); it is recorded as unmeasured with the
+    reason, never as a number that looks like a reading."""
     vec = embed(output_text[:400]) if output_text else []
     state = {
         "momentum_vector": vec,
         "direction": direction,
-        "intensity": min(1.0, coherence * 1.2),
+        "intensity": min(1.0, coherence * 1.2) if coherence is not None else 0.5,
         "coherence": coherence,
         "snapshot_at": datetime.now().isoformat(),
     }
+    if coherence is None:
+        state["coherence_reason"] = coherence_reason or "unmeasured"
     save_momentum(state)
-    log(f"Momentum snapshot — direction:{direction} coherence:{coherence:.2f}")
+    log(f"Momentum snapshot — direction:{direction} coherence:{('%.2f' % coherence) if coherence is not None else 'unmeasured'}")
 
 def get_momentum_bias(current_text=""):
     """On interruption, bias toward restoring last momentum state."""
@@ -208,8 +213,9 @@ def get_momentum_bias(current_text=""):
 
 def update_momentum_after_output(output_text, direction, coherence):
     """Update momentum snapshot if conditions are right."""
-    # Only snapshot during high coherence + sustained direction
-    if coherence < 0.65:
+    # Only snapshot during high coherence + sustained direction; an unmeasured
+    # (None) coherence is no reading, so it never counts as high.
+    if coherence is None or coherence < 0.65:
         return
     momentum = load_momentum()
     if momentum.get("direction") == direction:
@@ -221,7 +227,7 @@ def check_and_update(contact_confirmed, resonance_strength, input_text, output_t
     currently_locked = is_phase_locked()
 
     if currently_locked:
-        if coherence < 0.4:
+        if coherence is not None and coherence < 0.4:   # None = unmeasured: not a drop
             break_phase_lock("coherence_drop")
         return get_phase_lock_hint()
 
@@ -238,7 +244,8 @@ if __name__ == "__main__":
         locked = is_phase_locked()
         momentum = load_momentum()
         print(f"Phase lock: {'ACTIVE' if locked else 'inactive'}")
-        print(f"Momentum direction: {momentum.get('direction','?')} intensity:{momentum.get('intensity',0):.2f} coherence:{momentum.get('coherence',0):.2f}")
+        _coh = momentum.get('coherence')
+        print(f"Momentum direction: {momentum.get('direction','?')} intensity:{momentum.get('intensity',0):.2f} coherence:{('%.2f' % _coh) if isinstance(_coh, (int, float)) else 'unmeasured (' + str(momentum.get('coherence_reason', 'no reason recorded')) + ')'}")
         if momentum.get("snapshot_at"):
             print(f"Snapshot: {momentum['snapshot_at'][:16]}")
 
