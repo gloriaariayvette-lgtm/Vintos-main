@@ -258,6 +258,13 @@ def _dismiss_want_with_reason(want, haiku):
     want["dismissed"] = True
     want["dismissed_reason"] = haiku
     want["_delete"] = True
+    try:   # review 254: one completion door; the ledger write below stays as the fallback when it is unavailable
+        import sys as _wc_s; _wc_s.path.insert(0, SCRIPTS)
+        import want_completion as _wc
+        if _wc.complete(want, "dismissed", "haiku-verdict", note=haiku).get("result") == "dismissed":
+            return
+    except Exception as _wce:
+        log(f"want_completion unavailable: {_wce}")
     try:
         import json as _dj, os as _do
         from datetime import datetime as _dd
@@ -2097,6 +2104,11 @@ def main():
     for want in wants:
         text = want.get("want", "")
         log(f"Processing want: {text[:80]} (intensity {want.get('intensity', '?')})")
+        # review 266: a pursuit he paused stays paused across sessions until its horizon, whatever process runs
+        _pp = want.get("pursuit") or {}
+        if _pp.get("state") == "PAUSED" and float(_pp.get("paused_until") or 0) > __import__("time").time() and not _args.force_want_id:
+            log("  → PAUSED by his choice until %s — skipping" % __import__("datetime").datetime.fromtimestamp(float(_pp["paused_until"])).strftime("%Y-%m-%d %H:%M"))
+            continue
         # 24-hour hold — skip unless manually routed or old enough
         _in_progress = want.get("current_step_index", 0) > 0 or (want.get("multistep") and want.get("steps"))
         if not want.get("manually_routed") and not want.get("gloria_routed") and not _args.force_want_id and not _in_progress:

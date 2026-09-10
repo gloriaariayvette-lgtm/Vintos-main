@@ -98,7 +98,11 @@ If none were fulfilled, reply: []"""
         for idx in fulfilled_indices:
             if 1 <= idx <= len(wants):
                 want = wants[idx - 1]
-                fulfill_want(want["want"], want_id=want.get("id"))
+                try:   # review 254: one completion door
+                    import want_completion as _wc
+                    _wc.complete(want, "fulfilled", "conversation", note="fulfilled by today's conversation")
+                except Exception:
+                    fulfill_want(want["want"], want_id=want.get("id"))
                 log(f"Fulfilled via conversation: {want['want'][:60]}")
 
         if not fulfilled_indices:

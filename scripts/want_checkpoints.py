@@ -82,13 +82,21 @@ def decide(decision, his_words=""):
                 p["abandoned_at"] = datetime.now().isoformat()
                 w["want_state"] = "ALIVE_UNPURSUED"   # the want survives its route
             elif decision == "release":
+                try:   # review 254: one completion door (it rewrites the live list itself)
+                    import want_completion as _wc
+                    _wc.WANTS = WANTS
+                    if _wc.complete(w, "released", "his_choice", note=his_words).get("result") == "released":
+                        wants = None; break
+                except Exception:
+                    pass
                 p["state"] = "ABANDONED_BY_CHOICE"
                 w["want_state"] = "RELEASED_BY_CHOICE"
                 w["fulfilled"] = True                  # leaves the active queue
                 w["satisfaction"] = "RELEASED"
                 w["fulfilled_by"] = "his_choice"
             break
-        json.dump(wants, open(WANTS, "w"), indent=2)
+        if wants is not None:
+            json.dump(wants, open(WANTS, "w"), indent=2)
     except Exception as e:
         print("[checkpoints] want update failed:", e)
     _save(cps)

@@ -115,6 +115,24 @@ def distill(want, enc):
             "remained": str(d.get("remained", ""))[:200],
             "regret": bool(d.get("regret")), "regret_note": str(d.get("regret_note", "")).strip()}
 
+def lessons_from_attempts(want):
+    """review 266: what the identified attempts taught, with no model - each step's capability, its
+    findings, what was refused (an artifact claimed without a file), what a checkpoint decided and
+    in his words. A practice carries these into the next attempt of the same kind."""
+    out = []
+    for h in want.get("step_history", []) or []:
+        out.append({"attempt": "step %s" % h.get("step"), "capability": h.get("capability"), "finding": str(h.get("findings", ""))[:200], "at": h.get("completed_at")})
+    au = want.get("artifact_unverified")
+    if au:
+        out.append({"attempt": "completion claimed", "capability": "fulfil", "finding": "refused: " + str(au.get("why", ""))[:160], "at": au.get("at")})
+    try:
+        for c in json.load(open(os.path.join(MEMORY, "pursuit-checkpoints.json"))):
+            if c.get("state") == "decided" and c.get("want_text", "")[:60] == str(want.get("want", ""))[:60]:
+                out.append({"attempt": "checkpoint " + c.get("id", ""), "capability": c.get("capability"), "finding": "%s: %s" % (c.get("decision"), str(c.get("his_words", ""))[:160]), "at": c.get("decided_at")})
+    except Exception:
+        pass
+    return out
+
 def _evict(store, fresh_ids):
     """Cap the store; evict the lowest-hits item, but never one added this run."""
     while len(store) > CAP:
@@ -148,6 +166,7 @@ def main():
         _id = hashlib.md5((res["learned"] + now).encode()).hexdigest()[:10]
         item = {"_id": _id, "learned": res["learned"], "settled": res["settled"],
                 "remained": res["remained"], "embedding": embed(enc, res["learned"]),
+                "attempts": lessons_from_attempts(w),   # review 266: the identified attempts travel with the lesson
                 "source_want": str(w.get("want", ""))[:120], "at": now, "hits": 0}
         learned_store.append(item); fresh_l.add(_id)
         log(f"LEARNED: {res['learned'][:70]}")

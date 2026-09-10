@@ -166,6 +166,7 @@ def store_alignment_hook(emotional_state_vec, source="alignment"):
             hooks = []
         hooks.append({
             "id": str(__import__("uuid").uuid4())[:8],
+            "kind": "theme",   # review 264: a latent thread is a standing preoccupation, never a question
             "past_state_vector": emotional_state_vec[:],
             "source": source,
             "strength": 0.6,

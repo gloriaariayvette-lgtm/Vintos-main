@@ -137,6 +137,34 @@ def build(path, medium, source_want=None, revision=1, shelf=None, run=None, vali
         "delivery": None,
     }
 
+def revise(previous, path, medium=None, note="", run=None):
+    """review 283: a new draft of an earlier work. The manifest of the new file carries revision n+1,
+    previous_sha256 and previous_path, and a note saying what the revision was for. The old record is
+    untouched: both drafts stay comparable."""
+    prev = previous if isinstance(previous, dict) else {}
+    rec = build(path, medium or prev.get("medium") or "image", source_want=prev.get("source_want"),
+                revision=int(prev.get("revision") or 1) + 1, run=run)
+    rec["previous_sha256"] = prev.get("sha256"); rec["previous_path"] = prev.get("path"); rec["revision_note"] = str(note)[:300]
+    return rec
+
+def compare(a, b):
+    """What changed between two drafts of one work: bytes, hash, validation, delivery, revision and
+    the shared lineage; for text drafts (medium write) the changed lines too."""
+    a, b = a or {}, b or {}
+    out = {"same_file": bool(a.get("sha256")) and a.get("sha256") == b.get("sha256"),
+           "revision": (a.get("revision"), b.get("revision")), "bytes": (a.get("bytes"), b.get("bytes")),
+           "bytes_delta": (int(b.get("bytes") or 0) - int(a.get("bytes") or 0)),
+           "validated": (a.get("validated"), b.get("validated")),
+           "delivery": ((a.get("delivery") or {}).get("state"), (b.get("delivery") or {}).get("state")),
+           "lineage": "b revises a" if b.get("previous_sha256") and b.get("previous_sha256") == a.get("sha256") else
+                      ("a revises b" if a.get("previous_sha256") and a.get("previous_sha256") == b.get("sha256") else "unlinked"),
+           "note": b.get("revision_note") or a.get("revision_note") or ""}
+    if a.get("medium") == "write" and b.get("medium") == "write" and (a.get("text") is not None or b.get("text") is not None):
+        import difflib
+        d = list(difflib.unified_diff(str(a.get("text", "")).splitlines(), str(b.get("text", "")).splitlines(), lineterm="", n=0))
+        out["changed_lines"] = [l for l in d if l[:1] in "+-" and not l.startswith(("+++", "---"))][:40]
+    return out
+
 def is_manifest(record):
     return isinstance(record, dict) and all(k in record for k in MANIFEST_FIELDS)
 

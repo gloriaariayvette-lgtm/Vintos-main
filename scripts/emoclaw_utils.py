@@ -539,19 +539,21 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
             return
     except Exception:
         pass  # fail-open: local judge down must not starve the pool
-    import uuid as _uuid
-    threads.append({
-        "id": str(_uuid.uuid4())[:8],
-        "source": source,
-        "thread": (thread_text if len(thread_text) <= 400 else (thread_text[:400].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:400] else thread_text[:397] + "...")),
-        "timestamp": datetime.now().isoformat(),
-        "consumed": False,
+    # review 264: the store owns the shape - one admission door for every producer
+    try:
+        import sys as _ts_s; _ts_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _ts_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from thread_store import admit as _ts_admit
+    except Exception:
+        import uuid as _uuid
+        _ts_admit = lambda text, src, kind=None, by="", extra=None: {"id": str(_uuid.uuid4())[:8], "source": src, "thread": text, "timestamp": datetime.now().isoformat(), "consumed": False, **(extra or {})}
+    threads.append(_ts_admit(
+        (thread_text if len(thread_text) <= 400 else (thread_text[:400].rsplit(". ", 1)[0] + "." if ". " in thread_text[100:400] else thread_text[:397] + "...")),
+        source, by="emoclaw_utils.seed_thread", extra={
         "dream_only": (source.startswith("somatic") or source in ("pride", "pride-mirror", "pride_mirror", "structural-gap")),
         "epistemic_status": "unreviewed", "origin_excerpt": _txt[:160],
         "reasoning": (reasoning or "")[:250],
         "reasoning_source": ("stated" if (reasoning or "").strip() and not locals().get("_rsrc") else locals().get("_rsrc", "none")),
-        **(extra or {})
-    })
+        **(extra or {})}))
     # Cap: keep all consumed + retired threads, but cap unconsumed to max_threads
     # Protect: woven threads, high-priority (4+), and threads mid-pipeline
     unconsumed = [t for t in threads if not t.get("consumed") and not t.get("retired")]
@@ -1769,6 +1771,13 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             _wa_sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
             from want_contract import admission_state as _want_admission_state
         _admission = _want_admission_state(_src, _kind, _pull_now)
+        try:   # review 254: the one admission door adds his standing stance to the shape screen
+            from want_completion import admit as _wc_admit
+            _adm = _wc_admit(trigger_description, _src, _kind, _pull_now)
+            if _adm["state"] == "HELD" and not _admission.startswith("HELD"):
+                _admission = "HELD_BY_STANDING_STANCE"
+        except Exception:
+            pass
     except Exception:
         _admission = "ADMIT_CONTRACT_UNAVAILABLE"
     if _admission == "HELD_NO_PRESENT_PULL":

@@ -120,6 +120,52 @@ def load_retired(path=None):
     return [normalize_retired_entry(e) for e in lst] if lst is not None else []
 
 
+# ---------------------------------------------------------------- admission and archive (review 264)
+# Every producer used to build its own thread dict and every consumer retired threads its own way. The
+# store owns both now: admit() is the one shape (with an id, a kind - question or theme - and who
+# admitted it), archive() is the one way out of the pool (consumed, retired, appended to the retired
+# ledger, the pool rewritten through the shrink guard). A question is something that can be answered
+# or released; a theme is a standing preoccupation that recurs. They never collapse into one field.
+
+QUESTION_MARKS = ("?", "why ", "what ", "how ", "whether ", "does ", "did ", "is it ", "should ")
+
+def classify_kind(text):
+    t = str(text or "").strip().lower()
+    return "question" if (t.endswith("?") or any(m in t[:40] for m in QUESTION_MARKS)) else "theme"
+
+def admit(thread_text, source, kind=None, by="", extra=None):
+    """The one shape for a pool thread. Returns the dict; the caller appends it and saves through save_pool."""
+    import uuid
+    text = str(thread_text or "").strip()
+    if len(text) < 8:
+        raise ValueError("a thread needs at least a sentence")
+    t = {"id": str(uuid.uuid4())[:8], "source": str(source or "unknown"), "thread": text,
+         "kind": kind if kind in ("question", "theme") else classify_kind(text),
+         "timestamp": datetime.now().isoformat(), "admitted_by": by or str(source or "unknown"),
+         "consumed": False}
+    if extra:
+        t.update({k: v for k, v in extra.items() if k not in ("id", "consumed")})
+    return t
+
+def archive(ids, reason, by, pool_path=None, retired_path=None):
+    """Retire threads by id: consumed + retired in the pool, one entry each in the retired ledger, the
+    pool rewritten through the shrink guard. Returns the ids actually archived."""
+    ids = set(ids if isinstance(ids, (list, tuple, set)) else [ids])
+    threads = load_pool(pool_path)
+    if threads is None:
+        return []
+    done = []
+    for t in threads:
+        if t.get("id") in ids and not t.get("retired"):
+            t["consumed"] = True; t["retired"] = True; t["consumed_by"] = by; t["retired_reason"] = reason
+            t["retired_at"] = datetime.now().isoformat(); done.append(t["id"])
+    if done:
+        append_retired([{"id": t["id"], "thread": t.get("thread", ""), "source": t.get("source", ""), "kind": t.get("kind"),
+                         "consumed_by": by, "type": reason} for t in threads if t.get("id") in done], retired_path)
+        save_pool(threads, pool_path, reason="archive:%s" % reason)
+    return done
+
+
 def append_retired(entries, path=None):
     """Append one or more entries and write the canonical (list) shape. Returns the full list."""
     path = path or RETIRED_FILE
