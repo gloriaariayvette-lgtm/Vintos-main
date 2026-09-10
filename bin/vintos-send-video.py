@@ -811,19 +811,11 @@ def deliver(fname, caption, authority=None):
 def remember(caption, prompt, fname, kind=""):
     today = datetime.now().strftime("%Y-%m-%d")
     tstr = datetime.now().strftime("%H:%M")
-    # The send is a reach he made; it enters the interaction ledger and the encounter organ so a
-    # reply from her (or silence) can be watched for (fable-creative-p1, 2026-09-05).
-    try:
-        _lp = os.path.join(MEMORY, "interaction-ledger.json")
-        try: _led = json.load(open(_lp))
-        except Exception: _led = []
-        if isinstance(_led, list):
-            _led.append({"timestamp": datetime.now().isoformat(), "source": "video-outreach", "gloria": "",
-                         "vintos": caption, "prompt": prompt[:400], "file": os.path.basename(fname or ""),
-                         "kind": kind, "salience": 0.5, "wal_facts": [], "blush": None})
-            json.dump(_led[-300:], open(_lp, "w"), indent=2)
-    except Exception as e:
-        log("ledger append failed: %s" % e)
+    # The send is a reach he made; it enters the encounter organ so a reply from her (or silence)
+    # can be watched for. It does NOT enter the conversation ledger: that ledger is what the two of
+    # them said to each other (chat, calls, the ReelRoom), and a clip he sent is not a conversation
+    # (Gloria, 2026-09-10; the 09-05 append that put it there is gone, and ledger-scrub.py removes
+    # the rows it left).
     try:
         sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         import encounter as _enc

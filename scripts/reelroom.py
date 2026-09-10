@@ -267,7 +267,9 @@ def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_fi
     verbatim transcript plus the narrative memory are one ledger object.
     Idempotent by the saved ReelRoom file name.
     """
-    if not summary_text or not session_file:
+    # the conversation lands even when his memory of the night could not be written (a model
+    # failure leaves summary_text empty): the transcript is the ledger's business, the narrative a bonus
+    if not session_file:
         return False
     path = os.path.join(MEMORY, "interaction-ledger.json")
     try:
