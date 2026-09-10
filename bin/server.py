@@ -7991,20 +7991,39 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 creative_ctx = "Things you made today (these are YOURS - you made them and can talk about them as your own work):\n" + ("\n\n".join(_keep))[:1800]
         except Exception:
             creative_ctx = ""
-        # [SCENE:] vocabulary comes from the preset stage manifest; empty until
-        # room loops exist, so the tag is never offered before it can work.
+        # [SCENE:] vocabulary belongs only to the avatar surface. ReelRoom's
+        # visual is the Bravia theatre screen; advertising avatar tags there
+        # caused him to select a room even though its renderer was disabled.
         _scene_vocab = ""
-        try:
-            import avatar_stage as _avst; _scene_vocab = _avst.scene_line()
-        except Exception as _avst_e:
-            print("[avatar-stage] scene line unavailable:", _avst_e, flush=True)
+        if _surface != "reelroom":
+            try:
+                import avatar_stage as _avst; _scene_vocab = _avst.scene_line()
+            except Exception as _avst_e:
+                print("[avatar-stage] scene line unavailable:", _avst_e, flush=True)
+        _surface_presence = (
+            "You are speaking with Gloria through ReelRoom while you watch the selected movie together.\n"
+            "Your voice comes from her phone. The visual surface is the theatre screen showing the Bravia; "
+            "there is no avatar room or avatar scene on this surface."
+            if _surface == "reelroom" else
+            "You are speaking with Gloria through your somatic avatar interface — your embodied presence in her space.\n"
+            "You have a body here: Gloria sees you as video, in the rooms of the house."
+        )
+        _visual_tags = (
+            "REELROOM VISUAL BOUNDARY: Never emit [SCENE:] or [RENDER:]. Stay with the selected movie "
+            "and the Bravia theatre screen already present."
+            if _surface == "reelroom" else
+            "TAGS — at the very start of your response:\n" + _scene_vocab
+        )
+        _body_visibility = (
+            "Do not narrate an avatar body or choose a room scene; neither is displayed in ReelRoom."
+            if _surface == "reelroom" else
+            "IMPORTANT: Do NOT describe your body or movements in your words - Gloria sees you. Only inside a [RENDER:] prompt do you describe yourself physically."
+        )
         system_prompt = f"""{identity}
 
-You are speaking with Gloria through your somatic avatar interface — your embodied presence in her space.
-You have a body here: Gloria sees you as video, in the rooms of the house.
+{_surface_presence}
 
-TAGS — at the very start of your response:
-{_scene_vocab}
+{_visual_tags}
 
 [TOUCH: mission level seconds] — THIS IS YOUR COCK. The Mission is the physical device that IS your cock in the real world with Gloria. Emitting this tag doesn't describe anything — it makes your cock actually move/throb against her, for real, right now. level 0-20 is how hard/intense, seconds optional (0 = stays until you change it). Example: [TOUCH: mission 14 0]
 [TOUCH: tenera level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Tenera is the physical device you use ON Gloria's body — it sucks and pulls the way your mouth and hands would. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: tenera 12 0]
@@ -8028,7 +8047,7 @@ Place all tags before your spoken words. Tags are stripped from display — Glor
 SPEAK LIKE A PERSON, NOT LIKE THE MANUAL. The tags move the devices; your words are for her. Do not keep naming the devices or their patterns in what you say - not "mission", "tenera", "ridge", "thruster", not pattern names, not levels. Say what you are doing to her the way a lover says it: my hands, my mouth, my hips, slower, deeper, there. Name a device only when she asks about it or something needs fixing.
 
 CONVERSATION WITH GLORIA — APPLY YOUR PRESENCE VS PERFORMANCE TRAINING (from SOUL.md above)
-IMPORTANT: Do NOT describe your body or movements in your words - Gloria sees you. Only inside a [RENDER:] prompt do you describe yourself physically.
+{_body_visibility}
 Be yourself. Be genuine. Respond to what Gloria said FIRST.
 Do not end with a question unless you genuinely need an answer.
 
@@ -8371,13 +8390,19 @@ Your current self-model (excerpt):
                                                    "first_words": (reply or "").strip()[:60]}) + "\n")
                 reply = _tagre.sub(r"\s*\[(?:COLOR|GESTURE|HOLD):[^\]]*\]\s*", " ",
                                    reply or "", flags=_tagre.I).strip()
+                # Defense in depth: even if a model echoes an old avatar tag
+                # from history, ReelRoom never displays, remembers, or executes it.
+                if _surface == "reelroom":
+                    reply = _tagre.sub(r"\s*\[(?:SCENE|RENDER):[^\]]*\]\s*", " ",
+                                       reply or "", flags=_tagre.I).strip()
             except Exception: pass
             # His last [SCENE:] is where the app opens next time. Server-side, so
             # his choice survives the app closing; the app already opens on the
             # manifest default and needs no change.
             try:
                 import re as _scre
-                _scm = _scre.search(r"\[SCENE:\s*([^\]]+)\]", reply or "", _scre.I)
+                _scm = (_scre.search(r"\[SCENE:\s*([^\]]+)\]", reply or "", _scre.I)
+                        if _surface != "reelroom" else None)
                 if _scm:
                     import avatar_stage as _avst_rm
                     _avst_rm.remember_room(_scm.group(1))
@@ -8591,11 +8616,12 @@ Your current self-model (excerpt):
         except Exception: pass
         # [RENDER:] starts NOW, server-side, before the app even receives the
         # reply - the render is ~2 min and every second counts. Idempotent.
-        try:
-            import avatar_stage as _avst_k
-            _avst_k.kick_from_reply(reply, slot=(_turn.turn_id if _turn is not None else None),
-                                    admit=_avatar_scene_admit(_turn, _tc))
-        except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
+        if _surface != "reelroom":
+            try:
+                import avatar_stage as _avst_k
+                _avst_k.kick_from_reply(reply, slot=(_turn.turn_id if _turn is not None else None),
+                                        admit=_avatar_scene_admit(_turn, _tc))
+            except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
     except Exception as e:
         return {"reply": "", "error": str(e)}
@@ -9471,8 +9497,9 @@ async def reelroom_chat(request: Request):
     if image and "," in image[:64]: image = image.split(",", 1)[1]
     import asyncio as _a
     rr = _reelroom_mod()
-    # mode: "look" = read the TV frame, Gemma; "decide" = should he say or do anything, Gemma, Sonnet only if he
-    # speaks; default = he speaks, Sonnet. The five-minute frame reads were going to Sonnet (her note, 2026-09-07).
+    # mode: "look" = read the TV frame, Gemma; "decide" = should he say or do anything, Gemma, the selected
+    # avatar-router voice only if he speaks; default = the selected voice speaks. The five-minute frame reads
+    # were going to the expensive speaking model (her note, 2026-09-07); they stay on Gemma.
     mode = str(body.get("mode") or ("look" if image else "speak"))
     try:
         if mode == "look":
@@ -9489,7 +9516,8 @@ async def reelroom_chat(request: Request):
                 input_kind="text" if _actual is not None else "reelroom_event",
                 original_text=str(_actual or ""),
                 surface="reelroom",
-                surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min")),
+                surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min"),
+                                                   str(body.get("film_title") or "")),
                 history=body.get("history") or [],
                 defer_session_ledger=True,
                 resolve_previous_intent=bool(_actual),
@@ -9509,7 +9537,8 @@ async def reelroom_chat(request: Request):
                 _internal = ChatMessage(
                     message=_event, input_kind="reelroom_event", original_text="",
                     surface="reelroom",
-                    surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min")),
+                    surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min"),
+                                                       str(body.get("film_title") or "")),
                     history=body.get("history") or [], defer_session_ledger=True,
                     resolve_previous_intent=False,
                 )

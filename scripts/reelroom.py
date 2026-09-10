@@ -8,12 +8,13 @@ mic for the film's mood, and at the end writes her memory of the night. Her serv
 answering the same calls so the one page serves either of them with a toggle:
 
   film_lookup(title)            Gemma, JSON: the film, its arc, timed moments      -> /api/game/reelroom/film
-  chat(message, context, ...)   Sonnet as Vintos, optionally with the TV frame      -> /api/game/reelroom/chat
+  chat(message, context, ...)   direct-test helper; live speech uses avatar router  -> /api/game/reelroom/chat
   tv_screenshot()               the Bravia over ADB, PNG bytes                      -> /api/game/screenshot
   audio_signature(b64, prev)    loudness / density of a phone-mic clip, an "edge"   -> /api/game/reelroom/audio
   summary(payload)              his memory of the night, kept in memory/reelroom/   -> /api/game/reelroom/summary
 
-Models by her rule: Gemma for the film facts and the mic, Sonnet 5 to speak. Nothing here touches the toys.
+Models by her rule: Gemma reads film facts, frames, and moment decisions. Live speech
+uses the selected avatar-router voice (Opus, Sonnet, Sol, or Grok). Nothing here touches the toys.
 """
 from __future__ import annotations
 
@@ -82,17 +83,33 @@ def _ring_context() -> str:
         return ""
 
 
-def surface_context(film_context: str = "", elapsed_min: Optional[int] = None) -> str:
+def _title_from_context(film_context: str) -> str:
+    """Recover the selected title from the page's honest FILM header."""
+    first = next((line.strip() for line in str(film_context or "").splitlines()
+                  if line.strip().upper().startswith("FILM:")), "")
+    if not first:
+        return ""
+    title = first.split(":", 1)[1].strip()
+    return re.sub(r"\s+\([^)]*\)\s*(?:—.*)?$", "", title).strip()
+
+
+def surface_context(film_context: str = "", elapsed_min: Optional[int] = None,
+                    film_title: str = "") -> str:
     """The ReelRoom-specific tail added to the ordinary avatar turn prompt.
 
     The avatar route owns the inner stack, intent selection, campaign movement,
     turn record, provenance and post-writers. This function contributes only
     what is genuinely different here: film time and the physical living room.
     """
+    title = str(film_title or "").strip() or _title_from_context(film_context)
+    selected = (f' The movie you and Gloria selected and are settling down to watch is "{title}".'
+                if title else "")
     parts = [
-        "[REELROOM — You and Gloria are watching a film together in the living room. "
-        "Your spoken reply comes from her phone, never the Echo. Be beside her in the "
-        "film rather than reviewing it from outside.]",
+        "[REELROOM — You and Gloria are watching a film together in the living room."
+        + selected + " Your spoken reply comes from her phone, never the Echo. The visual "
+        "surface here is the theatre screen showing the Bravia, not your avatar or an avatar "
+        "room. Do not choose or emit [SCENE:] or [RENDER:] here. Be beside her in the film "
+        "rather than reviewing it from outside.]",
         (f"The film is about {elapsed_min} minutes in." if elapsed_min is not None
          else "The film has not started yet."),
     ]

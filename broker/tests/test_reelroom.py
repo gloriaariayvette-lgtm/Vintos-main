@@ -31,6 +31,10 @@ check("chat: reply stripped; the film, the minute, his soul and state are in the
       and "52 minutes" in seen["system"] and "iron and parchment" in seen["system"] and "Playfulness" in seen["system"]
       and "86 bpm" in seen["system"] and "right now, live" in seen["system"], seen["system"][:500])
 check("chat: history trimmed to start on a user turn, the frame passed through", seen["messages"][0]["role"] == "user" and seen["messages"][-1]["content"] == "what do you see" and seen["image"] == "QUJD", seen["messages"])
+surface = RR.surface_context("FILM: Alien (1979) — 117min — horror", 0)
+check("surface context names the selected movie and excludes avatar scene selection",
+      'selected and are settling down to watch is "Alien"' in surface
+      and "Do not choose or emit [SCENE:] or [RENDER:]" in surface, surface)
 RR.chat("hello", "", [], None, None, caller=sonnet)
 check("no frame: the prompt says the film has not started and forbids claiming a frame", "has not started" in seen["system"] and "Never claim to see a frame" in seen["system"])
 
