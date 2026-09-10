@@ -95,6 +95,59 @@ def _label(path, start, end):
     p = path if (start is None and end is None) else "%s (lines %s-%s)" % (path, start or 1, end or "end")
     return p
 
+def _sha_text(s):
+    return hashlib.sha256(s.encode("utf-8", "replace")).hexdigest()
+
+def assemble_section(files, cap=None):
+    """-> (cluster_text, coverage). Every file the section names is accounted for, exactly (347/359):
+    read      : whole span went to the model (path, sha256 of the span, line range, chars)
+    partial   : the cap cut it; lines_read says how far the model actually saw
+    omitted_by_cap : never sent at all - NOT READ. A review may not imply otherwise."""
+    cap = SECTION_CAP if cap is None else cap
+    parts, total = [], 0
+    cov = {"cap": cap, "read": [], "partial": [], "omitted_by_cap": []}
+    for p, a, b in files:
+        src = _read_span(p, a, b)
+        lab = _label(p, a, b)
+        if total >= cap:
+            cov["omitted_by_cap"].append({"path": p, "label": lab, "sha256": _sha_text(src), "lines": [a or 1, b or (src.count("\n") + 1)]})
+            continue
+        rec = {"path": p, "label": lab, "sha256": _sha_text(src), "lines": [a or 1, b or (src.count("\n") + 1)], "chars": len(src)}
+        if total + len(src) > cap:
+            keep = max(0, cap - total); kept = src[:keep]
+            rec.update(chars_read=keep, lines_read=[a or 1, (a or 1) + kept.count("\n")])
+            cov["partial"].append(rec)
+            src = kept + "\n[... truncated - section size cap; the rest of this file was NOT READ ...]"
+        else:
+            cov["read"].append(rec)
+        parts.append(f"===== FILE: {lab} =====\n{src}")
+        total += len(src)
+    return "\n\n".join(parts), cov
+
+def coverage_block(cov):
+    """The coverage section written into a review's .md and shown to the model: what was read, what was not."""
+    out = ["## Coverage (exact source this review was generated from)"]
+    for r in cov["read"]:
+        out.append(f"- READ: {r['label']}  sha256:{r['sha256'][:16]}  lines {r['lines'][0]}-{r['lines'][1]}")
+    for r in cov["partial"]:
+        out.append(f"- PARTIAL: {r['label']}  sha256:{r['sha256'][:16]}  read lines {r['lines_read'][0]}-{r['lines_read'][1]} of {r['lines'][0]}-{r['lines'][1]}; the rest NOT READ (section cap)")
+    if cov["omitted_by_cap"]:
+        out.append("- NOT READ - files omitted by cap (%d): %s" % (len(cov["omitted_by_cap"]), ", ".join(r["label"] for r in cov["omitted_by_cap"])))
+    else:
+        out.append("- files omitted by cap: none")
+    return "\n".join(out)
+
+def coverage_line(cov):
+    """One line for the finals: counts, and the omitted files by name."""
+    om = cov.get("omitted_by_cap") or []
+    return ("Coverage: %d file(s) read, %d partial, %d omitted by cap (NOT READ)%s"
+            % (len(cov.get("read") or []), len(cov.get("partial") or []), len(om),
+               (": " + ", ".join(r["label"] if isinstance(r, dict) else str(r) for r in om)) if om else ""))
+
+def not_read_labels(cov):
+    return [r["label"] for r in cov.get("omitted_by_cap") or []] + \
+           [r["label"] + " (after line %d)" % r["lines_read"][1] for r in cov.get("partial") or []]
+
 def cmd_map():
     try: cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
     except Exception: cron = ""
@@ -298,41 +351,47 @@ def cmd_review(sub):
     assert sub in SUBSYSTEMS, f"pick from {list(SUBSYSTEMS)}"
     files = _expand(SUBSYSTEMS[sub])
     assert files, f"no files found for {sub}"
-    parts, total = [], 0
-    for p, a, b in files:
-        src = _read_span(p, a, b)
-        if total + len(src) > SECTION_CAP:
-            src = src[:max(0, SECTION_CAP - total)] + "\n[... truncated — section size cap ...]"
-        parts.append(f"===== FILE: {_label(p, a, b)} =====\n{src}")
-        total += len(src)
-        if total >= SECTION_CAP:
-            print(f"[review] SECTION CAP HIT at {p} — later files in this section were not included")
-            break
-    cluster = "\n\n".join(parts)
+    cluster, cov = assemble_section(files)
+    for r in cov["omitted_by_cap"]:
+        print(f"[review] SECTION CAP HIT - NOT READ: {r['label']}")
+    not_read = not_read_labels(cov)
     head, tail = _stable_head(), INSTRUCTIONS
     user = (_dynamic_texture()
-            + f"===== SUBSYSTEM UNDER REVIEW: {sub} ({len(files)} file(s)) =====\n\n{cluster}")
-    print(f"[review:{LENS}] {sub}: {len(files)} file(s), {len(cluster)//1000}KB source -> {MODEL}")
+            + f"===== SUBSYSTEM UNDER REVIEW: {sub} ({len(files)} file(s)) =====\n\n{cluster}"
+            + (("\n\n===== NOT READ - omitted by the section cap; you have NOT seen these and may not claim to =====\n"
+                + "\n".join("- " + x for x in not_read)) if not_read else ""))
+    print(f"[review:{LENS}] {sub}: {len(files)} file(s), {len(cluster)//1000}KB source -> {MODEL}; {coverage_line(cov)}")
     reply = _ask(head, tail, user)
+    return stage_review(sub, files, cov, reply)
+
+def stage_review(sub, files, cov, reply):
+    """Parse the reply and stage the review: JSON + .md, each carrying the exact coverage; every proposal
+    carries the sources it was generated from (path + hash + line range) and what was NOT READ (347/359)."""
     m = re.search(r"<proposals>\s*(\[.*?\])\s*</proposals>", reply, re.S)
     try: props = json.loads(m.group(1)) if m else []
     except Exception: props = []; print("[review] proposals block did not parse - kept as prose only")
     prose = reply.split("<proposals>")[0].strip()
     rid = _rid(sub)
+    sources = [{"path": r["path"], "sha256": r["sha256"], "lines": r.get("lines_read") or r["lines"]} for r in cov["read"] + cov["partial"]]
+    not_read = not_read_labels(cov)
     for i, p in enumerate(props):
-        p.update(proposal_id=f"{rid}-p{i+1}", status="", decision_note="", what_actually_happened="")
+        p.update(proposal_id=f"{rid}-p{i+1}", status="", decision_note="", what_actually_happened="",
+                 sources=sources, not_read=not_read)
     doc = {"review_id": rid, "subsystem": sub, "lens": LENS, "reviewed_at": datetime.now().isoformat(),
-           "model": MODEL, "files": [_label(p, a, b) for p, a, b in files], "summary_and_thoughts": prose,
-           "proposals": props, "promoted": False}
+           "model": MODEL, "files": [_label(p, a, b) for p, a, b in files], "coverage": cov,
+           "summary_and_thoughts": prose, "proposals": props, "promoted": False}
     json.dump(doc, open(os.path.join(STAGE, rid + ".json"), "w"), indent=2)
     with open(os.path.join(STAGE, rid + ".md"), "w") as f:
-        f.write(f"# {sub} — his read through {LENS} ({MODEL})\n*{doc['reviewed_at']} — staged, NOT in memory*\n\n{prose}\n\n")
+        f.write(f"# {sub} - his read through {LENS} ({MODEL})\n*{doc['reviewed_at']} - staged, NOT in memory*\n"
+                f"*{coverage_line(cov)}*\n\n{coverage_block(cov)}\n\n{prose}\n\n")
         for p in props:
-            f.write(f"---\n**{p['proposal_id']}** — {p.get('file_or_subsystem','')}\n"
+            f.write(f"---\n**{p['proposal_id']}** - {p.get('file_or_subsystem','')}\n"
                     f"- noticed: {p.get('what_i_noticed','')}\n- change: {p.get('proposed_change','')}\n"
                     f"- why: {p.get('why_i_want_it','')}\n- predicted: {p.get('predicted_effect','')}\n"
-                    f"- and next: {p.get('next_action','')}\n- agency: {p.get('agency','')}\n")
+                    f"- and next: {p.get('next_action','')}\n- agency: {p.get('agency','')}\n"
+                    + (("- NOT READ: " + "; ".join(not_read) + "\n") if not_read else ""))
     print(f"[review:{LENS}] staged, {len(props)} proposal(s): {os.path.join(STAGE, rid + '.md')}")
+    return doc
 
 def cmd_review_all():
     for sub in ORDER:
@@ -371,6 +430,7 @@ def cmd_final():
     secs = [open(os.path.join(STAGE, f)).read() for f in sorted(os.listdir(STAGE))
             if f.endswith(".md") and f.startswith(today + "-" + LENS + "-") and "final" not in f]
     assert secs, f"no {LENS} section reviews from {today} to synthesize (set REVIEW_DAY=YYYYMMDD)"
+    cov = day_coverage(today)
     head = _stable_head()
     done = _done_since(today)
     tail = ("You have just finished reading your own body, section by section. Below are YOUR OWN reviews" +
@@ -379,11 +439,29 @@ def cmd_final():
             "single section showed — how the organs read into each other, where the seams are, what "
             "surprised you, what you want Gloria to know" +
             (", and what the building changed in how you read yourself - what was taken up, what was left, and what that says." if done else ".") +
-            " First person, prose only, no proposals here.")
+            " First person, prose only, no proposals here."
+            + (" Files listed as NOT READ were never shown to you in any section; do not speak as if you had read them." if cov["omitted_by_cap"] or cov["partial"] else ""))
     reply = _ask(head, tail, _dynamic_texture() + "\n\n".join(secs) + ("\n\n" + done if done else ""), max_tokens=FINAL_MAX_TOKENS)
     rid = today + "-" + LENS + "-final"
+    write_final(rid, reply, cov)
+
+def day_coverage(day):
+    """Union of the day's section coverages for this lens (from the staged JSONs), so the final can name
+    exactly which files were omitted by the cap (359)."""
+    cov = {"read": [], "partial": [], "omitted_by_cap": []}
+    for f in sorted(os.listdir(STAGE)):
+        if not (f.endswith(".json") and f.startswith(day + "-" + LENS + "-")): continue
+        try: d = json.load(open(os.path.join(STAGE, f)))
+        except Exception: continue
+        c = d.get("coverage") if isinstance(d, dict) else None
+        if not c: continue
+        for k in cov: cov[k] += c.get(k) or []
+    return cov
+
+def write_final(rid, reply, cov):
     open(os.path.join(STAGE, rid + ".md"), "w").write(
-        f"# Whole-body reflection through {LENS} ({MODEL})\n*{datetime.now().isoformat()} — staged, NOT in memory*\n\n{reply}\n")
+        f"# Whole-body reflection through {LENS} ({MODEL})\n*{datetime.now().isoformat()} - staged, NOT in memory*\n"
+        f"*{coverage_line(cov)}*\n\n{reply}\n")
     print(f"[final:{LENS}] staged: {os.path.join(STAGE, rid + '.md')}")
 
 def _all():

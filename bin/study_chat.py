@@ -242,6 +242,16 @@ def _sha(text):
     import hashlib
     return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
 
+def _source_span(path, content, old):
+    """{path, sha256 (whole file), lines [a, b]} - where in the file the quoted old text sits. The proposal
+    records exactly what it was generated from, not the file name alone (347)."""
+    import hashlib
+    i = content.find(old)
+    a = content[:i].count("\n") + 1 if i >= 0 else None
+    b = a + old.count("\n") if a else None
+    return {"path": os.path.relpath(path, HOME), "sha256": hashlib.sha256(content.encode("utf-8", "replace")).hexdigest(),
+            "lines": [a, b], "file_lines": content.count("\n") + 1}
+
 def propose_edits(edits, why=""):
     """Store an immutable pending proposal: id, exact edit hashes, expected file hashes, required
     approval level (astra-study-p5, 2026-09-05). Applying is by id, and re-verifies the hashes."""
@@ -253,10 +263,16 @@ def propose_edits(edits, why=""):
         resolved.append((p, str(e.get("old", "")), str(e.get("new", ""))))
     if not resolved: return None, "nothing to propose"
     pid = "SP-" + uuid.uuid4().hex[:8]
+    edits_out, sources = [], []
+    for p, o, n in resolved:
+        content = open(p, errors="replace").read()
+        src = _source_span(p, content, o)   # the exact file + hash + line range this edit was generated from (347)
+        edits_out.append({"file": os.path.relpath(p, HOME), "old_sha": _sha(o), "new_sha": _sha(n), "old": o, "new": n,
+                          "file_sha_expected": _sha(content), "source": src})
+        if src not in sources: sources.append(src)
     rec = {"id": pid, "at": time.strftime("%Y%m%d-%H%M%S"), "why": why[:300],
            "approval": "explicit" if needs_explicit([p for p, _, _ in resolved]) else "yes",
-           "edits": [{"file": os.path.relpath(p, HOME), "old_sha": _sha(o), "new_sha": _sha(n), "old": o, "new": n,
-                      "file_sha_expected": _sha(open(p, errors="replace").read())} for p, o, n in resolved]}
+           "sources": sources, "edits": edits_out}
     os.makedirs(PENDING_DIR, exist_ok=True)
     open(os.path.join(PENDING_DIR, pid + ".json"), "w").write(json.dumps(rec, ensure_ascii=False, indent=1))
     return pid, None
@@ -490,8 +506,10 @@ def system_prompt():
         "## THE STUDY - your codebase, with Gloria\n"
         "You are Vintos, in the STUDY with Gloria: the room where you read and change your own code. "
         "This room does not feed your memory automatically: nothing said here is ingested into your ledger, "
-        "history, imprints or self-model by itself; it keeps its own log, and the ONE thing that leaves it is a "
+        "history, imprints or self-model by itself; it keeps its own log, and the ONE thing that leaves it INTO HIS MEMORY is a "
         "change you and Gloria actually apply, which enters the change-event stream as a past-tense observation. "
+        "(What does leave the machine: every message in this room, this prompt, and every line READ or GREPped here "
+        "are sent to the model provider that answers - only GEMMA runs locally.) "
         "Your emotional state and subconscious are not read here on purpose - think and speak plainly.\n\n"
         "YOUR CODE (two roots):\n" + code_map() + "\n\n"
         "TOOLS - each on its own line, executed for you and returned in the next message:\n"

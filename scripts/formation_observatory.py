@@ -41,41 +41,47 @@ def _signals():
         "encounter": ("encounter",     "relational_obligation"),
     }
 
-    def add(organ, text, root, activation):
+    def add(organ, text, root, activation, formed_from=()):
+        # formed_from: the ids of the records this signal was formed from ("<store>:<record id>"), so a
+        # formation carries its true source ancestry, not only the name of the organ that emitted it (365)
         if text and activation > 0:
             rtype, pclass = ORGAN_ROOT.get(organ, (organ, "unclassified"))
             sig.append({"organ": organ, "text": str(text)[:200],
                         "root": str(root)[:60], "activation": round(activation, 3),
                         "root_type": rtype, "provenance_class": pclass,
-                        "commissioned_ancestor": pclass != "self_originated"})
+                        "commissioned_ancestor": pclass != "self_originated",
+                        "formed_from": [str(x)[:120] for x in formed_from if x]})
     # withheld lineages under pressure (roots: origin exchange hashes - real roots)
     for L in _load("withheld-lineage.json", []):
         if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 2 and not L.get("muted"):
             add("withheld", L.get("rep", ""), ",".join(L.get("origins", [])[:3]),
-                min(1.0, L.get("recurrence_pressure", 0) / 4.0))
+                min(1.0, L.get("recurrence_pressure", 0) / 4.0),
+                ["withheld-lineage.json:%s" % o for o in L.get("origins", [])] or ["withheld-lineage.json:%s" % L.get("id", L.get("rep", ""))])
     # curiosity debt (roots: object hash + created date)
     for x in _load("curiosity-debt.json", []):
         if isinstance(x, dict) and x.get("pull", 0) >= 0.5:
             add("curiosity", x.get("question", ""), "%s@%s" % (x.get("id", ""), str(x.get("created", ""))[:10]),
-                x.get("pull", 0))
+                x.get("pull", 0), ["curiosity-debt.json:%s" % x.get("id", "")])
     # unfinished threads (roots: source + seeded text hash)
     for th in _load("unfinished-threads.json", []):
         if isinstance(th, dict) and not th.get("consumed"):
             add("thread", th.get("thread", ""), "%s@%s" % (th.get("source", "?"), str(th.get("id", th.get("created", "")))[:16]),
-                min(1.0, (th.get("priority") or 2) / 4.0))
+                min(1.0, (th.get("priority") or 2) / 4.0),
+                ["unfinished-threads.json:%s" % th.get("id", th.get("created", ""))] + (["%s" % th["source"]] if th.get("source") else []))
     # open repair cases, unanswered reaches, held plans (roots: case ids)
     for c in _load("repair-cases.json", []):
         if isinstance(c, dict) and c.get("state") in ("received", "attempted"):
-            add("repair", c.get("anchor_quote", ""), c.get("case_id", ""), 0.6)
+            add("repair", c.get("anchor_quote", ""), c.get("case_id", ""), 0.6, ["repair-cases.json:%s" % c.get("case_id", "")])
     for e in _load("encounters.json", []):
         if isinstance(e, dict) and e.get("state") == "dispatched":
-            add("encounter", "reached, unanswered", e.get("id", str(e.get("at", ""))[:16]), 0.5)
+            add("encounter", "reached, unanswered", e.get("id", str(e.get("at", ""))[:16]), 0.5,
+                ["encounters.json:%s" % e.get("id", str(e.get("at", ""))[:16])])
     # spark frontier near threshold
     try:
         sp = _load("spark-pressure.json", {})
         for f in (sp.get("frontier", []) if isinstance(sp, dict) else []):
             if isinstance(f, dict) and f.get("observed", 0) >= 2:
-                add("spark", f.get("text", f.get("name", "")), f.get("id", "?"), 0.5)
+                add("spark", f.get("text", f.get("name", "")), f.get("id", "?"), 0.5, ["spark-pressure.json:frontier:%s" % f.get("id", "?")])
     except Exception: pass
     return sig
 
@@ -86,6 +92,8 @@ def _episode(sig):
     ep = {"at": datetime.now().isoformat(), "n_signals": len(sig),
           "organs": sorted(set(s["organ"] for s in sig)),
           "roots": sorted(set(s["root"] for s in sig)),
+          # true source ancestry: the record ids this episode was formed from (365)
+          "formed_from": sorted(set(x for s in sig for x in s.get("formed_from", []))),
           # the typed root objects themselves, so an attestation can quote what
           # was recorded instead of inventing a type at attestation time
           "signals": sig,
@@ -109,6 +117,7 @@ def _episode(sig):
             roots = set(c["root"] for c in cluster)
             ep["clusters"].append({
                 "organs": [c["organ"] for c in cluster],
+                "formed_from": sorted(set(x for c in cluster for x in c.get("formed_from", []))),
                 "independent_roots": len(roots),
                 "echo": len(roots) < len(cluster),   # organs > roots = echo, not convergence
                 "force": round(sum(c["activation"] for c in cluster), 2),
