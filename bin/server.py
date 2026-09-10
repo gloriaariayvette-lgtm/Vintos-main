@@ -7361,6 +7361,14 @@ async def voice_ledger(payload: dict):
             try: sess = _vl_j.load(open(sp))
             except: sess = {}
             _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
+            # review 331: the provider's own identity for this exchange (the realtime item/response ids
+            # the client receives) travels with the turn, so a transcript can be joined to the provider's
+            # record of it. Absent when the client did not send them - never invented.
+            for _k_src, _k_dst in (("item_id", "provider_item_id"), ("response_id", "provider_response_id"),
+                                   ("event_id", "provider_event_id"), ("session_id", "provider_session_id")):
+                _pv = payload.get(_k_src)
+                if _pv: _turn[_k_dst] = str(_pv)[:80]
+            _turn["turn_id"] = str(payload.get("turn_id") or "") or None
             if g_raw != g: _turn["gloria_raw"] = g_raw
             if _g_stripped: _turn["derived_lines_dropped"] = _g_stripped
             # review 382: she cut him off. The history keeps what he composed beside what was actually played;
@@ -7485,6 +7493,7 @@ async def voice_session_end(payload: dict = None):
             return {"ok": True, "skipped": "test-mode"}
     except Exception: pass
     p = payload or {}
+    _block_persisted = False
     sp = os.path.join(MEMORY, "voice-session-state.json")
     try: sess = _vse_j.load(open(sp))
     except: sess = {}
@@ -7585,15 +7594,27 @@ async def voice_session_end(payload: dict = None):
             "compliance_moments": _cm,
         })
         _vse_j.dump(led, open(lp, "w"), indent=2)
+        _block_persisted = True
     except Exception as _vsee: print("[voice-session-end]", _vsee, flush=True)
     try:
         _vse_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         from emoclaw_utils import seed_thread as _vse_seed
         _vse_seed("voice", f"spoke aloud with Gloria: {dur}s. {felt_summary}" if felt_summary else f"spoke aloud with Gloria: {dur}s, {n_turns} turns")
     except Exception as _vsee2: print("[voice-session-end seed]", _vsee2, flush=True)
-    try: os.remove(sp)
-    except: pass
-    return {"ok": True, "quotes": quotes, "felt_summary": felt_summary, "summary": text_summary}
+    # review 332: the session state is cleared ONLY after the block is on disk. If the ledger write
+    # failed, the turns stay in voice-session-state.json (marked for retry) so a later hangup or the
+    # recovery cron can finalize them; nothing unsaved is thrown away.
+    if _block_persisted:
+        try: os.remove(sp)
+        except: pass
+    else:
+        try:
+            sess["state"] = "unpersisted"; sess["persist_failed_at"] = _vse_d.datetime.now().isoformat()
+            _vse_j.dump(sess, open(sp, "w"), indent=2)
+            print("[voice-session-end] the block did not persist; %d turn(s) kept for retry" % len(turns), flush=True)
+        except Exception: pass
+    return {"ok": True, "quotes": quotes, "felt_summary": felt_summary, "summary": text_summary,
+            "persisted": _block_persisted}
 
 
 @app.get("/api/voice/pending-speech")

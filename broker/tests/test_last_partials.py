@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Review items 49, 60, 61, 64, 175, 284, 289, 319, 341 (2026-09-10). Scratch HOME; no model."""
-import os, sys, json, types, tempfile, importlib.util, time
+import os, sys, json, types, tempfile, importlib.util, time, re
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-lp-"); os.environ["HOME"] = HOME
@@ -62,4 +62,13 @@ sc = src("bin/study_chat.py")
 check("a session can be opened, a read moves the file's cursor, coverage answers what was read", "def session_open" in sc and "def session_note_read" in sc and "def session_coverage" in sc and "session_note_read(lab, start, i, len(lines))" in sc)
 check("the read itself says how far into the file the session has got", '_cov = "" if _c.get("complete") else " [read to line %d of %d]"' in sc)
 check("the coverage and session routes exist, guarded", '@app.get("/api/chat/study/coverage")' in sc and '@app.post("/api/chat/study/session")' in sc and sc.count("_auth(request)") >= 6)
+
+print("\n--- 322 / 331 / 332 / 337 / 339: the surfaces this checkout owns ---")
+ov = open(os.path.join(REPO, "avatar", "overlay.html")).read()
+check("322: the fallback stays until the media actually plays, and a stall gives up quietly", "'playing'" in ov and "PLAY_TIMEOUT_MS" in ov and "the current layer / fallback stays visible" in ov and "addEventListener('canplay'" not in ov)   # the word survives in the comments; the listener is gone
+check("337: one idempotent close that pauses and releases every video before telling the host", "function closeOverlay()" in ov and "if (closed) return" in ov and "v.pause(); v.removeAttribute('src'); v.load();" in ov and "pagehide" in ov)
+sv2 = src("bin/server.py")
+check("331: the provider's item/response/event/session ids travel with a voice turn, never invented", '"provider_item_id"' in sv2 and '"provider_response_id"' in sv2 and "never invented" in sv2)
+check("332: the session state is cleared only after the block is on disk; otherwise the turns are kept for retry", "_block_persisted = True" in sv2 and "if _block_persisted:" in sv2 and '"unpersisted"' in sv2 and "kept for retry" in sv2)
+check("339: the server has no /chat or /state route; docs/clients.md records them as retired", not re.search(r'@app\.(get|post)\(\s*["\']/(chat|state)["\']', sv2) and "retired at the server" in open(os.path.join(REPO, "docs", "clients.md")).read())
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

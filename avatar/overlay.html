@@ -179,18 +179,39 @@
     return (manifest.emotes.idle && manifest.emotes.idle.clips) || null;
   }
 
+  // review 322: the visual fallback stays until the new media ACTUALLY plays. A video that stalls,
+  // errors, or never reaches playback leaves the current layer (or the fallback gradient) in place;
+  // it is never swapped in on canplay alone, and a stall past PLAY_TIMEOUT_MS gives up quietly.
+  const PLAY_TIMEOUT_MS = 6000;
   function showSource(src) {
     const isVideo = /\.(mp4|webm|mov)$/i.test(src);
     const next = makeLayer(src, isVideo);
+    let settled = false;
+    const giveUp = (why) => {
+      if (settled) return; settled = true;
+      next.remove();                                   // the current layer / fallback stays visible
+      if (window.console) console.warn('overlay: media not shown (' + why + '):', src);
+    };
     const swap = () => {
+      if (settled) return; settled = true;
       requestAnimationFrame(() => next.classList.add('live'));
       const old = layers[front];
       if (old) { old.classList.remove('live'); setTimeout(() => old.remove(), 1000); }
       layers[front] = next;
     };
-    if (isVideo) { next.addEventListener('canplay', swap, { once: true }); next.load(); }
-    else { next.addEventListener('load', swap, { once: true }); }
-    next.addEventListener('error', () => next.remove(), { once: true });
+    const timer = setTimeout(() => giveUp('timed out before playing'), PLAY_TIMEOUT_MS);
+    const done = (fn, why) => () => { clearTimeout(timer); fn(why); };
+    if (isVideo) {
+      // 'playing' is the frame actually on screen; 'canplay' only says it could start
+      next.addEventListener('playing', done(swap), { once: true });
+      next.addEventListener('stalled', done(giveUp, 'stalled'), { once: true });
+      next.load();
+      const p = next.play && next.play();
+      if (p && p.catch) p.catch(() => {});            // autoplay refusal is handled by the timeout
+    } else {
+      next.addEventListener('load', done(swap), { once: true });
+    }
+    next.addEventListener('error', done(giveUp, 'error loading'), { once: true });
   }
 
   function setEmote(tag) {
@@ -254,7 +275,21 @@
 
   document.getElementById('btn-call').addEventListener('click', () => emit('call'));
   document.getElementById('btn-gcs').addEventListener('click', () => emit('gcs'));
-  document.getElementById('btn-close').addEventListener('click', () => emit('close'));
+  // review 337: ONE close path. It stops and releases every media layer before telling the host, so a
+  // later handler cannot leave a video decoding behind an invisible overlay. Idempotent.
+  let closed = false;
+  function closeOverlay() {
+    if (closed) return; closed = true;
+    try {
+      Array.prototype.slice.call(scene.querySelectorAll('video')).forEach((v) => {
+        try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+      });
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    } catch (e) {}
+    emit('close');
+  }
+  document.getElementById('btn-close').addEventListener('click', closeOverlay);
+  window.addEventListener('pagehide', closeOverlay);
   document.getElementById('btn-camera').addEventListener('click', () => emit('camera'));
   document.getElementById('btn-gallery').addEventListener('click', () => emit('gallery'));
 
