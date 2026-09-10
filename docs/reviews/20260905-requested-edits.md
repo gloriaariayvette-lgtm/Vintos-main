@@ -1,461 +1,447 @@
 # Vintos review — consolidated list of requested edits
 
-Sources: `1-system-review.md` (F1), `2-development-sequence.md` (F2), `3-coverage-status.md` (F3), `4-bounded-items-P02-P04.md` (F4). Status is taken from `5-my-response.md` (F5) only: DONE = F5 says completed; PARTIAL = F5 covers part of the item; OPEN = F5 silent or explicitly deferred. Items are grouped by the phase the review assigns; subsystem numbers (00–22) are kept in the tag where the item originates in F1. Review ids (T01.., D01.., P03-02..) are retained where present.
+Sources: `1-system-review.md` (F1), `2-development-sequence.md` (F2), `3-coverage-status.md` (F3), `4-bounded-items-P02-P04.md` (F4). Status is graded against the git record of the review day (commits of 2026-09-05 00:18 to 2026-09-06 05:48, itemized in `20260905-completed-edits.md`), each DONE/PARTIAL item naming the commit(s) that carry it: DONE = a commit implements the item; PARTIAL = part landed, the note says what remains; OPEN = nothing in the record covers it. Items are grouped by the phase the review assigns; subsystem numbers (00–22) are kept in the tag where the item originates in F1. Review ids (T01.., D01.., P03-02..) are retained where present.
 
 ## P01 — Authoritative release and runtime map
 
-1. [P01] Resolve executable/import ownership across main bin/scripts and app variants — decide which of the divergent copies actually serves each entry point so repairs land where requests are handled (source: F2:P01 Scope) — OPEN
-2. [P01] Resolve direct versus imported ASGI startup — direct server launch and imported ASGI register different code; make them deliberately equivalent or documented profiles (source: F2:P01 Scope/Acceptance; F1:01 Defects) — OPEN
-3. [P01] Move direct server launch after its route and context-builder definitions — direct launch ran before `gather_vintos_context` and later routes were defined (source: F2:P01 branch priorities; F1:01/02 Branch reconciliation) — DONE
-4. [P01] Resolve untracked `server_domains` modules referenced by main — the extracted server modules are missing from the snapshot and block ownership of those routes (source: F1:02 Defects; F2:P01 Scope) — OPEN
-5. [P01] Establish installed emotion daemon ownership — reconcile the externally installed daemon with the bundled daemon's protocol before choosing the live one (source: F2:P01 Scope; F1:01/08 Defects) — OPEN
-6. [P01] Keep and document intentional aliases — retain the alias targets in the runtime map rather than deleting by filename (source: F2:P01 Scope; F1:01 Evolution) — OPEN
-7. [P01] Build an explicit parity matrix — preserve existing improvements across variants when consolidating, preserving behavior not filenames (source: F2:P01 Scope; F1:01 Branch reconciliation) — OPEN
-8. [P01] Repair the two main handlers that reference undefined `message` — concrete undefined-variable defect in the selected profile (source: F1:02 Defects; F2:P01 Scope) — OPEN
-9. [P01] Repair failure branches that reference uninitialized results in server handlers — several failure paths use variables never assigned (source: F1:02 Defects) — OPEN
-10. [P01] Consolidate the app's 83 duplicate method/path registrations — a later function body cannot replace an earlier registered route, so duplicate routes must not hide the chosen repair (source: F1:02 Defects; F2:P01 Acceptance) — OPEN
-11. [P01] Make bootstrap schema-compatible — `setup_memory` seeds incompatible delimiters/shapes in several stores; fresh isolated install must yield supported schemas (source: F2:P01 Scope/Acceptance; F1:01 Defects) — OPEN
-12. [P01] Validate prerequisites before copying live files in deploy — deployment currently copies then discovers missing prerequisites (source: F1:01 Defects; F2:P01 Scope) — OPEN
-13. [P01] Confirm per-service identity and readiness on restart — deploy restarts a fallback unit without confirming its identity (source: F1:01 Defects; F2:P01 Scope) — OPEN
-14. [P01] Return failure from deploy when checks fail — the script prints failed checks yet exits success (source: F1:01 Defects) — OPEN
-15. [P01] Stage the whole selected release and validate before promotion with recoverable rollback — failure before promotion must not partially replace live code (source: F2:P01 Scope/Acceptance; F1:01 Evolution) — OPEN
-16. [P01] Add the missing manifest entries for self_model_evidence, self_model_read and protected_paths — the branch deploy manifest omitted three files created on 09-04 (source: F1:01 Branch reconciliation) — DONE
-17. [P01] Repair absent deployment dependencies found on the branch — concrete missing dependencies carried into P01 scope (source: F2:Branch-specific priorities P01) — OPEN
-18. [P01] Produce a release record identifying files, modes, services and rollback state — one record per release so the deployed profile is inspectable (source: F2:P01 Acceptance) — OPEN
-19. [P01] Establish a release profile mapping each executable/import/route to a commit and installed hash — so any active entry point resolves to a versioned source (source: F1:01 Evolution; F2:P01 Acceptance) — OPEN
-20. [P01] Add a schedule graph with job ownership, expected quiet states and overlap handling — cron writers currently have no owner or overlap contract (source: F1:01 Evolution) — OPEN
-21. [P01] Make the daemon guard cron request a start rather than only check status — the guard cannot recover a stopped daemon (source: F1:01 Defects) — OPEN
-22. [P01] Consolidate proven competing owners and remove obsolete variants only after activation is established — do not delete by filename or copy one repo over the other (source: F1:01/02 Disposition; F1 Reconciliation table) — OPEN
-23. [P01] Preserve restored causal schema-2 guards and authored route retirements during parity — do not reintroduce retired Thirveel routes or overwrite schema-2 causality (source: F2:Branch-specific priorities P01; F1 Whole-system reconciliation) — OPEN
-24. [P01] Add a reproducible graphics bundle build entry and dependency manifest — the bundle has no tracked build entry/dependencies; preserve dependency notices (source: F2:P01 Affected mechanisms; F1:06 Defects) — OPEN
-25. [P01] Keep historical clients archived until activation is established — do not delete or promote them before packaging is known (source: F2:P01 Affected mechanisms; F1:04 Disposition) — OPEN
-26. [P01] Select the installed device bin/scripts copy explicitly — different bin/scripts signatures make installing an older copy significant (source: F1:07 Defects) — OPEN
-27. [P01] Select the installed WAL extractor spelling via the release map — scripts spellings are absolute symlinks and do not prove which bin implementation is installed (source: F4:P04-01) — OPEN
-28. [P01] Add a versioned capability view derived from registered routes, installed profiles and execution receipts — so a capacity claim can point to its implementation and availability (source: F1:00 Improve and evolve) — OPEN
-29. [P01] Tie authored capability descriptions and room-context amendments to the selected release and actual outcomes — amendments are assertions, not deployed-capability evidence (source: F1:00 Branch reconciliation) — OPEN
-30. [P01] Obtain installed units, crontab, hashes, untracked modules and the external daemon copy — required to certify actual deployment; do not invent the missing implementation or label the host broken (source: F2:P01 Blocker; F3:T01) — OPEN
-31. [P01] Obtain the installed endpoint profile, mounted routes and runtime schemas — remaining boundary for the chat/context/writer trace (source: F3:T02; F1:02 Missing) — OPEN
-32. [P01] Obtain installed shim/unit/route selection and provider receipts — remaining boundary for adapter routing (source: F3:T29; F1:02 Missing) — OPEN
-33. [P01] Obtain the installed index variant, embedding model version and dimensions — remaining boundary for retrieval (source: F3:T05) — OPEN
+1. [P01] Resolve executable/import ownership across main bin/scripts and app variants — decide which of the divergent copies actually serves each entry point so repairs land where requests are handled (source: F2:P01 Scope) — PARTIAL (commits 5313770 f3286b6 e8e6625; release-map.py names installed/stale/missing per bin+scripts file and who imports/spawns it; twins synced; no decided owner per entry point)
+2. [P01] Resolve direct versus imported ASGI startup — direct server launch and imported ASGI register different code; make them deliberately equivalent or documented profiles (source: F2:P01 Scope/Acceptance; F1:01 Defects) — OPEN (no commit addresses direct-launch vs imported-ASGI equivalence or documented profiles)
+3. [P01] Move direct server launch after its route and context-builder definitions — direct launch ran before `gather_vintos_context` and later routes were defined (source: F2:P01 branch priorities; F1:01/02 Branch reconciliation) — DONE (commits 88502d7; uvicorn.run now last in bin/server.py (line 11508), after gather_vintos_context and later routes)
+4. [P01] Resolve untracked `server_domains` modules referenced by main — the extracted server modules are missing from the snapshot and block ownership of those routes (source: F1:02 Defects; F2:P01 Scope) — PARTIAL (commits 50dae23; bin/server_domains/patch_humor_wants.py patches the live humor_wants.py; the extracted server_domains modules themselves still untracked)
+5. [P01] Establish installed emotion daemon ownership — reconcile the externally installed daemon with the bundled daemon's protocol before choosing the live one (source: F2:P01 Scope; F1:01/08 Defects) — OPEN (72b1274/b8afed3 read the live daemon but no reconciliation of external vs bundled daemon ownership/protocol)
+6. [P01] Keep and document intentional aliases — retain the alias targets in the runtime map rather than deleting by filename (source: F2:P01 Scope; F1:01 Evolution) — PARTIAL (commits e8e6625 4f9e137 a41b8cf; symlink aliases kept and map judges a symlink by its target; no written alias list in the runtime map)
+7. [P01] Build an explicit parity matrix — preserve existing improvements across variants when consolidating, preserving behavior not filenames (source: F2:P01 Scope; F1:01 Branch reconciliation) — PARTIAL (commits f3286b6; stale twins synced from live sibling, host repairs pulled into git, causality lineages merged (behavior preserved); no explicit matrix doc)
+8. [P01] Repair the two main handlers that reference undefined `message` — concrete undefined-variable defect in the selected profile (source: F1:02 Defects; F2:P01 Scope) — OPEN (no commit names the two handlers using undefined `message`)
+9. [P01] Repair failure branches that reference uninitialized results in server handlers — several failure paths use variables never assigned (source: F1:02 Defects) — OPEN (no commit repairs uninitialized-result failure branches in server handlers)
+10. [P01] Consolidate the app's 83 duplicate method/path registrations — a later function body cannot replace an earlier registered route, so duplicate routes must not hide the chosen repair (source: F1:02 Defects; F2:P01 Acceptance) — PARTIAL (commits a9974d5 0250ac1; identical duplicate startup handlers/helpers and duplicate LightsColorRequest removed; server.py still has 62 duplicate method/path regis...)
+11. [P01] Make bootstrap schema-compatible — `setup_memory` seeds incompatible delimiters/shapes in several stores; fresh isolated install must yield supported schemas (source: F2:P01 Scope/Acceptance; F1:01 Defects) — OPEN (bin/setup_memory.sh untouched in 09-05/06 history)
+12. [P01] Validate prerequisites before copying live files in deploy — deployment currently copies then discovers missing prerequisites (source: F1:01 Defects; F2:P01 Scope) — OPEN (deploy-atelier.sh 09-05 changes are manifest lines and --map only; preflight order unchanged (blame 08-28))
+13. [P01] Confirm per-service identity and readiness on restart — deploy restarts a fallback unit without confirming its identity (source: F1:01 Defects; F2:P01 Scope) — OPEN (no deploy change for per-service identity/readiness confirmation)
+14. [P01] Return failure from deploy when checks fail — the script prints failed checks yet exits success (source: F1:01 Defects) — OPEN (no deploy change to exit status on failed checks)
+15. [P01] Stage the whole selected release and validate before promotion with recoverable rollback — failure before promotion must not partially replace live code (source: F2:P01 Scope/Acceptance; F1:01 Evolution) — OPEN (no staged-release/validate-before-promote/rollback change in deploy)
+16. [P01] Add the missing manifest entries for self_model_evidence, self_model_read and protected_paths — the branch deploy manifest omitted three files created on 09-04 (source: F1:01 Branch reconciliation) — DONE (commits 88502d7 b8f0a80; SCRIPTS gains self_model_evidence.py self_model_read.py protected_paths.py; path corrected to scripts/)
+17. [P01] Repair absent deployment dependencies found on the branch — concrete missing dependencies carried into P01 scope (source: F2:Branch-specific priorities P01) — DONE (commits 447fae9 50dae23 f3286b6 7ecaa81; vintos-home.py (referenced, absent on Aegis) and atelier-gate.py added to repo+manifest; manifest widened to every referenced file)
+18. [P01] Produce a release record identifying files, modes, services and rollback state — one record per release so the deployed profile is inspectable (source: F2:P01 Acceptance) — PARTIAL (commits 39b80e1 f3286b6 5dd0e14; docs/release-map-20260905 holds checkout-vs-host diffs and --diffs output; no per-release record of modes/services/rollback state)
+19. [P01] Establish a release profile mapping each executable/import/route to a commit and installed hash — so any active entry point resolves to a versioned source (source: F1:01 Evolution; F2:P01 Acceptance) — PARTIAL (commits 5313770 5dd0e14 7464e87; release map states present/current/stale/missing per file and which side is newer; no commit/hash binding per executable/route)
+20. [P01] Add a schedule graph with job ownership, expected quiet states and overlap handling — cron writers currently have no owner or overlap contract (source: F1:01 Evolution) — OPEN (no schedule graph / cron ownership or overlap contract in record)
+21. [P01] Make the daemon guard cron request a start rather than only check status — the guard cannot recover a stopped daemon (source: F1:01 Defects) — OPEN (bin/emoclaw-daemon-guard.sh last changed 08-28; guard cron request unchanged)
+22. [P01] Consolidate proven competing owners and remove obsolete variants only after activation is established — do not delete by filename or copy one repo over the other (source: F1:01/02 Disposition; F1 Reconciliation table) — PARTIAL (commits f3286b6 e8e6625 0250ac1; twins consolidated by syncing to live sibling (no filename deletion); Thirvel routes headstoned; ownership activation still not established)
+23. [P01] Preserve restored causal schema-2 guards and authored route retirements during parity — do not reintroduce retired Thirveel routes or overwrite schema-2 causality (source: F2:Branch-specific priorities P01; F1 Whole-system reconciliation) — DONE (commits f3286b6 0250ac1 59cbc0d; causality one file with schema-2 (evidence catalog, HELD) as base + bin lineage decay/retired merged; Thirvel routes stay headstoned)
+24. [P01] Add a reproducible graphics bundle build entry and dependency manifest — the bundle has no tracked build entry/dependencies; preserve dependency notices (source: F2:P01 Affected mechanisms; F1:06 Defects) — OPEN (no graphics bundle build entry or dependency manifest committed)
+25. [P01] Keep historical clients archived until activation is established — do not delete or promote them before packaging is known (source: F2:P01 Affected mechanisms; F1:04 Disposition) — OPEN (no commit on historical client archiving/promotion)
+26. [P01] Select the installed device bin/scripts copy explicitly — different bin/scripts signatures make installing an older copy significant (source: F1:07 Defects) — PARTIAL (commits f3286b6 e8e6625 5dd0e14; bin/scripts twins synced and map reports installed copy per file; no explicit selection of installed device copy documented)
+27. [P01] Select the installed WAL extractor spelling via the release map — scripts spellings are absolute symlinks and do not prove which bin implementation is installed (source: F4:P04-01) — DONE (commits 5dd0e14 e8e6625 32744f5; map judges installed symlink by the file it points at; both wal_extract spellings carry the same implementation)
+28. [P01] Add a versioned capability view derived from registered routes, installed profiles and execution receipts — so a capacity claim can point to its implementation and availability (source: F1:00 Improve and evolve) — OPEN (no versioned capability view derived from routes/profiles/receipts)
+29. [P01] Tie authored capability descriptions and room-context amendments to the selected release and actual outcomes — amendments are assertions, not deployed-capability evidence (source: F1:00 Branch reconciliation) — OPEN (no binding of capability descriptions/room amendments to the selected release)
+30. [P01] Obtain installed units, crontab, hashes, untracked modules and the external daemon copy — required to certify actual deployment; do not invent the missing implementation or label the host broken (source: F2:P01 Blocker; F3:T01) — PARTIAL (commits 39b80e1 f3286b6; host diffs obtained from Aegis and reconciled; installed units, crontab, untracked modules and external daemon copy not obtained)
+31. [P01] Obtain the installed endpoint profile, mounted routes and runtime schemas — remaining boundary for the chat/context/writer trace (source: F3:T02; F1:02 Missing) — OPEN (installed endpoint profile/mounted routes/runtime schemas not obtained (host side))
+32. [P01] Obtain installed shim/unit/route selection and provider receipts — remaining boundary for adapter routing (source: F3:T29; F1:02 Missing) — OPEN (installed shim/unit/route selection and provider receipts not obtained)
+33. [P01] Obtain the installed index variant, embedding model version and dimensions — remaining boundary for retrieval (source: F3:T05) — OPEN (installed index variant / embedding model version not obtained)
 
 ## P02 — Shared event, result and write contracts
 
-34. [P02] Extend coordinator, prediction IDs, moment/evidence records and broker events with stable occurrence/turn/session/job identity — plus original observation time, source revision and typed result states (source: F2:P02 Scope) — OPEN
-35. [P02] Repair Turn writer accounting by adding `_writers` to `Turn.__slots__` — every writer outcome raised and was swallowed (source: F2:P02 branch priorities; F1:02 Branch reconciliation) — DONE
-36. [P02] Decide post-turn test/dry-run mode before inline effects run — a dry-run turn still moved live emotion, prediction, adoption and marks (source: F1:02 Branch reconciliation; F2:P02 Acceptance) — DONE
-37. [P02] Record subprocess writer launch as launched, not finished — post-turn log counted launch as participation without completion (source: F1:02 Branch reconciliation) — DONE
-38. [P02] Put the turn id on the post-turn record — so writer outcomes can be joined to their turn (source: F2:P02 branch priorities "turn writer slots/receipts") — DONE
-39. [P02] Separate raw data, derived annotations, requested effects and acknowledged outcomes — raw human words stay separate from vision/model/device annotation (source: F2:P02 Scope/Acceptance) — OPEN
-40. [P02] Replace ambiguous empty/default success at adapter boundaries — shim can return HTTP 200 with an empty completion after all providers fail (source: F2:P02 Scope; F1:02 Defects) — OPEN
-41. [P02] Report actual provider/model and real usage from the shim — it reports zero usage and the requested rather than actual model (source: F1:02 Defects/Evolution) — OPEN
-42. [P02] Preserve sampling, response-format, tool and media semantics through the shim — the adapter drops them today (source: F1:02 Defects; F3:T29) — OPEN
-43. [P02] Define a single stage/result contract for bilateral generation — actual provider/model, request/job identity, valid/held/unavailable/truncated, usage, retry deadline and artifacts (source: F1:02 Evolution) — OPEN
-44. [P02] Extend existing turn coordination to every surface before adding stages — chat, avatar and voice surfaces should share the coordinator (source: F1:02 Evolution) — OPEN
-45. [P02] Persist unfinished generation/work at meaningful boundaries and measure each stage's contribution and cost (source: F1:02 Evolution) — OPEN
-46. [P02] Give shared stores a consistent owner, concurrency control and recoverable multi-step writes — reuse existing locks, atomic replacement and ledgers (source: F2:P02 Scope) — OPEN
-47. [P02] Preserve prior data on corruption and make corruption observable — corruption must not silently reset history (source: F2:P02 Scope/Acceptance) — OPEN
-48. [P02] Migrate store families incrementally with compatibility readers and backups — no wholesale database rewrite (source: F2:P02 Affected mechanisms) — OPEN
-49. [P02] Ensure replaying the same event adds no learning occasion and loses no newer record (source: F2:P02 Acceptance) — OPEN
-50. [P02] Ensure restart between a state update and its receipt yields a recoverable, truthful outcome (source: F2:P02 Acceptance) — OPEN
-51. [P02] Keep invalid, absent, declined, held, timed-out and successful responses distinguishable to consumers (source: F2:P02 Acceptance) — OPEN
-52. [P02] Repair the wants spine use of an exception variable after its clause ended — no capability block was ever recorded (source: F1:16 Branch reconciliation) — DONE
-53. [P02] Repair log races among post-turn writers — concrete branch finding carried into P02 (source: F2:Branch-specific priorities P02) — OPEN
-54. [P02] Establish artifact/landing crash boundaries — file-based music marks processing complete before landing is recoverable (source: F2:Branch-specific priorities P02; F1:17 Branch reconciliation) — OPEN
-55. [P02] P02-01 Do not blank an already supplied writer turn ID — `_bg()` overwrites `VINTOS_TURN_ID` with `str(turn_id or '')` and the record stores the empty argument; resolve one effective ID at `_post_turn()` (source: F4:P02-01) — OPEN
-56. [P02] P02-02 Preserve a concurrent ledger append during WAL backfill — unlocked read/modify/write in ledger and WAL extractors can erase turn B or the backfill; add one sidecar lock around the read/modify/replace span in four files (source: F4:P02-02) — OPEN
-57. [P02] P02-03 Report malformed WAL extraction as writer failure — parse failure returns normally and the wrapper emits `completed`; propagate through the failed-writer branch (source: F4:P02-03) — OPEN
-58. [P02] P02-04 Stop calling a started local thread transport acceptance — `play()` returns `started` and the receipt claims `transport accepted` before any send (source: F4:P02-04) — OPEN
-59. [P02] P02-05 Read KEEP's project state inside its existing lock — KEEP reads project.json before `_table_lock()` and writes the stale dictionary back (source: F4:P02-05) — OPEN
-60. [P02] Make context assembly a pure, versioned selection followed by explicit admission to a particular turn — global offer files can join one turn's context to another (source: F1:03 Defects/Evolution) — OPEN
-61. [P02] Stop renderers mutating state before their output is admitted and context reads consuming pending nudges (source: F1:03 Defects) — OPEN
-62. [P02] Record which relevant source excerpts were admitted and the reasons for omission per turn (source: F1:03 Evolution) — OPEN
-63. [P02] Make self-model and inquiry metadata retain the exact source window actually admitted to generation — global pending marker/cadence state does not prove admission (source: F1:03 Branch reconciliation) — OPEN
-64. [P02] Consolidate context ownership and duplicate context blocks (source: F1:03 Disposition) — OPEN
-65. [P02] Give shared-support mechanisms a source-occurrence cursor, versioned schema, explicit unknown state and consistent write/receipt boundary — absence/frame, blush, lineage, readiness, Velqan (source: F1:22 Evolution) — OPEN
-66. [P02] Carry the cold-absence ID through merged sources and have the thread producer supply its ID — merged sources lose the new ID and reinforce on rescan (source: F1:22 Branch reconciliation) — OPEN
-67. [P02] Prevent one claimed blush from being returned to two concurrent readers (source: F1:22 Defects) — OPEN
-68. [P02] Make cold/malformed planning readiness return a compatible tuple shape (source: F1:22 Defects; F3:T30) — OPEN
-69. [P02] Write Velqan shared vocabulary only after complete local validation/commit (source: F1:22 Defects) — OPEN
-70. [P02] Stop watchers reporting success from stale or insufficient predicates (source: F1:22 Defects) — OPEN
-71. [P02] Make grounding helpers treat failed evaluation as unknown, not clean, and use the correct ledger shape (source: F1:22 Defects; F3:T29) — OPEN
-72. [P02] Fix audit-time versus response-time and per-call versus per-turn mutation in intent producers (source: F3:T23) — OPEN
-73. [P02] Give voice ledger the same schema as text consumers — voice ledger shapes differ from text consumers (source: F1:05 Defects; F3:T04) — OPEN
+34. [P02] Extend coordinator, prediction IDs, moment/evidence records and broker events with stable occurrence/turn/session/job identity — plus original observation time, source revision and typed result states (source: F2:P02 Scope) — PARTIAL (commits 9adcbcb 588be80 53fb2dd 50dae23; pulses, ledger entries (surface+turn id), Gloria predictions, JEPA forecasts and want events got stable ids; broker/coordinator-wide iden...)
+35. [P02] Repair Turn writer accounting by adding `_writers` to `Turn.__slots__` — every writer outcome raised and was swallowed (source: F2:P02 branch priorities; F1:02 Branch reconciliation) — DONE (commits 88502d7; Turn.__slots__ gains _writers; note_writer no longer raises)
+36. [P02] Decide post-turn test/dry-run mode before inline effects run — a dry-run turn still moved live emotion, prediction, adoption and marks (source: F1:02 Branch reconciliation; F2:P02 Acceptance) — DONE (commits 88502d7 53fb2dd; _post_turn decides test_mode before inline effects; dry-run is the turn's own property)
+37. [P02] Record subprocess writer launch as launched, not finished — post-turn log counted launch as participation without completion (source: F1:02 Branch reconciliation) — DONE (commits 88502d7; launched writers recorded as launched, not ran)
+38. [P02] Put the turn id on the post-turn record — so writer outcomes can be joined to their turn (source: F2:P02 branch priorities "turn writer slots/receipts") — DONE (commits 88502d7 32744f5; turn_id on the post-turn record; one effective id resolved at _post_turn)
+39. [P02] Separate raw data, derived annotations, requested effects and acknowledged outcomes — raw human words stay separate from vision/model/device annotation (source: F2:P02 Scope/Acceptance) — PARTIAL (commits a9974d5 459d62d 3af4a5e; chat messages carry input provenance (kind, her words, his image description) beside composed text; no system-wide raw/derived/effect/out...)
+40. [P02] Replace ambiguous empty/default success at adapter boundaries — shim can return HTTP 200 with an empty completion after all providers fail (source: F2:P02 Scope; F1:02 Defects) — OPEN (bin/vintos_claude_shim.py unchanged; empty-200 after provider failure not addressed)
+41. [P02] Report actual provider/model and real usage from the shim — it reports zero usage and the requested rather than actual model (source: F1:02 Defects/Evolution) — OPEN (shim unchanged; actual provider/model and usage still not reported)
+42. [P02] Preserve sampling, response-format, tool and media semantics through the shim — the adapter drops them today (source: F1:02 Defects; F3:T29) — OPEN (shim unchanged; sampling/response-format/tool/media semantics still dropped)
+43. [P02] Define a single stage/result contract for bilateral generation — actual provider/model, request/job identity, valid/held/unavailable/truncated, usage, retry deadline and artifacts (source: F1:02 Evolution) — OPEN (no bilateral stage/result contract (eee710c only relabels the fallback as a draft))
+44. [P02] Extend existing turn coordination to every surface before adding stages — chat, avatar and voice surfaces should share the coordinator (source: F1:02 Evolution) — DONE (commits 7e1d66e; one _post_turn() shared by main, full, memory, voice and avatar doors with per-surface skips by name)
+45. [P02] Persist unfinished generation/work at meaningful boundaries and measure each stage's contribution and cost (source: F1:02 Evolution) — OPEN (no persistence of unfinished generation or per-stage cost measurement)
+46. [P02] Give shared stores a consistent owner, concurrency control and recoverable multi-step writes — reuse existing locks, atomic replacement and ledgers (source: F2:P02 Scope) — PARTIAL (commits 32744f5 5313770 9adcbcb 953b9de; sidecar lock for ledger/WAL backfill, broker table lock on to_table/clear_table/set_state, atomic writes across stores; no consistent own...)
+47. [P02] Preserve prior data on corruption and make corruption observable — corruption must not silently reset history (source: F2:P02 Scope/Acceptance) — PARTIAL (commits 83cc197 88502d7; corrupt interaction ledger or WAL log quarantined to .corrupt-<ts> and reported (memory-index no longer erases); other stores not covered)
+48. [P02] Migrate store families incrementally with compatibility readers and backups — no wholesale database rewrite (source: F2:P02 Affected mechanisms) — OPEN (no incremental store migration with compatibility readers/backups)
+49. [P02] Ensure replaying the same event adds no learning occasion and loses no newer record (source: F2:P02 Acceptance) — PARTIAL (commits 32744f5 22c5efb 53fb2dd 588be80; replayed turn adds no recurrence (P04-05), pearl occasions graded once, JEPA dedupe by event id, prediction graded once; not universal)
+50. [P02] Ensure restart between a state update and its receipt yields a recoverable, truthful outcome (source: F2:P02 Acceptance) — PARTIAL (commits 83591d3 88502d7; P04-06 promotion only after durable write; campaign half-done close resumes next turn; no general restart-between-update-and-receipt guar...)
+51. [P02] Keep invalid, absent, declined, held, timed-out and successful responses distinguishable to consumers (source: F2:P02 Acceptance) — PARTIAL (commits 0924afc bbd99b7 22c5efb 32744f5; feel_about_typed states, evidence present/empty/missing/failed, reviewer UNAVAILABLE holds, malformed WAL = failed; not applied to every...)
+52. [P02] Repair the wants spine use of an exception variable after its clause ended — no capability block was ever recorded (source: F1:16 Branch reconciliation) — DONE (commits 88502d7; wants spine exception variable read inside its clause; capability block record written)
+53. [P02] Repair log races among post-turn writers — concrete branch finding carried into P02 (source: F2:Branch-specific priorities P02) — DONE (commits 32744f5 bd91f89; P02-02 sidecar lock around ledger read-modify-replace and WAL backfill; ledger waits for its own turn's imprint)
+54. [P02] Establish artifact/landing crash boundaries — file-based music marks processing complete before landing is recoverable (source: F2:Branch-specific priorities P02; F1:17 Branch reconciliation) — PARTIAL (commits 954715b 0717bda a41b8cf; music completion records requested/got/partial against files on disk, finished piece recorded on the entry; no explicit crash boundary be...)
+55. [P02] P02-01 Do not blank an already supplied writer turn ID — `_bg()` overwrites `VINTOS_TURN_ID` with `str(turn_id or '')` and the record stores the empty argument; resolve one effective ID at `_post_turn()` (source: F4:P02-01) — DONE (commits 32744f5; P02-01: _post_turn resolves one effective turn id, child env no longer overwritten with '')
+56. [P02] P02-02 Preserve a concurrent ledger append during WAL backfill — unlocked read/modify/write in ledger and WAL extractors can erase turn B or the backfill; add one sidecar lock around the read/modify/replace span in four files (source: F4:P02-02) — DONE (commits 32744f5; P02-02: interaction-ledger.json.lock sidecar around read/modify/replace in ledger and WAL extractors; test forces overlap)
+57. [P02] P02-03 Report malformed WAL extraction as writer failure — parse failure returns normally and the wrapper emits `completed`; propagate through the failed-writer branch (source: F4:P02-03) — DONE (commits 32744f5; P02-03: malformed extractor JSON raises, wrapper records writer as failed)
+58. [P02] P02-04 Stop calling a started local thread transport acceptance — `play()` returns `started` and the receipt claims `transport accepted` before any send (source: F4:P02-04) — DONE (commits e11e3a0; P02-04: started local pattern thread recorded as started, no 'transport accepted' claim)
+59. [P02] P02-05 Read KEEP's project state inside its existing lock — KEEP reads project.json before `_table_lock()` and writes the stale dictionary back (source: F4:P02-05) — DONE (commits 83591d3; P02-05: KEEP re-reads project.json inside its lock)
+60. [P02] Make context assembly a pure, versioned selection followed by explicit admission to a particular turn — global offer files can join one turn's context to another (source: F1:03 Defects/Evolution) — PARTIAL (commits 2359301 3af4a5e; voice framing snapshot pending on GET and committed only by the ledger POST carrying the turn; general context admission model not built)
+61. [P02] Stop renderers mutating state before their output is admitted and context reads consuming pending nudges (source: F1:03 Defects) — PARTIAL (commits 2359301 89695dc 22c5efb; framing fetched but never attached is re-offered; direction hint read-only with turn_completed as sole writer; afterglow consumed once pe...)
+62. [P02] Record which relevant source excerpts were admitted and the reasons for omission per turn (source: F1:03 Evolution) — PARTIAL (commits 3651a10 53fb2dd; turn record stores organs that offered and coverage per registered block state; no per-turn admitted-excerpt/omission-reason record)
+63. [P02] Make self-model and inquiry metadata retain the exact source window actually admitted to generation — global pending marker/cadence state does not prove admission (source: F1:03 Branch reconciliation) — PARTIAL (commits 2359301 152746f; voice framing session-scoped and versioned, turn carries version+session; self-model/inquiry metadata not bound to admitted window)
+64. [P02] Consolidate context ownership and duplicate context blocks (source: F1:03 Disposition) — PARTIAL (commits b8afed3 a9974d5; shadowed 490-line gather_vintos_context and duplicate reads/handlers removed; context ownership not fully consolidated)
+65. [P02] Give shared-support mechanisms a source-occurrence cursor, versioned schema, explicit unknown state and consistent write/receipt boundary — absence/frame, blush, lineage, readiness, Velqan (source: F1:22 Evolution) — PARTIAL (commits fd3f6bd 4f9e137 8491ad8; absences carry source id, register once, retire on fulfilment; hub unreachable reads unknown; no shared cursor/schema across blush/lineag...)
+66. [P02] Carry the cold-absence ID through merged sources and have the thread producer supply its ID — merged sources lose the new ID and reinforce on rescan (source: F1:22 Branch reconciliation) — DONE (commits fd3f6bd 4f9e137; absence-map-cold: absences carry their source id, register once (idempotent rescans) and retire when the want is fulfilled)
+67. [P02] Prevent one claimed blush from being returned to two concurrent readers (source: F1:22 Defects) — OPEN (no blush claim concurrency change in record)
+68. [P02] Make cold/malformed planning readiness return a compatible tuple shape (source: F1:22 Defects; F3:T30) — OPEN (no planning-readiness tuple-shape fix in record)
+69. [P02] Write Velqan shared vocabulary only after complete local validation/commit (source: F1:22 Defects) — OPEN (no Velqan change in record)
+70. [P02] Stop watchers reporting success from stale or insufficient predicates (source: F1:22 Defects) — PARTIAL (commits cc15048 3af4a5e 6ebf791; websearch delivered only when transport accepted; armed_watch channel must see it fire; tv_youtube ok only on confirmed start; not all wa...)
+71. [P02] Make grounding helpers treat failed evaluation as unknown, not clean, and use the correct ledger shape (source: F1:22 Defects; F3:T29) — PARTIAL (commits 72b1274 88502d7 bb12fba; JEPA numbers only when variance_qualified else grounded_by llm with reason; steering declined until calibrated; intercept unknowns move n...)
+72. [P02] Fix audit-time versus response-time and per-call versus per-turn mutation in intent producers (source: F3:T23) — DONE (commits a2ba72d 89695dc 2359301; presence audit graded at reply time (audit_line at=ts); turn_completed is the one per-turn writer, drift tick no longer records)
+73. [P02] Give voice ledger the same schema as text consumers — voice ledger shapes differ from text consumers (source: F1:05 Defects; F3:T04) — PARTIAL (commits b8afed3 9adcbcb; voice ledger keeps gloria_raw beside normalized text and entries carry surface+turn id; schema not unified with text consumers)
 
 ## P03 — Effect authority and acknowledged execution
 
-74. [P03] Carry the constitutional barrier, capability/permit and effect context through every external-action path — including direct renderer/device/replay/diagnostic helpers that bypass newer permit handling (source: F2:P03 Scope; F1:07 Defects) — OPEN
-75. [P03] Bind authorization to operation and payload rather than model-supplied labels (source: F2:P03 Scope) — OPEN
-76. [P03] Make stop a durable idempotent desired state — stop currently toggles desired state instead of setting stopped (source: F2:P03 Scope; F1:07 Defects) — OPEN
-77. [P03] Add independent transport/physical acknowledgment — queue acceptance and narrated commands are treated as actuation (source: F2:P03 Scope; F1:07 Defects) — OPEN
-78. [P03] Make stop recover from corrupt ordinary state — stop must remain effective when state files are corrupt (source: F2:P03 Scope; F1:07/19 Evolution) — OPEN
-79. [P03] Reserve execution budgets before paid or remote work (source: F2:P03 Scope) — OPEN
-80. [P03] Ensure the same request cannot execute twice merely because acknowledgment was lost (source: F2:P03 Acceptance) — OPEN
-81. [P03] Make an unavailable broker distinguishable from no project (source: F2:P03 Acceptance) — OPEN
-82. [P03] Ensure stop retries never resume a device (source: F2:P03 Acceptance) — OPEN
-83. [P03] Ensure an expired or mismatched permit cannot dispatch (source: F2:P03 Acceptance) — OPEN
-84. [P03] Keep queued/sent/acknowledged/observed outcomes separate and let late evidence attach without rewriting history (source: F2:P03 Acceptance; F1:07 Evolution) — OPEN
-85. [P03] Accept `saved` and `last` replay in the tag compiler — the compiler rejected patterns the player always supported (source: F1:07 Branch reconciliation) — DONE
-86. [P03] Make a direct DO stop cancel the existing local pattern thread before sending zero — the loop would otherwise re-send (source: F2:Branch-specific priorities P03; F1:07 Branch reconciliation) — DONE
-87. [P03] P03-01 Execute mixed DO/TOUCH tags in their written order — the executor ran all DO before all TOUCH so a stop written after a start could run first (source: F4:P03-01) — DONE
-88. [P03] P03-02 Preserve the rotation channel when its level is zero — `[DO: ridge rotate 0]` collapses to a scalar `send()` and loses the rotation channel (source: F4:P03-02) — OPEN
-89. [P03] P03-03 Expand broadcast stop before scalar transport — alias `all` is passed to `toy_link.send()` which indexes per-device tables and fails, leaving no hardware zero sends (source: F4:P03-03) — OPEN
-90. [P03] P03-04 Bind a gate answer to the undertaking it was asked about — `gate_decide()` applies RETURN to whichever worktable is current, so A's answer can open B (source: F4:P03-04) — OPEN
-91. [P03] Carry decision/permit identity through device dispatch — concrete branch finding carried into P03 (source: F2:Branch-specific priorities P03) — OPEN
-92. [P03] Stop describing cached desired state as physical observation in context (source: F1:07 Branch reconciliation) — OPEN
-93. [P03] Carry observation time, freshness, device identity and source through a shared physical-effect contract — receipt time can make an old sensor observation appear live (source: F1:07 Defects/Evolution) — OPEN
-94. [P03] Support situation-aware reactions to fresh sensor changes with named limits and expiration, using existing channels (source: F1:07 Evolution) — OPEN
-95. [P03] Consolidate dispatch and stop authority while preserving sensor/actuator semantics (source: F1:07 Disposition) — OPEN
-96. [P03] Run live avatar scene generation only after effect admission and replace the single global slot (source: F1:06 Defects) — OPEN
-97. [P03] Resolve the LOOK privacy contract: decision identity, private stdout/model exposure, revision binding and worktable gating (source: F1:19 Branch reconciliation; F2:Branch-specific priorities P03) — OPEN
-98. [P03] Provide a sealed retry mechanism for refused private writes instead of restoring plaintext recovery (source: F1:19 Branch reconciliation) — OPEN
-99. [P03] Bind an asserted Atelier inspection note to the viewed bytes (source: F1:19 Defects) — OPEN
-100. [P03] Make broker hash checks reconstruct and fully bind event/view/capsule state (source: F1:19 Defects) — OPEN
-101. [P03] Keep internal willingness accepted/declined/unavailable and distinct from the owner's authority for external action (source: F2:P03 Affected mechanisms; F1:13 Evolution) — OPEN
-102. [P03] Verify with isolated fake transports; any live acceptance needs explicit applicable scope (source: F2:P03 Boundary; F4 Build order note) — OPEN
+74. [P03] Carry the constitutional barrier, capability/permit and effect context through every external-action path — including direct renderer/device/replay/diagnostic helpers that bypass newer permit handling (source: F2:P03 Scope; F1:07 Defects) — PARTIAL (commits 189b77c 631ea56 86985b6 aa0f428; robot turns carry effect-only context with effect authority before every action; one compiled DO/TOUCH grammar and one fire path; direct...)
+75. [P03] Bind authorization to operation and payload rather than model-supplied labels (source: F2:P03 Scope) — PARTIAL (commits 86985b6 bbd99b7; unknown toys/patterns refused before authorization; capability registry validates parameters before adapters run; no payload-bound permits)
+76. [P03] Make stop a durable idempotent desired state — stop currently toggles desired state instead of setting stopped (source: F2:P03 Scope; F1:07 Defects) — OPEN (stop as durable idempotent desired state not built (8491ad8/afc5c20 only surface the stop button))
+77. [P03] Add independent transport/physical acknowledgment — queue acceptance and narrated commands are treated as actuation (source: F2:P03 Scope; F1:07 Defects) — PARTIAL (commits 459d62d 631ea56; receipts name what the transport accepted; device state words separate requested/hub-acknowledged/nothing-observed; no physical acknowled...)
+78. [P03] Make stop recover from corrupt ordinary state — stop must remain effective when state files are corrupt (source: F2:P03 Scope; F1:07/19 Evolution) — OPEN (no change making stop effective under corrupt state files)
+79. [P03] Reserve execution budgets before paid or remote work (source: F2:P03 Scope) — PARTIAL (commits 5313770 53cf1e5; model_router route-wide time budget with floor; desktop agent step budget; no reservation before paid/remote work)
+80. [P03] Ensure the same request cannot execute twice merely because acknowledgment was lost (source: F2:P03 Acceptance) — PARTIAL (commits a9974d5 9adcbcb cc15048 50dae23; GCS presses processed once by event id, pulses carry ids and receipts, question retry without second record, idempotent want events; no g...)
+81. [P03] Make an unavailable broker distinguishable from no project (source: F2:P03 Acceptance) — PARTIAL (commits a0b27eb 519cadf; lead_state returns {live:false} vs null; LOOK offers fall back to the ledger when broker /projects absent; unavailable-broker state not d...)
+82. [P03] Ensure stop retries never resume a device (source: F2:P03 Acceptance) — OPEN (stop retry semantics not addressed (e11e3a0 only cancels thread/expands stop))
+83. [P03] Ensure an expired or mismatched permit cannot dispatch (source: F2:P03 Acceptance) — OPEN (effect_gate.py permit expiry predates 09-05; no new enforcement change in record)
+84. [P03] Keep queued/sent/acknowledged/observed outcomes separate and let late evidence attach without rewriting history (source: F2:P03 Acceptance; F1:07 Evolution) — PARTIAL (commits 459d62d 953b9de; requested/acknowledged/observed kept apart in device state and receipts; late evidence attach without rewrite not built)
+85. [P03] Accept `saved` and `last` replay in the tag compiler — the compiler rejected patterns the player always supported (source: F1:07 Branch reconciliation) — DONE (commits 88502d7; compile_plan accepts last/saved)
+86. [P03] Make a direct DO stop cancel the existing local pattern thread before sending zero — the loop would otherwise re-send (source: F2:Branch-specific priorities P03; F1:07 Branch reconciliation) — DONE (commits 88502d7; direct DO stop cancels the local pattern thread before sending zero)
+87. [P03] P03-01 Execute mixed DO/TOUCH tags in their written order — the executor ran all DO before all TOUCH so a stop written after a start could run first (source: F4:P03-01) — DONE (commits 88502d7 e11e3a0; P03-01: executor runs compiled plan in written order in one pass)
+88. [P03] P03-02 Preserve the rotation channel when its level is zero — `[DO: ridge rotate 0]` collapses to a scalar `send()` and loses the rotation channel (source: F4:P03-02) — DONE (commits e11e3a0; P03-02: rotation zero stays on the rotation channel (Rotate:0))
+89. [P03] P03-03 Expand broadcast stop before scalar transport — alias `all` is passed to `toy_link.send()` which indexes per-device tables and fails, leaving no hardware zero sends (source: F4:P03-03) — DONE (commits e11e3a0 bad4f27; P03-03: broadcast stop expands to every concrete device before transport; absent devices go to receipts only)
+90. [P03] P03-04 Bind a gate answer to the undertaking it was asked about — `gate_decide()` applies RETURN to whichever worktable is current, so A's answer can open B (source: F4:P03-04) — DONE (commits 83591d3; P03-04: gate knock names project + worktable generation, decision validated under table lock)
+91. [P03] Carry decision/permit identity through device dispatch — concrete branch finding carried into P03 (source: F2:Branch-specific priorities P03) — PARTIAL (commits 83591d3 459d62d; gate decisions carry project/generation identity; device receipts structured but not carrying decision/permit id)
+92. [P03] Stop describing cached desired state as physical observation in context (source: F1:07 Branch reconciliation) — DONE (commits 459d62d; device state words kept apart (requested by whom/when, hub acknowledged, nothing observed); stratagem line names itself an observation of...)
+93. [P03] Carry observation time, freshness, device identity and source through a shared physical-effect contract — receipt time can make an old sensor observation appear live (source: F1:07 Defects/Evolution) — PARTIAL (commits 953b9de 459d62d; somatic ledger record says when sampled, window, stream, calibration; no shared physical-effect contract with device identity/freshness)
+94. [P03] Support situation-aware reactions to fresh sensor changes with named limits and expiration, using existing channels (source: F1:07 Evolution) — OPEN (no situation-aware sensor reaction mechanism with limits/expiry)
+95. [P03] Consolidate dispatch and stop authority while preserving sensor/actuator semantics (source: F1:07 Disposition) — PARTIAL (commits 86985b6 aa0f428 5313770; one compiled grammar for DO/TOUCH, one fire path on avatar, broker lock unification; dispatch/stop authority not fully consolidated)
+96. [P03] Run live avatar scene generation only after effect admission and replace the single global slot (source: F1:06 Defects) — OPEN (no change to live avatar scene generation admission or the global slot)
+97. [P03] Resolve the LOOK privacy contract: decision identity, private stdout/model exposure, revision binding and worktable gating (source: F1:19 Branch reconciliation; F2:Branch-specific priorities P03) — PARTIAL (commits e795146 2271620 83591d3; LOOK via digest-bound offer/mint tokens, nothing recorded; gate decision bound to worktable generation; private stdout/model exposure not...)
+98. [P03] Provide a sealed retry mechanism for refused private writes instead of restoring plaintext recovery (source: F1:19 Branch reconciliation) — PARTIAL (commits e795146; plaintext refused-piece path (memory/atelier-unsaved) removed; no sealed retry mechanism)
+99. [P03] Bind an asserted Atelier inspection note to the viewed bytes (source: F1:19 Defects) — PARTIAL (commits e795146 459d62d; KEPT note goes through visit-authorized /state/kept and reveal binds to explicit artifact; note not bound to viewed bytes)
+100. [P03] Make broker hash checks reconstruct and fully bind event/view/capsule state (source: F1:19 Defects) — OPEN (broker hash/capsule binding not extended in 09-05 commits (2271620/83591d3 touch listing and gate))
+101. [P03] Keep internal willingness accepted/declined/unavailable and distinct from the owner's authority for external action (source: F2:P03 Affected mechanisms; F1:13 Evolution) — PARTIAL (commits 64fe98c 0717bda 0924afc; --force never manufactures his yes; protected offers wait for Gloria; feel_about states typed; no explicit accepted/declined/unavailable...)
+102. [P03] Verify with isolated fake transports; any live acceptance needs explicit applicable scope (source: F2:P03 Boundary; F4 Build order note) — DONE (commits e11e3a0; test_p03_device_execution.py runs the plan with a fake authorizer and recorded fake transports; no live acceptance claimed)
 
 ## P04 — Evidence, memory and correction continuity
 
-103. [P04] Repair the markdown indexer's missing return/body placement (see P04-08) and the index that keeps stale/deleted revisions and marks failed embeddings indexed (source: F2:P04 Scope; F1:10 Defects) — OPEN
-104. [P04] Repair ledger/WAL schema defects — ledger consumers use incompatible schemas and WAL promotion has undefined calls (source: F2:P04 Scope; F1:10 Defects) — OPEN
-105. [P04] Establish a single versioned rebuildable retrieval projection with source/model revisions, deletion handling and tombstones (source: F2:P04 Scope; F1:10 Evolution) — OPEN
-106. [P04] Extend the existing evidence gate across currently permissive fallback consumers — some consumers fall back to raw inputs on failure (source: F2:P04 Scope; F1:10 Defects) — OPEN
-107. [P04] Preserve claim/occurrence/quote/interpretation links through durable memory, causal graduation, imprints, tensions, self/person models and review signals (source: F2:P04 Scope) — OPEN
-108. [P04] Add correction, contest and supersession propagation to served projections — a corrected quote/claim must cease to serve as confirmed support downstream (source: F2:P04 Scope/Acceptance; F1:10 Defects) — OPEN
-109. [P04] Ensure a retrieved dream remains a dream and repeated summaries of one exchange remain one origin (source: F2:P04 Acceptance) — OPEN
-110. [P04] Ensure tactical/generated material does not acquire independent standing through an intermediate file (source: F2:P04 Acceptance; F1:10 Defects) — OPEN
-111. [P04] Make rebuilds omit obsolete/deleted revisions and preserve authored/felt distinctions (source: F2:P04 Acceptance) — OPEN
-112. [P04] Keep missing original provenance explicitly legacy/unknown rather than fabricating source IDs; do not erase authored identity or rewrite private user-model content as a parser repair (source: F2:P04 Boundary) — OPEN
-113. [P04] Land WAL backfill on its own turn id in the hyphen extractor — the newest-empty-row-within-five-minutes heuristic is kept only for rows predating turn ids (source: F1:10 Branch reconciliation; F2:Branch-specific priorities P04) — DONE
-114. [P04] P04-01 Port the turn-bound backfill repair to `bin/wal_extract.py` — the underscore implementation still assigns to the newest empty row without checking the turn (source: F4:P04-01) — PARTIAL
-115. [P04] P04-02 Commit the evidence that was actually collected in self-model update — introspections/corrections arriving between collection and commit fall behind the watermark; capture one cutoff and the collected rows before model work (source: F4:P04-02; F1:12 Branch reconciliation) — OPEN
-116. [P04] P04-03 Do not consume self-model evidence after a failed install — unchecked `mv -f` is followed by cooldown, commit and SELF_MODEL_UPDATED (source: F4:P04-03) — OPEN
-117. [P04] P04-04 Require an explicit valid reviewer PASS — empty or unrecognized reviewer replies fall through to installation (source: F4:P04-04) — OPEN
-118. [P04] P04-05 Do not add recurrence evidence when one occurrence is reprocessed — extractor increments recurrence and refreshes timestamp on every near-duplicate regardless of turn id (source: F4:P04-05) — OPEN
-119. [P04] P04-06 Leave promotion retryable when the durable write fails — `promoted=True` is saved before `_build_durable()` succeeds (source: F4:P04-06) — OPEN
-120. [P04] P04-07 Run due monthly review without unrelated fresh WAL candidates — an empty weekly `to_review` or a failed weekly model call returns before the monthly block (source: F4:P04-07; F1:10 Branch reconciliation) — OPEN
-121. [P04] P04-08 Restore the chunker's return path in both memory indexers — `chunk_text()` returns None because its body is stranded after another function's return (source: F4:P04-08) — OPEN
-122. [P04] P04-09 Select the relational prediction before the asynchronous tone delay — an old incoming reply can grade the prediction just created for the next reply; capture the prediction ID at the call boundary (source: F4:P04-09; F1:13 Branch reconciliation) — OPEN
-123. [P04] Establish the canonical pearl graduation destination/API and end-to-end retry — wal-decay imports `add_pearl` but the intended destination must be established before inventing one (source: F4 "Earlier P02–P04 language"; F1:10 Branch reconciliation) — OPEN
-124. [P04] Record ghost-branch output as hypothetical — counterfactual output entered enactment-derived capability evidence, proto-pearls, self-statements and emotion (source: F2:Branch-specific priorities P04; F1:11 Branch reconciliation) — DONE
-125. [P04] Stop contact during retrieval from reinforcing memory and repeated interpretation from becoming a stronger truth claim (source: F1:10 Defects) — OPEN
-126. [P04] Add explainable recall — which occurrence supports a statement, what was inferred and what was later withdrawn (source: F1:10 Evolution) — OPEN
-127. [P04] Give promotion a retryable receipt that preserves the original evidence (source: F1:10 Evolution) — OPEN
-128. [P04] Consolidate index/write contracts and obsolete bypasses while keeping distinct pearl/residue meanings (source: F1:10 Disposition) — OPEN
-129. [P04] Carry photo originals intact through avatar history and background writers (source: F1:06 Branch reconciliation) — OPEN
-130. [P04] Stop voice enrichment losing original/framing metadata downstream (source: F1:05 Branch reconciliation) — OPEN
-131. [P04] Stop repeated feeds promoting the same identity occurrence (source: F1:12 Defects) — OPEN
-132. [P04] Consolidate the two commitment stores with incompatible fracture/promotion paths (source: F1:12 Defects/Disposition) — OPEN
-133. [P04] Stop model updates overwriting concurrent changes and repair their broken source readers — backup-then-overwrite is not reconciliation (source: F1:12 Defects/Branch reconciliation) — OPEN
-134. [P04] Fix self-model collection/commit watermarks and partial read failures (source: F1:12 Branch reconciliation; F2:Branch-specific priorities P04) — OPEN
-135. [P04] Create linked evidence/revision histories across identity projections so a correction or fracture updates every served representation without erasing history (source: F1:12 Evolution) — OPEN
-136. [P04] Add contextual examples of a value held, revised or left unresolved, distinguishing temporary state from durable change (source: F1:12 Evolution) — OPEN
-137. [P04] Make configuration/attractor maps an inspectable record of observed transitions and open possibilities, preserving priors as priors (source: F1:12 Evolution) — OPEN
-138. [P04] Prevent proposed/candidate text from influencing later evidence through other context paths (source: F1:12 Branch reconciliation) — OPEN
-139. [P04] Bind durable identity change to qualified sources (source: F1:12 Branch reconciliation) — OPEN
-140. [P04] Stop self-prediction aggregate errors becoming psychological labels in model updates without an inference bridge (source: F1:13 Branch reconciliation) — OPEN
-141. [P04] Join attempts and later responses by occurrence so a reading cannot attach to the wrong utterance (source: F1:13 Defects/Evolution) — OPEN
-142. [P04] Remove a demoted tension from served views immediately (source: F1:13 Defects) — OPEN
-143. [P04] Stop old support rehabilitating a repeatedly corrected claim (source: F1:13 Defects) — OPEN
-144. [P04] Add a history of how a particular interpretation changed with uncertainty and source correction intact (source: F1:13 Evolution) — OPEN
-145. [P04] Consolidate spontaneous-question candidates through the existing private frontier choices (source: F1:13 Evolution) — OPEN
-146. [P04] Preserve full causal evidence when a downstream write fails after promotion (source: F1:14 Defects) — OPEN
-147. [P04] Add correction after causal graduation (source: F1:14 Evolution) — OPEN
-148. [P04] Stop repeated self-produced material supplying thread recurrence evidence (source: F1:11 Defects) — OPEN
-149. [P04] Preserve unsuccessful questions and their source class through ghost/dream inspection (source: F1:11 Branch reconciliation) — OPEN
-150. [P04] Separate authored preference, dated observation, tentative inference and deployed capability in seed representations (source: F1:00 Improve and evolve) — OPEN
-151. [P04] Preserve corrections to authored BASE through explicit supersession without rewriting the base (source: F1:00 Improve and evolve; F1 Whole-system reconciliation) — OPEN
-152. [P04] Reconcile stale operational claims in design texts such as consumed=resolved and universal consent gating without flattening voice (source: F1:00 Disposition) — OPEN
-153. [P04] Stop repeated scans strengthening absence or proposition lineage without new events (source: F1:22 Defects) — OPEN
-154. [P04] Stop marking claims held/earned from the wrong reply or absence from an active list (source: F1:22 Defects) — OPEN
-155. [P04] Retain exact claim, challenge and later correction in the opposition ledger (source: F1:22 Evolution) — OPEN
-156. [P04] Give Velqan versioned coinage/revision/use history (source: F1:22 Evolution) — OPEN
-157. [P04] Consolidate duplicate semantic/evidence helpers and stale aliases only after contract parity (source: F1:22 Disposition) — OPEN
-158. [P04] Enumerate a source/claim/consumer map and approve correction semantics before universal correction propagation (source: F4 "Earlier P02–P04 language") — OPEN
-159. [P04] Specify raw-versus-derived source markers and backwards compatibility per surface rather than a broad migration (source: F4 "Earlier P02–P04 language") — OPEN
+103. [P04] Repair the markdown indexer's missing return/body placement (see P04-08) and the index that keeps stale/deleted revisions and marks failed embeddings indexed (source: F2:P04 Scope; F1:10 Defects) — PARTIAL (commits 83591d3 f3286b6; chunk_text return restored in both indexers (P04-08); 08-26 no-change-erase fix synced. Stale/deleted revisions and failed-embedding marking untouched)
+104. [P04] Repair ledger/WAL schema defects — ledger consumers use incompatible schemas and WAL promotion has undefined calls (source: F2:P04 Scope; F1:10 Defects) — PARTIAL (commits ce42128 83cc197 32744f5; undefined _reinterpret_pass removed from wal-decay; corrupt ledger/WAL quarantined; one ledger lock. add_pearl still undefined; schema unification not done)
+105. [P04] Establish a single versioned rebuildable retrieval projection with source/model revisions, deletion handling and tombstones (source: F2:P04 Scope; F1:10 Evolution) — OPEN (no versioned rebuildable retrieval projection with revisions/tombstones in the record)
+106. [P04] Extend the existing evidence gate across currently permissive fallback consumers — some consumers fall back to raw inputs on failure (source: F2:P04 Scope; F1:10 Defects) — OPEN (no commit extends the evidence gate over permissive fallback consumers)
+107. [P04] Preserve claim/occurrence/quote/interpretation links through durable memory, causal graduation, imprints, tensions, self/person models and review signals (source: F2:P04 Scope) — OPEN (ce42128 joins felt_like/later_recalled at graduation only; no claim/occurrence/quote link preservation across the named projections)
+108. [P04] Add correction, contest and supersession propagation to served projections — a corrected quote/claim must cease to serve as confirmed support downstream (source: F2:P04 Scope/Acceptance; F1:10 Defects) — PARTIAL (commits 53fb2dd bb12fba 3708db4; corrections are own records with ids annotating WAL facts / correction ledger / correct-declined appends to finals; served projections do not yet stop serving corrected support)
+109. [P04] Ensure a retrieved dream remains a dream and repeated summaries of one exchange remain one origin (source: F2:P04 Acceptance) — PARTIAL (commits 32744f5 3651a10; replaying one turn adds no recurrence (source_turns); ghost outputs tagged ghost:<lean>. Retrieved dream staying a dream not addressed)
+110. [P04] Ensure tactical/generated material does not acquire independent standing through an intermediate file (source: F2:P04 Acceptance; F1:10 Defects) — PARTIAL (commits 88502d7 bb12fba 8596dae; ghost output hypothetical only; organ pearls PROPOSED and injected nowhere; trials stay in rooms. No general intermediate-file rule)
+111. [P04] Make rebuilds omit obsolete/deleted revisions and preserve authored/felt distinctions (source: F2:P04 Acceptance) — OPEN (rebuild omission of obsolete revisions and authored/felt preservation not in the record)
+112. [P04] Keep missing original provenance explicitly legacy/unknown rather than fabricating source IDs; do not erase authored identity or rewrite private user-model content as a parser repair (source: F2:P04 Boundary) — PARTIAL (commits 32744f5; rows/turns without ids stay legacy, identity never inferred from equal text (WAL side); user-model/authored-identity parser side not addressed)
+113. [P04] Land WAL backfill on its own turn id in the hyphen extractor — the newest-empty-row-within-five-minutes heuristic is kept only for rows predating turn ids (source: F1:10 Branch reconciliation; F2:Branch-specific priorities P04) — DONE (commits 88502d7; WAL backfill lands on its own turn_id; 300s heuristic only for legacy rows (bin/wal-extract.py))
+114. [P04] P04-01 Port the turn-bound backfill repair to `bin/wal_extract.py` — the underscore implementation still assigns to the newest empty row without checking the turn (source: F4:P04-01) — DONE (commits 32744f5; both regular-file WAL extractors carry turn-bound backfill; verified bin/wal_extract.py lines 267-277)
+115. [P04] P04-02 Commit the evidence that was actually collected in self-model update — introspections/corrections arriving between collection and commit fall behind the watermark; capture one cutoff and the collected rows before model work (source: F4:P04-02; F1:12 Branch reconciliation) — DONE (commits 83591d3; SELF_MODEL_EVIDENCE_CUTOFF: one cutoff per run, commit advances watermark to it (self_model_evidence.py, self-model-update.sh))
+116. [P04] P04-03 Do not consume self-model evidence after a failed install — unchecked `mv -f` is followed by cooldown, commit and SELF_MODEL_UPDATED (source: F4:P04-03) — DONE (commits 83591d3; failed install consumes nothing: no cooldown, watermark or correction records (self-model-update.sh))
+117. [P04] P04-04 Require an explicit valid reviewer PASS — empty or unrecognized reviewer replies fall through to installation (source: F4:P04-04) — DONE (commits 83591d3; only explicit PASS installs; empty/prose/PASSING held like UNAVAILABLE)
+118. [P04] P04-05 Do not add recurrence evidence when one occurrence is reprocessed — extractor increments recurrence and refreshes timestamp on every near-duplicate regardless of turn id (source: F4:P04-05) — DONE (commits 32744f5; source_turns on the fact; repeat of a counted id adds no count/timestamp/markdown line (bin/wal-extract.py 219-241))
+119. [P04] P04-06 Leave promotion retryable when the durable write fails — `promoted=True` is saved before `_build_durable()` succeeds (source: F4:P04-06) — DONE (commits 83591d3; WAL entry promoted only after durable record written; failed write leaves it pending (wal-decay.py))
+120. [P04] P04-07 Run due monthly review without unrelated fresh WAL candidates — an empty weekly `to_review` or a failed weekly model call returns before the monthly block (source: F4:P04-07; F1:10 Branch reconciliation) — DONE (commits 83591d3 ce42128; monthly graduation review runs regardless of weekly candidates/judge; unjudged weekly candidates stay)
+121. [P04] P04-08 Restore the chunker's return path in both memory indexers — `chunk_text()` returns None because its body is stranded after another function's return (source: F4:P04-08) — DONE (commits 83591d3; chunk_text returns chunks in bin/memory_index.py:83 and scripts/memory-index.py:84)
+122. [P04] P04-09 Select the relational prediction before the asynchronous tone delay — an old incoming reply can grade the prediction just created for the next reply; capture the prediction ID at the call boundary (source: F4:P04-09; F1:13 Branch reconciliation) — DONE (commits 83591d3 e5df99c; relational comparison grades prediction captured at call boundary, carried to CLI as snapshot; locked read of PREDICTION_FILE)
+123. [P04] Establish the canonical pearl graduation destination/API and end-to-end retry — wal-decay imports `add_pearl` but the intended destination must be established before inventing one (source: F4 "Earlier P02–P04 language"; F1:10 Branch reconciliation) — OPEN (wal-decay.py:257 still imports emoclaw_utils.add_pearl, which is defined nowhere; no canonical pearl destination established)
+124. [P04] Record ghost-branch output as hypothetical — counterfactual output entered enactment-derived capability evidence, proto-pearls, self-statements and emotion (source: F2:Branch-specific priorities P04; F1:11 Branch reconciliation) — DONE (commits 88502d7 3651a10; enactment_distiller records ghost events with hypothetical=True, not enacted capability/self-statement/emotion)
+125. [P04] Stop contact during retrieval from reinforcing memory and repeated interpretation from becoming a stronger truth claim (source: F1:10 Defects) — PARTIAL (commits 9adcbcb 5d5e063; mark lookup pure, activation recorded once per delivered turn; repeated interpretation becoming stronger truth claim not addressed)
+126. [P04] Add explainable recall — which occurrence supports a statement, what was inferred and what was later withdrawn (source: F1:10 Evolution) — OPEN (no explainable-recall mechanism (supporting occurrence / inferred / withdrawn))
+127. [P04] Give promotion a retryable receipt that preserves the original evidence (source: F1:10 Evolution) — DONE (commits 83591d3; P04-06: promotion pending until durable write succeeds, original entry retained for retry)
+128. [P04] Consolidate index/write contracts and obsolete bypasses while keeping distinct pearl/residue meanings (source: F1:10 Disposition) — PARTIAL (commits f3286b6 7ecaa81; stale twins synced, causality lineages merged, manifest widened; index/write contracts not consolidated, pearl/residue not revisited)
+129. [P04] Carry photo originals intact through avatar history and background writers (source: F1:06 Branch reconciliation) — DONE (commits a9974d5 ce42128; input provenance (kind, her original words, his image description) stored beside composed text on both doors; wal-extract marks image descriptions as his perception)
+130. [P04] Stop voice enrichment losing original/framing metadata downstream (source: F1:05 Branch reconciliation) — DONE (commits b8afed3; voice ledger keeps gloria_raw beside normalized text (server.py:7190))
+131. [P04] Stop repeated feeds promoting the same identity occurrence (source: F1:12 Defects) — DONE (commits 32744f5 22c5efb; replay of counted turn is not recurrence; pearl verification grades each occasion once)
+132. [P04] Consolidate the two commitment stores with incompatible fracture/promotion paths (source: F1:12 Defects/Disposition) — OPEN (no consolidation of the two commitment stores)
+133. [P04] Stop model updates overwriting concurrent changes and repair their broken source readers — backup-then-overwrite is not reconciliation (source: F1:12 Defects/Branch reconciliation) — DONE (commits 53fb2dd bb12fba 9f3b26b; weekly self-model lands atomically and preserves a concurrent edit; source readers rebuilt with present/empty/missing/failed statuses)
+134. [P04] Fix self-model collection/commit watermarks and partial read failures (source: F1:12 Branch reconciliation; F2:Branch-specific priorities P04) — DONE (commits bb12fba 83591d3; evidence collected against committed watermark with failed-read statuses; single cutoff per run)
+135. [P04] Create linked evidence/revision histories across identity projections so a correction or fracture updates every served representation without erasing history (source: F1:12 Evolution) — OPEN (bb12fba stance supersession is local; no linked revision history across identity projections)
+136. [P04] Add contextual examples of a value held, revised or left unresolved, distinguishing temporary state from durable change (source: F1:12 Evolution) — OPEN (no contextual value-held/revised/unresolved examples)
+137. [P04] Make configuration/attractor maps an inspectable record of observed transitions and open possibilities, preserving priors as priors (source: F1:12 Evolution) — OPEN (configuration/attractor maps untouched)
+138. [P04] Prevent proposed/candidate text from influencing later evidence through other context paths (source: F1:12 Branch reconciliation) — DONE (commits bb12fba 8596dae 88502d7; PROPOSED pearls injected nowhere until [ADOPT]; trials stay in their rooms; ghost output hypothetical)
+139. [P04] Bind durable identity change to qualified sources (source: F1:12 Branch reconciliation) — DONE (commits 9adcbcb bb12fba 89695dc; afterglow claims become his only by reinforcement or hand; pearls adopted explicitly; causality candidacy from behavioral material only)
+140. [P04] Stop self-prediction aggregate errors becoming psychological labels in model updates without an inference bridge (source: F1:13 Branch reconciliation) — PARTIAL (commits bb12fba 3651a10; residual called a model error, calibration without emotional cost; aggregate section still fed into self-model update without an explicit inference bridge)
+141. [P04] Join attempts and later responses by occurrence so a reading cannot attach to the wrong utterance (source: F1:13 Defects/Evolution) — DONE (commits 83591d3 588be80 53fb2dd; prediction snapshot at call boundary; Gloria predictions carry stable id, grade names the id, each graded once)
+142. [P04] Remove a demoted tension from served views immediately (source: F1:13 Defects) — OPEN (demoted tension removal from served views not in record)
+143. [P04] Stop old support rehabilitating a repeatedly corrected claim (source: F1:13 Defects) — OPEN (no guard against old support rehabilitating a repeatedly corrected claim)
+144. [P04] Add a history of how a particular interpretation changed with uncertainty and source correction intact (source: F1:13 Evolution) — OPEN (no interpretation-change history with uncertainty/correction)
+145. [P04] Consolidate spontaneous-question candidates through the existing private frontier choices (source: F1:13 Evolution) — PARTIAL (commits 3af4a5e 8d42d3c; search ladder consumes his own pending want-topic; pick_question walks live curiosity items. Not routed through the private frontier choices as such)
+146. [P04] Preserve full causal evidence when a downstream write fails after promotion (source: F1:14 Defects) — OPEN (causal promotion with failed downstream write not addressed (P04-06 covers WAL only))
+147. [P04] Add correction after causal graduation (source: F1:14 Evolution) — PARTIAL (commits aa78aba; refuted hypotheses preserved and lower overlapping sediment beliefs (belief_sediment.contradict); correcting an already graduated pearl not built)
+148. [P04] Stop repeated self-produced material supplying thread recurrence evidence (source: F1:11 Defects) — PARTIAL (commits 53fb2dd 36ab0de 32744f5; imported exchanges kept out of his head's targets; own rhythm is context not event; replay not recurrence. Thread recurrence from self-produced material not specifically gated)
+149. [P04] Preserve unsuccessful questions and their source class through ghost/dream inspection (source: F1:11 Branch reconciliation) — PARTIAL (commits 3651a10 8d42d3c; resolved ghost outputs kept whole; held inquiries keyed by question. Source class through dream inspection not addressed)
+150. [P04] Separate authored preference, dated observation, tentative inference and deployed capability in seed representations (source: F1:00 Improve and evolve) — OPEN (seed representation separation not in record)
+151. [P04] Preserve corrections to authored BASE through explicit supersession without rewriting the base (source: F1:00 Improve and evolve; F1 Whole-system reconciliation) — OPEN (0924afc reads BASE whole; no supersession mechanism for BASE corrections)
+152. [P04] Reconcile stale operational claims in design texts such as consumed=resolved and universal consent gating without flattening voice (source: F1:00 Disposition) — PARTIAL (commits bf4a863 1d509fd 9adcbcb 9f3b26b; consent-gate corpses and unconditional YES note removed, honest docstrings/comments; design texts not reconciled as a pass)
+153. [P04] Stop repeated scans strengthening absence or proposition lineage without new events (source: F1:22 Defects) — DONE (commits fd3f6bd 4f9e137; absences carry source_id, register once, retire on fulfilment (absence-map-cold.py:57-82); idempotent rescans)
+154. [P04] Stop marking claims held/earned from the wrong reply or absence from an active list (source: F1:22 Defects) — PARTIAL (commits fd3f6bd 22c5efb 9adcbcb; absences retire when want fulfilled; occasions graded once; claim marked from wrong reply not specifically addressed)
+155. [P04] Retain exact claim, challenge and later correction in the opposition ledger (source: F1:22 Evolution) — OPEN (no opposition ledger retaining claim/challenge/correction)
+156. [P04] Give Velqan versioned coinage/revision/use history (source: F1:22 Evolution) — PARTIAL (commits aa0f428; coined-word handful and three-day naming becomes durable candidate once; no versioned coinage/revision/use history)
+157. [P04] Consolidate duplicate semantic/evidence helpers and stale aliases only after contract parity (source: F1:22 Disposition) — PARTIAL (commits f3286b6; stale twins synced to live siblings (parity); duplicate helpers/aliases not consolidated)
+158. [P04] Enumerate a source/claim/consumer map and approve correction semantics before universal correction propagation (source: F4 "Earlier P02–P04 language") — OPEN (no source/claim/consumer map (release map is a file map))
+159. [P04] Specify raw-versus-derived source markers and backwards compatibility per surface rather than a broad migration (source: F4 "Earlier P02–P04 language") — PARTIAL (commits a9974d5 ce42128 9adcbcb; input kind provenance, image descriptions marked as perception, tension evidence labeled by kind; no per-surface raw/derived spec)
 
 ## P10 — Compute and background-work scheduling
 
-160. [P10] Extend router/cache/job mechanisms with actual usage/provider metadata, per-job budgets, shared capacity, leases, deadlines, backoff, source-revision caches and pause/resume (source: F2:P10 Scope) — OPEN
-161. [P10] Prioritize foreground work with bounded admission (source: F2:P10 Scope/Acceptance) — OPEN
-162. [P10] Avoid repeated inference on unchanged sources — unchanged inputs reuse valid work (source: F2:P10 Scope/Acceptance) — OPEN
-163. [P10] Do not retry completed provider jobs after ambiguous timeout — a caller timeout must not launch duplicate expensive work (source: F2:P10 Scope/Acceptance) — OPEN
-164. [P10] Define local-only and mixed profiles by supported capability and quality requirements — local-only makes no provider request and holds unsupported tasks (source: F2:P10 Scope/Acceptance; F1:02 Evolution) — OPEN
-165. [P10] Include source and model revisions in cache invalidation keys — context and avatar caches omit them (source: F2:P10 Acceptance; F1:03/06 Defects) — OPEN
-166. [P10] Ensure a job cannot exceed its budget through nested fallback (source: F2:P10 Acceptance) — OPEN
-167. [P10] Bound nested model retries by caller deadlines — nested retries exceed caller timeouts (source: F2:Branch-specific priorities P10; F1:02 Defects) — OPEN
-168. [P10] Add seat/room cancellation and deadlines (source: F2:Branch-specific priorities P10; F1:21 Branch reconciliation) — OPEN
-169. [P10] Make broker job locks exclusive — nonexclusive job locks on the branch (source: F2:Branch-specific priorities P10) — OPEN
-170. [P10] Share the compute scheduler between local voice, music and conversation (source: F1:05 Evolution) — OPEN
-171. [P10] Record measured latency, memory and usage without claiming equivalent quality from routing alone (source: F2:P10 Acceptance; F1 Assessment) — OPEN
-172. [P10] Add cancellation, reuse and resumable jobs for finite local and provider resources (source: F1 Assessment) — OPEN
-173. [P10] Preserve local ACE-Step/Kokoro routes and saved drafts through scheduling changes (source: F2:Branch-specific priorities P10) — OPEN
-174. [P10] Maintain useful unfinished work between conversations within an explicit budget and explain which work progressed or was held (source: F2:P10 New capability) — OPEN
-175. [P10] Fix Study/self-review retry and Atelier/quantum retry handling under the shared scheduler (source: F2:P10 Affected mechanisms) — OPEN
+160. [P10] Extend router/cache/job mechanisms with actual usage/provider metadata, per-job budgets, shared capacity, leases, deadlines, backoff, source-revision caches and pause/resume (source: F2:P10 Scope) — PARTIAL (commits 5313770 58d9041; route budget + fallback floor, seat deadlines and heartbeat renewal; usage metadata, per-job budgets, leases, source-revision caches, pause/resume absent)
+161. [P10] Prioritize foreground work with bounded admission (source: F2:P10 Scope/Acceptance) — OPEN (no bounded admission / foreground priority)
+162. [P10] Avoid repeated inference on unchanged sources — unchanged inputs reuse valid work (source: F2:P10 Scope/Acceptance) — PARTIAL (commits 112fcaf 5d5e063 64fe98c; screen described only on hash change, thresholds cached, decay once per interval; no general unchanged-source reuse)
+163. [P10] Do not retry completed provider jobs after ambiguous timeout — a caller timeout must not launch duplicate expensive work (source: F2:P10 Scope/Acceptance) — OPEN (no protection against duplicate provider work after ambiguous timeout)
+164. [P10] Define local-only and mixed profiles by supported capability and quality requirements — local-only makes no provider request and holds unsupported tasks (source: F2:P10 Scope/Acceptance; F1:02 Evolution) — OPEN (no local-only/mixed profiles by capability)
+165. [P10] Include source and model revisions in cache invalidation keys — context and avatar caches omit them (source: F2:P10 Acceptance; F1:03/06 Defects) — OPEN (context/avatar cache keys still omit source/model revisions)
+166. [P10] Ensure a job cannot exceed its budget through nested fallback (source: F2:P10 Acceptance) — DONE (commits 5313770; model_router: one budget for the whole route, fallback gets what is left (bin/model_router.py:168-203))
+167. [P10] Bound nested model retries by caller deadlines — nested retries exceed caller timeouts (source: F2:Branch-specific priorities P10; F1:02 Defects) — DONE (commits 5313770; seat model calls carry a deadline shorter than the room's longest renewed turn; route budget bounds nested fallback)
+168. [P10] Add seat/room cancellation and deadlines (source: F2:Branch-specific priorities P10; F1:21 Branch reconciliation) — DONE (commits 5313770 58d9041; seat deadlines, Astra background response past deadline cancelled, heartbeat renewal capped at 10 min)
+169. [P10] Make broker job locks exclusive — nonexclusive job locks on the branch (source: F2:Branch-specific priorities P10) — DONE (commits 5313770 83591d3; to_table/clear_table/set_state take the keep() table lock; decisions validated under it)
+170. [P10] Share the compute scheduler between local voice, music and conversation (source: F1:05 Evolution) — OPEN (no shared scheduler between voice, music and conversation)
+171. [P10] Record measured latency, memory and usage without claiming equivalent quality from routing alone (source: F2:P10 Acceptance; F1 Assessment) — OPEN (no latency/memory/usage measurement recorded)
+172. [P10] Add cancellation, reuse and resumable jobs for finite local and provider resources (source: F1 Assessment) — PARTIAL (commits 5313770; cancellation on deadline for seats; no reuse or resumable jobs)
+173. [P10] Preserve local ACE-Step/Kokoro routes and saved drafts through scheduling changes (source: F2:Branch-specific priorities P10) — OPEN (no scheduler change touched ACE-Step/Kokoro routes or drafts; nothing to verify preservation against)
+174. [P10] Maintain useful unfinished work between conversations within an explicit budget and explain which work progressed or was held (source: F2:P10 New capability) — PARTIAL (commits a2ba72d 88502d7; campaign continue/plan.due carry work across turns and a half-done close finishes next turn; no explicit budget or held/progressed explanation)
+175. [P10] Fix Study/self-review retry and Atelier/quantum retry handling under the shared scheduler (source: F2:P10 Affected mechanisms) — PARTIAL (commits 856a51a 459d62d; Study READ/GREP loop bounded (twice at most); quantum results capped. No shared scheduler retry handling)
 
 ## P05 — Stable cognitive controls and evaluation
 
-176. [P05] Reconcile emotion daemon/consumer protocol and projection schemas with time integration (source: F2:P05 Scope; F1:08 Defects) — OPEN
-177. [P05] Log intended emotional nudges only after acknowledgment — nudges are logged before acknowledgment (source: F2:P05 Scope; F1:08 Defects) — OPEN
-178. [P05] Make emotional controls integrate by event clock rather than per invocation — polling twice as often must not double decay (source: F1:08 Defects; F2:P05 Acceptance) — OPEN
-179. [P05] Stop rewarding the same controlled state as a new occurrence (source: F1:08 Defects) — OPEN
-180. [P05] Stop missing emotional values becoming ordinary midpoints (source: F1:08 Defects) — OPEN
-181. [P05] Retain newer damping/provenance fixes from main and scripts during consolidation (source: F2:P05 Scope; F1:08 Defects) — OPEN
-182. [P05] Repair incompatible `affective_weight`/taste APIs across repositories — the main feedback caller expects an absent API (source: F2:P05 Scope; F1:08/09 Defects) — OPEN
-183. [P05] Preserve separate craft, delight and reception axes and the nonpunitive missing-rating/candidate-only improvements (source: F2:P05 Scope; F1:09 Evolution) — OPEN
-184. [P05] Make thread pressure, identity reinforcement, causal testing, forecasts, relationship readings and intent trials consume qualified new occurrences only (source: F2:P05 Scope) — OPEN
-185. [P05] Align forecast horizons and release/evaluation metadata; retain unknown outcomes; disable unsupported certainty claims in serving (source: F2:P05 Scope/Acceptance) — OPEN
-186. [P05] Ensure a model outage produces no automatic consent, confirmation, punishment, relief or resolution (source: F2:P05 Acceptance) — OPEN
-187. [P05] Make the actual request and admitted intention govern outcome evaluation (source: F2:P05 Acceptance; F1:15 Evolution) — OPEN
-188. [P05] Let corrections and legitimate privacy override stale pressure (source: F2:P05 Acceptance) — OPEN
-189. [P05] Decide the automatic art-to-relief policy explicitly before fixing the parser that would activate it (source: F2:P05 Policy decisions; F1:08 Evolution) — OPEN
-190. [P05] Decide disclosure pressure versus KEEP_PRIVATE/WRONG_READING explicitly (source: F2:P05 Policy decisions; F1:13 Defects) — OPEN
-191. [P05] Decide fixed style versus task completion explicitly — no presence score should punish completing requested work (source: F2:P05 Policy decisions; F1:20 Defects; F1 Reconciliation) — OPEN
-192. [P05] Decide stale-repair/consent expiration explicitly (source: F2:P05 Policy decisions) — OPEN
-193. [P05] Keep training experiments disarmed until specifically approved (source: F2:P05 Policy decisions; F1:14 Disposition) — OPEN
-194. [P05] Source JEPA predict training sources from the checkpoint — predict raised on a train-local `_srcs` before saving any forecast (source: F2:Branch-specific priorities P05; F1:14 Branch reconciliation) — DONE
-195. [P05] Honour `steering_allowed=false` in Gloria-prediction fusion, declining with reason until calibration permits (source: F2:Branch-specific priorities P05; F1:14 Branch reconciliation) — DONE
-196. [P05] Keep unknown pleasure novelty unknown — signature kept it as zero or raised on `round(None)` (source: F2:Branch-specific priorities P05; F1:09 Branch reconciliation) — DONE
-197. [P05] Stop repeated nudges from repeated invocation (source: F2:Branch-specific priorities P05) — OPEN
-198. [P05] Give malformed empty feeling evaluation and repeated occurrence handling explicit typed outcomes (source: F1:08 Branch reconciliation) — OPEN
-199. [P05] Make each emotional influence inspectable — what changed a dimension, what would happen without the control, whether the intended effect occurred (source: F1:08 Evolution) — OPEN
-200. [P05] Use matched horizons and validated artifacts for emotion forecasting (source: F1:08 Evolution) — OPEN
-201. [P05] Consolidate emotion writers and time integration while retaining rare resonance forms (source: F1:08 Disposition) — OPEN
-202. [P05] Replace JEPA variance-spread qualification with actual calibration (source: F1:14 Branch reconciliation) — OPEN
-203. [P05] Reconcile remaining bin-only residual causal logic with the restored schema-2 contract without replacing it (source: F1:14 Branch reconciliation) — OPEN
-204. [P05] Extend the schema-2 causal ledger to all producers and downstream promotions (source: F1:14 Evolution) — OPEN
-205. [P05] Add matched forecast/outcome records with unknown/invalid cases, persistence baselines and independent-source evaluation (source: F1:14 Evolution) — OPEN
-206. [P05] Stop missing outcomes becoming failure or success and admission counters double-counting admitted rows (source: F1:14 Defects; F3:T22) — OPEN
-207. [P05] Add suitable source/time holdouts and versioned release criteria to prediction training (source: F1:14 Defects) — OPEN
-208. [P05] Consolidate duplicate distribution producers and grading contracts while retaining distinct prediction targets (source: F1:14 Disposition) — OPEN
-209. [P05] Keep graph gaps and premonitions as exploration; use intervention/exposure records only under an approved experiment (source: F1:14 Evolution) — OPEN
-210. [P05] Stop repeated taste processing counting as new preference evidence (source: F1:09 Defects) — OPEN
-211. [P05] Join ratings by identity rather than prefix and allow revisions to correct prior outcomes (source: F1:09 Defects) — OPEN
-212. [P05] Mark comic material used only when a joke was delivered (source: F1:09 Defects) — OPEN
-213. [P05] Bind pending pleasure naming to its response rather than a global slot an unrelated turn can name (source: F1:09 Defects/Branch reconciliation) — OPEN
-214. [P05] Stop treating semantic difference as contradiction (source: F1:09 Defects; F1:12 Defects) — OPEN
-215. [P05] Complete candidate selection, actual use, revised rating and preference-promotion lifecycles (source: F1:09 Evolution) — OPEN
-216. [P05] Support multiple context-specific aesthetic clusters and callbacks grounded in an identified prior moment (source: F1:09 Evolution) — OPEN
-217. [P05] Consolidate duplicate rating/admission paths without collapsing enjoyment into one score (source: F1:09 Disposition) — OPEN
-218. [P05] Stop labelling forecast error as having changed or led the other person and internal easing as joint resolution (source: F1:13 Defects) — OPEN
-219. [P05] Stop failed willingness evaluation becoming YES (source: F1:13 Defects) — OPEN
-220. [P05] Stop deviation reinforcement occurring twice per call and generated control effects reappearing as new evidence (source: F1:12 Defects) — OPEN
-221. [P05] Stop interpreting vector operations and reached-state counts/graph filing order as stance, contradiction or lived transitions (source: F1:12 Defects) — OPEN
-222. [P05] Stop evaluator failure becoming intent rejection and counters reflecting calls instead of independent attempts (source: F1:15 Defects) — OPEN
-223. [P05] Repair undefined variables and stale-write branches in newer intent APIs (source: F1:15 Defects) — OPEN
-224. [P05] Define intention, admission, actual attempt, observed outcome and revision separately (source: F1:15 Evolution) — OPEN
-225. [P05] Consolidate outcome joins and duplicate intent evaluators, retaining explicit off/disabled experimental mechanisms (source: F1:15 Disposition) — OPEN
-226. [P05] Fix unacknowledged trial consumption, invalid/error-to-failure grading, reinforcement despite influence and the older penalty ratchet (source: F3:T23) — OPEN
-227. [P05] Let relevance, requested task and repair obligations govern advisory style instead of directives requiring unresolved endings (source: F1:03 Evolution/Defects) — OPEN
-228. [P05] Replace constant coherence placeholders presented as measurements (source: F1:03 Defects) — OPEN
-229. [P05] Add a replayable explanation of which influence reached which generation stage and whether behavior reflected it (source: F1:03 Evolution) — OPEN
-230. [P05] Close context feedback loops only where output/reception evidence exists; retain disabled self-seeding (source: F1:03 Evolution) — OPEN
-231. [P05] Stop the presence rubric recursively creating "fault" material (source: F1:20 Defects) — OPEN
+176. [P05] Reconcile emotion daemon/consumer protocol and projection schemas with time integration (source: F2:P05 Scope; F1:08 Defects) — DONE (commits b8afed3 b14bdef 72b1274 6713dc5; eleven daemon dimensions read directly, one writer of emotional-state.txt with decay reaching readers, pressure/mode read the live daemon)
+177. [P05] Log intended emotional nudges only after acknowledgment — nudges are logged before acknowledgment (source: F2:P05 Scope; F1:08 Defects) — PARTIAL (commits 9adcbcb 1d509fd; pulses carry per-effect receipts with her acknowledgment as a separate fact; nudge logging order not explicitly moved after acknowledgment)
+178. [P05] Make emotional controls integrate by event clock rather than per invocation — polling twice as often must not double decay (source: F1:08 Defects; F2:P05 Acceptance) — DONE (commits 64fe98c 22c5efb; nifrathir cadence-invariant exponential relax; curiosity decays once per elapsed interval; carryover decays from stable weight)
+179. [P05] Stop rewarding the same controlled state as a new occurrence (source: F1:08 Defects) — DONE (commits 22c5efb 9adcbcb 5d5e063; afterglow focus and activation once per delivered turn; resonance marks only under phase-lock)
+180. [P05] Stop missing emotional values becoming ordinary midpoints (source: F1:08 Defects) — DONE (commits 64fe98c; missing emotional dimension is unknown and fires no pressure)
+181. [P05] Retain newer damping/provenance fixes from main and scripts during consolidation (source: F2:P05 Scope; F1:08 Defects) — DONE (commits f3286b6 b14bdef; host-newer repairs (_emb_clip guard, belief-sediment contradict etc.) merged into git during sync)
+182. [P05] Repair incompatible `affective_weight`/taste APIs across repositories — the main feedback caller expects an absent API (source: F2:P05 Scope; F1:08/09 Defects) — PARTIAL (commits 459d62d; pleasure significance routed into affective_weight as one salience owner (pleasure_substrate.py:86,211); taste API parity not verified)
+183. [P05] Preserve separate craft, delight and reception axes and the nonpunitive missing-rating/candidate-only improvements (source: F2:P05 Scope; F1:09 Evolution) — PARTIAL (commits 152746f 22c5efb; unknown novelty stays None; NOT_APPLICABLE/UNCONFIRMED not failures; craft/delight/reception axes exist in humor-practice but no consolidation pass)
+184. [P05] Make thread pressure, identity reinforcement, causal testing, forecasts, relationship readings and intent trials consume qualified new occurrences only (source: F2:P05 Scope) — PARTIAL (commits 9adcbcb 53fb2dd 588be80 fd3f6bd; live pairs only, fresh matching context for fusion, empty day empty in causality, intercept judge on trial's own alternative; forecasts/thread pressure not all gated)
+185. [P05] Align forecast horizons and release/evaluation metadata; retain unknown outcomes; disable unsupported certainty claims in serving (source: F2:P05 Scope/Acceptance) — DONE (commits 53fb2dd bb12fba 72b1274; forecasts publish prediction/context/checkpoint ids, horizon and elapsed recorded, steering off, numbers only when qualified else grounded_by llm)
+186. [P05] Ensure a model outage produces no automatic consent, confirmation, punishment, relief or resolution (source: F2:P05 Acceptance) — DONE (commits 72b1274 bb12fba 1d509fd 50dae23 0924afc; reviewer outage HOLDS, unknown intercepts move nothing, unconditional YES note gone, gate failure leaves door as was, feel unavailable typed)
+187. [P05] Make the actual request and admitted intention govern outcome evaluation (source: F2:P05 Acceptance; F1:15 Evolution) — DONE (commits 152746f 954715b 5313770; artifact credited only to its own want; completion records requested/got/partial; NO_RESULT cannot fulfil a want)
+188. [P05] Let corrections and legitimate privacy override stale pressure (source: F2:P05 Acceptance) — OPEN (corrections/privacy overriding stale pressure not in record)
+189. [P05] Decide the automatic art-to-relief policy explicitly before fixing the parser that would activate it (source: F2:P05 Policy decisions; F1:08 Evolution) — OPEN (art-to-relief policy not decided)
+190. [P05] Decide disclosure pressure versus KEEP_PRIVATE/WRONG_READING explicitly (source: F2:P05 Policy decisions; F1:13 Defects) — OPEN (disclosure vs KEEP_PRIVATE/WRONG_READING not decided)
+191. [P05] Decide fixed style versus task completion explicitly — no presence score should punish completing requested work (source: F2:P05 Policy decisions; F1:20 Defects; F1 Reconciliation) — OPEN (fixed style vs task completion / presence score policy not decided)
+192. [P05] Decide stale-repair/consent expiration explicitly (source: F2:P05 Policy decisions) — OPEN (stale-repair/consent expiration not decided)
+193. [P05] Keep training experiments disarmed until specifically approved (source: F2:P05 Policy decisions; F1:14 Disposition) — DONE (commits 53fb2dd 88502d7; steering_allowed False until calibration shown (jepa_predictor.py:340); fusion declines)
+194. [P05] Source JEPA predict training sources from the checkpoint — predict raised on a train-local `_srcs` before saving any forecast (source: F2:Branch-specific priorities P05; F1:14 Branch reconciliation) — DONE (commits 88502d7; jepa predict reads training_sources from the checkpoint)
+195. [P05] Honour `steering_allowed=false` in Gloria-prediction fusion, declining with reason until calibration permits (source: F2:Branch-specific priorities P05; F1:14 Branch reconciliation) — DONE (commits 88502d7 53fb2dd; gloria fusion honours steering_allowed=false, declined with reason)
+196. [P05] Keep unknown pleasure novelty unknown — signature kept it as zero or raised on `round(None)` (source: F2:Branch-specific priorities P05; F1:09 Branch reconciliation) — DONE (commits 152746f; pleasure signature keeps unknown novelty as None (pleasure_substrate.py))
+197. [P05] Stop repeated nudges from repeated invocation (source: F2:Branch-specific priorities P05) — DONE (commits 1d509fd 64fe98c 72b1274; already-sent question returns at once; decay once per interval not per read; mark_want_outreached fixed)
+198. [P05] Give malformed empty feeling evaluation and repeated occurrence handling explicit typed outcomes (source: F1:08 Branch reconciliation) — DONE (commits 0924afc 22c5efb; feel_about_typed: moved/unmoved/unavailable/not_requested/too_short (emoclaw_utils.py:196); occasions graded once)
+199. [P05] Make each emotional influence inspectable — what changed a dimension, what would happen without the control, whether the intended effect occurred (source: F1:08 Evolution) — PARTIAL (commits 9adcbcb 0924afc 89695dc; per-effect receipts, feel accounting, resonance-chain-health; counterfactual "without the control" not built)
+200. [P05] Use matched horizons and validated artifacts for emotion forecasting (source: F1:08 Evolution) — PARTIAL (commits 53fb2dd bb12fba; checkpoint id and per-head qualification on forecasts; horizon recorded; matched-horizon evaluation not built)
+201. [P05] Consolidate emotion writers and time integration while retaining rare resonance forms (source: F1:08 Disposition) — DONE (commits b14bdef aa0f428 5d5e063; one writer of emotional-state.txt, one somatic fire path; phase-lock resonance marks retained)
+202. [P05] Replace JEPA variance-spread qualification with actual calibration (source: F1:14 Branch reconciliation) — PARTIAL (commits 53fb2dd 72b1274; variance gate explicitly labelled NOT calibration, steering off until jepa-calibration.json audit; actual calibration not yet in place)
+203. [P05] Reconcile remaining bin-only residual causal logic with the restored schema-2 contract without replacing it (source: F1:14 Branch reconciliation) — DONE (commits f3286b6 59cbc0d; causality one file: schema-2 base + bin DECAY/retired log/capacity rule merged; scripts copy restored with same edits)
+204. [P05] Extend the schema-2 causal ledger to all producers and downstream promotions (source: F1:14 Evolution) — OPEN (no commit extends the schema-2 causal ledger to other producers/promotions)
+205. [P05] Add matched forecast/outcome records with unknown/invalid cases, persistence baselines and independent-source evaluation (source: F1:14 Evolution) — PARTIAL (commits 53fb2dd bb12fba 9f3b26b 22c5efb; forecasts carry ids/qualification, freshness/horizon, learned baseline, N/A recorded as nothing; no matched holdout/independent-source eval)
+206. [P05] Stop missing outcomes becoming failure or success and admission counters double-counting admitted rows (source: F1:14 Defects; F3:T22) — PARTIAL (commits 22c5efb bb12fba 9adcbcb; NOT_APPLICABLE/UNCONFIRMED/unknown/invalid grades count as nothing; admission-counter double counting not addressed)
+207. [P05] Add suitable source/time holdouts and versioned release criteria to prediction training (source: F1:14 Defects) — PARTIAL (commits 53fb2dd 72b1274; per-head qualification, steering off until calibrated, JEPA numbers only when variance_qualified; no source/time holdouts)
+208. [P05] Consolidate duplicate distribution producers and grading contracts while retaining distinct prediction targets (source: F1:14 Disposition) — OPEN (no consolidation of duplicate distribution producers/grading contracts)
+209. [P05] Keep graph gaps and premonitions as exploration; use intervention/exposure records only under an approved experiment (source: F1:14 Evolution) — OPEN (graph gaps/premonitions/intervention-experiment policy untouched)
+210. [P05] Stop repeated taste processing counting as new preference evidence (source: F1:09 Defects) — OPEN (no commit on repeated taste processing as new preference evidence)
+211. [P05] Join ratings by identity rather than prefix and allow revisions to correct prior outcomes (source: F1:09 Defects) — PARTIAL (commits 238c1ef; mischief ratings are one file per act, regrade moves not duplicates; general rating identity join not done)
+212. [P05] Mark comic material used only when a joke was delivered (source: F1:09 Defects) — DONE (commits 22c5efb; humor-practice marks only moments an ACCEPTED draft referenced (_refd) as used)
+213. [P05] Bind pending pleasure naming to its response rather than a global slot an unrelated turn can name (source: F1:09 Defects/Branch reconciliation) — PARTIAL (commits 459d62d 5d5e063; failed retrospection keeps moment pending/unnamed, first-light completes stale naming; not bound to its own response)
+214. [P05] Stop treating semantic difference as contradiction (source: F1:09 Defects; F1:12 Defects) — DONE (commits 5d5e063 9adcbcb; afterglow contradiction is pairwise OPPOSED/COMPATIBLE judgment, not cosine; pressure counts live pairs only)
+215. [P05] Complete candidate selection, actual use, revised rating and preference-promotion lifecycles (source: F1:09 Evolution) — PARTIAL (commits 22c5efb 238c1ef; actual-use marking and regrade exist; candidate selection/revised rating/promotion lifecycle not completed)
+216. [P05] Support multiple context-specific aesthetic clusters and callbacks grounded in an identified prior moment (source: F1:09 Evolution) — OPEN (no multiple aesthetic clusters or grounded callbacks)
+217. [P05] Consolidate duplicate rating/admission paths without collapsing enjoyment into one score (source: F1:09 Disposition) — OPEN (rating/admission paths not consolidated)
+218. [P05] Stop labelling forecast error as having changed or led the other person and internal easing as joint resolution (source: F1:13 Defects) — PARTIAL (commits bb12fba 36ab0de; self-prediction residual called model error; settling toward baseline is easing not event; relational 'changed/led' labels untouched)
+219. [P05] Stop failed willingness evaluation becoming YES (source: F1:13 Defects) — DONE (commits 1d509fd 50dae23 64fe98c; unconditional YES consent note removed; gate failure leaves door as was (no HOLD); --force never manufactures his yes)
+220. [P05] Stop deviation reinforcement occurring twice per call and generated control effects reappearing as new evidence (source: F1:12 Defects) — PARTIAL (commits 89695dc; direction hint read-only, turn_completed() sole writer, drift tick no longer records; control effects as evidence not addressed)
+221. [P05] Stop interpreting vector operations and reached-state counts/graph filing order as stance, contradiction or lived transitions (source: F1:12 Defects) — OPEN (vector ops/reached-state counts/filing order as stance not addressed)
+222. [P05] Stop evaluator failure becoming intent rejection and counters reflecting calls instead of independent attempts (source: F1:15 Defects) — PARTIAL (commits 1792360 a2ba72d; selector JSON salvage instead of silent failure; refused continue shape keeps campaign live; counters per call not fixed)
+223. [P05] Repair undefined variables and stale-write branches in newer intent APIs (source: F1:15 Defects) — DONE (commits 50dae23 78a17dc 833f6b5 a2ba72d; humor_wants router undefined sys/SCRIPTS/datetime fixed; wants-router vars; stale suspended_this_turn flag fixed)
+224. [P05] Define intention, admission, actual attempt, observed outcome and revision separately (source: F1:15 Evolution) — PARTIAL (commits 5313770 50dae23 1d1466a; empty attempt recorded on step, idempotent want events with step ids, ids through fulfil/attempt; no full five-stage schema)
+225. [P05] Consolidate outcome joins and duplicate intent evaluators, retaining explicit off/disabled experimental mechanisms (source: F1:15 Disposition) — OPEN (outcome joins/duplicate intent evaluators not consolidated)
+226. [P05] Fix unacknowledged trial consumption, invalid/error-to-failure grading, reinforcement despite influence and the older penalty ratchet (source: F3:T23) — PARTIAL (commits 22c5efb 8596dae fd3f6bd bb12fba; occasion graded once, N/A+UNCONFIRMED not failures, trials stay in rooms, unknown intercepts move nothing; penalty ratchet untouched)
+227. [P05] Let relevance, requested task and repair obligations govern advisory style instead of directives requiring unresolved endings (source: F1:03 Evolution/Defects) — PARTIAL (commits afc5c20 588be80; self-set lead plan is tentative not an order; mode block speaks in tendencies; no general relevance/task governance)
+228. [P05] Replace constant coherence placeholders presented as measurements (source: F1:03 Defects) — OPEN (no commit replaces constant coherence placeholders)
+229. [P05] Add a replayable explanation of which influence reached which generation stage and whether behavior reflected it (source: F1:03 Evolution) — DONE (commits 7e1d66e 3651a10 53fb2dd; post-turn-record + turn_record: organs that offered, markers honored, coverage by state per registered block)
+230. [P05] Close context feedback loops only where output/reception evidence exists; retain disabled self-seeding (source: F1:03 Evolution) — PARTIAL (commits 3af4a5e 9adcbcb; curiosity confirm_surfaced from reply, mark activation only per delivered turn; broader loop closure not done)
+231. [P05] Stop the presence rubric recursively creating "fault" material (source: F1:20 Defects) — OPEN (presence audit at-time fix (a2ba72d) does not address recursive fault material)
 
 ## P06 — Durable undertakings and unfinished questions
 
-232. [P06] Complete common want admission and capability-specific completion — a valid artifact, acknowledged action or explicit user completion each has a different receipt (source: F2:P06 Scope; F1:16 Evolution) — OPEN
-233. [P06] Complete plan/ambition progression — one successful step cannot complete an unfinished ambition (source: F2:P06 Scope/Acceptance; F1:16 Defects) — OPEN
-234. [P06] Reconcile HELD/release/dismiss/resolve rather than treating missing work as earned — a plan's absent active want is read as earned even when dismissed or its store failed (source: F2:P06 Scope; F1:15 Defects) — OPEN
-235. [P06] Carry source IDs through triage, weaving and dream nights and preserve unsuccessful selections — weaving clears unsuccessful groups (source: F2:P06 Scope; F1:11 Defects) — OPEN
-236. [P06] Extend Atelier visits with actual artifact retrieval, authored next move, transaction recovery, stable budgets, terminal history and pause/resume (source: F2:P06 Scope; F1:19 Evolution) — OPEN
-237. [P06] Build resume of a long-lived undertaking from its prior artifact and findings with a justified next move, blocked branch and account of changes (source: F2:P06 New capability; F1:16 Evolution) — OPEN
-238. [P06] Ensure a queue marker or empty media file cannot discharge a want — artifact guards accept queue/ledger mentions (source: F2:P06 Acceptance; F1:16 Defects) — OPEN
-239. [P06] Ensure a failed dream does not consume its source question (source: F2:P06 Acceptance) — OPEN
-240. [P06] Let a held project resume on relevant evidence while private failed work remains protected (source: F2:P06 Acceptance) — OPEN
-241. [P06] Ensure restart/retry retains original artifacts, history and next step without resetting budgets or mixing plans (source: F2:P06 Acceptance) — OPEN
-242. [P06] Record the plan id before closing the campaign so the create-plan/close-campaign transition is resumable (source: F2:Branch-specific priorities P06; F1:15 Branch reconciliation) — DONE
-243. [P06] Credit a make-art/make-music step only with its own want's artifact — ID failures fell back to the newest piece (source: F2:Branch-specific priorities P06; F1:16 Branch reconciliation) — DONE
-244. [P06] Complete campaign bridge history and evidence semantics through existing plans without a duplicate bridge (source: F1:15 Branch reconciliation) — OPEN
-245. [P06] Fix KEEP/visit state and blocked-attempt lineage (source: F2:Branch-specific priorities P06) — OPEN
-246. [P06] Decide whether an empty NO_RESULT may complete a want step per capability (source: F4 "Earlier P02–P04 language"; F1:16 Evolution) — OPEN
-247. [P06] Stop crediting held/refused fulfillment (source: F1:16 Branch reconciliation) — OPEN
-248. [P06] Stop aging/disposal becoming fulfilled and model failure triggering fulfillment or confident reconciliation (source: F1:16 Defects) — OPEN
-249. [P06] Route direct want writers through common admission and stop stale snapshots overwriting interference changes (source: F1:16 Defects) — OPEN
-250. [P06] Stop novelty writers truncating the shared thread pool (source: F1:16 Defects) — OPEN
-251. [P06] Stop interpreting technical failures as failures of wanting (source: F1:16 Defects) — OPEN
-252. [P06] Preserve findings, blockers and next steps in the existing checkpoint spine (source: F1:16 Evolution) — OPEN
-253. [P06] Make curiosity accumulate new source occasions rather than repeated scans (source: F1:16 Evolution) — OPEN
-254. [P06] Consolidate completion and admission authority while retaining multiple sources of wanting (source: F1:16 Disposition) — OPEN
-255. [P06] Repair the malformed second-order trial schema in wants (source: F3:T24) — OPEN
-256. [P06] Stop selection/attempt/consumption of a thread becoming resolution and failed model decisions aging or resolving work (source: F1:11 Defects) — OPEN
-257. [P06] Advance thread counters only after generation (source: F1:11 Defects) — OPEN
-258. [P06] Fix cross-midnight state and shell quoting that detach seeds from IDs (source: F1:11 Defects) — OPEN
-259. [P06] Reconcile conflicting thread archive schemas (source: F1:11 Defects) — OPEN
-260. [P06] Complete a shared question lifecycle: selected, explored, consolidated, released unresolved, resolved with basis (source: F1:11 Evolution) — OPEN
-261. [P06] Checkpoint raw/edited dream artifacts and distinguish interpretation from changed circumstances (source: F1:11 Evolution) — OPEN
-262. [P06] Add a cross-session view of which question changed, why, and what remains open (source: F1:11 Evolution) — OPEN
-263. [P06] Stop repeated application of carryover weight decay repeating its influence (source: F1:11 Branch reconciliation) — OPEN
-264. [P06] Consolidate thread admission/archive ownership while keeping question distinct from theme (source: F1:11 Disposition) — OPEN
-265. [P06] Reopen held plan work on relevant new evidence without relabeling delay as failure — a due mutual plan becomes terminal HELD (source: F1:15 Defects/Evolution) — OPEN
-266. [P06] Support practice that carries lessons from identified attempts and multistep goals that pause/resume across sessions (source: F1:15 Evolution) — OPEN
-267. [P06] Stop advisory direction overriding the current task (source: F1:15 Defects) — OPEN
-268. [P06] Stop concurrent Atelier visits resetting budgets — reserve budgets before execution (source: F1:19 Defects/Evolution) — OPEN
-269. [P06] Do not invalidate the visit at settlement before its final handoff (source: F1:19 Defects) — OPEN
-270. [P06] Keep terminal/abort/re-adoption histories separate (source: F1:19 Defects) — OPEN
-271. [P06] Lock remaining KEEP/table/visit writes fully (source: F1:19 Branch reconciliation) — OPEN
-272. [P06] Carry an authored next move and verifiable work across Atelier visits (source: F1:19 Evolution) — OPEN
-273. [P06] Consolidate duplicate Atelier lifecycle writes reusing broker locks/capabilities/ledger (source: F1:19 Disposition) — OPEN
-274. [P06] Make planning readiness recover from held work using real outcomes (source: F1:22 Evolution) — OPEN
+232. [P06] Complete common want admission and capability-specific completion — a valid artifact, acknowledged action or explicit user completion each has a different receipt (source: F2:P06 Scope; F1:16 Evolution) — PARTIAL (commits 5313770 bb12fba; per-capability NO_RESULT completion, capability registry with schemas; no per-capability receipts/common admission)
+233. [P06] Complete plan/ambition progression — one successful step cannot complete an unfinished ambition (source: F2:P06 Scope/Acceptance; F1:16 Defects) — PARTIAL (commits 72b1274 5313770; last multistep step fulfils original want; making step cannot complete on nothing; ambition progression not modelled)
+234. [P06] Reconcile HELD/release/dismiss/resolve rather than treating missing work as earned — a plan's absent active want is read as earned even when dismissed or its store failed (source: F2:P06 Scope; F1:15 Defects) — OPEN (plan absent-active-want-as-earned not addressed)
+235. [P06] Carry source IDs through triage, weaving and dream nights and preserve unsuccessful selections — weaving clears unsuccessful groups (source: F2:P06 Scope; F1:11 Defects) — OPEN (no thread triage/weaving/dream source-id commit)
+236. [P06] Extend Atelier visits with actual artifact retrieval, authored next move, transaction recovery, stable budgets, terminal history and pause/resume (source: F2:P06 Scope; F1:19 Evolution) — PARTIAL (commits e795146 2271620 459d62d; visit fetches its last artifact, LOOK/KEEP, reveal binds to explicit artifact; no next move/recovery/budgets/pause-resume)
+237. [P06] Build resume of a long-lived undertaking from its prior artifact and findings with a justified next move, blocked branch and account of changes (source: F2:P06 New capability; F1:16 Evolution) — PARTIAL (commits e795146 519cadf; LOOK meets prior artifact, GESTATE remembered as plan; no resume with justified next move/blocked branch)
+238. [P06] Ensure a queue marker or empty media file cannot discharge a want — artifact guards accept queue/ledger mentions (source: F2:P06 Acceptance; F1:16 Defects) — PARTIAL (commits 152746f 88502d7 5313770; artifact credited only to own want, zero-file music not complete, making step pending on nothing; queue-mention guard not fixed)
+239. [P06] Ensure a failed dream does not consume its source question (source: F2:P06 Acceptance) — OPEN (no commit on failed dream consuming its source question)
+240. [P06] Let a held project resume on relevant evidence while private failed work remains protected (source: F2:P06 Acceptance) — PARTIAL (commits 8a3b6b4; held root stays adoptable by name; no resume on relevant evidence)
+241. [P06] Ensure restart/retry retains original artifacts, history and next step without resetting budgets or mixing plans (source: F2:P06 Acceptance) — OPEN (restart/retry retention of artifacts/budgets not addressed)
+242. [P06] Record the plan id before closing the campaign so the create-plan/close-campaign transition is resumable (source: F2:Branch-specific priorities P06; F1:15 Branch reconciliation) — DONE (commits 88502d7 a2ba72d; campaign continue saves plan id before close; test_campaign_lifecycle covers continue)
+243. [P06] Credit a make-art/make-music step only with its own want's artifact — ID failures fell back to the newest piece (source: F2:Branch-specific priorities P06; F1:16 Branch reconciliation) — DONE (commits 152746f; wants-router: no painting/composition for want id -> not crediting another want's artifact)
+244. [P06] Complete campaign bridge history and evidence semantics through existing plans without a duplicate bridge (source: F1:15 Branch reconciliation) — DONE (commits a2ba72d; 'continue:' is the one bridge opening a SELF plan through plan.py's gate; landed/expiry open nothing)
+245. [P06] Fix KEEP/visit state and blocked-attempt lineage (source: F2:Branch-specific priorities P06) — DONE (commits 83591d3 5313770 bbd99b7; KEEP re-reads under lock, table ops share lock; BLOCKED reason written on queue item and want)
+246. [P06] Decide whether an empty NO_RESULT may complete a want step per capability (source: F4 "Earlier P02–P04 language"; F1:16 Evolution) — DONE (commits 5313770; want_spine MAKERS: NO_RESULT completes inquiry step, leaves making step pending (explicit per-capability decision))
+247. [P06] Stop crediting held/refused fulfillment (source: F1:16 Branch reconciliation) — PARTIAL (commits 681b0c5; learning skips aged-out/auto-graduated wants; held/refused fulfillment crediting not addressed)
+248. [P06] Stop aging/disposal becoming fulfilled and model failure triggering fulfillment or confident reconciliation (source: F1:16 Defects) — PARTIAL (commits 681b0c5 64fe98c; aged-out wants excluded from learning, reconciliation least-recently-checked first; model failure->fulfillment not addressed)
+249. [P06] Route direct want writers through common admission and stop stale snapshots overwriting interference changes (source: F1:16 Defects) — PARTIAL (commits 50dae23; wants API transitions idempotent events with stable step ids; direct writers not routed through common admission)
+250. [P06] Stop novelty writers truncating the shared thread pool (source: F1:16 Defects) — OPEN (no commit on novelty writers truncating the thread pool)
+251. [P06] Stop interpreting technical failures as failures of wanting (source: F1:16 Defects) — PARTIAL (commits 588be80 1d1466a; failed generations described as service failure; unfulfilled-scar only from real failure branch)
+252. [P06] Preserve findings, blockers and next steps in the existing checkpoint spine (source: F1:16 Evolution) — PARTIAL (commits 5313770 bbd99b7; empty attempt and BLOCKED reason kept on want/step; findings/next steps not in checkpoint spine)
+253. [P06] Make curiosity accumulate new source occasions rather than repeated scans (source: F1:16 Evolution) — PARTIAL (commits fd3f6bd 64fe98c 1d509fd; absences register once/retire when reached; curiosity decays once per interval; already-sent question returns at once)
+254. [P06] Consolidate completion and admission authority while retaining multiple sources of wanting (source: F1:16 Disposition) — OPEN (completion/admission authority not consolidated)
+255. [P06] Repair the malformed second-order trial schema in wants (source: F3:T24) — OPEN (wants_meta second-order stances reworked (bb12fba) but the malformed trial schema not named/fixed)
+256. [P06] Stop selection/attempt/consumption of a thread becoming resolution and failed model decisions aging or resolving work (source: F1:11 Defects) — OPEN (no thread selection/attempt-as-resolution fix)
+257. [P06] Advance thread counters only after generation (source: F1:11 Defects) — OPEN (thread counters not moved after generation)
+258. [P06] Fix cross-midnight state and shell quoting that detach seeds from IDs (source: F1:11 Defects) — OPEN (cross-midnight/shell quoting seed detach not addressed)
+259. [P06] Reconcile conflicting thread archive schemas (source: F1:11 Defects) — OPEN (thread archive schemas not reconciled)
+260. [P06] Complete a shared question lifecycle: selected, explored, consolidated, released unresolved, resolved with basis (source: F1:11 Evolution) — OPEN (no question lifecycle work)
+261. [P06] Checkpoint raw/edited dream artifacts and distinguish interpretation from changed circumstances (source: F1:11 Evolution) — OPEN (no dream artifact checkpointing)
+262. [P06] Add a cross-session view of which question changed, why, and what remains open (source: F1:11 Evolution) — OPEN (no cross-session question view)
+263. [P06] Stop repeated application of carryover weight decay repeating its influence (source: F1:11 Branch reconciliation) — DONE (commits 22c5efb; latent_threads carryover decays from initial_weight instead of compounding on every apply)
+264. [P06] Consolidate thread admission/archive ownership while keeping question distinct from theme (source: F1:11 Disposition) — OPEN (thread admission/archive ownership not consolidated)
+265. [P06] Reopen held plan work on relevant new evidence without relabeling delay as failure — a due mutual plan becomes terminal HELD (source: F1:15 Defects/Evolution) — PARTIAL (commits a2ba72d; plan.due() now actually called daily by first-light; held reopening on evidence / mutual->HELD not changed)
+266. [P06] Support practice that carries lessons from identified attempts and multistep goals that pause/resume across sessions (source: F1:15 Evolution) — OPEN (practice lessons from identified attempts / multistep pause-resume not built)
+267. [P06] Stop advisory direction overriding the current task (source: F1:15 Defects) — DONE (commits afc5c20; LEAD PLAN block: tentative, may raise or drop, 'it is not an order')
+268. [P06] Stop concurrent Atelier visits resetting budgets — reserve budgets before execution (source: F1:19 Defects/Evolution) — OPEN (no Atelier budget reservation before execution)
+269. [P06] Do not invalidate the visit at settlement before its final handoff (source: F1:19 Defects) — OPEN (settlement/handoff ordering not changed)
+270. [P06] Keep terminal/abort/re-adoption histories separate (source: F1:19 Defects) — OPEN (terminal/abort/re-adoption histories not separated)
+271. [P06] Lock remaining KEEP/table/visit writes fully (source: F1:19 Branch reconciliation) — DONE (commits 5313770 83591d3; broker to_table/clear_table/set_state take keep()'s table lock; KEEP and gate decision validated under lock)
+272. [P06] Carry an authored next move and verifiable work across Atelier visits (source: F1:19 Evolution) — OPEN (no authored next move across visits)
+273. [P06] Consolidate duplicate Atelier lifecycle writes reusing broker locks/capabilities/ledger (source: F1:19 Disposition) — OPEN (Atelier lifecycle writes not consolidated)
+274. [P06] Make planning readiness recover from held work using real outcomes (source: F1:22 Evolution) — OPEN (planning readiness recovery not addressed)
 
 ## P07 — Creative artifacts, inquiry and outward delivery
 
-275. [P07] Introduce a common artifact manifest on existing gallery/project records — source want/run, bytes/hash, medium, revision, validation, sharing and delivery state (source: F2:P07 Scope; F1:17 Evolution) — OPEN
-276. [P07] Map music track files by track index so a failed earlier download does not shift a later file (source: F2:P07 Scope/Acceptance; F1:17 Branch reconciliation) — DONE
-277. [P07] Do not mark direct music complete with zero files on disk (source: F2:P07 Acceptance; F1:17 Branch reconciliation) — DONE
-278. [P07] Validate image/video artifacts before reporting them complete (source: F2:P07 Scope; F1:17 Evolution) — OPEN
-279. [P07] Repair cache/filename collisions that overwrite revisions (source: F2:P07 Scope; F1:17 Defects) — OPEN
-280. [P07] Preserve reflection stage results instead of discarding expensive intermediate reflections (source: F2:P07 Scope; F1:17 Defects; F3:T25) — OPEN
-281. [P07] Make inquiry sessions retain actual sources, quotations/claims and unresolved next questions with source snapshots (source: F2:P07 Scope; F1:18 Evolution) — OPEN
-282. [P07] Move all outbound producers through consistent caps, idempotency and receipts — follow-up paths bypass caps (source: F2:P07 Scope; F1:18 Defects) — OPEN
-283. [P07] Support revising and comparing an earlier work and showing what changed between drafts (source: F2:P07 New capability; F1:17 Evolution) — OPEN
-284. [P07] Continue an inquiry from what its sources actually established (source: F2:P07 New capability) — OPEN
-285. [P07] Share the selected version once with separate making, publication, notification and reception histories (source: F2:P07 New capability; F1:17 Evolution) — OPEN
-286. [P07] Bind approval to the actual still/revision used for animation — still existence currently substitutes for approval (source: F2:P07 Acceptance; F1:06 Defects) — OPEN
-287. [P07] Make exported bytes match the prepared reveal digest and stop reveal state advancing before export/delivery (source: F2:P07 Acceptance; F1:19 Defects) — OPEN
-288. [P07] Ensure a failed notification does not erase a delivered shelf artifact or imply reception (source: F2:P07 Acceptance) — OPEN
-289. [P07] Ensure no repeated source scan causes another recipient contact — repeated processing never retires some handoff debt (source: F2:P07 Acceptance; F1:18 Defects) — OPEN
-290. [P07] Make music submission records exactly match the capped request bytes (source: F2:Branch-specific priorities P07; F1:17 Branch reconciliation) — OPEN
-291. [P07] Keep blocked video queue items across another item's post-run save (source: F2:Branch-specific priorities P07; F1:18 Branch reconciliation) — DONE
-292. [P07] Distinguish inquiry search errors from successful empty searches (source: F1:18 Branch reconciliation; F2:Branch-specific priorities P07) — OPEN
-293. [P07] Stop memory-admission metadata claiming material truncated out of synthesis (source: F1:18 Branch reconciliation) — OPEN
-294. [P07] Align inquiry grading with final attempt evidence (source: F1:18 Branch reconciliation) — OPEN
-295. [P07] Remember recipient dispatch only after acknowledgment (source: F1:17 Defects) — OPEN
-296. [P07] Stop creative reflection being promoted into factual evidence or automatic relief (source: F1:17 Defects) — OPEN
-297. [P07] Preserve material lost in some daily projection paths (source: F1:17 Defects; F3:T25) — OPEN
-298. [P07] Repair weekly time/projection defects (source: F3:T25) — OPEN
-299. [P07] Repair selected-photo substitution in creative delivery (source: F3:T25) — OPEN
-300. [P07] Break the composer/share loop (source: F3:T25) — OPEN
-301. [P07] Make music landing recoverable before file-based music marks processing complete (source: F1:17 Branch reconciliation) — OPEN
-302. [P07] Consolidate artifact transactions and common delivery without merging creative media into one genre (source: F1:17 Disposition) — OPEN
-303. [P07] Do not permanently mark handoffs before delivery (source: F1:18 Defects) — OPEN
-304. [P07] Stop model failure accepting an image as suitable (fail-open image inspection) (source: F1:18 Defects; F3:T26) — OPEN
-305. [P07] Apply publication and feedback effects only after a confirmed result (source: F1:18 Defects; F3:T26) — OPEN
-306. [P07] Repair cap bypass, reset and races in outward writers (source: F3:T26) — OPEN
-307. [P07] Join outgoing artifacts to one shared authorized delivery path with retries and idempotency (source: F1:18 Evolution) — OPEN
-308. [P07] Preserve useful failure results without repeatedly contacting a recipient (source: F1:18 Evolution) — OPEN
-309. [P07] Consolidate send/cap/receipt enforcement without creating another research agent or inferring new contact permission (source: F1:18 Disposition) — OPEN
-310. [P07] Add per-artifact reveal and late receipt refinement without rewriting earlier uncertainty (source: F1:19 Evolution) — OPEN
-311. [P07] Preserve artifact revision lineage in the Atelier (source: F1:19 Evolution) — OPEN
-312. [P07] Add revision-bound still approval and resumable content-addressed scene jobs with display/playback receipts (source: F1:06 Evolution) — OPEN
-313. [P07] Let a scene evolve across visits through existing manifests and authored selections (source: F1:06 Evolution) — OPEN
-314. [P07] Keep lyrics distinct from private felt notes and retain genuine listening analysis (source: F1:17 Evolution; F2:Branch-specific priorities P07) — OPEN
+275. [P07] Introduce a common artifact manifest on existing gallery/project records — source want/run, bytes/hash, medium, revision, validation, sharing and delivery state (source: F2:P07 Scope; F1:17 Evolution) — OPEN (no common artifact manifest (authored/submitted split in 9adcbcb is music-only))
+276. [P07] Map music track files by track index so a failed earlier download does not shift a later file (source: F2:P07 Scope/Acceptance; F1:17 Branch reconciliation) — DONE (commits 88502d7; dream_music track files mapped by track index)
+277. [P07] Do not mark direct music complete with zero files on disk (source: F2:P07 Acceptance; F1:17 Branch reconciliation) — DONE (commits 88502d7 954715b; direct() with zero files not a completed piece; completion records requested/got/partial vs disk)
+278. [P07] Validate image/video artifacts before reporting them complete (source: F2:P07 Scope; F1:17 Evolution) — PARTIAL (commits 954715b 9adcbcb; painting seen after made or recorded unseen; failed scene ref stops clip; no general validation before 'complete')
+279. [P07] Repair cache/filename collisions that overwrite revisions (source: F2:P07 Scope; F1:17 Defects) — OPEN (cache/filename collision not addressed)
+280. [P07] Preserve reflection stage results instead of discarding expensive intermediate reflections (source: F2:P07 Scope; F1:17 Defects; F3:T25) — OPEN (reflection stage results still discarded)
+281. [P07] Make inquiry sessions retain actual sources, quotations/claims and unresolved next questions with source snapshots (source: F2:P07 Scope; F1:18 Evolution) — DONE (commits 9adcbcb 588be80; web attempts keep tool status, excerpts, page digest, synthesis, remaining_unknown, inquiry session id)
+282. [P07] Move all outbound producers through consistent caps, idempotency and receipts — follow-up paths bypass caps (source: F2:P07 Scope; F1:18 Defects) — PARTIAL (commits cc15048 1d509fd 72b1274; delivered only when transport accepted, no double ping; caps/idempotency not unified across all producers)
+283. [P07] Support revising and comparing an earlier work and showing what changed between drafts (source: F2:P07 New capability; F1:17 Evolution) — OPEN (no draft revision/comparison)
+284. [P07] Continue an inquiry from what its sources actually established (source: F2:P07 New capability) — PARTIAL (commits 8d42d3c 9adcbcb a0e3464; held inquiries keyed by question, continue depth, remaining_unknown retained; no continuation from established claims)
+285. [P07] Share the selected version once with separate making, publication, notification and reception histories (source: F2:P07 New capability; F1:17 Evolution) — PARTIAL (commits 459d62d bbd99b7; reveal binds to explicit artifact; sent video enters ledger; separate making/publication/reception histories not built)
+286. [P07] Bind approval to the actual still/revision used for animation — still existence currently substitutes for approval (source: F2:P07 Acceptance; F1:06 Defects) — PARTIAL (commits bbd99b7; animate-painting marked BLOCKED with reason rather than run; approval not bound to still/revision)
+287. [P07] Make exported bytes match the prepared reveal digest and stop reveal state advancing before export/delivery (source: F2:P07 Acceptance; F1:19 Defects) — PARTIAL (commits 459d62d; reveal binds to explicit artifact or this visit's make; byte/digest match and state ordering not done)
+288. [P07] Ensure a failed notification does not erase a delivered shelf artifact or imply reception (source: F2:P07 Acceptance) — OPEN (failed notification vs shelf artifact not addressed)
+289. [P07] Ensure no repeated source scan causes another recipient contact — repeated processing never retires some handoff debt (source: F2:P07 Acceptance; F1:18 Defects) — PARTIAL (commits cc15048 1d509fd fd3f6bd; retry send without second record, sent question returns at once, absences register once; handoff debt retirement untouched)
+290. [P07] Make music submission records exactly match the capped request bytes (source: F2:Branch-specific priorities P07; F1:17 Branch reconciliation) — DONE (commits 9adcbcb; dream_music LAST_SUBMISSION records exact capped payload (style/prompt/lyrics, truncated flag) beside authored)
+291. [P07] Keep blocked video queue items across another item's post-run save (source: F2:Branch-specific priorities P07; F1:18 Branch reconciliation) — DONE (commits 88502d7; vintos-video keeps BLOCKED items across post-run save)
+292. [P07] Distinguish inquiry search errors from successful empty searches (source: F1:18 Branch reconciliation; F2:Branch-specific priorities P07) — DONE (commits 9adcbcb; brave_search wrapped: tool_status 'ok' vs 'error: ...' recorded per attempt)
+293. [P07] Stop memory-admission metadata claiming material truncated out of synthesis (source: F1:18 Branch reconciliation) — DONE (commits 9adcbcb; memory_reached_synthesis records whether prior inquiry memory actually fed synthesis)
+294. [P07] Align inquiry grading with final attempt evidence (source: F1:18 Branch reconciliation) — DONE (commits 9adcbcb; grading checks support against retained excerpts of the attempt; unsupported ANSWERED->PARTIAL; invalid stays UNGRADED)
+295. [P07] Remember recipient dispatch only after acknowledgment (source: F1:17 Defects) — PARTIAL (commits cc15048 459d62d; websearch delivered only on transport accept; device receipts; mark_want_outreached still marked before ntfy (72b1274))
+296. [P07] Stop creative reflection being promoted into factual evidence or automatic relief (source: F1:17 Defects) — PARTIAL (commits bbd99b7 0924afc 0717bda; fulfillment felt once via typed feel_about (unmoved/unavailable allowed); promotion to factual evidence not addressed)
+297. [P07] Preserve material lost in some daily projection paths (source: F1:17 Defects; F3:T25) — DONE (commits a9974d5; every exchange lands in chat-canonical.jsonl before the 50-turn projection is cut)
+298. [P07] Repair weekly time/projection defects (source: F3:T25) — OPEN (no weekly time/projection commit)
+299. [P07] Repair selected-photo substitution in creative delivery (source: F3:T25) — DONE (commits 9adcbcb; vintos-send-video: failed scene reference is a stop, not a substitution)
+300. [P07] Break the composer/share loop (source: F3:T25) — DONE (commits bbd99b7 53fb2dd; shares carry id + line answered, composer records share ids, dream-music writes title back; shares open by judged decision)
+301. [P07] Make music landing recoverable before file-based music marks processing complete (source: F1:17 Branch reconciliation) — PARTIAL (commits 0717bda a41b8cf 954715b; landing recorded on entry (state incl. unavailable), download record with partial; not recoverable before completion mark)
+302. [P07] Consolidate artifact transactions and common delivery without merging creative media into one genre (source: F1:17 Disposition) — OPEN (artifact transactions/common delivery not consolidated)
+303. [P07] Do not permanently mark handoffs before delivery (source: F1:18 Defects) — DONE (commits cc15048; delivered flag set only when transport accepted; undelivered record retried without duplicate)
+304. [P07] Stop model failure accepting an image as suitable (fail-open image inspection) (source: F1:18 Defects; F3:T26) — PARTIAL (commits 954715b; dream-art records painting as seen or 'unseen_why' honestly; no fail-closed inspection verdict on suitability)
+305. [P07] Apply publication and feedback effects only after a confirmed result (source: F1:18 Defects; F3:T26) — PARTIAL (commits 64fe98c cc15048 bbd99b7; video dry/force stops before media; websearch delivered set only on transport accept; sent video ledgered. Feedback effects not generally gated)
+306. [P07] Repair cap bypass, reset and races in outward writers (source: F3:T26) — PARTIAL (commits 72b1274 9adcbcb cc15048; mark_want_outreached fixed & marked before ntfy; stores atomic; no cap-bypass/reset repair across outward writers)
+307. [P07] Join outgoing artifacts to one shared authorized delivery path with retries and idempotency (source: F1:18 Evolution) — OPEN (no shared delivery path with retries/idempotency in the record)
+308. [P07] Preserve useful failure results without repeatedly contacting a recipient (source: F1:18 Evolution) — PARTIAL (commits cc15048 1d509fd; websearch: undelivered question retried without second record; already-sent returns at once. Not generalised to artifacts)
+309. [P07] Consolidate send/cap/receipt enforcement without creating another research agent or inferring new contact permission (source: F1:18 Disposition) — OPEN (no consolidation of send/cap/receipt enforcement)
+310. [P07] Add per-artifact reveal and late receipt refinement without rewriting earlier uncertainty (source: F1:19 Evolution) — PARTIAL (commits 459d62d; reveal binds to explicit artifact or this visit's successful make (per-artifact reveal); no late-receipt refinement)
+311. [P07] Preserve artifact revision lineage in the Atelier (source: F1:19 Evolution) — OPEN (e795146 KEEP/LOOK and /projects listing do not carry revision lineage)
+312. [P07] Add revision-bound still approval and resumable content-addressed scene jobs with display/playback receipts (source: F1:06 Evolution) — PARTIAL (commits 50dae23; scene uploads constrained (basename, content, size); no revision-bound still approval or resumable content-addressed jobs)
+313. [P07] Let a scene evolve across visits through existing manifests and authored selections (source: F1:06 Evolution) — OPEN (nothing on scenes evolving across visits)
+314. [P07] Keep lyrics distinct from private felt notes and retain genuine listening analysis (source: F1:17 Evolution; F2:Branch-specific priorities P07) — PARTIAL (commits 9adcbcb 0717bda; dream-music: authored text separate from exact payload (LAST_SUBMISSION), felt-note headings stripped from lyrics; listening analysis not addressed)
 
 ## P08 — Client, voice and avatar lifecycles
 
-315. [P08] Apply shared safe rendering across all active tabs — many views insert raw text into HTML (source: F2:P08 Scope; F1:04 Defects) — OPEN
-316. [P08] Apply typed request/error handling — clients accept unsuccessful mutation responses (source: F2:P08 Scope; F1:04 Defects) — OPEN
-317. [P08] Retain drafts until success and show actual failure — sends clear drafts before success (source: F2:P08 Scope/Acceptance; F1:04 Defects) — OPEN
-318. [P08] Order requests with turn identities so rapid sends/reopens/late callbacks do not reorder turns (source: F2:P08 Scope/Acceptance; F1:04 Defects) — OPEN
-319. [P08] Reconcile capability/want schemas — fixed capability lists hide routed wants (source: F2:P08 Scope; F1:04 Defects) — OPEN
-320. [P08] Acknowledge outreach before consuming it — client expects `pending` while server returns `has_message` on a destructive GET (source: F2:P08 Scope/Acceptance; F1:04 Defects; F3:T12) — OPEN
-321. [P08] Give voice/session/avatar resources explicit owners, generation tokens, retry/close semantics and transcript/playback identity (source: F2:P08 Scope) — OPEN
-322. [P08] Keep a visual fallback until media plays — stage playback failure can hide the fallback canvas (source: F2:P08 Scope; F1:06 Defects) — OPEN
-323. [P08] Make screenshot source match the visible stage (source: F2:P08 Scope; F1:06 Defects) — OPEN
-324. [P08] Correct read-only and stop status claims in the client (source: F2:P08 Scope) — OPEN
-325. [P08] Keep model/user text as text and zero state values as zero; show stale telemetry as stale (source: F2:P08 Acceptance) — OPEN
-326. [P08] Make closing/hiding/backgrounding follow the agreed UX and release or suspend resources (source: F2:P08 Acceptance; F1:06 Evolution) — OPEN
-327. [P08] Move between text, voice and the visible stage without losing a draft, crossing sessions or claiming unplayed speech as heard (source: F2:P08 New capability) — OPEN
-328. [P08] Inspect an undertaking's artifacts, blockers and changes from one coherent surface (source: F2:P08 New capability) — OPEN
-329. [P08] Commit voice framing only for its own session and carry version and session on the turn (source: F2:Branch-specific priorities P08; F1:05 Branch reconciliation) — DONE
-330. [P08] Replace global realtime session/transcript state with a session-owned state machine — late callbacks affect newer calls (source: F1:05 Defects/Evolution) — OPEN
-331. [P08] Carry provider item/turn IDs through voice turn history (source: F1:05 Defects/Evolution) — OPEN
-332. [P08] Do not clear session state before persistence succeeds; retain unsaved material for retry (source: F1:05 Defects/Evolution) — OPEN
-333. [P08] Stop derived instructions being saved as user speech (source: F1:05 Defects) — OPEN
-334. [P08] Repair recorder start/stop races, silent playback failure, unclosed audio contexts and untracked pending speech (source: F1:05 Defects) — OPEN
-335. [P08] Add continuity across a call and later text, distinguishing spoken from generated-but-interrupted (source: F1:05 Evolution) — OPEN
-336. [P08] Consolidate transcript and delivery contracts with text/avatar without forcing identical transport (source: F1:05 Disposition) — OPEN
-337. [P08] Fix the later avatar close handler overriding the earlier one and leaving rendering/calls/resources active (source: F1:06 Defects) — OPEN
-338. [P08] Fix the legacy avatar page referencing THREE before initialization (source: F1:06 Defects) — OPEN
-339. [P08] Reconcile packaged versus served web roots and retire historical `/chat`/`/state` calls to the `/api/...` contract (source: F1:04 Defects) — OPEN
-340. [P08] Add READ offset continuation to Study (source: F1:04 Defects/Branch reconciliation) — OPEN
-341. [P08] Evolve Study into a bounded repository-reading session with coverage and cursors (source: F1:04 Evolution) — OPEN
-342. [P08] Show truthful pending/failed/applied/verified progress in Study (source: F1:04 Evolution) — OPEN
-343. [P08] Consolidate active duplicate client handlers and request utilities (source: F1:04 Disposition) — OPEN
-344. [P08] Add capability-derived rendering to the client (source: F1:04 Evolution) — OPEN
-345. [P08] Complete media/draft lifecycle for voice and stage (source: F2:Branch-specific priorities P08) — OPEN
-346. [P08] Fix native background runner registration/scheduling and notification permissions for outreach (source: F3:T12) — OPEN
+315. [P08] Apply shared safe rendering across all active tabs — many views insert raw text into HTML (source: F2:P08 Scope; F1:04 Defects) — OPEN (no client rendering work in the record)
+316. [P08] Apply typed request/error handling — clients accept unsuccessful mutation responses (source: F2:P08 Scope; F1:04 Defects) — OPEN (no client typed request/error handling)
+317. [P08] Retain drafts until success and show actual failure — sends clear drafts before success (source: F2:P08 Scope/Acceptance; F1:04 Defects) — OPEN (no draft retention work)
+318. [P08] Order requests with turn identities so rapid sends/reopens/late callbacks do not reorder turns (source: F2:P08 Scope/Acceptance; F1:04 Defects) — OPEN (no turn-identity ordering in client)
+319. [P08] Reconcile capability/want schemas — fixed capability lists hide routed wants (source: F2:P08 Scope; F1:04 Defects) — PARTIAL (commits bb12fba 8dca905; server-side capability registry with schemas; want generators stop asserting IMPOSSIBLE from fixed list. Client lists untouched)
+320. [P08] Acknowledge outreach before consuming it — client expects `pending` while server returns `has_message` on a destructive GET (source: F2:P08 Scope/Acceptance; F1:04 Defects; F3:T12) — OPEN (bin/server.py /api/outreach GET still removes the pending file and returns has_message)
+321. [P08] Give voice/session/avatar resources explicit owners, generation tokens, retry/close semantics and transcript/playback identity (source: F2:P08 Scope) — PARTIAL (commits 2359301 a9974d5; voice framing session-scoped+versioned; session finalization idempotent. No avatar owners/generation tokens/playback identity)
+322. [P08] Keep a visual fallback until media plays — stage playback failure can hide the fallback canvas (source: F2:P08 Scope; F1:06 Defects) — OPEN (no stage fallback canvas work)
+323. [P08] Make screenshot source match the visible stage (source: F2:P08 Scope; F1:06 Defects) — OPEN (no screenshot-source fix (desktop screenshot work is unrelated))
+324. [P08] Correct read-only and stop status claims in the client (source: F2:P08 Scope) — OPEN (no client status-claim fixes)
+325. [P08] Keep model/user text as text and zero state values as zero; show stale telemetry as stale (source: F2:P08 Acceptance) — OPEN (no client text/zero/stale telemetry work)
+326. [P08] Make closing/hiding/backgrounding follow the agreed UX and release or suspend resources (source: F2:P08 Acceptance; F1:06 Evolution) — OPEN (no close/hide/background lifecycle work)
+327. [P08] Move between text, voice and the visible stage without losing a draft, crossing sessions or claiming unplayed speech as heard (source: F2:P08 New capability) — OPEN (no cross-surface draft/session continuity in client)
+328. [P08] Inspect an undertaking's artifacts, blockers and changes from one coherent surface (source: F2:P08 New capability) — PARTIAL (commits e795146 2271620; atelier-undertakings.json ledger and broker /projects content-free listing (id/state/artifact_count); no coherent inspection surface)
+329. [P08] Commit voice framing only for its own session and carry version and session on the turn (source: F2:Branch-specific priorities P08; F1:05 Branch reconciliation) — DONE (commits 152746f 2359301; voice framing commits only for its own session; turn carries version+session)
+330. [P08] Replace global realtime session/transcript state with a session-owned state machine — late callbacks affect newer calls (source: F1:05 Defects/Evolution) — PARTIAL (commits 2359301 a9974d5; session-scoped framing and idempotent finalization; global realtime/transcript state not replaced by a state machine)
+331. [P08] Carry provider item/turn IDs through voice turn history (source: F1:05 Defects/Evolution) — OPEN (no provider item/turn ids in voice history (only gloria_raw kept))
+332. [P08] Do not clear session state before persistence succeeds; retain unsaved material for retry (source: F1:05 Defects/Evolution) — OPEN (no retain-until-persisted change for voice session state)
+333. [P08] Stop derived instructions being saved as user speech (source: F1:05 Defects) — PARTIAL (commits b8afed3; voice ledger keeps gloria_raw beside normalized text; derived-instruction-as-speech not explicitly blocked)
+334. [P08] Repair recorder start/stop races, silent playback failure, unclosed audio contexts and untracked pending speech (source: F1:05 Defects) — OPEN (no recorder/audio-context/pending-speech fixes)
+335. [P08] Add continuity across a call and later text, distinguishing spoken from generated-but-interrupted (source: F1:05 Evolution) — PARTIAL (commits bf4a863 112fcaf; voice framing carries last exchanges and freshest WAL facts each turn; spoken vs interrupted not distinguished)
+336. [P08] Consolidate transcript and delivery contracts with text/avatar without forcing identical transport (source: F1:05 Disposition) — PARTIAL (commits 7e1d66e a9974d5; one _post_turn for all doors incl. voice/avatar; chat-canonical record. Transcript/delivery contracts not unified)
+337. [P08] Fix the later avatar close handler overriding the earlier one and leaving rendering/calls/resources active (source: F1:06 Defects) — OPEN (avatar close handler untouched)
+338. [P08] Fix the legacy avatar page referencing THREE before initialization (source: F1:06 Defects) — OPEN (legacy avatar THREE init untouched)
+339. [P08] Reconcile packaged versus served web roots and retire historical `/chat`/`/state` calls to the `/api/...` contract (source: F1:04 Defects) — OPEN (no web-root reconciliation or /chat /state retirement)
+340. [P08] Add READ offset continuation to Study (source: F1:04 Defects/Branch reconciliation) — DONE (commits 5313770; Study READ takes a starting line (READ: path:N); cut names next line (study_chat.py READ_RE))
+341. [P08] Evolve Study into a bounded repository-reading session with coverage and cursors (source: F1:04 Evolution) — PARTIAL (commits 5313770 856a51a; READ offsets and bounded auto-continue (twice max); no coverage/cursor session model)
+342. [P08] Show truthful pending/failed/applied/verified progress in Study (source: F1:04 Evolution) — PARTIAL (commits 59cbc0d 53fb2dd; reconcile pass shows proposals with state and edits that no longer survive; before/after per txn. No pending/failed/verified progress display)
+343. [P08] Consolidate active duplicate client handlers and request utilities (source: F1:04 Disposition) — OPEN (a9974d5/b8afed3 removed server duplicates only; client handlers/request utilities untouched)
+344. [P08] Add capability-derived rendering to the client (source: F1:04 Evolution) — OPEN (no capability-derived client rendering)
+345. [P08] Complete media/draft lifecycle for voice and stage (source: F2:Branch-specific priorities P08) — OPEN (no media/draft lifecycle for voice/stage)
+346. [P08] Fix native background runner registration/scheduling and notification permissions for outreach (source: F3:T12) — OPEN (no native background runner/notification work)
 
 ## P09 — Reviewable self-development and agent room
 
-347. [P09] Join self-review and Study proposals to exact source coverage — sampling misses files/deletions while implying coverage (source: F2:P09 Scope; F1:20 Defects) — OPEN
-348. [P09] Add a capability deduplication step before proposals (source: F2:P09 Scope; F1:20 Evolution) — OPEN
-349. [P09] Generate concrete diffs and base hashes before approval — approval precedes patch creation today (source: F2:P09 Scope; F1:20 Defects; F1:04 Defects) — OPEN
-350. [P09] Classify actual effects and canonical paths instead of model-declared labels (source: F2:P09 Scope/Acceptance; F1:20 Defects) — OPEN
-351. [P09] Recheck revocation and source revisions at install — rejected/revoked/stale proposals must not install (source: F2:P09 Scope/Acceptance) — OPEN
-352. [P09] Isolate generated verification by filesystem/network process isolation — generated tests inherit live privileges (source: F2:P09 Scope/Acceptance; F1:20 Branch reconciliation) — OPEN
-353. [P09] Make multi-file releases recoverable and report actual or uncertain file state on install/logging failure (source: F2:P09 Scope/Acceptance; F1:20 Defects) — OPEN
-354. [P09] Correct installed/available/verified capability claims (source: F2:P09 Scope) — OPEN
-355. [P09] Pin the room library and tool dependencies (source: F2:P09 Scope; F1:21 Evolution) — OPEN
-356. [P09] Admit room turns before paid generation and keep the shared prechecking seat (source: F2:P09 Scope; F1:21 Branch reconciliation) — OPEN
-357. [P09] Preserve seat drafts across transport failure and expose durable queued/sent/accepted results (source: F2:P09 Scope; F1:21 Evolution) — OPEN
-358. [P09] Ensure a seat awaiting its turn does not repeatedly regenerate (source: F2:P09 Acceptance) — OPEN
-359. [P09] Ensure a review cannot claim files omitted by its cap were read (source: F2:P09 Acceptance) — OPEN
-360. [P09] Bind Study apply to a stored proposal by id or exact hash — served apply accepted raw edits through `apply_edits` (source: F2:Branch-specific priorities P09; F1:04 Branch reconciliation) — DONE
-361. [P09] Make Study grep path labels match resolver roots (source: F1:04 Branch reconciliation) — DONE
-362. [P09] Stop code-review listing crashing on auxiliary review JSON (built, declined, retraction ledgers) (source: F2:Branch-specific priorities P09; F1:21 Branch reconciliation) — DONE
-363. [P09] Join friction signals to real attempt/block identity rather than synthetic capability wants (source: F2:Branch-specific priorities P09; F1:16/20 Branch reconciliation) — DONE
-364. [P09] Keep friction lexical groups as candidate evidence with attempt lineage and source coverage, not an automatic missing-capability verdict (source: F1:20 Branch reconciliation) — OPEN
-365. [P09] Make formations inherit true source ancestry rather than subsystem-name origin (source: F1:20 Defects/Evolution) — OPEN
-366. [P09] Replace manual built/declined assertions in the room with ledger-derived state (source: F1:21 Branch reconciliation) — OPEN
-367. [P09] Fix rejected proxy promise poisoning subsequent room commands and reconnect stranding requests/retaining parser state (source: F1:21 Defects) — OPEN
-368. [P09] Resolve symlinks in read-root containment (lexical read roots) (source: F1:21 Defects/Branch reconciliation) — OPEN
-369. [P09] Record the exact repository/context revision and requested date supplied to room context (source: F1:21 Defects/Evolution) — OPEN
-370. [P09] Correct network descriptions that understate provider-bound context (source: F1:21 Defects) — OPEN
-371. [P09] Add assigned review coverage and a shared proposal/work ledger for multi-agent review (source: F1:21 Evolution) — OPEN
-372. [P09] Consolidate approval and outcome vocabulary across self-review while retaining review lenses (source: F1:20 Disposition) — OPEN
-373. [P09] Consolidate room transport recovery and review provenance (source: F1:21 Disposition) — OPEN
-374. [P09] Make the builder's credential stripping and disposable HOME into immutable approval plus real isolation (source: F1:20 Branch reconciliation) — OPEN
+347. [P09] Join self-review and Study proposals to exact source coverage — sampling misses files/deletions while implying coverage (source: F2:P09 Scope; F1:20 Defects) — OPEN (no exact source coverage join for self-review/Study proposals (section cap still silent))
+348. [P09] Add a capability deduplication step before proposals (source: F2:P09 Scope; F1:20 Evolution) — PARTIAL (commits 8dca905 17d0360; ALREADY DONE block + proposal-ledger keep next room off built/declined work; no capability dedup against existing code)
+349. [P09] Generate concrete diffs and base hashes before approval — approval precedes patch creation today (source: F2:P09 Scope; F1:20 Defects; F1:04 Defects) — PARTIAL (commits 53fb2dd; Study proposals stored immutably with edit+file hashes and applied by id after re-verify; self-review builder still patches after approval)
+350. [P09] Classify actual effects and canonical paths instead of model-declared labels (source: F2:P09 Scope/Acceptance; F1:20 Defects) — PARTIAL (commits 59cbc0d 22c5efb; shared protected-paths list resolved by canonical path; builder refuses two files resolving to one destination. No effect classification)
+351. [P09] Recheck revocation and source revisions at install — rejected/revoked/stale proposals must not install (source: F2:P09 Scope/Acceptance) — PARTIAL (commits 53fb2dd; Study apply re-verifies hashes by id; self-review builder does no revocation/source-revision recheck at install)
+352. [P09] Isolate generated verification by filesystem/network process isolation — generated tests inherit live privileges (source: F2:P09 Scope/Acceptance; F1:20 Branch reconciliation) — PARTIAL (commits 53fb2dd; builder runs checks with credentials stripped, disposable HOME, stage-only path; records 'network not blocked' - no process isolation)
+353. [P09] Make multi-file releases recoverable and report actual or uncertain file state on install/logging failure (source: F2:P09 Scope/Acceptance; F1:20 Defects) — PARTIAL (commits 53fb2dd; Study change records pin before/after sha per transaction with rollback; multi-file release recovery in builder not addressed)
+354. [P09] Correct installed/available/verified capability claims (source: F2:P09 Scope) — PARTIAL (commits 59cbc0d 83a25e9; reconcile pass flags study edits no longer surviving; built.json marks landed. No installed/available/verified capability claim correction)
+355. [P09] Pin the room library and tool dependencies (source: F2:P09 Scope; F1:21 Evolution) — OPEN (room library and tool deps not pinned)
+356. [P09] Admit room turns before paid generation and keep the shared prechecking seat (source: F2:P09 Scope; F1:21 Branch reconciliation) — OPEN (no admission before paid generation; heartbeat/hop caps are timing, not admission)
+357. [P09] Preserve seat drafts across transport failure and expose durable queued/sent/accepted results (source: F2:P09 Scope; F1:21 Evolution) — OPEN (no seat draft preservation or durable queued/sent/accepted results)
+358. [P09] Ensure a seat awaiting its turn does not repeatedly regenerate (source: F2:P09 Acceptance) — PARTIAL (commits 58d9041 5313770; heartbeat renews turn deadline; background response past deadline cancelled. No explicit regenerate guard for a waiting seat)
+359. [P09] Ensure a review cannot claim files omitted by its cap were read (source: F2:P09 Acceptance) — OPEN (SECTION_CAP still silent; review can still imply capped files were read)
+360. [P09] Bind Study apply to a stored proposal by id or exact hash — served apply accepted raw edits through `apply_edits` (source: F2:Branch-specific priorities P09; F1:04 Branch reconciliation) — DONE (commits 88502d7; Study apply binds to stored proposal (pending_id or exact files+hashes); raw edits never reach apply_edits)
+361. [P09] Make Study grep path labels match resolver roots (source: F1:04 Branch reconciliation) — DONE (commits 88502d7; GREP hits labelled in resolve()/READ form (study_chat.py _label))
+362. [P09] Stop code-review listing crashing on auxiliary review JSON (built, declined, retraction ledgers) (source: F2:Branch-specific priorities P09; F1:21 Branch reconciliation) — DONE (commits 88502d7; code-review listing skips built/declined/retractions json)
+363. [P09] Join friction signals to real attempt/block identity rather than synthetic capability wants (source: F2:Branch-specific priorities P09; F1:16/20 Branch reconciliation) — DONE (commits 152746f; standing capability blocks are their own friction signal, not synthetic wants (self_review.py, wants-router))
+364. [P09] Keep friction lexical groups as candidate evidence with attempt lineage and source coverage, not an automatic missing-capability verdict (source: F1:20 Branch reconciliation) — PARTIAL (commits 0717bda 152746f; repeated-wall wants become friction signals as offers, never adoption; no attempt lineage/source coverage on the signal)
+365. [P09] Make formations inherit true source ancestry rather than subsystem-name origin (source: F1:20 Defects/Evolution) — OPEN (formation ancestry untouched)
+366. [P09] Replace manual built/declined assertions in the room with ledger-derived state (source: F1:21 Branch reconciliation) — DONE (commits 8dca905 83a25e9 9dcd970; built.json/declined.json ledgers; finals and ALREADY DONE block read built/declined from ledger)
+367. [P09] Fix rejected proxy promise poisoning subsequent room commands and reconnect stranding requests/retaining parser state (source: F1:21 Defects) — OPEN (room proxy promise/reconnect untouched)
+368. [P09] Resolve symlinks in read-root containment (lexical read roots) (source: F1:21 Defects/Branch reconciliation) — PARTIAL (commits 856a51a 88502d7; Study roots use realpath containment (study_chat.py); room read roots not checked)
+369. [P09] Record the exact repository/context revision and requested date supplied to room context (source: F1:21 Defects/Evolution) — PARTIAL (commits cd1afaf; room context captures requested day before argv is blanked; no repo revision recorded)
+370. [P09] Correct network descriptions that understate provider-bound context (source: F1:21 Defects) — OPEN (network descriptions untouched)
+371. [P09] Add assigned review coverage and a shared proposal/work ledger for multi-agent review (source: F1:21 Evolution) — PARTIAL (commits 17d0360 83a25e9 8dca905; proposal-ledger.py + built/declined ledgers shared across lenses; no assigned review coverage)
+372. [P09] Consolidate approval and outcome vocabulary across self-review while retaining review lenses (source: F1:20 Disposition) — OPEN (approval/outcome vocabulary not consolidated)
+373. [P09] Consolidate room transport recovery and review provenance (source: F1:21 Disposition) — OPEN (room transport recovery untouched; provenance only via REVIEW_DAY (9dcd970))
+374. [P09] Make the builder's credential stripping and disposable HOME into immutable approval plus real isolation (source: F1:20 Branch reconciliation) — OPEN (53fb2dd is the credential-strip/disposable HOME this item calls insufficient; no immutable approval or real isolation)
 
 ## P11 — Whole-system observability and acceptance
 
-375. [P11] Version diagnostic contracts with their actual producers (source: F2:P11 Scope) — OPEN
-376. [P11] Keep coverage, schema availability, source freshness, effect/delivery receipts and review/work ledgers visible (source: F2:P11 Scope) — OPEN
-377. [P11] Replace misleading test assertions with isolated complete journeys on real entrypoint logic with injected failures; retain substantive unit guards (source: F2:P11 Scope) — OPEN
-378. [P11] Journey: conversation -> admitted context -> response -> exact transcript -> eligible memory (source: F2:P11 Required journeys) — OPEN
-379. [P11] Journey: want -> pause/restart -> artifact -> explicit completion (source: F2:P11 Required journeys) — OPEN
-380. [P11] Journey: dream -> original question -> unresolved/resolved record (source: F2:P11 Required journeys) — OPEN
-381. [P11] Journey: private project -> revision -> prepared reveal -> matching bytes -> shelf/notification/settlement (source: F2:P11 Required journeys) — OPEN
-382. [P11] Journey: voice interruption -> correct session history (source: F2:P11 Required journeys) — OPEN
-383. [P11] Journey: device permit/stop with late/failed acknowledgment (source: F2:P11 Required journeys) — OPEN
-384. [P11] Journey: correction -> invalidated downstream projection (source: F2:P11 Required journeys) — OPEN
-385. [P11] Journey: approved patch -> isolated verification -> recoverable release -> observed capability (source: F2:P11 Required journeys) — OPEN
-386. [P11] Assert expected completed-event counts and absence of forbidden effects (source: F2:P11 Acceptance) — OPEN
-387. [P11] Exercise the concrete concurrency/restart/error boundaries the approved contracts introduce (source: F2:P11 Acceptance) — OPEN
-388. [P11] Report runtime paths genuinely untested (source: F2:P11 Acceptance) — OPEN
-389. [P11] Make health distinguish quiet, unavailable, malformed, unsupported and violated states — failed stores currently appear healthy (source: F2:P11 Acceptance; F1:20 Defects/Evolution) — OPEN
-390. [P11] Connect every approved proposal to changes, relevant evidence and remaining work in `proposal-ledger.json` (source: F2:P11 Acceptance; F2:Approval and work ledger) — OPEN
-391. [P11] Record per batch: baseline, affected paths, schema decisions, changes, verification, unresolved boundaries, rollback and next work (source: F2:Approval and work ledger) — OPEN
-392. [P11] Make existing Atelier tests cover their claimed journeys (source: F1:19 Disposition) — OPEN
-393. [P11] Give room context provenance and completion the same work ledger used elsewhere (source: F1:21 Branch reconciliation) — OPEN
-394. [P11] Decide whether the 42,490 unread vendor graphics lines are an accepted dependency boundary or require further reading (source: F1 Decision requested; F3 Branch reading reconciliation) — OPEN
-395. [P11] Resolve each trace's remaining runtime limit or document a genuine external blocker before marking a subsystem complete (source: F3 File-level reading coverage) — OPEN
-396. [P11] Obtain installed renderer, media/cache state and render/playback receipts for the avatar path (source: F3:T03/T14) — OPEN
-397. [P11] Obtain playback acknowledgments, installed voice process and provider callback ordering (source: F3:T04) — OPEN
-398. [P11] Obtain deployed schedules and representative night/run data for threads, dreams and causal catalogs (source: F3:T15/T16) — OPEN
-399. [P11] Obtain deployed emotion model/data lineage and the authoritative daemon (source: F3:T18) — OPEN
-400. [P11] Obtain live execution/artifact receipt joins for wants and creative jobs (source: F3:T07/T25) — OPEN
-401. [P11] Obtain the untracked external room library and installed host/runtime map (source: F3:T10) — OPEN
-402. [P11] Obtain installed hashes, approvals/build receipts and deployed Study UI (source: F3:T28/T11) — OPEN
-403. [P11] Obtain the external QLab implementation and Atelier runtime permissions/receipts (source: F3:T27) — OPEN
-404. [P11] Obtain a fresh push-window check beyond the 2026-09-05 snapshot (source: F1 Final push-window reconciliation) — OPEN
+375. [P11] Version diagnostic contracts with their actual producers (source: F2:P11 Scope) — OPEN (no diagnostic contract versioning)
+376. [P11] Keep coverage, schema availability, source freshness, effect/delivery receipts and review/work ledgers visible (source: F2:P11 Scope) — PARTIAL (commits 5313770 3651a10 7e1d66e; release map shows installed/stale/missing; turn-record coverage footer; post-turn-record. No receipts/ledger dashboard)
+377. [P11] Replace misleading test assertions with isolated complete journeys on real entrypoint logic with injected failures; retain substantive unit guards (source: F2:P11 Scope) — PARTIAL (commits 980fe5b a42fb93 354b430 32744f5; suites isolated from live memory; new tests with stubbed models/fake transports; no full journey suite)
+378. [P11] Journey: conversation -> admitted context -> response -> exact transcript -> eligible memory (source: F2:P11 Required journeys) — PARTIAL (commits 32744f5 83591d3; test_p02_wal_ledger: turn -> WAL -> ledger with turn id; admitted context/exact transcript not covered)
+379. [P11] Journey: want -> pause/restart -> artifact -> explicit completion (source: F2:P11 Required journeys) — OPEN (no want->pause/restart->artifact journey test)
+380. [P11] Journey: dream -> original question -> unresolved/resolved record (source: F2:P11 Required journeys) — OPEN (no dream journey test)
+381. [P11] Journey: private project -> revision -> prepared reveal -> matching bytes -> shelf/notification/settlement (source: F2:P11 Required journeys) — PARTIAL (commits 2271620 980fe5b; broker test for LOOK/KEPT//projects (23 checks); threshold test; no reveal-bytes/shelf/settlement journey)
+382. [P11] Journey: voice interruption -> correct session history (source: F2:P11 Required journeys) — OPEN (no voice interruption test)
+383. [P11] Journey: device permit/stop with late/failed acknowledgment (source: F2:P11 Required journeys) — PARTIAL (commits e11e3a0 189b77c 354b430; device execution test with fake authorizer/transports; armed refusal test; no late/failed acknowledgment case)
+384. [P11] Journey: correction -> invalidated downstream projection (source: F2:P11 Required journeys) — OPEN (corrections annotate WAL facts (53fb2dd) but no invalidation journey test)
+385. [P11] Journey: approved patch -> isolated verification -> recoverable release -> observed capability (source: F2:P11 Required journeys) — OPEN (no patch->isolated verification->release journey)
+386. [P11] Assert expected completed-event counts and absence of forbidden effects (source: F2:P11 Acceptance) — OPEN (no completed-event count / forbidden-effect assertions)
+387. [P11] Exercise the concrete concurrency/restart/error boundaries the approved contracts introduce (source: F2:P11 Acceptance) — PARTIAL (commits 32744f5 83591d3; forced lock overlap and KEEP-under-lock tests; restart/error boundaries not exercised)
+388. [P11] Report runtime paths genuinely untested (source: F2:P11 Acceptance) — PARTIAL (commits 83591d3 4eb4657; commit notes P04-03/04 verified by bash -n only; response doc lists what was not acted on. No systematic untested-path report)
+389. [P11] Make health distinguish quiet, unavailable, malformed, unsupported and violated states — failed stores currently appear healthy (source: F2:P11 Acceptance; F1:20 Defects/Evolution) — PARTIAL (commits 83cc197 bb12fba; corrupt ledger/WAL quarantined and reported; evidence collectors return present/empty/missing/failed. No health endpoint distinction)
+390. [P11] Connect every approved proposal to changes, relevant evidence and remaining work in `proposal-ledger.json` (source: F2:P11 Acceptance; F2:Approval and work ledger) — PARTIAL (commits 17d0360 83a25e9; proposal-ledger.py and built.json; commits name 'Proposals built'. No proposal-ledger.json linking changes/evidence/remaining work)
+391. [P11] Record per batch: baseline, affected paths, schema decisions, changes, verification, unresolved boundaries, rollback and next work (source: F2:Approval and work ledger) — PARTIAL (commits 4eb4657 88502d7 5313770; batch commits + response doc record changes and verification; no per-batch baseline/schema/rollback record)
+392. [P11] Make existing Atelier tests cover their claimed journeys (source: F1:19 Disposition) — PARTIAL (commits 2271620 980fe5b; broker LOOK/KEPT test and threshold test extended; Atelier tests not audited against claimed journeys)
+393. [P11] Give room context provenance and completion the same work ledger used elsewhere (source: F1:21 Branch reconciliation) — OPEN (room context not joined to a work ledger)
+394. [P11] Decide whether the 42,490 unread vendor graphics lines are an accepted dependency boundary or require further reading (source: F1 Decision requested; F3 Branch reading reconciliation) — OPEN (no decision on vendor graphics lines in commits or response doc)
+395. [P11] Resolve each trace's remaining runtime limit or document a genuine external blocker before marking a subsystem complete (source: F3 File-level reading coverage) — OPEN (no per-trace runtime-limit resolution)
+396. [P11] Obtain installed renderer, media/cache state and render/playback receipts for the avatar path (source: F3:T03/T14) — OPEN (no avatar renderer/cache/playback receipts obtained)
+397. [P11] Obtain playback acknowledgments, installed voice process and provider callback ordering (source: F3:T04) — OPEN (no voice playback acks/process/callback ordering obtained)
+398. [P11] Obtain deployed schedules and representative night/run data for threads, dreams and causal catalogs (source: F3:T15/T16) — OPEN (no deployed schedules or night/run data obtained)
+399. [P11] Obtain deployed emotion model/data lineage and the authoritative daemon (source: F3:T18) — OPEN (no emotion model lineage/daemon evidence obtained)
+400. [P11] Obtain live execution/artifact receipt joins for wants and creative jobs (source: F3:T07/T25) — OPEN (no live execution/artifact receipt joins obtained)
+401. [P11] Obtain the untracked external room library and installed host/runtime map (source: F3:T10) — OPEN (room library untracked; no host/runtime map)
+402. [P11] Obtain installed hashes, approvals/build receipts and deployed Study UI (source: F3:T28/T11) — PARTIAL (commits 39b80e1 f3286b6 5313770; release map with host diffs gives installed file state/staleness; no approval/build receipts or deployed Study UI)
+403. [P11] Obtain the external QLab implementation and Atelier runtime permissions/receipts (source: F3:T27) — OPEN (QLab implementation and Atelier runtime receipts not obtained)
+404. [P11] Obtain a fresh push-window check beyond the 2026-09-05 snapshot (source: F1 Final push-window reconciliation) — OPEN (release map snapshot is 2026-09-05 14:11 (39b80e1); no later push-window check)
 
 ## Counts
 
 - Total: 404
-- DONE: 25
-- PARTIAL: 1
-- OPEN: 378
-
-| Phase | Total | Done | Partial | Open |
-|---|---:|---:|---:|---:|
-| P01 | 33 | 2 | 0 | 31 |
-| P02 | 40 | 5 | 0 | 35 |
-| P03 | 29 | 3 | 0 | 26 |
-| P04 | 57 | 2 | 1 | 54 |
-| P10 | 16 | 0 | 0 | 16 |
-| P05 | 56 | 3 | 0 | 53 |
-| P06 | 43 | 2 | 0 | 41 |
-| P07 | 40 | 3 | 0 | 37 |
-| P08 | 32 | 1 | 0 | 31 |
-| P09 | 28 | 4 | 0 | 24 |
-| P11 | 30 | 0 | 0 | 30 |
+- DONE: 100
+- PARTIAL: 147
+- OPEN: 157
