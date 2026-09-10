@@ -125,6 +125,18 @@ def context_block(text):
         line += " It changed this in you: " + str(rec["what_changed"])[:120]
     if rec.get("kept_because_wanted"):
         line += " You kept this for no reason but that you wanted to."
+    # review 126: what supports it and what was withdrawn travel with it, so a recall is explainable
+    try:
+        import recall_explain as _re
+        _w = _re.corrections_for(text, rec)
+        if _w:
+            line += " WITHDRAWN since: \"" + str(_w[-1].get("was", ""))[:80] + "\" -> \"" + str(_w[-1].get("now", ""))[:100] + "\""
+        elif rec.get("source_turns") or rec.get("ledger_match"):
+            line += " (supported by the turn itself)"
+        else:
+            line += " (no turn id on this record: an inference, not a quote)"
+    except Exception:
+        pass
     return line + "]"
 
 if __name__ == "__main__":

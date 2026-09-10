@@ -52,6 +52,51 @@ def scan():
     print("[value-lineage] recorded strain on '%s' (%d event(s), %d distinct day(s))"
           % (core, len(v["strain_events"]), v["distinct_contexts"]))
 
+def examples(value_id=None):
+    """Review 136: for each value, what holding it, revising it, or leaving it unresolved looked like in
+    context - and which of those were a passing state (a strain that cleared) and which a durable change
+    (a revision recorded on the lineage). Read-only; the lineage is candidate-only and this only reads it."""
+    led = _load(LEDGER, {})
+    out = {}
+    for k, v in led.items():
+        if value_id and k != value_id:
+            continue
+        held, revised, unresolved = [], [], []
+        for e in v.get("strain_events", []):
+            ex = {"when": str(e.get("written_at", ""))[:16], "context": str(e.get("condition", ""))[:200],
+                  "deviation": e.get("deviation_score")}
+            if e.get("resolution"):
+                ex["resolution"] = e["resolution"]; ex["kind"] = "temporary state"; ex["note"] = "the strain cleared and the value stood"
+                held.append(ex)
+            elif e.get("cleared_at"):
+                ex["kind"] = "temporary state"; ex["note"] = "cleared without a recorded resolution"
+                held.append(ex)
+            else:
+                ex["kind"] = "unresolved"; ex["note"] = "the strain has not cleared"
+                unresolved.append(ex)
+        if v.get("possible_revision"):
+            revised.append({"kind": "durable change (candidate)" if v.get("status") == "candidate" else "durable change",
+                            "revision": str(v["possible_revision"])[:300],
+                            "disconfirming_observation": v.get("disconfirming_future_observation"),
+                            "note": "a revision is a human decision on this record; candidate until she makes it"})
+        out[k] = {"value_id": k, "status": v.get("status"), "distinct_contexts": v.get("distinct_contexts", 0),
+                  "held": held, "revised": revised, "unresolved": unresolved}
+    return out
+
+
+def examples_block(value_id=None, limit=2):
+    """The examples as prompt lines: one value per line, at most `limit` of each kind."""
+    lines = []
+    for k, v in examples(value_id).items():
+        bits = []
+        for kind in ("held", "revised", "unresolved"):
+            for ex in v[kind][-limit:]:
+                bits.append("%s [%s]: %s" % (kind, ex.get("kind"), (ex.get("context") or ex.get("revision") or "")[:120]))
+        if bits:
+            lines.append("%s (%d contexts): " % (k, v["distinct_contexts"]) + "; ".join(bits))
+    return "\n".join(lines)
+
+
 def report():
     led = _load(LEDGER, {})
     if not led: print("no lineages yet"); return
@@ -63,4 +108,6 @@ def report():
             print("   %s  %s" % (str(e.get("written_at", ""))[:16], e.get("condition", "")[:80]))
 
 if __name__ == "__main__":
-    report() if len(sys.argv) > 1 and sys.argv[1] == "report" else scan()
+    if len(sys.argv) > 1 and sys.argv[1] == "report": report()
+    elif len(sys.argv) > 1 and sys.argv[1] == "examples": print(json.dumps(examples(sys.argv[2] if len(sys.argv) > 2 else None), indent=1))
+    else: scan()
