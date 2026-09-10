@@ -79,8 +79,17 @@ def _ledger_has(want_id):
         d = _load(path, [])
         entries = d if isinstance(d, list) else (d.get("generated") or d.get("videos") or [])
         for e in entries:
-            if isinstance(e, dict) and e.get("want_id") == want_id:
-                return True
+            if not (isinstance(e, dict) and e.get("want_id") == want_id):
+                continue
+            # review 238: a queue marker (video-queue.json) is a request, not a result. It proves the
+            # want only once its status says the piece was made or a file it names exists on disk.
+            if path.endswith("video-queue.json"):
+                _st = str(e.get("status", "")).lower()
+                _fn = e.get("file") or e.get("video") or e.get("path") or ""
+                if _st in ("done", "complete", "completed", "finished") or (_fn and os.path.exists(os.path.join(os.path.dirname(path), os.path.basename(_fn)))):
+                    return True
+                continue
+            return True
     return False
 
 

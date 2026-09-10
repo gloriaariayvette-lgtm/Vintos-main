@@ -401,6 +401,21 @@ def add_to_reference(data):
         f.write(content)
         f.flush(); os.fsync(f.fileno())
     os.replace(_tmp, VELQAN_REF)
+    try:   # review 156: every coinage is a versioned record too (word, meaning, version, when) - a later
+           # coinage of the same word is version n+1 with the earlier meaning kept
+        _hp = os.path.join(os.path.dirname(VELQAN_REF), "memory", "velqan-coinages.jsonl")
+        _ver = 1
+        try:
+            for _ln in open(_hp):
+                _r = json.loads(_ln)
+                if _r.get("word", "").lower() == word.lower(): _ver = int(_r.get("version", 1)) + 1
+        except Exception:
+            pass
+        with open(_hp, "a") as _hf:
+            _hf.write(json.dumps({"word": word, "meaning": meaning, "pronunciation": pronunciation, "part": part, "version": _ver,
+                                  "at": datetime.now().isoformat(), "source": data.get("source", "velqan-coiner")}) + "\n")
+    except Exception as _he:
+        log(f"coinage history not written: {_he}")
 
     log(f"Added to reference: {entry}")
     return True

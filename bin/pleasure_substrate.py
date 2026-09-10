@@ -41,6 +41,9 @@ def _emo():
 
 def _cos(a, b):
     if not a or not b or len(a) != len(b): return 0.0
+    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]   # unknown dims compare on nothing
+    if len(pairs) < 2: return 0.0
+    a = [x for x, _ in pairs]; b = [y for _, y in pairs]
     n = sum(x*y for x, y in zip(a, b))
     da = math.sqrt(sum(x*x for x in a)); db = math.sqrt(sum(y*y for y in b))
     return (n / (da*db)) if da and db else 0.0
@@ -93,7 +96,9 @@ def snapshot():
             "arousal": round(float(e.get("Arousal", 0.5)), 3), "_vec": v}
 
 def _signature(s):
-    return [round(s.get(k, 0.0), 2) for k in DIMS]
+    # an unknown dimension (novelty with no history) stays None: round(None) raised here on his first
+    # state, and a 0.0 would have meant "nothing new" (review P05)
+    return [None if s.get(k) is None else round(s.get(k), 2) for k in DIMS]
 
 def recall(sig, threshold=0.985):  # p4: 0.93 matched everything in non-negative geometry — naming was becoming retrieval
     """Has he been in a state like this before, and what did he call it?"""
@@ -221,9 +226,11 @@ def receive(event):
     if event.get("defer_naming"):
         # The naming belongs to the being inside the moment: his own reply, same
         # call, full context. Park the perturbation; his [FELT:] tag completes it.
+        # review 213: the pending moment is bound to the turn it happened in; only that turn's reply names it
+        _tid = str(event.get("turn_id") or os.environ.get("VINTOS_TURN_ID") or "")
         _save(os.path.join(MEM, ".pleasure-pending.json"),
-              {"before": before, "after": after, "event": event, "t": time.time()})
-        return {"deferred": True}
+              {"before": before, "after": after, "event": event, "t": time.time(), "turn_id": _tid})
+        return {"deferred": True, "turn_id": _tid}
     reading = interpret(before, after, event)
 
     mems = _load(MEMORIES, [])
@@ -267,11 +274,25 @@ if __name__ == "__main__":
         print(json.dumps(receive({"source": "manual-test", "what": "a test event", "significance": 0.05}), indent=2))
 
 
-def name_from_reply(word, sentence, pleasure, impulse=""):
+PENDING_MAX_AGE_S = 900
+
+def name_from_reply(word, sentence, pleasure, impulse="", turn_id=None):
     """His [FELT:] tag from the GCS turn itself - the truest namer there is. `impulse` is the optional
-    '| impulse: ...' he may add; empty stays empty, honestly (grok-somatic-p3, 2026-09-05)."""
+    '| impulse: ...' he may add; empty stays empty, honestly (grok-somatic-p3, 2026-09-05).
+    review 213: the naming binds to its own response - a pending moment from another turn (turn id
+    differs) or one older than PENDING_MAX_AGE_S is not named by this reply; it stays pending for the
+    sweep, and this reply's FELT is recorded as unbound."""
     pend = _load(os.path.join(MEM, ".pleasure-pending.json"), None)
     if not pend: return False
+    _ptid = str(pend.get("turn_id") or "")
+    if (_ptid and turn_id and str(turn_id) != _ptid) or (time.time() - float(pend.get("t", 0)) > PENDING_MAX_AGE_S):
+        try:
+            with open(os.path.join(MEM, "pleasure-unbound-namings.jsonl"), "a") as f:
+                f.write(json.dumps({"at": datetime.now().isoformat(), "word": str(word)[:60], "sentence": str(sentence)[:200],
+                                    "reply_turn": str(turn_id or ""), "pending_turn": _ptid, "pending_age_s": int(time.time() - float(pend.get("t", 0)))}) + "\n")
+        except Exception:
+            pass
+        return False
     after = pend.get("after", {})
     mems = _load(MEMORIES, [])
     mems.append({

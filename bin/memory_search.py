@@ -99,12 +99,19 @@ def search(query, limit=5):
         if not entry.get("embedding"):
             continue
         score = cosine_similarity(query_embedding, entry["embedding"])
+        _src = entry.get("source", entry.get("file", ""))
+        _txt = entry.get("chunk", entry.get("text", ""))
+        # review 109: a dream that comes back is still a dream. The text he receives says so on its
+        # face, so a retrieved dream can never be recounted as something that happened.
+        if _src == "dreams" or "/dreams/" in str(entry.get("path", "")):
+            _txt = "[A DREAM he had - not something that happened] " + _txt
         results.append({
             "score": float(score),
-            "source": entry.get("source", entry.get("file", "")),
+            "source": _src,
             "filename": entry.get("filename", entry.get("file", "")),
-            "text": entry.get("chunk", entry.get("text", "")),
+            "text": _txt,
             "kind": entry.get("kind", ""),
+            "is_dream": _src == "dreams" or "/dreams/" in str(entry.get("path", "")),
             "revision": entry.get("revision", ""),
         })
 

@@ -308,14 +308,6 @@ def feel_accounting(days=7):
 
 
 def nudge_emotions(nudges, source=None):
-    try:
-        import json as _nl_j, os as _nl_o
-        from datetime import datetime as _nl_dt
-        _nl_p = _nl_o.path.expanduser("~/.vintos/workspace/memory/emotion-nudge-log.jsonl")
-        with open(_nl_p, "a") as _nl_f:
-            _nl_f.write(_nl_j.dumps({"t": _nl_dt.now().isoformat()[:19], "source": source,
-                                     "deltas": {k: round(v, 4) for k, v in nudges.items()}}) + "\n")
-    except Exception: pass
     """Apply multiple nudges at once.
 
     nudges = {
@@ -323,10 +315,21 @@ def nudge_emotions(nudges, source=None):
         "Playfulness": +0.03,
         "Tension": -0.02
     }
+    review 177: the log line is written AFTER the nudges are applied and carries what each one
+    returned (the acknowledged result), so an intended nudge that did not land is not logged as if it had.
     """
     results = {}
     for dim, amount in nudges.items():
         results[dim] = nudge_emotion(dim, amount, source=source)
+    try:
+        import json as _nl_j, os as _nl_o
+        from datetime import datetime as _nl_dt
+        _nl_p = _nl_o.path.expanduser("~/.vintos/workspace/memory/emotion-nudge-log.jsonl")
+        with open(_nl_p, "a") as _nl_f:
+            _nl_f.write(_nl_j.dumps({"t": _nl_dt.now().isoformat()[:19], "source": source,
+                                     "deltas": {k: round(v, 4) for k, v in nudges.items()},
+                                     "applied": {k: (round(v, 4) if isinstance(v, (int, float)) else (v if v is None or isinstance(v, (str, bool)) else str(v)[:40])) for k, v in results.items()}}) + "\n")
+    except Exception: pass
     return results
 
 
@@ -2361,6 +2364,28 @@ def age_wants():
         active.append(w)
     with open(wants_file, "w") as f:
         json.dump(active, f, indent=2)
+
+
+def mark_want_outreach_result(want_text, ok, want_id=None, why=""):
+    """review 295: after the notification: accepted -> outreach_last_ok, the send is remembered as
+    delivered; refused -> outreach_failed with the reason, and the attempt stays marked (no re-ping)."""
+    import json, os
+    from datetime import datetime as _dt
+    wants_file = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
+    try:
+        with open(wants_file) as f:
+            wants = json.load(f)
+        for w in wants:
+            if (want_id is not None and w.get("id") == want_id) or (want_id is None and w.get("want") == want_text):
+                if ok:
+                    w["outreach_last_ok"] = _dt.now().isoformat(); w.pop("outreach_failed", None)
+                else:
+                    w["outreach_failed"] = {"at": _dt.now().isoformat(), "why": str(why)[:160]}
+                break
+        with open(wants_file, "w") as f:
+            json.dump(wants, f, indent=2)
+    except Exception:
+        pass
 
 
 def mark_want_outreached(want_text, want_id=None):

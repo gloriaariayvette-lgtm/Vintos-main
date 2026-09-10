@@ -75,8 +75,12 @@ def main():
             seen = see(img)
             reply = judge(e, seen)
         except Exception as ex:
-            print("[sight] failed on %s: %s" % (e.get("image"), ex)); continue
-        verdict, words = "keep", ""
+            # review 304: a failed look is not a look. The entry says it was not sighted and carries no
+            # suitability; nothing downstream may treat it as kept.
+            e["sighted_at"] = None; e["verdict"] = "unsighted"; e["unsighted_why"] = str(ex)[:160]; e["suitable"] = None
+            changed = True
+            print("[sight] failed on %s: %s (recorded unsighted)" % (e.get("image"), ex)); continue
+        verdict, words = "unjudged", ""   # review 304: no VERDICT line means no verdict, never keep
         for ln in reversed(reply.splitlines()):
             if ln.strip().upper().startswith("VERDICT:"):
                 v = ln.split(":", 1)[1].strip()
@@ -88,6 +92,7 @@ def main():
         e["his_reading"] = "\n".join(l for l in reply.splitlines()
                                       if not l.strip().upper().startswith("VERDICT:")).strip()[:400]
         e["verdict"] = verdict
+        e["suitable"] = {"keep": True, "take_down": False, "remake": False}.get(verdict)   # None when unjudged
         if verdict == "take_down": e["taken_down"] = True
         if verdict == "remake" and words and int(e.get("remake_count", 0)) < 1:
             e["taken_down"] = True

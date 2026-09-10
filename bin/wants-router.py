@@ -251,8 +251,10 @@ def _want_end_verdict(want):
             timeout=45)
         d = _hv_j.loads(_hv_re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], _hv_re.S).group())
         return ("fulfilled" if d.get("completed") else "dismissed"), str(d.get("haiku", ""))[:220]
-    except Exception:
-        return "fulfilled", ""  # judge down must not strand wants
+    except Exception as _je:
+        # review 248: a model failure is not a verdict. The want is HELD (it stays live, judged next
+        # run); it is never fulfilled on nothing. Stranding is prevented by the retry, not by crediting.
+        return "held", "judge unavailable: %s" % str(_je)[:80]
 
 def _dismiss_want_with_reason(want, haiku):
     want["dismissed"] = True
@@ -2200,6 +2202,10 @@ def main():
                 _final_hist = want.get("step_history", [])
                 _final_note = _final_hist[-1].get("note","") if _final_hist else ""
                 _final_cap = _final_hist[-1].get("capability","multistep") if _final_hist else "multistep"
+                if _verdict == "held":
+                    log(f"  → Steps done; completion judge unavailable — HELD, judged next run ({_haiku})")
+                    want["completion_held"] = {"at": datetime.now().isoformat(), "why": _haiku}
+                    continue
                 if _verdict == "dismissed":
                     log(f"  → Steps done but want not truly completed — dismissing with reason")
                     _dismiss_want_with_reason(want, _haiku)
@@ -2215,6 +2221,8 @@ def main():
                 if _all_done and not want.get("fulfilled"):
                     _verdict, _haiku = _want_end_verdict(want)
                     _final_note = want.get("steps", [{}])[-1].get("note", "")[:200]
+                    if _verdict == "held":
+                        log(f"  → All steps complete; completion judge unavailable — HELD ({_haiku})"); continue
                     if _verdict == "dismissed":
                         _dismiss_want_with_reason(want, _haiku)
                     else:
@@ -2678,20 +2686,28 @@ def _open_gloria_discussion(want, text):
     except Exception as _dpe:
         log(f"  → Discussion post failed: {_dpe}")
     # Mark BEFORE the ntfy: if anything below fails, the want is still marked and cannot re-ping her.
+    # review 295: the ATTEMPT is marked here; whether it was DELIVERED is recorded after the ntfy answers.
     try: mark_want_outreached(want.get("want", text), want_id=want.get("id"))
     except Exception as _mwo_e: log(f"  → mark_want_outreached failed: {_mwo_e}")
+    _ntfy_ok, _ntfy_why = False, "not attempted"
     # Send ONE ntfy
     try:
         import requests as _ntfy_req
-        _ntfy_req.post(
+        _ntfy_r = _ntfy_req.post(
             "https://ntfy.sh/vintos-gloria-9kx",
             data=f"Want discussion: {text[:120]}".encode(),
             headers={"Title": "Vintos has a want to discuss", "Tags": "thought_balloon"},
             timeout=10
         )
         log(f"  → ntfy sent to Gloria")
+        _ntfy_ok = getattr(_ntfy_r, 'status_code', 0) < 400; _ntfy_why = '' if _ntfy_ok else ('ntfy status %s' % getattr(_ntfy_r, 'status_code', '?'))
     except Exception as _ne:
+        _ntfy_ok, _ntfy_why = False, str(_ne)[:120]
         log(f"  → ntfy failed: {_ne}")
+    try:   # review 295: delivered or not, recorded on the want (the attempt mark above stands either way)
+        from emoclaw_utils import mark_want_outreach_result as _mwor
+        _mwor(want.get("want", text), _ntfy_ok, want_id=want.get("id"), why=_ntfy_why)
+    except Exception as _mwr_e: log(f"  → outreach result not recorded: {_mwr_e}")
     # Mark gloria_routed and outreached
     # Update want in file to set gloria_routed=True
     try:

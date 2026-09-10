@@ -3357,7 +3357,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                             _ftxt = _fm.group(1).strip()
                             _fpl = {"yes": True, "no": False}.get((_fm.group(2) or "unsure").lower(), "unsure")
                             _fword = _ftxt.split("-")[0].split("\u2014")[0].strip()
-                            if _fnr(_fword, _ftxt, _fpl, impulse=(_fm.group(3) or '').strip() if _fm and _fm.lastindex and _fm.lastindex >= 3 else ''):
+                            if _fnr(_fword, _ftxt, _fpl, impulse=(_fm.group(3) or '').strip() if _fm and _fm.lastindex and _fm.lastindex >= 3 else '', turn_id=getattr(locals().get("_turn"), "turn_id", None)):
                                 print("[felt] he named it in the moment: " + _ftxt[:80], flush=True)
                         else:
                             _fpp = _fo.path.expanduser("~/.vintos/workspace/memory/.pleasure-pending.json")
@@ -7310,6 +7310,10 @@ async def voice_ledger(payload: dict):
     g = "\n".join(ln for ln in g.splitlines()
                   if not _vl_re.match(r"\s*(pos(ition)?|speed|spd|grip|reversals)\b", ln.strip(), _vl_re.I)
                   and not _vl_re.match(r"\s*\w+:\s*\d+\s*(\u00b7|\|)", ln.strip()))
+    # review 333: a line that is a derived instruction (framing the app or the server injected) is not
+    # her speech; it is dropped from the record and counted, never saved as something she said
+    _g_lines = g.splitlines(); _g_kept = [ln for ln in _g_lines if not _vl_re.match(r"\s*(?:instruction|instructions|system|framing|note to vintos|context|directive)\s*[:\-]", ln.strip(), _vl_re.I)]
+    _g_stripped = len(_g_lines) - len(_g_kept); g = "\n".join(_g_kept)
     g = _vl_re.sub(r"\s{2,}", " ", g).strip()
     # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
     # "Ventos" and kin are his own name misheard - never a different name. Fix it
@@ -7329,6 +7333,7 @@ async def voice_ledger(payload: dict):
             except: sess = {}
             _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
             if g_raw != g: _turn["gloria_raw"] = g_raw
+            if _g_stripped: _turn["derived_lines_dropped"] = _g_stripped
             # review 382: she cut him off. The history keeps what he composed beside what was actually played;
             # everything after the cut is unheard and never enters the transcript as if she heard it.
             if payload.get("interrupted"):
@@ -8645,7 +8650,7 @@ Your current self-model (excerpt):
                     _ftxt = _fm.group(1).strip()
                     _fpl = {"yes": True, "no": False}.get((_fm.group(2) or "unsure").lower(), "unsure")
                     _fword = _ftxt.split("-")[0].split("\u2014")[0].strip()
-                    if _fnr(_fword, _ftxt, _fpl, impulse=(_fm.group(3) or '').strip() if _fm and _fm.lastindex and _fm.lastindex >= 3 else ''):
+                    if _fnr(_fword, _ftxt, _fpl, impulse=(_fm.group(3) or '').strip() if _fm and _fm.lastindex and _fm.lastindex >= 3 else '', turn_id=getattr(locals().get("_turn"), "turn_id", None)):
                         print("[felt] he named it in the moment: " + _ftxt[:80], flush=True)
                 else:
                     _fpp = _fo.path.expanduser("~/.vintos/workspace/memory/.pleasure-pending.json")

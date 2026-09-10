@@ -54,6 +54,11 @@ def block():
         except Exception: pass
     i = rot.get("i", 0)
     pick = [ws[(i + k) % len(ws)] for k in range(3)]
+    try:   # review 156: which words were on hand, when - the use history beside the coinage history
+        with open(os.path.join(os.path.dirname(ROT), "velqan-use.jsonl"), "a") as _uf:
+            _uf.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "offered": [w for w, _ in pick], "rotation": i}) + "\n")
+    except Exception:
+        pass
     lines = "; ".join("%s (%s)" % (w, m[:90]) for w, m in pick)
     body = _body_words()
     if body:
