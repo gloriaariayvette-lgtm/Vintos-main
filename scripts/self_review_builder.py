@@ -186,17 +186,39 @@ def _source_block(files):
 
 
 def _sandbox_env(build_dir):
-    """Regression runs get no credentials, a disposable HOME, and no live tree on the import path
-    (astra-study-p3, 2026-09-05). Network is not blocked at the OS level from here; what can be
-    stripped is stripped, and the record says so."""
+    """Regression runs get no credentials, a disposable HOME, no live tree on the import path, and no
+    network (review 374): every proxy variable points at a black hole, and the check itself runs under
+    `unshare -n` where the kernel allows it (see _isolation). The record says which was achieved."""
     env = {k: v for k, v in os.environ.items()
-           if not re.search(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API)", k, re.I)}
+           if not re.search(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API|PROXY)", k, re.I)}
     home = os.path.join(build_dir, "sandbox-home"); os.makedirs(home, exist_ok=True)
     env["HOME"] = home
     env["PYTHONPYCACHEPREFIX"] = os.path.join(build_dir, "pycache")
     env["PYTHONPATH"] = os.path.join(build_dir, "stage", "scripts")
     env["VINTOS_SANDBOX"] = "1"
+    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        env[k] = "http://127.0.0.1:9"       # discard port: a socket that never answers
+    env["NO_PROXY"] = ""; env["no_proxy"] = ""
     return env
+
+
+_ISOLATION = None
+def _isolation():
+    """(prefix, description): `unshare -n` when this user may create a network namespace, else the
+    proxy black hole alone. Probed once per process, recorded on every check."""
+    global _ISOLATION
+    if _ISOLATION is not None:
+        return _ISOLATION
+    prefix, how = [], "proxy-blackhole (best effort: raw sockets are not blocked)"
+    try:
+        probe = subprocess.run(["unshare", "-n", sys.executable, "-c", "import socket; s=socket.socket(); s.settimeout(1); r=1\ntry:\n s.connect(('127.0.0.1',9))\nexcept OSError: r=0\nraise SystemExit(r)"],
+                               capture_output=True, text=True, timeout=15)
+        if probe.returncode == 0:
+            prefix, how = ["unshare", "-n"], "unshare -n (no network namespace) + proxy-blackhole"
+    except Exception:
+        pass
+    _ISOLATION = (prefix, how)
+    return _ISOLATION
 
 def _stage(p, patch, files, build_dir):
     checks = []   # every check actually executed, with its result (astra-study-p6)
@@ -220,18 +242,22 @@ def _stage(p, patch, files, build_dir):
         staged = os.path.join(stage, rel)
         if not os.path.exists(staged): raise RuntimeError("deletion refused: " + rel)
         if rel.endswith(".py"):
-            c = subprocess.run([sys.executable, "-m", "py_compile", staged],
+            _pre, _how = _isolation()
+            c = subprocess.run(_pre + [sys.executable, "-m", "py_compile", staged],
                                capture_output=True, text=True, timeout=60, env=_sandbox_env(build_dir))
-            checks.append({"check": "py_compile", "file": rel, "ok": c.returncode == 0, "sha": hashlib.sha256(open(staged, "rb").read()).hexdigest()[:16]})
+            checks.append({"check": "py_compile", "file": rel, "ok": c.returncode == 0, "sha": hashlib.sha256(open(staged, "rb").read()).hexdigest()[:16],
+                           "isolation": _how})
             if c.returncode: raise RuntimeError("syntax check failed for %s: %s" % (rel, c.stderr[-1000:]))
     # Recursive reviewer changes must arrive with their own executable test.
     if "scripts/self_review.py" in files or "scripts/self_review_builder.py" in files:
         tests = [x for x in files if x.startswith("broker/tests/test_self_review") and x.endswith(".py")]
         if not tests: raise RuntimeError("reviewer may revise itself, but only with a self-review regression test")
         for rel in tests:
-            t = subprocess.run([sys.executable, os.path.join(stage, rel)], cwd=stage,
+            _pre, _how = _isolation()
+            t = subprocess.run(_pre + [sys.executable, os.path.join(stage, rel)], cwd=stage,
                                capture_output=True, text=True, timeout=180, env=_sandbox_env(build_dir))
-            checks.append({"check": "regression", "file": rel, "ok": t.returncode == 0, "sandbox": "no credentials, disposable HOME, stage-only import path; network not blocked"})
+            checks.append({"check": "regression", "file": rel, "ok": t.returncode == 0,
+                           "sandbox": "no credentials, disposable HOME, stage-only import path; network: " + _how, "isolation": _how})
             if t.returncode: raise RuntimeError("self-review regression failed: " + (t.stderr or t.stdout)[-1500:])
     return stage, before, checks
 
@@ -289,6 +315,17 @@ def build(proposal_id):
                ", ".join(declared), _source_block(declared))
         )
         patch = _extract_patch(_ask(system, user))
+        # review 374: the approval is immutable - it binds to the exact patch. The first generated patch for
+        # an approved proposal is recorded with its hash under the decision; a later build whose generated
+        # patch differs is refused rather than installed under the old approval.
+        _psha = hashlib.sha256(patch.encode()).hexdigest()
+        _bound = next((x for x in reversed(history) if x.get("state") == "patch_bound" and x.get("decision_id") == d.get("decision_id")), None)
+        if _bound and _bound.get("patch_sha256") != _psha:
+            raise PermissionError("generated patch %s differs from the patch bound to decision %s (%s); the approval does not transfer"
+                                  % (_psha[:12], d.get("decision_id"), str(_bound.get("patch_sha256"))[:12]))
+        if not _bound:
+            append(BUILDS, {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(), "state": "patch_bound",
+                            "decision_id": d.get("decision_id"), "patch_sha256": _psha})
         paths = _patch_paths(patch)
         undeclared = [x for x in paths if x not in declared]
         if undeclared: raise PermissionError("patch escaped declared files: " + ", ".join(undeclared))

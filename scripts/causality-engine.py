@@ -11,7 +11,7 @@ events. Forms causal hypotheses. Tests them over time.
 
 Runs weekly via cron. Hypotheses accumulate and get tested.
 """
-import os, sys, json, re, glob, hashlib
+import os, sys, json, re, glob, hashlib, time
 from datetime import datetime, timedelta
 import subprocess
 
@@ -1319,6 +1319,49 @@ def write_hypothesis_log(db):
             f.write("## What I Know About Myself\n\n")
             for b in _beliefs:
                 f.write(f"- {b.get('pattern','')[:200]} (confidence {b.get('confidence',0):.2f}, seen {b.get('evidence_count',0)}x)\n")
+
+
+BRING_UP = os.path.join(MEMORY, "causality-bring-up.json")
+PENDING_QUEUE = os.path.join(MEMORY, ".pending-causality-queue.json")
+
+def queue_question(question, source, evidence=None, subject="self", memory=None):
+    """review 204: the one door for a question graduating to the causality head, from every producer
+    (intent pressure, self pressure, priority vector, campaign expiry). The record is schema-2 shaped -
+    an id, the formation envelope, root evidence ids/fingerprints, the source - and the string queue his
+    chat prompt reads gets the question once. Producers used to write bare {ts, question, source} dicts."""
+    question = str(question or "").strip()
+    if len(question) < 8:
+        return None
+    bring_up = os.path.join(memory, "causality-bring-up.json") if memory else BRING_UP
+    pending = os.path.join(memory, ".pending-causality-queue.json") if memory else PENDING_QUEUE
+    from datetime import date as _qd
+    rec = {"id": "CQ-" + _digest(question + source)[:12], "formed": datetime.now().isoformat(),
+           "formed_date": _qd.today().isoformat(), "question": question, "source": source, "subject": subject,
+           "status": "queued", "ts": time.time()}
+    roots = [str(e) for e in (evidence or []) if e]
+    rec["schema_version"] = CAUSALITY_SCHEMA
+    rec["formation"] = {"formed_at": rec["formed"], "source": source, "root_evidence_ids": roots,
+                        "root_fingerprints": ["F-" + _digest(x) for x in roots], "root_snippets": [x[:200] for x in roots],
+                        "rule": "formation_is_history_not_confirmation"}
+    try:
+        try: d = json.load(open(bring_up))
+        except Exception: d = []
+        items = d.setdefault("items", []) if isinstance(d, dict) else d
+        if not any(isinstance(x, dict) and x.get("id") == rec["id"] for x in items):
+            items.append(rec)
+        tmp = bring_up + ".tmp"; json.dump(d, open(tmp, "w"), indent=2); os.replace(tmp, bring_up)
+    except Exception as e:
+        log(f"  [Causality] bring-up record not written: {e}")
+    try:
+        try: queue = json.load(open(pending))
+        except Exception: queue = []
+        if not isinstance(queue, list): queue = []
+        if question not in queue:
+            queue.append(question)
+            tmp = pending + ".tmp"; json.dump(queue[-6:], open(tmp, "w"), indent=2); os.replace(tmp, pending)
+    except Exception as e:
+        log(f"  [Causality] pending queue not written: {e}")
+    return rec
 
 
 def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):

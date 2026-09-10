@@ -178,6 +178,10 @@ def _graduate(e):
         q=("I have reached for this and missed "+str(e["count"])+" times: \""+
            e["text"][:180]+"\". Is this still the same intention, or has repeated "
            "failure made it into something else? What do I actually want now?")
+        try:   # review 204: one schema-2 door for every producer
+            import causality_engine as _ce
+            _ce.queue_question(q,"intent_pressure",evidence=[e["text"]]+[str(l) for l in e.get("lineage",[])[-3:]],memory=MEM); return
+        except Exception: pass
         p=os.path.join(MEM,"causality-bring-up.json")
         d=_jload(p,[])
         if isinstance(d,dict): d.setdefault("items",[]).append({"ts":time.time(),"question":q,"source":"intent_pressure"})

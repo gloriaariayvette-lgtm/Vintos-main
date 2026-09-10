@@ -46,5 +46,16 @@ for sub in ORDER:
             lines.append(f"  - and next: {f.get('and next','')}")
             lines.append(f"  - agency: {f.get('agency','')}")
         lines.append("")
+# review 393: the room contexts built for this day, from the same work ledger (context-builds.jsonl)
+try:
+    _cb = [json.loads(l) for l in open(os.path.join(STAGE, "context-builds.jsonl")) if l.strip()]
+    _cb = [r for r in _cb if r.get("day_requested") == day]
+except Exception:
+    _cb = []
+if _cb:
+    lines.append("## Room contexts built for this day"); lines.append("")
+    for r in _cb:
+        lines.append(f"- {r.get('at','')[:16]} {r.get('lens')}: **{r.get('state')}** @ {r.get('git_rev')} - {len(r.get('files_read') or [])} file(s) read - {r.get('note','')}")
+    lines.append("")
 lines.insert(3, f"**{total} proposals, {retracted} taken back, {declined} declined, {built} built, {total-retracted-declined-built} standing.**"); lines.insert(4, "")
 out = os.path.join(STAGE, f"{day}-proposals.md"); open(out, "w").write("\n".join(lines)); print(out, f"({total} proposals, {retracted} taken back, {declined} declined, {built} built)")

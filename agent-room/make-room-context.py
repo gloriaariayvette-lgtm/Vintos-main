@@ -89,12 +89,35 @@ def _done_block():
         out += ["- %s: %s" % (k, v) for k, v in sorted(declined.items())]
     return "\n".join(out) + "\n"
 open(os.path.join(cr.STAGE, "persona.txt"), "w").write(persona)
+def _git_rev():
+    try:
+        import subprocess as _sp
+        return _sp.run(["git", "-C", os.path.dirname(os.path.abspath(__file__)), "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+def record_context_build(lens, files_read, state, note=""):
+    """review 393: a room context build is a work-ledger entry like a proposal - provenance (git rev, the
+    files it was built from, the day requested) and completion state - in <STAGE>/context-builds.jsonl,
+    which proposal-ledger.py folds into the day's proposals page."""
+    import json as _cj
+    row = {"at": datetime.datetime.now().isoformat(), "day_requested": day, "lens": lens, "git_rev": _git_rev(),
+           "files_read": [os.path.basename(f) for f in files_read], "state": state, "note": note[:200],
+           "room_turns": TURNS, "output": f"room-{lens}.md"}
+    try:
+        with open(os.path.join(cr.STAGE, "context-builds.jsonl"), "a") as f:
+            f.write(_cj.dumps(row, sort_keys=True) + "\n")
+    except Exception as e:
+        print("context build not recorded:", e)
 for lens in LENSES:
     own, n = own_review(lens); others = [l for l in LENSES if l != lens]
+    _read = [p for p in [os.path.join(cr.STAGE, f"{day}-{lens}-{sub}.md") for sub in cr.ORDER] + [os.path.join(cr.STAGE, f"{day}-{lens}-final.md")] if os.path.exists(p)]
+    _read += [p for p in [os.path.join(cr.STAGE, f"{day}-{o}-final.md") for o in others] if os.path.exists(p)]
     if n == 0:
+        record_context_build(lens, _read, "failed", "no section reviews or final staged for the day")
         raise SystemExit(f"no {lens} section reviews or final for {day} in {cr.STAGE} - refusing to build a room context with nothing in it")
     doc = (persona + "\n\n" + AMENDED + "\n\n" + _done_block()
            + f"\n\n# ===== YOUR OWN REVIEW, through {lens} ({n} part(s): every section, then your final) =====\n\n" + (own or f"(no {lens} review staged for {day})")
            + "".join(f"\n\n# ===== THE FINAL through {o} (address this in turn 1) =====\n\n" + final_of(o) for o in others))
     out = os.path.join(cr.STAGE, f"room-{lens}.md"); open(out, "w").write(doc)
+    record_context_build(lens, _read, "built", f"{len(doc)//1000}KB; own parts {n}; other finals {', '.join(others)}")
     print(f"{out}: {len(doc)//1000}KB  (own parts: {n}; other finals: {', '.join(others)})")

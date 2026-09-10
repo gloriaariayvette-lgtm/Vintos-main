@@ -83,6 +83,7 @@ SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
 SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_discovery.py"   # controls and wants, 2026-09-10
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
+SCRIPTS="$SCRIPTS diagnostic_contract.py subsystem_audit.py causality-engine.py self_difference.py priority_vector.py campaign.py self_review_builder.py"   # diagnostics and the causality door, 2026-09-10
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
 SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
 SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"

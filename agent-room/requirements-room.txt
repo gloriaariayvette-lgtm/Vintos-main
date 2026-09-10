@@ -1,0 +1,19 @@
+# The agent room's dependencies, pinned (review 355). Checked by open-room.sh before any seat is started.
+#
+# Runtime
+node            >=20            # setup-aegis.sh installs via nvm when older; every .mjs here uses only node: built-ins
+python3         >=3.11          # make-room-context.py, proposal-ledger.py, correct-declined.py: stdlib only
+redis-server    any             # local Redis on 6390, behind upstash-proxy.mjs
+#
+# npm (installed by setup-aegis.sh into ~/agent-room and ~/.vintos/agent-room-seat)
+agent-room      workspace       # the library the room API dispatches into: packages/shared, packages/upstash-client (built from source)
+agent-room-mcp  1.x             # the npm seat; setup-aegis.sh installs @latest - after the first install, pin the version `npm ls agent-room-mcp` prints here
+#
+# What each file imports (derived from the source, nothing else):
+# upstash-proxy.mjs   node:http node:net
+# room-api.mjs        node:http node:path node:url  + @agent-room/upstash-client, @agent-room/shared (from AGENT_ROOM_SRC)
+# seat.mjs            node:fs node:crypto  + ./room-tools.mjs  (HTTP to anthropic / openai / x.ai)
+# room-tools.mjs      node:fs node:path node:child_process
+# room-ctl.mjs        node:fs
+# static.mjs          node:http node:fs node:path
+# smoke.mjs, mcp-probe.mjs   node:child_process node:url node:path

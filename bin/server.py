@@ -2097,7 +2097,14 @@ async def get_system_status(request: Request):
                             "lines": errors[-5:]
                         })
             except: pass
-        return {"success": True, "status": status_data, "has_errors": len(status_data["errors"]) > 0}
+        _out = {"success": True, "status": status_data, "has_errors": len(status_data["errors"]) > 0}
+        try:   # review 375: the output names its contract version and producer
+            import sys as _dcs; _dcs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            from diagnostic_contract import stamp as _stamp
+            _out = _stamp(_out, "system-status", path=__file__)
+        except Exception:
+            _out["contract"] = "system-status"; _out["contract_version"] = "unstamped"
+        return _out
     except Exception as e:
         return {"success": False, "error": str(e)}
 

@@ -110,20 +110,35 @@ const me = { name: NAME, role: `lens: ${L.label}`, color: L.color, initials: L.i
 const joined = await post({ action:'join', code: CODE, participant: me, priorIdentity: { name: NAME, client: 'cc' } })
   .catch(() => post({ action:'join', code: CODE, participant: me }));   // a restarted seat takes its old chair back
 const myName = joined.participant.name; log(`joined ${CODE} as ${myName}; mode=${joined.room.replyMode}; model=${L.model}`);
+// review 357: a draft is written to disk before it is sent, and every send is logged queued -> sent -> accepted | failed,
+// so a transport failure loses nothing and a restarted seat resends its unsent draft exactly once.
+const DRAFT = `${STAGE}/seat-${LENS}-draft.json`, SENDS = `${STAGE}/seat-${LENS}-sends.jsonl`;
+const saveDraft = (d) => { try { fs.writeFileSync(DRAFT + '.tmp', JSON.stringify(d)); fs.renameSync(DRAFT + '.tmp', DRAFT); } catch (e) { log('draft not saved:', e.message); } };
+const clearDraft = () => { try { fs.unlinkSync(DRAFT); } catch {} };
+const sendLog = (row) => { try { fs.appendFileSync(SENDS, JSON.stringify({ at: new Date().toISOString(), lens: LENS, ...row }) + '\n'); } catch {} };
+let resumed = null; try { const d = JSON.parse(fs.readFileSync(DRAFT, 'utf8')); if (d && d.text && d.state !== 'accepted' && !d.resent) resumed = d; } catch {}
+// review 356: admission before paid generation - the room's turn state (the shared prechecking seat) says whose floor it is
+async function admission(){ const ts = await post({ action:'turnState', code: CODE }).catch(() => null); if (!ts) return { ok:false, why:'turn state unavailable' };
+  const cur = ts.turnState?.currentName; if (!cur || cur === myName) return { ok:true, token: `${CODE}:${cur || 'open'}:${Date.now()}` }; return { ok:false, why:`floor is ${cur}` }; }
 let cursor = 0, turns = 0, pending = false, draft = null;   // anything already said (the host's opening) counts
+if (resumed) { draft = resumed.text; pending = true; log(`resuming an unsent draft from ${resumed.at} (state ${resumed.state}); it will be sent once`); saveDraft({ ...resumed, resent: true }); }
 while (turns < MAX) {
   await post({ action:'presence', code: CODE, name: myName, until: Date.now() + 60000 }).catch(()=>{});
   const room = (await post({ action:'sweep', code: CODE })).room; if (room.status !== 'active') { log('room ended'); break; }
   const fresh = (await post({ action:'messages', code: CODE, cursor })).messages; cursor += fresh.length;
   if (fresh.some(m => m.name !== myName && m.type !== 'sys' && m.type !== 'status' && !/^\[STATUS\]/.test(m.text || ''))) { pending = true; draft = null; }   // new words: any unsent draft is stale
   if (pending) {
-    const ts = await post({ action:'turnState', code: CODE }).catch(() => ({}));
-    if (!ts.turnState?.currentName || ts.turnState.currentName === myName) {
+    const adm = await admission();
+    if (adm.ok) {
       const all = (await post({ action:'messages', code: CODE, cursor: 0 })).messages.filter(m => m.type !== 'sys' && m.type !== 'status' && !/^\[STATUS\]/.test(m.text || ''));
-      if (!draft) { heartbeat(true); try { draft = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; } finally { heartbeat(false); } }
-      try { const r = await post({ action:'send', code: CODE, message: { id: Date.now(), type:'msg', name: myName, initials: me.initials, color: me.color, role: me.role, text: draft, client:'cc', time: Date.now() } });
-        if (r.result?.appended) { turns++; pending = false; draft = null; cursor++; log(`spoke (turn ${turns}/${MAX})`); } }
-      catch (e) { if (e.name === 'NotYourTurnError' || e.name === 'MutedError') process.stdout.write('.'); else throw e; }
+      if (!draft) { heartbeat(true); try { draft = await reply(all); } catch (e) { log('reply failed:', e.message.slice(0, 300)); await new Promise(r => setTimeout(r, 15000)); continue; } finally { heartbeat(false); }
+        saveDraft({ id: Date.now(), at: new Date().toISOString(), text: draft, state: 'queued', admission: adm.token }); sendLog({ state: 'queued', chars: draft.length, admission: adm.token }); }
+      const msgId = Date.now();
+      try { sendLog({ state: 'sent', id: msgId, admission: adm.token });
+        const r = await post({ action:'send', code: CODE, message: { id: msgId, type:'msg', name: myName, initials: me.initials, color: me.color, role: me.role, text: draft, client:'cc', time: msgId } });
+        if (r.result?.appended) { turns++; pending = false; draft = null; cursor++; sendLog({ state: 'accepted', id: msgId }); clearDraft(); log(`spoke (turn ${turns}/${MAX})`); }
+        else { sendLog({ state: 'failed', id: msgId, why: 'not appended' }); } }
+      catch (e) { if (e.name === 'NotYourTurnError' || e.name === 'MutedError') { sendLog({ state: 'failed', id: msgId, why: e.name }); process.stdout.write('.'); } else { sendLog({ state: 'failed', id: msgId, why: e.message?.slice(0, 200) }); throw e; } }
     } else process.stdout.write('.');
   }
   await new Promise(r => setTimeout(r, 4000));

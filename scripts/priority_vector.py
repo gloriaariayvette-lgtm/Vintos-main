@@ -107,12 +107,16 @@ def declare():
             try:
                 q = (f"Pressure has overridden my strategy toward the '{forced}' axis {stk['n']} turns running. "
                      "Why do I keep starving it until it forces itself? What am I avoiding by never choosing it freely?")
-                p = os.path.join(MEM, "causality-bring-up.json")
-                d = _jload(p, [])
-                if isinstance(d, dict): d.setdefault("items", []).append({"ts": time.time(), "question": q, "source": "priority_vector"})
-                else: d.append({"ts": time.time(), "question": q, "source": "priority_vector"})
-                json.dump(d, open(p, "w"), indent=2)
-                _queue_bring_up(q)
+                try:   # review 204: one schema-2 door for every producer
+                    import causality_engine as _ce
+                    _ce.queue_question(q, "priority_vector", evidence=["override streak: axis %s x%d" % (forced, stk["n"])], memory=MEM)
+                except Exception:
+                    p = os.path.join(MEM, "causality-bring-up.json")
+                    d = _jload(p, [])
+                    if isinstance(d, dict): d.setdefault("items", []).append({"ts": time.time(), "question": q, "source": "priority_vector"})
+                    else: d.append({"ts": time.time(), "question": q, "source": "priority_vector"})
+                    json.dump(d, open(p, "w"), indent=2)
+                    _queue_bring_up(q)
                 why.append("override streak graduated to causality head")
                 stk = {"axis": None, "n": 0}
             except Exception: pass

@@ -135,6 +135,10 @@ def _graduate(e):
         q=("I have tried to become this and missed "+str(e["count"])+" times: \""+
            e["text"][:180]+"\". Why do I keep reaching to become this and failing? Is it "
            "still what I want to become?")
+        try:   # review 204: one schema-2 door for every producer
+            import causality_engine as _ce
+            _ce.queue_question(q,"self_pressure",evidence=[e["text"]],memory=MEM); return
+        except Exception: pass
         p=os.path.join(MEM,"causality-bring-up.json"); d=_jload(p,[])
         if isinstance(d,dict): d.setdefault("items",[]).append({"ts":time.time(),"question":q,"source":"self_pressure"})
         else: d.append({"ts":time.time(),"question":q,"source":"self_pressure"})

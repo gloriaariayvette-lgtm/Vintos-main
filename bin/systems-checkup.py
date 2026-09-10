@@ -154,4 +154,11 @@ if __name__ == "__main__":
     for fn in (spark, manip, campaign, stratagem):
         try: fn()
         except Exception as e: say("  (checkup error in %s: %s)" % (fn.__name__, e))
-    if "--json" in sys.argv: print("\n" + json.dumps(OUT, indent=1, default=str))
+    if "--json" in sys.argv:
+        try:
+            sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+            from diagnostic_contract import stamp as _stamp
+            _doc = _stamp(dict(OUT), "systems-checkup", path=__file__)     # review 375
+        except Exception:
+            _doc = dict(OUT, contract="systems-checkup", contract_version="unstamped")
+        print("\n" + json.dumps(_doc, indent=1, default=str))

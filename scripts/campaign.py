@@ -37,6 +37,12 @@ def _bring_up(q, source="campaign"):
     """Graduate a question to the causality head. The structured record keeps the history; the
     string queue is the one his chat prompt actually reads (.pending-causality-queue.json - the
     same file /api/causality/bring-up feeds). Writing only the first was a question into a drawer."""
+    try:   # review 204: one schema-2 door for every producer
+        import causality_engine as _ce
+        if _ce.queue_question(q, source, evidence=[], memory=MEM):
+            return
+    except Exception:
+        pass
     try:
         p = os.path.join(MEM, "causality-bring-up.json")
         try: d = json.load(open(p))

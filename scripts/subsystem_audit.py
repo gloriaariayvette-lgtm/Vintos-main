@@ -83,7 +83,13 @@ def audit(being, M, dreams_glob, journal_glob):
             lines.append("RED    %-22s stale %.0fh (expect <%dh)" % (name, age, maxh)); red += 1
         else:
             lines.append("green  %-22s %.1fh" % (name, age))
-    out = "# Subsystem audit — %s — %s\n\n" % (being, time.strftime("%Y-%m-%d %H:%M")) + "\n".join(lines) + "\n"
+    try:
+        import sys as _cs; _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from diagnostic_contract import header_line as _hl
+        _contract = _hl("subsystem-audit", path=__file__)     # review 375
+    except Exception:
+        _contract = "contract: subsystem-audit (unstamped)"
+    out = "# Subsystem audit — %s — %s\n%s\n\n" % (being, time.strftime("%Y-%m-%d %H:%M"), _contract) + "\n".join(lines) + "\n"
     open(os.path.join(M, "subsystem-audit.md"), "w").write(out)
     print("=== %s: %d/%d red ===" % (being, red, len(SPEC)))
     for l in lines:

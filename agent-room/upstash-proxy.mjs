@@ -18,10 +18,16 @@ class Resp { constructor(){ this.buf=Buffer.alloc(0); }
     if(t==='*'){ const n=+l.s; if(n<0) return {value:null,end:l.end}; const out=[]; let p=l.end; for(let k=0;k<n;k++){ const e=this._one(p); if(!e) return null; out.push(e.error!==undefined?{error:e.error}:e.value); p=e.end; } return {value:out,end:p}; }
     throw new Error('bad RESP '+t); } }
 let sock=null, parser=new Resp(), queue=[], chain=Promise.resolve();
-function connect(){ return new Promise((res,rej)=>{ sock=net.connect(+RPORT,RHOST,()=>res()); sock.on('error',e=>{ rej(e); for(const q of queue.splice(0)) q.rej(e); sock=null; });
-  sock.on('close',()=>{ sock=null; }); sock.on('data',c=>{ parser.push(c); let r; while((r=parser.parse())){ const q=queue.shift(); if(q) q.res(r); } }); }); }
-function cmd(args){ return new Promise(async(res,rej)=>{ if(!sock){ try{ await connect(); }catch(e){ return rej(e);} } queue.push({res,rej}); sock.write(encode(args)); }); }
-function run(args){ chain=chain.then(()=>cmd(args)); return chain; }
+// review 367: a dropped socket fails every in-flight request with a clear error, resets the parser so a
+// half-frame from the old connection cannot be parsed into the new one, and the command chain never stays
+// rejected - one failed command used to poison every later command with the same rejection.
+function failInflight(why){ const e = why instanceof Error ? why : new Error(String(why)); for(const q of queue.splice(0)) q.rej(e); parser = new Resp(); }
+function connect(){ return new Promise((res,rej)=>{ parser = new Resp(); const s = net.connect(+RPORT,RHOST,()=>{ sock=s; res(); });
+  s.on('error',e=>{ rej(e); failInflight(e); if (sock===s) sock=null; });
+  s.on('close',()=>{ if (sock===s) sock=null; failInflight(new Error('redis connection closed; request not answered')); });
+  s.on('data',c=>{ parser.push(c); let r; try { while((r=parser.parse())){ const q=queue.shift(); if(q) q.res(r); } } catch(e){ failInflight(e); s.destroy(); } }); }); }
+function cmd(args){ return new Promise(async(res,rej)=>{ if(!sock){ try{ await connect(); }catch(e){ return rej(e);} } queue.push({res,rej}); try { sock.write(encode(args)); } catch(e){ queue.splice(queue.indexOf({res,rej})); rej(e); } }); }
+function run(args){ const next = chain.catch(()=>{}).then(()=>cmd(args)); chain = next.catch(()=>{}); return next; }
 const server=http.createServer((req,res)=>{
   res.setHeader('access-control-allow-origin','*'); res.setHeader('access-control-allow-headers','authorization,content-type,cache-control,pragma');
   if(req.method==='OPTIONS'){ res.writeHead(204); return res.end(); }

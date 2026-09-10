@@ -82,10 +82,19 @@ def generate(title, style, desc="", instrumental=True, duration=120, gender=None
         LAST_SUBMISSION = {"title": title, "style_sent": style[:400], "prompt_sent": prompt[:2000], "lyrics_sent": (lyrics or "")[:4000],
                            "instrumental": bool(instrumental), "duration_requested": duration, "gender": gender,
                            "truncated": bool(len(prompt) > 2000 or len(lyrics or "") > 4000), "at": datetime.now().isoformat()}
-        r = _rq.post(f"{ACESTEP_URL}/release_task",
-                     json=payload,
-                     headers={"Content-Type": "application/json"},
-                     timeout=30)
+        # review 170: a music render is background work on the same machine as his voice; it waits
+        # for a live turn to pass (bounded) instead of starving it. The payload and files are untouched.
+        try:
+            import sys as _cas; _cas.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            from compute_admission import admit as _admit
+        except Exception:
+            import contextlib as _cl
+            _admit = lambda *a, **k: _cl.nullcontext()
+        with _admit("background", organ="dream-music", provider="ace-step", stage="release_task"):
+            r = _rq.post(f"{ACESTEP_URL}/release_task",
+                         json=payload,
+                         headers={"Content-Type": "application/json"},
+                         timeout=30)
         data = r.json()
         tid = data.get("data", {}).get("task_id")
         if not tid:
