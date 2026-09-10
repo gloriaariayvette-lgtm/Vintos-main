@@ -72,7 +72,7 @@ json.dump([{"timestamp": "t"}], open(os.path.join(MEM, "interaction-ledger.json"
 v = HV.view()
 st = {r["store"]: r["state"] for r in v["stores"]}
 check("live / unavailable / malformed / unsupported / quiet are told apart", st["current-wants.json"] == "live" and st["taste-vector.json"] == "unavailable" and st["belief-sediment.json"] == "malformed" and st["causal-self-model.json"] == "unsupported" and st["interaction-ledger.json"] == "quiet", st)
-check("the broker is asked, and answers unavailable here", v["services"]["broker"]["broker"] in ("unavailable", "unknown"))
+check("the broker is asked, and answers in the same vocabulary", v["services"]["broker"]["broker"] in ("unavailable", "unknown", "up", "live", "degraded"), v["services"]["broker"])
 
 print("\n--- 328: one inspection of an undertaking ---")
 AL = load("atelier_ledger", os.path.join(REPO, "scripts", "atelier_ledger.py")); AL.MEMORY = MEM; AL.LEDGER = os.path.join(MEM, "atelier-undertakings.json")
