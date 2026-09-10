@@ -167,6 +167,11 @@ def record_corrections(entry_date=None):
             f.write(json.dumps({"at": datetime.now().isoformat(), "entry_date": entry_date or datetime.now().date().isoformat(),
                                 "source_id": sid, "correction": line.lstrip("- ")[:300], "kind": "gloria_correction",
                                 "supersedes": "the self-model's own account where they disagree"}) + "\n"); n += 1
+            try:   # review 135: the same correction is one revision in the identity revision log
+                from identity_revisions import record as _ir
+                _ir("self-model", sid, "", line.lstrip("- ")[:300], reason="her correction", source="self_model_evidence", kind="correction")
+            except Exception:
+                pass
     return n
 
 def corrections_view(limit=12):

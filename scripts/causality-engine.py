@@ -907,13 +907,28 @@ def graduate_hypotheses(db):
                         except Exception as _gh_e:
                             log(f"  gloria-hypotheses wire failed: {_gh_e}")
                     else:
-                        # Self-tagged — feed belief sediment
+                        # Self-tagged — feed belief sediment.
+                        # review 146: the evidence record is written FIRST (memory/causality-graduated.jsonl,
+                        # the whole hypothesis with its marks and evidence ids); only then the downstream
+                        # write. A failed downstream leaves promotion_pending on the hypothesis, which stays
+                        # in the db for the next run, and the evidence is intact either way.
+                        _ev_ids = [i for m in _nightly_rows(h) for i in (m.get("evidence_ids") or [])]
+                        try:
+                            with open(os.path.join(MEMORY, "causality-graduated.jsonl"), "a") as _gf:
+                                _gf.write(json.dumps({"at": datetime.now().isoformat(), "hypothesis_id": _hypothesis_id(h),
+                                                      "hypothesis": h, "evidence_ids": _ev_ids, "downstream": "belief_sediment"}) + "\n")
+                        except Exception as _ge:
+                            log(f"  graduation evidence record failed: {_ge}")
                         try:
                             import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
                             from belief_sediment import promote_hypothesis as _bs_promote
-                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality")
+                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality",
+                                        hypothesis_id=_hypothesis_id(h), evidence_ids=_ev_ids)
+                            h.pop("promotion_pending", None)
                         except Exception as _bs_e:
-                            log(f"  belief_sediment wire failed: {_bs_e}")
+                            log(f"  belief_sediment wire failed: {_bs_e} - promotion pending, evidence kept")
+                            h["promotion_pending"] = {"downstream": "belief_sediment", "error": str(_bs_e)[:200],
+                                                      "at": datetime.now().isoformat()}
                     # High-confidence self graduation → pearl candidate — only when the hypothesis was
                     # formed from BEHAVIORAL material (a trial block, or a pattern he enacts/avoids).
                     # Spike attribution and causal-jepa regularities go to belief sediment only
@@ -943,6 +958,8 @@ def graduate_hypotheses(db):
                     h["graduation_review"] = {"state": "passed", "basis": _review_basis,
                                                 "at": h["graduated_at"]}
                     graduated.append(h)
+                    if h.get("promotion_pending"):
+                        remaining.append(h)   # review 146: graduated, but its downstream write failed - retried next run
                     log("  GRADUATED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
                 else:
                     h["graduated"] = False

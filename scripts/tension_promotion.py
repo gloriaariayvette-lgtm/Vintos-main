@@ -269,6 +269,15 @@ def main():
         # rehabilitation: only support gathered AFTER the correction counts toward coming back
         if t["status"] == "CONTESTED":
             _after = [e for e in sup if e["at"] > (t.get("last_corrected") or "")]
+            # review 143: a claim she has corrected twice or more does not come back on ordinary support.
+            # It needs her own words (E1) after the latest correction among the support, and never counts
+            # anything gathered before any correction. Old support cannot rehabilitate it.
+            _twice = int(t.get("correction_count", 0) or 0) >= 2
+            _e1_after = any(e.get("channel") == "E1" for e in _after)
+            if _twice and not _e1_after:
+                log("%s stays CONTESTED: corrected %d times; rehabilitation needs her own words after the last correction"
+                    % (t["tension_id"], t.get("correction_count", 0)))
+                continue
             if ((len(_after) >= 2 and len({e["channel"] for e in _after}) >= 2) or len(_after) >= 3) \
                     and len({e["at"][:10] for e in _after}) >= 3:
                 t["status"] = "SUPPORTED"; t["eligible_for_visibility"] = True

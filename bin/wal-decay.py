@@ -119,7 +119,7 @@ def _emotional_state_at(ts_iso):
 
 
 def _build_durable(entry, imprint):
-    _lg = _lv = ""
+    _lg = _lv = ""; _le_ts = ""; _le_tid = None
     try:
         _led_raw = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         _led = _led_raw if isinstance(_led_raw, list) else _led_raw.get("entries", [])
@@ -128,6 +128,7 @@ def _build_durable(entry, imprint):
             try:
                 if abs((_ets - datetime.fromisoformat(str(_le.get("timestamp", "")))).total_seconds()) < 300:
                     _lg, _lv = str(_le.get("gloria", "")), str(_le.get("vintos", ""))
+                    _le_ts, _le_tid = _le.get("timestamp", ""), _le.get("turn_id")
                     break
             except Exception: pass
     except Exception: pass
@@ -165,6 +166,11 @@ def _build_durable(entry, imprint):
 
     rec = {
         "event": entry.get("content", ""),
+        # review 107: the claim keeps its occurrence - the turns it came from, the ledger row it was
+        # matched to, and her exact words as a quote apart from the interpretation below
+        "source_turns": list(entry.get("source_turns") or []),
+        "ledger_match": {"timestamp": str(_le_ts), "turn_id": _le_tid} if _lg else None,
+        "quote": {"gloria": _lg[:600], "vintos": _lv[:600]} if _lg else None,
         "gloria": (_lg or str(imp.get("gloria_said", "")))[:600],
         "exact_words": (_lv or str(imp.get("vintos_said", "")))[:600],
         "self_state": state,

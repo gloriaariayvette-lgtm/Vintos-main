@@ -1,0 +1,17 @@
+{
+ "built_from": "avatar/build.sh",
+ "files": [
+  {
+   "file": "clips/manifest.json",
+   "bytes": 866,
+   "sha256": "8020146b6f15ee83daee5c99ea2d50e9eeec0f22bb5526683b92ee4e119ae05b"
+  },
+  {
+   "file": "overlay.html",
+   "bytes": 14001,
+   "sha256": "e25143b1b26e381ffe135e59a2228b4ab2defd314ec85a5b33cd778862cd86a9"
+  }
+ ],
+ "external_dependencies": [],
+ "note": "the three.js stage itself is packaged in the phone app (vintos-app); see docs/graphics-bundle.md"
+}

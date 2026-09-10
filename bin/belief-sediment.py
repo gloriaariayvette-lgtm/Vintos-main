@@ -25,8 +25,10 @@ def load_sediment():
 def save_sediment(data):
     json.dump(data, open(SEDIMENT_FILE, "w"), indent=2)
 
-def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality"):
-    """Promote a graduated hypothesis into belief sediment."""
+def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hypothesis_id=None, evidence_ids=None):
+    """Promote a graduated hypothesis into belief sediment.
+    review 107/150: the belief keeps the hypothesis id and the evidence ids it graduated on, and is
+    marked kind=tentative_inference - it is what an organ inferred, not something authored."""
     data = load_sediment()
     beliefs = data["beliefs"]
 
@@ -37,12 +39,17 @@ def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality"):
             b["confidence"] = min(0.9, b["confidence"] + 0.08)
             b["evidence_count"] += 1
             b["last_reinforced"] = datetime.now().isoformat()
+            if hypothesis_id: b.setdefault("hypothesis_ids", []).append(hypothesis_id)
+            if evidence_ids: b.setdefault("evidence_ids", []).extend([x for x in evidence_ids if x])
             save_sediment(data)
             return b["pattern"]
 
     # New belief
     belief = {
         "pattern": hypothesis_text[:300],
+        "kind": "tentative_inference",
+        "hypothesis_ids": [hypothesis_id] if hypothesis_id else [],
+        "evidence_ids": [x for x in (evidence_ids or []) if x],
         "confidence": 0.3 + min(0.3, evidence_count * 0.05),
         "evidence_count": evidence_count,
         "source": source,

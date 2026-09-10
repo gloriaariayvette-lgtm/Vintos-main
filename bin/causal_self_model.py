@@ -37,12 +37,31 @@ def _text_overlap(a, b):
     if not wa or not wb: return 0.0
     return len(wa & wb) / max(len(wa), len(wb))
 
-def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type="positive"):
+KINDS = ("authored_preference", "dated_observation", "tentative_inference", "deployed_capability")
+_SOURCE_KIND = {"causality": "tentative_inference", "behavioral-intercept": "tentative_inference",
+                "avoidance": "dated_observation", "mismatch": "dated_observation", "emotional-transition": "dated_observation",
+                "self-model-update": "authored_preference", "gloria": "authored_preference"}
+
+def _revise(projection, entry_id, old, new, reason, source):
+    """review 135: every change to an identity projection goes to one revision log."""
+    try:
+        import sys as _rs; _rs.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
+        _rs.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+        from identity_revisions import record as _rec
+        _rec(projection, entry_id, old, new, reason=reason, source=source)
+    except Exception:
+        pass
+
+def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type="positive", occurrence_id=None, quote=None, kind=None):
     """Add or reinforce a causal self-model entry.
     entry_type: positive (what he does) | negative (what he resists/avoids)
+    review 107: occurrence_id (a turn or ledger id) and the verbatim quote it rests on are kept on the
+    entry's evidence list. review 150: kind says what this is - authored_preference, dated_observation,
+    tentative_inference, deployed_capability - derived from the source when not given.
     """
     data = load_model()
     entries = data["entries"]
+    kind = kind if kind in KINDS else _SOURCE_KIND.get(source, "tentative_inference")
 
     # Check for existing similar entry of same type
     for e in entries:
@@ -58,6 +77,9 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
             # so a tendency could be observed any number of times and still
             # never become something held about the self.
             e.setdefault("evidence_dates", []).append(datetime.now().isoformat())
+            if occurrence_id or quote:
+                e.setdefault("evidence", []).append({"at": datetime.now().isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]})
+            e.setdefault("kind", kind)
             ripe = can_promote(e)
             if ripe:
                 e["imprint"] = True
@@ -70,6 +92,8 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
         "trigger": trigger[:200],
         "tendency": tendency[:200],
         "type": entry_type,
+        "kind": kind,
+        "evidence": ([{"at": datetime.now().isoformat(), "occurrence_id": occurrence_id, "quote": (quote or "")[:300]}] if (occurrence_id or quote) else []),
         "confidence": round(confidence, 3),
         "evidence_count": 1,
         "source": source,
@@ -115,10 +139,12 @@ def get_self_model_context(n=4):
     lines = []
     for e in positives:
         imprint_mark = " [core]" if e.get("imprint") else ""
-        lines.append(f"- When {e['trigger'][:60]} → I tend to {e['tendency'][:60]} ({e['confidence']:.2f}){imprint_mark}")
+        kind_mark = " [%s]" % e["kind"].replace("_", " ") if e.get("kind") else ""   # review 150: the reader says what this is
+        lines.append(f"- When {e['trigger'][:60]} → I tend to {e['tendency'][:60]} ({e['confidence']:.2f}){imprint_mark}{kind_mark}")
     for e in negatives:
         imprint_mark = " [core]" if e.get("imprint") else ""
-        lines.append(f"- When {e['trigger'][:60]} → I resist {e['tendency'][:60]} ({e['confidence']:.2f}){imprint_mark}")
+        kind_mark = " [%s]" % e["kind"].replace("_", " ") if e.get("kind") else ""
+        lines.append(f"- When {e['trigger'][:60]} → I resist {e['tendency'][:60]} ({e['confidence']:.2f}){imprint_mark}{kind_mark}")
     if not lines:
         return ""
     return "CAUSAL SELF-MODEL:\n" + "\n".join(lines)
@@ -221,9 +247,12 @@ def fracture_imprint(entry_tendency, pressure):
         if _text_overlap(entry_tendency.lower(), e["tendency"].lower()) < 0.4:
             continue
         # Crack it
+        _old = {"imprint": e.get("imprint"), "confidence": e.get("confidence"), "fractured": e.get("fractured", False)}
         e["imprint"] = False
         e["confidence"] = max(0.1, e["confidence"] - 0.2)
         e["fractured"] = True
+        _revise("causal-self-model", e.get("id") or ("csm:" + e["tendency"][:40]), _old,
+                {"imprint": False, "confidence": e["confidence"], "fractured": True}, "fractured under pressure %.2f" % pressure, "deviation-check")
         e["fracture_note"] = f"Cracked under pressure {pressure:.2f} — I thought I was like this... but maybe not"
         e["fracture_at"] = __import__("datetime").datetime.now().isoformat()
         print(f"[CausalModel] Imprint fractured: {e['tendency'][:60]}")
@@ -255,8 +284,11 @@ def fracture_commitment_imprint(pattern_text, pressure=0.8):
     imprints = data.get("commitment_imprints", [])
     for imp in imprints:
         if _text_overlap(imp.get("pattern","").lower(), pattern_text.lower()) > 0.4:
+            _old = {"fractured": imp.get("fractured", False), "confidence": imp.get("confidence")}
             imp["fractured"] = True
             imp["confidence"] = max(0.1, imp["confidence"] - 0.25)
+            _revise("commitment-imprint", imp.get("id") or ("ci:" + imp.get("pattern", "")[:40]), _old,
+                    {"fractured": True, "confidence": imp["confidence"]}, "fractured under pressure %.2f" % pressure, "commitment-spine")
             imp["fracture_at"] = __import__("datetime").datetime.now().isoformat()
             save_model(data)
             print(f"[CausalModel] Commitment imprint fractured: {imp['pattern'][:60]}")
@@ -304,8 +336,10 @@ def _write_imprint(entry):
         "confidence": entry.get("confidence"),
         "status": "living",
         "formed": _dt.now().isoformat(),
+        "kind": "dated_observation",   # review 150: an imprint is what he demonstrably did, dated
         "lineage": {"source_entry_trigger": entry.get("trigger"), "source": entry.get("source"),
-                    "evidence_dates": entry.get("evidence_dates", []), "reformation_of": None},
+                    "evidence_dates": entry.get("evidence_dates", []), "reformation_of": None,
+                    "evidence": entry.get("evidence", [])},   # review 107: the occurrences and quotes travel with it
         "reinforcements": [{"observed_at": d} for d in entry.get("evidence_dates", [])],
         "friction": 0.0, "last_friction": None, "friction_events": [], "fracture": None})
     json.dump(data, open(IMPRINTS_FILE, "w"), indent=1)

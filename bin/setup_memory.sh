@@ -19,19 +19,21 @@ mkdir -p "${HOME}/.vintos/workspace/avatar-models"
 # Seed initial emotional state
 STATE_FILE="${MEMORY}/emotional-state.txt"
 if [ ! -f "${STATE_FILE}" ]; then
+    # review 11: the readers (emoclaw_utils, relational-geometry, subconscious-drift) split each line on ':'
+    # - the old seed used '=' and every reader saw an empty state on a fresh install
     cat > "${STATE_FILE}" << 'EOF'
-Valence=0.50
-Arousal=0.45
-Dominance=0.50
-Safety=0.65
-Desire=0.40
-Connection=0.50
-Playfulness=0.45
-Curiosity=0.60
-Warmth=0.55
-Tension=0.30
-Groundedness=0.65
-Nifrathir=0.50
+Valence: 0.50
+Arousal: 0.45
+Dominance: 0.50
+Safety: 0.65
+Desire: 0.40
+Connection: 0.50
+Playfulness: 0.45
+Curiosity: 0.60
+Warmth: 0.55
+Tension: 0.30
+Groundedness: 0.65
+Nifrathir: 0.50
 EOF
     echo "[setup] Emotional state seeded."
 fi
@@ -121,6 +123,44 @@ if [ ! -f "${MEMORY}/voice-coherence.md" ]; then
     echo "# Voice Coherence Log" > "${MEMORY}/voice-coherence.md"
     echo "[setup] Created voice-coherence.md"
 fi
+
+# review 11: every seeded store must load the way its readers load it. A seed the readers cannot
+# parse is a failed bootstrap, not a warning.
+python3 - "${MEMORY}" <<'PYCHECK'
+import json, os, sys
+mem = sys.argv[1]; bad = []
+shapes = {"resonance-pool.json": ("dict", "pulses"), "interaction-ledger.json": ("list", None), "yearning-scars.json": ("list", None),
+          "trial-ledger.json": ("dict", "trials"), "candidate-pearls.json": ("dict", "candidates"), "black-pearls.json": ("dict", "pearls"),
+          "causality-hypotheses.json": ("dict", "hypotheses"), "counterfactual-tendencies.json": ("dict", "tendencies"),
+          "value-map.json": ("dict", "values"), "wants-log.json": ("dict", "wants"), "ambitions.json": ("dict", "ambitions"),
+          "thread-triage.json": ("dict", "threads"), "affective-weight.json": ("dict", "total_weight"), "moment-index.json": ("dict", "moments"),
+          "belief-sediment.json": ("dict", "beliefs"), "narrative-identity.json": ("dict", "fragments"),
+          "relational-geometry.json": ("dict", "geometry"), "tension-field.json": ("dict", "tensions"), "latent-threads.json": ("dict", "threads"),
+          "absence-map.json": ("dict", "absences"), "gloria-model.json": ("dict", "observations"), "wal-buffer.json": ("dict", "entries")}
+for name, (kind, key) in shapes.items():
+    p = os.path.join(mem, name)
+    if not os.path.exists(p): continue
+    try:
+        d = json.load(open(p))
+    except Exception as e:
+        bad.append("%s: not JSON (%s)" % (name, e)); continue
+    if kind == "list" and not isinstance(d, list): bad.append("%s: expected a list" % name)
+    if kind == "dict" and (not isinstance(d, dict) or (key and key not in d)): bad.append("%s: expected a dict with %r" % (name, key))
+st = os.path.join(mem, "emotional-state.txt")
+if os.path.exists(st):
+    lines = [l for l in open(st).read().strip().split("\n") if l.strip()]
+    parsed = {}
+    for l in lines:
+        if ":" not in l: bad.append("emotional-state.txt: %r has no ':' (readers split on it)" % l); continue
+        k, v = l.split(":", 1)
+        try: parsed[k.strip()] = float(v.split("|")[0].strip())
+        except ValueError: bad.append("emotional-state.txt: %r is not a number" % l)
+    for dim in ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"):
+        if dim not in parsed: bad.append("emotional-state.txt: missing %s" % dim)
+if bad:
+    print("[setup] SEED VALIDATION FAILED:"); [print("  - " + b) for b in bad]; sys.exit(1)
+print("[setup] seeds validated: %d stores and the emotional state load the way their readers load them" % len([n for n in shapes if os.path.exists(os.path.join(mem, n))]))
+PYCHECK
 
 echo "[setup] Vintos memory structure ready at ${MEMORY}"
 echo "[setup] Add your Grok API key to: ${SECRETS}/grok_api_key"

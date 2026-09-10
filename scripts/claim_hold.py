@@ -57,6 +57,8 @@ def main():
                 continue
             d["trials"].append({"id": "ch_" + uuid.uuid4().hex[:6], "opened_at_turn": ts,
                 "opened": datetime.now().isoformat(), "claim": str(out.get("claim"))[:250],
+                "claim_verbatim": str(out.get("claim")),   # review 155: the exact claim, never truncated
+                "challenge": {"his_reason_verbatim": str(out.get("his_reason"))}, "correction": None,
                 "his_reason": str(out.get("his_reason"))[:400],
                 "confidence_shown": out.get("confidence_shown"),
                 "terrain": str(out.get("terrain", "UNCLASSIFIED")).upper().replace("-", "_")[:12],
@@ -99,7 +101,10 @@ def main():
                 '{"settled": true/false, "verdict": "VINDICATED|CORRECTED|null", "evidence": "verbatim quote or empty"}'))
             if out and out.get("settled") and out.get("verdict") in ("VINDICATED", "CORRECTED"):
                 t["outcome"] = {"verdict": out["verdict"], "evidence": str(out.get("evidence"))[:300],
-                                "at": datetime.now().isoformat()}
+                                "evidence_verbatim": str(out.get("evidence")), "at": datetime.now().isoformat()}
+                if out["verdict"] == "CORRECTED":   # review 155: the later correction is kept exactly, beside the claim and the challenge
+                    t["correction"] = {"at": datetime.now().isoformat(), "quote": str(out.get("evidence")),
+                                       "her_pushback": (t.get("pushback") or {}).get("quote"), "his_choice": (t.get("choice") or {}).get("quote")}
                 print("[claim-hold] %s -> %s" % (t["id"], out["verdict"]))
         if t["outcome"] is None and t.get("opened"):
             if datetime.now() - datetime.fromisoformat(t["opened"]) > timedelta(hours=UNRESOLVED_AFTER_H):
