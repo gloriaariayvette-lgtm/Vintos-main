@@ -594,6 +594,10 @@ def update_thread(thread_id, consumed, reason):
                     t["consumed_by"] = reason
                 else:
                     t["ghost_passes"] = t.get("ghost_passes", 0) + 1
+                    # review 149: the unsuccessful pass is kept with the question as it was and the class it came from
+                    t.setdefault("unsuccessful_passes", []).append({"at": datetime.now().isoformat(), "by": "ghost-branches",
+                        "question": str(t.get("thread", ""))[:300], "source_class": t.get("kind") or t.get("source") or "unknown", "why": str(reason)[:160]})
+                    t["unsuccessful_passes"] = t["unsuccessful_passes"][-10:]
                 break
         from thread_store import save_pool
         save_pool(threads, THREADS_FILE, reason="ghost-branches")

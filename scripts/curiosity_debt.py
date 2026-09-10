@@ -98,7 +98,7 @@ def confirm_surfaced(qid_or_text):
             x["surfaced"] = x.get("surfaced", 0) + 1
     _save(d)
 
-def confirm_from_reply(reply_text, window_s=900):
+def confirm_from_reply(reply_text, window_s=900, turn_id=None):
     """Post-reply check (fable-curiosity-p6, 2026-09-05): did he actually VOICE the question the
     block offered this turn? Looks only at items offered within the window and counts one as
     surfaced when most of its content words appear in his reply, or a 4-word run of it does.
@@ -112,6 +112,8 @@ def confirm_from_reply(reply_text, window_s=900):
                  "was","be","have","has","had","not","but","if","as","at","by","so","than","then","there","they"}
         for x in d:
             if not x.get("offered") or now - float(x.get("last_seen") or 0) > window_s: continue
+            # review 154: when both sides carry a turn id, only the reply to the offering turn can confirm
+            if turn_id and x.get("offered_turn") and str(turn_id) != str(x["offered_turn"]): continue
             q = str(x.get("question","")).lower()
             words = [w.strip("?.,;:!\"'()") for w in q.split()]
             content = [w for w in words if len(w) > 3 and w not in _stop]
@@ -134,6 +136,7 @@ def block():
     out = ""
     if ripe:
         r = ripe[0]; r["offered"] = r.get("offered", 0) + 1; r["last_seen"] = now
+        r["offered_turn"] = os.environ.get("VINTOS_TURN_ID", "") or r.get("offered_turn", "")   # review 154: which turn this was offered in
         if r.get("kind") == "held_inquiry":
             out = ("[CURIOSITY - something you went looking for and could not find; it is still "
                    "open, and it is yours, not hers to answer. Hold it, mention it if it fits, "

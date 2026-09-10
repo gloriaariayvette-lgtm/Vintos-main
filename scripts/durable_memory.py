@@ -66,8 +66,15 @@ def recall(text, floor=RECALL_FLOOR):
         if s > score: best, score = r, s
     if not best or score < floor:
         _save(d); return None
-    best["later_recalled"] = best.get("later_recalled", 0) + 1
-    best["last_recalled"] = datetime.now().isoformat()
+    # review 125: surfacing counts as recurrence once per hour per memory; a prompt assembled three times
+    # in a minute is one contact, not three. The reading itself never changes importance.
+    try:
+        _last = datetime.fromisoformat(best.get("last_recalled")) if best.get("last_recalled") else None
+    except Exception:
+        _last = None
+    if _last is None or (datetime.now() - _last).total_seconds() > 3600:
+        best["later_recalled"] = best.get("later_recalled", 0) + 1
+        best["last_recalled"] = datetime.now().isoformat()
     _save(d)
     return best
 

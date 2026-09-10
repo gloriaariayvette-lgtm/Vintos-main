@@ -91,6 +91,12 @@ def dispatch(text, trigger="", at=None):
     text = (text or "").strip()
     if len(text) < 5:
         return None
+    try:   # review 80: the same reach, dispatched twice inside an hour (a retried caller, a repeated ack), is one reach
+        import idempotency as _idem
+        if not _idem.once("encounter:" + _idem.key_of(text[:200], trigger), ttl_s=3600):
+            log("dispatch refused: same reach already recorded within the hour (%s)" % (trigger or "-")); return None
+    except ImportError:
+        pass
     rows = load()
     eid = "EN-" + uuid.uuid4().hex[:6]
     rows.append({"encounter_id": eid, "state": "dispatched", "trigger": trigger,

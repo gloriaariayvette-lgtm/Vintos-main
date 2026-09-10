@@ -136,6 +136,25 @@ def poll(tid):
     print("  Timeout", file=sys.stderr)
     return None
 
+def listen(fp):
+    """review 314: what the piece actually is, measured from the bytes - duration, peak, loudness - so the
+    record carries a listening, not only what was asked for. wav only; anything else says unmeasured."""
+    try:
+        import wave, struct
+        with wave.open(fp, "rb") as w:
+            n, sr, ch, sw = w.getnframes(), w.getframerate(), w.getnchannels(), w.getsampwidth()
+            dur = n / float(sr or 1)
+            frames = w.readframes(min(n, sr * 60))   # the first minute is enough for a level
+        if sw == 2:
+            vals = struct.unpack("<%dh" % (len(frames) // 2), frames)
+            peak = max(abs(v) for v in vals) / 32768.0 if vals else 0.0
+            rms = (sum(v * v for v in vals) / float(len(vals) or 1)) ** 0.5 / 32768.0
+        else:
+            peak = rms = None
+        return {"duration_s": round(dur, 1), "sample_rate": sr, "channels": ch, "peak": (round(peak, 3) if peak is not None else None), "rms": (round(rms, 4) if rms is not None else None), "measured": True}
+    except Exception as e:
+        return {"measured": False, "why": str(e)[:80]}
+
 def dl(url, fp):
     """Download/copy audio from ACE-Step local path or remote URL."""
     import shutil
@@ -473,6 +492,7 @@ def direct(title,style,desc="",lyrics=""):
         entry["tracks"].append({"version":i+1,"duration":t.get("duration"),"audio_url":t.get("file"),"local_file":downloaded_by_track.get(i)})
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
+    entry["listening"] = [listen(f) for f in downloaded]   # review 314
     log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
     _landing_done(tid, downloaded)
     print(f"\n  '{title}' complete!"); return True

@@ -429,6 +429,18 @@ def keep(b):
     try:
         p = _j(proj) or p   # re-read INSIDE the lock (P02-05): a holder that saved while KEEP waited is not undone
         p["state"] = "KEPT"; p["kept_at"] = datetime.now().isoformat()
+        # review 99: the closing note is bound to the artifact bytes it was written over (the latest
+        # artifact's sha256), so a note cannot later be read as about a different revision
+        try:
+            _ad = os.path.join(_p(pid), "artifacts")
+            _files = sorted((f for f in os.listdir(_ad) if os.path.isfile(os.path.join(_ad, f))), key=lambda f: os.path.getmtime(os.path.join(_ad, f))) if os.path.isdir(_ad) else []
+            if _files:
+                _lastf = _files[-1]
+                p["kept_note_bound_to"] = {"artifact": _lastf, "sha256": hashlib.sha256(open(os.path.join(_ad, _lastf), "rb").read()).hexdigest()}
+            else:
+                p["kept_note_bound_to"] = None
+        except Exception:
+            p["kept_note_bound_to"] = None
         _w(proj, p)
         a = _j(os.path.join(ROOT, "active.json"), {}) or {}
         if a.get("id") == pid:
@@ -439,7 +451,7 @@ def keep(b):
             v["closed"] = True; v["closed_by"] = "kept"; _w(vpath, v)
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN); lock.close()
-    _ev(pid, "state", {"to": "KEPT", "note": b.get("note", "")})
+    _ev(pid, "state", {"to": "KEPT", "note": b.get("note", ""), "note_bound_to": p.get("kept_note_bound_to")})
     _health("an undertaking was kept")
     return {"ok": True, "state": "KEPT", "worktable_released": True}
 

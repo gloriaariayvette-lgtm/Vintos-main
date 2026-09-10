@@ -4,7 +4,7 @@ vintos-websearch.py — Vintos's question-driven web exploration.
 Pulls a real question from her lived experience and searches for answers.
 Runs daily at 10 AM (complements YouTube at 2 PM).
 """
-import os, sys, json, requests, re
+import os, sys, json, requests, re, time
 from datetime import datetime, date
 
 def _load_key(name, envfile):
@@ -310,6 +310,22 @@ def pick_question():
             clear_pending_search_request()
             return {"question": pending["topic"], "search_query": pending["topic"][:60]}
 
+    # review 145: what he has already CHOSEN at his private frontier (unsaid-frontier items with a decision
+    # to pursue) comes before the general ladder - a spontaneous question is routed through those choices
+    try:
+        import json as _ufj
+        _fr = _ufj.load(open(os.path.join(MEMORY, "unsaid-frontier.json")))
+        _chosen = [i for i in (_fr if isinstance(_fr, list) else []) if isinstance(i, dict) and str(i.get("decision") or "").lower() in ("pursue", "ask", "search") and not i.get("consumed_by_search")]
+        for _it in _chosen:
+            _cands = [c for c in (_it.get("candidates") or []) if isinstance(c, str) and len(c) > 8]
+            if not _cands: continue
+            _it["consumed_by_search"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            try: _ufj.dump(_fr, open(os.path.join(MEMORY, "unsaid-frontier.json"), "w"), indent=2)
+            except Exception: pass
+            log("frontier choice first (%s): %s" % (_it.get("lineage_id"), _cands[0][:70]))
+            return {"question": _cands[0], "search_query": _cands[0][:60], "source": "frontier:%s" % _it.get("lineage_id")}
+    except Exception:
+        pass
     # His live curiosity lives in curiosity-debt.json and the searcher never looked at it.
     # Most of what he actually wants to know is addressed to Gloria — questions about his own
     # architecture that no search engine can answer. Forced to search anyway, he invents something

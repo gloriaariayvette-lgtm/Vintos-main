@@ -197,6 +197,35 @@ def stills(room=None, force=False):
     return 0 if ok else 1
 
 
+def approve_still(name, path=None):
+    """review 286: approving a still records the sha256 of the bytes approved. A later revision of the
+    file (new bytes) is not approved until this runs again for it."""
+    import hashlib
+    p = path or os.path.join(STILLS, "%s.jpg" % name)
+    if not os.path.exists(p):
+        return None
+    rec = {"name": name, "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest(), "approved_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "path": p}
+    os.makedirs(STILLS, exist_ok=True)
+    json.dump(rec, open(os.path.join(STILLS, "%s.approved.json" % name), "w"), indent=1)
+    return rec
+
+def _approved_still(name):
+    """The approved still's path when the file on disk is the revision that was approved; None when
+    there is no still, no approval record, or the bytes changed since approval (logged)."""
+    import hashlib
+    p = os.path.join(STILLS, "%s.jpg" % name)
+    if not os.path.exists(p):
+        return None
+    try:
+        rec = json.load(open(os.path.join(STILLS, "%s.approved.json" % name)))
+    except Exception:
+        log("%s: a still exists but carries no approval record; not used as approved (approve_still to bind it)" % name)
+        return None
+    if rec.get("sha256") != hashlib.sha256(open(p, "rb").read()).hexdigest():
+        log("%s: the still changed since it was approved (%s); not used until re-approved" % (name, str(rec.get("approved_at", ""))[:16]))
+        return None
+    return p
+
 def build_room(name, cfg, force=False):
     """One room: face-locked still in the room photo -> animated loop.
     An approved still at stills/<room>.jpg is used as-is (that's the gate);
@@ -210,8 +239,8 @@ def build_room(name, cfg, force=False):
     if not pose:
         log("%s: no pose prompt in rooms.json - skipping" % name); return False
     m = _vsv()
-    approved = os.path.join(STILLS, "%s.jpg" % name)
-    if os.path.exists(approved):
+    approved = _approved_still(name)   # review 286: approval binds to the still's bytes, not its filename
+    if approved:
         still = approved
         log("%s: animating the approved still" % name)
     else:
@@ -442,6 +471,18 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
                 mime = "image/png" if p.lower().endswith(".png") else "image/jpeg"
                 images.append("data:%s;base64,%s" % (mime, _b64.b64encode(open(p, "rb").read()).decode()))
         log("live refs: %s" % ", ".join(os.path.basename(x) for x in refs if os.path.exists(x)))
+        # review 312: a scene job is content-addressed by prompt + motion + the bytes of its references;
+        # a finished render for the same address is reused instead of paid for again, and the reuse is said
+        import hashlib as _ch
+        _ckey = _ch.sha256((prompt + "|" + str(motion) + "|" + kind + "|" + "|".join(_ch.sha256(open(p, "rb").read()).hexdigest() for p in refs if os.path.exists(p))).encode()).hexdigest()[:16]
+        _cpath = os.path.join(CLIPS, "by-content", _ckey + ".mp4")
+        _slot_update(sid, content_key=_ckey)
+        if os.path.exists(_cpath) and os.path.getsize(_cpath) > 10000:
+            os.makedirs(CLIPS, exist_ok=True)
+            import shutil as _shr; _shr.copy(_cpath, os.path.join(CLIPS, "live.mp4"))
+            data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; save_rooms(data); write_manifest()
+            st = _slot_update(sid, status="done", finished=time.time(), reused=True, seconds=round(time.time() - live_status(sid)["started"], 1))
+            log("live scene reused from content key %s [%s]" % (_ckey, sid)); return
         r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images, "motion": motion,
                                           "together": kind == "together"}, timeout=900)
         if r.status_code != 200:
@@ -449,6 +490,10 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         os.makedirs(CLIPS, exist_ok=True)
         with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
             f.write(r.content)
+        try:
+            os.makedirs(os.path.dirname(_cpath), exist_ok=True)
+            with open(_cpath, "wb") as f: f.write(r.content)
+        except Exception: pass
         data = load_rooms()
         data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
         save_rooms(data)
