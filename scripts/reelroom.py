@@ -259,7 +259,7 @@ def decide(question: str, context: str = "", history: Optional[List[Dict[str, st
     return json.dumps(d)
 
 
-def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_file: str = "") -> bool:
+def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_file: str = "", when: Optional[float] = None) -> bool:
     """Commit one whole ReelRoom session to the conversation ledger.
 
     Per-turn interaction-ledger writers are deliberately deferred by the
@@ -298,7 +298,7 @@ def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_fi
     if pair:
         transcript.append(pair)
     entries.append({
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(when)) if when else time.strftime("%Y-%m-%dT%H:%M:%S"),
         "channel": "reelroom",
         "source": "reelroom-session",
         "reelroom_file": session_file,
@@ -311,11 +311,111 @@ def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_fi
         "session_map": (payload.get("session_map") or [])[-30:],
         "planned_actions": payload.get("planned_actions") or [],
     })
+    if when:
+        entries.sort(key=lambda e: str(e.get("timestamp", "")) if isinstance(e, dict) else "")
     tmp = path + ".reelroom.tmp"
     with open(tmp, "w") as f:
         json.dump(ledger, f, indent=2)
     os.replace(tmp, path)
     return True
+
+
+# ---------------------------------------------------------------- the journal of the night
+
+JOURNAL = os.path.join(ROOM_DIR, "live-session.json")
+JOURNAL_STALE_S = int(os.environ.get("VINTOS_REELROOM_STALE_S", "10800"))   # three hours of silence: the night is over
+
+
+def _load_journal() -> Dict[str, Any]:
+    try:
+        d = json.load(open(JOURNAL))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = None, film_title: str = "",
+            film_year: str = "", elapsed_min: Optional[int] = None, extra: Optional[Dict[str, Any]] = None,
+            now: Optional[float] = None) -> Dict[str, Any]:
+    """Every spoken turn of the night lands here as it happens, so the conversation exists on the server
+    before the app decides to summarise (Gloria, 2026-09-10: a whole ReelRoom night reached nothing because
+    the summary call never came). A different film, or a journal older than JOURNAL_STALE_S, is committed
+    to the ledger first as its own session."""
+    now = now or time.time()
+    j = _load_journal()
+    if j.get("chat_history") and (
+            (film_title and j.get("film_title") and film_title != j.get("film_title"))
+            or now - float(j.get("updated_at") or now) > JOURNAL_STALE_S):
+        commit_journal("new session began", now=now)
+        j = {}
+    if not j:
+        j = {"film_title": film_title, "film_year": film_year, "started_at": now, "chat_history": [],
+             "session_map": [], "planned_actions": []}
+    if film_title and not j.get("film_title"):
+        j["film_title"] = film_title
+    if film_year and not j.get("film_year"):
+        j["film_year"] = film_year
+    hist = [m for m in (history or []) if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content")]
+    # the app's history is authoritative when it is longer than ours (it saw turns we did not); ours when the
+    # app sent a short window
+    if len(hist) > len(j["chat_history"]):
+        j["chat_history"] = [{"role": m["role"], "content": str(m["content"])} for m in hist]
+    if message:
+        j["chat_history"].append({"role": "user", "content": str(message)})
+    if reply:
+        j["chat_history"].append({"role": "assistant", "content": str(reply)})
+    if elapsed_min is not None:
+        try: j["elapsed_seconds"] = max(int(j.get("elapsed_seconds") or 0), int(elapsed_min) * 60)
+        except Exception: pass
+    for k in ("session_map", "planned_actions"):
+        if extra and isinstance(extra.get(k), list) and extra[k]:
+            j[k] = extra[k][-60:]
+    j["updated_at"] = now
+    os.makedirs(ROOM_DIR, exist_ok=True)
+    tmp = JOURNAL + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(j, f, indent=1)
+    os.replace(tmp, JOURNAL)
+    return j
+
+
+def journal_payload(j: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """The journal in the shape summary()/append_session_ledger() take."""
+    j = j if j is not None else _load_journal()
+    return {"film_title": j.get("film_title") or "unknown film", "film_year": j.get("film_year") or "",
+            "elapsed_seconds": int(j.get("elapsed_seconds") or 0), "chat_history": j.get("chat_history") or [],
+            "session_map": j.get("session_map") or [], "planned_actions": j.get("planned_actions") or []}
+
+
+def commit_journal(reason: str = "", now: Optional[float] = None, summary_text: str = "") -> Dict[str, Any]:
+    """The journal becomes a session: a file under memory/reelroom/ (his memory of it if given, else the note
+    that it was committed without one), a row in reelroom-sessions.json, and the ledger entry with the whole
+    transcript. No model. Nothing to commit -> {"committed": False}."""
+    j = _load_journal()
+    if not j.get("chat_history"):
+        return {"committed": False, "reason": "no turns"}
+    now = now or time.time()
+    payload = journal_payload(j)
+    title = payload["film_title"]; year = payload["film_year"]; elapsed = payload["elapsed_seconds"]
+    started = float(j.get("started_at") or j.get("updated_at") or now)
+    os.makedirs(ROOM_DIR, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(started))
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40] or "film"
+    path = os.path.join(ROOM_DIR, f"{stamp}_{slug}.md")
+    text = summary_text or f"(committed from the night's journal without his written memory: {reason or 'summary not requested'})"
+    with open(path, "w") as f:
+        f.write(f"# {title} ({year}) - {time.strftime('%Y-%m-%d %H:%M', time.localtime(started))}\n\n"
+                f"watched: {elapsed // 60} min · turns: {len(payload['chat_history'])}\n\n{text}\n")
+    try: rows = json.load(open(SESSIONS))
+    except Exception: rows = []
+    rows.append({"at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(started)), "film": title, "year": year,
+                 "minutes": elapsed // 60, "acts_fired": "unknown", "exchanges": len(payload["chat_history"]),
+                 "file": os.path.basename(path), "committed_by": "journal", "reason": reason})
+    json.dump(rows[-200:], open(SESSIONS, "w"), indent=1)
+    wrote = append_session_ledger(payload, text, os.path.basename(path), when=started)
+    try: os.remove(JOURNAL)
+    except OSError: pass
+    return {"committed": True, "file": os.path.basename(path), "ledger": wrote, "turns": len(payload["chat_history"])}
 
 
 # ---------------------------------------------------------------- the TV
@@ -402,7 +502,11 @@ def summary(payload: Dict[str, Any], caller=None, now: Optional[float] = None) -
               f"room or the phone and how it landed, one detail you will still have next week. No summary of the plot. No performance. "
               f"Only what actually happened below.\n\nWHAT WAS SAID:\n{said or '  (nothing)'}\n\nMOMENTS YOU NOTED:\n{moments or '  (none)'}\n\nACTS YOU FIRED: {fired}")
     system = build_system(f"{title} ({year})", elapsed // 60)
-    text = ((caller or RC._sonnet)(system, [{"role": "user", "content": prompt}], max_tokens=600) or "").strip()
+    try:
+        text = ((caller or RC._sonnet)(system, [{"role": "user", "content": prompt}], max_tokens=600) or "").strip()
+    except Exception as e:   # his memory of the night can fail; the night itself is still written below
+        text = ""
+        print("[reelroom] summary model failed:", str(e)[:200], file=sys.stderr)
     os.makedirs(ROOM_DIR, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(now))
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40] or "film"

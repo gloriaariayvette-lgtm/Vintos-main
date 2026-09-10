@@ -9563,6 +9563,15 @@ async def reelroom_chat(request: Request):
                 resolve_previous_intent=bool(_actual),
             )
             _out = await avatar_chat(_internal, request)
+            # the night's scratch journal (memory/reelroom/live-session.json) - NOT the ledger. The ledger gets
+            # one object per night, like a call; the journal is what makes that object possible when the app
+            # never asks for the summary (Gloria, 2026-09-10).
+            try:
+                rr.journal(msg if _actual is not None else "", str((_out or {}).get("reply") or ""),
+                           history=body.get("history") or [], film_title=str(body.get("film_title") or ""),
+                           film_year=str(body.get("film_year") or ""), elapsed_min=body.get("elapsed_min"),
+                           extra={"session_map": body.get("session_map") or [], "planned_actions": body.get("planned_actions") or []})
+            except Exception as _je: print("[reelroom] journal:", _je, flush=True)
             return {"reply": str((_out or {}).get("reply") or ""), "mode": mode,
                     "model": (_out or {}).get("model"), "error": (_out or {}).get("error")}
         reply = await _a.get_event_loop().run_in_executor(None, fn)
@@ -9633,16 +9642,29 @@ async def reelroom_summary(request: Request):
     body = await request.json()
     import asyncio as _a
     rr = _reelroom_mod()
+    # the app's payload is the night as it saw it; the journal is the night as the server saw it. The fuller
+    # transcript wins, so a summary call with a short history still commits the whole night.
+    try:
+        _jp = rr.journal_payload()
+        if len(_jp.get("chat_history") or []) > len(body.get("chat_history") or []):
+            body = {**_jp, **{k: v for k, v in body.items() if k != "chat_history"}, "chat_history": _jp["chat_history"]}
+    except Exception as _jpe: print("[reelroom] journal payload:", _jpe, flush=True)
     try:
         out = await _a.get_event_loop().run_in_executor(None, lambda: rr.summary(body))
         try:
             wrote = rr.append_session_ledger(body, str(out.get("summary") or ""), str(out.get("file") or ""))
             out["ledger"] = "written" if wrote else "already_written_or_empty"
+            if wrote:
+                try: os.remove(rr.JOURNAL)
+                except OSError: pass
         except Exception as e:
             out["ledger"] = "failed: " + str(e)[:120]
         return out
     except Exception as e:
-        return {"summary": "", "error": str(e)[:200]}
+        # his memory of the night failed entirely: the night is still one ledger object, from the journal
+        try: _c = rr.commit_journal("summary failed: " + str(e)[:80])
+        except Exception as _ce: _c = {"committed": False, "reason": str(_ce)[:120]}
+        return {"summary": "", "error": str(e)[:200], "ledger": "written" if _c.get("committed") else "not written", "file": _c.get("file", "")}
 
 
 @app.get("/api/game/reelroom/sessions")

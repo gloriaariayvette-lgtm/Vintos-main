@@ -90,6 +90,16 @@ def main(argv):
         else: d = keep
         entries = keep; changed = True
     if "--backfill-reelroom" in argv:
+        # a night still sitting in the scratch journal (the app never asked for the summary) becomes one session
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(MEMORY), "scripts"))
+            import reelroom as _rr
+            c = _rr.commit_journal("ledger-scrub backfill")
+            if c.get("committed"):
+                print("committed the live journal as %s (%d turns)" % (c["file"], c["turns"]))
+                d, entries = load()
+        except Exception as e:
+            print("live journal: not committed (%s)" % str(e)[:120])
         added = backfill_reelroom(entries)
         print("backfilled ReelRoom sessions: %s" % (", ".join(added) if added else "none missing"))
         changed = changed or bool(added)
