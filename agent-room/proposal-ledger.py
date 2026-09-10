@@ -58,4 +58,27 @@ if _cb:
         lines.append(f"- {r.get('at','')[:16]} {r.get('lens')}: **{r.get('state')}** @ {r.get('git_rev')} - {len(r.get('files_read') or [])} file(s) read - {r.get('note','')}")
     lines.append("")
 lines.insert(3, f"**{total} proposals, {retracted} taken back, {declined} declined, {built} built, {total-retracted-declined-built} standing.**"); lines.insert(4, "")
+# review 390: the same ledger as JSON - each proposal joined to its change (built commit / note), the
+# evidence it rested on (the sources the staged review json names) and what remains (standing / declined / taken back)
+try:
+    _j = {"day": day, "proposals": []}
+    for sub in ORDER:
+        for lens in LENSES:
+            _md = os.path.join(STAGE, f"{day}-{lens}-{sub}.md")
+            if not os.path.exists(_md): continue
+            _src = []
+            try:
+                _doc = json.load(open(os.path.join(STAGE, f"{day}-{lens}-{sub}.json")))
+                _src = [{"path": s.get("path"), "sha256": s.get("sha256")} for p in _doc.get("proposals", []) for s in (p.get("sources") or [])][:12]
+                _prov = _doc.get("provenance")
+            except Exception:
+                _prov = None
+            for pid, target, f in parse(_md):
+                _state = "taken_back" if pid in RET else ("declined" if pid in DECLINED else ("built" if pid in BUILT else "standing"))
+                _j["proposals"].append({"id": pid, "lens": lens, "section": sub, "target": target, "change": f.get("change", ""),
+                                        "state": _state, "built": BUILT.get(pid), "declined": DECLINED.get(pid), "taken_back": RET.get(pid),
+                                        "evidence": _src, "provenance": _prov, "remaining": (f.get("and next", "") if _state == "standing" else "")})
+    json.dump(_j, open(os.path.join(STAGE, f"{day}-proposals.json"), "w"), indent=1)
+except Exception as _je:
+    print("proposal ledger json not written:", _je)
 out = os.path.join(STAGE, f"{day}-proposals.md"); open(out, "w").write("\n".join(lines)); print(out, f"({total} proposals, {retracted} taken back, {declined} declined, {built} built)")

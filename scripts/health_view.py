@@ -70,7 +70,21 @@ def view(now=None):
         pass
     counts = {}
     for r in rows: counts[r["state"]] = counts.get(r["state"], 0) + 1
-    return {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "stores": rows, "counts": counts, "services": services}
+    # review 376: the receipts beside the stores - the last deliveries, effects and paid reservations
+    receipts = {}
+    try:
+        d = json.load(open(os.path.join(MEMORY, "delivery-receipts.json")))
+        rs = d.get("receipts", d) if isinstance(d, dict) else d
+        receipts["delivery"] = (list(rs.values()) if isinstance(rs, dict) else rs)[-5:]
+    except Exception:
+        receipts["delivery"] = "none"
+    for name, key in (("effects", "effect-receipts.jsonl"), ("compute", "compute-ledger.jsonl")):
+        try:
+            lines = [ln for ln in open(os.path.join(MEMORY, key)) if ln.strip()][-5:]
+            receipts[name] = [json.loads(ln) for ln in lines]
+        except Exception:
+            receipts[name] = "none"
+    return {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "stores": rows, "counts": counts, "services": services, "receipts": receipts}
 
 
 if __name__ == "__main__":

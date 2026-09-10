@@ -70,6 +70,20 @@ def _ctx_fields(context):
     return out
 
 
+def _file_rev(path):
+    try:
+        import hashlib
+        return hashlib.sha256(open(path, "rb").read()).hexdigest()[:12]
+    except Exception:
+        return None
+
+def _ledger_len():
+    try:
+        d = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
+        return len(d if isinstance(d, list) else d.get("entries", []))
+    except Exception:
+        return None
+
 def record(surface, prompt_text, user_msg="", extra=None, context=None):
     """One line. Never raises into the turn.
 
@@ -183,6 +197,13 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
             "unwatched_offers": unwatched,
             "sizes": sizes,
             "block_state": block_state,
+            # review 62: the first line of each admitted block (what was actually served), and for each
+            # absent block the reason the record knows (offered but not admitted / compiled / no offer)
+            "excerpts": {n: text[text.find(m):text.find(m) + 120].replace("\n", " ") for m, n in list(MARKERS.items()) + list(declared.items()) if n in present and text.find(m) >= 0},
+            "omitted": {n: (offer_reasons.get(n) or st) for n, st in block_state.items() if st != "admitted"},
+            # review 63: the exact self-model revision and ledger window this assembly read
+            "self_model_revision": _file_rev(os.path.join(WORKSPACE, "SELF-MODEL.md")),
+            "window": {"ledger_rows": _ledger_len()},
             "influences": influences,
             "offer_reasons": offer_reasons,
             "producer_versions": producer_versions,

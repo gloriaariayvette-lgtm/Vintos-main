@@ -397,6 +397,13 @@ def build_map():
     if not context:
         log("No context available")
         return
+    try:   # review 162: an unchanged context is not re-inferred; the previous map stands and says so
+        import sys as _sc_s; _sc_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import source_cache as _sc
+        if _sc.unchanged("value-map", context) and not os.environ.get("VALUE_MAP_FORCE"):
+            log("context unchanged since the last map (%s); not re-inferred" % (_sc.last("value-map") or {}).get("at")); return
+    except Exception:
+        pass
 
     prompt = f"""Your sense of time right now: {get_temporal_context()}
 

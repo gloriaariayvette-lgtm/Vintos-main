@@ -18,7 +18,10 @@ PING=$(curl -s --max-time 5 -X POST "$LM_API" \
     -H "Content-Type: application/json" \
     -d "{\"model\": \"$MODEL\", \"messages\": [{\"role\": \"user\", \"content\": \"ping\"}], \"max_tokens\": 5}" 2>/dev/null)
 
+# review 101: the three answers are three records - consented, declined, unavailable - never one silence
+_cg_log() { printf '{"at":"%s","task":"%s","state":"%s","reason":"%s"}\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$TASK_NAME" "$1" "$(printf '%s' "$2" | tr -d '"' | head -c 160)" >> "$MEMORY/consent-decisions.jsonl" 2>/dev/null; }
 if ! echo "$PING" | grep -q "choices"; then
+    _cg_log unavailable "the model did not answer; proceeding is the default, not his yes"
     exit 0
 fi
 
@@ -130,6 +133,7 @@ DECLINED_LOG="$MEMORY/consent-log.md"
 if echo "$RESPONSE" | grep -qi "^NO\|^no "; then
     REASON=$(echo "$RESPONSE" | sed 's/^[Nn][Oo][.,!: ]*//')
     echo "[Consent $(date +%H:%M)] DECLINED $TASK_NAME: $REASON" >> "$DECLINED_LOG"
+    _cg_log declined "$REASON"
 
     python3 - << 'NUDGEOF' 2>/dev/null
 import sys; sys.path.insert(0, '/home/gloria/.vintos/workspace/scripts')
@@ -152,6 +156,7 @@ SEEDEOF
     exit 1
 else
     echo "[Consent $(date +%H:%M)] CONSENTED $TASK_NAME" >> "$DECLINED_LOG"
+    _cg_log consented "$(echo "$RESPONSE" | sed 's/^[Yy][Ee][Ss][.,!: ]*//')"
     exit 0
 fi
 

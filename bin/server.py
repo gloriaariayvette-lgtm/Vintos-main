@@ -7351,9 +7351,20 @@ async def voice_ledger(payload: dict):
                     _cad["inner_at"] = _cad.pop("pending"); _turn["framing_version"] = _cad.get("version"); _turn["framing_session"] = _cad.get("session")
                     _vl_j.dump(_cad, open(_cp, "w"))
             except Exception: pass
+            # review 330: open -> active -> closing -> closed. A turn that arrives while the session is
+            # closing belongs to no session: it is refused here and recorded, never appended to a block
+            # that is being finalized or to a session that has ended.
+            if sess.get("state") == "closing":
+                print("[voice-ledger] turn refused: session %s is closing" % sess.get("started_at"), flush=True)
+                try:
+                    with open(os.path.join(MEMORY, "voice-refused-turns.jsonl"), "a") as _rf:
+                        _rf.write(_vl_j.dumps({"at": _turn["t"], "session": sess.get("started_at"), "gloria": g[:200], "vintos": v[:200], "why": "session closing"}) + "\n")
+                except Exception: pass
+                return {"ok": False, "refused": "session closing"}
             sess.setdefault("turns", []).append(_turn)
             sess["last_turn"] = time.time()
             sess.setdefault("started_at", _vl_d.datetime.now().isoformat())
+            sess["state"] = "active"
             _vl_j.dump(sess, open(sp, "w"), indent=2)
     except Exception as _vle: print("[voice-ledger]", _vle, flush=True)
     try:
@@ -7455,6 +7466,12 @@ async def voice_session_end(payload: dict = None):
     # write ONE block; no turns since the last finalization means nothing to finalize
     if not turns:
         return {"ok": True, "skipped": "no turns since last finalization"}
+    if sess.get("state") == "closing":
+        return {"ok": True, "skipped": "already closing"}
+    try:   # review 330: the session enters closing before any block is built; a late turn is refused above
+        sess["state"] = "closing"; sess["closing_at"] = _vse_d.datetime.now().isoformat()
+        _vse_j.dump(sess, open(sp, "w"), indent=2)
+    except Exception: pass
     dur = int(p.get("duration_seconds") or 0)
     if not dur and sess.get("started_at"):
         try:
