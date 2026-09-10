@@ -18,6 +18,19 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.pat
 MEM = os.path.join(WS, "memory")
 OUT = os.path.join(MEM, "formation-episodes.jsonl")
 
+def _bound(L):
+    """Review 190 (her decision, 2026-09-10): a KEEP_PRIVATE or WRONG_READING mark binds
+    every organ, not only the frontier door. Bound material is not read here."""
+    try:
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+        _s.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        import policy_decisions as _pd
+        return _pd.is_bound(L)
+    except Exception:
+        return bool(isinstance(L, dict) and (L.get("muted") or L.get("contested")))
+
+
 def _load(name, d):
     try: return json.load(open(os.path.join(MEM, name)))
     except Exception: return d
@@ -53,7 +66,7 @@ def _signals():
                         "formed_from": [str(x)[:120] for x in formed_from if x]})
     # withheld lineages under pressure (roots: origin exchange hashes - real roots)
     for L in _load("withheld-lineage.json", []):
-        if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 2 and not L.get("muted"):
+        if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 2 and not _bound(L):
             add("withheld", L.get("rep", ""), ",".join(L.get("origins", [])[:3]),
                 min(1.0, L.get("recurrence_pressure", 0) / 4.0),
                 ["withheld-lineage.json:%s" % o for o in L.get("origins", [])] or ["withheld-lineage.json:%s" % L.get("id", L.get("rep", ""))])

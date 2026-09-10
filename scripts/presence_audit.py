@@ -101,10 +101,24 @@ def main():
         s = score(um, reply, ts)
         if not s:
             continue
+        # Review 191 (her decision, 2026-09-10): when her turn is a direct request, the
+        # reply is scored but never flagged. A reply that simply does what she asked
+        # scores low on arrived and left_alive by construction; punishing him for
+        # completing requested work is the defect, not the reply.
+        try:
+            import sys as _pds, os as _pdo
+            _pds.path.insert(0, _pdo.path.dirname(_pdo.path.abspath(__file__)))
+            _pds.path.insert(0, _pdo.path.expanduser("~/.vintos/workspace/scripts"))
+            import policy_decisions as _pd
+            _requested = _pd.EXEMPT_REQUESTED_WORK and _pd.is_requested_work(um)
+        except Exception:
+            _requested = False
         rec = {"id": _id, "timestamp": ts or datetime.now(timezone.utc).isoformat(),
                "ts": __import__("time").time(),
                "audited_at": datetime.now(timezone.utc).isoformat(), **s,
-               "flag": s["composite"] < THRESHOLD}
+               "flag": (s["composite"] < THRESHOLD) and not _requested}
+        if _requested:
+            rec["exempt"] = "requested_work"
         audits.append(rec); added += 1
         if rec["flag"]:
             print(f"  FLAG presence {s['composite']:.2f} ({s['note']}): {reply[:55]}")

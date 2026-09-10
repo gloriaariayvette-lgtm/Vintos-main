@@ -82,10 +82,18 @@ def _pressure():
         pull = sum(float(x.get("pull", 0) or 0) for x in cd if isinstance(x, dict))
     lineage = 0
     wl = _load("withheld-lineage.json")
+    # Review 190: a lineage she marked KEEP_PRIVATE or WRONG_READING carries no pressure
+    # here. Bound is bound at every door, not only the one that asked him.
+    def _bound(v):
+        return bool(isinstance(v, dict) and (v.get("muted") or v.get("contested")))
     if isinstance(wl, dict):
         for v in wl.values():
-            if isinstance(v, dict):
+            if isinstance(v, dict) and not _bound(v):
                 lineage = max(lineage, int(v.get("pressure", 0) or 0))
+    elif isinstance(wl, list):
+        for v in wl:
+            if isinstance(v, dict) and not _bound(v):
+                lineage = max(lineage, int(v.get("pressure", v.get("recurrence_pressure", 0)) or 0))
     return {"pull": round(pull, 2), "lineage": lineage}
 
 def weather(snapshot=False):

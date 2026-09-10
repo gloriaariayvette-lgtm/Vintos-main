@@ -2457,10 +2457,21 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
                             json.dump(wants, f, indent=2)
                         print("[fulfill] artifact want NOT fulfilled — %s: %s" % (_why, want_text[:60]))
                         return
+                    else:
+                        # Review 189 (her decision, 2026-09-10): art relieves itself. A
+                        # verified file IS the evidence; relief does not wait on her.
+                        try:
+                            import policy_decisions as _pd
+                            _rel = _pd.artifact_relief(w, _ok, _why)
+                        except Exception:
+                            _rel = {}
+                        if _rel:
+                            w.update(_rel)
                 except Exception:
                     pass
                 w["fulfilled"] = True
-                w["satisfaction"] = "UNKNOWN" if auto else "SELF_REPORTED"
+                if not w.get("relief"):
+                    w["satisfaction"] = "UNKNOWN" if auto else "SELF_REPORTED"
                 w.setdefault("fulfilled_by", fulfilled_by or ("auto" if auto else "him"))
                 w["fulfilled_at"] = datetime.now().isoformat()
                 if auto:

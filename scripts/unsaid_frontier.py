@@ -53,6 +53,19 @@ def _items(): return _load(FRONTIER, [])
 
 def _save(items): json.dump(items[-80:], open(FRONTIER, "w"), indent=2)
 
+def _bound(L):
+    """Review 190 (her decision, 2026-09-10): a KEEP_PRIVATE or WRONG_READING mark binds
+    every organ, not only the frontier door. Bound material is not read here."""
+    try:
+        import sys as _s, os as _o
+        _s.path.insert(0, _o.path.dirname(_o.path.abspath(__file__)))
+        _s.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        import policy_decisions as _pd
+        return _pd.is_bound(L)
+    except Exception:
+        return bool(isinstance(L, dict) and (L.get("muted") or L.get("contested")))
+
+
 def promote():
     """Lineages at pressure >= 3 become frontier items, once each."""
     lins = _load(LIN, [])
@@ -60,6 +73,7 @@ def promote():
     known = {i.get("lineage_id") for i in items}
     made = 0
     for L in lins:
+        if _bound(L): continue          # review 190: a bound lineage is never re-put to him
         if L.get("recurrence_pressure", 0) < PRESSURE_MIN: continue
         if L.get("lineage_id") in known: continue
         items.append({

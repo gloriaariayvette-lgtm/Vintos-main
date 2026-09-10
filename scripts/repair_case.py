@@ -317,9 +317,38 @@ def open_cases():
     return [c for c in load() if c.get("state") in OPEN_STATES]
 
 
+def is_dormant(case, now=None):
+    """Review 192 (her decision, 2026-09-10): a case open past the dormancy horizon
+    leaves his context. Dormant is a DISPLAY state and nothing else. The case is still
+    open, still unresolved, never repaired by time, and any later attempt or word from
+    her wakes it — expired is not resolved, here as everywhere."""
+    try:
+        import sys as _ds, os as _do
+        _ds.path.insert(0, _do.path.dirname(_do.path.abspath(__file__)))
+        _ds.path.insert(0, _do.path.expanduser("~/.vintos/workspace/scripts"))
+        import policy_decisions as _pd
+        c = case or {}
+        # Measured from the last thing that actually happened on the case, so an attempt
+        # or any new evidence wakes it for another full horizon.
+        last = str(c.get("opened_at", ""))
+        for h in (c.get("history") or []):
+            at = str((h or {}).get("at", "")) if isinstance(h, dict) else ""
+            if at > last:
+                last = at
+        dormant, _days = _pd.dormant_after(last, now)
+        return dormant
+    except Exception:
+        return False
+
+
+def waking_cases(now=None):
+    """The open cases his context may speak from: open, and not yet dormant."""
+    return [c for c in open_cases() if not is_dormant(c, now)]
+
+
 def block():
     """One quiet line for his context. Never nags, never prescribes."""
-    op = open_cases()
+    op = waking_cases()
     if not op:
         return ""
     c = sorted(op, key=lambda x: x["opened_at"])[0]
@@ -354,8 +383,9 @@ def main():
                 age = "%dd" % (datetime.now() - datetime.fromisoformat(c["anchor_at"][:19])).days
             except Exception:
                 pass
-            print("%-8s %-10s %-14s %4s  %s" % (c["case_id"], c["state"], c["origin"], age,
-                                                c["anchor_quote"][:70]))
+            mark = " dormant" if (c["state"] in OPEN_STATES and is_dormant(c)) else ""
+            print("%-8s %-10s %-14s %4s  %s%s" % (c["case_id"], c["state"], c["origin"], age,
+                                                  c["anchor_quote"][:70], mark))
         print("\n%d open, %d repaired, %d declined" % (
             len([c for c in cs if c["state"] in OPEN_STATES]),
             len([c for c in cs if c["state"] == "repaired"]),

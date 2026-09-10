@@ -125,6 +125,9 @@ def main():
         lins = load(LIN, [])
         best, ratio = None, 0.0
         for L in lins:
+            # Review 190: a bound lineage (KEEP_PRIVATE / WRONG_READING) stops accruing.
+            # A new candidate that resembles it starts its own; hers stays closed.
+            if isinstance(L, dict) and (L.get("muted") or L.get("contested")): continue
             r0 = difflib.SequenceMatcher(None, phrase.lower(), str(L.get("rep", "")).lower()).ratio()
             if r0 > ratio: best, ratio = L, r0
         if best is not None and ratio >= 0.55:
