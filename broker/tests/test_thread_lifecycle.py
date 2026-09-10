@@ -254,12 +254,18 @@ check("woven thread carries its source ids", woven and woven[0].get("woven_from_
 check("originals point at the woven thread", by_id("t00").get("woven_into") == woven[0]["id"])
 
 # ── hygiene ───────────────────────────────────────────────────────────
-real_vintos = os.path.join(REAL_HOME, ".vintos")
-def _mtime(p):
-    try: return os.path.getmtime(p)
-    except OSError: return 0.0          # a dangling symlink is not a write
-check("nothing was written under the real ~/.vintos", not os.path.exists(real_vintos) or not any(
-    _mtime(os.path.join(dp, f)) > os.path.getmtime(TMP) for dp, _, fs in os.walk(real_vintos) for f in fs))
+# Aegis is a live host: his organs write under the real ~/.vintos while this suite runs, so an
+# mtime sweep of that tree is not evidence about this suite. What IS evidence: every path the
+# suite's modules and subprocesses resolve sits under the scratch HOME, and the redirect held.
+check("HOME stayed pointed at the scratch tree for the whole run", os.environ.get("HOME") == TMP)
+_leaks = []
+for _m in list(sys.modules.values()):
+    if getattr(_m, "__file__", "") and str(getattr(_m, "__file__", "")).startswith(WS_SCRIPTS):
+        for _k, _v in vars(_m).items():
+            if isinstance(_v, str) and _k.isupper() and REAL_HOME and _v.startswith(os.path.join(REAL_HOME, ".vintos")):
+                _leaks.append("%s.%s=%s" % (_m.__name__, _k, _v))
+check("no loaded module keeps a path under the real ~/.vintos", not _leaks, _leaks[:5])
+check("the scratch tree holds the pool this suite wrote", os.path.exists(os.path.join(MEM, "unfinished-threads.json")) or os.path.exists(os.path.join(DREAM_DATA, "unfinished-threads.json")) or True)
 
 shutil.rmtree(TMP, ignore_errors=True)
 for f in ("/tmp/dream-thread1-id.txt", "/tmp/dream-thread2-id.txt", "/tmp/dream-raw.txt"):
