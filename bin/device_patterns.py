@@ -19,6 +19,21 @@ def _mark(toy):
     try: json.dump(d, open(HIS, "w"))
     except Exception: pass
 def _c(x): return max(0, min(20, int(round(x))))
+def _stopped():
+    """The durable desired state. Fail-closed: an unreadable button file counts as stopped,
+    and the gate's copy of the rule is preferred so tests redirecting it are honoured."""
+    try:
+        import effect_gate as _eg
+        return bool(_eg.hardware_stopped())
+    except Exception:
+        pass
+    _p = os.path.join(MEM, "hardware-button.json")
+    if not os.path.exists(_p): return False
+    try:
+        _d = json.load(open(_p))
+        return bool(_d.get("stopped")) or _d.get("desired_state") == "stopped"
+    except Exception:
+        return True
 def _schedule_stop(toys, after_seconds, effect_id):
     """A lease-owning watchdog: send a hardware stop to each toy when the lease
     expires, so a preset's device-side timeSec cannot outlive its authorization.
@@ -64,6 +79,9 @@ def _run(toy, pattern, args, stop, dur, permit=None, effect_digest=None):
     while not stop.is_set() and (dur is None or time.time()-t0 < dur):
         if lease is not None and not lease.live():
             break
+        if _stopped():            # a stop is desired state: a pattern tick must never resume a device
+            stop.set(); toy_link.send(toy, 0); _set_state(toy, intensity=0, pattern="still", set_by="stop")
+            return
         t = time.time()-t0
         if pattern == "throb":
             b = args[0] if args else 12; rate = 0.8 + (b/20.0)*1.6
@@ -122,6 +140,18 @@ def _compose(names):
 def play(toy, pattern, args=None, dur=None, permit=None, effect_digest=None,
          outcome=None):
     args = args or []
+    # While desired_state is stopped, nothing but a zero may leave here: not a replay of
+    # the saved set, not a retried preset, not a steady level. Zeros still pass (reductions).
+    if _stopped():
+        _pl = str(pattern).lower()
+        _z = (_pl in STOP_WORDS
+              or (_pl == "rotate" and args and str(args[0]).lower() in ("0", "off", "still"))
+              or (_pl in LEGACY_PATTERNS and args and str(args[0]) == "0"))
+        if not _z:
+            if outcome is not None:
+                outcome.update(status="refused:stopped", targets={toy: "refused:stopped"})
+            print("[DO] %s %s refused: desired state is stopped" % (toy, pattern), flush=True)
+            return False
     # Rotate is a second, scalar channel — not a waveform. [DO: ridge rotate mid|low|high|N]
     if str(pattern).lower() == "rotate":
         _lvl_map = {"low": 5, "mid": 12, "high": 18, "off": 0, "still": 0}
@@ -353,10 +383,8 @@ def _fail(context, toy, level, kind):
 
 def fire_his_intent(reply_text, context=None):
     if not reply_text: return reply_text
-    try:
-        if json.load(open(os.path.join(MEM,"hardware-button.json"))).get("stopped"):
-            return _strip_tags(reply_text)
-    except Exception: pass
+    if _stopped():
+        return _strip_tags(reply_text)
     _GAP = 0.4
     _fired=[]
     _quiet_zero=[]   # alias-stop zeros to devices that were not there: receipts, not the bubble

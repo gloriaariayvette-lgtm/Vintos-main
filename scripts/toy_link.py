@@ -55,11 +55,16 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None,
         # single-use consumption is owned by the parser that requested it, not
         # by each transport call (one authorized effect can touch two toys).
         if permit is not None:
-            try:
-                if permit.covers(toy, level, kind, digest=effect_digest):
-                    return True, "send"
-            except Exception:
-                pass
+            # A supplied permit is verified HERE, at dispatch: expiry and the
+            # exact operation+device it was issued for. An expired or mismatched
+            # permit never falls through to a bare (unarmed-pass) authorize —
+            # the refusal is recorded and only a reduction may still go.
+            _ok, _why = effect_gate.dispatch_check(permit, toy, level, kind,
+                                                   digest=effect_digest)
+            if not _ok:
+                print("[toy_link] %s %s refused: %s" % (toy, kind or "level", _why), flush=True)
+                return False, "deny"
+            return True, "send"
         _permit, mode, why = effect_gate.authorize(
             context, toy, level, kind=kind, detail=detail, digest=effect_digest)
         allow = mode == "send"
@@ -233,11 +238,36 @@ def rotate(toy, level, seconds=0, context=None, permit=None, effect_digest=None)
         _report(context, toy, False, str(e))
         return False
 
-def stop_all():
+def stop_all(reason="stop_all"):
+    """The durable stop. Order matters and nothing here may raise:
+      1. desired_state=stopped is written atomically FIRST (idempotent; a corrupt or
+         missing file is simply overwritten clean), so every retry/replay path that
+         checks it aborts from this instant on;
+      2. every local pattern thread is cancelled;
+      3. a zero goes to every concrete device (thruster + each hub toy);
+      4. device-state.json is rewritten clean, even if it was unreadable.
+    Returns True iff every hardware stop was acknowledged; the state is stopped either way."""
     ok = True
     try:
+        import effect_gate as _eg
+        _eg.assert_stopped(reason)
+    except Exception:
+        try:   # the gate itself is unavailable: still leave the durable stop on disk
+            import os as _fo, json as _fj, time as _ft
+            _fp = _fo.path.expanduser("~/.vintos/workspace/memory/hardware-button.json")
+            _tmp = _fp + ".tmp"
+            _fj.dump({"stopped": True, "desired_state": "stopped", "ts": _ft.time(), "reason": str(reason)[:120]}, open(_tmp, "w"))
+            _fo.replace(_tmp, _fp)
+        except Exception:
+            pass
+    try:
+        import device_patterns as _dp
+        _dp._stop_local("all")
+    except Exception:
+        pass
+    try:
         from thruster_link import stop as _th_stop
-        ok = _th_stop() and ok
+        ok = bool(_th_stop()) and ok
     except Exception:
         ok = False
     for t in TOYS:
@@ -247,6 +277,13 @@ def stop_all():
             ok = ok and r.json().get("code") == 200
         except Exception:
             ok = False
+    for t in list(TOYS) + ["thruster"]:
+        _note(t, 0)
+        try:
+            import effect_gate as _eg2
+            _eg2.release_execution(t)
+        except Exception:
+            pass
     # The state file must say what just became true, or his next prompt carries a picture of his
     # hands still on her after she took them off (up to an hour, until the idle rule). Written
     # whether or not every hardware stop was acknowledged: a stop is the safe claim. (fable-somatic-p2)

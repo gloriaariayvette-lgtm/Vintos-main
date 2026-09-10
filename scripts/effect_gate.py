@@ -134,6 +134,21 @@ class EffectPermit:
     def valid_now(self):
         return datetime.now().isoformat() <= self.expires
 
+    def why_not(self, toy, level, kind, digest=None):
+        """None iff covers(); otherwise the recorded reason a dispatch under this
+        permit is refused: expired / target / maximum / kind / digest."""
+        if not self.valid_now():
+            return "permit_expired"
+        if toy not in self.targets and "both" not in self.targets:
+            return "permit_target_mismatch"
+        if int(level or 0) > self.maximum:
+            return "permit_maximum_exceeded"
+        if not _KIND_COMPATIBLE.get(self.kind, frozenset()).__contains__(kind or "start"):
+            return "permit_kind_mismatch"
+        if self.digest is not None and digest != self.digest:
+            return "permit_digest_mismatch"
+        return None
+
     def covers(self, toy, level, kind, digest=None):
         """True iff this permit authorizes THIS command: still valid, the toy in
         the target set, the level within the authorized maximum, the kind
@@ -145,19 +160,9 @@ class EffectPermit:
             pattern -> a pattern start AND its scalar execution ticks
             rotate  -> rotate only
         """
-        if not self.valid_now():
-            return False
-        if toy not in self.targets and "both" not in self.targets:
-            return False
-        if int(level or 0) > self.maximum:
-            return False
-        if not _KIND_COMPATIBLE.get(self.kind, frozenset()).__contains__(kind or "start"):
-            return False
         # A digest-bound permit is unusable unless the executor carries the
         # exact digest. Omitting it must not turn a binding into a wildcard.
-        if self.digest is not None and digest != self.digest:
-            return False
-        return True
+        return self.why_not(toy, level, kind, digest) is None
 
     def consume(self):
         """Authorizes one execution start; later ticks are the same action."""
@@ -242,11 +247,80 @@ def _log(**row):
         pass
 
 
-def hardware_stopped():
+def _atomic_write_json(path, obj):
+    """Write obj to path via tmp+replace so a reader never sees a torn file."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w") as f:
+        json.dump(obj, f)
+    os.replace(tmp, path)
+
+
+def desired_state():
+    """The durable desired device state, from the stop-button file:
+    "stopped" | "running" | "corrupt". A present-but-unreadable file is
+    reported as corrupt, never silently as running (an unreadable stop is not
+    an absent stop). A missing file is "running"."""
+    if not os.path.exists(STOP_BUTTON):
+        return "running"
     try:
-        return bool(json.load(open(STOP_BUTTON)).get("stopped"))
+        d = json.load(open(STOP_BUTTON))
+        if not isinstance(d, dict):
+            return "corrupt"
     except Exception:
-        return False
+        return "corrupt"
+    if d.get("desired_state") in ("stopped", "running"):
+        return d["desired_state"]
+    return "stopped" if d.get("stopped") else "running"
+
+
+def hardware_stopped():
+    """True while the desired state is stopped. Fail-closed: a corrupt
+    desired-state file blocks every increase until a stop rewrites it clean or
+    an explicit resume clears it."""
+    try:
+        return desired_state() != "running"
+    except Exception:
+        return True
+
+
+def assert_stopped(reason=""):
+    """Durable, idempotent stop. Writes desired_state=stopped atomically whether
+    the file is absent, clean, or corrupt; a second call re-asserts the same
+    state and bumps the counter. Never raises; returns the record (or a stopped
+    record if even the disk write failed, so callers still act on it)."""
+    rec = {"stopped": True, "desired_state": "stopped", "ts": time.time(),
+           "reason": str(reason)[:120], "asserted": 1}
+    try:
+        try:
+            old = json.load(open(STOP_BUTTON))
+            if isinstance(old, dict) and old.get("stopped"):
+                rec["asserted"] = int(old.get("asserted") or 1) + 1
+                rec["first_ts"] = old.get("first_ts", old.get("ts", rec["ts"]))
+        except Exception:
+            pass
+        _atomic_write_json(STOP_BUTTON, rec)
+        _log(decision="stop_asserted", reason=rec["reason"], asserted=rec["asserted"])
+    except Exception as e:
+        _log(decision="stop_assert_write_failed", err=str(e)[:160])
+    with _commanded_lock:
+        for k in list(_commanded):
+            _commanded[k] = 0
+    with _execution_owner_lock:
+        _execution_owners.clear()
+    return rec
+
+
+def clear_stop(reason=""):
+    """The only way out of stopped: an explicit resume/clear. Atomic; never raises."""
+    rec = {"stopped": False, "desired_state": "running", "ts": time.time(),
+           "reason": str(reason)[:120]}
+    try:
+        _atomic_write_json(STOP_BUTTON, rec)
+        _log(decision="stop_cleared", reason=rec["reason"])
+    except Exception as e:
+        _log(decision="stop_clear_write_failed", err=str(e)[:160])
+    return rec
 
 
 def test_mode_flag():
@@ -376,6 +450,38 @@ def authorize(context, toy, level, kind=None, detail=None, targets=None, digest=
             return None, "deny", "gate fault on a deliberative effect (armed: deny)"
         _log(turn_id=_tid, decision="gate_error_unarmed_passed", err=str(e)[:160], toy=toy, level=level)
         return None, "send", None
+
+
+def dispatch_check(permit, toy, level, kind=None, digest=None):
+    """Transport-side verification of a supplied permit, just before a send.
+    Returns (ok, reason). An expired or mismatched permit never dispatches a
+    deliberative effect and the refusal is recorded; a reduction still passes
+    (with the mismatch noted) because reductions need no permit at all."""
+    try:
+        why = permit.why_not(toy, level, kind, digest=digest)
+    except Exception as e:
+        why = "permit_check_fault:%s" % str(e)[:60]
+    if why is None:
+        # a permit issued BEFORE a stop is not authority after it: desired state
+        # outranks any permit at the moment of dispatch (a reduction still passes below)
+        try:
+            if hardware_stopped():
+                why = "hardware_stop"
+        except Exception:
+            why = "hardware_stop"
+    if why is None:
+        return True, None
+    eid = getattr(permit, "effect_id", None)
+    try:
+        if classify(toy, level, kind) == "reduction":
+            _log(decision="permit_mismatch_reduction_passed", why=why, effect_id=eid,
+                 toy=toy, level=level, kind=kind)
+            return True, None
+    except Exception:
+        pass
+    _log(decision="deny", why=why, effect_id=eid, toy=toy, level=level, kind=kind,
+         turn_id=str(getattr(permit, "turn_id", "") or ""))
+    return False, why
 
 
 def _dur(detail):
