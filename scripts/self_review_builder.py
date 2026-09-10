@@ -149,6 +149,24 @@ def _patch_strip(patch):
     return 1 if real and all(re.match(r"^[ab]/", x) for x in real) else 0
 
 
+EFFECT_CLASSES = (   # review 350: the class comes from the canonical path, never from the proposal's own words
+    ("device",   ("toy_link", "thruster_link", "device_patterns", "robot_", "somatic", "effect_gate", "constitutional")),
+    ("outward",  ("deliver", "encounter", "send-video", "send_video", "outreach", "initiate", "ntfy", "music-share", "music_share")),
+    ("memory",   ("wal-", "wal_", "ledger", "memory-index", "memory_index", "durable_memory", "belief", "causal", "pearl")),
+)
+
+def classify_effects(paths):
+    """{path: class} with class in device | outward | memory | internal, by canonical (live) path."""
+    out = {}
+    for rel in paths:
+        try: canon = os.path.basename(_live_path(rel)).lower()
+        except Exception: canon = os.path.basename(str(rel)).lower()
+        cls = "internal"
+        for name, needles in EFFECT_CLASSES:
+            if any(n in canon for n in needles): cls = name; break
+        out[rel] = cls
+    return out
+
 def _proposal_files(p):
     files = []
     for x in p.get("implementation_files", []):
@@ -302,6 +320,10 @@ def build(proposal_id):
     if not declared: raise ValueError("proposal names no safe implementation files")
     if not p.get("gloria_approval_required") and any(x in SELF_PROTECTED for x in declared):
         raise PermissionError("proposal touches a protected effect chokepoint and was not Gloria-approved")
+    _classes = classify_effects(declared)   # review 350
+    if not p.get("gloria_approval_required") and any(c in ("device", "outward") for c in _classes.values()):
+        raise PermissionError("proposal reaches a %s effect by its path (%s) and was not Gloria-approved"
+                              % (next(c for c in _classes.values() if c in ("device", "outward")), ", ".join(k for k, c in _classes.items() if c in ("device", "outward"))))
     build_id = "SRB-" + uuid.uuid4().hex[:10]
     build_dir = os.path.join(BUILD_ROOT, build_id); os.makedirs(build_dir, exist_ok=True)
     append(BUILDS, {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(),
@@ -353,7 +375,7 @@ def build(proposal_id):
                     raise PermissionError("live source %s changed since the stage was cut; not installed over it" % rel)
         _install(stage, before, paths)
         rec = {"build_id": build_id, "proposal_id": proposal_id, "at": now_iso(),
-               "state": "applied", "decision_id": d.get("decision_id"), "files": paths,
+               "state": "applied", "decision_id": d.get("decision_id"), "files": paths, "effect_classes": classify_effects(paths),
                "backup": before, "patch_sha256": __import__("hashlib").sha256(patch.encode()).hexdigest(),
                "tests": "syntax_checked" + (" + self_review_regression" if any("test_self_review" in x for x in paths) else ""),
                "checks": _checks,                       # what was actually executed, file by file (astra-study-p6)

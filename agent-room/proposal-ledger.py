@@ -46,6 +46,18 @@ for sub in ORDER:
             lines.append(f"  - and next: {f.get('and next','')}")
             lines.append(f"  - agency: {f.get('agency','')}")
         lines.append("")
+# review 371: assigned coverage - which lens reviewed which section this day, and the sections no lens reached
+try:
+    _cov = {sub: [lens for lens in LENSES if os.path.exists(os.path.join(STAGE, f"{day}-{lens}-{sub}.md"))] for sub in ORDER}
+    _missing = [sub for sub, ls in _cov.items() if not ls]
+    lines.append("## Coverage by lens"); lines.append("")
+    lines.append("| section | " + " | ".join(LENSES) + " |"); lines.append("|---|" + "---|" * len(LENSES))
+    for sub, ls in _cov.items():
+        lines.append("| %s | %s |" % (sub, " | ".join("yes" if l in ls else "" for l in LENSES)))
+    lines.append(""); lines.append("Sections no lens reviewed: %s" % (", ".join(_missing) if _missing else "none")); lines.append("")
+    json.dump({"day": day, "coverage": _cov, "missing": _missing}, open(os.path.join(STAGE, f"{day}-coverage.json"), "w"), indent=1)
+except Exception as _ce:
+    print("coverage not written:", _ce)
 # review 393: the room contexts built for this day, from the same work ledger (context-builds.jsonl)
 try:
     _cb = [json.loads(l) for l in open(os.path.join(STAGE, "context-builds.jsonl")) if l.strip()]

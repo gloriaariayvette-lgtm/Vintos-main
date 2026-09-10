@@ -205,9 +205,16 @@ def lead_state():
     campaign was decided by the selector but the speaking voice never saw the destination."""
     c = _load()
     if not c: return {"live": False}   # distinguishable from "campaign module never ran" (null)
+    # review 174: the explicit budget this unfinished work lives within, and why it is held when it is
+    _budget = {"turns_served": c.get("turns_served", 0), "max_turns": MAX_TURNS, "max_days": MAX_DAYS,
+               "suspensions": c.get("suspensions", 0), "max_suspensions": MAX_SUSP}
+    _why = ""
+    if c.get("suspended_this_turn"): _why = "suspended this turn (%d of %d suspensions used)" % (c.get("suspensions", 0), MAX_SUSP)
+    elif c.get("turns_served", 0) >= MAX_TURNS: _why = "turn budget spent (%d/%d)" % (c.get("turns_served", 0), MAX_TURNS)
     return {"live": True, "destination": c["destination"], "axis": c.get("axis", "field"),
             "turn": c.get("turns_served", 0) + 1, "max_turns": MAX_TURNS,
             "suspended": bool(c.get("suspended_this_turn")),
+            "budget": _budget, "why_held": _why, "progressed": bool(c.get("moves")),
             "last_move": (c.get("moves") or [{}])[-1].get("move", "")}
 
 def _as_local(ts):

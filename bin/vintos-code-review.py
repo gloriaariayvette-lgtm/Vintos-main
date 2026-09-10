@@ -28,6 +28,7 @@ HOME = os.path.expanduser("~")
 V = os.path.join(HOME, "Vintos")
 WS = os.path.join(HOME, ".vintos", "workspace", "scripts")
 WSP = os.path.join(HOME, ".vintos", "workspace")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGE = os.path.join(HOME, ".vintos", "code-review")
 MEMORY = os.path.join(WSP, "memory")
 LEDGER = os.path.join(MEMORY, "code-review-ledger.json")
@@ -364,12 +365,34 @@ def cmd_review(sub):
     reply = _ask(head, tail, user)
     return stage_review(sub, files, cov, reply)
 
+def _dedup_against_code(props):
+    """review 348: a proposal whose change names a route that already exists in server.py, or a script
+    that already exists in the checkout, is marked already_exists with what it found. It is not removed
+    - the lens may be proposing to change it - but nobody has to rediscover that it is there."""
+    try:
+        srv = open(os.path.join(REPO, "bin", "server.py"), errors="replace").read()
+    except Exception:
+        srv = ""
+    routes = set(re.findall(r'@app\.(?:get|post|put|delete|patch)\(\s*["\']([^"\']+)["\']', srv))
+    for p in props:
+        txt = " ".join(str(p.get(k, "")) for k in ("proposed_change", "what_i_noticed", "file_or_subsystem"))
+        found = []
+        for r in set(re.findall(r"/api/[A-Za-z0-9_/{}\-]+", txt)):
+            if r in routes: found.append("route %s exists" % r)
+        for f in set(re.findall(r"(?:scripts|bin)/([A-Za-z0-9_\-]+\.(?:py|sh))", txt)):
+            if os.path.exists(os.path.join(REPO, "scripts", f)) or os.path.exists(os.path.join(REPO, "bin", f)):
+                found.append("file %s exists" % f)
+        if found:
+            p["already_exists"] = sorted(found)
+    return props
+
 def stage_review(sub, files, cov, reply):
     """Parse the reply and stage the review: JSON + .md, each carrying the exact coverage; every proposal
     carries the sources it was generated from (path + hash + line range) and what was NOT READ (347/359)."""
     m = re.search(r"<proposals>\s*(\[.*?\])\s*</proposals>", reply, re.S)
     try: props = json.loads(m.group(1)) if m else []
     except Exception: props = []; print("[review] proposals block did not parse - kept as prose only")
+    props = _dedup_against_code([p for p in props if isinstance(p, dict)])
     prose = reply.split("<proposals>")[0].strip()
     rid = _rid(sub)
     sources = [{"path": r["path"], "sha256": r["sha256"], "lines": r.get("lines_read") or r["lines"]} for r in cov["read"] + cov["partial"]]

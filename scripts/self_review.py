@@ -533,7 +533,8 @@ def stream_friction(state=None):
             roots = ["gloria-prediction:%s" % str(x.get("at", "")) for x in fails[-8:]]
             rec = record_signal("friction", "prediction_blind_spot",
                 "%d independently graded prediction misses indicate a modeling wall" % len(fails),
-                [{"at": x.get("at"), "grade": x.get("graded_previous")} for x in fails[-8:]],
+                [{"at": x.get("at"), "grade": x.get("graded_previous")} for x in fails[-8:]]
+                + [{"lineage": {"attempts": len(fails), "scanned": len(gp[-80:]), "source": "gloria-prediction-history.json", "window": "last 80"}}],   # review 364
                 roots, ["gloria_prediction"])
             if rec: made.append(rec)
 
@@ -555,7 +556,9 @@ def stream_friction(state=None):
             "%d low-presence occasions share this failure shape: %s" %
             (len(roots), str(rows[-1].get("note", ""))[:240]),
             [{"id": x.get("id"), "at": x.get("timestamp"), "composite": x.get("composite"),
-              "note": x.get("note")} for x in rows[-8:]], roots, ["presence_audit"])
+              "note": x.get("note")} for x in rows[-8:]]
+            + [{"lineage": {"attempts": len(roots), "scanned": len(pa[-100:]), "source": "presence-audit.json", "window": "last 100"}}],   # review 364
+            roots, ["presence_audit"])
         if rec: made.append(rec)
 
     # Wants that keep going unmet, or keep hitting the same wall, become a self-review

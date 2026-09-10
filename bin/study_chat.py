@@ -303,12 +303,18 @@ def apply_pending(pid, confirm=None):
     except Exception:
         return False, "no pending proposal %s" % pid
     if rec.get("applied_at"): return False, "%s was already applied at %s" % (pid, rec["applied_at"])
+    def _fail(why):   # review 342: a refused apply is recorded on the proposal so progress can say "failed", not "pending"
+        try:
+            rec["apply_failed"] = {"at": time.strftime("%Y%m%d-%H%M%S"), "why": why[:200]}
+            open(os.path.join(PENDING_DIR, str(pid) + ".json"), "w").write(json.dumps(rec, ensure_ascii=False, indent=1))
+        except Exception: pass
+        return False, why
     for e in rec["edits"]:
         p = os.path.join(HOME, e["file"])
         try: cur = _sha(open(p, errors="replace").read())
-        except Exception: return False, "cannot read %s" % e["file"]
+        except Exception: return _fail("cannot read %s" % e["file"])
         if cur != e["file_sha_expected"]:
-            return False, "%s changed since the proposal (expected %s, now %s) - propose again from the current file" % (e["file"], e["file_sha_expected"], cur)
+            return _fail("%s changed since the proposal (expected %s, now %s) - propose again from the current file" % (e["file"], e["file_sha_expected"], cur))
     ok, msg = apply_edits([{"file": e["file"], "old": e["old"], "new": e["new"]} for e in rec["edits"]],
                           confirm=confirm if rec.get("approval") == "explicit" else (confirm or {"yes": "yes", "checked": True}))
     if ok:
@@ -414,6 +420,41 @@ def reconcile_changes(notify=True):
             except Exception:
                 pass
     return newly
+
+
+def progress():
+    """review 342: every study proposal in one of five words. pending (proposed, not applied), applied
+    (applied, its edit still in the live file), verified (applied and a later reconcile pass found it
+    still there), overwritten (applied, no longer in the live file), failed (an apply attempt refused)."""
+    out = {"pending": [], "applied": [], "verified": [], "overwritten": [], "failed": []}
+    try:
+        rows = [json.loads(l) for l in open(CHANGES, errors="replace") if l.strip()]
+    except Exception:
+        rows = []
+    ov = {(r.get("of"), r.get("file")) for r in rows if r.get("overwritten")}
+    applied_rows = [r for r in rows if r.get("new") and r.get("file") and not r.get("overwritten")]
+    try:
+        for f in sorted(os.listdir(PENDING_DIR)):
+            if not f.endswith(".json"): continue
+            rec = json.load(open(os.path.join(PENDING_DIR, f)))
+            pid = rec.get("id") or f[:-5]
+            if rec.get("apply_failed"):
+                out["failed"].append({"id": pid, "why": str(rec["apply_failed"])[:120]}); continue
+            if not rec.get("applied_at"):
+                out["pending"].append({"id": pid, "files": [e.get("file") for e in rec.get("edits", [])]}); continue
+            files = [e.get("file") for e in rec.get("edits", [])]
+            if any((rec.get("applied_at"), fl) in ov for fl in files):
+                out["overwritten"].append({"id": pid, "files": files}); continue
+            live_ok = True
+            for e in rec.get("edits", []):
+                try: t = open(os.path.join(HOME, e.get("file", "")), errors="replace").read()
+                except Exception: t = ""
+                if str(e.get("new", ""))[:2000] not in t: live_ok = False
+            (out["verified"] if live_ok and rec.get("reconciled_at") else out["applied"] if live_ok else out["overwritten"]).append({"id": pid, "files": files, "applied_at": rec.get("applied_at")})
+    except Exception:
+        pass
+    out["counts"] = {k: len(v) for k, v in out.items() if isinstance(v, list)}
+    return out
 
 
 def _overwritten_block():
@@ -617,6 +658,12 @@ def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reas
     async def study_log(request: Request):
         _auth(request)
         return JSONResponse({"log": load_log()[-200:], "mode": read_study_mode()})
+
+    @app.get("/api/chat/study/progress")
+    async def study_progress(request: Request):
+        """review 342: pending / applied / verified / overwritten / failed, from the proposal and change records."""
+        _auth(request)
+        return JSONResponse(progress())
 
     @app.post("/api/chat/study/mode")
     async def study_mode(request: Request):
