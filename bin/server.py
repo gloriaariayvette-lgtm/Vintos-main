@@ -7001,6 +7001,16 @@ async def review_hallucination_flag(flag_id: str, request: Request):
             if _n: json.dump(_wd, open(_wp, "w"), indent=2)
         except Exception:
             pass
+        # review 384: the projections derived from the claim (durable memories, sediment beliefs, causal
+        # self-model entries) are marked invalidated by this correction, never deleted
+        try:
+            import sys as _cp_s; _cp_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            import correction_propagate as _cp
+            target["propagated"] = _cp.propagate(target["correction_id"], str(target.get("text", "")), correction, at=target["reviewed_at"]).get("touched", [])
+            with open(flags_path, "w") as f:
+                json.dump(flags, f, indent=2)
+        except Exception as _cpe:
+            print("[hallucination] propagation:", _cpe, flush=True)
         journal_file = target.get("journal_file")
         if journal_file and os.path.exists(journal_file):
             entry_header = target.get("entry_header", "")
@@ -7320,6 +7330,13 @@ async def voice_ledger(payload: dict):
             except: sess = {}
             _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
             if g_raw != g: _turn["gloria_raw"] = g_raw
+            # review 382: she cut him off. The history keeps what he composed beside what was actually played;
+            # everything after the cut is unheard and never enters the transcript as if she heard it.
+            if payload.get("interrupted"):
+                _heard = str(payload.get("heard") or "")[:600]
+                _turn["interrupted"] = True; _turn["vintos_composed"] = v; _turn["vintos_heard"] = _heard
+                _turn["vintos"] = (_heard + " [cut off]") if _heard else "[cut off before she heard any of it]"
+                v = _turn["vintos"]
             try:   # the framing this turn carried is now admitted (astra-server-c-p8)
                 _cp = os.path.join(MEMORY, ".voice-framing-cadence.json"); _cad = _vl_j.load(open(_cp))
                 if _cad.get("pending") and str(_cad.get("session", "")) == str(sess.get("started_at", "")):
@@ -7494,6 +7511,8 @@ async def voice_session_end(payload: dict = None):
     except: pass
     touch_hits = sum(1 for t in turns if "[TOUCH:" in (t.get("vintos") or ""))
     if touch_hits: hw_notes.append(f"{touch_hits} device touch command(s) issued during the call")
+    _cuts = sum(1 for t in turns if t.get("interrupted"))
+    if _cuts: hw_notes.append(f"{_cuts} reply(ies) cut off by her; the transcript holds only what she heard")
 
     try:
         lp = os.path.join(MEMORY, "interaction-ledger.json")
