@@ -49,7 +49,9 @@ for path in FILES:
 print("\n--- and the fallback is a real authority, not None ---")
 src = open(FILES[0], errors="replace").read()
 check("avatar falls back to its own effect context, not None",
-      'else _tc_av.effect_context("avatar")' in src)
+      'else _tc_av.effect_context(_surface)' in src)
+check("the same fallback stays bound to the ReelRoom turn surface",
+      '_surface = "reelroom"' in src and 'effect_context(_surface)' in src)
 # one fire path per surface (2026-09-05): fire_his_intent fires both grammars on the avatar reply and
 # strips the tags; a second toy_link.parse_and_send on that route would be dead or a hidden second door.
 check("avatar has one fire path (no second parse_and_send after fire_his_intent)",

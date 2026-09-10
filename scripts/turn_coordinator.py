@@ -57,7 +57,7 @@ if _live not in sys.path:
     sys.path.append(_live)
 
 BROKER = "http://127.0.0.1:8611"
-SURFACES = {"chat", "avatar"}
+SURFACES = {"chat", "avatar", "reelroom"}
 
 
 class Turn:

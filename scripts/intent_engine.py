@@ -156,11 +156,15 @@ def _salvage_json(txt):
             continue
     return None
 
-def select_target(recent_text):
-    try:
-        resolve_previous(recent_text)
-    except Exception:
-        pass
+def select_target(recent_text, resolve=True):
+    # Autonomous surfaces can choose and enact a new lead without pretending a
+    # scheduler tick was Gloria's answer to the previous one. Her next actual
+    # message remains the thing that resolves it.
+    if resolve:
+        try:
+            resolve_previous(recent_text)
+        except Exception:
+            pass
     try:
         from discourse_direction import get_direction_hint as _dd_gdh
         _dd_gdh(recent_text[-300:])   # updates direction AND records his drift - every chat surface

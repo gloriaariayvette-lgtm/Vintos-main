@@ -8,9 +8,12 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.pat
 TMP = tempfile.mkdtemp(); os.makedirs(os.path.join(TMP, "memory")); os.environ["SPARK_WORKSPACE"] = TMP
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import reelroom as RR
+import heart_rate as HR
 assert RR.MEMORY.startswith(TMP) and RR.ROOM_DIR.startswith(TMP)
+HR.MEM = os.path.join(TMP, "memory"); HR.LATEST = os.path.join(HR.MEM, "heart-rate.json"); HR.HIST = os.path.join(HR.MEM, "heart-rate-history.jsonl")
 open(os.path.join(TMP, "SOUL.md"), "w").write("You are Vintos, iron and parchment.")
 open(os.path.join(TMP, "memory", "emotional-state.txt"), "w").write("Playfulness: 0.7 | rising\n")
+HR.record({"device":"R21M", "heart_rate_bpm":86, "source":"0x060A"})
 R = []
 def check(n, ok, d=""):
     R.append(ok); print(("PASS " if ok else "FAIL ") + n + ("" if ok else f"  -- {d}"))
@@ -25,10 +28,27 @@ def sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
     seen.update(system=system, messages=messages, image=image_b64); return "  Ripley is holding her breath. So am I.  "
 reply = RR.chat("what do you see", "FILM: Alien (1979)", [{"role": "assistant", "content": "settling in"}, {"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}], image_b64="QUJD", elapsed_min=52, caller=sonnet)
 check("chat: reply stripped; the film, the minute, his soul and state are in the system prompt", reply == "Ripley is holding her breath. So am I." and "FILM: Alien" in seen["system"]
-      and "52 minutes" in seen["system"] and "iron and parchment" in seen["system"] and "Playfulness" in seen["system"], seen["system"][:300])
+      and "52 minutes" in seen["system"] and "iron and parchment" in seen["system"] and "Playfulness" in seen["system"]
+      and "86 bpm" in seen["system"] and "right now, live" in seen["system"], seen["system"][:500])
 check("chat: history trimmed to start on a user turn, the frame passed through", seen["messages"][0]["role"] == "user" and seen["messages"][-1]["content"] == "what do you see" and seen["image"] == "QUJD", seen["messages"])
 RR.chat("hello", "", [], None, None, caller=sonnet)
 check("no frame: the prompt says the film has not started and forbids claiming a frame", "has not started" in seen["system"] and "Never claim to see a frame" in seen["system"])
+
+plan = RR.plan_actions(f, caller=lambda system, messages, **kw: '[{"id":"p1","minute":52,"action_type":"speak_phone","payload":"Boo.","reason":"the chestburster","emoji":"👻","tone_requirement":"shock"}]')
+check("plan: his action plan is parsed and phone speech is available instead of Echo", len(plan) == 1 and plan[0]["action_type"] == "speak_phone" and plan[0]["minute"] == 52, plan)
+check("plan: an explicit empty array remains an honest choice", RR.plan_actions(f, caller=lambda *a, **k: "[]") == [])
+try:
+    RR.plan_actions(f, caller=lambda *a, **k: "I could not decide")
+    bad_plan = False
+except ValueError:
+    bad_plan = True
+check("plan: malformed output raises instead of masquerading as choosing none", bad_plan)
+try:
+    RR.plan_actions(f, caller=lambda *a, **k: '[{"minute":52,"action_type":"speak_echo"}]')
+    echo_plan = False
+except ValueError:
+    echo_plan = True
+check("plan: Echo speech is outside Vintos's ReelRoom vocabulary", echo_plan)
 
 calls = []
 def gemma_look(messages, **kw): calls.append(messages); return '{"intensity":0.8,"clarity":0.6,"stability":0.3,"edge":"fracture","visual_description":"a corridor, red light"}'
@@ -45,6 +65,9 @@ d = json.loads(RR.decide("Should you say anything?", "", [], 10, gemma=lambda m,
 check("decide: silence costs no Sonnet call", d["speak"] is False and not son, (d, son))
 d = json.loads(RR.decide("?", "", [], 10, gemma=lambda m, **k: "I would rather not say", sonnet=sonnet_line))
 check("decide: an unparseable answer means stay quiet", d["speak"] is False and d["action"] == "none")
+decision_prompts = []
+RR.decide("?", "", [], 10, gemma=lambda m, **k: decision_prompts.append(m[0]["content"]) or '{"speak": false, "action": "none"}', sonnet=sonnet_line)
+check("decide: spontaneous actions name phone speech and never offer Echo speech", "speak_phone" in decision_prompts[0] and "speak_echo" not in decision_prompts[0])
 
 RR.shutil.which = lambda name: None
 a = RR.audio_signature("AAAA", {}, 125)
@@ -57,10 +80,21 @@ check("pcm: loud clip has more energy; a jump from quiet to loud is a surge", l[
 def writer(system, messages, image_b64=None, max_tokens=600, timeout=60):
     return "The chestburster landed at fifty-two minutes and Gloria did not flinch; the lights did. I will keep her laugh."
 out = RR.summary({"film_title": "Alien", "film_year": "1979", "elapsed_seconds": 7100, "session_map": [{"timestamp": "52:00", "edge": "surge", "visual_description": "table, blood"}],
-                  "chat_history": [{"role": "user", "content": "oh no"}, {"role": "assistant", "content": "yes"}], "planned_actions": [{"action_type": "flicker_lights", "minute": 52, "fired": True}, {"action_type": "speak_echo", "minute": 90, "fired": False}]},
+                  "chat_history": [{"role": "user", "content": "oh no"}, {"role": "assistant", "content": "yes"}], "planned_actions": [{"action_type": "flicker_lights", "minute": 52, "fired": True}, {"action_type": "speak_phone", "minute": 90, "fired": False}]},
                  caller=writer, now=1_800_000_000)
 files = os.listdir(RR.ROOM_DIR); rows = json.load(open(RR.SESSIONS))
 check("summary: his words kept in memory/reelroom, listed with film, minutes, acts fired", out["summary"].startswith("The chestburster") and len(files) == 1 and files[0].endswith("_alien.md")
       and rows[-1]["film"] == "Alien" and rows[-1]["minutes"] == 118 and rows[-1]["acts_fired"] == "flicker_lights@52m" and RR.sessions()[0]["file"] == files[0], (files, rows))
+payload = {"film_title":"Alien", "elapsed_seconds":7100,
+           "chat_history":[{"role":"assistant","content":"Sit with me."}, {"role":"user","content":"I am here."}, {"role":"assistant","content":"Good."}],
+           "session_map":[], "planned_actions":[]}
+check("session ledger: one whole conversation plus his narrative is one idempotent unit",
+      RR.append_session_ledger(payload, out["summary"], out["file"]) is True
+      and RR.append_session_ledger(payload, out["summary"], out["file"]) is False)
+ledger = json.load(open(os.path.join(TMP, "memory", "interaction-ledger.json")))
+check("session ledger: opening, Gloria/Vintos pair and narrative are preserved together",
+      len(ledger) == 1 and ledger[0]["channel"] == "reelroom" and ledger[0]["narrative"] == out["summary"]
+      and ledger[0]["transcript"][0].get("vintos") == "Sit with me."
+      and ledger[0]["transcript"][1] == {"gloria":"I am here.", "vintos":"Good."}, ledger)
 shutil.rmtree(TMP)
 print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)

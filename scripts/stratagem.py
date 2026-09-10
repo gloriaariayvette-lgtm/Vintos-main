@@ -70,7 +70,7 @@ def fetch_capsule(turn_id, surface):
 
     The coordinator calls this ONLY when the barrier is clear, and passes the
     returned commitment into the TurnContext and turn_record."""
-    if not turn_id or surface not in ("chat", "avatar"):
+    if not turn_id or surface not in ("chat", "avatar", "reelroom"):
         return "", {}
     pid = _worktable_id()
     if not pid:

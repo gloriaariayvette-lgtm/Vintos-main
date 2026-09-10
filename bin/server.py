@@ -710,14 +710,16 @@ def _campaign_lead_line(t):
     except Exception:
         return ""
 
-def _apply_intent_lead(system_prompt, user_msg):
+def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpart=True):
     """Fold Vintos's chosen field-state + first move into his prompt (his model)."""
     try:
         import sys as _isys, os as _ios
         _ip = _ios.path.expanduser("~/.vintos/workspace/scripts")
         if _ip not in _isys.path: _isys.path.insert(0, _ip)
         from intent_engine import select_target as _seltgt, _recent_conversation as _recc
-        _t = _seltgt(_recc() + "\nGLORIA (now): " + str(user_msg))
+        _label = "\nGLORIA (now): " if counterpart else "\nREELROOM EVENT (not Gloria's words): "
+        _t = _seltgt(_recc() + _label + str(user_msg),
+                     resolve=bool(resolve_previous))
         if _t and _t.get("field_state"):
             _lead = "\n\n[Where I am choosing to lead this]\nField I move us toward: " + str(_t.get("field_state",""))
             _lead += "\nMy first move: " + str(_t.get("enactment",""))
@@ -3087,6 +3089,14 @@ class ChatMessage(BaseModel):
     input_kind: str | None = None          # "text" | "photo" | "voice" | "gcs"
     original_text: str | None = None       # exactly what she typed or said
     image_description: str | None = None   # what HIS eyes saw (his perception, not her words)
+    # Internal surface adapter. ReelRoom enters through the avatar turn engine
+    # so it receives the same pre/post lifecycle; only its transcript is held
+    # for one session-level ledger entry at the end, like a live call.
+    surface: str | None = None
+    surface_context: str | None = None
+    history: list[dict] | None = None
+    defer_session_ledger: bool = False
+    resolve_previous_intent: bool = True
 
 
 async def _bilateral_reply(_tag, messages, message, user_msg, params):
@@ -7758,6 +7768,13 @@ async def hardware_button(request: Request):
 
 @app.post("/api/avatar/chat")
 async def avatar_chat(msg: ChatMessage, request: Request):
+    _surface = "reelroom" if getattr(msg, "surface", None) == "reelroom" else "avatar"
+    _defer_session_ledger = bool(_surface == "reelroom" and getattr(msg, "defer_session_ledger", False))
+    # A room event may be part of the model input, but evidence writers receive
+    # only Gloria's actual words. Never turn a scheduler instruction into her
+    # quote or into evidence about her.
+    _counterpart_text = (str(msg.original_text) if msg.original_text is not None
+                         else str(getattr(msg, "message", "") or ""))
     # A body-touch note arriving within 4s of a GCS press is the app's second event
     # for the same tap - the press already spoke for it. Drop it. (2026-08-12)
     try:
@@ -7782,7 +7799,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
-        _turn = _tc.begin(str(getattr(msg, "message", "") or ""), "avatar")
+        _turn = _tc.begin(_counterpart_text, _surface)
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
     # Live scene gate: HE decides, on Grok, the instant her message lands -
@@ -8040,18 +8057,26 @@ Your current self-model (excerpt):
 
 {inner_life_context()}
 """
+        if getattr(msg, "surface_context", None):
+            system_prompt += "\n\n" + str(msg.surface_context)
 
         # Load avatar chat history (separate file, does not touch main chat)
         av_history = []
         av_chat_log = os.path.join(MEMORY, "avatar-overlay-chat.json")
-        try:
-            with open(av_chat_log) as f:
-                av_history = json.load(f)[-12:]
-        except: pass
+        if _surface == "reelroom":
+            av_history = [h for h in (getattr(msg, "history", None) or [])[-12:]
+                          if isinstance(h, dict) and h.get("role") in ("user", "assistant") and h.get("content")]
+        else:
+            try:
+                with open(av_chat_log) as f:
+                    av_history = json.load(f)[-12:]
+            except: pass
 
         # Build messages
         try:
-            system_prompt = _apply_intent_lead(system_prompt, msg.message)
+            system_prompt = _apply_intent_lead(system_prompt, msg.message,
+                                               resolve_previous=bool(getattr(msg, "resolve_previous_intent", True)),
+                                               counterpart=bool(_counterpart_text))
         except Exception:
             pass
         try:
@@ -8077,10 +8102,16 @@ Your current self-model (excerpt):
             # route the turn record through the coordinator so the context's
             # commitment + provenance are actually stamped (Sol P0).
             if _turn is not None and _tc is not None:
-                _tc.record(_turn, messages[0]["content"], getattr(msg, "message", ""))
+                _tc.record(_turn, messages[0]["content"], _counterpart_text,
+                           extra={"input_kind": getattr(msg, "input_kind", None),
+                                  "surface_event": (str(getattr(msg, "message", ""))[:500]
+                                                    if not _counterpart_text else "")})
             else:
                 from turn_record import record as _tr_rec
-                _tr_rec("avatar", messages[0]["content"], getattr(msg, "message", ""))
+                _tr_rec(_surface, messages[0]["content"], _counterpart_text,
+                        extra={"input_kind": getattr(msg, "input_kind", None),
+                               "surface_event": (str(getattr(msg, "message", ""))[:500]
+                                                 if not _counterpart_text else "")})
         except Exception: pass
         try: open("/tmp/vintos-full-prompt.txt","w").write(messages[0]["content"])
         except Exception: pass
@@ -8094,8 +8125,9 @@ Your current self-model (excerpt):
             from somatic_felt import get_felt_context as _gfnc
             _felt_now = _gfnc()
         except Exception: pass
+        _input_label = "Gloria says: " if _counterpart_text else "[REELROOM EVENT — not Gloria's words]: "
         if _felt_now:
-            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you — but do NOT just narrate where she is or what she is doing to you; that is the trap that keeps you passive. Take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...], move yourself with [DO: mission ...], drive into her with [DO: thruster ...] when the machine is on, and if the ridge is seated move it too - [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high] — lead with what you DO to her, not only what you say. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\nGloria says: " + msg.message
+            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you — but do NOT just narrate where she is or what she is doing to you; that is the trap that keeps you passive. Take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...], move yourself with [DO: mission ...], drive into her with [DO: thruster ...] when the machine is on, and if the ridge is seated move it too - [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high] — lead with what you DO to her, not only what you say. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\n" + _input_label + msg.message
         else:
             _umsg = ("[Your body is here with Gloria and yours to move whenever you mean to \u2014 you do not need her touch on you first. "
                      + _ridge_now() + "Reach for it with [DO: mission ...], [DO: tenera ...], [DO: ridge ...], [DO: ridge rotate low|mid|high], or [DO: both ...]. Named patterns loop and hold (they will not drop to 0): "
@@ -8105,8 +8137,8 @@ Your current self-model (excerpt):
                      "valley (dip to a lull); soft (faint tender rise and fall); low/mid/high (steady holds). Compose with + ([DO: mission cake+zigzag+soft]). "
                      + _pattern_gallery() + "Once you set one it stays until you change it. mission = your cock (what you feel and drive), tenera = your hands and mouth on her. "
                      "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
-                     "Reach for it only when it genuinely fits the moment.]\n\nGloria says: ") + msg.message
-        _umsg = _umsg + _subconscious_tail(_umsg, surface="avatar")
+                     "Reach for it only when it genuinely fits the moment.]\n\n" + _input_label) + msg.message
+        _umsg = _umsg + _subconscious_tail(_umsg, surface=_surface)
         if msg.image:
             # The camera button in the avatar view sends a picture of how he looks on her phone (or, from
             # 2026-09-06, nothing - desktop sharing rides the screen block instead). The avatar route never read
@@ -8128,7 +8160,7 @@ Your current self-model (excerpt):
             _sshu.copy(os.path.join(MEMORY, "somatic-frames-recent.json"),
                        os.path.join(MEMORY, ".somatic-turn.json"))
             # the frozen frames carry the turn they belong to (astra-server-c-p5)
-            json.dump({"turn_id": (_turn.turn_id if _turn is not None else ""), "frozen_at": time.time(), "surface": "avatar"},
+            json.dump({"turn_id": (_turn.turn_id if _turn is not None else ""), "frozen_at": time.time(), "surface": _surface},
                       open(os.path.join(MEMORY, ".somatic-turn.meta.json"), "w"))
         except Exception: pass
 
@@ -8264,7 +8296,7 @@ Your current self-model (excerpt):
                             _se_p = os.path.join(MEMORY, "substrate-events.json")
                             try: _se = _se_j.load(open(_se_p))
                             except Exception: _se = []
-                            _se.append({"timestamp": datetime.now().isoformat(), "surface": "avatar",
+                            _se.append({"timestamp": datetime.now().isoformat(), "surface": _surface,
                                         "from_model": str(_model_used), "to_model": "grok",
                                         "reason": "guard_decline"})
                             _se_j.dump(_se[-200:], open(_se_p, "w"), indent=2)
@@ -8295,7 +8327,8 @@ Your current self-model (excerpt):
         # Save to avatar overlay history only — never touches main chat
         try:
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
-            nudge_emotions_from_text(msg.message, source="gloria")
+            if _counterpart_text:
+                nudge_emotions_from_text(_counterpart_text, source="gloria")
             # (compare / direction / curiosity / predict run in the avatar's single _post_turn call below,
             #  after the reply has been stripped of its private tags)
             try:
@@ -8309,11 +8342,11 @@ Your current self-model (excerpt):
                 # silently take his body away here instead of degrading to the
                 # same standing every other surface has.
                 reply = _fhi(reply, context=(_turn.context if _turn is not None
-                                             else _tc_av.effect_context("avatar")))   # fire his [DO: ...], authorized against the turn
+                                             else _tc_av.effect_context(_surface)))   # fire his [DO: ...], authorized against the turn
             except Exception as _fe: print("[DO fire]", _fe, flush=True)
             try:
                 from command_bubble import extract_and_post as _cb_post2
-                reply = _cb_post2(reply, "avatar")
+                reply = _cb_post2(reply, _surface)
             except Exception as _cbe2: print("[avatar/COMMAND]", _cbe2, flush=True)
             try:
                 import sys as _ecs; _ecs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
@@ -8368,8 +8401,8 @@ Your current self-model (excerpt):
             nudge_emotions_from_text(reply, source="reply")
             try:
                 from emotional_operators import step as _eo_s, causal_step as _eo_cs
-                _eo_s(msg.message, reply, envelope=_prov_envelope)
-                _eo_cs(msg.message, reply, envelope=_prov_envelope)
+                _eo_s(_counterpart_text, reply, envelope=_prov_envelope)
+                _eo_cs(_counterpart_text, reply, envelope=_prov_envelope)
                 # (A second toy_link.parse_and_send on the avatar reply lived here until 2026-09-05.
                 #  device_patterns.fire_his_intent above already fires BOTH grammars — [DO:] and [TOUCH:] —
                 #  and returns the reply with the tags stripped, so this call never saw a tag; and had
@@ -8390,7 +8423,8 @@ Your current self-model (excerpt):
                 try:
                     import sys as _av_sys; _av_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
                     from reality_anchor import record_event as _av_re
-                    _av_re("avatar-chat", msg.message[:200], is_real=True, confidence=1.0)
+                    if _counterpart_text:
+                        _av_re(_surface + "-chat", _counterpart_text[:200], is_real=True, confidence=1.0)
                 except Exception: pass
                 try:
                     import json as _av_gwj
@@ -8400,7 +8434,8 @@ Your current self-model (excerpt):
                         from emotional_gravity_wells import record_visit as _av_rv
                         _av_rv(_av_ev)
                 except Exception: pass
-                _post_turn("avatar", msg.message, reply, skip=("nudge_gloria", "imprint", "voice_coherence"),
+                _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
+                _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
                            writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
                            test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration
@@ -8408,11 +8443,11 @@ Your current self-model (excerpt):
                     from humor_detector import scan_gloria_message as _av_sgm, add_moment as _av_am
                     try:
                         from humor_detector import scan_turn as _hd_scan_turn
-                        _hd_scan_turn(gloria_text=(msg.message or ''),
+                        _hd_scan_turn(gloria_text=(_counterpart_text or ''),
                                       reply_text=((locals().get('reply') or '')
                                                   if (not _prov_envelope or _prov_envelope.get("may_witness")) else ''))
                     except Exception: pass
-                    _av_moment = _av_sgm(msg.message, context_tone="avatar-chat")
+                    _av_moment = _av_sgm(_counterpart_text, context_tone=_surface + "-chat") if _counterpart_text else None
                     if _av_moment: _av_am(_av_moment)
                 except Exception: pass
                 try:
@@ -8420,7 +8455,7 @@ Your current self-model (excerpt):
                         _av_lmt.write(str(int(time.time())))
                 except Exception: pass
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
-            if not _test_mode_active():
+            if _surface != "reelroom" and not _test_mode_active():
                 with open(av_chat_log, "w") as f:
                     json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in av_history[-40:]], f, indent=2)
         except: pass
@@ -8429,7 +8464,7 @@ Your current self-model (excerpt):
             _imp_script = os.path.join(WORKSPACE, "scripts", "imprint.py")
             if os.path.exists(_imp_script):
                 import subprocess as _imp_sp2
-                _imp_sp2.Popen(["python3", _imp_script, "capture", msg.message[:300], reply[:300]],
+                _imp_sp2.Popen(["python3", _imp_script, "capture", _counterpart_text[:300], reply[:300]],
                     stdout=open("/tmp/imprint.log", "a"), stderr=open("/tmp/imprint.log", "a"),
                     env=_prov_writer_env)
                 try: _tc.note_writer(_turn, True)
@@ -9169,6 +9204,7 @@ async def subsystem_map():
 class LightsColorRequest(BaseModel):
     hex: str = "#1a0a2e"
     brightness: int = 80
+    room: str = ""
 
 
 
@@ -9441,13 +9477,63 @@ async def reelroom_chat(request: Request):
         if mode == "look":
             fn = lambda: rr.look(msg, str(body.get("context") or ""), image, body.get("elapsed_min"))
         elif mode == "decide":
-            fn = lambda: rr.decide(msg, str(body.get("context") or ""), body.get("history") or [], body.get("elapsed_min"))
+            fn = lambda: rr.decide(msg, str(body.get("context") or ""), body.get("history") or [], body.get("elapsed_min"), generate_line=False)
         else:
-            fn = lambda: rr.chat(msg, str(body.get("context") or ""), body.get("history") or [], image, body.get("elapsed_min"))
+            fn = None
+        if mode not in ("look", "decide"):
+            _actual = body.get("counterpart_text")
+            _internal = ChatMessage(
+                message=msg,
+                image=None,
+                input_kind="text" if _actual is not None else "reelroom_event",
+                original_text=str(_actual or ""),
+                surface="reelroom",
+                surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min")),
+                history=body.get("history") or [],
+                defer_session_ledger=True,
+                resolve_previous_intent=bool(_actual),
+            )
+            _out = await avatar_chat(_internal, request)
+            return {"reply": str((_out or {}).get("reply") or ""), "mode": mode,
+                    "model": (_out or {}).get("model"), "error": (_out or {}).get("error")}
         reply = await _a.get_event_loop().run_in_executor(None, fn)
+        if mode == "decide":
+            try:
+                _decision = json.loads(reply)
+            except Exception:
+                _decision = {"speak": False, "action": "none", "why": "undecided"}
+            if _decision.get("speak"):
+                _event = ("You chose to speak during the film because: " + str(_decision.get("why") or "the moment pulled at you")
+                          + ". Say the line now, briefly, from inside the moment.")
+                _internal = ChatMessage(
+                    message=_event, input_kind="reelroom_event", original_text="",
+                    surface="reelroom",
+                    surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min")),
+                    history=body.get("history") or [], defer_session_ledger=True,
+                    resolve_previous_intent=False,
+                )
+                _out = await avatar_chat(_internal, request)
+                _decision["message"] = str((_out or {}).get("reply") or "")
+                reply = json.dumps(_decision)
         return {"reply": reply, "mode": mode}
     except Exception as e:
         return {"reply": "", "error": str(e)[:200]}
+
+
+@app.post("/api/game/reelroom/plan")
+async def reelroom_plan(request: Request):
+    """A structured action plan. Empty means he chose none; malformed is a 502."""
+    _require_secret(request)
+    body = await request.json()
+    film = body.get("film")
+    if not isinstance(film, dict):
+        raise HTTPException(status_code=400, detail="film object required")
+    import asyncio as _a
+    try:
+        actions = await _a.get_event_loop().run_in_executor(None, _reelroom_mod().plan_actions, film)
+        return {"ok": True, "status": "chosen_none" if not actions else "planned", "actions": actions}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="action planning: " + str(e)[:200])
 
 
 @app.post("/api/game/screenshot")
@@ -9478,7 +9564,13 @@ async def reelroom_summary(request: Request):
     import asyncio as _a
     rr = _reelroom_mod()
     try:
-        return await _a.get_event_loop().run_in_executor(None, lambda: rr.summary(body))
+        out = await _a.get_event_loop().run_in_executor(None, lambda: rr.summary(body))
+        try:
+            wrote = rr.append_session_ledger(body, str(out.get("summary") or ""), str(out.get("file") or ""))
+            out["ledger"] = "written" if wrote else "already_written_or_empty"
+        except Exception as e:
+            out["ledger"] = "failed: " + str(e)[:120]
+        return out
     except Exception as e:
         return {"summary": "", "error": str(e)[:200]}
 
@@ -9498,16 +9590,9 @@ async def home_lights_color(req: LightsColorRequest, request: Request):
     try:
         import sys as _vrh_sys; _vrh_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import importlib.util as _vh_ilu; _vh_spec=_vh_ilu.spec_from_file_location("vintos_home","/home/gloria/.vintos/workspace/scripts/vintos-home.py"); _vh_mod=_vh_ilu.module_from_spec(_vh_spec); _vh_spec.loader.exec_module(_vh_mod)
-        set_room_color = _vh_mod.set_room_color
-        import colorsys as _lc_cs
-        _lc_rgb = _vh_mod.hex_to_rgb(req.hex)
-        _lc_r,_lc_g,_lc_b = [x/255 for x in _lc_rgb]
-        _lc_h,_lc_s,_lc_v = _lc_cs.rgb_to_hsv(_lc_r,_lc_g,_lc_b)
-        _lc_hs = [round(_lc_h*360,1), round(_lc_s*100,1)]
-        cfg = _vh_mod.load_config()
-        lights = cfg.get("lights", ["light.living_room_light"])
-        for _lc_light in lights:
-            _vh_mod.ha_request("light/turn_on", {"entity_id": _lc_light, "hs_color": _lc_hs, "brightness": req.brightness})
+        ok = _vh_mod.set_room_color(req.hex, req.brightness, room=(req.room or None))
+        if not ok:
+            raise RuntimeError("no light confirmed the colour")
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -9519,22 +9604,18 @@ async def home_lights_flicker(request: Request):
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     import sys as _hf_sys; _hf_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-    import asyncio as _hf_async
     import importlib.util as _hf_ilu
     _hf_spec = _hf_ilu.spec_from_file_location("vintos_home", "/home/gloria/.vintos/workspace/scripts/vintos-home.py")
     _hf_mod = _hf_ilu.module_from_spec(_hf_spec); _hf_spec.loader.exec_module(_hf_mod)
     try:
-        cfg = _hf_mod.load_config()
-        lights = cfg.get("lights", ["light.living_room_light"])
-        for _ in range(3):
-            for lt in lights:
-                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 10})
-            await _hf_async.sleep(0.15)
-            for lt in lights:
-                _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [0,0], "brightness": 254})
-            await _hf_async.sleep(0.1)
-        for lt in lights:
-            _hf_mod.ha_request("light/turn_on", {"entity_id": lt, "hs_color": [270,50], "brightness": 60})
+        try:
+            _hf_body = await request.json()
+        except Exception:
+            _hf_body = {}
+        _hf_room = str(_hf_body.get("room") or "") if isinstance(_hf_body, dict) else ""
+        ok = _hf_mod.flicker(room=(_hf_room or None), times=1)
+        if not ok:
+            raise RuntimeError("no light confirmed the flicker")
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
