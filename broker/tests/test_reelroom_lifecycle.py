@@ -15,9 +15,15 @@ def check(name, ok):
 
 check("ReelRoom is an honestly named coordinated surface", '"reelroom"' in TC.split("SURFACES =", 1)[1].split("\n", 1)[0])
 check("ReelRoom speak enters the avatar turn engine", "_out = await avatar_chat(_internal, request)" in SERVER)
-check("the real counterpart text is separated from room events", "_counterpart_text =" in SERVER and 'original_text=""' in SERVER)
-check("actual messages may resolve prior intent; autonomous events may not",
-      "resolve_previous_intent=bool(_actual)" in SERVER and "resolve_previous_intent=False" in SERVER)
+check("the real counterpart text is separated from room events",
+      "_counterpart_text =" in SERVER and 'input_kind="text" if _actual is not None else "reelroom_event"' in SERVER)
+# A line he chose to say mid-film no longer enters the avatar turn engine at all: it is his
+# room voice on Sonnet, so there is no turn there to resolve a prior intent with. Only a turn
+# that carries her actual words does, and it says so (Gloria, 2026-09-10: cost).
+check("only her actual words may resolve a prior intent",
+      "resolve_previous_intent=bool(_actual)" in SERVER and SERVER.count("await avatar_chat(_internal, request)") == 1)
+check("an autonomous line is his room voice, not the avatar engine",
+      "rr.chat(" in SERVER and '"unprompted": True' in SERVER)
 check("the full avatar pre-turn stack still selects an intent", "_apply_intent_lead(system_prompt, msg.message" in SERVER)
 check("only the per-turn interaction ledger is deferred",
       '("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger' in SERVER)

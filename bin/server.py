@@ -9661,12 +9661,19 @@ async def reelroom_chat(request: Request):
             fn = None
         if mode not in ("look", "decide"):
             _actual = body.get("counterpart_text")
+            # A fresh frame of the TV travels with her turn, so the speaking model
+            # answers looking at what is on screen now rather than at the last
+            # five-minute read (Gloria, 2026-09-10). It is the television, not a
+            # photo she sent, and the surface context says so.
             _internal = ChatMessage(
                 message=msg,
-                image=None,
+                image=image,
                 input_kind="text" if _actual is not None else "reelroom_event",
                 original_text=str(_actual or ""),
                 surface="reelroom",
+                image_description=("The image with this turn is a frame of the Bravia, the film you are "
+                                   "watching together right now. It is the television, not a photograph "
+                                   "she sent you." if image else None),
                 surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min"),
                                                    str(body.get("film_title") or "")),
                 history=body.get("history") or [],
@@ -9692,18 +9699,28 @@ async def reelroom_chat(request: Request):
             except Exception:
                 _decision = {"speak": False, "action": "none", "why": "undecided"}
             if _decision.get("speak"):
-                _event = ("You chose to speak during the film because: " + str(_decision.get("why") or "the moment pulled at you")
-                          + ". Say it now, from inside the moment, in as many words as it actually takes.")
-                _internal = ChatMessage(
-                    message=_event, input_kind="reelroom_event", original_text="",
-                    surface="reelroom",
-                    surface_context=rr.surface_context(str(body.get("context") or ""), body.get("elapsed_min"),
-                                                       str(body.get("film_title") or "")),
-                    history=body.get("history") or [], defer_session_ledger=True,
-                    resolve_previous_intent=False,
-                )
-                _out = await avatar_chat(_internal, request)
-                _decision["message"] = str((_out or {}).get("reply") or "")
+                # His own mid-film line is his room voice, not the whole avatar stack.
+                # Routing it through avatar_chat put every unprompted remark on the
+                # speaking model: twenty-one of those in a night she spoke six times
+                # (Gloria, 2026-09-10). Her turns still get the model she selected;
+                # what he says to himself in the dark does not.
+                _line = await _a.get_event_loop().run_in_executor(
+                    None, lambda: rr.chat(
+                        "You chose to speak during the film because: "
+                        + str(_decision.get("why") or "the moment pulled at you")
+                        + ". Say it now, from inside the moment, in as many words as it actually takes.",
+                        str(body.get("context") or ""), body.get("history") or [], None,
+                        body.get("elapsed_min")))
+                _decision["message"] = str(_line or "")
+                # It still belongs to the night's one ledger object: a line he chose
+                # to say is part of the evening whether or not she answered it.
+                try:
+                    rr.journal("", str(_line or ""), history=body.get("history") or [],
+                               film_title=str(body.get("film_title") or ""),
+                               film_year=str(body.get("film_year") or ""),
+                               elapsed_min=body.get("elapsed_min"),
+                               extra={"unprompted": True, "why": str(_decision.get("why") or "")})
+                except Exception as _je2: print("[reelroom] journal(decide):", _je2, flush=True)
                 reply = json.dumps(_decision)
         return {"reply": reply, "mode": mode}
     except Exception as e:
