@@ -87,6 +87,13 @@ STILL_LIBRARY = {
     "window_stand": "standing nude at a window, fully shown - most explicit",
 }
 COOLDOWN_HOURS = int(os.environ.get("VIDEO_COOLDOWN_HOURS", "24"))
+for _sp in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"), SCRIPTS):
+    if os.path.isdir(_sp) and _sp not in sys.path: sys.path.insert(0, _sp)
+import artifact_manifest as _am     # common manifest + collision-free names (review 275/279)
+import reflection_stage as _stage   # his decision survives a failed render (review 280)
+import deliver as _deliver          # the one authorized delivery path (review 307/288)
+STAGE_ORGAN = "video-send"
+STAGE_MAX_HOURS = 6                 # a staged YES older than this is not replayed
 
 FORCE = "--force" in sys.argv
 DRY = "--dry" in sys.argv
@@ -610,7 +617,7 @@ def compose_us(scene, verbose=False):
     if not data:
         log("us compose failed"); return None
     os.makedirs(SCENE_DIR, exist_ok=True)
-    path = os.path.join(SCENE_DIR, "us-%s.jpg" % datetime.now().strftime("%Y%m%d-%H%M%S"))
+    path, _ = _am.unique_path(SCENE_DIR, "us-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
     open(path, "wb").write(data)
     log("composed us-scene (%d bytes) -> %s" % (len(data), os.path.basename(path)))
     return path
@@ -705,20 +712,35 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
     except Exception as e:
         log("scene-still fetch/decode failed: %s" % e); return None
     os.makedirs(SCENE_DIR, exist_ok=True)
-    path = os.path.join(SCENE_DIR, "scene-%s.jpg" % datetime.now().strftime("%Y%m%d-%H%M%S"))
+    path, _ = _am.unique_path(SCENE_DIR, "scene-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
     open(path, "wb").write(data)
     log("built scene still (%d bytes) -> %s" % (len(data), os.path.basename(path)))
     return path
 
 
-def save_gallery(fname, prompt, kind, model=ATLAS_MODEL):
+def save_gallery(fname, prompt, kind, model=ATLAS_MODEL, revision=1):
     try: g = json.load(open(GALLERY))
     except Exception: g = []
-    g.append({"file": fname, "prompt": prompt[:400], "kind": kind, "source": "self-initiated",
-              "backend": ("grok-imagine" if "grok" in model else "atlas-wan-spicy"),
-              "model": model, "timestamp": datetime.now().isoformat()})
-    try: json.dump(g, open(GALLERY, "w"), indent=2)
+    rec = {"file": fname, "prompt": prompt[:400], "kind": kind, "source": "self-initiated",
+           "backend": ("grok-imagine" if "grok" in model else "atlas-wan-spicy"),
+           "model": model, "timestamp": datetime.now().isoformat()}
+    rec.update(_am.build(os.path.join(VID_DIR, fname), "video", source_want=None, revision=revision, shelf=VID_DIR))
+    g.append(rec)
+    try: _am.atomic_json(GALLERY, g)
     except Exception: pass
+
+
+def _mark_gallery_delivery(fname, receipt):
+    """The shelf record learns what the send DID (queued/sent/failed) — never that she received it.
+    A failed send leaves the file and the record in place (review 288)."""
+    try: g = json.load(open(GALLERY))
+    except Exception: return
+    rec = _am.find_record(g, fname)
+    if rec is None: return
+    _am.mark_delivery(rec, receipt.get("state", "failed"), at=receipt.get("at"),
+                      why=receipt.get("why", ""), channel=receipt.get("channel"))
+    try: _am.atomic_json(GALLERY, g)
+    except Exception as e: log("gallery delivery mark failed: %s" % e)
 
 
 def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
@@ -759,22 +781,31 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
     if not data:
         return None
     os.makedirs(VID_DIR, exist_ok=True)
-    fname = "video-%s.mp4" % datetime.now().strftime("%Y%m%d-%H%M%S")
-    open(os.path.join(VID_DIR, fname), "wb").write(data)
-    save_gallery(fname, prompt, kind, model)
+    _vpath, _rev = _am.unique_path(VID_DIR, "video-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".mp4", data)
+    fname = os.path.basename(_vpath)
+    open(_vpath, "wb").write(data)
+    save_gallery(fname, prompt, kind, model, revision=_rev)
     return fname
 
 
-def deliver(fname, caption):
-    """Single ntfy notification linked directly to the clip. No chat injection."""
+def deliver(fname, caption, authority=None):
+    """Single ntfy notification linked directly to the clip, through the shared delivery path:
+    bounded retry, a receipt keyed by the clip (a repeat call never resends), and the shelf record
+    marked with what the send did. No chat injection. Returns the receipt."""
     video_url = "%s/api/video/file/%s" % (SERVE_BASE, fname)
-    try:
-        requests.post(NTFY, data=(caption or "I made you something.").encode("utf-8"),
-                      headers={"Title": "Vintos", "Tags": "video_camera",
-                               "Click": video_url, "Attach": video_url}, timeout=10)
-        log("ntfy sent (tap -> %s)" % video_url)
-    except Exception as e:
-        log("ntfy failed: %s" % e)
+    _deliver.CHANNELS["ntfy"] = NTFY
+    if authority is None:   # the checks this file already makes: not a dry run, and a real clip on the shelf
+        authority = lambda: ((not DRY) and os.path.isfile(os.path.join(VID_DIR, fname)),
+                             "dry run" if DRY else "clip missing from the shelf")
+    receipt = _deliver.deliver(fname, "ntfy", caption or "I made you something.", title="Vintos",
+                               tags="video_camera", click=video_url, attach=video_url, authority=authority)
+    _mark_gallery_delivery(fname, receipt)
+    if receipt.get("state") == "sent":
+        log("ntfy %s (tap -> %s)" % ("already sent — not resent" if receipt.get("repeat") else "sent", video_url))
+    else:
+        log("ntfy %s after %s attempt(s): %s — clip stays on the shelf, delivery=failed"
+            % (receipt.get("state"), receipt.get("attempts"), receipt.get("why")))
+    return receipt
 
 
 def remember(caption, prompt, fname, kind=""):
@@ -838,7 +869,17 @@ def main():
         log("quiet hours — not now"); return
     if cooldown_active() and not FORCE:
         log("within cooldown — holding"); return
-    d = decide(FORCE)
+    # a YES he already wrote, whose render failed last tick, is picked back up rather than asked again (280)
+    _staged = _stage.pending(STAGE_ORGAN, max_age_hours=STAGE_MAX_HOURS)
+    if _staged:
+        _skey, d, _sat = _staged[-1]
+        log("reusing his staged decision from %s (render failed last time)" % _sat)
+    else:
+        d = decide(FORCE)
+        _skey = None
+        if d.get("decision") == "YES" and not DRY:
+            _skey = _stage.key_for("decision", datetime.now().isoformat(), d.get("prompt"))
+            _stage.save(STAGE_ORGAN, _skey, d, note="his YES + prompt, before any media is made")
     if d["decision"] != "YES":
         log("he doesn't feel like it right now (decision=%s%s)" % (d["decision"], ", schedule was set aside" if FORCE else "")); return
     if d.get("ref_failed") and d.get("kind") in ("self", "together", "scene", "place"):
@@ -858,7 +899,11 @@ def main():
         log("no clip produced — nothing sent"); return
     if DRY:
         log("[dry] would deliver + remember; stopping before any side effect"); return
-    deliver(fname, caption)
+    if _skey: _stage.done(STAGE_ORGAN, _skey, outcome=fname)
+    _rc = deliver(fname, caption, authority=lambda: (d.get("decision") == "YES" and not DRY, "his decision was %s" % d.get("decision")))
+    if _rc.get("state") != "sent":
+        # the clip exists and its record says delivery=failed; it is not remembered as a send (288)
+        log("not sent — clip kept: %s" % fname); return
     remember(caption, prompt, fname, kind=kind)
     try: open(COOLDOWN_FILE, "w").write(datetime.now().isoformat())
     except Exception: pass

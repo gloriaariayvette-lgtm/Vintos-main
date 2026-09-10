@@ -9,6 +9,11 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 ART_DIR = os.path.join(MEMORY, "art")
 GALLERY = os.path.join(ART_DIR, "gallery.json")
 KEY = os.environ.get("XAI_API_KEY", "")
+for _sp in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"),
+            os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")):
+    if os.path.isdir(_sp) and _sp not in sys.path: sys.path.insert(0, _sp)
+import artifact_manifest as _am          # the common manifest every shelf record carries (review 275/279)
+import reflection_stage as _stage        # the extracted prompt survives a failed render (review 280)
 
 def _latest_dream():
     import json, os
@@ -40,11 +45,20 @@ def main():
     else:
         prompt = prompt or os.environ.get("DREAM_ART_WANT_TEXT", "")
         src = os.environ.get("DREAM_ART_WANT_SOURCE", "want") if prompt else "dream"
+    _stage_key = None
     if not prompt:
         _dt = _latest_dream()
         if not _dt:
             print("[dream-art] no dream to paint"); return
-        prompt = _extract_prompt(_dt)
+        # the model's extraction is the expensive part: stage it by the dream's hash and reuse it when
+        # the render below failed last time, instead of asking again (review 280)
+        _stage_key = _stage.key_for("extract", _dt)
+        prompt = _stage.load("dream-art", _stage_key) or ""
+        if prompt:
+            print("[dream-art] reusing staged prompt:", prompt[:80])
+        else:
+            prompt = _extract_prompt(_dt)
+            if prompt: _stage.save("dream-art", _stage_key, prompt, note="extracted scene from dream")
         print("[dream-art] painting from dream:", prompt[:80])
     os.makedirs(ART_DIR, exist_ok=True)
     r = requests.post("https://api.x.ai/v1/images/generations",
@@ -55,9 +69,14 @@ def main():
     if r.status_code != 200:
         print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
     data = r.json()["data"][0]
-    fname = f"painting-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-    with open(os.path.join(ART_DIR, fname), "wb") as f:
-        f.write(base64.b64decode(data["b64_json"]))
+    _png = base64.b64decode(data["b64_json"])
+    # name carries the content hash + a revision suffix: two paintings in one second, or one re-rendered,
+    # never overwrite each other (review 279)
+    _fpath, _rev = _am.unique_path(ART_DIR, "painting-" + datetime.now().strftime("%Y%m%d-%H%M%S"), ".png", _png)
+    fname = os.path.basename(_fpath)
+    with open(_fpath, "wb") as f:
+        f.write(_png)
+    if _stage_key: _stage.done("dream-art", _stage_key, outcome=fname)
     try:
         gallery = json.load(open(GALLERY))
     except Exception:
@@ -70,6 +89,7 @@ def main():
         "image_class": "DREAM_BORN" if src == "dream" else "WANT_ACT",
         "softened_from_dream": src == "dream",  # p6 (2026-08-26): dreams render CLOTHED/UNSPICY for the moderated API — the image is softer than the dream; the archive says so honestly
         "want_id": os.environ.get("DREAM_ART_WANT_ID", ""),
+        **_am.build(_fpath, "image", source_want=os.environ.get("DREAM_ART_WANT_ID", ""), revision=_rev, shelf=ART_DIR),
     })
     _gtmp = GALLERY + ".tmp.%d" % os.getpid(); json.dump(gallery, open(_gtmp, "w"), indent=2); os.replace(_gtmp, GALLERY)   # atomic (astra-creative-p4)
     print(f"[dream-art] painted: {fname}")

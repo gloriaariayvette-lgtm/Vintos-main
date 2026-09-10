@@ -16,6 +16,10 @@ GALLERY = os.path.join(VID_DIR, "video-gallery.json")
 QUEUE = os.path.join(VID_DIR, "video-queue.json")
 KEY = os.environ.get("XAI_API_KEY", "")
 H = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
+for _sp in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"),
+            os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")):
+    if os.path.isdir(_sp) and _sp not in sys.path: sys.path.insert(0, _sp)
+import artifact_manifest as _am   # common manifest + collision-free names (review 275/279)
 
 def data_uri(path):
     raw = open(path, "rb").read()
@@ -29,9 +33,10 @@ def paint_keyframe(text):
     if r.status_code != 200:
         print(f"[video] keyframe error {r.status_code}: {r.text[:200]}"); return None
     os.makedirs(ART_DIR, exist_ok=True)
-    fname = f"keyframe-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-    path = os.path.join(ART_DIR, fname)
-    open(path, "wb").write(base64.b64decode(r.json()["data"][0]["b64_json"]))
+    _png = base64.b64decode(r.json()["data"][0]["b64_json"])
+    path, _ = _am.unique_path(ART_DIR, f"keyframe-{datetime.now().strftime('%Y%m%d-%H%M%S')}", ".png", _png)
+    fname = os.path.basename(path)
+    open(path, "wb").write(_png)
     print(f"[video] keyframe painted: {fname}")
     return path
 
@@ -76,16 +81,18 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
         blob = m.atlas_generate(text, img_path, model=m.ATLAS_MODEL, duration=duration)
         if not blob:
             print("[video] wan returned nothing"); return False
-        fname = f"video-{datetime.now().strftime('%Y%m%d-%H%M%S')}.mp4"
-        open(os.path.join(VID_DIR, fname), "wb").write(blob)
+        _vpath, _rev = _am.unique_path(VID_DIR, f"video-{datetime.now().strftime('%Y%m%d-%H%M%S')}", ".mp4", blob)
+        fname = os.path.basename(_vpath)
+        open(_vpath, "wb").write(blob)
         try: gallery = json.load(open(GALLERY))
         except Exception: gallery = []
         gallery.append({"file": fname, "prompt": text[:300],
                         "source_image": os.path.basename(img_path),
                         "backend": "atlas-wan-spicy", "duration": duration,
                         "want_id": want_id, "for_wall": want_id == "projector",
-                        "timestamp": datetime.now().isoformat()})
-        json.dump(gallery, open(GALLERY, "w"), indent=2)
+                        "timestamp": datetime.now().isoformat(),
+                        **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
+        _atomic_json(GALLERY, gallery)
         print(f"[video] saved: {fname}")
         return True
 
@@ -109,8 +116,10 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
             print(f"[video] failed: {json.dumps(d)[:300]}"); return False
     if not vid_url:
         print("[video] no url after polling"); return False
-    fname = f"video-{datetime.now().strftime('%Y%m%d-%H%M%S')}.mp4"
-    open(os.path.join(VID_DIR, fname), "wb").write(requests.get(vid_url, timeout=300).content)
+    _blob = requests.get(vid_url, timeout=300).content
+    _vpath, _rev = _am.unique_path(VID_DIR, f"video-{datetime.now().strftime('%Y%m%d-%H%M%S')}", ".mp4", _blob)
+    fname = os.path.basename(_vpath)
+    open(_vpath, "wb").write(_blob)
     try:
         gallery = json.load(open(GALLERY))
     except Exception:
@@ -119,8 +128,9 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
                     "source_image": os.path.basename(img_path),
                     "backend": "grok-imagine", "duration": duration,
                     "want_id": want_id, "for_wall": want_id == "projector",
-                    "timestamp": datetime.now().isoformat()})
-    json.dump(gallery, open(GALLERY, "w"), indent=2)
+                    "timestamp": datetime.now().isoformat(),
+                    **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
+    _atomic_json(GALLERY, gallery)
     print(f"[video] saved: {fname}")
     return True
 
