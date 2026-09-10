@@ -38,6 +38,25 @@ JURISDICTION = {
     "E2": "observable behavior in %s's own messages - what he/she actually did, not felt" % BEING,
     "E3": "%s's PRIVATE internal state only - never claims about Gloria or the interaction" % BEING,
 }
+
+def drop_from_served(tension_id, mem=None):
+    """review 142: a demoted tension leaves the served view (tension-field.json, the behavioural
+    consumers) at once - not at the valve's next run. The ledger keeps the tension; only the
+    view loses it. Atomic; a missing or malformed view is left alone."""
+    p = os.path.join(mem or MEM, "tension-field.json")
+    try:
+        v = json.load(open(p))
+        rows = v.get("tensions", []) if isinstance(v, dict) else []
+        keep = [t for t in rows if t.get("id") != tension_id]
+        if len(keep) == len(rows):
+            return False
+        v["tensions"] = keep; v["updated"] = datetime.now().isoformat() if "datetime" in globals() else __import__("datetime").datetime.now().isoformat()
+        v.setdefault("removed", []).append({"id": tension_id, "at": v["updated"], "why": "demoted"})
+        tmp = p + ".tmp"; json.dump(v, open(tmp, "w"), indent=2); os.replace(tmp, p)
+        return True
+    except Exception:
+        return False
+
 def log(m): print("[tension-promotion]", m, flush=True)
 def load(p, d):
     try: return json.load(open(p))
@@ -255,6 +274,7 @@ def main():
             except Exception as _rc_e:
                 log("repair case not opened: %s" % _rc_e)
             t["eligible_for_visibility"] = False
+            drop_from_served(t["tension_id"])   # review 142: out of the served view now, not at the valve's next run
             t["last_corrected"] = max(e["at"] for e in _fresh)
             t["correction_count"] = t.get("correction_count", 0) + 1
             t["history"].append({"at": now, "authority": "Gloria",

@@ -175,11 +175,15 @@ def discover():
     for (t1, a), (t2, b) in zip(labeled, labeled[1:]):
         if a != b:
             edges[(a, b)] = edges.get((a, b), 0) + 1
-    # fold in Gloria's edge priors (weight 1) where both endpoints exist as basins
+    # review 137: Gloria's edge priors are kept AS PRIORS - a separate map, never folded into the
+    # observed counts. The ranking below uses observed edges first and priors only as a tiebreak.
+    observed_edges = dict(edges)
+    prior_edges = {}
     name_to_bi = {b["name"]: bi for bi, b in enumerate(basins)}
     for u, v in EDGE_PRIORS:
         if u in name_to_bi and v in name_to_bi:
-            edges[(name_to_bi[u], name_to_bi[v])] = edges.get((name_to_bi[u], name_to_bi[v]), 0) + 1
+            prior_edges[(name_to_bi[u], name_to_bi[v])] = prior_edges.get((name_to_bi[u], name_to_bi[v]), 0) + 1
+    edges = {k: observed_edges.get(k, 0) + 0.01 * prior_edges.get(k, 0) for k in set(observed_edges) | set(prior_edges)}
 
     for bi, b in enumerate(basins):
         b["edge_basis"] = "filing order of configurations (not observed transitions)"
@@ -193,7 +197,14 @@ def discover():
 
     cycles = _find_cycles(edges, basins)
     out = {"attractors": basins,
-           "edges": [{"from": basins[a]["name"], "to": basins[v]["name"], "weight": w} for (a, v), w in edges.items()],
+           # review 137: an inspectable record - what was observed (filing order), what was given as a prior,
+           # and what is still open (seeds with no basin yet). Each kind labelled, none blended.
+           "edges": [{"from": basins[a]["name"], "to": basins[v]["name"], "observed": observed_edges.get((a, v), 0),
+                      "prior": prior_edges.get((a, v), 0), "basis": "filing order of configurations" if observed_edges.get((a, v)) else "prior only"}
+                     for (a, v) in sorted(set(observed_edges) | set(prior_edges))],
+           "priors": {"seeds": [(s[0] if isinstance(s, (tuple, list)) else (s["name"] if isinstance(s, dict) else str(s))) for s in SEEDS],
+                      "edge_priors": [{"from": u, "to": v} for u, v in EDGE_PRIORS], "note": "Gloria's seeds and edge priors; kept as priors, never counted as observations"},
+           "open_possibilities": [n for n in [(s[0] if isinstance(s, (tuple, list)) else (s["name"] if isinstance(s, dict) else str(s))) for s in SEEDS] if n not in name_to_bi],
            "cycles": cycles, "updated": datetime.now().isoformat(), "n_configs": len(configs)}
     json.dump(out, open(ATTR_FILE, "w"), indent=2)
     _log("discovered %d basins (%d seeded, %d emergent), %d edges, %d cycles" %

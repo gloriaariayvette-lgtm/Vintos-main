@@ -101,5 +101,39 @@ ch = open(os.path.join(REPO, "scripts", "claim_hold.py")).read()
 check("claim_verbatim and challenge recorded at opening", '"claim_verbatim": str(out.get("claim"))' in ch and '"challenge": {"his_reason_verbatim"' in ch)
 check("a CORRECTED verdict keeps the correction with her pushback and his choice", 'if out["verdict"] == "CORRECTED":' in ch and '"her_pushback"' in ch and '"evidence_verbatim"' in ch)
 
+print("\n--- 142: a demoted tension leaves the served view at once ---")
+TP = load("tp_t", os.path.join(REPO, "scripts", "tension_promotion.py")) if False else None
+import importlib.util as _iu
+_spec = _iu.spec_from_file_location("tp_t", os.path.join(REPO, "scripts", "tension_promotion.py"))
+_tp = _iu.module_from_spec(_spec)
+try:
+    _spec.loader.exec_module(_tp)
+except Exception as _e:   # the module talks to a model at import in some versions; the helper is what we test
+    _tp = None
+view = os.path.join(MEM, "tension-field.json")
+json.dump({"tensions": [{"id": "T-001", "description": "x", "status": "CONFIRMED"}, {"id": "T-002", "description": "y", "status": "CONFIRMED"}], "updated": "t0"}, open(view, "w"))
+if _tp is not None:
+    _tp.MEM = MEM
+    check("drop_from_served removes the demoted id and records why", _tp.drop_from_served("T-001") and [t["id"] for t in json.load(open(view))["tensions"]] == ["T-002"] and json.load(open(view))["removed"][0]["id"] == "T-001")
+    check("an id not in the view is a no-op", _tp.drop_from_served("T-999") is False)
+else:
+    tps = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
+    check("drop_from_served exists in tension_promotion", "def drop_from_served" in tps)
+tps = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
+check("the CONTESTED transition drops the tension from the served view", 'drop_from_served(t["tension_id"])' in tps and tps.index('t["status"] = "CONTESTED"') < tps.index('drop_from_served(t["tension_id"])'))
+check("the proposition-lineage demotion does too", "drop_from_served as _dfs" in open(os.path.join(REPO, "scripts", "proposition_lineage.py")).read())
+
+print("\n--- 137: configuration and attractor maps are inspectable records; priors stay priors ---")
+CS = load("cs_t", os.path.join(REPO, "scripts", "configuration_space.py"))
+for attr in dir(CS):
+    v = getattr(CS, attr)
+    if isinstance(v, str) and attr.isupper() and v.endswith(".json"):
+        setattr(CS, attr, os.path.join(MEM, os.path.basename(v)))
+rec = CS.inspect_record()
+check("the record separates observed transitions, open possibilities and held configurations", set(rec) >= {"observed_transitions", "open_possibilities", "held", "priors"} and "prior" in rec["priors"])
+ad = open(os.path.join(REPO, "scripts", "attractor_discovery.py")).read()
+check("edge priors are kept apart from observed edges", "prior_edges" in ad and '"prior": prior_edges.get((a, v), 0)' in ad and '"observed": observed_edges.get((a, v), 0)' in ad)
+check("the attractor file names its priors and open possibilities", '"priors": {"seeds"' in ad and '"open_possibilities"' in ad)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

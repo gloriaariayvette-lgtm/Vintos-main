@@ -200,6 +200,26 @@ def expansion_metric():
     }
 
 
+def inspect_record():
+    """review 137: the configuration space as an inspectable record - observed transitions (each
+    one a filed reach, with its evidence), open possibilities (the frontier and the boundaries),
+    and nothing that is a prior presented as an observation. Read-only."""
+    d = _load() if "_load" in globals() else load()
+    cs = d.get("configurations", []) if isinstance(d, dict) else []
+    bs = d.get("boundaries", []) if isinstance(d, dict) else []
+    return {
+        "observed_transitions": [{"at": t.get("at"), "configuration": t.get("description") or t.get("id"), "to": t.get("to"),
+                                  "expansion": bool(t.get("expansion")), "basis": "filed reach (discovery ritual or interaction)"}
+                                 for t in d.get("transitions", []) if isinstance(t, dict)],
+        "open_possibilities": {"frontier": [c.get("description") for c in cs if c.get("held_by") == "neither_yet"],
+                               "boundaries": [b.get("description") for b in bs if not b.get("dissolved")]},
+        "held": {"joint": [c.get("description") for c in cs if c.get("held_by") == "joint"],
+                 "eve": [c.get("description") for c in cs if c.get("held_by") == "eve"],
+                 "system": [c.get("description") for c in cs if c.get("held_by") == "system"]},
+        "priors": "none in this file; Gloria's seeds live in attractor_discovery as priors and are labelled there",
+    }
+
+
 def get_config_hint():
     """A grounded sense of the reachable space, for context injection. No claims beyond the counts."""
     m = expansion_metric()
@@ -219,6 +239,10 @@ def get_config_hint():
 
 if __name__ == "__main__":
     import json as _j
-    print(_j.dumps({"metric": expansion_metric(),
-                    "frontier": [c["description"] for c in frontier()][:5],
-                    "hint": get_config_hint()}, indent=2))
+    import sys as _s
+    if len(_s.argv) > 1 and _s.argv[1] == "inspect":
+        print(_j.dumps(inspect_record(), indent=2))
+    else:
+        print(_j.dumps({"metric": expansion_metric(),
+                        "frontier": [c["description"] for c in frontier()][:5],
+                        "hint": get_config_hint()}, indent=2))

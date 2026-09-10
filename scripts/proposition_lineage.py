@@ -170,6 +170,12 @@ def contest_proposition(pid, correction_quote, at):
         if t.get("proposition_id") != pid: continue
         if t["status"] in ("HYPOTHESIS", "SUPPORTED", "CONFIRMED"):
             t["status"] = "CONTESTED"; t["eligible_for_visibility"] = False
+            try:   # review 142: out of the served view now
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from tension_promotion import drop_from_served as _dfs
+                _dfs(t["tension_id"], MEM)
+            except Exception:
+                pass
             t["last_corrected"] = at
             t.setdefault("history", []).append(
                 {"at": datetime.now().isoformat(), "authority": "Gloria",
