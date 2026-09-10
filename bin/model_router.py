@@ -194,6 +194,33 @@ async def _claude(system_text, convo, params, reason):
     res["reasoning"] = "".join(b.get("thinking", "") for b in (d or {}).get("content", []) if b.get("type") == "thinking") if isinstance(d, dict) else ""
     return res
 
+MODEL_PROFILE = os.environ.get("VINTOS_MODEL_PROFILE", "mixed")   # review 164: local | mixed
+
+def profile():
+    return (os.environ.get("VINTOS_MODEL_PROFILE") or MODEL_PROFILE or "mixed").strip().lower()
+
+def _needs_provider(convo, params):
+    """What the local model (Gemma) cannot honour: tools, images, very long context."""
+    why = []
+    if (params or {}).get("tools") or (params or {}).get("tool_choice"):
+        why.append("tools")
+    for m in convo or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list) and any(isinstance(x, dict) and x.get("type") in ("image_url", "image") for x in c):
+            why.append("images"); break
+    if sum(len(str(m.get("content", ""))) for m in (convo or []) if isinstance(m, dict)) > 60000:
+        why.append("long context")
+    return why
+
+def _ledger(res, surface, t0, stage=""):
+    """review 171: every stage's measured latency, memory and reported usage, no quality claim."""
+    try:
+        import time as _lt, compute_admission as _ca
+        _ca.record("router:" + str(surface), "foreground", provider=res.get("provider", ""), model=res.get("model", ""),
+                   stage=stage or res.get("status", ""), latency_ms=int((_lt.time() - t0) * 1000), usage=res.get("usage"))
+    except Exception:
+        pass
+
 ROUTE_BUDGET_S = float(os.environ.get("VINTOS_ROUTE_BUDGET_S", "150"))   # primary model, whole call
 ROUTE_FLOOR_S = float(os.environ.get("VINTOS_ROUTE_FLOOR_S", "45"))      # the fallback always gets at least this
 
@@ -204,7 +231,27 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
        A primary that times out is recorded unavailable and never resent (review 163); only grok is tried next."""
     import asyncio as _rb_aio, time as _rb_t
     stages = []
+    if profile() == "local":
+        # review 164: a local-only profile makes NO provider request. Text-only work goes to Gemma;
+        # a task needing a capability Gemma lacks is HELD, named, never quietly sent to a provider.
+        _need = _needs_provider(convo, params)
+        _t0l = _rb_t.time()
+        if _need:
+            res = GR.make_result("gemma", model=GEMMA_MODEL, status="held",
+                                 reason="local profile: no provider request; needs " + ", ".join(_need))
+        else:
+            try:
+                _txt = await gemma_call(([{"role": "system", "content": system_text}] if system_text else []) + list(convo or []),
+                                        temp=(params or {}).get("temperature", 0.85), max_tokens=(params or {}).get("max_tokens", 800))
+                res = GR.make_result("gemma", model=GEMMA_MODEL, status=("valid" if _txt else "unavailable"), text=_txt or "",
+                                     finish_reason="stop" if _txt else "", reason="" if _txt else "gemma returned nothing")
+            except Exception as _ge:
+                res = GR.make_result("gemma", model=GEMMA_MODEL, status="unavailable", reason=str(_ge)[:200])
+        res["route"] = "gemma(local profile)"; stages.append(res); res["stages"] = stages
+        _ledger(res, surface, _t0l, "local")
+        return res
     async def grok_stage(tag, timeout=None):
+        _tg0 = _rb_t.time()
         try:
             coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
@@ -213,6 +260,7 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         except Exception as e:
             res = GR.make_result("xai", model=grok_model, status="unavailable", reason=("%s: %s" % (type(e).__name__, e))[:200])
         res["route"] = tag; stages.append(res); res["stages"] = stages
+        _ledger(res, surface, _tg0, "grok")
         return res
     if surface not in CLAUDE_SURFACES:
         return await grok_stage("grok(surface)")
@@ -238,7 +286,7 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         # floor. Before this the two stages could take 120s each while the caller had already given up
         # and answered "no reply formed" (review P10, 2026-09-05).
         res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason), timeout=ROUTE_BUDGET_S)
-        stages.append(res)
+        stages.append(res); _ledger(res, surface, _t0, "claude")
         if GR.usable(res):
             res["route"] = "claude:" + current_claude_model(); res["stages"] = stages
             return res

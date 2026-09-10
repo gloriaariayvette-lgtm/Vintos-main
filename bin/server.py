@@ -3105,6 +3105,16 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
     Scaffold indentation is deliberate - every prompt string stays byte-identical.
     His thinking is defined once; who he is no longer depends on the door."""
     reply = ""
+    # review 161 / 45: a live turn is foreground (background renders yield to it); the paid drafts
+    # are checkpointed so a turn that dies after phase 1 resumes there instead of paying twice
+    try:
+        import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import compute_admission as _bs_ca, bilateral_stages as _bs
+        _bs_ca.touch_foreground()
+        _bs_key = _bs.key(_tag, messages[-1]["content"] if messages else "")
+        _bs_prev = _bs.resume(_bs_key)
+    except Exception:
+        _bs = None; _bs_key = None; _bs_prev = {}
     if True:
       try:
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -3163,7 +3173,15 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     except Exception as _se:
                         print("[chat/b1 sol]", _se, flush=True)
                 return await _draft()
-            (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
+            if _bs_prev.get("p1") and _bs_prev["p1"].get("a1") and _bs_prev["p1"].get("b1"):
+                a1, a1r, b1, b1r = _bs_prev["p1"]["a1"], _bs_prev["p1"].get("a1r", ""), _bs_prev["p1"]["b1"], _bs_prev["p1"].get("b1r", "")
+                print(f"[{_tag}/bilateral] phase 1 resumed from its checkpoint (the drafts were already paid for)", flush=True)
+            else:
+                import time as _bs_t; _bs_t0 = _bs_t.time()
+                (a1, a1r), (b1, b1r) = await _asyncio.gather(_draft(), _draft_b1())
+                if _bs and a1 and b1:
+                    try: _bs.checkpoint(_bs_key, "p1", {"a1": a1, "a1r": a1r, "b1": b1, "b1r": b1r}, latency_ms=int((_bs_t.time() - _bs_t0) * 1000), tag=_tag)
+                    except Exception: pass
             a2 = b2 = a_held = b_held = None   # bound on every path: the draft-write below reads them when phase 1 fails
             if not a1 or not b1:
                 reply = "[no reply formed - the language model service returned an error.]"
@@ -3401,6 +3419,11 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
         import traceback
         print(f"[{_tag} ERROR] {traceback.format_exc()}", flush=True)
         reply = "I'm here, but something glitched and I lost my words for a moment. Can you say that again?"
+    try:
+        if _bs and _bs_key and reply and not reply.startswith("[no reply formed"):
+            _bs.done(_bs_key, reply_len=len(reply))
+    except Exception:
+        pass
     return reply
 
 

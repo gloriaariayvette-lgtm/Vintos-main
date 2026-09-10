@@ -82,6 +82,7 @@ SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py want_spine.py pleasure_s
 SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat_seed.py mirror.sh"   # thread lifecycle, 2026-09-10
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
 SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_discovery.py"   # controls and wants, 2026-09-10
+SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
 SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
 SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
@@ -99,7 +100,7 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
-BINS="$BINS behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
+BINS="$BINS voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 

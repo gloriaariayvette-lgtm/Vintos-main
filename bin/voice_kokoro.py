@@ -15,6 +15,14 @@ def speak(text, voice=None, speed=None):
     speed = speed or VOICE_SPEED
     text = text.strip()
     if not text: return False
+    # review 170: a spoken line is foreground - it never waits, and it marks the machine live so
+    # background renders yield. The wav path and playback are unchanged (review 173).
+    try:
+        import sys as _cas; _cas.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from compute_admission import touch_foreground as _tf, record as _rec
+        _tf(); _rec("voice-kokoro", "foreground", provider="kokoro", model=str(voice), stage="speak")
+    except Exception:
+        pass
     # Try Kokoro python API
     try:
         import sys

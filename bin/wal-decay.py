@@ -27,9 +27,19 @@ DECAY_AGE_DAYS = 3  # Review entries older than this
 def load_json(path, default):
     if os.path.exists(path):
         try:
+            if path == WAL_LOG:
+                # review 48: the WAL log reads through the compatibility reader (entries gained
+                # source_turns on 09-05; older ones read with []); a read rewrites nothing
+                try:
+                    import sys as _scs; _scs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                    from store_compat import load_json_compat as _ljc, WAL_MIGRATIONS as _WM
+                    d, _v = _ljc(path, _WM, default=default)
+                    return d
+                except ImportError:
+                    pass
             with open(path) as f:
                 return json.load(f)
-        except:
+        except Exception:
             pass
     return default
 
