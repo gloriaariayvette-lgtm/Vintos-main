@@ -22,23 +22,19 @@ check("aliases are listed with targets; host-only links are named as such", len(
 p = EO.parity()
 check("the parity matrix has twin sets, each with identical/differs and the deployed member", len(p) > 20 and all("identical" in r and r["deployed"] for r in p) and any(not r["identical"] for r in p))
 doc = open(os.path.join(REPO, "docs", "entry-owners.md")).read()
-# The parity section carries content hashes, so any uncommitted local edit under bin/ or scripts/
-# would make the committed page look stale. Compare the whole page on a clean tree; on a dirty one
-# compare only the sections that do not depend on file contents, and say so.
-import subprocess
-try:
-    dirty = subprocess.run(["git", "-C", REPO, "status", "--porcelain", "--", "bin", "scripts"],
-                           capture_output=True, text=True, timeout=20).stdout.strip()
-except Exception:
-    dirty = ""
-gen = EO.render()
-def _head(t):
-    return t.split("## Twin parity")[0]
-if dirty:
-    check("docs/entry-owners.md is the generated table and is current (owners and aliases; the tree has local edits)",
-          _head(doc) == _head(gen), dirty.splitlines()[:5])
-else:
-    check("docs/entry-owners.md is the generated table and is current", doc == gen)
+# What the page must be current WITH is the repository: the deploy manifest and the
+# tracked files. The aliases and parity sections are built by listing bin/ and scripts/
+# on whatever machine runs this, so a local edit, an ignored file or a stray copy on the
+# host makes them differ without anything being stale. Those sections are checked above
+# for shape; here only the manifest-derived Owners section is compared, and the first
+# difference is printed so a failure is never blind.
+def _owners_section(t):
+    return t.split("## Aliases")[0]
+_d, _g = _owners_section(doc).splitlines(), _owners_section(EO.render()).splitlines()
+_first = next(("line %d\n  page: %s\n  now:  %s" % (n + 1, a, b)
+               for n, (a, b) in enumerate(zip(_d, _g)) if a != b),
+              ("page has %d lines, generated has %d" % (len(_d), len(_g))) if len(_d) != len(_g) else "")
+check("docs/entry-owners.md carries the current owners table", _d == _g, _first)
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy writes a release record with hashes, services, broker state, backup and rollback", 'RELEASES="$HOME/.vintos/deploy/releases"' in dep and '"sha256": sha' in dep and '"rollback": "bash %s/restore.sh"' in dep and '"broker_confirmed"' in dep and "would write the release record" in dep)
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
