@@ -1,9 +1,29 @@
 """model_router.py — single source of model truth for Vintos text surfaces.
 Claude drives chat/avatar; grok is the fallback (hard refusal, error, toggle=grok, or a forced-turn window).
 Voice and Gemma calls are never routed here. Flip a surface in CLAUDE_SURFACES / the mode file, not across jobs."""
-import os, json
+import os, sys, json, hashlib
 from datetime import datetime
 import httpx
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gen_result as GR   # the one stage/result contract shared with vintos_claude_shim (review 43)
+make_result, RESULT_STATUSES = GR.make_result, GR.STATUSES
+USAGE_LOG = os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl")
+
+def idempotency_key(body):
+    """Stable hash of the provider request; sent as Idempotency-Key so a resend of the same job to the
+    same provider cannot double-charge (review 163). The router never resends after a timeout itself:
+    a timed-out primary is recorded unavailable and only the *other* provider is tried."""
+    return "vintos-" + hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:32]
+
+def _log_usage(d):
+    try:
+        _u = d.get("usage") or {}
+        import time as _ut
+        open(USAGE_LOG, "a").write(json.dumps({
+            "ts": _ut.time(), "model": d.get("model", ""),
+            "in": _u.get("input_tokens"), "out": _u.get("output_tokens"),
+            "cache_read": _u.get("cache_read_input_tokens"), "cache_write": _u.get("cache_creation_input_tokens")}) + "\n")
+    except Exception: pass
 
 _HOME = os.path.expanduser("~")
 _MODE_FILE = os.path.join(_HOME, ".vintos", "model-mode.json")
@@ -102,15 +122,26 @@ def _consume_forced():
         m["force_grok_turns"] = n - 1; write_mode(m); return True
     return False
 
-async def _grok(convo, params, endpoint, headers, model, system_text):
+async def _grok_result(convo, params, endpoint, headers, model, system_text):
+    """grok stage -> GR result (never raises on a bad body; transport errors propagate to route_reply)."""
     body = {"model": model, "messages": [{"role": "system", "content": system_text}] + convo,
             "max_tokens": params.get("max_tokens", 400),
             "temperature": params.get("temperature", 0.85),
             "top_p": params.get("top_p", 0.95),
             "route": "grok"}
+    hdrs = dict(headers or {}); hdrs["Idempotency-Key"] = idempotency_key(body)
     async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.post(endpoint, headers=headers, json=body)
-        return r.json()["choices"][0]["message"]["content"]
+        r = await c.post(endpoint, headers=hdrs, json=body)
+        try: d = r.json()
+        except Exception: d = None
+    res = GR.from_openai(d, "xai")
+    if not res["model"]: res["model"] = model
+    return res
+
+async def _grok(convo, params, endpoint, headers, model, system_text):
+    res = await _grok_result(convo, params, endpoint, headers, model, system_text)
+    if not GR.usable(res): raise RuntimeError("grok %s: %s" % (res["status"], res["reason"]))
+    return res["text"]
 
 def _cachetail(convo):
     """Mark the final user message as a cache boundary. The next call in a burst
@@ -146,61 +177,89 @@ async def _claude(system_text, convo, params, reason):
     body = {"model": current_claude_model(), "max_tokens": max_tok,
             "system": _sysblocks(system_text),
             "messages": _cachetail(convo), "thinking": thinking}
+    for k in ("temperature", "top_p"):
+        if params.get(k) is not None and k not in body:
+            body[k] = float(params[k]); break   # Anthropic takes one of the two
+    if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
-                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
-        d = r.json()
-    try:
-        _u=d.get("usage") or {}
-        import json as _uj, time as _ut
-        open(os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl"),"a").write(_uj.dumps({
-            "ts":_ut.time(),"model":d.get("model",""),
-            "in":_u.get("input_tokens"),"out":_u.get("output_tokens"),
-            "cache_read":_u.get("cache_read_input_tokens"),"cache_write":_u.get("cache_creation_input_tokens")})+"\n")
-    except Exception: pass
-    if d.get("type") == "error" or d.get("stop_reason") == "refusal":
-        return None, ""
-    think = "".join(b.get("thinking", "") for b in d.get("content", []) if b.get("type") == "thinking")
-    text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
-    return (text or None), think
+                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key,
+                     "Idempotency-Key": idempotency_key(body)})
+        try: d = r.json()
+        except Exception: d = None
+    if isinstance(d, dict): _log_usage(d)
+    res = GR.from_anthropic(d)
+    if not res["model"]: res["model"] = body["model"]
+    res["reasoning"] = "".join(b.get("thinking", "") for b in (d or {}).get("content", []) if b.get("type") == "thinking") if isinstance(d, dict) else ""
+    return res
 
 ROUTE_BUDGET_S = float(os.environ.get("VINTOS_ROUTE_BUDGET_S", "150"))   # primary model, whole call
 ROUTE_FLOOR_S = float(os.environ.get("VINTOS_ROUTE_FLOOR_S", "45"))      # the fallback always gets at least this
 
-async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
-    """Returns (reply, reasoning, model_used). The grok path is the safety net."""
+async def route_reply_result(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
+    """One GR result (provider, model, request_id, status, usage, text, ...) plus:
+         route  - why that provider was chosen ("claude:<model>", "grok(surface)", "grok(primary timed out ...)")
+         stages - every stage result in order (the claude stage that timed out / refused is kept, status held/unavailable)
+       A primary that times out is recorded unavailable and never resent (review 163); only grok is tried next."""
+    import asyncio as _rb_aio, time as _rb_t
+    stages = []
+    async def grok_stage(tag, timeout=None):
+        try:
+            coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
+            res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
+        except _rb_aio.TimeoutError:
+            res = GR.make_result("xai", model=grok_model, status="unavailable", reason="timed out after send (%ss); not retried" % int(timeout or 60))
+        except Exception as e:
+            res = GR.make_result("xai", model=grok_model, status="unavailable", reason=("%s: %s" % (type(e).__name__, e))[:200])
+        res["route"] = tag; stages.append(res); res["stages"] = stages
+        return res
     if surface not in CLAUDE_SURFACES:
-        return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(surface)"
+        return await grok_stage("grok(surface)")
     if read_mode().get("mode") == "grok":
-        return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(toggle)"
+        return await grok_stage("grok(toggle)")
     if read_mode().get("mode") == "sol":
         try:
             _st, _stag = await sol_draft(system_text, convo)
             if _st:
                 print("[router] sol answered (%d chars)" % len(_st), flush=True)
-                return _st, "", "sol"
+                res = GR.make_result("openai", model=SOL_MODEL, status="valid", text=_st, finish_reason="stop")
+                res["route"] = "sol"; stages.append(res); res["stages"] = stages
+                return res
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
         # fall through: Claude next, grok as the unchanged safety net
     if _consume_forced():
-        return await _grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), "", "grok(forced)"
+        return await grok_stage("grok(forced)")
     why = "grok(refusal)"
-    import asyncio as _rb_aio, time as _rb_t
     _t0 = _rb_t.time()
     try:
         # the primary gets at most the route budget; the safety net gets what is left, never less than a
         # floor. Before this the two stages could take 120s each while the caller had already given up
         # and answered "no reply formed" (review P10, 2026-09-05).
-        reply, reasoning = await _rb_aio.wait_for(_claude(system_text, convo, params, reason), timeout=ROUTE_BUDGET_S)
-        if reply is not None:
-            return reply, reasoning, "claude:" + current_claude_model()
+        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason), timeout=ROUTE_BUDGET_S)
+        stages.append(res)
+        if GR.usable(res):
+            res["route"] = "claude:" + current_claude_model(); res["stages"] = stages
+            return res
+        why = "grok(%s)" % ("refusal" if res["status"] == "held" else res["status"])
     except _rb_aio.TimeoutError:
         why = "grok(primary timed out at %ds)" % int(ROUTE_BUDGET_S)
+        stages.append(GR.make_result("anthropic", model=current_claude_model(), status="unavailable",
+                                     reason="timed out after send (%ds); not retried" % int(ROUTE_BUDGET_S)))
     except Exception as e:
         why = "grok(error:%s)" % str(e)[:40]
+        stages.append(GR.make_result("anthropic", model=current_claude_model(), status="unavailable", reason=str(e)[:200]))
     _left = max(ROUTE_FLOOR_S, ROUTE_BUDGET_S + ROUTE_FLOOR_S - (_rb_t.time() - _t0))
-    return await _rb_aio.wait_for(_grok(convo, params, grok_endpoint, grok_headers, grok_model, system_text), timeout=_left), "", why
+    return await grok_stage(why, timeout=_left)
+
+async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
+    """Returns (reply, reasoning, model_used). The grok path is the safety net.
+    Thin view over route_reply_result for existing callers; raises when no stage produced text (as before)."""
+    res = await route_reply_result(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason)
+    if not GR.usable(res):
+        raise RuntimeError("route_reply: %s %s: %s" % (res["provider"], res["status"], res["reason"]))
+    return res["text"], res.get("reasoning", ""), res["route"]
 
 
 GEMMA_ENDPOINT = "http://172.18.16.1:1234/v1/chat/completions"
@@ -226,18 +285,12 @@ async def claude_draft(system_text, convo, max_tokens=1500):
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
-                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key})
+                     "anthropic-beta": "extended-cache-ttl-2025-04-11", "x-api-key": key,
+                     "Idempotency-Key": idempotency_key(body)})
         d = r.json()
-    try:
-        _u=d.get("usage") or {}
-        import json as _uj, time as _ut
-        open(os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl"),"a").write(_uj.dumps({
-            "ts":_ut.time(),"model":d.get("model",""),
-            "in":_u.get("input_tokens"),"out":_u.get("output_tokens"),
-            "cache_read":_u.get("cache_read_input_tokens"),"cache_write":_u.get("cache_creation_input_tokens")})+"\n")
-    except Exception: pass
-    if d.get("type") == "error" or d.get("stop_reason") == "refusal":
+    _log_usage(d)
+    res = GR.from_anthropic(d)
+    if not GR.usable(res):
         return None, ""
     think = "".join(b.get("thinking", "") for b in d.get("content", []) if b.get("type") == "thinking")
-    text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
-    return (text or None), think
+    return res["text"], think
