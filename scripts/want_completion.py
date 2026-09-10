@@ -64,7 +64,8 @@ def complete(want, how, by, note="", evidence=None):
     wants, w = _find(want)
     wid = (w or want).get("id") if isinstance(w or want, dict) else None
     text = (w or want).get("want") if isinstance(w or want, dict) else str(want)
-    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "want_id": wid, "want": str(text)[:250], "how": how, "by": by, "note": str(note)[:300], "evidence": evidence}
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "want_id": wid, "want": str(text)[:250], "how": how, "by": by,
+           "note": str(note)[:300], "evidence": evidence, "turn_id": os.environ.get("VINTOS_TURN_ID", "") or None}
     if how == "fulfilled":
         try:
             sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

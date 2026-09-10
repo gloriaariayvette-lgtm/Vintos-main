@@ -53,7 +53,7 @@ def _from_bring_up():
         if not isinstance(x, dict) or not x.get("question"):
             continue
         st = {"queued": "selected", "asked": "explored", "answered": "resolved", "graduated": "consolidated", "held": "explored"}.get(str(x.get("status", "queued")), "selected")
-        yield {"id": x.get("id") or ("CQ-" + str(x.get("question"))[:24]), "question": x["question"], "source": "causality:" + str(x.get("source", "")),
+        yield {"id": x.get("id") or ("CQ-" + str(x.get("question"))[:24]), "question_id": x.get("id"), "question": x["question"], "source": "causality:" + str(x.get("source", "")),
                "state": st, "basis": "status %s in the bring-up queue" % x.get("status", "queued"), "since": x.get("formed")}
 
 

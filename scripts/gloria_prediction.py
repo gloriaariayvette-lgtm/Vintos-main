@@ -131,10 +131,16 @@ def main():
         out["confidence"] = round(float(jp.get("confidence", out["confidence"])), 3)
         out["novelty"]    = round(float(jp.get("novelty", out["novelty"])), 3)
         out["grounded_by"] = "jepa"
+        out["grounding_evaluated"] = True
+        out["confidence_source"] = "jepa_calibrated"
         out["jepa_nearest"] = str(jp.get("gloria_forecast_nearest", ""))[:160]
     elif jp.get("source") == "jepa":
         # the predictor ran but its numbers do not qualify here: keep the LLM's and say exactly why
         out["grounded_by"] = "llm"
+        # review 71: a grounding that could not be evaluated is UNKNOWN - the confidence it carries is
+        # the LLM's own, and nothing downstream may read it as a measured one
+        out["grounding_evaluated"] = False
+        out["confidence_source"] = "llm_self_report_unmeasured"
         out["jepa_declined"] = ("not calibrated to steer (steering_allowed false)" if jp.get("steering_allowed") is not True else
                                 "stale or different context" if jp.get("variance_qualified") is True else
                                 str((jp.get("qualification") or {}).get("gloria") or "variance not qualified"))

@@ -100,7 +100,7 @@ def observe(sensor, value, at=None, meta=None, now=None):
                 decision.update(reacted=False, why="limit reached: %d reactions this hour (limit %d)" % (len(recent), lim["per_hour"]))
             else:
                 rid = "SR-" + uuid.uuid4().hex[:8]
-                reaction = {"id": rid, "sensor": sensor, "change": desc, "channel": lim["channel"], "created": now,
+                reaction = {"id": rid, "reaction_id": rid, "sensor": sensor, "change": desc, "channel": lim["channel"], "created": now,
                             "expires_at": now + lim["expires_s"], "limit": "%d/h" % lim["per_hour"], "consumed": False}
                 s["reactions"] = recent + [now]
                 st.setdefault("pending", []).append(reaction)

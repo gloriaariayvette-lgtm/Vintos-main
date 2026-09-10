@@ -46,12 +46,24 @@ def w_pending_sweep():
     return None
 
 def w_composer_reads_shares():
-    """Fires once a share exists (0 today) and a composition follows it."""
+    """Fires once a share exists AND a composition names it - a share alone is not the composer having
+    read it (review 70: no watcher reports success from a stale or insufficient predicate)."""
     sh = _j(os.path.join(MEM, "gloria-music-shares.json"), [])
-    return True if sh else None
+    if not sh:
+        return None
+    ids = {str(s.get("id") or s.get("share_id") or "") for s in sh if isinstance(s, dict)}
+    log = _j(os.path.join(MEM, "art", "music", "music.json"), {})
+    gen = log.get("generated", []) if isinstance(log, dict) else (log or [])
+    for e in gen:
+        if isinstance(e, dict) and {str(x) for x in (e.get("shares_in_context") or [])} & ids:
+            return True
+    return None
 
 def w_coherence_pressure():
-    return True  # live-tested 2026-08-26: first output ever, thread_conflict 1.00
+    """review 70: a watcher answers from an artifact it can see now, never from a past observation. The
+    2026-08-26 live test is history, not a live predicate; without a fresh record this is unknown."""
+    rows = _j(os.path.join(MEM, "voice-coherence.json"), []) or _j(os.path.join(MEM, "coherence-pressure.json"), [])
+    return True if rows else None
 
 def w_substrate_events():
     """Guard-decline ledger receives its first event (fires only when a decline happens)."""

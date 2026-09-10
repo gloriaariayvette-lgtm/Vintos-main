@@ -45,7 +45,7 @@ def create(want_text, capability, kind, detail=""):
             break
     except Exception:
         pass
-    cps.append({"id": cid, "want_text": str(want_text)[:250], "capability": capability,
+    cps.append({"id": cid, "checkpoint_id": cid, "want_text": str(want_text)[:250], "capability": capability,
                 "kind": kind, "detail": str(detail)[:200],
                 "findings": findings, "blocker": (str(detail)[:200] if kind in ("blocked", "failed", "empty_result") else ""), "next_step": next_step,
                 "created": datetime.now().isoformat(), "state": "pending",

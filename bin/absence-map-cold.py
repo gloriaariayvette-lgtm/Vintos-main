@@ -80,6 +80,8 @@ def register_absence(description, source, intensity=0.4, source_id=None):
         "vector": vec,
         "source": source,
         "source_id": source_id,
+        "schema_version": 2,          # review 65: one shape across the shared-support mechanisms
+        "source_cursor": {"source": source, "source_id": source_id, "registered_at": datetime.now().isoformat()},
         "intensity": round(intensity, 3),
         "count": 1,
         "created": datetime.now().isoformat(),
