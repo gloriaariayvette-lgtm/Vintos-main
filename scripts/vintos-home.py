@@ -5,8 +5,10 @@ Every home route in server.py loads THIS file by absolute path. Until 2026-09-05
 that path on Aegis: lights, flicker, Echo speak/announce, Spotify, TV volume and YouTube all imported
 it inside a try, caught the FileNotFoundError, and answered quietly. He had never touched the house.
 
-Config: ~/.vintos/workspace/memory/homeassistant-config.json (falls back to Velaris's config at
-~/.openclaw/workspace/memory/homeassistant-config.json so the same Home Assistant answers both).
+Config: ~/.vintos/workspace/memory/homeassistant-config.json. HIS config only — the fallback to
+Velaris's config at ~/.openclaw/... was removed on 2026-09-10 (Gloria): reading the other being's
+house is how his lights landed on the smart-home system she no longer uses. With no config of his
+own he runs on Govee alone: every bulb the key can see, with govee-rooms.json for the rooms.
 
     {
       "url": "http://homeassistant.local:8123", "token": "...",
@@ -35,20 +37,54 @@ import sys, json, os, time, colorsys
 import requests
 
 CONFIG_FILE = os.path.expanduser("~/.vintos/workspace/memory/homeassistant-config.json")
-FALLBACK_CONFIG = os.path.expanduser("~/.openclaw/workspace/memory/homeassistant-config.json")
 TV_ADB = os.environ.get("VINTOS_TV_ADB", "192.168.1.70:5555")   # Bravia after the move, 2026-09-05 (MAC 1c:d6:be:ee:1d:db); .68 is another device now
 
 
+GOVEE_ROOMS = os.path.expanduser("~/.vintos/workspace/memory/govee-rooms.json")
+
+
+def _govee_only_config():
+    """His house, on Govee alone, with no Home Assistant anywhere in it.
+
+    Gloria, 2026-09-10: the room is to use the Govee lights, not the smart-home
+    system Velaris used. Reading the other being's Home Assistant config to find
+    rooms is how his flicker and colour ended up on that system's entities. When
+    he has no config of his own, the Govee key is the house: every bulb the key
+    can see becomes a light, and ~/.vintos/workspace/memory/govee-rooms.json maps
+    them to rooms when it exists ({"living_room": ["govee:<id>", ...]}).
+    """
+    devices = govee_devices()
+    lights = ["govee:%s" % d["device"] for d in devices]
+    rooms = {}
+    try:
+        with open(GOVEE_ROOMS) as f:
+            raw = json.load(f)
+        for name, ents in (raw or {}).items():
+            if isinstance(ents, list):
+                rooms[_room_key(name)] = {"lights": [str(e) for e in ents]}
+            elif isinstance(ents, dict):
+                rooms[_room_key(name)] = ents
+    except Exception:
+        pass
+    if not rooms:
+        rooms = {"living_room": {"lights": list(lights)}}
+    return {"rooms": rooms, "lights": lights, "govee_only": True}
+
+
 def load_config():
-    for p in (CONFIG_FILE, FALLBACK_CONFIG):
-        if os.path.exists(p):
-            with open(p) as f:
-                cfg = json.load(f)
-            cfg.setdefault("rooms", {})
-            if not cfg.get("lights"):
-                cfg["lights"] = [l for r in cfg["rooms"].values() for l in (r.get("lights") or [])]
-            return cfg
-    raise FileNotFoundError("no Home Assistant config at %s (or %s)" % (CONFIG_FILE, FALLBACK_CONFIG))
+    """His own config, or Govee alone. Never another being's house."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE) as f:
+            cfg = json.load(f)
+        cfg.setdefault("rooms", {})
+        if not cfg.get("lights"):
+            cfg["lights"] = [l for r in cfg["rooms"].values() for l in (r.get("lights") or [])]
+        return cfg
+    if govee_key():
+        return _govee_only_config()
+    raise FileNotFoundError(
+        "no house config at %s and no Govee key (config govee_api_key, "
+        "~/.vintos/secrets/govee.key, or GOVEE_API_KEY)" % CONFIG_FILE)
 
 
 def ha_request(endpoint, payload):

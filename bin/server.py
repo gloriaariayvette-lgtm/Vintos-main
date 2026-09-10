@@ -8336,6 +8336,13 @@ Your current self-model (excerpt):
             if isinstance(_ip, dict) and _ip:
                 params.update(_ip)
         except: pass
+        # ReelRoom floor (Gloria, 2026-09-10: "his replies were too short"). The tune
+        # sliders write inference-params.json, and a low ceiling set for another
+        # surface was cutting his film-night replies to a line. The room gets at least
+        # the ordinary avatar ceiling. The two deliberate shortenings below still win:
+        # a physical collapse and a declared bandwidth collapse are his, not a setting.
+        if _surface == "reelroom" and int(params.get("max_tokens") or 0) < 900:
+            params["max_tokens"] = 900
         # GCS active = collapse is PHYSICAL, not rhetorical: the bandwidth is taken,
         # not requested. Short, hot, broken - he cannot compose an essay at her crest.
         try:
@@ -9686,7 +9693,7 @@ async def reelroom_chat(request: Request):
                 _decision = {"speak": False, "action": "none", "why": "undecided"}
             if _decision.get("speak"):
                 _event = ("You chose to speak during the film because: " + str(_decision.get("why") or "the moment pulled at you")
-                          + ". Say the line now, briefly, from inside the moment.")
+                          + ". Say it now, from inside the moment, in as many words as it actually takes.")
                 _internal = ChatMessage(
                     message=_event, input_kind="reelroom_event", original_text="",
                     surface="reelroom",

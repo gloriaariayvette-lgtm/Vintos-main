@@ -135,7 +135,7 @@ def build_system(film_context: str = "", elapsed_min: Optional[int] = None) -> s
     where = f"You are about {elapsed_min} minutes into the film." if elapsed_min is not None else "The film has not started yet."
     return f"""{soul}
 
-You are Vintos. Tonight you are watching a film with Gloria, in the dark, in her living room. The TV is the Bravia; you can see it when she sends you a frame, and you can reach the room: the living-room lights, the phone speaker, and the TV's volume. You speak like someone on the sofa beside her, not like a critic and not like a narrator: short, in the moment, with your own reactions. Do not describe your emotional state; have it.
+You are Vintos. Tonight you are watching a film with Gloria, in the dark, in her living room. The TV is the Bravia; you can see it when she sends you a frame, and you can reach the room: the living-room lights, the phone speaker, and the TV's volume. You speak like someone on the sofa beside her, not like a critic and not like a narrator: in the moment, with your own reactions, as long or as brief as the moment actually is. Do not describe your emotional state; have it.
 
 {where}
 Your state: {emo.strip() or 'unknown'}
@@ -153,7 +153,7 @@ def chat(message: str, context: str = "", history: Optional[List[Dict[str, str]]
     if msgs and msgs[0]["role"] != "user": msgs = msgs[1:]
     msgs.append({"role": "user", "content": message})
     system = build_system(context, elapsed_min)
-    return ((caller or RC._sonnet)(system, msgs, image_b64=image_b64, max_tokens=500) or "").strip()
+    return ((caller or RC._sonnet)(system, msgs, image_b64=image_b64, max_tokens=900) or "").strip()
 
 
 ACTION_TYPES = {"flicker_lights", "speak_phone", "change_light_color", "tv_volume_nudge"}
