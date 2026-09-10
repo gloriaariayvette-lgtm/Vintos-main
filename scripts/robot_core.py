@@ -135,7 +135,12 @@ def _authorize(kind, detail, context=None):
         ok, mode, why = effect_gate.authorize_effect(context, kind, detail=detail)
         return bool(ok), mode, why
     except Exception as e:
-        return True, "send", f"gate unavailable ({str(e)[:60]})"
+        # review 74: an unreachable gate is not permission. A reduction (stop, a lowering) still passes -
+        # it is always allowed - but a deliberative effect is refused and the refusal says why.
+        _reduction = str(kind or "").lower() in ("stop", "halt", "release", "reduce") or str((detail or {}).get("intent", "")).lower() in ("stop", "halt")
+        if _reduction:
+            return True, "send", f"gate unavailable ({str(e)[:60]}); a reduction needs no permit"
+        return False, "deny", f"gate unavailable ({str(e)[:60]}); a deliberative effect is refused, not assumed"
 
 
 # ---------------------------------------------------------------- commands (what he queues, what the Pi takes)

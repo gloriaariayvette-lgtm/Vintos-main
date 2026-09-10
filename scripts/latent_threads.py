@@ -115,12 +115,18 @@ def embed(text):
     return []
 
 def cosine_similarity(a, b):
-    if not a or not b or len(a) != len(b): return 0.0
-    dot = sum(x*y for x,y in zip(a,b))
-    mag_a = math.sqrt(sum(x*x for x in a))
-    mag_b = math.sqrt(sum(x*x for x in b))
-    if mag_a == 0 or mag_b == 0: return 0.0
-    return dot / (mag_a * mag_b)
+    """review 157: the one arithmetic lives in text_similarity.cosine; this name stays for callers."""
+    try:
+        import sys as _ts_s, os as _ts_o
+        _ts_s.path.insert(0, _ts_o.path.dirname(_ts_o.path.abspath(__file__)))
+        _ts_s.path.insert(0, _ts_o.path.expanduser("~/.vintos/workspace/scripts"))
+        from text_similarity import cosine as _cos
+        return _cos(a, b)
+    except Exception:
+        if not a or not b or len(a) != len(b): return 0.0
+        dot = sum(float(x) * float(y) for x, y in zip(a, b))
+        na = sum(float(x) * float(x) for x in a) ** 0.5; nb = sum(float(y) * float(y) for y in b) ** 0.5
+        return (dot / (na * nb)) if na and nb else 0.0
 
 def blend_vectors(a, b, weight_a=0.7, weight_b=0.3):
     if not a: return b

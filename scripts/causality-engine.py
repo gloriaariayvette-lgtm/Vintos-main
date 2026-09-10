@@ -325,7 +325,10 @@ def _readiness(h):
         net = (h.get("graduation_readiness") or {}).get("net")
     except Exception:
         net = None
-    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")]
+    # review 148: a mark from self-produced material (a ghost testing its own hypothesis) informs but
+    # never graduates - it is excluded here, where graduation is counted, not deleted from the record
+    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")
+             and m.get("counts_toward_graduation", True) and not m.get("tactical")]
     if net is None:
         net = (sum(1 for m in marks if m.get("outcome") == "attempted")
                - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))

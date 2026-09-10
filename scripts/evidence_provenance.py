@@ -22,6 +22,25 @@ _OUTPUTS = {"ordinary_generation", "stratagem_influenced", "unknown"}
 _STATUSES = {"started", "completed", "failed", "HELD", "unknown"}
 
 
+TACTICAL_SOURCES = ("ghost", "ghost_branch", "ghost_recurrence", "trial", "shadow_trial", "stratagem",
+                    "rehearsal", "proposed_pearl", "counterfactual", "simulation")
+
+
+def is_tactical(source):
+    """review 110: material generated to explore rather than to be true. It may inform him; it may never
+    stand as evidence, be cited as a fact, or supply recurrence."""
+    s = str(source or "").lower()
+    return any(t in s for t in TACTICAL_SOURCES)
+
+
+def can_be_evidence(source, claim_kind="fact"):
+    """(ok, why). Tactical material is refused for every claim kind; everything else defers to the
+    existing witness rules."""
+    if is_tactical(source):
+        return False, "%s is tactical material (generated to explore, not to be true); it cannot stand as %s" % (source, claim_kind)
+    return True, ""
+
+
 def _legacy():
     return {"schema": 1, "turn_id": "", "surface": "legacy",
             "input_provenance": "counterpart_verbatim",

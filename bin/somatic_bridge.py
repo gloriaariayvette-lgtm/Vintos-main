@@ -65,7 +65,11 @@ def budget_nudge(dim, amt):
         nudge_spent[dim] = nudge_spent.get(dim, 0.0) + abs(amt)
 
 def classify(window):
-    if not window: return {"state": "absent", "center": 0, "sweep": 0, "speed": 0, "flips": 0}
+    # review 93: the classification carries the shared observation contract - when the world produced the
+    # reading, the window it covers, the device, the calibration state and the stream
+    if not window: return {"state": "absent", "center": 0, "sweep": 0, "speed": 0, "flips": 0,
+                           "sampled_at": None, "window_s": WINDOW_SECONDS, "device": "mission",
+                           "calibration": "interim-thresholds", "stream": "somatic", "contract": "physical-observation-1"}
     pos = [f[1] for f in window]; spd = [f[2] for f in window]
     flips = sum(1 for a, b in zip(window, window[1:]) if a[3] != b[3])
     sweep = max(pos) - min(pos)

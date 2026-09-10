@@ -566,6 +566,17 @@ if __name__ == "__main__":
         print("commanded:", dict(_commanded))
 
 
+def physical_record(effect_id, toy, level, kind="", permit=None, turn_id=""):
+    """review 77/93: the shared physical-effect shape, for a caller that wants to carry requested ->
+    accepted -> observed rather than only a log line."""
+    try:
+        import physical_contract as _pc
+    except Exception:
+        return None
+    return _pc.effect(effect_id, toy, level, kind=kind,
+                      permit_digest=(getattr(permit, "digest", None) if permit is not None else None), turn_id=turn_id)
+
+
 def send_result(context, toy, ok, why="", permit=None):
     """The transport's REAL outcome, recorded against the turn.
 

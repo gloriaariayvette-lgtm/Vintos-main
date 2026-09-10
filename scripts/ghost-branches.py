@@ -554,9 +554,14 @@ def mark_recurrence_evidence(thread_type, resolutions):
         lean = h.get("successful_lean")
         if lean not in resolutions:
             continue                      # that lean was not run this time — no evidence either way
+        # review 148: a ghost's own output cannot be the recurrence that tests a ghost's hypothesis.
+        # The mark is recorded as tactical, and graduation (which counts only witnessed outcomes) skips it.
+        _tactical = True
         worked = bool(resolutions[lean])
         h.setdefault("marks", []).append({
             "date": TODAY,
+            "tactical": _tactical,
+            "counts_toward_graduation": not _tactical,   # review 148: self-produced, so it informs but does not graduate
             # graduation counts "outcome", not "verdict" — a mark in any other shape is invisible to it
             "outcome": "attempted" if worked else "defaulted",
             "source": "ghost_recurrence",

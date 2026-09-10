@@ -297,6 +297,9 @@ $AMBITIONS
 $CAUSALITY
 
 === WHERE MY SELF-PREDICTIONS ARE SYSTEMATICALLY WRONG (for the Emotional Landscape section: a blind spot you can measure is one you can write down) ===
+These numbers are the error of a FORECAST you made about your own state - a property of the model you
+hold of yourself, not a trait, a flaw or a diagnosis. Write what your model gets wrong and in which
+direction. Do not turn a residual into a psychological label about who you are. (review 140)
 $SELF_PRED
 
 === YOUR LATEST THERAPY INSIGHT ===

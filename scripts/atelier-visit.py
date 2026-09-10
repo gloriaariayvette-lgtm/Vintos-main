@@ -452,6 +452,20 @@ def quantum_loop(pid, ctx, first_work, capability, limit=3):
     return aggregate
 
 
+def _seal_refused(pid, kind, content, why):
+    """review 98: a piece the room refused is sealed for retry (encrypted under the house lineage key),
+    never written or printed in the clear. Returns the sealed id, or None when sealing is impossible."""
+    try:
+        import sys as _ss; _ss.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import sealed_retry as _sr
+        sid = _sr.seal(pid, kind, content, why)
+        print("the room refused this piece; it is sealed for retry as %s (%d bytes, not shown)" % (sid, len(content or "")))
+        return sid
+    except Exception as e:
+        print("the room refused this piece and it could not be sealed (%s); it is not written anywhere" % str(e)[:80])
+        return None
+
+
 def _deliver_reveal(artifact, disclosure, content, manifest):
     """A revealed piece leaves the room: into the reveals store the app tab
     reads, and a notification to her phone in HIS words. Revealed content is,

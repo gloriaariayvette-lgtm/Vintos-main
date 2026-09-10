@@ -11,7 +11,7 @@ events. Forms causal hypotheses. Tests them over time.
 
 Runs weekly via cron. Hypotheses accumulate and get tested.
 """
-import os, sys, json, re, glob, hashlib
+import os, sys, json, re, glob, hashlib, time
 from datetime import datetime, timedelta
 import subprocess
 
@@ -54,11 +54,15 @@ def _door(path):
         if _os.path.basename(str(path)) == "interaction-ledger.json":
             return _EV.ledger_view(path)
         return _EV.open_history(path)
-    except Exception:
-        import json as _json
+    except Exception as _exc:
+        # No raw fallback (review 106): the door failing is the one case the door exists for.
+        # The read is HELD - recorded with its reason, and empty - never the raw file.
         try:
-            return _json.load(open(path))
+            import evidence_view as _EV2
+            return _EV2.held_read(path, organ='causality_engine', reason=str(_exc)[:160])
         except Exception:
+            import sys as _sys
+            print("[evidence-view] HELD %s for causality-engine.py: %s" % (path, str(_exc)[:120]), file=_sys.stderr)
             return []
 
 
@@ -321,7 +325,10 @@ def _readiness(h):
         net = (h.get("graduation_readiness") or {}).get("net")
     except Exception:
         net = None
-    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")]
+    # review 148: a mark from self-produced material (a ghost testing its own hypothesis) informs but
+    # never graduates - it is excluded here, where graduation is counted, not deleted from the record
+    marks = [m for m in h.get("marks", []) if isinstance(m, dict) and not m.get("voided")
+             and m.get("counts_toward_graduation", True) and not m.get("tactical")]
     if net is None:
         net = (sum(1 for m in marks if m.get("outcome") == "attempted")
                - sum(1 for m in marks if m.get("outcome") in ("defaulted", "partial")))
@@ -903,13 +910,28 @@ def graduate_hypotheses(db):
                         except Exception as _gh_e:
                             log(f"  gloria-hypotheses wire failed: {_gh_e}")
                     else:
-                        # Self-tagged — feed belief sediment
+                        # Self-tagged — feed belief sediment.
+                        # review 146: the evidence record is written FIRST (memory/causality-graduated.jsonl,
+                        # the whole hypothesis with its marks and evidence ids); only then the downstream
+                        # write. A failed downstream leaves promotion_pending on the hypothesis, which stays
+                        # in the db for the next run, and the evidence is intact either way.
+                        _ev_ids = [i for m in _nightly_rows(h) for i in (m.get("evidence_ids") or [])]
+                        try:
+                            with open(os.path.join(MEMORY, "causality-graduated.jsonl"), "a") as _gf:
+                                _gf.write(json.dumps({"at": datetime.now().isoformat(), "hypothesis_id": _hypothesis_id(h),
+                                                      "hypothesis": h, "evidence_ids": _ev_ids, "downstream": "belief_sediment"}) + "\n")
+                        except Exception as _ge:
+                            log(f"  graduation evidence record failed: {_ge}")
                         try:
                             import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
                             from belief_sediment import promote_hypothesis as _bs_promote
-                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality")
+                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality",
+                                        hypothesis_id=_hypothesis_id(h), evidence_ids=_ev_ids)
+                            h.pop("promotion_pending", None)
                         except Exception as _bs_e:
-                            log(f"  belief_sediment wire failed: {_bs_e}")
+                            log(f"  belief_sediment wire failed: {_bs_e} - promotion pending, evidence kept")
+                            h["promotion_pending"] = {"downstream": "belief_sediment", "error": str(_bs_e)[:200],
+                                                      "at": datetime.now().isoformat()}
                     # High-confidence self graduation → pearl candidate — only when the hypothesis was
                     # formed from BEHAVIORAL material (a trial block, or a pattern he enacts/avoids).
                     # Spike attribution and causal-jepa regularities go to belief sediment only
@@ -939,6 +961,8 @@ def graduate_hypotheses(db):
                     h["graduation_review"] = {"state": "passed", "basis": _review_basis,
                                                 "at": h["graduated_at"]}
                     graduated.append(h)
+                    if h.get("promotion_pending"):
+                        remaining.append(h)   # review 146: graduated, but its downstream write failed - retried next run
                     log("  GRADUATED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
                 else:
                     h["graduated"] = False
@@ -1315,6 +1339,49 @@ def write_hypothesis_log(db):
             f.write("## What I Know About Myself\n\n")
             for b in _beliefs:
                 f.write(f"- {b.get('pattern','')[:200]} (confidence {b.get('confidence',0):.2f}, seen {b.get('evidence_count',0)}x)\n")
+
+
+BRING_UP = os.path.join(MEMORY, "causality-bring-up.json")
+PENDING_QUEUE = os.path.join(MEMORY, ".pending-causality-queue.json")
+
+def queue_question(question, source, evidence=None, subject="self", memory=None):
+    """review 204: the one door for a question graduating to the causality head, from every producer
+    (intent pressure, self pressure, priority vector, campaign expiry). The record is schema-2 shaped -
+    an id, the formation envelope, root evidence ids/fingerprints, the source - and the string queue his
+    chat prompt reads gets the question once. Producers used to write bare {ts, question, source} dicts."""
+    question = str(question or "").strip()
+    if len(question) < 8:
+        return None
+    bring_up = os.path.join(memory, "causality-bring-up.json") if memory else BRING_UP
+    pending = os.path.join(memory, ".pending-causality-queue.json") if memory else PENDING_QUEUE
+    from datetime import date as _qd
+    rec = {"id": "CQ-" + _digest(question + source)[:12], "formed": datetime.now().isoformat(),
+           "formed_date": _qd.today().isoformat(), "question": question, "source": source, "subject": subject,
+           "status": "queued", "ts": time.time()}
+    roots = [str(e) for e in (evidence or []) if e]
+    rec["schema_version"] = CAUSALITY_SCHEMA
+    rec["formation"] = {"formed_at": rec["formed"], "source": source, "root_evidence_ids": roots,
+                        "root_fingerprints": ["F-" + _digest(x) for x in roots], "root_snippets": [x[:200] for x in roots],
+                        "rule": "formation_is_history_not_confirmation"}
+    try:
+        try: d = json.load(open(bring_up))
+        except Exception: d = []
+        items = d.setdefault("items", []) if isinstance(d, dict) else d
+        if not any(isinstance(x, dict) and x.get("id") == rec["id"] for x in items):
+            items.append(rec)
+        tmp = bring_up + ".tmp"; json.dump(d, open(tmp, "w"), indent=2); os.replace(tmp, bring_up)
+    except Exception as e:
+        log(f"  [Causality] bring-up record not written: {e}")
+    try:
+        try: queue = json.load(open(pending))
+        except Exception: queue = []
+        if not isinstance(queue, list): queue = []
+        if question not in queue:
+            queue.append(question)
+            tmp = pending + ".tmp"; json.dump(queue[-6:], open(tmp, "w"), indent=2); os.replace(tmp, pending)
+    except Exception as e:
+        log(f"  [Causality] pending queue not written: {e}")
+    return rec
 
 
 def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
