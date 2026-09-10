@@ -416,11 +416,27 @@ def select_still(kind, label=None):
     return p if os.path.exists(p) else HERO
 
 
+def _policy():
+    """review 309: the one send policy; the inline rules below remain as the fallback when it is absent."""
+    sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import send_policy as _sp
+    _sp.LIMITS["video"]["cooldown_file"] = COOLDOWN_FILE; _sp.LIMITS["video"]["cooldown_hours"] = COOLDOWN_HOURS
+    return _sp
+
+
 def in_quiet_hours():
-    return not (9 <= datetime.now().hour <= 22)
+    try:
+        return _policy().in_quiet_hours()
+    except Exception:
+        return not (9 <= datetime.now().hour <= 22)
 
 
 def cooldown_active():
+    try:
+        ok, why = _policy().may_send("video")
+        return (not ok) and why.startswith("cooldown")
+    except Exception:
+        pass
     try:
         last = datetime.fromisoformat(open(COOLDOWN_FILE).read().strip())
         return datetime.now() - last < timedelta(hours=COOLDOWN_HOURS)

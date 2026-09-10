@@ -360,12 +360,9 @@ def offer(dry=False):
         print("project not created")
         return 1
     requests.post(B + "/table", json={"id": pid}, timeout=20)
-    try:   # content-free house ledger: id, state, when
-        d = {}
-        try: d = json.load(open(LEDGER))
-        except Exception: pass
-        d[str(pid)] = {"state": "active", "at": datetime.now().isoformat()}
-        json.dump(d, open(LEDGER, "w"), indent=1)
+    try:   # content-free house ledger: id, state, when - through the one writer (review 273)
+        import sys as _al_s; _al_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import atelier_ledger as _al; _al.mark(pid, "active", by="atelier-threshold")
         import plan as _plan; _plan.release_gestate(root, "resumed")
     except Exception: pass
     door = requests.post(B + "/door", json={}, timeout=20).json()

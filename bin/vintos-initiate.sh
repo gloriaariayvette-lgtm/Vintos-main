@@ -1,10 +1,15 @@
 #!/bin/bash
 
-# OUTREACH_DAILY_CAP — max 3 direct outreaches per day (other outreach styles unaffected)
-_TODAY_COUNT=$(ls /home/gloria/.vintos/workspace/memory/outreach/$(date +%F)_*.md 2>/dev/null | wc -l)
-if [ "$_TODAY_COUNT" -ge 3 ]; then
-    echo "[Outreach] Daily cap reached ($_TODAY_COUNT/3) — holding until tomorrow"
-    exit 0
+# OUTREACH_DAILY_CAP — max 3 direct outreaches per day (other outreach styles unaffected).
+# review 309: the law lives in scripts/send_policy.py; the file count below is the fallback when it is absent.
+if [ -f "$HOME/.vintos/workspace/scripts/send_policy.py" ]; then
+    _WHY=$(python3 "$HOME/.vintos/workspace/scripts/send_policy.py" may outreach 2>/dev/null) || { echo "[Outreach] $_WHY — holding"; exit 0; }
+else
+    _TODAY_COUNT=$(ls /home/gloria/.vintos/workspace/memory/outreach/$(date +%F)_*.md 2>/dev/null | wc -l)
+    if [ "$_TODAY_COUNT" -ge 3 ]; then
+        echo "[Outreach] Daily cap reached ($_TODAY_COUNT/3) — holding until tomorrow"
+        exit 0
+    fi
 fi
 
 # vintos-initiate.sh — Vintos reaches out to Gloria when he has something to say

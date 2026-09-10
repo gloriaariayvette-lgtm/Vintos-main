@@ -246,6 +246,37 @@ def find_record(records, filename):
             return r
     return None
 
+def save_ledger(path, obj):
+    """review 302: the one shelf transaction. Locked (a second writer waits), written to a temp file and
+    replaced, so no reader sees a half-written gallery and two painters cannot lose each other's entry."""
+    import fcntl
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path + ".lock", "a+") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        tmp = path + ".tmp.%d" % os.getpid()
+        with open(tmp, "w") as f:
+            json.dump(obj, f, indent=2)
+        os.replace(tmp, path)
+
+def append_ledger(path, record, key=None):
+    """Append one record under the lock, re-reading the ledger inside it. `key` names the list under a
+    dict-shaped ledger (e.g. "generated" for music); a list-shaped ledger appends directly."""
+    import fcntl
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path + ".lock", "a+") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            data = json.load(open(path))
+        except Exception:
+            data = {key: []} if key else []
+        rows = data.setdefault(key, []) if (key and isinstance(data, dict)) else data
+        rows.append(record)
+        tmp = path + ".tmp.%d" % os.getpid()
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    return record
+
 def atomic_json(path, obj):
     tmp = path + ".tmp.%d" % os.getpid()
     with open(tmp, "w") as f:

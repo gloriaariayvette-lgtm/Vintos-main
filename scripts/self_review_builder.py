@@ -66,6 +66,10 @@ def rows(path):
 
 
 def append(path, row):
+    if path == BUILDS and row.get("state") is not None:   # review 372: a build state outside the vocabulary is refused
+        from self_review_vocab import BUILD_STATES as _BS
+        if row["state"] not in _BS:
+            raise ValueError("build state %r not in the self-review vocabulary %s" % (row["state"], _BS))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")

@@ -934,8 +934,8 @@ def choose(proposal_id):
             json.dumps(p, ensure_ascii=False)[:16000] +
             '\nReturn JSON only: {"action":"ADOPT|HOLD|ABANDON","reason":"in your words"}',
             max_tokens=500, temperature=0.65)
-        action = str(d.get("action", "HOLD")).upper()
-        if action not in ("ADOPT", "HOLD", "ABANDON"): action = "HOLD"
+        from self_review_vocab import normalize_action as _norm   # review 372: one vocabulary
+        action = _norm("vintos", d.get("action", "HOLD"), default="HOLD")
         rec = {"decision_id": "SRD-" + uuid.uuid4().hex[:10], "proposal_id": proposal_id,
                "at": now_iso(), "actor": "vintos", "action": action,
                "reason": str(d.get("reason", ""))[:1000], "authority": "self_authorized_internal"}
@@ -948,9 +948,8 @@ def choose(proposal_id):
 def decide(proposal_id, action, note=""):
     p = _proposal_latest().get(proposal_id)
     if not p: raise ValueError("no proposal " + proposal_id)
-    action = action.upper()
-    if action not in ("APPROVE", "REJECT", "HOLD"):
-        raise ValueError("action must be APPROVE, REJECT, or HOLD")
+    from self_review_vocab import normalize_action as _norm   # review 372: one vocabulary
+    action = _norm("gloria", action)
     rec = {"decision_id": "SRD-" + uuid.uuid4().hex[:10], "proposal_id": proposal_id,
            "at": now_iso(), "actor": "gloria", "action": action, "reason": str(note)[:1000],
            "authority": "owner_decision"}

@@ -34,7 +34,10 @@ def admit(occurrence_id, text, source, medium="", weight=0.3, positive=True, his
         sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import taste_vector as _tv
         before = len(_tv.load_taste_vector().get("counted_occurrences", []))
-        _tv.update_from_signal(text, signal_weight=float(weight), positive=bool(positive), occurrence_id=str(occurrence_id))
+        try:
+            _tv.update_from_signal(text, signal_weight=float(weight), positive=bool(positive), occurrence_id=str(occurrence_id), context=(medium or None))
+        except TypeError:   # an older taste organ without clusters
+            _tv.update_from_signal(text, signal_weight=float(weight), positive=bool(positive), occurrence_id=str(occurrence_id))
         taste = "moved" if len(_tv.load_taste_vector().get("counted_occurrences", [])) > before else "already counted"
     except Exception as e:
         taste = "taste organ unavailable: %s" % str(e)[:80]

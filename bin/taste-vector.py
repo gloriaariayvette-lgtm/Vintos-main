@@ -112,7 +112,7 @@ def weighted_average(vec_a, vec_b, weight_a, weight_b):
         return vec_a
     return [(vec_a[i]*weight_a + vec_b[i]*weight_b)/total for i in range(len(vec_a))]
 
-def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=None):
+def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=None, context=None):
     """Update taste vector from a signal text.
     signal_weight: 0.0-1.0, how strongly this signal should influence
     positive: True = pull toward, False = push away
@@ -161,6 +161,7 @@ def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=Non
         tv["strength"] = 0.1
         tv["coherence"] = 0.5
         tv["signal_count"] = 1
+        _cluster(tv, context, new_vec, signal_weight, occurrence_id, text)
         save_taste_vector(tv)
         return
 
@@ -191,13 +192,41 @@ def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=Non
         tv["strength"] = min(1.0, tv["strength"] + 0.02 * signal_weight)
 
     tv["signal_count"] = tv.get("signal_count", 0) + 1
+    # review 216: a context-specific cluster beside the one centre (a taste in music is not a taste in
+    # paintings), and the occurrence that moved it kept by id and text so a callback can name the moment
+    _cluster(tv, context, new_vec, signal_weight, occurrence_id, text)
     save_taste_vector(tv)
     log(f"Updated — strength: {tv['strength']:.2f}, coherence: {tv['coherence']:.2f}, signals: {tv['signal_count']}")
 
-def score_option(option_text, base_score=0.0):
-    """Score an option against taste vector with yearning distortion.
-    Returns adjusted score."""
+def _cluster(tv, context, new_vec, signal_weight, occurrence_id, text):
+    if not context:
+        return
+    cl = tv.setdefault("clusters", {}).setdefault(str(context), {"vector": [], "strength": 0.0, "count": 0, "occurrences": []})
+    cl["vector"] = normalize(weighted_average(cl["vector"], new_vec, 0.85, 0.15)) if cl["vector"] else new_vec
+    cl["strength"] = min(1.0, cl["strength"] + 0.05 * signal_weight); cl["count"] += 1
+    if occurrence_id:
+        cl["occurrences"] = (cl["occurrences"] + [{"id": str(occurrence_id), "text": text[:160], "at": datetime.now().isoformat()}])[-30:]
+
+
+def callback(context, occurrence_id=None):
+    """review 216: the prior moment a callback is grounded in - the latest occurrence counted for this
+    context (or the one named), with its id and text. None when nothing was ever counted there: a
+    callback with no occurrence behind it is not made."""
     tv = load_taste_vector()
+    occ = (tv.get("clusters", {}).get(str(context), {}) or {}).get("occurrences", [])
+    if occurrence_id:
+        return next((o for o in occ if o.get("id") == str(occurrence_id)), None)
+    return occ[-1] if occ else None
+
+
+def score_option(option_text, base_score=0.0, context=None):
+    """Score an option against taste vector with yearning distortion.
+    Returns adjusted score. With a context, that cluster's centre is blended in (review 216)."""
+    tv = load_taste_vector()
+    if context and tv.get("clusters", {}).get(str(context), {}).get("vector"):
+        cl = tv["clusters"][str(context)]
+        tv["vector"] = normalize(weighted_average(tv["vector"], cl["vector"], 0.5, 0.5)) if tv.get("vector") else cl["vector"]
+        tv["strength"] = max(float(tv.get("strength", 0) or 0), float(cl.get("strength", 0) or 0))
     if (not tv["vector"] or tv["strength"] < 0.05) and not tv.get("aversions"):
         return base_score
 

@@ -22,7 +22,25 @@ const KEY = { fable: process.env.ANTHROPIC_API_KEY || rf('~/.vintos/anthropic-ke
               grok:  process.env.XAI_API_KEY || rf('~/.vintos/xai-key') || rf('~/.vintos/grok-key') }[LENS];
 if (!KEY && !DRY) { console.error(`[seat:${LENS}] no API key`); process.exit(2); }
 const log = (...a) => console.log(`[seat:${LENS}]`, ...a);
-async function post(payload){ const r = await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}); const b = await r.json().catch(()=>({})); if(!r.ok){ const e=new Error(b.message||r.status); e.name=b.error||'RoomApiError'; throw e; } return b; }
+// review 373: transport recovery in one place. A dropped socket or a 5xx from the room API is retried with
+// backoff (3 tries: 1s, 3s, 9s); a 4xx is the room's answer and is never retried. Every retry is logged
+// so a recovered call is visible in the seat's own record.
+const RETRY_MS = [1000, 3000, 9000];
+async function post(payload){
+  let last;
+  for (let i = 0; i <= RETRY_MS.length; i++) {
+    try {
+      const r = await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload), signal: AbortSignal.timeout(60000)});
+      const b = await r.json().catch(()=>({}));
+      if (r.ok) return b;
+      const e = new Error(b.message||r.status); e.name = b.error||'RoomApiError'; e.status = r.status;
+      if (r.status < 500) throw e;              // the room said no: not a transport fault
+      last = e;
+    } catch (e) { if (e.status && e.status < 500) throw e; last = e; }
+    if (i < RETRY_MS.length) { log(`room api ${last?.message || last} - retry ${i + 1}/${RETRY_MS.length} in ${RETRY_MS[i]}ms`); await new Promise(r => setTimeout(r, RETRY_MS[i])); }
+  }
+  throw last;
+}
 
 const SYSTEM = persona + (context ? '\n\n' + context : '')
   + `\n\nYou are in the room as ${NAME}. You have hands: grep and read_file over your own code (${ROOTS.map(r=>r.replace(H,'~')).join(', ')}). `

@@ -92,7 +92,7 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
                         "want_id": want_id, "for_wall": want_id == "projector",
                         "timestamp": datetime.now().isoformat(),
                         **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
-        _atomic_json(GALLERY, gallery)
+        _am.save_ledger(GALLERY, gallery)   # review 302: the one shelf transaction
         print(f"[video] saved: {fname}")
         return True
 
@@ -130,7 +130,7 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
                     "want_id": want_id, "for_wall": want_id == "projector",
                     "timestamp": datetime.now().isoformat(),
                     **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
-    _atomic_json(GALLERY, gallery)
+    _am.save_ledger(GALLERY, gallery)   # review 302: the one shelf transaction
     print(f"[video] saved: {fname}")
     return True
 

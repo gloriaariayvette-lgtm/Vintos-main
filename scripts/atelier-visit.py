@@ -501,6 +501,13 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
 
 LEDGER = os.path.join(WSP, "memory", "atelier-undertakings.json")   # content-free: id, state, when. Never intent, never text.
 def ledger_mark(pid, state):
+    """review 273: the one house-side writer (atelier_ledger); the old inline write is the fallback."""
+    try:
+        import sys as _al_s; _al_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import atelier_ledger as _al
+        _al.mark(pid, state, by="atelier-visit"); return
+    except Exception as e:
+        print("atelier_ledger unavailable:", e)
     try:
         try: d = json.load(open(LEDGER))
         except Exception: d = {}

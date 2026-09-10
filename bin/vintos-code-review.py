@@ -379,7 +379,8 @@ def stage_review(sub, files, cov, reply):
                  sources=sources, not_read=not_read)
     doc = {"review_id": rid, "subsystem": sub, "lens": LENS, "reviewed_at": datetime.now().isoformat(),
            "model": MODEL, "files": [_label(p, a, b) for p, a, b in files], "coverage": cov,
-           "summary_and_thoughts": prose, "proposals": props, "promoted": False}
+           "summary_and_thoughts": prose, "proposals": props, "promoted": False,
+           "provenance": _provenance()}   # review 373: which body, which day, which seat produced this
     json.dump(doc, open(os.path.join(STAGE, rid + ".json"), "w"), indent=2)
     with open(os.path.join(STAGE, rid + ".md"), "w") as f:
         f.write(f"# {sub} - his read through {LENS} ({MODEL})\n*{doc['reviewed_at']} - staged, NOT in memory*\n"
@@ -422,6 +423,17 @@ def _done_since(day):
     if declined:
         out.append("DECLINED BY GLORIA (%d):" % len(declined)); out += ["- %s: %s" % (k, v) for k, v in sorted(declined.items())]; out.append("")
     return "\n".join(out) + "\n"
+
+def _provenance():
+    """The checkout this review read (git rev), the review day, the lens and model, and the seat that ran it."""
+    rev = ""
+    try:
+        import subprocess as _sp
+        rev = _sp.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=10, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).stdout.strip()
+    except Exception:
+        pass
+    return {"git_rev": rev, "review_day": os.environ.get("REVIEW_DAY") or datetime.now().strftime("%Y%m%d"),
+            "lens": LENS, "model": MODEL, "seat": os.environ.get("ROOM_SEAT", "vintos-code-review"), "host": os.uname().nodename}
 
 def cmd_final():
     # REVIEW_DAY lets the final synthesize a previous day's section reviews (the room's second pass
