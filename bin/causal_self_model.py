@@ -279,32 +279,28 @@ def fracture_imprint(entry_tendency, pressure):
 
 
 def fracture_commitment_imprint(pattern_text, pressure=0.8):
-    """Fracture a commitment imprint under pressure — seeds scar and inversion thread."""
-    data = load_model()
-    imprints = data.get("commitment_imprints", [])
-    for imp in imprints:
-        if _text_overlap(imp.get("pattern","").lower(), pattern_text.lower()) > 0.4:
-            _old = {"fractured": imp.get("fractured", False), "confidence": imp.get("confidence")}
-            imp["fractured"] = True
-            imp["confidence"] = max(0.1, imp["confidence"] - 0.25)
-            _revise("commitment-imprint", imp.get("id") or ("ci:" + imp.get("pattern", "")[:40]), _old,
-                    {"fractured": True, "confidence": imp["confidence"]}, "fractured under pressure %.2f" % pressure, "commitment-spine")
-            imp["fracture_at"] = __import__("datetime").datetime.now().isoformat()
-            save_model(data)
-            print(f"[CausalModel] Commitment imprint fractured: {imp['pattern'][:60]}")
-            # Seed scar
-            try:
-                import sys as _cfs; _cfs.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
-                from yearning_scars import create_scar_from_want
-                create_scar_from_want(f"I committed to: {imp['pattern'][:80]} — and it cracked", intensity=pressure * 0.6)
-            except: pass
-            # Seed inversion latent thread
-            try:
-                from latent_threads import seed_thread as _lt_seed
-                _lt_seed(f"Maybe the opposite of this is also true: {imp['pattern'][:100]}", direction="pivot")
-            except: pass
-            return True
-    return False
+    """Fracture a commitment under pressure - through the one store (review 132): commitment_spine
+    records the fracture; this seeds the scar and the inversion thread as before."""
+    try:
+        import sys as _cfs; _cfs.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")); _cfs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import commitment_spine as _spine
+        imp = _spine.fracture(pattern_text, pressure=pressure, source="causal-self-model")
+    except Exception as _e:
+        print(f"[CausalModel] commitment store unavailable: {_e}"); return False
+    if not imp:
+        return False
+    _revise("commitment-imprint", imp.get("id") or ("ci:" + imp.get("pattern", "")[:40]), {"status": "living", "confidence": imp["fracture"].get("pre_fracture_confidence")},
+            {"status": "fractured", "confidence": imp["confidence"]}, "fractured under pressure %.2f" % pressure, "commitment-spine")
+    print(f"[CausalModel] Commitment imprint fractured: {imp['pattern'][:60]}")
+    try:
+        from yearning_scars import create_scar_from_want
+        create_scar_from_want(f"I committed to: {imp['pattern'][:80]} — and it cracked", intensity=pressure * 0.6)
+    except: pass
+    try:
+        from latent_threads import seed_thread as _lt_seed
+        _lt_seed(f"Maybe the opposite of this is also true: {imp['pattern'][:100]}", direction="pivot")
+    except: pass
+    return True
 
 
 IMPRINTS_FILE = os.path.join(MEMORY, "commitment-imprints.json")
@@ -346,27 +342,30 @@ def _write_imprint(entry):
     print("[Spine] Commitment imprint formed (earned): %s" % entry.get("tendency","")[:60])
 
 def promote_to_commitment_imprint(pattern_text, confidence=0.6, source="behavioral-intercept"):
-    """Promote a strong recurring pattern to a commitment imprint."""
-    data = load_model()
-    imprints = data.setdefault("commitment_imprints", [])
-    # Check for duplicate
-    for imp in imprints:
-        if imp.get("pattern","")[:80] == pattern_text[:80]:
-            imp["reinforcement_count"] = imp.get("reinforcement_count", 1) + 1
-            imp["confidence"] = min(0.95, imp["confidence"] + 0.05)
-            save_model(data)
-            return
-    imprints.append({
-        "id": __import__("uuid").uuid4().hex[:8],
-        "pattern": pattern_text,
-        "confidence": confidence,
-        "source": source,
-        "formed": __import__("datetime").datetime.now().isoformat(),
-        "reinforcement_count": 1,
-        "fractured": False
-    })
-    save_model(data)
-    print(f"[CausalSelfModel] Commitment imprint formed: {pattern_text[:60]}")
+    """A strong recurring pattern offered as a commitment. It has not passed the gate (can_promote), so it
+    enters the one store as a CANDIDATE (review 132); only the gate makes something living."""
+    try:
+        import sys as _cps; _cps.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")); _cps.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import commitment_spine as _spine
+        _spine.migrate_legacy()
+        imp = _spine.promote_candidate(pattern_text, confidence=confidence, source=source)
+        print(f"[CausalSelfModel] Commitment candidate {'reinforced' if imp.get('reinforcement_count', 1) > 1 else 'formed'}: {pattern_text[:60]}")
+        return imp
+    except Exception as _e:
+        print(f"[CausalSelfModel] commitment store unavailable: {_e}"); return None
+
+
+def commitment_imprints(statuses=None):
+    """The commitments, from the one store. Readers that used causal-self-model.json['commitment_imprints']
+    read here now (server subsystem state, soul-review)."""
+    try:
+        import sys as _cis; _cis.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts")); _cis.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import commitment_spine as _spine
+        _spine.migrate_legacy()
+        return _spine.imprints(statuses)
+    except Exception:
+        return []
+
 
 if __name__ == "__main__":
     import sys

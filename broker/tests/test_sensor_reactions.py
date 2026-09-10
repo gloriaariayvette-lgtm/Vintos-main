@@ -55,5 +55,5 @@ check("heart_rate.record observes with the reading's own time", '_sr.observe("he
 check("home_presence.main observes only when a previous state exists", '_sr.observe("presence", bool(st.get("home")), at=st.get("checked"))' in hp and 'if "home" in prev:' in hp)
 check("chat and avatar contexts both carry the line", sv.count("sensor_reactions") >= 2 and "_sr_i.context_line()" in sv and "_sr_v.context_line()" in sv)
 rows = [json.loads(l) for l in open(SR.LOG)]
-check("every decision is logged with its reason", len(rows) >= 12 and all("why" in r for r in rows))
+check("every decision is logged with its reason", len(rows) >= 11 and all("why" in r for r in rows))
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

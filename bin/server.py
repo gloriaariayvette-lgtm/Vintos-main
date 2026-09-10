@@ -8926,8 +8926,8 @@ async def map_state():
     # 24 Causal Self-Model
     csm = rj("causal-self-model.json", {})
     entries = csm.get("entries", [])
-    imprints = csm.get("commitment_imprints", [])
-    state[24] = {"hypotheses": len(entries), "confirmed": len([e for e in entries if e.get("status")=="confirmed"]), "imprints": len(imprints), "fractured": len([i for i in imprints if i.get("fractured")])}
+    imprints = rj("commitment-imprints.json", {}).get("imprints", []) or csm.get("commitment_imprints", [])   # one store (review 132)
+    state[24] = {"hypotheses": len(entries), "confirmed": len([e for e in entries if e.get("status")=="confirmed"]), "imprints": len(imprints), "fractured": len([i for i in imprints if i.get("status") == "fractured" or i.get("fractured")])}
     # 27 Self Drift
     sdd = rj("self-drift.json", {})
     vec = sdd.get("direction_vector", {})
@@ -8938,7 +8938,7 @@ async def map_state():
     tend = ct.get("tendencies", ct.get("entries", [])) if isinstance(ct,dict) else []
     state[28] = {"tendencies": len(tend), "sample": (tend[0].get("text","") if isinstance(tend[0],dict) else str(tend[0]))[:60] if tend else "—"}
     # 29 Commitment Imprint (from causal-self-model)
-    state[29] = {"imprints": len(imprints), "fractured": len([i for i in imprints if i.get("fractured")])}
+    state[29] = {"imprints": len(imprints), "fractured": len([i for i in imprints if i.get("status") == "fractured" or i.get("fractured")])}
     # 30 BIS
     tl = rj("trial-ledger.json", {})
     trials = tl.get("trials", []) if isinstance(tl,dict) else (tl if isinstance(tl,list) else [])
@@ -9213,9 +9213,8 @@ async def map_conscious_state():
     active_t=[t for t in tlist if not t.get("consumed")]
     result["c11"] = {"last":mtime("unfinished-threads.json"),"preview":active_t[0].get("thread","—")[:100] if active_t else "—","metric":str(len(active_t))+" active threads"}
     # causality
-    csm=rj("causal-self-model.json",{})
-    imprints=csm.get("commitment_imprints",[])
-    result["c12"] = {"last":mtime("causal-self-model.json"),"preview":imprints[0].get("pattern","—")[:100] if imprints else "—","metric":str(len(imprints))+" imprints"}
+    imprints=rj("commitment-imprints.json",{}).get("imprints",[])   # one store (review 132)
+    result["c12"] = {"last":mtime("commitment-imprints.json"),"preview":imprints[0].get("pattern","—")[:100] if imprints else "—","metric":str(len(imprints))+" imprints"}
     # yearning
     y=rj("current-yearning.json",{})
     result["c13"] = {"last":mtime("current-yearning.json"),"preview":y.get("surface_form","—")[:100],"metric":"bleed: "+str(round(y.get("bleed_weight",0),2))}

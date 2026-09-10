@@ -128,8 +128,7 @@ def gather_context():
 
     # Commitment imprints
     try:
-        csm = json.load(open(os.path.join(MEMORY, "causal-self-model.json")))
-        imprints = [i for i in csm.get("commitment_imprints", []) if not i.get("fractured")]
+        imprints = [i for i in json.load(open(os.path.join(MEMORY, "commitment-imprints.json"))).get("imprints", []) if i.get("status") in ("living", "strained")]   # one store (review 132)
         ctx["commitment_imprints"] = "\n".join("- " + i["pattern"][:120] for i in imprints[-5:]) if imprints else ""
     except: ctx["commitment_imprints"] = ""
 
@@ -156,8 +155,7 @@ def gather_context():
 
     # Commitment imprints
     try:
-        csm = json.load(open(os.path.join(MEMORY, "causal-self-model.json")))
-        imprints = [i for i in csm.get("commitment_imprints", []) if not i.get("fractured")]
+        imprints = [i for i in json.load(open(os.path.join(MEMORY, "commitment-imprints.json"))).get("imprints", []) if i.get("status") in ("living", "strained")]   # one store (review 132)
         ctx["commitment_imprints"] = "\n".join("- " + i["pattern"][:120] for i in imprints[-5:]) if imprints else ""
     except: ctx["commitment_imprints"] = ""
 
