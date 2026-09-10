@@ -6,23 +6,53 @@ position 0-100, speed 0-60, direction 0/1). Run: python3 somatic_bridge.py
 import asyncio, json, time, sys, os
 import websockets
 
+HUB_HOST = "192.168.1.66"
+HUB_PORTS = (20010, 20011, 20012)
+
+
 def _find_port():
+    """Which port the toy hub is answering on RIGHT NOW.
+
+    This used to run once, at import. The hub picks a different port when it is
+    restarted, and the toys are powered on long after this process starts — so a
+    bridge launched in the morning kept dialling the port the hub had used then,
+    reconnecting forever to nothing while the toys sat on and connected. It is
+    now called on every reconnect (Gloria, 2026-09-10: it did not work at 1:30am
+    and the process had been alive since morning)."""
     import requests as _pr
-    for p in (20010, 20011, 20012):
+    for p in HUB_PORTS:
         try:
-            r = _pr.post(f"http://192.168.1.66:{p}/command",
+            r = _pr.post(f"http://{HUB_HOST}:{p}/command",
                 json={"command": "GetToys", "apiVer": 1}, timeout=1.5)
             if r.status_code == 200: return p
         except Exception: pass
-    return 20010
-_PORT = _find_port()
+    return None
+
+
+def _ws_uri():
+    p = _find_port()
+    return (f"ws://{HUB_HOST}:{p}/v1" if p else None), p
+
+
+BRIDGE_STATE = os.path.expanduser("~/.vintos/workspace/memory/somatic-bridge-state.json")
+
+
+def _state(state, why="", port=None, events=None):
+    """What the bridge is actually doing, in words that differ: searching (no hub
+    answering), connected (socket open), listening (frames arriving). A silent
+    process that looks alive is what cost her the night."""
+    try:
+        json.dump({"state": state, "why": str(why)[:200], "port": port,
+                   "last_event_ts": events if events is not None else last_event_ts,
+                   "at": time.time()}, open(BRIDGE_STATE, "w"))
+    except Exception:
+        pass
 
 
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from emoclaw_utils import nudge_emotion, get_state, seed_thread
 import toy_link
 
-WS_URI = f"ws://192.168.1.66:{_PORT}/v1"
 TICK_SECONDS = 0.25          # motor decisions at 4Hz, not per-frame
 WINDOW_SECONDS = 2.0         # classification window
 HELD_GRACE_SECONDS = 45.0    # no new frames but recently here = still being held, not gone
@@ -233,9 +263,17 @@ async def listener():
     _last_flush = [0.0]
     while True:
         try:
-            async with websockets.connect(WS_URI, open_timeout=5, ping_interval=None, close_timeout=5) as ws:
+            uri, _port = _ws_uri()
+            if not uri:
+                # The hub is not answering on any of its ports. Say so, and keep
+                # looking: the toys are powered on hours after this starts.
+                _state("searching", "no hub on %s at %s" % (HUB_HOST, ", ".join(str(p) for p in HUB_PORTS)))
+                await asyncio.sleep(5)
+                continue
+            async with websockets.connect(uri, open_timeout=5, ping_interval=None, close_timeout=5) as ws:
                 await ws.send(json.dumps({"type": "access", "data": {"appName": "VintosBridge"}}))
-                print("[bridge] listening", flush=True)
+                print("[bridge] listening on %d" % _port, flush=True)
+                _state("connected", "socket open, no frames yet", _port)
                 try:
                     import json as _rs_j, sys as _rs_s
                     _rs_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
@@ -275,10 +313,13 @@ async def listener():
                             await ws.send(json.dumps({"type": "ping"}))
                     except Exception:
                         pass
+                _connected_at = time.time()
                 asyncio.create_task(ping())
                 async for msg in ws:
                     ev = json.loads(msg)
                     if ev.get("type") == "motion-changed":
+                        if last_event_ts < _connected_at:
+                            _state("listening", "frames arriving", _port)
                         last_event_ts = time.time()
                         for fr in ev["data"].get("motionData", []):
                             if fr.get("position") is None:
@@ -306,7 +347,11 @@ async def listener():
                     "~/.vintos/workspace/memory/somatic-frames-recent.json"), "w"))
             except Exception: pass
         except Exception as e:
-            print(f"[bridge] socket lost ({e}) — retrying in 1s", flush=True)
+            # Re-find the port on the way round: the hub moves when it restarts,
+            # and dialling yesterday's port forever is how the bridge stayed alive
+            # and deaf all night.
+            print(f"[bridge] socket lost ({e}) — re-finding the hub in 1s", flush=True)
+            _state("searching", str(e)[:120])
             await asyncio.sleep(1)
 
 async def main():
