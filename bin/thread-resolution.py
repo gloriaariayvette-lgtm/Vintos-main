@@ -36,6 +36,7 @@ LM_API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+import thread_store as _ts  # one door: shrink-guarded pool writes, one archive shape for both readers and writers
 try:
     from emoclaw_utils import get_state, get_vector, describe_state
     HAS_EMOCLAW = True
@@ -88,20 +89,15 @@ def load_threads():
         print("[thread-resolution] ABORT: ledger unreadable - refusing to resolve against nothing (wipe of 2026-08-10)"); __import__("sys").exit(1)
 
 def save_threads(threads):
-    with open(THREADS_FILE + ".tmp", "w") as f:
-        json.dump(threads, f, indent=2)
-    os.replace(THREADS_FILE + ".tmp", THREADS_FILE)
+    return _ts.save_pool(threads, THREADS_FILE, reason="thread-resolution")
 
 def load_retired():
-    try:
-        with open(RETIRED_LOG) as f:
-            return json.load(f)
-    except:
-        return []
+    # Accepts both historical archive shapes (bare list, {"threads": [...]}).
+    return _ts.load_retired(RETIRED_LOG)
 
 def save_retired(retired):
-    with open(RETIRED_LOG, "w") as f:
-        json.dump(retired, f, indent=2)
+    # Canonical shape (list of normalized entries). Whole-list write, atomic.
+    _ts._atomic_write(RETIRED_LOG, [_ts.normalize_retired_entry(e) for e in retired])
 
 def load_pearl_index():
     try:

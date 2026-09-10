@@ -595,7 +595,8 @@ def update_thread(thread_id, consumed, reason):
                 else:
                     t["ghost_passes"] = t.get("ghost_passes", 0) + 1
                 break
-        json.dump(threads, open(THREADS_FILE, "w"), indent=2)
+        from thread_store import save_pool
+        save_pool(threads, THREADS_FILE, reason="ghost-branches")
     except Exception as e:
         print(f"[Ghost] Thread update error: {e}", flush=True)
 

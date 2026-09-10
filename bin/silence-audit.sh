@@ -136,10 +136,12 @@ echo "AUDIT: Silence patterns reviewed for $(date '+%B %Y')"
 python3 << 'SEEDEOF'
 import os, json, uuid
 from datetime import datetime
+import sys; sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from thread_store import load_pool, save_pool
 threads_file = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-try:
-    with open(threads_file) as f: threads = json.load(f)
-except: threads = []
+threads = load_pool(threads_file)
+if threads is None:
+    print("[silence-audit] pool unreadable - refusing to seed over it", file=sys.stderr); sys.exit(0)
 threads.append({
     "id": str(uuid.uuid4())[:8],
     "source": "silence-audit",
@@ -152,5 +154,5 @@ threads.append({
     "dream_passes": 0,
     "therapy_passes": 0
 })
-with open(threads_file, "w") as f: json.dump(threads, f, indent=2)
+save_pool(threads, threads_file, reason="silence-audit")
 SEEDEOF

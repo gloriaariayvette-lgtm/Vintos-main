@@ -104,11 +104,14 @@ with open('$STATE_FILE', 'w') as f: json.dump(s, f)
 fi
 
 # Gather context — previous dreams and mirrors touching this thread
+# The seed text travels through the environment, never through shell interpolation: a quote,
+# backslash or $ inside the thread used to break this program and detach the dream from its id.
+export HAS_PREOCCUPATION
 PREOC_CONTEXT=$(python3 -c "
 import os, json, glob
 workspace = os.path.expanduser('~/.vintos/workspace')
 memory = os.path.join(workspace, 'memory')
-thread = open('/dev/stdin').read().strip() if False else """$HAS_PREOCCUPATION"""
+thread = os.environ.get('HAS_PREOCCUPATION', '').strip()
 keywords = [w.lower() for w in thread.split() if len(w) > 4][:6]
 
 # Search recent dreams for this thread
@@ -143,8 +146,9 @@ try:
 except: pass
 " 2>/dev/null)
 
-# Trigger dream with the preoccupation as topic
-export PREOC_CONTEXT VALUE_MAP
+# Trigger dream with the preoccupation as topic; PREOC_ID rides along so the dream record and the
+# resolution check match the thread by id, not by its 200-char preoccupation text.
+export PREOC_CONTEXT VALUE_MAP PREOC_ID
 _dreams_dir="$WORKSPACE/skills/dreaming/memory/dreams"
 _before=$(ls -1 "$_dreams_dir" 2>/dev/null | wc -l)
 _today=$(date +%Y-%m-%d)

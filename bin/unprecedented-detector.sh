@@ -198,9 +198,11 @@ analysis = os.environ.get("UNPRECEDENTED_ANALYSIS", "")
 if not threads_path:
     print("ERROR: no threads path", file=sys.stderr)
     sys.exit(1)
-try:
-    with open(threads_path) as f: threads = json.load(f)
-except: threads = []
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from thread_store import load_pool, save_pool
+threads = load_pool(threads_path)
+if threads is None:
+    print("[Unprecedented] pool unreadable - refusing to seed over it", file=sys.stderr); sys.exit(0)
 first_line = analysis.strip().split("\n")[0] if analysis.strip() else "unprecedented state"
 threads.append({
     "id": str(__import__("uuid").uuid4())[:8],
@@ -214,8 +216,9 @@ threads.append({
     "therapy_passes": 0,
     "consumed": False
 })
-threads = [t for t in threads if not t.get("consumed", False)][-30:]
-with open(threads_path, "w") as f: json.dump(threads, f, indent=2)
+# Never rewrite the pool from a partial list: consumed threads still owe the resolver their
+# sediment, and a hard [-30:] cap silently dropped everyone else's seeds. Whole list, guarded.
+save_pool(threads, threads_path, reason="unprecedented-detector")
 print(f"[Unprecedented] Seeded thread: {first_line}", file=sys.stderr)
 SEED_EOF
 

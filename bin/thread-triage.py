@@ -24,6 +24,7 @@ LM_API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+from thread_store import save_pool, append_retired  # one door: shrink-guarded pool writes, one archive shape
 HAS_EMOCLAW = False
 try:
     from emoclaw_utils import get_state, seed_thread, recent_pearls
@@ -82,10 +83,10 @@ def main():
         else:
             log(f"  Duplicate removed: {key[:80]}")
     if len(deduped) < len(threads):
+        _n_dup = len(threads) - len(deduped)
         threads = deduped
-        with open(THREADS_FILE, "w") as f:
-            json.dump(threads, f, indent=2)
-        log(f"  Pruned {len(deduped) - len(threads) + (len(threads) - len(deduped))} duplicate(s).")
+        save_pool(threads, THREADS_FILE, reason="triage-dedup")
+        log(f"  Pruned {_n_dup} duplicate(s).")
 
     # Semantic near-duplicate detection — ask LLM to identify redundant threads
     unconsumed_check = [t for t in threads if not t.get("consumed", False)]
@@ -122,21 +123,16 @@ def main():
                     # Archive removed threads — no silent deletions
                     try:
                         from datetime import datetime as _nd_dt
-                        _nd_rpath = os.path.join(MEMORY, "retired-threads.json")
-                        try: _nd_data = json.load(open(_nd_rpath))
-                        except: _nd_data = []
                         for _nd_t in doomed:
                             _nd_t["consumed"] = True
                             _nd_t["retired"] = True
                             _nd_t["consumed_by"] = "near-duplicate"
                             _nd_t["retired_at"] = _nd_dt.now().isoformat()
                             _nd_t["type"] = "sedimented"
-                            _nd_data.append(_nd_t)
-                        json.dump(_nd_data, open(_nd_rpath,"w"), indent=2)
+                        append_retired(doomed)
                     except Exception as _nd_e:
                         log(f"  Retire archive failed: {_nd_e}")
-                    with open(THREADS_FILE, "w") as f:
-                        json.dump(threads, f, indent=2)
+                    save_pool(threads, THREADS_FILE, reason="triage-near-duplicate")
 
     # Clean up consumed threads that fell through without being retired
     # Exclude near-duplicates — they are already handled
@@ -242,7 +238,7 @@ PULL: [1-5]"""
 
         # Parse response
         voice = ""
-        pull = 3  # default mid-priority
+        pull = None  # only an explicit PULL counts as a triage verdict
         for line in response.split("\n"):
             line = line.strip()
             if line.upper().startswith("VOICE:"):
@@ -252,7 +248,15 @@ PULL: [1-5]"""
                     pull = int(line[5:].strip()[0])
                     pull = max(1, min(5, pull))
                 except:
-                    pull = 3
+                    pull = None
+
+        if pull is None:
+            # A failed model decision is not a verdict: it must not age, re-rate, or dissolve the thread.
+            t["triage_skipped"] = t.get("triage_skipped", 0) + 1
+            t["triage_last_status"] = "no-verdict"
+            log(f"  [{source}] no PULL verdict (model error/empty) — counters untouched")
+            continue
+        t["triage_last_status"] = "verdict"
 
         # Update thread with priority and voice
         t["priority"] = pull
@@ -281,49 +285,49 @@ PULL: [1-5]"""
                 log(f"  [{source}] pull=3 protected from age-out (pipeline passes present)")
 
         triage_entries.append({
+            "id": t.get("id", ""),
             "source": source,
             "thread": thread,
             "voice": voice,
-            "pull": pull
+            "pull": pull,
+            "dream_passes": t.get("dream_passes", 0),
+            "mirror_passes": t.get("mirror_passes", 0),
         })
 
         log(f"  [{source}] pull={pull}: {voice[:80]}")
 
     # Save updated threads
-    _tmp = THREADS_FILE + ".tmp"
-    with open(_tmp, "w") as f:
-        json.dump(threads, f, indent=2)
-    os.replace(_tmp, THREADS_FILE)
+    save_pool(threads, THREADS_FILE, reason="triage")
 
     # Log the triage session
     os.makedirs(os.path.dirname(TRIAGE_LOG), exist_ok=True)
     with open(TRIAGE_LOG, "a") as f:
         f.write(f"\n## Thread Triage — {today}\n\n")
         for entry in triage_entries:
-            f.write(f"**[{entry['source']}]** (pull: {entry['pull']})\n")
+            f.write(f"**[{entry['source']}]** (pull: {entry['pull']}) id: {entry.get('id','')}\n")
             f.write(f"Thread: {entry['thread'][:100]}\n")
             f.write(f"Voice: {entry['voice']}\n\n")
 
     # Set preoccupation from highest-pull thread
     try:
         from emoclaw_utils import set_preoccupation, get_preoccupation
+        if not triage_entries: raise ValueError("no triage verdicts this run")
         highest = max(triage_entries, key=lambda e: e["pull"])
         if highest["pull"] >= 4 and not get_preoccupation() and (highest.get("dream_passes",0) or 0) >= 2 and (highest.get("mirror_passes",0) or 0) >= 1:
             set_preoccupation(
                 highest["thread"], highest["source"],
-                highest["pull"], highest["voice"]
+                highest["pull"], highest["voice"], thread_id=highest.get("id", "")
             )
             log(f"Preoccupation set: [{highest['source']}] pull={highest['pull']}")
             # Mark the thread as having been a preoccupation
             for t in threads:
-                if t.get("thread") == highest["thread"] and not t.get("retired"):
+                if (highest.get("id") and t.get("id") == highest["id"]) or (t.get("thread") == highest["thread"] and not t.get("retired")):
                     t["was_preoccupation"] = True
             # Save updated flag back to file
-            with open(THREADS_FILE, "w") as _tf:
-                json.dump(threads, _tf, indent=2)
+            save_pool(threads, THREADS_FILE, reason="triage-preoccupation")
     except: pass
 
-    log(f"Triaged {len(unconsumed)} threads. Session logged.")
+    log(f"Triaged {len(triage_entries)} of {len(unconsumed)} threads ({len(unconsumed) - len(triage_entries)} without verdict). Session logged.")
 
     # After triage, check for resolvable and dissolvable threads
     try:

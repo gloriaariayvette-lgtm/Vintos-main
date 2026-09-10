@@ -1008,13 +1008,14 @@ def _update_thread_phases(data):
     # Retire dissolved threads
     if retired:
         data["threads"] = [t for t in threads if t not in retired]
-        retired_data = {"threads": []}
+        # One archive shape for every writer (thread_store); the old {"threads": [...]} dict clashed
+        # with the list that thread-resolution/triage write and crashed whichever ran second.
         try:
-            retired_data = json.load(open(os.path.join(MEMORY, "retired-threads.json")))
-        except:
-            pass
-        retired_data.setdefault("threads", []).extend(retired)
-        json.dump(retired_data, open(os.path.join(MEMORY, "retired-threads.json"), "w"), indent=2)
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from thread_store import append_retired
+            append_retired([dict(t, retired_by="latent-threads", type="latent") for t in retired])
+        except Exception as _ae:
+            log(f"retired archive append failed: {_ae}")
 
 
 def decay_all():

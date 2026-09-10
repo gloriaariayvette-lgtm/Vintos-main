@@ -119,8 +119,9 @@ try:
                 t.pop("system_route", None)
                 t.pop("system_route_at", None)
                 break
-        with open(threads_path, "w") as f:
-            json.dump(threads, f, indent=2)
+        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from thread_store import save_pool
+        save_pool(threads, threads_path, reason="mirror-route-clear")
         print(chosen.get("id",""))
     else:
         unconsumed.sort(key=lambda t: (-(t.get("priority") or 0), -(t.get("temperature") or 0), -(t.get("dream_passes", 0)), -(t.get("mirror_passes", 0))))
@@ -547,8 +548,8 @@ thread_text = thread.get("thread", "")
 if not mirror_text or not thread_text:
     # Can't judge — increment mirror_passes but do NOT consume
     thread["mirror_passes"] = thread.get("mirror_passes", 0) + 1
-    with open(threads_path, "w") as f:
-        json.dump(threads, f, indent=2)
+    from thread_store import save_pool
+    save_pool(threads, threads_path, reason="mirror-no-session")
     print(f"[Mirror] No session text to judge — mirror_passes incremented to {thread['mirror_passes']}, thread kept alive")
     sys.exit(0)
 
@@ -564,10 +565,18 @@ try:
     }, timeout=30)
     verdict = r.json()["choices"][0]["message"]["content"].strip().upper()
 except Exception as e:
-    verdict = "RESOLVED"
-    print(f"[Mirror] Resolution check failed ({e}) — consuming thread")
+    verdict = ""
+    print(f"[Mirror] Resolution check failed ({e}) — no verdict; thread kept alive, not consumed")
 
-if "UNRESOLVED" in verdict:
+if "RESOLVED" not in verdict:
+    # A failed or garbled model decision is an attempt, not a resolution.
+    thread["mirror_passes"] = thread.get("mirror_passes", 0) + 1
+    thread["last_mirror_verdict"] = "no-verdict"
+    thread["consumed"] = False
+    thread.pop("consumed_by", None)
+    print(f"[Mirror] No verdict — mirror_passes={thread['mirror_passes']}, thread returned to pool")
+elif "UNRESOLVED" in verdict:
+    thread["last_mirror_verdict"] = "unresolved"
     mirror_passes = thread.get("mirror_passes", 0) + 1
     dream_passes = thread.get("dream_passes", 0)
     thread["mirror_passes"] = mirror_passes
@@ -586,12 +595,13 @@ if "UNRESOLVED" in verdict:
 
 else:
     thread["mirror_passes"] = thread.get("mirror_passes", 0) + 1
+    thread["last_mirror_verdict"] = "resolved"
     thread["consumed"] = True
     thread["consumed_by"] = "mirror-resolved"
     print(f"[Mirror] Thread resolved — mirror_passes={thread['mirror_passes']} dream_passes={thread.get('dream_passes',0)}")
 
-with open(threads_path, "w") as f:
-    json.dump(threads, f, indent=2)
+from thread_store import save_pool
+save_pool(threads, threads_path, reason="mirror-resolution")
 RESOLVE_MIRROR
 
 

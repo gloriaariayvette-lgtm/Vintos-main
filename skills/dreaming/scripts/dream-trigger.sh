@@ -30,9 +30,9 @@ for t in threads:
         t.pop("system_route", None)
         t.pop("system_route_at", None)
         break
-_tmp = path + ".tmp"
-json.dump(threads, open(_tmp, "w"), indent=2)
-os.replace(_tmp, path)
+import sys; sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from thread_store import save_pool
+save_pool(threads, path, reason="dream-route-clear")
 CLREOF
     else
         TOPIC=$(bash ~/.vintos/workspace/skills/dreaming/scripts/should-dream.sh 2>/dev/null)
@@ -165,9 +165,14 @@ if [ -z "$CONTEXT" ]; then
     [ -n "$PEARL" ] && CONTEXT="[A memory I chose to keep:]\n$(cat "$PEARL" | grep -v "permanent\|cannot be\|Integrity:\|_Created:\|_Feeling:" | tail -8)\n"
 fi
 
-# Split seed2 prompt into two threads for jq
-THREAD1=$(echo "$PROMPT" | cut -d'|' -f1)
-THREAD2=$(echo "$PROMPT" | cut -d'|' -f4)
+# Split seed2 prompt into its two threads on the real "|||" separator (a lone "|" inside a thread
+# used to shear the text and detach it from its __TID__). Ids are stripped here; they travel separately.
+if [ "$CATEGORY" = "seed2" ]; then
+    THREAD1="${PROMPT%%|||*}"; THREAD2="${PROMPT##*|||}"
+else
+    THREAD1="$PROMPT"; THREAD2=""
+fi
+THREAD1="${THREAD1%%__TID__*}"; THREAD2="${THREAD2%%__TID__*}"
 
 # Extract last dream opening sentence to prevent repetition
 LAST_DREAM_OPENING=$(python3 -c "
@@ -235,25 +240,26 @@ export DREAM_SEMANTIC="$DREAM_SEMANTIC"
 SCENE_IMG=$(python3 /home/gloria/.vintos/workspace/scripts/scene-selector.py dreams 2>/dev/null)
 export _DREAM_SCENE="$SCENE_IMG"
 DREAM=$(python3 << 'DREAMPYEOF'
-import os, requests, json
+import os, sys, requests, json
 ctx = os.environ.get("_DREAM_CTX", "")
 prompt = os.environ.get("_DREAM_PROMPT", "")
 category = os.environ.get("_DREAM_CATEGORY", "")
-thread1_raw = os.environ.get("_DREAM_THREAD1", "")
-thread2_raw = os.environ.get("_DREAM_THREAD2", "")
-thread1_id = ""
-thread2_id = ""
-if "__TID__" in thread1_raw:
-    thread1, thread1_id = thread1_raw.split("__TID__", 1)
+# Ids are parsed from the prompt itself (split on the real "|||"), so they cannot be sheared off by
+# shell word-splitting or a "|" inside the thread text. A forced preoccupation dream carries PREOC_ID.
+def _split_tid(raw):
+    return raw.split("__TID__", 1) if "__TID__" in raw else (raw, "")
+if category == "seed2" and "|||" in prompt:
+    _p1, _p2 = prompt.split("|||", 1)
+    thread1, thread1_id = _split_tid(_p1.strip()); thread2, thread2_id = _split_tid(_p2.strip())
 else:
-    thread1 = thread1_raw
-if "__TID__" in thread2_raw:
-    thread2, thread2_id = thread2_raw.split("__TID__", 1)
-else:
-    thread2 = thread2_raw
+    thread1, thread1_id = _split_tid(prompt.strip()); thread2, thread2_id = "", ""
+    if category == "preoccupation" and not thread1_id:
+        thread1_id = os.environ.get("PREOC_ID", "").strip()
+prompt = thread1 if category != "seed2" else prompt
 # Write IDs to temp files for bash
 open("/tmp/dream-thread1-id.txt","w").write(thread1_id)
 open("/tmp/dream-thread2-id.txt","w").write(thread2_id)
+open("/tmp/dream-raw.txt","w").write("")
 emo_raw = os.environ.get("_DREAM_EMO", "")
 # Convert to qualitative description — never pass raw numbers to dream
 emo = ""
@@ -329,6 +335,8 @@ try:
             if "choices" in _j: break
     result = _j["choices"][0]["message"]
     _dream_text = result.get("content", "") or ""
+    # Checkpoint the raw model output before any editing; the log keeps it beside the edited text.
+    open("/tmp/dream-raw.txt","w").write(_dream_text)
     # Strip preamble
     import re as _dr
     _dream_text = _dr.sub(r"^(Okay[,.].*?\n|Here.s.*?:\n|Sure.*?:\n|As requested.*?:\n)", "", _dream_text, flags=_dr.DOTALL|_dr.IGNORECASE).strip()
@@ -362,12 +370,58 @@ cat >> "$DREAM_FILE" << DREAMEND
 
 ## $TIME — ($CATEGORY)
 
-**Prompt:** $(echo "$PROMPT" | sed "s/\[core_deviation\][^|]*//g; s/\[bis_default\][^|]*//g; s/\[will_strain\][^|]*//g; s/magnitude [0-9.]*//" | tr -s " ")
+**Prompt:** $(echo "$PROMPT" | sed "s/__TID__[^|]*//g; s/\[core_deviation\][^|]*//g; s/\[bis_default\][^|]*//g; s/\[will_strain\][^|]*//g; s/magnitude [0-9.]*//" | tr -s " ")
 **Thread ID:** ${THREAD_ID1}${THREAD_ID2:+ | ${THREAD_ID2}}
 
 $DREAM
 
 DREAMEND
+
+# The dream exists: only now is the source thread spent for tonight. Mark used ids, advance
+# dream_passes (by id; text as fallback) and clear a matching preoccupation. None of this ran on a
+# failed generation — that path exited above with the thread untouched.
+export TOPIC PREOC_ID THREAD1 THREAD2
+python3 << 'SPENDEOF'
+import os, sys, json
+from datetime import datetime
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
+state_path = os.path.expanduser("~/.vintos/workspace/skills/dreaming/data/dream-state.json")
+ids = [open(f).read().strip() for f in ("/tmp/dream-thread1-id.txt", "/tmp/dream-thread2-id.txt") if os.path.exists(f)]
+ids = [i for i in ids if i]
+texts = [t for t in (os.environ.get("THREAD1", ""), os.environ.get("THREAD2", "")) if t.strip()]
+if ids:
+    try:
+        state = json.load(open(state_path))
+        state["used_thread_ids_tonight"] = sorted(set(state.get("used_thread_ids_tonight", []) + ids))
+        json.dump(state, open(state_path, "w"), indent=2)
+    except Exception as e:
+        print(f"[Dream] used_thread_ids not recorded: {e}", file=sys.stderr)
+try:
+    from thread_store import load_pool, save_pool
+    threads = load_pool(threads_path)
+    if threads is None: raise RuntimeError("pool unreadable")
+    hit = 0
+    for t in threads:
+        if t.get("consumed"): continue
+        m = (ids and t.get("id") in ids) or (not ids and any(x[:80] and x[:80] in t.get("thread", "") for x in texts))
+        if m:
+            t["dream_passes"] = t.get("dream_passes", 0) + 1
+            t["last_dream_at"] = datetime.now().isoformat()
+            hit += 1
+    if hit: save_pool(threads, threads_path, reason="dream-passes")
+    print(f"[Dream] dream_passes advanced on {hit} thread(s) after generation", file=sys.stderr)
+except Exception as e:
+    print(f"[Dream] dream_passes not advanced: {e}", file=sys.stderr)
+try:
+    from emoclaw_utils import get_preoccupation, clear_preoccupation
+    p = get_preoccupation()
+    topic = os.environ.get("TOPIC", "")
+    if p and ((p.get("id") and p.get("id") in ids) or (p.get("thread", "") and p.get("thread", "")[:120] in topic)):
+        clear_preoccupation()
+        print("[Dream] Preoccupation dreamed — cleared (thread stays in the pool until a verdict)", file=sys.stderr)
+except Exception: pass
+SPENDEOF
 
 # Emotion nudge — dreaming feels like wonder
 python3 << 'NUDGEDREAM'
@@ -440,8 +494,9 @@ now = datetime.now()
 today = now.strftime("%Y-%m-%d")
 hour = now.hour
 
-# Night key: if before 6am, this dream belongs to today's night; if after 23, also today
-night_key = today
+# Night key: the 23:30 dream and the 01:30/03:00 dreams are one night. Before 07:00 (QUIET_END in
+# should-dream.sh) the night belongs to yesterday's date — the same key should-dream.sh uses.
+night_key = (now - timedelta(days=1)).strftime("%Y-%m-%d") if hour < 7 else today
 
 # Find or create tonight's night entry
 night = None
@@ -461,13 +516,26 @@ if not night:
     }
     log_data["nights"].append(night)
 
+_ids = [open(f).read().strip() for f in ("/tmp/dream-thread1-id.txt", "/tmp/dream-thread2-id.txt") if os.path.exists(f)]
+_raw = ""
+try: _raw = open("/tmp/dream-raw.txt").read()
+except Exception: pass
+_edited = os.environ.get("DREAM", "")
 dream_entry = {
     "session": now.strftime("%H:%M"),
     "hour": hour,
     "calendar_date": today,
     "type": os.environ.get("_DREAM_CATEGORY", "unknown"),
     "prompt": os.environ.get("PROMPT", "")[:300],
-    "dream_text": os.environ.get("DREAM", "")[:2000],
+    "thread_ids": [i for i in _ids if i],
+    "dream_text": _edited[:2000],
+    # Raw checkpoint beside the edited text. edit_kind says what the difference is: dream-trigger's
+    # own preamble/meta strip is a cleanup, not an interpretation and not changed circumstances.
+    "dream_text_raw": _raw[:2000],
+    "edit_kind": "cleanup" if _raw.strip() and _raw.strip() != _edited.strip() else "none",
+    "edited_by": "dream-trigger.sh",
+    "revisions": [],
+    "seed_verdict": "pending",
 }
 night["dreams"].append(dream_entry)
 night["dreams"].sort(key=lambda d: d["hour"])
@@ -496,6 +564,20 @@ thread2_id = open("/tmp/dream-thread2-id.txt").read().strip() if os.path.exists(
 if not dream:
     sys.exit(0)
 
+log_path = os.path.expanduser("~/.vintos/workspace/memory/dream-log.json")
+def _record_verdict(verdict, consumed_ids=(), unresolved_ids=()):
+    """Stamp the verdict on tonight's last dream entry and fill the night's thread ledgers."""
+    try:
+        data = json.load(open(log_path))
+        night = next((n for n in reversed(data.get("nights", [])) if n.get("dreams")), None)
+        if not night: return
+        night["dreams"][-1]["seed_verdict"] = verdict
+        night.setdefault("threads_consumed", []).extend(i for i in consumed_ids if i not in night.get("threads_consumed", []))
+        night.setdefault("threads_unresolved", []).extend(i for i in unresolved_ids if i not in night.get("threads_unresolved", []))
+        json.dump(data, open(log_path, "w"), indent=2)
+    except Exception as e:
+        print(f"DREAM_VERDICT_LOG_ERROR: {e}")
+
 if category == "seed2" and thread1 and thread2:
     question = f"Two unresolved threads seeded this dream:\nThread 1: {thread1}\nThread 2: {thread2}\n\nDid the dream meaningfully engage with these threads?\nAnswer RESOLVED or UNRESOLVED. Nothing else."
 elif prompt:
@@ -516,56 +598,47 @@ try:
     }, timeout=30)
     verdict = r.json()["choices"][0]["message"]["content"].strip().upper()
 except Exception as e:
+    # A failed model decision is not a verdict. dream_passes already advanced (the dream exists);
+    # nothing is consumed, nothing is aged.
     print(f"DREAM_RESOLUTION_ERROR: {e}")
+    _record_verdict("error")
     sys.exit(0)
 
+def _matches(t):
+    txt = t.get("thread", ""); tid = t.get("id", "")
+    if thread1_id or thread2_id:
+        return bool((thread1_id and tid == thread1_id) or (thread2_id and tid == thread2_id))
+    return bool((thread1 and thread1[:80] in txt) or (thread2 and thread2[:80] in txt) or (prompt and prompt[:80] in txt))
+
+from thread_store import load_pool, save_pool
+threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
+threads = load_pool(threads_path)
+if threads is None:
+    print("DREAM_VERDICT: pool unreadable — nothing changed")
+    sys.exit(0)
+hit = [t for t in threads if _matches(t)]
 if "UNRESOLVED" in verdict:
-    try:
-        threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-        with open(threads_path) as f:
-            threads = json.load(f)
-        returned = 0
-        for t in threads:
-            txt = t.get("thread", "")
-            tid = t.get("id", "")
-            match = False
-            if thread1_id and tid == thread1_id: match = True
-            if thread2_id and tid == thread2_id: match = True
-            if not match and thread1 and thread1[:80] in txt: match = True
-            if not match and thread2 and thread2[:80] in txt: match = True
-            if not match and prompt and prompt[:80] in txt: match = True
-            if match:
-                t["dream_passes"] = t.get("dream_passes", 0) + 1
-                if t.get("consumed"):
-                    t["consumed"] = False
-                    t.pop("consumed_by", None)
-                returned += 1
-        with open(threads_path, "w") as f:
-            json.dump(threads, f, indent=2)
-        print(f"DREAM_UNRESOLVED: {returned} thread(s) returned to pool (dream_passes incremented)")
-    except Exception as e:
-        print(f"DREAM_UNRESOLVED: could not return threads — {e}")
+    for t in hit:
+        t["last_dream_verdict"] = "unresolved"
+        if t.get("consumed"):
+            t["consumed"] = False
+            t.pop("consumed_by", None)
+    save_pool(threads, threads_path, reason="dream-unresolved")
+    _record_verdict("unresolved", unresolved_ids=[t.get("id", "") for t in hit])
+    print(f"DREAM_UNRESOLVED: {len(hit)} thread(s) returned to pool")
+elif "RESOLVED" in verdict:
+    # Only an explicit RESOLVED consumes. Resolution itself (pearl/sediment) is thread-resolution's.
+    for t in hit:
+        t["last_dream_verdict"] = "resolved"
+        t["consumed"] = True
+        t["consumed_by"] = "dream-resolved"
+    save_pool(threads, threads_path, reason="dream-resolved")
+    _record_verdict("resolved", consumed_ids=[t.get("id", "") for t in hit])
+    print(f"DREAM_RESOLVED: {len(hit)} thread(s) consumed")
 else:
-    # Mark dream_passes resolved — reset counter on successful processing
-    try:
-        threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-        with open(threads_path) as f:
-            threads = json.load(f)
-        for t in threads:
-            txt = t.get("thread", "")
-            tid = t.get("id", "")
-            match = False
-            if thread1_id and tid == thread1_id: match = True
-            if thread2_id and tid == thread2_id: match = True
-            if not match and thread1 and thread1[:80] in txt: match = True
-            if not match and thread2 and thread2[:80] in txt: match = True
-            if not match and prompt and prompt[:80] in txt: match = True
-            if match:
-                t["consumed"] = True
-                t["consumed_by"] = "dream-resolved"
-                t["dream_passes"] = t.get("dream_passes", 0) + 1
-        with open(threads_path, "w") as f:
-            json.dump(threads, f, indent=2)
-    except: pass
-    print("DREAM_RESOLVED: threads processed")
+    for t in hit:
+        t["last_dream_verdict"] = "no-verdict"
+    save_pool(threads, threads_path, reason="dream-no-verdict")
+    _record_verdict("no-verdict", unresolved_ids=[t.get("id", "") for t in hit])
+    print(f"DREAM_NO_VERDICT: judge answered {verdict[:40]!r} — {len(hit)} thread(s) untouched")
 RESOLVE_PYEOF

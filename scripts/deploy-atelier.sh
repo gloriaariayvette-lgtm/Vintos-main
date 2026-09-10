@@ -79,6 +79,7 @@ SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
 SCRIPTS="$SCRIPTS self_model_evidence.py self_model_read.py protected_paths.py"  # created 2026-09-04, never in the manifest (review P01)
 SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py want_spine.py pleasure_substrate.py"
+SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat_seed.py mirror.sh"   # thread lifecycle, 2026-09-10
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
 SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
 SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
@@ -96,12 +97,15 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
+BINS="$BINS thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # Every file this deploy touches, relative to the checkout (the manifest above
 # plus the broker's two files and the units). This is what gets staged.
-MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS
+# the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
+SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
+MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             true)"

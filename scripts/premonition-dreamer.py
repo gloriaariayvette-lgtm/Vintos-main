@@ -137,23 +137,27 @@ def seed_as_thread(possibility):
 
 
 def _write_thread_direct(text):
-    threads = _loadjson(THREADS, [])
-    if not isinstance(threads, list):
-        threads = threads.get("threads", []) if isinstance(threads, dict) else []
+    from thread_store import load_pool, save_pool
+    threads = load_pool(THREADS)
+    if threads is None:
+        raise RuntimeError("pool unreadable - refusing to seed over a ledger I cannot see")
     threads.append({"id": uuid.uuid4().hex[:8], "source": "premonition", "thread": text,
                     "timestamp": datetime.now().isoformat(), "consumed": False, "dream_only": True})
-    json.dump(threads, open(THREADS, "w"), indent=2, ensure_ascii=False)
+    if not save_pool(threads, THREADS, reason="premonition"):
+        raise RuntimeError("pool write refused by shrink guard")
 
 
 def _ensure_dream_only(text):
     try:
-        obj = json.load(open(THREADS))
-        lst = obj if isinstance(obj, list) else obj.get("threads", [])
+        from thread_store import load_pool, save_pool
+        lst = load_pool(THREADS)
+        if lst is None:
+            return
         for t in reversed(lst):
             if isinstance(t, dict) and t.get("source") == "premonition" and t.get("thread") == text:
                 t["dream_only"] = True
                 break
-        json.dump(obj, open(THREADS, "w"), indent=2, ensure_ascii=False)
+        save_pool(lst, THREADS, reason="premonition-dream-only")
     except Exception:
         pass
 

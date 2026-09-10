@@ -10,6 +10,10 @@ STATE_FILE="data/dream-state.json"
 CURRENT_DATE=$(date +%Y-%m-%d)
 CURRENT_HOUR=$(date +%H)
 YESTERDAY=$(date -d "yesterday" +%Y-%m-%d 2>/dev/null || date -v-1d +%Y-%m-%d 2>/dev/null)
+# The night is one unit: 23:30 and 01:30/03:00 belong to the same night_of. Before QUIET_END the
+# night is keyed to yesterday, matching dream-trigger.sh's dream-log night_key — otherwise the
+# 01:30 slot saw a "new date" and reset dreamsTonight, opening extra slots every night.
+if [[ $((10#$CURRENT_HOUR)) -lt $QUIET_END ]]; then NIGHT_DATE="$YESTERDAY"; else NIGHT_DATE="$CURRENT_DATE"; fi
 JOURNAL_DIR="$HOME/.vintos/workspace/memory/journal"
 EMO_FILE="$HOME/.vintos/workspace/memory/emotional-state.txt"
 ART_DIR="$HOME/.vintos/workspace/memory/art"
@@ -37,7 +41,7 @@ DREAM_CHANCE=$(echo "$STATE" | jq -r '.dreamChance // 1.0')
 # Evening window starts at QUIET_START (23:00). If hour >= 23 and counter is full,
 # we are in a new dreaming cycle — reset.
 hour=$((10#$CURRENT_HOUR))
-if [[ "$LAST_DATE" != "$CURRENT_DATE" ]]; then
+if [[ "$LAST_DATE" != "$NIGHT_DATE" ]]; then
     DREAMS_TONIGHT=0
     # Do NOT clear used_thread_ids_tonight here — the 3 AM slot needs to remember
     # what threads the 11:30 PM slot already used. Only cleared at QUIET_START (23:xx).
@@ -261,83 +265,12 @@ else
     fi
 fi
 NEW_DREAMS=$((DREAMS_TONIGHT + 1))
-echo "$STATE" | jq --arg date "$CURRENT_DATE" --argjson dreams "$NEW_DREAMS" \
+echo "$STATE" | jq --arg date "$NIGHT_DATE" --argjson dreams "$NEW_DREAMS" \
     '.lastDreamDate = $date | .dreamsTonight = $dreams' > "$STATE_FILE"
 echo "$TOPIC"
 
-# Write used thread IDs to state to prevent reuse tonight
-if [[ "$TOPIC" == seed:* ]] || [[ "$TOPIC" == seed2:* ]]; then
-    TOPIC_SNAP="$TOPIC"
-    python3 << USEDEOF
-import json, os
-state_path = os.path.expanduser("~/.vintos/workspace/skills/dreaming/data/dream-state.json")
-topic_raw = """$TOPIC_SNAP"""
-ids = []
-for part in topic_raw.replace("seed2:","").replace("seed:","").split("|||"):
-    if "__TID__" in part:
-        ids.append(part.split("__TID__")[1].strip())
-if ids:
-    try:
-        state = json.load(open(state_path))
-        existing = state.get("used_thread_ids_tonight", [])
-        state["used_thread_ids_tonight"] = list(set(existing + ids))
-        json.dump(state, open(state_path, "w"), indent=2)
-    except: pass
-USEDEOF
-fi
-
-# If we used a seed thread, increment dream_passes (do NOT mark consumed — resolution decides that)
-if [[ "$TOPIC" == seed:* ]]; then
-    python3 << PASSEOF
-import json, os
-threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-topic = """$TOPIC"""
-thread_text = topic.replace("seed:", "", 1)
-try:
-    with open(threads_path) as f: threads = json.load(f)
-    for t in threads:
-        if t.get("thread", "") == thread_text and not t.get("consumed", False):
-            t["dream_passes"] = t.get("dream_passes", 0) + 1
-            t["last_dream_at"] = __import__("datetime").datetime.now().isoformat()
-            break
-    with open(threads_path, "w") as f: json.dump(threads, f, indent=2)
-    print(f"[Dream] Incremented dream_passes on thread", file=__import__("sys").stderr)
-except: pass
-PASSEOF
-elif [[ "$TOPIC" == seed2:* ]]; then
-    python3 << PASS2EOF
-import json, os
-threads_path = os.path.expanduser("~/.vintos/workspace/memory/unfinished-threads.json")
-topic = """$TOPIC"""
-combined = topic.replace("seed2:", "", 1)
-parts = combined.split("|||")
-try:
-    with open(threads_path) as f: threads = json.load(f)
-    for part in parts:
-        part = part.strip()
-        for t in threads:
-            if t.get("thread", "") == part and not t.get("consumed", False):
-                t["dream_passes"] = t.get("dream_passes", 0) + 1
-                t["last_dream_at"] = __import__("datetime").datetime.now().isoformat()
-                break
-    with open(threads_path, "w") as f: json.dump(threads, f, indent=2)
-    print(f"[Dream] Incremented dream_passes on 2 threads", file=__import__("sys").stderr)
-except: pass
-PASS2EOF
-fi
-
-
-# If the dream topic matches the current preoccupation, clear it
-python3 << 'CLEAR_PREOCCUPATION'
-import os, sys
-sys.path.insert(0, os.path.expanduser("~/.vintos/workspace"))
-try:
-    from emoclaw_utils import get_preoccupation, clear_preoccupation
-    p = get_preoccupation()
-    topic = """$TOPIC"""
-    if p and p.get("thread", "") in topic:
-        clear_preoccupation()
-        print("[Dream] Preoccupation resolved through dreaming")
-except: pass
-CLEAR_PREOCCUPATION
+# Selection is not consumption. Marking the thread ids used tonight, advancing dream_passes and
+# clearing a matching preoccupation all happen in dream-trigger.sh AFTER the dream text exists —
+# a failed generation must not spend the thread it drew from. (Moved 2026-09-10; the old blocks
+# here also matched on thread text that still carried its __TID__ suffix, so they never fired.)
 exit 0

@@ -121,9 +121,11 @@ def main():
     try:
         import uuid as _cu
         threads_path = os.path.join(MEMORY, "unfinished-threads.json")
-        threads = []
-        if os.path.exists(threads_path):
-            threads = json.load(open(threads_path))
+        import sys as _cs; _cs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from thread_store import load_pool, save_pool
+        threads = load_pool(threads_path)
+        if threads is None:
+            raise RuntimeError("pool unreadable - refusing to seed over it")
         threads.append({
             "id": str(_cu.uuid4())[:8],
             "source": "confession",
@@ -132,7 +134,7 @@ def main():
             "priority": 3,
             "consumed": False
         })
-        json.dump(threads, open(threads_path, "w"), indent=2)
+        save_pool(threads, threads_path, reason="confession")
         print(f"[ConfessionWriter] Thread seeded.")
     except Exception as e:
         print(f"[ConfessionWriter] Thread seed failed: {e}")

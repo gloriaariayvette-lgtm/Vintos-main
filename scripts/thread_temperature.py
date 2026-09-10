@@ -139,18 +139,13 @@ def run(apply=False, quiet=False):
             t["temp_updated_at"] = stamp
             t["_temp_dream_passes"] = t.get("dream_passes", 0) or 0
             t["_temp_mirror_passes"] = t.get("mirror_passes", 0) or 0
-        _n_before = 0
-        try:
-            _n_before = len(json.load(open(THREADS)))
-        except Exception: pass
-        _obj_n = len(obj) if isinstance(obj, list) else len(obj.get("threads", obj) if isinstance(obj, dict) else [])
-        if _n_before > 5 and _obj_n < _n_before // 2:
-            print("[thread-temp] REFUSING write: would shrink pool %d -> %d (wipe guard 2026-08-11)" % (_n_before, _obj_n))
+        # Shrink guard now lives in thread_store.save_pool (one door for every pool writer).
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from thread_store import save_pool
+        if save_pool(tlist, THREADS, reason="thread-temperature"):
+            out("  applied: stability + temperature written, backed up.")
         else:
-            _tmp = THREADS + ".tmp"
-            json.dump(obj, open(_tmp, "w"), indent=2, ensure_ascii=False)
-            os.replace(_tmp, THREADS)
-        out("  applied: stability + temperature written, backed up.")
+            out("  NOT applied: pool write refused by shrink guard.")
     else:
         out("  dry run — pass apply to write.")
     return {"count": len(results), "S": (min(Ss), max(Ss)), "T": (min(Ts), max(Ts))}

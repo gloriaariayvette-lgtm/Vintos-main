@@ -15,6 +15,8 @@ from datetime import datetime, date
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 THREADS_FILE = os.path.join(MEMORY, "unfinished-threads.json")
+sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+from thread_store import save_pool  # one door: shrink-guarded pool writes
 API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
 WEAVE_THRESHOLD = 2  # weave if 2+ threads from same source same day
@@ -127,10 +129,17 @@ def main():
             with open(manual_groups_path) as f:
                 manual_data = json.load(f)
             manual_groups = manual_data.get("groups", [])
+            _now = datetime.now().isoformat()
             for g in manual_groups:
                 name = g.get("name", "manual")
                 card_ids = g.get("cards", [])
+                # Groups are never deleted: each carries a status. Only a confirmed weave closes one.
+                if g.get("status") == "woven":
+                    continue
+                g["attempts"] = g.get("attempts", 0) + 1
+                g["last_attempt_at"] = _now
                 if len(card_ids) < 2:
+                    g["status"] = "unsuccessful"; g["status_reason"] = "fewer than 2 cards"
                     continue
                 group_threads = []
                 group_indices = []
@@ -141,6 +150,7 @@ def main():
                         group_threads.append(t)
                         group_indices.append(i)
                 if len(group_threads) < 2:
+                    g["status"] = "unsuccessful"; g["status_reason"] = "fewer than 2 live threads match the card ids"
                     continue
                 thread_texts = [t.get("thread", "") for t in group_threads]
                 log(f"Manual weave group '{name}': {len(group_threads)} threads")
@@ -148,23 +158,30 @@ def main():
                 threads_text = "\n".join(f"- {txt}" for txt in thread_texts)
                 woven = llm_weave("manual", threads_text, context, thread_count=len(group_threads))
                 if not woven or len(woven) < 20:
-                    log("Manual weave failed — leaving threads separate")
+                    log("Manual weave failed — leaving threads separate (group kept as unsuccessful)")
+                    g["status"] = "unsuccessful"; g["status_reason"] = "model error/empty weave"
                     continue
                 woven = f"[woven] {woven}"
                 log(f"Woven: {woven[:100]}")
                 # Mark originals as consumed after confirmed weave
+                import uuid as _wu
+                woven_id = str(_wu.uuid4())[:8]
+                source_ids = [t.get("id", "") for t in group_threads]
                 for idx, t in zip(group_indices, group_threads):
                     threads[idx]["consumed"] = True
                     threads[idx]["consumed_by"] = "thread-weaver"
+                    threads[idx]["woven_into"] = woven_id
                 newest = max(group_threads, key=lambda t: t.get("timestamp",""))
-                import uuid as _wu
+                g["status"] = "woven"; g["woven_id"] = woven_id; g["woven_at"] = _now
                 threads.append({
-                    "id": str(_wu.uuid4())[:8],
+                    "id": woven_id,
                     "source": "weaver-manual",
                     "thread": woven,
                     "timestamp": datetime.now().isoformat(),
                     "consumed": False,
                     "woven_from": len(group_threads),
+                    "woven_from_ids": source_ids,
+                    "woven_from_sources": [t.get("source", "") for t in group_threads],
                     "is_woven": True,
                     "weave_group_name": name,
                     "priority": max(t.get("priority") or 3 for t in group_threads),
@@ -176,12 +193,18 @@ def main():
                     "was_preoccupation": False,
                 })
                 modified = True
-            with open(manual_groups_path, "w") as f:
-                json.dump({"groups": [], "saved_at": datetime.now().isoformat()}, f, indent=2)
             if modified:
-                with open(threads_path, "w") as f:
-                    json.dump(threads, f, indent=2)
-                log("Manual weave saved to threads file")
+                if save_pool(threads, threads_path, reason="thread-weaver"):
+                    log("Manual weave saved to threads file")
+                else:
+                    log("Manual weave NOT saved (shrink guard refused) — groups left unclosed")
+                    for g in manual_groups:
+                        if g.get("status") == "woven" and g.get("woven_at") == _now:
+                            g["status"] = "unsuccessful"; g["status_reason"] = "pool write refused"
+            manual_data["groups"] = manual_groups
+            manual_data["saved_at"] = datetime.now().isoformat()
+            with open(manual_groups_path, "w") as f:
+                json.dump(manual_data, f, indent=2)
         except Exception as e:
             log(f"Manual weave error: {e}")
 

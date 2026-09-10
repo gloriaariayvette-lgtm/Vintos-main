@@ -30,9 +30,12 @@ def main():
     if not unconsumed:
         print("[heat-seed] nothing unconsumed."); return
     best = max(unconsumed, key=lambda t: ((t.get("temperature") or 0), (t.get("priority") or 0)))
+    # The id travels with the seed: preoccupation-dream.sh / dream-trigger.sh match by id, so the
+    # 200-char text cut can never detach the dream from the thread it drew from.
     ok = set_preoccupation(str(best.get("thread",""))[:200], "heat-seed",
-                           int(best.get("priority") or 3), best.get("triage_voice",""))
-    print(f"[heat-seed] {'set' if ok else 'not set'}: T={best.get('temperature')} pull={best.get('priority')} "
+                           int(best.get("priority") or 3), best.get("triage_voice",""),
+                           thread_id=str(best.get("id") or ""))
+    print(f"[heat-seed] {'set' if ok else 'not set'}: id={best.get('id')} T={best.get('temperature')} pull={best.get('priority')} "
           f"[{best.get('source')}] {str(best.get('thread',''))[:60]}")
 if __name__ == "__main__":
     main()

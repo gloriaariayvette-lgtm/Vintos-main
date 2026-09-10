@@ -303,6 +303,11 @@ def save_meta_dream(dream, meta_content, n_dreams=1):
         for night in data.get("nights", []):
             if night.get("night_of") == dream_date:
                 night["meta_dream"] = meta_with_label[:2000]
+                # A meta-dream re-reads the night; it does not change what happened. Record it as such.
+                night.setdefault("revisions", []).append({
+                    "at": datetime.now().isoformat(), "by": "second-order-dreamer",
+                    "kind": "interpretation", "field": "meta_dream",
+                    "note": "second-order observation over the night's dreams; dream_text/dream_text_raw untouched"})
                 _slj.dump(data, open(log_path, "w"), indent=2)
                 log(f"Updated night {dream_date} with meta-dream")
                 break
