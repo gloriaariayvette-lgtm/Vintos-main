@@ -55,11 +55,15 @@ def _door(path, kind="history"):
         if _os.path.basename(str(path)) == "interaction-ledger.json":
             return _EV.ledger_view(path)
         return _EV.open_history(path)
-    except Exception:
-        import json as _json
+    except Exception as _exc:
+        # No raw fallback (review 106): the door failing is the one case the door exists for.
+        # The read is HELD - recorded with its reason, and empty - never the raw file.
         try:
-            return _json.load(open(path))
+            import evidence_view as _EV2
+            return _EV2.held_read(path, organ='encounter', reason=str(_exc)[:160])
         except Exception:
+            import sys as _sys
+            print("[evidence-view] HELD %s for encounter.py: %s" % (path, str(_exc)[:120]), file=_sys.stderr)
             return []
 
 

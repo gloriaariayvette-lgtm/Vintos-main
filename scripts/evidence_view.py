@@ -231,6 +231,69 @@ def open_history(path, view="witness", resolve=None):
     return witness_view(data, resolve)
 
 
+HELD_LOG = os.path.join(MEMORY, "evidence-held.jsonl")
+
+
+def held_read(path, organ="", reason="", log_path=None):
+    """A gated read that could not be completed is HELD, not replaced by the raw file.
+
+    Item 106 (2026-09-10): every consumer used to carry `except Exception: json.load(open(path))`
+    under its door - the one failure mode the door exists for (evidence_view missing, malformed
+    file, unresolvable lineage) walked straight past it. This records WHY the read was skipped
+    and returns nothing to learn from. The organ runs empty, visibly, and the reason is on disk.
+    """
+    row = {"at": __import__("datetime").datetime.now().isoformat(), "organ": str(organ)[:60],
+           "path": os.path.basename(str(path)), "standing": HELD, "reason": str(reason)[:200]}
+    try:
+        lp = log_path or HELD_LOG
+        os.makedirs(os.path.dirname(lp), exist_ok=True)
+        with open(lp, "a") as f:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception:
+        pass
+    try:
+        import sys as _sys
+        print("[evidence-view] HELD %s for %s: %s" % (row["path"], organ or "?", row["reason"]), file=_sys.stderr)
+    except Exception:
+        pass
+    return []
+
+
+def door(path, organ="", view="witness", resolve=None):
+    """The consumer door with no raw fallback. Guarded files come back through the view; an
+    unguarded file is loaded plainly; any failure is HELD (recorded, empty) - never raw."""
+    if not os.path.exists(str(path)):
+        return []                                        # absent is empty, not HELD
+    try:
+        data = _load_any(path)
+    except Exception as exc:
+        return held_read(path, organ, "unreadable or malformed: %s" % str(exc)[:120])
+    if view not in ("witness", "record"):
+        return held_read(path, organ, "unknown view %r" % (view,))
+    try:
+        if os.path.basename(str(path)) == "interaction-ledger.json":
+            return _ledger_rows(data, view)
+        if is_guarded(path):
+            return record_view(data, resolve) if view == "record" else witness_view(data, resolve)
+        return data
+    except Exception as exc:
+        return held_read(path, organ, "view failed: %s" % str(exc)[:120])
+
+
+def _load_any(path):
+    """JSON, else JSONL. Raises on anything unparseable - the caller decides what that means."""
+    with open(path) as f:
+        raw = f.read()
+    try:
+        return json.loads(raw)
+    except Exception:
+        rows = []
+        for l in raw.splitlines():
+            if l.strip():
+                rows.append(json.loads(l))
+        return rows
+
+
 def refuse_raw(path):
     """Call at the top of a learning organ that is about to open a file itself."""
     if is_guarded(path):
@@ -253,6 +316,10 @@ def ledger_view(path=None, view="witness"):
             data = json.load(f)
     except Exception:
         return []
+    return _ledger_rows(data, view)
+
+
+def _ledger_rows(data, view="witness"):
     if not isinstance(data, list):
         return []
     if view == "record":

@@ -6258,8 +6258,18 @@ async def semantic_memory_search(q: str, limit: int = 5):
     except:
         return {"results": [], "error": "Could not read index"}
 
+    # the projection's rule (review 105): a tombstoned chunk, a chunk whose source revision no
+    # longer matches the file, or one embedded by another model/dims is never served
+    try:
+        import importlib.util as _ilu
+        _msp = os.path.join(WORKSPACE, "scripts", "memory-search.py")
+        _spec = _ilu.spec_from_file_location("memory_search_proj", _msp)
+        _ms = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_ms)
+        _served = _ms.serve_entries(index)
+    except Exception:
+        _served = [e for e in index.get("entries", []) if isinstance(e, dict) and not e.get("tombstone")]
     results = []
-    for entry in index.get("entries", []):
+    for entry in _served:
         emb = entry.get("embedding", [])
         if not emb:
             continue
@@ -6270,7 +6280,7 @@ async def semantic_memory_search(q: str, limit: int = 5):
             "score": round(score, 4),
             "source": entry.get("source"),
             "filename": entry.get("filename"),
-            "text": entry.get("text", "")[:400],
+            "text": (entry.get("text") or entry.get("chunk") or "")[:400],
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
