@@ -251,12 +251,18 @@ Respond with JSON: {{"1": "pearl", "2": "keep", "3": "demote"}}"""
                     _sync_remove_from_autowal(entry['content'][:80])
                 elif decision == "pearl":
                     print(f"  GRADUATE TO PEARL: {entry['content'][:60]}")
-                    # Seed as pearl via emoclaw_utils if possible
+                    # The pearl file is the durable record; if it cannot be
+                    # written the entry stays unreviewed so the next run retries.
                     try:
                         import sys as _wp_sys; _wp_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
                         from emoclaw_utils import add_pearl
-                        add_pearl(entry["content"], source="wal-graduation")
-                    except: pass
+                        _pp = add_pearl(entry["content"], source="wal-graduation")
+                        if _pp:
+                            entry["pearl_path"] = _pp
+                        entry["pearl_graduated"] = True
+                    except Exception as _pe:
+                        print(f"  pearl write failed, will retry: {_pe}")
+                        entry["pearl_reviewed"] = False
             save_json(WAL_LOG, {"entries": keep})
             save_json(WAL_ARCHIVE, archive_data)
 

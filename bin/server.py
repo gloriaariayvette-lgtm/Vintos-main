@@ -6284,19 +6284,44 @@ async def debug_chat_message(msg: ChatMessage, request: Request):
 # === Vintos Initiates — outreach system ===
 
 @app.get("/api/outreach")
-async def get_outreach():
-    """Check if Vintos has reached out. Returns pending message and clears it."""
+async def get_outreach(all: int = 0):
+    """Check if Vintos has reached out. A read never deletes the message: the
+    first read marks it delivered and returns it; later reads return nothing
+    (or the same message with ?all=1) until POST /api/outreach/ack clears it or
+    the next outreach replaces it. `pending` and `has_message` are both set."""
+    pending_file = os.path.join(MEMORY, ".pending-outreach.json")
+    if not os.path.exists(pending_file):
+        return {"has_message": False, "pending": False}
+    try:
+        with open(pending_file) as f:
+            data = json.load(f)
+    except Exception:
+        return {"has_message": False, "pending": False, "error": "unreadable"}
+    if data.get("delivered_at") and not all:
+        return {"has_message": False, "pending": False, "delivered_at": data["delivered_at"]}
+    if not data.get("delivered_at"):
+        data["delivered_at"] = datetime.now().isoformat()
+        try:
+            tmp = pending_file + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp, pending_file)
+        except Exception:
+            pass
+    return {"has_message": True, "pending": True, **data}
+
+@app.post("/api/outreach/ack")
+async def ack_outreach(request: Request):
+    """The client acknowledges the delivered outreach; only now is it cleared."""
+    _require_secret(request)
     pending_file = os.path.join(MEMORY, ".pending-outreach.json")
     if os.path.exists(pending_file):
         try:
-            with open(pending_file) as f:
-                data = json.load(f)
-            # Clear after reading (one-time notification)
             os.remove(pending_file)
-            return {"has_message": True, **data}
-        except:
-            return {"has_message": False}
-    return {"has_message": False}
+            return {"ok": True, "cleared": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+    return {"ok": True, "cleared": False}
 
 @app.get("/api/outreach/history")
 async def outreach_history(limit: int = 10):

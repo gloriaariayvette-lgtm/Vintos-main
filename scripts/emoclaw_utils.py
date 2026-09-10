@@ -649,6 +649,40 @@ def recent_pearls(n=3, max_chars=1500):
     return "Recent pearls (things I chose to remember forever):\n" + "\n---\n".join(chunks)
 
 
+def add_pearl(text, source="wal-graduation", note=""):
+    """Write one pearl file in the same shape pearl_engine.form_pearl writes
+    (memory/pearls/pearl_<stamp>.md), so recent_pearls() reads it. Returns the
+    path, or None when the text is empty or the same pearl already exists."""
+    import glob as _g
+    from datetime import datetime as _dt
+    text = (text or "").strip()
+    if not text:
+        return None
+    MEMORY = os.path.join(os.path.expanduser("~"), ".vintos", "workspace", "memory")
+    pearl_dir = os.path.join(MEMORY, "pearls")
+    os.makedirs(pearl_dir, exist_ok=True)
+    key = text[:120]
+    for f in _g.glob(os.path.join(pearl_dir, "pearl_*.md")):
+        try:
+            if key in open(f).read():
+                return None
+        except Exception:
+            continue
+    now = _dt.now()
+    path = os.path.join(pearl_dir, f"pearl_{now.strftime('%Y%m%d_%H%M%S')}.md")
+    if os.path.exists(path):
+        path = os.path.join(pearl_dir, f"pearl_{now.strftime('%Y%m%d_%H%M%S_%f')}.md")
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(f"# Pearl — {now.strftime('%Y-%m-%d %H:%M')}\n\n")
+        fh.write(f"{text}\n\n---\n")
+        fh.write(f"**Source:** {source}\n")
+        if note:
+            fh.write(f"**Note:** {note}\n")
+    os.replace(tmp, path)
+    return path
+
+
 # === Wants System ===
 
 def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation=""):
