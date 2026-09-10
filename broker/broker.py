@@ -323,9 +323,19 @@ def create_project(b):
     _ev(pid, "born"); _health("a project exists")
     return {"id": pid}
 
+def _code_sha256():
+    """The hash of the broker file that is actually running, so the deploy can tell whether the installed
+    broker is the checkout's without reading /home/atelier (2026-09-10: the deploy asked for the sudo
+    lines on every run, even when broker/ had not changed)."""
+    try:
+        return hashlib.sha256(open(os.path.abspath(__file__), "rb").read()).hexdigest()
+    except Exception:
+        return ""
+CODE_SHA256 = _code_sha256()
+
 def worktable():
     a = _j(os.path.join(ROOT, "active.json"), {})
-    return {"active": bool(a.get("id")), "since": a.get("since")}   # content-free
+    return {"active": bool(a.get("id")), "since": a.get("since"), "code_sha256": CODE_SHA256}   # content-free
 
 import contextlib as _ctx
 @_ctx.contextmanager

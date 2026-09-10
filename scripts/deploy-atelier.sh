@@ -529,7 +529,28 @@ say
 # logging again.
 say "== broker (service $UNIT_NAME, runs as atelier) =="
 brokered=0
-if sudo -n true 2>/dev/null; then
+# The sudo lines are only for a broker that CHANGED. Three ways to know the installed broker is this
+# one, tried in order: the installed files read identical; the marker left by the last install carries
+# this release's hash; the running broker reports its own file hash on /health (Gloria, 2026-09-10:
+# "skip the sudo broker lines unless broker/ changed").
+BROKER_MARK="$HOME/.vintos/deploy/.broker-installed"
+broker_hash="$(cat "$STAGE/broker/broker.py" "$STAGE/broker/stratagem_store.py" "$STAGE/broker/$UNIT_NAME.service" | sha256sum | cut -c1-64)"
+broker_py_hash="$(sha256sum "$STAGE/broker/broker.py" | cut -c1-64)"
+broker_same=0
+if cmp -s "$STAGE/broker/broker.py" "$BROKER" 2>/dev/null && cmp -s "$STAGE/broker/stratagem_store.py" "$STORE" 2>/dev/null \
+   && cmp -s "$STAGE/broker/$UNIT_NAME.service" "$UNIT_DST" 2>/dev/null; then
+    broker_same=1; broker_how="installed files read identical"
+elif [ -f "$BROKER_MARK" ] && [ "$(cat "$BROKER_MARK" 2>/dev/null)" = "$broker_hash" ]; then
+    broker_same=1; broker_how="marker from the last install matches"
+elif curl -s -m 3 http://127.0.0.1:8611/health 2>/dev/null | grep -q "\"code_sha256\": *\"$broker_py_hash\""; then
+    broker_same=1; broker_how="the running broker reports this file's hash"
+fi
+if [ "$broker_same" -eq 1 ] && ! sudo -n true 2>/dev/null; then
+    say "  unchanged since its last install ($broker_how); not touched, no sudo needed"
+    if confirm_unit --system "$UNIT_NAME" && wait_http "$UNIT_NAME" http://127.0.0.1:8611/health 20; then
+        brokered=1
+    fi
+elif sudo -n true 2>/dev/null; then
     # Never die here. By this point his scripts are already installed, and
     # aborting would skip the verification that tells you what state the host
     # is actually in. Failures are flagged and fail the deploy at the end.
@@ -549,7 +570,7 @@ if sudo -n true 2>/dev/null; then
             sleep 2
             say "  installed; enabled: $(systemctl is-enabled "$UNIT_NAME" 2>/dev/null)"
             if confirm_unit --system "$UNIT_NAME" && wait_http "$UNIT_NAME" http://127.0.0.1:8611/health 20; then
-                brokered=1
+                brokered=1; mkdir -p "$(dirname "$BROKER_MARK")" && printf '%s' "$broker_hash" > "$BROKER_MARK"
             fi
         else
             flag "$UNIT_NAME FAILED TO START — the files are installed, the service is not up."
@@ -564,6 +585,7 @@ if sudo -n true 2>/dev/null; then
         say "    sudo install -m 644 $SRC/broker/$UNIT_NAME.service $UNIT_DST"
         say "    sudo systemctl daemon-reload && sudo systemctl enable $UNIT_NAME"
         say "    sudo pkill -f 'python3 $BROKER'; sleep 1; sudo systemctl restart $UNIT_NAME"
+        say "    mkdir -p $(dirname "$BROKER_MARK") && printf '%s' $broker_hash > $BROKER_MARK"
     fi
 else
     flag "broker not installed/restarted: sudo wants a password. These lines, in order:"
@@ -572,6 +594,7 @@ else
     say "    sudo install -m 644 $SRC/broker/$UNIT_NAME.service $UNIT_DST"
     say "    sudo systemctl daemon-reload && sudo systemctl enable $UNIT_NAME"
     say "    sudo pkill -f 'python3 $BROKER'; sleep 1; sudo systemctl restart $UNIT_NAME"
+    say "    mkdir -p $(dirname "$BROKER_MARK") && printf '%s' $broker_hash > $BROKER_MARK"
 fi
 say
 
@@ -654,7 +677,7 @@ say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/nul
 say
 say "backup:   $BACKUP"
 say "rollback: bash $BACKUP/restore.sh"
-[ "$brokered" -eq 1 ] && say "Broker service restarted and confirmed." || say "Broker service NOT confirmed — see the failures below."
+[ "$brokered" -eq 1 ] && say "Broker service confirmed${broker_how:+ (unchanged: $broker_how)}." || say "Broker service NOT confirmed — see the failures below."
 say "Nothing armed. Stratagems stay disarmed."
 if [ -n "$FAILED" ]; then
     printf '\nDEPLOY FAILED — files are installed, but:%s\n' "$FAILED" >&2
