@@ -252,6 +252,11 @@ def save_log(log):
     """Atomic replace under a lock file: two finishing tracks never half-write each other's log
     (astra-creative-p4, 2026-09-05)."""
     os.makedirs(os.path.dirname(LOG),exist_ok=True)
+    try:   # review 302: the one shelf transaction (flock + atomic), shared with the gallery and the videos
+        import sys as _am_s; _am_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _am_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import artifact_manifest as _am; _am.save_ledger(LOG, log); return
+    except Exception as _ame:
+        print("[music] artifact_manifest.save_ledger unavailable (%s); spin-lock fallback" % _ame)
     _lock=LOG+".lock"; _t0=time.time()
     while os.path.exists(_lock) and time.time()-_t0<10: time.sleep(0.1)
     try:
