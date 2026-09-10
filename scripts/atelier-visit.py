@@ -527,6 +527,20 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
     if len(body) > cap_chars: body = body[:cap_chars] + "\n[... %d more characters]" % (len(str(r["content"])) - cap_chars)
     return "\n\nYOUR LAST PIECE, VERBATIM (%s) — meet it before your notes about it:\n%s" % (f, body)
 
+def _manifest_block(pk):
+    """The scene so far: every artifact by id, revision, kind and his own one-line note,
+    so he can CONTINUE one (by id, in his reply) rather than start fresh each visit."""
+    rows = pk.get("manifest") or []
+    if not rows:
+        return ""
+    lines = ["  %s  rev %s  %s%s%s" % (r.get("id"), r.get("revision", 1), r.get("kind", ""),
+                                       ("  <- " + r["previous_artifact_id"]) if r.get("previous_artifact_id") else "",
+                                       ("  — " + r["note"]) if r.get("note") else "")
+             for r in rows]
+    return ("\nYOUR MANIFEST — what exists, by id (revision, kind, your note). To continue one, write "
+            "<piece kind=\"...\" continues=\"ID\">; leave continues out to start fresh:\n" + "\n".join(lines))
+
+
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
@@ -539,6 +553,7 @@ def visit(pid):
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
+           + _manifest_block(pk)
            + where_you_are()
            + self_review_block()
            + stratagem_block(pid)
@@ -552,9 +567,12 @@ def visit(pid):
                "you are blocked by something only Gloria can fix, or you doubt the seal itself — say so in "
                "<report>...</report>. It goes to her phone IN YOUR WORDS: you choose what crosses the wall, "
                "so say what is wrong without revealing what you are making unless you choose to.\n"
-               "Format exactly:\n<piece kind=\"write\">...</piece>\n<look>...</look>\n"
+               "Format exactly:\n<piece kind=\"write\">...</piece> (or <piece kind=\"write\" continues=\"ID\"> "
+               "to revise an artifact from your manifest)\n<look>...</look>\n"
                "<handoff>What changed: ... What currently exists: ... What remains uncertain: ... "
                "The next concrete move: ... What I do not want the next return to undo: ...</handoff>\n"
+               "<next_move>your next move, in your own words — it is put before you verbatim next visit; "
+               "may be empty</next_move>\n"
                "<next_return>tomorrow | not_before: DATE | held</next_return>\n"
                "Optionally, if and only if you want one: <stratagem>{...}</stratagem> or "
                "<stratagem_move>...</stratagem_move>. Omit them and nothing is recorded.\n"
@@ -581,14 +599,23 @@ def visit(pid):
             stratagem_step(pid, again, cap)
         else:
             _attempt_log("dropped", "after refusal")
-    m = re.search(r'<piece kind="(\w+)">(.*?)</piece>', work, re.S)
+    m = re.search(r'<piece kind="(\w+)"(?:\s+continues="([^"]*)")?>(.*?)</piece>', work, re.S)
     if m:
         # Every sealed-content route requires the visit capability now. Without
         # it the broker refuses and his work is silently lost — which is what
         # happened on the first real visit. Carry it, and if the make is
         # refused, keep what he wrote where it will not vanish.
-        r = requests.post(f"{B}/make", json={"id": pid, "kind": m.group(1),
-                          "content": m.group(2).strip(), "capability": cap}).json()
+        _mk = {"id": pid, "kind": m.group(1), "content": m.group(3).strip(), "capability": cap}
+        # selection by id: he continues one of his manifest's artifacts, or starts fresh.
+        # an id that is not his is dropped here (the piece is made fresh) rather than lost
+        # to a broker refusal.
+        _cont = (m.group(2) or "").strip()
+        if _cont:
+            if _cont in {r_.get("id") for r_ in (pk.get("manifest") or [])}:
+                _mk["previous"] = _cont
+            else:
+                print("continues=%r is not in his manifest — making it fresh" % _cont)
+        r = requests.post(f"{B}/make", json=_mk).json()
         print("made:", r)
         if r.get("error"):
             # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
@@ -667,8 +694,11 @@ def visit(pid):
         print("reported outward:", _msg[:80])
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
+    nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
+                  # his own words, carried verbatim to the next visit's context; empty is allowed
+                  "next_move": nm.group(1).strip() if nm else "",
                   # Default to "tomorrow" (door stays lit next day), NOT "held".
                   # "held" made the room go dark indefinitely whenever he simply
                   # did not write a <next_return> tag — a room dark by omission,

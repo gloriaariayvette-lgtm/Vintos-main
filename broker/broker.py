@@ -181,9 +181,118 @@ def _j(path, d=None):
     try: return json.load(open(path))
     except Exception: return d
 def _w(path, data): json.dump(data, open(path, "w"), indent=2)
+
+import threading as _thr
+_EV_LOCK = _thr.Lock()
+
+
+def _ev_hash(ev):
+    body = {k: ev[k] for k in ("seq", "ts", "type", "data", "prev") if k in ev}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def _ev(pid, typ, data=None):
-    with open(os.path.join(_p(pid), "events.jsonl"), "a") as f:
-        f.write(json.dumps({"ts": datetime.now().isoformat(), "type": typ, "data": data or {}}) + "\n")
+    """Append one hash-chained project event. EVERY kind goes through here —
+    born, to_table, made, looked, looked_quietly (a LOOK), handoff_written,
+    settled, aborted, re_adopted — so a view is as bound as a make. Lines
+    written before the chain existed carry no hash; they are tolerated only as
+    a prefix, never after the first chained line."""
+    with _EV_LOCK:
+        path = os.path.join(_p(pid), "events.jsonl")
+        prev, seq = "0" * 64, 0
+        try:
+            lines = [l for l in open(path).read().splitlines() if l.strip()]
+        except FileNotFoundError:
+            lines = []
+        if lines:
+            last = json.loads(lines[-1])
+            if "hash" in last:
+                prev, seq = last["hash"], int(last["seq"]) + 1
+            else:
+                seq = len(lines)
+        ev = {"seq": seq, "ts": datetime.now().isoformat(), "type": typ, "data": data or {}, "prev": prev}
+        ev["hash"] = _ev_hash(ev)
+        with open(path, "a") as f:
+            f.write(json.dumps(ev) + "\n")
+            f.flush()
+        return ev
+
+
+def verify_events_at(pdir):
+    """Recompute the project event chain from the events themselves.
+    (ok, n_events, reason). Unchained legacy lines are allowed only before the
+    first chained line; from there every seq, prev and hash must recompute."""
+    path = os.path.join(pdir, "events.jsonl")
+    try:
+        lines = [l for l in open(path).read().splitlines() if l.strip()]
+    except FileNotFoundError:
+        return True, 0, None
+    except OSError as e:
+        return False, 0, "events unreadable: %s" % str(e)[:80]
+    prev, chained = "0" * 64, False
+    for i, line in enumerate(lines):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            return False, i, "events unreadable at index %d" % i
+        if "hash" not in ev:
+            if chained:
+                return False, i, "unchained event after the chain began at index %d" % i
+            continue
+        chained = True
+        if ev.get("seq") != i:
+            return False, i, "sequence discontinuity at index %d" % i
+        if ev.get("prev") != prev:
+            return False, i, "prev mismatch at seq %d" % i
+        if _ev_hash(ev) != ev.get("hash"):
+            return False, i, "hash mismatch at seq %d — event body was altered" % i
+        prev = ev["hash"]
+    return True, len(lines), None
+
+
+def verify_chain(b):
+    """Every chain of one project, recomputed and compared: the project events
+    (views included) and, when a stratagem exists, its ledger with each capsule
+    bound to its issue event. A mismatch is the existing TAMPER_HELD state."""
+    pid = b.get("id", "")
+    try:
+        pdir = _p(pid)
+    except BadProject as e:
+        return {"error": str(e)}
+    ok, n, why = verify_events_at(pdir)
+    sok, sn, swhy = True, 0, None
+    try:
+        from stratagem_store import verify as _sv
+        sok, sn, swhy = _sv(pid)
+    except ImportError:
+        pass
+    intact = bool(ok and sok)
+    kinds = sorted({json.loads(l).get("type", "") for l in open(os.path.join(pdir, "events.jsonl")) if l.strip()}) if n else []
+    return {"ok": intact, "state": "intact" if intact else "TAMPER_HELD",
+            "events": n, "failure": why, "stratagem_events": sn, "stratagem_failure": swhy,
+            "kinds": kinds}
+
+
+def _lineage_path(pid): return os.path.join(_p(pid), "lineage.json")
+
+
+def _lineage(pid):
+    """Per-artifact revision records: id (filename), previous_artifact_id or
+    None, revision, kind, and his one-line note from the look that faced it."""
+    return _j(_lineage_path(pid), {}) or {}
+
+
+def manifest_rows(pid):
+    lin = _lineage(pid)
+    ad = os.path.join(_p(pid), "artifacts")
+    rows = []
+    for f in sorted(os.listdir(ad)) if os.path.isdir(ad) else []:
+        rec = lin.get(f) or {"id": f, "previous_artifact_id": None, "revision": 1,
+                             "kind": f.rsplit("_", 1)[-1].split(".")[0] if "_" in f else "", "note": ""}
+        rows.append({"id": f, "previous_artifact_id": rec.get("previous_artifact_id"),
+                     "revision": int(rec.get("revision", 1)), "kind": rec.get("kind", ""),
+                     "note": str(rec.get("note", ""))})
+    return rows
 def _health(fact):
     with open(HEALTH, "a") as f:
         f.write(json.dumps({"ts": datetime.now().isoformat(), "fact": fact}) + "\n")
@@ -246,10 +355,16 @@ def to_table(b):
         if a.get("id") and a["id"] != b["id"]:
             return {"error": "worktable occupied — rest, archive, or abandon it first (one locus of attention)"}
         p = _j(proj_file) or p
+        was = str(p.get("state", ""))
         p["state"] = "ACTIVE"
         _w(proj_file, p)
         _w(os.path.join(ROOT, "active.json"), {"id": b["id"], "since": datetime.now().isoformat()})
     _ev(b["id"], "to_table")
+    # A project that had already been on the table once and comes back is
+    # RE-ADOPTED — its own event kind, separate from a first tabling, from
+    # settlement, and from abandonment, so the three histories never blur.
+    if was and was not in ("GESTATING", "ACTIVE"):
+        _ev(b["id"], "re_adopted", {"from": was})
     return {"ok": True}
 
 
@@ -281,6 +396,8 @@ def set_state(b):
             a = _j(os.path.join(ROOT, "active.json"), {})
             if a.get("id") == b["id"]: _w(os.path.join(ROOT, "active.json"), {})
     _ev(b["id"], "state", {"to": b["state"], "note": b.get("note", "")})
+    if b["state"] == "ABANDONED_BY_CHOICE":
+        _ev(b["id"], "aborted", {"note": b.get("note", "")})   # its own kind, never folded into 'settled'
     return {"ok": True}
 
 def keep(b):
@@ -333,7 +450,10 @@ def look_offer(b):
             continue
     if not arts:
         return {"error": "nothing was ever made here — nothing to look at"}
+    lin = _lineage(pid)
     offer = {"nonce": uuid.uuid4().hex, "project": pid, "artifacts": arts,
+             "lineage": {f: {"previous_artifact_id": (lin.get(f) or {}).get("previous_artifact_id"),
+                             "revision": int((lin.get(f) or {}).get("revision", 1))} for f in arts},
              "exp": int(time.time()) + 3600}
     lk = os.path.join(_p(pid), "look"); os.makedirs(lk, exist_ok=True)
     _w(os.path.join(lk, ".offer-%s.json" % offer["nonce"]), offer)
@@ -397,6 +517,18 @@ def list_projects(b=None):
         if p.get("visibility") == "revealed":
             man = _j(os.path.join(pdir, pid, "reveal", "manifest.json"), {}) or {}
             row["revealed_at"] = p.get("settled_at") or man.get("prepared", "")
+        # the last of each history, kept apart: terminal (settled), aborted, re-adopted
+        last = {"settled": "", "aborted": "", "re_adopted": ""}
+        try:
+            for line in open(os.path.join(pdir, pid, "events.jsonl")):
+                if not line.strip():
+                    continue
+                ev = json.loads(line)
+                if ev.get("type") in last:
+                    last[ev["type"]] = ev.get("ts", "")
+        except (OSError, ValueError):
+            pass
+        row["last_settled"], row["last_aborted"], row["last_re_adopted"] = last["settled"], last["aborted"], last["re_adopted"]
         out.append(row)
     return {"ok": True, "projects": out}
 
@@ -425,28 +557,63 @@ def open_visit(b):
     ad = os.path.join(_p(pid), "artifacts")
     for f in sorted(os.listdir(ad)):
         arts[f] = hashlib.sha256(open(os.path.join(ad, f), "rb").read()).hexdigest()[:16]
-    evs = [json.loads(l) for l in open(os.path.join(_p(pid), "events.jsonl"))][-3:]
-    visit = {"id": uuid.uuid4().hex[:8], "opened": datetime.now().isoformat(),
-             "budgets": dict(BUDGETS), "attended": {k: True for k in BUDGETS}, "closed": False}
-    _w(os.path.join(_p(pid), ".visit.json"), visit)
+    evs = [json.loads(l) for l in open(os.path.join(_p(pid), "events.jsonl")) if l.strip()][-3:]
+    vpath = os.path.join(_p(pid), ".visit.json")
+    # The budget is RESERVED here, atomically, under the table lock. A second
+    # /visit/open while one is still open (and its capability still live)
+    # sees the reserved, partly-spent budget — it never resets it.
+    with _table_lock():
+        cur = _j(vpath, {}) or {}
+        resumed = False
+        try:
+            opened_ts = datetime.fromisoformat(str(cur.get("opened", ""))).timestamp()
+        except Exception:
+            opened_ts = 0
+        if cur and not cur.get("closed") and cur.get("budgets") is not None and time.time() - opened_ts < 3600:
+            visit, resumed = cur, True
+        else:
+            visit = {"id": uuid.uuid4().hex[:8], "opened": datetime.now().isoformat(),
+                     "budgets": dict(BUDGETS), "attended": {k: True for k in BUDGETS}, "closed": False}
+            _w(vpath, visit)
     ho = _j(os.path.join(_p(pid), "handoff.json"), {})
     crashed = _j(os.path.join(_p(pid), ".last_visit_unclosed.json"))
-    _w(os.path.join(_p(pid), ".last_visit_unclosed.json"), {"visit": visit["id"]})
-    _ev(pid, "return_opened"); _health("a return happened")
+    if not resumed:
+        _w(os.path.join(_p(pid), ".last_visit_unclosed.json"), {"visit": visit["id"]})
+        _ev(pid, "return_opened"); _health("a return happened")
+    else:
+        _ev(pid, "return_resumed", {"visit": visit["id"]})
     return {"visit_capability": mint_capability(pid, visit["id"], "vintos"),
             "intent": p["intent"], "state": p["state"], "artifacts": arts,
+            "manifest": manifest_rows(pid),      # id, revision, kind, his one-line note — to continue one
             "last_handoff": ho.get("text", ""), "next_move": ho.get("next_move", ""),
             "next_return": p.get("next_return"), "recent_events": evs,
             "footprints_since_last": [f for f in p.get("footprints", []) if f > ho.get("at", "")],
-            "crashed_last_time": bool(crashed and not ho.get("at", "") > str(crashed)),
-            "budgets": visit["budgets"]}
+            "crashed_last_time": bool(crashed and not resumed and not ho.get("at", "") > str(crashed)),
+            "budgets": visit["budgets"], "resumed": resumed, "visit": visit["id"]}
 
 def make(b):
     pid, kind = b["id"], b["kind"]  # image|music|write|quantum — caller made it; broker stores under law
-    v = _j(os.path.join(_p(pid), ".visit.json"))
-    if not v or v.get("closed"): return {"error": "no open visit"}
-    if v["budgets"].get(kind, 0) <= 0: return {"error": f"{kind} budget spent this visit"}
-    if not v["attended"].get(kind, True): return {"error": "face the last one first"}   # mechanical; no lecture
+    vpath = os.path.join(_p(pid), ".visit.json")
+    # Spend the reserved budget atomically: check and decrement under the same
+    # lock /visit/open reserves under, so two makes cannot both see the last unit.
+    with _table_lock():
+        v = _j(vpath)
+        if not v or v.get("closed"): return {"error": "no open visit"}
+        if v["budgets"].get(kind, 0) <= 0: return {"error": f"{kind} budget spent this visit"}
+        if not v["attended"].get(kind, True): return {"error": "face the last one first"}   # mechanical; no lecture
+        v["budgets"][kind] -= 1; v["attended"][kind] = False
+        _w(vpath, v)
+    # revision lineage: continue an earlier artifact of THIS project, or start fresh
+    prev = os.path.basename(str(b.get("previous", "") or "")) or None
+    lin = _lineage(pid)
+    if prev:
+        if not os.path.isfile(os.path.join(_p(pid), "artifacts", prev)):
+            with _table_lock():   # give the unit back; nothing was made
+                v = _j(vpath) or v; v["budgets"][kind] += 1; v["attended"][kind] = True; _w(vpath, v)
+            return {"error": "previous artifact %r is not in this project" % prev}
+        revision = int((lin.get(prev) or {}).get("revision", 1)) + 1
+    else:
+        revision = 1
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S'); ext = b.get('ext', 'md')
     fname = f"{stamp}_{kind}.{ext}"
     data = b["content"] if isinstance(b["content"], str) else str(b["content"])
@@ -462,9 +629,12 @@ def make(b):
     else:
         return {"error": "could not find a free name for the artifact"}
     digest = hashlib.sha256(data.encode("utf-8")).hexdigest()
-    v["budgets"][kind] -= 1; v["attended"][kind] = False
-    _w(os.path.join(_p(pid), ".visit.json"), v); _ev(pid, "made", {"kind": kind, "file": fname})
-    return {"ok": True, "file": fname, "sha256": digest, "remaining": v["budgets"][kind]}
+    lin = _lineage(pid)
+    lin[fname] = {"id": fname, "previous_artifact_id": prev, "revision": revision, "kind": kind, "note": ""}
+    _w(_lineage_path(pid), lin)
+    _ev(pid, "made", {"kind": kind, "file": fname, "previous_artifact_id": prev, "revision": revision})
+    return {"ok": True, "file": fname, "sha256": digest, "remaining": v["budgets"][kind],
+            "previous_artifact_id": prev, "revision": revision}
 
 def inspect(b):
     pid = b["id"]
@@ -476,16 +646,25 @@ def inspect(b):
         f.write(json.dumps({"ts": datetime.now().isoformat(), "artifact": b.get("artifact", ""), "note": note}) + "\n")
     v["attended"][b.get("kind", "image")] = True                   # attendance, not quality
     _w(os.path.join(_p(pid), ".visit.json"), v); _ev(pid, "looked", {"artifact": b.get("artifact", "")})
+    # his one-line note rides on the artifact's lineage record, for the next manifest
+    art = os.path.basename(str(b.get("artifact", "") or ""))
+    lin = _lineage(pid)
+    if art and art in lin:
+        lin[art]["note"] = note.strip().splitlines()[0][:160]
+        _w(_lineage_path(pid), lin)
     return {"ok": True}
 
 def read_artifact(b):
     """Sealed content. Authorization is decided in the matrix (POLICY) before we
     get here; this only reads. It used to read for anyone who asked. A LOOK
     ends in silence: no note, no attendance, one content-free audit line."""
-    content = open(os.path.join(_p(b["id"]), "artifacts", os.path.basename(b["file"]))).read()
+    fname = os.path.basename(b["file"])
+    content = open(os.path.join(_p(b["id"]), "artifacts", fname)).read()
     if b.get("look_capability"):
-        _ev(b["id"], "looked_quietly")
-    return {"content": content}
+        _ev(b["id"], "looked_quietly")     # the view is chained like every other kind
+    rec = _lineage(b["id"]).get(fname) or {"id": fname, "previous_artifact_id": None, "revision": 1}
+    return {"content": content, "lineage": {"id": fname, "previous_artifact_id": rec.get("previous_artifact_id"),
+                                            "revision": int(rec.get("revision", 1))}}
 
 def handoff(b):
     pid = b["id"]
@@ -505,9 +684,13 @@ def reveal_prepare(b):
     pid = b["id"]
     src = os.path.join(_p(pid), "artifacts", os.path.basename(b["artifact"]))
     data = open(src, "rb").read()
+    rec = _lineage(pid).get(os.path.basename(b["artifact"])) or {}
     man = {"artifact": b["artifact"], "sha256": hashlib.sha256(data).hexdigest(),
            "title": b.get("title", ""), "words": b.get("words", ""),
-           "target": b.get("target", ""), "prepared": datetime.now().isoformat()}
+           "target": b.get("target", ""), "prepared": datetime.now().isoformat(),
+           "lineage": {"id": os.path.basename(b["artifact"]),
+                       "previous_artifact_id": rec.get("previous_artifact_id"),
+                       "revision": int(rec.get("revision", 1))}}
     _w(os.path.join(_p(pid), "reveal", "manifest.json"), man)
     import shutil as _sh; _sh.copy(src, os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"])))
     # One-use receipt, bound to THIS manifest digest. Confirmation consumed
@@ -580,37 +763,43 @@ def settle(b):
     if actual != man.get("sha256"):
         return {"error": "the revealed artifact no longer matches its manifest"}
 
-    # 2. close capabilities: an open visit cannot outlive the undertaking
+    # ORDER MATTERS: the receipt — the visit's final handoff — is written FIRST,
+    # while the visit is still valid. Only then is the capability revoked and
+    # the table released. Revoking first left a settlement that could fail
+    # after the visit was already dead, with no receipt to show for it.
     vpath = os.path.join(_p(pid), ".visit.json")
     v = _j(vpath, {}) or {}
-    closed_visit = ""
-    if v and not v.get("closed"):
-        closed_visit = v.get("id", "")
-        v["closed"] = True
-        v["closed_by"] = "settlement"
-        _w(vpath, v)
-
-    # 3. release the worktable — the actual bug
+    closed_visit = v.get("id", "") if (v and not v.get("closed")) else ""
     a = _j(os.path.join(ROOT, "active.json"), {}) or {}
     was_active = a.get("id") == pid
-    if was_active:
-        _w(os.path.join(ROOT, "active.json"), {})
 
-    # 4. the project is done being worked on
-    p["state"] = "ARCHIVED"
-    p["settled_at"] = datetime.now().isoformat()
-    _w(proj, p)
-
-    # 5. a bounded, signed receipt. Bounded: it carries the fact of the
+    # 2. a bounded, signed receipt. Bounded: it carries the fact of the
     #    unveiling and nothing of its content.
+    settled_at = datetime.now().isoformat()
     receipt = {"project": pid, "artifact": os.path.basename(str(man.get("artifact", ""))),
                "sha256": actual, "prepared": man.get("prepared", ""),
-               "settled_at": p["settled_at"], "visit_closed": closed_visit,
+               "settled_at": settled_at, "visit_closed": closed_visit,
                "worktable_released": bool(was_active)}
     raw = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
     receipt["sig"] = hmac.new(_key(), raw.encode(), hashlib.sha256).hexdigest()
     _w(os.path.join(_p(pid), "reveal", "settlement.json"), receipt)
-    _ev(pid, "settled", {"sha256": actual[:16], "worktable_released": bool(was_active)})
+    _ev(pid, "settled", {"sha256": actual[:16], "worktable_released": bool(was_active),
+                         "visit_closed": closed_visit})          # terminal: its own kind
+
+    # 3. the project is done being worked on
+    p["state"] = "ARCHIVED"
+    p["settled_at"] = settled_at
+    _w(proj, p)
+
+    # 4. release the worktable — the actual bug
+    if was_active:
+        _w(os.path.join(ROOT, "active.json"), {})
+
+    # 5. LAST: close capabilities — an open visit cannot outlive the undertaking
+    if closed_visit:
+        v["closed"] = True
+        v["closed_by"] = "settlement"
+        _w(vpath, v)
     _health("an undertaking was settled")
     return {"ok": True, "receipt": receipt}
 
@@ -760,7 +949,8 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/settle": settle, "/settlement/verify": verify_settlement,
           "/lineage/fingerprint": lineage_fingerprint, "/manifest": manifest, "/report": report, "/door": door, "/worktable_id": worktable_id,
           "/gate/knock": gate_knock, "/gate/decide": gate_decide,
-          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint, "/projects": list_projects}
+          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint, "/projects": list_projects,
+          "/chain/verify": verify_chain}
 
 try:
     from stratagem_store import ROUTES as _SG
@@ -799,6 +989,7 @@ POLICY = {
     "/look/offer": HOUSE, "/look/mint": HOUSE,     # content-free receipt; mint consumes it once
     "/projects": HOUSE,                            # ids, states, counts, finish dates — nothing else
     "/lineage/fingerprint": OPEN,                        # a digest, never the key
+    "/chain/verify": OPEN,                               # recomputed hashes and event kinds, never content
     "/manifest": OPEN,                                   # counts + a hash, never content
     "/report": OPEN, "/door": OPEN, "/worktable_id": OPEN,
     "/stratagem/strategy-stop": OPEN,              # a stop is never gated. ever.

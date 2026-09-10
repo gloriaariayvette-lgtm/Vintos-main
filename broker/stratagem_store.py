@@ -205,7 +205,15 @@ def verify(pid):
         if _ev_hash(ev) != ev.get("hash"):
             return False, i, "hash mismatch at seq %d — event body was altered" % i
         prev = ev["hash"]
+    # Capsule state is BOUND to the chain, not merely self-consistent: every
+    # capsule record must sit on a capsule_issued event at its seq carrying the
+    # same commitment, and every capsule_issued event must have its record.
+    # Before this, a capsule could be dropped from, or slipped into, the
+    # capsule log with its own hash intact and verification never noticed.
+    issued = {ev["seq"]: (ev.get("data") or {}).get("capsule_sha256")
+              for ev in events if ev.get("type") == "capsule_issued"}
     cpath = os.path.join(_sd(pid), "capsules.jsonl")
+    seen = set()
     try:
         for line in open(cpath):
             if not line.strip():
@@ -215,10 +223,25 @@ def verify(pid):
                                             separators=(",", ":")).encode()).hexdigest()
             if got != rec.get("capsule_sha256"):
                 return False, len(events), "capsule commitment mismatch at seq %s" % rec.get("seq")
+            if issued.get(rec.get("seq")) != got:
+                return False, len(events), "capsule at seq %s has no matching capsule_issued event" % rec.get("seq")
+            seen.add(rec.get("seq"))
     except FileNotFoundError:
         pass
     except (ValueError, OSError, KeyError) as e:
         return False, len(events), "capsule log unreadable: %s" % str(e)[:80]
+    missing = sorted(set(issued) - seen)
+    if missing:
+        return False, len(events), "capsule_issued at seq %s has no capsule record" % missing[0]
+    # The project's own event chain (views included) is part of the same
+    # integrity: a LOOK edited out of the room's history holds the stratagem too.
+    try:
+        from broker import verify_events_at
+        pok, _pn, pwhy = verify_events_at(_p(pid))
+        if not pok:
+            return False, len(events), "project events: %s" % pwhy
+    except ImportError:
+        pass
     return True, len(events), None
 
 
