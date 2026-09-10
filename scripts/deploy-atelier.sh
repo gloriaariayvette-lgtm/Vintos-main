@@ -90,6 +90,7 @@ SCRIPTS="$SCRIPTS sensor_reactions.py"   # review 94, 2026-09-10
 SCRIPTS="$SCRIPTS grading_contract.py outcome_join.py enjoyment.py"   # reviews 208/217/225, 2026-09-10
 SCRIPTS="$SCRIPTS want_completion.py"   # review 254, 2026-09-10
 SCRIPTS="$SCRIPTS atelier_ledger.py send_policy.py self_review_vocab.py question_lifecycle.py"   # reviews 273/309/372/260, 2026-09-10
+SCRIPTS="$SCRIPTS entry_owners.py"   # reviews 1/6/7/22/26, 2026-09-10
 SCRIPTS="$SCRIPTS diagnostic_contract.py subsystem_audit.py causality-engine.py self_difference.py priority_vector.py campaign.py self_review_builder.py"   # diagnostics and the causality door, 2026-09-10
 SCRIPTS="$SCRIPTS identity_revisions.py capability-view.py claim_hold.py tension_promotion.py"   # identity revisions and the capability view, 2026-09-10
 SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served views and inspectable maps, 2026-09-10
@@ -367,6 +368,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
         printf '  would %-7s %s  (from %s)\n' "$mark" "$to" "$(staged "$from")"
     done < "$_plan_file"
     say "  would write runtime map: $HOME/.vintos/workspace/memory/self-review-runtime-map.json"
+    say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     if sudo -n true 2>/dev/null; then
@@ -682,6 +684,30 @@ else
 fi
 say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
 say
+# review 18/19: the release record - what this deploy installed (with hashes), from which commit,
+# which units it restarted and confirmed, the broker's state, the backup and the rollback command.
+RELEASES="$HOME/.vintos/deploy/releases"; mkdir -p "$RELEASES" 2>/dev/null
+_rel_git="$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+_rel_file="$RELEASES/$(date +%Y%m%d-%H%M%S)-$_rel_git.json"
+PLAN_FILE="$_plan_file" GIT_REV="$_rel_git" BACKUP_DIR="$BACKUP" BROKERED="$brokered" HOUSE="$HOUSE_UNIT" FAILED_TXT="$FAILED" REL_OUT="$_rel_file" python3 - <<'PY' 2>/dev/null && say "release:  $_rel_file"
+import os, json, hashlib, time, subprocess
+rows = []
+for ln in open(os.environ["PLAN_FILE"]):
+    if "|" not in ln: continue
+    src, dst = ln.rstrip("\n").split("|", 1)
+    try: sha = hashlib.sha256(open(dst, "rb").read()).hexdigest()[:16]
+    except Exception: sha = None
+    rows.append({"file": os.path.basename(src), "installed_at": dst, "sha256": sha})
+def unit(u, scope):
+    try: return subprocess.run(["systemctl"] + scope + ["is-active", u], capture_output=True, text=True, timeout=5).stdout.strip()
+    except Exception: return "unknown"
+rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"], "files": rows,
+       "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
+                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-atelier": unit("vintos-atelier", [])},
+       "broker_confirmed": os.environ.get("BROKERED") == "1", "backup": os.environ["BACKUP_DIR"],
+       "rollback": "bash %s/restore.sh" % os.environ["BACKUP_DIR"], "failures": [l.strip() for l in os.environ.get("FAILED_TXT", "").splitlines() if l.strip()]}
+json.dump(rec, open(os.environ["REL_OUT"], "w"), indent=1)
+PY
 say "backup:   $BACKUP"
 say "rollback: bash $BACKUP/restore.sh"
 [ "$brokered" -eq 1 ] && say "Broker service confirmed${broker_how:+ (unchanged: $broker_how)}." || say "Broker service NOT confirmed — see the failures below."

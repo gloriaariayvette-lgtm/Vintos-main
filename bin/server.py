@@ -2746,14 +2746,8 @@ async def _voice_test_page():
         return HTMLResponse(open(_p, encoding="utf-8").read())
     return HTMLResponse("<body style='font-family:system-ui;background:#111;color:#eee'>"
                         "<h2>No voice test yet</h2><p>Run test_voice_full_v3.py, then reload.</p></body>")
-
-    @app.get("/")
-    async def serve_website():
-        idx = os.path.join(WEBSITE_DIR, "index.html")
-        if os.path.exists(idx):
-            return FileResponse(idx)
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse("/app/")
+    # (review 10: a second `@app.get("/")` sat here, nested after the return - unreachable, and a
+    # duplicate of the website route below; removed. The AST-checked count of duplicate registrations is 0.)
 
 
 # A sandbox for tuning his ear — mic clarity, background-music rejection, and

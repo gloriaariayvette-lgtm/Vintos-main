@@ -33,6 +33,19 @@ check("no route, mount, router or startup handler under the guard", not ({"get",
 check("the guard only imports uvicorn and runs it", all(isinstance(n, (ast.Import, ast.ImportFrom, ast.Expr)) for n in body) and "run" in under, [type(n).__name__ for n in body])
 last_route = max(m.end() for m in __import__("re").finditer(r'^@app\.(get|post|put|delete|patch)\(', src, __import__("re").M))
 check("every route is defined before the guard", last_route < src.index('if __name__ == "__main__":'))
+# review 10: duplicate route registrations, counted by AST over every nesting (a regex over the file
+# also counts the routes named inside docstrings and the route-policy table, which is not a registration)
+def _regs(node, chain=()):
+    for ch in ast.iter_child_nodes(node):
+        if isinstance(ch, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for d in ch.decorator_list:
+                if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post", "put", "delete", "patch", "api_route", "websocket") and d.args and isinstance(d.args[0], ast.Constant):
+                    yield (d.func.attr, d.args[0].value)
+            yield from _regs(ch, chain + (ch.name,))
+        else:
+            yield from _regs(ch, chain)
+_all = list(_regs(tree)); _dup = {k for k in _all if _all.count(k) > 1}
+check("no (method, path) is registered twice anywhere in server.py", not _dup, sorted(_dup))
 check("docs/server-profiles.md names both profiles", all(k in open(os.path.join(REPO, "docs", "server-profiles.md")).read() for k in ("direct", "imported ASGI", "uvicorn.run")))
 
 print("\n--- 11: the bootstrap seeds what the readers parse ---")
