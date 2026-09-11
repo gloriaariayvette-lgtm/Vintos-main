@@ -52,6 +52,18 @@ PRINTER_NEEDS = [
 STOPS = ("draft", "slice")   # the two gates, in order
 
 
+# How much of a day he may spend on this. Modelling and slicing are local work on
+# machines she also uses, so it is bounded in minutes per day rather than left to run.
+# Either number can be raised in printer-config.json; neither can be raised by him.
+BUDGET_MIN_PER_DAY = 30      # total, across modelling and slicing
+BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot eat the day
+
+# job states, in order. Two of them are waits on her and nothing advances them but her.
+STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
+          "printing", "done", "failed", "abandoned")
+HER_WAITS = ("draft_waiting", "slice_waiting")
+
+
 def _cfg():
     try:
         return json.load(open(CONFIG))
@@ -149,7 +161,166 @@ def proposal_draft():
     }
 
 
+# ----------------------------------------------------------------- the work log
+def _jobs():
+    try:
+        d = json.load(open(JOBS))
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def _save_jobs(rows):
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.join(WS, "scripts"))
+        from store_guard import write_json as _wj
+        _wj(JOBS, rows, reader="print_3d.py"); return True
+    except Exception:
+        os.makedirs(os.path.dirname(JOBS), exist_ok=True)
+        tmp = JOBS + ".tmp"; json.dump(rows, open(tmp, "w"), indent=2); os.replace(tmp, JOBS); return True
+
+
+def _today():
+    import datetime as _d
+    return _d.date.today().isoformat()
+
+
+def spent_today(rows=None):
+    """Minutes he has already put into this today, across every job."""
+    rows = _jobs() if rows is None else rows
+    return round(sum(float(e.get("minutes", 0))
+                     for j in rows for e in (j.get("work") or [])
+                     if str(e.get("at", ""))[:10] == _today()), 1)
+
+
+def may_work(minutes=1.0, cfg=None):
+    """(ok, why) before a modelling or slicing run. The budget is the day's, not the
+    job's: three jobs cannot each spend the whole allowance."""
+    cfg = cfg if cfg is not None else _cfg()
+    per_day = float(cfg.get("budget_min_per_day") or BUDGET_MIN_PER_DAY)
+    per_run = float(cfg.get("budget_min_per_run") or BUDGET_MIN_PER_RUN)
+    if minutes > per_run:
+        return False, "one sitting is %g minutes at most (asked for %g)" % (per_run, minutes)
+    used = spent_today()
+    if used + minutes > per_day:
+        return False, "today's %g minutes are spent (%g used)" % (per_day, used)
+    return True, "%g of %g minutes left today" % (per_day - used - minutes, per_day)
+
+
+def note_work(job_id, minutes, what=""):
+    """Record time actually spent. Written after the work, never before it."""
+    import datetime as _d
+    rows = _jobs()
+    for j in rows:
+        if j.get("id") == job_id:
+            j.setdefault("work", []).append({"at": _d.datetime.now().isoformat(timespec="seconds"),
+                                             "minutes": round(float(minutes), 1), "what": str(what)[:120]})
+            _save_jobs(rows); return j
+    return None
+
+
+def open_job(what, want_id="", now=None):
+    """He starts something. It is visible from this moment: she never learns a job
+    existed only when it asks for her answer."""
+    import datetime as _d, uuid as _u
+    rows = _jobs()
+    job = {"id": "PR-" + _u.uuid4().hex[:6], "what": str(what)[:200], "want_id": want_id,
+           "state": "modelling", "opened": (now or _d.datetime.now()).isoformat(timespec="seconds"),
+           "work": [], "history": [{"at": (now or _d.datetime.now()).isoformat(timespec="seconds"),
+                                    "state": "modelling"}]}
+    rows.append(job); _save_jobs(rows)
+    return job
+
+
+def advance(job_id, state, detail="", extra=None):
+    import datetime as _d
+    if state not in STATES:
+        return None, "not a state: %r" % state
+    rows = _jobs()
+    for j in rows:
+        if j.get("id") == job_id:
+            j["state"] = state
+            if extra:
+                j.update({k: v for k, v in extra.items() if k not in ("id", "state")})
+            j.setdefault("history", []).append({"at": _d.datetime.now().isoformat(timespec="seconds"),
+                                                "state": state, "detail": str(detail)[:200]})
+            _save_jobs(rows); return j, ""
+    return None, "no job %r" % job_id
+
+
+def present(job_id, kind, message, attach=None):
+    """He shows her the draft, or the slice, and stops. One notification per stop,
+    through the delivery path that keeps receipts and refuses to send the same thing
+    twice; the job moves to a wait that only her answer clears."""
+    if kind not in ("draft", "slice"):
+        return None, "a stop is draft or slice"
+    job, why = advance(job_id, "draft_waiting" if kind == "draft" else "slice_waiting", kind)
+    if job is None:
+        return None, why
+    receipt = None
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.join(WS, "scripts"))
+        import deliver as _dl, send_policy as _sp
+        receipt = _dl.deliver("print-%s-%s" % (job_id, kind), "ntfy",
+                              str(message)[:400], title="Vintos wants to print something",
+                              attach=attach, tags="printer",
+                              authority=lambda: _sp.may_send("any"))
+    except Exception as e:
+        receipt = {"state": "failed", "why": str(e)[:120]}
+    rows = _jobs()
+    for j in rows:
+        if j.get("id") == job_id:
+            j.setdefault("shown", {})[kind] = {"message": str(message)[:400],
+                                               "receipt": (receipt or {}).get("state", "unknown")}
+            _save_jobs(rows); job = j
+            break
+    return job, ""
+
+
+def answer(job_id, kind, yes, note=""):
+    """Her answer to a stop. Yes moves it on; no ends the job. Nothing else can."""
+    j = None
+    for row in _jobs():
+        if row.get("id") == job_id:
+            j = row
+            break
+    if j is None:
+        return None, "no job %r" % job_id
+    want = "draft_waiting" if kind == "draft" else "slice_waiting"
+    if j.get("state") != want:
+        return None, "job is %s, not waiting on the %s" % (j.get("state"), kind)
+    if not yes:
+        return advance(job_id, "abandoned", "she said no to the %s: %s" % (kind, note))
+    return advance(job_id, "slicing" if kind == "draft" else "queued", "she said yes to the " + kind)
+
+
+def working_on(limit=8):
+    """What he has going, for her to look at without asking him. Live jobs first."""
+    rows = _jobs()
+    live = [j for j in rows if j.get("state") not in ("done", "failed", "abandoned")]
+    rest = [j for j in rows if j.get("state") in ("done", "failed", "abandoned")][-limit:]
+    def one(j):
+        return {"id": j["id"], "what": j.get("what", ""), "state": j.get("state"),
+                "waiting_on_her": j.get("state") in HER_WAITS,
+                "minutes_spent": round(sum(float(e.get("minutes", 0)) for e in (j.get("work") or [])), 1),
+                "opened": j.get("opened", ""), "last": (j.get("history") or [{}])[-1]}
+    return {"live": [one(j) for j in live], "recent": [one(j) for j in rest],
+            "minutes_today": spent_today(rows),
+            "budget_today": float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY)}
+
+
 if __name__ == "__main__":
+    if "--jobs" in sys.argv:
+        w = working_on()
+        print("today: %.1f of %.0f minutes" % (w["minutes_today"], w["budget_today"]))
+        for j in w["live"] or []:
+            print("  %s  %-14s %-5s %s" % (j["id"], j["state"],
+                                           "HER" if j["waiting_on_her"] else "", j["what"][:60]))
+        if not w["live"]:
+            print("  nothing in hand")
+        raise SystemExit(0)
     st = state()
     print("3D printing")
     for tool, h in st["hosts"].items():
@@ -158,3 +329,7 @@ if __name__ == "__main__":
             "" if h["mac_configured"] else "   (no mac_host in printer-config.json)"))
     print("  printer  the machine   " + ("ready" if st["printer_ready"] else "missing: " + ", ".join(st["missing"])))
     print("\nHe stops twice before anything is made: %s, then %s." % STOPS)
+    print("Time: %g minutes a day, %g in one sitting. Used today: %.1f." % (
+        float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY),
+        float(_cfg().get("budget_min_per_run") or BUDGET_MIN_PER_RUN), spent_today()))
+    print("What he has going: python3 print_3d.py --jobs")

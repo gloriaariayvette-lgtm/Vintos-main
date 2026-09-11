@@ -9740,6 +9740,49 @@ async def reelroom_chat(request: Request):
         return {"reply": "", "error": str(e)[:200]}
 
 
+# === 3D printing — what he has in hand, and the two stops he waits at ===
+
+def _printer():
+    import importlib.util as _il, sys as _s
+    _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    return _s.modules.get("print_3d") or _il.import_module("print_3d")
+
+
+@app.get("/api/print/jobs")
+async def print_jobs(request: Request):
+    """What he is making, how long he has spent today, and whether anything is
+    waiting on her. She can see a job from the moment he opens it, not only when it
+    asks her a question."""
+    _require_secret(request)
+    try:
+        p = _printer()
+        out = p.working_on()
+        out["ok"] = True
+        out["printer"] = p.state()
+        return out
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "live": [], "recent": []}
+
+
+@app.post("/api/print/jobs/{job_id}/answer")
+async def print_answer(job_id: str, request: Request):
+    """Her answer at a stop: the draft or the slice, yes or no. Nothing else moves a
+    job out of a wait, and a no ends it."""
+    _require_secret(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    kind = str(body.get("kind") or "").strip()
+    if kind not in ("draft", "slice"):
+        raise HTTPException(status_code=400, detail="kind must be draft or slice")
+    job, why = _printer().answer(job_id, kind, bool(body.get("yes")), str(body.get("note") or ""))
+    if job is None:
+        raise HTTPException(status_code=409, detail=why)
+    return {"ok": True, "job": {"id": job["id"], "state": job["state"], "what": job.get("what", "")}}
+
+
 # === The Skill Forge — the card she answers when he asks for a hand he does not have ===
 
 def _forge():

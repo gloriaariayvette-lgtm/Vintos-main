@@ -113,6 +113,15 @@ Mac for modelling and slicing and fall back to Aegis when it is away.
 He stops twice before anything is made: the draft, then the slice. Both are in the
 scope she grants, not only in the code.
 
+Time: thirty minutes a day, ten in one sitting, counted across jobs. Both numbers are
+in `printer-config.json` and neither can be raised by him.
+
+How she hears about it: one notification at each stop, through the same path that
+keeps receipts. How she checks without asking him: `python3 print_3d.py --jobs`, or
+`GET /api/print/jobs`, which lists what is in hand, the minutes spent today, and
+whether anything is waiting on her. She answers a stop with `POST
+/api/print/jobs/<id>/answer`.
+
 ## What the forge still needs
 
 - **The builder hand-off.** The forge holds the record and the law; the self-review
