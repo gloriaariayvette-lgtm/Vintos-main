@@ -8,6 +8,9 @@ def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:110]) if d else ""))
 mem = os.path.join(tempfile.mkdtemp(), "memory"); os.makedirs(mem)
 import prediction_ledger as PL; PL.MEMORY = mem
+# compare_prediction() also records a grade. grading_contract is imported lazily inside
+# relational-mismatch, so the loop below never saw it and the grade landed in his live store.
+import grading_contract as GC; GC.MEMORY = mem; GC.GRADES = os.path.join(mem, "prediction-grades.jsonl")
 sp = iu.spec_from_file_location("rm_t", os.path.join(SCRIPTS, "relational-mismatch.py")); RM = iu.module_from_spec(sp); sp.loader.exec_module(RM)
 RM._PL = PL; RM.PREDICTION_FILE = PL._path("relational"); RM.MISMATCH_LOG = os.path.join(mem, "mismatch.json")
 for a in dir(RM):
@@ -21,4 +24,6 @@ res = RM.compare_prediction("a reply long enough to be read for tone by the comp
 cur = PL.current("relational")
 check("graded numbers come from P1 (no mismatch against 0.2s)", res and res.get("mismatch_count", 9) == 0, res)
 check("P2 remains current and unconsumed", cur and cur.get("prediction_id") == P2.get("prediction_id"), cur and cur.get("prediction_id"))
+check("every store this suite wrote is under the throwaway memory",
+      PL.MEMORY.startswith(mem) and GC.GRADES.startswith(mem))
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

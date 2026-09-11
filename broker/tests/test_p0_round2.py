@@ -27,12 +27,16 @@ class Env:
     def __enter__(self):
         self.tmp = tempfile.mkdtemp(prefix="atelier-test-")
         self._saved = (S.ROOT, BK.ROOT, BK.HEALTH, BK._KEYPATH,
-                       S._LINEAGE_KEY, FO.OUT)
+                       S._LINEAGE_KEY, FO.OUT, FO.KEYPATH)
         S.ROOT = BK.ROOT = self.tmp
         BK.HEALTH = os.path.join(self.tmp, "health.jsonl")
         BK._KEYPATH = os.path.join(self.tmp, "visit-key")
         S._LINEAGE_KEY = os.path.join(self.tmp, "lineage-key")
         FO.OUT = os.path.join(self.tmp, "episodes.jsonl")
+        # FO.attest() signs with the house lineage key and MINTS one when the file is absent.
+        # Until this line it used the real ~/.vintos/.lineage-key — reading her house secret on
+        # a host that has one, and creating a secret on a host that does not.
+        FO.KEYPATH = os.path.join(self.tmp, "fo-lineage-key")
         open(S._LINEAGE_KEY, "wb").write(LKEY)
         for p in (PID, OTHER):
             os.makedirs(os.path.join(self.tmp, "projects", p, "artifacts"), exist_ok=True)
@@ -46,7 +50,7 @@ class Env:
 
     def __exit__(self, *a):
         (S.ROOT, BK.ROOT, BK.HEALTH, BK._KEYPATH,
-         S._LINEAGE_KEY, FO.OUT) = self._saved
+         S._LINEAGE_KEY, FO.OUT, FO.KEYPATH) = self._saved
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
 

@@ -182,6 +182,10 @@ with open(FO.OUT, "w") as f:
                                      "commissioned_ancestor": False}],
                         "clusters": []}) + "\n")
 os.environ["HOME"] = FAKE
+# Moving HOME is not enough on its own: attest() signs with the house lineage key and mints
+# one when it is missing, so the key path is repointed explicitly rather than left to depend
+# on when expanduser happens to run.
+FO.KEYPATH = os.path.join(FAKE, ".lineage-key")
 a = FO.attest("real_root_abc", "curiosity")
 check("attests a recorded root", "sig" in a, list(a))
 a = FO.attest("invented_root_xyz", "curiosity")

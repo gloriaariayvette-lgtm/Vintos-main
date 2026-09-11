@@ -11,6 +11,10 @@ def check(n, ok, d=""):
 mem = os.path.join(tempfile.mkdtemp(), "memory"); os.makedirs(os.path.join(mem, "introspection"))
 E.MEM = mem; E.WATERMARK = os.path.join(mem, ".wm"); E.CORRECTIONS_LEDGER = os.path.join(mem, "corr.jsonl")
 E.INTRO_DIRS = [os.path.join(mem, "introspection")] if hasattr(E, "INTRO_DIRS") else None
+# record_corrections() reaches identity_revisions, which keeps its own path into his live
+# memory: the suite appended a revision row to identity-revisions.jsonl on every deploy.
+import identity_revisions as _IR
+_IR.MEMORY = mem
 t0 = datetime.now()
 # t0-side material
 json.dump([{"type": "correction", "timestamp": (t0 - timedelta(minutes=5)).isoformat(), "content": "Gloria: I was tired, not avoiding you"}], open(os.path.join(mem, "wal-log.json"), "w"))

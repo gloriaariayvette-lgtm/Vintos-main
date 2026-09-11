@@ -17,6 +17,10 @@ from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEM = os.path.join(WS, "memory")
 OUT = os.path.join(MEM, "formation-episodes.jsonl")
+# The house lineage key attest() signs with. A module global, not a literal inside the
+# function, so a suite can point it at a throwaway file: attest() MINTS a key when none
+# is there, and a test has no business minting or reading the real house secret.
+KEYPATH = os.path.expanduser("~/.vintos/.lineage-key")
 
 def _bound(L):
     """Review 190 (her decision, 2026-09-10): a KEEP_PRIVATE or WRONG_READING mark binds
@@ -206,7 +210,7 @@ def attest(root_ref, root_type):
             "episode_at": hit.get("at"), "episode_status": hit.get("status"),
             "episode_digest": digest, "commissioned": False,
             "nonce": _u.uuid4().hex, "exp": int(_t.time()) + 3600}
-    keypath = os.path.expanduser("~/.vintos/.lineage-key")
+    keypath = KEYPATH
     try:
         key = open(keypath, "rb").read().strip()
     except FileNotFoundError:

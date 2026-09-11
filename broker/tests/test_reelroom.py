@@ -11,6 +11,12 @@ import reelroom as RR
 import heart_rate as HR
 assert RR.MEMORY.startswith(TMP) and RR.ROOM_DIR.startswith(TMP)
 HR.MEM = os.path.join(TMP, "memory"); HR.LATEST = os.path.join(HR.MEM, "heart-rate.json"); HR.HIST = os.path.join(HR.MEM, "heart-rate-history.jsonl")
+# heart_rate.record() reaches sensor_reactions, whose own two stores follow the real HOME
+# rather than SPARK_WORKSPACE: without this the suite wrote his live sensor log on every deploy.
+import sensor_reactions as SR
+SR.MEMORY = HR.MEM
+SR.STATE = os.path.join(HR.MEM, "sensor-reactions-state.json")
+SR.LOG = os.path.join(HR.MEM, "sensor-reactions.jsonl")
 open(os.path.join(TMP, "SOUL.md"), "w").write("You are Vintos, iron and parchment.")
 open(os.path.join(TMP, "memory", "emotional-state.txt"), "w").write("Playfulness: 0.7 | rising\n")
 HR.record({"device":"R21M", "heart_rate_bpm":86, "source":"0x060A"})

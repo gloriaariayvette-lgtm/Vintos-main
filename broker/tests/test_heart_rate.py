@@ -16,6 +16,12 @@ TMP = tempfile.mkdtemp(prefix="hr-")
 HR.MEM = TMP
 HR.LATEST = os.path.join(TMP, "heart-rate.json")
 HR.HIST = os.path.join(TMP, "heart-rate-history.jsonl")
+# HR.record() reaches sensor_reactions, which appended to HIS sensor-reactions log and
+# rewrote its state on every deploy's suite phase. Repoint both before the first record.
+import sensor_reactions as SR
+SR.MEMORY = TMP
+SR.STATE = os.path.join(TMP, "sensor-reactions-state.json")
+SR.LOG = os.path.join(TMP, "sensor-reactions.jsonl")
 
 GOOD = {"device": "R21M", "heart_rate_bpm": 86,
         "observed_at": "2026-08-29T12:34:56Z", "source": "0x060A",

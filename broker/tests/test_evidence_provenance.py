@@ -35,6 +35,11 @@ try:
     # HIS relational/self prediction ledgers on every deploy (found 2026-09-06 while hunting the ridge leak)
     import prediction_ledger as _PL
     old_pl_memory = _PL.MEMORY; _PL.MEMORY = tmp
+    # and the compare also records a grade through grading_contract, whose own store did NOT
+    # follow _PL.MEMORY: prediction-grades.jsonl grew a row in his live memory on every deploy.
+    import grading_contract as _GC
+    old_gc = (_GC.MEMORY, _GC.GRADES)
+    _GC.MEMORY = tmp; _GC.GRADES = os.path.join(tmp, "prediction-grades.jsonl")
     tactical = {"turn_id": "t-1", "surface": "avatar",
                 "input_provenance": "counterpart_verbatim",
                 "output_provenance": "stratagem_influenced", "may_witness": False,

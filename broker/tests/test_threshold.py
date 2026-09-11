@@ -24,6 +24,12 @@ EP = os.path.join(TMP, "episodes.jsonl")
 # the undertakings ledger is an import-time path into HIS memory; without this the suite wrote a fake
 # undertaking ("aaaaaaaaaaaa", active) into atelier-undertakings.json on every deploy (found 2026-09-06)
 TH.WSP = TMP; TH.LEDGER = os.path.join(TMP, "atelier-undertakings.json")
+# TH.LEDGER is only this module's copy of the path. The shared writers review 273 introduced
+# keep their own, and are imported lazily deep in the call, so repointing TH alone still left
+# atelier-undertakings.json and outcome-joins.jsonl being written in his live memory.
+import atelier_ledger as _AL, outcome_join as _OJ
+_AL.MEMORY = TMP; _AL.LEDGER = os.path.join(TMP, "atelier-undertakings.json")
+_OJ.MEMORY = TMP; _OJ.JOINS = os.path.join(TMP, "outcome-joins.jsonl")
 
 class FO:
     OUT = EP
