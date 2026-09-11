@@ -1,0 +1,22 @@
+{
+  "host": "Aegis",
+  "acquired": "2026-09-11",
+  "transport": "SSH bridge",
+  "files": [
+    {
+      "source": "/home/gloria/Vintos/server_domains/galleries.py",
+      "tracked": "bin/server_domains/galleries.py",
+      "sha256": "20759656b7f7d63a4bc566b1264b32b6ecda7f7f4ba4d6c25cbaeab720622fa6"
+    },
+    {
+      "source": "/home/gloria/Vintos/server_domains/humor_wants.py",
+      "tracked": "bin/server_domains/humor_wants.py",
+      "sha256": "306cd3750e0d5b2e229908f297589b30d41d8a9f39e0fad49a21a2d8716e210c"
+    },
+    {
+      "source": "/home/gloria/Vintos/server_domains/music.py",
+      "tracked": "bin/server_domains/music.py",
+      "sha256": "64dd150b88f7e88d61e4f903270d5bd494a29f6119fbcefb7928c5508736ddd7"
+    }
+  ]
+}

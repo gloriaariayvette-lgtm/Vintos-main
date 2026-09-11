@@ -134,7 +134,8 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # plus the broker's two files and the units). This is what gets staged.
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
-MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES
+DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py"
+MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
@@ -313,6 +314,17 @@ for spec in $(printf 'scripts/%s\n' $SCRIPTS) $(printf 'bin/%s\n' $BINS); do
         ambiguous=1
     fi
 done
+# Domain modules belong beside the actual server, not beside an unrelated music.py.
+if server_dst="$(dest bin/server.py)"; then
+    for spec in $DOMAINFILES; do
+        d="$(dirname -- "$server_dst")/server_domains/$(basename -- "$spec")"
+        printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"
+        PLAN="$PLAN$SRC/$spec|$d
+"
+    done
+else
+    ambiguous=1
+fi
 [ "$ambiguous" -eq 0 ] || die "a file exists in more than one tree (above) — nothing installed"
 say
 

@@ -9,12 +9,12 @@ report is not known to work; it is known to be unexercised.
     python3 untested_report.py --write    also write docs/untested.md
 """
 import os, re, sys, ast
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.dirname(HERE)
 
 
 def routes():
-    src = open(os.path.join(REPO, "bin", "server.py"), errors="replace").read()
     out = []
     def walk(node):
         for ch in ast.iter_child_nodes(node):
@@ -23,7 +23,9 @@ def routes():
                     if isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr in ("get", "post", "put", "delete", "patch", "websocket") and d.args and isinstance(d.args[0], ast.Constant):
                         out.append((d.func.attr.upper(), d.args[0].value, ch.name))
             walk(ch)
-    walk(ast.parse(src))
+    sources = [Path(REPO) / "bin/server.py"] + sorted((Path(REPO) / "bin/server_domains").glob("*.py"))
+    for source in sources:
+        walk(ast.parse(source.read_text(errors="replace")))
     return out
 
 
@@ -34,6 +36,7 @@ def modules():
             p = os.path.join(REPO, d, f)
             if f.endswith((".py", ".sh")) and os.path.isfile(p) and not os.path.islink(p):
                 out.append(f)
+    out += ["server_domains/" + p.name for p in (Path(REPO) / "bin/server_domains").glob("*.py") if not p.is_symlink()]
     return sorted(set(out))
 
 

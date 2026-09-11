@@ -6,6 +6,12 @@ HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.pat
 HOME = tempfile.mkdtemp(prefix="vintos-p911-"); os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory"); os.makedirs(os.path.join(WS, "scripts"), exist_ok=True); os.makedirs(MEM, exist_ok=True)
 os.environ["SPARK_WORKSPACE"] = WS
+import urllib.request
+def _deny_live_request(*args, **kwargs):
+    raise OSError("suite fixture: broker is unavailable; no live network")
+urllib.request.urlopen = _deny_live_request
+assert os.path.commonpath([MEM, HOME]) == HOME
+assert urllib.request.urlopen is _deny_live_request
 R = []
 def check(name, ok, detail=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + (("  ->  %s" % (detail,)) if (detail and not ok) else ""))
@@ -60,6 +66,7 @@ check("containment resolves symlinks on both sides", "fs.realpathSync(r)" in rt 
 print("\n--- 388: the untested report ---")
 UR = load("untested_report", os.path.join(REPO, "scripts", "untested_report.py"))
 rep = UR.report()
+check("host domain routes and modules are inventoried", ("GET", "/api/art/gallery", "get_gallery") in UR.routes() and "server_domains/humor_wants.py" in UR.modules())
 check("routes and modules are counted and the untested ones named", rep["routes_total"] > 100 and rep["modules_total"] > 100 and isinstance(rep["routes_untested"], list) and isinstance(rep["modules_untested"], list))
 check("docs/untested.md is the generated report and current", open(os.path.join(REPO, "docs", "untested.md")).read() == UR.render())
 

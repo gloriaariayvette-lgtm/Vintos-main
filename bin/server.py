@@ -5807,8 +5807,8 @@ async def get_svg(filename: str):
 
 
 # === Dream Art Gallery / Music Gallery === (server_domains/, Q2 Phase 3 cuts 1-2)
-# These three domain modules live beside the server on the host and are not in the
-# checkout. A clean source-only install must still import the server: a missing module
+# These three domain modules are tracked from the Aegis sources and deployed beside
+# the server. A clean source-only install must still import the server: a missing module
 # is reported and its routes are simply absent that run, not a fatal ImportError.
 def _mount_domain(name, attr="router"):
     try:

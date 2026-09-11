@@ -279,11 +279,26 @@ Remaining from the review and the three efforts:
   modelling or slicing. Supplied slice time/material values are estimates, not measurements.
 - The legacy shared-store migration and dispatch-authority consolidation beyond the
   concrete writers repaired above.
-- The tracked copies of the three host-only server domain modules. The F14 startup
-  import guard itself was already fixed; source acquisition is a separate open item.
+- F14 source acquisition is complete: the three Aegis domain files are tracked with
+  SHA-256 provenance and included in deployment beside the actual server. Their legacy
+  mutation handlers remain in the shared-store migration work until repaired.
 - The forge UI/effectful adapters/live commissioning listed above, the 27-item review
   programme and the per-organ waiting list. Nothing here closes them by implication.
 
 Home-effect gate policy has not been changed in this repair pass. No production
 service was deployed or restarted, no paid model called, and no device or real
 notification used to validate these changes.
+
+## Aegis deployment work — 11 September
+
+The four reported branch defects are repaired. All 111 suites passed directly and
+through the isolation runner locally; all 111 also passed both ways on Aegis at
+`2371226`. Bubblewrap and system Python NumPy are installed on Aegis. The deploy
+`--check` passed there with the companion branches present. The base release
+`2371226` deployed successfully on Aegis (`deploy OK`), with release record
+`20260911-110717-2371226.json` and rollback directory
+`~/.vintos/backups/atelier-20260911-110435`. Follow-up commits below require redeployment.
+
+The live OpenAPI endpoint currently returns 500 because a desktop route declares a
+locally imported Request type under postponed annotations. Repair and schema verification
+remain pending. The single live forge run is now explicitly approved, not yet run.
