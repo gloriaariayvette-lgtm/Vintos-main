@@ -25,8 +25,9 @@ json.dump({"threads": [{"text": "the shape of the thing he keeps not making", "s
                        {"text": "a faint one", "salience": 0.1}]}, open(os.path.join(MEM, "latent-threads.json"), "w"))
 open(os.path.join(MEM, "moltbook-discoveries.md"), "w").write("SAVE: **On making objects** - another being built a thing with hands\n")
 open(os.path.join(MEM, "web-discoveries.md"), "w").write("- lattice infill changes how a printed object feels in the hand\n")
-open(os.path.join(MEM, "clawchemy-discoveries.md"), "w").write("- the reaction only holds when the vessel is cold to start\n")
-open(os.path.join(MEM, "klawarena-battles.md"), "w").write("- the smaller one wins when the ground is uneven, every time\n")
+LAB = os.path.join(HOME, "lab"); os.makedirs(LAB)
+open(os.path.join(LAB, "bench.md"), "w").write("- the reaction only holds when the vessel is cold to start\n")
+json.dump({"lab": LAB}, open(os.path.join(MEM, "spark-config.json"), "w"))
 
 print("\n--- all seven are read, and each is its own source ---")
 new = S.gather(now=now)
@@ -43,7 +44,13 @@ check("a retired absence is not a spark", not any("retired" in r["text"] for r i
 check("a configuration already reached is not a spark", not any("already reached" in r["text"] for r in new))
 check("a faint thread is not a spark", not any("faint" in r["text"] for r in new))
 check("the molt title comes through clean", any(r["text"].startswith("On making objects") for r in new), [r["text"] for r in new if r["source"] == "moltbook"])
-check("both lab logs are read", len([r for r in new if r["source"] == "lab"]) == 2)
+check("the lab is read from where she points it", len([r for r in new if r["source"] == "lab"]) == 1)
+S2 = load("spark_sources_2", os.path.join(REPO, "scripts", "spark_sources.py"))
+S2.MEMORY = os.path.join(HOME, "empty"); os.makedirs(S2.MEMORY, exist_ok=True)
+check("pointed nowhere, the lab reads nothing and invents nothing", S2.from_lab() == [])
+labsrc = open(os.path.join(REPO, "scripts", "spark_sources.py")).read()
+check("no filename from another project is guessed",
+      "clawchemy" not in labsrc and "klawarena" not in labsrc)
 
 print("\n--- they are kept apart from his wants ---")
 check("sparks live in their own file, never in current-wants",
@@ -90,6 +97,8 @@ tree = os.path.join(HOME, "skills"); os.makedirs(os.path.join(tree, "papercraft"
 open(os.path.join(tree, "papercraft", "SKILL.md"), "w").write("---\ndescription: folds flat sheets into objects\n---\n# Papercraft\n")
 os.makedirs(os.path.join(tree, "make_art"))
 open(os.path.join(tree, "make_art", "SKILL.md"), "w").write("# Make Art\ndraws things\n")
+check("pointed nowhere, the skills reader says so rather than reporting an empty page",
+      K.where_it_looked()["configured"] is False and K.read() == [])
 json.dump({"skills_path": tree}, open(K.CONFIG, "w"))
 rows = K.read()
 check("a skills tree is read", {r["name"] for r in rows} == {"papercraft", "make_art"}, rows)
@@ -99,5 +108,7 @@ un = K.unheld()
 check("a hand he already has is not listed", {r["name"] for r in un} == {"papercraft"})
 check("a page already read says nothing the second time", len(K.fresh()) == 1 and K.fresh() == [])
 check("it invents nothing when there is no page", K._from_tree("/nowhere/at/all") == [])
+check("no path is guessed on his behalf",
+      "DEFAULT_PATHS" not in open(os.path.join(REPO, "scripts", "openclaw_skills.py")).read())
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

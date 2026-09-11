@@ -12,7 +12,7 @@ the edges of him and from the world — from somewhere neither of them put there
     moltbook       what he saved from another being's post
     web_search     something he went looking for and found
     skill_surfing  a capability page: a hand someone else has
-    lab            clawchemy and the arena
+    lab            whatever she points the lab reader at
 
 THEY ARE KEPT SEPARATE, AND THAT IS THE POINT
 
@@ -160,14 +160,30 @@ def from_skill_surfing():
 
 
 def from_lab():
+    """The lab, read from wherever Gloria points this at — and nowhere else.
+
+    It reads `lab` in memory/spark-config.json: a file, or a folder of files, or a
+    list of either. With nothing configured it finds nothing and says so. Guessing a
+    filename here once made it read two dead logs from another project, which is how
+    a source becomes noise."""
+    cfg = _load(os.path.join(MEMORY, "spark-config.json"), {})
+    where = cfg.get("lab")
+    paths = []
+    for p in ([where] if isinstance(where, str) else list(where or [])):
+        p = os.path.expanduser(str(p))
+        if os.path.isdir(p):
+            paths += [os.path.join(p, n) for n in sorted(os.listdir(p))
+                      if n.endswith((".md", ".txt", ".jsonl"))]
+        elif os.path.isfile(p):
+            paths.append(p)
     out = []
-    for name in ("clawchemy-discoveries.md", "klawarena-battles.md"):
-        for line in _text(os.path.join(MEMORY, name)).splitlines():
+    for path in paths[-4:]:
+        for line in _text(path).splitlines():
             line = line.strip()
             if len(line) < 25 or line.startswith("#"):
                 continue
             if line.startswith(("-", "*")) or re.match(r"^\d{4}-\d{2}-\d{2}", line):
-                out.append({"text": line.lstrip("-* ").strip()[:300], "ref": name})
+                out.append({"text": line.lstrip("-* ").strip()[:300], "ref": os.path.basename(path)})
     return out
 
 

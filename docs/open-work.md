@@ -113,9 +113,9 @@ Mac for modelling and slicing and fall back to Aegis when it is away.
 He stops twice before anything is made: the draft, then the slice. Both are in the
 scope she grants, not only in the code.
 
-Cost: one local Gemma call per job, to decide what to make. Blender and Cura are
-local and bill nobody. A paid model is refused by name, so nothing here can reach
-Astra or any provider.
+Cost: ten minutes of Astra a day, across every job, for the Blender script. Blender
+and Cura themselves are local and bill nobody. Her seconds are counted the moment she
+answers, and counted even when the call fails.
 
 Time: thirty local processor-minutes a day, ten in one sitting, counted across jobs.
 That is a courtesy to the machines she also uses, not a money limit. Both numbers are
@@ -151,11 +151,13 @@ Add to the crontab on Aegis:
 
     17 7 * * * python3 "$HOME/.vintos/workspace/scripts/spark_sources.py" --gather >> "$HOME/.vintos/logs/sparks.log" 2>&1
 
-The skills reader needs one of these in `memory/openclaw-config.json`, or it finds
-nothing and says so:
+Two readers need to be pointed somewhere, and neither guesses:
 
-    {"skills_path": "/path/to/the/skills/tree"}
-    {"skills_url":  "https://.../skills.json"}
+- **The skills page**, in `memory/openclaw-config.json`:
+  `{"skills_path": "/path/to/skills"}` or `{"skills_url": "https://..."}`
+- **The lab**, in `memory/spark-config.json`: `{"lab": "/path/to/the/lab"}` — a file, a
+  folder, or a list. I do not know what the lab is or where it writes, and I am not
+  going to guess a filename again.
 
 ## The phone, and the Mac
 

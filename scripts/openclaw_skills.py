@@ -16,10 +16,10 @@ he does not have is an observation, never a deficiency: most of them he will nev
 want. One becomes a want only if it meets something he was already trying to do,
 and only then can it reach the forge.
 
-SOURCES, in the order it tries them, all read-only:
-    a local skills tree            ~/.openclaw/skills, or skills_path in config
-    the machine-readable index     skills_url in config, a JSON list or a directory page
-Both may be absent. Nothing here invents an entry.
+WHERE IT LOOKS: only where memory/openclaw-config.json points it.
+    {"skills_path": "/path/to/skills"}   a tree: one folder per skill with a SKILL.md
+    {"skills_url": "https://..."}        a JSON list, or a page of links
+Pointed nowhere, it reads nothing and says so rather than reporting an empty page.
 """
 import json
 import os
@@ -31,11 +31,9 @@ MEMORY = os.path.join(WS, "memory")
 CONFIG = os.path.join(MEMORY, "openclaw-config.json")
 SEEN = os.path.join(MEMORY, "openclaw-skills-seen.json")
 
-DEFAULT_PATHS = (
-    os.path.expanduser("~/.openclaw/skills"),
-    os.path.expanduser("~/.openclaw/agents/main/skills"),
-    os.path.expanduser("~/.openclaw/workspace/skills"),
-)
+# No default path. A guessed location is how a reader quietly reads the wrong thing,
+# or reads nothing and calls it an empty page. It reads what memory/openclaw-config.json
+# names, and with nothing named it says it was pointed nowhere.
 
 
 def _cfg():
@@ -110,8 +108,9 @@ def read():
     """Every skill the page or the tree offers, deduplicated by name."""
     cfg = _cfg()
     rows = []
-    for root in ([cfg["skills_path"]] if cfg.get("skills_path") else list(DEFAULT_PATHS)):
-        rows += _from_tree(root)
+    for root in ([cfg["skills_path"]] if isinstance(cfg.get("skills_path"), str)
+                 else list(cfg.get("skills_path") or [])):
+        rows += _from_tree(os.path.expanduser(root))
     if cfg.get("skills_url"):
         rows += _from_url(cfg["skills_url"])
     seen, out = set(), []
@@ -180,13 +179,18 @@ def fresh():
 
 def where_it_looked():
     cfg = _cfg()
-    return {"paths": [cfg["skills_path"]] if cfg.get("skills_path") else list(DEFAULT_PATHS),
-            "url": cfg.get("skills_url", ""), "found": len(read())}
+    paths = ([cfg["skills_path"]] if isinstance(cfg.get("skills_path"), str)
+             else list(cfg.get("skills_path") or []))
+    return {"paths": paths, "url": cfg.get("skills_url", ""),
+            "configured": bool(paths or cfg.get("skills_url")), "found": len(read())}
 
 
 if __name__ == "__main__":
     w = where_it_looked()
-    print("looked in: %s" % ", ".join(w["paths"]))
+    if not w["configured"]:
+        print("pointed nowhere: put skills_path or skills_url in memory/openclaw-config.json")
+        raise SystemExit(0)
+    print("looked in: %s" % (", ".join(w["paths"]) or "(no path)"))
     if w["url"]:
         print("and at:    %s" % w["url"])
     rows = unheld()

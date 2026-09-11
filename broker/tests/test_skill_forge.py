@@ -151,30 +151,47 @@ check("with a machine configured it still refuses until the capability is approv
       P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["block_type"] == "CAPABILITY_ABSENT"
       and "no approved print capability" in P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["evidence"])
 
-print("\n--- what printing costs, and what writes the Blender script ---")
+print("\n--- Astra writes the script, ten minutes a day ---")
+P3.JOBS = os.path.join(MEM, "print-jobs.json")
 ok, why = P3.may_design()
-check("the deciding call goes to his own voice through the router", ok and "model_router" in why, why)
-ok, why = P3.may_design("astra")
-check("Astra is refused: she is the review lens, not a way to make an object",
-      not ok and "review lens" in why, why)
-ok, why = P3.may_design(job={"work": [{"what": "design"}]})
+check("Astra may be spent on this", ok and "Astra seconds left" in why, why)
+check("her ceiling is ten minutes", P3.ASTRA_SECONDS_PER_DAY == 600 and P3.DESIGN_MODEL == "astra")
+j0 = P3.open_job("a small bird")
+P3.note_design(j0["id"], 300, "answered")
+ok, why = P3.may_design()
+check("half spent, still allowed", ok and "300" in why, why)
+P3.note_design(j0["id"], 305, "answered")
+ok, why = P3.may_design()
+check("past ten minutes she is done for the day", not ok and "spent today" in why, why)
+check("her seconds count across every job, not per job", P3.astra_seconds_today() == 605.0, P3.astra_seconds_today())
+check("Astra's time is not counted against his local minutes", P3.spent_today() == 0.0, P3.spent_today())
+json.dump({"astra_seconds_per_day": 5000}, open(P3.CONFIG, "w"))
+ok, _ = P3.may_design()
+check("the ceiling is hers to raise, in the config", ok)
+json.dump({}, open(P3.CONFIG, "w"))
+json.dump([], open(P3.JOBS, "w"))   # a fresh day for the rest of the checks
+j1 = P3.open_job("a second thing")
+P3.design("a small bird", job=j1, caller=lambda *a, **k: "```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add()\n```")
+ok, why = P3.may_design(job=[x for x in P3._jobs() if x["id"] == j1["id"]][0])
 check("one deciding call per job; changing the mesh is Blender, not another opinion", not ok and "Blender" in why)
-src3 = open(os.path.join(REPO, "scripts", "print_3d.py")).read()
-check("the minute budget is named as local CPU, not money", "local CPU minutes" in src3)
-check("the script comes back as code and is never run by the deciding call",
-      "import bpy" in src3 and "never executed here" in src3)
-made = {"called": 0}
-def _fake(system, msgs, max_tokens=0):
-    made["called"] += 1
-    return "```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add()\n```"
-job0 = {"id": "x", "work": []}
-out = P3.design("a small bird", job=None, caller=_fake)
-check("a fenced answer is unwrapped and kept", out["ok"] and out["script"].startswith("import bpy"), out)
-out2 = P3.design("a small bird", job=None, caller=lambda *a, **k: "sure, I would make a bird!")
+out2 = P3.design("x", job=None, caller=lambda *a, **k: "sure, I would make a bird!")
 check("prose is not a Blender script and is refused", not out2["ok"] and "not a Blender script" in out2["why"])
+check("the seconds are recorded even when what came back was useless", "seconds" in out2)
+def _boom(*a, **k):
+    raise RuntimeError("she did not answer")
+before = P3.astra_seconds_today()
+j2 = P3.open_job("a third")
+P3.design("x", job=j2, caller=_boom)
+check("a failed call still spends her time, and it is written down", P3.astra_seconds_today() >= before)
+src3 = open(os.path.join(REPO, "scripts", "print_3d.py")).read()
+check("the local minute budget is still named as local CPU, not money", "local CPU minutes" in src3)
+check("the script is returned, never run by the deciding call", "never executed here" in src3)
+AC = load("astra_call", os.path.join(REPO, "scripts", "astra_call.py"))
+check("the caller reaches the review lens by her real model name", AC.MODEL == "gpt-6-astra")
+check("it holds no budget of its own", "budget" not in AC.call.__doc__.lower())
 
 print("\n--- how long he may work, and how she knows he is working ---")
-P3.JOBS = os.path.join(MEM, "print-jobs.json")
+json.dump([], open(P3.JOBS, "w"))
 ok, why = P3.may_work(5)
 check("he may work a short sitting", ok, why)
 ok, why = P3.may_work(45)

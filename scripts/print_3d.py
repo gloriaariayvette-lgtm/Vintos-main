@@ -6,10 +6,9 @@ Aegis can do either when the Mac is away. What he does not have is the last step
 a printer he is allowed to start.
 
 Blender and Cura are local and bill nobody. The one thing this capability spends is
-a single call per job, in his own voice through the router, to decide what to make
-and to write the Blender script that makes it — that is code, and the local model
-cannot write it. Astra is refused by name: she is the review lens, not a way to make
-an object.
+Astra, who writes the Blender script — that is code, and the local model cannot. She
+is capped at ten minutes a day across every job, and her seconds are counted the
+moment she answers, whatever came back.
 
 THE PIPELINE, AND THE TWO PLACES HE STOPS
 
@@ -71,9 +70,9 @@ STOPS = ("draft", "slice")   # the two gates, in order
 # is the review lens and is not spent on objects.
 BUDGET_MIN_PER_DAY = 30      # local CPU minutes, free, across modelling and slicing
 BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot hold a machine all day
-DESIGN_CALLS_PER_JOB = 1     # one deciding call; revising the mesh is Blender, not another opinion
-DESIGN_ROUTE = "his own model, through model_router"
-REFUSED_MODELS = ("astra",)  # the review lens, never spent on a printed object
+DESIGN_CALLS_PER_JOB = 1      # one deciding call per job; revising the mesh is Blender work
+DESIGN_MODEL = "astra"        # Gloria, 11 September: Astra writes the Blender script
+ASTRA_SECONDS_PER_DAY = 600   # ten minutes a day, hers, and the only spend here
 
 # job states, in order. Two of them are waits on her and nothing advances them but her.
 STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
@@ -225,29 +224,40 @@ def may_work(minutes=1.0, cfg=None):
     return True, "%g of %g minutes left today" % (per_day - used - minutes, per_day)
 
 
-def may_design(model="", job=None):
-    """(ok, why) before the one call that decides what to make and writes the script.
+def astra_seconds_today(rows=None):
+    """Seconds of Astra spent on design today, across every job. The only spend this
+    capability makes, and the only one worth counting."""
+    rows = _jobs() if rows is None else rows
+    return round(sum(float(e.get("seconds", 0))
+                     for j in rows for e in (j.get("work") or [])
+                     if e.get("what") == "design" and str(e.get("at", ""))[:10] == _today()), 1)
 
-    Two refusals, and they mean different things. Astra is refused because she is the
-    review lens and an object is not a review. A second call on the same job is
-    refused because the deciding is done: changing a mesh is Blender work, and asking
-    again is how one object becomes a conversation."""
-    m = str(model or "").lower()
-    for bad in REFUSED_MODELS:
-        if bad in m:
-            return False, "%s is the review lens: the design call goes to his own voice, not to her" % bad
+
+def may_design(job=None, cfg=None):
+    """(ok, why) before the call that decides what to make and writes the script.
+
+    Astra writes it: a Blender script is code and the local model cannot. She is
+    capped at ten minutes a day across every job — a ceiling on her, not on him. The
+    second refusal is per job: the deciding is done, and changing a mesh is Blender
+    work rather than another opinion."""
+    cfg = cfg if cfg is not None else _cfg()
+    cap = float(cfg.get("astra_seconds_per_day") or ASTRA_SECONDS_PER_DAY)
+    used = astra_seconds_today()
+    if used >= cap:
+        return False, "Astra's %g minutes are spent today (%.0fs used)" % (cap / 60.0, used)
     n = len([e for e in ((job or {}).get("work") or []) if e.get("what") == "design"])
     if n >= DESIGN_CALLS_PER_JOB:
         return False, "this job has had its design call; changing the mesh is Blender, not another call"
-    return True, "one call, %s" % DESIGN_ROUTE
+    return True, "%.0f of %g Astra seconds left today" % (cap - used, cap)
 
 
 def design(brief, job=None, caller=None):
     """One call: what to make, and the Blender script that makes it.
 
-    His own model writes it, because a Blender script is code and the local model
-    cannot. The script is returned, never executed here — running it is the modelling
-    step, inside the minute budget, on a machine she owns."""
+    Astra writes it, and the seconds she takes are recorded against her ten minutes
+    the moment she answers — before the script is even checked, because time spent is
+    spent whatever came back. The script is returned, never executed here: running it
+    is the modelling step, on a machine she owns."""
     ok, why = may_design(job=job)
     if not ok:
         return {"ok": False, "why": why}
@@ -256,25 +266,46 @@ def design(brief, job=None, caller=None):
               "keep it inside %d mm in every direction, make it printable without supports where "
               "you can, and export to the path given as OUT. No commentary, no markdown fence." )
     prompt = "%s\n\nOUT = the path passed in sys.argv[-1]." % str(brief or "")[:1200]
+    import time as _t
+    t0 = _t.time()
     try:
         if caller is None:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             sys.path.insert(0, os.path.join(WS, "scripts"))
-            import robot_core as RC
-            caller = RC._sonnet
+            import astra_call as _ac
+            caller = _ac.call
         cfg = _cfg()
         text = caller(system % int(cfg.get("max_mm") or 180),
                       [{"role": "user", "content": prompt}], max_tokens=1800) or ""
     except Exception as e:
+        if job is not None:
+            note_design(job.get("id", ""), _t.time() - t0, "failed")
         return {"ok": False, "why": "the design call did not answer: %s" % str(e)[:160]}
+    spent = _t.time() - t0
+    if job is not None:
+        note_design(job.get("id", ""), spent, "answered")
     script = str(text).strip()
     if script.startswith("```"):
         script = script.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     if "import bpy" not in script:
-        return {"ok": False, "why": "what came back is not a Blender script"}
-    if job is not None:
-        note_work(job.get("id", ""), 0, "design")
-    return {"ok": True, "script": script, "brief": str(brief or "")[:300]}
+        return {"ok": False, "why": "what came back is not a Blender script",
+                "seconds": round(spent, 1)}
+    return {"ok": True, "script": script, "brief": str(brief or "")[:300],
+            "seconds": round(spent, 1)}
+
+
+def note_design(job_id, seconds, how=""):
+    """Astra's seconds, written the moment she answers or fails. Recorded against the
+    day, never against the job, so several jobs share the one ten minutes."""
+    import datetime as _d
+    rows = _jobs()
+    for j in rows:
+        if j.get("id") == job_id:
+            j.setdefault("work", []).append({"at": _d.datetime.now().isoformat(timespec="seconds"),
+                                             "minutes": 0, "seconds": round(float(seconds), 1),
+                                             "what": "design", "how": str(how)[:40]})
+            _save_jobs(rows); return j
+    return None
 
 
 def note_work(job_id, minutes, what=""):
@@ -398,7 +429,8 @@ if __name__ == "__main__":
             "" if h["mac_configured"] else "   (no mac_host in printer-config.json)"))
     print("  printer  the machine   " + ("ready" if st["printer_ready"] else "missing: " + ", ".join(st["missing"])))
     print("\nHe stops twice before anything is made: %s, then %s." % STOPS)
-    print("Cost: one call per job, %s, to decide and to write the Blender script. Astra never." % DESIGN_ROUTE)
+    print("Astra: %.0f of %d seconds used today (ten minutes a day, across every job)." % (
+        astra_seconds_today(), ASTRA_SECONDS_PER_DAY))
     print("Time: %g local CPU minutes a day, %g in one sitting. Used today: %.1f." % (
         float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY),
         float(_cfg().get("budget_min_per_run") or BUDGET_MIN_PER_RUN), spent_today()))
