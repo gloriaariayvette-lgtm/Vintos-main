@@ -9,6 +9,9 @@ and the caller skips the inference and says so. A job that wants to run anyway p
     unchanged(name, material) -> bool        (read only; commit after successful persistence)
     last(name)                 -> {"sha", "at"} | None
 """
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_sys.path.insert(0, str(_GuardPath(__file__).resolve().parent))
 import os, json, time, hashlib
 
 WS = os.path.expanduser("~/.vintos/workspace")

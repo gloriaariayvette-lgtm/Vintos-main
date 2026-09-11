@@ -15,9 +15,8 @@ def src(rel): return open(os.path.join(REPO, rel), errors="replace").read()
 
 print("\n--- 62 / 63: the turn record keeps excerpts, omission reasons, self-model revision, window ---")
 TR = load("turn_record", os.path.join(REPO, "scripts", "turn_record.py")); TR.WORKSPACE = WS; TR.MEMORY = MEM
-for a in dir(TR):
-    v = getattr(TR, a)
-    if isinstance(v, str) and a.isupper() and v.startswith(os.path.dirname(os.path.dirname(os.path.abspath(TR.__file__)))) : setattr(TR, a, v.replace(os.path.dirname(os.path.dirname(os.path.abspath(TR.__file__))), WS))
+TR.RECORD = os.path.join(MEM, "turn-record.jsonl")
+check("turn record uses this suite's exact temporary store", os.path.dirname(TR.RECORD) == MEM and os.path.commonpath([MEM, HOME]) == HOME)
 open(os.path.join(WS, "SELF-MODEL.md"), "w").write("# me\n")
 json.dump([{"timestamp": "t"}] * 3, open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 marker = next(iter(TR.MARKERS)); name = TR.MARKERS[marker]

@@ -58,7 +58,7 @@ def run(argv, scratch, *, read_roots=(), timeout=60, loopback=False, broker=None
             if os.path.exists(p): command += ["--ro-bind", p, p]
         command += ["--bind", scratch, scratch, "--chdir", scratch, *map(str, argv)]
     else:
-        raise RuntimeError("Execution requires bubblewrap (Linux) or sandbox-exec (macOS); refused without OS isolation")
+        raise RuntimeError("PRECONDITION OS_ISOLATION_MISSING: Linux needs bubblewrap (sudo apt-get update && sudo apt-get install -y bubblewrap); macOS needs sandbox-exec. Execution refused without OS isolation")
     # Reap the entire child process group, including descendants left after a
     # successful test. Capture to files rather than unbounded in-memory pipes.
     with tempfile.TemporaryFile(dir=scratch) as stdout, tempfile.TemporaryFile(dir=scratch) as stderr:

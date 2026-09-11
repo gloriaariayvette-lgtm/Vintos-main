@@ -16,6 +16,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOTD = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOTD, "bin"))
 TMP = tempfile.mkdtemp(prefix="shim-")
+os.environ["HOME"] = TMP
+os.environ.pop("SPARK_WORKSPACE", None)
+sys.path.insert(0, os.path.join(ROOTD, "scripts"))
 os.environ["ANTHROPIC_API_KEY"] = "test-anthropic"
 os.environ["XAI_API_KEY"] = "test-xai"
 
@@ -212,6 +215,9 @@ check("router: primary timeout -> stage unavailable 'not retried', anthropic pos
 check("router: Idempotency-Key on both provider posts", all(p[1].get("Idempotency-Key", "").startswith("vintos-") for p in _FakeClient.posts), _FakeClient.posts)
 
 print("--- hygiene ---")
+import compute_admission as CA
+check("compute ledger is isolated in this suite", os.path.commonpath([os.path.realpath(CA._ledger()), os.path.realpath(TMP)]) == os.path.realpath(TMP))
+check("provider clients are fakes", MR.httpx.AsyncClient is _FakeClient and S.urllib.request.urlopen.__name__ == "_open")
 check("usage log went to the tempdir, not ~/.vintos", os.path.exists(os.path.join(TMP, "usage.jsonl")), TMP)
 
 print("\n%d/%d passed" % (sum(R), len(R)))

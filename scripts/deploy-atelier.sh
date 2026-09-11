@@ -196,10 +196,12 @@ say
 # ------------------------------------------------------------------ suites
 say "== suites =="
 case "$(uname -s)" in
-  Linux) command -v bwrap >/dev/null || die "test isolation requires bubblewrap; install it before deployment" ;;
+  Linux) command -v bwrap >/dev/null || die "PRECONDITION BWRAP_MISSING: OS test isolation requires bubblewrap. Install on Ubuntu/Debian: sudo apt-get update && sudo apt-get install -y bubblewrap" ;;
   Darwin) [ -x /usr/bin/sandbox-exec ] || die "test isolation requires sandbox-exec" ;;
   *) die "no supported test isolation for this operating system" ;;
 esac
+PYTHONNOUSERSITE=1 "$PYCHECK" -c 'import numpy, requests' >/dev/null 2>&1 \
+    || die "PRECONDITION TEST_PYTHON_DEPENDENCIES: isolated tests require numpy and requests outside user-site packages. Ubuntu/Debian: sudo apt-get install -y python3-numpy python3-requests (or use a configured Python venv)."
 fail=0
 for t in "$SRC"/broker/tests/test_*.py; do
     out="$("$PYCHECK" "$SRC/scripts/run_isolated_test.py" "$t" 2>&1)"; rc=$?

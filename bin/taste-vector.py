@@ -431,6 +431,12 @@ def get_taste_with_subconscious():
     except: pass
     return taste
 
+# Resolve sibling helpers for direct file loading as well as deployed entrypoints.
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_here = _GuardPath(__file__).resolve().parent
+_guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
+_guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
 update_from_signal = _serialized("TASTE_VECTOR_FILE")(update_from_signal)
 

@@ -561,6 +561,12 @@ def main():
             target=todo[-1]
         process_file(target,a.force)
 
+# Resolve sibling helpers for direct file loading as well as deployed entrypoints.
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_here = _GuardPath(__file__).resolve().parent
+_guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
+_guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
 process_file=_serialized("LOG")(process_file)
 direct=_serialized("LOG")(direct)

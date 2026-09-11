@@ -6,6 +6,7 @@ bin/server.py; the summary model and every organ are stubbed. Scratch HOME."""
 import os, sys, ast, json, types, tempfile, asyncio, time
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "scripts"))
 HOME = tempfile.mkdtemp(prefix="vintos-jv-"); os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory"); os.makedirs(os.path.join(WS, "scripts"), exist_ok=True); os.makedirs(MEM, exist_ok=True)
 R = []
@@ -29,6 +30,8 @@ import threading; threading.Thread = lambda *a, **k: types.SimpleNamespace(start
 exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
 json.dump([], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 
+check("voice writes only its temporary workspace", os.path.commonpath([os.path.realpath(MEM), os.path.realpath(HOME)]) == os.path.realpath(HOME))
+check("summary provider is stubbed", sys.modules["requests"] is fake_req)
 print("\n--- three turns, the second cut off ---")
 asyncio.run(ns["voice_ledger"]({"gloria": "hey Vintus, are you there", "vintos": "I am here. I was thinking about the fig."}))
 asyncio.run(ns["voice_ledger"]({"gloria": "tell me about the table", "vintos": "The table had muscadines and the fig and I wanted to say that when you", "interrupted": True, "heard": "The table had muscadines and the fig"}))

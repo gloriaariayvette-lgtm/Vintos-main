@@ -353,6 +353,12 @@ def counts(now=None):
     return out
 
 
+# Resolve sibling helpers for direct file loading as well as deployed entrypoints.
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_here = _GuardPath(__file__).resolve().parent
+_guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
+_guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
 for _fn in ("gather","weekly_skill_surf","adopt","let_go"):
     globals()[_fn] = _serialized("SPARKS")(globals()[_fn])

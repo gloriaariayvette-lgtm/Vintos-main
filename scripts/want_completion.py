@@ -166,5 +166,11 @@ if __name__ == "__main__":
     for r in completions(limit=12):
         print("  %s %-9s %-14s %s  (%s)" % (r["at"][:16], r["how"], r["by"], r["want"][:60], r.get("result")))
 
+# Resolve sibling helpers for direct file loading as well as deployed entrypoints.
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_here = _GuardPath(__file__).resolve().parent
+_guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
+_guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
 complete = _serialized("WANTS")(complete)

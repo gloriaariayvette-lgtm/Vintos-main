@@ -18,6 +18,9 @@ about quality. Also used by the shell cron scripts:
 
     compute_admission.py run background --organ tension-field -- python3 tension_field.py
 """
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_sys.path.insert(0, str(_GuardPath(__file__).resolve().parent))
 import os, sys, json, time, fcntl, contextlib, resource, subprocess
 from datetime import datetime
 

@@ -2759,6 +2759,12 @@ def _open_gloria_discussion(want, text):
     log(f"  → Want routed to Gloria discussion board: {text[:60]}")
 
 
+# Resolve sibling helpers for direct file loading as well as deployed entrypoints.
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_here = _GuardPath(__file__).resolve().parent
+_guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
+_guard_sys.path.insert(0, str(_guard_here))
 from store_guard import serialized as _serialized
 for _writer in ("_advance_or_fulfill","_mark_attempt","_open_gloria_discussion"):
     globals()[_writer]=_serialized(lambda: os.path.join(MEMORY,"current-wants.json"))(globals()[_writer])

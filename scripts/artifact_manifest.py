@@ -20,6 +20,9 @@ Also: unique_path() — a filename that carries the content hash and a revision 
 second render never lands on the first (review 279); and delivery marking that never
 promotes a send to a reception (288): only mark_acknowledged() may write 'acknowledged'.
 """
+import sys as _guard_sys
+from pathlib import Path as _GuardPath
+_guard_sys.path.insert(0, str(_GuardPath(__file__).resolve().parent))
 import os, json, hashlib, time
 from datetime import datetime
 
