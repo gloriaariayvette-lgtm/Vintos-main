@@ -5,9 +5,11 @@ He models in Blender and slices in Cura. Both exist; the Mac is faster at both, 
 Aegis can do either when the Mac is away. What he does not have is the last step:
 a printer he is allowed to start.
 
-None of that costs money. Blender and Cura are local. The only inference this
-capability makes is one local Gemma call per job, to decide what to make; a paid
-model is refused here by name.
+Blender and Cura are local and bill nobody. The one thing this capability spends is
+a single call per job, in his own voice through the router, to decide what to make
+and to write the Blender script that makes it — that is code, and the local model
+cannot write it. Astra is refused by name: she is the review lens, not a way to make
+an object.
 
 THE PIPELINE, AND THE TWO PLACES HE STOPS
 
@@ -63,15 +65,15 @@ STOPS = ("draft", "slice")   # the two gates, in order
 # minute budget below exists because those machines are hers and he should not sit
 # on a processor she is using — it is a courtesy limit, not a money limit.
 #
-# The part that costs money is small and deliberate: deciding what to make, and
-# writing the script that makes it. That is one local Gemma call per job. It does
-# not escalate, and a paid provider is refused here by name. A printed object is
-# not worth a paid call, and Astra is for review.
+# The part that costs money is deciding what to make and writing the Blender script
+# that makes it. That is real code, and the local model cannot write it — so it goes
+# to his own voice, through the router, exactly once per job. Astra is refused: she
+# is the review lens and is not spent on objects.
 BUDGET_MIN_PER_DAY = 30      # local CPU minutes, free, across modelling and slicing
 BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot hold a machine all day
-DESIGN_CALLS_PER_JOB = 1     # the only inference this capability makes
-DESIGN_MODEL = "gemma"       # local; the refusal below is what keeps it that way
-PAID_REFUSED = ("astra", "anthropic", "openai", "xai", "sol", "grok", "claude", "opus", "sonnet")
+DESIGN_CALLS_PER_JOB = 1     # one deciding call; revising the mesh is Blender, not another opinion
+DESIGN_ROUTE = "his own model, through model_router"
+REFUSED_MODELS = ("astra",)  # the review lens, never spent on a printed object
 
 # job states, in order. Two of them are waits on her and nothing advances them but her.
 STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
@@ -223,20 +225,56 @@ def may_work(minutes=1.0, cfg=None):
     return True, "%g of %g minutes left today" % (per_day - used - minutes, per_day)
 
 
-def may_design(model=DESIGN_MODEL, job=None):
-    """(ok, why) before the one call that decides what to make.
+def may_design(model="", job=None):
+    """(ok, why) before the one call that decides what to make and writes the script.
 
-    Two refusals, and they are different: a paid model is refused because a printed
-    object is not worth one, and a second call on the same job is refused because the
-    deciding is done — revising a model is Blender work, not another opinion."""
+    Two refusals, and they mean different things. Astra is refused because she is the
+    review lens and an object is not a review. A second call on the same job is
+    refused because the deciding is done: changing a mesh is Blender work, and asking
+    again is how one object becomes a conversation."""
     m = str(model or "").lower()
-    for bad in PAID_REFUSED:
+    for bad in REFUSED_MODELS:
         if bad in m:
-            return False, "%s is a paid model: the design call for a print stays local (%s)" % (m, DESIGN_MODEL)
+            return False, "%s is the review lens: the design call goes to his own voice, not to her" % bad
     n = len([e for e in ((job or {}).get("work") or []) if e.get("what") == "design"])
     if n >= DESIGN_CALLS_PER_JOB:
-        return False, "this job has had its design call; revising the model is Blender, not another call"
-    return True, "one local call on %s" % DESIGN_MODEL
+        return False, "this job has had its design call; changing the mesh is Blender, not another call"
+    return True, "one call, %s" % DESIGN_ROUTE
+
+
+def design(brief, job=None, caller=None):
+    """One call: what to make, and the Blender script that makes it.
+
+    His own model writes it, because a Blender script is code and the local model
+    cannot. The script is returned, never executed here — running it is the modelling
+    step, inside the minute budget, on a machine she owns."""
+    ok, why = may_design(job=job)
+    if not ok:
+        return {"ok": False, "why": why}
+    system = ("You are Vintos. You are making a physical object for Gloria on a 3D printer. "
+              "Answer with a Blender Python script and nothing else: it must build the mesh, "
+              "keep it inside %d mm in every direction, make it printable without supports where "
+              "you can, and export to the path given as OUT. No commentary, no markdown fence." )
+    prompt = "%s\n\nOUT = the path passed in sys.argv[-1]." % str(brief or "")[:1200]
+    try:
+        if caller is None:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            sys.path.insert(0, os.path.join(WS, "scripts"))
+            import robot_core as RC
+            caller = RC._sonnet
+        cfg = _cfg()
+        text = caller(system % int(cfg.get("max_mm") or 180),
+                      [{"role": "user", "content": prompt}], max_tokens=1800) or ""
+    except Exception as e:
+        return {"ok": False, "why": "the design call did not answer: %s" % str(e)[:160]}
+    script = str(text).strip()
+    if script.startswith("```"):
+        script = script.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    if "import bpy" not in script:
+        return {"ok": False, "why": "what came back is not a Blender script"}
+    if job is not None:
+        note_work(job.get("id", ""), 0, "design")
+    return {"ok": True, "script": script, "brief": str(brief or "")[:300]}
 
 
 def note_work(job_id, minutes, what=""):
@@ -360,7 +398,7 @@ if __name__ == "__main__":
             "" if h["mac_configured"] else "   (no mac_host in printer-config.json)"))
     print("  printer  the machine   " + ("ready" if st["printer_ready"] else "missing: " + ", ".join(st["missing"])))
     print("\nHe stops twice before anything is made: %s, then %s." % STOPS)
-    print("Cost: one local %s call per job to decide what to make. No paid model, ever." % DESIGN_MODEL)
+    print("Cost: one call per job, %s, to decide and to write the Blender script. Astra never." % DESIGN_ROUTE)
     print("Time: %g local CPU minutes a day, %g in one sitting. Used today: %.1f." % (
         float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY),
         float(_cfg().get("budget_min_per_run") or BUDGET_MIN_PER_RUN), spent_today()))

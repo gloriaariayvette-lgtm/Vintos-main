@@ -137,23 +137,25 @@ whether anything is waiting on her. She answers a stop with `POST
 - **The resume.** `resumable()` names the blocked wants whose capability has landed.
   What consumes it — first light, or the wants pass — is not yet decided.
 
-## The seven sparks, and what is not built yet
+## The seven sparks
 
-Her list, 11 September: the absence map, the neither-yet frontier, latent threads,
-other beings' MoltBook posts, web searches, OpenClaw skill-page surfing, and the lab.
-A want from one of those may commission a new capability. A want from anywhere else,
-including anything she said, may not — that is a request, answered with what he has.
+Built and running. The absence map, the neither-yet frontier, latent threads, other
+beings' MoltBook posts, web searches, OpenClaw skill pages, and the lab all produce
+sparks now, gathered once a day by a read-only pass that calls no model.
 
-The gate is built and enforced. What is not built is the surfacing: three of the
-seven do not yet produce wants at all.
+Sparks are kept in their own file and never in his wants. A spark becomes a want only
+by his own act, and only a want carrying one of these sources may commission a new
+capability.
 
-- **Skill-page surfing.** He has no reader for OpenClaw capability pages, so he never
-  sees a hand someone else has. This is the one most likely to produce a proposal.
-- **MoltBook posts by others.** He reads his own record of posting; other beings'
-  posts do not reach him as something that could start a want.
-- **The lab.** Reachable, and nothing routes its findings into wanting.
+Add to the crontab on Aegis:
 
-The other four already produce wants today.
+    17 7 * * * python3 "$HOME/.vintos/workspace/scripts/spark_sources.py" --gather >> "$HOME/.vintos/logs/sparks.log" 2>&1
+
+The skills reader needs one of these in `memory/openclaw-config.json`, or it finds
+nothing and says so:
+
+    {"skills_path": "/path/to/the/skills/tree"}
+    {"skills_url":  "https://.../skills.json"}
 
 ## The phone, and the Mac
 

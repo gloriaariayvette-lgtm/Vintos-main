@@ -9740,6 +9740,27 @@ async def reelroom_chat(request: Request):
         return {"reply": "", "error": str(e)[:200]}
 
 
+# === The sparks — what the world put in front of him, kept apart from his wants ===
+
+def _sparks_mod():
+    import importlib.util as _il, sys as _s
+    _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    return _s.modules.get("spark_sources") or _il.import_module("spark_sources")
+
+
+@app.get("/api/sparks")
+async def sparks(request: Request, source: str = ""):
+    """What is standing, by source. These are not wants: nothing here is desire,
+    nothing is graded, and none of it is evidence about him or about her."""
+    _require_secret(request)
+    try:
+        m = _sparks_mod()
+        return {"ok": True, "counts": m.counts(),
+                "standing": m.standing(source or None), "sources": list(m.SOURCES)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "standing": []}
+
+
 # === 3D printing — what he has in hand, and the two stops he waits at ===
 
 def _printer():

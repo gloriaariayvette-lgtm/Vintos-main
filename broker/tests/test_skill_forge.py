@@ -151,16 +151,27 @@ check("with a machine configured it still refuses until the capability is approv
       P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["block_type"] == "CAPABILITY_ABSENT"
       and "no approved print capability" in P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["evidence"])
 
-print("\n--- what printing costs, which is almost nothing ---")
+print("\n--- what printing costs, and what writes the Blender script ---")
 ok, why = P3.may_design()
-check("the design call is one local call", ok and "gemma" in why)
-for m in ("astra", "claude-opus-4-8", "sonnet-5", "grok-4", "sol"):
-    ok, why = P3.may_design(m)
-    check("a paid model is refused by name: %s" % m, not ok and "paid model" in why)
+check("the deciding call goes to his own voice through the router", ok and "model_router" in why, why)
+ok, why = P3.may_design("astra")
+check("Astra is refused: she is the review lens, not a way to make an object",
+      not ok and "review lens" in why, why)
 ok, why = P3.may_design(job={"work": [{"what": "design"}]})
-check("one deciding call per job; revising is Blender, not another opinion", not ok and "Blender" in why)
-check("the minute budget is named as local and free",
-      "local CPU minutes" in open(os.path.join(REPO, "scripts", "print_3d.py")).read())
+check("one deciding call per job; changing the mesh is Blender, not another opinion", not ok and "Blender" in why)
+src3 = open(os.path.join(REPO, "scripts", "print_3d.py")).read()
+check("the minute budget is named as local CPU, not money", "local CPU minutes" in src3)
+check("the script comes back as code and is never run by the deciding call",
+      "import bpy" in src3 and "never executed here" in src3)
+made = {"called": 0}
+def _fake(system, msgs, max_tokens=0):
+    made["called"] += 1
+    return "```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add()\n```"
+job0 = {"id": "x", "work": []}
+out = P3.design("a small bird", job=None, caller=_fake)
+check("a fenced answer is unwrapped and kept", out["ok"] and out["script"].startswith("import bpy"), out)
+out2 = P3.design("a small bird", job=None, caller=lambda *a, **k: "sure, I would make a bird!")
+check("prose is not a Blender script and is refused", not out2["ok"] and "not a Blender script" in out2["why"])
 
 print("\n--- how long he may work, and how she knows he is working ---")
 P3.JOBS = os.path.join(MEM, "print-jobs.json")
