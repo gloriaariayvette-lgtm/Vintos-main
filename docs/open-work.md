@@ -138,6 +138,12 @@ spending; a crashed `building` proposal requires reconciliation rather than anot
 silent paid attempt. The service's next wants pass can pick up an approved proposal
 whose immediate worker never started.
 
+`POST /api/skills/proposals/{id}/reconcile` now checks a per-proposal OS lock before
+reopening an abandoned `building` or `built` attempt. A live worker cannot be reset.
+The prior grant and artifact references stay in history; the proposal returns to
+`proposed`, requiring fresh approval before any paid retry. The remote provider's
+outcome and charges remain unknown: this does not cancel or recover a provider call.
+
 Still open:
 
 - The app approval card and a real, explicitly authorized provider run. Provider/model
@@ -146,8 +152,8 @@ Still open:
   at invocation; only pure string-in/string-out functions run in the isolated executor.
 - Rich scope/test requirements for automatically proposed missing capabilities. An
   empty generic proposal is not a complete design for an effectful tool.
-- Operational reconciliation for interrupted paid builds. Never reset `building` to
-  `approved` without checking whether the provider already performed the work.
+- Provider-side recovery of an interrupted paid call, where the provider exposes
+  durable request identifiers. Local reconciliation alone cannot establish its outcome.
 
 ## The seven sparks
 

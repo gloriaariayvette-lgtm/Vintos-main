@@ -177,7 +177,63 @@ def artifact_valid(proposal, installed=False):
     except (OSError, TypeError): return False
 
 
+def _build_lock(proposal_id):
+    """One OS-held lease per proposal; process death releases it automatically."""
+    import fcntl
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", proposal_id):
+        raise ValueError("invalid proposal id")
+    directory = os.path.join(os.path.dirname(_forge().PROPOSALS), "forge-locks")
+    os.makedirs(directory, exist_ok=True)
+    handle = open(os.path.join(directory, proposal_id + ".lock"), "a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BaseException:
+        handle.close()
+        raise
+    return handle
+
+
+def reconcile(proposal_id):
+    """Explicitly reopen an abandoned build for a fresh approval, without spending.
+
+    Never infer death from elapsed time: a live worker holds the same OS lease.
+    Preserve the prior grant and artifacts in history, but do not reuse authority.
+    """
+    try:
+        lease = _build_lock(proposal_id)
+    except BlockingIOError:
+        return None, "build is still running"
+    except (OSError, ValueError) as exc:
+        return None, "cannot establish build ownership: " + str(exc)[:160]
+    with lease:
+        sf = _forge()
+        from store_guard import transaction
+        with transaction(sf.PROPOSALS):
+            rows = sf._load(); row = sf._get(rows, proposal_id)
+            if not row or row.get("state") not in ("building", "built"):
+                return None, "only an interrupted building or built proposal can be reconciled"
+            previous = {key: row.pop(key) for key in
+                        ("granted", "staged", "verification", "build_started_at") if key in row}
+            row.setdefault("history", []).append({"at": sf._now(), "event": "build_interrupted",
+                "from_state": row["state"], "previous_attempt": previous,
+                "provider_outcome": "unknown; a remote call may have completed or been charged"})
+            row["state"] = "proposed"
+            if not sf._save(rows): return None, "proposal persistence failed"
+            return row, "interrupted build recorded; fresh approval required before any paid retry"
+
+
 def run(proposal_id, astra=None, fable=None):
+    try:
+        lease = _build_lock(proposal_id)
+    except BlockingIOError:
+        return None, "build is still running"
+    except (OSError, ValueError) as exc:
+        return None, "cannot establish build ownership: " + str(exc)[:160]
+    with lease:
+        return _run_owned(proposal_id, astra=astra, fable=fable)
+
+
+def _run_owned(proposal_id, astra=None, fable=None):
     """The pipeline for one approved proposal. Returns the forge row and a note.
 
     Only advances toward verified; never installs. A refusal (Fable or the sandbox)
@@ -193,7 +249,11 @@ def run(proposal_id, astra=None, fable=None):
     with transaction(sf.PROPOSALS):
         rows = sf._load(); live = sf._get(rows, proposal_id)
         if not live or live.get("state") != "approved": return None, "already claimed"
-        live["state"] = "building"; sf._save(rows)
+        live["state"] = "building"
+        live["build_started_at"] = sf._now()
+        live.setdefault("history", []).append({"at": live["build_started_at"], "event": "building"})
+        if not sf._save(rows): return None, "build claim persistence failed"
+        p = live
     try:
         code = generate(p, astra=astra)
     except Exception as e:
@@ -211,13 +271,15 @@ def run(proposal_id, astra=None, fable=None):
     stem = os.path.join(STAGING, "%s-%s" % (proposal_id, code["name"]))
     open(stem + ".py", "w").write(code["module"])
     open(stem + ".test.py", "w").write(code.get("test", ""))
-    sf.mark(proposal_id, "built", "Astra wrote it, Fable passed; staged at %s.py" % stem)
+    row, why = sf.mark(proposal_id, "built", "Astra wrote it, Fable passed; staged at %s.py" % stem,
+                       extra={"staged": stem + ".py"})
+    if row is None: return None, why
     passed, output = sandbox_test(code["module"], code.get("test", ""), code["name"])
     if not passed:
         sf.mark(proposal_id, "refused", "the sandbox test failed: %s" % output[-160:])
         return None, "sandbox failed: %s" % output[-160:]
     row, mwhy = sf.mark(proposal_id, "verified", "sandbox passed", extra={"staged": stem + ".py", "verification": {"schema": 1, "review": "PASS", "sandbox_passed": True, "sha256": _digest(stem + ".py")}})
-    return row, "verified; awaiting her install"
+    return (row, "verified; awaiting her install") if row is not None else (None, mwhy)
 
 
 def install(proposal_id):

@@ -93,5 +93,45 @@ p4, _ = SF.propose("not yet approved", "why", want_id="w-forge2", permissions=["
 r4, n4 = FB.run(p4["id"], astra=astra_good, fable=fable_pass)
 check("run refuses a proposal that is still only proposed", r4 is None and "not approved" in n4, n4)
 
+print("\n--- interrupted builds require a fresh approval, and active builds cannot be reset ---")
+import concurrent.futures, threading
+entered = threading.Event(); release = threading.Event(); paid_calls = []
+class SimulatedDeath(BaseException): pass
+def interrupted_astra(*args, **kwargs):
+    paid_calls.append(1); entered.set()
+    if not release.wait(10): raise RuntimeError("fixture did not release worker")
+    raise SimulatedDeath()
+pid5 = a_proposal("recover a stopped worker")
+with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+    pending = pool.submit(FB.run, pid5, astra=interrupted_astra, fable=fable_pass)
+    check("worker claims before entering provider", entered.wait(5))
+    try:
+        check("active worker cannot be reconciled", FB.reconcile(pid5)[0] is None)
+        check("second builder cannot spend", FB.run(pid5, astra=interrupted_astra)[0] is None and len(paid_calls) == 1)
+    finally:
+        release.set()
+    try: pending.result()
+    except SimulatedDeath: pass
+check("worker death leaves explicit unfinished state", SF._get(SF._load(), pid5)["state"] == "building")
+recovered, note = FB.reconcile(pid5)
+check("abandoned attempt reopens without spending", recovered and recovered["state"] == "proposed" and len(paid_calls) == 1, note)
+check("recovery preserves previous grant in history", recovered and "granted" not in recovered and recovered["history"][-1]["previous_attempt"]["granted"]["scope"] == {"max_seconds": 1})
+check("recovered attempt cannot run without new approval", FB.run(pid5, astra=interrupted_astra)[0] is None and len(paid_calls) == 1)
+check("reconciliation is not a reset for arbitrary states", FB.reconcile(pid)[0] is None and FB.reconcile(pid2)[0] is None)
+pid6 = a_proposal("denied during review")
+def revoke_review(*args, **kwargs):
+    SF.deny(pid6, "changed my mind")
+    return "PASS"
+row, note = FB.run(pid6, astra=astra_good, fable=revoke_review)
+check("concurrent denial cannot be reported as verified", row is None and "verified;" not in note and SF._get(SF._load(), pid6)["state"] == "denied")
+pid7 = a_proposal("failed claim persistence")
+save = SF._save
+try:
+    SF._save = lambda rows: False
+    row, note = FB.run(pid7, astra=interrupted_astra)
+finally:
+    SF._save = save
+check("failed durable claim cannot spend", row is None and "persistence" in note and len(paid_calls) == 1)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

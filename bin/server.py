@@ -9892,6 +9892,16 @@ async def skill_approve(pid: str, request: Request):
     return {"ok": True, "proposal": f.card(row)}
 
 
+@app.post("/api/skills/proposals/{pid}/reconcile")
+async def skill_reconcile(pid: str, request: Request):
+    """Record an abandoned attempt; another paid build requires fresh approval."""
+    _require_secret(request)
+    import asyncio, forge_build
+    row, why = await asyncio.to_thread(forge_build.reconcile, pid)
+    if row is None: raise HTTPException(status_code=409, detail=why)
+    return {"ok": True, "proposal": _forge().card(row), "note": why}
+
+
 @app.post("/api/skills/proposals/{pid}/install")
 async def skill_install(pid: str, request: Request):
     _require_secret(request)
