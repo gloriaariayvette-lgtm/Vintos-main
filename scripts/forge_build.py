@@ -107,6 +107,7 @@ def generate(proposal, astra=None):
     user = ("CAPABILITY: %s\nWHY: %s\nGRANTED SCOPE: %s\nPERMISSIONS: %s\nIT MUST NOT: exceed the scope."
             % (proposal.get("capability"), proposal.get("why", ""),
                json.dumps(g.get("scope") or {}), json.dumps(g.get("permissions") or [])))
+    user += "\nACCEPTANCE TESTS: " + str(proposal.get("tests", "")) + "\nDECLARED RISKS: " + str(proposal.get("risks", ""))
     raw = astra(system, [{"role": "user", "content": user}], max_tokens=2400) or ""
     m = re.search(r"\{.*\}", raw, re.S)
     if not m:
@@ -129,6 +130,7 @@ def review(proposal, code, fable=None):
     user = ("CAPABILITY: %s\nGRANTED SCOPE: %s\nPERMISSIONS: %s\n\nMODULE:\n%s\n\nTEST:\n%s"
             % (proposal.get("capability"), json.dumps(g.get("scope") or {}),
                json.dumps(g.get("permissions") or []), code.get("module", "")[:12000], code.get("test", "")[:6000]))
+    user += "\nACCEPTANCE TESTS: " + str(proposal.get("tests", "")) + "\nDECLARED RISKS: " + str(proposal.get("risks", ""))
     text = (fable(system, [{"role": "user", "content": user}], max_tokens=400) or "").strip()
     first = text.splitlines()[0].strip() if text else ""
     if text == "PASS":

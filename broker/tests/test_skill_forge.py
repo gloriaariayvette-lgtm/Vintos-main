@@ -261,4 +261,23 @@ with patch("random.random", return_value=.99):
 with patch("random.random", return_value=0):
     check("less never means no autonomous creation", WS.call_action("make_art", lambda: "artifact", {}) == (True,"artifact"))
 
+
+print("\n--- automatic missing-capability proposals keep the actual step ---")
+SP = load("want_spine", os.path.join(REPO, "scripts", "want_spine.py"))
+rich = {"id":"rich-want", "source":"moltbook", "want":"Compare the receipt totals", "current_step_index":0,
+        "steps":[{"capability":"compare_receipts", "note":"Compare two supplied totals", "expected_output":"A difference in cents", "acceptance":"100 and 75 returns 25"}]}
+rich_path = os.path.join(MEM, "current-wants.json")
+json.dump([rich], open(rich_path, "w"))
+asked = SP.missing_hand("compare_receipts", "Compare two supplied totals", rich, path=rich_path)
+proposal = SF._get(SF._load(), asked.get("id"))
+check("missing hand persists the exact capability block", json.load(open(rich_path))[0]["blocked"]["blocked_step"] == "compare_receipts")
+check("proposal carries real acceptance and output contract", proposal and "100 and 75 returns 25" in proposal["tests"] and proposal["asked"]["scope"]["output_contract"] == "A difference in cents")
+check("automatic brief never invents effect permissions or auto-approves", proposal and proposal["state"] == "proposed" and not proposal["asked"]["permissions"] and proposal["asked"]["invocation"] == "ask_each_time")
+rich["blocked"] = {"block_type":"RESOURCE_UNREACHABLE", "blocked_step":"compare_receipts"}
+json.dump([rich], open(rich_path,"w"))
+refused = SP.missing_hand("other_cap", "other", rich, path=rich_path)
+check("missing-hand path cannot replace a different block", "refused" in refused and json.load(open(rich_path))[0]["blocked"] == rich["blocked"])
+unknown = SP.proposal_details("other_cap", "need something", {})
+check("unknown output and acceptance remain explicit", "UNRESOLVED" in unknown["scope"]["output_contract"] and "UNRESOLVED" in unknown["tests"])
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

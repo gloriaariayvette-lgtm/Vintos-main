@@ -2447,6 +2447,11 @@ def main():
         # He can do this himself!
         action_name = action  # alias for fulfillment tracking
         action_fn = ACTION_MAP.get(action)
+        if action_fn is None:
+            import skill_forge as _skill_forge
+            if any(p.get("capability") == action and p.get("state") in ("installed", "resumed") for p in _skill_forge._load()):
+                from forge_build import invoke as _invoke_forged
+                action_fn = lambda note, _cap=action: _invoke_forged(_cap, note, asking=False)
         if action_fn:
             # Cooldown gate for introspect — max once per 2 hours
             # Bypass for multistep wants — those have intentional targeted context
@@ -2572,7 +2577,9 @@ def main():
             except Exception as e:
                 log(f"  → Action error: {e}")
         else:
-            log(f"  → No action function for {action}")
+            from want_spine import missing_hand
+            proposal = missing_hand(action, text, want, path=os.path.join(MEMORY, "current-wants.json"))
+            log(f"  → Missing capability {action}: {proposal}")
 
 
 # Late additions — functions defined after ACTION_MAP

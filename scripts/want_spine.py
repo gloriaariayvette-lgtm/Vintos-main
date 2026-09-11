@@ -88,6 +88,52 @@ def run_step(capability, note, want=None):
     res["ended"] = time.time()
     return res
 
+def proposal_details(capability, note, want):
+    """A reviewable brief from the actual blocked step, never inferred permissions."""
+    want = want or {}
+    steps = want.get("steps") or []
+    index = want.get("current_step_index", 0)
+    step = steps[index] if isinstance(index, int) and 0 <= index < len(steps) and isinstance(steps[index], dict) else {}
+    if step.get("capability") != capability: step = {}
+    params = step.get("params") if isinstance(step.get("params"), dict) else {}
+    expected = step.get("expected_output") or params.get("expected_output")
+    acceptance = step.get("acceptance") or params.get("acceptance")
+    goal = str(note or step.get("note") or want.get("want") or "")[:600]
+    return {
+        "why": ("Blocked capability %s. Intended step: %s" % (capability, goal))[:600],
+        "scope": {"execution": "pure string transformation", "max_input_chars": 6000,
+                  "input_contract": "One note string describing this step: " + goal[:300],
+                  "output_contract": str(expected or "UNRESOLVED: specify the useful result before approving creation")[:400],
+                  "forbidden": ["network", "file writes", "device control", "memory or identity access"],
+                  "show_result": True},
+        "permissions": [], "touches": [], "invocation": "ask_each_time",
+        "risks": "Output may be incorrect. No external resource or effect authority is inferred. If this step needs an external effect, its adapter and scope remain unresolved; do not approve a pure substitute as completion.",
+        "tests": ("Execute the named function with representative note text; assert the expected nonempty result, handle empty input explicitly, and verify failure cases in OS isolation. Acceptance: " + str(acceptance or "UNRESOLVED: needs a step-specific example"))[:600],
+    }
+
+
+def missing_hand(capability, note, want, path=None):
+    """Persist a precise absence block before opening its proposal."""
+    from store_guard import locked_update
+    path = path or os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
+    held = []
+    def mutate(rows):
+        for row in rows:
+            if row.get("id") != (want or {}).get("id") or row.get("fulfilled") or row.get("dismissed"): continue
+            block = row.get("blocked")
+            if block and (not isinstance(block, dict) or block.get("block_type") != "CAPABILITY_ABSENT" or block.get("blocked_step") != capability):
+                return None
+            row["blocked"] = {"block_type":"CAPABILITY_ABSENT", "blocked_step":capability,
+                              "evidence":"no installed adapter for " + str(capability),
+                              "resume_event":"capability installed or step revised", "at":time.time()}
+            held.append(row)
+            return rows
+        return None
+    locked_update(path, mutate, reader="want_spine.missing_hand")
+    if not held: return {"refused":"want absent, ended, or blocked on a different cause"}
+    return _ask_for_the_hand(capability, note, held[0])
+
+
 def _ask_for_the_hand(capability, note, want):
     """Open a skill proposal for a missing capability, or say why not. Never raises:
     a want that cannot ask for a hand is still a want, and the block stands either way."""
@@ -97,10 +143,10 @@ def _ask_for_the_hand(capability, note, want):
         import skill_forge as _sf
         row, why = _sf.propose(
             capability,
-            why="A step of this want needs it and nothing in the house can do it.",
             want_id=(want or {}).get("id", ""),
             step_note=note or "",
             block={"block_type": "CAPABILITY_ABSENT"},
+            **proposal_details(capability, note, want),
         )
         return {"id": row["id"], "state": row["state"]} if row else {"refused": why}
     except Exception as e:

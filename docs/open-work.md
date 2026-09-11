@@ -300,3 +300,5 @@ locally imported Request type under postponed annotations. Repair and schema ver
 remain pending. The single live forge run is now explicitly approved, not yet run.
 
 The desktop postponed-annotation fix passes a real FastAPI schema build on Aegis; it awaits the follow-up deployment. Migration tests include concurrent step appends, failed-lock refusal, concurrent memory corrections, exact dispatch permit forwarding and simulation refusal.
+
+Automatic proposals now retain the actual blocked step output/acceptance contract, explicit unknowns, a pure-function scope and no inferred effect permissions. Both generator and reviewer receive the acceptance brief. The ordinary router now opens the proposal on an absent adapter and resolves installed forged adapters after resume; invocation grants still apply. This does not supply an effectful adapter or the app forge card.
