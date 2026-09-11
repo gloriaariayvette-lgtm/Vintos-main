@@ -48,49 +48,13 @@ def _gate(toy, level, kind=None, detail=None, context=None, permit=None,
     call (the reflex arc, a diagnostic, current callers) passes neither, which
     the gate reads as no-context — safe because reductions always pass and, when
     armed, an unpermitted deliberative effect is denied."""
-    try:
-        import effect_gate
-        # a valid permit issued for this effect is authority already granted.
-        # A permit may cover a specific toy or a "both"/broadcast effect; its
-        # single-use consumption is owned by the parser that requested it, not
-        # by each transport call (one authorized effect can touch two toys).
-        if permit is not None:
-            # A supplied permit is verified HERE, at dispatch: expiry and the
-            # exact operation+device it was issued for. An expired or mismatched
-            # permit never falls through to a bare (unarmed-pass) authorize —
-            # the refusal is recorded and only a reduction may still go.
-            _ok, _why = effect_gate.dispatch_check(permit, toy, level, kind,
-                                                   digest=effect_digest)
-            if not _ok:
-                print("[toy_link] %s %s refused: %s" % (toy, kind or "level", _why), flush=True)
-                return False, "deny"
-            return True, "send"
-        _permit, mode, why = effect_gate.authorize(
-            context, toy, level, kind=kind, detail=detail, digest=effect_digest)
-        allow = mode == "send"
-        if mode == "deny":
-            print("[toy_link] %s %s refused: %s" % (toy, kind or "level", why), flush=True)
-        elif mode == "would_send":
-            print("[toy_link] TEST MODE — would send %s %s (nothing sent)" % (toy, level), flush=True)
-        return allow, mode
-    except Exception:
-        # A wrapper fault must not stop a reduction, and must not become
-        # permission for a deliberative effect when armed (Sol: fail-closed).
-        return _fail_decision(toy, level, kind)
-
-
-def _fail_decision(toy, level, kind):
-    """The gate's own rule, applied when the wrapper itself faulted: a reduction
-    always passes; a deliberative effect denies when armed, else passes."""
-    try:
-        import effect_gate
-        if effect_gate.classify(toy, level, kind) == "reduction":
-            return True, "send"
-        if effect_gate.armed():
-            return False, "deny"
-    except Exception:
-        pass
-    return True, "send"     # gate wholly unavailable => arming impossible => pass
+    from effect_authority import dispatch
+    ok, mode, why = dispatch("thruster" if "thrust" in toy else "toys",
+                             context=context, target=toy, level=level, kind=kind,
+                             detail=detail, permit=permit, digest=effect_digest)
+    if not ok:
+        print("[toy_link] %s %s: %s" % (toy, mode, why), flush=True)
+    return ok, mode
 
 
 def _note(toy, level):

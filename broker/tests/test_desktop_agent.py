@@ -186,5 +186,21 @@ DA.start_task = lambda task, max_steps=40: {"accepted": False, "reason": "a desk
 out = DA.extract_and_start("[DESKTOP: again]", "voice")
 check("tag: refusal is visible in the text", "did not start" in out and "already active" in out, out)
 
+# Resolve postponed endpoint annotations as FastAPI does, without a live server.
+import types, typing
+from unittest.mock import patch
+class RequestType: pass
+class AppFixture:
+    endpoints = []
+    def get(self, path): return self.post(path)
+    def post(self, path):
+        def register(fn): self.endpoints.append(fn); return fn
+        return register
+app = AppFixture()
+with patch.dict(sys.modules, {"fastapi": types.SimpleNamespace(Request=RequestType, HTTPException=RuntimeError)}):
+    DA.register(app, "fixture")
+check("desktop endpoint request annotations resolve in module globals", len(app.endpoints) == 3 and all(typing.get_type_hints(fn)["request"] is RequestType for fn in app.endpoints))
+assert str(DA.STATE_DIR) == TMP
+
 import shutil; shutil.rmtree(TMP)
 print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)

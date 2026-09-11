@@ -545,10 +545,8 @@ def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None
     prompt and answering (ok, mode, why) - and nothing starts until it says yes."""
     sid = _slot_id(slot)
     if admit is not None:
-        try:
-            ok, mode, why = admit(prompt[:80])
-        except Exception as e:
-            ok, mode, why = False, "deny", "admission fault: %s" % e
+        from effect_authority import dispatch
+        ok, mode, why = dispatch("avatar", authority=lambda: admit(prompt[:80]))
         if not ok:
             log("live scene refused (%s) [%s]: %s" % (mode, sid, why))
             _slot_update(sid, status="refused", prompt=prompt, kind=kind, started=time.time(),

@@ -272,12 +272,11 @@ vintos-app. The local repair branch is `codex/review-repairs`.
 
 Remaining from the review and the three efforts:
 
-- Stance consumers now cover creation, reflection, mischief and reaching. Trusted request/repair scheduling context crosses router child processes; deferred actions remain pending. All 111 isolated suites pass. Ordinary-suite rerun is in progress with fixture sockets permitted.
+- Stance consumers now cover creation, reflection, mischief and reaching. Trusted request/repair scheduling context crosses router child processes; deferred actions remain pending. All 111 suites passed both directly and isolated for the stance increment.
 - Blender/Cura execution and a real slicer profile/output review. The new artifact and
   approval checks support a manual file workflow; `handoff_dir` alone does not implement
   modelling or slicing. Supplied slice time/material values are estimates, not measurements.
-- The legacy shared-store migration and dispatch-authority consolidation beyond the
-  concrete writers repaired above.
+- Shared-store migration now covers the recovered domain mutation handlers, belief and causal-model mutations, correction projections, durable-memory recall/interpretation/graduation, and thread retirement/archive operations. Snapshot-only legacy writers elsewhere still require per-writer migration; helper presence alone is not proof. Dispatch checks are shared by toy, robot, outward delivery and supplied avatar admission; home-effect policy remains unchanged.
 - F14 source acquisition is complete: the three Aegis domain files are tracked with
   SHA-256 provenance and included in deployment beside the actual server. Their legacy
   mutation handlers remain in the shared-store migration work until repaired.
@@ -296,6 +295,8 @@ through the isolation runner locally; all 111 also passed both ways on Aegis at
 `20260911-110717-2371226.json` and rollback directory
 `~/.vintos/backups/atelier-20260911-110435`. Follow-up commits below require redeployment.
 
-The live OpenAPI endpoint currently returns 500 because a desktop route declares a
+The base release OpenAPI endpoint returned 500 because a desktop route declared a
 locally imported Request type under postponed annotations. Repair and schema verification
 remain pending. The single live forge run is now explicitly approved, not yet run.
+
+The desktop postponed-annotation fix passes a real FastAPI schema build on Aegis; it awaits the follow-up deployment. Migration tests include concurrent step appends, failed-lock refusal, concurrent memory corrections, exact dispatch permit forwarding and simulation refusal.

@@ -49,7 +49,8 @@ def load_model():
         return {"entries": []}
 
 def save_model(data):
-    (_sg_write(MODEL_FILE, data, "causal_self_model.py") or json.dump(data, open(MODEL_FILE, "w"), indent=2))
+    from store_guard import write_json
+    write_json(MODEL_FILE, data, reader='bin/causal_self_model.py')
 
 def _text_overlap(a, b):
     wa = set(a.lower().split())
@@ -386,6 +387,14 @@ def commitment_imprints(statuses=None):
     except Exception:
         return []
 
+
+import sys as _store_sys
+from pathlib import Path as _StorePath
+_store_sys.path.insert(0, str(_StorePath(__file__).resolve().parent.parent / "scripts"))
+from store_guard import serialized as _serialized, write_json as _write_json
+add_entry = _serialized('MODEL_FILE')(add_entry)
+check_imprint_promotions = _serialized('MODEL_FILE')(check_imprint_promotions)
+fracture_imprint = _serialized('MODEL_FILE')(fracture_imprint)
 
 if __name__ == "__main__":
     import sys

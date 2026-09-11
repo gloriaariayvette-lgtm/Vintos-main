@@ -54,23 +54,57 @@ def lane_of(target):
     return ""
 
 
-def assert_dispatch(lane, context=None, target="", level=0, kind=None):
-    """(ok, why). The one check before an actuator acts: a sensor lane never dispatches; a stopped
-    desired state refuses everything but a reduction; otherwise the gate decides."""
+def dispatch(lane, context=None, target="", level=0, kind=None, detail=None,
+             permit=None, digest=None, authority=None):
+    """(allowed, mode, reason), preserving each lane's existing authority.
+
+    This is a dispatch check, not an authorization grant. Toy permits are checked
+    against their exact payload here and consumed by their existing coordinator.
+    Callback lanes must supply their existing policy; simulation never dispatches.
+    """
     spec = LANES.get(lane)
     if spec is None:
-        return False, "unknown lane %r: a dispatcher must name its lane" % lane
+        return False, "deny", "unknown lane %r: a dispatcher must name its lane" % lane
     if spec["kind"] == "sensor":
-        return False, "%s is a sensor lane; it reads and never dispatches" % lane
+        return False, "deny", "%s is a sensor lane; it reads and never dispatches" % lane
     try:
-        sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        if lane in ("outward", "avatar"):
+            if authority is None:
+                return False, "deny", "no authority given"
+            result = authority()
+            if isinstance(result, tuple) and len(result) == 3:
+                ok, mode, why = result
+                return bool(ok) and mode == "send", mode, why
+            ok, why = result if isinstance(result, tuple) else (bool(result), "")
+            return bool(ok), "send" if ok else "deny", why
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import effect_gate
-        if effect_gate.hardware_stopped() and int(level or 0) > 0:
-            return False, "the house is stopped; only a reduction passes"
-        permit, mode, why = effect_gate.authorize(context, target or lane, level, kind=kind)
-        return (mode == "send"), why or mode
-    except Exception as e:
-        return False, "effect gate unavailable (%s); a deliberative effect is refused, not assumed" % str(e)[:60]
+        if lane == "robot":
+            ok, mode, why = effect_gate.authorize_effect(context, kind, detail=detail)
+            return bool(ok) and mode == "send", mode, why
+        if effect_gate.hardware_stopped() and float(level or 0) > 0:
+            return False, "deny", "the house is stopped; only a reduction passes"
+        if permit is not None:
+            ok, why = effect_gate.dispatch_check(permit, target, level, kind, digest=digest)
+            return bool(ok), "send" if ok else "deny", why
+        issued, mode, why = effect_gate.authorize(context, target or lane, level,
+                                                kind=kind, detail=detail, digest=digest)
+        return mode == "send", mode, why
+    except Exception as exc:
+        # Stops remain available through a fault. Missing authority never grants
+        # a new deliberative effect, even when its normal policy is disarmed.
+        reduction = kind in ("stop", "halt", "release", "reduce")
+        if lane in ("toys", "thruster"):
+            try: reduction = float(level) == 0 and kind in (None, "stop", "halt", "release", "reduce", "rotate")
+            except (TypeError, ValueError): reduction = False
+        if reduction and lane in ("toys", "thruster", "robot"):
+            return True, "send", "reduction remains available during authority fault"
+        return False, "deny", "authority unavailable: " + str(exc)[:160]
+
+
+def assert_dispatch(lane, context=None, target="", level=0, kind=None):
+    ok, mode, why = dispatch(lane, context=context, target=target, level=level, kind=kind)
+    return ok, why or mode
 
 
 def table():

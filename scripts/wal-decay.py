@@ -202,10 +202,10 @@ def _build_durable(entry, imprint):
         entry["promoted_at"] = rec["promoted_at"]; entry["next_review_at"] = rec["next_review_at"]
     except Exception:
         pass
-    try: d = json.load(open(DUR))
-    except Exception: d = []
-    d.append(rec)
-    _sg_write(DUR, d[-500:], "wal-decay") or json.dump(d[-500:], open(DUR, "w"), indent=2)
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from store_guard import locked_update
+    locked_update(DUR, lambda rows: (rows + [rec])[-500:], reader="wal-decay")
     print(f"  DURABLE: {rec['felt_like'][:70] or '(no felt line)'}")
     return rec
 

@@ -47,9 +47,8 @@ def _load(name, default):
 
 def _save(name, obj):
     p = os.path.join(MEMORY, name)
-    if _sg_write(p, obj, "correction_propagate"): return
-    tmp = p + ".tmp"
-    json.dump(obj, open(tmp, "w"), indent=2); os.replace(tmp, p)
+    from store_guard import write_json
+    write_json(p, obj, reader="correction_propagate")
 
 
 def _mark(rec, correction_id, correction, at):
@@ -59,35 +58,40 @@ def _mark(rec, correction_id, correction, at):
 
 
 def propagate(correction_id, original, correction, at=""):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from store_guard import transaction
     at = at or time.strftime("%Y-%m-%dT%H:%M:%S")
     touched = []
     # durable memories whose event or extracted content came from the claim
-    dm = _load("durable-memory.json", [])
-    n = 0
-    for r in dm if isinstance(dm, list) else []:
-        if isinstance(r, dict) and max(_overlap(original, r.get("event")), _overlap(original, r.get("what_changed"))) >= FLOOR:
-            _mark(r, correction_id, correction, at); n += 1
-            touched.append({"projection": "durable-memory", "key": r.get("occurred_at"), "was": str(r.get("event", ""))[:160]})
-    if n: _save("durable-memory.json", dm)
+    with transaction(os.path.join(MEMORY, 'durable-memory.json')):
+        dm = _load("durable-memory.json", [])
+        n = 0
+        for r in dm if isinstance(dm, list) else []:
+            if isinstance(r, dict) and max(_overlap(original, r.get("event")), _overlap(original, r.get("what_changed"))) >= FLOOR:
+                _mark(r, correction_id, correction, at); n += 1
+                touched.append({"projection": "durable-memory", "key": r.get("occurred_at"), "was": str(r.get("event", ""))[:160]})
+        if n: _save("durable-memory.json", dm)
     # sediment beliefs whose pattern restates the claim
-    bs = _load("belief-sediment.json", {"beliefs": []})
-    n = 0
-    for b in (bs.get("beliefs", []) if isinstance(bs, dict) else []):
-        if isinstance(b, dict) and _overlap(original, b.get("pattern")) >= FLOOR:
-            _mark(b, correction_id, correction, at); b["confidence"] = min(float(b.get("confidence", 0) or 0), 0.05); n += 1
-            touched.append({"projection": "belief-sediment", "key": b.get("pattern", "")[:80], "was": str(b.get("pattern", ""))[:160]})
-    if n: _save("belief-sediment.json", bs)
+    with transaction(os.path.join(MEMORY, 'belief-sediment.json')):
+        bs = _load("belief-sediment.json", {"beliefs": []})
+        n = 0
+        for b in (bs.get("beliefs", []) if isinstance(bs, dict) else []):
+            if isinstance(b, dict) and _overlap(original, b.get("pattern")) >= FLOOR:
+                _mark(b, correction_id, correction, at); b["confidence"] = min(float(b.get("confidence", 0) or 0), 0.05); n += 1
+                touched.append({"projection": "belief-sediment", "key": b.get("pattern", "")[:80], "was": str(b.get("pattern", ""))[:160]})
+        if n: _save("belief-sediment.json", bs)
     # causal self-model entries resting on the claim (their quote or tendency)
-    cm = _load("causal-self-model.json", {"entries": []})
-    n = 0
-    for e in (cm.get("entries", []) if isinstance(cm, dict) else []):
-        if not isinstance(e, dict):
-            continue
-        quotes = " ".join(str(x.get("quote", "")) for x in e.get("evidence", []) if isinstance(x, dict))
-        if max(_overlap(original, e.get("tendency")), _overlap(original, e.get("trigger")), _overlap(original, quotes)) >= FLOOR:
-            _mark(e, correction_id, correction, at); e["imprint"] = False; n += 1
-            touched.append({"projection": "causal-self-model", "key": e.get("tendency", "")[:80], "was": str(e.get("tendency", ""))[:160]})
-    if n: _save("causal-self-model.json", cm)
+    with transaction(os.path.join(MEMORY, 'causal-self-model.json')):
+        cm = _load("causal-self-model.json", {"entries": []})
+        n = 0
+        for e in (cm.get("entries", []) if isinstance(cm, dict) else []):
+            if not isinstance(e, dict):
+                continue
+            quotes = " ".join(str(x.get("quote", "")) for x in e.get("evidence", []) if isinstance(x, dict))
+            if max(_overlap(original, e.get("tendency")), _overlap(original, e.get("trigger")), _overlap(original, quotes)) >= FLOOR:
+                _mark(e, correction_id, correction, at); e["imprint"] = False; n += 1
+                touched.append({"projection": "causal-self-model", "key": e.get("tendency", "")[:80], "was": str(e.get("tendency", ""))[:160]})
+        if n: _save("causal-self-model.json", cm)
     # pearls (graduated durable claims as files): a pearl restating the claim gets a correction footer, never a rewrite
     pdir = os.path.join(MEMORY, "pearls")
     try:

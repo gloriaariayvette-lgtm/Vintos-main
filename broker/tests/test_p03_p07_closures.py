@@ -74,6 +74,18 @@ DMM._save([{"event": "the fig", "later_recalled": 0}]) if hasattr(DMM, "_save") 
 r1 = DMM.recall("the fig at the table again tonight"); r2 = DMM.recall("the fig at the table again tonight")
 check("two recalls within the hour count as one recurrence", r1 and r2 and DMM._load()[0]["later_recalled"] == 1)
 
+assert os.path.commonpath([DMM.STORE, HOME]) == HOME
+from store_guard import locked_update
+changed = []
+def concurrent_embed(text):
+    if not changed:
+        changed.append(True)
+        locked_update(DMM.STORE, lambda rows: [dict(rows[0], standing="invalidated"), {"event":"new memory", "occurred_at":"later"}])
+    return [1.0, 0.0]
+DMM._embed = concurrent_embed
+held = DMM.recall("the fig at the table again tonight")
+check("inference cannot overwrite a concurrent correction or append", held is None and DMM._load()[0]["standing"] == "invalidated" and len(DMM._load()) == 2)
+
 print("\n--- 99: a KEPT note is bound to the bytes ---")
 bk = src("broker/broker.py")
 check("keep() records kept_note_bound_to (artifact + sha256) and the event carries it", 'p["kept_note_bound_to"] = {"artifact": _lastf' in bk and '"note_bound_to": p.get("kept_note_bound_to")' in bk)

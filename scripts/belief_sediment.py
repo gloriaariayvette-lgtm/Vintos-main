@@ -43,7 +43,8 @@ def load_sediment():
         return {"beliefs": []}
 
 def save_sediment(data):
-    (_sg_write(SEDIMENT_FILE, data, "belief_sediment.py") or json.dump(data, open(SEDIMENT_FILE, "w"), indent=2))
+    from store_guard import write_json
+    write_json(SEDIMENT_FILE, data, reader='bin/belief-sediment.py')
 
 def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hypothesis_id=None, evidence_ids=None):
     """Promote a graduated hypothesis into belief sediment.
@@ -165,6 +166,14 @@ def _text_overlap(a, b):
     if not wa or not wb:
         return 0.0
     return len(wa & wb) / max(len(wa), len(wb))
+
+import sys as _store_sys
+from pathlib import Path as _StorePath
+_store_sys.path.insert(0, str(_StorePath(__file__).resolve().parent.parent / "scripts"))
+from store_guard import serialized as _serialized, write_json as _write_json
+promote_hypothesis = _serialized('SEDIMENT_FILE')(promote_hypothesis)
+contradict = _serialized('SEDIMENT_FILE')(contradict)
+decay_beliefs = _serialized('SEDIMENT_FILE')(decay_beliefs)
 
 if __name__ == "__main__":
     import sys

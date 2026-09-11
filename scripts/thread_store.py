@@ -17,6 +17,7 @@ thread-triage) and {"threads": [...]} (latent_threads). Both are read; one shape
 No LLM. No network. Import-safe. Paths are module attributes so tests can redirect them.
 """
 import os, json, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from datetime import datetime
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -85,26 +86,28 @@ def load_pool(path=None):
 
 def save_pool(threads, path=None, reason=""):
     """Write the pool through the shrink guard. Returns True when written."""
-    path = path or POOL_FILE
-    if not isinstance(threads, list):
-        _say("REFUSING write%s: not a list" % ((" (" + reason + ")") if reason else ""))
-        return False
-    n_after = len(threads)
-    on_disk = load_pool(path)
-    if on_disk is None:
-        # Unreadable ledger: a small rewrite would replace a pool we cannot see.
-        if n_after <= SHRINK_MIN_POOL:
-            _say("REFUSING write%s: ledger unreadable and write is only %d thread(s)"
-                 % ((" (" + reason + ")") if reason else "", n_after))
+    from store_guard import transactions
+    with transactions([path or POOL_FILE]):
+        path = path or POOL_FILE
+        if not isinstance(threads, list):
+            _say("REFUSING write%s: not a list" % ((" (" + reason + ")") if reason else ""))
             return False
-    else:
-        n_before = len(on_disk)
-        if n_before > SHRINK_MIN_POOL and n_after < n_before * SHRINK_RATIO:
-            _say("REFUSING write%s: would shrink pool %d -> %d (shrink guard)"
-                 % ((" (" + reason + ")") if reason else "", n_before, n_after))
-            return False
-    if not _locked_write(path, threads): _atomic_write(path, threads)
-    return True
+        n_after = len(threads)
+        on_disk = load_pool(path)
+        if on_disk is None:
+            # Unreadable ledger: a small rewrite would replace a pool we cannot see.
+            if n_after <= SHRINK_MIN_POOL:
+                _say("REFUSING write%s: ledger unreadable and write is only %d thread(s)"
+                     % ((" (" + reason + ")") if reason else "", n_after))
+                return False
+        else:
+            n_before = len(on_disk)
+            if n_before > SHRINK_MIN_POOL and n_after < n_before * SHRINK_RATIO:
+                _say("REFUSING write%s: would shrink pool %d -> %d (shrink guard)"
+                     % ((" (" + reason + ")") if reason else "", n_before, n_after))
+                return False
+        if not _locked_write(path, threads): return False
+        return True
 
 
 # ── archive ───────────────────────────────────────────────────────────
@@ -166,33 +169,37 @@ def admit(thread_text, source, kind=None, by="", extra=None):
 def archive(ids, reason, by, pool_path=None, retired_path=None):
     """Retire threads by id: consumed + retired in the pool, one entry each in the retired ledger, the
     pool rewritten through the shrink guard. Returns the ids actually archived."""
-    ids = set(ids if isinstance(ids, (list, tuple, set)) else [ids])
-    threads = load_pool(pool_path)
-    if threads is None:
-        return []
-    done = []
-    for t in threads:
-        if t.get("id") in ids and not t.get("retired"):
-            t["consumed"] = True; t["retired"] = True; t["consumed_by"] = by; t["retired_reason"] = reason
-            t["retired_at"] = datetime.now().isoformat(); done.append(t["id"])
-    if done:
-        append_retired([{"id": t["id"], "thread": t.get("thread", ""), "source": t.get("source", ""), "kind": t.get("kind"),
-                         "consumed_by": by, "type": reason} for t in threads if t.get("id") in done], retired_path)
-        save_pool(threads, pool_path, reason="archive:%s" % reason)
-    return done
+    from store_guard import transactions
+    with transactions([pool_path or POOL_FILE, retired_path or RETIRED_FILE]):
+        ids = set(ids if isinstance(ids, (list, tuple, set)) else [ids])
+        threads = load_pool(pool_path)
+        if threads is None:
+            return []
+        done = []
+        for t in threads:
+            if t.get("id") in ids and not t.get("retired"):
+                t["consumed"] = True; t["retired"] = True; t["consumed_by"] = by; t["retired_reason"] = reason
+                t["retired_at"] = datetime.now().isoformat(); done.append(t["id"])
+        if done:
+            append_retired([{"id": t["id"], "thread": t.get("thread", ""), "source": t.get("source", ""), "kind": t.get("kind"),
+                             "consumed_by": by, "type": reason} for t in threads if t.get("id") in done], retired_path)
+            save_pool(threads, pool_path, reason="archive:%s" % reason)
+        return done
 
 
 def append_retired(entries, path=None):
     """Append one or more entries and write the canonical (list) shape. Returns the full list."""
-    path = path or RETIRED_FILE
-    if isinstance(entries, dict):
-        entries = [entries]
-    existing = load_retired(path)
-    stamp = datetime.now().isoformat()
-    for e in entries:
-        n = normalize_retired_entry(e)
-        if not n.get("retired_at"):
-            n["retired_at"] = stamp
-        existing.append(n)
-    if not _locked_write(path, existing): _atomic_write(path, existing)
-    return existing
+    from store_guard import transactions
+    with transactions([path or RETIRED_FILE]):
+        path = path or RETIRED_FILE
+        if isinstance(entries, dict):
+            entries = [entries]
+        existing = load_retired(path)
+        stamp = datetime.now().isoformat()
+        for e in entries:
+            n = normalize_retired_entry(e)
+            if not n.get("retired_at"):
+                n["retired_at"] = stamp
+            existing.append(n)
+        if not _locked_write(path, existing): raise OSError("thread archive write refused")
+        return existing

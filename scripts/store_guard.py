@@ -125,3 +125,13 @@ def serialized(path_name):
                 return fn(*args, **kwargs)
         return call
     return wrap
+
+
+@contextmanager
+def transactions(paths):
+    """Acquire a declared set in stable order; never hold across an await."""
+    from contextlib import ExitStack
+    with ExitStack() as stack:
+        for path in sorted({os.path.abspath(p) for p in paths}):
+            stack.enter_context(transaction(path))
+        yield

@@ -10,7 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.pat
 HOME = tempfile.mkdtemp(prefix="vintos-jc-"); os.environ["HOME"] = HOME
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory"); os.makedirs(os.path.join(WS, "scripts"), exist_ok=True); os.makedirs(MEM, exist_ok=True)
 import shutil
-for f in ("correction_propagate.py", "recall_explain.py"):
+assert os.path.commonpath([MEM, HOME]) == HOME
+for f in ("correction_propagate.py", "recall_explain.py", "store_guard.py"):
     shutil.copy(os.path.join(REPO, "scripts", f), os.path.join(WS, "scripts", f))
 R = []
 def check(name, ok, detail=""):

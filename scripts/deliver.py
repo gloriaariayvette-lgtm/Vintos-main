@@ -71,14 +71,8 @@ def deliver(artifact_id, channel, message, title="Vintos", click=None, attach=No
         raise ValueError("artifact_id required")
     if channel not in CHANNELS:
         return _record(artifact_id, channel, "failed", 0, "unknown channel %r" % (channel,))
-    # authority: the caller's check, called here, never assumed
-    if authority is None:
-        return _record(artifact_id, channel, "failed", 0, "no authority given")
-    try:
-        res = authority()
-    except Exception as e:
-        return _record(artifact_id, channel, "failed", 0, "authority raised: %s" % e)
-    ok, why = (res if isinstance(res, tuple) else (bool(res), ""))
+    from effect_authority import dispatch
+    ok, mode, why = dispatch("outward", authority=authority)
     if not ok:
         return _record(artifact_id, channel, "failed", 0, "refused: %s" % (why or "authority said no"))
     # idempotency: an artifact already sent on this channel is not sent again

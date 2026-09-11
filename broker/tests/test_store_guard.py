@@ -67,4 +67,40 @@ check("locked_update is read-modify-write under the lock", json.load(open(_p2)) 
 check("a mutate that returns None writes nothing", _SG2.locked_update(_p2, lambda cur: None) == {"n": 2} and json.load(open(_p2)) == {"n": 2})
 _SG2.write_json(_p2, {"n": 9}, reader="test")
 check("write_json locks and replaces", json.load(open(_p2)) == {"n": 9})
+
+print("\n--- recovered domain writers share the complete transaction ---")
+import ast, asyncio, concurrent.futures
+assert os.path.commonpath([MEM, HOME]) == HOME
+source = src("bin/server_domains/humor_wants.py")
+tree = ast.parse(source)
+selected = []
+for node in tree.body:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in ("_atomic_json", "add_want_step"):
+        node.decorator_list = []; selected.append(node)
+    if isinstance(node, ast.AsyncFunctionDef):
+        for block in ast.walk(node):
+            if isinstance(block, ast.With) and any("transactions" in ast.unparse(i.context_expr) for i in block.items):
+                assert not any(isinstance(x, ast.Await) for x in ast.walk(block)), node.name
+namespace = dict(os=os, json=json, MEMORY=MEM, APP_SECRET="fixture", Request=object,
+                 transactions=SG.transactions, write_json=SG.write_json, _want_event=lambda *a: None)
+exec(compile(ast.Module(body=selected, type_ignores=[]), "domain-fixture", "exec"), namespace)
+wants_path = os.path.join(MEM, "current-wants.json")
+SG.write_json(wants_path, [{"id":"w", "steps":[]}])
+class RequestFixture:
+    headers = {"X-Vintos-Secret":"fixture"}
+    async def json(self):
+        # Reading a slow body must never hold a store lock.
+        assert not getattr(SG._state, "held", set())
+        await asyncio.sleep(.001)
+        return {"capability":"read_memory"}
+def append_step(_):
+    return asyncio.run(namespace["add_want_step"]("w", RequestFixture()))
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    results = list(pool.map(append_step, range(40)))
+check("concurrent API mutations retain all forty steps", all(x.get("success") for x in results) and len(json.load(open(wants_path))[0]["steps"]) == 40)
+from unittest.mock import patch
+with patch.object(SG, "transaction", side_effect=OSError("lock unavailable")):
+    refused = append_step(None)
+check("lock failure refuses mutation without fallback truncation", not refused["success"] and len(json.load(open(wants_path))[0]["steps"]) == 40)
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

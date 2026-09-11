@@ -609,6 +609,7 @@ def extract_and_start(reply: str, channel: str) -> str:
 
 
 def register(app: Any, secret: str) -> None:
+    global Request  # postponed annotations resolve against module globals
     from fastapi import HTTPException, Request
 
     def auth(request: Any) -> None:

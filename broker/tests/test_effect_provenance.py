@@ -18,7 +18,18 @@ for name in ("requests", "numpy", "serial"):
 
 print("\n--- 74: an unreachable gate is not permission ---")
 rc = src("scripts/robot_core.py")
-check("a deliberative move is refused when the gate is unavailable; a reduction still passes", 'return False, "deny", f"gate unavailable' in rc and "a reduction needs no permit" in rc)
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+assert os.path.commonpath([MEM, HOME]) == HOME
+EA = load("effect_authority", os.path.join(REPO, "scripts", "effect_authority.py"))
+sys.modules["effect_gate"] = types.ModuleType("effect_gate")
+check("a deliberative move is refused when the gate is unavailable; a reduction still passes", not EA.dispatch("robot", kind="move")[0] and EA.dispatch("robot", kind="stop")[0])
+check("simulation never becomes outward dispatch", EA.dispatch("outward", authority=lambda: (True, "would_send", "test"))[0] is False)
+check("outward requires its caller's authority", not EA.dispatch("outward")[0] and EA.dispatch("outward", authority=lambda: (True, "approved"))[0])
+check("a missing toy gate never grants a positive command", not EA.dispatch("toys", target="mission", level=8)[0] and EA.dispatch("toys", target="mission", level=0)[0])
+seen = []
+sys.modules["effect_gate"].hardware_stopped = lambda: False
+sys.modules["effect_gate"].dispatch_check = lambda permit, target, level, kind, digest: (seen.append((permit,target,level,kind,digest)) or (False,"wrong digest"))
+check("central door preserves the exact bound permit and digest", not EA.dispatch("toys", target="mission", level=4, permit="permit", digest="digest")[0] and seen == [("permit","mission",4,None,"digest")])
 
 print("\n--- 77 / 93: one physical contract ---")
 PC = load("physical_contract", os.path.join(REPO, "scripts", "physical_contract.py"))

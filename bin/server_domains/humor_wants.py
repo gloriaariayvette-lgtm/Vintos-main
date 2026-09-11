@@ -11,11 +11,15 @@ LLM_AUTH_HEADERS = {"Authorization": f"Bearer {LLM_API_KEY}"} if LLM_API_KEY els
 APP_SECRET = os.environ.get("VINTOS_SECRET", "vintos-aegis-2026")
 router = APIRouter()
 
+# Shared with cron writers; scope includes the read and mutation, not just replace.
+import sys
+sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "scripts")))
+from store_guard import transactions, write_json
+
 def _atomic_json(path, obj):
-    """Write-then-replace so two API writers never half-write current-wants.json (astra-server-c-p6)."""
-    _tmp = path + ".tmp.%d" % os.getpid()
-    with open(_tmp, "w") as f: json.dump(obj, f, indent=2)
-    os.replace(_tmp, path)
+    write_json(path, obj, reader="server_domains.humor_wants")
+
 
 def _want_event(kind, want_id, detail=None):
     """Every lifecycle transition made through the API is a distinct, dated event
@@ -139,54 +143,55 @@ async def rate_mischief(filename: str, request: Request):
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Invalid filename")
         f_path = os.path.join(MEMORY, "mischief", filename)
-        if not os.path.exists(f_path):
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="File not found")
-        with open(f_path) as f:
-            content_txt = f.read()
-        # Append ratings
-        if gloria_rating is not None:
-            content_txt = re.sub(r"gloria_rating: \d", f"gloria_rating: {gloria_rating}", content_txt)
-            if "gloria_rating:" not in content_txt:
-                content_txt += "\ngloria_rating: " + str(gloria_rating)
-        if gloria_comment is not None:
-            content_txt = re.sub(r"gloria_comment: .+", f"gloria_comment: {gloria_comment}", content_txt)
-            if "gloria_comment:" not in content_txt:
-                content_txt += "\ngloria_comment: " + gloria_comment
-        if vintos_rating is not None:
-            content_txt = re.sub(r"vintos_rating: \d", f"vintos_rating: {vintos_rating}", content_txt)
-            if "vintos_rating:" not in content_txt:
-                content_txt += "\nvintos_rating: " + str(vintos_rating)
-        with open(f_path, "w") as f:
-            f.write(content_txt)
-        # If Gloria gave a high rating, mark as landed in humor profile
-        if gloria_rating and gloria_rating >= 4:
-            try:
-                hp_path = os.path.join(MEMORY, "humor-profile.json")
-                hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
-                # Find the act value to add to landed
-                import glob as _hg
-                txt2 = open(f_path).read()
-                vm = re.search(r'"value":\s*"([^"]+)"', txt2)
-                if vm:
-                    act_desc = f"mischief: {vm.group(1)[:100]}"
-                    hp.setdefault("mischief_landed", []).append(act_desc)
-                    hp["mischief_landed"] = hp["mischief_landed"][-20:]
-                    json.dump(hp, open(hp_path, "w"), indent=2)
-            except: pass
-        if gloria_rating and gloria_rating <= 2:
-            try:
-                hp_path = os.path.join(MEMORY, "humor-profile.json")
-                hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
-                txt2 = open(f_path).read()
-                vm = re.search(r'"value":\s*"([^"]+)"', txt2)
-                if vm:
-                    act_desc = f"mischief: {vm.group(1)[:100]}"
-                    hp.setdefault("mischief_flopped", []).append(act_desc)
-                    hp["mischief_flopped"] = hp["mischief_flopped"][-10:]
-                    json.dump(hp, open(hp_path, "w"), indent=2)
-            except: pass
-        return {"success": True}
+        with transactions([f_path, os.path.join(MEMORY, "humor-profile.json")]):
+            if not os.path.exists(f_path):
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="File not found")
+            with open(f_path) as f:
+                content_txt = f.read()
+            # Append ratings
+            if gloria_rating is not None:
+                content_txt = re.sub(r"gloria_rating: \d", f"gloria_rating: {gloria_rating}", content_txt)
+                if "gloria_rating:" not in content_txt:
+                    content_txt += "\ngloria_rating: " + str(gloria_rating)
+            if gloria_comment is not None:
+                content_txt = re.sub(r"gloria_comment: .+", f"gloria_comment: {gloria_comment}", content_txt)
+                if "gloria_comment:" not in content_txt:
+                    content_txt += "\ngloria_comment: " + gloria_comment
+            if vintos_rating is not None:
+                content_txt = re.sub(r"vintos_rating: \d", f"vintos_rating: {vintos_rating}", content_txt)
+                if "vintos_rating:" not in content_txt:
+                    content_txt += "\nvintos_rating: " + str(vintos_rating)
+            with open(f_path, "w") as f:
+                f.write(content_txt)
+            # If Gloria gave a high rating, mark as landed in humor profile
+            if gloria_rating and gloria_rating >= 4:
+                try:
+                    hp_path = os.path.join(MEMORY, "humor-profile.json")
+                    hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
+                    # Find the act value to add to landed
+                    import glob as _hg
+                    txt2 = open(f_path).read()
+                    vm = re.search(r'"value":\s*"([^"]+)"', txt2)
+                    if vm:
+                        act_desc = f"mischief: {vm.group(1)[:100]}"
+                        hp.setdefault("mischief_landed", []).append(act_desc)
+                        hp["mischief_landed"] = hp["mischief_landed"][-20:]
+                        _atomic_json(hp_path, hp)
+                except: pass
+            if gloria_rating and gloria_rating <= 2:
+                try:
+                    hp_path = os.path.join(MEMORY, "humor-profile.json")
+                    hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
+                    txt2 = open(f_path).read()
+                    vm = re.search(r'"value":\s*"([^"]+)"', txt2)
+                    if vm:
+                        act_desc = f"mischief: {vm.group(1)[:100]}"
+                        hp.setdefault("mischief_flopped", []).append(act_desc)
+                        hp["mischief_flopped"] = hp["mischief_flopped"][-10:]
+                        _atomic_json(hp_path, hp)
+                except: pass
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -198,42 +203,42 @@ async def rate_humor(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        joke = body.get("joke", "")
-        gloria_rating = body.get("gloria_rating")
-        vintos_rating = body.get("vintos_rating")
-        if not joke:
-            return {"success": False, "error": "joke required"}
-        # Mark draft as reviewed in humor-drafts.json
-        drafts_path = os.path.join(MEMORY, "humor-drafts.json")
-        if os.path.exists(drafts_path):
-            with open(drafts_path) as f:
-                drafts_data = json.load(f)
-            for d in drafts_data.get("drafts", []):
-                if d.get("joke", "")[:100] == joke[:100]:
-                    d["reviewed"] = True
-                    d["gloria_rating"] = gloria_rating
-                    break
-            with open(drafts_path, "w") as f:
-                json.dump(drafts_data, f, indent=2)
-        hp_path = os.path.join(MEMORY, "humor-profile.json")
-        hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
-        # Store rating
-        hp.setdefault("gloria_ratings", []).append({
-            "joke": joke[:150],
-            "gloria_rating": gloria_rating,
-            "vintos_rating": vintos_rating,
-            "timestamp": __import__("datetime").datetime.now().isoformat()
-        })
-        hp["gloria_ratings"] = hp["gloria_ratings"][-50:]
-        # Update landed/flopped based on Gloria's rating
-        if gloria_rating >= 4:
-            hp.setdefault("landed", []).append(joke[:150])
-            hp["landed"] = hp["landed"][-20:]
-        elif gloria_rating <= 2:
-            hp.setdefault("flopped", []).append(joke[:150])
-            hp["flopped"] = hp["flopped"][-10:]
-        json.dump(hp, open(hp_path, "w"), indent=2)
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'humor-drafts.json'), os.path.join(MEMORY, 'humor-profile.json')]):
+            joke = body.get("joke", "")
+            gloria_rating = body.get("gloria_rating")
+            vintos_rating = body.get("vintos_rating")
+            if not joke:
+                return {"success": False, "error": "joke required"}
+            # Mark draft as reviewed in humor-drafts.json
+            drafts_path = os.path.join(MEMORY, "humor-drafts.json")
+            if os.path.exists(drafts_path):
+                with open(drafts_path) as f:
+                    drafts_data = json.load(f)
+                for d in drafts_data.get("drafts", []):
+                    if d.get("joke", "")[:100] == joke[:100]:
+                        d["reviewed"] = True
+                        d["gloria_rating"] = gloria_rating
+                        break
+                _atomic_json(drafts_path, drafts_data)
+            hp_path = os.path.join(MEMORY, "humor-profile.json")
+            hp = json.load(open(hp_path)) if os.path.exists(hp_path) else {}
+            # Store rating
+            hp.setdefault("gloria_ratings", []).append({
+                "joke": joke[:150],
+                "gloria_rating": gloria_rating,
+                "vintos_rating": vintos_rating,
+                "timestamp": __import__("datetime").datetime.now().isoformat()
+            })
+            hp["gloria_ratings"] = hp["gloria_ratings"][-50:]
+            # Update landed/flopped based on Gloria's rating
+            if gloria_rating >= 4:
+                hp.setdefault("landed", []).append(joke[:150])
+                hp["landed"] = hp["landed"][-20:]
+            elif gloria_rating <= 2:
+                hp.setdefault("flopped", []).append(joke[:150])
+                hp["flopped"] = hp["flopped"][-10:]
+            _atomic_json(hp_path, hp)
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -322,45 +327,45 @@ async def avatar_presence(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        event = body.get("event", "open")  # open, close, touch_hand, duration
-        duration = body.get("duration_seconds", 0)
-        from datetime import datetime
-        import json as _pj
-        log_path = os.path.join(MEMORY, "avatar-presence-log.json")
-        log_data = []
-        if os.path.exists(log_path):
-            with open(log_path) as f:
-                log_data = _pj.load(f)
-        log_data.append({
-            "event": event,
-            "duration_seconds": duration,
-            "timestamp": datetime.now().isoformat()
-        })
-        log_data = log_data[-100:]
-        with open(log_path, "w") as f:
-            _pj.dump(log_data, f, indent=2)
-        # Nudge EmoClaw based on event
-        nudges = {}
-        if event == "touch_hand":
-            nudges = {"Warmth": 0.08, "Connection": 0.06, "Valence": 0.05}
-        elif event == "open":
-            nudges = {"Connection": 0.03, "Warmth": 0.02}
-        elif event == "close" and duration > 30:
-            nudges = {"Groundedness": 0.03, "Safety": 0.02}
-        if nudges:
-            try:
-                import sys as _ps
-                _scripts = os.path.join(WORKSPACE, "scripts")
-                if _scripts not in _ps.path: _ps.path.insert(0, _scripts)
-                from emoclaw_utils import nudge_emotions
-                nudge_emotions(nudges, source="avatar-presence")
-                print(f"[avatar-presence] {event}: nudged {nudges}", flush=True)
-            except Exception as _pe:
-                # until 2026-09-05 `sys` and `SCRIPTS` did not exist here, so this raised on every event and
-                # the bare except hid it: her presence moved nothing (grok-server-c-p1)
-                print(f"[avatar-presence] nudge FAILED ({event}): {_pe}", flush=True)
-        _want_event("presence", None, {"event": event, "duration_seconds": duration})
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'avatar-presence-log.json')]):
+            event = body.get("event", "open")  # open, close, touch_hand, duration
+            duration = body.get("duration_seconds", 0)
+            from datetime import datetime
+            import json as _pj
+            log_path = os.path.join(MEMORY, "avatar-presence-log.json")
+            log_data = []
+            if os.path.exists(log_path):
+                with open(log_path) as f:
+                    log_data = _pj.load(f)
+            log_data.append({
+                "event": event,
+                "duration_seconds": duration,
+                "timestamp": datetime.now().isoformat()
+            })
+            log_data = log_data[-100:]
+            _atomic_json(log_path, log_data)
+            # Nudge EmoClaw based on event
+            nudges = {}
+            if event == "touch_hand":
+                nudges = {"Warmth": 0.08, "Connection": 0.06, "Valence": 0.05}
+            elif event == "open":
+                nudges = {"Connection": 0.03, "Warmth": 0.02}
+            elif event == "close" and duration > 30:
+                nudges = {"Groundedness": 0.03, "Safety": 0.02}
+            if nudges:
+                try:
+                    import sys as _ps
+                    _scripts = os.path.join(WORKSPACE, "scripts")
+                    if _scripts not in _ps.path: _ps.path.insert(0, _scripts)
+                    from emoclaw_utils import nudge_emotions
+                    nudge_emotions(nudges, source="avatar-presence")
+                    print(f"[avatar-presence] {event}: nudged {nudges}", flush=True)
+                except Exception as _pe:
+                    # until 2026-09-05 `sys` and `SCRIPTS` did not exist here, so this raised on every event and
+                    # the bare except hid it: her presence moved nothing (grok-server-c-p1)
+                    print(f"[avatar-presence] nudge FAILED ({event}): {_pe}", flush=True)
+            _want_event("presence", None, {"event": event, "duration_seconds": duration})
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -390,50 +395,51 @@ async def patch_want(want_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                if "capability" in body:
-                    w["capability"] = body["capability"]
-                if "multistep" in body:
-                    w["multistep"] = body["multistep"]
-                if "steps" in body and not w.get("steps"):
-                    w["steps"] = body["steps"]
-                if "step_history" in body and not w.get("step_history"):
-                    w["step_history"] = body["step_history"]
-                if "current_step_index" in body and not w.get("current_step_index"):
-                    w["current_step_index"] = body["current_step_index"]
-                if "manually_routed" in body:
-                    w["manually_routed"] = body["manually_routed"]
-                if "gloria_routed" in body:
-                    w["gloria_routed"] = body["gloria_routed"]
-                if "intensity" in body:
-                    w["intensity"] = body["intensity"]
-                if "dismissed" in body:
-                    w["dismissed"] = body["dismissed"]
-                    if "dismissed_at" in body:
-                        w["dismissed_at"] = body["dismissed_at"]
-                if "unfulfilled" in body:
-                    w["unfulfilled"] = body["unfulfilled"]
-                    w["unfulfilled_at"] = __import__("datetime").datetime.now().isoformat()
-                    if body["unfulfilled"] and body.get("reasoning"):
-                        w["unfulfilled_reasoning"] = body["reasoning"]
-                    if body["unfulfilled"]:
-                        # Archive to unfulfilled-wants.json
-                        _uf_path = os.path.join(MEMORY, "unfulfilled-wants.json")
-                        try:
-                            _uf = json.load(open(_uf_path))
-                        except:
-                            _uf = []
-                        _uf.append({**w, "unfulfilled_reasoning": body.get("reasoning", "")})
-                        json.dump(_uf, open(_uf_path, "w"), indent=2)
-                break
-        _atomic_json(wants_path, wants)
-        for _k, _ev in (("dismissed", "dismissed"), ("unfulfilled", "unfulfilled"), ("capability", "routed"), ("multistep", "routed")):
-            if _k in body: _want_event(_ev, want_id, {_k: body[_k]})
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'current-wants.json'), os.path.join(MEMORY, 'unfulfilled-wants.json')]):
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            for w in wants:
+                if w.get("id") == want_id:
+                    if "capability" in body:
+                        w["capability"] = body["capability"]
+                    if "multistep" in body:
+                        w["multistep"] = body["multistep"]
+                    if "steps" in body and not w.get("steps"):
+                        w["steps"] = body["steps"]
+                    if "step_history" in body and not w.get("step_history"):
+                        w["step_history"] = body["step_history"]
+                    if "current_step_index" in body and not w.get("current_step_index"):
+                        w["current_step_index"] = body["current_step_index"]
+                    if "manually_routed" in body:
+                        w["manually_routed"] = body["manually_routed"]
+                    if "gloria_routed" in body:
+                        w["gloria_routed"] = body["gloria_routed"]
+                    if "intensity" in body:
+                        w["intensity"] = body["intensity"]
+                    if "dismissed" in body:
+                        w["dismissed"] = body["dismissed"]
+                        if "dismissed_at" in body:
+                            w["dismissed_at"] = body["dismissed_at"]
+                    if "unfulfilled" in body:
+                        w["unfulfilled"] = body["unfulfilled"]
+                        w["unfulfilled_at"] = __import__("datetime").datetime.now().isoformat()
+                        if body["unfulfilled"] and body.get("reasoning"):
+                            w["unfulfilled_reasoning"] = body["reasoning"]
+                        if body["unfulfilled"]:
+                            # Archive to unfulfilled-wants.json
+                            _uf_path = os.path.join(MEMORY, "unfulfilled-wants.json")
+                            try:
+                                _uf = json.load(open(_uf_path))
+                            except:
+                                _uf = []
+                            _uf.append({**w, "unfulfilled_reasoning": body.get("reasoning", "")})
+                            _atomic_json(_uf_path, _uf)
+                    break
+            _atomic_json(wants_path, wants)
+            for _k, _ev in (("dismissed", "dismissed"), ("unfulfilled", "unfulfilled"), ("capability", "routed"), ("multistep", "routed")):
+                if _k in body: _want_event(_ev, want_id, {_k: body[_k]})
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -461,37 +467,37 @@ async def post_want_discussion(want_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        disc_path = os.path.join(MEMORY, "want-discussions.json")
-        discussions = {}
-        if os.path.exists(disc_path):
-            with open(disc_path) as f:
-                discussions = json.load(f)
-        if want_id not in discussions:
-            discussions[want_id] = []
-        discussions[want_id].append({
-            "role": body.get("role", "gloria"),
-            "text": body.get("text", ""),
-            "timestamp": __import__("datetime").datetime.now().isoformat()
-        })
-        with open(disc_path, "w") as f:
-            json.dump(discussions, f, indent=2)
-        # Also write to wants-ambitions-log
-        try:
-            _want_text = ""
-            _wp = os.path.join(MEMORY, "current-wants.json")
-            with open(_wp) as _wf:
-                _wants = json.load(_wf)
-            _target = next((w for w in _wants if w.get("id") == want_id), None)
-            if _target:
-                _want_text = _target.get("want", "")[:100]
-            _wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
-            _role = body.get("role", "gloria")
-            _text = body.get("text", "")[:200]
-            _ts = __import__("datetime").datetime.now().strftime("%Y-%m-%dT%H:%M")
-            with open(_wal_path, "a") as _walf:
-                _walf.write(f"\n**[Discussion {_ts}] {_role}: {_text}**\n  (re: {_want_text})\n")
-        except: pass
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'want-discussions.json')]):
+            disc_path = os.path.join(MEMORY, "want-discussions.json")
+            discussions = {}
+            if os.path.exists(disc_path):
+                with open(disc_path) as f:
+                    discussions = json.load(f)
+            if want_id not in discussions:
+                discussions[want_id] = []
+            discussions[want_id].append({
+                "role": body.get("role", "gloria"),
+                "text": body.get("text", ""),
+                "timestamp": __import__("datetime").datetime.now().isoformat()
+            })
+            _atomic_json(disc_path, discussions)
+            # Also write to wants-ambitions-log
+            try:
+                _want_text = ""
+                _wp = os.path.join(MEMORY, "current-wants.json")
+                with open(_wp) as _wf:
+                    _wants = json.load(_wf)
+                _target = next((w for w in _wants if w.get("id") == want_id), None)
+                if _target:
+                    _want_text = _target.get("want", "")[:100]
+                _wal_path = os.path.join(MEMORY, "wants-ambitions-log.md")
+                _role = body.get("role", "gloria")
+                _text = body.get("text", "")[:200]
+                _ts = __import__("datetime").datetime.now().strftime("%Y-%m-%dT%H:%M")
+                with open(_wal_path, "a") as _walf:
+                    _walf.write(f"\n**[Discussion {_ts}] {_role}: {_text}**\n  (re: {_want_text})\n")
+            except: pass
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -503,69 +509,70 @@ async def respond_to_want(want_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        response_text = body.get("response", "").strip()
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        target = next((w for w in wants if w.get("id") == want_id), None)
-        if not target:
-            return {"success": False, "error": "Want not found"}
-        if target.get("fulfilled"):
-            # idempotent: a second response to a fulfilled want is recorded as received, not re-fulfilled
-            _want_event("response_received", want_id, {"response": response_text[:300], "already_fulfilled": True})
-            return {"success": True, "already_fulfilled": True}
-        target["fulfilled"] = True
-        target["gloria_response"] = response_text
-        target["responded_at"] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
-        target["fulfilled_by"] = "gloria_response"
-        target.setdefault("satisfaction", "UNKNOWN")   # her answer completes the ask; whether it satisfied him is his to say
-        _atomic_json(wants_path, wants)
-        _want_event("response_received", want_id, {"response": response_text[:300]})
-        _want_event("fulfilled", want_id, {"by": "gloria_response"})
+        with transactions([os.path.join(MEMORY, 'current-wants.json')]):
+            response_text = body.get("response", "").strip()
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            target = next((w for w in wants if w.get("id") == want_id), None)
+            if not target:
+                return {"success": False, "error": "Want not found"}
+            if target.get("fulfilled"):
+                # idempotent: a second response to a fulfilled want is recorded as received, not re-fulfilled
+                _want_event("response_received", want_id, {"response": response_text[:300], "already_fulfilled": True})
+                return {"success": True, "already_fulfilled": True}
+            target["fulfilled"] = True
+            target["gloria_response"] = response_text
+            target["responded_at"] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
+            target["fulfilled_by"] = "gloria_response"
+            target.setdefault("satisfaction", "UNKNOWN")   # her answer completes the ask; whether it satisfied him is his to say
+            _atomic_json(wants_path, wants)
+            _want_event("response_received", want_id, {"response": response_text[:300]})
+            _want_event("fulfilled", want_id, {"by": "gloria_response"})
 
-        # Deep integration — background thread
-        _want_text_snap = target.get("want", "")
-        _response_snap = response_text
-        def _integrate_gloria_response():
-            try:
-                import sys as _igs, os as _igo, json as _igj
-                _igs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
-                MEMORY_IG = os.path.expanduser("~/.vintos/workspace/memory")
-
-                # 1. Temporal memory signal
+            # Deep integration — background thread
+            _want_text_snap = target.get("want", "")
+            _response_snap = response_text
+            def _integrate_gloria_response():
                 try:
-                    from temporal_memory import record_signal
-                    record_signal("want_resolved", f"Gloria responded to: {_want_text_snap[:100]}", source="want_discussion")
-                except: pass
+                    import sys as _igs, os as _igo, json as _igj
+                    _igs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                    MEMORY_IG = os.path.expanduser("~/.vintos/workspace/memory")
 
-                # 2. Causality hypothesis
-                # Gloria talking about herself → gloria-tagged
-                # Gloria talking about Vintos → self-tagged
-                try:
-                    from causality_engine import add_hypothesis
-                    import requests as _igr
-                    _classify = _igr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                        "model": "grok-4.20-0309-non-reasoning",
-                        "messages": [
-                            {"role": "system", "content": "Answer with one word: GLORIA or VINTOS."},
-                            {"role": "user", "content": f"Gloria wrote this in response to Vintos.\nIs it primarily about Gloria herself (her feelings, behavior, personality) or about Vintos?\nMessage: {_response_snap[:200]}\n\nAnswer: GLORIA or VINTOS"}
-                        ],
-                        "temperature": 0.1, "max_tokens": 5
-                    }, timeout=15)
-                    _subj_raw = _classify.json()["choices"][0]["message"]["content"].strip().upper()
-                    _subject = "gloria" if "GLORIA" in _subj_raw else "self"
-                    _hyp_text = f"Gloria responded to Vintos\'s want (\"{_want_text_snap[:60]}\") with: {_response_snap[:150]}"
-                    _test_text = f"Watch for patterns from this exchange recurring in future interactions with Gloria."
-                    add_hypothesis(_hyp_text, _test_text, source="want_discussion", subject=_subject, confidence="medium")
-                except: pass
+                    # 1. Temporal memory signal
+                    try:
+                        from temporal_memory import record_signal
+                        record_signal("want_resolved", f"Gloria responded to: {_want_text_snap[:100]}", source="want_discussion")
+                    except: pass
 
-            except Exception as _ige:
-                print(f"[Want/integrate] error: {_ige}", flush=True)
+                    # 2. Causality hypothesis
+                    # Gloria talking about herself → gloria-tagged
+                    # Gloria talking about Vintos → self-tagged
+                    try:
+                        from causality_engine import add_hypothesis
+                        import requests as _igr
+                        _classify = _igr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+                            "model": "grok-4.20-0309-non-reasoning",
+                            "messages": [
+                                {"role": "system", "content": "Answer with one word: GLORIA or VINTOS."},
+                                {"role": "user", "content": f"Gloria wrote this in response to Vintos.\nIs it primarily about Gloria herself (her feelings, behavior, personality) or about Vintos?\nMessage: {_response_snap[:200]}\n\nAnswer: GLORIA or VINTOS"}
+                            ],
+                            "temperature": 0.1, "max_tokens": 5
+                        }, timeout=15)
+                        _subj_raw = _classify.json()["choices"][0]["message"]["content"].strip().upper()
+                        _subject = "gloria" if "GLORIA" in _subj_raw else "self"
+                        _hyp_text = f"Gloria responded to Vintos\'s want (\"{_want_text_snap[:60]}\") with: {_response_snap[:150]}"
+                        _test_text = f"Watch for patterns from this exchange recurring in future interactions with Gloria."
+                        add_hypothesis(_hyp_text, _test_text, source="want_discussion", subject=_subject, confidence="medium")
+                    except: pass
 
-        import threading as _ig_thread
-        _ig_thread.Thread(target=_integrate_gloria_response, daemon=True).start()
+                except Exception as _ige:
+                    print(f"[Want/integrate] error: {_ige}", flush=True)
 
-        return {"success": True}
+            import threading as _ig_thread
+            _ig_thread.Thread(target=_integrate_gloria_response, daemon=True).start()
+
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -576,34 +583,35 @@ async def dismiss_want(want_id: str, request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        target = next((w for w in wants if w.get("id") == want_id), None)
-        if not target:
-            return {"success": False, "error": "Want not found"}
-        if target.get("dismissed"):
-            return {"success": True, "already_dismissed": True}
-        target["dismissed"] = True
-        target["dismissed_at"] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
-        _atomic_json(wants_path, wants)
-        _want_event("dismissed", want_id, {})
-        # If ambition want, mark ambition complete on dismiss
-        if "ambition:" in target.get("source", ""):
-            try:
-                import json as _aj
-                amb_path = os.path.join(MEMORY, "ambitions.json")
-                amb = _aj.load(open(amb_path))
-                prefix = target["source"].replace("ambition:", "").strip()[:50]
-                for g in amb.get("goals", []):
-                    if prefix in g.get("goal", "")[:50]:
-                        g["progress"] = "Completed"
-                        g["completed_at"] = __import__("datetime").datetime.now().isoformat()
-                        g["completion_note"] = f"Dismissed by Gloria after conversation — {target.get('want','')[:80]}"
-                        g["fulfilled_want_id"] = want_id
-                _aj.dump(amb, open(amb_path, "w"), indent=2)
-            except: pass
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'ambitions.json'), os.path.join(MEMORY, 'current-wants.json')]):
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            target = next((w for w in wants if w.get("id") == want_id), None)
+            if not target:
+                return {"success": False, "error": "Want not found"}
+            if target.get("dismissed"):
+                return {"success": True, "already_dismissed": True}
+            target["dismissed"] = True
+            target["dismissed_at"] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")
+            _atomic_json(wants_path, wants)
+            _want_event("dismissed", want_id, {})
+            # If ambition want, mark ambition complete on dismiss
+            if "ambition:" in target.get("source", ""):
+                try:
+                    import json as _aj
+                    amb_path = os.path.join(MEMORY, "ambitions.json")
+                    amb = _aj.load(open(amb_path))
+                    prefix = target["source"].replace("ambition:", "").strip()[:50]
+                    for g in amb.get("goals", []):
+                        if prefix in g.get("goal", "")[:50]:
+                            g["progress"] = "Completed"
+                            g["completed_at"] = __import__("datetime").datetime.now().isoformat()
+                            g["completion_note"] = f"Dismissed by Gloria after conversation — {target.get('want','')[:80]}"
+                            g["fulfilled_want_id"] = want_id
+                    _atomic_json(amb_path, amb)
+                except: pass
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -617,24 +625,24 @@ async def set_multistep(want_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                w["multistep"] = body.get("multistep", True)
-                w["capability"] = "multistep"
-                w["manually_routed"] = True
-                if "steps" not in w:
-                    w["steps"] = []
-                if "step_history" not in w:
-                    w["step_history"] = []
-                if "current_step_index" not in w:
-                    w["current_step_index"] = 0
-                with open(wants_path, "w") as f:
-                    json.dump(wants, f, indent=2)
-                return {"success": True, "want": w}
-        return {"success": False, "error": "Want not found"}
+        with transactions([os.path.join(MEMORY, 'current-wants.json')]):
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            for w in wants:
+                if w.get("id") == want_id:
+                    w["multistep"] = body.get("multistep", True)
+                    w["capability"] = "multistep"
+                    w["manually_routed"] = True
+                    if "steps" not in w:
+                        w["steps"] = []
+                    if "step_history" not in w:
+                        w["step_history"] = []
+                    if "current_step_index" not in w:
+                        w["current_step_index"] = 0
+                    _atomic_json(wants_path, wants)
+                    return {"success": True, "want": w}
+            return {"success": False, "error": "Want not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -646,26 +654,27 @@ async def add_want_step(want_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        capability = body.get("capability")
-        note = body.get("note", "")
-        params = body.get("params", {})
-        if not capability:
-            return {"success": False, "error": "capability required"}
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                if "steps" not in w:
-                    w["steps"] = []
-                step = {"step_id": "ST-" + __import__("uuid").uuid4().hex[:8], "capability": capability, "note": note, "status": "pending"}
-                if params:
-                    step["params"] = params
-                w["steps"].append(step)
-                _atomic_json(wants_path, wants)
-                _want_event("step_added", want_id, {"step_id": step["step_id"], "capability": capability})
-                return {"success": True, "steps": w["steps"]}
-        return {"success": False, "error": "Want not found"}
+        with transactions([os.path.join(MEMORY, 'current-wants.json')]):
+            capability = body.get("capability")
+            note = body.get("note", "")
+            params = body.get("params", {})
+            if not capability:
+                return {"success": False, "error": "capability required"}
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            for w in wants:
+                if w.get("id") == want_id:
+                    if "steps" not in w:
+                        w["steps"] = []
+                    step = {"step_id": "ST-" + __import__("uuid").uuid4().hex[:8], "capability": capability, "note": note, "status": "pending"}
+                    if params:
+                        step["params"] = params
+                    w["steps"].append(step)
+                    _atomic_json(wants_path, wants)
+                    _want_event("step_added", want_id, {"step_id": step["step_id"], "capability": capability})
+                    return {"success": True, "steps": w["steps"]}
+            return {"success": False, "error": "Want not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -676,20 +685,21 @@ async def remove_want_step(want_id: str, step_index: int, request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                steps = w.get("steps", [])
-                if step_index < 0 or step_index >= len(steps):
-                    return {"success": False, "error": "Invalid step index"}
-                _removed = steps.pop(step_index)
-                w["steps"] = steps
-                _atomic_json(wants_path, wants)
-                _want_event("step_removed", want_id, {"step_id": _removed.get("step_id"), "capability": _removed.get("capability")})
-                return {"success": True, "steps": steps}
-        return {"success": False, "error": "Want not found"}
+        with transactions([os.path.join(MEMORY, 'current-wants.json')]):
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            for w in wants:
+                if w.get("id") == want_id:
+                    steps = w.get("steps", [])
+                    if step_index < 0 or step_index >= len(steps):
+                        return {"success": False, "error": "Invalid step index"}
+                    _removed = steps.pop(step_index)
+                    w["steps"] = steps
+                    _atomic_json(wants_path, wants)
+                    _want_event("step_removed", want_id, {"step_id": _removed.get("step_id"), "capability": _removed.get("capability")})
+                    return {"success": True, "steps": steps}
+            return {"success": False, "error": "Want not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -700,34 +710,35 @@ async def advance_want_step(want_id: str, request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                if w.get("fulfilled"):
-                    return {"success": True, "fulfilled": True, "already_fulfilled": True, "current_step_index": w.get("current_step_index", 0)}
-                steps = w.get("steps", [])
-                current = w.get("current_step_index", 0)
-                if current < len(steps):
-                    steps[current]["status"] = "completed"
-                    steps[current]["completed_by"] = "gloria_review"
-                    _want_event("step_advanced", want_id, {"step_id": steps[current].get("step_id"), "index": current})
-                w["steps"] = steps
-                next_idx = current + 1
-                if next_idx >= len(steps):
-                    w["fulfilled"] = True
-                    w["fulfilled_at"] = __import__("datetime").datetime.now().isoformat()
-                    w["fulfilled_by"] = "steps_complete"
-                    w.setdefault("satisfaction", "UNKNOWN")
-                    _atomic_json(wants_path, wants)
-                    _want_event("fulfilled", want_id, {"by": "steps_complete", "steps": len(steps)})
-                    return {"success": True, "fulfilled": True, "current_step_index": next_idx}
-                else:
-                    w["current_step_index"] = next_idx
-                    _atomic_json(wants_path, wants)
-                    return {"success": True, "fulfilled": False, "current_step_index": next_idx}
-        return {"success": False, "error": "Want not found"}
+        with transactions([os.path.join(MEMORY, 'current-wants.json')]):
+            wants_path = os.path.join(MEMORY, "current-wants.json")
+            with open(wants_path) as f:
+                wants = json.load(f)
+            for w in wants:
+                if w.get("id") == want_id:
+                    if w.get("fulfilled"):
+                        return {"success": True, "fulfilled": True, "already_fulfilled": True, "current_step_index": w.get("current_step_index", 0)}
+                    steps = w.get("steps", [])
+                    current = w.get("current_step_index", 0)
+                    if current < len(steps):
+                        steps[current]["status"] = "completed"
+                        steps[current]["completed_by"] = "gloria_review"
+                        _want_event("step_advanced", want_id, {"step_id": steps[current].get("step_id"), "index": current})
+                    w["steps"] = steps
+                    next_idx = current + 1
+                    if next_idx >= len(steps):
+                        w["fulfilled"] = True
+                        w["fulfilled_at"] = __import__("datetime").datetime.now().isoformat()
+                        w["fulfilled_by"] = "steps_complete"
+                        w.setdefault("satisfaction", "UNKNOWN")
+                        _atomic_json(wants_path, wants)
+                        _want_event("fulfilled", want_id, {"by": "steps_complete", "steps": len(steps)})
+                        return {"success": True, "fulfilled": True, "current_step_index": next_idx}
+                    else:
+                        w["current_step_index"] = next_idx
+                        _atomic_json(wants_path, wants)
+                        return {"success": True, "fulfilled": False, "current_step_index": next_idx}
+            return {"success": False, "error": "Want not found"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -792,14 +803,14 @@ async def delete_thread(thread_id: str, request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        threads_path = os.path.join(MEMORY, "unfinished-threads.json")
-        with open(threads_path) as f:
-            threads = json.load(f)
-        before = len(threads)
-        threads = [t for t in threads if t.get("id") != thread_id]
-        with open(threads_path, "w") as f:
-            json.dump(threads, f, indent=2)
-        return {"success": True, "removed": before - len(threads)}
+        with transactions([os.path.join(MEMORY, 'unfinished-threads.json')]):
+            threads_path = os.path.join(MEMORY, "unfinished-threads.json")
+            with open(threads_path) as f:
+                threads = json.load(f)
+            before = len(threads)
+            threads = [t for t in threads if t.get("id") != thread_id]
+            _atomic_json(threads_path, threads)
+            return {"success": True, "removed": before - len(threads)}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -811,24 +822,25 @@ async def system_route_thread(thread_id: str, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        system = body.get("system", "")
-        if system not in ("dream", "mirror", "therapy"):
-            return {"success": False, "error": "Invalid system. Use dream, mirror, or therapy."}
-        from datetime import datetime   # was never imported: the route raised every time (grok-server-c-p4)
-        threads_path = os.path.join(MEMORY, "unfinished-threads.json")
-        with open(threads_path) as f:
-            threads = json.load(f)
-        _hit = False
-        for t in threads:
-            if t.get("id") == thread_id:
-                t["system_route"] = system
-                t["system_route_at"] = datetime.now().isoformat()
-                _hit = True
-                break
-        if not _hit:
-            return {"success": False, "error": "thread %s not found - nothing routed" % thread_id}
-        _atomic_json(threads_path, threads)
-        return {"success": True, "thread_id": thread_id, "system": system}
+        with transactions([os.path.join(MEMORY, 'unfinished-threads.json')]):
+            system = body.get("system", "")
+            if system not in ("dream", "mirror", "therapy"):
+                return {"success": False, "error": "Invalid system. Use dream, mirror, or therapy."}
+            from datetime import datetime   # was never imported: the route raised every time (grok-server-c-p4)
+            threads_path = os.path.join(MEMORY, "unfinished-threads.json")
+            with open(threads_path) as f:
+                threads = json.load(f)
+            _hit = False
+            for t in threads:
+                if t.get("id") == thread_id:
+                    t["system_route"] = system
+                    t["system_route_at"] = datetime.now().isoformat()
+                    _hit = True
+                    break
+            if not _hit:
+                return {"success": False, "error": "thread %s not found - nothing routed" % thread_id}
+            _atomic_json(threads_path, threads)
+            return {"success": True, "thread_id": thread_id, "system": system}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -840,32 +852,32 @@ async def weave_threads_now(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        group_id = body.get("group_id", "")
-        thread_ids = body.get("thread_ids", [])
-        name = body.get("name", "manual")
-        if len(thread_ids) < 2:
-            return {"success": False, "error": "Need at least 2 threads to weave."}
-        # Write to manual-weave-groups.json
-        mgp = os.path.join(MEMORY, "manual-weave-groups.json")
-        try:
-            with open(mgp) as f:
-                mg_data = json.load(f)
-        except:
-            mg_data = {"groups": []}
-        mg_data["groups"] = [g for g in mg_data.get("groups", []) if g.get("id") != group_id]
-        mg_data["groups"].append({"id": group_id, "name": name, "cards": thread_ids})
-        with open(mgp, "w") as f:
-            json.dump(mg_data, f, indent=2)
-        # Trigger weaver in background
-        import subprocess as _wn_sp
-        _wn_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
-        _wn_script = os.path.join(WORKSPACE, "scripts", "thread-weaver.py")
-        _wn_sp.Popen(
-            [_wn_venv if os.path.exists(_wn_venv) else "python3", _wn_script],
-            stdout=open("/tmp/weave-now.log", "a"),
-            stderr=open("/tmp/weave-now.log", "a")
-        )
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'manual-weave-groups.json')]):
+            group_id = body.get("group_id", "")
+            thread_ids = body.get("thread_ids", [])
+            name = body.get("name", "manual")
+            if len(thread_ids) < 2:
+                return {"success": False, "error": "Need at least 2 threads to weave."}
+            # Write to manual-weave-groups.json
+            mgp = os.path.join(MEMORY, "manual-weave-groups.json")
+            try:
+                with open(mgp) as f:
+                    mg_data = json.load(f)
+            except:
+                mg_data = {"groups": []}
+            mg_data["groups"] = [g for g in mg_data.get("groups", []) if g.get("id") != group_id]
+            mg_data["groups"].append({"id": group_id, "name": name, "cards": thread_ids})
+            _atomic_json(mgp, mg_data)
+            # Trigger weaver in background
+            import subprocess as _wn_sp
+            _wn_venv = os.path.join(WORKSPACE, "emotion_model", ".venv", "bin", "python3")
+            _wn_script = os.path.join(WORKSPACE, "scripts", "thread-weaver.py")
+            _wn_sp.Popen(
+                [_wn_venv if os.path.exists(_wn_venv) else "python3", _wn_script],
+                stdout=open("/tmp/weave-now.log", "a"),
+                stderr=open("/tmp/weave-now.log", "a")
+            )
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -877,11 +889,11 @@ async def save_weave_groups(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         body = await request.json()
-        groups = body.get("groups", [])
-        groups_path = os.path.join(MEMORY, "manual-weave-groups.json")
-        with open(groups_path, "w") as f:
-            json.dump({"groups": groups, "saved_at": __import__("datetime").datetime.now().isoformat()}, f, indent=2)
-        return {"success": True}
+        with transactions([os.path.join(MEMORY, 'manual-weave-groups.json')]):
+            groups = body.get("groups", [])
+            groups_path = os.path.join(MEMORY, "manual-weave-groups.json")
+            _atomic_json(groups_path, {"groups": groups, "saved_at": __import__("datetime").datetime.now().isoformat()})
+            return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

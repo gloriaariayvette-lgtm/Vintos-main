@@ -8,6 +8,8 @@ meant accumulates a history: "I thought this meant X. I was wrong. Actually X wa
 """
 import json, os, math, sys
 from datetime import datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from store_guard import locked_update, transaction
 
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -41,7 +43,8 @@ def _load():
     except Exception: return []
 
 def _save(d):
-    if not _sg_write(STORE, d[-500:], "durable_memory"): json.dump(d[-500:], open(STORE, "w"), indent=2)
+    from store_guard import write_json
+    write_json(STORE, d[-500:], reader="durable_memory")
 
 def _embed(text):
     import requests
@@ -77,19 +80,29 @@ def recall(text, floor=RECALL_FLOOR):
     for r in d:
         s = _cos(q, _vec(r))
         if s > score: best, score = r, s
-    if not best or score < floor:
-        _save(d); return None
-    # review 125: surfacing counts as recurrence once per hour per memory; a prompt assembled three times
-    # in a minute is one contact, not three. The reading itself never changes importance.
-    try:
-        _last = datetime.fromisoformat(best.get("last_recalled")) if best.get("last_recalled") else None
-    except Exception:
-        _last = None
-    if _last is None or (datetime.now() - _last).total_seconds() > 3600:
-        best["later_recalled"] = best.get("later_recalled", 0) + 1
-        best["last_recalled"] = datetime.now().isoformat()
-    _save(d)
-    return best
+    chosen = best if best and score >= floor else None
+    result = []
+    def update(current):
+        # Inference ran outside the lock. Merge only cache/recall fields into the
+        # fresh records; corrections, new memories and interpretations survive.
+        for r in current:
+            key = (r.get("occurred_at"), r.get("event"))
+            prior = next((x for x in d if (x.get("occurred_at"), x.get("event")) == key), None)
+            if prior and prior.get("_vec") and not r.get("_vec"):
+                r["_vec"] = prior["_vec"]
+            if not chosen or key != (chosen.get("occurred_at"), chosen.get("event")):
+                continue
+            if r.get("standing") == "invalidated": continue
+            try: last = datetime.fromisoformat(r["last_recalled"]) if r.get("last_recalled") else None
+            except (ValueError, TypeError): last = None
+            if last is None or (datetime.now() - last).total_seconds() > 3600:
+                r["later_recalled"] = r.get("later_recalled", 0) + 1
+                r["last_recalled"] = datetime.now().isoformat()
+            result.append(dict(r))
+        return current
+    locked_update(STORE, update, reader="durable_memory.recall")
+    return result[0] if result else None
+
 
 def maybe_reinterpret(rec, ask_llm):
     """He has come back to this enough times to be asked whether it still means what he said.
@@ -114,18 +127,19 @@ def maybe_reinterpret(rec, ask_llm):
     except Exception:
         return None
     if not p.get("meaning"): return None
-    d = _load()
-    for r in d:
-        if r.get("occurred_at") == rec.get("occurred_at") and r.get("event") == rec.get("event"):
-            r.setdefault("interpretations", []).append({
-                "at": datetime.now().isoformat(),
-                "after_recalls": r.get("later_recalled", 0),
-                "verdict": p.get("verdict", ""),
-                "meaning": p["meaning"],
-                "why_changed": p.get("why_changed", ""),
-            })
-            break
-    _save(d)
+    with transaction(STORE):
+        d = _load()
+        for r in d:
+            if r.get("occurred_at") == rec.get("occurred_at") and r.get("event") == rec.get("event"):
+                r.setdefault("interpretations", []).append({
+                    "at": datetime.now().isoformat(),
+                    "after_recalls": r.get("later_recalled", 0),
+                    "verdict": p.get("verdict", ""),
+                    "meaning": p["meaning"],
+                    "why_changed": p.get("why_changed", ""),
+                })
+                break
+        _save(d)
     return p
 
 def context_block(text):
