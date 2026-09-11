@@ -36,6 +36,10 @@ def _extract_prompt(dt):
 
 
 def main():
+    from want_stance import may_initiate
+    ok, why = may_initiate("creation")
+    if not ok:
+        print("[stance] " + why); return
     force_dream = "--dream" in sys.argv
     prompt = ""
     if "--prompt" in sys.argv:

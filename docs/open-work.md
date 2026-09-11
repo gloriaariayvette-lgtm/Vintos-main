@@ -272,8 +272,7 @@ vintos-app. The local repair branch is `codex/review-repairs`.
 
 Remaining from the review and the three efforts:
 
-- The four stance dimensions without behavioral consumers, and complete request/repair
-  propagation. The existing analysis/outreach consumers are only part of the advertised work.
+- Stance consumers now cover creation, reflection, mischief and reaching. Trusted request/repair scheduling context crosses router child processes; deferred actions remain pending. All 111 isolated suites pass. Ordinary-suite rerun is in progress with fixture sockets permitted.
 - Blender/Cura execution and a real slicer profile/output review. The new artifact and
   approval checks support a manual file workflow; `handoff_dir` alone does not implement
   modelling or slicing. Supplied slice time/material values are estimates, not measurements.
@@ -285,9 +284,7 @@ Remaining from the review and the three efforts:
 - The forge UI/effectful adapters/live commissioning listed above, the 27-item review
   programme and the per-organ waiting list. Nothing here closes them by implication.
 
-Home-effect gate policy has not been changed in this repair pass. No production
-service was deployed or restarted, no paid model called, and no device or real
-notification used to validate these changes.
+Home-effect gate policy has not been changed in this repair pass. The base release was deployed on Aegis as recorded below. No device or real notification was used as a test fixture.
 
 ## Aegis deployment work — 11 September
 

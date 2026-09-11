@@ -28,7 +28,12 @@ def in_quiet_hours(now=None):
     return not (QUIET[0] <= h <= QUIET[1])
 
 
-def may_send(kind, artifact_id=None, channel="ntfy", now=None, requested_by_her=False, is_repair=False):
+def may_send(kind, artifact_id=None, channel="ntfy", now=None, requested_by_her=None, is_repair=None):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from want_stance import intent
+    flags = intent()
+    if requested_by_her is None: requested_by_her = flags["requested_by_her"]
+    if is_repair is None: is_repair = flags["is_repair"]
     now = now or datetime.now()
     lim = LIMITS.get(kind)
     if lim is None:

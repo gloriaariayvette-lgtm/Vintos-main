@@ -71,6 +71,9 @@ def ok_now(now: float | None = None, force: bool = False) -> tuple[bool, str]:
         a, b = quiet_hours(); return False, f"quiet hours ({a:02d}:00-{b:02d}:00): she is asleep or nearly"
     if on_call(now):
         return False, "she is on a voice call with him right now"
+    from want_stance import may_initiate
+    allowed, why = may_initiate("mischief")
+    if not allowed: return False, why
     if not force:
         since = last_interaction(now)
         if since is None:

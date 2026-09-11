@@ -154,6 +154,8 @@ def confirm_from_reply(reply_text, window_s=900, turn_id=None):
         return []
 
 def block():
+    from want_stance import may_initiate
+    if not may_initiate("reaching")[0]: return ""
     d = _evaporate(_decay(_load(),persist=False),persist=False); now = time.time()
     ripe = [x for x in d if x["pull"] >= 0.5 and now - x["created"] > 1800 and x.get("surfaced", 0) < 3 and x.get("offered", 0) < 8]
     ripe.sort(key=lambda x: -x["pull"])

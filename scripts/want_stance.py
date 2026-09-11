@@ -199,7 +199,58 @@ def scaled_cap(dimension, base_cap, now=None):
     return max(1, int(math.ceil(base_cap * factor(dimension, now))))
 
 
-def may_initiate(dimension, requested_by_her=False, is_repair=False, now=None):
+# Task-local intent, never process-global mutation: concurrent turns cannot grant
+# each other a stance exemption. These flags are scheduling context, not consent.
+from contextvars import ContextVar
+from contextlib import contextmanager
+_INTENT = ContextVar("stance_intent", default=None)
+
+def intent():
+    return _INTENT.get() or {
+        "requested_by_her": os.environ.get("VINTOS_STANCE_REQUESTED") == "1",
+        "is_repair": os.environ.get("VINTOS_STANCE_REPAIR") == "1",
+        "admitted": tuple(filter(None, os.environ.get("VINTOS_STANCE_ADMITTED", "").split(","))),
+    }
+
+@contextmanager
+def action_context(want=None, *, requested_by_her=None, is_repair=None, admitted=()):
+    row = want or {}; previous = intent()
+    requested = (row.get("source") == "gloria" or row.get("requested_by_her") is True)
+    repair = row.get("is_repair") is True
+    token = _INTENT.set({
+        "requested_by_her": requested_by_her if requested_by_her is not None else (requested or previous["requested_by_her"]),
+        "is_repair": is_repair if is_repair is not None else (repair or previous["is_repair"]),
+        "admitted": tuple(set(previous["admitted"]) | set(admitted)),
+    })
+    try:
+        yield
+    finally:
+        _INTENT.reset(token)
+
+CAPABILITY_DIMENSIONS = {
+    **dict.fromkeys(("make_art", "make_music", "make_video", "write_poem", "creative_write", "make_chart"), "creation"),
+    "introspect": "reflection", "be_mischievous": "mischief",
+}
+
+def call_action(capability, fn, want, *args, **kwargs):
+    """Return (ran, output). A deferred action must stay pending, not complete empty."""
+    dimension = CAPABILITY_DIMENSIONS.get(capability)
+    with action_context(want):
+        if dimension and not may_initiate(dimension)[0]:
+            return False, None
+        with action_context(admitted=(dimension,) if dimension else ()):
+            return True, fn(*args, **kwargs)
+
+
+def child_env(base=None):
+    env = dict(os.environ if base is None else base); flags = intent()
+    env.update(VINTOS_STANCE_REQUESTED="1" if flags["requested_by_her"] else "0",
+               VINTOS_STANCE_REPAIR="1" if flags["is_repair"] else "0",
+               VINTOS_STANCE_ADMITTED=",".join(flags["admitted"]))
+    return env
+
+
+def may_initiate(dimension, requested_by_her=None, is_repair=None, now=None):
     """(ok, why). For a caller that acts at most once and cannot 'do fewer', this asks
     whether he should start something himself right now under a 'less' stance. It is
     NOT a flat off switch: it is deliberately probabilistic so 'less' means fewer, not
@@ -207,6 +258,11 @@ def may_initiate(dimension, requested_by_her=False, is_repair=False, now=None):
 
     A caller that has a rate or a daily count should use factor() or scaled_cap()
     instead — reducing is truer to the want than a coin flip."""
+    flags = intent()
+    if requested_by_her is None: requested_by_her = flags["requested_by_her"]
+    if is_repair is None: is_repair = flags["is_repair"]
+    if dimension in flags["admitted"]:
+        return True, "already admitted for this action"
     if requested_by_her:
         return True, "she asked"
     if is_repair:
@@ -243,6 +299,10 @@ def main():
                 r["dimension"], r["direction"], str(r["until"])[:10], DIMENSIONS[r["dimension"]]))
             if r.get("want"):
                 print("            from: %s" % r["want"][:90])
+    elif cmd == "allow":
+        ok, why = may_initiate(sys.argv[2])
+        print(why)
+        sys.exit(0 if ok else 1)
     elif cmd == "read":
         dim = sys.argv[2]
         ok, why = may_initiate(dim)

@@ -344,6 +344,10 @@ def journal(title,tracks,style):
 
 def process_file(fp,force=False):
     resume_landings()
+    from want_stance import may_initiate
+    ok, why = may_initiate("creation")
+    if not ok:
+        print("[stance] " + why); return
     if any(l.get("metadata",{}).get("source")==fp for l in pending_landings(float("inf"))):
         print("Existing task is still pending; no new generation submitted");return False
     log=load_log()

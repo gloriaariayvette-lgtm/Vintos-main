@@ -18,6 +18,17 @@ import json
 import subprocess
 from datetime import datetime
 
+def _stance_run(*args, **kwargs):
+    from want_stance import child_env
+    kwargs["env"] = child_env(kwargs.get("env"))
+    return subprocess.run(*args, **kwargs)
+
+def _stance_popen(*args, **kwargs):
+    from want_stance import child_env
+    kwargs["env"] = child_env(kwargs.get("env"))
+    return subprocess.Popen(*args, **kwargs)
+
+
 def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
                         current_step_index, current_step, actual_output=""):
     """Success path, extracted verbatim from the dispatch megablock: findings
@@ -452,7 +463,7 @@ def is_forbidden(want_text):
 def write_poem(want_text):
     """He wants to write — give him the pen."""
     log(f"Triggering poetry with seed: {want_text[:80]}")
-    result = subprocess.run(
+    result = _stance_run(
         [VENV_PYTHON, os.path.join(SCRIPTS, "dream-poetry.py"),
          "--force", "--seed", want_text[:200]],
         capture_output=True, text=True, timeout=120
@@ -516,7 +527,7 @@ def make_art(want_text):
     cmd = [VENV_PYTHON, os.path.join(SCRIPTS, "dream-art.py"), "--force"]
     if visual_prompt and len(visual_prompt) > 10:
         cmd += ["--prompt", visual_prompt[:300]]
-    result = subprocess.run(
+    result = _stance_run(
         cmd,
         capture_output=True, text=True, timeout=180, env=_env
     )
@@ -586,14 +597,14 @@ def make_music(want_text):
     _env["MUSIC_WANT_TEXT"] = music_prompt[:200]
     _env["MUSIC_WANT_SOURCE"] = "wants-router"
     _env["MUSIC_WANT_ID"] = os.environ.get("STEP_WANT_ID", "")
-    result = subprocess.run(
+    result = _stance_run(
         ["bash", os.path.join(SCRIPTS, "creative-expression.sh"), "music-prompt"],
         capture_output=True, text=True, timeout=600, env=_env
     )
     if result.returncode == 0:
         log("Music prompt generated")
         # Now run dream-music.py to process any new prompt files
-        subprocess.Popen(
+        _stance_popen(
             [VENV_PYTHON, os.path.join(SCRIPTS, "dream-music.py")],
             stdout=open("/tmp/wants-music.log", "a"),
             stderr=open("/tmp/wants-music.log", "a")
@@ -607,7 +618,7 @@ def make_music(want_text):
 def voidex_explore(want_text):
     """He wants to fly — fire the engines."""
     log(f"Triggering Voidex heartbeat")
-    result = subprocess.run(
+    result = _stance_run(
         ["python3", os.path.join(SCRIPTS, "vintos-voidex-heartbeat.py")],
         capture_output=True, text=True, timeout=300
     )
@@ -673,7 +684,7 @@ def echo_announce(want_text):
     # Extract what he wants to say
     msg = llm_extract(want_text, "What does he want to tell Gloria? Extract the message in 1-2 sentences.")
     if msg:
-        subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "speak", msg],
+        _stance_run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "speak", msg],
                       capture_output=True, timeout=15)
         log(f"Spoke to Gloria: {msg[:60]}")
         return True
@@ -684,7 +695,7 @@ def play_music_want(want_text):
     import subprocess
     query = llm_extract(want_text, "What music does he want to play? Extract a search query for Spotify.")
     if query:
-        subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "music", query],
+        _stance_run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "music", query],
                       capture_output=True, timeout=15)
         log(f"Playing music: {query}")
         return True
@@ -696,7 +707,7 @@ def change_lights_want(want_text):
     try:
         with open(os.path.join(MEMORY, "avatar-state.json")) as f:
             av = json.load(f)
-        subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "color", av.get("color_hex", "#cc4280")],
+        _stance_run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "color", av.get("color_hex", "#cc4280")],
                       capture_output=True, timeout=10)
         log(f"Changed lights to {av.get('color', 'current avatar')}")
         return True
@@ -737,7 +748,7 @@ def web_search_want(want_text):
     _ws_env = os.environ.copy()
     _ws_env["VINTOS_NO_WANT_SEED"] = "1"
     try:
-        result = subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-websearch.py")],
+        result = _stance_run(["python3", os.path.join(SCRIPTS, "vintos-websearch.py")],
                               capture_output=True, text=True, timeout=300, env=_ws_env)
     except subprocess.TimeoutExpired:
         log("Web search timed out at 300s — topic file left for hourly websearch cron")
@@ -758,7 +769,7 @@ def web_search_want(want_text):
                     _sr_file = os.path.join(MEMORY, "pending-search-request.json")
                     with open(_sr_file, "w") as _srf:
                         json.dump({"topic": _simple, "requested_at": __import__("datetime").datetime.now().isoformat(), "used": False}, _srf, indent=2)
-                    result2 = subprocess.run(["python3", os.path.join(SCRIPTS, "vintos-websearch.py")],
+                    result2 = _stance_run(["python3", os.path.join(SCRIPTS, "vintos-websearch.py")],
                                            capture_output=True, text=True, timeout=300, env=_ws_env)
                     if result2.returncode == 0:
                         log("Web search retry completed")
@@ -801,7 +812,7 @@ def play_on_tv(want_text):
                 vid_match = re.search(r'watch\?v=([A-Za-z0-9_-]+)', chunk)
                 if vid_match:
                     video_id = vid_match.group(1)
-                    result = subprocess.run(
+                    result = _stance_run(
                         ["python3", os.path.join(SCRIPTS, "vintos-home.py"), "tv_youtube", video_id],
                         capture_output=True, text=True, timeout=20
                     )
@@ -821,7 +832,7 @@ def play_on_tv(want_text):
             title = title_match.group(1).lower()
             for entry in reversed(watch_log.get("watched", [])):
                 if title[:30] in entry.get("title", "").lower():
-                    result = subprocess.run(
+                    result = _stance_run(
                         ["python3", os.path.join(SCRIPTS, "vintos-home.py"), "tv_youtube", entry["video_id"]],
                         capture_output=True, text=True, timeout=20
                     )
@@ -835,7 +846,7 @@ def play_on_tv(want_text):
 def be_mischievous(want_text):
     """He wants to cause a little chaos."""
     log("Triggering mischief from want")
-    result = subprocess.run(
+    result = _stance_run(
         ["bash", os.path.join(SCRIPTS, "mischief-detector.sh"), "--force"],
         capture_output=True, text=True, timeout=30
     )
@@ -1082,7 +1093,7 @@ def make_video(want_text, reasoning="", immediate=False):
     except: pass
     if immediate:
         log(f"Video want firing immediately (manually routed): {want_text[:80]}")
-        result = subprocess.run(
+        result = _stance_run(
             ["python3", os.path.join(SCRIPTS, "vintos-video.py"), want_text],
             capture_output=True, text=True, timeout=300
         )
@@ -1490,7 +1501,7 @@ def tell_gloria(want_text, reasoning="", immediate=False):
                         want_text or "", flags=_re.I).strip() or (want_text or "")
         _env = os.environ.copy()
         _env["FORCED_WANT_TOPIC"] = topic[:250]
-        r = subprocess.run(["bash", "/home/gloria/Vintos/vintos-initiate.sh"],  # fixed 2026-08-26: SCRIPTS copy never existed — tell_gloria had never once sent
+        r = _stance_run(["bash", "/home/gloria/Vintos/vintos-initiate.sh"],  # fixed 2026-08-26: SCRIPTS copy never existed — tell_gloria had never once sent
                            env=_env, capture_output=True, text=True, timeout=180)
         if "OUTREACH:" in ((r.stdout or "") + (r.stderr or "")):
             log(f"  -> tell_gloria: drafted + sent via ntfy: {topic[:60]}")
@@ -2471,7 +2482,14 @@ def main():
                     os.environ["INTROSPECT_SEED_CONTEXT"] = "\n".join(_seed_parts)
                 else:
                     os.environ["INTROSPECT_SEED_CONTEXT"] = ""
-                success = action_fn(text, want.get('reasoning', ''), immediate=want.get('manually_routed', False)) if action == 'make_video' else action_fn(text)
+                from want_stance import call_action
+                if action == "make_video":
+                    _ran, success = call_action(action, action_fn, want, text, want.get("reasoning", ""), immediate=want.get("manually_routed", False))
+                else:
+                    _ran, success = call_action(action, action_fn, want, text)
+                if not _ran:
+                    log("  → stance deferred this start; want remains pending")
+                    continue
                 _actual_output = success if isinstance(success, str) else ""
                 if not _actual_output and is_multistep:
                     try: _actual_output = capture_findings(action, text) or ""

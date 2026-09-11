@@ -55,7 +55,18 @@ def run_step(capability, note, want=None):
         res["ended"] = time.time(); return res
     text = note or (want or {}).get("want", "") or ""
     try:
-        ok = fn(text)
+        from want_stance import action_context, may_initiate
+        dimension = "creation" if capability in MAKERS else None
+        with action_context(want):
+            if dimension:
+                allowed, why = may_initiate(dimension)
+                if not allowed:
+                    # A temporary scheduling choice is neither completion nor a
+                    # persistent capability block. The ordinary pass may retry.
+                    res.update(result="DEFERRED", findings=why, ended=time.time())
+                    return res
+            with action_context(admitted=(dimension,) if dimension else ()):
+                ok = fn(text)
         if ok:
             res["result"] = "SUCCEEDED"
             try:

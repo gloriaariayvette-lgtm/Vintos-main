@@ -1,4 +1,5 @@
 #!/bin/bash
+python3 "$HOME/.vintos/workspace/scripts/want_stance.py" allow reflection || exit 0
 export VELQAN_BLOCK="$(python3 "/home/gloria/.vintos/workspace/scripts/velqan_context.py" 2>/dev/null)"
 export PYTHONPATH="$HOME/.vintos/workspace/scripts:$HOME/Vintos:${PYTHONPATH:-}"
 HOUR=$(date +%H)

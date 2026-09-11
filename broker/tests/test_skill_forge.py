@@ -17,7 +17,8 @@ def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(spec)
     sys.modules[name] = m; spec.loader.exec_module(m); return m
 
-HOME = tempfile.mkdtemp(); MEM = os.path.join(HOME, "memory"); os.makedirs(MEM)
+HOME = tempfile.mkdtemp(); os.environ["HOME"] = HOME; os.environ.pop("SPARK_WORKSPACE", None)
+MEM = os.path.join(HOME, "memory"); os.makedirs(MEM)
 WS = load("want_stance", os.path.join(REPO, "scripts", "want_stance.py"))
 WS.MEMORY = MEM; WS.STANCES = os.path.join(MEM, "want-stances.json"); WS.WANTS = os.path.join(MEM, "current-wants.json")
 SF = load("skill_forge", os.path.join(REPO, "scripts", "skill_forge.py"))
@@ -227,5 +228,37 @@ check("her no ends the job", j["state"] == "abandoned")
 check("nothing but her answer moves a wait", P3.HER_WAITS == ("draft_waiting", "slice_waiting"))
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the app can see the jobs and answer a stop", "/api/print/jobs" in srv and "print_answer" in srv and "kind must be draft or slice" in srv)
+
+
+print("\n--- stance consumers and request propagation ---")
+from unittest.mock import patch
+check("stance stores are confined to the fixture", os.path.commonpath([WS.STANCES, HOME]) == HOME)
+for dimension in ("creation", "reflection", "mischief", "reaching"):
+    WS.hold(dimension, "less")
+with patch("random.random", return_value=.99):
+    calls = []
+    check("creation defers before calling the provider", WS.call_action("make_art", lambda: calls.append(1), {}) == (False, None) and not calls)
+    for row in ({"source": "gloria"}, {"is_repair": True}):
+        ran, flags = WS.call_action("make_art", WS.child_env, row)
+        check("request or repair survives child execution", ran and (flags["VINTOS_STANCE_REQUESTED"] == "1" or flags["VINTOS_STANCE_REPAIR"] == "1"))
+    check("intent resets after execution", not WS.intent()["requested_by_her"] and not WS.intent()["is_repair"])
+    ran, allowed = WS.call_action("introspect", lambda: True, {})
+    check("reflection defers autonomous introspection", not ran)
+    uq = load("stance_test_questions", os.path.join(REPO, "scripts", "unsaid_questions.py"))
+    uq.F = os.path.join(MEM, "unsaid-questions.json")
+    json.dump([{"q":"Why?", "turns":5,"created":__import__("time").time()}], open(uq.F,"w"))
+    check("reaching holds an earned question without erasing it", uq.block() == "" and len(json.load(open(uq.F))) == 1)
+    mt = load("stance_test_mischief", os.path.join(REPO, "scripts", "mischief_timing.py"))
+    mt.LEDGER = os.path.join(MEM, "interaction-ledger.json"); mt.VOICE_MARK = os.path.join(MEM, "voice")
+    with patch.object(mt, "in_quiet", return_value=False), patch.object(mt, "on_call", return_value=False):
+        check("force does not bypass the mischief stance", not mt.ok_now(force=True)[0])
+    with WS.action_context({"source":"gloria"}):
+        check("requested question is not held", bool(uq.block()))
+        with patch.dict(os.environ, WS.child_env(), clear=True):
+            token = WS._INTENT.set(None)
+            try: check("child context bypasses only stance", WS.may_initiate("creation")[0])
+            finally: WS._INTENT.reset(token)
+with patch("random.random", return_value=0):
+    check("less never means no autonomous creation", WS.call_action("make_art", lambda: "artifact", {}) == (True,"artifact"))
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

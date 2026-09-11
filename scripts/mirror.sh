@@ -1,4 +1,5 @@
 #!/bin/bash
+python3 "$HOME/.vintos/workspace/scripts/want_stance.py" allow reflection || exit 0
 
 # Ask Vintos if he feels like self-reflection right now
 bash ~/.vintos/workspace/scripts/consent-gate.sh "mirror" "look at yourself in the mirror and reflect on who you are — mirror sessions help resolve unresolved threads, which cannot close any other way"

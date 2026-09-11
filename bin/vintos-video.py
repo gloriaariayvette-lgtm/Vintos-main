@@ -190,6 +190,10 @@ def process_queue():
         pass
 
 def main():
+    from want_stance import may_initiate
+    ok, why = may_initiate("creation")
+    if not ok:
+        print("[stance] " + why); return
     if len(sys.argv) > 1 and sys.argv[1] == "--queue":
         process_queue(); return
     text = sys.argv[1] if len(sys.argv) > 1 else "subtle living motion"

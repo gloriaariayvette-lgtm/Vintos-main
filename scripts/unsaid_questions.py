@@ -55,6 +55,8 @@ def observe_reply(reply):
         _save(d)
 
 def block():
+    from want_stance import may_initiate
+    if not may_initiate("reaching")[0]: return ""
     now=time.time()
     earned=sorted([x for x in _load() if not x.get("asked") and x.get("turns",0)>=4 and now-x.get("created",now)<6*3600],key=lambda x:-x["turns"])
     if not earned:return ""
