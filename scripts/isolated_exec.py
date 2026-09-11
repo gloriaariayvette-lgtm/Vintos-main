@@ -54,7 +54,9 @@ def run(argv, scratch, *, read_roots=(), timeout=60, loopback=False, broker=None
         command = ["/usr/bin/sandbox-exec", "-p", profile, *map(str, argv)]
     elif sys.platform.startswith("linux") and shutil.which("bwrap"):
         command = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--proc", "/proc", "--dev", "/dev"]
-        for p in sorted(roots | {"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ld.so.cache"}):
+        # Debian/Ubuntu BLAS and LAPACK resolve through /etc/alternatives.
+        # Expose those system-library links read-only, not the rest of /etc.
+        for p in sorted(roots | {"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ld.so.cache", "/etc/alternatives"}):
             if os.path.exists(p): command += ["--ro-bind", p, p]
         command += ["--bind", scratch, scratch, "--chdir", scratch, *map(str, argv)]
     else:
