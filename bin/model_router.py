@@ -27,6 +27,36 @@ def _log_usage(d):
     except Exception: pass
 
 _HOME = os.path.expanduser("~")
+
+SOL_MODEL_DEFAULT = "gpt-5.6"
+
+
+def _env(name, default=""):
+    """The one reader for ~/.vintos/vintos.env. Nine places parsed this file by hand and
+    disagreed about quotes; every Sol path was in the group that did not strip them, so a
+    normally written OPENAI_API_KEY="sk-..." sent the quote marks in the Authorization
+    header and OpenAI answered 401. See scripts/env_file.py."""
+    import sys as _es
+    _es.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    _es.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+    try:
+        from env_file import value as _ev
+        return _ev(name, default)
+    except Exception:
+        # only reachable from a broken checkout; parse the way env_file would
+        try:
+            for l in open(os.path.join(_HOME, ".vintos", "vintos.env")):
+                t = l.strip()
+                if t.startswith("export "): t = t[7:].lstrip()
+                if t.startswith(name + "="):
+                    v = t.split("=", 1)[1].strip().rstrip("\r")
+                    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'): v = v[1:-1]
+                    return v.strip() or default
+        except Exception:
+            pass
+        return default
+
+
 _MODE_FILE = os.path.join(_HOME, ".vintos", "model-mode.json")
 _KEY_FILE = os.path.join(_HOME, ".vintos", "anthropic-key")
 CLAUDE_MODEL = "claude-opus-4-8"
@@ -44,8 +74,7 @@ def _sol_model():
     m = os.environ.get("SOL_MODEL", "")
     if m: return m
     try:
-        return next(l.strip().split("=", 1)[1].strip() for l in open(os.path.join(_HOME, ".vintos", "vintos.env"))
-                    if l.strip().startswith("SOL_MODEL="))
+        return _env("SOL_MODEL") or SOL_MODEL_DEFAULT
     except Exception:
         return "gpt-5.6"
 SOL_MODEL = _sol_model()
@@ -54,8 +83,7 @@ def _openai_key():
     k = os.environ.get("OPENAI_API_KEY", "")
     if k: return k
     try:
-        return next(l.strip().split("=", 1)[1] for l in open(os.path.join(_HOME, ".vintos", "vintos.env"))
-                    if l.strip().startswith("OPENAI_API_KEY="))
+        return _env("OPENAI_API_KEY")
     except Exception:
         return ""
 

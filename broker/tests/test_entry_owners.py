@@ -20,7 +20,18 @@ check("every manifest entry exists in the checkout", not missing, missing)
 a = EO.aliases()
 check("aliases are listed with targets; host-only links are named as such", len(a) > 100 and all(r["target"] for r in a) and any(r["note"].startswith("host path") for r in a))
 p = EO.parity()
-check("the parity matrix has twin sets, each with identical/differs and the deployed member", len(p) > 20 and all("identical" in r and r["deployed"] for r in p) and any(not r["identical"] for r in p))
+# This used to require that at least one twin set DIFFER, to prove the matrix could say so.
+# It proved the shape by depending on a defect, and it failed the moment the last divergence
+# was closed (2026-09-11) — a test that only passes while something is broken. The shape is
+# now checked on its own terms, and the absence of divergence is asserted as the good news
+# it is; test_import_twins.py is what holds it there.
+check("the parity matrix has twin sets, each with its hashes and the deployed member",
+      len(p) > 20 and all(isinstance(r.get("identical"), bool) and r.get("deployed")
+                          and len(r.get("twins") or []) > 1
+                          and set(r.get("sha") or {}) == set(r["twins"]) for r in p), p[:1])
+check("and every twin set now agrees, so no deploy can install one spelling over another",
+      [r["twins"] for r in p if not r["identical"]] == [],
+      [r["twins"] for r in p if not r["identical"]])
 doc = open(os.path.join(REPO, "docs", "entry-owners.md")).read()
 # What the page must be current WITH is the repository: the deploy manifest and the
 # tracked files. The aliases and parity sections are built by listing bin/ and scripts/

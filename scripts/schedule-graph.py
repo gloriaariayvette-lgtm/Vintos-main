@@ -28,6 +28,7 @@ QUIET_STATES = {   # what "nothing happened" means for a job, so silence is not 
     "idle-gated": "she was here recently; exits 0",
     "admitted": "a live turn held the slot; compute_admission waited or returned 75 (nothing written)",
     "locked": "llm-lock was held; the run waited for it",
+    "stance-gated": "a want of his asked for less of this; want_stance refused the start and the wrapper exits 0",
 }
 
 
@@ -54,7 +55,15 @@ def read_wrapper(path):
     if re.search(r"\bflock\b", s):
         w["overlap"].append("flock")
     py = re.findall(r"python3\s+\"?\$?\{?[A-Z_]*\}?/?([A-Za-z0-9_./-]+\.py)\"?(?:\s+([a-z][a-z_-]*))?", s)
-    owners = [os.path.basename(p) + ((" " + a) if a else "") for p, a in py if "compute_admission" not in p and "velqan_context" not in p]
+    # A gate consulted BEFORE the work is not the owner of the job. compute_admission and
+    # velqan_context were already excluded for this reason; want_stance joins them — it sits
+    # on the first line of a wrapper, so taking owners[0] blindly made the journal's owner
+    # read as "want_stance.py allow" and turned a gated job into an unowned one.
+    GATES_NOT_OWNERS = ("compute_admission", "velqan_context", "want_stance")
+    owners = [os.path.basename(p) + ((" " + a) if a else "") for p, a in py
+              if not any(g in p for g in GATES_NOT_OWNERS)]
+    if any("want_stance" in p for p, _ in py):
+        w["gates"].append("stance-gated")
     if owners:
         w["owner"] = owners[0]; w["runs"] = owners
     if "consent-gate.sh" in s:

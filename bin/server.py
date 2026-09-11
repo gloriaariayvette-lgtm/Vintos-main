@@ -7226,8 +7226,14 @@ def _openai_key():
     k = os.environ.get("OPENAI_API_KEY", "")
     if k: return k
     try:
+        import sys as _es
+        _es.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        from env_file import value as _ev
+        return _ev("OPENAI_API_KEY")
+    except Exception: pass
+    try:
         for l in open(os.path.expanduser("~/.vintos/vintos.env")):
-            if l.strip().startswith("OPENAI_API_KEY="): return l.strip().split("=", 1)[1].strip().strip('"')
+            if l.strip().startswith("OPENAI_API_KEY="): return l.strip().split("=", 1)[1].strip().strip('"').strip("'")
     except Exception: pass
     return ""
 

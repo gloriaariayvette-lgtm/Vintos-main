@@ -446,10 +446,18 @@ def _sol_sync(system_text, user_text, max_tokens=1500):
     import urllib.request as _u, json as _j, os as _o
     _k = _o.environ.get("OPENAI_API_KEY", "")
     if not _k:
-        try:
-            _k = next(l.strip().split("=", 1)[1] for l in open("/home/gloria/.vintos/vintos.env")
-                      if l.strip().startswith("OPENAI_API_KEY="))
+        try:   # the one reader: a raw split sends the quote marks and OpenAI answers 401
+            import sys as _es; _es.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+            from env_file import value as _ev
+            _k = _ev("OPENAI_API_KEY")
         except Exception:
+            try:
+                _k = next(l.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                          for l in open(_o.path.expanduser("~/.vintos/vintos.env"))
+                          if l.strip().startswith("OPENAI_API_KEY="))
+            except Exception:
+                return None
+        if not _k:
             return None
     _body = {"model": _o.environ.get("SOL_MODEL", "gpt-5.6"),
              "messages": [{"role": "system", "content": system_text},

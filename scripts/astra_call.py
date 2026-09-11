@@ -25,6 +25,11 @@ def _key():
     if k:
         return k
     try:
+        from env_file import value as _ev      # the one reader; see scripts/env_file.py
+        return _ev("OPENAI_API_KEY")
+    except Exception:
+        pass
+    try:
         for line in open(ENV_FILE):
             if line.strip().startswith("OPENAI_API_KEY="):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")

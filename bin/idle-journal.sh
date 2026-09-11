@@ -713,10 +713,22 @@ What I haven't said yet matters more than what I've already named. I go there.""
     # to the existing Claude->grok path, with the failure recorded, never silent.
     def _sol_b1():
         import urllib.request as _u, json as _j, os as _o
-        k = _o.environ.get("OPENAI_API_KEY", "")
-        if not k:
-            k = next((l.strip().split("=", 1)[1] for l in open("/home/gloria/.vintos/vintos.env")
-                      if l.strip().startswith("OPENAI_API_KEY=")), "")
+        # ONE reader for the env file. This block used to take split("=",1)[1] raw, so a
+        # normally written OPENAI_API_KEY="sk-..." went out as Bearer "sk-... and OpenAI
+        # answered 401 every night while Astra, which strips quotes, kept working.
+        import sys as _es
+        _es.path.insert(0, _o.path.expanduser("~/.vintos/workspace/scripts"))
+        try:
+            from env_file import value as _ev
+            k = _ev("OPENAI_API_KEY")
+        except Exception:
+            k = _o.environ.get("OPENAI_API_KEY", "").strip().strip('"').strip("'")
+            if not k:
+                for _l in open(_o.path.expanduser("~/.vintos/vintos.env")):
+                    _t = _l.strip()
+                    if _t.startswith("export "): _t = _t[7:].lstrip()
+                    if _t.startswith("OPENAI_API_KEY="):
+                        k = _t.split("=", 1)[1].strip().strip('"').strip("'"); break
         if not k: raise RuntimeError("no OPENAI_API_KEY")
         _body = {"model": _o.environ.get("SOL_MODEL", "gpt-5.6"),
                  "messages": [{"role": "system", "content": system_msg},

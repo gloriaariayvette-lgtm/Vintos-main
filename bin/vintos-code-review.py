@@ -255,9 +255,18 @@ def _xai_key():
 
 def _openai_key():
     k = os.environ.get("OPENAI_API_KEY", "")
-    if k: return k
+    if k: return k.strip().strip('"').strip("'")
     try:
-        return next(l.strip().split("=", 1)[1].strip() for l in open(os.path.expanduser("~/.vintos/vintos.env"))
+        import sys as _es
+        _es.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+        _es.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from env_file import value as _ev
+        return _ev("OPENAI_API_KEY")
+    except Exception:
+        pass
+    try:
+        return next(l.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                    for l in open(os.path.expanduser("~/.vintos/vintos.env"))
                     if l.strip().startswith("OPENAI_API_KEY="))
     except Exception:
         return ""

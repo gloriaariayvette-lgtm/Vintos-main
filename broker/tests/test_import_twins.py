@@ -49,17 +49,26 @@ def sha(path):
     return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
+EXTS = (".py", ".sh")
+
+
 def twin_of(name):
     """The other spelling of a module file name, or None when there isn't one."""
-    if not name.endswith(".py"):
+    ext = next((e for e in EXTS if name.endswith(e)), None)
+    if not ext:
         return None
-    stem = name[:-3]
+    stem = name[:-len(ext)]
     other = stem.replace("_", "-") if "_" in stem else stem.replace("-", "_")
-    return (other + ".py") if other != stem else None
+    return (other + ext) if other != stem else None
 
 
 def copies():
-    """module key -> [paths], for every .py under bin/ and scripts/, both spellings."""
+    """module key -> [paths], for every .py AND .sh under bin/ and scripts/, both spellings.
+
+    The first pass of this suite checked .py only, and idle-journal.sh slipped through it:
+    bin/ carried the `want_stance allow reflection` gate and scripts/ did not, so which of
+    them cron happened to run decided whether his own stance was consulted at all. A shell
+    entry point is a module like any other."""
     out = {}
     for d in ("bin", "scripts"):
         root = os.path.join(REPO, d)
@@ -67,7 +76,7 @@ def copies():
             continue
         for f in sorted(os.listdir(root)):
             p = os.path.join(root, f)
-            if f.endswith(".py") and os.path.isfile(p):
+            if f.endswith(EXTS) and os.path.isfile(p):
                 out.setdefault(f.replace("-", "_"), []).append(os.path.join(d, f))
     return out
 
@@ -88,6 +97,8 @@ groups = copies()
 shared = {k: v for k, v in groups.items() if len(v) > 1}
 check("the repository really does keep modules under more than one name",
       len(shared) > 40, len(shared))
+check("shell entry points are audited too, not only python",
+      any(any(p.endswith(".sh") for p in v) for v in shared.values()))
 divergent = []
 for key, paths in sorted(shared.items()):
     digests = {p: sha(os.path.join(REPO, p)) for p in paths}
@@ -137,7 +148,7 @@ scripts_m, bins_m = manifest()
 man = scripts_m | bins_m
 check("the manifest was read from the deploy script", len(man) > 200, len(man))
 unmanifested = []
-for name in sorted(n for n in man if n.endswith(".py")):
+for name in sorted(n for n in man if n.endswith(EXTS)):
     twin = twin_of(name)
     if not twin or twin in man:
         continue

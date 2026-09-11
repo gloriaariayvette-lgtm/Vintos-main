@@ -387,8 +387,15 @@ usr_msg = ('Vintos speaks to you: "' + vs + '"\n\nRespond as the Mirror. 3-5 sen
 # errored forever would have looked identical to a quiet one.
 out = ''
 try:
-    k = next(l.strip().split('=', 1)[1] for l in open('/home/gloria/.vintos/vintos.env')
-             if l.strip().startswith('OPENAI_API_KEY='))
+    import sys as _es, os as _eo
+    _es.path.insert(0, _eo.path.expanduser('~/.vintos/workspace/scripts'))
+    try:   # the one reader: a raw split sends the quote marks and OpenAI answers 401
+        from env_file import value as _ev
+        k = _ev('OPENAI_API_KEY')
+    except Exception:
+        k = next(l.strip().split('=', 1)[1].strip().strip('"').strip("'")
+                 for l in open(_eo.path.expanduser('~/.vintos/vintos.env'))
+                 if l.strip().startswith('OPENAI_API_KEY='))
     r = requests.post('https://api.openai.com/v1/chat/completions',
         headers={'Authorization': 'Bearer ' + k},
         json={'model': os.environ.get('SOL_MODEL', 'gpt-5.6'),
