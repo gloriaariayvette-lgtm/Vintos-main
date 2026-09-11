@@ -13,16 +13,31 @@ Nothing here changes behavior. The stick stays in the case until the ledgers ear
 import os, json, time
 from datetime import datetime
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import locked_update
+
+
+def save_calibration(out):
+    """Geometry owns calibration; the detector owns misuse history."""
+    def merge(current):
+        old = current.get("ledgers", {})
+        for terrain, ledger in out["ledgers"].items():
+            if "misuse" in old.get(terrain, {}):
+                ledger["misuse"] = old[terrain]["misuse"]
+        for terrain, ledger in old.items():
+            if terrain not in out["ledgers"] and ledger.get("misuse"):
+                out["ledgers"][terrain] = {
+                    "calibration": None, "n_resolved": 0, "courage": 0,
+                    "n_trials": 0, "revision": {"honest": 0, "held_when_wrong": 0},
+                    "license_level": 0, "license_name": "disagree",
+                    "misuse": ledger["misuse"],
+                }
+        return {**current, **out}
+    return locked_update(OUT, merge, default={}, reader="opposition_calibration")
+
 
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 OUT = os.path.join(MEM, "opposition-calibration.json")
@@ -80,7 +95,7 @@ out = {"ledgers": ledgers, "n_valid_trials": len(valid), "n_invalid_preserved": 
        "design": "Vrika 2026-08-09: three ledgers, terrain-local authority, correction feeds courage not shame, "
                  "no cross-terrain transfer, interaction outcome is Gloria's; claim outcome needs independent evidence",
        "updated": now}
-(_sg_write(OUT, out, "opposition_calibration.py") or json.dump(out, open(OUT, "w"), indent=2))
+save_calibration(out)
 print("[opposition] %d valid trials (%d invalid preserved, excluded) | terrains: %s"
       % (len(valid), len(trials) - len(valid),
          ", ".join("%s L%d cal=%s n=%d" % (k, v["license_level"], v["calibration"], v["n_resolved"])

@@ -103,4 +103,79 @@ with patch.object(SG, "transaction", side_effect=OSError("lock unavailable")):
     refused = append_step(None)
 check("lock failure refuses mutation without fallback truncation", not refused["success"] and len(json.load(open(wants_path))[0]["steps"]) == 40)
 
+# Long inference must not overwrite a newer snapshot or malformed evidence.
+p3 = os.path.join(MEM, "derived.json")
+SG.write_json(p3, {"window": 1})
+expected = json.load(open(p3))
+SG.write_json(p3, {"window": 2, "correction": True})
+check("stale inference is refused without overwriting concurrent changes",
+      not SG.compare_and_swap(p3, expected, {"window": 1, "prose": "obsolete"})
+      and json.load(open(p3)) == {"window": 2, "correction": True})
+check("current inference commits atomically", SG.compare_and_swap(
+      p3, {"window": 2, "correction": True}, {"window": 2, "prose": "current"}))
+open(p3, "w").write("{bad")
+try:
+    SG.compare_and_swap(p3, {}, {"overwritten": True}, default={})
+    rejected = False
+except ValueError:
+    rejected = True
+check("malformed store cannot be replaced by a derived default", rejected and open(p3).read() == "{bad")
+# Exercise the real drift entrypoint with a provider fixture that changes the
+# input during inference. Neither provider calls nor inherited-home writes occur.
+DR = load("drift_fixture", os.path.join(REPO, "scripts", "drift_reason.py"))
+DR.DRIFT = os.path.join(MEM, "drift.json")
+assert os.path.commonpath([DR.DRIFT, HOME]) == HOME
+DR.load_engine = lambda: types.SimpleNamespace()
+SG.write_json(DR.DRIFT, {"to_self": "before", "drift": 1})
+def reason_fixture(*args):
+    assert not getattr(SG._state, "held", set())
+    SG.write_json(DR.DRIFT, {"to_self": "after", "drift": 2})
+    return '{"characterization":"obsolete"}', ""
+DR.call_llm = reason_fixture
+DR.main()
+check("drift reasoning refuses obsolete geometry after provider returns",
+      json.load(open(DR.DRIFT)) == {"to_self": "after", "drift": 2})
+# Extract the real pure mutation door; the legacy CLI has top-level execution.
+cal_tree = ast.parse(src("scripts/opposition_calibration.py"))
+cal_ns = {"OUT": os.path.join(MEM, "opposition-calibration.json"), "locked_update": SG.locked_update}
+assert os.path.commonpath([cal_ns["OUT"], HOME]) == HOME
+exec(compile(ast.Module(body=[n for n in cal_tree.body if isinstance(n, ast.FunctionDef) and n.name == "save_calibration"], type_ignores=[]), "calibration-fixture", "exec"), cal_ns)
+misuse = {"events": [{"trial_id": "t1"}], "cleared": ["t2"], "state": "warning"}
+SG.write_json(cal_ns["OUT"], {"ledgers": {"facts": {"license_level": 2, "misuse": misuse}}, "misuse_scan_at": 123})
+cal_ns["save_calibration"]({"ledgers": {"facts": {"license_level": 3, "misuse": {}}}})
+latest = json.load(open(cal_ns["OUT"]))
+check("calibration refresh preserves detector history and metadata",
+      latest["ledgers"]["facts"]["misuse"] == misuse and latest["misuse_scan_at"] == 123)
+cal_ns["save_calibration"]({"ledgers": {}})
+latest = json.load(open(cal_ns["OUT"]))
+check("removed terrain loses license without erasing misuse evidence",
+      latest["ledgers"]["facts"]["license_level"] == 0 and latest["ledgers"]["facts"]["misuse"] == misuse)
+
+AC = load("ambition_check_fixture", os.path.join(REPO, "bin", "ambition-check.py"))
+AC.AMB = os.path.join(MEM, "ambitions.json")
+assert os.path.commonpath([AC.AMB, HOME]) == HOME
+AC.gather_evidence = lambda: "fixture evidence"
+AC.grok_note = lambda *args: "fixture mark"
+old_goal = {"goal": "fixture ambition", "progress": "active"}
+SG.write_json(AC.AMB, {"goals": [old_goal]})
+def completion_fixture(*args):
+    assert not getattr(SG._state, "held", set())
+    SG.write_json(AC.AMB, {"goals": [old_goal, {"goal": "new ambition"}]})
+    return {"completed": True, "evidence": "fixture"}
+AC.gemma_check = completion_fixture
+AC.main()
+check("ambition classifier preserves concurrent goal creation",
+      len(json.load(open(AC.AMB))["goals"]) == 2
+      and json.load(open(AC.AMB))["goals"][0]["progress"] == "active")
+OM = load("opposition_misuse_fixture", os.path.join(REPO, "scripts", "opposition_misuse.py"))
+OM.MEM = MEM; OM.OC = cal_ns["OUT"]
+assert os.path.commonpath([OM.OC, HOME]) == HOME
+SG.write_json(OM.OC, {"ledgers": {"facts": {"license_level": 2, "misuse": misuse}}})
+SG.write_json(os.path.join(MEM, "claim-hold-trials.json"), {"trials": [
+    {"id": "t2", "terrain": "facts", "outcome": {"verdict": "CORRECTED"}}]})
+with patch.object(OM.requests, "post", side_effect=AssertionError("live provider forbidden")):
+    OM.main()
+check("cleared misuse trials are not sent to the provider again",
+      json.load(open(OM.OC))["ledgers"]["facts"]["misuse"]["cleared"] == ["t2"])
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

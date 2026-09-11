@@ -135,3 +135,21 @@ def transactions(paths):
         for path in sorted({os.path.abspath(p) for p in paths}):
             stack.enter_context(transaction(path))
         yield
+
+
+def compare_and_swap(path, expected, replacement, default=None):
+    """Commit derived work only if its input snapshot is still current.
+
+    Inference stays outside the lock. A conflict returns False, never merges
+    evidence for an obsolete input. Malformed/unreadable stores fail closed.
+    """
+    with transaction(path):
+        try:
+            with open(path) as handle:
+                current = json.load(handle)
+        except FileNotFoundError:
+            current = default
+        if current != expected:
+            return False
+        save_json(path, replacement)
+        return True

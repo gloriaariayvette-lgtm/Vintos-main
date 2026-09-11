@@ -13,19 +13,14 @@ significant (bool), reasoned_at.  Does NOT touch the vector or the metrics.
 Run:  XAI_API_KEY=... python3 drift_reason.py    (plain python — no torch)
 SPARK_WORKSPACE + CENG_PATH switch beings.
 """
-import os, sys, json, re, subprocess, importlib.util
+import os, sys, json, re, subprocess, importlib.util, copy
 from datetime import datetime, timezone
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import compare_and_swap
+
 
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -109,6 +104,7 @@ def main():
     if not d.get("to_self"):
         log("drift.json has no self window (too few states) — nothing to name."); return
 
+    original = copy.deepcopy(d)
     text, raw = call_llm(build_prompt(d), system, model, api)
     parsed = parse_json(text)
     if not parsed:
@@ -119,7 +115,9 @@ def main():
         d["shift_type"] = str(parsed.get("shift_type", "")).lower()
         d["significant"] = bool(parsed.get("significant", False))
     d["reasoned_at"] = datetime.now(timezone.utc).isoformat()
-    (_sg_write(DRIFT, d, "drift_reason.py") or json.dump(d, open(DRIFT, "w"), indent=2))
+    if not compare_and_swap(DRIFT, original, d):
+        log("Drift window changed during reasoning; obsolete characterization discarded.")
+        return
     log(f"drift {d.get('drift')} [{d.get('shift_type','?')}] significant={d.get('significant')}")
     log(f"  \"{d.get('characterization', d.get('characterization_raw',''))[:150]}\"")
 
