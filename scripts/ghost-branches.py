@@ -10,16 +10,11 @@ import json, os, sys, re, random
 from datetime import datetime, date, timedelta
 import urllib.request
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+from pathlib import Path
+import uuid
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import serialized, transaction, write_json
 
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -516,7 +511,7 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
     except Exception:
         _trigger_ts = ""
     entry = {
-        "id": f"ghost_{TODAY}_{successful_lean['id']}",
+        "id": "ghost_" + uuid.uuid4().hex,
         "date": TODAY,
         "formed_date": TODAY,
         "source": "ghost_branch",
@@ -537,17 +532,29 @@ def seed_causality_hypothesis(thread, successful_lean, primary_output, thread_ty
         "trigger_interaction_ts": _trigger_ts
     }
     try:
-        causality = json.load(open(CAUSALITY_FILE)) if os.path.exists(CAUSALITY_FILE) else {"hypotheses": []}
-        if "hypotheses" not in causality:
-            causality = {"hypotheses": []}
-        causality["hypotheses"].append(entry)
-        (_sg_write(CAUSALITY_FILE, causality, "ghost-branches.py") or json.dump(causality, open(CAUSALITY_FILE, "w"), indent=2))
+        with transaction(CAUSALITY_FILE):
+            try:
+                with open(CAUSALITY_FILE) as handle:
+                    causality = json.load(handle)
+            except FileNotFoundError:
+                causality = {"hypotheses": []}
+            # Match the caller's existing deduplication rule inside the append lock.
+            existing = next((h for h in causality.get("hypotheses", [])
+                             if h.get("source") == "ghost_branch"
+                             and h.get("thread_type") == thread_type
+                             and h.get("successful_lean") == successful_lean["id"]), None)
+            if existing is not None:
+                return existing
+            causality.setdefault("hypotheses", []).append(entry)
+            write_json(CAUSALITY_FILE, causality)
         print(f"[Ghost] Hypothesis seeded: {hypothesis_text}", flush=True)
     except Exception as e:
         print(f"[Ghost] Causality seed error: {e}", flush=True)
+        return None
     return entry
 
 
+@serialized("CAUSALITY_FILE")
 def mark_recurrence_evidence(thread_type, resolutions):
     """A ghost hypothesis claims a lean resolves a thread type. When that type recurs, THIS is the
     only system that sees lean-level outcomes — so it is the only thing that can confirm or
@@ -587,7 +594,7 @@ def mark_recurrence_evidence(thread_type, resolutions):
             h["contradictions"] = h.get("contradictions", 0) + 1
         touched += 1
     if touched:
-        (_sg_write(CAUSALITY_FILE, db, "ghost-branches.py") or json.dump(db, open(CAUSALITY_FILE, "w"), indent=2))
+        write_json(CAUSALITY_FILE, db)
         print(f"[Ghost] Recurrence evidence recorded on {touched} prior hypothesis/es", flush=True)
 
 

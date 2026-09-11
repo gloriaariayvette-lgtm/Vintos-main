@@ -208,4 +208,63 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
  finally:release.set()
  tick_future.result(timeout=3);claim_result=claim_future.result(timeout=3)
 check('outreach and want formation share one consumer claim',waited and not claim_result and json.loads(Path(SP.DIRECTIVE).read_text())['consumed_by']=='want-formation')
+# Standalone installed layout resolves helpers even with Python path isolation.
+import shutil, subprocess
+installed=HOME/'Vintos';installed.mkdir(exist_ok=True)
+helpers=HOME/'.vintos/workspace/scripts';helpers.mkdir(parents=True,exist_ok=True)
+shutil.copyfile(REPO/'scripts/store_guard.py',helpers/'store_guard.py')
+for source in ['ghost-branches.py','behavioral-intercept.py']:
+ shutil.copyfile(REPO/'bin'/source,installed/source)
+probe="import importlib.util,sys; s=importlib.util.spec_from_file_location('installed_fixture',sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)"
+check('installed standalone hypothesis writers resolve workspace helpers without PYTHONPATH',all(subprocess.run([sys.executable,'-I','-c',probe,str(installed/source)],cwd=HOME,capture_output=True).returncode==0 for source in ['ghost-branches.py','behavioral-intercept.py']))
+# Hypothesis producers mutate current stores, with inference outside the lock.
+GH=load('ghost_hyp_fixture',REPO/'bin/ghost-branches.py')
+BI=load('intercept_hyp_fixture',REPO/'bin/behavioral-intercept.py')
+GH.MEMORY=BI.MEMORY=str(MEM);GH.CAUSALITY_FILE=str(MEM/'causality-hypotheses.json')
+assert Path(GH.CAUSALITY_FILE).is_relative_to(HOME) and Path(BI.MEMORY).is_relative_to(HOME)
+GH.detect_primary_pattern=lambda _: 'fixture_pattern'
+SG.write_json(GH.CAUSALITY_FILE,{'hypotheses':[{'id':'preserved','hypothesis':'unrelated'}]})
+lean={'id':'lean','label':'plainness'}
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ seeds=list(pool.map(lambda _:GH.seed_causality_hypothesis({'thread':'fixture'},lean,'fixture','fixture_type'),range(20)))
+rows=json.loads(Path(GH.CAUSALITY_FILE).read_text())['hypotheses']
+check('concurrent ghost seeding deduplicates inside the append transaction',len(rows)==2 and len({h['id'] for h in seeds})==1 and rows[0]['id']=='preserved')
+other=GH.seed_causality_hypothesis({'thread':'fixture'},lean,'fixture','different_type')
+check('different ghost hypotheses do not reuse a day-and-lean ID',other['id']!=seeds[0]['id'])
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ list(pool.map(lambda _:GH.mark_recurrence_evidence('fixture_type',{'lean':True}),range(20)))
+row=next(h for h in json.loads(Path(GH.CAUSALITY_FILE).read_text())['hypotheses'] if h.get('thread_type')=='fixture_type')
+check('concurrent ghost recurrence keeps every tactical mark',len(row['marks'])==20 and all(m['tactical'] and not m['counts_toward_graduation'] for m in row['marks']))
+Path(GH.CAUSALITY_FILE).write_text('{invalid')
+failed_seed=GH.seed_causality_hypothesis({'thread':'fixture'},lean,'fixture','new_type')
+check('malformed hypothesis store is not replaced or reported as seeded',failed_seed is None and Path(GH.CAUSALITY_FILE).read_text()=='{invalid')
+selected={'id':'selected','hypothesis':'fixture causal pattern','marks':[],'status':'untested'}
+SG.write_json(GH.CAUSALITY_FILE,{'hypotheses':[selected]})
+def selected_provider(*args,**kwargs):
+ SG.locked_update(GH.CAUSALITY_FILE,lambda d:{**d,'hypotheses':d['hypotheses']+[{'id':'concurrent','hypothesis':'new'}]})
+ return types.SimpleNamespace(json=lambda:{'choices':[{'message':{'content':'0'}}]})
+with patch.object(requests,'post',side_effect=selected_provider):BI.update_causality_tally({'pattern_description':'fixture'},'attempted')
+rows=json.loads(Path(GH.CAUSALITY_FILE).read_text())['hypotheses']
+check('model-selected tally preserves a concurrent hypothesis append',len(rows)==2 and rows[1]['id']=='concurrent' and len(rows[0]['marks'])==1)
+def replaced_provider(*args,**kwargs):
+ SG.write_json(GH.CAUSALITY_FILE,{'hypotheses':[{'id':'replacement','hypothesis':'changed'}]})
+ return types.SimpleNamespace(json=lambda:{'choices':[{'message':{'content':'0'}}]})
+with patch.object(requests,'post',side_effect=replaced_provider):BI.update_causality_tally({},'attempted')
+check('obsolete model selection cannot mark a replacement row',json.loads(Path(GH.CAUSALITY_FILE).read_text())=={'hypotheses':[{'id':'replacement','hypothesis':'changed'}]})
+large={'hypotheses':[{'id':str(i),'hypothesis':'fixture '+str(i)} for i in range(20)]}
+SG.write_json(GH.CAUSALITY_FILE,large)
+with patch.object(requests,'post',return_value=types.SimpleNamespace(json=lambda:{'choices':[{'message':{'content':'17'}}]})):BI.update_causality_tally({},'attempted')
+check('model cannot select a row outside the fifteen offered',json.loads(Path(GH.CAUSALITY_FILE).read_text())==large)
+CC=load('causal_cluster',REPO/'bin/causal-cluster.py')
+SG.write_json(GH.CAUSALITY_FILE,{'hypotheses':[{'id':'cluster','hypothesis':'fixture causal pattern','cluster_based':True,'confidence_score':0.0}]})
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+ list(pool.map(lambda _:BI.update_cluster_confidence({'pattern_description':'fixture causal'},'attempted'),range(5)))
+check('cluster confidence updates serialize complete read-modify-write',json.loads(Path(GH.CAUSALITY_FILE).read_text())['hypotheses'][0]['confidence_score']==.5)
+BS=load('belief_replay_fixture',REPO/'scripts/belief_sediment.py');BS.SEDIMENT_FILE=str(MEM/'belief-replay.json')
+assert Path(BS.SEDIMENT_FILE).is_relative_to(HOME)
+sys.modules['causal_self_model']=types.SimpleNamespace(add_entry=lambda **kw:None)
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+ list(pool.map(lambda _:BS.promote_hypothesis('fixture pattern',evidence_count=3,hypothesis_id='H-fixture',evidence_ids=['E-fixture']),range(12)))
+belief=json.loads(Path(BS.SEDIMENT_FILE).read_text())['beliefs'][0]
+check('graduation replay does not duplicate confidence or evidence',belief['evidence_count']==3 and belief['hypothesis_ids']==['H-fixture'] and belief['evidence_ids']==['E-fixture'])
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)
