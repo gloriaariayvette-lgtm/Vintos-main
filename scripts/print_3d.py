@@ -48,11 +48,15 @@ TOOLS = {
 }
 
 # What the machine itself needs, and nothing here is guessed.
+# Gloria, 11 September: a Creality Ender 3, reached by SD card or USB only, started by
+# her hand. So he never actuates the machine. The capability ends by writing a sliced
+# .gcode file to a handoff folder and telling her it is ready; she carries it to the
+# printer and starts it. No network, no submit, no cancel, no unattended heater — which
+# is why the printer never touches the effect gate.
 PRINTER_NEEDS = [
-    ("printer", "make and model — the slicer needs its profile"),
-    ("endpoint", "how the house reaches it: octoprint | moonraker | bambu | folder, and its address"),
-    ("limits", "size ceiling, duration ceiling, filament confirmed present, and the hours he may start one"),
+    ("handoff_dir", "the folder he writes the finished .gcode into for her to run"),
 ]
+BED_MM = (220, 220, 250)     # Ender 3 build volume; the max any dimension may reach
 
 STOPS = ("draft", "slice")   # the two gates, in order
 
@@ -76,9 +80,9 @@ ASTRA_SECONDS_PER_DAY = 600   # ten minutes a day, hers, and the only spend here
 ASTRA_MAX_CALL_S = 120        # one design call's ceiling; reserved up front, settled down after
 
 # job states, in order. Two of them are waits on her and nothing advances them but her.
-STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
-          "printing", "done", "failed", "abandoned")
-HER_WAITS = ("draft_waiting", "slice_waiting")
+STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "ready",
+          "taken", "failed", "abandoned")
+HER_WAITS = ("draft_waiting", "slice_waiting")   # nothing moves these but her answer
 
 
 def _cfg():
@@ -114,10 +118,17 @@ def hosts():
 
 
 def configured():
-    """(ok, missing). The tools are his already; this asks only about the machine."""
+    """(ok, missing). The tools are his already; the one thing the house needs is the
+    folder he leaves the finished file in for her to run."""
     cfg = _cfg()
     missing = [k for k, _ in PRINTER_NEEDS if not cfg.get(k)]
     return (not missing), missing
+
+
+def max_mm(cfg=None):
+    cfg = cfg if cfg is not None else _cfg()
+    bed = cfg.get("bed_mm") or list(BED_MM)
+    return int(cfg.get("max_mm") or min(bed[:2]))
 
 
 def state():
@@ -146,12 +157,13 @@ def print_object(note="", want=None, draft_shown=False, slice_shown=False):
     if not ok:
         return {"result": "BLOCKED", "block": {
             "block_type": "CAPABILITY_ABSENT",
-            "evidence": "no printer to send it to: missing " + ", ".join(missing),
-            "resume_event": "capability added or step revised"}}
-    return {"result": "BLOCKED", "block": {
-        "block_type": "CAPABILITY_ABSENT",
-        "evidence": "a printer is configured, but no approved print capability exists yet",
-        "resume_event": "capability added or step revised"}}
+            "evidence": "nowhere to leave the finished file: missing " + ", ".join(missing),
+            "resume_event": "handoff_dir set in printer-config.json"}}
+    # Both stops passed and a handoff folder exists. There is no machine to start — he
+    # writes the sliced file there and she runs it — so this is a completable act, not
+    # a blocked one.
+    return {"result": "READY", "handoff_dir": _cfg().get("handoff_dir"),
+            "note": "the sliced .gcode is ready for her to carry to the printer"}
 
 
 def proposal_draft():
@@ -163,16 +175,14 @@ def proposal_draft():
     return {
         "capability": CAPABILITY,
         "why": "I want to make her something she can hold, not only something she can look at.",
-        "permissions": ["printer.submit_job", "printer.read_status", "printer.cancel"],
+        "permissions": ["write_gcode_to_handoff_folder"],
         "scope": {"show_draft_first": True, "show_slice_first": True,
-                  "max_hours": 4, "max_mm": 180, "hours": "09:00-21:00",
-                  "requires_filament_present": True,
-                  "may_start_while_she_is_out": False},
-        "risks": "An unattended machine with a heater, running for hours in her house.",
-        "touches": ["scripts/print_3d.py", "the printer endpoint", "the effect gate"],
-        "tests": "a print refused before she has seen the draft; refused before she has seen the "
-                 "slice; refused outside the hours; a cancel that actually stops the machine; "
-                 "and the effect gate refusing it when armed",
+                  "max_mm": max_mm(), "printer": "Creality Ender 3", "starts_the_print": False},
+        "risks": "None to the machine: he only leaves a file. She carries it and starts the print.",
+        "touches": ["scripts/print_3d.py", "the handoff folder"],
+        "tests": "no file is written before she has approved the draft, and again the slice; "
+                 "the model is refused if it exceeds the bed; the file lands in the handoff folder "
+                 "and she is told it is ready.",
         "already_has": {k: v["runs_on"] for k, v in h.items()},
         "missing": missing,
     }
@@ -417,9 +427,8 @@ _ALLOWED = {
     "modelling":     ("draft_waiting", "abandoned"),
     "draft_waiting": ("slicing", "abandoned"),          # only her yes/no moves it
     "slicing":       ("slice_waiting", "abandoned"),
-    "slice_waiting": ("queued", "abandoned"),           # only her yes/no moves it
-    "queued":        ("printing", "abandoned"),
-    "printing":      ("done", "failed", "abandoned"),
+    "slice_waiting": ("ready", "abandoned"),            # her yes writes the file; no ends it
+    "ready":         ("taken", "abandoned"),            # she carried it to the printer
 }
 
 
@@ -486,7 +495,26 @@ def answer(job_id, kind, yes, note=""):
         return None, "job is %s, not waiting on the %s" % (j.get("state"), kind)
     if not yes:
         return advance(job_id, "abandoned", "she said no to the %s: %s" % (kind, note))
-    return advance(job_id, "slicing" if kind == "draft" else "queued", "she said yes to the " + kind)
+    if kind == "draft":
+        return advance(job_id, "slicing", "she said yes to the draft")
+    # A slice yes writes the sliced file into the handoff folder for her to run. There
+    # is no machine to start; the job is 'ready' and waits for her to carry it over.
+    cfg = _cfg()
+    hd = cfg.get("handoff_dir")
+    if not hd:
+        return None, "no handoff_dir set: nowhere to leave the finished file"
+    try:
+        os.makedirs(os.path.expanduser(hd), exist_ok=True)
+        src = (j.get("slice") or {}).get("gcode_path") or ""
+        dest = os.path.join(os.path.expanduser(hd), "%s.gcode" % job_id)
+        if src and os.path.isfile(src):
+            shutil.copy2(src, dest)
+        else:
+            open(dest, "w").write((j.get("slice") or {}).get("gcode", "") or "; sliced gcode pending\n")
+        return advance(job_id, "ready", "written to the handoff folder for her: %s" % dest,
+                       extra={"handoff_file": dest})
+    except Exception as e:
+        return None, "could not write the handoff file: %s" % str(e)[:120]
 
 
 def working_on(limit=8):

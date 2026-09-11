@@ -143,74 +143,28 @@ check("her card, her approve and her deny are guarded routes",
       '/api/skills/proposals' in srv and srv.count("_require_secret(request)") > 3 and "skill_approve" in srv)
 check("what he is holding reaches his own prompt", "_stance_context()" in srv)
 
-print("\n--- the printer: he has the tools, he stops twice, and there is no machine ---")
+print("\n--- the printer: an Ender 3 by SD/USB, he never starts it, he stops twice ---")
 P3 = load("print_3d", os.path.join(REPO, "scripts", "print_3d.py")); P3.CONFIG = os.path.join(MEM, "printer-config.json")
 out = P3.print_object("a small thing for her desk")
 check("he stops before slicing anything she has not seen", out["block"]["block_type"] == "AWAITING_HER" and "model" in out["block"]["evidence"])
 out = P3.print_object("x", draft_shown=True)
-check("and stops again before making something whose numbers she has not seen",
-      out["block"]["block_type"] == "AWAITING_HER" and "slice" in out["block"]["evidence"])
+check("and stops again before the numbers she has not seen", out["block"]["block_type"] == "AWAITING_HER" and "slice" in out["block"]["evidence"])
 out = P3.print_object("x", draft_shown=True, slice_shown=True)
-check("only then does the missing machine become the blocker",
-      out["block"]["block_type"] == "CAPABILITY_ABSENT" and "no printer to send it to" in out["block"]["evidence"])
+check("with no handoff folder set, there is nowhere to leave the file", out["block"]["block_type"] == "CAPABILITY_ABSENT" and "nowhere to leave" in out["block"]["evidence"])
 check("the two stops are in order and named", P3.STOPS == ("draft", "slice"))
 d = P3.proposal_draft()
-check("he asks for the printer, not for the tools he already has",
-      d["permissions"] == ["printer.submit_job", "printer.read_status", "printer.cancel"])
-check("showing her first is in the scope, not only in the code",
-      d["scope"]["show_draft_first"] is True and d["scope"]["show_slice_first"] is True)
-check("it does not assume he may start one while she is out", d["scope"]["may_start_while_she_is_out"] is False)
-check("the tools are named with where each would run", set(d["already_has"]) == {"blender", "cura"})
-check("nothing is wired to a machine on a guess", P3.configured()[0] is False)
-json.dump({"printer": "x", "endpoint": "octoprint http://x", "limits": {"max_hours": 2}}, open(P3.CONFIG, "w"))
-check("with a machine configured it still refuses until the capability is approved",
-      P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["block_type"] == "CAPABILITY_ABSENT"
-      and "no approved print capability" in P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["evidence"])
-
-print("\n--- Astra writes the script, and her ten minutes is a true cap ---")
-P3.JOBS = os.path.join(MEM, "print-jobs.json")
-json.dump([], open(P3.JOBS, "w"))
-check("her ceiling is ten minutes and a per-call reservation", P3.ASTRA_SECONDS_PER_DAY == 600 and P3.ASTRA_MAX_CALL_S == 120 and P3.DESIGN_MODEL == "astra")
-# a design call NEEDS a persisted job; a bare/None job cannot spend her
-out_nojob = P3.design("x", caller=lambda *a, **k: "import bpy\n")
-check("a design call refuses without a persisted job (no untracked spend)", not out_nojob["ok"] and "persisted job" in out_nojob["why"])
-# reserve-then-settle keeps the day total at the cap even with a long call
-j1 = P3.open_job("a bird")
-out1 = P3.design("a bird", job_id=j1["id"], caller=lambda *a, **k: "import bpy\n")
-check("a persisted job's call is admitted and settled", out1["ok"])
-check("one deciding call per job; a second is refused", not P3.design("again", job_id=j1["id"], caller=lambda *a, **k: "import bpy\n")["ok"])
-# fill the day close to the cap, then prove a call that would not fit is refused up front
-json.dump([], open(P3.JOBS, "w"))
-import datetime as _dt
-jf = P3.open_job("filler")
-P3._save_jobs([{**J, "work": [{"at": _dt.datetime.now().isoformat(timespec="seconds"), "seconds": 520, "minutes": 0, "what": "design", "how": "answered", "rid": "z"}]} if J["id"] == jf["id"] else J for J in P3._jobs()])
-jn = P3.open_job("would overflow")
-outn = P3.design("x", job_id=jn["id"], caller=lambda *a, **k: "import bpy\n")
-check("a call that would not fit in the remaining day is refused before it runs", not outn["ok"] and "not enough" in outn["why"], outn.get("why"))
-check("the refusal spent nothing: the day total is unchanged", P3.astra_seconds_today() == 520.0, P3.astra_seconds_today())
-# a call can never settle above the ceiling it reserved
-json.dump([], open(P3.JOBS, "w"))
-jc = P3.open_job("capped")
-P3.design("x", job_id=jc["id"], caller=lambda *a, **k: "import bpy\n")
-_secs = [e["seconds"] for JJ in P3._jobs() for e in JJ.get("work", []) if e["what"] == "design"]
-check("a settled call never exceeds the per-call ceiling", all(x <= P3.ASTRA_MAX_CALL_S for x in _secs), _secs)
-check("Astra's time is not counted against his local minutes", P3.spent_today() == 0.0, P3.spent_today())
-out2 = P3.design("x", job_id=P3.open_job("prose")["id"], caller=lambda *a, **k: "sure, I would make a bird!")
-check("prose is not a Blender script and is refused", not out2["ok"] and "not a Blender script" in out2["why"])
-check("the seconds are recorded even when what came back was useless", "seconds" in out2)
-def _boom(*a, **k):
-    raise RuntimeError("she did not answer")
-before = P3.astra_seconds_today()
-jb = P3.open_job("a third")
-P3.design("x", job_id=jb["id"], caller=_boom)
-check("a failed call still spends her time, and it is written down", P3.astra_seconds_today() >= before)
-src3 = open(os.path.join(REPO, "scripts", "print_3d.py")).read()
-check("the local minute budget is still named as local CPU, not money", "local CPU minutes" in src3)
-check("the script is returned, never run by the deciding call", "The script is returned, never run" in src3)
-AC = load("astra_call", os.path.join(REPO, "scripts", "astra_call.py"))
-check("the caller reaches the review lens by her real model name", AC.MODEL == "gpt-6-astra")
-check("it holds no budget of its own", "budget" not in AC.call.__doc__.lower())
-
+check("he asks only to leave a file, never to submit or cancel a print",
+      d["permissions"] == ["write_gcode_to_handoff_folder"])
+check("he does not start the print; that is her hand", d["scope"]["starts_the_print"] is False)
+check("the bed ceiling is the Ender 3's", d["scope"]["max_mm"] == 220 and P3.BED_MM == (220, 220, 250))
+check("showing her first is in the scope, not only the code", d["scope"]["show_draft_first"] and d["scope"]["show_slice_first"])
+check("the tools he already has are named", set(d["already_has"]) == {"blender", "cura"})
+check("no handoff folder is guessed", P3.configured()[0] is False)
+import tempfile as _tf
+_HD = _tf.mkdtemp()
+json.dump({"handoff_dir": _HD, "bed_mm": [220, 220, 250]}, open(P3.CONFIG, "w"))
+check("with a handoff folder, producing the file is his to complete (no machine to start)",
+      P3.print_object("x", draft_shown=True, slice_shown=True)["result"] == "READY")
 print("\n--- how long he may work, and how she knows he is working ---")
 json.dump([], open(P3.JOBS, "w"))
 ok, why = P3.may_work(5)

@@ -5799,14 +5799,21 @@ async def get_svg(filename: str):
     raise HTTPException(status_code=404, detail="SVG not found")
 
 
-# === Dream Art Gallery === (moved to server_domains/galleries.py, Q2 Phase 3 cut 1)
-from server_domains.galleries import router as _galleries_router
-app.include_router(_galleries_router)
-
-
-# === Music Gallery === (moved to server_domains/music.py, Q2 Phase 3 cut 2)
-from server_domains.music import router as _music_router
-app.include_router(_music_router)
+# === Dream Art Gallery / Music Gallery === (server_domains/, Q2 Phase 3 cuts 1-2)
+# These three domain modules live beside the server on the host and are not in the
+# checkout. A clean source-only install must still import the server: a missing module
+# is reported and its routes are simply absent that run, not a fatal ImportError.
+def _mount_domain(name, attr="router"):
+    try:
+        import importlib
+        _m = importlib.import_module("server_domains." + name)
+        app.include_router(getattr(_m, attr))
+        return True
+    except Exception as _de:
+        print("[server_domains] %s not mounted (%s); its routes are absent this run" % (name, str(_de)[:100]), flush=True)
+        return False
+_mount_domain("galleries")
+_mount_domain("music")
 
 
 # === Voice ===
@@ -7102,9 +7109,8 @@ async def dismiss_hallucination_flag(flag_id: str, request: Request):
         return {"success": True, "message": "Flag dismissed"}
     except Exception as e:
         return {"success": False, "error": str(e)}
-# === Humor & Mischief API === (moved to server_domains/humor_wants.py, Q2 Phase 3 cut 3)
-from server_domains.humor_wants import router as _humor_router
-app.include_router(_humor_router)
+# === Humor & Mischief API === (server_domains/humor_wants.py, Q2 Phase 3 cut 3)
+_mount_domain("humor_wants")
 
 
 # === Avatar Overlay Chat — isolated, no memory writes ===
