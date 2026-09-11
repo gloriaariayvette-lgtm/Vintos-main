@@ -127,6 +127,12 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
+# The IMPORT twin of a manifested CLI name. `causal-cluster.py` was repaired and deployed
+# while `causal_cluster.py` - the name every `import causal_cluster` actually resolves - was
+# in no list at all, so the host kept a stale copy of the module the code imports and ran old
+# clustering logic behind a file that looked current. Every .py twin that exists on disk is
+# named here, so the two spellings can never drift apart on the host again (2026-09-11).
+BINS="$BINS ambition_review.py behavioral_intercept.py blush_ledger.py causal_cluster.py causal_observations.py confession-writer.py core_engine.py deviation-check.py humor-detector.py humor-reaction.py latent-threads.py music_share.py taste_reflection.py taste_vector.py temporal_memory.py thread_resolution.py thread_triage.py thread-weaver.py wal_decay.py wants_router.py weekly_summary.py"
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
@@ -335,6 +341,34 @@ else
     ambiguous=1
 fi
 [ "$ambiguous" -eq 0 ] || die "a file exists in more than one tree (above) — nothing installed"
+
+# Two sources, one destination. `belief_sediment.py` is in SCRIPTS and in BINS, and the
+# two checkouts had drifted apart: the plan promoted scripts/ and then bin/ over the top
+# of it, so a repair committed to one copy was silently thrown away by the same deploy
+# that claimed to install it. A destination fed by two sources is fine while the bytes
+# agree; it is refused the moment they do not, with both sources named.
+printf '%s' "$PLAN" | python3 -c '
+import hashlib, sys
+seen, bad = {}, {}
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if "|" not in line: continue
+    src, dst = line.split("|", 1)
+    try:
+        h = hashlib.sha256(open(src, "rb").read()).hexdigest()
+    except OSError as e:
+        print("  %s: %s" % (src, e)); sys.exit(2)
+    if dst in seen:
+        if seen[dst][0] != h:
+            bad.setdefault(dst, {seen[dst][1]}).add(src)
+    else:
+        seen[dst] = (h, src)
+for dst, srcs in sorted(bad.items()):
+    print("  %s" % dst)
+    for s in sorted(srcs):
+        print("      <- %s" % s)
+sys.exit(1 if bad else 0)
+' || die "one destination, two sources with different bytes (above) — the last would silently win; make them one file"
 say
 
 # -------------------------------------------------------------------- stage

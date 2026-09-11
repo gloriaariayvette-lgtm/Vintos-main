@@ -211,8 +211,16 @@ def load_ledger():
     """Corrupt storage is quarantined and reported, never silently treated as empty (astra-memoryrec-p2,
     2026-09-05): a ledger that fails to parse is copied to interaction-ledger.corrupt-<ts>.json first."""
     try:
-        with open(LEDGER_FILE) as f:
-            return json.load(f)
+        # review 48: read through the compatibility reader - older rows are migrated in memory
+        # (turn_id / surface present, None), nothing on disk is rewritten by a read
+        try:
+            sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+            from store_compat import load_json_compat as _ljc, LEDGER_MIGRATIONS as _LM
+            rows, _v = _ljc(LEDGER_FILE, _LM, default=[])
+            return rows
+        except ImportError:
+            with open(LEDGER_FILE) as f:
+                return json.load(f)
     except FileNotFoundError:
         return []
     except Exception as e:

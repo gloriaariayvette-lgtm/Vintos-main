@@ -53,6 +53,13 @@ def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hy
     data = load_sediment()
     beliefs = data["beliefs"]
 
+    # Replaying one graduation after an interrupted source acknowledgement
+    # must not manufacture another supporting occasion.
+    if hypothesis_id:
+        for belief in beliefs:
+            if hypothesis_id in belief.get("hypothesis_ids", []):
+                return belief["pattern"]
+
     # Check if similar belief already exists
     for b in beliefs:
         if _text_overlap(b["pattern"], hypothesis_text) > 0.6:

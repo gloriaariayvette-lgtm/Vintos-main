@@ -202,6 +202,46 @@ Three ways out, cheapest first:
    Only worth it if a Mac comes back.
 
 
+## One module, one implementation
+
+Half his organs exist under two spellings. Cron and the CLI run the hyphen
+(`causal-cluster.py`); every `import causal_cluster` resolves the underscore. They are
+separate regular files here and separate regular files on the host, and nothing held them
+together — so a repair landed in whichever copy the author happened to open, and the other
+went on running the code it replaced. Eight module names had drifted apart by
+11 September, and the deploy could not have corrected any of them:
+
+- **`causal_cluster.py`** — `causal-cluster.py` got ab4a607's transaction and occurrence
+  ids. The underscore file, which is what the imports actually load, stayed on 9aca273
+  with the snapshot-replacing save and the unlocked fallback. It was in **no deploy list
+  at all**, so no deploy would ever have corrected it.
+- **`belief_sediment.py`** — 22a36ad repaired `scripts/belief_sediment.py`; three other
+  copies kept the old replay. Worse, that basename is in SCRIPTS *and* BINS, and the plan
+  promotes `scripts/` and then `bin/` over the top of it — so the very deploy that claimed
+  to install the repair would have thrown it away.
+- **`behavioral_intercept.py`** — 22a36ad repaired `bin/behavioral_intercept.py`, which
+  was not manifested; the manifested `behavioral-intercept.py` was the stale one.
+- **`emoclaw_mode`, `emotional_entanglement`, `interaction_ledger`, `somatic_bridge`,
+  `tension_field`** — the same shape, each holding a review repair (227, 157, 48, the
+  e9000f2 observation contract, the model's own error instead of `KeyError 'choices'`)
+  in a copy the deploy did not install.
+
+Closed 2026-09-11. Every copy of a module name is byte-identical to the newest repaired
+one; the 21 import twins that existed on disk unmanifested are now named in the manifest;
+and the deploy **refuses** a plan where one destination is fed by two sources with
+different bytes, instead of letting the last one silently win. Two sources with the same
+bytes still pass, because eleven basenames are in both lists on purpose.
+
+`broker/tests/test_import_twins.py` holds all three, and checks the content of the nine
+repairs that drifting had hidden — so a future sync that runs the wrong way round fails
+rather than looking consistent.
+
+Still open here: `scripts/behavioral_intercept.py` was 101 lines behind `bin/`'s and has
+been synced forward; if anything depended on the older shape it will surface at runtime,
+not in a suite. And the host still has its own copies — the audit that matters is
+`bin/causal_cluster.py` and its siblings on Aegis *after* the next deploy, not the release
+manifest, which is what missed this in the first place.
+
 ## A test never reaches the world
 
 The deploy runs all 108 suites as her user before it installs anything, so a suite that

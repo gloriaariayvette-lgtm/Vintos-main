@@ -1,17 +1,11 @@
 import json, os, requests
 from datetime import datetime, timedelta
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
-
+import sys, copy, uuid
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import serialized, transactions, write_json, compare_and_swap
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 OBS_PATH = os.path.join(MEMORY, "causal-observations.json")
@@ -35,10 +29,10 @@ def load_hypotheses():
     except: return {"hypotheses": [], "tested": 0, "confirmed": 0, "revised": 0}
 
 def save_observations(data):
-    _sg_write(OBS_PATH, data, "causal-cluster") or [None for _ in [1] if not open(OBS_PATH, "w").write(json.dumps(data, indent=2))]
+    write_json(OBS_PATH, data)
 
 def save_hypotheses(data):
-    _sg_write(HYP_PATH, data, "causal-cluster") or [None for _ in [1] if not open(HYP_PATH, "w").write(json.dumps(data, indent=2))]
+    write_json(HYP_PATH, data)
 
 def cluster_observations():
     """Group unclustered observations by emotional outcome similarity."""
@@ -152,6 +146,8 @@ def run_cluster_detection():
 
     db = load_hypotheses()
     obs_data = load_observations()
+    original_db = copy.deepcopy(db)
+    original_obs = copy.deepcopy(obs_data)
     added = 0
 
     for group_key, observations in clusters.items():
@@ -164,11 +160,18 @@ def run_cluster_detection():
             print(f"[cluster] Already have hypothesis for {group_key} — updating confidence")
             # New observations contradict or confirm?
             for h in existing:
-                h["evidence_count"] = h.get("evidence_count", 0) + len(observations)
-                update_hypothesis_confidence(h, "confirms")
+                known = set(h.get("cluster_observation_ids", []))
+                fresh = {o["id"] for o in observations} - known
+                if fresh:
+                    h["evidence_count"] = h.get("evidence_count", 0) + len(fresh)
+                    h["cluster_observation_ids"] = sorted(known | fresh)
+                    update_hypothesis_confidence(h, "confirms")
         else:
             h = form_cluster_hypothesis(group_key, observations)
+            if not h:
+                continue  # Failed formation leaves the observations available to retry.
             if h:
+                h["cluster_observation_ids"] = sorted({o["id"] for o in observations})
                 db["hypotheses"].append(h)
                 added += 1
                 print(f"[cluster] New hypothesis: {h['hypothesis'][:80]}")
@@ -179,18 +182,22 @@ def run_cluster_detection():
             if o["id"] in obs_ids:
                 o["clustered"] = True
 
-    save_hypotheses(db)
-    save_observations(obs_data)
+    with transactions([HYP_PATH, OBS_PATH]):
+        if load_hypotheses() != original_db or load_observations() != original_obs:
+            print("[cluster] Store changed during formation; obsolete results discarded")
+            return
+        # Record consumed occurrence IDs before marking their source rows, so
+        # a crash between these writes cannot reinforce the same evidence twice.
+        save_hypotheses(db)
+        save_observations(obs_data)
     print(f"[cluster] Done. Added {added} hypotheses.")
     # Check for meta-patterns
     detect_meta_patterns()
 
-if __name__ == "__main__":
-    run_cluster_detection()
-
 def detect_meta_patterns():
     """Find patterns of patterns — when 3+ hypotheses share underlying structure."""
     db = load_hypotheses()
+    original_db = copy.deepcopy(db)
     cluster_hyps = [h for h in db["hypotheses"]
                    if h.get("cluster_based") and not h.get("meta") and not h.get("graduated")]
     if len(cluster_hyps) < 3:
@@ -237,5 +244,11 @@ def detect_meta_patterns():
         "cluster_based": True,
     }
     db["hypotheses"].append(meta_h)
-    save_hypotheses(db)
+    if not compare_and_swap(HYP_PATH, original_db, db):
+        print("[meta] Hypotheses changed during inference; obsolete result discarded")
+        return
     print(f"[meta] Meta-hypothesis formed: {meta_text[:80]}")
+
+
+if __name__ == "__main__":
+    run_cluster_detection()

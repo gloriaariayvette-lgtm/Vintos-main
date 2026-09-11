@@ -8,6 +8,10 @@ Usage:
 """
 import json, os, sys, requests
 from datetime import datetime
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import transaction, write_json
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -63,7 +67,8 @@ def detect_match(text, trials, context=None):
     _trial_limit = 30 if _sensitivity_boost else 20
     trial_list = ""
     for t in trials[:_trial_limit]:
-        trial_list += f"ID: {t['id']}\nTrigger: {t['trigger']}\nPattern: {t['pattern_description']}\n\n"
+        # review 255: older second-order rows carry no trigger; read them by their pattern, never KeyError
+        trial_list += f"ID: {t.get('id','?')}\nTrigger: {t.get('trigger') or ('when the pattern appears: ' + str(t.get('pattern_description',''))[:100])}\nPattern: {t.get('pattern_description','')}\n\n"
     _partial_line = "\nPartial matches count — if the pattern is beginning to emerge, that is enough." if _sensitivity_boost else ""
     prompt = (
         "Below is text Vintos is about to generate, and a list of active behavioral trials.\n"
@@ -392,20 +397,7 @@ def log_outcome(trial_id, outcome, resistance=0.5, influenced=False):
 
             # Update cluster-based hypothesis confidence
             try:
-                from causal_cluster import load_hypotheses, save_hypotheses, update_hypothesis_confidence
-                _db = load_hypotheses()
-                _pattern = _trial_obj.get("pattern_description", "")
-                for _h in _db["hypotheses"]:
-                    if not _h.get("cluster_based"): continue
-                    # Check if hypothesis relates to this trial's pattern
-                    _hyp_text = _h.get("hypothesis", "").lower()
-                    _pat_words = set(_pattern.lower().split())
-                    _overlap = sum(1 for w in _pat_words if w in _hyp_text and len(w) > 4)
-                    if _overlap >= 2:
-                        _conf_outcome = "confirms" if outcome == "attempted" else "contradicts"
-                        update_hypothesis_confidence(_h, _conf_outcome)
-                        print(f"[Intercept] Hypothesis confidence updated: {_h['hypothesis'][:60]} -> {_h['confidence_score']}", file=__import__("sys").stderr)
-                save_hypotheses(_db)
+                update_cluster_confidence(_trial_obj, outcome)
             except Exception as _ch_e:
                 print(f"[Intercept] Hypothesis update failed: {_ch_e}", file=__import__("sys").stderr)
     except Exception as _ct_e:
@@ -485,6 +477,29 @@ def log_blush_on_divergence(trial_id, context_text):
     except Exception as e:
         print(f"[Intercept] Blush write failed: {e}", file=__import__("sys").stderr)
 
+def update_cluster_confidence(trial, outcome):
+    """Apply a short confidence mutation to the current hypothesis store."""
+    from causal_cluster import update_hypothesis_confidence
+    path = os.path.join(MEMORY, "causality-hypotheses.json")
+    with transaction(path):
+        try:
+            with open(path) as handle:
+                db = json.load(handle)
+        except FileNotFoundError:
+            return
+        words = set(trial.get("pattern_description", "").lower().split())
+        changed = False
+        for h in db.get("hypotheses", []):
+            if not h.get("cluster_based") or h.get("graduated"):
+                continue
+            text = h.get("hypothesis", "").lower()
+            if sum(1 for w in words if len(w) > 4 and w in text) >= 2:
+                update_hypothesis_confidence(h, "confirms" if outcome == "attempted" else "contradicts")
+                changed = True
+        if changed:
+            write_json(path, db)
+
+
 def update_causality_tally(trial, outcome):
     """Find the most related causality hypothesis and update its tally."""
     try:
@@ -493,7 +508,7 @@ def update_causality_tally(trial, outcome):
             return
         with open(HYPOTHESIS_DB) as f:
             db = json.load(f)
-        hypotheses = db.get("hypotheses", [])
+        hypotheses = [h for h in db.get("hypotheses", []) if not h.get("graduated")][:15]
         if not hypotheses:
             return
         # Find most related hypothesis via LLM
@@ -516,28 +531,36 @@ def update_causality_tally(trial, outcome):
         if "NONE" in raw.upper():
             return
         import re as _re
-        m = _re.search(r"\d+", raw)
+        m = _re.fullmatch(r"\d+", raw)
         if not m:
             return
         idx = int(m.group())
         if idx >= len(hypotheses):
             return
-        h = hypotheses[idx]
-        # Update marks and tally
-        from datetime import datetime as _dt
-        mark = {"date": _dt.now().isoformat()[:10], "outcome": outcome, "source": "behavioral_intercept"}
-        h.setdefault("marks", []).append(mark)
-        h["days_tested"] = h.get("days_tested", 0) + 1
-        db["tested"] = db.get("tested", 0) + 1
-        if outcome == "attempted":
-            db["confirmed"] = db.get("confirmed", 0) + 1
-            h["status"] = "confirmed"
-        elif outcome in ("defaulted", "partial"):
-            db["revised"] = db.get("revised", 0) + 1
-            if h.get("status") == "untested":
-                h["status"] = "active"
-        with open(HYPOTHESIS_DB, "w") as f:
-            json.dump(db, f, indent=2)
+        selected = hypotheses[idx]
+        with transaction(HYPOTHESIS_DB):
+            with open(HYPOTHESIS_DB) as handle:
+                db = json.load(handle)
+            # Model indices belong only to the offered snapshot. Preserve other
+            # rows, and refuse a changed, removed, graduated or ambiguous target.
+            matches = [h for h in db.get("hypotheses", []) if h == selected]
+            if len(matches) != 1:
+                return
+            h = matches[0]
+            # Update marks and tally
+            from datetime import datetime as _dt
+            mark = {"date": _dt.now().isoformat()[:10], "outcome": outcome, "source": "behavioral_intercept"}
+            h.setdefault("marks", []).append(mark)
+            h["days_tested"] = h.get("days_tested", 0) + 1
+            db["tested"] = db.get("tested", 0) + 1
+            if outcome == "attempted":
+                db["confirmed"] = db.get("confirmed", 0) + 1
+                h["status"] = "confirmed"
+            elif outcome in ("defaulted", "partial"):
+                db["revised"] = db.get("revised", 0) + 1
+                if h.get("status") == "untested":
+                    h["status"] = "active"
+            write_json(HYPOTHESIS_DB, db)
         print(f"[Intercept] Causality tally updated: hypothesis {idx} → {outcome}", file=__import__("sys").stderr)
     except Exception as e:
         print(f"[Intercept] Causality tally error: {e}", file=__import__("sys").stderr)

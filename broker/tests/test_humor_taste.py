@@ -80,7 +80,15 @@ class HumorTasteTests(unittest.TestCase):
             Path(hp.PROFILE_FILE).write_text(json.dumps(
                 {"landed": [], "flopped": [], "gloria_ratings": []}))
             hp.llm = lambda *a, **k: "1. craft=4 delight=5 mechanism=absurdity note=keep the image"
+            # review_drafts() carries her rating through the enjoyment door, and enjoyment
+            # keeps its own path into the real workspace: without this the suite appended a
+            # row to HIS live enjoyment ledger every time the deploy ran the tests.
+            enj = load("enjoyment_for_humor_test", ROOT / "scripts/enjoyment.py")
+            enj.MEMORY = td
+            enj.LEDGER = os.path.join(td, "enjoyment-ledger.jsonl")
+            sys.modules["enjoyment"] = enj
             hp.review_drafts()
+            self.assertTrue(enj.LEDGER.startswith(td), "the enjoyment ledger must be throwaway")
             row = json.loads(Path(hp.DRAFTS_FILE).read_text())["drafts"][0]
             self.assertEqual(row["reception"], "ungraded")
             self.assertTrue(row["self_reviewed"])
