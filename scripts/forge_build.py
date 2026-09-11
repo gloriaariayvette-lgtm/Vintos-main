@@ -48,15 +48,39 @@ def _astra():
     return astra_call.call
 
 
-def _fable(system, messages, max_tokens=1500, timeout=120):
-    """Fable 5.1 through his router / key. Returns text or raises."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, os.path.join(WS, "scripts"))
+FABLE_MODEL = "claude-fable-5-1"    # Gloria, 11 September: Fable 5.1 reviews the forged skill
+
+
+def _anthropic_key():
+    k = os.environ.get("ANTHROPIC_API_KEY", "")
+    if k:
+        return k
     try:
-        import robot_core as RC
-        return RC._sonnet(system, messages, max_tokens=max_tokens)   # his Claude caller
-    except Exception as e:
-        raise RuntimeError("Fable review caller unavailable: %s" % str(e)[:120])
+        _d = json.load(open(os.path.expanduser("~/.openclaw/agents/main/agent/auth-profiles.json")))
+        return ((_d.get("profiles") or {}).get("anthropic:default") or {}).get("key", "") or ""
+    except Exception:
+        return ""
+
+
+def _fable(system, messages, max_tokens=1500, timeout=120):
+    """Fable 5.1 (claude-fable-5-1) through his Anthropic key. Returns text or raises.
+    Not Sonnet: she named Fable as the reviewer, so this calls Fable and nothing else."""
+    import urllib.request
+    key = _anthropic_key()
+    if not key:
+        raise RuntimeError("no Anthropic key for Fable (ANTHROPIC_API_KEY or auth-profiles.json)")
+    body = json.dumps({"model": FABLE_MODEL, "max_tokens": int(max_tokens),
+                       "system": str(system or ""),
+                       "messages": [dict(m) for m in (messages or [])]}).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
+                                 headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                          "content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        blocks = json.loads(r.read().decode()).get("content") or []
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    if not text.strip():
+        raise RuntimeError("Fable answered with nothing")
+    return text
 
 
 def _safe_name(cap):
