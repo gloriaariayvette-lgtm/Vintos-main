@@ -287,6 +287,50 @@ KNOWN_TOYS = ("mission", "tenera", "ridge", "thruster")
 LEGACY_PATTERNS = ("steady", "throb", "pulse", "build", "wave")
 STOP_WORDS = ("still", "stop", "off")
 
+REFUSALS = os.path.join(MEM, ".device-refusals.json")
+
+
+def accepted_toys():
+    """The toy names the grammar accepts, from the same table the executor dispatches —
+    the instrument description is generated from this, so the menu cannot drift from what
+    works. accepted_patterns() has done this for the shapes since astra-somatic-p1; the
+    names had no such contract, and a tag naming a toy that does not exist was refused in
+    silence."""
+    return sorted(set(KNOWN_TOYS) | set(_SYNC))
+
+
+def note_refusals(rows):
+    """Keep what was refused, for his NEXT turn. A tag that never reached a device used to
+    print one line to the server log and stop there: he had no way to learn that 'tinera'
+    is not a toy, so he wrote it again. Newest first, at most four, best effort — a failure
+    to record a refusal must never break the reply that carried it."""
+    try:
+        keep = [{"tag": str(r.get("tag", ""))[:60], "why": str(r.get("why", ""))[:80],
+                 "at": time.time()} for r in (rows or [])][:4]
+        if not keep:
+            return False
+        os.makedirs(os.path.dirname(REFUSALS), exist_ok=True)
+        tmp = REFUSALS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(keep, f)
+        os.replace(tmp, REFUSALS)
+        return True
+    except Exception:
+        return False
+
+
+def take_refusals(max_age=900):
+    """Read and clear. He is told once, on the next turn — a refusal repeated forever would
+    become part of the furniture, and a stale one would be a lie about what just happened."""
+    try:
+        rows = json.load(open(REFUSALS))
+        os.remove(REFUSALS)
+    except Exception:
+        return []
+    now = time.time()
+    return [r for r in rows if isinstance(r, dict) and (now - float(r.get("at") or 0)) <= max_age]
+
+
 def accepted_patterns():
     """The names the grammar accepts, from the same table that plays them — the instrument
     description is generated from this, so the menu cannot drift from what works (astra-somatic-p1)."""
@@ -402,6 +446,7 @@ def fire_his_intent(reply_text, context=None):
     _fired=[]
     _quiet_zero=[]   # alias-stop zeros to devices that were not there: receipts, not the bubble
     plan, rejected = compile_plan(reply_text)
+    note_refusals(rejected)   # so his next turn is told, instead of only the server log
     for _rj in rejected:
         print(f"[device] tag refused before authorization: {_rj['tag']} — {_rj['why']}", flush=True)
         _fired.append("%s [refused:%s]" % (_rj["tag"][:40], _rj["why"][:40]))

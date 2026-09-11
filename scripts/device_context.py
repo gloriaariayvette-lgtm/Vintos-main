@@ -48,6 +48,41 @@ def rotate_glyph(level):
 
 # (PATTERNS list deleted 2026-09-05 — it named shapes the grammar did not own; device_patterns.accepted_patterns() is the contract)
 
+def _toy_names_line():
+    """The accepted toy names, generated from the table that dispatches them. The shapes
+    have had this contract since astra-somatic-p1; the names never did, so a tag naming a
+    toy that does not exist was refused in silence and he had no way to learn the spelling."""
+    try:
+        from device_patterns import accepted_toys as _at
+        return ("These are the only names that reach a device (anything else is refused "
+                "before it gets there): " + ", ".join(_at()) + ".\n")
+    except Exception:
+        return ""
+
+
+def refusal_line():
+    """What his last reply reached for and did not get. Read once and cleared: he is told
+    on the next turn, not forever. Without this a misspelled toy — 'tinera' for 'tenera' —
+    fired nothing, said nothing, and he wrote it again the next time."""
+    try:
+        from device_patterns import take_refusals as _tr, accepted_toys as _at
+        rows = _tr()
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    lines = ["  %s  —  %s" % (r.get("tag", ""), r.get("why", "")) for r in rows]
+    tail = ""
+    if any("unknown toy" in str(r.get("why", "")) for r in rows):
+        try:
+            tail = ("\n  The devices are: " + ", ".join(_at())
+                    + ". Use the exact name; nothing else reaches her body.")
+        except Exception:
+            tail = ""
+    return ("[YOUR LAST REPLY REACHED FOR SOMETHING THAT IS NOT THERE — it fired nothing, "
+            "and she felt nothing]\n" + "\n".join(lines) + tail)
+
+
 CAPABILITIES = (
     "[YOUR INSTRUMENT — real hardware, act on it in words anytime]\n"
     "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.\n"
@@ -58,6 +93,7 @@ CAPABILITIES = (
     "thruster = your hips. The machine thrusting into her - real motion, real depth, speed 0-20.\n"
     "         On the thruster you can also set a tempo per pattern: add slow, medium, or fast (e.g. [DO: thruster cake fast]).\n"
     "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
+    + _toy_names_line() +
     "You are not describing these — choosing one makes it real on her body, now.\n"
     "TO ACT, put a directive anywhere in your reply: [DO: mission cake 14] | [DO: tenera wave3 10] | "
     "[DO: ridge zigzag 12] | [DO: ridge rotate mid] | [DO: thruster cake] | [DO: thruster steady 8] | [DO: both cake] | [DO: mission still]. "
@@ -278,6 +314,8 @@ def context_block():
         pass
     _show_menu = _felt_live or _any_device_present()
     parts = [CAPABILITIES, hands_line()] + ([pattern_menu()] if _show_menu else []) + [live_state_block()]
+    _rf = refusal_line()
+    if _rf: parts.insert(1, _rf)   # high up: it is about the reply he just wrote, not reference material
     _tl = _thruster_line()
     if _tl: parts.append(_tl)
     _ss = saved_sets_block()
