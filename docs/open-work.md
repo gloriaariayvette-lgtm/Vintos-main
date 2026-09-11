@@ -314,3 +314,5 @@ The single explicitly approved live forge run was a labelled commissioning fixtu
 separate from house wants and proposals. Astra returned code; Fable returned no text.
 The run ended `refused`, with no install. Successful live commissioning remains open.
 No second paid attempt was made. The app forge card and effectful adapters remain open.
+
+Independent post-deploy mapping found an old importable `causal_self_model.py` beside the updated hyphenated file. The follow-up manifest includes the importable name and canonicalizes symlink destinations before backup/promotion, preserving aliases while updating the actual imported file. A regression test executes that promotion against a scratch symlink.

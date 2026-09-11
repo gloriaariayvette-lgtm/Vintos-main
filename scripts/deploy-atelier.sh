@@ -126,7 +126,7 @@ wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
-BINS="$BINS ledger-scrub.py causal-self-model.py setup_memory.sh voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
+BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
@@ -300,12 +300,19 @@ dest() {
     return 1
 }
 
+# install(1) replaces a destination symlink instead of updating its target.
+# Preserve the runtime import aliases and back up/promote the actual owned file.
+canonical_dest() {
+    python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
 # --------------------------------------------------------------------- plan
 say "== plan =="
 PLAN=""; ambiguous=0
 for spec in $(printf 'scripts/%s\n' $SCRIPTS) $(printf 'bin/%s\n' $BINS); do
     f="$(basename -- "$spec")"
     if d="$(dest "$spec")"; then
+        d="$(canonical_dest "$d")" || die "cannot resolve installed target for $spec"
         [ -e "$d" ] && mark="replace" || mark="NEW"
         printf '  %-7s %-26s -> %s\n' "$mark" "$f" "$d"
         PLAN="$PLAN$SRC/$spec|$d
@@ -316,6 +323,7 @@ for spec in $(printf 'scripts/%s\n' $SCRIPTS) $(printf 'bin/%s\n' $BINS); do
 done
 # Domain modules belong beside the actual server, not beside an unrelated music.py.
 if server_dst="$(dest bin/server.py)"; then
+    server_dst="$(canonical_dest "$server_dst")" || die "cannot resolve installed server target"
     for spec in $DOMAINFILES; do
         d="$(dirname -- "$server_dst")/server_domains/$(basename -- "$spec")"
         printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"

@@ -37,4 +37,17 @@ for existing in (False,True):
  commands=log.read_text()
  check('rollback never starts the oneshot '+str(existing),'start vintos-skill-surf.service' not in commands and 'restart vintos-skill-surf' not in commands)
  check('restores timer activation '+str(existing),('start vintos-skill-surf.timer' in commands)==existing)
+
+# A runtime import alias must retain its link while its canonical target changes.
+assert env["HOME"] == str(home)
+a=src.index('canonical_dest()');b=src.index('\n}',a)+2
+canonical=src[a:b]
+target=home/'actual module.py';target.write_text('old')
+alias=home/'alias.py';alias.symlink_to(target)
+payload=root/'payload.py';payload.write_text('new')
+command=canonical+'\nresolved="$(canonical_dest "$ALIAS")"; install -m 644 "$PAYLOAD" "$resolved"'
+p=subprocess.run(['bash','-c',command],env=dict(env,ALIAS=str(alias),PAYLOAD=str(payload)),capture_output=True)
+check('promotion preserves the import alias and updates its target',p.returncode==0 and alias.is_symlink() and target.read_text()=='new')
+check('the importable causal model is explicitly manifested','causal-self-model.py causal_self_model.py' in src)
+
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)
