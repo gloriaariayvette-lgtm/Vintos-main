@@ -87,12 +87,42 @@ open(odd, "w").write('ODD=\'half\nPAIRED="both"\n')
 check("an unmatched quote is left alone", E.value("ODD", path=odd) == "'half", repr(E.value("ODD", path=odd)))
 check("a matched pair is stripped", E.value("PAIRED", path=odd) == "both")
 
-print("\n--- describe() answers the 401 question without printing the secret ---")
-d = E.describe("OPENAI_API_KEY", path=ENV)
-check("it says the value was quoted", d["found"] and d["was_quoted"] is True, d)
-check("it gives the length difference the quotes caused", d["raw_len"] - d["clean_len"] == 2, d)
+print("\n--- the same key assigned three times, the last two placeholders ---")
+# Her file, exactly: the real key on line 3 and `sk-REPLACE_ME` twice under it. A file
+# parser takes the first and gets the key; a shell that sources the file, or systemd's
+# EnvironmentFile, takes the LAST and sends `sk-REPLACE_ME` — which comes back 401
+# Unauthorized and reads as a revoked key.
+DUP = os.path.join(TMP, "dup.env")
+REAL = "sk-proj-" + "R" * 30 + "JAwA"
+open(DUP, "w").write("SOL_MODEL=gpt-5.6\n\nOPENAI_API_KEY=%s\nOPENAI_API_KEY=sk-REPLACE_ME\nOPENAI_API_KEY=sk-REPLACE_ME\n" % REAL)
+check("a placeholder is recognised for what it is",
+      E.is_placeholder("sk-REPLACE_ME") and E.is_placeholder("<your-key-here>") and E.is_placeholder(""))
+check("and a real key is not", not E.is_placeholder(REAL))
+check("the real key is the one that wins, whichever end it sits at",
+      E.value("OPENAI_API_KEY", path=DUP) == REAL, E.value("OPENAI_API_KEY", path=DUP)[:12])
+os.environ["OPENAI_API_KEY"] = "sk-REPLACE_ME"
+check("a placeholder in the ENVIRONMENT never reaches the wire either — it falls through to the file",
+      E.value("OPENAI_API_KEY", path=DUP) == REAL)
+del os.environ["OPENAI_API_KEY"]
+check("every assignment is listed, in file order",
+      [i for i, _ in E.assignments("OPENAI_API_KEY", DUP)] == [3, 4, 5],
+      E.assignments("OPENAI_API_KEY", DUP))
+check("a name with nothing but placeholders yields nothing, rather than a 401",
+      E.value("OPENAI_API_KEY", path=os.path.join(TMP, "ph.env")) == ""
+      if open(os.path.join(TMP, "ph.env"), "w").write("OPENAI_API_KEY=sk-REPLACE_ME\n") else True)
+check("the last real assignment wins, matching what a shell would do",
+      E.value("TWO", path=os.path.join(TMP, "two.env")) == "second"
+      if open(os.path.join(TMP, "two.env"), "w").write("TWO=first\nTWO=second\n") else True)
+
+print("\n--- describe() answers the 401 questions without printing the secret ---")
+d = E.describe("OPENAI_API_KEY", path=DUP)
+check("it counts the assignments and marks which are placeholders",
+      len(d["assignments"]) == 3 and [a["placeholder"] for a in d["assignments"]] == [False, True, True], d)
+check("it warns that first-reader and last-reader disagree",
+      "takes the first" in d.get("warning", "") and "3, 4, 5" in d.get("warning", ""), d.get("warning"))
+check("it says which value actually won", d["found"] and d["chosen_tail"] == "…JAwA", d)
 check("and it never carries the key itself",
-      KEY not in repr(d) and len(d.get("first", "")) <= 4, d)
+      REAL not in repr(d) and all(len(a["tail"]) <= 6 for a in d["assignments"]), d)
 d2 = E.describe("NOT_SET_AT_ALL", path=ENV)
 check("a missing name says so plainly", d2["found"] is False)
 
