@@ -129,13 +129,27 @@ whether anything is waiting on her. She answers a stop with `POST
 
 ## What the forge still needs
 
-- **The builder hand-off.** The forge holds the record and the law; the self-review
-  builder already has the credential-stripped sandbox and the protected-path refusal.
-  Joining them — approved proposal in, verified artifact out — is the remaining work.
-- **The card in the app.** The routes exist and are guarded: list, approve with scope
-  and invocation, deny. The phone has no screen for them yet, which is the Mac problem.
-- **The resume.** `resumable()` names the blocked wants whose capability has landed.
-  What consumes it — first light, or the wants pass — is not yet decided.
+The chain is now whole in code — reach, gap, proposal, her card, build, verify,
+install, resume — and only the last two links have never been walked for real.
+
+- **The builder hand-off** — done (`forge_build.py`, 2026-09-11): Astra writes the
+  module and its test, Fable 5.1 reviews it against her grant, a sandbox with a
+  scratch HOME and no network proves it, and only then is it *verified*. `install()`
+  stays a separate, explicit act.
+- **The resume** — done (`forge_resume.py`, 2026-09-11). It is the wants pass that
+  consumes `resumable()`, at the top of `main()` before a single want is read: taking
+  the block off after the load would write to a store the pass already holds a stale
+  copy of. It clears only a `CAPABILITY_ABSENT` block naming that exact capability —
+  a want blocked on a tool that is not answering, on a different missing hand, or on
+  a block that does not name its step keeps its block and says so. The want is
+  unblocked first and the proposal marked *resumed* second, so a crash between the
+  two writes is recovered by the next pass rather than losing the want.
+- **The card in the app** — still open. The routes exist and are guarded: list,
+  approve with scope and invocation, deny. The phone has no screen for them yet,
+  which is the Mac problem.
+- **One live run** — still open, and the only honest gap left in the path. No
+  proposal has been through real Astra, real Fable and a real sandbox; it costs money
+  and has never been spent. Everything above is proved with fakes and by construction.
 
 ## The seven sparks
 

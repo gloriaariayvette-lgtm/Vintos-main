@@ -2073,6 +2073,21 @@ def main():
     _parser.add_argument("--repair-plans-only", action="store_true",
                          help="Backfill missing move plans without executing wants")
     _args, _ = _parser.parse_known_args()
+
+    # The forge's last step, and it runs BEFORE the wants are read. A want that reached
+    # for a hand he did not have is BLOCKED with CAPABILITY_ABSENT; when that hand is
+    # built, reviewed, proved and installed, this is what lets the want move again.
+    # Ahead of get_unfulfilled_wants() on purpose: unblocking after the load would be
+    # written to a store this pass is already holding a stale copy of.
+    try:
+        import forge_resume as _fr
+        _resumed = _fr.resume()
+        _l = _fr.line(_resumed)
+        if _l:
+            log("  → " + _l)
+    except Exception as _fe:
+        log(f"  → forge resume skipped: {str(_fe)[:120]}")
+
     all_wants = get_unfulfilled_wants()
 
     # Build desire self-statements from persistent wants
