@@ -46,7 +46,7 @@ print("\n--- 46: the ownership table ---")
 SO = load("store_owners", os.path.join(REPO, "scripts", "store_owners.py"))
 rows = SO.table(); by = {r["store"]: r for r in rows}
 check("every store has its writers named; twins collapse to one organ", len(rows) > 80 and "interaction-ledger.json" in by and all(r["writers"] for r in rows) and "dreamart.py" in by.get("gallery.json", {}).get("writers", []), by.get("gallery.json"))
-check("shared stores are reported with a lock verdict per store", any(r["shared"] for r in rows) and all(isinstance(r["locked"], bool) for r in rows) and "current-wants.json" in [r["store"] for r in rows if r["shared"]])
+check("shared store candidates carry a locking-reference observation", any(r["shared"] for r in rows) and all(isinstance(r["locking_reference"], bool) for r in rows) and "current-wants.json" in [r["store"] for r in rows if r["shared"]])
 check("docs/store-owners.md is the generated table and is current", open(os.path.join(REPO, "docs", "store-owners.md")).read() == SO.render())
 
 print("\n--- 73: the voice block has the text keys ---")
@@ -54,12 +54,23 @@ sv = src("bin/server.py")
 check("voice session block carries source, surface, turn_id, gloria, vintos beside its call fields", '"source": "voice-session", "surface": "voice", "turn_id": str(sess.get("started_at") or "")' in sv and '"gloria": (_full[0]["gloria"] if _full else "")[:500]' in sv)
 
 # --- review 46 (2026-09-10): concurrency control on the shared stores ------------------------------
-print("\n--- 46: every shared store's writers take one lock ---")
+print("\n--- 46: inventory is not concurrency proof ---")
 import importlib
 _SO = importlib.import_module("store_owners") if "store_owners" in sys.modules else load("store_owners", os.path.join(REPO, "scripts", "store_owners.py"))
-_rows = _SO.table(); _shared = [r for r in _rows if r["shared"]]; _un = [r for r in _shared if not r["locked"]]
-check("more than twenty stores are shared, and at most one writer anywhere is still unlocked", len(_shared) >= 20 and len(_un) <= 1, [(r["store"], r["unlocked_writers"]) for r in _un])
-check("the locked ones say how they are locked", all(r["how"] for r in _shared if r["locked"]))
+_rows = _SO.table(); _shared = [r for r in _rows if r["shared"]]; _un = [r for r in _shared if not r["locking_reference"]]
+check("scanner leaves mutation safety unverified", len(_shared) >= 20 and all(r["rmw_status"] == "unverified" for r in _rows))
+check("report states its limits", "not a concurrency certification" in SO.render() and "every writer locks" not in SO.render())
+fixture_root = os.path.join(HOME, "owner-fixture")
+os.makedirs(os.path.join(fixture_root, "scripts"))
+with open(os.path.join(fixture_root, "scripts", "writer.py"), "w") as f:
+    f.write('import json\nSTORE = "fixture.json"\n' + '\n' * 160 +
+            'def unused():\n    write_json("unrelated.json", {})\n' + '\n' * 160 +
+            'def mutate():\n    json.dump({}, open(STORE, "w"))\n')
+saved_repo = SO.REPO
+SO.REPO = fixture_root
+fixture_rows = {r["store"]: r for r in SO.table()}
+SO.REPO = saved_repo
+check("an unrelated helper does not certify a raw writer", "fixture.json" in fixture_rows and not fixture_rows["fixture.json"]["locking_reference"] and fixture_rows["fixture.json"]["rmw_status"] == "unverified")
 _SG2 = load("sg2", os.path.join(REPO, "scripts", "store_guard.py")); _SG2.MEMORY = MEM; _SG2.LOG = os.path.join(MEM, "store-quarantine.jsonl")
 _p2 = os.path.join(MEM, "shared.json"); json.dump({"n": 0}, open(_p2, "w"))
 _SG2.locked_update(_p2, lambda cur: {"n": cur["n"] + 1}); _SG2.locked_update(_p2, lambda cur: {"n": cur["n"] + 1})
@@ -177,5 +188,39 @@ with patch.object(OM.requests, "post", side_effect=AssertionError("live provider
     OM.main()
 check("cleared misuse trials are not sent to the provider again",
       json.load(open(OM.OC))["ledgers"]["facts"]["misuse"]["cleared"] == ["t2"])
+
+CO = load("causal_observation_fixture", os.path.join(REPO, "bin", "causal-observations.py"))
+CO.OBS_PATH = os.path.join(MEM, "causal-observations.json")
+assert os.path.commonpath([CO.OBS_PATH, HOME]) == HOME
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    list(pool.map(lambda i: CO.add_observation("Valence", "up", .1, "fixture " + str(i)), range(40)))
+observations = json.load(open(CO.OBS_PATH))["observations"]
+check("concurrent observations retain forty distinct occurrences", len(observations) == 40 and len({o["id"] for o in observations}) == 40)
+CC = load("causal_cluster_fixture", os.path.join(REPO, "bin", "causal-cluster.py"))
+CC.OBS_PATH = CO.OBS_PATH; CC.HYP_PATH = os.path.join(MEM, "causality-hypotheses.json")
+assert os.path.commonpath([CC.HYP_PATH, HOME]) == HOME
+CC.detect_meta_patterns = lambda: None
+CC.llm = lambda *a,**kw: (_ for _ in ()).throw(AssertionError("live provider forbidden"))
+def hypothesis_fixture(*args):
+    return {"hypothesis": "fixture pattern", "cluster_based": True, "dimension": "Valence",
+            "direction": "up", "evidence_count": len(args[1]) if len(args) > 1 else 40, "confidence_score": .5}
+CC.form_cluster_hypothesis = lambda *args: None
+CC.run_cluster_detection()
+check("failed cluster formation leaves all source occurrences retryable", not any(o["clustered"] for o in json.load(open(CO.OBS_PATH))["observations"]))
+def changed_during_inference(*args):
+    assert not getattr(SG._state, "held", set())
+    CO.add_observation("Valence", "up", .2, "concurrent fixture")
+    return hypothesis_fixture()
+CC.form_cluster_hypothesis = changed_during_inference
+CC.run_cluster_detection()
+check("cluster inference preserves a concurrent observation and refuses obsolete output", len(json.load(open(CO.OBS_PATH))["observations"]) == 41 and not json.load(open(CC.HYP_PATH))["hypotheses"])
+CC.form_cluster_hypothesis = hypothesis_fixture
+with patch.object(CC, "save_observations", side_effect=OSError("fixture crash after destination commit")):
+    try: CC.run_cluster_detection()
+    except OSError: pass
+before = json.load(open(CC.HYP_PATH))["hypotheses"][0]["evidence_count"]
+CC.run_cluster_detection()
+after = json.load(open(CC.HYP_PATH))["hypotheses"][0]["evidence_count"]
+check("retry after a partial cluster commit does not count evidence twice", before == after and all(o["clustered"] for o in json.load(open(CO.OBS_PATH))["observations"]))
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

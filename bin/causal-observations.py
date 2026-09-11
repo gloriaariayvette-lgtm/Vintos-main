@@ -1,17 +1,11 @@
 import json, os
 from datetime import datetime
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
-
+import sys, copy, uuid
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import serialized, transactions, write_json, compare_and_swap
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 OBS_PATH = os.path.join(MEMORY, "causal-observations.json")
@@ -23,13 +17,13 @@ def load_observations():
         return {"observations": []}
 
 def save_observations(data):
-    if not _sg_write(OBS_PATH, data, "causal-observations"):
-            raise RuntimeError("observation store write refused")
+    write_json(OBS_PATH, data)
 
+@serialized("OBS_PATH")
 def add_observation(dimension, direction, delta, context_snippet, source="causality-engine"):
     data = load_observations()
     data["observations"].append({
-        "id": datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{dimension[:4]}",
+        "id": "CO-" + uuid.uuid4().hex,
         "timestamp": datetime.now().isoformat(),
         "dimension": dimension,
         "direction": direction,
@@ -45,7 +39,7 @@ def add_observation(dimension, direction, delta, context_snippet, source="causal
 if __name__ == "__main__":
     # Initialize file if needed
     if not os.path.exists(OBS_PATH):
-        save_observations({"observations": []})
+        compare_and_swap(OBS_PATH, None, {"observations": []})
         print("Initialized causal-observations.json")
     else:
         data = load_observations()

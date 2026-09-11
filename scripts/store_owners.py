@@ -1,26 +1,20 @@
 #!/usr/bin/env python3
-"""store_owners.py - which module writes each memory store, and which stores have more than one writer
-without a shared lock.
+"""Candidate store writers and nearby locking references, found by static scanning.
 
-Review item 46 (2026-09-10). Read-only: it scans the checkout for writes to memory/<store> (json.dump,
-open(...,"w"/"a"), the atomic helpers), collapses twins (bin/x.py, bin/x_y.py, scripts/x.py are one
-organ) and ignores tests, then names each store's writers and whether the writer locks (flock, the
-shelf transaction, the ledger lock, the broker table lock). The output is the ownership table the
-review asked for, generated so it cannot go stale.
-
-    python3 store_owners.py            print the table
-    python3 store_owners.py --write    also write docs/store-owners.md
+This inventory does not prove read-modify-write safety. It cannot establish lock
+scope, fallback behavior, runtime path identity or complete call-graph coverage.
+Basenames and normalized module names are discovery keys, not ownership proof.
+Regenerate docs/store-owners.md with --write.
 """
 import os, re, sys, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 STORE = re.compile(r'["\']([A-Za-z0-9_.\-]+\.(?:json|jsonl))["\']')
-WRITE = re.compile(r'json\.dump\(|open\([^)]*["\'](?:w|a)\+?["\']|_atomic|save_ledger|append_ledger|atomic_json|_save\(|save_pool|save_json|os\.replace\(')
+WRITE = re.compile(r'json\.dump\(|open\([^)]*["\'](?:w|a)\+?["\']|_atomic|save_ledger|append_ledger|atomic_json|_save\(|save_pool|save_json|compare_and_swap|os\.replace\(')
 LOCK = re.compile(r'fcntl\.flock|LOCK_EX|save_ledger|append_ledger|_Lock\(|_table_lock|\.lock["\']|flock\(')
-# Helpers that hold the lock themselves: a writer that routes through one is locked, even though the
-# flock lives in the helper rather than beside the store's name (review 46).
-LOCKED_HELPERS = re.compile(r'write_json\(|_sg_write\(|locked_update|_locked_write|save_pool\(|save_ledger\(|append_ledger\(|atelier_ledger\.mark|_lu\(|_lu2\(|prediction_ledger\.')
+# Recognize nearby helper calls without claiming anything about their lock scope.
+LOCKED_HELPERS = re.compile(r'compare_and_swap\(|write_json\(|_sg_write\(|locked_update|_locked_write|save_pool\(|save_ledger\(|append_ledger\(|atelier_ledger\.mark|_lu\(|_lu2\(|prediction_ledger\.')
 SKIP = ("broker/tests", "__pycache__", "scripts/entry_owners.py", "scripts/store_owners.py")
 
 
@@ -58,19 +52,19 @@ def scan():
                     for c in consts.get(m.group(1), ()):
                         for wm in re.finditer(r"[^\n]*\b%s\b[^\n]*" % re.escape(c), s):
                             seg = wm.group(0)
-                            if WRITE.search(seg) and "open(" in seg or re.search(r"(?:save_json|write_json|locked_update|_sg_write|_atomic|save_ledger|append_ledger|_lu)\(\s*%s\b" % re.escape(c), seg):
+                            if WRITE.search(seg) and "open(" in seg or re.search(r"(?:save_json|write_json|compare_and_swap|locked_update|_sg_write|_save|_atomic|save_ledger|append_ledger|_lu)\(\s*%s\b" % re.escape(c), seg):
                                 via_const = seg; break
                         if via_const: break
                     if via_const:
                         ctx = ctx + " " + via_const
                     if WRITE.search(ctx) or via_const:
                         o = organ(rel)
-                        w = writers[m.group(1)].setdefault(o, {"files": set(), "locked": False, "how": ""})
+                        w = writers[m.group(1)].setdefault(o, {"files": set(), "locking_reference": False, "how": ""})
                         w["files"].add(rel)
                         if LOCK.search(ctx):
-                            w["locked"] = True; w["how"] = w["how"] or "locks the store itself"
-                        elif LOCKED_HELPERS.search(ctx) or LOCKED_HELPERS.search(s):
-                            w["locked"] = True; w["how"] = w["how"] or "writes through a locked helper"
+                            w["locking_reference"] = True; w["how"] = w["how"] or "nearby locking syntax"
+                        elif LOCKED_HELPERS.search(ctx):
+                            w["locking_reference"] = True; w["how"] = w["how"] or "nearby locking-helper call"
     return writers
 
 
@@ -78,21 +72,22 @@ def table():
     rows = []
     for store, ws in sorted(scan().items()):
         rows.append({"store": store, "writers": sorted(ws), "files": sorted(f for w in ws.values() for f in w["files"]),
-                     "locked": all(w["locked"] for w in ws.values()), "shared": len(ws) > 1,
-                     "unlocked_writers": sorted(k for k, w in ws.items() if not w["locked"]),
-                     "how": {k: w.get("how", "") for k, w in ws.items() if w["locked"]}})
+                     "locking_reference": all(w["locking_reference"] for w in ws.values()), "shared": len(ws) > 1, "rmw_status": "unverified",
+                     "without_locking_reference": sorted(k for k, w in ws.items() if not w["locking_reference"]),
+                     "how": {k: w.get("how", "") for k, w in ws.items() if w["locking_reference"]}})
     return rows
 
 
 def render():
     rows = table()
-    shared = [r for r in rows if r["shared"]]; unlocked = [r for r in shared if not r["locked"]]
-    out = ["# Memory stores: writers, sharing, locks", "",
-           "Generated by `scripts/store_owners.py` (review item 46). %d stores have a writer in the checkout; %d are written by more than one organ; %d of those without a lock on every writer. Regenerate with `python3 scripts/store_owners.py --write`." % (len(rows), len(shared), len(unlocked)), "",
-           "## Shared stores (more than one writing organ)", "", "| store | writers | every writer locks |", "|---|---|---|"]
+    shared = [r for r in rows if r["shared"]]; unlocked = [r for r in shared if not r["locking_reference"]]
+    out = ["# Memory stores: candidate writers and locking references", "",
+           "Generated by `scripts/store_owners.py`. %d candidate store basenames; %d have multiple candidate writer modules. Regenerate with `python3 scripts/store_owners.py --write`." % (len(rows), len(shared)), "",
+           "**This is a discovery inventory, not a concurrency certification.** A locking reference does not prove that the whole read-modify-write operation is protected, that fallback writes are safe, or that two paths refer to the same store. Missing references do not prove the absence of a lock. Every row's mutation safety remains unverified by this scanner. Basenames can combine different stores; indirect writers can be missed.", "",
+           "## Shared-store candidates", "", "| store basename | candidate writers | nearby locking references |", "|---|---|---|"]
     out += ["| %s | %s | %s |" % (r["store"], ", ".join(r["writers"]),
-                                   "yes" if r["locked"] else ("NO: " + ", ".join(r["unlocked_writers"]))) for r in shared]
-    out += ["", "## Single-writer stores", "", "| store | writer |", "|---|---|"]
+                                   "detected for each candidate; scope unverified" if r["locking_reference"] else ("not detected for: " + ", ".join(r["without_locking_reference"]))) for r in shared]
+    out += ["", "## One candidate writer found", "", "| store | writer |", "|---|---|"]
     out += ["| %s | %s |" % (r["store"], r["writers"][0]) for r in rows if not r["shared"]]
     return "\n".join(out) + "\n"
 
