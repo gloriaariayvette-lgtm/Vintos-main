@@ -17,9 +17,14 @@ for name in ("requests", "numpy"):
 
 print("\n--- 202 / 207: release by held-out calibration, against versioned criteria ---")
 CAL = load("calibration", os.path.join(REPO, "scripts", "calibration.py")); CAL.MEMORY = MEM; CAL.AUDIT = os.path.join(MEM, "jepa-calibration.json"); CAL.RELEASES = os.path.join(MEM, "calibration-releases.jsonl")
+CAL.MODEL = os.path.join(MEM, "jepa-predictor.pt"); open(CAL.MODEL, "w").write("weights")
+_CK = CAL.checkpoint_fingerprint()   # a release is bound to the model on disk (review finding 9)
 v = CAL.verdict("gloria")
 check("no audit is INSUFFICIENT, never released", v["state"] == "INSUFFICIENT" and CAL.allowed("gloria") is False and v["criteria_version"] == CAL.CRITERIA_VERSION)
+# a complete audit: versioned, checkpoint-bound, with an explicit held-out slice, a
+# control and a lockstep measurement — the reader releases on nothing less.
 good = {"n_joined": 90, "n_holdout": 31, "axis_lockstep_corr": 0.4,
+        "criteria_version": CAL.CRITERIA_VERSION, "checkpoint": _CK,
         "g": {"monotonicity_conf_vs_err": -0.44, "CONTROL_dsim_vs_err": -0.10, "wrong_but_confident": []},
         "s": {"monotonicity_conf_vs_err": -0.40, "CONTROL_dsim_vs_err": -0.05, "wrong_but_confident": ["x"]}}
 check("a head that beats its control on enough held-out rows is RELEASED", CAL.verdict("gloria", audit=good)["state"] == "RELEASED")

@@ -38,6 +38,20 @@ CRITERIA = {
 }
 
 
+MODEL = os.path.join(MEMORY, "jepa-predictor.pt")
+
+
+def checkpoint_fingerprint():
+    """The identity of the model now on disk, the same md5(mtime+size) the predictor
+    stamps. A release is bound to this; a retrained or swapped model no longer matches
+    its old audit, so a stale RELEASED cannot carry over to different weights."""
+    import hashlib
+    try:
+        return hashlib.md5((str(os.path.getmtime(MODEL)) + str(os.path.getsize(MODEL))).encode()).hexdigest()[:10]
+    except Exception:
+        return None
+
+
 def _audit():
     try:
         d = json.load(open(AUDIT))
@@ -75,27 +89,44 @@ def verdict(head="gloria", criteria=None, audit=None):
     if not a or a.get("verdict") == "INSUFFICIENT" or key not in a:
         out.update(state="INSUFFICIENT", why="no calibration audit with this head yet (n_joined=%s)" % a.get("n_joined", 0), n_holdout=0)
         return out
-    n = int(a.get("n_joined") or 0)
     ax = a.get(key) or {}
     mono = ax.get("monotonicity_conf_vs_err")
     ctrl = ax.get("CONTROL_dsim_vs_err")
     wbc = len(ax.get("wrong_but_confident") or [])
     lock = a.get("axis_lockstep_corr")
-    # the audit reports over its joined rows; the holdout size is what the audit says it judged on
-    n_hold = int(a.get("n_holdout") or n)
-    out["n_holdout"] = n_hold
     out["numbers"] = {"monotonicity": mono, "control": ctrl, "wrong_but_confident": wbc, "axis_lockstep": lock}
+    # Every piece of evidence must be present and current, or the answer is INSUFFICIENT,
+    # never RELEASED. A missing field used to pass silently; a stale-version or full-
+    # sample audit used to be accepted. Fail closed on each.
+    if a.get("criteria_version") != CRITERIA_VERSION:
+        out.update(state="INSUFFICIENT", why="audit was written under %r, not the current %r" % (a.get("criteria_version"), CRITERIA_VERSION), n_holdout=0)
+        return out
+    ck_now = checkpoint_fingerprint()
+    if not a.get("checkpoint") or a.get("checkpoint") != ck_now:
+        out.update(state="INSUFFICIENT", why="audit is for checkpoint %r, the model on disk is %r" % (a.get("checkpoint"), ck_now), n_holdout=0)
+        return out
+    if a.get("n_holdout") is None:
+        out.update(state="INSUFFICIENT", why="audit names no held-out slice; a full-sample number is not a release", n_holdout=0)
+        return out
+    n_hold = int(a.get("n_holdout") or 0)
+    out["n_holdout"] = n_hold
     if n_hold < c["min_holdout"]:
-        out.update(state="INSUFFICIENT", why="%d joined predictions in the holdout; %d required" % (n_hold, c["min_holdout"]))
+        out.update(state="INSUFFICIENT", why="%d predictions in the holdout; %d required" % (n_hold, c["min_holdout"]))
+        return out
+    if ctrl is None:
+        out.update(state="INSUFFICIENT", why="no decode-similarity control in the audit: cannot tell usefulness from variance")
+        return out
+    if lock is None:
+        out.update(state="INSUFFICIENT", why="no axis-lockstep measurement in the audit")
         return out
     fails = []
     if mono is None or float(mono) > c["max_monotonicity"]:
         fails.append("monotonicity %s is not at or below %s (confidence does not fall as error rises)" % (mono, c["max_monotonicity"]))
-    if mono is not None and ctrl is not None and float(mono) > float(ctrl) - c["beat_control_by"]:
+    if mono is not None and float(mono) > float(ctrl) - c["beat_control_by"]:
         fails.append("does not beat the decode-similarity control by %s (head %s, control %s): variance, not usefulness" % (c["beat_control_by"], mono, ctrl))
     if wbc > c["max_wrong_but_confident"]:
         fails.append("%d confident-and-wrong cases in the holdout; %d tolerated" % (wbc, c["max_wrong_but_confident"]))
-    if lock is not None and abs(float(lock)) > c["max_axis_lockstep"]:
+    if abs(float(lock)) > c["max_axis_lockstep"]:
         fails.append("the two heads move in lockstep (%s): one signal wearing two names" % lock)
     if fails:
         out.update(state="WITHHELD", why="; ".join(fails))

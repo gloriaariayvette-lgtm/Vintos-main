@@ -485,23 +485,43 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
     medium = artifact.rsplit("_", 1)[-1].split(".")[0] if "_" in artifact else "write"
     # review 287: what leaves the room is the bytes the digest was prepared for. When the manifest names a
     # file and a digest, the file is hashed now; a mismatch refuses the reveal and records why.
-    try:
-        import hashlib as _rh
-        _want_sha = (manifest or {}).get("sha256") or ""
-        _cands = [p for p in ((manifest or {}).get("abs_path"), (manifest or {}).get("path"),
-                              os.path.join(WSP, "memory", "atelier", str(artifact)), os.path.join(WSP, "memory", "art", str(artifact))) if p]
-        _fp = next((p for p in _cands if os.path.isfile(p)), None)
-        if _want_sha and _fp:
-            _have = _rh.sha256(open(_fp, "rb").read()).hexdigest()
+    # bytes_verified is a fact about bytes actually hashed against the prepared digest,
+    # not about a digest merely existing. When a digest is named, the real bytes must
+    # be found and must match, or the reveal is refused; a missing file or a hashing
+    # error is a refusal, never a silent 'verified'. Without a digest, verified=False.
+    _verified = False
+    _want_sha = (manifest or {}).get("sha256") or ""
+    def _refuse_reveal(_on, _why):
+        print("reveal refused: %s" % _why)
+        try:
+            with open(os.path.join(WSP, "memory", "atelier-reveal-refusals.jsonl"), "a") as _rf:
+                _rf.write(json.dumps({"at": datetime.now().isoformat(), "artifact": artifact,
+                                      "prepared": _want_sha, "on_disk": _on, "why": _why}) + "\n")
+        except Exception:
+            pass
+    if _want_sha:
+        try:
+            import hashlib as _rh
+            if medium == "write":
+                _have = _rh.sha256((content or "").encode("utf-8")).hexdigest()
+            else:
+                _cands = [p for p in ((manifest or {}).get("abs_path"), (manifest or {}).get("path"),
+                                      os.path.join(WSP, "memory", "atelier", str(artifact)),
+                                      os.path.join(WSP, "memory", "art", str(artifact))) if p]
+                _fp = next((p for p in _cands if os.path.isfile(p)), None)
+                if not _fp:
+                    _refuse_reveal("(no file found)", "a digest was prepared but the bytes are not on disk")
+                    return False
+                _have = _rh.sha256(open(_fp, "rb").read()).hexdigest()
             if _have != _want_sha:
-                print("reveal refused: bytes on disk (%s) do not match the prepared digest (%s)" % (_have[:12], _want_sha[:12]))
-                with open(os.path.join(WSP, "memory", "atelier-reveal-refusals.jsonl"), "a") as _rf:
-                    _rf.write(json.dumps({"at": datetime.now().isoformat(), "artifact": artifact, "prepared": _want_sha, "on_disk": _have}) + "\n")
+                _refuse_reveal(_have, "bytes (%s) do not match the prepared digest (%s)" % (_have[:12], _want_sha[:12]))
                 return False
-        elif medium != "write" and not _want_sha:
-            print("reveal note: no prepared digest for %s; recorded as unverified" % artifact)
-    except Exception as _dme:
-        print("reveal digest check failed:", _dme)
+            _verified = True
+        except Exception as _dme:
+            _refuse_reveal("(hash error)", "digest check could not run: %s" % str(_dme)[:80])
+            return False
+    elif medium != "write":
+        print("reveal note: no prepared digest for %s; recorded as unverified" % artifact)
     store = os.path.join(WSP, "memory", "atelier-reveals.json")
     if os.path.exists(store):
         try:
@@ -523,8 +543,8 @@ def _deliver_reveal(artifact, disclosure, content, manifest):
         "medium": medium,                          # write | image | music
         "content": content if medium == "write" else "",
         "media_pending": medium != "write",        # non-text rendering is app-side follow-up
-        "sha256": (manifest or {}).get("sha256", ""),
-        "bytes_verified": bool((manifest or {}).get("sha256")),   # review 287: True only when the digest above was checked against the file
+        "sha256": _want_sha,
+        "bytes_verified": _verified,   # true only when real bytes were hashed and matched the digest
         "artifact": artifact,
     })
     try:

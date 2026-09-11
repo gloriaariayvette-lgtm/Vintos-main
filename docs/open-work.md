@@ -220,12 +220,22 @@ prose:
   cannot resurrect them; skill surfing no longer consumes entries `gather()` then
   trims.
 
-**Not fixed in this pass, and reopened honestly** — these are older paths falsely
-marked DONE, or unfinished integration, not regressions from the three new tasks:
+Fixed in the second pass (the first three the handoff left open):
 
-- **F9** calibration can release a head without complete versioned evidence.
-- **F10** a reveal can set `bytes_verified` when no bytes were verified.
-- **F11** a crash mid voice-session close makes recovery skip it forever.
+- **F9 calibration** — a head releases only on an audit that is the current criteria
+  version, bound to the model fingerprint on disk, with an explicit held-out slice, a
+  decode-similarity control and an axis-lockstep measurement all present. A missing
+  field, a stale version, or a changed model is INSUFFICIENT, never RELEASED.
+- **F10 reveal** — `bytes_verified` is now the result of actually hashing the bytes
+  against the prepared digest. A missing file, a hash error, or a mismatch refuses the
+  reveal; without a digest it is stored plainly unverified. No false certification.
+- **F11 voice recovery** — a `closing` session younger than 60s still steps aside for
+  a real concurrent finalize, but a stale one from a crash is resumed and finalized
+  rather than skipped forever. The sweep's guidance says so.
+
+**Not fixed, and reopened honestly** — older paths falsely marked DONE, or unfinished
+integration, not regressions from the three new tasks:
+
 - **F14** the claimed server_domains import-wrap was never committed; three modules
   remain untracked.
 - **F17–F26, F28** — failed-taste-marked-taught, "pure selection" side effects,

@@ -38,7 +38,8 @@ check("the value map skips an unchanged context and says so", '_sc.unchanged("va
 
 print("\n--- 330: the voice session is a state machine ---")
 sv = src("bin/server.py")
-check("open/active -> closing; a turn during closing is refused and recorded", 'sess["state"] = "active"' in sv and 'sess["state"] = "closing"' in sv and 'if sess.get("state") == "closing":' in sv and "voice-refused-turns.jsonl" in sv and '"skipped": "already closing"' in sv)
+check("open/active -> closing; a turn during closing is refused and recorded", 'sess["state"] = "active"' in sv and 'sess["state"] = "closing"' in sv and 'if sess.get("state") == "closing":' in sv and "voice-refused-turns.jsonl" in sv)
+check("a stale 'closing' from a crash is resumed and finalized, not skipped forever", "resuming a stale" in sv and '"skipped": "already closing"' not in sv and "a finalization is in progress" in sv)
 
 print("\n--- 358: a waiting seat keeps its draft ---")
 seat = src("agent-room/seat.mjs")

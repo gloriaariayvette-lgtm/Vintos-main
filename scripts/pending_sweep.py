@@ -70,9 +70,11 @@ def sweep():
                         "how": "self_review_builder.build reconciles it as held_incomplete, then a fresh bounded attempt"})
     # a voice session left in closing
     s = _jload("voice-session-state.json", {})
-    if isinstance(s, dict) and s.get("state") == "closing":
-        out.append({"kind": "voice_session", "id": s.get("started_at"), "since": s.get("closing_at"), "age_h": _age_h(s.get("closing_at")),
-                    "resumable": True, "how": "/api/voice/session-end again: it is idempotent and finishes the block"})
+    if isinstance(s, dict) and s.get("state") in ("closing", "unpersisted") and (s.get("turns") or []):
+        _since = s.get("closing_at") or s.get("persist_failed_at")
+        out.append({"kind": "voice_session", "id": s.get("started_at"), "since": _since, "age_h": _age_h(_since),
+                    "resumable": True,
+                    "how": "/api/voice/session-end again: a closing older than 60s is treated as a crash and finalized, not skipped"})
     # a want held on an unavailable completion judge
     w = _jload("current-wants.json", [])
     for x in (w if isinstance(w, list) else []):

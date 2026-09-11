@@ -44,7 +44,9 @@ check("validated false is not proof; validated true and legacy entries are", AG.
 
 print("\n--- 287: revealed bytes match the prepared digest ---")
 av = src("scripts/atelier-visit.py")
-check("the reveal hashes the file and refuses a mismatch, recording it", "reveal refused: bytes on disk" in av and "atelier-reveal-refusals.jsonl" in av and '"bytes_verified": bool((manifest or {}).get("sha256"))' in av)
+check("the reveal hashes the bytes and refuses a mismatch, recording it", "do not match the prepared digest" in av and "atelier-reveal-refusals.jsonl" in av)
+check("bytes_verified is the real comparison, not the presence of a digest", '"bytes_verified": _verified' in av and 'bool((manifest or {}).get("sha256"))' not in av)
+check("a named digest with no bytes on disk is refused, never 'verified'", "the bytes are not on disk" in av)
 
 print("\n--- 301: a music landing is recorded before the download ---")
 DM = load("dream_music", os.path.join(REPO, "bin", "dream-music.py")) if False else None

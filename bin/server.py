@@ -7515,8 +7515,20 @@ async def voice_session_end(payload: dict = None):
     # write ONE block; no turns since the last finalization means nothing to finalize
     if not turns:
         return {"ok": True, "skipped": "no turns since last finalization"}
+    # 'closing' means a finalization is under way. If it is recent, another caller is
+    # doing it now and this one steps aside. If it is stale, the process that set it
+    # crashed before the block was written (and before the file was removed on success
+    # or marked 'unpersisted' on failure): the turns are still here, so resume and
+    # finalize rather than skipping this call — and every later one — forever.
     if sess.get("state") == "closing":
-        return {"ok": True, "skipped": "already closing"}
+        _age = 9999.0
+        try:
+            _age = (_vse_d.datetime.now() - _vse_d.datetime.fromisoformat(sess.get("closing_at"))).total_seconds()
+        except Exception:
+            pass
+        if _age < 60:
+            return {"ok": True, "skipped": "a finalization is in progress (%ds ago)" % int(_age)}
+        print("[voice-session-end] resuming a stale 'closing' from %ds ago: %d turn(s) still unfinalized" % (int(_age), len(turns)), flush=True)
     try:   # review 330: the session enters closing before any block is built; a late turn is refused above
         sess["state"] = "closing"; sess["closing_at"] = _vse_d.datetime.now().isoformat()
         _vse_j.dump(sess, open(sp, "w"), indent=2)

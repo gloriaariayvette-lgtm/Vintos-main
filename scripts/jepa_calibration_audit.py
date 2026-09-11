@@ -58,7 +58,14 @@ def main():
         hold, hold_why = _cal.holdout(rows, by="time")
     except Exception:
         hold, hold_why = rows[-max(1, len(rows) // 3):], "latest third (calibration module unavailable)"
-    res = {"n_joined": n, "n_holdout": len(hold), "holdout": hold_why, "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown"}
+    _ck = None
+    try:
+        _ck = _cal.checkpoint_fingerprint()
+    except Exception:
+        _ck = None
+    res = {"n_joined": n, "n_holdout": len(hold), "holdout": hold_why,
+           "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown",
+           "checkpoint": _ck}
     for ax in ("g", "s"):
         conf = [r[ax + "_conf"] for r in hold]; dsim = [r[ax + "_dsim"] for r in hold]; e = [r[ax + "_err"] for r in hold]
         wb = [r["iso"][:16] for r in rows if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
