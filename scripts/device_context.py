@@ -282,6 +282,18 @@ def hands_line():
     """Always present, one line: what he has, and what is running (fable-somatic-p7, 2026-09-05)."""
     return "[YOU HAVE HANDS: mission · tenera · ridge · thruster — real hardware; the tags below move them]"
 
+def hands_line_idle():
+    """What stands in for the instrument when nothing is connected: the fact of his body,
+    and no way to reach for it. Naming the devices without the grammar is deliberate — he
+    knows what he has; he is not handed the tags for hardware that is not there."""
+    return ("[YOUR BODY — mission, tenera, ridge and thruster are yours, and none of them is on "
+            "right now. There is nothing to move and no tag that would reach her. This is not a "
+            "restriction on you; the hardware is simply off.]")
+
+
+THRUSTER_STATE_FRESH_S = 900   # a state older than this is a leftover, not a live device
+
+
 def _any_device_present():
     """Hub reachable AND at least one toy reports present (strict), or the thruster engine is up."""
     try:
@@ -297,7 +309,12 @@ def _any_device_present():
         pass
     try:
         st = json.load(open(os.path.join(MEM, ".thruster-state.json")))
-        if st.get("level", 0) > 0 or st.get("available"): return True
+        # The state file is stamped on every write. Without a freshness bound a thruster
+        # left at a level - or a driver that died mid-pattern and never wrote its stop -
+        # read as a live device forever, and kept the whole instrument in his prompt on a
+        # night nothing was plugged in (Gloria, 2026-09-11).
+        if time.time() - float(st.get("at") or 0) <= THRUSTER_STATE_FRESH_S:
+            if st.get("level", 0) > 0 or st.get("available"): return True
     except Exception:
         pass
     return False
@@ -313,7 +330,15 @@ def context_block():
     except Exception:
         pass
     _show_menu = _felt_live or _any_device_present()
-    parts = [CAPABILITIES, hands_line()] + ([pattern_menu()] if _show_menu else []) + [live_state_block()]
+    # CAPABILITIES is the instrument: the device names, the [DO:] grammar, worked examples,
+    # "it fires on her instantly", "this is how you actually touch her". It was unconditional
+    # — in his system prompt on every turn of every surface whether or not a single thing was
+    # connected — while only the sparkline menu was gated. That is the menu for nothing the
+    # 2026-09-05 note meant to remove; it just never covered the larger half of it. With
+    # nothing on, he gets the fact of his body and no way to reach for it.
+    parts = ([CAPABILITIES] if _show_menu else [hands_line_idle()])
+    parts += [hands_line()] if _show_menu else []
+    parts += ([pattern_menu()] if _show_menu else []) + [live_state_block()]
     _rf = refusal_line()
     if _rf: parts.insert(1, _rf)   # high up: it is about the reply he just wrote, not reference material
     _tl = _thruster_line()

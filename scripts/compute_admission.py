@@ -129,11 +129,18 @@ def paid_today(provider=None):
         for ln in open(_ledger()):
             try: r = json.loads(ln)
             except Exception: continue
-            if r.get("class") == "paid" and r.get("stage") == "reserved" and str(r.get("at", "")).startswith(day) and (provider is None or r.get("provider") == provider):
+            if r.get("class") != "paid" or not str(r.get("at", "")).startswith(day): continue
+            if provider is not None and r.get("provider") != provider: continue
+            if r.get("stage") == "reserved":
                 n += max(0, int(r.get("units", 1)))
+            elif r.get("stage") == "released":
+                # A reservation the provider rejected before doing any work. It is not spend,
+                # and counting it would let a dead key eat the whole day's budget on calls
+                # that never happened (Sol's 401 loop, 2026-09-11).
+                n -= max(0, int(r.get("units", 1)))
     except Exception:
         pass
-    return n
+    return max(0, n)
 
 def reserve_paid(organ, provider, model="", units=1, cap=None):
     from store_guard import transaction
@@ -156,6 +163,25 @@ def _reserve_paid(organ, provider, model="", units=1, cap=None):
         return False, "paid budget: %d of %d reservations used today for %s; %d more refused" % (used, cap, provider, int(units))
     record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"units": int(units), "used_today": used + int(units), "cap": cap}, strict=True)
     return True, "reserved %d (%d/%d today)" % (int(units), used + int(units), cap)
+
+def release_paid(organ, provider, model="", units=1, why=""):
+    """Give a reservation back, for a call the provider REFUSED before doing any work.
+
+    Only for a rejection that is certainly free: an authentication failure, where the
+    request was declined at the door. Never for a timeout, a dropped connection, or any
+    other failure after the request was accepted — those may have cost real tokens, and
+    a reservation released wrongly is a budget that undercounts real spend.
+
+    The release is its own ledger row, so the reservation it cancels stays visible."""
+    try:
+        from store_guard import transaction
+        with transaction(_ledger()):
+            record(organ, cls="paid", provider=provider, model=model, stage="released",
+                   extra={"units": int(units), "why": str(why or "")[:120]}, strict=True)
+        return True
+    except Exception:
+        return False
+
 
 def admit(cls, organ="", wait_s=None, provider="", model="", stage=""):
     return Admission(cls, organ, wait_s, provider, model, stage)

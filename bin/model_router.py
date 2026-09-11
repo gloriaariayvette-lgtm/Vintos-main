@@ -66,6 +66,18 @@ def _reserve_provider(provider, model):
     ok,why=reserve_paid("model_router",provider,model)
     if not ok:raise RuntimeError(why)
 
+
+def _release_provider(provider, model, why=""):
+    """Hand back a reservation for a call the provider refused at the door. Best effort:
+    failing to release must never turn a provider error into a second failure."""
+    try:
+        import sys
+        sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
+        from compute_admission import release_paid
+        release_paid("model_router", provider, model, why=why)
+    except Exception:
+        pass
+
 async def sol_draft(system_text, convo, max_tokens=1500):
     """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
@@ -79,7 +91,16 @@ async def sol_draft(system_text, convo, max_tokens=1500):
         _reserve_provider("openai",SOL_MODEL)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
-        return json.loads(_u.urlopen(rq, timeout=180).read())
+        try:
+            return json.loads(_u.urlopen(rq, timeout=180).read())
+        except _u.HTTPError as he:
+            # A key the provider rejects costs nothing, but the reservation was already
+            # taken. Left standing, a dead key spends the whole day's paid budget on calls
+            # that never happened, and the next REAL Astra call - a forge build, the
+            # printer's Blender script - is refused for a budget nothing used.
+            if he.code in (401, 403):
+                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code)
+            raise
     try:
         d = await _aio.to_thread(_call)
         try:

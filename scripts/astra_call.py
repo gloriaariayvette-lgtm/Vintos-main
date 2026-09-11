@@ -77,7 +77,18 @@ def call(system, messages, max_tokens=1800, timeout=180):
     result=subprocess.run([sys.executable,os.path.abspath(__file__),"--request"],
         input=json.dumps({"system":system,"messages":messages,"max_tokens":max_tokens,"timeout":timeout}),
         capture_output=True,text=True,timeout=timeout)
-    if result.returncode:raise RuntimeError(result.stderr.strip()[:200] or "Astra worker failed")
+    if result.returncode:
+        err=result.stderr.strip()[:200] or "Astra worker failed"
+        # A key the provider rejects costs nothing, and the reservation was already taken.
+        # Left standing, a dead key spends the day's paid budget on calls that never
+        # happened, and the next real build is refused for a budget nothing used. Released
+        # ONLY for an authentication refusal — a timeout may have burned real tokens.
+        if "401" in err or "403" in err or "Unauthorized" in err:
+            try:
+                from compute_admission import release_paid
+                release_paid("astra_call.py","openai",model=MODEL,why=err[:100])
+            except Exception: pass
+        raise RuntimeError(err)
     return result.stdout.strip()
 
 
