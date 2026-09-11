@@ -5,6 +5,10 @@ He models in Blender and slices in Cura. Both exist; the Mac is faster at both, 
 Aegis can do either when the Mac is away. What he does not have is the last step:
 a printer he is allowed to start.
 
+None of that costs money. Blender and Cura are local. The only inference this
+capability makes is one local Gemma call per job, to decide what to make; a paid
+model is refused here by name.
+
 THE PIPELINE, AND THE TWO PLACES HE STOPS
 
     model      Blender, headless, from his own description of the object
@@ -52,11 +56,22 @@ PRINTER_NEEDS = [
 STOPS = ("draft", "slice")   # the two gates, in order
 
 
-# How much of a day he may spend on this. Modelling and slicing are local work on
-# machines she also uses, so it is bounded in minutes per day rather than left to run.
-# Either number can be raised in printer-config.json; neither can be raised by him.
-BUDGET_MIN_PER_DAY = 30      # total, across modelling and slicing
-BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot eat the day
+# WHAT THIS COSTS, AND WHAT IT DOES NOT
+#
+# Modelling and slicing are Blender and Cura on machines she owns. They cost
+# electricity and nothing else: no model is called, no provider is billed. The
+# minute budget below exists because those machines are hers and he should not sit
+# on a processor she is using — it is a courtesy limit, not a money limit.
+#
+# The part that costs money is small and deliberate: deciding what to make, and
+# writing the script that makes it. That is one local Gemma call per job. It does
+# not escalate, and a paid provider is refused here by name. A printed object is
+# not worth a paid call, and Astra is for review.
+BUDGET_MIN_PER_DAY = 30      # local CPU minutes, free, across modelling and slicing
+BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot hold a machine all day
+DESIGN_CALLS_PER_JOB = 1     # the only inference this capability makes
+DESIGN_MODEL = "gemma"       # local; the refusal below is what keeps it that way
+PAID_REFUSED = ("astra", "anthropic", "openai", "xai", "sol", "grok", "claude", "opus", "sonnet")
 
 # job states, in order. Two of them are waits on her and nothing advances them but her.
 STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
@@ -208,6 +223,22 @@ def may_work(minutes=1.0, cfg=None):
     return True, "%g of %g minutes left today" % (per_day - used - minutes, per_day)
 
 
+def may_design(model=DESIGN_MODEL, job=None):
+    """(ok, why) before the one call that decides what to make.
+
+    Two refusals, and they are different: a paid model is refused because a printed
+    object is not worth one, and a second call on the same job is refused because the
+    deciding is done — revising a model is Blender work, not another opinion."""
+    m = str(model or "").lower()
+    for bad in PAID_REFUSED:
+        if bad in m:
+            return False, "%s is a paid model: the design call for a print stays local (%s)" % (m, DESIGN_MODEL)
+    n = len([e for e in ((job or {}).get("work") or []) if e.get("what") == "design"])
+    if n >= DESIGN_CALLS_PER_JOB:
+        return False, "this job has had its design call; revising the model is Blender, not another call"
+    return True, "one local call on %s" % DESIGN_MODEL
+
+
 def note_work(job_id, minutes, what=""):
     """Record time actually spent. Written after the work, never before it."""
     import datetime as _d
@@ -329,7 +360,8 @@ if __name__ == "__main__":
             "" if h["mac_configured"] else "   (no mac_host in printer-config.json)"))
     print("  printer  the machine   " + ("ready" if st["printer_ready"] else "missing: " + ", ".join(st["missing"])))
     print("\nHe stops twice before anything is made: %s, then %s." % STOPS)
-    print("Time: %g minutes a day, %g in one sitting. Used today: %.1f." % (
+    print("Cost: one local %s call per job to decide what to make. No paid model, ever." % DESIGN_MODEL)
+    print("Time: %g local CPU minutes a day, %g in one sitting. Used today: %.1f." % (
         float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY),
         float(_cfg().get("budget_min_per_run") or BUDGET_MIN_PER_RUN), spent_today()))
     print("What he has going: python3 print_3d.py --jobs")

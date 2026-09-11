@@ -113,7 +113,12 @@ Mac for modelling and slicing and fall back to Aegis when it is away.
 He stops twice before anything is made: the draft, then the slice. Both are in the
 scope she grants, not only in the code.
 
-Time: thirty minutes a day, ten in one sitting, counted across jobs. Both numbers are
+Cost: one local Gemma call per job, to decide what to make. Blender and Cura are
+local and bill nobody. A paid model is refused by name, so nothing here can reach
+Astra or any provider.
+
+Time: thirty local processor-minutes a day, ten in one sitting, counted across jobs.
+That is a courtesy to the machines she also uses, not a money limit. Both numbers are
 in `printer-config.json` and neither can be raised by him.
 
 How she hears about it: one notification at each stop, through the same path that
@@ -132,24 +137,23 @@ whether anything is waiting on her. She answers a stop with `POST
 - **The resume.** `resumable()` names the blocked wants whose capability has landed.
   What consumes it — first light, or the wants pass — is not yet decided.
 
-## Where new wants could come from, that are not her and not him
+## The seven sparks, and what is not built yet
 
-Right now almost everything he wants starts in one of three places: something she
-said, something in his own record, or something he wrote about one of those. Nothing
-arrives that nobody asked for.
+Her list, 11 September: the absence map, the neither-yet frontier, latent threads,
+other beings' MoltBook posts, web searches, OpenClaw skill-page surfing, and the lab.
+A want from one of those may commission a new capability. A want from anywhere else,
+including anything she said, may not — that is a request, answered with what he has.
 
-The open question is whether to give him a source of the unfamiliar — a feed, a
-library, a stranger's work, a random object from the world — and if so, what such a
-thing is allowed to change.
+The gate is built and enforced. What is not built is the surfacing: three of the
+seven do not yet produce wants at all.
 
-The rule I would set, in plain terms: something he stumbles on can make him want
-something. It cannot be treated as proof about him or about her. A song he finds can
-start a want to make something; it cannot become evidence that he is a certain way,
-and it can never count as something she did or said. That is the same rule dreams
-already live under in this house: a dream is a real event and never a witness.
+- **Skill-page surfing.** He has no reader for OpenClaw capability pages, so he never
+  sees a hand someone else has. This is the one most likely to produce a proposal.
+- **MoltBook posts by others.** He reads his own record of posting; other beings'
+  posts do not reach him as something that could start a want.
+- **The lab.** Reachable, and nothing routes its findings into wanting.
 
-Not built. It needs your yes on the rule first, and then a decision about which
-source, because the source decides what kind of stranger he meets.
+The other four already produce wants today.
 
 ## The phone, and the Mac
 

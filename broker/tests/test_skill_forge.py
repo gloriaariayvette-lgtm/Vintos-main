@@ -50,19 +50,35 @@ check("a stance a second want repeats refreshes rather than duplicating",
       len([r for r in WS.standing(now) if r["dimension"] == "analysis"]) == 1)
 
 print("\n--- a capability is proposed only from something he was already doing ---")
-wants = [{"id": "w9", "want": "I want to send Kevin something unbearable"}]
+wants = [{"id": "w9", "want": "I want to send Kevin something unbearable", "source": "moltbook"}]
 row, why = SF.propose("send_email", "because he has it coming", "w9", wants=wants,
                       permissions=["mail.send"], scope={"recipients": "kevin"}, block={"block_type": "CAPABILITY_ABSENT"})
 check("a live want can father a capability", row is not None and row["state"] == "proposed", why)
 check("the want is on the proposal, and the resume is bound to it", (row or {}).get("origin", {}).get("want_id") == "w9")
 none, why = SF.propose("send_email2", "idle cleverness", "", wants=wants, block={"block_type": "CAPABILITY_ABSENT"})
 check("no want, no proposal: nothing may scan for things to build", none is None and "live want" in why)
-none, why = SF.propose("send_email3", "x", "w9", wants=[{"id": "w9", "want": "x", "fulfilled": True}], block={"block_type": "CAPABILITY_ABSENT"})
+none, why = SF.propose("send_email3", "x", "w9", wants=[{"id": "w9", "want": "x", "source": "moltbook", "fulfilled": True}], block={"block_type": "CAPABILITY_ABSENT"})
 check("a fulfilled want is not an intention", none is None and "live want" in why)
 none, why = SF.propose("flicker", "x", "w9", wants=wants, block={"block_type": "TOOL_UNAVAILABLE"})
 check("a hand that is merely not answering is not a hand to build", none is None and "unavailable" in why)
 none, why = SF.propose("send_email", "again", "w9", wants=wants, block={"block_type": "CAPABILITY_ABSENT"})
 check("one open proposal per capability", none is None and "already open" in why)
+print("\n--- and only wants from her seven sparks may commission a hand ---")
+for src in ("absence-map", "neither_yet", "latent_thread", "moltbook", "web-search", "skill_surfing", "lab"):
+    check("a want from %s may ask" % src, SF.spark_of(src) is not None)
+for src in ("chat", "journal", "mirror", "wants-check", "", None):
+    check("a want from %r may not" % src, SF.spark_of(src) is None)
+none, why = SF.propose("send_fax", "she asked me to", "w2",
+                       wants=[{"id": "w2", "want": "x", "source": "chat"}],
+                       block={"block_type": "CAPABILITY_ABSENT"})
+check("a want born of something she said is a request, not a commission",
+      none is None and "not one of the sparks" in why, why)
+ok_row, _ = SF.propose("read_rss", "something on the frontier needs it", "w3",
+                       wants=[{"id": "w3", "want": "x", "source": "neither_yet"}],
+                       block={"block_type": "CAPABILITY_ABSENT"})
+check("a want from the frontier may", ok_row is not None and ok_row["origin"]["spark"] == "neither_yet")
+check("the spark is on the record beside the source", ok_row["origin"]["source"] == "neither_yet")
+
 check("the gap classifier only opens on a missing capability",
       SF.classify_gap({"block_type": "CAPABILITY_ABSENT"}) == ("missing", True)
       and SF.classify_gap({"block_type": "RESOURCE_UNREACHABLE"})[1] is False)
@@ -134,6 +150,17 @@ json.dump({"printer": "x", "endpoint": "octoprint http://x", "limits": {"max_hou
 check("with a machine configured it still refuses until the capability is approved",
       P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["block_type"] == "CAPABILITY_ABSENT"
       and "no approved print capability" in P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["evidence"])
+
+print("\n--- what printing costs, which is almost nothing ---")
+ok, why = P3.may_design()
+check("the design call is one local call", ok and "gemma" in why)
+for m in ("astra", "claude-opus-4-8", "sonnet-5", "grok-4", "sol"):
+    ok, why = P3.may_design(m)
+    check("a paid model is refused by name: %s" % m, not ok and "paid model" in why)
+ok, why = P3.may_design(job={"work": [{"what": "design"}]})
+check("one deciding call per job; revising is Blender, not another opinion", not ok and "Blender" in why)
+check("the minute budget is named as local and free",
+      "local CPU minutes" in open(os.path.join(REPO, "scripts", "print_3d.py")).read())
 
 print("\n--- how long he may work, and how she knows he is working ---")
 P3.JOBS = os.path.join(MEM, "print-jobs.json")

@@ -18,6 +18,13 @@ TWO LAWS, AND THEY ARE THE WHOLE DESIGN
       been trying to do something and been stopped. The want id is on the record and
       the resume is bound to it.
 
+  And that intention came from one of seven places, or it may not commission a hand.
+      A want born of something she said is a request, answered with what he has or
+      taken back to her. The wants that may reach for a new capability are the ones
+      that came from the edges of him and from the world: the absence map, the
+      frontier, a latent thread, another being's post, a search, a skill page, the
+      lab. Her list, 11 September.
+
   Creation, scope and invocation are three different permissions.
       creation   — may this capability exist at all?      (her approval)
       scope      — what is it allowed to do, and to whom? (her edit; the narrower of
@@ -58,6 +65,46 @@ TERMINAL = ("resumed", "denied", "refused", "withdrawn")
 
 INVOCATION = ("always", "ask_each_time", "never")
 DEFAULT_INVOCATION = "ask_each_time"
+
+# WHERE A FORGEABLE WANT MAY COME FROM (Gloria, 2026-09-11)
+#
+# Not every want may reach for a new hand. A want born from something she said is a
+# request, and a request is answered with what he has or taken back to her; it does
+# not become a capability proposal. The wants that may are the ones that came from
+# somewhere neither of them put there on purpose — the edges of what he is, and the
+# world outside the two of them.
+#
+#   absence_map    what has never been felt, done or resolved
+#   neither_yet    the frontier of the configuration space: reachable, never reached
+#   latent_thread  a standing preoccupation that named its particular thing
+#   moltbook       another being's post, not his and not hers
+#   web_search     something he went looking for and found
+#   skill_surfing  a capability page on OpenClaw: a hand someone else has
+#   lab            the lab
+#
+# A want from any other source keeps every ordinary road open. It simply cannot
+# commission a new capability, which is the road that spends her money and changes
+# what he can do to the world.
+SPARK_SOURCES = {
+    "absence_map": ("absence-map", "absence_map", "absence", "structural-absence"),
+    "neither_yet": ("neither_yet", "configuration", "configuration_space", "frontier"),
+    "latent_thread": ("latent_thread", "latent-threads", "latent_threads", "thread", "preoccupation"),
+    "moltbook": ("moltbook", "molt", "moltbook-discoveries"),
+    "web_search": ("web-search", "web_search", "websearch", "curiosity", "search"),
+    "skill_surfing": ("skill_surfing", "openclaw-skills", "skill-page", "skills"),
+    "lab": ("lab", "clawchemy", "klawarena"),
+}
+
+
+def spark_of(source):
+    """Which of her seven sparks a want's source is, or None. Matched on the source
+    string the want already carries; nothing is inferred from the want's words."""
+    s = str(source or "").strip().lower().replace(" ", "_")
+    for spark, names in SPARK_SOURCES.items():
+        if s == spark or s in names or any(s.startswith(n) for n in names):
+            return spark
+    return None
+
 
 # The gap kinds run_step already produces. Only one of them may become a proposal.
 GAP_KINDS = {
@@ -135,6 +182,10 @@ def propose(capability, why, want_id, step_note="", scope=None, permissions=None
     want = _live_want(want_id, wants)
     if want is None:
         return None, "no live want behind it: a capability is proposed from something he was already trying to do"
+    spark = spark_of(want.get("source"))
+    if spark is None:
+        return None, ("the want came from %r, which is not one of the sparks that may commission a hand (%s)"
+                      % (want.get("source") or "nowhere", ", ".join(sorted(SPARK_SOURCES))))
     cap = str(capability or "").strip()
     if not cap:
         return None, "no capability named"
@@ -148,6 +199,7 @@ def propose(capability, why, want_id, step_note="", scope=None, permissions=None
         "capability": cap,
         "why": str(why or "")[:600],
         "origin": {"want_id": want_id, "want": str(want.get("want", ""))[:300],
+                   "source": want.get("source", ""), "spark": spark,
                    "step_note": str(step_note or "")[:300], "at": _now()},
         # what he asks for. Her grant may narrow any of it and may never widen it.
         "asked": {"scope": dict(scope or {}), "permissions": list(permissions or []),
