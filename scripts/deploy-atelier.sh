@@ -48,6 +48,12 @@ REVIEW_UNIT_NAME="vintos-self-review"
 REVIEW_UNIT_SRC="$SRC/broker/$REVIEW_UNIT_NAME.service"
 REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
+# The weekly skills read is a oneshot service driven by a timer, not a long-running
+# service: the thing to install and confirm is the TIMER. Until now both files were a
+# manual cp + systemctl --user on the host, so a fresh deploy left him with no weekly read.
+SURF_UNIT_NAME="vintos-skill-surf"
+SURF_SERVICE_SRC="$SRC/broker/$SURF_UNIT_NAME.service"; SURF_SERVICE_DST="$HOME/.config/systemd/user/$SURF_UNIT_NAME.service"
+SURF_TIMER_SRC="$SRC/broker/$SURF_UNIT_NAME.timer";     SURF_TIMER_DST="$HOME/.config/systemd/user/$SURF_UNIT_NAME.timer"
 DEPTH=6
 CHECK_ONLY=0; DRY_RUN=0
 case "${1:-}" in
@@ -131,6 +137,7 @@ SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/sho
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
+            printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             true)"
 MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
 
@@ -172,6 +179,9 @@ sys.exit(1 if bad else 0)
             *.sh)      bash -n "$root/$f" 2>/dev/null || { bad=1; say "  $root/$f: does not parse (bash -n)"; } ;;
             *.service) grep -q '^\[Service\]' "$root/$f" && grep -q '^ExecStart=' "$root/$f" \
                          || { bad=1; say "  $root/$f: no [Service]/ExecStart="; } ;;
+            # a timer with no schedule installs clean, enables clean, and never fires
+            *.timer)   grep -q '^\[Timer\]' "$root/$f" && grep -qE '^(OnCalendar|OnBootSec|OnUnitActiveSec|OnStartupSec|OnActiveSec)=' "$root/$f" \
+                         || { bad=1; say "  $root/$f: no [Timer] with a schedule"; } ;;
             *.json)    python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$root/$f" 2>/dev/null \
                          || { bad=1; say "  $root/$f: not valid JSON"; } ;;
         esac
@@ -348,6 +358,23 @@ confirm_unit() {   # $1 = "--user" or "--system", $2 = unit name
     fi
     flag "$u not confirmed after restart (Id=${id:-?} ActiveState=${st:-?} MainPID=${pid:-?})"; return 1
 }
+
+# A timer has no MainPID and its oneshot service is inactive between firings, so
+# confirm_unit would call a perfectly healthy timer a failure. What proves a timer
+# is doing its job is that it is active AND has a next elapse to point at.
+confirm_timer() {   # $1 = "--user" or "--system", $2 = timer name (no .timer)
+    local scope="$1" u="$2" out id st next
+    out="$(systemctl "$scope" show -p Id,ActiveState,NextElapseUSecRealtime "$u.timer" 2>/dev/null)"
+    id="$(printf '%s\n' "$out" | sed -n 's/^Id=//p')"
+    st="$(printf '%s\n' "$out" | sed -n 's/^ActiveState=//p')"
+    next="$(systemctl "$scope" list-timers --all --no-legend "$u.timer" 2>/dev/null | head -1)"
+    if [ "$id" = "$u.timer" ] && [ "$st" = "active" ]; then
+        say "  confirmed: Id=$id ActiveState=$st${next:+ next=$(printf '%s' "$next" | awk '{print $1, $2, $3}')}"
+        return 0
+    fi
+    flag "$u.timer not confirmed (Id=${id:-?} ActiveState=${st:-?}) — run: systemctl --user enable --now $u.timer"
+    return 1
+}
 wait_http() {   # $1 = label, $2 = url, $3 = seconds; succeeds when the url answers at all
     local label="$1" url="$2" max="$3" i=0 code
     while [ "$i" -lt "$max" ]; do
@@ -380,6 +407,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
+    say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     if sudo -n true 2>/dev/null; then
         say "  would install (sudo)             $BROKER, $STORE, $UNIT_DST; restart $UNIT_NAME, confirm, wait for 127.0.0.1:8611/health"
     else
@@ -427,13 +456,22 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$SURF_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
                "$u" "$ud" "$u" >> "$BACKUP/restore.sh"
     fi
 done
+# The timer file is its own unit and needs its own line: restoring the oneshot service
+# without the timer that drives it would put back a weekly read that never fires.
+if [ -f "$SURF_TIMER_DST" ] && cp -p "$SURF_TIMER_DST" "$BACKUP/$SURF_UNIT_NAME.timer.pre-deploy" 2>/dev/null; then
+    printf 'install -m 644 "$(dirname "$0")/%s.timer.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s.timer\n' \
+           "$SURF_UNIT_NAME" "$SURF_TIMER_DST" "$SURF_UNIT_NAME" >> "$BACKUP/restore.sh"
+elif [ ! -f "$SURF_TIMER_DST" ]; then
+    printf '# no %s existed before this deploy; to undo it: systemctl --user disable --now %s.timer && rm -f %q %q\n' \
+           "$SURF_TIMER_DST" "$SURF_UNIT_NAME" "$SURF_TIMER_DST" "$SURF_SERVICE_DST" >> "$BACKUP/restore.sh"
+fi
 # Record the service/process state honestly, and restore it as best we can.
 if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
 elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"
@@ -537,6 +575,26 @@ if systemctl --user enable "$REVIEW_UNIT_NAME" >/dev/null 2>&1 \
     confirm_unit --user "$REVIEW_UNIT_NAME"
 else
     flag "$REVIEW_UNIT_NAME installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
+fi
+say
+
+# The weekly read of the OpenClaw skills page. The service is a oneshot; the timer is
+# what is enabled and started. The service itself is deliberately NOT started here — a
+# deploy is not a reason for him to go and read, and the weekly cap lives in the code
+# (spark_sources.weekly_skill_surf), not in the schedule, so an extra firing would be
+# harmless but still not ours to cause.
+say "== skill surfing (weekly) =="
+mkdir -p "$(dirname -- "$SURF_TIMER_DST")"
+install -m 644 "$(staged "$SURF_SERVICE_SRC")" "$SURF_SERVICE_DST" \
+    || die "failed to install $SURF_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+install -m 644 "$(staged "$SURF_TIMER_SRC")" "$SURF_TIMER_DST" \
+    || die "failed to install $SURF_TIMER_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$SURF_UNIT_NAME.timer" >/dev/null 2>&1 \
+   && systemctl --user restart "$SURF_UNIT_NAME.timer" >/dev/null 2>&1; then
+    confirm_timer --user "$SURF_UNIT_NAME"
+else
+    flag "$SURF_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $SURF_UNIT_NAME.timer"
 fi
 say
 
@@ -712,7 +770,9 @@ def unit(u, scope):
     except Exception: return "unknown"
 rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"], "files": rows,
        "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
-                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-atelier": unit("vintos-atelier", [])},
+                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
+                    # a timer, not a service: its oneshot is inactive between firings, so the timer is what is recorded
+                    "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])},
        "broker_confirmed": os.environ.get("BROKERED") == "1", "backup": os.environ["BACKUP_DIR"],
        "rollback": "bash %s/restore.sh" % os.environ["BACKUP_DIR"], "failures": [l.strip() for l in os.environ.get("FAILED_TXT", "").splitlines() if l.strip()]}
 json.dump(rec, open(os.environ["REL_OUT"], "w"), indent=1)

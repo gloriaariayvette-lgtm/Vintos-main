@@ -140,4 +140,32 @@ check("a week later he reads again and moves on to the next page",
 check("the OpenClaw read is not folded into the ordinary gather",
       "skill_surfing" not in {r["source"] for r in S.gather(now=now + timedelta(days=8))})
 
+print("\n--- and the deploy installs the weekly read, instead of her doing it by hand ---")
+dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
+check("the units are named in the deploy", 'SURF_UNIT_NAME="vintos-skill-surf"' in dep)
+check("both files are staged and validated with the rest of the release",
+      '"$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"' in dep)
+check("a timer is validated as a timer, not waved through",
+      "*.timer)" in dep and "no [Timer] with a schedule" in dep)
+check("both are installed into the user unit directory",
+      '"$SURF_SERVICE_DST"' in dep and '"$SURF_TIMER_DST"' in dep and "$HOME/.config/systemd/user/$SURF_UNIT_NAME.timer" in dep)
+check("the TIMER is what is enabled, and it survives a reboot",
+      'systemctl --user enable "$SURF_UNIT_NAME.timer"' in dep)
+check("the oneshot service is not started by the deploy: a deploy is not a reason for him to read",
+      'systemctl --user restart "$SURF_UNIT_NAME.service"' not in dep
+      and 'systemctl --user start "$SURF_UNIT_NAME.service"' not in dep)
+check("a timer is confirmed as active with a next elapse, not by a MainPID it will never have",
+      "confirm_timer()" in dep and 'confirm_timer --user "$SURF_UNIT_NAME"' in dep
+      and "NextElapseUSecRealtime" in dep)
+check("a timer that does not come up is a recorded failure, not a shrug",
+      "$SURF_UNIT_NAME.timer installed but not enabled" in dep)
+check("the rollback puts the timer back too, not just the service it drives",
+      "$SURF_UNIT_NAME.timer.pre-deploy" in dep)
+check("the release record says whether the timer is running",
+      '"vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])' in dep)
+check("a dry run says what it would do with both",
+      "would install + enable (user)" in dep)
+check("the script still parses",
+      __import__("subprocess").run(["bash", "-n", os.path.join(REPO, "scripts", "deploy-atelier.sh")]).returncode == 0)
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

@@ -161,17 +161,26 @@ Sparks are kept in their own file and never in his wants. A spark becomes a want
 by his own act, and only a want carrying one of these sources may commission a new
 capability.
 
-Add to the crontab on Aegis:
+The weekly skills read has its own units and the deploy now installs them
+(`vintos-skill-surf.service` + `.timer`, 2026-09-11): the timer is installed, enabled
+and confirmed like any other unit, and the rollback puts both files back. It was a
+manual `cp` + `systemctl --user` before, which meant a fresh host had no weekly read
+and nothing said so. The oneshot service is deliberately not started by the deploy —
+the weekly cap is in the code, not in the schedule, but a deploy is still not a reason
+for him to go and read.
+
+The other six sparks are still a crontab line on Aegis, and it is still hers to add:
 
     17 7 * * * python3 "$HOME/.vintos/workspace/scripts/spark_sources.py" --gather >> "$HOME/.vintos/logs/sparks.log" 2>&1
 
 Two readers need to be pointed somewhere, and neither guesses:
 
 - **The skills page**, in `memory/openclaw-config.json`:
-  `{"skills_path": "/path/to/skills"}` or `{"skills_url": "https://..."}`
+  `{"skills_path": "/path/to/skills"}` or `{"skills_url": "https://..."}` — done; the
+  two OpenClaw page URLs are set.
 - **The lab**, in `memory/spark-config.json`: `{"lab": "/path/to/the/lab"}` — a file, a
-  folder, or a list. I do not know what the lab is or where it writes, and I am not
-  going to guess a filename again.
+  folder, or a list. Still unset. I do not know what the lab is or where it writes, and
+  I am not going to guess a filename again.
 
 ## The phone, and the Mac
 
