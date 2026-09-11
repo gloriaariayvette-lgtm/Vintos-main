@@ -144,7 +144,28 @@ check("her card, her approve and her deny are guarded routes",
 check("what he is holding reaches his own prompt", "_stance_context()" in srv)
 
 print("\n--- the printer: an Ender 3 by SD/USB, he never starts it, he stops twice ---")
-P3 = load("print_3d", os.path.join(REPO, "scripts", "print_3d.py")); P3.CONFIG = os.path.join(MEM, "printer-config.json")
+P3 = load("print_3d", os.path.join(REPO, "scripts", "print_3d.py"))
+# Every path this module writes is repointed at the throwaway memory. CONFIG alone was
+# not enough: JOBS still named the REAL ~/.vintos/workspace/memory/print-jobs.json, so on
+# the host this suite opened live print jobs in her own store.
+P3.MEMORY = MEM
+P3.CONFIG = os.path.join(MEM, "printer-config.json")
+P3.JOBS = os.path.join(MEM, "print-jobs.json")
+# present() ends by pushing an ntfy notification to her phone through deliver.py. A test
+# must NEVER reach the world (the reveal test once fired real pushes at her mid-deploy),
+# so the two modules present() imports are stood in for before anything calls it.
+_SENT = []
+class _FakeDeliver:
+    @staticmethod
+    def deliver(key, channel, message, **kw):
+        _SENT.append({"key": key, "channel": channel, "message": message})
+        return {"state": "sent", "test_stub": True}
+class _FakeSendPolicy:
+    @staticmethod
+    def may_send(kind):
+        return True, "test stub"
+sys.modules["deliver"] = _FakeDeliver
+sys.modules["send_policy"] = _FakeSendPolicy
 out = P3.print_object("a small thing for her desk")
 check("he stops before slicing anything she has not seen", out["block"]["block_type"] == "AWAITING_HER" and "model" in out["block"]["evidence"])
 out = P3.print_object("x", draft_shown=True)
@@ -166,6 +187,8 @@ json.dump({"handoff_dir": _HD, "bed_mm": [220, 220, 250]}, open(P3.CONFIG, "w"))
 check("with a handoff folder, producing the file is his to complete (no machine to start)",
       P3.print_object("x", draft_shown=True, slice_shown=True)["result"] == "READY")
 print("\n--- how long he may work, and how she knows he is working ---")
+check("the printer test writes to a throwaway store, never to hers", P3.JOBS.startswith(MEM) and P3.CONFIG.startswith(MEM))
+check("the printer test cannot reach her phone (deliver is stubbed)", sys.modules["deliver"] is _FakeDeliver)
 json.dump([], open(P3.JOBS, "w"))
 ok, why = P3.may_work(5)
 check("he may work a short sitting", ok, why)
@@ -183,6 +206,8 @@ check("the day's budget stops him, not the job's", not ok and "spent" in why, wh
 j, _ = P3.present(job["id"], "draft", "I made you a bird. Look?")
 check("showing her the draft moves it to a wait on her", j["state"] == "draft_waiting" and P3.working_on()["live"][0]["waiting_on_her"])
 check("the notification is recorded with its receipt", "draft" in (j.get("shown") or {}))
+check("the stop's one notification went to the stub, not to the world",
+      len(_SENT) == 1 and _SENT[0]["channel"] == "ntfy" and _SENT[0]["key"].endswith("-draft"), _SENT)
 bad, why = P3.answer(job["id"], "slice", True)
 check("she cannot answer a stop it is not at", bad is None and "not waiting" in why)
 j, _ = P3.answer(job["id"], "draft", True)
