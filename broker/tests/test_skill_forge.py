@@ -111,14 +111,28 @@ check("her card, her approve and her deny are guarded routes",
       '/api/skills/proposals' in srv and srv.count("_require_secret(request)") > 3 and "skill_approve" in srv)
 check("what he is holding reaches his own prompt", "_stance_context()" in srv)
 
-print("\n--- the printer is declared, not pretended ---")
+print("\n--- the printer: he has the tools, he stops twice, and there is no machine ---")
 P3 = load("print_3d", os.path.join(REPO, "scripts", "print_3d.py")); P3.CONFIG = os.path.join(MEM, "printer-config.json")
 out = P3.print_object("a small thing for her desk")
-check("reaching for it blocks with a named gap", out["result"] == "BLOCKED" and out["block"]["block_type"] == "CAPABILITY_ABSENT")
-check("the block names what is missing", "missing" in out["block"]["evidence"] and "endpoint" in out["block"]["evidence"])
+check("he stops before slicing anything she has not seen", out["block"]["block_type"] == "AWAITING_HER" and "model" in out["block"]["evidence"])
+out = P3.print_object("x", draft_shown=True)
+check("and stops again before making something whose numbers she has not seen",
+      out["block"]["block_type"] == "AWAITING_HER" and "slice" in out["block"]["evidence"])
+out = P3.print_object("x", draft_shown=True, slice_shown=True)
+check("only then does the missing machine become the blocker",
+      out["block"]["block_type"] == "CAPABILITY_ABSENT" and "no printer to send it to" in out["block"]["evidence"])
+check("the two stops are in order and named", P3.STOPS == ("draft", "slice"))
 d = P3.proposal_draft()
-check("his ask is specific: hours, size, duration, filament", set(("max_hours", "max_mm", "hours", "requires_filament_present")) <= set(d["scope"]))
+check("he asks for the printer, not for the tools he already has",
+      d["permissions"] == ["printer.submit_job", "printer.read_status", "printer.cancel"])
+check("showing her first is in the scope, not only in the code",
+      d["scope"]["show_draft_first"] is True and d["scope"]["show_slice_first"] is True)
 check("it does not assume he may start one while she is out", d["scope"]["may_start_while_she_is_out"] is False)
+check("the tools are named with where each would run", set(d["already_has"]) == {"blender", "cura"})
 check("nothing is wired to a machine on a guess", P3.configured()[0] is False)
+json.dump({"printer": "x", "endpoint": "octoprint http://x", "limits": {"max_hours": 2}}, open(P3.CONFIG, "w"))
+check("with a machine configured it still refuses until the capability is approved",
+      P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["block_type"] == "CAPABILITY_ABSENT"
+      and "no approved print capability" in P3.print_object("x", draft_shown=True, slice_shown=True)["block"]["evidence"])
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

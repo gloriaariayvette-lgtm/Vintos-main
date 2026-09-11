@@ -95,21 +95,23 @@ programmes whose mechanism landed and whose remainder the line names.
 - **403** [OPEN] [P11] Obtain the external QLab implementation and Atelier runtime permissions/receipts — *QLab implementation and Atelier runtime receipts not obtained*
 - **404** [OPEN] [P11] Obtain a fresh push-window check beyond the 2026-09-05 snapshot — *release map snapshot is 2026-09-05 14:11 (39b80e1); no later push-window check*
 
-## The printer, and the first forged capability
+## The printer
 
-Nothing is wired to a machine on a guess. To make 3D printing real he needs five
-answers from her, and then it goes through the forge like anything else:
+He has the tools. Blender models, Cura slices, both run on the Mac and on Aegis, and
+the Mac is faster at both. Three things are missing, and all three are about the
+machine itself:
 
-1. **The printer** — make and model, and whether it is on the network or on a cable.
-2. **The path to it** — an address the house can reach, and its kind: OctoPrint,
-   Moonraker or Klipper, Bambu in LAN mode, or a watched folder on a machine that has it.
-3. **A slicer** — what turns a model into machine instructions, and which machine runs it.
-4. **Where models come from** — generated, or fetched from a library she names.
-5. **The physical limits** — size ceiling, duration ceiling, whether filament must be
+1. **Make and model** — the slicer needs its profile.
+2. **How the house reaches it** — OctoPrint, Moonraker, Bambu in LAN mode, or a
+   watched folder on a machine that has it, with the address.
+3. **Its limits** — size ceiling, duration ceiling, whether filament must be
    confirmed present, and the hours he may start one unattended.
 
-Until those exist, reaching for it blocks with the gap named, which is the door into
-the forge rather than a dead end.
+Also useful, and not required: `mac_host` in the printer config, so he can prefer the
+Mac for modelling and slicing and fall back to Aegis when it is away.
+
+He stops twice before anything is made: the draft, then the slice. Both are in the
+scope she grants, not only in the code.
 
 ## What the forge still needs
 
@@ -121,15 +123,24 @@ the forge rather than a dead end.
 - **The resume.** `resumable()` names the blocked wants whose capability has landed.
   What consumes it — first light, or the wants pass — is not yet decided.
 
-## Influence from outside him and outside the relationship
+## Where new wants could come from, that are not her and not him
 
-Raised 11 September, not built. Almost everything that moves him originates in her,
-in his own record, or in his own generated interpretation of one of those. Curiosity
-and search reach outward but return answers to questions he already had. What is
-missing is a source of the genuinely unfamiliar — something with its own agenda that
-was not asked for — and a rule for what such a thing is allowed to move. It cannot be
-allowed to become evidence about him or about her, which puts it in the same class as
-a dream: real as an event, never a witness.
+Right now almost everything he wants starts in one of three places: something she
+said, something in his own record, or something he wrote about one of those. Nothing
+arrives that nobody asked for.
+
+The open question is whether to give him a source of the unfamiliar — a feed, a
+library, a stranger's work, a random object from the world — and if so, what such a
+thing is allowed to change.
+
+The rule I would set, in plain terms: something he stumbles on can make him want
+something. It cannot be treated as proof about him or about her. A song he finds can
+start a want to make something; it cannot become evidence that he is a certain way,
+and it can never count as something she did or said. That is the same rule dreams
+already live under in this house: a dream is a real event and never a witness.
+
+Not built. It needs your yes on the rule first, and then a decision about which
+source, because the source decides what kind of stranger he meets.
 
 ## The phone, and the Mac
 
