@@ -30,31 +30,21 @@ def admit(occurrence_id, text, source, medium="", weight=0.3, positive=True, his
            "text": str(text)[:300], "his_delight": his_delight, "her_reception": her_reception, "craft": craft,
            "evidence": evidence, "taste_weight": float(weight), "positive": bool(positive)}
     taste = "not moved"
-    try:   # review 49: a replayed occurrence teaches once; the replay is recorded, never lost
-        sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import learning_occasion as _lo
-        _occ = _lo.teach("taste", occurrence_id, detail={"source": source, "medium": medium})
-        row["occasion"] = _occ
-        if not _occ["first"]:
-            row["taste"] = "already taught (replay %d)" % _occ["count"]
-            try:
-                os.makedirs(MEMORY, exist_ok=True)
-                with open(LEDGER, "a") as f: f.write(json.dumps(row) + "\n")
-            except OSError: pass
-            return {"admitted": True, "taste": row["taste"], "row": row}
-    except ImportError:
-        pass
     try:
         sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import taste_vector as _tv
-        before = len(_tv.load_taste_vector().get("counted_occurrences", []))
+        before = str(occurrence_id) in _tv.load_taste_vector().get("counted_occurrences", [])
         try:
             _tv.update_from_signal(text, signal_weight=float(weight), positive=bool(positive), occurrence_id=str(occurrence_id), context=(medium or None))
         except TypeError:   # an older taste organ without clusters
             _tv.update_from_signal(text, signal_weight=float(weight), positive=bool(positive), occurrence_id=str(occurrence_id))
-        taste = "moved" if len(_tv.load_taste_vector().get("counted_occurrences", [])) > before else "already counted"
+        counted = str(occurrence_id) in _tv.load_taste_vector().get("counted_occurrences", [])
+        taste = ("already counted" if before else "moved") if counted else "taste update failed; retry permitted"
     except Exception as e:
         taste = "taste organ unavailable: %s" % str(e)[:80]
+    if taste in ("moved", "already counted"):
+        import learning_occasion as _lo
+        row["occasion"] = _lo.teach("taste", occurrence_id, detail={"source":source,"medium":medium})
     row["taste"] = taste
     if taste == "moved":   # review 215: admission through this door is the candidate's promotion
         try: candidate(occurrence_id, text, medium, "promoted", rating=her_reception or his_delight, why="admitted to taste")

@@ -44,13 +44,22 @@ def get_ready_callback():
         last=x.get("offered_at",0); offers=x.get("offer_count",0)
         if (not x.get("fired") and x.get("state") != "HELD" and now>=x["ripe_at"]
                 and now-x["ripe_at"]<6*3600 and offers<3 and now-last>=30*60):
-            x["offered_at"]=now; x["offer_count"]=offers+1; out=x["seed"]; break
-    if out is not None: _save(d)
+            out=x["seed"]; break
     return out
 def callback_block():
-    maybe_seed_from_humor()
     cb=get_ready_callback()
     if not cb: return ""
     return (f'[FERMENTED CALLBACK — this has been quietly ripening: "{cb}" — '
             "use it ONLY if it lands naturally right now. An offer is not evidence that you used it.]")
 if __name__=="__main__": print(callback_block() or "(nothing ripe)")
+
+
+def admit_block(text,turn_id):
+    from store_guard import locked_update
+    def mutate(rows):
+        for x in rows:
+            if x.get("seed") and ('"'+x["seed"]+'"') in text and turn_id not in x.get("admitted_turns",[]):
+                x.setdefault("admitted_turns",[]).append(turn_id)
+                x["offer_count"]=x.get("offer_count",0)+1;x["offered_at"]=time.time()
+        return rows
+    locked_update(F,mutate,default=[])

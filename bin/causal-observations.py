@@ -24,7 +24,7 @@ def load_observations():
 
 def save_observations(data):
     if not _sg_write(OBS_PATH, data, "causal-observations"):
-            json.dump(data, f, indent=2)
+            raise RuntimeError("observation store write refused")
 
 def add_observation(dimension, direction, delta, context_snippet, source="causality-engine"):
     data = load_observations()

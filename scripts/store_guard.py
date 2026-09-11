@@ -60,21 +60,15 @@ def save_json(path, obj, indent=2):
 
 def write_json(path, obj, reader="", indent=2):
     """review 46: lock, then write atomically. The one-liner for a saver that already holds the whole
-    object. Falls back to a plain atomic write only if the lock cannot be taken."""
-    try:
-        return locked_update(path, lambda _cur: obj, reader=reader)
-    except Exception:
-        save_json(path, obj, indent=indent); return obj
+    object. Snapshot replacement only; read-modify-write callers must hold transaction(path)."""
+    return locked_update(path, lambda _cur: obj, reader=reader)
 
 
 def locked_update(path, mutate, default=None, reader=""):
     """review 46: the one read-modify-write for a store more than one organ writes. Under an exclusive
     flock on <path>.lock: load (quarantining a corrupt file), hand the object to `mutate`, write what it
     returns atomically. `mutate` returning None means no change and nothing is written."""
-    import fcntl
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path + ".lock", "a+") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
+    with transaction(path):
         cur = load_json(path, default if default is not None else [], reader=reader)
         out = mutate(cur)
         if out is None:
@@ -97,3 +91,37 @@ def quarantined(limit=20):
 if __name__ == "__main__":
     for q in quarantined():
         print("  %s %-28s -> %s (%s)" % (q["at"][:16], q["store"], os.path.basename(q["quarantined_to"]), q["error"][:60]))
+
+
+from contextlib import contextmanager
+import threading
+_locks = {}
+_state = threading.local()
+@contextmanager
+def transaction(path):
+    """Serialize complete operations; all writes fail closed on lock failure."""
+    import fcntl
+    path = os.path.abspath(path)
+    lock = _locks.setdefault(path, threading.RLock())
+    with lock:
+        held = getattr(_state, "held", set())
+        if path in held:
+            yield
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".lock", "a+") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            _state.held = held | {path}
+            try: yield
+            finally: _state.held = held
+
+
+def serialized(path_name):
+    import functools
+    def wrap(fn):
+        @functools.wraps(fn)
+        def call(*args, **kwargs):
+            with transaction(path_name() if callable(path_name) else fn.__globals__[path_name]):
+                return fn(*args, **kwargs)
+        return call
+    return wrap

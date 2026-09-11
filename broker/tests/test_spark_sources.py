@@ -159,8 +159,8 @@ check("a timer is confirmed as active with a next elapse, not by a MainPID it wi
       and "NextElapseUSecRealtime" in dep)
 check("a timer that does not come up is a recorded failure, not a shrug",
       "$SURF_UNIT_NAME.timer installed but not enabled" in dep)
-check("the rollback puts the timer back too, not just the service it drives",
-      "$SURF_UNIT_NAME.timer.pre-deploy" in dep)
+check("the rollback restores both files and the prior timer state",
+      'for _ext in service timer' in dep and '_surf_enabled' in dep and '_surf_active' in dep and 'disable --now' in dep)
 check("the release record says whether the timer is running",
       '"vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])' in dep)
 check("a dry run says what it would do with both",

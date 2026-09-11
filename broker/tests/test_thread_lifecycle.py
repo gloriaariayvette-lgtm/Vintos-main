@@ -34,6 +34,10 @@ DREAM_DATA = os.path.join(WS, "skills", "dreaming", "data")
 for d in (MEM, WS_SCRIPTS, DREAM_DATA, os.path.join(WS, "skills", "dreaming", "memory", "dreams")):
     os.makedirs(d, exist_ok=True)
 shutil.copy(os.path.join(SCRIPTS, "thread_store.py"), WS_SCRIPTS)
+# Triage's background resolver is not this test's owner of the pool; the actual
+# resolver is loaded and exercised explicitly below. Do not race that fixture.
+open(os.path.join(WS_SCRIPTS,"thread-resolution.py"),"w").write("# background resolver stub\n")
+shutil.copy(os.path.join(SCRIPTS, "store_guard.py"), WS_SCRIPTS)
 open(os.path.join(WS_SCRIPTS, "backup-threads.sh"), "w").write("exit 0\n")
 # stub emoclaw_utils: enough surface for triage / dream-trigger to import
 open(os.path.join(WS_SCRIPTS, "emoclaw_utils.py"), "w").write('''
@@ -87,6 +91,7 @@ def heredoc(path, tag):
 
 def run_py(code, env=None):
     e = dict(os.environ); e["PYTHONPATH"] = STUBDIR; e.update(env or {})
+    code=code.replace("/tmp/dream-",TMP+"/dream-")
     r = subprocess.run([sys.executable, "-c", code], env=e, capture_output=True, text=True, timeout=60)
     return r.returncode, r.stdout + r.stderr
 
@@ -186,7 +191,7 @@ rc, out = run_py(mcode, {"MIRROR_ENTRY": "a real session text", "_MIRROR_THREAD_
 t = by_id("t01")
 check("mirror judge failure: mirror_passes advances (attempt) but thread is NOT consumed", t["mirror_passes"] == 1 and not t.get("consumed") and t.get("last_mirror_verdict") == "no-verdict", (rc, out[-120:], t))
 rc, out = run_py(mcode, {"MIRROR_ENTRY": "a real session text", "_MIRROR_THREAD_ID": "t01", "STUB_JUDGE": "maybe?"})
-check("mirror garbled verdict: not consumed", not by_id("t01").get("consumed") and by_id("t01")["mirror_passes"] == 2)
+check("mirror garbled verdict: not consumed", not by_id("t01").get("consumed") and by_id("t01")["mirror_passes"] == 2, (rc,out,by_id("t01")))
 rc, out = run_py(mcode, {"MIRROR_ENTRY": "a real session text", "_MIRROR_THREAD_ID": "t01", "STUB_JUDGE": "RESOLVED"})
 check("mirror explicit RESOLVED consumes", by_id("t01").get("consumed_by") == "mirror-resolved")
 rc, out = run_py(mcode, {"MIRROR_ENTRY": "a real session text", "_MIRROR_THREAD_ID": "t02", "STUB_JUDGE": "UNRESOLVED"})
@@ -211,7 +216,7 @@ json.dump({"nights": [{"night_of": "2026-09-09", "dreams": [{"session": "23:30",
                        "threads_consumed": [], "threads_unresolved": []}]}, open(DREAM_LOG, "w"))
 json.dump({"used_thread_ids_tonight": []}, open(STATE, "w"))
 mkpool(5)
-open("/tmp/dream-thread1-id.txt", "w").write("t03"); open("/tmp/dream-thread2-id.txt", "w").write("t04")
+open(TMP+"/dream-thread1-id.txt", "w").write("t03"); open(TMP+"/dream-thread2-id.txt", "w").write("t04")
 json.dump({"thread": "unresolved thing number 3", "source": "heat-seed", "id": "t03"}, open(os.path.join(MEM, "current-preoccupation.json"), "w"))
 # the dream exists -> spend
 rc, out = run_py(spend, {"TOPIC": "seed2:x|||y", "THREAD1": "unresolved thing number 3", "THREAD2": "unresolved thing number 4"})
@@ -268,7 +273,7 @@ check("no loaded module keeps a path under the real ~/.vintos", not _leaks, _lea
 check("the scratch tree holds the pool this suite wrote", os.path.exists(os.path.join(MEM, "unfinished-threads.json")) or os.path.exists(os.path.join(DREAM_DATA, "unfinished-threads.json")) or True)
 
 shutil.rmtree(TMP, ignore_errors=True)
-for f in ("/tmp/dream-thread1-id.txt", "/tmp/dream-thread2-id.txt", "/tmp/dream-raw.txt"):
+for f in (TMP+"/dream-thread1-id.txt", TMP+"/dream-thread2-id.txt", TMP+"/dream-raw.txt"):
     try: os.remove(f)
     except OSError: pass
 n_fail = R.count(False)

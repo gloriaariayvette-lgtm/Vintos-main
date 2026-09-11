@@ -601,8 +601,15 @@ def send_result(context, toy, ok, why="", permit=None):
     effect was ever attempted (Sol's overclaim finding)."""
     # review 91: the receipt names the permit (effect id) it executed under, so a device outcome can be
     # joined to the decision that authorized it; None for a reduction or a legacy call without a permit
+    import physical_contract as pc
+    tid=str(getattr(context,"turn_id","") or "")
+    physical=pc.effect(getattr(permit,"effect_id",None),toy,None,
+                       kind=getattr(permit,"kind","") or "",permit_digest=getattr(permit,"digest",None),turn_id=tid)
+    # This callback does not know when the request was made or its actual level.
+    physical["requested_at"]=None
+    pc.accept(physical,"accepted" if ok else "unavailable",by="transport",why=why)
     _log(turn_id=str(getattr(context, "turn_id", "") or ""),
-         decision="send_result", toy=str(toy), ok=bool(ok), why=str(why)[:80],
+         physical=physical, decision="send_result", toy=str(toy), ok=bool(ok), why=str(why)[:80],
          effect_id=(getattr(permit, "effect_id", None) if permit is not None else None),
          permit_digest=(getattr(permit, "digest", None) if permit is not None else None))
 

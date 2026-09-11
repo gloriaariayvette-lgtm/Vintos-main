@@ -514,6 +514,8 @@ Be honest. If connection with Gloria dominates everything, say so. If you're stu
         f.write(result)
         f.write("\n\n---\n")
 
+    import source_cache
+    source_cache.commit("value-map",context)
     log(f"Map built: {result[:100]}")
 
 if __name__ == "__main__":

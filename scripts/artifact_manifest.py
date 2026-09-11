@@ -247,35 +247,29 @@ def find_record(records, filename):
     return None
 
 def save_ledger(path, obj):
-    """review 302: the one shelf transaction. Locked (a second writer waits), written to a temp file and
-    replaced, so no reader sees a half-written gallery and two painters cannot lose each other's entry."""
-    import fcntl
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path + ".lock", "a+") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        tmp = path + ".tmp.%d" % os.getpid()
-        with open(tmp, "w") as f:
-            json.dump(obj, f, indent=2)
-        os.replace(tmp, path)
+    """Atomic snapshot replacement. Callers doing read/modify/write hold transaction(path)."""
+    from store_guard import write_json
+    return write_json(path,obj)
 
 def append_ledger(path, record, key=None):
-    """Append one record under the lock, re-reading the ledger inside it. `key` names the list under a
-    dict-shaped ledger (e.g. "generated" for music); a list-shaped ledger appends directly."""
-    import fcntl
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path + ".lock", "a+") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        try:
-            data = json.load(open(path))
-        except Exception:
-            data = {key: []} if key else []
-        rows = data.setdefault(key, []) if (key and isinstance(data, dict)) else data
+    from store_guard import locked_update
+    def mutate(data):
+        rows=data.setdefault(key,[]) if key else data
         rows.append(record)
-        tmp = path + ".tmp.%d" % os.getpid()
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, path)
+        return data
+    locked_update(path,mutate,default={key:[]} if key else [])
     return record
+
+
+def patch_record(path, identity, changes, field="path"):
+    """Patch only this writer's fields on one existing artifact, under the common lock."""
+    from store_guard import locked_update
+    def mutate(rows):
+        for row in rows:
+            if row.get(field)==identity: row.update(changes);break
+        return rows
+    return locked_update(path,mutate,default=[])
+
 
 def atomic_json(path, obj):
     tmp = path + ".tmp.%d" % os.getpid()

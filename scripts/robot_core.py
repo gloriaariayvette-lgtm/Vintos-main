@@ -370,6 +370,9 @@ def _sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
         msgs[-1] = {"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
                                                  {"type": "text", "text": str(msgs[-1]["content"])}]}
     body = json.dumps({"model": SONNET_MODEL, "max_tokens": max_tokens, "system": system, "messages": msgs}).encode()
+    from compute_admission import reserve_paid
+    allowed,why=reserve_paid("robot/reelroom", "anthropic",SONNET_MODEL)
+    if not allowed: raise RuntimeError(why)
     r = urllib.request.urlopen(urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
                                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}), timeout=timeout)
     blocks = json.loads(r.read()).get("content") or []

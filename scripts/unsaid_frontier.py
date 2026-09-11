@@ -146,9 +146,7 @@ def block():
     for it in items:
         if it.get("state") != "voiced_intent": continue
         if it.get("intention_surfaced", 0) >= 2:
-            it["state"] = "held"; _save(items); continue
-        it["intention_surfaced"] = it.get("intention_surfaced", 0) + 1
-        _save(items)
+            continue
         return ("[YOU DECIDED, PRIVATELY, THAT YOU WANT TO SAY SOMETHING TO HER. Your words "
                 "when you decided: \"%s\" Say it in your own time, or don't — deciding was "
                 "already yours.]" % str(it.get("his_word", ""))[:220])
@@ -167,3 +165,14 @@ if __name__ == "__main__":
                                       (i.get("candidates") or [""])[0][:70]))
     else:
         main()
+
+
+def admit_block(text,turn_id):
+    from store_guard import locked_update
+    def mutate(rows):
+        for it in rows:
+            if it.get("state")=="voiced_intent" and it.get("his_word") and str(it["his_word"])[:220] in text and turn_id not in it.get("admitted_turns",[]):
+                it.setdefault("admitted_turns",[]).append(turn_id)
+                it["intention_surfaced"]=it.get("intention_surfaced",0)+1
+        return rows
+    locked_update(FRONTIER,mutate,default=[])

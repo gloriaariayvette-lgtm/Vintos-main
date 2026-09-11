@@ -62,7 +62,7 @@ def _from_threads():
         if not isinstance(t, dict) or t.get("kind") != "question":
             continue
         if t.get("retired"):
-            st, basis = ("resolved", "archived: " + str(t.get("retired_reason") or t.get("consumed_by", ""))) if t.get("consumed_by") not in ("expired", "released") else ("released_unresolved", str(t.get("retired_reason", "released")))
+            st, basis = ("resolved", "archived: " + str(t.get("retired_reason") or t.get("consumed_by", ""))) if t.get("retired_reason") not in ("expired", "released") else ("released_unresolved", str(t.get("retired_reason", "released")))
         elif t.get("consumed") and t.get("consumed_by") == "dream-resolved":
             st, basis = "consolidated", "a dream resolved it (%s)" % t.get("last_dream_verdict", "resolved")
         elif t.get("dream_passes", 0) or t.get("mirror_passes", 0) or t.get("last_dream_verdict"):

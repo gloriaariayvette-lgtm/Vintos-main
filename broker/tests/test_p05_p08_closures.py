@@ -51,7 +51,7 @@ check("a named digest with no bytes on disk is refused, never 'verified'", "the 
 print("\n--- 301: a music landing is recorded before the download ---")
 DM = load("dream_music", os.path.join(REPO, "bin", "dream-music.py")) if False else None
 dm = src("bin/dream-music.py")
-check("landing begins before any download, closes after the entry, and pending landings are named", "_landing_begin(tid, d[\"title\"], len(tracks))" in dm and "_landing_done(tid, downloaded)" in dm and "def pending_landings" in dm and dm.index("_landing_begin(tid") < dm.index("if dl(t[\"file\"],mp3)"))
+check("landing begins before any download, closes after the entry, and pending landings are named", "_landing_begin(tid, d[\"title\"], 0," in dm and "_landing_done(tid, downloaded)" in dm and "def pending_landings" in dm and dm.index("_landing_begin(tid") < dm.index("if dl(t[\"file\"],mp3)"))
 check("the twins carry it", dm == src("scripts/dream-music.py"))
 
 print("\n--- 321: a render has an owner and a generation token ---")

@@ -998,6 +998,11 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     def _marks():
         import hashlib as _mh, resonance_marks as _rmk
         _rmk.activate_from_reply(reply, _mh.md5((surface + "|" + gloria_text[:200] + "|" + reply[:200]).encode()).hexdigest()[:10])
+    def _questions():
+        import unsaid_questions, joke_fermentation
+        unsaid_questions.observe_reply(reply)
+        joke_fermentation.maybe_seed_from_humor()
+    _inline("questions", _questions)
     _inline("marks", _marks)   # one activation per delivered turn, recorded here and nowhere else (astra-emotion-p5)
     def _desktop():
         if _desktop_agent is not None and "[DESKTOP:" in (reply or "").upper():
@@ -1013,6 +1018,8 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             if script and not os.path.exists(script):
                 skipped.append(name + ":absent"); return
             exe = venv if (needs_venv or venv_for_all) else "python3"
+            import tempfile
+            log = os.path.join(tempfile.gettempdir(),os.path.basename(log))
             kw = {"stdout": open(log, "a"), "stderr": open(log, "a")}
             # every writer learns the surface and turn it serves (astra-memoryrec-p1)
             _env = dict(writer_env) if writer_env else dict(os.environ)
@@ -5475,7 +5482,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(msg.message) + _map_view_context(msg.message) + __import__("emotional_operators").transition_context(msg.message) + _landscape_context(msg.message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(msg.message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -7499,6 +7506,12 @@ async def voice_ledger(payload: dict):
 
 @app.post("/api/voice/session-end")
 async def voice_session_end(payload: dict = None):
+    from store_guard import transaction
+    with transaction(os.path.join(MEMORY,"voice-finalization")):
+        return await _voice_session_end_owned(payload)
+
+
+async def _voice_session_end_owned(payload: dict = None):
     """Called by the app on hangup. Builds ONE rich session-block ledger entry:
     quotes, felt experience, duration, summary, hardware notes. Not per-turn."""
     import json as _vse_j, datetime as _vse_d, sys as _vse_sys, requests as _vse_req
@@ -7516,6 +7529,15 @@ async def voice_session_end(payload: dict = None):
     sp = os.path.join(MEMORY, "voice-session-state.json")
     try: sess = _vse_j.load(open(sp))
     except: sess = {}
+    session_id = str(sess.get("started_at") or "")
+    if session_id:
+        try:
+            existing = _vse_j.load(open(os.path.join(MEMORY,"interaction-ledger.json")))
+            entries = existing if isinstance(existing,list) else existing.get("entries",[])
+            if any(e.get("source")=="voice-session" and e.get("turn_id")==session_id for e in entries):
+                os.remove(sp)
+                return {"ok":True,"persisted":True,"skipped":"session already persisted"}
+        except (OSError,ValueError): pass
     turns = sess.get("turns", [])
     # one owner, idempotent (astra-server-b-p3): a hangup and a cron recovery for the same session
     # write ONE block; no turns since the last finalization means nothing to finalize
@@ -9816,7 +9838,7 @@ async def print_answer(job_id: str, request: Request):
     kind = str(body.get("kind") or "").strip()
     if kind not in ("draft", "slice"):
         raise HTTPException(status_code=400, detail="kind must be draft or slice")
-    job, why = _printer().answer(job_id, kind, bool(body.get("yes")), str(body.get("note") or ""))
+    job, why = _printer().answer(job_id, kind, body.get("yes"), str(body.get("note") or ""), digest=body.get("sha256"))
     if job is None:
         raise HTTPException(status_code=409, detail=why)
     return {"ok": True, "job": {"id": job["id"], "state": job["state"], "what": job.get("what", "")}}
@@ -9865,7 +9887,34 @@ async def skill_approve(pid: str, request: Request):
     row, why = f.approve(pid, granted or None)
     if row is None:
         raise HTTPException(status_code=409, detail=why)
+    import asyncio, forge_build
+    asyncio.create_task(asyncio.to_thread(forge_build.run, pid))
     return {"ok": True, "proposal": f.card(row)}
+
+
+@app.post("/api/skills/proposals/{pid}/install")
+async def skill_install(pid: str, request: Request):
+    _require_secret(request)
+    import asyncio, forge_build
+    row, why = await asyncio.to_thread(forge_build.install, pid)
+    if row is None: raise HTTPException(status_code=409, detail=why)
+    return {"ok":True,"proposal":_forge().card(row)}
+
+@app.post("/api/skills/proposals/{pid}/invoke")
+async def skill_invoke(pid: str, request: Request):
+    _require_secret(request)
+    body=await request.json()
+    if body.get("approve_this_use") is not True:
+        raise HTTPException(status_code=400,detail="approve_this_use must be true")
+    row=_forge()._get(_forge()._load(),pid)
+    if not row or row.get("state") not in ("installed","resumed"):
+        raise HTTPException(status_code=409,detail="installed proposal required")
+    import asyncio, forge_build
+    try:
+        result=await asyncio.to_thread(forge_build.invoke,row["capability"],str(body.get("note", ""))[:4000],asking=True)
+    except Exception as exc:
+        raise HTTPException(status_code=409,detail=str(exc)[:200])
+    return {"ok":True,"result":result}
 
 
 @app.post("/api/skills/proposals/{pid}/deny")
@@ -11435,7 +11484,7 @@ Be yourself. Be free."""
                 tv_history = json.load(f)[-12:]
         except: pass
 
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(msg.message) + _map_view_context(msg.message) + __import__("emotional_operators").transition_context(msg.message) + _landscape_context(msg.message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(msg.message)}]
         try: open("/tmp/vintos-full-prompt.txt","w").write(messages[0]["content"])
         except Exception: pass
         for h in tv_history:

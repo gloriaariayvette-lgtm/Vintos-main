@@ -18,7 +18,7 @@ def _save(d):
     try:   # review 46: shared store (the block, the confirmations and the searcher all write it)
         import sys as _sg_s; _sg_s.path.insert(0, os.path.dirname(os.path.abspath(__file__))); _sg_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
         from store_guard import locked_update as _lu
-        _lu(F, lambda _c: d[-40:], reader="curiosity_debt"); return
+        _lu(PATH, lambda _c: d[-40:], reader="curiosity_debt"); return
     except Exception:
         pass
     _tmp = PATH + ".tmp.%d" % os.getpid()
@@ -63,7 +63,7 @@ def record(question, pull=0.6, source="chat", object=None, kind=None, reason=Non
                   "occasions": [occ], "target": "gloria"})
     _save(d)
 
-def _decay(d):
+def _decay(d, persist=True):
     """Decay applies once per elapsed hour, from last_decayed_at — not from last_seen on every read.
     Until 2026-09-05 each block() call re-applied the whole interval since the item was last offered,
     so a question read often decayed many times over (astra-curiosity-p1)."""
@@ -77,11 +77,11 @@ def _decay(d):
     keep = []
     for x in d:
         if x["pull"] <= 0.15:
-            _retire(x, "decayed out" if x.get("surfaced",0) == 0 else "asked and faded")
+            if persist: _retire(x, "decayed out" if x.get("surfaced",0) == 0 else "asked and faded")
         else: keep.append(x)
     return keep
 
-def _evaporate(d):
+def _evaporate(d, persist=True):
     """If her own recent words touch a pressured object before he asked,
     the mystery may have resolved itself — collapse the pressure."""
     try:
@@ -96,7 +96,8 @@ def _evaporate(d):
         if ob and len(ob) > 3 and ob in recent and x.get("surfaced", 0) == 0:
             x["pull"] = round(x["pull"] * 0.35, 3)   # touched unasked — most of the pull drains
             if x["pull"] <= 0.15:
-                _retire(x, "evaporated - she touched it unasked"); continue
+                if persist: _retire(x, "evaporated - she touched it unasked")
+                continue
         out.append(x)
     return out
 
@@ -153,7 +154,7 @@ def confirm_from_reply(reply_text, window_s=900, turn_id=None):
         return []
 
 def block():
-    d = _evaporate(_decay(_load())); now = time.time()
+    d = _evaporate(_decay(_load(),persist=False),persist=False); now = time.time()
     ripe = [x for x in d if x["pull"] >= 0.5 and now - x["created"] > 1800 and x.get("surfaced", 0) < 3 and x.get("offered", 0) < 8]
     ripe.sort(key=lambda x: -x["pull"])
     out = ""
@@ -169,8 +170,19 @@ def block():
                    "who could tell you. If the moment allows, actually ask her - in your own "
                    "words, as part of the conversation, not as a survey question: "
                    + r["question"] + "]")
-    _save(d)
     return out
 
 if __name__ == "__main__":
     print(block() or "(no standing curiosity)")
+
+
+def admit_block(text,turn_id):
+    from store_guard import locked_update
+    def mutate(rows):
+        rows=_evaporate(_decay(rows))
+        for x in rows:
+            if x.get("question") and (x["question"]+"]") in text and turn_id not in x.get("admitted_turns",[]):
+                x.setdefault("admitted_turns",[]).append(turn_id)
+                x["offered"]=x.get("offered",0)+1;x["last_seen"]=time.time();x["offered_turn"]=turn_id
+        return rows
+    locked_update(PATH,mutate,default=[])

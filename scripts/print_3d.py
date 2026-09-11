@@ -138,32 +138,14 @@ def state():
 
 
 def print_object(note="", want=None, draft_shown=False, slice_shown=False):
-    """The executor's envelope.
-
-    Three different stops, told apart, because they mean three different things:
-    the object has not been shown, the slice has not been shown, or there is no
-    machine to send it to."""
-    if not draft_shown:
-        return {"result": "BLOCKED", "block": {
-            "block_type": "AWAITING_HER",
-            "evidence": "she has not seen the model yet: the draft is shown before anything is sliced",
-            "resume_event": "she answers the draft"}}
-    if not slice_shown:
-        return {"result": "BLOCKED", "block": {
-            "block_type": "AWAITING_HER",
-            "evidence": "she has not seen the slice yet: time, filament and height before it is made",
-            "resume_event": "she answers the slice"}}
-    ok, missing = configured()
-    if not ok:
-        return {"result": "BLOCKED", "block": {
-            "block_type": "CAPABILITY_ABSENT",
-            "evidence": "nowhere to leave the finished file: missing " + ", ".join(missing),
-            "resume_event": "handoff_dir set in printer-config.json"}}
-    # Both stops passed and a handoff folder exists. There is no machine to start — he
-    # writes the sliced file there and she runs it — so this is a completable act, not
-    # a blocked one.
-    return {"result": "READY", "handoff_dir": _cfg().get("handoff_dir"),
-            "note": "the sliced .gcode is ready for her to carry to the printer"}
+    """Report only a persisted, approved, byte-verified handoff."""
+    jid = (want or {}).get("print_job_id")
+    job = next((j for j in _jobs() if j.get("id") == jid), None)
+    if job and job.get("state") == "ready" and _valid(job.get("handoff")):
+        return {"result": "READY", "file": job["handoff"]["path"]}
+    return {"result": "BLOCKED", "block": {"block_type": "AWAITING_HER",
+            "evidence": "a persisted model, slice and both byte-bound approvals are required",
+            "resume_event": "complete the print job approvals"}}
 
 
 def proposal_draft():
@@ -259,7 +241,7 @@ def _locked_jobs(mutate):
         from store_guard import locked_update as _lu
         _lu(JOBS, _m, default=[], reader="print_3d.py")
     except Exception:
-        rows = _jobs(); _m(rows); _save_jobs(rows)
+        raise
     return carry
 
 
@@ -292,8 +274,8 @@ def reserve_design(job_id, cfg=None):
             carry["ok"] = (False, "not enough of Astra's day left for a call: %.0fs used, a call reserves %.0fs of %g" % (used, ceiling, cap), "")
             return rows
         # Reserve the whole per-call ceiling up front and settle it down to the real
-        # seconds afterward. Because a call can never spend more than the ceiling
-        # reserved for it, the day's total can never exceed the cap.
+        # seconds afterward. The worker deadline bounds local waiting, not remote billing;
+        # startup/cleanup or an injected caller may overrun, and that is recorded honestly.
         job.setdefault("work", []).append({"at": _d.datetime.now().isoformat(timespec="seconds"),
                                             "minutes": 0, "seconds": ceiling,
                                             "what": "design", "how": "reserved", "rid": rid})
@@ -311,7 +293,7 @@ def settle_design(job_id, rid, seconds, how="answered"):
             if j.get("id") == job_id:
                 for e in (j.get("work") or []):
                     if e.get("rid") == rid:
-                        e["seconds"] = round(min(float(seconds), float(e.get("seconds", seconds))), 1)
+                        e["seconds"] = round(max(0.0, float(seconds)), 1)
                         e["how"] = how; carry["ok"] = True
         return rows
     _locked_jobs(_m)
@@ -355,7 +337,7 @@ def design(brief, job_id="", caller=None):
               "keep it inside %d mm in every direction, make it printable without supports where "
               "you can, and export to the path given as OUT. No commentary, no markdown fence." )
     prompt = "%s\n\nOUT = the path passed in sys.argv[-1]." % str(brief or "")[:1200]
-    t0 = _t.time()
+    t0 = _t.monotonic()
     try:
         if caller is None:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -364,12 +346,12 @@ def design(brief, job_id="", caller=None):
             caller = _ac.call
         cfg = _cfg()
         text = caller(system % int(cfg.get("max_mm") or 180),
-                      [{"role": "user", "content": prompt}], max_tokens=1800) or ""
+                      [{"role": "user", "content": prompt}], max_tokens=1800, timeout=float(cfg.get("astra_max_call_s") or ASTRA_MAX_CALL_S)) or ""
     except Exception as e:
-        settle_design(job_id, rid, _t.time() - t0, "failed")
+        settle_design(job_id, rid, _t.monotonic() - t0, "failed")
         return {"ok": False, "why": "the design call did not answer: %s" % str(e)[:160],
-                "seconds": round(_t.time() - t0, 1)}
-    spent = _t.time() - t0
+                "seconds": round(_t.monotonic() - t0, 1)}
+    spent = _t.monotonic() - t0
     settle_design(job_id, rid, spent, "answered")
     script = str(text).strip()
     if script.startswith("```"):
@@ -432,14 +414,18 @@ _ALLOWED = {
 }
 
 
-def advance(job_id, state, detail="", extra=None):
+def advance(job_id, state, detail="", extra=None, _authority=None):
     import datetime as _d
     if state not in STATES:
         return None, "not a state: %r" % state
+    if extra and _authority is not _APPROVAL_AUTHORITY and set(extra) & {"model","slice","shown","draft_approval","slice_approval","handoff","handoff_file","work"}:
+        return None,"artifact and approval fields have dedicated writers"
     rows = _jobs()
     for j in rows:
         if j.get("id") == job_id:
             cur = j.get("state", "modelling")
+            if state != "abandoned" and (cur in HER_WAITS or state in HER_WAITS or state == "ready") and _authority is not _APPROVAL_AUTHORITY:
+                return None, "use artifact presentation or her bound answer for this transition"
             if state != cur and state not in _ALLOWED.get(cur, ()):
                 return None, "a print job cannot go from %s to %s" % (cur, state)
             j["state"] = state
@@ -451,70 +437,106 @@ def advance(job_id, state, detail="", extra=None):
     return None, "no job %r" % job_id
 
 
+_APPROVAL_AUTHORITY = object()
+
+
+def _artifact(path):
+    import hashlib
+    path = os.path.realpath(path)
+    return {"path": path, "sha256": hashlib.sha256(open(path,"rb").read()).hexdigest()}
+
+
+def _valid(item):
+    try: return bool(item and _artifact(item["path"])["sha256"] == item["sha256"])
+    except (KeyError, OSError, TypeError): return False
+
+
+def attach_model(job_id, path):
+    """Validate millimetre STL coordinates before presenting a model."""
+    import struct, re, math
+    data = open(path,"rb").read()
+    points = []
+    if len(data)>=84 and len(data)==84+50*struct.unpack_from("<I",data,80)[0]:
+        for off in range(84,len(data),50):
+            values=struct.unpack_from("<12f",data,off)
+            points.extend([values[i:i+3] for i in (3,6,9)])
+    else:
+        points=[tuple(map(float,m)) for m in re.findall(r"vertex\s+([-+\deE.]+)\s+([-+\deE.]+)\s+([-+\deE.]+)",data.decode("ascii"))]
+    if not points or not all(math.isfinite(v) for point in points for v in point): raise ValueError("invalid STL")
+    size=[max(p[i] for p in points)-min(p[i] for p in points) for i in range(3)]
+    bed=_cfg().get("bed_mm") or BED_MM
+    if any(v>float(bed[i]) or v<=0 for i,v in enumerate(size)): raise ValueError("mesh outside bed or degenerate")
+    return advance(job_id,"modelling",extra={"model":{**_artifact(path),"size_mm":size}},_authority=_APPROVAL_AUTHORITY)
+
+
+def attach_slice(job_id, path, *, seconds, filament_mm, layer_mm):
+    """Accept a real, inspectable metric toolpath only after model approval."""
+    import re, math
+    job=next((j for j in _jobs() if j["id"]==job_id),None)
+    if not job or job["state"]!="slicing" or not _valid(job.get("model")) or job.get("draft_approval")!=job["model"]["sha256"]:
+        raise ValueError("approved model required")
+    values=[float(seconds),float(filament_mm),float(layer_mm)]
+    if any(not math.isfinite(v) or v<=0 for v in values): raise ValueError("slice estimates required")
+    text=open(path).read();absolute=True;moves=0;metric=False;bed=_cfg().get("bed_mm") or BED_MM
+    for line in text.splitlines():
+        code=line.split(';',1)[0].strip().upper()
+        if re.match(r'G(?:0?[234]|5|10|28|29|30|53|5[4-9]|92)(?:\s|$)',code) and not re.fullmatch(r'G92\s+E[-+0-9.]+',code): raise ValueError('unverified coordinate or motion command')
+        if code.startswith('G20'): raise ValueError('inch toolpath refused')
+        if code.startswith('G21'): metric=True
+        if code=='G91': absolute=False
+        if code=='G90': absolute=True
+        if re.match(r'G0?[01](?:\s|$)',code):
+            if not metric or not absolute: raise ValueError('metric absolute XYZ toolpath required')
+            for axis,value in re.findall(r'([XYZ])([-+\d.]+)',code):
+                number=float(value)
+                if not math.isfinite(number) or not 0<=number<=float(bed['XYZ'.index(axis)]): raise ValueError('toolpath outside bed')
+            moves+=1
+    if not moves: raise ValueError('no toolpath moves')
+    return advance(job_id,"slicing",extra={"slice":{**_artifact(path),"model_sha256":job["model"]["sha256"],"seconds":values[0],"filament_mm":values[1],"layer_mm":values[2]}},_authority=_APPROVAL_AUTHORITY)
+
+
 def present(job_id, kind, message, attach=None):
-    """He shows her the draft, or the slice, and stops. One notification per stop,
-    through the delivery path that keeps receipts and refuses to send the same thing
-    twice; the job moves to a wait that only her answer clears."""
-    if kind not in ("draft", "slice"):
-        return None, "a stop is draft or slice"
-    job, why = advance(job_id, "draft_waiting" if kind == "draft" else "slice_waiting", kind)
-    if job is None:
-        return None, why   # e.g. a slice stop refused because the draft was never approved
-    receipt = None
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        sys.path.insert(0, os.path.join(WS, "scripts"))
-        import deliver as _dl, send_policy as _sp
-        receipt = _dl.deliver("print-%s-%s" % (job_id, kind), "ntfy",
-                              str(message)[:400], title="Vintos wants to print something",
-                              attach=attach, tags="printer",
-                              authority=lambda: _sp.may_send("any"))
-    except Exception as e:
-        receipt = {"state": "failed", "why": str(e)[:120]}
-    rows = _jobs()
-    for j in rows:
-        if j.get("id") == job_id:
-            j.setdefault("shown", {})[kind] = {"message": str(message)[:400],
-                                               "receipt": (receipt or {}).get("state", "unknown")}
-            _save_jobs(rows); job = j
-            break
-    return job, ""
+    if kind not in STOPS: return None,"a stop is draft or slice"
+    job=next((j for j in _jobs() if j["id"]==job_id),None)
+    item=(job or {}).get("model" if kind=="draft" else "slice")
+    if not _valid(item): return None,"validated artifact bytes required"
+    job,why=advance(job_id,kind+"_waiting",kind,_authority=_APPROVAL_AUTHORITY)
+    if not job:return None,why
+    import deliver
+    receipt=deliver.deliver("print-%s-%s-%s"%(job_id,kind,item["sha256"]),"ntfy",(str(message)[:300]+"\nArtifact SHA-256: "+item["sha256"]),title="Print approval",attach=attach,tags="printer")
+    rows=_jobs();job=next(j for j in rows if j['id']==job_id)
+    job.setdefault('shown',{})[kind]={'sha256':item['sha256'],'receipt':(receipt or {}).get('state','unknown')}
+    _save_jobs(rows);return job,''
 
 
-def answer(job_id, kind, yes, note=""):
-    """Her answer to a stop. Yes moves it on; no ends the job. Nothing else can."""
-    j = None
-    for row in _jobs():
-        if row.get("id") == job_id:
-            j = row
-            break
-    if j is None:
-        return None, "no job %r" % job_id
-    want = "draft_waiting" if kind == "draft" else "slice_waiting"
-    if j.get("state") != want:
-        return None, "job is %s, not waiting on the %s" % (j.get("state"), kind)
-    if not yes:
-        return advance(job_id, "abandoned", "she said no to the %s: %s" % (kind, note))
-    if kind == "draft":
-        return advance(job_id, "slicing", "she said yes to the draft")
-    # A slice yes writes the sliced file into the handoff folder for her to run. There
-    # is no machine to start; the job is 'ready' and waits for her to carry it over.
-    cfg = _cfg()
-    hd = cfg.get("handoff_dir")
-    if not hd:
-        return None, "no handoff_dir set: nowhere to leave the finished file"
+def answer(job_id, kind, yes, note="", digest=None):
+    if kind not in STOPS or type(yes) is not bool:return None,'explicit draft/slice boolean answer required'
+    job=next((j for j in _jobs() if j['id']==job_id),None)
+    if not job or job['state']!=kind+'_waiting':return None,'not waiting on that stop'
+    if not yes:return advance(job_id,'abandoned',note)
+    item=job.get('model' if kind=='draft' else 'slice')
+    shown=job.get('shown',{}).get(kind,{})
+    if not _valid(item) or digest!=item['sha256'] or shown.get('sha256')!=digest or shown.get('receipt') not in ('sent','acknowledged'):
+        return None,'approval must match the delivered, unchanged artifact digest'
+    if kind=='draft':
+        return advance(job_id,'slicing','draft approved',extra={'draft_approval':digest},_authority=_APPROVAL_AUTHORITY)
+    if not _valid(job.get('model')) or job.get('draft_approval')!=item.get('model_sha256'):
+        return None,'approved model changed'
+    hd=_cfg().get('handoff_dir')
+    if not hd:return None,'handoff_dir required'
+    os.makedirs(os.path.expanduser(hd),exist_ok=True)
+    dest=os.path.join(os.path.expanduser(hd),job_id+'-'+digest[:12]+'.gcode')
+    data=open(item['path'],'rb').read()
+    import hashlib
+    if hashlib.sha256(data).hexdigest()!=digest:return None,'slice changed during handoff'
     try:
-        os.makedirs(os.path.expanduser(hd), exist_ok=True)
-        src = (j.get("slice") or {}).get("gcode_path") or ""
-        dest = os.path.join(os.path.expanduser(hd), "%s.gcode" % job_id)
-        if src and os.path.isfile(src):
-            shutil.copy2(src, dest)
-        else:
-            open(dest, "w").write((j.get("slice") or {}).get("gcode", "") or "; sliced gcode pending\n")
-        return advance(job_id, "ready", "written to the handoff folder for her: %s" % dest,
-                       extra={"handoff_file": dest})
-    except Exception as e:
-        return None, "could not write the handoff file: %s" % str(e)[:120]
+        with open(dest,'xb') as f:f.write(data)
+    except FileExistsError:
+        if _artifact(dest)['sha256']!=digest:return None,'handoff collision'
+    result=advance(job_id,'ready','approved slice handed off',extra={'slice_approval':digest,'handoff_file':dest,'handoff':_artifact(dest)},_authority=_APPROVAL_AUTHORITY)
+    import deliver
+    deliver.deliver('print-ready-'+job_id+'-'+digest,'ntfy','The approved G-code is ready to carry to the printer.',title='Print file ready',tags='printer')
+    return result
 
 
 def working_on(limit=8):
@@ -526,11 +548,24 @@ def working_on(limit=8):
         return {"id": j["id"], "what": j.get("what", ""), "state": j.get("state"),
                 "waiting_on_her": j.get("state") in HER_WAITS,
                 "minutes_spent": round(sum(float(e.get("minutes", 0)) for e in (j.get("work") or [])), 1),
+                "model": j.get("model"), "slice": j.get("slice"), "shown": j.get("shown", {}),
                 "opened": j.get("opened", ""), "last": (j.get("history") or [{}])[-1]}
     return {"live": [one(j) for j in live], "recent": [one(j) for j in rest],
             "minutes_today": spent_today(rows),
             "budget_today": float(_cfg().get("budget_min_per_day") or BUDGET_MIN_PER_DAY)}
 
+
+
+# Every read/modify/write participant shares the same store lock.
+from store_guard import serialized as _serialized
+open_job = _serialized('JOBS')(open_job)
+advance = _serialized('JOBS')(advance)
+present = _serialized('JOBS')(present)
+answer = _serialized('JOBS')(answer)
+attach_model = _serialized('JOBS')(attach_model)
+attach_slice = _serialized('JOBS')(attach_slice)
+note_design = _serialized('JOBS')(note_design)
+note_work = _serialized('JOBS')(note_work)
 
 if __name__ == "__main__":
     if "--jobs" in sys.argv:

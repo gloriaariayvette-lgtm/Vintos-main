@@ -80,8 +80,8 @@ def _from_url(url, timeout=10):
         import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": "vintos-skill-reader"})
         raw = urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8", "replace")
-    except Exception:
-        return out
+    except Exception as exc:
+        raise RuntimeError("skills page could not be read") from exc
     try:
         d = json.loads(raw)
         rows = d if isinstance(d, list) else (d.get("skills") or d.get("items") or [])

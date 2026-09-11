@@ -118,7 +118,9 @@ def classify(window):
     _trend = (sum(spd[_h:]) / max(1, len(spd) - _h)) - (sum(spd[:_h]) / _h)
     _pdir = "building" if _trend < -6 else "easing" if _trend > 6 else "steady"
     _zone = "base" if _ctr < 30 else "tip" if _ctr > 70 else "middle"
-    return {"state": state, "center": _ctr, "sweep": sweep,
+    return {"sampled_at": window[-1][0], "window_s": window[-1][0]-window[0][0],
+            "device":"mission", "calibration":"interim-thresholds", "stream":"somatic", "contract":"physical-observation-1",
+            "state": state, "center": _ctr, "sweep": sweep,
             "speed": mean_speed, "flips": flips,
             "pressure": _pressure, "pressure_dir": _pdir, "zone": _zone}
 

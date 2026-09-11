@@ -28,8 +28,13 @@ def main():
         except Exception: return 0
     turns = sorted(((ep(e), str(e.get("gloria", "")), str(e.get("vintos", ""))) for e in led if isinstance(e, dict)), key=lambda x: x[0])
     enc = encoder()
+    import calibration as _cal
+    checkpoint = _cal.checkpoint_fingerprint()
+    if not checkpoint: return
+    trained_before = os.path.getmtime(_cal.MODEL)
     rows = []
     for h in hist:
+        if h.get("checkpoint_id") != checkpoint or h.get("ts",0) <= trained_before: continue
         nxt_g = next((g for t, g, v in turns if t > h["ts"] and g), None)
         nxt_s = next((v for t, g, v in turns if t > h["ts"] and v), None)
         if not nxt_g or not nxt_s: continue
@@ -45,8 +50,18 @@ def main():
         print("[jepa-audit] only %d joined predictions - honest answer: TOO EARLY (need >=30 for verdict)" % n)
         json.dump({"n_joined": n, "verdict": "INSUFFICIENT"}, open(OUT, "w"), indent=2); return
     def spear(x, y):
-        rx = np.argsort(np.argsort(x)).astype(float); ry = np.argsort(np.argsort(y)).astype(float)
-        return round(float(np.corrcoef(rx, ry)[0, 1]), 3)
+        def ranks(values):
+            values=np.asarray(values,dtype=float)
+            if not np.all(np.isfinite(values)):return None
+            order=np.argsort(values);rank=np.empty(len(values),dtype=float);i=0
+            while i<len(order):
+                j=i+1
+                while j<len(order) and values[order[j]]==values[order[i]]:j+=1
+                rank[order[i:j]]=(i+j-1)/2;i=j
+            return rank
+        rx,ry=ranks(x),ranks(y)
+        if rx is None or ry is None or np.std(rx)==0 or np.std(ry)==0:return None
+        return round(float(np.corrcoef(rx,ry)[0,1]),3)
     def bins(conf, err):
         idx = np.argsort(conf); k = len(idx) // 3
         return [round(float(np.mean([err[i] for i in part])), 4) for part in (idx[:k], idx[k:2 * k], idx[2 * k:]) if len(part)]
@@ -60,15 +75,16 @@ def main():
         hold, hold_why = rows[-max(1, len(rows) // 3):], "latest third (calibration module unavailable)"
     _ck = None
     try:
-        _ck = _cal.checkpoint_fingerprint()
+        _ck = checkpoint
+        if _cal.checkpoint_fingerprint() != checkpoint: return
     except Exception:
         _ck = None
     res = {"n_joined": n, "n_holdout": len(hold), "holdout": hold_why,
            "criteria_version": getattr(_cal, "CRITERIA_VERSION", "unknown") if "_cal" in dir() else "unknown",
-           "checkpoint": _ck}
+           "checkpoint": _ck, "holdout_protocol": "prospective-checkpoint-v1"}
     for ax in ("g", "s"):
         conf = [r[ax + "_conf"] for r in hold]; dsim = [r[ax + "_dsim"] for r in hold]; e = [r[ax + "_err"] for r in hold]
-        wb = [r["iso"][:16] for r in rows if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
+        wb = [r["iso"][:16] for r in hold if r[ax + "_conf"] >= np.percentile(conf, 67) and r[ax + "_err"] >= np.percentile(e, 67)]
         res[ax] = {"monotonicity_conf_vs_err": spear(conf, e), "bins_low_mid_high_err": bins(conf, e),
                    "CONTROL_dsim_vs_err": spear(dsim, e), "wrong_but_confident": wb[:5]}
     res["axis_lockstep_corr"] = spear([r["g_conf"] for r in hold], [r["s_conf"] for r in hold])

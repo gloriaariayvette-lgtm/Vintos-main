@@ -33,7 +33,9 @@ check("consented / declined / unavailable each written to consent-decisions.json
 
 print("\n--- 162: unchanged sources are not re-inferred ---")
 SC = load("source_cache", os.path.join(REPO, "scripts", "source_cache.py")); SC.MEMORY = MEM; SC.STORE = os.path.join(MEM, "source-cache.json")
-check("first sight changed, second unchanged, a different material changed, force re-runs", SC.unchanged("job", "abc") is False and SC.unchanged("job", "abc") is True and SC.unchanged("job", "abd") is False and SC.unchanged("job", "abd", force=True) is False and SC.last("job")["sha"] == SC.sha_of("abd"))
+check("failed attempts do not commit the cache", not SC.unchanged("job","abc") and not SC.unchanged("job","abc"))
+SC.commit("job","abc")
+check("only successful input is cached", SC.unchanged("job","abc") and not SC.unchanged("job","abd") and not SC.unchanged("job","abc",force=True) and SC.last("job")["sha"]==SC.sha_of("abc"))
 check("the value map skips an unchanged context and says so", '_sc.unchanged("value-map", context)' in src("scripts/value_map.py") and "not re-inferred" in src("scripts/value_map.py"))
 
 print("\n--- 330: the voice session is a state machine ---")

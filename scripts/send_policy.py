@@ -63,7 +63,10 @@ def may_send(kind, artifact_id=None, channel="ntfy", now=None, requested_by_her=
     if "cooldown_hours" in lim:
         try:
             last = datetime.fromisoformat(open(lim["cooldown_file"]).read().strip())
-            if now - last < timedelta(hours=lim["cooldown_hours"]):
+            hours = lim["cooldown_hours"]
+            if kind == "video" and not requested_by_her and not is_repair:
+                hours /= min(1.0, _ws.factor("outreach", now))
+            if now - last < timedelta(hours=hours):
                 return False, "cooldown: last send %s ago (limit %dh)" % (str(now - last).split(".")[0], lim["cooldown_hours"])
         except Exception:
             pass

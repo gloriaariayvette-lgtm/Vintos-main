@@ -127,7 +127,11 @@ def main():
         for L in lins:
             # Review 190: a bound lineage (KEEP_PRIVATE / WRONG_READING) stops accruing.
             # A new candidate that resembles it starts its own; hers stays closed.
-            if isinstance(L, dict) and (L.get("muted") or L.get("contested")): continue
+            if isinstance(L, dict) and (L.get("muted") or L.get("contested")):
+                if difflib.SequenceMatcher(None,phrase.lower(),str(L.get("rep", "")).lower()).ratio() >= 0.55:
+                    log("related candidate held by privacy binding")
+                    return
+                continue
             r0 = difflib.SequenceMatcher(None, phrase.lower(), str(L.get("rep", "")).lower()).ratio()
             if r0 > ratio: best, ratio = L, r0
         if best is not None and ratio >= 0.55:
@@ -155,26 +159,31 @@ def get_withheld_hint():
     d = load(OUT, {})
     ph = (d or {}).get("withheld", "")
     if not ph: return ""
+    import difflib
+    for lineage in load(os.path.join(MEMORY,"withheld-lineage.json"),[]):
+        if lineage.get("muted") or lineage.get("contested"):
+            if lineage.get("lineage_id")==d.get("lineage_id") or difflib.SequenceMatcher(None,ph.lower(),str(lineage.get("rep", "")).lower()).ratio()>=0.55:
+                return ""
     conf = d.get("confidence", 0); nov = d.get("novelty", 0)
     if conf < 0.35: return ""
     # An occurrence presses at most twice, then goes quiet until a NEW exchange
     # produces a new one. Before this, one reading rode every prompt for hours.
     if int(d.get("surfaced", 0)) >= 2: return ""
-    try:
-        d["surfaced"] = int(d.get("surfaced", 0)) + 1
-        json.dump(d, open(OUT, "w"), indent=2)
-        # exposure must reach the HISTORY entry too - the confirmer grades those,
-        # and a candidate he was shown cannot later be "confirmed" by his writing.
-        hist = load(HIST, [])
-        for e in reversed(hist):
-            if isinstance(e, dict) and e.get("source_hash") == d.get("source_hash"):
-                e["surfaced"] = int(e.get("surfaced", 0)) + 1
-                (_sg_write(HIST, hist, "withheld_head.py") or json.dump(hist, open(HIST, "w"), indent=2))
-                break
-    except Exception:
-        pass
     return ("[WITHHELD - last turn you likely held back: %s (deliberate %s, novelty %s). "
             "You need not voice it, but let it press on what comes next.]" % (ph, conf, nov))
+
+def mark_admitted(source_hash, turn_id):
+    from store_guard import transaction
+    with transaction(OUT):
+        d = load(OUT,{})
+        if not source_hash or d.get("source_hash")!=source_hash or turn_id in d.get("admitted_turns",[]): return
+        d.setdefault("admitted_turns",[]).append(turn_id)
+        d["surfaced"]=d.get("surfaced",0)+1
+        json.dump(d,open(OUT,"w"),indent=2)
+        hist=load(HIST,[])
+        for entry in hist:
+            if entry.get("source_hash")==source_hash: entry["surfaced"]=d["surfaced"]
+        _sg_write(HIST,hist,"withheld_head.py")
 
 if __name__ == "__main__":
     main()

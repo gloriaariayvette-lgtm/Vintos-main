@@ -30,7 +30,7 @@ exec(code, ns)
 # scripts exist check inside _bg: create empty script files so the writers "launch"
 for f in ("self-prediction.py", "wal-extract.py", "imprint.py", "interaction-ledger.py", "voice-coherence.py"):
     open(os.path.join(os.path.dirname(mem), "scripts", f), "w").write("")
-ns["_post_turn"]("test", "hello there", "reply", skip=("nudge_gloria","compare","direction","curiosity","predict","adopt","marks"),
+ns["_post_turn"]("test", "hello there", "reply", skip=("nudge_gloria","compare","direction","curiosity","predict","adopt","marks", "questions"),
                  writer_env={"VINTOS_TURN_ID": "T42"}, test_mode=False)
 _sp.Popen = _orig
 rec = [json.loads(l) for l in open(os.path.join(mem, "post-turn-record.jsonl"))][-1]

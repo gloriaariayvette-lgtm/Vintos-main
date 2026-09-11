@@ -25,7 +25,9 @@ for m in (SS,):
     if hasattr(m, "HEALTH"): m.HEALTH = BK.HEALTH
 
 import socket as _sk
-_s0 = _sk.socket(); _s0.bind(("127.0.0.1", 0)); PORT = _s0.getsockname()[1]; _s0.close()
+if os.environ.get("VINTOS_TEST_PORT"): PORT=int(os.environ["VINTOS_TEST_PORT"])
+else:
+    _s0 = _sk.socket(); _s0.bind(("127.0.0.1", 0)); PORT = _s0.getsockname()[1]; _s0.close()
 srv = BK.ThreadingHTTPServer(("127.0.0.1", PORT), BK.H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 time.sleep(0.4)

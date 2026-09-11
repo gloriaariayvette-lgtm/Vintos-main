@@ -33,7 +33,7 @@ def _key():
     return ""
 
 
-def call(system, messages, max_tokens=1800, timeout=180):
+def _direct_call(system, messages, max_tokens=1800, timeout=180):
     """One synchronous turn. Raises on anything that is not an answer, so the caller
     records the seconds and reports the failure rather than inventing a result."""
     key = _key()
@@ -61,7 +61,32 @@ def call(system, messages, max_tokens=1800, timeout=180):
     return text
 
 
+def call(system, messages, max_tokens=1800, timeout=180):
+    """Enforce a wall-clock deadline around the trusted provider worker.
+
+    Killing a timed-out client does not guarantee remote billing cancellation.
+    The caller settles measured time, including startup and cleanup.
+    """
+    import subprocess, math
+    timeout=float(timeout)
+    if not math.isfinite(timeout) or timeout<=0: raise ValueError("positive finite timeout required")
+    if not _key(): raise RuntimeError("no OpenAI key")
+    from compute_admission import reserve_paid
+    allowed,why=reserve_paid("astra_call.py","openai",model=MODEL)
+    if not allowed:raise RuntimeError(why)
+    result=subprocess.run([sys.executable,os.path.abspath(__file__),"--request"],
+        input=json.dumps({"system":system,"messages":messages,"max_tokens":max_tokens,"timeout":timeout}),
+        capture_output=True,text=True,timeout=timeout)
+    if result.returncode:raise RuntimeError(result.stderr.strip()[:200] or "Astra worker failed")
+    return result.stdout.strip()
+
+
 if __name__ == "__main__":
-    print("model:  %s" % MODEL)
-    print("key:    %s" % ("present" if _key() else "missing"))
-    print("budget: held by whatever spends her; printing allows ten minutes a day")
+    if "--request" in sys.argv:
+        try: print(_direct_call(**json.load(sys.stdin)))
+        except Exception as exc:
+            print(type(exc).__name__+": "+str(exc)[:160],file=sys.stderr);sys.exit(1)
+    else:
+        print("model:  %s" % MODEL)
+        print("key:    %s" % ("present" if _key() else "missing"))
+        print("budget: shared paid admission plus caller-specific elapsed-time allowance")

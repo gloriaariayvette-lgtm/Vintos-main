@@ -260,16 +260,16 @@ def style_str(d):
             print(f"  Style rewrite failed: {_e}")
     return style
 
-def _landing_begin(tid, title, n_tracks):
+def _landing_begin(tid, title, n_tracks, metadata=None):
     """review 301: a landing record written BEFORE the download. A crash between here and the entry
     leaves {state: landing, task_id} in the log; pending_landings() names it and the next run can poll the
     same task id again instead of losing the piece or calling it complete."""
     try:
         log=load_log(); log.setdefault("landings",[])
         log["landings"]=[l for l in log["landings"] if l.get("task_id")!=tid]
-        log["landings"].append({"task_id":tid,"title":title,"tracks":n_tracks,"state":"landing","at":datetime.now().isoformat()})
+        log["landings"].append({"task_id":tid,"title":title,"tracks":n_tracks,"metadata":metadata or {},"state":"landing","at":datetime.now().isoformat()})
         save_log(log)
-    except Exception as _le: print("  landing record not written:", _le)
+    except Exception as _le: raise RuntimeError("landing record not persisted") from _le
 
 def _landing_done(tid, files):
     try:
@@ -299,24 +299,39 @@ def load_log():
     return {"generated":[],"processed_files":[]}
 
 def save_log(log):
-    """Atomic replace under a lock file: two finishing tracks never half-write each other's log
-    (astra-creative-p4, 2026-09-05)."""
-    os.makedirs(os.path.dirname(LOG),exist_ok=True)
-    try:   # review 302: the one shelf transaction (flock + atomic), shared with the gallery and the videos
-        import sys as _am_s; _am_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts")); _am_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import artifact_manifest as _am; _am.save_ledger(LOG, log); return
-    except Exception as _ame:
-        print("[music] artifact_manifest.save_ledger unavailable (%s); spin-lock fallback" % _ame)
-    _lock=LOG+".lock"; _t0=time.time()
-    while os.path.exists(_lock) and time.time()-_t0<10: time.sleep(0.1)
-    try:
-        open(_lock,"w").write(str(os.getpid()))
-        _tmp=LOG+".tmp.%d"%os.getpid()
-        with open(_tmp,"w") as f: json.dump(log,f,indent=2)
-        os.replace(_tmp,LOG)
-    finally:
-        try: os.remove(_lock)
-        except Exception: pass
+    from store_guard import write_json
+    write_json(LOG,log)
+
+
+def resume_landings():
+    """Poll recorded task IDs; never submit replacement generations after a crash."""
+    from store_guard import transaction
+    recovered=[]
+    with transaction(LOG):
+        for pending in pending_landings(max_age_h=float("inf")):
+            tid=pending["task_id"]
+            log=load_log()
+            existing=next((e for e in log.get("generated",[]) if e.get("task_id")==tid),None)
+            if existing and all(t.get("local_file") and os.path.isfile(t["local_file"]) for t in existing.get("tracks",[])) and existing.get("tracks"):
+                _landing_done(tid,[t["local_file"] for t in existing["tracks"]]);recovered.append(tid);continue
+            tracks=poll(tid)
+            if not tracks: continue
+            os.makedirs(MUSIC,exist_ok=True)
+            landed=[]
+            for i,t in enumerate(tracks):
+                path=os.path.join(MUSIC,"recovered-"+hashlib.sha256(str(tid).encode()).hexdigest()[:16]+"-"+str(i+1)+".wav")
+                if not (os.path.isfile(path) and os.path.getsize(path)>0) and not (t.get("file") and dl(t["file"],path)): break
+                landed.append({"version":i+1,"audio_url":t.get("file"),"duration":t.get("duration"),"local_file":path})
+            if len(landed)!=len(tracks): continue
+            entry=dict(pending.get("metadata") or {})
+            entry.update(title=pending.get("title",""),task_id=tid,model=MODEL,tracks=landed,generated_at=datetime.now().isoformat(),recovered=True)
+            log=load_log();log.setdefault("generated",[])[:]=[e for e in log.get("generated",[]) if e.get("task_id")!=tid]
+            log["generated"].append(entry)
+            source=entry.get("source")
+            if source and source!="direct" and source not in log.setdefault("processed_files",[]):log["processed_files"].append(source)
+            save_log(log);_landing_done(tid,[t["local_file"] for t in landed]);recovered.append(tid)
+    return recovered
+
 
 def journal(title,tracks,style):
     today=datetime.now().strftime("%Y-%m-%d")
@@ -328,6 +343,9 @@ def journal(title,tracks,style):
     with open(jf,"a",encoding="utf-8") as f: f.write(e)
 
 def process_file(fp,force=False):
+    resume_landings()
+    if any(l.get("metadata",{}).get("source")==fp for l in pending_landings(float("inf"))):
+        print("Existing task is still pending; no new generation submitted");return False
     log=load_log()
     if not force and fp in log.get("processed_files",[]):
         print(f"  Already done: {os.path.basename(fp)}"); return False
@@ -370,10 +388,10 @@ def process_file(fp,force=False):
     else:
         tid=generate(d["title"],style,lyrics or desc,instrumental=not bool(lyrics),duration=_dur,gender=_gen)
     if not tid: return False
+    _landing_begin(tid, d["title"], 0, {"source":fp,"style":style,"description":desc,"lyrics":lyrics,"want_id":os.environ.get("MUSIC_WANT_ID","")})
     tracks=poll(tid)
     if not tracks: return False
     safe=re.sub(r'[^\w\s-]','',d["title"]).strip().replace(' ','_')
-    _landing_begin(tid, d["title"], len(tracks))   # review 301: the landing exists on disk before any byte lands
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
@@ -423,6 +441,7 @@ def process_file(fp,force=False):
     # completion answers to the artifact, not the log line (astra-creative-p3, 2026-09-04)
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
+    log=load_log()
     log["generated"].append(entry)
     if fp not in log.get("processed_files",[]): log.setdefault("processed_files",[]).append(fp)
     save_log(log); journal(d["title"],tracks,style)
@@ -440,7 +459,8 @@ def process_file(fp,force=False):
             print(f"  {_n} of her shares now carry '{d['title']}'")
     except FileNotFoundError: pass
     except Exception as _she: print("  share link skip:", _she)
-    _feel_landed(entry); save_log(log)   # the landing is part of the record
+    _feel_landed(entry); save_log(log)
+    if not entry["download"]["partial"]: _landing_done(tid,downloaded)
     print(f"\n  '{d['title']}' complete!"); return True
 
 def _feel_landed(entry):
@@ -465,9 +485,12 @@ def _feel_landed(entry):
         print("  landed on him: unavailable -", str(_fe)[:80])
 
 def direct(title,style,desc="",lyrics=""):
+    resume_landings()
+    if any(l.get("title")==title and l.get("metadata",{}).get("source")=="direct" for l in pending_landings(float("inf"))): return False
     print(f"\nDirect: {title}")
     tid=generate(title,style,lyrics if lyrics else desc,instrumental=not bool(lyrics),duration=120,gender=None)
     if not tid: return False
+    _landing_begin(tid,title,0,{"source":"direct","style":style,"description":desc,"lyrics":lyrics,"want_id":os.environ.get("MUSIC_WANT_ID","")})
     tracks=poll(tid)
     if not tracks: return False
     safe=re.sub(r'[^\w\s-]','',title).strip().replace(' ','_')
@@ -494,7 +517,7 @@ def direct(title,style,desc="",lyrics=""):
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     entry["listening"] = [listen(f) for f in downloaded]   # review 314
     log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
-    _landing_done(tid, downloaded)
+    if not entry["download"]["partial"]: _landing_done(tid, downloaded)
     print(f"\n  '{title}' complete!"); return True
 
 def main():
@@ -508,6 +531,7 @@ def main():
     a=p.parse_args()
     # ACE-Step local — no API key needed
     os.makedirs(MUSIC,exist_ok=True)
+    resume_landings()
     if not a.force:
         from datetime import date as _d
         today = _d.today().isoformat()
@@ -536,6 +560,12 @@ def main():
             if not todo: print("All done (use --force)"); sys.exit(0)
             target=todo[-1]
         process_file(target,a.force)
+
+from store_guard import serialized as _serialized
+process_file=_serialized("LOG")(process_file)
+direct=_serialized("LOG")(direct)
+_landing_begin=_serialized("LOG")(_landing_begin)
+_landing_done=_serialized("LOG")(_landing_done)
 
 if __name__=="__main__":
     main()

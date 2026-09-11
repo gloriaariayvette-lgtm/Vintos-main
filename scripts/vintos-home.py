@@ -60,7 +60,7 @@ def _govee_only_config():
     def _is_bulb(d):
         insts = {str(i or "").lower() for _t, i in (d.get("capabilities") or [])}
         types = {str(t or "").lower() for t, _i in (d.get("capabilities") or [])}
-        return bool(insts & {"brightness", "colorrgb", "colortemperaturek", "color"} or types & {"color_setting", "range"})
+        return bool(insts & {"brightness", "colorrgb", "colortemperaturek", "color"})
     bulbs = [d for d in devices if _is_bulb(d)]
     lights = ["govee:%s" % d["device"] for d in bulbs]
     rooms, mapped = {}, False
@@ -69,9 +69,9 @@ def _govee_only_config():
             raw = json.load(f)
         for name, ents in (raw or {}).items():
             if isinstance(ents, list):
-                rooms[_room_key(name)] = {"lights": [str(e) for e in ents]}
+                rooms[_room_key(name)] = {"lights": [str(e) for e in ents if str(e) in lights]}
             elif isinstance(ents, dict):
-                rooms[_room_key(name)] = ents
+                rooms[_room_key(name)] = {**ents, "lights": [str(e) for e in ents.get("lights", []) if str(e) in lights]}
         mapped = bool(rooms)
     except Exception:
         pass

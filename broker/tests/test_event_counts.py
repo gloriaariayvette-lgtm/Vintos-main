@@ -46,7 +46,7 @@ for f in ("self-prediction.py", "wal-extract.py", "imprint.py", "interaction-led
 
 outside_before = snapshot(REPO)
 N = 5
-SKIP = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt", "marks")
+SKIP = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt", "marks", "questions")
 for i in range(N):
     ns["_post_turn"]("chat", "hello there, turn %d" % i, "a reply for turn %d" % i, skip=SKIP,
                      writer_env={"VINTOS_TURN_ID": "T%d" % i}, test_mode=False)

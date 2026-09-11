@@ -85,18 +85,7 @@ def _update_wants(mutate):
         _lu(WANTS, _m, default=[], reader="forge_resume.py")
         return True
     except Exception:
-        rows = _load_wants()
-        out = _m(rows)
-        if out is None:
-            return True
-        try:
-            os.makedirs(os.path.dirname(WANTS) or ".", exist_ok=True)
-            tmp = WANTS + ".tmp"
-            json.dump(out, open(tmp, "w"), indent=2)
-            os.replace(tmp, WANTS)
-            return True
-        except Exception:
-            return False
+        return False
 
 
 def release(want, capability, proposal_id):
@@ -108,7 +97,9 @@ def release(want, capability, proposal_id):
     still against the wall."""
     b = want.get("blocked")
     if not isinstance(b, dict):
-        return False, ALREADY_FREE, "the want carries no block"
+        if any(r.get("proposal") == proposal_id and r.get("capability") == capability for r in want.get("resumed_by", [])):
+            return False, ALREADY_FREE, "this proposal already released the want"
+        return False, STILL_BLOCKED, "no matching release receipt; retained"
     if b.get("block_type") != "CAPABILITY_ABSENT":
         return False, STILL_BLOCKED, "blocked on %s, which a new hand does not answer" % b.get("block_type")
     step = b.get("blocked_step")
@@ -162,7 +153,9 @@ def resume(want_id=None, dry_run=False):
                         seen.update(outcome=outcome, detail=detail)
                     break
         else:
-            _update_wants(mutate)
+            if not _update_wants(mutate):
+                out.append({**row, "outcome": REFUSED, "detail": "want save failed; proposal retained"})
+                continue
             # The want is written before the proposal moves. If this process dies here the
             # proposal stays installed, resumable() names it again, and the next pass finds
             # an already_free want and finishes the job.

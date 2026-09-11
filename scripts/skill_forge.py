@@ -60,7 +60,7 @@ PROPOSALS = os.path.join(MEMORY, "skill-proposals.json")
 # proposed -> approved -> built -> verified -> installed -> resumed
 #          -> denied            (hers)
 #          -> refused           (the builder or the spine said no)
-OPEN_STATES = ("proposed", "approved", "built", "verified", "installed")
+OPEN_STATES = ("proposed", "approved", "building", "built", "verified", "installed")
 TERMINAL = ("resumed", "denied", "refused", "withdrawn")
 
 INVOCATION = ("always", "ask_each_time", "never")
@@ -233,14 +233,30 @@ def _narrower(asked, granted):
 
       permissions   the intersection: a permission he did not ask for is not granted,
                     and one she drops is dropped.
-      scope         his asked scope stands as the authority. A scope value cannot be
-                    changed here, because the module cannot know which direction of a
-                    given key is 'wider' (a bigger max_hours is looser; a false
-                    show_draft_first is looser). Changing a limit needs a new proposal.
+      scope         max_ ceilings may decrease, lists may become subsets, and
+                    show_ safeguards may be enabled. Unsupported edits are refused.
       invocation    the stricter of his ask and her grant, by an explicit ordering."""
     out = dict(asked or {})
     g = dict(granted or {})
-    out["scope"] = dict((asked or {}).get("scope") or {})   # his, unchanged
+    scope = dict((asked or {}).get("scope") or {})
+    for key, value in (g.get("scope") or {}).items():
+        old = scope.get(key)
+        if key not in scope:
+            raise ValueError("scope key was not requested: " + key)
+        if value == old:
+            continue
+        if isinstance(old, bool):
+            safe = (value is True and old is False and key.startswith("show_"))
+        elif isinstance(old, (int, float)) and isinstance(value, (int, float)):
+            safe = (0 <= value <= old) if key.startswith("max_") else False
+        elif isinstance(old, list) and isinstance(value, list):
+            safe = all(v in old for v in value)
+        else:
+            safe = False
+        if not safe:
+            raise ValueError("cannot prove scope narrows: " + key)
+        scope[key] = value
+    out["scope"] = scope
     asked_perms = list((asked or {}).get("permissions") or [])
     if "permissions" in g:
         out["permissions"] = [p for p in (g.get("permissions") or []) if p in asked_perms]
@@ -262,7 +278,10 @@ def approve(pid, granted=None, by="gloria"):
         return None, "no proposal %r" % pid
     if r["state"] != "proposed":
         return None, "proposal is %s, not proposed" % r["state"]
-    r["granted"] = _narrower(r.get("asked"), granted)
+    try:
+        r["granted"] = _narrower(r.get("asked"), granted)
+    except ValueError as exc:
+        return None, str(exc)
     r["state"] = "approved"
     r["history"].append({"at": _now(), "event": "approved", "by": by,
                          "invocation": r["granted"]["invocation"]})
@@ -291,7 +310,7 @@ def mark(pid, state, detail="", extra=None):
     # and a terminal state (denied, refused, resumed) opens nothing at all. The bug
     # this replaces mapped every unknown state to 0, so a DENIED proposal counted as
     # the valid predecessor of 'approved' and could be marched to 'installed'.
-    predecessor = {"approved": "proposed", "built": "approved",
+    predecessor = {"approved": "proposed", "built": "building",
                    "verified": "built", "installed": "verified", "resumed": "installed"}
     rows = _load()
     r = _get(rows, pid)
@@ -312,6 +331,11 @@ def mark(pid, state, detail="", extra=None):
         return None, "approval is not a mark: it is granted through approve(), with her scope"
     if r.get("state") != predecessor[state]:
         return None, "cannot go to %s from %s (only from %s)" % (state, r.get("state"), predecessor[state])
+    if state in ("verified", "installed", "resumed"):
+        from forge_build import artifact_valid
+        candidate = dict(r); candidate.update(extra or {})
+        if not artifact_valid(candidate, installed=state in ("installed", "resumed")):
+            return None, "verified artifact receipt missing or bytes changed"
     r["state"] = state
     if extra:
         r.update({k: v for k, v in extra.items() if k not in ("id", "state", "granted", "asked")})
@@ -342,6 +366,9 @@ def resumable(want_id=None):
     out = []
     for r in _load():
         if r.get("state") != "installed":
+            continue
+        from forge_build import artifact_valid
+        if not artifact_valid(r, installed=True):
             continue
         wid = (r.get("origin") or {}).get("want_id")
         if want_id and wid != want_id:
@@ -414,6 +441,14 @@ def main():
     else:
         print(__doc__)
 
+
+
+# Every read/modify/write participant shares the same store lock.
+from store_guard import serialized as _serialized
+propose = _serialized('PROPOSALS')(propose)
+approve = _serialized('PROPOSALS')(approve)
+deny = _serialized('PROPOSALS')(deny)
+mark = _serialized('PROPOSALS')(mark)
 
 if __name__ == "__main__":
     main()

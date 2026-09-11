@@ -68,7 +68,7 @@ def assert_dispatch(lane, context=None, target="", level=0, kind=None):
         if effect_gate.hardware_stopped() and int(level or 0) > 0:
             return False, "the house is stopped; only a reduction passes"
         permit, mode, why = effect_gate.authorize(context, target or lane, level, kind=kind)
-        return (mode in ("send", "would_send")), why or mode
+        return (mode == "send"), why or mode
     except Exception as e:
         return False, "effect gate unavailable (%s); a deliberative effect is refused, not assumed" % str(e)[:60]
 

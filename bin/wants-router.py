@@ -2080,6 +2080,9 @@ def main():
     # Ahead of get_unfulfilled_wants() on purpose: unblocking after the load would be
     # written to a store this pass is already holding a stale copy of.
     try:
+        import forge_build as _fb
+        if not _args.repair_plans_only:
+            _fb.process_approved(limit=1)
         import forge_resume as _fr
         _resumed = _fr.resume()
         _l = _fr.line(_resumed)
@@ -2195,13 +2198,13 @@ def main():
             want["multistep"] = True
             import json as _ar_json
             _ar_path = os.path.join(MEMORY, "current-wants.json")
-            _ar_wants = _ar_json.load(open(_ar_path))
-            for _arw in _ar_wants:
-                if _arw.get("id") == want.get("id"):
-                    _arw["capability"] = "multistep"
-                    _arw["multistep"] = True
-                    break
-            _ar_json.dump(_ar_wants, open(_ar_path, "w"), indent=2)
+            from store_guard import locked_update
+            def activate(rows):
+                for row in rows:
+                    if row.get("id")==want.get("id"):
+                        row.update(capability="multistep",multistep=True);break
+                return rows
+            locked_update(_ar_path,activate,default=[])
             log(f"  → Steps activated after hold")
             action = "multistep"
         elif want.get("multistep") or want.get("capability") == "multistep":
@@ -2756,6 +2759,10 @@ def _open_gloria_discussion(want, text):
     log(f"  → Want routed to Gloria discussion board: {text[:60]}")
 
 
+from store_guard import serialized as _serialized
+for _writer in ("_advance_or_fulfill","_mark_attempt","_open_gloria_discussion"):
+    globals()[_writer]=_serialized(lambda: os.path.join(MEMORY,"current-wants.json"))(globals()[_writer])
+
 if __name__ == "__main__":
     # Keep the entrypoint last: main's branches call the helpers above.  This
     # block previously ran before _mark_attempt and _open_gloria_discussion
@@ -2764,12 +2771,8 @@ if __name__ == "__main__":
     try:
         import json as _cd_json, os as _cd_os
         _cd_path = _cd_os.path.join(MEMORY, "current-wants.json")
-        _cd_wants = _cd_json.load(open(_cd_path))
-        _cd_before = len(_cd_wants)
-        _cd_wants = [w for w in _cd_wants if not w.get("_delete")]
-        if len(_cd_wants) < _cd_before:
-            _cd_json.dump(_cd_wants, open(_cd_path, "w"), indent=2)
-            log(f"Cleaned {_cd_before - len(_cd_wants)} auto-dismissed wants")
+        from store_guard import locked_update
+        locked_update(_cd_path,lambda rows:[w for w in rows if not w.get("_delete")],default=[])
     except Exception as _cleanup_error:
         log(f"Want cleanup failed: {_cleanup_error}")
     try:

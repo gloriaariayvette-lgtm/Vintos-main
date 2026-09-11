@@ -79,7 +79,7 @@ concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
-SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py"
+SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py curiosity_debt.py unsaid_frontier.py unsaid_questions.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py quantum_snapshot.py"
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
@@ -115,10 +115,10 @@ SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
-SCRIPTS="$SCRIPTS want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
+SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
 SCRIPTS="$SCRIPTS policy_decisions.py"   # her four policy decisions, in one place (reviews 189-192, 2026-09-10)
 SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py desktop_winpy.py screen_share.py browser_winpy.py browser_agent.py"   # his hands, eyes and browser on the Windows desktop (2026-09-06)
-BINS="robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
+BINS="causal-observations.py robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py
@@ -195,9 +195,14 @@ say
 
 # ------------------------------------------------------------------ suites
 say "== suites =="
+case "$(uname -s)" in
+  Linux) command -v bwrap >/dev/null || die "test isolation requires bubblewrap; install it before deployment" ;;
+  Darwin) [ -x /usr/bin/sandbox-exec ] || die "test isolation requires sandbox-exec" ;;
+  *) die "no supported test isolation for this operating system" ;;
+esac
 fail=0
 for t in "$SRC"/broker/tests/test_*.py; do
-    out="$(cd "$SRC/broker/tests" && python3 "$t" 2>&1)"; rc=$?
+    out="$("$PYCHECK" "$SRC/scripts/run_isolated_test.py" "$t" 2>&1)"; rc=$?
     if [ $rc -eq 0 ]; then
         printf '  %-34s PASS (exit 0)\n' "$(basename "$t")"
     else
@@ -363,12 +368,13 @@ confirm_unit() {   # $1 = "--user" or "--system", $2 = unit name
 # confirm_unit would call a perfectly healthy timer a failure. What proves a timer
 # is doing its job is that it is active AND has a next elapse to point at.
 confirm_timer() {   # $1 = "--user" or "--system", $2 = timer name (no .timer)
-    local scope="$1" u="$2" out id st next
+    local scope="$1" u="$2" out id st next elapse
     out="$(systemctl "$scope" show -p Id,ActiveState,NextElapseUSecRealtime "$u.timer" 2>/dev/null)"
     id="$(printf '%s\n' "$out" | sed -n 's/^Id=//p')"
     st="$(printf '%s\n' "$out" | sed -n 's/^ActiveState=//p')"
+    elapse="$(printf '%s\n' "$out" | sed -n 's/^NextElapseUSecRealtime=//p')"
     next="$(systemctl "$scope" list-timers --all --no-legend "$u.timer" 2>/dev/null | head -1)"
-    if [ "$id" = "$u.timer" ] && [ "$st" = "active" ]; then
+    if [ "$id" = "$u.timer" ] && [ "$st" = "active" ] && [ -n "$elapse" ] && [ "$elapse" != "0" ] && [ "$elapse" != "n/a" ]; then
         say "  confirmed: Id=$id ActiveState=$st${next:+ next=$(printf '%s' "$next" | awk '{print $1, $2, $3}')}"
         return 0
     fi
@@ -456,22 +462,31 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$SURF_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
                "$u" "$ud" "$u" >> "$BACKUP/restore.sh"
     fi
 done
-# The timer file is its own unit and needs its own line: restoring the oneshot service
-# without the timer that drives it would put back a weekly read that never fires.
-if [ -f "$SURF_TIMER_DST" ] && cp -p "$SURF_TIMER_DST" "$BACKUP/$SURF_UNIT_NAME.timer.pre-deploy" 2>/dev/null; then
-    printf 'install -m 644 "$(dirname "$0")/%s.timer.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s.timer\n' \
-           "$SURF_UNIT_NAME" "$SURF_TIMER_DST" "$SURF_UNIT_NAME" >> "$BACKUP/restore.sh"
-elif [ ! -f "$SURF_TIMER_DST" ]; then
-    printf '# no %s existed before this deploy; to undo it: systemctl --user disable --now %s.timer && rm -f %q %q\n' \
-           "$SURF_TIMER_DST" "$SURF_UNIT_NAME" "$SURF_TIMER_DST" "$SURF_SERVICE_DST" >> "$BACKUP/restore.sh"
-fi
+# Preserve both files and the timer's prior enabled/active state. Restoring never
+# starts the oneshot service, and a unit newly introduced by this deploy is removed.
+_surf_enabled="$(systemctl --user is-enabled "$SURF_UNIT_NAME.timer" 2>/dev/null || true)"
+_surf_active="$(systemctl --user is-active "$SURF_UNIT_NAME.timer" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$SURF_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+for _ext in service timer; do
+    _dest="$HOME/.config/systemd/user/$SURF_UNIT_NAME.$_ext"
+    if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+        cp -Pp "$_dest" "$BACKUP/$SURF_UNIT_NAME.$_ext.pre-deploy" || die "unit backup failed"
+        printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.%s.pre-deploy" %q\n' "$_dest" "$SURF_UNIT_NAME" "$_ext" "$_dest" >> "$BACKUP/restore.sh"
+    else
+        printf 'rm -f %q\n' "$_dest" >> "$BACKUP/restore.sh"
+    fi
+done
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_surf_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$SURF_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_surf_enabled" = "enabled-runtime" ] && printf 'systemctl --user enable --runtime %q\n' "$SURF_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_surf_active" = "active" ] && printf 'systemctl --user start %q\n' "$SURF_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 # Record the service/process state honestly, and restore it as best we can.
 if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
 elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"

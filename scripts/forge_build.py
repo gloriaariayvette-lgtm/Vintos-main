@@ -75,6 +75,9 @@ def _fable(system, messages, max_tokens=1500, timeout=120):
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
                                  headers={"x-api-key": key, "anthropic-version": "2023-06-01",
                                           "content-type": "application/json"})
+    from compute_admission import reserve_paid
+    allowed, why = reserve_paid('forge_build.py', 'anthropic', model=FABLE_MODEL)
+    if not allowed: raise RuntimeError(why)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         blocks = json.loads(r.read().decode()).get("content") or []
     text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
@@ -96,7 +99,7 @@ def generate(proposal, astra=None):
     system = (
         "You are Astra, writing one small Python capability for Vintos and its test. "
         "Return ONLY a JSON object {\"module\": \"<python>\", \"test\": \"<python>\"}. "
-        "The module defines a function named %r. It may do only what the granted scope and "
+        "The module defines a function named %r taking one string argument, note, and returning a nonempty result string. It may do only what the granted scope and "
         "permissions allow, and nothing else — no network beyond what is named, no file writes "
         "outside what is described, no imports of his memory. The test is self-contained, uses a "
         "scratch temp dir, calls no model and no network, prints 'N/M', and exits non-zero on "
@@ -128,26 +131,50 @@ def review(proposal, code, fable=None):
                json.dumps(g.get("permissions") or []), code.get("module", "")[:12000], code.get("test", "")[:6000]))
     text = (fable(system, [{"role": "user", "content": user}], max_tokens=400) or "").strip()
     first = text.splitlines()[0].strip() if text else ""
-    if first.upper().startswith("PASS"):
+    if text == "PASS":
         return True, "Fable passed the review"
     return False, ("Fable: " + first)[:300] if first else "Fable returned nothing"
 
 
 def sandbox_test(module_src, test_src, name):
-    """Run the test in a subprocess with a scratch HOME and no network. (ok, output)."""
-    d = tempfile.mkdtemp(prefix="forge-sbx-")
-    modp = os.path.join(d, "%s.py" % name)
-    testp = os.path.join(d, "test_%s.py" % name)
-    open(modp, "w").write(module_src)
-    open(testp, "w").write(test_src or "print('0/0'); raise SystemExit(1)")
-    env = {"HOME": d, "PATH": os.environ.get("PATH", ""), "PYTHONPATH": d,
-           "http_proxy": "http://127.0.0.1:9", "https_proxy": "http://127.0.0.1:9"}
+    """OS-contained run; require assertions and execution of the proposed function."""
+    import ast
+    from isolated_exec import run as isolated_run
     try:
-        r = subprocess.run([sys.executable, testp], cwd=d, env=env,
-                           capture_output=True, text=True, timeout=60)
-        return r.returncode == 0, (r.stdout + r.stderr)[-2000:]
-    except Exception as e:
-        return False, "sandbox could not run: %s" % str(e)[:200]
+        tree = ast.parse(test_src)
+        if not any(isinstance(n, ast.Assert) for n in ast.walk(tree)):
+            return False, "verification requires an executable assertion"
+        with tempfile.TemporaryDirectory(prefix="forge-sbx-") as d:
+            open(os.path.join(d, name + ".py"), "w").write(module_src)
+            testp = os.path.join(d, "test_skill.py")
+            open(testp, "w").write(test_src)
+            runner = os.path.join(d, "runner.py")
+            open(runner, "w").write(
+                "import sys, runpy, os\nhits=[]\n"
+                "def trace(frame,event,arg):\n"
+                " if event=='call' and frame.f_code.co_name==%r and os.path.basename(frame.f_code.co_filename)==%r: hits.append(1)\n"
+                " return trace\n"
+                "sys.settrace(trace)\ntry: runpy.run_path(%r,run_name='__main__')\nexcept SystemExit as e:\n assert e.code in (None,0), 'test failed'\n"
+                "assert hits, 'test never executed the capability'\n" % (name, name+".py", testp))
+            result = isolated_run([sys.executable, runner], d, timeout=60)
+            return result.returncode == 0, (result.stdout + result.stderr)[-2000:]
+    except Exception as exc:
+        return False, "isolated verification failed: " + str(exc)[:200]
+
+
+def _digest(path):
+    import hashlib
+    with open(path, "rb") as handle: return hashlib.sha256(handle.read()).hexdigest()
+
+
+def artifact_valid(proposal, installed=False):
+    receipt = proposal.get("verification") or {}
+    path = proposal.get("installed_to") if installed else proposal.get("staged")
+    try:
+        return bool(receipt.get("schema") == 1 and receipt.get("review") == "PASS"
+                    and receipt.get("sandbox_passed") is True and receipt.get("sha256")
+                    and path and not os.path.islink(path) and _digest(path) == receipt["sha256"])
+    except (OSError, TypeError): return False
 
 
 def run(proposal_id, astra=None, fable=None):
@@ -161,12 +188,22 @@ def run(proposal_id, astra=None, fable=None):
         return None, "no proposal %r" % proposal_id
     if p.get("state") != "approved":
         return None, "proposal is %s, not approved: only an approved proposal is built" % p.get("state")
+    # Claim before spending; crashes stay building for explicit reconciliation.
+    from store_guard import transaction
+    with transaction(sf.PROPOSALS):
+        rows = sf._load(); live = sf._get(rows, proposal_id)
+        if not live or live.get("state") != "approved": return None, "already claimed"
+        live["state"] = "building"; sf._save(rows)
     try:
         code = generate(p, astra=astra)
     except Exception as e:
         sf.mark(proposal_id, "refused", "Astra could not write it: %s" % str(e)[:200])
         return None, "generation failed: %s" % str(e)[:200]
-    ok, why = review(p, code, fable=fable)
+    try:
+        ok, why = review(p, code, fable=fable)
+    except Exception as exc:
+        sf.mark(proposal_id, "refused", "review unavailable: " + str(exc)[:160])
+        return None, "review unavailable"
     if not ok:
         sf.mark(proposal_id, "refused", why)
         return None, "review refused: %s" % why
@@ -179,7 +216,7 @@ def run(proposal_id, astra=None, fable=None):
     if not passed:
         sf.mark(proposal_id, "refused", "the sandbox test failed: %s" % output[-160:])
         return None, "sandbox failed: %s" % output[-160:]
-    row, mwhy = sf.mark(proposal_id, "verified", "sandbox passed", extra={"staged": stem + ".py"})
+    row, mwhy = sf.mark(proposal_id, "verified", "sandbox passed", extra={"staged": stem + ".py", "verification": {"schema": 1, "review": "PASS", "sandbox_passed": True, "sha256": _digest(stem + ".py")}})
     return row, "verified; awaiting her install"
 
 
@@ -194,15 +231,66 @@ def install(proposal_id):
     if p.get("state") != "verified":
         return None, "proposal is %s, not verified: nothing to install" % p.get("state")
     staged = p.get("staged")
-    if not staged or not os.path.isfile(staged):
+    if not artifact_valid(p):
         return None, "the verified module is not on disk at %r" % staged
-    dest = os.path.join(SKILL_DEST, os.path.basename(staged).split("-", 2)[-1])
+    # Forged modules have a private namespace and may never overwrite a house module.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+",proposal_id): return None,"invalid proposal id"
+    dest = os.path.join(SKILL_DEST, "forged", proposal_id, _safe_name(p["capability"]) + ".py")
+    from pathlib import Path
+    if not Path(dest).resolve().is_relative_to(Path(SKILL_DEST).resolve() / "forged"):
+        return None,"installation path escaped forged namespace"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.path.lexists(dest): return None, "installation destination already exists"
     try:
-        shutil.copy2(staged, dest)
+        # Read once, check those bytes, and exclusively create exactly those bytes.
+        import hashlib
+        data = open(staged, "rb").read()
+        if hashlib.sha256(data).hexdigest() != p["verification"]["sha256"]:
+            return None, "staged bytes changed"
+        with open(dest, "xb") as handle: handle.write(data)
     except Exception as e:
         return None, "install copy failed: %s" % str(e)[:160]
-    row, _ = sf.mark(proposal_id, "installed", "installed to %s" % dest, extra={"installed_to": dest})
+    row, why = sf.mark(proposal_id, "installed", "installed to %s" % dest, extra={"installed_to": dest})
+    if row is None:
+        os.unlink(dest)
+        return None, why
     return row, "installed to %s; the want it came from is now resumable" % dest
+
+
+_install = install
+def install(proposal_id):
+    from store_guard import transaction
+    with transaction(_forge().PROPOSALS): return _install(proposal_id)
+
+
+def invoke(capability, note, asking=False):
+    """Registered forged functions execute in isolation, never imported into the house."""
+    sf = _forge()
+    ok, why = sf.may_invoke(capability, asking=asking)
+    if not ok: raise PermissionError(why)
+    p = next((r for r in sf._load() if r.get("capability") == capability and r.get("state") in ("installed", "resumed")), None)
+    if not p or not artifact_valid(p, installed=True): raise PermissionError("installed artifact changed")
+    # External effects need a capability-specific adapter enforcing granted scope.
+    if (p.get("granted") or {}).get("permissions"):
+        raise PermissionError("effectful forged skill needs a registered scoped adapter")
+    from isolated_exec import run as isolated_run
+    with tempfile.TemporaryDirectory(prefix="forge-invoke-") as d:
+        name = _safe_name(capability)
+        shutil = __import__("shutil")
+        copied=os.path.join(d,name+".py")
+        shutil.copyfile(p["installed_to"], copied)
+        if _digest(copied)!=p["verification"]["sha256"]: raise PermissionError("installed bytes changed while copying")
+        runner = os.path.join(d, "invoke.py")
+        open(runner,"w").write("import %s as m\nresult=m.%s(%r)\nassert isinstance(result,str) and result.strip(), 'capability returned no result string'\nprint(result)\n" % (name,name,str(note)))
+        result = isolated_run([sys.executable, runner], d, timeout=60)
+        if result.returncode: raise RuntimeError(result.stderr[-1000:])
+        return result.stdout.strip()
+
+
+def process_approved(limit=1):
+    """Durable queue consumer. Only approved work is claimed; building is never retried silently."""
+    pending=[r["id"] for r in _forge()._load() if r.get("state")=="approved"]
+    return [run(pid) for pid in pending[:max(0,int(limit))]]
 
 
 if __name__ == "__main__":

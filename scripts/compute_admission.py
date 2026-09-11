@@ -63,7 +63,7 @@ def rss_mb():
     except Exception:
         return None
 
-def record(organ, cls="background", provider="", model="", stage="", latency_ms=None, usage=None, extra=None):
+def record(organ, cls="background", provider="", model="", stage="", latency_ms=None, usage=None, extra=None, strict=False):
     """One measured line. Never a quality claim."""
     row = {"at": datetime.now().isoformat(), "organ": str(organ)[:60], "class": cls,
            "provider": provider or "", "model": model or "", "stage": stage or "",
@@ -75,8 +75,9 @@ def record(organ, cls="background", provider="", model="", stage="", latency_ms=
         os.makedirs(os.path.dirname(_ledger()), exist_ok=True)
         with open(_ledger(), "a") as f:
             f.write(json.dumps(row, sort_keys=True) + "\n")
+            if strict: f.flush(); os.fsync(f.fileno())
     except Exception:
-        pass
+        if strict: raise
     return row
 
 class Admission:
@@ -126,12 +127,22 @@ def paid_today(provider=None):
             try: r = json.loads(ln)
             except Exception: continue
             if r.get("class") == "paid" and r.get("stage") == "reserved" and str(r.get("at", "")).startswith(day) and (provider is None or r.get("provider") == provider):
-                n += 1
+                n += max(0, int(r.get("units", 1)))
     except Exception:
         pass
     return n
 
 def reserve_paid(organ, provider, model="", units=1, cap=None):
+    from store_guard import transaction
+    if type(units) is not int or units < 1: return False,"positive integer reservation required"
+    try:
+        with transaction(_ledger()):
+            return _reserve_paid(organ,provider,model,units,cap)
+    except (OSError, ValueError) as exc:
+        return False, "reservation could not be persisted: " + str(exc)
+
+
+def _reserve_paid(organ, provider, model="", units=1, cap=None):
     """review 79: before paid or remote work, a reservation against the day's cap. (ok, why). A refused
     reservation is recorded (stage=refused) and the caller holds; a granted one is the ledger row the
     later usage line joins to. Foreground callers still never wait here - the cap is the only refusal."""
@@ -140,7 +151,7 @@ def reserve_paid(organ, provider, model="", units=1, cap=None):
     if used + int(units) > cap:
         record(organ, cls="paid", provider=provider, model=model, stage="refused", extra={"units": int(units), "used_today": used, "cap": cap})
         return False, "paid budget: %d of %d reservations used today for %s; %d more refused" % (used, cap, provider, int(units))
-    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"units": int(units), "used_today": used + int(units), "cap": cap})
+    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"units": int(units), "used_today": used + int(units), "cap": cap}, strict=True)
     return True, "reserved %d (%d/%d today)" % (int(units), used + int(units), cap)
 
 def admit(cls, organ="", wait_s=None, provider="", model="", stage=""):

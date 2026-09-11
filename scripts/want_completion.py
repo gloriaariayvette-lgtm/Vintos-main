@@ -165,3 +165,6 @@ def completions(limit=50):
 if __name__ == "__main__":
     for r in completions(limit=12):
         print("  %s %-9s %-14s %s  (%s)" % (r["at"][:16], r["how"], r["by"], r["want"][:60], r.get("result")))
+
+from store_guard import serialized as _serialized
+complete = _serialized("WANTS")(complete)

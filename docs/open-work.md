@@ -118,13 +118,11 @@ Mac for modelling and slicing and fall back to Aegis when it is away.
 He stops twice before anything is made: the draft, then the slice. Both are in the
 scope she grants, not only in the code.
 
-Cost: ten minutes of Astra a day, across every job, for the Blender script. Blender
-and Cura themselves are local and bill nobody. Her seconds are counted the moment she
-answers, and counted even when the call fails.
+Cost: the printer reserves against a ten-minute daily Astra allowance across jobs. Blender
+and Cura themselves are local and bill nobody. Actual elapsed seconds are recorded even on failure; a client timeout does not prove provider billing stopped.
 
 Time: thirty local processor-minutes a day, ten in one sitting, counted across jobs.
-That is a courtesy to the machines she also uses, not a money limit. Both numbers are
-in `printer-config.json` and neither can be raised by him.
+That is a courtesy to the machines she also uses, not a money limit. Both numbers are in `printer-config.json`; automatic local execution is still unimplemented.
 
 How she hears about it: one notification at each stop, through the same path that
 keeps receipts. How she checks without asking him: `python3 print_3d.py --jobs`, or
@@ -134,27 +132,22 @@ whether anything is waiting on her. She answers a stop with `POST
 
 ## What the forge still needs
 
-The chain is now whole in code — reach, gap, proposal, her card, build, verify,
-install, resume — and only the last two links have never been walked for real.
+The review repairs add an approved-work queue, OS-isolated verification, SHA-256-bound
+install/resume, and explicit install/invoke APIs. A build claims its proposal before
+spending; a crashed `building` proposal requires reconciliation rather than another
+silent paid attempt. The service's next wants pass can pick up an approved proposal
+whose immediate worker never started.
 
-- **The builder hand-off** — done (`forge_build.py`, 2026-09-11): Astra writes the
-  module and its test, Fable 5.1 reviews it against her grant, a sandbox with a
-  scratch HOME and no network proves it, and only then is it *verified*. `install()`
-  stays a separate, explicit act.
-- **The resume** — done (`forge_resume.py`, 2026-09-11). It is the wants pass that
-  consumes `resumable()`, at the top of `main()` before a single want is read: taking
-  the block off after the load would write to a store the pass already holds a stale
-  copy of. It clears only a `CAPABILITY_ABSENT` block naming that exact capability —
-  a want blocked on a tool that is not answering, on a different missing hand, or on
-  a block that does not name its step keeps its block and says so. The want is
-  unblocked first and the proposal marked *resumed* second, so a crash between the
-  two writes is recovered by the next pass rather than losing the want.
-- **The card in the app** — still open. The routes exist and are guarded: list,
-  approve with scope and invocation, deny. The phone has no screen for them yet,
-  which is the Mac problem.
-- **One live run** — still open, and the only honest gap left in the path. No
-  proposal has been through real Astra, real Fable and a real sandbox; it costs money
-  and has never been spent. Everything above is proved with fakes and by construction.
+Still open:
+
+- The app approval card and a real, explicitly authorized provider run. Provider/model
+  IDs have not been validated against live paid APIs in this review.
+- Capability-specific adapters for effectful forged skills. Such skills are refused
+  at invocation; only pure string-in/string-out functions run in the isolated executor.
+- Rich scope/test requirements for automatically proposed missing capabilities. An
+  empty generic proposal is not a complete design for an effectful tool.
+- Operational reconciliation for interrupted paid builds. Never reset `building` to
+  `approved` without checking whether the provider already performed the work.
 
 ## The seven sparks
 
@@ -230,98 +223,61 @@ edit cannot quietly undo it. All 108 suites now pass and none writes a file unde
 workspace. One (`test_self_review`) still creates an empty `memory/` directory it never
 writes to, which is a no-op on a host that has one.
 
-## The 11 September independent review — what was fixed and what was not
+## Review repairs in the local Codex branch
 
-An independent reviewer found 28 defects in the 10–11 September work and said the
-three new subsystems should not deploy. The review was correct. Sampled findings
-reproduced exactly. Fixed in this pass, with the behaviour now tested rather than the
-prose:
+These are source changes with local tests, not a deployment report. The designated
+Claude baseline is `00be7da` in Vintos-main, `225ff71` in plithra-app and `2b0eeb9` in
+vintos-app. The local repair branch is `codex/review-repairs`.
 
-- **F1 Govee recursion** — `govee_key()` no longer calls `load_config()`; it reads the
-  config file directly. No cycle.
-- **F2 forge state machine** — `mark()` now enforces the one valid predecessor per
-  state and refuses terminal states, so a *denied* proposal can no longer be marched
-  to *installed*. Approval is only through `approve()`.
-- **F3 Astra cap** — a design call reserves a fixed per-call ceiling (120s) up front,
-  is refused if it would not fit in the day's 600s, and settles down to the real
-  seconds. The day total can no longer exceed the cap. A call needs a persisted job;
-  `job=None` can no longer spend untracked time.
-- **F4 grant widening** — a grant may only narrow: scope values are his unchanged (a
-  change needs a fresh proposal), permissions are the intersection, invocation is the
-  stricter by explicit ordering. She cannot loosen a limit by approving.
-- **F5 Govee target set** — only devices with a colour/brightness capability become
-  lights; a plug never does. With no room map the rooms stay empty and a room call
-  fails clearly, instead of every device becoming the living room.
-- **F6 cold import** — the four new routes used `importlib.util.import_module`, which
-  does not exist; now `importlib.import_module`. They work after a fresh start.
-- **F7 admission door** — `express_want` passed an undefined variable and swallowed
-  the error, so the door never ran; fixed. Every HELD outcome now holds and returns.
-  The stance is created only after the want is actually written, with its real id.
-- **F8 (new modules)** — the print money path now goes through `locked_update`'s
-  read-modify-write under the lock, not a snapshot-then-write.
-- **F12 ReelRoom double-fire** — a failed physical act is no longer auto-retried,
-  because a lost acknowledgment looks like a failure and there is no per-action id to
-  dedupe on. Physical acts fire at most once; only an in-app line retries.
-- **F13 printer stops** — a real state machine: a job cannot skip to `slice_waiting`
-  or `queued` without the draft and slice each being approved in order.
-- **F15 stance** — the naive/aware datetime comparison no longer throws (which read as
-  expired). "Less" now reduces a rate or a daily cap rather than vetoing: fewer, never
-  none.
-- **F16 spark schemas** — the three readers now match the real writer schemas
-  (`absences`/`description`, `configurations`/`description`, thread `origin`). Test
-  fixtures use the writer schema, not the reader's.
-- **F27 spark freshness** — expired sparks become tombstones so an unchanged source
-  cannot resurrect them; skill surfing no longer consumes entries `gather()` then
-  trims.
+- Test execution uses a fresh copy, fresh HOME, OS write restrictions and denied
+  networking. HTTP tests receive an exclusive fixture listener, not access to arbitrary
+  localhost services. Linux deployment now requires bubblewrap and fails closed without it.
+- Resume checks installed bytes and persistence success. Only a matching release
+  receipt permits crash recovery of an already-unblocked want.
+- Timer confirmation checks its next elapse. Rollback preserves/removes both unit files
+  as appropriate, restores the timer's previous state, and never starts the oneshot.
+- Forge scope narrowing, exact reviewer verdicts, single build claims, meaningful
+  test execution, isolated installation namespaces and artifact digests are enforced.
+- Print state changes require validated STL/G-code artifacts and two explicit,
+  digest-bound answers. A configured directory alone no longer claims READY. All job
+  mutations share the same lock; actual Astra elapsed time is no longer clipped.
+- Shared wants writers, music writers and artifact appends use complete transactions
+  or field-specific updates. This is not a claim that every legacy store is migrated.
+- Calibration excludes other checkpoints and pre-training predictions. The predictor
+  fingerprints the bytes it loaded. Constant/tied confidence cannot fabricate rank
+  correlation. Old audits require fresh prospective evidence.
+- Voice recovery checks for the already-persisted session before appending it again.
+  Phone speech is not automatically retried after an ambiguous failure; stale planned
+  actions expire and concurrent planned actions do not overlap.
+- Failed taste embedding leaves the occurrence retryable. Prompt rendering no longer
+  spends callback/question/withheld/frontier exposure; admission records it separately.
+  Bound private lineages are filtered at the prompt-serving door.
+- Refused private makes enter sealed retry. Music recovery polls the same recorded task
+  instead of generating another. Invalid approved stills cannot fall through to fresh
+  generation. Expired questions are not treated as resolved. Study coverage tracks
+  interval unions and file revisions. Source hashes commit after successful inference.
+- Nonempty somatic windows carry observation metadata. Device transport outcomes carry
+  physical-effect records with observation still pending and unknown request times
+  represented as unknown. This does not consolidate all dispatch authorities.
+- Paid admission counts units atomically and refuses a failed receipt. The router's
+  Anthropic/OpenAI paths, direct Astra/reviewer and shared robot/ReelRoom Sonnet caller
+  now reserve too. Legacy provider callers still need an inventory; this is not a
+  system-wide dollar ceiling or a provider cancellation guarantee.
 
-Fixed in the second pass (the first three the handoff left open):
+Remaining from the review and the three efforts:
 
-- **F9 calibration** — a head releases only on an audit that is the current criteria
-  version, bound to the model fingerprint on disk, with an explicit held-out slice, a
-  decode-similarity control and an axis-lockstep measurement all present. A missing
-  field, a stale version, or a changed model is INSUFFICIENT, never RELEASED.
-- **F10 reveal** — `bytes_verified` is now the result of actually hashing the bytes
-  against the prepared digest. A missing file, a hash error, or a mismatch refuses the
-  reveal; without a digest it is stored plainly unverified. No false certification.
-- **F11 voice recovery** — a `closing` session younger than 60s still steps aside for
-  a real concurrent finalize, but a stale one from a crash is resumed and finalized
-  rather than skipped forever. The sweep's guidance says so.
+- The four stance dimensions without behavioral consumers, and complete request/repair
+  propagation. The existing analysis/outreach consumers are only part of the advertised work.
+- Blender/Cura execution and a real slicer profile/output review. The new artifact and
+  approval checks support a manual file workflow; `handoff_dir` alone does not implement
+  modelling or slicing. Supplied slice time/material values are estimates, not measurements.
+- The legacy shared-store migration and dispatch-authority consolidation beyond the
+  concrete writers repaired above.
+- The tracked copies of the three host-only server domain modules. The F14 startup
+  import guard itself was already fixed; source acquisition is a separate open item.
+- The forge UI/effectful adapters/live commissioning listed above, the 27-item review
+  programme and the per-organ waiting list. Nothing here closes them by implication.
 
-**Not fixed, and reopened honestly** — older paths falsely marked DONE, or unfinished
-integration, not regressions from the three new tasks:
-
-- **F14** the import-wrap is now committed (`_mount_domain` in `bin/server.py`: a missing
-  domain module is reported and its routes are absent that run, never a fatal
-  ImportError). The three modules themselves — `server_domains/galleries.py`, `music.py`,
-  `humor_wants.py` — are still not in the checkout and cannot be obtained from here: they
-  exist only in `~/Vintos/server_domains/` on Aegis, which is why
-  `bin/server_domains/patch_humor_wants.py` edits the live copy in place rather than a
-  tracked source. Closing F14 means copying those three files off Aegis and committing
-  them. Nothing should be written in their place: an invented module would mount routes
-  that do not match the ones actually serving her.
-- **F17–F26, F28** — failed-taste-marked-taught, "pure selection" side effects,
-  privacy binding's uncovered hint reader, the sealed-retry helper never called, music
-  recovery markers, avatar still-approval fallthrough, expired-question-as-resolved,
-  Study coverage, source-cache poisoning, observation-contract fields, the partial
-  paid-reservation helper. Each needs a real producer→consumer or failure→recovery
-  test before it is closed again.
-
-**The home-effect gate boundary** the reviewer named stands: `/api/home/lights/*` and
-TV volume call home operations directly, without an effect permit. That predates this
-work; the Govee fallback widened what it can reach. It must go through the gate before
-autonomous room effects are enabled.
-
-Status of the three subsystems, 11 September, second pass. The authorization, cost and
-correctness regressions are fixed and tested, and the forge's
-builder→verify→install→resume path now exists end to end in code and is tested through
-every branch of it. Two things still stand between that and enabling them:
-
-- **The forge has never been run for real.** No proposal has been through live Astra,
-  live Fable and a real sandbox, because that spends money. Everything is proved with
-  fakes and by construction. One real run is the last honest gap.
-- **The home-effect gate is still open.** `/api/home/lights/*` and TV volume call home
-  operations directly without an effect permit. It predates this work and the Govee
-  fallback widened what it can reach; it must be closed before autonomous room effects.
-
-The printer needs no submission adapter — there is nothing to submit to. It needs her
-`handoff_dir`, and then it is complete for what the machine actually is.
+Home-effect gate policy has not been changed in this repair pass. No production
+service was deployed or restarted, no paid model called, and no device or real
+notification used to validate these changes.

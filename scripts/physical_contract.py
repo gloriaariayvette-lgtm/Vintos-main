@@ -57,6 +57,8 @@ def joined(effects, observations, within_s=30):
     candidate, never a cause: it says these two are close in time, nothing more."""
     out = []
     for e in effects:
+        if e.get("requested_at") is None:
+            out.append({"effect_id":e.get("effect_id"),"target":e.get("target"),"note":"request time unknown; no temporal pairing"});continue
         t = float(e.get("requested_at") or 0)
         near = [o for o in observations if o.get("sampled_at") and 0 <= float(o["sampled_at"]) - t <= within_s]
         out.append({"effect_id": e.get("effect_id"), "target": e.get("target"),

@@ -42,12 +42,13 @@ MODEL = os.path.join(MEMORY, "jepa-predictor.pt")
 
 
 def checkpoint_fingerprint():
-    """The identity of the model now on disk, the same md5(mtime+size) the predictor
+    """The identity of the model now on disk, the same SHA-256 of loaded bytes the predictor
     stamps. A release is bound to this; a retrained or swapped model no longer matches
     its old audit, so a stale RELEASED cannot carry over to different weights."""
     import hashlib
     try:
-        return hashlib.md5((str(os.path.getmtime(MODEL)) + str(os.path.getsize(MODEL))).encode()).hexdigest()[:10]
+        with open(MODEL,"rb") as handle: return hashlib.file_digest(handle,"sha256").hexdigest()
+
     except Exception:
         return None
 
@@ -118,6 +119,13 @@ def verdict(head="gloria", criteria=None, audit=None):
         return out
     if lock is None:
         out.update(state="INSUFFICIENT", why="no axis-lockstep measurement in the audit")
+        return out
+    import math
+    if not all(isinstance(x,(int,float)) and math.isfinite(x) for x in (mono,ctrl,lock)):
+        out.update(state="INSUFFICIENT",why="finite calibration measurements required")
+        return out
+    if a.get("holdout_protocol") != "prospective-checkpoint-v1":
+        out.update(state="INSUFFICIENT",why="checkpoint-matched prospective observations required")
         return out
     fails = []
     if mono is None or float(mono) > c["max_monotonicity"]:

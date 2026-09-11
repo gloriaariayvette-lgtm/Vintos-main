@@ -31,7 +31,7 @@ json.dump({"n_joined": 90, "n_holdout": 40, "criteria_version": C.CRITERIA_VERSI
 check("no axis-lockstep measurement does not release", C.verdict("gloria")["state"] == "INSUFFICIENT")
 json.dump({"n_joined": 90, "n_holdout": 40, "criteria_version": C.CRITERIA_VERSION, "checkpoint": ck,
            "g": {"monotonicity_conf_vs_err": -0.9, "CONTROL_dsim_vs_err": -0.2, "wrong_but_confident": []},
-           "axis_lockstep_corr": 0.1}, open(C.AUDIT, "w"))
+           "axis_lockstep_corr": 0.1, "holdout_protocol":"prospective-checkpoint-v1"}, open(C.AUDIT, "w"))
 check("a complete, current, passing audit releases", C.verdict("gloria")["state"] == "RELEASED")
 import time; time.sleep(0.01); open(C.MODEL, "w").write("different weights entirely")
 check("a changed model on disk invalidates the release", C.verdict("gloria")["state"] == "INSUFFICIENT")

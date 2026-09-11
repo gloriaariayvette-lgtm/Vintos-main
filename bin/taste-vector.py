@@ -106,8 +106,8 @@ def load_taste_vector():
 
 def save_taste_vector(tv):
     tv["last_updated"] = datetime.now().isoformat()
-    with open(TASTE_VECTOR_FILE, "w") as f:
-        json.dump(tv, f, indent=2)
+    from store_guard import write_json
+    write_json(TASTE_VECTOR_FILE,tv)
 
 def weighted_average(vec_a, vec_b, weight_a, weight_b):
     """Weighted average of two vectors."""
@@ -134,8 +134,6 @@ def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=Non
         if str(occurrence_id) in counted:
             log(f"occurrence {occurrence_id} already counted - not new evidence")
             return
-        counted.append(str(occurrence_id)); tv0["counted_occurrences"] = counted[-500:]
-        save_taste_vector(tv0)
     log(f"Updating from signal ({'pos' if positive else 'neg'}, w={signal_weight:.2f}): {text[:60]}")
     
     tv = load_taste_vector()
@@ -143,6 +141,9 @@ def update_from_signal(text, signal_weight=1.0, positive=True, occurrence_id=Non
     if not new_vec:
         log("Embedding failed — skipping")
         return
+
+    if occurrence_id:
+        tv["counted_occurrences"] = (tv.get("counted_occurrences",[]) + [str(occurrence_id)])[-500:]
 
     if not positive:
         # An aversion is not attraction to a semantic opposite. Keep it as a
@@ -417,7 +418,10 @@ def seed_from_reviews():
 
 def get_taste_with_subconscious():
     """Return taste profile enriched with subconscious layer hints."""
-    taste = get_taste_profile()
+    try:
+        taste=json.load(open(TASTE_PROFILE_FILE))
+        if not isinstance(taste,dict): taste={}
+    except (OSError,ValueError): taste={}
     try:
         import sys as _tv_sys; _tv_sys.path.insert(0, os.path.join(os.path.expanduser("~/.vintos/workspace"), "scripts"))
         from subconscious_context import get_subconscious_context_compact
@@ -426,6 +430,9 @@ def get_taste_with_subconscious():
             taste["subconscious_context"] = subcon
     except: pass
     return taste
+
+from store_guard import serialized as _serialized
+update_from_signal = _serialized("TASTE_VECTOR_FILE")(update_from_signal)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

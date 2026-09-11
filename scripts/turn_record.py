@@ -116,11 +116,11 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
             "confidence_penalty": "confidence_penalty",
             "stratagem_tactic": "stratagem",
         }
-        offers = {}
+        offers = {}; o = {}
         try:
-            o = json.load(open(os.path.join(MEMORY, "context-offers.json")))
-            if time.time() - float(o.get("ts", 0)) < 120:
-                offers = o.get("offers", {})
+            from inner_context import current_selection
+            o = current_selection() or {}
+            offers = dict(o.get("offers", {}))
         except Exception:
             pass
         try:
@@ -166,6 +166,10 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
             if name in present:
                 block_state[name] = "admitted"
                 mod = MOD_FOR.get(name)
+                if mod == "withheld_head" and offers.get(mod,{}).get("source_hash"):
+                    import withheld_head
+                    turn_id = getattr(context,"turn_id",None) or o.get("selection_id")
+                    if turn_id: withheld_head.mark_admitted(offers[mod]["source_hash"],str(turn_id))
                 if mod and mod in offers and offers[mod].get("influence_id"):
                     influences[name] = offers[mod]["influence_id"]
                 continue
@@ -185,6 +189,13 @@ def record(surface, prompt_text, user_msg="", extra=None, context=None):
                     producer_versions[name] = offers[mod]["producer_version"]
             else:
                 block_state[name] = "no_offer_info"
+        admission_id=getattr(context,"turn_id",None) or (o or {}).get("selection_id")
+        if admission_id:
+            from importlib import import_module
+            for marker,module in (("[FERMENTED CALLBACK","joke_fermentation"),("[CURIOSITY -","curiosity_debt"),("[YOU DECIDED, PRIVATELY","unsaid_frontier")):
+                if marker in text:
+                    try: import_module(module).admit_block(text,str(admission_id))
+                    except Exception: pass
         row = {
             "at": datetime.now().isoformat(),
             "surface": surface,

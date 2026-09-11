@@ -59,6 +59,13 @@ def _openai_key():
     except Exception:
         return ""
 
+def _reserve_provider(provider, model):
+    import sys
+    sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
+    from compute_admission import reserve_paid
+    ok,why=reserve_paid("model_router",provider,model)
+    if not ok:raise RuntimeError(why)
+
 async def sol_draft(system_text, convo, max_tokens=1500):
     """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
@@ -69,6 +76,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"}}
     def _call():
+        _reserve_provider("openai",SOL_MODEL)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         return json.loads(_u.urlopen(rq, timeout=180).read())
@@ -182,6 +190,7 @@ async def _claude(system_text, convo, params, reason):
         if params.get(k) is not None and k not in body:
             body[k] = float(params[k]); break   # Anthropic takes one of the two
     if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
+    _reserve_provider("anthropic",current_claude_model())
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
@@ -259,7 +268,7 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
             if not _ok:
                 return GR.make_result("xai", model=grok_model, status="held", reason=_why)
         except ImportError:
-            pass
+            return GR.make_result("xai",model=grok_model,status="held",reason="paid admission unavailable")
         try:
             coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
@@ -338,6 +347,7 @@ async def claude_draft(system_text, convo, max_tokens=1500):
     body = {"model": current_claude_model(), "max_tokens": max_tokens,
             "system": _sysblocks(system_text),
             "messages": _cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
+    _reserve_provider("anthropic",current_claude_model())
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",

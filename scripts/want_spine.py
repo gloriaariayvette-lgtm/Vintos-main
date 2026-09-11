@@ -38,6 +38,12 @@ def run_step(capability, note, want=None):
     r = _router()
     fn = getattr(r, capability, None)
     if not callable(fn):
+        import skill_forge
+        installed = any(x.get("capability") == capability and x.get("state") in ("installed", "resumed") for x in skill_forge._load())
+        if installed:
+            from forge_build import invoke
+            fn = lambda text: invoke(capability, text, asking=False)
+    if not callable(fn):
         res["result"] = "BLOCKED"
         res["block"] = {"block_type": "CAPABILITY_ABSENT",
                         "evidence": "no function %r in router" % capability,

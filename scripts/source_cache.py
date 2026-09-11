@@ -6,7 +6,7 @@ value map over an unchanged context, a description over an unchanged screen). Th
 job, the hash of the material it last ran over; unchanged(name, material) is True when nothing moved,
 and the caller skips the inference and says so. A job that wants to run anyway passes force.
 
-    unchanged(name, material) -> bool        (records the hash when it changed)
+    unchanged(name, material) -> bool        (read only; commit after successful persistence)
     last(name)                 -> {"sha", "at"} | None
 """
 import os, json, time, hashlib
@@ -39,11 +39,16 @@ def sha_of(material):
 def unchanged(name, material, force=False):
     d = _load(); sha = sha_of(material); prev = d.get(name)
     if prev and prev.get("sha") == sha and not force:
-        prev["seen"] = int(prev.get("seen", 0)) + 1; prev["last_seen"] = time.strftime("%Y-%m-%dT%H:%M:%S"); d[name] = prev; _save(d)
         return True
-    d[name] = {"sha": sha, "at": time.strftime("%Y-%m-%dT%H:%M:%S"), "seen": 0}
-    _save(d)
     return False
+
+
+def commit(name, material):
+    from store_guard import locked_update
+    def mutate(rows):
+        rows[name] = {"sha":sha_of(material),"at":time.strftime("%Y-%m-%dT%H:%M:%S"),"seen":0}
+        return rows
+    return locked_update(STORE,mutate,default={})
 
 
 def last(name):

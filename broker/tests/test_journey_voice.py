@@ -26,7 +26,7 @@ eu = types.ModuleType("emoclaw_utils"); eu.feel_about = lambda *a, **k: None; eu
 ns = {"os": os, "json": json, "time": time, "MEMORY": MEM, "WORKSPACE": WS, "_test_mode_active": lambda: False,
       "_voice_keep_cues": lambda s: s, "_voice_readable": lambda s: s, "print": lambda *a, **k: None}
 import threading; threading.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
-exec(route("voice_ledger"), ns); exec(route("voice_session_end"), ns)
+exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
 json.dump([], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 
 print("\n--- three turns, the second cut off ---")
@@ -49,4 +49,8 @@ check("the transcript carries the heard text with the cut marked, never the unhe
 check("the block says a reply was cut off", any("cut off" in n for n in led[0]["hardware_notes"]), led[0]["hardware_notes"])
 check("the session state is cleared; a second hangup writes nothing", not os.path.exists(os.path.join(MEM, "voice-session-state.json")) and asyncio.run(ns["voice_session_end"]({})).get("skipped"))
 check("the avatar history mirrors the heard text too", "when you" not in json.dumps(json.load(open(os.path.join(MEM, "avatar-overlay-chat.json")))))
+# Crash after appending the ledger but before unlinking the session state.
+json.dump(sess,open(os.path.join(MEM,"voice-session-state.json"),"w"))
+recovered=asyncio.run(ns["voice_session_end"]({}))
+check("already-persisted session recovery cannot append a duplicate", recovered.get("skipped")=="session already persisted" and len(json.load(open(os.path.join(MEM,"interaction-ledger.json"))))==1)
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

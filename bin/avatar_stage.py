@@ -257,6 +257,9 @@ def build_room(name, cfg, force=False):
         still = approved
         log("%s: animating the approved still" % name)
     else:
+        if os.path.lexists(os.path.join(STILLS,name+".jpg")) or os.path.lexists(os.path.join(STILLS,name+".approved.json")):
+            log("%s: still approval invalid; holding for review" % name)
+            return False
         scene_ref = photo if photo and os.path.exists(photo) else None
         if photo and not scene_ref:
             log("%s: room photo missing (%s) - building ungrounded" % (name, photo))

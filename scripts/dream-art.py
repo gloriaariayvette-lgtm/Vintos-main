@@ -91,7 +91,7 @@ def main():
         "want_id": os.environ.get("DREAM_ART_WANT_ID", ""),
         **_am.build(_fpath, "image", source_want=os.environ.get("DREAM_ART_WANT_ID", ""), revision=_rev, shelf=ART_DIR),
     })
-    _am.save_ledger(GALLERY, gallery)   # review 302: the one shelf transaction (locked + atomic)
+    _am.append_ledger(GALLERY, gallery[-1])   # review 302: the one shelf transaction (locked + atomic)
     print(f"[dream-art] painted: {fname}")
     # Then LOOK (2026-09-04, grok-creative-p1): the same eye WANT_ACT images get. Making is not seeing.
     # If the eye cannot run, the record says so instead of letting the write pass for the seeing.
@@ -107,7 +107,7 @@ def main():
         gallery[-1]["seen"] = None
         gallery[-1]["unseen_why"] = str(_se)[:120]
         print(f"[dream-art] painted UNSEEN — the eye did not run: {_se}")
-    _am.save_ledger(GALLERY, gallery)   # review 302: the one shelf transaction (locked + atomic)
+    _am.patch_record(GALLERY,gallery[-1]["path"],{key:gallery[-1].get(key) for key in ("seen","unseen_why")})   # review 302: the one shelf transaction (locked + atomic)
 
 if __name__ == "__main__":
     main()

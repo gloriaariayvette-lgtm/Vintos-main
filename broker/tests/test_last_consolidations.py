@@ -34,7 +34,7 @@ m = os.path.join(MEM, "art", "music", "music.json"); AM.append_ledger(m, {"title
 check("list and dict shelves append under one lock, atomically", [x["image"] for x in json.load(open(g))] == ["a.png", "b.png"] and json.load(open(m))["generated"][0]["title"] == "song" and not [f for f in os.listdir(os.path.dirname(g)) if ".tmp." in f])
 AM.save_ledger(g, [{"image": "c.png"}])
 check("save_ledger replaces whole", json.load(open(g)) == [{"image": "c.png"}])
-check("the painter, the video maker and the music maker write through it", src("scripts/dream-art.py").count("_am.save_ledger(GALLERY, gallery)") == 2 and src("bin/vintos-video.py").count("_am.save_ledger(GALLERY, gallery)") == 2 and "_am.save_ledger(LOG, log)" in src("bin/dream-music.py"))
+check("the painter, the video maker and the music maker write through it", "_am.append_ledger(GALLERY, gallery[-1])" in src("scripts/dream-art.py") and "_am.patch_record" in src("scripts/dream-art.py") and src("bin/vintos-video.py").count("_am.append_ledger(GALLERY, gallery[-1])") == 2 and "write_json(LOG,log)" in src("bin/dream-music.py"))
 
 print("\n--- 309: one send policy ---")
 SP = load("send_policy", os.path.join(REPO, "scripts", "send_policy.py")); SP.MEMORY = MEM

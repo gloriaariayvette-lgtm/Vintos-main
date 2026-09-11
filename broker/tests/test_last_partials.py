@@ -30,7 +30,7 @@ check("the taste door and the curiosity debt go through it", "_lo.teach(\"taste\
 
 print("\n--- 60 / 61 / 64: a versioned pure selection, then admission, one assembler ---")
 ic = src("scripts/inner_context.py")
-check("the offers record is a versioned, identified, pure selection", "_SELECTION_VERSION = 2" in ic and '"selection_id": sel' in ic and '"pure": True' in ic)
+check("the offers record is a versioned, identified, pure selection", "_SELECTION_VERSION = 3" in ic and '"selection_id": sel' in ic and '"pure": True' in ic)
 check("a renderer that offered never mutates state there; admission is the prompt's and the record's", "never mutates state here" in ic)
 check("one assembler of the inner layer for every surface, stated where it lives", "this is the ONE assembler of the inner layer for every surface" in src("bin/server.py"))
 check("the turn record joins admission to what was offered", '"excerpts"' in src("scripts/turn_record.py") and '"omitted"' in src("scripts/turn_record.py"))

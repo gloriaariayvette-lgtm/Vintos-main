@@ -275,7 +275,10 @@ def predict():
     import numpy as np, torch
     if not os.path.exists(MODEL):
         log("no model — run `train` first"); return
-    ck = torch.load(MODEL); net = make_net(ck["dim"]); net.load_state_dict(ck["state"]); net.eval()
+    import io, hashlib
+    checkpoint_bytes=open(MODEL,"rb").read()
+    loaded_checkpoint=hashlib.sha256(checkpoint_bytes).hexdigest()
+    ck = torch.load(io.BytesIO(checkpoint_bytes)); net = make_net(ck["dim"]); net.load_state_dict(ck["state"]); net.eval()
     turns = turns_of(load(CHAT, []))
     if len(turns) < 2:
         log("no context"); return
@@ -340,7 +343,7 @@ def predict():
     except Exception as _ce:
         _cal_v = {h: {"state": "INSUFFICIENT", "why": "calibration module unavailable: %s" % str(_ce)[:60]} for h in ("gloria", "self")}
     try:
-        _ck_id = hashlib.md5((str(os.path.getmtime(MODEL)) + str(os.path.getsize(MODEL))).encode()).hexdigest()[:10]
+        _ck_id = loaded_checkpoint
     except Exception:
         _ck_id = None
     out = {"source": "jepa",
@@ -370,7 +373,7 @@ def predict():
     # if either - actually predicts realized error. Variance is not calibration.
     try:
         import time as _ht
-        hist_line = {"ts": _ht.time(), "iso": __import__("datetime").datetime.now().isoformat(),
+        hist_line = {"checkpoint_id": _ck_id, "ts": _ht.time(), "iso": __import__("datetime").datetime.now().isoformat(),
                      "gloria": {"confidence": gloria["confidence"], "decode_similarity": gloria["decode_similarity"],
                                 "novelty": gloria["novelty"], "emb": [round(float(x), 4) for x in g]},
                      "self": {"confidence": self_h["confidence"], "decode_similarity": self_h["decode_similarity"],

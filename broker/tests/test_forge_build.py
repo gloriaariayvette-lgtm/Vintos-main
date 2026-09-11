@@ -35,14 +35,14 @@ def astra_good(system, messages, max_tokens=2400, timeout=180):
     # the module name Astra is told to define is quoted in the system prompt
     import re; m = re.search(r"named '([a-z0-9_]+)'", system); name = m.group(1) if m else "skill"
     mod = "def %s():\n    return 'clap'\n" % name
-    test = ("import %s as m\nok = m.%s() == 'clap'\nprint('1/1' if ok else '0/1')\nraise SystemExit(0 if ok else 1)\n"
+    test = ("import %s as m\nok = m.%s() == 'clap'\nassert ok\nprint('1/1' if ok else '0/1')\nraise SystemExit(0 if ok else 1)\n"
             % (name, name))
     return json.dumps({"module": mod, "test": test})
 
 def astra_bad_sandbox(system, messages, max_tokens=2400, timeout=180):
     import re; m = re.search(r"named '([a-z0-9_]+)'", system); name = m.group(1) if m else "skill"
     mod = "def %s():\n    return 'wrong'\n" % name
-    test = ("import %s as m\nok = m.%s() == 'clap'\nprint('1/1' if ok else '0/1')\nraise SystemExit(0 if ok else 1)\n"
+    test = ("import %s as m\nok = m.%s() == 'clap'\nassert ok\nprint('1/1' if ok else '0/1')\nraise SystemExit(0 if ok else 1)\n"
             % (name, name))
     return json.dumps({"module": mod, "test": test})
 
@@ -71,7 +71,7 @@ check("the verified module is staged on disk", bool(row) and os.path.isfile(row.
 print("\n--- install is her separate step, and only a verified proposal installs ---")
 irow, inote = FB.install(pid)
 check("her install lands the module in his scripts", irow and irow["state"] == "installed", inote)
-check("the installed file exists in the destination", any(f.endswith(".py") for f in os.listdir(DEST)))
+check("the installed file exists in the destination", bool(irow) and os.path.isfile(irow.get("installed_to", "")))
 again, anote = FB.install(pid)
 check("installing an already-installed proposal is refused", again is None and "not verified" in anote, anote)
 

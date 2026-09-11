@@ -42,7 +42,7 @@ check("the formation observatory reads the mark, not just muted", "not _bound(L)
 check("the frontier never re-puts a bound lineage to him", "if _bound(L): continue" in uf)
 check("the weather counts no pressure from a bound lineage", "not _bound(v)" in mw)
 check("a new candidate never joins or revives a bound lineage",
-      'if isinstance(L, dict) and (L.get("muted") or L.get("contested")): continue' in wh)
+      'related candidate held by privacy binding' in wh and 'L.get("muted") or L.get("contested")' in wh)
 
 print("\n--- 191: requested work is not a presence failure ---")
 check("a direct request is recognized", PD.is_requested_work("Can you fix the deploy script") and PD.is_requested_work("please send me the ledger"))

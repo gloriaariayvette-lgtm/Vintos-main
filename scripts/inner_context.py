@@ -11,7 +11,13 @@ from importlib import import_module
 
 _OFFERS_PATH = os.path.expanduser("~/.vintos/workspace/memory/context-offers.json")
 
-_SELECTION_VERSION = 2   # review 60: the shape of a selection; a reader knows what it is looking at
+from contextvars import ContextVar
+_selection = ContextVar("inner_selection", default=None)
+
+def current_selection():
+    return _selection.get()
+
+_SELECTION_VERSION = 3   # review 60: the shape of a selection; a reader knows what it is looking at
 
 
 def _note_offers(offers, selection_id=None):
@@ -21,9 +27,13 @@ def _note_offers(offers, selection_id=None):
     something never mutates state here; admission happens in the prompt, and turn_record reads it."""
     try:
         import hashlib as _h
-        sel = selection_id or _h.md5(("\x00".join(sorted("%s:%s" % (k, (v or {}).get("influence_id") or (v or {}).get("state", "")) for k, v in offers.items()))).encode()).hexdigest()[:12]
-        json.dump({"ts": time.time(), "selection_version": _SELECTION_VERSION, "selection_id": sel,
-                   "pure": True, "offers": offers}, open(_OFFERS_PATH, "w"), indent=1)
+        sel = selection_id or __import__("uuid").uuid4().hex
+        from store_guard import save_json
+        record = {"ts": time.time(), "selection_version": _SELECTION_VERSION, "selection_id": sel,
+                   "pure": True, "offers": offers}
+        _selection.set(record)
+        save_json(_OFFERS_PATH, record)
+        save_json(os.path.join(os.path.dirname(_OFFERS_PATH),"context-selections",sel+".json"),record)
         return sel
     except Exception:
         return None
@@ -32,7 +42,10 @@ def _run(mods, offers):
     parts = []
     for mod, fn in mods:
         try:
-            v = getattr(import_module(mod), fn)()
+            from context_selection import readonly
+            renderer = getattr(import_module(mod), fn)
+            with readonly():
+                v = renderer()
             if v:
                 # stage 5: a disarmed-by-default shadow trial may withhold ONE
                 # low-risk advisory offer per stratum; the state says so honestly.
@@ -49,6 +62,11 @@ def _run(mods, offers):
                 import hashlib as _ih
                 offers[mod] = {"state": "offered", "len": len(v),
                                "influence_id": _ih.md5((mod + "\x00" + v).encode()).hexdigest()[:10]}
+                if mod == "withheld_head":
+                    organ=import_module(mod)
+                    candidate=organ.load(organ.OUT,{})
+                    if candidate.get("withheld", "") in v:
+                        offers[mod]["source_hash"]=candidate.get("source_hash")
             else:
                 offers[mod] = {"state": "no_material"}
         except Exception as e:
@@ -111,14 +129,16 @@ def full_inner_block():
     parts = []
     try:
         from subconscious_context import get_subconscious_context_compact
-        s = get_subconscious_context_compact()
+        from context_selection import readonly
+        with readonly(): s = get_subconscious_context_compact()
         if s: parts.append("YOUR INNER STATE (subconscious):\n" + s)
         offers["subconscious_context"] = {"state": "offered" if s else "no_material"}
     except Exception as e:
         offers["subconscious_context"] = {"state": "organ_error", "err": str(e)[:120]}
     try:
         from conversation_pressure import get_pressure_block
-        pb = get_pressure_block()
+        from context_selection import readonly
+        with readonly(): pb = get_pressure_block()
         if pb: parts.append(pb)
         offers["conversation_pressure"] = {"state": "offered" if pb else "no_material"}
     except Exception as e:

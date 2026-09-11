@@ -688,13 +688,16 @@ def visit(pid):
                 _mk["previous"] = _cont
             else:
                 print("continues=%r is not in his manifest — making it fresh" % _cont)
-        r = requests.post(f"{B}/make", json=_mk).json()
+        try:
+            r = requests.post(f"{B}/make", json=_mk, timeout=30).json()
+        except Exception:
+            r = {"error":"transport unavailable; sealed for reconciliation"}
         print("made:", r)
         if r.get("error"):
             # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
             # outside the wall. The path never fired, and it is gone: a piece is kept inside the wall
             # or nowhere (Astra found it; the room agreed). The refusal reason is content-free.
-            print("make refused (%s) — the piece was not stored; nothing left the room" % r["error"])
+            _seal_refused(pid,m.group(1),_mk.get("content", ""),str(r["error"])[:160])
         else:
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
             requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),

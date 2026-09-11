@@ -293,7 +293,7 @@ def weekly_skill_surf(now=None, force=False):
         rows.append(row); known.add(k); new.append(row)
     if new:
         _save(rows)
-    _sk.mark_seen(on_page)                              # the whole page is now read
+    _sk.mark_seen([r.get("name") for r in skills if _key("skill_surfing", ("%s — %s" % (r.get("title") or r.get("name"),r.get("what", ""))).strip(" —")[:300]) in {x["key"] for x in new}])                              # the whole page is now read
     st = {"last": now.isoformat(), "next_start": (start + len(labels)) % total_pages}
     try:
         os.makedirs(MEMORY, exist_ok=True)
@@ -352,6 +352,10 @@ def counts(now=None):
         out[r["source"]] = out.get(r["source"], 0) + 1
     return out
 
+
+from store_guard import serialized as _serialized
+for _fn in ("gather","weekly_skill_surf","adopt","let_go"):
+    globals()[_fn] = _serialized("SPARKS")(globals()[_fn])
 
 if __name__ == "__main__":
     if "--gather" in sys.argv:

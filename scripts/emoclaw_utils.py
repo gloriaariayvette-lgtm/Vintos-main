@@ -2562,3 +2562,10 @@ def fulfill_want(want_text, note="", fulfilled_by="", auto=False, want_id=None):
             pass
     except:
         pass
+
+# Serialize each complete wants mutation, not only the final snapshot replacement.
+import sys as _want_sys
+_want_sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
+from store_guard import serialized as _want_serialized
+for _want_writer in ("express_want", "fulfill_want", "mark_want_outreached", "mark_want_outreach_result", "check_want_interference"):
+    globals()[_want_writer] = _want_serialized(lambda: os.path.expanduser("~/.vintos/workspace/memory/current-wants.json"))(globals()[_want_writer])

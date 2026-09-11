@@ -104,15 +104,13 @@ def read_want(text):
     t = str(text or "").lower()
     if not t:
         return None, None
-    for dim, pat in _WORDS.items():
-        m = re.search(pat, t)
-        if not m:
-            continue
-        window = t[max(0, m.start() - 60):m.end() + 60]
-        if re.search(_LESS, window):
-            return dim, "less"
-        if re.search(_MORE, window):
-            return dim, "more"
+    for clause in re.split(r"[.!?;]|\band\b", t):
+        for dim, pat in _WORDS.items():
+            if not re.search(r"\b(?:" + pat + r")\b", clause):
+                continue
+            if re.search(r"\b" + _LESS + r"\b", clause): return dim, "less"
+            if re.search(r"\b" + _MORE + r"\b", clause): return dim, "more"
+
     return None, None
 
 
@@ -160,7 +158,7 @@ def _expired(row, now=None):
         # stored tz-aware. Comparing the two raises, and a raise read as 'expired'
         # silenced every live stance. Drop tzinfo from both and compare plainly.
         if (now.tzinfo is None) != (until.tzinfo is None):
-            now = now.replace(tzinfo=None); until = until.replace(tzinfo=None)
+            now = now.astimezone(timezone.utc); until = until.astimezone(timezone.utc)
         return now >= until
     except Exception:
         return True
@@ -252,6 +250,11 @@ def main():
     else:
         print(__doc__)
 
+
+
+# Every read/modify/write participant shares the same store lock.
+from store_guard import serialized as _serialized
+hold = _serialized('STANCES')(hold)
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Behavioral regressions for the September review. Scratch stores; no real effects."""
+import os,sys,json,tempfile,importlib.util,hashlib,concurrent.futures
+from pathlib import Path
+REPO=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(REPO/'scripts'))
+HOME=Path(tempfile.mkdtemp(prefix='repairs-'));os.environ['HOME']=str(HOME)
+os.environ.pop('SPARK_WORKSPACE',None)
+MEM=HOME/'.vintos/workspace/memory';MEM.mkdir(parents=True)
+import store_guard as SG,skill_forge as SF,forge_build as FB,forge_resume as FR,print_3d as P,source_cache as SC,compute_admission as CA
+R=[]
+def check(name,ok):
+ R.append(bool(ok));print(('PASS ' if ok else 'FAIL ')+name)
+def load(name,path):
+ spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
+# Concurrent mutations actually preserve all rows.
+p=MEM/'concurrent.json'
+def add(i): SG.locked_update(str(p),lambda rows:rows+[i],default=[])
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:list(pool.map(add,range(80)))
+check('80 simultaneous store mutations survive',len(json.loads(p.read_text()))==80)
+CA.MEMORY=str(MEM);CA.LEDGER=str(MEM/'paid.jsonl')
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool: admitted=list(pool.map(lambda _:CA.reserve_paid('test','fake',units=2,cap=10)[0],range(20)))
+check('concurrent paid reservations honor units and cap',sum(admitted)==5 and CA.paid_today('fake')==10)
+CA.LEDGER=str(MEM)
+check('failed receipt prevents paid admission',CA.reserve_paid('test','fake')[0] is False)
+SC.STORE=str(MEM/'cache.json');check('failed inference remains eligible',not SC.unchanged('x','a') and not SC.unchanged('x','a'))
+SC.commit('x','a');check('successful inference commits only its material',SC.unchanged('x','a') and not SC.unchanged('x','b'))
+# Narrowing is semantic; unsupported changes cannot silently pass.
+g=SF._narrower({'scope':{'max_hours':4,'recipients':['a','b']}},{'scope':{'max_hours':1,'recipients':['a']}})
+check('approved ceilings and subsets are retained',g['scope']=={'max_hours':1,'recipients':['a']})
+try:SF._narrower({'scope':{'max_hours':4}},{'scope':{'max_hours':5}});rejected=False
+except ValueError:rejected=True
+check('widening is refused',rejected)
+check('ambiguous reviewer PASS cannot verify',FB.review({}, {},fable=lambda *a,**k:'PASS? No, FAIL: unsafe')[0] is False)
+check('zero-assertion generated tests fail',FB.sandbox_test('def sample(note): return note','print("0/0")','sample')[0] is False)
+check('a real capability assertion passes inside the OS boundary',FB.sandbox_test('def sample(note): return note.upper()','import sample\nassert sample.sample("hi")=="HI"','sample')[0])
+marker=HOME/'escape'
+code='def sample(note):\n open(%r,"w").write("escape")\n return note\n'%str(marker)
+check('generated code cannot write outside its scratch',not FB.sandbox_test(code,'import sample\nassert sample.sample("hi")=="hi"','sample')[0] and not marker.exists())
+marker.write_text("private fixture")
+code='def sample(note):\n return open(%r).read()\n'%str(marker)
+check('generated code cannot read neighboring scratch data',not FB.sandbox_test(code,'import sample\nassert sample.sample("hi")=="private fixture"','sample')[0])
+# Resume failure does not retire the proposal.
+old=FR._forge;oldwrite=FR._update_wants
+class Forge:
+ def resumable(self,*a):return [{'proposal':'p','capability':'cap','want_id':'w'}]
+ def mark(self,*a):raise AssertionError('must not mark after failed save')
+FR._forge=lambda:Forge();FR._update_wants=lambda f:False
+check('resume retains proposal when want persistence fails',FR.resume()[0]['outcome']==FR.REFUSED)
+FR._forge=old;FR._update_wants=oldwrite
+check('an unrelated unblocked want is not crash recovery',FR.release({'id':'w'},'cap','p')[1]==FR.STILL_BLOCKED)
+# Real STL/G-code bytes, explicit answers, no real delivery.
+import types
+sys.modules['deliver']=types.SimpleNamespace(deliver=lambda *a,**k:{'state':'sent'})
+P.JOBS=str(MEM/'jobs.json');P.CONFIG=str(MEM/'printer.json')
+Path(P.CONFIG).write_text(json.dumps({'handoff_dir':str(HOME/'handoff')}))
+j=P.open_job('one mesh');jid=j['id']
+check('public transitions cannot bypass approval',P.advance(jid,'draft_waiting')[0] is None)
+check('arbitrary metadata cannot mint approval',P.advance(jid,'modelling',extra={'draft_approval':'fake'})[0] is None)
+stl=HOME/'mesh.stl';stl.write_text('solid mesh\nvertex 0 0 0\nvertex 1 0 1\nvertex 0 1 0\nendsolid\n')
+P.attach_model(jid,str(stl));j,_=P.present(jid,'draft','Review this mesh')
+check('boolean-like strings cannot approve',P.answer(jid,'draft','false',digest=j['model']['sha256'])[0] is None)
+check('wrong artifact digest cannot approve',P.answer(jid,'draft',True,digest='wrong')[0] is None)
+j,_=P.answer(jid,'draft',True,digest=j['model']['sha256'])
+gcode=HOME/'mesh.gcode';gcode.write_text('G21\nG90\nG1 X1 Y1 Z1\n')
+P.attach_slice(jid,str(gcode),seconds=60,filament_mm=100,layer_mm=.2);j,_=P.present(jid,'slice','Review this toolpath')
+j,why=P.answer(jid,'slice',True,digest=j['slice']['sha256'])
+check('ready requires the approved toolpath on disk',j and j['state']=='ready' and Path(j['handoff_file']).read_bytes()==gcode.read_bytes())
+# Elapsed work is never clipped, and the direct client has a hard local deadline.
+import time, subprocess, astra_call as AC
+clock=[0.0];timeouts=[];old_clock=time.monotonic
+def fake_design(*args,**kwargs):
+ timeouts.append(kwargs.get("timeout"));clock[0]+=180;return "import bpy"
+try:
+ time.monotonic=lambda:clock[0]
+ for i in range(5):
+  job=P.open_job("budget fixture "+str(i));P.design("fixture",job['id'],caller=fake_design)
+finally:time.monotonic=old_clock
+check('Astra overruns are counted rather than clipped',len(timeouts)==3 and P.astra_seconds_today()==540 and timeouts==[120.0]*3)
+worker=HOME/'slow_worker.py';worker.write_text('import time;time.sleep(10)\n')
+old_file,old_key=AC.__file__,AC._key;AC.__file__=str(worker);AC._key=lambda:'fixture';CA.LEDGER=str(MEM/'deadline-paid.jsonl')
+t0=time.monotonic()
+try:AC.call('fixture',[],timeout=.1);expired=False
+except subprocess.TimeoutExpired:expired=True
+finally:AC.__file__,AC._key=old_file,old_key
+check('provider worker is terminated at its wall-clock deadline',expired and time.monotonic()-t0<2)
+# Receipt only after successful embedding.
+TV=load('taste_vector',REPO/'bin/taste-vector.py');TV.TASTE_VECTOR_FILE=str(MEM/'taste.json');TV.embed=lambda text:None
+TV.update_from_signal('red','' if False else .3,occurrence_id='failed')
+check('failed embedding does not consume occurrence','failed' not in TV.load_taste_vector().get('counted_occurrences',[]))
+# Privacy at the serving door; selection is read-only, exposure only after admission.
+import withheld_head as WH
+WH.MEMORY=str(MEM);WH.OUT=str(MEM/'withheld.json');WH.HIST=str(MEM/'withheld-history.json')
+Path(WH.OUT).write_text(json.dumps({'withheld':'the private phrase','source_hash':'s','lineage_id':'l','confidence':.8,'novelty':.5}))
+(MEM/'withheld-lineage.json').write_text(json.dumps([{'lineage_id':'l','rep':'the private phrase','muted':True}]))
+check('bound private hints never enter the prompt',WH.get_withheld_hint()=='')
+(MEM/'withheld-lineage.json').write_text('[]');before=Path(WH.OUT).read_bytes();WH.get_withheld_hint();WH.get_withheld_hint()
+check('rendering does not consume exposure',Path(WH.OUT).read_bytes()==before)
+WH.mark_admitted('s','t');WH.mark_admitted('s','t')
+check('admission counts a turn once',json.loads(Path(WH.OUT).read_text())['surfaced']==1)
+print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

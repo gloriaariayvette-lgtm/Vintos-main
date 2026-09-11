@@ -53,11 +53,15 @@ def forge_to(capability, wid, wants, upto="installed"):
                           block={"block_type": "CAPABILITY_ABSENT"})
     assert row, why
     SF.approve(row["id"], {"invocation": "ask_each_time"})
-    for st in ("built", "verified", "installed"):
-        if ("proposed", "approved", "built", "verified", "installed").index(st) > \
-           ("proposed", "approved", "built", "verified", "installed").index(upto):
-            break
-        SF.mark(row["id"], st)
+    # A fixture with real artifact bytes and a bound verification receipt.
+    import hashlib
+    path = os.path.join(HOME, row["id"] + ".py")
+    data = b"def fixture(note): return note\n"
+    open(path,"wb").write(data)
+    rows=SF._load(); live=SF._get(rows,row["id"])
+    live.update(state=upto, staged=path, installed_to=path,
+                verification={"schema":1,"review":"PASS","sandbox_passed":True,"sha256":hashlib.sha256(data).hexdigest()})
+    SF._save(rows)
     return row["id"]
 
 
@@ -103,7 +107,7 @@ w2 = {"id": "w2", "want": "I want to read the lab's log myself", "source": "lab"
 put_wants([w2])
 pid2 = forge_to("read_lab", "w2", [w2])
 crashed = json.load(open(WANTS_FILE))
-crashed[0].pop("blocked")                    # the first write landed
+FR.release(crashed[0], "read_lab", pid2)                    # the first write landed
 put_wants(crashed)                            # the second never ran
 check("the proposal is still installed after the crash", state_of(pid2) == "installed")
 rows = FR.resume()

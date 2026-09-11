@@ -143,11 +143,23 @@ def session_open(what=""):
 def session_note_read(rel, start, end, total_lines):
     """The cursor for one file: the furthest line read, and whether the file is finished."""
     d = _session() or session_open("(implicit)")
-    c = d.setdefault("cursor", {}).setdefault(rel, {"read_to": 0, "lines": total_lines, "passes": 0})
+    import hashlib
+    path = resolve(rel)
+    revision = hashlib.sha256(open(path,"rb").read()).hexdigest() if path else None
+    cursor = d.setdefault("cursor", {})
+    c = cursor.get(rel, {})
+    if not revision or c.get("revision") != revision:
+        c = {"read_to":0,"ranges":[],"passes":0,"revision":revision}
     c["lines"] = total_lines
-    c["read_to"] = max(int(c.get("read_to", 0)), int(end or 0))
-    c["passes"] = int(c.get("passes", 0)) + 1
-    c["complete"] = bool(total_lines and c["read_to"] >= total_lines)
+    ranges = c.get("ranges", [])
+    if int(end) >= int(start): ranges.append([max(1,int(start)),min(int(end),total_lines)])
+    merged=[]
+    for lo,hi in sorted(ranges):
+        if merged and lo <= merged[-1][1]+1: merged[-1][1]=max(hi,merged[-1][1])
+        else: merged.append([lo,hi])
+    c.update(ranges=merged,read_to=max([hi for lo,hi in merged] or [0]),passes=c.get("passes",0)+1,
+             complete=bool(revision and merged and merged[0]==[1,total_lines]))
+    cursor[rel]=c
     d["reads"] = int(d.get("reads", 0)) + 1
     _session_save(d)
     return c
@@ -157,6 +169,14 @@ def session_coverage():
     """What this session has read, what is part-read, and what it has not touched at all."""
     d = _session()
     cur = d.get("cursor", {})
+    import hashlib
+    for rel,c in cur.items():
+        try:
+            path=resolve(rel)
+            if not path or hashlib.sha256(open(path,"rb").read()).hexdigest()!=c.get("revision"):
+                c["complete"]=False; c["read_to"]=0; c["ranges"]=[]
+        except OSError:
+            c["complete"]=False; c["read_to"]=0; c["ranges"]=[]
     files = []
     for label, root in ROOTS.items():
         try:
