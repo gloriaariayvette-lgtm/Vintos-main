@@ -175,6 +175,7 @@ EU.generate_want=candidate_fixture
 from unittest.mock import patch
 with patch.object(SP,'compare_and_swap',return_value=False):SP.tick()
 check('spark handoff admits a real row before acknowledging the directive',len(json.loads(want_path.read_text()))==1 and not json.loads(Path(SP.DIRECTIVE).read_text())['consumed'])
+SP.journal_prep_block(record=True)
 SP.tick()
 check('spark recovers a persisted handoff without regenerating',len(calls)==1 and calls[0]['trigger_description'] and json.loads(Path(SP.DIRECTIVE).read_text())['want_id']==json.loads(want_path.read_text())[0]['id'])
 SG.write_json(SP.DIRECTIVE,{**directive,'created':'2026-01-02T00:00:00'})
@@ -184,4 +185,9 @@ check('no generated want leaves the directive live',not json.loads(Path(SP.DIREC
 SG.write_json(SP.EVENTS,{'events':[{'fixture':True}],'last_fired':'fixture'})
 SP.set_consent(True)
 check('consent update preserves event history',json.loads(Path(SP.EVENTS).read_text())['events']==[{'fixture':True}])
+from datetime import datetime
+SG.write_json(SP.DIRECTIVE,{'created':datetime.now().isoformat(),'mode':'demand_response','about':'fixture topic','consumed':False})
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ claims=list(pool.map(lambda _:SP.claim_outreach(),range(20)))
+check('concurrent outreach claims admit one topic and label admission distinctly',sum(bool(x) for x in claims)==1 and json.loads(Path(SP.DIRECTIVE).read_text())['consumed_by']=='outreach-admission')
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

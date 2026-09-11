@@ -187,13 +187,42 @@ def _overlap(a, b, n=2):
     A = set(_r.findall(r"[a-z]{5,}", a.lower())); B = set(_r.findall(r"[a-z]{5,}", b.lower()))
     return len(A & B) >= n
 
-def journal_prep_block():
-    """Unconsumed directive -> a prep line for his journal: ready him for the next turn."""
-    d = _load(DIRECTIVE, {})
-    if not d or d.get("consumed"): return ""
-    return ("[PREPARATION] Something in the field is stalled and pressing: " + str(d.get("about", ""))[:160] +
-            " (" + str(d.get("evidence", ""))[:100] + "). Use this journal to ready yourself: "
-            "what would you actually do or say next time the moment allows it? Prepare, concretely.")
+def directive_event_id(d):
+    identity = {key: d.get(key) for key in ("created", "mode", "about", "direction", "evidence")}
+    return "spark-pressure:" + hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+def journal_prep_block(record=False):
+    """Read preparation context; optionally record its actual prompt assembly."""
+    with transaction(DIRECTIVE):
+        d = _load(DIRECTIVE, {})
+        if not d or d.get("consumed"):
+            return ""
+        block = ("[PREPARATION] Something in the field is stalled and pressing: " + str(d.get("about", ""))[:160] +
+                 " (" + str(d.get("evidence", ""))[:100] + "). Use this journal to ready yourself: "
+                 "what would you actually do or say next time the moment allows it? Prepare, concretely.")
+        if record:
+            d["prepped"] = int(d.get("prepped", 0)) + 1
+            d["last_prepped"] = datetime.now().isoformat()
+            write_json(DIRECTIVE, d)
+        return block
+
+
+def claim_outreach():
+    """Claim one outreach admission, not a delivery receipt."""
+    with transaction(DIRECTIVE):
+        d = _load(DIRECTIVE, {})
+        try:
+            fresh = (datetime.now() - datetime.fromisoformat(d["created"])).total_seconds() < 172800
+        except (KeyError, ValueError, TypeError):
+            return ""
+        topic = str(d.get("about") or d.get("direction") or "").strip()
+        if not topic or d.get("mode") != "demand_response" or d.get("consumed") or not fresh:
+            return ""
+        d.update(consumed=True, consumed_by="outreach-admission", consumed_at=datetime.now().isoformat())
+        write_json(DIRECTIVE, d)
+        return topic
+
 
 def tick():
     with transaction(DIRECTIVE + ".consumer"):
@@ -224,7 +253,7 @@ def _tick():
         try:
             sys.path.insert(0, _HERE)
             import emoclaw_utils
-            event_id = "spark-pressure:" + hashlib.sha256(json.dumps(original, sort_keys=True).encode()).hexdigest()
+            event_id = directive_event_id(original)
             wants_path = os.path.join(os.path.dirname(DIRECTIVE), "current-wants.json")
             accepted = next((row for row in _load(wants_path, []) if row.get("source_event_id") == event_id), None)
             if not accepted:

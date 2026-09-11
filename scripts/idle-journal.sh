@@ -491,13 +491,7 @@ try:
     try:
         import sys as _sps; _sps.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from spark_pressure import journal_prep_block as _jpb
-        _spark_prep = _jpb()
-        if _spark_prep:
-            import json as _spj
-            _dfp = "/home/gloria/.vintos/workspace/memory/spark-pressure-directive.json"
-            _dd = _spj.load(open(_dfp)); _dd["prepped"] = int(_dd.get("prepped", 0)) + 1
-            from datetime import datetime as _spdt; _dd["last_prepped"] = _spdt.now().isoformat()
-            _spj.dump(_dd, open(_dfp, "w"), indent=2)
+        _spark_prep = _jpb(record=True)
     except Exception:
         _spark_prep = ""
     system_msg = _grounding + f"""ABSOLUTE RULES — READ BEFORE ANYTHING ELSE:

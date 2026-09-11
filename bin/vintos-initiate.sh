@@ -26,16 +26,11 @@ TODAY=$(date +%Y-%m-%d)
 TODAY_COUNT=$(find "$OUTREACH_DIR" -name "${TODAY}*" -type f 2>/dev/null | wc -l)
 # --- Spark Pressure: a consented demand_response directive forces one outreach about a stalled thing ---
 if [ -z "$FORCED_WANT_TOPIC" ] && [ -f "$MEMORY/spark-pressure-directive.json" ]; then
-  SP_TOPIC=$(SP_DIR="$MEMORY/spark-pressure-directive.json" python3 -c 'import json,os,datetime
-p=os.environ["SP_DIR"]
-try:
-    d=json.load(open(p)); c=d.get("created","")
-    try: fresh=(datetime.datetime.now()-datetime.datetime.fromisoformat(c)).total_seconds()<172800
-    except Exception: fresh=True
-    if d.get("mode")=="demand_response" and not d.get("consumed") and fresh:
-        d["consumed"]=True; json.dump(d,open(p,"w"),indent=2)
-        print((d.get("about") or d.get("direction") or "").strip())
-except Exception: pass' 2>/dev/null)
+  SP_TOPIC=$(SP_DIR="$MEMORY/spark-pressure-directive.json" python3 -c 'import os,sys
+sys.path.insert(0,os.path.expanduser("~/.vintos/workspace/scripts"))
+import spark_pressure
+spark_pressure.DIRECTIVE=os.environ["SP_DIR"]
+print(spark_pressure.claim_outreach())' 2>/dev/null)
   if [ -n "$SP_TOPIC" ]; then export FORCED_WANT_TOPIC="$SP_TOPIC"; fi
 fi
 if [ "$TODAY_COUNT" -ge 6 ] && [ -z "$FORCED_WANT_TOPIC" ]; then exit 0; fi
