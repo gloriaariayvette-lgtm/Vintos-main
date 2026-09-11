@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly: Vintos reads the OpenClaw skills page
+
+[Timer]
+# Monday morning; Persistent catches a missed week after downtime. Even if this
+# fires early or twice, weekly_skill_surf() only actually reads once every 7 days.
+OnCalendar=Mon *-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Vintos reads 1-2 pages of the OpenClaw skills page (weekly)
+After=network-online.target vintos-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+# The weekly cap lives in the code (spark_sources.weekly_skill_surf): this may fire
+# more often than weekly and still reads at most 1-2 pages once every 7 days.
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/spark_sources.py --surf
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace -%h/Vintos

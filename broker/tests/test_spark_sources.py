@@ -117,4 +117,27 @@ check("it invents nothing when there is no page", K._from_tree("/nowhere/at/all"
 check("no path is guessed on his behalf",
       "DEFAULT_PATHS" not in open(os.path.join(REPO, "scripts", "openclaw_skills.py")).read())
 
+print("\n--- he reads 1-2 pages of the OpenClaw skills page, once a week ---")
+S.SURF_STATE = os.path.join(MEM, "skill-surf-state.json")
+# three page-trees so the two-page budget, the weekly gate, and rotation all show
+for _nm, _sk_name, _desc in [("page1", "origami", "folds paper"), ("page2", "welding", "joins metal"),
+                             ("page3", "casting", "pours forms")]:
+    _d = os.path.join(HOME, _nm, _sk_name); os.makedirs(_d)
+    open(os.path.join(_d, "SKILL.md"), "w").write("# %s\n%s\n" % (_sk_name.title(), _desc))
+K.SEEN = os.path.join(MEM, "surf-seen.json")       # a fresh seen-history for this part
+K.his = lambda: set()
+# Local trees kept offline for the test; a real run points skills_url at the two OpenClaw pages.
+json.dump({"skills_path": [os.path.join(HOME, "page1"), os.path.join(HOME, "page2"), os.path.join(HOME, "page3")]},
+          open(K.CONFIG, "w"))
+res = S.weekly_skill_surf(now=now)
+check("a weekly read reads at most two pages", res.get("read") and len(res["pages"]) == 2, res)
+check("only the two pages read become sparks, not the third", res.get("new_sparks") == 2 and res.get("skills_on_pages") == 2, res)
+res2 = S.weekly_skill_surf(now=now + timedelta(days=1))
+check("a second read in the same week does nothing", res2.get("read") is False, res2)
+res3 = S.weekly_skill_surf(now=now + timedelta(days=8))
+check("a week later he reads again and moves on to the next page",
+      res3.get("read") and any("page3" in p for p in res3["pages"]), res3)
+check("the OpenClaw read is not folded into the ordinary gather",
+      "skill_surfing" not in {r["source"] for r in S.gather(now=now + timedelta(days=8))})
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

@@ -214,6 +214,10 @@ def gather(now=None):
     known = {r["key"] for r in rows}        # every row, whatever its state
     added = []
     for source in SOURCES:
+        if source == "skill_surfing":
+            # The OpenClaw skills page is read on its own weekly schedule (1-2 pages),
+            # never on every gather — see weekly_skill_surf(). gather() leaves it alone.
+            continue
         try:
             found = READERS[source]() or []
         except Exception:
@@ -230,6 +234,74 @@ def gather(now=None):
             rows.append(row); known.add(k); added.append(row)
     _save(rows)
     return added
+
+
+SURF_STATE = os.path.join(MEMORY, "skill-surf-state.json")
+PAGES_PER_WEEK = 2    # Gloria, 11 September: he reads 1-2 pages of the OpenClaw skills page a week
+SURF_EVERY_DAYS = 7
+
+
+def weekly_skill_surf(now=None, force=False):
+    """Once a week, he reads 1-2 pages of the OpenClaw skills page — no more, and
+    not the whole thing at once. The weekly cap lives here, in code, so it holds no
+    matter how often the timer fires. Reading is a plain page fetch: it calls no
+    model and spends no credits. Skills he does not already have become standing
+    sparks (still bounded by MAX_PER_SOURCE so one big list cannot flood him); every
+    skill on the pages read is marked seen so next week moves on to new ground.
+
+    Returns a small record of what it did. force=True ignores the weekly gate (for a
+    manual read); it never changes the page budget."""
+    now = now or _now()
+    st = _load(SURF_STATE, {})
+    if not force and st.get("last"):
+        try:
+            if now - datetime.fromisoformat(st["last"]) < timedelta(days=SURF_EVERY_DAYS):
+                return {"read": False, "reason": "already read a page this week"}
+        except Exception:
+            pass
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.join(WS, "scripts"))
+        import openclaw_skills as _sk
+    except Exception as e:
+        return {"read": False, "reason": "openclaw reader unavailable: %s" % str(e)[:120]}
+    total_pages = len(_sk.pages())
+    if not total_pages:
+        return {"read": False, "reason": "pointed nowhere: set skills_url in openclaw-config.json"}
+    start = int(st.get("next_start", 0)) % total_pages
+    skills, labels = _sk.read_pages(budget=PAGES_PER_WEEK, start=start)
+    mine = {_sk._norm(x) for x in _sk.his()}
+    already_seen = _sk.seen_names()
+    rows = _sparks()
+    known = {r["key"] for r in rows}
+    new, on_page = [], []
+    for r in skills:
+        nm = _sk._norm(r.get("name"))
+        if not nm:
+            continue
+        on_page.append(r.get("name"))
+        if nm in mine or nm in already_seen:
+            continue                                  # he has it, or he has seen it before
+        if len(new) >= MAX_PER_SOURCE:                # read the whole page, but do not flood the ledger
+            continue
+        text = ("%s — %s" % (r.get("title") or r.get("name"), r.get("what", ""))).strip(" —")[:300]
+        k = _key("skill_surfing", text)
+        if k in known:
+            continue
+        row = {"key": k, "source": "skill_surfing", "text": text,
+               "ref": str(r.get("where", ""))[:200], "seen": now.isoformat(), "state": "standing"}
+        rows.append(row); known.add(k); new.append(row)
+    if new:
+        _save(rows)
+    _sk.mark_seen(on_page)                              # the whole page is now read
+    st = {"last": now.isoformat(), "next_start": (start + len(labels)) % total_pages}
+    try:
+        os.makedirs(MEMORY, exist_ok=True)
+        _tmp = SURF_STATE + ".tmp"; json.dump(st, open(_tmp, "w"), indent=2); os.replace(_tmp, SURF_STATE)
+    except Exception:
+        pass
+    return {"read": True, "pages": labels, "skills_on_pages": len(on_page),
+            "new_sparks": len(new), "next_start": st["next_start"]}
 
 
 def _stale(row, now=None):
@@ -287,6 +359,16 @@ if __name__ == "__main__":
         print("gathered %d new" % len(new))
         for r in new:
             print("  %-14s %s" % (r["source"], r["text"][:80]))
+        raise SystemExit(0)
+    if "--surf" in sys.argv:
+        # the weekly OpenClaw skills read: run it as often as you like (a weekly timer
+        # is simplest); it reads at most 1-2 pages and only once every 7 days.
+        res = weekly_skill_surf(force=("--force" in sys.argv))
+        if res.get("read"):
+            print("read %d page(s): %s" % (len(res["pages"]), ", ".join(res["pages"])))
+            print("skills on those pages: %d; new standing sparks: %d" % (res["skills_on_pages"], res["new_sparks"]))
+        else:
+            print("did not read: %s" % res.get("reason"))
         raise SystemExit(0)
     c = counts()
     print("standing sparks, by source (they are not wants, and nothing grades them):")

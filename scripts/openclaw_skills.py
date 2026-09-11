@@ -104,22 +104,58 @@ def _from_url(url, timeout=10):
     return out
 
 
-def read():
-    """Every skill the page or the tree offers, deduplicated by name."""
+def pages():
+    """The list of pages he could read, in order: any local skill trees first, then
+    each configured skills_url. skills_url may be one URL or a list of them (the
+    OpenClaw skills page and the awesome-openclaw-skills list are two pages)."""
     cfg = _cfg()
-    rows = []
+    out = []
     for root in ([cfg["skills_path"]] if isinstance(cfg.get("skills_path"), str)
                  else list(cfg.get("skills_path") or [])):
-        rows += _from_tree(os.path.expanduser(root))
-    if cfg.get("skills_url"):
-        rows += _from_url(cfg["skills_url"])
+        out.append(("tree", os.path.expanduser(root)))
+    u = cfg.get("skills_url")
+    for url in ([u] if isinstance(u, str) else list(u or [])):
+        if url:
+            out.append(("url", url))
+    return out
+
+
+def _read_one(kind, loc):
+    return _from_tree(loc) if kind == "tree" else _from_url(loc)
+
+
+def _dedup(rows):
     seen, out = set(), []
     for r in rows:
         k = r["name"].lower()
         if k and k not in seen:
-            seen.add(k)
-            out.append(r)
+            seen.add(k); out.append(r)
     return out
+
+
+def read():
+    """Every skill across all configured pages, deduplicated by name."""
+    rows = []
+    for kind, loc in pages():
+        rows += _read_one(kind, loc)
+    return _dedup(rows)
+
+
+def read_pages(budget=2, start=0):
+    """Read at most `budget` pages, beginning at page index `start` and wrapping —
+    so a weekly reader that advances `start` covers every page over a few weeks
+    without ever reading them all at once. Returns (skills, pages_read_labels)."""
+    ps = pages()
+    if not ps:
+        return [], []
+    budget = max(1, int(budget))
+    rows, labels = [], []
+    n = len(ps)
+    for i in range(min(budget, n)):
+        kind, loc = ps[(start + i) % n]
+        rows += _read_one(kind, loc)
+        labels.append(loc)
+    return _dedup(rows), labels
 
 
 def his():
@@ -175,6 +211,27 @@ def fresh():
         except Exception:
             pass
     return rows
+
+
+def seen_names():
+    try:
+        return set(json.load(open(SEEN)))
+    except Exception:
+        return set()
+
+
+def mark_seen(names):
+    """Record that these skill names have now been read, so a page already read
+    says nothing next time. The list is history, not a queue."""
+    seen = seen_names() | {_norm(n) for n in names if n}
+    try:
+        os.makedirs(os.path.dirname(SEEN), exist_ok=True)
+        tmp = SEEN + ".tmp"
+        json.dump(sorted(seen), open(tmp, "w"), indent=2)
+        os.replace(tmp, SEEN)
+    except Exception:
+        pass
+    return seen
 
 
 def where_it_looked():
