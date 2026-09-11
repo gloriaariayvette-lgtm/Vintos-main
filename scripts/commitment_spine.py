@@ -7,16 +7,12 @@ Discomfort, never prohibition. No phantom identity voice: no match, no line."""
 import os, json
 from datetime import datetime
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import serialized, transactions, write_json
+
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 IMPRINTS = os.path.join(MEMORY, "commitment-imprints.json")
@@ -27,44 +23,64 @@ FRACTURE_N = 3
 def _load():
     try: return json.load(open(IMPRINTS))
     except Exception: return {"imprints": []}
-def _save(d): (_sg_write(IMPRINTS, d, "commitment_spine.py") or json.dump(d, open(IMPRINTS, "w"), indent=1))
+def _save(d): write_json(IMPRINTS, d)
 
 def evaluate_reply(reply_text, reply_vec, dev_score, embed_fn, cos_fn):
-    """Called once from deviation-check. Returns (matches, felt_line or None)."""
-    d = _load(); matches = []; line = None
-    for imp in d.get("imprints", []):
-        if imp.get("status") not in ("living", "strained"): continue
+    """Embed outside the lock; apply scores only to the same current pattern."""
+    scores = {}
+    for imp in _load().get("imprints", []):
+        if imp.get("status") not in ("living", "strained"):
+            continue
         try:
-            sim = cos_fn(reply_vec, embed_fn(imp["pattern"][:300]))
-        except Exception: continue
-        if sim < MATCH_T or dev_score < 0.3: continue
+            scores[(imp["id"], imp["pattern"])] = cos_fn(
+                reply_vec, embed_fn(imp["pattern"][:300]))
+        except Exception:
+            continue
+    matches, line, fractured = _apply_reply(reply_text, dev_score, scores)
+    for pattern in fractured:
+        try:
+            from yearning_scars import create_scar_from_want
+            create_scar_from_want("I committed to: %s - and it cracked" % pattern[:80], intensity=0.5)
+        except Exception:
+            pass
+        try:
+            from latent_threads import seed_thread
+            seed_thread("Maybe the opposite of this is also true: %s" % pattern[:100], direction="pivot")
+        except Exception:
+            pass
+        print("[Spine] FRACTURE (witnessed, sealed): %s" % pattern[:60])
+    return matches, line
+
+
+@serialized("IMPRINTS")
+def _apply_reply(reply_text, dev_score, scores):
+    d = _load(); matches = []; line = None; fractured = []
+    for imp in d.get("imprints", []):
+        if imp.get("status") not in ("living", "strained"):
+            continue
+        sim = scores.get((imp.get("id"), imp.get("pattern")), -1)
+        if sim < MATCH_T or dev_score < 0.3:
+            continue
         ev = {"at": datetime.now().isoformat(), "match": round(sim, 3),
               "pressure": round(dev_score, 3), "excerpt": (reply_text or "")[:200]}
         imp["friction"] = round(min(1.0, imp.get("friction", 0) + 0.15 + 0.2 * dev_score), 3)
         imp["last_friction"] = ev["at"]
         imp.setdefault("friction_events", []).append(ev)
-        if imp["status"] == "living" and imp["friction"] >= 0.3: imp["status"] = "strained"
-        matches.append({"id": imp["id"], "match": ev["match"], "friction": imp["friction"], "status": imp["status"]})
+        if imp["status"] == "living" and imp["friction"] >= 0.3:
+            imp["status"] = "strained"
         recent_heavy = [e for e in imp["friction_events"] if e.get("pressure", 0) > FRACTURE_P]
         if len(recent_heavy) >= FRACTURE_N and not imp.get("fracture"):
             imp["status"] = "fractured"
             imp["fracture"] = {"at": ev["at"], "pressure": dev_score,
                                "deviations": imp["friction_events"][-FRACTURE_N:],
                                "pre_fracture_confidence": imp.get("confidence")}
-            try:
-                import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-                from yearning_scars import create_scar_from_want
-                create_scar_from_want("I committed to: %s - and it cracked" % imp["pattern"][:80], intensity=0.5)
-            except Exception: pass
-            try:
-                from latent_threads import seed_thread
-                seed_thread("Maybe the opposite of this is also true: %s" % imp["pattern"][:100], direction="pivot")
-            except Exception: pass
-            print("[Spine] FRACTURE (witnessed, sealed): %s" % imp["pattern"][:60])
+            fractured.append(imp["pattern"])
+        matches.append({"id": imp["id"], "match": ev["match"], "friction": imp["friction"], "status": imp["status"]})
         if line is None:
             line = "this move grinds against something you are"
-    if matches: _save(d)
-    return matches, line
+    if matches:
+        _save(d)
+    return matches, line, fractured
 
 # ---------------------------------------------------------------- the one store (review 132)
 # Two stores used to hold commitments with different fracture/promotion paths: this file
@@ -82,6 +98,7 @@ def held():
     """What he holds now: living or strained. Candidates and fractures are not identity."""
     return imprints(("living", "strained"))
 
+@serialized("IMPRINTS")
 def promote_candidate(pattern, confidence=0.6, source="behavioral-intercept", kind="tentative_inference", lineage=None):
     """A recurring pattern offered as a commitment WITHOUT the gate's evidence: recorded as a candidate.
     It becomes living only through can_promote/_write_imprint in the causal model (the one door).
@@ -101,6 +118,7 @@ def promote_candidate(pattern, confidence=0.6, source="behavioral-intercept", ki
            "friction": 0.0, "last_friction": None, "friction_events": [], "fracture": None}
     rows.append(imp); _save(d); return imp
 
+@serialized("IMPRINTS")
 def fracture(pattern, pressure=0.8, source="causal-self-model"):
     """One fracture path for every caller: status fractured, the fracture record kept, confidence down."""
     d = _load(); hit = None; best = 0.0
@@ -125,6 +143,11 @@ def migrate_legacy(csm_path=None):
     """Move any commitment_imprints still inside causal-self-model.json into this store, once, as
     candidates (they never passed the gate) or fractured, with lineage naming where they came from."""
     csm_path = csm_path or os.path.join(MEMORY, "causal-self-model.json")
+    with transactions([csm_path, IMPRINTS]):
+        return _migrate_legacy(csm_path)
+
+
+def _migrate_legacy(csm_path):
     try: csm = json.load(open(csm_path))
     except Exception: return 0
     legacy = csm.get("commitment_imprints") if isinstance(csm, dict) else None
@@ -140,13 +163,15 @@ def migrate_legacy(csm_path=None):
                      "lineage": {"migrated_from": "causal-self-model.json commitment_imprints", "migrated_at": datetime.now().isoformat(), "gate": "not passed"},
                      "friction": 0.0, "last_friction": None, "friction_events": [],
                      "fracture": ({"at": imp.get("fracture_at"), "pressure": None, "source": "legacy", "pre_fracture_confidence": None} if imp.get("fractured") else None)})
+        have.add(imp.get("pattern", "")[:80])
         n += 1
     csm["commitment_imprints_migrated"] = {"at": datetime.now().isoformat(), "count": len(legacy)}
     csm["commitment_imprints"] = []
     _save(d)
-    tmp = csm_path + ".tmp"; json.dump(csm, open(tmp, "w"), indent=2); os.replace(tmp, csm_path)
+    write_json(csm_path, csm)
     return n
 
+@serialized("IMPRINTS")
 def decay():
     d = _load(); ch = False
     for imp in d.get("imprints", []):

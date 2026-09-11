@@ -7,8 +7,11 @@ import os, sys, json, types, tempfile, importlib.util
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-cs-"); os.environ["HOME"] = HOME
+os.environ.pop("SPARK_WORKSPACE", None)
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory"); os.makedirs(os.path.join(WS, "scripts"), exist_ok=True); os.makedirs(MEM, exist_ok=True)
 import shutil; shutil.copy(os.path.join(REPO, "scripts", "commitment_spine.py"), os.path.join(WS, "scripts", "commitment_spine.py"))
+shutil.copy(os.path.join(REPO, "scripts", "store_guard.py"), os.path.join(WS, "scripts", "store_guard.py"))
+assert os.path.commonpath([MEM, HOME]) == HOME
 R = []
 def check(name, ok, detail=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + (("  ->  %s" % (detail,)) if (detail and not ok) else ""))
@@ -55,4 +58,23 @@ check("server subsystem state reads commitment-imprints.json", sv.count('rj("com
 check("soul-review reads living/strained from commitment-imprints.json", sr.count('"commitment-imprints.json"') == 2 and 'csm.get("commitment_imprints"' not in sr)
 check("the causal model no longer writes a commitment list of its own", 'data.setdefault("commitment_imprints"' not in cm and "imprints = data.get(\"commitment_imprints\"" not in cm)
 check("the twins are identical", cm == open(os.path.join(REPO, "bin", "causal_self_model.py")).read() and sr == open(os.path.join(REPO, "bin", "soul_review.py")).read())
+import concurrent.futures
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    list(pool.map(lambda i: SP.promote_candidate("Concurrent candidate %d" % i), range(40)))
+check("concurrent promotions retain all forty candidates", sum(r["pattern"].startswith("Concurrent candidate") for r in SP.imprints()) == 40)
+CSM._write_imprint({"tendency": "embedding fixture", "trigger": "fixture", "confidence": .8})
+def embed_fixture(pattern):
+    import store_guard
+    assert not getattr(store_guard._state, "held", set())
+    SP.promote_candidate("created during embedding")
+    return [1]
+SP.evaluate_reply("fixture", [1], .4, embed_fixture, lambda a,b: .9)
+check("reply evaluation retains changes made during embedding", any(r["pattern"] == "created during embedding" for r in SP.imprints()))
+# A revoked/edited pattern is never resurrected from a stale embedding.
+def fracture_fixture(pattern):
+    SP.fracture(pattern, .9, "fixture")
+    return [1]
+SP.evaluate_reply("fixture", [1], .4, fracture_fixture, lambda a,b: .9)
+check("reply evaluation does not revive concurrently fractured identity", next(r for r in SP.imprints() if r["pattern"].startswith("embedding fixture"))["status"] == "fractured")
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

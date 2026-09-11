@@ -359,7 +359,8 @@ def _write_imprint(entry):
                     "evidence": entry.get("evidence", [])},   # review 107: the occurrences and quotes travel with it
         "reinforcements": [{"observed_at": d} for d in entry.get("evidence_dates", [])],
         "friction": 0.0, "last_friction": None, "friction_events": [], "fracture": None})
-    (_sg_write(IMPRINTS_FILE, data, "causal_self_model.py") or json.dump(data, open(IMPRINTS_FILE, "w"), indent=1))
+    from store_guard import write_json
+    write_json(IMPRINTS_FILE, data)
     print("[Spine] Commitment imprint formed (earned): %s" % entry.get("tendency","")[:60])
 
 def promote_to_commitment_imprint(pattern_text, confidence=0.6, source="behavioral-intercept"):
@@ -392,6 +393,7 @@ import sys as _store_sys
 from pathlib import Path as _StorePath
 _store_sys.path.insert(0, str(_StorePath(__file__).resolve().parent.parent / "scripts"))
 from store_guard import serialized as _serialized, write_json as _write_json
+_write_imprint = _serialized('IMPRINTS_FILE')(_write_imprint)
 add_entry = _serialized('MODEL_FILE')(add_entry)
 check_imprint_promotions = _serialized('MODEL_FILE')(check_imprint_promotions)
 fracture_imprint = _serialized('MODEL_FILE')(fracture_imprint)
