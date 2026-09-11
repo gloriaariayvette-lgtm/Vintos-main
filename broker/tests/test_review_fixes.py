@@ -40,6 +40,20 @@ print("\n--- F10: a reveal claims bytes_verified only when bytes were hashed and
 V = load("atelier_visit", os.path.join(REPO, "scripts", "atelier-visit.py"))
 WSP = tempfile.mkdtemp(); os.makedirs(os.path.join(WSP, "memory", "art"), exist_ok=True)
 V.WSP = WSP
+# _deliver_reveal pushes to her real phone (ntfy) as its last act. A test must NEVER
+# reach the world: stub the network so no notification is ever sent from a test run.
+# (This test once fired real "no digest" pushes to her during a deploy's suite phase.)
+_POSTS = []
+class _NoNet:
+    @staticmethod
+    def post(*a, **k):
+        _POSTS.append((a, k))
+        class _R:  # a benign stand-in for a requests.Response
+            status_code = 200
+            def json(self): return {}
+        return _R()
+V.requests = _NoNet
+check("the reveal test cannot reach the network (ntfy is stubbed)", V.requests is _NoNet)
 store = os.path.join(WSP, "memory", "atelier-reveals.json")
 def last_reveal():
     return json.load(open(store))[-1]
