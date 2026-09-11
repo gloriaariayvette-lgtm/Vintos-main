@@ -28,11 +28,22 @@ def in_quiet_hours(now=None):
     return not (QUIET[0] <= h <= QUIET[1])
 
 
-def may_send(kind, artifact_id=None, channel="ntfy", now=None):
+def may_send(kind, artifact_id=None, channel="ntfy", now=None, requested_by_her=False, is_repair=False):
     now = now or datetime.now()
     lim = LIMITS.get(kind)
     if lim is None:
         return False, "no send policy named for kind %r" % kind
+    # A want of his own about reaching less is part of this law, not a note beside it.
+    # It never holds back something she asked for, and never holds back a repair.
+    if kind in ("outreach", "video"):
+        try:
+            sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import want_stance as _ws
+            ok, why = _ws.may_initiate("outreach", requested_by_her=requested_by_her, is_repair=is_repair, now=now)
+            if not ok:
+                return False, why
+        except Exception:
+            pass
     if lim.get("quiet") and in_quiet_hours(now):
         return False, "quiet hours (%02d-%02d): it is %02d:%02d" % (QUIET[0], QUIET[1], now.hour, now.minute)
     if "per_day" in lim:

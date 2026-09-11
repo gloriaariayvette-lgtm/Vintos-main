@@ -110,8 +110,12 @@ def complete(want, how, by, note="", evidence=None):
     row["result"] = how; _log(row); return row
 
 
-def admit(want_text, source, candidate_kind="", present_pull=""):
-    """Both screens at once: the shape screen (want_contract) and his standing stance (wants_meta)."""
+def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
+    """Both screens at once: the shape screen (want_contract) and his standing stance (wants_meta).
+
+    A want that names a rate rather than a thing — to analyse less, to reach for her
+    less often — also opens a stance here, so the house slows where he asked it to
+    instead of leaving the want to sit unfulfillable (want_stance)."""
     out = {"want": str(want_text)[:250], "source": source, "shape": "ADMIT_CONTRACT_UNAVAILABLE", "stance": None, "state": "ADMIT", "why": []}
     try:
         sys.path.insert(0, os.path.join(WS, "scripts")); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -122,6 +126,14 @@ def admit(want_text, source, candidate_kind="", present_pull=""):
     try:
         from wants_meta import consult as _consult
         out["stance"] = _consult(want_text)
+    except Exception:
+        pass
+    try:
+        import want_stance as _ws
+        held = _ws.admit({"id": want_id, "want": want_text})
+        if held:
+            out["holding"] = {"dimension": held["dimension"], "direction": held["direction"], "until": held["until"]}
+            out["why"].append("holds a stance: %s %s" % (held["direction"], held["dimension"]))
     except Exception:
         pass
     if out["shape"].startswith("HELD"):

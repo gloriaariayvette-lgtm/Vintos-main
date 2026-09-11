@@ -5094,6 +5094,19 @@ except Exception as _dk_e:
     print("[desktop] not registered:", _dk_e, flush=True)
 
 
+def _stance_context():
+    """What he is holding to just now because he wanted it — one line, in the terms he
+    used, so a stance he formed reads to him as his own and not as a rule (want_stance)."""
+    try:
+        import sys as _st_sys
+        if os.path.join(WORKSPACE, "scripts") not in _st_sys.path: _st_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import want_stance as _ws
+        line = _ws.context_line()
+        return ("\n\n" + line) if line else ""
+    except Exception:
+        return ""
+
+
 def _screen_context():
     """What Gloria is sharing on her screen, as Gemma described it, while sharing is on (scripts/screen_share.py)."""
     try:
@@ -8256,7 +8269,7 @@ Your current self-model (excerpt):
                 _pwj.dump({"offer_make": False, "at": 0}, open(os.path.join(MEMORY, ".projector-window.json"), "w"))
         except Exception:
             pass
-        messages = [{"role": "system", "content": system_prompt + _hw_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+        messages = [{"role": "system", "content": system_prompt + _hw_context() + _stance_context() + _screen_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
         try:
             import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
             # route the turn record through the coordinator so the context's
@@ -9725,6 +9738,81 @@ async def reelroom_chat(request: Request):
         return {"reply": reply, "mode": mode}
     except Exception as e:
         return {"reply": "", "error": str(e)[:200]}
+
+
+# === The Skill Forge — the card she answers when he asks for a hand he does not have ===
+
+def _forge():
+    import importlib.util as _il, sys as _s
+    _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    if "skill_forge" in _s.modules:
+        return _s.modules["skill_forge"]
+    return _il.import_module("skill_forge")
+
+
+@app.get("/api/skills/proposals")
+async def skill_proposals(request: Request, state: str = "proposed"):
+    """What he has asked for. The app shows the proposed ones as cards; the rest is
+    history she can read. Nothing here decides anything."""
+    _require_secret(request)
+    try:
+        f = _forge()
+        rows = [f.card(r) for r in f._load() if state in ("", "all") or r.get("state") == state]
+        return {"ok": True, "state": state, "proposals": rows,
+                "resumable": f.resumable()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "proposals": []}
+
+
+@app.post("/api/skills/proposals/{pid}/approve")
+async def skill_approve(pid: str, request: Request):
+    """Her yes, with the scope and the invocation authority she is willing to give.
+    The grant is the narrower of what he asked and what she granted; approving that
+    a capability may exist is not approving every future use of it."""
+    _require_secret(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    granted = {}
+    if isinstance(body.get("scope"), dict): granted["scope"] = body["scope"]
+    if isinstance(body.get("permissions"), list): granted["permissions"] = body["permissions"]
+    if body.get("invocation"): granted["invocation"] = str(body["invocation"])
+    f = _forge()
+    row, why = f.approve(pid, granted or None)
+    if row is None:
+        raise HTTPException(status_code=409, detail=why)
+    return {"ok": True, "proposal": f.card(row)}
+
+
+@app.post("/api/skills/proposals/{pid}/deny")
+async def skill_deny(pid: str, request: Request):
+    _require_secret(request)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    f = _forge()
+    row, why = f.deny(pid, str(body.get("reason") or ""))
+    if row is None:
+        raise HTTPException(status_code=409, detail=why)
+    return {"ok": True, "proposal": f.card(row)}
+
+
+@app.get("/api/skills/stances")
+async def skill_stances(request: Request):
+    """What he is holding to just now because he wanted it, and what each slows."""
+    _require_secret(request)
+    try:
+        import importlib.util as _il, sys as _s
+        _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        ws = _s.modules.get("want_stance") or _il.import_module("want_stance")
+        return {"ok": True, "standing": ws.standing(),
+                "dimensions": ws.DIMENSIONS, "line": ws.context_line()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "standing": []}
 
 
 @app.post("/api/game/reelroom/plan")

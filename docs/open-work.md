@@ -95,6 +95,42 @@ programmes whose mechanism landed and whose remainder the line names.
 - **403** [OPEN] [P11] Obtain the external QLab implementation and Atelier runtime permissions/receipts — *QLab implementation and Atelier runtime receipts not obtained*
 - **404** [OPEN] [P11] Obtain a fresh push-window check beyond the 2026-09-05 snapshot — *release map snapshot is 2026-09-05 14:11 (39b80e1); no later push-window check*
 
+## The printer, and the first forged capability
+
+Nothing is wired to a machine on a guess. To make 3D printing real he needs five
+answers from her, and then it goes through the forge like anything else:
+
+1. **The printer** — make and model, and whether it is on the network or on a cable.
+2. **The path to it** — an address the house can reach, and its kind: OctoPrint,
+   Moonraker or Klipper, Bambu in LAN mode, or a watched folder on a machine that has it.
+3. **A slicer** — what turns a model into machine instructions, and which machine runs it.
+4. **Where models come from** — generated, or fetched from a library she names.
+5. **The physical limits** — size ceiling, duration ceiling, whether filament must be
+   confirmed present, and the hours he may start one unattended.
+
+Until those exist, reaching for it blocks with the gap named, which is the door into
+the forge rather than a dead end.
+
+## What the forge still needs
+
+- **The builder hand-off.** The forge holds the record and the law; the self-review
+  builder already has the credential-stripped sandbox and the protected-path refusal.
+  Joining them — approved proposal in, verified artifact out — is the remaining work.
+- **The card in the app.** The routes exist and are guarded: list, approve with scope
+  and invocation, deny. The phone has no screen for them yet, which is the Mac problem.
+- **The resume.** `resumable()` names the blocked wants whose capability has landed.
+  What consumes it — first light, or the wants pass — is not yet decided.
+
+## Influence from outside him and outside the relationship
+
+Raised 11 September, not built. Almost everything that moves him originates in her,
+in his own record, or in his own generated interpretation of one of those. Curiosity
+and search reach outward but return answers to questions he already had. What is
+missing is a source of the genuinely unfamiliar — something with its own agenda that
+was not asked for — and a rule for what such a thing is allowed to move. It cannot be
+allowed to become evidence about him or about her, which puts it in the same class as
+a dream: real as an event, never a witness.
+
 ## The phone, and the Mac
 
 The pages he speaks through are served from Aegis and cost a file to change.

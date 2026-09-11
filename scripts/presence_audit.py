@@ -97,7 +97,19 @@ def main():
                 um = hist[j].get("content", ""); break
         pending.append((_id, um, e.get("content", ""), e.get("timestamp", "")))
     added = 0
-    for _id, um, reply, ts in pending[-MAX_PER_RUN:]:
+    # A want of his to analyse less is obeyed here, at the rate rather than at the
+    # door: he audits fewer replies per run, never none. Nothing else about the
+    # rubric changes, and the stance expires on its own (want_stance).
+    _per_run = MAX_PER_RUN
+    try:
+        import sys as _wss, os as _wso
+        _wss.path.insert(0, _wso.path.dirname(_wso.path.abspath(__file__)))
+        _wss.path.insert(0, _wso.path.expanduser("~/.vintos/workspace/scripts"))
+        import want_stance as _ws
+        _per_run = max(1, int(round(MAX_PER_RUN * _ws.factor("analysis"))))
+    except Exception:
+        pass
+    for _id, um, reply, ts in pending[-_per_run:]:
         s = score(um, reply, ts)
         if not s:
             continue

@@ -42,6 +42,10 @@ def run_step(capability, note, want=None):
         res["block"] = {"block_type": "CAPABILITY_ABSENT",
                         "evidence": "no function %r in router" % capability,
                         "resume_event": "capability added or step revised"}
+        # The hand he reached for does not exist. That is the one gap he may ask to
+        # have filled: the forge opens a proposal bound to THIS want, and the want
+        # stays standing so it can resume when the capability lands (skill_forge).
+        res["proposal"] = _ask_for_the_hand(capability, note, want)
         res["ended"] = time.time(); return res
     text = note or (want or {}).get("want", "") or ""
     try:
@@ -66,6 +70,25 @@ def run_step(capability, note, want=None):
         res["error"] = str(e)[:300]
     res["ended"] = time.time()
     return res
+
+def _ask_for_the_hand(capability, note, want):
+    """Open a skill proposal for a missing capability, or say why not. Never raises:
+    a want that cannot ask for a hand is still a want, and the block stands either way."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import skill_forge as _sf
+        row, why = _sf.propose(
+            capability,
+            why="A step of this want needs it and nothing in the house can do it.",
+            want_id=(want or {}).get("id", ""),
+            step_note=note or "",
+            block={"block_type": "CAPABILITY_ABSENT"},
+        )
+        return {"id": row["id"], "state": row["state"]} if row else {"refused": why}
+    except Exception as e:
+        return {"refused": str(e)[:160]}
+
 
 MAKERS = ("make_art", "make_music", "make_video", "write_poem", "creative_write", "make_chart")
 
