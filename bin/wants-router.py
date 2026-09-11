@@ -1098,15 +1098,21 @@ def make_video(want_text, reasoning="", immediate=False):
             capture_output=True, text=True, timeout=300
         )
         return result.returncode == 0
-    if any(e.get("want_text","") == want_text for e in queue):
-        log(f"Video already queued — skipping duplicate")
-        return True
+    from store_guard import locked_update
+    from want_stance import intent
+    flags = intent()
     want_id = os.environ.get("STEP_WANT_ID", "")
-    queue.append({"want_text": want_text, "reasoning": reasoning, "duration": duration, "queued_at": __import__("datetime").datetime.now().isoformat(), "want_id": want_id,
-                  "image_class": "WANT_ACT", "origin": "want_executor"})
-    _j.dump(queue, open(queue_file, "w"), indent=2)
+    entry = {"queue_id": __import__("uuid").uuid4().hex, "want_text": want_text,
+             "reasoning": reasoning, "duration": duration, "queued_at": datetime.now().isoformat(),
+             "want_id": want_id, "image_class": "WANT_ACT", "origin": "want_executor",
+             "requested_by_her": flags["requested_by_her"], "is_repair": flags["is_repair"]}
+    def enqueue(current):
+        if any(isinstance(e, dict) and e.get("want_text") == want_text for e in current): return None
+        return current + [entry]
+    locked_update(queue_file, enqueue, reader="wants-router.make_video")
     log(f"Video want queued for 7:30am: {want_text[:80]} ({duration}s)")
-    return True
+    return "queued"
+
 
 def analyze_memory(want_text):
     """Generic memory analysis. Reads STEP_PARAMS for target type and n.

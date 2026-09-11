@@ -31,6 +31,11 @@ sys.modules["effect_gate"].hardware_stopped = lambda: False
 sys.modules["effect_gate"].dispatch_check = lambda permit, target, level, kind, digest: (seen.append((permit,target,level,kind,digest)) or (False,"wrong digest"))
 check("central door preserves the exact bound permit and digest", not EA.dispatch("toys", target="mission", level=4, permit="permit", digest="digest")[0] and seen == [("permit","mission",4,None,"digest")])
 
+def gate_fault(*args, **kwargs): raise OSError("fixture gate fault")
+sys.modules["effect_gate"].authorize = gate_fault
+sys.modules["effect_gate"].classify = lambda target, level, kind: "reduction"
+check("a verified lowering remains available during a gate fault", EA.dispatch("toys",target="mission",level=4)[0])
+
 print("\n--- 77 / 93: one physical contract ---")
 PC = load("physical_contract", os.path.join(REPO, "scripts", "physical_contract.py"))
 e = PC.effect("EF-1", "mission", 12, kind="deliberate", permit_digest="d1", turn_id="T1")

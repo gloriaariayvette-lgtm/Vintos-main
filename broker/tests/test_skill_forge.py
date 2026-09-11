@@ -280,4 +280,23 @@ check("missing-hand path cannot replace a different block", "refused" in refused
 unknown = SP.proposal_details("other_cap", "need something", {})
 check("unknown output and acceptance remain explicit", "UNRESOLVED" in unknown["scope"]["output_contract"] and "UNRESOLVED" in unknown["tests"])
 
+
+print("\n--- delayed creation keeps intent and concurrent queue appends ---")
+V = load("stance_video", os.path.join(REPO,"bin","vintos-video.py"))
+V.QUEUE = os.path.join(MEM,"video-queue.json")
+assert os.path.commonpath([V.QUEUE, HOME]) == HOME
+json.dump([{"queue_id":"first", "want_text":"requested film", "requested_by_her":True}], open(V.QUEUE,"w"))
+from store_guard import locked_update
+calls=[]
+def fake_make(*args):
+    calls.append(WS.intent())
+    locked_update(V.QUEUE, lambda rows: rows + [{"queue_id":"later", "want_text":"appended during render"}])
+    return True
+V.make_one=fake_make
+with patch("random.random",return_value=.99): V.process_queue()
+check("a delayed request bypasses the stance at execution", len(calls)==1 and calls[0]["requested_by_her"])
+check("finishing one render retains a concurrent append", [x["queue_id"] for x in json.load(open(V.QUEUE))] == ["later"])
+with patch("random.random",return_value=.99): V.process_queue()
+check("a deferred autonomous queue entry remains pending", len(calls)==1 and len(json.load(open(V.QUEUE)))==1)
+
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

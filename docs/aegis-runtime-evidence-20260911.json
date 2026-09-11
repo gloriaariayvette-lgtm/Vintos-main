@@ -1,0 +1,980 @@
+{
+  "collected_at": "2026-09-11T16:40:58.877969+00:00",
+  "deployed_commit": "6b4fac531d456ec4d6cadf33a6fedd0a2a984ef9",
+  "release": "20260911-114007-6b4fac5.json",
+  "rollback": "/home/gloria/.vintos/backups/atelier-20260911-113725/restore.sh",
+  "units": {
+    "vintos-server.service": {
+      "MainPID": "737550",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "Id": "vintos-server.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/home/gloria/.config/systemd/user/vintos-server.service",
+      "DropInPaths": "",
+      "UnitFileState": "enabled"
+    },
+    "vintos-self-review.service": {
+      "MainPID": "737400",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "Id": "vintos-self-review.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/home/gloria/.config/systemd/user/vintos-self-review.service",
+      "DropInPaths": "",
+      "UnitFileState": "enabled"
+    },
+    "vintos-robot-bridge.service": {
+      "MainPID": "737234",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "Id": "vintos-robot-bridge.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/home/gloria/.config/systemd/user/vintos-robot-bridge.service",
+      "DropInPaths": "",
+      "UnitFileState": "enabled"
+    },
+    "vintos-skill-surf.timer": {
+      "NextElapseUSecRealtime": "Mon 2026-09-14 09:00:00 CDT",
+      "LastTriggerUSec": "Fri 2026-09-11 01:39:52 CDT",
+      "Result": "success",
+      "Id": "vintos-skill-surf.timer",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "FragmentPath": "/home/gloria/.config/systemd/user/vintos-skill-surf.timer",
+      "DropInPaths": "",
+      "UnitFileState": "enabled"
+    },
+    "vintos-emoclaw.service": {
+      "MainPID": "365",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "Id": "vintos-emoclaw.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/home/gloria/.config/systemd/user/vintos-emoclaw.service",
+      "DropInPaths": "",
+      "UnitFileState": "enabled"
+    }
+  },
+  "openapi_path_count": 212,
+  "mounted_routes": {
+    "/api/value-map/rank": [
+      "delete"
+    ],
+    "/api/value-map/hearts": [
+      "get",
+      "post"
+    ],
+    "/api/value-map/current": [
+      "get"
+    ],
+    "/api/value-map/heart": [
+      "post",
+      "delete"
+    ],
+    "/weekly-map": [
+      "get"
+    ],
+    "/weekly-summary": [
+      "get"
+    ],
+    "/dashboard": [
+      "get"
+    ],
+    "/api/dashboard/snapshots": [
+      "get"
+    ],
+    "/api/dashboard/nifrathir": [
+      "get"
+    ],
+    "/api/dashboard/discourse": [
+      "get"
+    ],
+    "/api/dashboard/threads": [
+      "get"
+    ],
+    "/api/dashboard/reflections": [
+      "get"
+    ],
+    "/api/dashboard/authenticity": [
+      "get"
+    ],
+    "/api/dashboard/yearning": [
+      "get"
+    ],
+    "/api/dashboard/wants": [
+      "get"
+    ],
+    "/api/dashboard/systems": [
+      "get"
+    ],
+    "/api/dashboard/emotional-trajectory": [
+      "get"
+    ],
+    "/api/thread-detail/{thread_id}": [
+      "get"
+    ],
+    "/api/want-detail/{want_id}": [
+      "get"
+    ],
+    "/api/file/{category}/{filename}": [
+      "get"
+    ],
+    "/video-hero": [
+      "get"
+    ],
+    "/api/video/hero": [
+      "post"
+    ],
+    "/api/video/file/{filename}": [
+      "get"
+    ],
+    "/api/pride": [
+      "get"
+    ],
+    "/api/causality": [
+      "get"
+    ],
+    "/api/self-review": [
+      "get"
+    ],
+    "/api/atelier/reveals": [
+      "get"
+    ],
+    "/api/self-review/{proposal_id}/decision": [
+      "post"
+    ],
+    "/api/blush-ledger/bring-up": [
+      "post"
+    ],
+    "/api/blush-ledger/dismiss-bring-up": [
+      "post"
+    ],
+    "/api/causality/bring-up": [
+      "post"
+    ],
+    "/api/causality/dismiss-bring-up": [
+      "post"
+    ],
+    "/api/blush-ledger": [
+      "get"
+    ],
+    "/api/therapy-mirror-log": [
+      "get"
+    ],
+    "/api/blush-ledger/{entry_ref}/mark": [
+      "post"
+    ],
+    "/api/causality/{entry_ref}/mark": [
+      "post"
+    ],
+    "/api/pearls": [
+      "get"
+    ],
+    "/api/system/capabilities": [
+      "get"
+    ],
+    "/api/system/status": [
+      "get"
+    ],
+    "/api/system/dismiss-error": [
+      "post"
+    ],
+    "/api/avatar": [
+      "get"
+    ],
+    "/api/avatar/log": [
+      "get"
+    ],
+    "/api/avatar/gaps": [
+      "get"
+    ],
+    "/api/state": [
+      "get"
+    ],
+    "/api/history/avatars": [
+      "get"
+    ],
+    "/api/history": [
+      "get"
+    ],
+    "/api/dreams": [
+      "get"
+    ],
+    "/api/inner-life": [
+      "get"
+    ],
+    "/api/creative": [
+      "get"
+    ],
+    "/api/philosophy": [
+      "get"
+    ],
+    "/api/velqan": [
+      "get"
+    ],
+    "/api/confessions": [
+      "get"
+    ],
+    "/api/mirror": [
+      "get"
+    ],
+    "/api/biography": [
+      "get"
+    ],
+    "/api/guestbook": [
+      "get"
+    ],
+    "/api/guestbook/witness": [
+      "post"
+    ],
+    "/api/settings/params": [
+      "get",
+      "post"
+    ],
+    "/api/settings/publish": [
+      "get",
+      "post"
+    ],
+    "/api/voice/call-log": [
+      "post"
+    ],
+    "/voice-test": [
+      "get"
+    ],
+    "/voice-tune": [
+      "get"
+    ],
+    "/api/proposals": [
+      "get"
+    ],
+    "/api/proposals/{filename}/approve": [
+      "post"
+    ],
+    "/api/proposals/{filename}/reject": [
+      "post"
+    ],
+    "/api/transcribe": [
+      "post"
+    ],
+    "/app/": [
+      "get"
+    ],
+    "/app/manifest.json": [
+      "get"
+    ],
+    "/api/confession/status": [
+      "get"
+    ],
+    "/api/chat": [
+      "post"
+    ],
+    "/api/chat/full": [
+      "post"
+    ],
+    "/api/humor/profile": [
+      "get"
+    ],
+    "/api/humor/rate": [
+      "post"
+    ],
+    "/api/mischief/log": [
+      "get"
+    ],
+    "/api/mischief/rate/{filename}": [
+      "post"
+    ],
+    "/api/robot/chat": [
+      "post"
+    ],
+    "/api/robot/voice/latest": [
+      "get"
+    ],
+    "/api/robot/state": [
+      "get"
+    ],
+    "/api/desktop/status": [
+      "get"
+    ],
+    "/api/desktop/start": [
+      "post"
+    ],
+    "/api/desktop/stop": [
+      "post"
+    ],
+    "/api/desktop/share/start": [
+      "post"
+    ],
+    "/api/desktop/share/stop": [
+      "post"
+    ],
+    "/api/desktop/share/status": [
+      "get"
+    ],
+    "/api/chat/history": [
+      "get"
+    ],
+    "/api/memory/search": [
+      "get"
+    ],
+    "/api/chat/memory": [
+      "post"
+    ],
+    "/api/residents": [
+      "get"
+    ],
+    "/api/art": [
+      "get"
+    ],
+    "/api/art/svg/{filename}": [
+      "get"
+    ],
+    "/api/art/gallery": [
+      "get"
+    ],
+    "/api/art/painting/{filename}": [
+      "get"
+    ],
+    "/api/art/music": [
+      "get"
+    ],
+    "/api/art/music/stream/{filename}": [
+      "get"
+    ],
+    "/api/command-bubble": [
+      "get"
+    ],
+    "/api/voice/transcribe": [
+      "post"
+    ],
+    "/api/voice/chat": [
+      "post"
+    ],
+    "/api/voice/chat/history": [
+      "get"
+    ],
+    "/api/voice/latest": [
+      "get"
+    ],
+    "/api/test-mode": [
+      "get",
+      "post"
+    ],
+    "/api/briefing/latest": [
+      "get"
+    ],
+    "/api/voice/stream/{filename}": [
+      "get"
+    ],
+    "/api/debug/context": [
+      "get"
+    ],
+    "/api/memory/semantic": [
+      "get"
+    ],
+    "/api/debug/chat-message": [
+      "post"
+    ],
+    "/api/outreach": [
+      "get"
+    ],
+    "/api/outreach/ack": [
+      "post"
+    ],
+    "/api/outreach/history": [
+      "get"
+    ],
+    "/api/chat/photo": [
+      "post"
+    ],
+    "/api/avatar/photo": [
+      "post"
+    ],
+    "/api/grounding/status": [
+      "get"
+    ],
+    "/api/grounding/toggle": [
+      "post"
+    ],
+    "/api/memory/remember": [
+      "post"
+    ],
+    "/api/music/share": [
+      "post"
+    ],
+    "/api/music/share/audio": [
+      "post"
+    ],
+    "/api/music/shares": [
+      "get"
+    ],
+    "/api/art/video": [
+      "get"
+    ],
+    "/api/art/video/stream/{filename}": [
+      "get"
+    ],
+    "/api/review/held": [
+      "get"
+    ],
+    "/api/review/held/{idx}/pass": [
+      "post"
+    ],
+    "/api/review/held/{idx}/dismiss": [
+      "post"
+    ],
+    "/api/hallucination/flags": [
+      "get"
+    ],
+    "/api/hallucination/flags/{flag_id}": [
+      "post",
+      "delete"
+    ],
+    "/api/wants/fulfilled": [
+      "get"
+    ],
+    "/scene-upload": [
+      "get"
+    ],
+    "/api/upload/scene-image/base64": [
+      "post"
+    ],
+    "/api/upload/scene-image": [
+      "post"
+    ],
+    "/api/wants": [
+      "get"
+    ],
+    "/api/avatar/presence": [
+      "post"
+    ],
+    "/api/wants/dismissed": [
+      "get"
+    ],
+    "/api/wants/{want_id}": [
+      "patch",
+      "delete"
+    ],
+    "/api/wants/{want_id}/discussion": [
+      "get",
+      "post"
+    ],
+    "/api/wants/{want_id}/respond": [
+      "post"
+    ],
+    "/api/wants/{want_id}/multistep": [
+      "patch"
+    ],
+    "/api/wants/{want_id}/steps": [
+      "post"
+    ],
+    "/api/wants/{want_id}/steps/{step_index}": [
+      "delete"
+    ],
+    "/api/wants/{want_id}/advance": [
+      "post"
+    ],
+    "/api/screen": [
+      "get"
+    ],
+    "/api/threads": [
+      "get"
+    ],
+    "/api/threads/{thread_id}": [
+      "delete"
+    ],
+    "/api/threads/{thread_id}/system-route": [
+      "post"
+    ],
+    "/api/threads/weave-now": [
+      "post"
+    ],
+    "/api/threads/weave-groups": [
+      "get",
+      "post"
+    ],
+    "/api/voice/sample/{voice_id}": [
+      "get"
+    ],
+    "/api/voice/token": [
+      "post"
+    ],
+    "/api/voice/ledger": [
+      "post"
+    ],
+    "/api/voice/session-end": [
+      "post"
+    ],
+    "/api/voice/pending-speech": [
+      "get"
+    ],
+    "/api/thruster/overdrive": [
+      "post"
+    ],
+    "/api/gcs": [
+      "post"
+    ],
+    "/api/gcs/clear": [
+      "post"
+    ],
+    "/api/hardware/button": [
+      "post"
+    ],
+    "/api/avatar/chat": [
+      "post"
+    ],
+    "/api/avatar/imprint": [
+      "get"
+    ],
+    "/api/avatar/history": [
+      "get"
+    ],
+    "/api/avatar/brain": [
+      "get",
+      "post"
+    ],
+    "/api/avatar/speak": [
+      "post"
+    ],
+    "/": [
+      "get"
+    ],
+    "/api/map/state": [
+      "get"
+    ],
+    "/api/map/conscious": [
+      "get"
+    ],
+    "/api/fragments": [
+      "get",
+      "post"
+    ],
+    "/map": [
+      "get"
+    ],
+    "/aq": [
+      "get"
+    ],
+    "/aq/answer": [
+      "post"
+    ],
+    "/api/ring/live": [
+      "post"
+    ],
+    "/api/ring/latest": [
+      "get"
+    ],
+    "/api/voice/framing": [
+      "get"
+    ],
+    "/api/debug/routes": [
+      "get"
+    ],
+    "/avatar/stage/manifest": [
+      "get"
+    ],
+    "/avatar/stage/rooms-upload": [
+      "get"
+    ],
+    "/avatar/stage/room-photo/{name}": [
+      "post"
+    ],
+    "/avatar/stage/stills": [
+      "get"
+    ],
+    "/avatar/stage/still/{name}": [
+      "get"
+    ],
+    "/avatar/stage/rooms": [
+      "get"
+    ],
+    "/avatar/stage/clip/{name}": [
+      "get"
+    ],
+    "/api/avatar/stage/speak": [
+      "post"
+    ],
+    "/api/avatar/live": [
+      "post"
+    ],
+    "/api/avatar/live/status": [
+      "get"
+    ],
+    "/avatar/stage/speech/{name}": [
+      "get"
+    ],
+    "/api/chat/study/log": [
+      "get"
+    ],
+    "/api/chat/study/coverage": [
+      "get"
+    ],
+    "/api/chat/study/session": [
+      "post"
+    ],
+    "/api/chat/study/progress": [
+      "get"
+    ],
+    "/api/chat/study/mode": [
+      "post"
+    ],
+    "/api/chat/study/clear": [
+      "post"
+    ],
+    "/api/chat/study/apply": [
+      "post"
+    ],
+    "/api/chat/study/decline": [
+      "post"
+    ],
+    "/api/chat/study": [
+      "post"
+    ],
+    "/api/lm/status": [
+      "get"
+    ],
+    "/api/game/reelroom/film": [
+      "post"
+    ],
+    "/api/game/reelroom/chat": [
+      "post"
+    ],
+    "/api/sparks": [
+      "get"
+    ],
+    "/api/print/jobs": [
+      "get"
+    ],
+    "/api/print/jobs/{job_id}/answer": [
+      "post"
+    ],
+    "/api/skills/proposals": [
+      "get"
+    ],
+    "/api/skills/proposals/{pid}/approve": [
+      "post"
+    ],
+    "/api/skills/proposals/{pid}/reconcile": [
+      "post"
+    ],
+    "/api/skills/proposals/{pid}/install": [
+      "post"
+    ],
+    "/api/skills/proposals/{pid}/invoke": [
+      "post"
+    ],
+    "/api/skills/proposals/{pid}/deny": [
+      "post"
+    ],
+    "/api/skills/stances": [
+      "get"
+    ],
+    "/api/game/reelroom/plan": [
+      "post"
+    ],
+    "/api/game/screenshot": [
+      "post"
+    ],
+    "/api/game/reelroom/audio": [
+      "post"
+    ],
+    "/api/game/reelroom/summary": [
+      "post"
+    ],
+    "/api/game/reelroom/sessions": [
+      "get"
+    ],
+    "/api/home/lights/color": [
+      "post"
+    ],
+    "/api/home/lights/flicker": [
+      "post"
+    ],
+    "/api/home/echo/speak": [
+      "post"
+    ],
+    "/api/home/echo/announce": [
+      "post"
+    ],
+    "/api/home/tv/volume": [
+      "post"
+    ],
+    "/api/home/tv/youtube": [
+      "post"
+    ],
+    "/api/home/echo/spotify": [
+      "post"
+    ]
+  },
+  "cron_active_entries": 180,
+  "installed_file_hash_count": 745,
+  "daemon": {
+    "path": "/home/gloria/.vintos/workspace/emotion_model/daemon.py",
+    "bytes": 10492,
+    "sha256": "0dcd98d78838fa3437bc5eb5adab3a768b9d6e89d144fcbd14d968930b6d738a",
+    "mtime": 1787292745.9286356
+  },
+  "emotion_unit_paths": [
+    "WorkingDirectory=/home/gloria/.vintos/workspace",
+    "ExecStart=/home/gloria/.vintos/workspace/emotion_model/.venv/bin/python3 -m emotion_model.daemon"
+  ],
+  "emotion_checkpoints": [
+    {
+      "path": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/training_checkpoint.pt",
+      "bytes": 1948260,
+      "sha256": "f24fe55076e8ff54403787908efe39e0d73bf5676c0582a1439953d73a3e5f66",
+      "mtime": 1784840571.8544145
+    },
+    {
+      "path": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/rel_embeddings.pt",
+      "bytes": 1818,
+      "sha256": "2cc8af1ec7cdb04278d000a7a193e813b55433b400f4036bbcc93fbd33a4b307",
+      "mtime": 1784840566.73272
+    },
+    {
+      "path": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/velaris_base_model.pt",
+      "bytes": 649013,
+      "sha256": "9dcf7d85334148004ca777b8aae1030248c6b8fca7477bae7366877af4edce4f",
+      "mtime": 1783289241.6323235
+    },
+    {
+      "path": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/final_model.pt",
+      "bytes": 649031,
+      "sha256": "ed8b81ffa765e79f33dddcf8ef8e6c3d8e59440c21fa7192d01a6705504d9380",
+      "mtime": 1784840571.8586824
+    },
+    {
+      "path": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/best_model.pt",
+      "bytes": 649013,
+      "sha256": "5957a612b7caf72abef1a3ea0a886c7319e4b982828f4e5f955f7b30187f4945",
+      "mtime": 1784840566.73272
+    }
+  ],
+  "embedding_samples": [
+    {
+      "keys": [
+        "embedding",
+        "file",
+        "text",
+        "title"
+      ],
+      "vectors": {
+        "embedding": 768
+      },
+      "model": null
+    },
+    {
+      "keys": [
+        "embedding",
+        "file",
+        "text",
+        "title"
+      ],
+      "vectors": {
+        "embedding": 768
+      },
+      "model": null
+    },
+    {
+      "keys": [
+        "embedding",
+        "file",
+        "text",
+        "title"
+      ],
+      "vectors": {
+        "embedding": 768
+      },
+      "model": null
+    }
+  ],
+  "installed_code_constants": {
+    "memory-search.py": {
+      "file": {
+        "path": "/home/gloria/.vintos/workspace/scripts/memory-search.py",
+        "bytes": 5262,
+        "sha256": "5a19c9347fa852d5ea664f601ae1ee8ecbb161ca1053d9b606d70d93f0f6399f",
+        "mtime": 1789142828.1789436
+      },
+      "constants": {
+        "EMBED_MODEL": "text-embedding-nomic-embed-text-v1.5"
+      }
+    },
+    "voice_session_ledger.py": {
+      "file": {
+        "path": "/home/gloria/.vintos/workspace/scripts/voice_session_ledger.py",
+        "bytes": 6739,
+        "sha256": "9a5d136ee97550a0b729a192ef5ef5e0f16ba062fa859fc9b6e96bc0424bf9a6",
+        "mtime": 1784232192.4946294
+      },
+      "constants": {}
+    },
+    "avatar_stage.py": {
+      "file": {
+        "path": "/home/gloria/.vintos/workspace/scripts/avatar_stage.py",
+        "bytes": 46848,
+        "sha256": "1a5dbdb7394ea17cadcde9d05abff70a7b33f58a6120f24e922ede322452710d",
+        "mtime": 1789142828.396416
+      },
+      "constants": {}
+    }
+  },
+  "external_room_source_files_hashed": 33,
+  "qlab_paths_found": [],
+  "receipt_metadata": {
+    "nights": {
+      "shape": "list",
+      "count": 66,
+      "latest_types": [
+        "dict",
+        "dict",
+        "dict"
+      ]
+    },
+    "delivery": [
+      {
+        "artifact_id": "video-20260910-212131-6c0de0d6a1.mp4",
+        "channel": "ntfy",
+        "state": "sent",
+        "attempts": 1,
+        "at": "2026-09-10T21:21:31.601471"
+      },
+      {
+        "artifact_id": "print-PR-1ba34a-draft",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T00:43:52.857343"
+      },
+      {
+        "artifact_id": "print-PR-1ba34a-slice",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T00:43:52.858232"
+      },
+      {
+        "artifact_id": "print-PR-e32be3-draft",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T00:46:15.018033"
+      },
+      {
+        "artifact_id": "print-PR-e32be3-slice",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T00:46:15.018666"
+      },
+      {
+        "artifact_id": "print-PR-34dcf0-draft",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T01:01:04.208800"
+      },
+      {
+        "artifact_id": "print-PR-34dcf0-slice",
+        "channel": "ntfy",
+        "state": "failed",
+        "attempts": 0,
+        "at": "2026-09-11T01:01:04.209632"
+      }
+    ],
+    "effect_receipts": [
+      {
+        "kind": "pattern",
+        "outcome": "failed",
+        "surface": "",
+        "t": 1789018906.6211474,
+        "turn_id": ""
+      },
+      {
+        "kind": "pattern",
+        "outcome": "submitted",
+        "surface": "",
+        "t": 1789020157.5719402,
+        "turn_id": ""
+      },
+      {
+        "kind": "pattern",
+        "outcome": "failed",
+        "surface": "",
+        "t": 1789023226.0745285,
+        "turn_id": ""
+      },
+      {
+        "kind": "pattern",
+        "outcome": "failed",
+        "surface": "",
+        "t": 1789023226.0745444,
+        "turn_id": ""
+      }
+    ],
+    "forge_admission_receipts": [
+      {
+        "at": "2026-09-11T11:34:23.876227",
+        "organ": "astra_call.py",
+        "class": "paid",
+        "provider": "openai",
+        "model": "gpt-6-astra",
+        "stage": "reserved",
+        "usage": null,
+        "units": 1,
+        "used_today": 1,
+        "cap": 400
+      },
+      {
+        "at": "2026-09-11T11:34:39.526364",
+        "organ": "forge_build.py",
+        "class": "paid",
+        "provider": "anthropic",
+        "model": "claude-fable-5-1",
+        "stage": "reserved",
+        "usage": null,
+        "units": 1,
+        "used_today": 1,
+        "cap": 400
+      }
+    ]
+  },
+  "live_forge": {
+    "head": "6b4fac531d456ec4d6cadf33a6fedd0a2a984ef9",
+    "proposal_id": "COMMISSION-20260911-br5lt4",
+    "commissioning": true,
+    "elapsed_seconds": 18.825,
+    "state": "refused",
+    "note": "review unavailable",
+    "installed": false,
+    "real_spend_ledger": "/home/gloria/.vintos/workspace/memory/compute-ledger.jsonl",
+    "models": [
+      "gpt-6-astra",
+      "claude-fable-5-1"
+    ],
+    "verification": null,
+    "staged": null
+  },
+  "evidence_files": {
+    "aegis-runtime-followup.json": "771a2dfb36eced8d9e7b507bd527b7408d61e8fe7213fc7b9cf815f6c33a0ccb",
+    "aegis-runtime-detail.json": "ca71a40a4e0605050db25044caa70824851ad586c75d113b6e90063714772173",
+    "aegis-external-runtime.json": "03354183df6ac2d7563f8ff61eca741f6a9ba80d050ccd0647a54e85cdcb2eec",
+    "aegis-receipt-joins.json": "8efc06c9539bc0838b7184c57ee8fd3f6abc42a4e4301d9427dc2752d884430a",
+    "aegis-followup-check-full.txt": "97495ef70423fe1a2571ef3571bcf6b1eff75094d1ba5ef3bd2459330c92aa72",
+    "aegis-followup-deploy-full.txt": "5913a80bf1daadfd40abd42d1a71deaecfa247b0e68354996e10a766e4b433f3",
+    "aegis-live-forge-failure.json": "3a48fad803bc4e18dbab0247fb7d31982970d6197ae8810e28e9e54f2df47c1c"
+  }
+}

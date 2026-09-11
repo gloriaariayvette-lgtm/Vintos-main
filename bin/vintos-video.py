@@ -134,45 +134,47 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
     print(f"[video] saved: {fname}")
     return True
 
-def process_queue():
-    try:
-        q = json.load(open(QUEUE))
-        import re as _apre  # _ap_gate: only hero videos, never animate-painting
-        # A named refusal, not a silent filter (fable-creative-p3, 2026-09-05): an animate-painting item
-        # is marked blocked with its reason and written back, so want-reconciliation / want_spine see
-        # BLOCKED instead of a want that quietly never ran.
-        _kept, _changed = [], False
-        for x in q:
-            _blob = x if isinstance(x, str) else json.dumps(x)
-            if _apre.search(r"animate paint", _blob, _apre.I):
-                if isinstance(x, dict) and not x.get("blocked"):
-                    x["blocked"] = {"reason": "animate-painting disabled: the video path is for hero clips; a painting stays still until an animation backend for it exists",
-                                    "at": datetime.now().isoformat()}
-                    _changed = True
-                    print(f"[video] BLOCKED (named): {str(x.get('want_text') or x.get('prompt') or '')[:60]}")
-                    try:   # the want itself learns it is BLOCKED (same shape want_spine.apply_result writes)
-                        if x.get("want_id"):
-                            _wp = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
-                            _wraw = json.load(open(_wp)); _wl = _wraw if isinstance(_wraw, list) else _wraw.get("wants", [])
-                            for _w in _wl:
-                                if _w.get("id") == x["want_id"] and not _w.get("blocked"):
-                                    _w["blocked"] = {"cause": x["blocked"]["reason"], "blocked_step": "make_video", "at": time.time()}
-                            json.dump(_wraw, open(_wp, "w"), indent=2)
-                    except Exception as _wse:
-                        print(f"[video] want not marked blocked: {_wse}")
-                    _kept.append(x)   # stays on the queue as a visible BLOCKED item, skipped below
-                elif isinstance(x, dict):
-                    _kept.append(x)
-                continue
-            _kept.append(x)
-        if _changed:
-            try: _atomic_json(QUEUE, _kept)
-            except Exception: pass
-        _blocked = [x for x in _kept if isinstance(x, dict) and x.get("blocked")]
-        q = [x for x in _kept if not (isinstance(x, dict) and x.get("blocked"))]
-    except Exception:
-        _blocked = []
-        q = []
+def _process_queue():
+    from store_guard import transaction
+    with transaction(QUEUE):
+        try:
+            q = json.load(open(QUEUE))
+            import re as _apre  # _ap_gate: only hero videos, never animate-painting
+            # A named refusal, not a silent filter (fable-creative-p3, 2026-09-05): an animate-painting item
+            # is marked blocked with its reason and written back, so want-reconciliation / want_spine see
+            # BLOCKED instead of a want that quietly never ran.
+            _kept, _changed = [], False
+            for x in q:
+                _blob = x if isinstance(x, str) else json.dumps(x)
+                if _apre.search(r"animate paint", _blob, _apre.I):
+                    if isinstance(x, dict) and not x.get("blocked"):
+                        x["blocked"] = {"reason": "animate-painting disabled: the video path is for hero clips; a painting stays still until an animation backend for it exists",
+                                        "at": datetime.now().isoformat()}
+                        _changed = True
+                        print(f"[video] BLOCKED (named): {str(x.get('want_text') or x.get('prompt') or '')[:60]}")
+                        try:   # the want itself learns it is BLOCKED (same shape want_spine.apply_result writes)
+                            if x.get("want_id"):
+                                _wp = os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")
+                                _wraw = json.load(open(_wp)); _wl = _wraw if isinstance(_wraw, list) else _wraw.get("wants", [])
+                                for _w in _wl:
+                                    if _w.get("id") == x["want_id"] and not _w.get("blocked"):
+                                        _w["blocked"] = {"cause": x["blocked"]["reason"], "blocked_step": "make_video", "at": time.time()}
+                                json.dump(_wraw, open(_wp, "w"), indent=2)
+                        except Exception as _wse:
+                            print(f"[video] want not marked blocked: {_wse}")
+                        _kept.append(x)   # stays on the queue as a visible BLOCKED item, skipped below
+                    elif isinstance(x, dict):
+                        _kept.append(x)
+                    continue
+                _kept.append(x)
+            if _changed:
+                try: _atomic_json(QUEUE, _kept)
+                except Exception: pass
+            _blocked = [x for x in _kept if isinstance(x, dict) and x.get("blocked")]
+            q = [x for x in _kept if not (isinstance(x, dict) and x.get("blocked"))]
+        except Exception:
+            _blocked = []
+            q = []
     if not q:
         print("[video] queue empty"); return
     item = q[0] if isinstance(q[0], dict) else {}
@@ -180,22 +182,41 @@ def process_queue():
             or (q[0] if isinstance(q[0], str) else "subtle living motion"))
     img = item.get("image") or item.get("source_image") or ""
     print(f"[video] queue: processing 1 of {len(q)}: {str(text)[:70]}")
-    ok = make_one(str(text), img, item.get("duration", 6), item.get("backend", "grok"),
-                  item.get("want_id", ""))
-    # drain on success; rotate a failure to the back so it can't jam the queue
-    q = q[1:] if ok else (q[1:] + [q[0]])
-    try:
-        _atomic_json(QUEUE, q + _blocked)   # BLOCKED items stay visible on the queue; this save erased them (review P07)
-    except Exception:
-        pass
+    from want_stance import action_context, may_initiate
+    with action_context(item):
+        allowed, why = may_initiate("creation")
+        if not allowed:
+            print("[stance] " + why); return
+        ok = make_one(str(text), img, item.get("duration", 6), item.get("backend", "grok"), item.get("want_id", ""))
+    selected = q[0]
+    from store_guard import locked_update
+    def finish(current):
+        # A producer may have appended while rendering. Change only the selected
+        # row in the fresh queue, never replace it with the pre-render snapshot.
+        for index, row in enumerate(current):
+            same = (isinstance(row, dict) and isinstance(selected, dict) and selected.get("queue_id") and row.get("queue_id") == selected["queue_id"]) or row == selected
+            if same:
+                entry = current.pop(index)
+                if not ok: current.append(entry)
+                return current
+        return None
+    locked_update(QUEUE, finish, reader="vintos-video.process_queue")
+
+
+def process_queue():
+    from store_guard import transaction
+    # One consumer, while producers only hold QUEUE's short mutation lock.
+    with transaction(QUEUE + ".consumer"):
+        return _process_queue()
+
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--queue":
+        process_queue(); return
     from want_stance import may_initiate
     ok, why = may_initiate("creation")
     if not ok:
         print("[stance] " + why); return
-    if len(sys.argv) > 1 and sys.argv[1] == "--queue":
-        process_queue(); return
     text = sys.argv[1] if len(sys.argv) > 1 else "subtle living motion"
     img_path = sys.argv[2] if len(sys.argv) > 2 else ""
     make_one(text, img_path)

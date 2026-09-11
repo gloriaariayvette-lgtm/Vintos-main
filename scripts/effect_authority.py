@@ -95,8 +95,12 @@ def dispatch(lane, context=None, target="", level=0, kind=None, detail=None,
         # a new deliberative effect, even when its normal policy is disarmed.
         reduction = kind in ("stop", "halt", "release", "reduce")
         if lane in ("toys", "thruster"):
-            try: reduction = float(level) == 0 and kind in (None, "stop", "halt", "release", "reduce", "rotate")
-            except (TypeError, ValueError): reduction = False
+            try:
+                import effect_gate
+                reduction = effect_gate.classify(target, level, kind) == "reduction"
+            except Exception:
+                try: reduction = float(level) == 0 and kind in (None, "stop", "halt", "release", "reduce", "rotate")
+                except (TypeError, ValueError): reduction = False
         if reduction and lane in ("toys", "thruster", "robot"):
             return True, "send", "reduction remains available during authority fault"
         return False, "deny", "authority unavailable: " + str(exc)[:160]

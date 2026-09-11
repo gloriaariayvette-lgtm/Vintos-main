@@ -63,10 +63,10 @@ Three kinds only: evidence that only Aegis can show, the phone app, and consolid
 programmes whose mechanism landed and whose remainder the line names.
 
 ### P01 — Authoritative release and runtime map
-- **30** [PARTIAL] [P01] Obtain installed units, crontab, hashes, untracked modules and the external daemon copy — required to certify actual deployment; do not invent the missing implementation or label the host broken — *commits 39b80e1 f3286b6; host diffs obtained from Aegis and reconciled; installed units, crontab, untracked modules and external daemon copy not obtained*
-- **31** [OPEN] [P01] Obtain the installed endpoint profile, mounted routes and runtime schemas — remaining boundary for the chat/context/writer trace — *installed endpoint profile/mounted routes/runtime schemas not obtained (host side)*
-- **32** [OPEN] [P01] Obtain installed shim/unit/route selection and provider receipts — remaining boundary for adapter routing — *installed shim/unit/route selection and provider receipts not obtained*
-- **33** [OPEN] [P01] Obtain the installed index variant, embedding model version and dimensions — remaining boundary for retrieval — *installed index variant / embedding model version not obtained*
+- **30** [PARTIAL] [P01] Installed user/system units, active crontab, 740+ source hashes and the external emotion daemon copy were collected on 11 September. Release 6b4fac5 deployed successfully. The wider untracked runtime still needs source-by-source review; hashes do not certify every module.
+- **31** [PARTIAL] [P01] The installed OpenAPI schema now succeeds with 212 mounted paths after repairing desktop Request annotations. Full schema and route profile collected; end-to-end chat/context/writer tracing remains open.
+- **32** [PARTIAL] [P01] Installed unit/route selections and real Astra/Fable paid-admission receipts collected. The one authorized forge run ended refused because Fable returned no text; provider response IDs/usage and every adapter route are not yet correlated.
+- **33** [PARTIAL] [P01] Installed memory-search selects text-embedding-nomic-embed-text-v1.5; three stored embedding samples have 768 dimensions. Those rows have no model field, so historical embedding provenance and the full index variant remain unverified.
 
 ### P08 — Client, voice and avatar lifecycles
 - **315** [OPEN] [P08] Apply shared safe rendering across all active tabs — many views insert raw text into HTML — *no client rendering work in the record*
@@ -85,15 +85,15 @@ programmes whose mechanism landed and whose remainder the line names.
 - **346** [OPEN] [P08] Fix native background runner registration/scheduling and notification permissions for outreach — *no native background runner/notification work*
 
 ### P11 — Whole-system observability and acceptance
-- **396** [OPEN] [P11] Obtain installed renderer, media/cache state and render/playback receipts for the avatar path — *no avatar renderer/cache/playback receipts obtained*
-- **397** [OPEN] [P11] Obtain playback acknowledgments, installed voice process and provider callback ordering — *no voice playback acks/process/callback ordering obtained*
-- **398** [OPEN] [P11] Obtain deployed schedules and representative night/run data for threads, dreams and causal catalogs — *no deployed schedules or night/run data obtained*
-- **399** [OPEN] [P11] Obtain deployed emotion model/data lineage and the authoritative daemon — *no emotion model lineage/daemon evidence obtained*
-- **400** [OPEN] [P11] Obtain live execution/artifact receipt joins for wants and creative jobs — *no live execution/artifact receipt joins obtained*
-- **401** [OPEN] [P11] Obtain the untracked external room library and installed host/runtime map — *room library untracked; no host/runtime map*
-- **402** [PARTIAL] [P11] Obtain installed hashes, approvals/build receipts and deployed Study UI — *commits 39b80e1 f3286b6 5313770; release map with host diffs gives installed file state/staleness; no approval/build receipts or deployed Study UI*
-- **403** [OPEN] [P11] Obtain the external QLab implementation and Atelier runtime permissions/receipts — *QLab implementation and Atelier runtime receipts not obtained*
-- **404** [OPEN] [P11] Obtain a fresh push-window check beyond the 2026-09-05 snapshot — *release map snapshot is 2026-09-05 14:11 (39b80e1); no later push-window check*
+- **396** [PARTIAL] [P11] Installed avatar-stage source hash and delivery/effect receipt metadata collected. Visible rendering, cache correctness and actual playback still need runtime/client evidence.
+- **397** [PARTIAL] [P11] Installed voice-session-ledger code collected in the runtime map. No voice-ledger.jsonl was present at the sampled path; playback acknowledgments and provider callback ordering remain open.
+- **398** [PARTIAL] [P11] Active schedules and a dream-log with 66 nights collected. Representative night structure is recorded; causal/thread run acceptance and cross-ledger joins remain open.
+- **399** [PARTIAL] [P11] Authoritative unit invokes emotion_model.daemon from the workspace; daemon source copied and five checkpoint files hashed. Training-data lineage and proof of the exact loaded checkpoint remain open.
+- **400** [PARTIAL] [P11] Live delivery/effect receipt metadata and want store schemas collected. No artifact-manifest.json existed at the sampled path. A successful want-to-artifact-to-observed-effect join is not established.
+- **401** [PARTIAL] [P11] Installed host/runtime map and external agent-room source hashes collected. Full source review and proof of runtime library selection remain open.
+- **402** [PARTIAL] [P11] Installed hashes, release and rollback records, and one live commissioning failure are recorded. No successful forge verification receipt or deployed Study UI acceptance is claimed.
+- **403** [PARTIAL] [P11] Atelier health, unchanged broker hashes, lineage agreement and refusal without a visit capability verified during deployment. No QLab source was found in the searched Aegis roots; its external location/implementation remains open.
+- **404** [PARTIAL] [P11] Fresh 11 September remote branch checks match all three local heads. This closes the stale September 5 push snapshot; whole-client/runtime acceptance remains open.
 
 ## The printer
 
@@ -146,8 +146,7 @@ outcome and charges remain unknown: this does not cancel or recover a provider c
 
 Still open:
 
-- The app approval card and a real, explicitly authorized provider run. Provider/model
-  IDs have not been validated against live paid APIs in this review.
+- The app approval card remains open. Both required model IDs were verified with provider model endpoints. One explicitly approved live run executed on 11 September: Astra generated, Fable returned no text, and the pipeline refused without installing. Another paid attempt needs fresh approval; no retry was made.
 - Capability-specific adapters for effectful forged skills. Such skills are refused
   at invocation; only pure string-in/string-out functions run in the isolated executor.
 - Rich scope/test requirements for automatically proposed missing capabilities. An
@@ -278,8 +277,7 @@ Remaining from the review and the three efforts:
   modelling or slicing. Supplied slice time/material values are estimates, not measurements.
 - Shared-store migration now covers the recovered domain mutation handlers, belief and causal-model mutations, correction projections, durable-memory recall/interpretation/graduation, and thread retirement/archive operations. Snapshot-only legacy writers elsewhere still require per-writer migration; helper presence alone is not proof. Dispatch checks are shared by toy, robot, outward delivery and supplied avatar admission; home-effect policy remains unchanged.
 - F14 source acquisition is complete: the three Aegis domain files are tracked with
-  SHA-256 provenance and included in deployment beside the actual server. Their legacy
-  mutation handlers remain in the shared-store migration work until repaired.
+  SHA-256 provenance and included in deployment beside the actual server. Their JSON mutation handlers now hold complete shared transactions; broader legacy writers remain listed separately.
 - The forge UI/effectful adapters/live commissioning listed above, the 27-item review
   programme and the per-organ waiting list. Nothing here closes them by implication.
 
@@ -288,17 +286,31 @@ Home-effect gate policy has not been changed in this repair pass. The base relea
 ## Aegis deployment work — 11 September
 
 The four reported branch defects are repaired. All 111 suites passed directly and
-through the isolation runner locally; all 111 also passed both ways on Aegis at
-`2371226`. Bubblewrap and system Python NumPy are installed on Aegis. The deploy
-`--check` passed there with the companion branches present. The base release
-`2371226` deployed successfully on Aegis (`deploy OK`), with release record
-`20260911-110717-2371226.json` and rollback directory
-`~/.vintos/backups/atelier-20260911-110435`. Follow-up commits below require redeployment.
+through the isolation runner locally and on Aegis for release `6b4fac5`. Bubblewrap
+and system Python NumPy are installed. Both `--check` and the actual deploy passed;
+275 manifest files were staged and validated. Release `20260911-114007-6b4fac5.json`
+and rollback `~/.vintos/backups/atelier-20260911-113725/restore.sh` are recorded.
+Server, self-review and robot bridge are active; skill-surf.timer is enabled and
+waiting for 14 September at 09:00 CDT. Stratagems remain disarmed.
 
-The base release OpenAPI endpoint returned 500 because a desktop route declared a
-locally imported Request type under postponed annotations. Repair and schema verification
-remain pending. The single live forge run is now explicitly approved, not yet run.
+The desktop annotation fix is live: OpenAPI now exposes 212 paths. Installed unit,
+cron, source-hash, daemon/checkpoint, embedding and receipt evidence is indexed in
+[the runtime evidence record](aegis-runtime-evidence-20260911.json). Partial P01/P11
+items above name exactly what these observations do and do not establish.
 
-The desktop postponed-annotation fix passes a real FastAPI schema build on Aegis; it awaits the follow-up deployment. Migration tests include concurrent step appends, failed-lock refusal, concurrent memory corrections, exact dispatch permit forwarding and simulation refusal.
+Stance consumers cover creation, reflection, mischief and reaching. Scheduling
+context propagates to subprocesses. A follow-up correction also preserves context
+in queued videos, leaves them pending until execution, and merges dequeue into the
+fresh queue so concurrent appends survive. All 111 suites pass both ways for this correction; the final release record identifies the installed revision.
+The shared dispatch door preserves bound permits and simulation refusal, while
+verified reductions remain available during an authority fault.
 
-Automatic proposals now retain the actual blocked step output/acceptance contract, explicit unknowns, a pure-function scope and no inferred effect permissions. Both generator and reviewer receive the acceptance brief. The ordinary router now opens the proposal on an absent adapter and resolves installed forged adapters after resume; invocation grants still apply. This does not supply an effectful adapter or the app forge card.
+Automatic proposals retain the blocked step's output/acceptance contract, explicit
+unknowns, a pure-function scope and no inferred effect permission. Generator and
+reviewer both receive the brief. The ordinary router now opens the proposal when
+an adapter is absent and resolves installed forged adapters after resume.
+
+The single explicitly approved live forge run was a labelled commissioning fixture,
+separate from house wants and proposals. Astra returned code; Fable returned no text.
+The run ended `refused`, with no install. Successful live commissioning remains open.
+No second paid attempt was made. The app forge card and effectful adapters remain open.
