@@ -98,14 +98,19 @@ programmes whose mechanism landed and whose remainder the line names.
 ## The printer
 
 He has the tools. Blender models, Cura slices, both run on the Mac and on Aegis, and
-the Mac is faster at both. Three things are missing, and all three are about the
-machine itself:
+the Mac is faster at both. The machine itself is answered (11 September): a **Creality
+Ender 3**, reached by **SD card or USB only**, bed **220 × 220 × 250 mm**. There is no
+network path to it and no autonomous print: he slices, writes the `.gcode` into a
+handoff folder, and tells her. She carries it over. That is the whole reach, and it is
+why the code asks only for `write_gcode_to_handoff_folder` and says
+`starts_the_print: false`.
 
-1. **Make and model** — the slicer needs its profile.
-2. **How the house reaches it** — OctoPrint, Moonraker, Bambu in LAN mode, or a
-   watched folder on a machine that has it, with the address.
-3. **Its limits** — size ceiling, duration ceiling, whether filament must be
-   confirmed present, and the hours he may start one unattended.
+What is left is hers, on Aegis, and nothing is guessed in its place:
+
+- `memory/printer-config.json` — `handoff_dir` above all; `bed_mm` defaults to the
+  Ender 3's. With no handoff folder set he blocks with *nowhere to leave the file*
+  rather than choosing a directory.
+- `OPENAI_API_KEY` in `~/.vintos/vintos.env` — Astra writes the Blender script.
 
 Also useful, and not required: `mac_host` in the printer config, so he can prefer the
 Mac for modelling and slicing and fall back to Aegis when it is away.
@@ -199,6 +204,32 @@ Three ways out, cheapest first:
    Only worth it if a Mac comes back.
 
 
+## A test never reaches the world
+
+The deploy runs all 108 suites as her user before it installs anything, so a suite that
+reaches the real `~/.vintos/workspace` writes his actual stores on every deploy. Eight
+did, and all eight for the same reason: the suite repointed the module it was testing,
+and that module reached a *second* module — imported lazily, deep inside the call —
+whose own path still followed the real HOME. Fixed 2026-09-11:
+
+- `test_skill_forge` wrote real print jobs to `print-jobs.json` **and pushed two ntfy
+  notifications to her phone** through `print_3d.present()`.
+- `test_evidence_provenance`, `test_p04_09_relational_snapshot` — a grade row into
+  `prediction-grades.jsonl` (grading_contract does not follow `prediction_ledger.MEMORY`).
+- `test_heart_rate`, `test_reelroom` — `sensor-reactions.jsonl` and its state.
+- `test_p04_02_evidence_cutoff` — `identity-revisions.jsonl`.
+- `test_threshold` — `atelier-undertakings.json` and `outcome-joins.jsonl` through the
+  shared writers review 273 introduced, which keep their own paths.
+- `test_p0_round2`, `test_capability` — `~/.vintos/.lineage-key`: read where one exists,
+  and **minted** where one does not. `formation_observatory.attest()` had that path as a
+  literal inside the function; it is a module global now, so a suite can repoint it.
+
+The standing rule, in `CLAUDE.md`: repoint every path the module under test writes — not
+only the obvious one — stub anything that sends, and assert both in the suite so the next
+edit cannot quietly undo it. All 108 suites now pass and none writes a file under the real
+workspace. One (`test_self_review`) still creates an empty `memory/` directory it never
+writes to, which is a no-op on a host that has one.
+
 ## The 11 September independent review — what was fixed and what was not
 
 An independent reviewer found 28 defects in the 10–11 September work and said the
@@ -259,8 +290,15 @@ Fixed in the second pass (the first three the handoff left open):
 **Not fixed, and reopened honestly** — older paths falsely marked DONE, or unfinished
 integration, not regressions from the three new tasks:
 
-- **F14** the claimed server_domains import-wrap was never committed; three modules
-  remain untracked.
+- **F14** the import-wrap is now committed (`_mount_domain` in `bin/server.py`: a missing
+  domain module is reported and its routes are absent that run, never a fatal
+  ImportError). The three modules themselves — `server_domains/galleries.py`, `music.py`,
+  `humor_wants.py` — are still not in the checkout and cannot be obtained from here: they
+  exist only in `~/Vintos/server_domains/` on Aegis, which is why
+  `bin/server_domains/patch_humor_wants.py` edits the live copy in place rather than a
+  tracked source. Closing F14 means copying those three files off Aegis and committing
+  them. Nothing should be written in their place: an invented module would mount routes
+  that do not match the ones actually serving her.
 - **F17–F26, F28** — failed-taste-marked-taught, "pure selection" side effects,
   privacy binding's uncovered hint reader, the sealed-retry helper never called, music
   recovery markers, avatar still-approval fallthrough, expired-question-as-resolved,
@@ -273,8 +311,17 @@ TV volume call home operations directly, without an effect permit. That predates
 work; the Govee fallback widened what it can reach. It must go through the gate before
 autonomous room effects are enabled.
 
-Status of the three subsystems after this pass: the authorization, cost and
-correctness regressions are fixed and tested. They still should not be enabled until
-the builder→verify→install→resume integration exists (forge), the home-effect gate is
-closed, and the printer has a real submission adapter. The scaffolding is sound; the
-end-to-end path is not built.
+Status of the three subsystems, 11 September, second pass. The authorization, cost and
+correctness regressions are fixed and tested, and the forge's
+builder→verify→install→resume path now exists end to end in code and is tested through
+every branch of it. Two things still stand between that and enabling them:
+
+- **The forge has never been run for real.** No proposal has been through live Astra,
+  live Fable and a real sandbox, because that spends money. Everything is proved with
+  fakes and by construction. One real run is the last honest gap.
+- **The home-effect gate is still open.** `/api/home/lights/*` and TV volume call home
+  operations directly without an effect permit. It predates this work and the Govee
+  fallback widened what it can reach; it must be closed before autonomous room effects.
+
+The printer needs no submission adapter — there is nothing to submit to. It needs her
+`handoff_dir`, and then it is complete for what the machine actually is.
