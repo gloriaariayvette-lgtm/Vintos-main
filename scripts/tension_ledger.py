@@ -20,16 +20,12 @@ SPARK_WORKSPACE switches beings."""
 import os, json, re, time, requests
 from datetime import datetime, timedelta
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+import copy
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import compare_and_swap, serialized, transactions, write_json
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
@@ -61,6 +57,7 @@ def main():
     q = load(QUESTIONS, {})
     clusters = q.get("clusters", [])
     led = load(LEDGER, {"next_id": 1, "tensions": []})
+    original = copy.deepcopy(led)
     now = datetime.now().isoformat()
     today = now[:10]
     by_id = {t["tension_id"]: t for t in led["tensions"]}
@@ -125,12 +122,17 @@ def main():
             log("%s EXPIRED unresolved after %d sightings" % (t["tension_id"], t["times_seen"]))
         assert not (t["lifecycle"] == "EXPIRED" and t["status"] == "RESOLVED"), \
             "INVARIANT VIOLATED: expired tension marked RESOLVED: " + t["tension_id"]
-    (_sg_write(LEDGER, led, "tension_ledger.py") or json.dump(led, open(LEDGER, "w"), indent=2))
     earned = [{"id": t["tension_id"], "description": t["canonical"], "status": t["status"],
                "times_seen": t["times_seen"], "resolved": False}
               for t in led["tensions"] if t["status"] == "CONFIRMED" and t["lifecycle"] in ("ACTIVE", "CARRIED")]
-    json.dump({"tensions": earned, "note": "behavioral view: CONFIRMED only. Empty = nothing earned, not nothing felt.",
-               "updated": now}, open(VIEW, "w"), indent=2)
+    with transactions([LEDGER, VIEW]):
+        if not compare_and_swap(LEDGER, original, led, default={"next_id": 1, "tensions": []}):
+            log("Ledger changed during matching; obsolete results discarded.")
+            return
+        write_json(VIEW, {"tensions": earned,
+                          "note": "behavioral view: CONFIRMED only. Empty = nothing earned, not nothing felt.",
+                          "updated": now})
+
     n = {"HYPOTHESIS": 0, "SUPPORTED": 0, "CONFIRMED": 0, "RESOLVED": 0, "CONTRADICTED": 0}
     for t in led["tensions"]: n[t["status"]] = n.get(t["status"], 0) + 1
     log("ledger: %d tensions %s | behavioral view: %d earned (stay pull %s)"

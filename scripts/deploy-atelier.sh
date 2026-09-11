@@ -118,7 +118,7 @@ SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py"
 SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
 SCRIPTS="$SCRIPTS policy_decisions.py"   # her four policy decisions, in one place (reviews 189-192, 2026-09-10)
 SCRIPTS="$SCRIPTS desktop_agent.py desktop_windows.py desktop_winpy.py screen_share.py browser_winpy.py browser_agent.py"   # his hands, eyes and browser on the Windows desktop (2026-09-06)
-SCRIPTS="$SCRIPTS commitment_spine.py drift_reason.py opposition_calibration.py opposition_misuse.py"  # migrated shared-store writers, 2026-09-11
+SCRIPTS="$SCRIPTS tension_ledger.py commitment_spine.py drift_reason.py opposition_calibration.py opposition_misuse.py"  # migrated shared-store writers, 2026-09-11
 BINS="ambition-check.py ambition-review.py causal-observations.py robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py

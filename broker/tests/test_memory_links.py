@@ -9,7 +9,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-links-")
 os.environ["HOME"] = HOME
+os.environ.pop("SPARK_WORKSPACE", None)
 WS = os.path.join(HOME, ".vintos", "workspace"); MEM = os.path.join(WS, "memory"); os.makedirs(MEM, exist_ok=True)
+assert os.path.commonpath([MEM, HOME]) == HOME
 for name in ("requests", "numpy"):
     try: __import__(name)
     except ImportError: sys.modules[name] = types.ModuleType(name)
@@ -120,7 +122,6 @@ else:
     tps = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
     check("drop_from_served exists in tension_promotion", "def drop_from_served" in tps)
 tps = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
-check("the CONTESTED transition drops the tension from the served view", 'drop_from_served(t["tension_id"])' in tps and tps.index('t["status"] = "CONTESTED"') < tps.index('drop_from_served(t["tension_id"])'))
 check("the proposition-lineage demotion does too", "drop_from_served as _dfs" in open(os.path.join(REPO, "scripts", "proposition_lineage.py")).read())
 
 print("\n--- 137: configuration and attractor maps are inspectable records; priors stay priors ---")
@@ -134,6 +135,58 @@ check("the record separates observed transitions, open possibilities and held co
 ad = open(os.path.join(REPO, "scripts", "attractor_discovery.py")).read()
 check("edge priors are kept apart from observed edges", "prior_edges" in ad and '"prior": prior_edges.get((a, v), 0)' in ad and '"observed": observed_edges.get((a, v), 0)' in ad)
 check("the attractor file names its priors and open possibilities", '"priors": {"seeds"' in ad and '"open_possibilities"' in ad)
+
+# Exercise the real promotion path, including the commit boundary.
+import copy, concurrent.futures
+import store_guard as SG
+_tp.LEDGER = os.path.join(MEM, "tension-ledger.json")
+assert os.path.commonpath([_tp.LEDGER, HOME]) == HOME
+base = {"next_id": 2, "tensions": [{"tension_id": "T-001", "canonical": "fixture tension",
+        "status": "CONFIRMED", "lifecycle": "ACTIVE", "history": [], "evidence": []}]}
+evidence = {"evidence_id": "e1", "channel": "E1", "polarity": "contradicts",
+            "under_influence": False, "at": "2026-09-11T12:00:00", "quote": "fixture correction"}
+repairs = []
+sys.modules["repair_case"] = types.SimpleNamespace(open_case=lambda *a,**kw: repairs.append((a,kw)))
+_tp.gather_sources = lambda: {"E1": [], "E2": [], "E3": []}
+_tp.find_evidence = lambda t,channel,*args: [copy.deepcopy(evidence)] if channel == "E1" else []
+_tp.ask = lambda *args: (_ for _ in ()).throw(AssertionError("live provider forbidden"))
+SG.write_json(_tp.LEDGER, copy.deepcopy(base))
+SG.write_json(view, {"tensions": [{"id": "T-001", "status": "CONFIRMED"}]})
+_tp.main()
+check("committed correction demotes the served view and then opens repair",
+      json.load(open(_tp.LEDGER))["tensions"][0]["status"] == "CONTESTED"
+      and json.load(open(view))["tensions"] == [] and len(repairs) == 1)
+SG.write_json(_tp.LEDGER, copy.deepcopy(base)); repairs.clear()
+SG.write_json(view, {"tensions": [{"id": "T-001", "status": "CONFIRMED"}]})
+def evidence_with_exposure(t, channel, *args):
+    assert not getattr(SG._state, "held", set())
+    if channel == "E1":
+        _tp.open_influence_window("T-001", "fixture-serving")
+        return [copy.deepcopy(evidence)]
+    return []
+_tp.find_evidence = evidence_with_exposure
+_tp.main()
+latest = json.load(open(_tp.LEDGER))["tensions"][0]
+check("concurrent influence evidence refuses stale promotion and its side effects",
+      latest["status"] == "CONFIRMED" and len(latest["influence_windows"]) == 1
+      and len(json.load(open(view))["tensions"]) == 1 and not repairs)
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+    list(pool.map(lambda i: _tp.open_influence_window("T-001", str(i)), range(40)))
+check("all concurrent influence windows survive", len(json.load(open(_tp.LEDGER))["tensions"][0]["influence_windows"]) == 41)
+TL = load("tension_valve_fixture", os.path.join(REPO, "scripts", "tension_ledger.py"))
+TL.LEDGER = _tp.LEDGER; TL.VIEW = view; TL.QUESTIONS = os.path.join(MEM, "tension-questions.json")
+assert all(os.path.commonpath([p, HOME]) == HOME for p in [TL.LEDGER, TL.VIEW, TL.QUESTIONS])
+SG.write_json(TL.QUESTIONS, {"clusters": [{"tension": "a sufficiently long fixture tension"}]})
+SG.write_json(TL.LEDGER, {"next_id": 1, "tensions": []})
+prior_view = open(view).read()
+def match_fixture(*args):
+    assert not getattr(SG._state, "held", set())
+    SG.write_json(TL.LEDGER, {"next_id": 1, "tensions": [], "concurrent": True})
+    return None
+TL.match_existing = match_fixture
+TL.main()
+check("valve preserves concurrent ledger update and does not publish obsolete view",
+      json.load(open(TL.LEDGER)).get("concurrent") is True and open(view).read() == prior_view)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

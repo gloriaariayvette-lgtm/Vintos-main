@@ -27,16 +27,12 @@ Thresholds are gates, not epistemology. SPARK_WORKSPACE switches beings."""
 import os, sys, json, re, hashlib, requests
 from datetime import datetime, timedelta
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+import copy
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import compare_and_swap, serialized, transactions, write_json
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
@@ -56,6 +52,10 @@ def drop_from_served(tension_id, mem=None):
     consumers) at once - not at the valve's next run. The ledger keeps the tension; only the
     view loses it. Atomic; a missing or malformed view is left alone."""
     p = os.path.join(mem or MEM, "tension-field.json")
+    with transactions([p]):
+        return _drop_from_served(tension_id, p)
+
+def _drop_from_served(tension_id, p):
     try:
         v = json.load(open(p))
         rows = v.get("tensions", []) if isinstance(v, dict) else []
@@ -64,7 +64,7 @@ def drop_from_served(tension_id, mem=None):
             return False
         v["tensions"] = keep; v["updated"] = datetime.now().isoformat() if "datetime" in globals() else __import__("datetime").datetime.now().isoformat()
         v.setdefault("removed", []).append({"id": tension_id, "at": v["updated"], "why": "demoted"})
-        tmp = p + ".tmp"; json.dump(v, open(tmp, "w"), indent=2); os.replace(tmp, p)
+        write_json(p, v)
         return True
     except Exception:
         return False
@@ -93,6 +93,7 @@ def verbatim(quote, source):
 def eid(channel, at, quote): return hashlib.md5((channel + at + quote[:120]).encode()).hexdigest()[:10]
 def in_window(at, windows):
     return any(w.get("start", "9999") <= at <= (w.get("end") or "9999") for w in windows)
+@serialized("LEDGER")
 def open_influence_window(tension_id, kind):
     """Called by the consumer that ACTUALLY SERVES a pull - not by this instrument."""
     led = load(LEDGER, None)
@@ -102,8 +103,9 @@ def open_influence_window(tension_id, kind):
             t.setdefault("influence_windows", []).append(
                 {"start": datetime.now().isoformat(), "end": None, "kind": kind})
             t["history"].append({"at": datetime.now().isoformat(), "event": "influence window OPENED (%s) by serving consumer" % kind})
-            (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2)); return True
+            write_json(LEDGER, led); return True
     return False
+@serialized("LEDGER")
 def close_influence_window(tension_id):
     led = load(LEDGER, None)
     if not led: return False
@@ -112,7 +114,7 @@ def close_influence_window(tension_id):
             for w in t.get("influence_windows", []):
                 if w.get("end") is None: w["end"] = datetime.now().isoformat()
             t["history"].append({"at": datetime.now().isoformat(), "event": "influence window CLOSED"})
-            (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2)); return True
+            write_json(LEDGER, led); return True
     return False
 def gather_sources():
     out = {"E1": [], "E2": [], "E3": []}
@@ -209,6 +211,8 @@ def adversarial_pass(t, clean_evidence):
 def main():
     led = load(LEDGER, None)
     if not led: log("no ledger"); return
+    original = copy.deepcopy(led)
+    repairs = []; seeds = []
     src = gather_sources()
     now = datetime.now().isoformat()
     for t in led["tensions"]:
@@ -276,17 +280,9 @@ def main():
             # A correction that demotes an interpretation also opens a repair case.
             # Contesting records that he was wrong about her; the case records
             # whether anything he did about it ever landed.
-            try:
-                import sys as _rc_sys
-                _rc_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-                from repair_case import open_case as _rc_open
-                _rc_open("tension-ledger", _fresh[-1].get("quote", ""),
-                         anchor_at=_fresh[-1].get("at"), kind="correction",
-                         subject=t.get("tension_id", ""))
-            except Exception as _rc_e:
-                log("repair case not opened: %s" % _rc_e)
+            repairs.append({"text": _fresh[-1].get("quote", ""),
+                            "at": _fresh[-1].get("at"), "subject": t.get("tension_id", "")})
             t["eligible_for_visibility"] = False
-            drop_from_served(t["tension_id"])   # review 142: out of the served view now, not at the valve's next run
             t["last_corrected"] = max(e["at"] for e in _fresh)
             t["correction_count"] = t.get("correction_count", 0) + 1
             t["history"].append({"at": now, "authority": "Gloria",
@@ -330,12 +326,7 @@ def main():
         if t["status"] == "HYPOTHESIS" and ((len(sup) >= 2 and chans(sup) >= 2) or len(sup) >= 3) and days(sup) >= 3:
             t["status"] = "SUPPORTED"; t["eligible_for_visibility"] = True
             if BEING == "vintos":
-                try:
-                    import sys as _ls; _ls.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-                    from latent_threads import seed_thread as _lt_seed
-                    _lt_seed("A tension of mine has earned support from lived evidence: " + t["canonical"][:200])
-                except Exception:
-                    pass
+                seeds.append("A tension of mine has earned support from lived evidence: " + t["canonical"][:200])
             t["history"].append({"at": now, "event": "SUPPORTED (eligibility, not truth; no window opened - eligibility is not influence)",
                                  "evidence": [e["evidence_id"] for e in sup]})
             log("%s -> SUPPORTED (visibility-eligible; window opens only on actual serving)" % t["tension_id"])
@@ -349,7 +340,28 @@ def main():
                 t["status"] = "CONFIRMED"
                 t["history"].append({"at": now, "event": "CONFIRMED (unrebutted + earned)", "evidence": [e["evidence_id"] for e in sup]})
                 log("%s -> CONFIRMED" % t["tension_id"])
-    (_sg_write(LEDGER, led, "tension_promotion.py") or json.dump(led, open(LEDGER, "w"), indent=2))
+    view = os.path.join(os.path.dirname(LEDGER), "tension-field.json")
+    with transactions([LEDGER, view]):
+        if not compare_and_swap(LEDGER, original, led):
+            log("Ledger changed during evidence gathering; obsolete results discarded.")
+            return
+        # Every demotion leaves the served projection in the same transaction.
+        for t in led["tensions"]:
+            if t["status"] in ("CONTESTED", "CONTRADICTED", "REVOKED"):
+                drop_from_served(t["tension_id"], mem=os.path.dirname(LEDGER))
+    for repair in repairs:
+        try:
+            from repair_case import open_case
+            open_case("tension-ledger", repair["text"], anchor_at=repair["at"],
+                      kind="correction", subject=repair["subject"])
+        except Exception as exc:
+            log("repair case not opened: %s" % exc)
+    for seed in seeds:
+        try:
+            from latent_threads import seed_thread
+            seed_thread(seed)
+        except Exception as exc:
+            log("supported tension thread not seeded: %s" % exc)
     counts = {}
     for t in led["tensions"]: counts[t["status"]] = counts.get(t["status"], 0) + 1
     log("done: %s" % counts)
