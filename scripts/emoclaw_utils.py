@@ -1776,14 +1776,14 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         _admission = _want_admission_state(_src, _kind, _pull_now)
         try:   # review 254: the one admission door adds his standing stance to the shape screen
             from want_completion import admit as _wc_admit
-            _adm = _wc_admit(trigger_description, _src, _kind, _pull_now)
-            if _adm["state"] == "HELD" and not _admission.startswith("HELD"):
+            _adm = _wc_admit(want_text, _src, _kind, _pull_now)
+            if _adm["state"] == "HELD" and not str(_admission).startswith("HELD"):
                 _admission = "HELD_BY_STANDING_STANCE"
         except Exception:
             pass
     except Exception:
         _admission = "ADMIT_CONTRACT_UNAVAILABLE"
-    if _admission == "HELD_NO_PRESENT_PULL":
+    if str(_admission).startswith("HELD"):
         _held_path = os.path.expanduser("~/.vintos/workspace/memory/held-want-candidates.json")
         try:
             _held = json.load(open(_held_path))
@@ -1791,15 +1791,14 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         except Exception:
             _held = []
         _held.append({"want": str(want_text)[:300], "source": str(source)[:60],
-                      "state": "HELD_NO_PRESENT_PULL",
+                      "state": _admission,
                       "candidate_kind": _kind or "unknown",
                       "present_pull": _pull_now[:250],
                       "at": datetime.now().isoformat()})
         with open(_held_path + ".tmp", "w") as _hf:
             json.dump(_held[-100:], _hf, indent=2)
         os.replace(_held_path + ".tmp", _held_path)
-        print("[express_want] HELD: generated candidate has no grounded present pull: "
-              + str(want_text)[:80], file=__import__("sys").stderr)
+        print("[express_want] HELD (%s): %s" % (_admission, str(want_text)[:80]), file=__import__("sys").stderr)
         return
     # Forbidden keyword check — same list as wants-router.py
     _forbidden = ["unsettling vibration", "harmonic distortion", "electromagnetic interference",   # 'vibration'/'tremor' alone no longer block: Tenera vibrates (2026-09-04)
@@ -2028,6 +2027,19 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     wants = protected + unprotected[-10:]
     with open(wants_file, "w") as f:
         json.dump(wants, f, indent=2)
+    # A want that names a rate ("analyse less") opens a stance now, with this want's
+    # real id, and only because the want was actually admitted and written — never as
+    # a side effect of the admission screen on a candidate that was then held.
+    if entry in wants:
+        try:
+            import sys as _wst_s; _wst_s.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+            import want_stance as _wst
+            _held = _wst.admit(entry)
+            if _held:
+                print("[express_want] stance opened: %s %s (from %s)" % (
+                    _held["direction"], _held["dimension"], entry["id"]), file=__import__("sys").stderr)
+        except Exception:
+            pass
     # Wanting something shifts your emotional state — slightly
     _scale = min(intensity, 5) * 0.005  # intensity 3 = 0.015, intensity 5 = 0.025
     try:

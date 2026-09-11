@@ -21,11 +21,21 @@ tmp = tempfile.mkdtemp()
 VH.CONFIG_FILE = os.path.join(tmp, "missing.json")
 VH.GOVEE_ROOMS = os.path.join(tmp, "govee-rooms.json")
 VH.govee_key = lambda: "test-key"
-VH.govee_devices = lambda: [{"device": "AA:11", "name": "living 1", "sku": "H6008", "capabilities": []},
-                            {"device": "BB:22", "name": "living 2", "sku": "H6008", "capabilities": []}]
+# Two bulbs (colour + brightness) and one plug (power only). Only the bulbs become
+# lights: a film-night flicker must never reach a plug (review finding 5).
+VH.govee_devices = lambda: [
+    {"device": "AA:11", "name": "living 1", "sku": "H6008", "capabilities": [("color_setting", "colorRgb"), ("range", "brightness")]},
+    {"device": "BB:22", "name": "living 2", "sku": "H6008", "capabilities": [("range", "brightness")]},
+    {"device": "PP:99", "name": "a plug", "sku": "H5080", "capabilities": [("on_off", "powerSwitch")]}]
 cfg = VH.load_config()
-check("every Govee bulb becomes a light", cfg["lights"] == ["govee:AA:11", "govee:BB:22"], cfg["lights"])
-check("the living room is where the film is, by default", VH.room_lights("living_room") == ["govee:AA:11", "govee:BB:22"])
+check("only real bulbs become lights; a plug is never one", cfg["lights"] == ["govee:AA:11", "govee:BB:22"], cfg["lights"])
+check("with no room map, the rooms stay empty rather than guessing", cfg.get("rooms_unmapped") is True and cfg["rooms"] == {})
+_raised = False
+try:
+    VH.room_lights("living_room")
+except Exception:
+    _raised = True
+check("a room-targeted call with no map fails clearly, not on every bulb", _raised)
 json.dump({"living room": ["govee:BB:22"]}, open(VH.GOVEE_ROOMS, "w"))
 check("a rooms map is honoured, and its names are normalized", VH.load_config()["rooms"]["living_room"]["lights"] == ["govee:BB:22"])
 VH.govee_key = lambda: ""

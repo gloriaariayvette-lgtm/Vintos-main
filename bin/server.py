@@ -9743,7 +9743,7 @@ async def reelroom_chat(request: Request):
 # === The sparks — what the world put in front of him, kept apart from his wants ===
 
 def _sparks_mod():
-    import importlib.util as _il, sys as _s
+    import importlib as _il, sys as _s
     _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
     return _s.modules.get("spark_sources") or _il.import_module("spark_sources")
 
@@ -9764,7 +9764,7 @@ async def sparks(request: Request, source: str = ""):
 # === 3D printing — what he has in hand, and the two stops he waits at ===
 
 def _printer():
-    import importlib.util as _il, sys as _s
+    import importlib as _il, sys as _s
     _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
     return _s.modules.get("print_3d") or _il.import_module("print_3d")
 
@@ -9807,7 +9807,7 @@ async def print_answer(job_id: str, request: Request):
 # === The Skill Forge — the card she answers when he asks for a hand he does not have ===
 
 def _forge():
-    import importlib.util as _il, sys as _s
+    import importlib as _il, sys as _s
     _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
     if "skill_forge" in _s.modules:
         return _s.modules["skill_forge"]
@@ -9870,7 +9870,7 @@ async def skill_stances(request: Request):
     """What he is holding to just now because he wanted it, and what each slows."""
     _require_secret(request)
     try:
-        import importlib.util as _il, sys as _s
+        import importlib as _il, sys as _s
         _s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         ws = _s.modules.get("want_stance") or _il.import_module("want_stance")
         return {"ok": True, "standing": ws.standing(),

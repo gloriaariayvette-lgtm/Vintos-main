@@ -54,8 +54,16 @@ def _govee_only_config():
     them to rooms when it exists ({"living_room": ["govee:<id>", ...]}).
     """
     devices = govee_devices()
-    lights = ["govee:%s" % d["device"] for d in devices]
-    rooms = {}
+    # Only a real bulb is a light. A device with no colour or brightness control is a
+    # plug or a sensor, and a film-night flicker must never reach it. Filtered by the
+    # capabilities the account itself reports, not by guessing from the name.
+    def _is_bulb(d):
+        insts = {str(i or "").lower() for _t, i in (d.get("capabilities") or [])}
+        types = {str(t or "").lower() for t, _i in (d.get("capabilities") or [])}
+        return bool(insts & {"brightness", "colorrgb", "colortemperaturek", "color"} or types & {"color_setting", "range"})
+    bulbs = [d for d in devices if _is_bulb(d)]
+    lights = ["govee:%s" % d["device"] for d in bulbs]
+    rooms, mapped = {}, False
     try:
         with open(GOVEE_ROOMS) as f:
             raw = json.load(f)
@@ -64,11 +72,13 @@ def _govee_only_config():
                 rooms[_room_key(name)] = {"lights": [str(e) for e in ents]}
             elif isinstance(ents, dict):
                 rooms[_room_key(name)] = ents
+        mapped = bool(rooms)
     except Exception:
         pass
-    if not rooms:
-        rooms = {"living_room": {"lights": list(lights)}}
-    return {"rooms": rooms, "lights": lights, "govee_only": True}
+    # With no map, the rooms stay empty: a room-targeted action then fails with a
+    # clear 'no such room' instead of silently treating every bulb as the living room.
+    # The flat `lights` list (eligible bulbs only) still serves a whole-house call.
+    return {"rooms": rooms, "lights": lights, "govee_only": True, "rooms_unmapped": not mapped}
 
 
 def load_config():
@@ -118,8 +128,13 @@ GOVEE_API = "https://openapi.api.govee.com/router/api/v1"
 _GOVEE_CACHE = {}
 
 def govee_key():
+    # Read the config file directly, never through load_config(): load_config() calls
+    # this to decide whether a Govee-only house is possible, so going back through it
+    # is an infinite recursion (the exact no-Home-Assistant case this must serve).
+    k = ""
     try:
-        k = load_config().get("govee_api_key", "")
+        with open(CONFIG_FILE) as _f:
+            k = (json.load(_f) or {}).get("govee_api_key", "") or ""
     except Exception:
         k = ""
     k = k or os.environ.get("GOVEE_API_KEY", "")

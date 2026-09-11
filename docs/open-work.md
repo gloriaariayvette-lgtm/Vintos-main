@@ -175,3 +175,73 @@ Three ways out, cheapest first:
 3. **One last local build, pointed at Aegis.** Then every page change updates itself.
    Only worth it if a Mac comes back.
 
+
+## The 11 September independent review — what was fixed and what was not
+
+An independent reviewer found 28 defects in the 10–11 September work and said the
+three new subsystems should not deploy. The review was correct. Sampled findings
+reproduced exactly. Fixed in this pass, with the behaviour now tested rather than the
+prose:
+
+- **F1 Govee recursion** — `govee_key()` no longer calls `load_config()`; it reads the
+  config file directly. No cycle.
+- **F2 forge state machine** — `mark()` now enforces the one valid predecessor per
+  state and refuses terminal states, so a *denied* proposal can no longer be marched
+  to *installed*. Approval is only through `approve()`.
+- **F3 Astra cap** — a design call reserves a fixed per-call ceiling (120s) up front,
+  is refused if it would not fit in the day's 600s, and settles down to the real
+  seconds. The day total can no longer exceed the cap. A call needs a persisted job;
+  `job=None` can no longer spend untracked time.
+- **F4 grant widening** — a grant may only narrow: scope values are his unchanged (a
+  change needs a fresh proposal), permissions are the intersection, invocation is the
+  stricter by explicit ordering. She cannot loosen a limit by approving.
+- **F5 Govee target set** — only devices with a colour/brightness capability become
+  lights; a plug never does. With no room map the rooms stay empty and a room call
+  fails clearly, instead of every device becoming the living room.
+- **F6 cold import** — the four new routes used `importlib.util.import_module`, which
+  does not exist; now `importlib.import_module`. They work after a fresh start.
+- **F7 admission door** — `express_want` passed an undefined variable and swallowed
+  the error, so the door never ran; fixed. Every HELD outcome now holds and returns.
+  The stance is created only after the want is actually written, with its real id.
+- **F8 (new modules)** — the print money path now goes through `locked_update`'s
+  read-modify-write under the lock, not a snapshot-then-write.
+- **F12 ReelRoom double-fire** — a failed physical act is no longer auto-retried,
+  because a lost acknowledgment looks like a failure and there is no per-action id to
+  dedupe on. Physical acts fire at most once; only an in-app line retries.
+- **F13 printer stops** — a real state machine: a job cannot skip to `slice_waiting`
+  or `queued` without the draft and slice each being approved in order.
+- **F15 stance** — the naive/aware datetime comparison no longer throws (which read as
+  expired). "Less" now reduces a rate or a daily cap rather than vetoing: fewer, never
+  none.
+- **F16 spark schemas** — the three readers now match the real writer schemas
+  (`absences`/`description`, `configurations`/`description`, thread `origin`). Test
+  fixtures use the writer schema, not the reader's.
+- **F27 spark freshness** — expired sparks become tombstones so an unchanged source
+  cannot resurrect them; skill surfing no longer consumes entries `gather()` then
+  trims.
+
+**Not fixed in this pass, and reopened honestly** — these are older paths falsely
+marked DONE, or unfinished integration, not regressions from the three new tasks:
+
+- **F9** calibration can release a head without complete versioned evidence.
+- **F10** a reveal can set `bytes_verified` when no bytes were verified.
+- **F11** a crash mid voice-session close makes recovery skip it forever.
+- **F14** the claimed server_domains import-wrap was never committed; three modules
+  remain untracked.
+- **F17–F26, F28** — failed-taste-marked-taught, "pure selection" side effects,
+  privacy binding's uncovered hint reader, the sealed-retry helper never called, music
+  recovery markers, avatar still-approval fallthrough, expired-question-as-resolved,
+  Study coverage, source-cache poisoning, observation-contract fields, the partial
+  paid-reservation helper. Each needs a real producer→consumer or failure→recovery
+  test before it is closed again.
+
+**The home-effect gate boundary** the reviewer named stands: `/api/home/lights/*` and
+TV volume call home operations directly, without an effect permit. That predates this
+work; the Govee fallback widened what it can reach. It must go through the gate before
+autonomous room effects are enabled.
+
+Status of the three subsystems after this pass: the authorization, cost and
+correctness regressions are fixed and tested. They still should not be enabled until
+the builder→verify→install→resume integration exists (forge), the home-effect gate is
+closed, and the printer has a real submission adapter. The scaffolding is sound; the
+end-to-end path is not built.

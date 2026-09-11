@@ -154,7 +154,14 @@ def admit(want, now=None):
 
 def _expired(row, now=None):
     try:
-        return (now or _now()) >= datetime.fromisoformat(row["until"])
+        now = now or _now()
+        until = datetime.fromisoformat(row["until"])
+        # A caller may hand us a naive datetime (datetime.now()) while stances are
+        # stored tz-aware. Comparing the two raises, and a raise read as 'expired'
+        # silenced every live stance. Drop tzinfo from both and compare plainly.
+        if (now.tzinfo is None) != (until.tzinfo is None):
+            now = now.replace(tzinfo=None); until = until.replace(tzinfo=None)
+        return now >= until
     except Exception:
         return True
 
@@ -183,11 +190,25 @@ def factor(dimension, now=None):
     return 0.4 if r["direction"] == "less" else 1.6
 
 
-def may_initiate(dimension, requested_by_her=False, is_repair=False, now=None):
-    """(ok, why). The question an organ asks before doing this on his own.
+def scaled_cap(dimension, base_cap, now=None):
+    """A daily count cap, reduced by a 'less' stance and never to zero. base_cap 3 with
+    a less stance becomes 2, never 0. 'more' does not raise a cap. This is how 'fewer,
+    never none' is actually enforced on a counted action like outreach."""
+    import math
+    r = stance_for(dimension, now)
+    if r is None or r["direction"] != "less":
+        return base_cap
+    return max(1, int(math.ceil(base_cap * factor(dimension, now))))
 
-    Her request and a live repair always pass: a stance governs what he starts,
-    never what she asks for and never an obligation he owes her."""
+
+def may_initiate(dimension, requested_by_her=False, is_repair=False, now=None):
+    """(ok, why). For a caller that acts at most once and cannot 'do fewer', this asks
+    whether he should start something himself right now under a 'less' stance. It is
+    NOT a flat off switch: it is deliberately probabilistic so 'less' means fewer, not
+    none. Her request and a live repair always pass.
+
+    A caller that has a rate or a daily count should use factor() or scaled_cap()
+    instead — reducing is truer to the want than a coin flip."""
     if requested_by_her:
         return True, "she asked"
     if is_repair:
@@ -195,6 +216,9 @@ def may_initiate(dimension, requested_by_her=False, is_repair=False, now=None):
     r = stance_for(dimension, now)
     if r is None or r["direction"] == "more":
         return True, "no stance against it"
+    import random
+    if random.random() < factor(dimension, now):
+        return True, "less %s, but not never — this one passes" % dimension
     return False, "he wants %s %s just now (until %s): %s" % (
         r["direction"], r["dimension"], str(r["until"])[:10], (r.get("want") or "")[:80])
 

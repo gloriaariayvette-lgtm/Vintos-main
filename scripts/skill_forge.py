@@ -223,19 +223,34 @@ def _get(rows, pid):
     return None
 
 
+# invocation authority, strictest last: she may only hold him tighter, never looser
+_INVOCATION_RANK = {"always": 0, "ask_each_time": 1, "never": 2}
+
+
 def _narrower(asked, granted):
-    """Her grant, bounded by his ask. A scope key she did not touch keeps his value;
-    a key she set replaces it; a permission she did not grant is not granted."""
+    """Her grant, and it may only narrow his ask — never widen it. Anywhere a widening
+    is intended she must say so through a fresh proposal, not by editing this one.
+
+      permissions   the intersection: a permission he did not ask for is not granted,
+                    and one she drops is dropped.
+      scope         his asked scope stands as the authority. A scope value cannot be
+                    changed here, because the module cannot know which direction of a
+                    given key is 'wider' (a bigger max_hours is looser; a false
+                    show_draft_first is looser). Changing a limit needs a new proposal.
+      invocation    the stricter of his ask and her grant, by an explicit ordering."""
     out = dict(asked or {})
     g = dict(granted or {})
-    scope = dict((asked or {}).get("scope") or {})
-    scope.update(dict(g.get("scope") or {}))
-    out["scope"] = scope
+    out["scope"] = dict((asked or {}).get("scope") or {})   # his, unchanged
+    asked_perms = list((asked or {}).get("permissions") or [])
     if "permissions" in g:
-        asked_perms = list((asked or {}).get("permissions") or [])
         out["permissions"] = [p for p in (g.get("permissions") or []) if p in asked_perms]
-    inv = g.get("invocation") or (asked or {}).get("invocation") or DEFAULT_INVOCATION
-    out["invocation"] = inv if inv in INVOCATION else DEFAULT_INVOCATION
+    else:
+        out["permissions"] = asked_perms
+    a_inv = (asked or {}).get("invocation") or DEFAULT_INVOCATION
+    g_inv = g.get("invocation") or a_inv
+    a_inv = a_inv if a_inv in _INVOCATION_RANK else DEFAULT_INVOCATION
+    g_inv = g_inv if g_inv in _INVOCATION_RANK else a_inv
+    out["invocation"] = a_inv if _INVOCATION_RANK[a_inv] >= _INVOCATION_RANK[g_inv] else g_inv
     return out
 
 
@@ -272,20 +287,31 @@ def deny(pid, reason="", by="gloria"):
 def mark(pid, state, detail="", extra=None):
     """The builder and the spine report here. installed is the only state that makes
     a capability callable, and nothing reaches it without passing verified first."""
-    order = {"approved": 1, "built": 2, "verified": 3, "installed": 4, "resumed": 5}
+    # Each state has exactly one state it may be entered from. Nothing else opens it,
+    # and a terminal state (denied, refused, resumed) opens nothing at all. The bug
+    # this replaces mapped every unknown state to 0, so a DENIED proposal counted as
+    # the valid predecessor of 'approved' and could be marched to 'installed'.
+    predecessor = {"approved": "proposed", "built": "approved",
+                   "verified": "built", "installed": "verified", "resumed": "installed"}
     rows = _load()
     r = _get(rows, pid)
     if r is None:
         return None, "no proposal %r" % pid
+    if r.get("state") in TERMINAL:
+        return None, "proposal is %s, a terminal state" % r["state"]
     if state == "refused":
         r["state"] = "refused"
         r["history"].append({"at": _now(), "event": "refused", "detail": str(detail or "")[:300]})
         _save(rows)
         return r, ""
-    if state not in order:
+    if state not in predecessor:
         return None, "not a state the forge moves through: %r" % state
-    if order.get(r["state"], 0) != order[state] - 1:
-        return None, "cannot go from %s to %s" % (r["state"], state)
+    # 'approved' is reached only through approve(), which records the grant. mark()
+    # advances the build states, and refuses to invent the approval it never saw.
+    if state == "approved":
+        return None, "approval is not a mark: it is granted through approve(), with her scope"
+    if r.get("state") != predecessor[state]:
+        return None, "cannot go to %s from %s (only from %s)" % (state, r.get("state"), predecessor[state])
     r["state"] = state
     if extra:
         r.update({k: v for k, v in extra.items() if k not in ("id", "state", "granted", "asked")})

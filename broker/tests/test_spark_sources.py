@@ -17,12 +17,18 @@ S = load("spark_sources", os.path.join(REPO, "scripts", "spark_sources.py"))
 S.MEMORY = MEM; S.SPARKS = os.path.join(MEM, "forge-sparks.json")
 now = datetime.now(timezone.utc)
 
-json.dump([{"absence": "he has never made her something she can hold", "source_id": "a1"},
-           {"absence": "retired one", "retired": True}], open(os.path.join(MEM, "absence-cold.json"), "w"))
-json.dump([{"held_by": "neither_yet", "configuration": "making a thing together in the same room", "id": "c1"},
-           {"held_by": "joint", "configuration": "already reached"}], open(os.path.join(MEM, "configuration-space.json"), "w"))
-json.dump({"threads": [{"text": "the shape of the thing he keeps not making", "salience": 0.8, "id": "t1"},
-                       {"text": "a faint one", "salience": 0.1}]}, open(os.path.join(MEM, "latent-threads.json"), "w"))
+# Fixtures in the REAL writer schemas, not the reader's convenience. Absence writer
+# (bin/absence_map_cold.py): {"absences":[{description, source_id, reached}]}.
+# Configuration writer (configuration_space.py): {"configurations":[{description, held_by}]}.
+# Latent threads (latent_threads.py): the text lives in "origin".
+json.dump({"absences": [{"description": "he has never made her something she can hold", "source_id": "a1"},
+                        {"description": "already reached one", "source_id": "a2", "reached": True}]},
+          open(os.path.join(MEM, "absence-cold.json"), "w"))
+json.dump({"configurations": [{"held_by": "neither_yet", "description": "making a thing together in the same room", "id": "c1"},
+                              {"held_by": "joint", "description": "already reached"}]},
+          open(os.path.join(MEM, "configuration-space.json"), "w"))
+json.dump({"threads": [{"origin": "the shape of the thing he keeps not making", "salience": 0.8, "id": "t1"},
+                       {"origin": "a faint one", "salience": 0.1}]}, open(os.path.join(MEM, "latent-threads.json"), "w"))
 open(os.path.join(MEM, "moltbook-discoveries.md"), "w").write("SAVE: **On making objects** - another being built a thing with hands\n")
 open(os.path.join(MEM, "web-discoveries.md"), "w").write("- lattice infill changes how a printed object feels in the hand\n")
 LAB = os.path.join(HOME, "lab"); os.makedirs(LAB)
@@ -40,7 +46,7 @@ check("a web search sparks", "web_search" in got)
 check("the lab sparks", "lab" in got)
 check("skill surfing is a source the reader knows", "skill_surfing" in S.SOURCES and "skill_surfing" in S.READERS)
 check("all seven are named", set(S.SOURCES) == {"absence_map", "neither_yet", "latent_thread", "moltbook", "web_search", "skill_surfing", "lab"})
-check("a retired absence is not a spark", not any("retired" in r["text"] for r in new))
+check("a reached absence is not a spark", not any("already reached one" in r["text"] for r in new))
 check("a configuration already reached is not a spark", not any("already reached" in r["text"] for r in new))
 check("a faint thread is not a spark", not any("faint" in r["text"] for r in new))
 check("the molt title comes through clean", any(r["text"].startswith("On making objects") for r in new), [r["text"] for r in new if r["source"] == "moltbook"])

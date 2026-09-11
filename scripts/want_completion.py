@@ -128,12 +128,17 @@ def admit(want_text, source, candidate_kind="", present_pull="", want_id=""):
         out["stance"] = _consult(want_text)
     except Exception:
         pass
+    # Report whether this want reads as a rate-stance, but do NOT open one here: the
+    # stance is created by the writer once the want is actually admitted and stored,
+    # with its real id (want_stance.admit is called there). A screen that opened a
+    # stance for a candidate it was about to hold left a stance behind for a want that
+    # never existed.
     try:
         import want_stance as _ws
-        held = _ws.admit({"id": want_id, "want": want_text})
-        if held:
-            out["holding"] = {"dimension": held["dimension"], "direction": held["direction"], "until": held["until"]}
-            out["why"].append("holds a stance: %s %s" % (held["direction"], held["dimension"]))
+        _dim, _dir = _ws.read_want(want_text)
+        if _dim:
+            out["holding"] = {"dimension": _dim, "direction": _dir}
+            out["why"].append("reads as a stance: %s %s" % (_dir, _dim))
     except Exception:
         pass
     if out["shape"].startswith("HELD"):

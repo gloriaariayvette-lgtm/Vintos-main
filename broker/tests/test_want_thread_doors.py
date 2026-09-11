@@ -44,7 +44,7 @@ b = WC.admit("a poem about the fig", "structural", "current_desire", "")
 c = WC.admit("a poem about the fig", "conversation")
 check("admission joins the shape screen and his standing stance", a["state"] == "HELD" and "standing stance S-1" in a["why"][0] and b["state"] == "HELD" and b["shape"] == "HELD_NO_PRESENT_PULL" and c["state"] == "ADMIT" and c["shape"].startswith("ADMIT"), (a, b, c))
 check("router dismissal, conversation fulfil and checkpoint release go through the door", '_wc.complete(want, "dismissed"' in src("bin/wants-router.py") and '_wc.complete(want, "fulfilled", "conversation"' in src("bin/wants-conversation-check.py") and '_wc.complete(w, "released", "his_choice"' in src("scripts/want_checkpoints.py"))
-check("generate_want consults the joined admission door", "_wc_admit(trigger_description" in src("scripts/emoclaw_utils.py") and "HELD_BY_STANDING_STANCE" in src("scripts/emoclaw_utils.py"))
+check("generate_want consults the joined admission door", "_wc_admit(want_text" in src("scripts/emoclaw_utils.py") and "HELD_BY_STANDING_STANCE" in src("scripts/emoclaw_utils.py"))
 
 print("\n--- 264: the store owns admission and archive ---")
 TS = load("thread_store", os.path.join(REPO, "scripts", "thread_store.py"))

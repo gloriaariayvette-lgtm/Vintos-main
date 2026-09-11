@@ -85,10 +85,12 @@ def _key(source, text):
 # ------------------------------------------------------------------ the seven
 def from_absence_map():
     out = []
-    for a in _load(os.path.join(MEMORY, "absence-cold.json"), []) or []:
-        if not isinstance(a, dict) or a.get("retired"):
+    d = _load(os.path.join(MEMORY, "absence-cold.json"), {})
+    rows = d.get("absences") if isinstance(d, dict) else d
+    for a in rows or []:
+        if not isinstance(a, dict) or a.get("reached"):
             continue
-        t = str(a.get("absence") or a.get("text") or a.get("what") or "").strip()
+        t = str(a.get("description") or "").strip()
         if t:
             out.append({"text": t[:300], "ref": a.get("source_id", "")})
     return out
@@ -100,7 +102,7 @@ def from_neither_yet():
     rows = space if isinstance(space, list) else (space.get("configurations") or [])
     for c in rows or []:
         if isinstance(c, dict) and c.get("held_by") == "neither_yet":
-            t = str(c.get("configuration") or c.get("name") or c.get("text") or "").strip()
+            t = str(c.get("description") or "").strip()
             if t:
                 out.append({"text": t[:300], "ref": str(c.get("id", ""))})
     return out
@@ -115,9 +117,9 @@ def from_latent_threads():
             continue
         if float(t.get("salience", 0) or 0) < 0.5:
             continue
-        s = str(t.get("text") or t.get("thread") or "").strip()
-        if s:
-            out.append({"text": s[:300], "ref": str(t.get("id", ""))})
+        txt = str(t.get("origin") or t.get("text") or t.get("thread") or "").strip()
+        if txt:
+            out.append({"text": txt[:300], "ref": str(t.get("id", ""))})
     return out
 
 
@@ -151,7 +153,7 @@ def from_skill_surfing():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         sys.path.insert(0, os.path.join(WS, "scripts"))
         import openclaw_skills as _sk
-        for r in _sk.fresh():
+        for r in _sk.unheld():
             out.append({"text": ("%s — %s" % (r.get("title") or r["name"], r.get("what", "")))[:300],
                         "ref": r.get("where", "")})
     except Exception:
@@ -205,8 +207,11 @@ def gather(now=None):
     chatty source cannot bury a quiet one, and a spark already recorded is not
     recorded twice."""
     now = now or _now()
-    rows = [r for r in _sparks() if not _stale(r, now)]
-    known = {r["key"] for r in rows}
+    rows = _sparks()
+    for r in rows:
+        if r.get("state") == "standing" and _stale(r, now):
+            r["state"] = "expired"          # a tombstone: keeps the key so it never returns
+    known = {r["key"] for r in rows}        # every row, whatever its state
     added = []
     for source in SOURCES:
         try:

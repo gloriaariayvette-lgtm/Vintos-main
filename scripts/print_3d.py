@@ -73,6 +73,7 @@ BUDGET_MIN_PER_RUN = 10      # one sitting, so a single job cannot hold a machin
 DESIGN_CALLS_PER_JOB = 1      # one deciding call per job; revising the mesh is Blender work
 DESIGN_MODEL = "astra"        # Gloria, 11 September: Astra writes the Blender script
 ASTRA_SECONDS_PER_DAY = 600   # ten minutes a day, hers, and the only spend here
+ASTRA_MAX_CALL_S = 120        # one design call's ceiling; reserved up front, settled down after
 
 # job states, in order. Two of them are waits on her and nothing advances them but her.
 STATES = ("modelling", "draft_waiting", "slicing", "slice_waiting", "queued",
@@ -225,40 +226,118 @@ def may_work(minutes=1.0, cfg=None):
 
 
 def astra_seconds_today(rows=None):
-    """Seconds of Astra spent on design today, across every job. The only spend this
-    capability makes, and the only one worth counting."""
+    """Seconds of Astra spent on design today, across every job — reservations included,
+    so time promised but not yet settled still counts against the cap."""
     rows = _jobs() if rows is None else rows
     return round(sum(float(e.get("seconds", 0))
                      for j in rows for e in (j.get("work") or [])
                      if e.get("what") == "design" and str(e.get("at", ""))[:10] == _today()), 1)
 
 
-def may_design(job=None, cfg=None):
-    """(ok, why) before the call that decides what to make and writes the script.
+def _locked_jobs(mutate):
+    """One read-modify-write over the jobs store, under the store lock, so a reserve
+    cannot race another reserve. Returns whatever `mutate(rows)` returns as its second
+    value; `mutate` may set a carry via the list it is handed."""
+    carry = {}
+    def _m(rows):
+        rows = rows if isinstance(rows, list) else []
+        out = mutate(rows, carry)
+        return out if out is not None else rows
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, os.path.join(WS, "scripts"))
+        from store_guard import locked_update as _lu
+        _lu(JOBS, _m, default=[], reader="print_3d.py")
+    except Exception:
+        rows = _jobs(); _m(rows); _save_jobs(rows)
+    return carry
 
-    Astra writes it: a Blender script is code and the local model cannot. She is
-    capped at ten minutes a day across every job — a ceiling on her, not on him. The
-    second refusal is per job: the deciding is done, and changing a mesh is Blender
-    work rather than another opinion."""
+
+def reserve_design(job_id, cfg=None):
+    """Atomically reserve Astra time for one design call on a persisted job.
+
+    Returns (ok, why, reservation_id). Under the lock it re-reads the store, sums
+    today's design seconds (reservations and settled alike), refuses if the cap is
+    reached or this job already had its call, and otherwise writes a reservation for
+    the whole remaining allowance so a concurrent call cannot also pass. The call is
+    then bounded to that reservation and settled to the real seconds afterward."""
+    import datetime as _d, uuid as _u
+    cfg = cfg if cfg is not None else _cfg()
+    cap = float(cfg.get("astra_seconds_per_day") or ASTRA_SECONDS_PER_DAY)
+    rid = "rsv-" + _u.uuid4().hex[:8]
+    def _m(rows, carry):
+        job = next((j for j in rows if j.get("id") == job_id), None)
+        if job is None:
+            carry["ok"] = (False, "no such job %r: a design call needs a persisted job" % job_id, "")
+            return rows
+        used = astra_seconds_today(rows)
+        if used >= cap:
+            carry["ok"] = (False, "Astra's %g minutes are spent today (%.0fs used)" % (cap / 60.0, used), "")
+            return rows
+        if any(e.get("what") == "design" for e in (job.get("work") or [])):
+            carry["ok"] = (False, "this job has had its design call; changing the mesh is Blender, not another call", "")
+            return rows
+        ceiling = float(cfg.get("astra_max_call_s") or ASTRA_MAX_CALL_S)
+        if used + ceiling > cap:
+            carry["ok"] = (False, "not enough of Astra's day left for a call: %.0fs used, a call reserves %.0fs of %g" % (used, ceiling, cap), "")
+            return rows
+        # Reserve the whole per-call ceiling up front and settle it down to the real
+        # seconds afterward. Because a call can never spend more than the ceiling
+        # reserved for it, the day's total can never exceed the cap.
+        job.setdefault("work", []).append({"at": _d.datetime.now().isoformat(timespec="seconds"),
+                                            "minutes": 0, "seconds": ceiling,
+                                            "what": "design", "how": "reserved", "rid": rid})
+        carry["ok"] = (True, "reserved %.0fs of %g Astra seconds" % (ceiling, cap), rid)
+        return rows
+    c = _locked_jobs(_m)
+    ok, why, r = c.get("ok", (False, "reservation failed", ""))
+    return ok, why, (r if ok else "")
+
+
+def settle_design(job_id, rid, seconds, how="answered"):
+    """Replace the reservation with the seconds actually spent."""
+    def _m(rows, carry):
+        for j in rows:
+            if j.get("id") == job_id:
+                for e in (j.get("work") or []):
+                    if e.get("rid") == rid:
+                        e["seconds"] = round(min(float(seconds), float(e.get("seconds", seconds))), 1)
+                        e["how"] = how; carry["ok"] = True
+        return rows
+    _locked_jobs(_m)
+
+
+def may_design(job=None, cfg=None):
+    """(ok, why) — a read-only pre-check for callers and the CLI. The real gate is
+    reserve_design(), which is atomic; this only reports whether a call could be made
+    now. `job` may be a job id or a job dict."""
     cfg = cfg if cfg is not None else _cfg()
     cap = float(cfg.get("astra_seconds_per_day") or ASTRA_SECONDS_PER_DAY)
     used = astra_seconds_today()
     if used >= cap:
         return False, "Astra's %g minutes are spent today (%.0fs used)" % (cap / 60.0, used)
-    n = len([e for e in ((job or {}).get("work") or []) if e.get("what") == "design"])
-    if n >= DESIGN_CALLS_PER_JOB:
-        return False, "this job has had its design call; changing the mesh is Blender, not another call"
+    jid = job.get("id") if isinstance(job, dict) else job
+    if jid:
+        j = next((x for x in _jobs() if x.get("id") == jid), None)
+        if j and any(e.get("what") == "design" for e in (j.get("work") or [])):
+            return False, "this job has had its design call; changing the mesh is Blender, not another call"
     return True, "%.0f of %g Astra seconds left today" % (cap - used, cap)
 
 
-def design(brief, job=None, caller=None):
+def design(brief, job_id="", caller=None):
     """One call: what to make, and the Blender script that makes it.
 
-    Astra writes it, and the seconds she takes are recorded against her ten minutes
-    the moment she answers — before the script is even checked, because time spent is
-    spent whatever came back. The script is returned, never executed here: running it
-    is the modelling step, on a machine she owns."""
-    ok, why = may_design(job=job)
+    It needs a persisted job. The time is reserved atomically before the call so a
+    crash, a second job, or a concurrent call cannot push Astra past her ten minutes;
+    it is settled to the real seconds after, and settled even when she fails or returns
+    something useless, because time spent is spent. The script is returned, never run:
+    running it is the modelling step, on a machine she owns."""
+    import time as _t
+    if isinstance(job_id, dict):
+        job_id = job_id.get("id", "")
+    if not job_id:
+        return {"ok": False, "why": "a design call needs a persisted job (open_job first)"}
+    ok, why, rid = reserve_design(job_id)
     if not ok:
         return {"ok": False, "why": why}
     system = ("You are Vintos. You are making a physical object for Gloria on a 3D printer. "
@@ -266,7 +345,6 @@ def design(brief, job=None, caller=None):
               "keep it inside %d mm in every direction, make it printable without supports where "
               "you can, and export to the path given as OUT. No commentary, no markdown fence." )
     prompt = "%s\n\nOUT = the path passed in sys.argv[-1]." % str(brief or "")[:1200]
-    import time as _t
     t0 = _t.time()
     try:
         if caller is None:
@@ -278,12 +356,11 @@ def design(brief, job=None, caller=None):
         text = caller(system % int(cfg.get("max_mm") or 180),
                       [{"role": "user", "content": prompt}], max_tokens=1800) or ""
     except Exception as e:
-        if job is not None:
-            note_design(job.get("id", ""), _t.time() - t0, "failed")
-        return {"ok": False, "why": "the design call did not answer: %s" % str(e)[:160]}
+        settle_design(job_id, rid, _t.time() - t0, "failed")
+        return {"ok": False, "why": "the design call did not answer: %s" % str(e)[:160],
+                "seconds": round(_t.time() - t0, 1)}
     spent = _t.time() - t0
-    if job is not None:
-        note_design(job.get("id", ""), spent, "answered")
+    settle_design(job_id, rid, spent, "answered")
     script = str(text).strip()
     if script.startswith("```"):
         script = script.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -333,6 +410,19 @@ def open_job(what, want_id="", now=None):
     return job
 
 
+# Every transition a job may make, and the only states it may be made from. A stop is
+# reached only from the step before it, a yes only from its own wait, and an abandoned
+# or done job moves nowhere. Nothing may skip a stop by naming a later state.
+_ALLOWED = {
+    "modelling":     ("draft_waiting", "abandoned"),
+    "draft_waiting": ("slicing", "abandoned"),          # only her yes/no moves it
+    "slicing":       ("slice_waiting", "abandoned"),
+    "slice_waiting": ("queued", "abandoned"),           # only her yes/no moves it
+    "queued":        ("printing", "abandoned"),
+    "printing":      ("done", "failed", "abandoned"),
+}
+
+
 def advance(job_id, state, detail="", extra=None):
     import datetime as _d
     if state not in STATES:
@@ -340,6 +430,9 @@ def advance(job_id, state, detail="", extra=None):
     rows = _jobs()
     for j in rows:
         if j.get("id") == job_id:
+            cur = j.get("state", "modelling")
+            if state != cur and state not in _ALLOWED.get(cur, ()):
+                return None, "a print job cannot go from %s to %s" % (cur, state)
             j["state"] = state
             if extra:
                 j.update({k: v for k, v in extra.items() if k not in ("id", "state")})
@@ -357,7 +450,7 @@ def present(job_id, kind, message, attach=None):
         return None, "a stop is draft or slice"
     job, why = advance(job_id, "draft_waiting" if kind == "draft" else "slice_waiting", kind)
     if job is None:
-        return None, why
+        return None, why   # e.g. a slice stop refused because the draft was never approved
     receipt = None
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
