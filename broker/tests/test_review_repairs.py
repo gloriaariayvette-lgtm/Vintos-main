@@ -98,4 +98,39 @@ check('bound private hints never enter the prompt',WH.get_withheld_hint()=='')
 check('rendering does not consume exposure',Path(WH.OUT).read_bytes()==before)
 WH.mark_admitted('s','t');WH.mark_admitted('s','t')
 check('admission counts a turn once',json.loads(Path(WH.OUT).read_text())['surfaced']==1)
+assert MEM.is_relative_to(HOME)
+SG.write_json(WH.HIST, [])
+(MEM/'withheld-lineage.json').write_text('[]')
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ list(pool.map(lambda i: WH.commit_candidate('fixture','fixture','a concrete fixture candidate with sufficient detail',.8,'same-origin'),range(20)))
+check('concurrent publication records one occurrence',len(json.loads(Path(WH.HIST).read_text()))==1)
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ list(pool.map(lambda i: WH.mark_admitted('same-origin','turn-'+str(i)),range(40)))
+check('all forty concurrent exposures survive in both projections',json.loads(Path(WH.HIST).read_text())[0]['surfaced']==40 and json.loads(Path(WH.OUT).read_text())['surfaced']==40)
+WC=load('withheld_confirm_fixture',REPO/'scripts/withheld_confirm.py');WC.HIST=WH.HIST
+import types
+class Scalar:
+ def max(self):return self
+ def item(self):return .9
+class Encoder:
+ def encode(self,*a,**kw):
+  assert not getattr(SG._state,'held',set())
+  WH.mark_admitted('same-origin','during-embedding')
+  return [1]
+WC.M=Encoder();WC.util=types.SimpleNamespace(cos_sim=lambda *a:Scalar())
+WC.chunks_private=lambda *a:['fixture private passage'];WC.chunks_shared=lambda *a:[]
+h=json.loads(Path(WH.HIST).read_text());h[0]['ts']='2026-01-01T00:00:00';SG.write_json(WH.HIST,h)
+WC.main()
+check('grading preserves exposure recorded during embedding and refuses stale verdict','verdict' not in json.loads(Path(WH.HIST).read_text())[0] and json.loads(Path(WH.HIST).read_text())[0]['surfaced']==41)
+UF=load('frontier_fixture',REPO/'scripts/unsaid_frontier.py');UF.FRONTIER=str(MEM/'unsaid-frontier.json');UF.LIN=str(MEM/'withheld-lineage.json')
+original={'lineage_id':'l','state':'open'}
+SG.write_json(UF.FRONTIER,[original]);SG.write_json(UF.LIN,[{'lineage_id':'l','origins':['a','b']}])
+SG.locked_update(UF.FRONTIER,lambda rows:rows+[{'lineage_id':'new','state':'open'}])
+check('privacy decision preserves concurrent frontier additions',UF.commit_decision(original,'KEEP_PRIVATE','fixture') and len(json.loads(Path(UF.FRONTIER).read_text()))==2 and json.loads(Path(UF.LIN).read_text())[0]['muted'])
+check('obsolete deliberation cannot replace an already-decided frontier',not UF.commit_decision(original,'VOICE','obsolete'))
+PL=load('proposition_fixture',REPO/'scripts/proposition_lineage.py');PL.MEM=str(MEM);PL.LEDGER=str(MEM/'tension-ledger.json');PL.PROPS=str(MEM/'proposition-ledger.json')
+SG.write_json(PL.LEDGER,{'tensions':[{'tension_id':'T-'+str(i),'status':'SUPPORTED','history':[]} for i in range(20)]})
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+ ids=list(pool.map(lambda i:PL.confirm_lineage('fixture '+str(i),['T-'+str(i)]),range(20)))
+check('concurrent lineage binding allocates unique ids and preserves every mechanism',len(set(ids))==20 and len(json.loads(Path(PL.PROPS).read_text())['propositions'])==20 and all(t.get('proposition_id') for t in json.loads(Path(PL.LEDGER).read_text())['tensions']))
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

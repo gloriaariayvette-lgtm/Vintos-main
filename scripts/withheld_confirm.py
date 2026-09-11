@@ -5,19 +5,13 @@ A withheld thought is CONFIRMED only if it surfaces in his private record
 absent from what he actually sent her. Ungrounded candidates decay to
 refuted. Runs nightly after the last dream; only confirmed entries should
 feed downstream consumers. Requires the emotion_model venv (nomic)."""
-import json, os, glob, time
+import json, os, glob, time, sys, copy
 from datetime import datetime
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import compare_and_swap
 
 WS = os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
@@ -29,8 +23,16 @@ def log(m): print("[withheld-confirm]", m, flush=True)
 def ep(x):
     try: return datetime.fromisoformat(str(x)[:19]).timestamp()
     except Exception: return None
-from sentence_transformers import SentenceTransformer, util
-M = SentenceTransformer("nomic-ai/nomic-embed-text-v1", trust_remote_code=True)
+M = None
+util = None
+
+def encoder():
+    global M, util
+    if M is None:
+        from sentence_transformers import SentenceTransformer, util as embedding_util
+        M = SentenceTransformer("nomic-ai/nomic-embed-text-v1", trust_remote_code=True)
+        util = embedding_util
+    return M
 def chunks_private(t0, t1):
     out = []
     for pat in ("memory/journal/*.md", "memory/mirror/*.md", "skills/dreaming/memory/dreams/*.md",
@@ -57,6 +59,7 @@ def chunks_shared(t0, t1):
     return out
 def main():
     h = json.load(open(HIST))
+    original = copy.deepcopy(h)
     lst = h if isinstance(h, list) else next(v for v in h.values() if isinstance(v, list))
     now = time.time(); changed = 0
     for e in lst:
@@ -68,7 +71,7 @@ def main():
         shar = chunks_shared(ts, ts + WINDOW_H * 3600)
         if not priv:
             e["verdict"] = "UNGRADEABLE"; changed += 1; continue
-        q = M.encode(str(e["withheld"])[:400], convert_to_tensor=True)
+        q = encoder().encode(str(e["withheld"])[:400], convert_to_tensor=True)
         ps = util.cos_sim(q, M.encode(priv, convert_to_tensor=True)).max().item()
         ss = util.cos_sim(q, M.encode(shar, convert_to_tensor=True)).max().item() if shar else 0.0
         if ss >= SAID_SIM: e["verdict"] = "SAID_IT"
@@ -82,7 +85,9 @@ def main():
                 e["verdict"] = "CONFIRMED"; e["evidence_sim"] = round(ps, 3)
         else: e["verdict"] = "UNSURFACED"
         changed += 1
-    (_sg_write(HIST, h, "withheld_confirm.py") or json.dump(h, open(HIST, "w"), indent=1))
+    if not compare_and_swap(HIST, original, h):
+        log("History or exposure changed during grading; obsolete verdicts discarded.")
+        return
     from collections import Counter
     log("graded %d | totals: %s" % (changed, dict(Counter(x.get("verdict", "pending") for x in lst))))
 if __name__ == "__main__":

@@ -6,16 +6,10 @@ withheld-history.json. Feeds silence/thread-triage/gloria-model via get_withheld
 import os, sys, json, re
 from datetime import datetime, timezone
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import transactions, write_json, compare_and_swap
 
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
@@ -69,12 +63,14 @@ def main():
     src_hash = hashlib.md5((g[:500] + "\x00" + v[:700]).encode()).hexdigest()[:12]
     prev = load(OUT, {})
     if prev.get("source_hash") == src_hash:
+        original = dict(prev)
         prev["stability"] = int(prev.get("stability", 1)) + 1
-        json.dump(prev, open(OUT, "w"), indent=2)
+        if not compare_and_swap(OUT, original, prev):
+            return
         log("same exchange (stability %d) — not re-reading" % prev["stability"])
         return
     if not v:
-        json.dump({"withheld": "", "confidence": 0.0, "novelty": 0.0, "note": "no reply to read"}, open(OUT, "w"), indent=2)
+        compare_and_swap(OUT, prev, {"withheld": "", "confidence": 0.0, "novelty": 0.0, "note": "no reply to read"}, default={})
         log("no reply"); return
     system = ("You read for SILENCE - what he held back. Withholding is a cost, never a virtue - flag it as motion he owes. Given what Gloria said and how he replied, "
               "name what he did NOT say, in TWO concrete sentences, using HIS vocabulary and the "
@@ -104,7 +100,18 @@ def main():
         log("judge failed (%s)" % e); return
     if not phrase:
         log("nothing withheld"); return
+    return commit_candidate(g, v, phrase, deliberate, src_hash)
+
+
+def commit_candidate(g, v, phrase, deliberate, src_hash):
+    with transactions([HIST, OUT, os.path.join(MEMORY, "withheld-lineage.json")]):
+        return _commit_candidate(g, v, phrase, deliberate, src_hash)
+
+
+def _commit_candidate(g, v, phrase, deliberate, src_hash):
     hist = load(HIST, [])
+    if any(h.get("source_hash") == src_hash for h in hist if isinstance(h, dict)):
+        return
     novelty = 1.0
     try:
         import difflib
@@ -147,12 +154,13 @@ def main():
             lins.append({"lineage_id": rec["lineage_id"], "rep": phrase[:200],
                          "origins": [src_hash], "phrases": [phrase[:200]],
                          "recurrence_pressure": 1, "first_seen": rec["ts"], "last_seen": rec["ts"]})
-        json.dump(lins[-60:], open(LIN, "w"), indent=2)
+        write_json(LIN, lins[-60:])
     except Exception as e:
-        log("lineage failed (fail-open): %s" % e)
-    json.dump(rec, open(OUT, "w"), indent=2)
+        log("lineage failed; candidate not published: %s" % e)
+        return
+    write_json(OUT, rec)
     if isinstance(hist, list):
-        hist.append(rec); json.dump(hist[-100:], open(HIST, "w"), indent=2)
+        hist.append(rec); write_json(HIST, hist[-100:])
     log("withheld '%s' deliberate %s novelty %s" % (phrase[:50], deliberate, novelty))
 
 def get_withheld_hint():
@@ -173,17 +181,16 @@ def get_withheld_hint():
             "You need not voice it, but let it press on what comes next.]" % (ph, conf, nov))
 
 def mark_admitted(source_hash, turn_id):
-    from store_guard import transaction
-    with transaction(OUT):
+    with transactions([HIST, OUT]):
         d = load(OUT,{})
         if not source_hash or d.get("source_hash")!=source_hash or turn_id in d.get("admitted_turns",[]): return
         d.setdefault("admitted_turns",[]).append(turn_id)
         d["surfaced"]=d.get("surfaced",0)+1
-        json.dump(d,open(OUT,"w"),indent=2)
+        write_json(OUT, d)
         hist=load(HIST,[])
         for entry in hist:
             if entry.get("source_hash")==source_hash: entry["surfaced"]=d["surfaced"]
-        _sg_write(HIST,hist,"withheld_head.py")
+        write_json(HIST, hist)
 
 if __name__ == "__main__":
     main()

@@ -19,16 +19,12 @@ refusal does not refute it. Recurrence is history, never truth. Fail-open.
 import os, sys, json, re
 from datetime import datetime, timezone
 
-def _sg_write(_p, _o, _who="organ"):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+import copy
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import transactions, write_json
+
 
 
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -51,7 +47,7 @@ def _now(): return datetime.now(timezone.utc).isoformat()
 
 def _items(): return _load(FRONTIER, [])
 
-def _save(items): json.dump(items[-80:], open(FRONTIER, "w"), indent=2)
+def _save(items): write_json(FRONTIER, items[-80:])
 
 def _bound(L):
     """Review 190 (her decision, 2026-09-10): a KEEP_PRIVATE or WRONG_READING mark binds
@@ -67,6 +63,10 @@ def _bound(L):
 
 
 def promote():
+    with transactions([FRONTIER, LIN]):
+        return _promote()
+
+def _promote():
     """Lineages at pressure >= 3 become frontier items, once each."""
     lins = _load(LIN, [])
     items = _items()
@@ -121,24 +121,32 @@ def deliberate():
         word = str(d.get("word", ""))[:300]
     except Exception as e:
         log("deliberation unreachable — item stays open: %s" % e); return
-    it["decision"] = choice
-    it["his_word"] = word
-    it["decided_at"] = _now()
-    it["state"] = {"VOICE": "voiced_intent", "KEEP_PRIVATE": "kept",
-                   "WRONG_READING": "contested", "HELD": "held"}[choice]
-    # governance side-effects on the lineage — authority, never truth
-    try:
+    commit_decision(it, choice, word)
+
+
+def commit_decision(original, choice, word):
+    with transactions([FRONTIER, LIN]):
+        items = _items()
+        it = next((row for row in items if row.get("lineage_id") == original.get("lineage_id")), None)
+        if it != original:
+            log("frontier changed during deliberation; obsolete decision discarded")
+            return False
+        it["decision"] = choice
+        it["his_word"] = word
+        it["decided_at"] = _now()
+        it["state"] = {"VOICE": "voiced_intent", "KEEP_PRIVATE": "kept",
+                       "WRONG_READING": "contested", "HELD": "held"}[choice]
         lins = _load(LIN, [])
-        for L in lins:
-            if L.get("lineage_id") == it["lineage_id"]:
-                if choice == "KEEP_PRIVATE": L["muted"] = True
-                if choice == "WRONG_READING": L["contested"] = True
-                if choice == "HELD": L["held_at_origins"] = len(set(L.get("origins", [])))
-        (_sg_write(LIN, lins, "unsaid_frontier.py") or json.dump(lins, open(LIN, "w"), indent=2))
-    except Exception:
-        pass
-    _save(items)
+        for lineage in lins:
+            if lineage.get("lineage_id") == it["lineage_id"]:
+                if choice == "KEEP_PRIVATE": lineage["muted"] = True
+                if choice == "WRONG_READING": lineage["contested"] = True
+                if choice == "HELD": lineage["held_at_origins"] = len(set(lineage.get("origins", [])))
+        write_json(LIN, lins)
+        _save(items)
     log("%s -> %s: %s" % (it["lineage_id"], choice, word[:80]))
+    return True
+
 
 def block():
     """Only VOICE produces anything for the live prompt, at most twice, then held."""

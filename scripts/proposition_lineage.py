@@ -14,8 +14,13 @@ Nothing merges on linguistic similarity. A lineage is CANDIDATE until the remova
 mechanisms are not independent: if removing one materially changes the explanatory account of the
 others, they are distinct and stay distinct.
 """
-import json, os, sys
+import json, os, sys, copy
 from datetime import datetime
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import transactions, write_json
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
@@ -27,7 +32,7 @@ def _load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 
-def _save(p, d): json.dump(d, open(p, "w"), indent=2)
+def _save(p, d): write_json(p, d)
 
 def _ask(prompt, max_tokens=400):
     import urllib.request
@@ -55,7 +60,7 @@ def detect_candidates():
     led = _load(LEDGER, None)
     if not led: return []
     living = [t for t in led["tensions"] if t.get("lifecycle") in ("ACTIVE", "CARRIED")]
-    props = _load(PROPS, {"propositions": [], "next_id": 1})
+    original = copy.deepcopy(led)
     out = []
 
     for i, a in enumerate(living):
@@ -106,19 +111,33 @@ def detect_candidates():
                   f"(shared {len(shared)}, independence {d.get('independence')}): {str(d.get('proposition',''))[:80]}")
 
     if out:
-        props.setdefault("candidates", [])
-        known = {tuple(sorted(c["pair"])) for c in props["candidates"]}
-        for c in out:
-            if tuple(sorted(c["pair"])) not in known:
-                props["candidates"].append(c)
-        _save(PROPS, props)
+        with transactions([LEDGER, PROPS]):
+            if _load(LEDGER, None) != original:
+                print("[lineage] mechanisms changed during inference; obsolete candidates discarded")
+                return []
+            props = _load(PROPS, {"propositions": [], "next_id": 1})
+            props.setdefault("candidates", [])
+            known = {tuple(sorted(c["pair"])) for c in props["candidates"]}
+            for candidate in out:
+                key = tuple(sorted(candidate["pair"]))
+                if key not in known:
+                    props["candidates"].append(candidate)
+                    known.add(key)
+            _save(PROPS, props)
     else:
         print("[lineage] no candidate lineages this pass")
     return out
 
 def confirm_lineage(proposition_text, tension_ids):
+    with transactions([LEDGER, PROPS]):
+        return _confirm_lineage(proposition_text, tension_ids)
+
+def _confirm_lineage(proposition_text, tension_ids):
     """Called deliberately, once the removal test has been satisfied. Creates the proposition and
     binds its manifestations. Evidence is counted UNIQUELY here; provenance stays on each mechanism."""
+    led = _load(LEDGER, None)
+    if not led or not set(tension_ids).issubset({t["tension_id"] for t in led["tensions"]}):
+        raise ValueError("lineage requires existing mechanisms")
     props = _load(PROPS, {"propositions": [], "next_id": 1})
     pid = "P-%03d" % props.get("next_id", 1)
     props["next_id"] = props.get("next_id", 1) + 1
@@ -156,6 +175,10 @@ def unique_support(pid):
             "inflation": round(sum(per.values()) / max(1, len(seen)), 2)}
 
 def contest_proposition(pid, correction_quote, at):
+    with transactions([LEDGER, PROPS, os.path.join(MEM, "tension-field.json")]):
+        return _contest_proposition(pid, correction_quote, at)
+
+def _contest_proposition(pid, correction_quote, at):
     """Her correction attaches to the BELIEF. Every face of it is contested — the system already
     decided these are one proposition; it cannot accept the correction on two names and leave the
     same claim standing under two others."""
