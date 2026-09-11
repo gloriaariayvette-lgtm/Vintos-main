@@ -133,4 +133,55 @@ SG.write_json(PL.LEDGER,{'tensions':[{'tension_id':'T-'+str(i),'status':'SUPPORT
 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
  ids=list(pool.map(lambda i:PL.confirm_lineage('fixture '+str(i),['T-'+str(i)]),range(20)))
 check('concurrent lineage binding allocates unique ids and preserves every mechanism',len(set(ids))==20 and len(json.loads(Path(PL.PROPS).read_text())['propositions'])==20 and all(t.get('proposition_id') for t in json.loads(Path(PL.LEDGER).read_text())['tensions']))
+EU=load('emoclaw_utils',REPO/'scripts/emoclaw_utils.py')
+EU.generate_steps=lambda *a,**kw:[]
+EU.check_want_interference=lambda *a:None
+EU.nudge_emotions=lambda *a,**kw:None
+sys.modules['wants_meta']=types.SimpleNamespace(consult=lambda *a:None)
+sys.modules['similarity_gate']=types.SimpleNamespace(check_want=lambda *a:None)
+sys.modules['want_completion']=types.SimpleNamespace(admit=lambda *a:{'state':'ADMIT'})
+sys.modules['want_stance']=types.SimpleNamespace(admit=lambda *a:None)
+import requests
+requests.post=lambda *a,**kw:(_ for _ in ()).throw(AssertionError('live provider forbidden'))
+want_path=MEM/'current-wants.json';SG.write_json(str(want_path),[])
+a=EU.GeneratedWant('I want to paint a red mountain',{'desire':'I want to paint a red mountain','tension':'mountain provenance','source_kind':'current_desire','present_pull':'paint now','source':'fixture-a'})
+b=EU.GeneratedWant('I want to listen carefully to birdsong',{'desire':'I want to listen carefully to birdsong','tension':'bird provenance','source_kind':'current_desire','present_pull':'listen now','source':'fixture-b'})
+SG.write_json(str(MEM/'.pending-want-provenance.json'),{'desire':str(a),'tension':'wrong legacy provenance'})
+ra=EU.express_want(a,source='fixture-a');rb=EU.express_want(b,source='fixture-b')
+check('generated provenance stays with its sentence instead of the legacy global slot',ra['tension']=='mountain provenance' and rb['tension']=='bird provenance' and ra['generation_source']=='fixture-a')
+check('legacy pending provenance remains untouched and unused',json.loads((MEM/'.pending-want-provenance.json').read_text())['tension']=='wrong legacy provenance')
+sys.modules['subconscious_context']=types.SimpleNamespace(get_subconscious_context_compact=lambda:'')
+sys.modules['subconscious_drift']=types.SimpleNamespace(get_drift_bias=lambda:'')
+sys.modules['emoclaw_pressure']=types.SimpleNamespace(get_pressure_compact=lambda **kw:'')
+def provider_fixture(*args,**kw):
+ payload=[{'desire':'I want to trace constellations tonight','tension':'fixture pull','source_kind':'current_desire','present_pull':'tonight','pull':4}]
+ return types.SimpleNamespace(json=lambda:{'choices':[{'message':{'content':json.dumps(payload)}}]})
+from unittest.mock import patch
+SG.write_json(str(MEM/'want-candidates.json'),[])
+with patch.object(requests,'post',side_effect=provider_fixture):
+ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+  generated=list(pool.map(lambda i:EU.generate_want('fixture trigger',source='origin-'+str(i)),range(12)))
+check('concurrent generation preserves each origin and every candidate journal row',all(isinstance(w,EU.GeneratedWant) and w.provenance['source']=='origin-'+str(i) for i,w in enumerate(generated)) and len(json.loads((MEM/'want-candidates.json').read_text()))==12)
+SP=load('spark_fixture',REPO/'scripts/spark_pressure.py');SP.MEMORY=str(MEM);SP.DIRECTIVE=str(MEM/'spark-pressure-directive.json');SP.EVENTS=str(MEM/'spark-pressure-events.json')
+assert all(Path(p).is_relative_to(HOME) for p in [SP.DIRECTIVE,SP.EVENTS])
+SP._his_replies_since=lambda *a:[]
+directive={'created':'2026-01-01T00:00:00','about':'fixture stall','direction':'expand','evidence':'fixture','consumed':False}
+SG.write_json(str(want_path),[]);SG.write_json(SP.DIRECTIVE,directive)
+calls=[]
+def candidate_fixture(**kw):
+ calls.append(kw)
+ return a
+EU.generate_want=candidate_fixture
+from unittest.mock import patch
+with patch.object(SP,'compare_and_swap',return_value=False):SP.tick()
+check('spark handoff admits a real row before acknowledging the directive',len(json.loads(want_path.read_text()))==1 and not json.loads(Path(SP.DIRECTIVE).read_text())['consumed'])
+SP.tick()
+check('spark recovers a persisted handoff without regenerating',len(calls)==1 and calls[0]['trigger_description'] and json.loads(Path(SP.DIRECTIVE).read_text())['want_id']==json.loads(want_path.read_text())[0]['id'])
+SG.write_json(SP.DIRECTIVE,{**directive,'created':'2026-01-02T00:00:00'})
+EU.generate_want=lambda **kw:None
+SP.tick()
+check('no generated want leaves the directive live',not json.loads(Path(SP.DIRECTIVE).read_text())['consumed'])
+SG.write_json(SP.EVENTS,{'events':[{'fixture':True}],'last_fired':'fixture'})
+SP.set_consent(True)
+check('consent update preserves event history',json.loads(Path(SP.EVENTS).read_text())['events']==[{'fixture':True}])
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

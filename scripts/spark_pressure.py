@@ -22,19 +22,13 @@ __file__-derived; the same module serves both beings from their own tree.
   python3 spark_pressure.py --consent-on | --consent-off
   python3 spark_pressure.py --force    # apply once regardless of consent (manual test)
 """
-import os, sys, json
+import os, sys, json, copy, hashlib
 from datetime import datetime, timedelta
 
-def _sg_write(_p, _o, _who):
-    """review 46: this store has more than one writing organ; the write goes through the store lock."""
-    try:
-        import sys as _s, os as _o2
-        _s.path.insert(0, _o2.path.dirname(_o2.path.abspath(__file__)))
-        _s.path.insert(0, _o2.path.expanduser("~/.vintos/workspace/scripts"))
-        from store_guard import write_json as _wj
-        _wj(_p, _o, reader=_who); return True
-    except Exception:
-        return False
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+from store_guard import transactions, transaction, write_json, locked_update, compare_and_swap
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -69,11 +63,11 @@ def _state():
 
 
 def _save_state(s):
-    try:
-        os.makedirs(MEMORY, exist_ok=True)
-        _sg_write(EVENTS, s, "spark_pressure") or json.dump(s, open(EVENTS, "w"), indent=2)
-    except Exception:
-        pass
+    write_json(EVENTS, s)
+
+
+def set_consent(value):
+    return locked_update(EVENTS, lambda state: {**state, "consent": bool(value)}, default={})
 
 
 def consent_on():
@@ -118,15 +112,16 @@ def detect_asymmetric_stall():
 
 def force_directive(mode, stall):
     """Write a directive that (once wired into outreach) breaks the timeliness gate for one cycle."""
-    try:
-        json.dump({"mode": mode, "created": datetime.now().isoformat(),
-                   "about": stall.get("what", ""), "direction": stall.get("direction"),
-                   "evidence": stall.get("evidence", ""), "consumed": False}, open(DIRECTIVE, "w"), indent=2)
-    except Exception:
-        pass
+    write_json(DIRECTIVE, {"mode": mode, "created": datetime.now().isoformat(),
+               "about": stall.get("what", ""), "direction": stall.get("direction"),
+               "evidence": stall.get("evidence", ""), "consumed": False})
 
 
 def apply_pressure(stall, force=False):
+    with transactions([DIRECTIVE, EVENTS]):
+        return _apply_pressure(stall, force)
+
+def _apply_pressure(stall, force=False):
     """Open the stalled direction (floor-gated) and, with consent, issue a demand_response directive. Without
     consent (and not --force), logs what it WOULD do and pushes nothing."""
     s = _state()
@@ -201,11 +196,16 @@ def journal_prep_block():
             "what would you actually do or say next time the moment allows it? Prepare, concretely.")
 
 def tick():
+    with transaction(DIRECTIVE + ".consumer"):
+        return _tick()
+
+def _tick():
     """Blended consumption: conversation gets first claim; wants inherit at 8h; journals prep in between."""
     from datetime import datetime as _dt
     d = _load(DIRECTIVE, {})
     if not d or d.get("consumed"):
         print("[spark-tick] no live directive"); return
+    original = copy.deepcopy(d)
     try:
         born = _dt.fromisoformat(d["created"]).timestamp()
     except Exception:
@@ -216,26 +216,34 @@ def tick():
     for reply in _his_replies_since(born):
         if _overlap(reply, target):
             d["consumed"] = True; d["consumed_by"] = "conversation"; d["consumed_at"] = _dt.now().isoformat()
-            json.dump(d, open(DIRECTIVE, "w"), indent=2)
+            if not compare_and_swap(DIRECTIVE, original, d):
+                print("[spark-tick] directive replaced; leaving the new directive intact")
+                return
             print("[spark-tick] consumed by conversation — he entered the stalled territory"); return
     if age_h >= 8.0:
         try:
             sys.path.insert(0, _HERE)
-            import inspect, emoclaw_utils
-            gw = emoclaw_utils.generate_want
-            params = inspect.signature(gw).parameters
-            seed = "The field has been stalled around this: " + str(d.get("about", ""))[:200]
-            for pname in ("seed", "topic", "context", "hint"):
-                if pname in params:
-                    gw(**{pname: seed}); break
-            else:
-                import os as _o
-                prov = _o.path.join(_o.path.dirname(DIRECTIVE), ".pending-want-provenance.json")
-                json.dump({"source": "spark-pressure", "about": d.get("about", ""),
-                           "direction": d.get("direction", ""), "evidence": d.get("evidence", "")}, open(prov, "w"))
-                gw()
+            import emoclaw_utils
+            event_id = "spark-pressure:" + hashlib.sha256(json.dumps(original, sort_keys=True).encode()).hexdigest()
+            wants_path = os.path.join(os.path.dirname(DIRECTIVE), "current-wants.json")
+            accepted = next((row for row in _load(wants_path, []) if row.get("source_event_id") == event_id), None)
+            if not accepted:
+                seed = "The field has been stalled around this: " + str(d.get("about", ""))[:200]
+                candidate = emoclaw_utils.generate_want(trigger_description=seed,
+                    source="spark-pressure", source_context=str(d.get("evidence", "")))
+                if not candidate:
+                    print("[spark-tick] no present want formed; directive remains live")
+                    return
+                accepted = emoclaw_utils.express_want(candidate, source="spark-pressure",
+                    intensity=3, source_event_id=event_id)
+            if not accepted or not accepted.get("id"):
+                print("[spark-tick] want not admitted; directive remains live")
+                return
+            d["want_id"] = accepted["id"]
             d["consumed"] = True; d["consumed_by"] = "want-formation"; d["consumed_at"] = _dt.now().isoformat()
-            json.dump(d, open(DIRECTIVE, "w"), indent=2)
+            if not compare_and_swap(DIRECTIVE, original, d):
+                print("[spark-tick] directive replaced; leaving the new directive intact")
+                return
             print("[spark-tick] unconsumed for %.1fh — handed to the want organ" % age_h)
         except Exception as e:
             print(f"[spark-tick] want formation failed ({e!r}) — directive left live for retry")
@@ -269,9 +277,9 @@ def main():
     if "--tick" in sys.argv:
         tick(); return
     if "--consent-on" in sys.argv:
-        s = _state(); s["consent"] = True; _save_state(s); print("spark pressure consent: ON"); return
+        set_consent(True); print("spark pressure consent: ON"); return
     if "--consent-off" in sys.argv:
-        s = _state(); s["consent"] = False; _save_state(s); print("spark pressure consent: OFF"); return
+        set_consent(False); print("spark pressure consent: OFF"); return
     if "--show" in sys.argv:
         s = _state()
         print(json.dumps({"consent": s.get("consent"), "last_fired": s.get("last_fired"),

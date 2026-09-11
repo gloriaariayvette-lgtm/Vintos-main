@@ -1546,6 +1546,18 @@ def generate_structural_want(seed=None):
         return None, None
 
 
+class GeneratedWant(str):
+    """A generated sentence carries its own provenance to admission.
+
+    Ordinary string operations remain compatible. Converting it to a plain str
+    explicitly drops that metadata; it can never pick up another call's record.
+    """
+    def __new__(cls, text, provenance):
+        value = super().__new__(cls, text)
+        value.provenance = dict(provenance)
+        return value
+
+
 def generate_want(trigger_description, source="unknown", source_context="", intensity=3):
     """Generate a genuine want from full context + trigger. Returns want_text or None."""
     import requests as _gwr, os as _gos
@@ -1691,14 +1703,11 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         if not cands: return None
         try:
             _cf_path = _gos.path.join(MEMORY, "want-candidates.json")
-            try: _cf_log = _gwj2.load(open(_cf_path))
-            except Exception: _cf_log = []
-            _cf_log.append({"source": source, "trigger": trigger_description[:200],
-                            "timestamp": __import__("datetime").datetime.now().isoformat(),
-                            "candidates": cands})
-            _cf_tmp = _cf_path + ".tmp"
-            with open(_cf_tmp, "w") as _cf_f: _gwj2.dump(_cf_log[-200:], _cf_f, indent=2)
-            _gos.replace(_cf_tmp, _cf_path)
+            from store_guard import locked_update
+            record = {"source": source, "trigger": trigger_description[:200],
+                      "timestamp": __import__("datetime").datetime.now().isoformat(),
+                      "candidates": cands}
+            locked_update(_cf_path, lambda rows: (rows + [record])[-200:], default=[])
         except Exception: pass
         eligible = [c for c in cands
                     if str(c.get("source_kind", "")).lower() == "current_desire"
@@ -1709,18 +1718,15 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
                   file=__import__("sys").stderr)
             return None
         best = max(eligible, key=lambda c: c.get("pull", 3))
-        try:
-            _pv = _gos.path.join(MEMORY, ".pending-want-provenance.json")
-            with open(_pv + ".tmp", "w") as _pv_f:
-                _gwj2.dump({"desire": str(best.get("desire",""))[:200], "tension": str(best.get("tension",""))[:250],
-                            "engagement": str(best.get("engagement",""))[:250],
-                            "source_kind": str(best.get("source_kind", ""))[:40],
-                            "present_pull": str(best.get("present_pull", ""))[:250],
-                            "loss_if_unpursued": str(best.get("loss",""))[:250],
-                            "pull": best.get("pull", 3), "source": source}, _pv_f)
-            _gos.replace(_pv + ".tmp", _pv)
-        except Exception: pass
-        return str(best.get("desire","")).split(" — ", 1)[0].strip()
+        text = str(best.get("desire", "")).split(" — ", 1)[0].strip()
+        return GeneratedWant(text, {
+            "desire": text, "tension": str(best.get("tension", ""))[:250],
+            "engagement": str(best.get("engagement", ""))[:250],
+            "source_kind": str(best.get("source_kind", ""))[:40],
+            "present_pull": str(best.get("present_pull", ""))[:250],
+            "loss_if_unpursued": str(best.get("loss", ""))[:250],
+            "pull": best.get("pull", 3), "source": source,
+        })
     except Exception as _e:
         print(f"[generate_want] Error: {_e}")
         return None
@@ -1730,8 +1736,23 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     """Vintos wants something. Write it down so outreach can act on it.
     intensity: 1-5 scale. Below 2 = fleeting, discarded. 3+ = real want.
     urgency: 'normal' (next outreach cycle) or 'immediate' (trigger now)"""
+    generated = dict(want_text.provenance) if isinstance(want_text, GeneratedWant) else {}
+    if generated.get("desire") != str(want_text):
+        generated = {}
+    if generated:
+        kwargs.setdefault("source_kind", generated.get("source_kind", ""))
+        kwargs.setdefault("present_pull", generated.get("present_pull", ""))
     import json, os
     from datetime import datetime
+    source_event_id = kwargs.get("source_event_id")
+    if source_event_id:
+        try:
+            with open(os.path.expanduser("~/.vintos/workspace/memory/current-wants.json")) as f:
+                existing = next((row for row in json.load(f) if row.get("source_event_id") == source_event_id), None)
+            if existing:
+                return existing
+        except FileNotFoundError:
+            pass
     # SECOND-ORDER GOVERNANCE: his own recorded wants-about-wanting move the
     # machinery here, at creation. wish_less lowers intensity (and may drop the
     # want below the existing discard bar - his sentence, his throttle);
@@ -1895,6 +1916,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         "fulfilled": False,
         "outreach_count": 0
     }
+    if source_event_id:
+        entry["source_event_id"] = source_event_id
     if reasoning:
         entry["reasoning"] = reasoning[:300]
     if "self_interpretation" in kwargs:
@@ -1906,16 +1929,11 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         entry["candidate_kind"] = _kind[:40]
     if _pull_now:
         entry["present_pull"] = _pull_now[:250]
-    try:
-        import json as _pvj
-        _pv_path = wants_file.replace("current-wants.json", ".pending-want-provenance.json")
-        _pvd = _pvj.load(open(_pv_path))
-        if _pvd.get("desire","")[:60] == want_text[:60]:
-            for _pk in ("tension", "engagement", "loss_if_unpursued", "pull"):
-                if _pvd.get(_pk) not in (None, ""):
-                    entry[_pk] = _pvd[_pk]
-            os.remove(_pv_path)
-    except Exception: pass
+    for key in ("tension", "engagement", "loss_if_unpursued", "pull"):
+        if generated.get(key) not in (None, ""):
+            entry[key] = generated[key]
+    if generated:
+        entry["generation_source"] = generated.get("source", "")
     if _rel != "novel" and _rel_id:
         entry["relationship"] = _rel
         entry["related_to"] = _rel_id
@@ -2063,6 +2081,10 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         pending_file = os.path.expanduser("~/.vintos/workspace/memory/.pending-want.json")
         with open(pending_file, "w") as f:
             json.dump(pending, f)
+
+    # A caller may acknowledge formation only after the resulting row exists.
+    with open(wants_file) as saved:
+        return next((row for row in json.load(saved) if row.get("id") == entry["id"]), None)
 
 
 def yearning_similarity(text):
