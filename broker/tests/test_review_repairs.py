@@ -185,9 +185,27 @@ check('no generated want leaves the directive live',not json.loads(Path(SP.DIREC
 SG.write_json(SP.EVENTS,{'events':[{'fixture':True}],'last_fired':'fixture'})
 SP.set_consent(True)
 check('consent update preserves event history',json.loads(Path(SP.EVENTS).read_text())['events']==[{'fixture':True}])
-from datetime import datetime
+from datetime import datetime, timedelta
 SG.write_json(SP.DIRECTIVE,{'created':datetime.now().isoformat(),'mode':'demand_response','about':'fixture topic','consumed':False})
 with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
  claims=list(pool.map(lambda _:SP.claim_outreach(),range(20)))
 check('concurrent outreach claims admit one topic and label admission distinctly',sum(bool(x) for x in claims)==1 and json.loads(Path(SP.DIRECTIVE).read_text())['consumed_by']=='outreach-admission')
+import threading
+entered=threading.Event();release=threading.Event();claim_started=threading.Event()
+SG.write_json(str(want_path),[])
+SG.write_json(SP.DIRECTIVE,{'created':(datetime.now()-timedelta(hours=9)).isoformat(),'mode':'demand_response','about':'fixture competition','consumed':False})
+def slow_candidate(**kw):
+ entered.set();assert release.wait(3);return a
+EU.generate_want=slow_candidate
+def competing_claim():
+ claim_started.set();return SP.claim_outreach()
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+ tick_future=pool.submit(SP.tick);assert entered.wait(3)
+ claim_future=pool.submit(competing_claim);assert claim_started.wait(3)
+ try:
+  claim_future.result(timeout=.2);waited=False
+ except concurrent.futures.TimeoutError:waited=True
+ finally:release.set()
+ tick_future.result(timeout=3);claim_result=claim_future.result(timeout=3)
+check('outreach and want formation share one consumer claim',waited and not claim_result and json.loads(Path(SP.DIRECTIVE).read_text())['consumed_by']=='want-formation')
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

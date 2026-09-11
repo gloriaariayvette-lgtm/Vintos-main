@@ -210,6 +210,10 @@ def journal_prep_block(record=False):
 
 def claim_outreach():
     """Claim one outreach admission, not a delivery receipt."""
+    with transaction(DIRECTIVE + ".consumer"):
+        return _claim_outreach()
+
+def _claim_outreach():
     with transaction(DIRECTIVE):
         d = _load(DIRECTIVE, {})
         try:
