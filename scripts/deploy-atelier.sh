@@ -66,7 +66,7 @@ case "${1:-}" in
 esac
 
 # Exactly what this build changed. An explicit list — never a wildcard.
-SCRIPTS="atelier-open.py atelier-visit.py atelier-threshold.py
+SCRIPTS="durable_projection.py atelier-open.py atelier-visit.py atelier-threshold.py
 evidence_view.py prediction_ledger.py build_merged_chat.py
 constitutional_barrier.py turn_coordinator.py relational_mismatch.py
 causality_engine.py value_map.py repair_case.py encounter.py

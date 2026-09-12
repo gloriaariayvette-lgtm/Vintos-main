@@ -14,6 +14,10 @@ Runs weekly via cron. Hypotheses accumulate and get tested.
 import os, sys, json, re, glob, hashlib, time
 from datetime import datetime, timedelta
 import subprocess
+import copy
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from store_guard import transaction, write_json
 
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -309,15 +313,27 @@ def load_trial_ledger(days=7):
     except: pass
     return entries
 
+class HypothesisSnapshot(dict):
+    """An inference snapshot carries its exact read version outside persisted JSON."""
+    def __init__(self, value):
+        super().__init__(value)
+        self.original = copy.deepcopy(value)
+
+
+def _read_hypotheses():
+    try:
+        with open(HYPOTHESIS_DB) as f:
+            value = json.load(f)
+    except FileNotFoundError:
+        value = {"hypotheses": [], "tested": 0, "confirmed": 0, "revised": 0}
+    if not isinstance(value, dict) or not isinstance(value.get("hypotheses"), list):
+        raise ValueError("invalid hypothesis store; refusing replacement")
+    return value
+
+
 def load_existing_hypotheses():
-    """Load previously formed hypotheses for testing."""
-    if os.path.exists(HYPOTHESIS_DB):
-        try:
-            with open(HYPOTHESIS_DB) as f:
-                return json.load(f)
-        except:
-            pass
-    return {"hypotheses": [], "tested": 0, "confirmed": 0, "revised": 0}
+    with transaction(HYPOTHESIS_DB):
+        return HypothesisSnapshot(_read_hypotheses())
 
 RETIRED_PATH = os.path.join(MEMORY, "causality-retired.jsonl")
 
@@ -354,19 +370,75 @@ def _readiness(h):
         return (1, -age)                      # never witnessed: oldest first
     return (2, -age)
 
+def _queue_delivery(db, kind, payload, key):
+    event_id = "causality:" + kind + ":" + str(key)
+    events = db.setdefault("deliveries", {})
+    events.setdefault(event_id, {"kind": kind, "payload": copy.deepcopy(payload),
+                                "state": "pending"})
+    return event_id
+
+
+def _deliver(event_id, event):
+    from durable_projection import append_once
+    kind, payload = event["kind"], event["payload"]
+    if kind in ("graduation_record", "retired"):
+        path = os.path.join(MEMORY, "causality-graduated.jsonl" if kind == "graduation_record" else "causality-retired.jsonl")
+        append_once(path, event_id, payload, jsonl=True)
+    elif kind in ("review_flag", "gloria"):
+        path = os.path.join(MEMORY, "hallucination-flags.json" if kind == "review_flag" else "gloria-hypotheses.json")
+        append_once(path, event_id, payload)
+    elif kind == "belief":
+        from belief_sediment import promote_hypothesis
+        promote_hypothesis(**payload)
+    elif kind == "pearl":
+        from pearl_engine import add_candidate
+        add_candidate(**payload, transition_id=event_id)
+    else:
+        raise ValueError("unknown causality destination: " + kind)
+
+
+def recover_deliveries():
+    # No source-store lock is held while delivering. Destinations deduplicate
+    # the stable event id, including a crash after delivery before acknowledgement.
+    snapshot = load_existing_hypotheses()
+    for event_id, event in snapshot.get("deliveries", {}).items():
+        if event.get("state") == "delivered":
+            continue
+        try:
+            _deliver(event_id, event)
+            update = {"state": "delivered", "delivered_at": datetime.now().isoformat()}
+        except Exception as exc:
+            update = {"state": "pending", "error": str(exc)[:200]}
+        with transaction(HYPOTHESIS_DB):
+            fresh = _read_hypotheses()
+            current = fresh.get("deliveries", {}).get(event_id)
+            if current and current.get("state") != "delivered":
+                current.update(update)
+                if current["kind"] == "belief" and update["state"] == "delivered":
+                    hid = current["payload"].get("hypothesis_id")
+                    for h in fresh["hypotheses"]:
+                        if _hypothesis_id(h) == hid:
+                            h.pop("promotion_pending", None)
+                            h["promotion_state"] = "delivered"
+                write_json(HYPOTHESIS_DB, fresh)
+
+
 def save_hypotheses(db):
-    # counters are DERIVED, never accumulated: rows expire at 7 days but an accumulator never does,
-    # which is how "revised" reached 966 against 31 live rows and made every summary he reads a lie
-    try:
-        _h = db.get("hypotheses", [])
-        db["revised"]   = sum(1 for x in _h if x.get("status") in ("revised", "challenged"))
-        db["confirmed"] = sum(1 for x in _h if x.get("self_knowledge"))
-        db["tested"]    = sum(1 for x in _h if _nightly_rows(x))
-    except Exception:
-        pass
-    if not _sg_write(HYPOTHESIS_DB, db, "causality-engine"):
-        with open(HYPOTHESIS_DB, "w") as f:
-            json.dump(db, f, indent=2)
+    if not isinstance(db, HypothesisSnapshot):
+        raise ValueError("save requires a loaded hypothesis snapshot")
+    rows = db.get("hypotheses", [])
+    db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
+    db["confirmed"] = sum(1 for h in rows if h.get("self_knowledge"))
+    db["tested"] = sum(1 for h in rows if _nightly_rows(h))
+    with transaction(HYPOTHESIS_DB):
+        if _read_hypotheses() != db.original:
+            raise RuntimeError("hypotheses changed during inference; obsolete pass refused")
+        write_json(HYPOTHESIS_DB, dict(db))
+    recover_deliveries()
+    fresh = load_existing_hypotheses()
+    db.clear()
+    db.update(fresh)
+    db.original = fresh.original
 
 
 # === EVIDENCE LINEAGE / NIGHTLY TRIAL CONTRACT ===
@@ -781,7 +853,14 @@ def graduate_hypotheses(db):
     remaining = []
 
     for h in db["hypotheses"]:
-        if h.get("graduated"): 
+        if h.get("graduated"):
+            if h.get("promotion_pending"):
+                _queue_delivery(db, "belief", {
+                    "hypothesis_text": h["hypothesis"], "source": "causality",
+                    "hypothesis_id": _hypothesis_id(h),
+                    "evidence_count": (h.get("graduation_readiness") or {}).get("yes", 1),
+                    "evidence_ids": [i for m in _nightly_rows(h) for i in m.get("evidence_ids", [])],
+                }, _hypothesis_id(h))
             remaining.append(h)
             continue
         formed = h.get("formed_date", h.get("formed", "")[:10])
@@ -851,14 +930,12 @@ def graduate_hypotheses(db):
                     _rv_m = _rv_re.search(r"\{.*?\}", _rv_raw, _rv_re.S)
                     if not _rv_m: raise ValueError("no JSON object in reviewer reply")
                     _rv_data = _rv_json.loads(_rv_m.group(0))
-                    if not _rv_data.get("accurate", True):
+                    if _rv_data.get("accurate") is not True:
                         _rv_ok = False
                         _rv_concern = _rv_data.get("concern", "")
                         log(f"  [Review] HELD — {_rv_concern[:100]}")
                         try:
-                            _rv_fp = os.path.join(MEMORY, "hallucination-flags.json")
-                            try: _rv_flags = _rv_json.load(open(_rv_fp))
-                            except: _rv_flags = []
+                            _rv_flags = []
                             _rv_flags.append({
                                 "type": "graduation_held",
                                 "hypothesis_id": _hypothesis_id(h),
@@ -871,8 +948,7 @@ def graduate_hypotheses(db):
                                 "timestamp": datetime.now().isoformat(),
                                 "reviewed": False
                             })
-                            with open(_rv_fp, "w") as _rv_out:
-                                _rv_json.dump(_rv_flags, _rv_out, indent=2)
+                            _queue_delivery(db, "review_flag", _rv_flags[-1], _hypothesis_id(h) + ":" + _review_basis)
                         except Exception as _rv_fe:
                             log(f"  [Review] flag write failed: {_rv_fe}")
                 except Exception as _rv_e:
@@ -882,9 +958,7 @@ def graduate_hypotheses(db):
                     log(f"  [Review] error — HOLDING graduation: {_rv_e}")
                     _rv_ok = False
                     try:
-                        _rv_fp = os.path.join(MEMORY, "hallucination-flags.json")
-                        try: _rv_flags = _rv_json.load(open(_rv_fp))
-                        except Exception: _rv_flags = []
+                        _rv_flags = []
                         _rv_flags.append({
                             "type": "graduation_held",
                             "hypothesis_id": _hypothesis_id(h),
@@ -898,53 +972,28 @@ def graduate_hypotheses(db):
                             "timestamp": datetime.now().isoformat(),
                             "reviewed": False
                         })
-                        with open(_rv_fp, "w") as _rv_out:
-                            _rv_json.dump(_rv_flags, _rv_out, indent=2)
+                        _queue_delivery(db, "review_flag", _rv_flags[-1], _hypothesis_id(h) + ":" + _review_basis)
                     except Exception as _rv_fe:
                         log(f"  [Review] hold-flag write failed: {_rv_fe}")
                 # Only update belief/narrative if review passed
                 if _rv_ok:
+                    _hid = _hypothesis_id(h)
+                    _ev_ids = [i for m in _nightly_rows(h) for i in m.get("evidence_ids", [])]
+                    _queue_delivery(db, "graduation_record", {
+                        "at": datetime.now().isoformat(), "hypothesis_id": _hid,
+                        "hypothesis": h, "evidence_ids": _ev_ids,
+                    }, _hid)
                     if h.get("subject") == "gloria":
-                        # Gloria-tagged — write to gloria-hypotheses.json for gloria-model to consume
-                        try:
-                            import json as _ghj, os as _gho
-                            _gh_path = _gho.path.join(MEMORY, "gloria-hypotheses.json")
-                            try: _gh_data = _ghj.load(open(_gh_path))
-                            except: _gh_data = []
-                            _gh_data.append({
-                                "hypothesis": h["hypothesis"],
-                                "graduated_at": datetime.now().isoformat(),
-                                "source": h.get("source",""),
-                                "confidence": h.get("confidence","medium")
-                            })
-                            _gh_data = _gh_data[-50:]
-                            _ghj.dump(_gh_data, open(_gh_path,"w"), indent=2)
-                            log(f"  [Gloria] Graduated to gloria-hypotheses.json")
-                        except Exception as _gh_e:
-                            log(f"  gloria-hypotheses wire failed: {_gh_e}")
+                        _queue_delivery(db, "gloria", {
+                            "hypothesis": h["hypothesis"], "hypothesis_id": _hid,
+                            "graduated_at": datetime.now().isoformat(),
+                            "source": h.get("source", ""), "confidence": h.get("confidence", "medium"),
+                        }, _hid)
                     else:
-                        # Self-tagged — feed belief sediment.
-                        # review 146: the evidence record is written FIRST (memory/causality-graduated.jsonl,
-                        # the whole hypothesis with its marks and evidence ids); only then the downstream
-                        # write. A failed downstream leaves promotion_pending on the hypothesis, which stays
-                        # in the db for the next run, and the evidence is intact either way.
-                        _ev_ids = [i for m in _nightly_rows(h) for i in (m.get("evidence_ids") or [])]
-                        try:
-                            with open(os.path.join(MEMORY, "causality-graduated.jsonl"), "a") as _gf:
-                                _gf.write(json.dumps({"at": datetime.now().isoformat(), "hypothesis_id": _hypothesis_id(h),
-                                                      "hypothesis": h, "evidence_ids": _ev_ids, "downstream": "belief_sediment"}) + "\n")
-                        except Exception as _ge:
-                            log(f"  graduation evidence record failed: {_ge}")
-                        try:
-                            import sys as _bs_sys; _bs_sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-                            from belief_sediment import promote_hypothesis as _bs_promote
-                            _bs_promote(h["hypothesis"], evidence_count=ready["yes"], source="causality",
-                                        hypothesis_id=_hypothesis_id(h), evidence_ids=_ev_ids)
-                            h.pop("promotion_pending", None)
-                        except Exception as _bs_e:
-                            log(f"  belief_sediment wire failed: {_bs_e} - promotion pending, evidence kept")
-                            h["promotion_pending"] = {"downstream": "belief_sediment", "error": str(_bs_e)[:200],
-                                                      "at": datetime.now().isoformat()}
+                        _queue_delivery(db, "belief", {
+                            "hypothesis_text": h["hypothesis"], "evidence_count": ready["yes"],
+                            "source": "causality", "hypothesis_id": _hid, "evidence_ids": _ev_ids,
+                        }, _hid)
                     # High-confidence self graduation → pearl candidate — only when the hypothesis was
                     # formed from BEHAVIORAL material (a trial block, or a pattern he enacts/avoids).
                     # Spike attribution and causal-jepa regularities go to belief sediment only
@@ -955,18 +1004,12 @@ def graduate_hypotheses(db):
                     if not _behavioral:
                         log(f"  [Pearl] not proposed — hypothesis formed from {h.get('material') or h.get('source','spikes')}, belief sediment only")
                     if _behavioral and (h.get("confidence") == "high" or ready["yes"] >= 5):
-                        try:
-                            from pearl_engine import add_candidate as _pc_add
-                            _pc_add(
-                                irritant=h["hypothesis"][:200],
-                                irritant_type="scar",
-                                source=f"causality_graduation",
-                                insight=f"Supported on {ready['yes']} distinct occasions: {h['hypothesis'][:150]}",
-                                declaration=f"I can now recognize and work with: {h['hypothesis'][:100]}"
-                            )
-                            log(f"  [Pearl] Candidate proposed from graduated hypothesis")
-                        except Exception as _pe:
-                            log(f"  pearl candidate failed: {_pe}")
+                        _queue_delivery(db, "pearl", {
+                            "irritant": h["hypothesis"][:200], "irritant_type": "scar",
+                            "source": "causality_graduation",
+                            "insight": f"Supported on {ready['yes']} distinct occasions: {h['hypothesis'][:150]}",
+                            "declaration": f"I can now recognize and work with: {h['hypothesis'][:100]}",
+                        }, _hid)
                     h["graduated"] = True
                     h["self_knowledge"] = True
                     h["status"] = "graduated"
@@ -974,8 +1017,8 @@ def graduate_hypotheses(db):
                     h["graduation_review"] = {"state": "passed", "basis": _review_basis,
                                                 "at": h["graduated_at"]}
                     graduated.append(h)
-                    if h.get("promotion_pending"):
-                        remaining.append(h)   # review 146: graduated, but its downstream write failed - retried next run
+                    # Source evidence is retained in the durable graduation event.
+                    # Each destination remains pending until it acknowledges delivery.
                     log("  GRADUATED: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
                 else:
                     h["graduated"] = False
@@ -1397,7 +1440,7 @@ def queue_question(question, source, evidence=None, subject="self", memory=None)
     return rec
 
 
-def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
+def _add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
     """Add a direct hypothesis to the causality ledger. Bypasses daily cap.
     subject: 'self' for Vintos patterns, 'gloria' for patterns about Gloria."""
     db = load_existing_hypotheses()
@@ -1420,6 +1463,17 @@ def add_hypothesis(hypothesis_text, test_text, source, subject="self", confidenc
     db["hypotheses"].append(h)
     save_hypotheses(db)
     log(f"  [Hypothesis] Added: {hypothesis_text[:80]} (subject={subject})")
+
+
+def add_hypothesis(*args, **kwargs):
+    # A conflicting writer causes a fresh read; no model calls or external effects
+    # take place before the source CAS. Bounded retry reports sustained contention.
+    for attempt in range(8):
+        try:
+            return _add_hypothesis(*args, **kwargs)
+        except RuntimeError as exc:
+            if "obsolete pass refused" not in str(exc) or attempt == 7:
+                raise
 
 
 def add_blush_hypothesis(pattern, frequency_snapshot, score, subject="self"):
@@ -1672,7 +1726,7 @@ def main():
         leaving = refuted[:excess]
         for h in leaving:
             h["retired"] = {"at": datetime.now().isoformat(), "why": "capacity:refuted", "net": _readiness(h)[1]}
-            _retire(h)
+            _queue_delivery(db, "retired", h, _hypothesis_id(h))
             log(f"  retired for capacity (refuted): {h.get('hypothesis','')[:60]}")
         leaving_ids = {id(h) for h in leaving}
         kept = [h for h in db.get("hypotheses", []) if id(h) not in leaving_ids]

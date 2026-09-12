@@ -3,6 +3,12 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 12 September — hypothesis recovery continuation
+
+Source repair, not yet deployed: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 120 suites passed directly locally after this increment; OS-isolated final validation and Aegis deployment remain pending.
+
+The 27 acceptance items below are being implemented and verified separately. This source repair does not close them or the unrelated trial/dismissed-wants and tension-view migrations.
+
 ## 12 September — Buzz native integration commissioned
 
 - Real upstream Buzz native 0.5.23 runs on Aegis with `--safe-rendering`; without

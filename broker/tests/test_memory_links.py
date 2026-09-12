@@ -75,9 +75,16 @@ check("wal-decay twins identical", src == open(os.path.join(REPO, "scripts", "wa
 
 print("\n--- 146: promotion writes its evidence first and stays pending when the downstream fails ---")
 ce = open(os.path.join(REPO, "scripts", "causality-engine.py")).read()
-i = ce.index("causality-graduated.jsonl"); j = ce.index("_bs_promote(h[\"hypothesis\"]")
-check("the evidence record is written before the belief write", i < j)
-check("a failed downstream leaves promotion_pending and keeps the hypothesis", 'h["promotion_pending"] = {' in ce and 'if h.get("promotion_pending"):\n                        remaining.append(h)' in ce)
+CE = load("ce_links", os.path.join(REPO, "scripts", "causality-engine.py"))
+CE.HYPOTHESIS_DB = os.path.join(MEM, "causality-hypotheses.json")
+CE.MEMORY = MEM
+db = CE.load_existing_hypotheses()
+key = CE._queue_delivery(db, "graduation_record", {"hypothesis_id": "fixture"}, "fixture")
+check("planning leaves the evidence destination untouched", not os.path.exists(os.path.join(MEM, "causality-graduated.jsonl")))
+CE._deliver = lambda *a: (_ for _ in ()).throw(OSError("fixture failed destination"))
+check("delivery is a stub and source is scratch", CE._deliver.__module__ == __name__ and CE.HYPOTHESIS_DB.startswith(HOME))
+CE.save_hypotheses(db)
+check("failed delivery stays durably pending after source commit", CE.load_existing_hypotheses()["deliveries"][key]["state"] == "pending")
 
 print("\n--- 143: a twice-corrected claim does not come back on ordinary support ---")
 tp = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()

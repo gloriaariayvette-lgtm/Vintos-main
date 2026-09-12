@@ -13,6 +13,10 @@ Stages:
 """
 
 import json, os, uuid
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from store_guard import serialized, write_json
 from datetime import datetime, timedelta
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
@@ -25,21 +29,26 @@ THRESHOLD = {"required_passes": 4, "max_failures": 1, "days_window": 7}
 def load_candidates():
     try:
         return json.load(open(CANDIDATES_FILE))
-    except:
+    except FileNotFoundError:
         return {"candidates": [], "schema_version": "2"}
 
 
 def save_candidates(data):
-    json.dump(data, open(CANDIDATES_FILE, "w"), indent=2)
+    write_json(CANDIDATES_FILE, data)
 
 
 ADOPTING_SOURCES = ("therapy", "mirror")   # declarations he made himself, in the rooms made for it
 
-def add_candidate(irritant, irritant_type, source, insight, declaration, adopted=None):
+@serialized("CANDIDATES_FILE")
+def add_candidate(irritant, irritant_type, source, insight, declaration, adopted=None, transition_id=None):
     """Write a new candidate pearl. A declaration he made himself (therapy, mirror, or adopted=True)
     enters at stage 1, under trial. One PROPOSED for him by an organ (causality, trial extractor)
     enters at stage 0 — proposed, not his — and is injected nowhere and verified against nothing
     until he adopts it (astra-inner-p5, 2026-09-05). See adopt() and proposed_block()."""
+    data = load_candidates()
+    receipts = data.setdefault("transition_receipts", {})
+    if transition_id and transition_id in receipts:
+        return receipts[transition_id]
     # Filter meta-self-analytical irritants — these describe his nature, not genuine friction
     _meta_phrases = [
         "analyze and justify", "seeks approval", "seeking approval",
@@ -64,11 +73,13 @@ def add_candidate(irritant, irritant_type, source, insight, declaration, adopted
         except Exception: pass
         print(f"[Pearl] concern recorded (kept as proposed, not adopted): {irritant[:60]}", file=__import__("sys").stderr)
 
-    data = load_candidates()
     # Check for duplicate irritant
     for c in data["candidates"]:
         if c.get("irritant","")[:80] == irritant[:80] and not c.get("dissolved"):
             print(f"[Pearl] Duplicate irritant — reinforcing existing candidate {c['id']}", file=__import__("sys").stderr)
+            if transition_id:
+                receipts[transition_id] = c["id"]
+                save_candidates(data)
             return c["id"]
     
     cand = {
@@ -94,6 +105,8 @@ def add_candidate(irritant, irritant_type, source, insight, declaration, adopted
         "dissolution_reason": None
     }
     data["candidates"].append(cand)
+    if transition_id:
+        receipts[transition_id] = cand["id"]
     save_candidates(data)
     print(f"[Pearl] Candidate created: {cand['id']} — {irritant[:60]}", file=__import__("sys").stderr)
     return cand["id"]

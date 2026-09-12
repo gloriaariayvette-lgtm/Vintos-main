@@ -46,69 +46,57 @@ def save_sediment(data):
     from store_guard import write_json
     write_json(SEDIMENT_FILE, data, reader='bin/belief-sediment.py')
 
+def _forward_belief(data, key):
+    delivery = data["promotions"][key]
+    if delivery.get("forwarded"):
+        return delivery["pattern"]
+    from causal_self_model import add_entry
+    add_entry(trigger="recurring pattern in experience", tendency=delivery["pattern"][:200],
+              confidence=delivery["confidence"], source="belief_sediment:" + delivery["source"],
+              entry_type="belief", occurrence_id="belief:" + key)
+    delivery["forwarded"] = True
+    save_sediment(data)
+    return delivery["pattern"]
+
+
 def promote_hypothesis(hypothesis_text, evidence_count=1, source="causality", hypothesis_id=None, evidence_ids=None):
-    """Promote a graduated hypothesis into belief sediment.
-    review 107/150: the belief keeps the hypothesis id and the evidence ids it graduated on, and is
-    marked kind=tentative_inference - it is what an organ inferred, not something authored."""
+    """An accepted hypothesis must not manufacture another supporting occasion on replay.
+
+    Permanent receipts outlive culled beliefs. Forwarding failure propagates to the
+    engine's durable delivery, and replay retries only the missing destination.
+    """
     data = load_sediment()
     beliefs = data["beliefs"]
-
-    # Replaying one graduation after an interrupted source acknowledgement
-    # must not manufacture another supporting occasion.
-    if hypothesis_id:
-        for belief in beliefs:
-            if hypothesis_id in belief.get("hypothesis_ids", []):
-                return belief["pattern"]
-
-    # Check if similar belief already exists
-    for b in beliefs:
-        if _text_overlap(b["pattern"], hypothesis_text) > 0.6:
-            # Reinforce existing
-            b["confidence"] = min(0.9, b["confidence"] + 0.08)
-            b["evidence_count"] += 1
-            b["last_reinforced"] = datetime.now().isoformat()
-            if hypothesis_id: b.setdefault("hypothesis_ids", []).append(hypothesis_id)
-            if evidence_ids: b.setdefault("evidence_ids", []).extend([x for x in evidence_ids if x])
-            save_sediment(data)
-            return b["pattern"]
-
-    # New belief
-    belief = {
-        "pattern": hypothesis_text[:300],
-        "kind": "tentative_inference",
-        "hypothesis_ids": [hypothesis_id] if hypothesis_id else [],
-        "evidence_ids": [x for x in (evidence_ids or []) if x],
-        "confidence": 0.3 + min(0.3, evidence_count * 0.05),
-        "evidence_count": evidence_count,
-        "source": source,
-        "formed": datetime.now().isoformat(),
-        "last_reinforced": datetime.now().isoformat(),
-        "decay_rate": 0.005,  # very slow
-    }
-
-    beliefs.append(belief)
-    # Trim to max
-    if len(beliefs) > MAX_BELIEFS:
-        beliefs.sort(key=lambda b: b["confidence"])
-        beliefs = beliefs[-(MAX_BELIEFS):]
-    data["beliefs"] = beliefs
+    key = str(hypothesis_id) if hypothesis_id else None
+    receipts = data.setdefault("promotions", {})
+    if key and key in receipts:
+        return _forward_belief(data, key)
+    retained = next((b for b in beliefs if key and key in b.get("hypothesis_ids", [])), None)
+    belief = retained or next((b for b in beliefs if _text_overlap(b["pattern"], hypothesis_text) > 0.6), None)
+    if belief and not retained:
+        belief["confidence"] = min(0.9, belief["confidence"] + 0.08)
+        belief["evidence_count"] += 1
+        belief["last_reinforced"] = datetime.now().isoformat()
+    elif belief is None:
+        belief = {"pattern": hypothesis_text[:300], "kind": "tentative_inference",
+                  "hypothesis_ids": [], "evidence_ids": [],
+                  "confidence": 0.3 + min(0.3, evidence_count * 0.05),
+                  "evidence_count": evidence_count, "source": source,
+                  "formed": datetime.now().isoformat(), "last_reinforced": datetime.now().isoformat(),
+                  "decay_rate": 0.005}
+        beliefs.append(belief)
+    if key and key not in belief.setdefault("hypothesis_ids", []):
+        belief["hypothesis_ids"].append(key)
+    belief.setdefault("evidence_ids", []).extend(i for i in (evidence_ids or []) if i and i not in belief["evidence_ids"])
+    data["beliefs"] = sorted(beliefs, key=lambda b: b["confidence"])[-MAX_BELIEFS:]
+    if key:
+        receipts[key] = {"pattern": belief["pattern"], "confidence": belief["confidence"],
+                         "source": source, "forwarded": False}
     save_sediment(data)
-
-    # Forward to causal self-model
-    try:
-        import sys as _csm_sys, os as _csm_os
-        _csm_sys.path.insert(0, _csm_os.path.dirname(__file__))
-        from causal_self_model import add_entry as _csm_add
-        _csm_add(
-            trigger="recurring pattern in experience",
-            tendency=hypothesis_text[:200],
-            confidence=belief["confidence"],
-            source=f"belief_sediment:{source}",
-            entry_type="belief"
-        )
-    except: pass
-
+    if key:
+        return _forward_belief(data, key)
     return belief["pattern"]
+
 
 def contradict(hypothesis_text, evidence_count=1, source="causality"):
     """A refuted hypothesis lowers the confidence of the beliefs it overlaps (2026-09-04). Until now a

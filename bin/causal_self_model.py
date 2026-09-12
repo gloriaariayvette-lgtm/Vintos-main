@@ -82,6 +82,11 @@ def add_entry(trigger, tendency, confidence=0.3, source="causality", entry_type=
     """
     data = load_model()
     entries = data["entries"]
+    receipts = data.setdefault("occurrence_receipts", [])
+    if occurrence_id and occurrence_id in receipts:
+        return
+    if occurrence_id:
+        receipts.append(occurrence_id)
     kind = kind if kind in KINDS else _SOURCE_KIND.get(source, "tentative_inference")
 
     # Check for existing similar entry of same type
