@@ -165,13 +165,33 @@ check("and it opens no redis, no socket, no relay",
 check("nor Vintos's memory", ".vintos/workspace" not in src)
 check("its root is its own directory", 'BENCH_ROOT' in src and "ledgers" in src)
 check("this suite wrote only to its throwaway root", B.LEDGERS.startswith(TMP))
-check("his workspace was never created",
-      not os.path.exists(os.path.join(os.path.expanduser("~"), ".vintos", "workspace")))
+# Not "his workspace does not exist" — another suite in the same sweep leaves an empty
+# memory/ behind, and this suite is not the place to assert that. What matters here is
+# that the BENCH wrote nothing outside its own root.
+_home = os.path.expanduser("~")
+_strays = [p for p in (os.path.join(_home, ".vintos", "workspace", "memory", "ledgers"),
+                       os.path.join(_home, "bench"),
+                       os.path.join(REPO, "bench", "ledgers", "claude.jsonl"),
+                       os.path.join(REPO, "bench", "ledgers", "gemma.jsonl"))
+           if os.path.exists(p)]
+check("the bench wrote no ledger outside its throwaway root, and none into the checkout",
+      not _strays, _strays)
 
 print("\n--- and the deploy does not install it onto him ---")
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("bench.py is not in the manifest", "bench.py" not in dep)
 check("nor the bench directory", "bench/" not in dep)
+
+print("\n--- every agent is told the same thing, in the file it reads ---")
+claude_md = open(os.path.join(REPO, "CLAUDE.md")).read()
+agents_md = open(os.path.join(REPO, "AGENTS.md")).read()
+for name, doc in (("CLAUDE.md", claude_md), ("AGENTS.md", agents_md)):
+    check("%s says propose before starting" % name, "propose --by" in doc and "not approved" in doc)
+    check("%s says check the delegate map first" % name, "bench.py agents" in doc and "cheaper elsewhere" in doc)
+    check("%s says a hand-off is not a way around her" % name, "not a way around her yes" in doc)
+    check("%s says read the ledger before asking her" % name, "already says" in doc)
+    check("%s keeps the room out of it" % name, "not** `agent-room/`" in doc or "not the agent room" in doc)
+check("Codex is told to use its own name", "--by codex" in agents_md)
 
 print("\n--- the CLI answers ---")
 env = dict(os.environ, BENCH_ROOT=TMP)

@@ -1,5 +1,8 @@
 # Working in this checkout
 
+> Codex reads this file. It is the same guidance Claude Code gets in CLAUDE.md;
+> where it says `--by claude`, use `--by codex`.
+
 ## Subagents run on Opus. Always.
 
 `.claude/settings.json` sets `CLAUDE_CODE_SUBAGENT_MODEL=opus`, which the CLI reads
