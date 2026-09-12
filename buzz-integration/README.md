@@ -33,7 +33,12 @@ are not claims that a task has already run or that an outcome has been verified.
 ## Installation state
 
 The relay listens on Aegis's tailnet address, port 8792. The official native client
-connects to it; the four profiles are queryable. Visual native-client verification
+connects as Gloria; the four profiles are queryable and have bot membership in
+both channels. Native accessibility inspection confirmed the Build agents composer
+and Discussion forum composer. Forum Channels is enabled under Settings → Experiments.
+No channel message has been sent. The desktop Agents directory contains upstream
+starter agents, which have not been started; the four build agents currently appear
+as external channel members, not desktop-managed instances. Native management cards
 and an end-to-end approved channel task/handoff remain unfinished.
 
 `run-local-gemma.py` is the credential-free fallback: bubblewrap mounts only the

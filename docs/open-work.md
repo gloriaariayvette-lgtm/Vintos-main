@@ -12,14 +12,19 @@ It is the only place with a to-do in it.
   Buzz checkout and preserved in `buzz-integration/owner-signed.patch`. Linux
   validation: 934 passed, zero failed, one existing ignored integration test.
 - **Not finished:** paid worker service installation, end-to-end approved task/handoff,
-  and visual native-client verification. Automatic approval review rejected the
+  and native management cards for the four external runners. Automatic approval review rejected the
   root installer because new accounts and scoped provider credential access need
   explicit approval; that question is pending. Gloria approved all four bot memberships, selecting Claude/Fable 5.1. All
   eight channel additions succeeded. Local-only Gemma connects from the persistent
   `buzz-gemma-local` user bubblewrap service and subscribes to both channels.
   A live bot-message probe was separately rejected by automatic approval review
   and was not sent. No approved channel task has been started.
-- Provider metadata confirmed `gpt-6-astra`, the previously configured Opus, and the Grok model
+- Native onboarding is complete as Gloria. Build agents opens with a message composer;
+  Discussion opens with five members and its native forum composer after enabling
+  Settings → Experiments → Forum Channels. No post was sent. The Agents directory
+  still shows upstream starter agents; the four build identities are external runners,
+  not desktop-managed instances. Starter agents have not been started.
+- Provider metadata confirmed `gpt-6-astra`, `claude-fable-5-1`, and the Grok model
   list containing `grok-build-0.1`. Local LM Studio lists `google/gemma-4-12b-qat`.
   Paid-provider checks are metadata only. A disposable bubblewrap commissioning
   call through the official Gemma ACP agent returned `BUZZ_LOCAL_OK` with normal
