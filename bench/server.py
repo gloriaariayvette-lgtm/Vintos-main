@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """server.py — the bench, as a page. Her agents, manageable from her phone.
 
-The ledger is useless if approving a task means remembering a command. This is the
-layout Buzz uses — a rail of agents down one side, the work in the middle, one card
+The ledger is useless if approving a task means remembering a command. This is a custom layout, not the Buzz application. It uses — a rail of agents down one side, the work in the middle, one card
 per task with the two buttons that matter — in a single file with no build step, no
 node, no bundle. It is stdlib only, so it survives on Aegis without anything to keep
 installed and can be edited in place.
@@ -437,7 +436,7 @@ def main():
     # is a black page with nothing behind it — which is exactly what happened once.
     print(_diag(), flush=True)
     try:
-        srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+        srv = ThreadingHTTPServer((os.environ.get("BENCH_HOST", "0.0.0.0"), PORT), Handler)
     except OSError as e:
         print("bench: could not bind 0.0.0.0:%d — %s" % (PORT, e), flush=True)
         if getattr(e, "errno", None) == 98:

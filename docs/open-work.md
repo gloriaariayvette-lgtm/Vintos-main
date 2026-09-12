@@ -364,3 +364,10 @@ The run ended `refused`, with no install. Successful live commissioning remains 
 No second paid attempt was made. The app forge card and effectful adapters remain open.
 
 Independent post-deploy mapping found an old importable `causal_self_model.py` beside the updated hyphenated file. The follow-up manifest includes the importable name and canonicalizes symlink destinations before backup/promotion, preserving aliases while updating the actual imported file. A regression test executes that promotion against a scratch symlink.
+
+## September 12 independent Buzz review
+
+- Actual `block/buzz` cloned locally and on Aegis at `~/repos/buzz`; upstream relay deployed separately with dedicated Postgres, Redis, MinIO and git volumes. The existing `bench/server.py` is not Buzz. Agent-room was not touched. Exact deployment evidence is recorded separately; native client connection and approved agent execution remain unfinished.
+- The bench approval policy is not an authenticated boundary: an absent token allows approval POSTs, and the library defaults the caller to Gloria. No agent runner may rely on that as proof of her approval. Concurrent claim/handoff replay also remains unprotected by a complete transaction.
+- Repaired the new bench-page suite to use the existing OS-reserved fixture listener, propagate it to its subprocess and serialize the two fixture server lifetimes. The network isolation policy remains unchanged.
+- Review still open: compute-admission releases are not tied to reservation IDs; repeated or unmatched releases can erase unrelated spend. Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
