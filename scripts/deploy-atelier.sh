@@ -66,7 +66,7 @@ case "${1:-}" in
 esac
 
 # Exactly what this build changed. An explicit list — never a wildcard.
-SCRIPTS="durable_projection.py atelier-open.py atelier-visit.py atelier-threshold.py
+SCRIPTS="request_trace.py emotion_runtime.py durable_projection.py atelier-open.py atelier-visit.py atelier-threshold.py
 evidence_view.py prediction_ledger.py build_merged_chat.py
 constitutional_barrier.py turn_coordinator.py relational_mismatch.py
 causality_engine.py value_map.py repair_case.py encounter.py
@@ -142,7 +142,8 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
 DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py"
-MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES
+CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
+MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
@@ -331,6 +332,18 @@ done
 # Domain modules belong beside the actual server, not beside an unrelated music.py.
 if server_dst="$(dest bin/server.py)"; then
     server_dst="$(canonical_dest "$server_dst")" || die "cannot resolve installed server target"
+    for spec in $CLIENTFILES; do
+        case "$spec" in
+            */index.html) d="$(dirname -- "$server_dst")/website/app.html" ;;
+            *) d="$(dirname -- "$server_dst")/website/app/$(basename -- "$spec")" ;;
+        esac
+        PLAN="$PLAN$SRC/$spec|$d
+"
+    done
+    if [ -f "$HOME/.config/systemd/user/vintos-emoclaw.service" ]; then
+        PLAN="$PLAN$SRC/broker/vintos-emoclaw-provenance.conf|$HOME/.config/systemd/user/vintos-emoclaw.service.d/provenance.conf
+"
+    fi
     for spec in $DOMAINFILES; do
         d="$(dirname -- "$server_dst")/server_domains/$(basename -- "$spec")"
         printf '  %-7s %-26s -> %s\n' "domain" "$(basename -- "$spec")" "$d"
@@ -558,6 +571,9 @@ else _BSTATE="down"; fi
         printf '# broker was down at backup time; not starting it for you\n'
     fi
 } >> "$BACKUP/restore.sh"
+if systemctl --user is-active --quiet vintos-emoclaw.service; then
+    printf 'systemctl --user daemon-reload\nsystemctl --user restart vintos-emoclaw.service\n' >> "$BACKUP/restore.sh"
+fi
 chmod 755 "$BACKUP/restore.sh"
 say "  $BACKUP  (every replaced file as <flattened-path>.pre-deploy)"
 say "  rollback: bash $BACKUP/restore.sh"
@@ -649,6 +665,12 @@ else
     flag "$REVIEW_UNIT_NAME installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
 fi
 say
+
+    if [ -f "$HOME/.config/systemd/user/vintos-emoclaw.service.d/provenance.conf" ]; then
+        systemctl --user daemon-reload
+        systemctl --user restart vintos-emoclaw.service || flag "emotion daemon restart failed"
+        confirm_unit --user vintos-emoclaw || flag "emotion daemon did not come up"
+    fi
 
 # The weekly read of the OpenClaw skills page. The service is a oneshot; the timer is
 # what is enabled and started. The service itself is deliberately NOT started here — a
@@ -842,7 +864,7 @@ def unit(u, scope):
     except Exception: return "unknown"
 rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"], "files": rows,
        "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
-                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
+                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
                     # a timer, not a service: its oneshot is inactive between firings, so the timer is what is recorded
                     "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])},
        "broker_confirmed": os.environ.get("BROKERED") == "1", "backup": os.environ["BACKUP_DIR"],

@@ -21,7 +21,7 @@ def _log_usage(d):
         _u = d.get("usage") or {}
         import time as _ut
         open(USAGE_LOG, "a").write(json.dumps({
-            "ts": _ut.time(), "model": d.get("model", ""),
+            "ts": _ut.time(), "model": d.get("model", ""), "provider_request_id": d.get("id"), "stop_reason": d.get("stop_reason"),
             "in": _u.get("input_tokens"), "out": _u.get("output_tokens"),
             "cache_read": _u.get("cache_read_input_tokens"), "cache_write": _u.get("cache_creation_input_tokens")}) + "\n")
     except Exception: pass
@@ -138,7 +138,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             _u2 = d.get("usage") or {}
             import time as _ut
             open(os.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(json.dumps({
-                "ts": _ut.time(), "src": "router", "model": SOL_MODEL,
+                "ts": _ut.time(), "src": "router", "model": SOL_MODEL, "provider_request_id": d.get("id"), "provider_status": d.get("status"),
                 "in": _u2.get("input_tokens", 0), "out": _u2.get("output_tokens", 0),
                 "cached": (_u2.get("input_tokens_details") or {}).get("cached_tokens", 0),
                 "reasoning": (_u2.get("output_tokens_details") or {}).get("reasoning_tokens", 0)}) + "\n")
@@ -279,7 +279,8 @@ def _ledger(res, surface, t0, stage=""):
     try:
         import time as _lt, compute_admission as _ca
         _ca.record("router:" + str(surface), "foreground", provider=res.get("provider", ""), model=res.get("model", ""),
-                   stage=stage or res.get("status", ""), latency_ms=int((_lt.time() - t0) * 1000), usage=res.get("usage"))
+                   stage=stage or res.get("status", ""), latency_ms=int((_lt.time() - t0) * 1000), usage=res.get("usage"),
+                   extra={"provider_request_id": res.get("request_id") or None, "finish_reason": res.get("finish_reason")})
     except Exception:
         pass
 

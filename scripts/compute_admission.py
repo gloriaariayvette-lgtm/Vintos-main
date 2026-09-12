@@ -72,6 +72,8 @@ def record(organ, cls="background", provider="", model="", stage="", latency_ms=
            "provider": provider or "", "model": model or "", "stage": stage or "",
            "latency_ms": (int(latency_ms) if latency_ms is not None else None),
            "rss_mb": rss_mb(), "usage": usage if isinstance(usage, dict) else None}
+    from request_trace import current as _request_trace
+    row["request_id"] = _request_trace.get()
     if extra:
         row.update({k: v for k, v in extra.items() if k not in row})
     try:

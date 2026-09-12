@@ -413,3 +413,52 @@ Independent post-deploy mapping found an old importable `causal_self_model.py` b
 - The bench approval policy is not an authenticated boundary: an absent token allows approval POSTs, and the library defaults the caller to Gloria. No agent runner may rely on that as proof of her approval. Concurrent claim/handoff replay also remains unprotected by a complete transaction.
 - Repaired the new bench-page suite to use the existing OS-reserved fixture listener, propagate it to its subprocess and serialize the two fixture server lifetimes. The network isolation policy remains unchanged.
 - Compute-admission receipt repair deployed in `20260912-052317-9b9c1dc`. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
+
+
+### 12 September completion repair — source checkpoint, deployment pending
+
+The credit-limit handoff was HANDOFF-2026-09-11.md. Claude's later Buzz handoff
+is not the baseline. These changes address the retained 27-item programme; they
+do not establish missing historical evidence or physical outcomes.
+
+- Hypothesis source writes now use strict snapshots and CAS, with accepted delivery
+  events before any projection. Recovery retries failed destinations; permanent
+  belief, causal-occurrence and pearl receipts survive row culling. Commit 6cd1f03.
+  Nine scratch recovery tests cover stale writes, refusal, corruption and crashes.
+- P08 315/316/317/318/323/324/325/326/327/334/343/344/345: client text escaping,
+  shared checked requests, retained drafts, turn ownership, visible-layer screenshot
+  composition, reported stop state, zero/stale telemetry, media cancellation,
+  route-derived controls and callback ownership are implemented. Browser fixtures
+  test failures, duplicate taps, hostile content, microphone races and playback
+  ordering. They are not physical playback or exhaustive every-tab acceptance.
+- P08 346: iOS background task registration, 15-minute requested interval, actual
+  notification permission checks and runner error handling implemented. Capacitor
+  sync and simulator compilation passed. Device background delivery remains unobserved.
+- P01 31/32: content-free HTTP request identities propagate into central provider
+  usage receipts; central OpenAI/Anthropic responses record provider IDs. Independent
+  adapters not using this router remain an explicit coverage gap.
+- P01 30 / P11 401: loaded Python module metadata records selected files and hashes
+  in the running server. This does not replace source-by-source review of the wider
+  untracked runtime. agent-room remains outside this work.
+- P11 397: real provider response identities join client playback completion; duplicate
+  server turns and late closed-session callbacks are refused. Scratch end-to-end
+  callback fixtures pass. Human hearing remains unknown, not inferred from playback.
+- P11 399: a wrapper around the unchanged emotion daemon compares actual loaded
+  parameters with checkpoint parameters and records its PID and hashes. Training
+  lineage is still unknown; deployment must verify the live receipt.
+- P11 396/402/404: named deployment now includes the client assets with source commit
+  and hashes. Study approval UI is fixture-tested; no new paid Forge run was made.
+  Actual physical avatar/playback and successful paid verification remain open.
+- P01 33: the current semantic projection was empty. An Aegis rebuild using the
+  existing local model is running. The 1,282 legacy embedding rows lack model
+  provenance and are not being relabelled.
+- P11 398/400: historical causal/thread and want-artifact-observed-effect joins remain
+  unestablished. New instrumentation cannot manufacture past observations.
+- P11 403: additional bounded searches did not locate QLab. Its external location
+  remains required; absence from those searches is not proof that it does not exist.
+
+Final immutable-revision suite and deployment evidence will be recorded after
+all gates. The earlier 120/121 runs exposed the voice extraction fixture gap;
+that fixture now includes the locked helper and tests duplicate/closed sessions.
+The broader trial/current-dismissed-wants and served-tension migrations from the
+handoff remain open; they are not silently credited to the hypothesis repair.

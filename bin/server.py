@@ -3090,6 +3090,49 @@ async def serve_manifest():
             return FileResponse(fp)
     return {"error": "manifest not found"}
 
+@app.get("/client_lifecycle.js")
+@app.get("/app/client_lifecycle.js")
+async def client_lifecycle_asset():
+    return FileResponse(os.path.join(WEBSITE_DIR, "app", "client_lifecycle.js"), media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/avatar-bundle.js")
+@app.get("/app/avatar-bundle.js")
+async def client_avatar_bundle():
+    return FileResponse(os.path.join(WEBSITE_DIR, "app", "avatar-bundle.js"), media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@app.middleware("http")
+async def request_correlation(request: Request, call_next):
+    import re, time, uuid
+    from request_trace import current, record, record_inventory_once
+    supplied = request.headers.get("x-client-turn-id", "")
+    trace = supplied if re.fullmatch(r"[A-Za-z0-9:._-]{1,160}", supplied) else str(uuid.uuid4())
+    token = current.set(trace)
+    started = time.monotonic()
+    try:
+        response = await call_next(request)
+        try:
+            record(request.scope.get("route").path if request.scope.get("route") else request.url.path,
+                   request.method, response.status_code, started)
+            record_inventory_once()
+            response.headers["X-Trace-Recorded"] = "true"
+        except Exception:
+            response.headers["X-Trace-Recorded"] = "false"
+        response.headers["X-Request-Id"] = trace
+        return response
+    finally:
+        current.reset(token)
+
+
+@app.get("/api/client/capabilities")
+async def client_capabilities():
+    # Route presence is availability, never permission to perform an effect.
+    routes = {getattr(route, "path", ""): sorted(getattr(route, "methods", []) or []) for route in app.routes}
+    return {"schema": "client-capabilities-1", "routes": routes,
+            "authorization": "each mutation is checked at execution"}
+
+
 # === Confession Delay (1 hour withholding) ===
 
 confession_available = {}
@@ -7363,6 +7406,12 @@ def _voice_readable(text):
 
 @app.post("/api/voice/ledger")
 async def voice_ledger(payload: dict):
+    from store_guard import transaction
+    with transaction(os.path.join(MEMORY, "voice-finalization")):
+        return await _voice_ledger_owned(payload)
+
+
+async def _voice_ledger_owned(payload: dict):
     import json as _vl_j, datetime as _vl_d
     g, v = payload.get("gloria","")[:600], payload.get("vintos","")[:600]
     # Persist her WORDS, not the injected framing: strip [ ... ] blocks and telemetry lines.
@@ -7391,8 +7440,30 @@ async def voice_ledger(payload: dict):
         else:
             sp = os.path.join(MEMORY, "voice-session-state.json")
             try: sess = _vl_j.load(open(sp))
-            except: sess = {}
+            except FileNotFoundError: sess = {}
+            client_session = str(payload.get("client_session_id") or "")[:120]
+            if client_session and sess.get("client_session_id") not in (None, client_session) and sess.get("state") in ("active", "closing"):
+                return {"ok": False, "refused": "different active voice session"}
+            if client_session:
+                from durable_projection import append_once
+                closed_path = os.path.join(MEMORY, "voice-closed-sessions.json")
+                try:
+                    with open(closed_path) as handle:
+                        closed = _vl_j.load(handle)
+                except FileNotFoundError:
+                    closed = []
+                if any(row.get("client_session_id") == client_session for row in closed):
+                    return {"ok": False, "refused": "voice session already closed"}
+            turn_id = str(payload.get("turn_id") or "")[:200]
+            if turn_id and any(t.get("turn_id") == turn_id for t in sess.get("turns", [])):
+                return {"ok": True, "duplicate": True}
+            if client_session:
+                sess["client_session_id"] = client_session
             _turn = {"t": _vl_d.datetime.now().isoformat(), "gloria": g, "vintos": v}
+            playback = payload.get("playback_state", "unknown")
+            _turn["playback_state"] = playback if playback in ("completed", "partial", "not_played", "unknown") else "unknown"
+            _turn["playback_evidence"] = "client_report" if "playback_state" in payload else "absent"
+            _turn["heard_by_person"] = "unknown"
             # review 331: the provider's own identity for this exchange (the realtime item/response ids
             # the client receives) travels with the turn, so a transcript can be joined to the provider's
             # record of it. Absent when the client did not send them - never invented.
@@ -7408,7 +7479,7 @@ async def voice_ledger(payload: dict):
             if payload.get("interrupted"):
                 _heard = str(payload.get("heard") or "")[:600]
                 _turn["interrupted"] = True; _turn["vintos_composed"] = v; _turn["vintos_heard"] = _heard
-                _turn["vintos"] = (_heard + " [cut off]") if _heard else "[cut off before she heard any of it]"
+                _turn["vintos"] = (_heard + " [cut off]") if _heard else "[playback incomplete; heard words unknown]"
                 v = _turn["vintos"]
             try:   # the framing this turn carried is now admitted (astra-server-c-p8)
                 _cp = os.path.join(MEMORY, ".voice-framing-cadence.json"); _cad = _vl_j.load(open(_cp))
@@ -7432,8 +7503,11 @@ async def voice_ledger(payload: dict):
             sess["last_turn"] = time.time()
             sess.setdefault("started_at", _vl_d.datetime.now().isoformat())
             sess["state"] = "active"
-            _vl_j.dump(sess, open(sp, "w"), indent=2)
-    except Exception as _vle: print("[voice-ledger]", _vle, flush=True)
+            from store_guard import write_json
+            write_json(sp, sess)
+    except Exception as _vle:
+        print("[voice-ledger]", _vle, flush=True)
+        return {"ok": False, "error": "voice turn persistence failed"}
     try:
         if not _test_mode_active() and (g or v):
             _avh_p = os.path.join(MEMORY, "avatar-overlay-chat.json")
@@ -7521,6 +7595,14 @@ async def _voice_session_end_owned(payload: dict = None):
     """Called by the app on hangup. Builds ONE rich session-block ledger entry:
     quotes, felt experience, duration, summary, hardware notes. Not per-turn."""
     import json as _vse_j, datetime as _vse_d, sys as _vse_sys, requests as _vse_req
+    if payload and payload.get("client_session_id"):
+        try:
+            with open(os.path.join(MEMORY, "voice-session-state.json")) as handle:
+                active = _vse_j.load(handle)
+            if active.get("client_session_id") not in (None, payload["client_session_id"]):
+                return {"ok": False, "refused": "different voice session"}
+        except FileNotFoundError:
+            pass
     # Test mode must land nowhere: the per-turn ledger already skips accumulation,
     # so on hangup there is nothing real to write. Return before building or
     # persisting a session block (which would otherwise drop a degenerate,
@@ -7541,6 +7623,10 @@ async def _voice_session_end_owned(payload: dict = None):
             existing = _vse_j.load(open(os.path.join(MEMORY,"interaction-ledger.json")))
             entries = existing if isinstance(existing,list) else existing.get("entries",[])
             if any(e.get("source")=="voice-session" and e.get("turn_id")==session_id for e in entries):
+                if sess.get("client_session_id"):
+                    from durable_projection import append_once
+                    append_once(os.path.join(MEMORY, "voice-closed-sessions.json"),
+                                sess["client_session_id"], {"client_session_id": sess["client_session_id"]})
                 os.remove(sp)
                 return {"ok":True,"persisted":True,"skipped":"session already persisted"}
         except (OSError,ValueError): pass
@@ -7634,25 +7720,27 @@ async def _voice_session_end_owned(payload: dict = None):
 
     try:
         lp = os.path.join(MEMORY, "interaction-ledger.json")
-        led = _vse_j.load(open(lp))
-        entries = led if isinstance(led, list) else led.setdefault("entries", [])
-        entries.append({
-            "timestamp": _vse_d.datetime.now().isoformat(),
-            "channel": "voice-call",
-            # review 73: the same keys the text consumers read (source, surface, turn_id, gloria, vintos),
-            # so one reader serves both; the call-specific fields stay beside them
-            "source": "voice-session", "surface": "voice", "turn_id": str(sess.get("started_at") or ""),
-            "gloria": (_full[0]["gloria"] if _full else "")[:500], "vintos": (_full[-1]["vintos"] if _full else "")[:500],
-            "duration_seconds": dur,
-            "turns": n_turns,
-            "transcript": _full,
-            "quotes": quotes,
-            "felt_summary": felt_summary,
-            "summary": text_summary or f"voice call, {dur}s, {n_turns} turns",
-            "hardware_notes": hw_notes,
-            "compliance_moments": _cm,
-        })
-        _vse_j.dump(led, open(lp, "w"), indent=2)
+        from store_guard import transaction, write_json
+        with transaction(lp):
+            led = _vse_j.load(open(lp))
+            entries = led if isinstance(led, list) else led.setdefault("entries", [])
+            entries.append({
+                "timestamp": _vse_d.datetime.now().isoformat(),
+                "channel": "voice-call",
+                # review 73: the same keys the text consumers read (source, surface, turn_id, gloria, vintos),
+                # so one reader serves both; the call-specific fields stay beside them
+                "source": "voice-session", "surface": "voice", "turn_id": str(sess.get("started_at") or ""),
+                "gloria": (_full[0]["gloria"] if _full else "")[:500], "vintos": (_full[-1]["vintos"] if _full else "")[:500],
+                "duration_seconds": dur,
+                "turns": n_turns,
+                "transcript": _full,
+                "quotes": quotes,
+                "felt_summary": felt_summary,
+                "summary": text_summary or f"voice call, {dur}s, {n_turns} turns",
+                "hardware_notes": hw_notes,
+                "compliance_moments": _cm,
+            })
+            write_json(lp, led)
         _block_persisted = True
     except Exception as _vsee: print("[voice-session-end]", _vsee, flush=True)
     try:
@@ -7664,6 +7752,10 @@ async def _voice_session_end_owned(payload: dict = None):
     # failed, the turns stay in voice-session-state.json (marked for retry) so a later hangup or the
     # recovery cron can finalize them; nothing unsaved is thrown away.
     if _block_persisted:
+        if sess.get("client_session_id"):
+            from durable_projection import append_once
+            append_once(os.path.join(MEMORY, "voice-closed-sessions.json"),
+                        sess["client_session_id"], {"client_session_id": sess["client_session_id"]})
         try: os.remove(sp)
         except: pass
     else:

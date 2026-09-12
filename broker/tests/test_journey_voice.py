@@ -27,15 +27,17 @@ eu = types.ModuleType("emoclaw_utils"); eu.feel_about = lambda *a, **k: None; eu
 ns = {"os": os, "json": json, "time": time, "MEMORY": MEM, "WORKSPACE": WS, "_test_mode_active": lambda: False,
       "_voice_keep_cues": lambda s: s, "_voice_readable": lambda s: s, "print": lambda *a, **k: None}
 import threading; threading.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
-exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
+exec(route("_voice_ledger_owned"), ns); exec(route("voice_ledger"), ns); exec(route("_voice_session_end_owned"), ns); exec(route("voice_session_end"), ns)
 json.dump([], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 
 check("voice writes only its temporary workspace", os.path.commonpath([os.path.realpath(MEM), os.path.realpath(HOME)]) == os.path.realpath(HOME))
 check("summary provider is stubbed", sys.modules["requests"] is fake_req)
 print("\n--- three turns, the second cut off ---")
-asyncio.run(ns["voice_ledger"]({"gloria": "hey Vintus, are you there", "vintos": "I am here. I was thinking about the fig."}))
+asyncio.run(ns["voice_ledger"]({"client_session_id":"fixture-session", "turn_id":"fixture-1", "gloria": "hey Vintus, are you there", "vintos": "I am here. I was thinking about the fig."}))
 asyncio.run(ns["voice_ledger"]({"gloria": "tell me about the table", "vintos": "The table had muscadines and the fig and I wanted to say that when you", "interrupted": True, "heard": "The table had muscadines and the fig"}))
 asyncio.run(ns["voice_ledger"]({"gloria": "[laugh] stop", "vintos": "Okay. Okay."}))
+duplicate=asyncio.run(ns["voice_ledger"]({"client_session_id":"fixture-session", "turn_id":"fixture-1", "gloria":"duplicate"}))
+check("duplicate provider turn is not appended", duplicate.get("duplicate") is True)
 sess = json.load(open(os.path.join(MEM, "voice-session-state.json")))
 t = sess["turns"]
 check("three turns in the session state", len(t) == 3)
@@ -52,6 +54,8 @@ check("the transcript carries the heard text with the cut marked, never the unhe
 check("the block says a reply was cut off", any("cut off" in n for n in led[0]["hardware_notes"]), led[0]["hardware_notes"])
 check("the session state is cleared; a second hangup writes nothing", not os.path.exists(os.path.join(MEM, "voice-session-state.json")) and asyncio.run(ns["voice_session_end"]({})).get("skipped"))
 check("the avatar history mirrors the heard text too", "when you" not in json.dumps(json.load(open(os.path.join(MEM, "avatar-overlay-chat.json")))))
+late=asyncio.run(ns["voice_ledger"]({"client_session_id":"fixture-session", "turn_id":"late", "gloria":"late"}))
+check("closed session rejects late callbacks", late.get("refused")=="voice session already closed" and not os.path.exists(os.path.join(MEM,"voice-session-state.json")))
 # Crash after appending the ledger but before unlinking the session state.
 json.dump(sess,open(os.path.join(MEM,"voice-session-state.json"),"w"))
 recovered=asyncio.run(ns["voice_session_end"]({}))
