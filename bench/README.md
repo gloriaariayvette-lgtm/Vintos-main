@@ -38,7 +38,30 @@ the other's ledger to know what it owes.
 A task proposed by Claude with `--kind grep` is addressed to Gemma automatically,
 because Claude's own config says so. It still waits for her yes.
 
-## Use
+## The page
+
+The whole point: she should not have to remember a command to approve a task.
+
+    python3 bench/server.py            # then open http://aegis:8791/ on the phone
+
+A rail of agents down one side, the work in the middle, one card per task with the
+two buttons that matter. Buzz's dark palette and layout, in one stdlib file — no
+node, no bundle, no build step, so it can be edited in place on Aegis. It refreshes
+itself every five seconds.
+
+The page has **her two verbs only**: approve and deny. Claim, done, fail and handoff
+are not routes at all — those belong to the agents, and a button that could do them
+would let whoever opens the page work as one.
+
+Put it up for good:
+
+    cp broker/vintos-bench.service ~/.config/systemd/user/
+    systemctl --user daemon-reload && systemctl --user enable --now vintos-bench
+
+To close it to the tailnet, put a secret in `~/.vintos/.bench-token`; every request
+then needs `?t=<token>`.
+
+## Use from a shell
 
     python3 bench.py pending                          what is waiting on her
     python3 bench.py approve T-xxxx                   her yes

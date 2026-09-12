@@ -1,0 +1,22 @@
+[Unit]
+Description=The bench — her agents, manageable from her phone
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/repos/vintos/bench
+Environment=PYTHONUNBUFFERED=1
+Environment=BENCH_PORT=8791
+ExecStart=/usr/bin/python3 %h/repos/vintos/bench/server.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# It writes exactly one place: the bench's own ledgers. Not his workspace.
+ReadWritePaths=%h/repos/vintos/bench/ledgers
+
+[Install]
+WantedBy=default.target
