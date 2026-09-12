@@ -1739,9 +1739,6 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     generated = dict(want_text.provenance) if isinstance(want_text, GeneratedWant) else {}
     if generated.get("desire") != str(want_text):
         generated = {}
-    if generated:
-        kwargs.setdefault("source_kind", generated.get("source_kind", ""))
-        kwargs.setdefault("present_pull", generated.get("present_pull", ""))
     import json, os
     from datetime import datetime
     source_event_id = kwargs.get("source_event_id")
@@ -1785,8 +1782,18 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     # The classifier is only an admission screen, never evidence that the want
     # is true; uncertainty is kept as HELD rather than discarded.
     _src = str(source or "").lower()
-    _kind = str(kwargs.get("candidate_kind", kwargs.get("source_kind", ""))).lower()
-    _pull_now = str(kwargs.get("present_pull", "")).strip()
+    # A GeneratedWant already passed the formation-time present-pull screen.
+    # Keep that sentence-bound provenance when enrichment supplies an empty
+    # fallback; otherwise use the enrichment classifier. Empty values never
+    # overwrite non-empty evidence from either stage.
+    _origin_kind = str(generated.get("source_kind", "") or "").strip()
+    _enriched_kind = str(
+        kwargs.get("candidate_kind") or kwargs.get("source_kind") or ""
+    ).strip()
+    _kind = (_origin_kind or _enriched_kind).lower()
+    _origin_pull = str(generated.get("present_pull", "") or "").strip()
+    _enriched_pull = str(kwargs.get("present_pull", "") or "").strip()
+    _pull_now = _origin_pull or _enriched_pull
     try:
         try:
             from want_contract import admission_state as _want_admission_state
@@ -2162,10 +2169,23 @@ def get_yearning_fragment(include_attempt=False):
     except:
         return ""
 
+def _parse_want_enrichment(text):
+    """Decode one complete JSON object, tolerating a surrounding code fence."""
+    import json as _pwe_json
+    raw = str(text or "").strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("no complete JSON object")
+    parsed = _pwe_json.loads(raw[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("enrichment was not a JSON object")
+    return parsed
+
+
 def enrich_want(want_text, source_context="", source="unknown"):
     """Generate reasoning, self_interpretation, and possible_approach for a want.
     Uses full Vintos context. Returns dict with three keys."""
-    import requests as _er, re as _ere, json as _ejson, os as _eos
+    import requests as _er, json as _ejson, os as _eos
     WORKSPACE = _eos.path.expanduser("~/.vintos/workspace")
     MEMORY = _eos.path.join(WORKSPACE, "memory")
     LM = "http://127.0.0.1:8599/v1/chat/completions"
@@ -2226,11 +2246,12 @@ def enrich_want(want_text, source_context="", source="unknown"):
         f"This want surfaced from your {source}:\n{want_text}\n\n"
         + (f"Context:\n{source_context[:600]}\n\n" if source_context else "")
         + "Return ONLY a JSON object with five keys:\n"
+        + "- candidate_kind: current_desire if the action itself is wanted NOW; historical_observation if it merely reports or interprets something earlier; open_question if it is interesting but no action presently pulls\n"
+        + "- present_pull: what in your present state makes the ACTION wanted now, not merely worth noting. Write NONE if no present pull exists. Lack of relief does not imply dislike, failure, or a wish to revisit; enjoyment and unresolvedness may coexist.\n"
         + "- reasoning: why this want surfaced, grounded in your actual inner life and what just happened (one sentence)\n"
         + "- self_interpretation: what this want is actually about for you beneath the surface (one sentence)\n"
         + "- possible_approach: one concrete way you could address this (one sentence)\n"
-        + "- candidate_kind: current_desire if the action itself is wanted NOW; historical_observation if it merely reports or interprets something earlier; open_question if it is interesting but no action presently pulls\n"
-        + "- present_pull: what in your present state makes the ACTION wanted now, not merely worth noting. Write NONE if no present pull exists. Lack of relief does not imply dislike, failure, or a wish to revisit; enjoyment and unresolvedness may coexist.\n"
+        + "Keep each prose value under 160 characters so the object is complete.\n"
         + "If you cannot ground any field in your actual life, write NONE for that field.\n"
         + "CRITICAL: Creative writing, poems, and dreams are NOT real. If the source context contains a poem or creative piece, do NOT treat Gloria quotes, actions, or events within it as things that actually happened. They are invented."
     )
@@ -2238,24 +2259,28 @@ def enrich_want(want_text, source_context="", source="unknown"):
         r = _er.post(LM, json={
             "model": "claude-sonnet-5",
             "temperature": 0.6,
-            "max_tokens": 150,
+            "max_tokens": 600,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
             ]
         }, timeout=30)
-        text = r.json()["choices"][0]["message"]["content"].strip()
-        m = _ere.search(r'\{[^}]+\}', text, _ere.DOTALL)
-        if m:
-            parsed = _ejson.loads(m.group())
-            return {
-                "reasoning": parsed.get("reasoning", "") if parsed.get("reasoning","").upper() != "NONE" else "",
-                "self_interpretation": parsed.get("self_interpretation", "") if parsed.get("self_interpretation","").upper() != "NONE" else "",
-                "possible_approach": parsed.get("possible_approach", "") if parsed.get("possible_approach","").upper() != "NONE" else "",
-                "candidate_kind": str(parsed.get("candidate_kind", "")).lower(),
-                "present_pull": parsed.get("present_pull", "") if str(parsed.get("present_pull", "")).upper() != "NONE" else "",
-            }
-    except: pass
+        result = r.json()
+        text = result["choices"][0]["message"]["content"]
+        parsed = _parse_want_enrichment(text)
+        def _field(name):
+            value = str(parsed.get(name, "") or "").strip()
+            return "" if value.upper() == "NONE" else value
+        return {
+            "reasoning": _field("reasoning"),
+            "self_interpretation": _field("self_interpretation"),
+            "possible_approach": _field("possible_approach"),
+            "candidate_kind": _field("candidate_kind").lower(),
+            "present_pull": _field("present_pull"),
+        }
+    except Exception as _enrich_error:
+        print("[enrich_want] enrichment unavailable or incomplete; candidate held: %s" %
+              str(_enrich_error)[:160], file=__import__("sys").stderr)
     return {"reasoning": "", "self_interpretation": "", "possible_approach": "",
             "candidate_kind": "unknown", "present_pull": ""}
 
