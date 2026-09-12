@@ -122,6 +122,8 @@ def main():
             prompt = _extract_prompt(_dt)
             if prompt: _stage.save("dream-art", _stage_key, prompt, note="extracted scene from dream")
         print("[dream-art] painting from dream:", prompt[:80])
+    if not prompt.strip():
+        print("[dream-art] no extracted scene — dream held"); return
     os.makedirs(ART_DIR, exist_ok=True)
     render_prompt = ((prompt + ", fully clothed, non-explicit, painterly")[:1000]
                      if "unclothed" not in prompt.lower() and "spicy" not in prompt.lower()

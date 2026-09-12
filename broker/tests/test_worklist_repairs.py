@@ -5,6 +5,10 @@ import json
 import os
 import pathlib
 import tempfile
+import ast
+import sys
+import types
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 passed = total = 0
@@ -52,6 +56,7 @@ with tempfile.TemporaryDirectory() as td:
     spec = importlib.util.spec_from_file_location("lab_daily_digest_test", ROOT / "scripts/lab_daily_digest.py")
     lab = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(lab)
+    check("Lab destination is scratch", pathlib.Path(lab.MEMORY).is_relative_to(td))
     wrote, path = lab.append(day)
     again, _ = lab.append(day)
     text = pathlib.Path(path).read_text()
@@ -59,5 +64,16 @@ with tempfile.TemporaryDirectory() as td:
     check("Lab digest reports events and assignments", "proposed 1" in text and "withheld_head 1" in text)
     check("Lab digest does not surface sealed result arithmetic", "99" not in text)
     check("Lab digest names consequence as unmeasured", "Functional consequence was not measured" in text)
+
+# An unavailable prompt model must not produce a blank-scene artifact.
+main=next(n for n in ast.parse(dream).body if isinstance(n,ast.FunctionDef) and n.name=='main')
+ns={'sys':types.SimpleNamespace(argv=['dream-art.py','--dream']), 'os':os,
+    '_latest_dream':lambda:'fixture dream', '_extract_prompt':lambda _: '',
+    '_stage':types.SimpleNamespace(key_for=lambda *a:'fixture',load=lambda *a:''),
+    'print':lambda *a,**k:None}
+with patch.dict(sys.modules,{'want_stance':types.SimpleNamespace(may_initiate=lambda _: (True,''))}):
+    exec(compile(ast.Module(body=[main],type_ignores=[]),'<fixture>','exec'),ns)
+    ns['main']()  # ART_DIR and all rendering/sending functions deliberately absent.
+check("missing prompt stops before artifacts or provider effects", 'ART_DIR' not in ns)
 
 print(f"{passed}/{total} passed")
