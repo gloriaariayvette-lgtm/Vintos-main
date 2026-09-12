@@ -446,6 +446,8 @@ def save_hypotheses(db):
 CAUSALITY_SCHEMA = 2
 MIN_NIGHTLY_EVALUATIONS = 7
 MIN_SUPPORTING_OCCASIONS = 2
+ORDINARY_TENURE_DAYS = 7
+GHOST_BRANCH_TENURE_DAYS = 32
 
 
 def _norm_evidence(text):
@@ -842,14 +844,17 @@ def load_daily_material(date=None):
 
 
 def graduate_hypotheses(db):
-    """Review only hypotheses with seven honest nightly evaluations.
+    """Apply the graduation-or-retirement gate at the hypothesis' tenure.
 
-    Calendar age establishes tenure.  It never substitutes for the ledger and
-    never expires, resolves, confirms, or challenges a hypothesis by itself.
+    Ordinary hypotheses receive seven calendar days.  Ghost Branch hypotheses
+    receive thirty-two because the branch is deliberately a longer experiment.
+    Calendar age only opens the gate: graduation still requires the honest
+    nightly ledger.  Failure to graduate retires the theory from the active set;
+    it never means resolved, refuted, or false.
     """
     from datetime import date as _date
     graduated = []
-    vanished = []
+    retired = []
     remaining = []
 
     for h in db["hypotheses"]:
@@ -870,17 +875,33 @@ def graduate_hypotheses(db):
             remaining.append(h)
             continue
 
-        if days_old >= 7:
+        tenure_days = (GHOST_BRANCH_TENURE_DAYS
+                       if h.get("source") == "ghost_branch"
+                       else ORDINARY_TENURE_DAYS)
+
+        if days_old >= tenure_days:
             ready = graduation_readiness(h)
             h["graduation_readiness"] = ready
             if ready["state"] != "eligible_day_7":
-                h["status"] = "held"
-                remaining.append(h)
-                log("  HELD: " + h.get("hypothesis", "")[:70] + " (" + ready["reason"] + ")")
+                retired_at = datetime.now().isoformat()
+                h["status"] = "retired"
+                h["retirement"] = {
+                    "at": retired_at,
+                    "reason": "tenure_ended_without_graduation",
+                    "tenure_days": tenure_days,
+                    "readiness": copy.deepcopy(ready),
+                    "resolved": False,
+                    "refuted": False,
+                }
+                _queue_delivery(db, "retired", h, _hypothesis_id(h))
+                retired.append(h)
+                log("  RETIRED (not resolved): " + h.get("hypothesis", "")[:70]
+                    + " (" + ready["reason"] + ", day " + str(tenure_days) + ")")
                 continue
             net = ready["net"]
             if net > 0:
-                log("  ELIGIBLE DAY 7: " + h["hypothesis"][:80] + " (net " + str(net) + ")")
+                log("  ELIGIBLE AT TENURE: " + h["hypothesis"][:80]
+                    + " (day " + str(tenure_days) + ", net " + str(net) + ")")
                 _review_basis = _digest(*[
                     "%s|%s|%s" % (m.get("date", ""), m.get("verdict", ""),
                                    ",".join(m.get("evidence_ids") or []))
@@ -1032,7 +1053,7 @@ def graduate_hypotheses(db):
 
     db["hypotheses"] = remaining  # graduated promoted to belief_sediment — do not keep in causality
     db["confirmed"] = len([h for h in db["hypotheses"] if h.get("self_knowledge")])
-    return len(graduated), len(vanished)
+    return len(graduated), len(retired)
 
 
 def load_testing_context():
@@ -1595,8 +1616,8 @@ def nightly_run():
     if not has_material:
         # The nightly trial still happened and wrote unconfirmed.  Formation is
         # different: an empty day must not manufacture new theories from "none".
-        n_grad, n_van = graduate_hypotheses(db)
-        log(f"  Graduated: {n_grad} | Held hypotheses remain active")
+        n_grad, n_retired = graduate_hypotheses(db)
+        log(f"  Graduated: {n_grad} | Retired (not resolved): {n_retired}")
         save_hypotheses(db)
         write_hypothesis_log(db)
         log("=== Nightly Run Complete (no formation material) ===")
@@ -1656,8 +1677,8 @@ def nightly_run():
 
     # Graduation pass
     log("Checking for 7-day graduations...")
-    n_grad, n_van = graduate_hypotheses(db)
-    log(f"  Graduated: {n_grad} | Vanished: {n_van}")
+    n_grad, n_retired = graduate_hypotheses(db)
+    log(f"  Graduated: {n_grad} | Retired (not resolved): {n_retired}")
 
     save_hypotheses(db)
     write_hypothesis_log(db)
@@ -1688,8 +1709,8 @@ def main():
     daily_material = load_testing_context()
     test_existing_hypotheses(db, daily_material, spikes=spikes, context=daily_material)
     log(f"Testing complete. Hypotheses with marks: {len([h for h in db['hypotheses'] if h.get('marks')])}")
-    n_grad, n_van = graduate_hypotheses(db)
-    log(f"Graduation: {n_grad} graduated | held hypotheses remain active")
+    n_grad, n_retired = graduate_hypotheses(db)
+    log(f"Graduation: {n_grad} graduated | {n_retired} retired (not resolved)")
     save_hypotheses(db)
 
     # Form new hypotheses about recent spikes — capped at 3/day

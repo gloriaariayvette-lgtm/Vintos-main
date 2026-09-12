@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Causality tenure is seven honest nights, never seven days plus one story."""
+"""Causality tenure is evidence-gated: seven days, or thirty-two for Ghost Branch."""
 import importlib.util
 import sys
 import tempfile
 import types
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +23,8 @@ class CausalityLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.c = load_engine()
 
-    def hypothesis(self, formed="2026-08-20", material="a different formation event"):
+    def hypothesis(self, formed="2026-08-20", material="a different formation event",
+                   source="test"):
         h = {
             "formed": formed + "T04:00:00",
             "formed_date": formed,
@@ -32,7 +34,7 @@ class CausalityLifecycleTests(unittest.TestCase):
             "graduated": False,
             "hypothesis": "Plain speech lowers the need to brace.",
             "test": "Notice a new occasion for plain speech.",
-            "source": "test",
+            "source": source,
             "subject": "self",
         }
         return self.c._stamp_formation(h, material)
@@ -145,13 +147,13 @@ class CausalityLifecycleTests(unittest.TestCase):
             self.c.MEMORY = td
             sys.modules["requests"] = fake_requests
             try:
-                graduated, vanished = self.c.graduate_hypotheses(db)
+                graduated, retired = self.c.graduate_hypotheses(db)
             finally:
                 if old_requests is None:
                     sys.modules.pop("requests", None)
                 else:
                     sys.modules["requests"] = old_requests
-        self.assertEqual((graduated, vanished), (0, 0))
+        self.assertEqual((graduated, retired), (0, 0))
         self.assertFalse(h["graduated"])
         self.assertEqual(h["status"], "review_held")
         self.assertIn(h, db["hypotheses"])
@@ -163,10 +165,76 @@ class CausalityLifecycleTests(unittest.TestCase):
         self.assertEqual(h["marks"][-1]["verdict"], "unconfirmed")
         self.assertEqual(h["marks"][-1]["reason"], "no_new_evidence_occasions")
 
-    def test_expiry_cannot_delete_an_unresolved_hypothesis(self):
-        source = (ROOT / "scripts" / "causality-engine.py").read_text()
-        self.assertNotIn("Hard-expired", source)
-        self.assertNotIn("db[\"hypotheses\"] = [h for h in db[\"hypotheses\"]", source)
+    def test_ordinary_non_graduating_hypothesis_retires_at_day_seven(self):
+        formed = (date.today() - timedelta(days=7)).isoformat()
+        h = self.hypothesis(formed=formed)
+        db = {"hypotheses": [h]}
+        graduated, retired = self.c.graduate_hypotheses(db)
+        self.assertEqual((graduated, retired), (0, 1))
+        self.assertNotIn(h, db["hypotheses"])
+        self.assertEqual(h["status"], "retired")
+        self.assertEqual(h["retirement"]["tenure_days"], 7)
+        self.assertFalse(h["retirement"]["resolved"])
+        self.assertFalse(h["retirement"]["refuted"])
+        event = db["deliveries"]["causality:retired:" + h["hypothesis_id"]]
+        self.assertEqual(event["kind"], "retired")
+        self.assertEqual(event["state"], "pending")
+
+    def test_ghost_branch_survives_the_day_seven_gate(self):
+        formed = (date.today() - timedelta(days=7)).isoformat()
+        h = self.hypothesis(formed=formed, source="ghost_branch")
+        for n in range(1, 8):
+            day = (date.fromisoformat(formed) + timedelta(days=n)).isoformat()
+            if n in (1, 5):
+                item = self.c._catalog_item(day, "interactions", f"early ghost occasion {n}", 0)
+                self.c._record_nightly(h, day, "yes", f"early ghost occasion {n} supported it", [item])
+            else:
+                self.c._record_nightly(h, day, "unconfirmed", reason="no_bearing_evidence")
+        db = {"hypotheses": [h]}
+        graduated, retired = self.c.graduate_hypotheses(db)
+        self.assertEqual((graduated, retired), (0, 0))
+        self.assertIn(h, db["hypotheses"])
+        self.assertNotEqual(h["status"], "retired")
+        self.assertNotIn("deliveries", db)
+
+    def test_ghost_branch_faces_the_same_gate_at_day_thirty_two(self):
+        formed = (date.today() - timedelta(days=32)).isoformat()
+        h = self.hypothesis(formed=formed, source="ghost_branch")
+        db = {"hypotheses": [h]}
+        graduated, retired = self.c.graduate_hypotheses(db)
+        self.assertEqual((graduated, retired), (0, 1))
+        self.assertNotIn(h, db["hypotheses"])
+        self.assertEqual(h["retirement"]["tenure_days"], 32)
+        self.assertFalse(h["retirement"]["resolved"])
+
+    def test_ghost_branch_can_graduate_at_its_day_thirty_two_gate(self):
+        formed = (date.today() - timedelta(days=32)).isoformat()
+        h = self.hypothesis(formed=formed, source="ghost_branch")
+        for n in range(1, 8):
+            day = (date.fromisoformat(formed) + timedelta(days=n)).isoformat()
+            if n in (1, 5):
+                item = self.c._catalog_item(day, "interactions", f"ghost occasion {n}", 0)
+                self.c._record_nightly(h, day, "yes", f"ghost occasion {n} supported it", [item])
+            else:
+                self.c._record_nightly(h, day, "unconfirmed", reason="no_bearing_evidence")
+        reply = types.SimpleNamespace(json=lambda: {
+            "choices": [{"message": {"content": '{"accurate": true, "concern": ""}'}}]
+        })
+        fake_requests = types.SimpleNamespace(post=lambda *a, **k: reply)
+        old_requests = sys.modules.get("requests")
+        sys.modules["requests"] = fake_requests
+        try:
+            db = {"hypotheses": [h]}
+            graduated, retired = self.c.graduate_hypotheses(db)
+        finally:
+            if old_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = old_requests
+        self.assertEqual((graduated, retired), (1, 0))
+        self.assertNotIn(h, db["hypotheses"])
+        self.assertEqual(h["status"], "graduated")
+        self.assertEqual(h["graduation_readiness"]["state"], "eligible_day_7")
 
     def test_deployed_twins_are_the_same_file(self):
         dashed = ROOT / "scripts" / "causality-engine.py"
