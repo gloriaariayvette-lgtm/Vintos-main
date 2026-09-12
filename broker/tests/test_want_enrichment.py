@@ -46,6 +46,9 @@ class WantEnrichmentTests(unittest.TestCase):
 
         self.old_requests = sys.modules.get("requests")
         sys.modules["requests"] = types.SimpleNamespace(post=post)
+        self.assertTrue(MEMORY.is_relative_to(HOME))
+        self.assertEqual(Path(os.environ["HOME"]), HOME)
+        self.assertIs(sys.modules["requests"].post, post)
         self.old_optional = {}
         replacements = {
             "subconscious_context": types.SimpleNamespace(
