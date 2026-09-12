@@ -1,0 +1,153 @@
+From 242f8d6c6e048411c77d2682f17785804f6d859c Mon Sep 17 00:00:00 2001
+From: Gloria <gloriaariayvette@gmail.com>
+Date: Sat, 12 Sep 2026 05:02:41 -0500
+Subject: [PATCH] Add direct owner signature policy for task approval
+
+Signed-off-by: Gloria <gloriaariayvette@gmail.com>
+---
+ crates/buzz-acp/src/config.rs |  5 ++-
+ crates/buzz-acp/src/lib.rs    | 70 ++++++++++++++++++++++++++++++++++-
+ 2 files changed, 73 insertions(+), 2 deletions(-)
+
+diff --git a/crates/buzz-acp/src/config.rs b/crates/buzz-acp/src/config.rs
+index b4d27903c..a96cd57e9 100644
+--- a/crates/buzz-acp/src/config.rs
++++ b/crates/buzz-acp/src/config.rs
+@@ -87,7 +87,8 @@ pub enum MultipleEventHandling {
+ 
+ /// Inbound author gate: which authors' events the harness forwards to the agent.
+ ///
+-/// - `owner-only` — only the agent's registered owner (default).
++/// - `owner-only` — owner and verified sibling agents (default).
++/// - `owner-signed` — only messages signed directly by the owner; no delegation.
+ /// - `allowlist`  — owner + explicit pubkey list (`--respond-to-allowlist`).
+ /// - `anyone`     — all events forwarded (no author filtering).
+ /// - `nobody`     — all events dropped (proactive/heartbeat-only mode).
+@@ -95,6 +96,7 @@ pub enum MultipleEventHandling {
+ pub enum RespondTo {
+     #[default]
+     OwnerOnly,
++    OwnerSigned,
+     Allowlist,
+     Anyone,
+     Nobody,
+@@ -104,6 +106,7 @@ impl std::fmt::Display for RespondTo {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         match self {
+             Self::OwnerOnly => f.write_str("owner-only"),
++            Self::OwnerSigned => f.write_str("owner-signed"),
+             Self::Allowlist => f.write_str("allowlist"),
+             Self::Anyone => f.write_str("anyone"),
+             Self::Nobody => f.write_str("nobody"),
+diff --git a/crates/buzz-acp/src/lib.rs b/crates/buzz-acp/src/lib.rs
+index 6c272187f..637ff7b56 100644
+--- a/crates/buzz-acp/src/lib.rs
++++ b/crates/buzz-acp/src/lib.rs
+@@ -377,6 +377,9 @@ mod inbound_author_gate {
+         owner_cache: &OwnerCache,
+         rest_client: &relay::RestClient,
+     ) -> bool {
++        if *respond_to == RespondTo::OwnerSigned {
++            return owner_cache.get() == Some(author);
++        }
+         if is_dm {
+             return match respond_to {
+                 RespondTo::Nobody => false,
+@@ -386,6 +389,7 @@ mod inbound_author_gate {
+         match respond_to {
+             RespondTo::Anyone => true,
+             RespondTo::Nobody => false,
++            RespondTo::OwnerSigned => owner_cache.get() == Some(author),
+             RespondTo::OwnerOnly => is_owner_or_sibling(author, owner_cache, rest_client).await,
+             RespondTo::Allowlist => {
+                 allowlist.contains(author)
+@@ -503,6 +507,16 @@ mod inbound_author_gate {
+             owner_cache: &OwnerCache,
+             rest_client: &relay::RestClient,
+         ) -> InboundAuthorGateDecision {
++            // Explicit per-task approval cannot be inherited from a sibling or
++            // a relay workflow. Verify the original signed event before attribution.
++            if *respond_to == RespondTo::OwnerSigned {
++                let author = event.pubkey.to_hex();
++                return InboundAuthorGateDecision {
++                    allowed: event.verify().is_ok() && owner_cache.get() == Some(author.as_str()),
++                    effective_author: author,
++                    is_dm,
++                };
++            }
+             let effective_author =
+                 effective_prompt_author(event, self.relay_self.as_deref(), &self.agent_pubkey_hex);
+             let allowed = author_allowed(
+@@ -2606,7 +2620,7 @@ async fn tokio_main() -> Result<()> {
+     // Warn if owner-dependent mode but no owner resolved yet.
+     if startup_owner.is_none() {
+         match &config.respond_to {
+-            RespondTo::OwnerOnly => {
++            RespondTo::OwnerOnly | RespondTo::OwnerSigned => {
+                 tracing::warn!(
+                     "respond-to=owner-only but no owner is set — all events will be \
+                      dropped. Set BUZZ_AUTH_TAG or --agent-owner, or use --respond-to=anyone."
+@@ -7605,6 +7619,60 @@ mod author_gate_tests {
+         server.abort();
+     }
+ 
++    #[tokio::test]
++    async fn owner_signed_gate_rejects_siblings_workflows_and_invalid_signatures() {
++        let owner = nostr::Keys::generate();
++        let sibling = nostr::Keys::generate();
++        let relay = nostr::Keys::generate();
++        let agent = nostr::Keys::generate().public_key().to_hex();
++        let cache = OwnerCache::new(Some(owner.public_key().to_hex()));
++        cache.cache_sibling(sibling.public_key().to_hex(), true);
++        let (gate, rest_client, server) =
++            connected_gate(&relay.public_key().to_hex(), &agent).await;
++        let message = |keys: &nostr::Keys| {
++            nostr::EventBuilder::new(nostr::Kind::Custom(KIND_STREAM_MESSAGE as u16), "task")
++                .sign_with_keys(keys)
++                .unwrap()
++        };
++        let mut forged = message(&owner);
++        forged.content = "altered task".to_string();
++        let workflow = relay_signed_workflow_dispatch(&relay, &owner.public_key().to_hex(), &agent);
++        for is_dm in [false, true] {
++            for (event, expected) in [
++                (message(&owner), true),
++                (message(&sibling), false),
++                (workflow.clone(), false),
++                (forged.clone(), false),
++            ] {
++                let decision = gate
++                    .evaluate_for_test(
++                        &event,
++                        &RespondTo::OwnerSigned,
++                        &HashSet::from([sibling.public_key().to_hex()]),
++                        is_dm,
++                        &cache,
++                        &rest_client,
++                    )
++                    .await;
++                assert_eq!(decision.allowed, expected);
++            }
++            assert!(
++                !gate
++                    .evaluate_for_test(
++                        &message(&owner),
++                        &RespondTo::OwnerSigned,
++                        &HashSet::new(),
++                        is_dm,
++                        &OwnerCache::new(None),
++                        &rest_client
++                    )
++                    .await
++                    .allowed
++            );
++        }
++        server.abort();
++    }
++
+     #[tokio::test]
+     async fn test_combined_gate_accepts_explicit_trusted_workflow_target_only() {
+         let relay = nostr::Keys::generate();
+-- 
+2.50.1 (Apple Git-155)
+

@@ -3,6 +3,32 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 12 September continuation — current deployment work
+
+- Actual upstream Buzz relay and Linux native client are installed on Aegis; four
+  signed agent profiles and model cards are registered. Source is pinned to
+  `78618804ec86a014524ad7d1fb55928e8f5c3edf`; packaged native client is 0.5.23.
+- The ACP `owner-signed` policy patch is committed as `242f8d6c6` in the separate
+  Buzz checkout and preserved in `buzz-integration/owner-signed.patch`. Linux
+  validation: 934 passed, zero failed, one existing ignored integration test.
+- **Not finished:** worker service installation, end-to-end approved task/handoff,
+  and visual native-client verification. Automatic approval review rejected the
+  root installer because new accounts and scoped provider credential access need
+  explicit approval; that question is pending. No runner task has been started.
+- Provider metadata confirmed `gpt-6-astra`, `claude-opus-4-8`, and the Grok model
+  list containing `grok-build-0.1`. Local LM Studio lists `google/gemma-4-12b-qat`.
+  Paid-provider checks are metadata only. A disposable bubblewrap commissioning
+  call through the official Gemma ACP agent returned `BUZZ_LOCAL_OK` with normal
+  end of turn (66 input tokens, seven output tokens); no tools or paid fallback.
+- Budget repair implemented: reservation IDs, matching idempotent releases, and
+  structured authentication errors instead of text matching. Historical releases
+  without receipt IDs remain conservatively counted. Deployment still pending.
+- Legacy bench HTTP now refuses missing/empty credentials. It is not the new
+  runners' authority. Legacy CLI identity strings and multi-ledger concurrency
+  remain unsuitable as an execution gate; no Buzz runner consumes that queue.
+- The broader engine/store migration, remaining review evidence, avatar native
+  sync and ring BLE work below remain open. No additional paid forge run.
+
 ## Waiting on something, per organ
 
 - **The guidance stack** — Receptivity shading and arc are the remaining Phase 2 pieces, held on data. The priority vector and self-axis are live (#50).
@@ -370,4 +396,4 @@ Independent post-deploy mapping found an old importable `causal_self_model.py` b
 - Actual `block/buzz` cloned locally and on Aegis at `~/repos/buzz`; upstream relay deployed separately with dedicated Postgres, Redis, MinIO and git volumes. The existing `bench/server.py` is not Buzz. Agent-room was not touched. Exact deployment evidence is recorded separately; native client installation and relay connection are verified; visual verification and approved agent execution remain unfinished.
 - The bench approval policy is not an authenticated boundary: an absent token allows approval POSTs, and the library defaults the caller to Gloria. No agent runner may rely on that as proof of her approval. Concurrent claim/handoff replay also remains unprotected by a complete transaction.
 - Repaired the new bench-page suite to use the existing OS-reserved fixture listener, propagate it to its subprocess and serialize the two fixture server lifetimes. The network isolation policy remains unchanged.
-- Review still open: compute-admission releases are not tied to reservation IDs; repeated or unmatched releases can erase unrelated spend. Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
+- Compute-admission receipt repair now implemented and validated; deployment pending in this continuation. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
