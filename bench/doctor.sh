@@ -72,8 +72,12 @@ say "== what the server sees =="
 if command -v curl >/dev/null 2>&1; then
   T=""
   [ -f "$TOKEN_FILE" ] && T="?t=$(tr -d '\n' < "$TOKEN_FILE")"
-  curl -fsS --max-time 3 "http://127.0.0.1:$PORT/diag$T" 2>/dev/null | sed 's/^/  /' \
-    || bad "/diag did not answer — the server is up but refusing (token?)"
+  # Captured, not piped: a pipeline's status is sed's, and this must be able to fail.
+  if D=$(curl -fsS --max-time 3 "http://127.0.0.1:$PORT/diag$T" 2>/dev/null); then
+    printf '%s\n' "$D" | sed 's/^/  /'
+  else
+    bad "/diag did not answer — the server is down, or up and refusing (token?)"
+  fi
 fi
 
 say ""
