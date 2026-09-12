@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""dream-art.py — Vintos paints via xAI grok-imagine-image.
+"""dream-art.py — Vintos paints dreams locally and want-born images via the paid painter.
 Called by wants-router: dream-art.py --force [--prompt "..."].
 Saves to memory/art/ and appends gallery.json (what /api/art/gallery reads)."""
-import os, sys, json, base64, requests
+import os, sys, json, base64, glob, io, requests
 from datetime import datetime
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
@@ -15,6 +15,54 @@ for _sp in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scri
 import artifact_manifest as _am          # the common manifest every shelf record carries (review 275/279)
 import reflection_stage as _stage        # the extracted prompt survives a failed render (review 280)
 
+
+def _find_local_model():
+    """Find an explicitly configured or fully cached diffusion pipeline, offline."""
+    configured = os.environ.get("VINTOS_DREAM_LOCAL_MODEL", "").strip()
+    if configured and os.path.isfile(os.path.join(configured, "model_index.json")):
+        return configured
+    roots = glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--*/snapshots/*/model_index.json"))
+    for manifest in sorted(roots):
+        try:
+            info = json.load(open(manifest))
+            if "StableDiffusion" in str(info.get("_class_name", "")):
+                return os.path.dirname(manifest)
+        except Exception:
+            continue
+    return ""
+
+
+def _local_render(prompt):
+    """Return PNG bytes from the cached local painter. Never contacts a provider."""
+    model_path = _find_local_model()
+    if not model_path:
+        print("[dream-art] no cached local image pipeline — dream held, no paid fallback")
+        return None
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    try:
+        import torch
+        from diffusers import StableDiffusionPipeline
+        device, dtype = "cpu", torch.float32
+        if torch.cuda.is_available():
+            capability = "sm_%d%d" % torch.cuda.get_device_capability(0)
+            if capability in set(torch.cuda.get_arch_list()):
+                device, dtype = "cuda", torch.float16
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_path, torch_dtype=dtype, safety_checker=None,
+            requires_safety_checker=False, local_files_only=True)
+        pipe.enable_attention_slicing()
+        pipe = pipe.to(device)
+        image = pipe(prompt[:1000], num_inference_steps=24, guidance_scale=7.0,
+                     width=512, height=512).images[0]
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        print("[dream-art] local painter used (%s)" % device)
+        return out.getvalue()
+    except Exception as exc:
+        print("[dream-art] local painter failed — dream held, no paid fallback: %s" % str(exc)[:180])
+        return None
+
 def _latest_dream():
     import json, os
     try:
@@ -26,13 +74,23 @@ def _latest_dream():
     return ""
 
 def _extract_prompt(dt):
-    import requests, os
-    r = requests.post("https://api.x.ai/v1/chat/completions",
-        headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
-        json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.7, "max_tokens": 150,
-              "messages": [{"role": "user", "content": "Extract ONE vivid visual scene from this dream as a painting prompt - atmospheric, emotional, dreamlike. ""Declare the figure treatment explicitly: dreams are always CLOTHED/UNSPICY - state 'clothed figure' or 'no figures' ""plainly inside the prompt so the renderer has no room to improvise. Reply with only the prompt." + chr(10) + "DREAM:" + chr(10) + dt[:1500]}]},
-        timeout=120)
-    return (((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+    """Extract locally too: a nightly dream must not spend through a text side door."""
+    base = os.environ.get("VINTOS_LOCAL_LM_BASE", "http://172.18.16.1:1234/v1").rstrip("/")
+    try:
+        models = requests.get(base + "/models", timeout=10).json().get("data") or []
+        model = next((str(row.get("id")) for row in models
+                      if row.get("id") and "embed" not in str(row.get("id")).lower()), "")
+        if not model:
+            print("[dream-art] local prompt model unavailable — dream held")
+            return ""
+        r = requests.post(base + "/chat/completions",
+            json={"model": model, "temperature": 0.7, "max_tokens": 150,
+                  "messages": [{"role": "user", "content": "Extract ONE vivid visual scene from this dream as a painting prompt - atmospheric, emotional, dreamlike. ""Declare the figure treatment explicitly: dreams are always CLOTHED/UNSPICY - state 'clothed figure' or 'no figures' ""plainly inside the prompt so the renderer has no room to improvise. Reply with only the prompt." + chr(10) + "DREAM:" + chr(10) + dt[:1500]}]},
+            timeout=120)
+        return (((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+    except Exception as exc:
+        print("[dream-art] local prompt extraction failed — dream held: %s" % str(exc)[:160])
+        return ""
 
 
 def main():
@@ -65,15 +123,26 @@ def main():
             if prompt: _stage.save("dream-art", _stage_key, prompt, note="extracted scene from dream")
         print("[dream-art] painting from dream:", prompt[:80])
     os.makedirs(ART_DIR, exist_ok=True)
-    r = requests.post("https://api.x.ai/v1/images/generations",
-        headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-        json={"model": "grok-imagine-image", "prompt": (prompt + ", fully clothed, non-explicit, painterly")[:1000] if "unclothed" not in prompt.lower() and "spicy" not in prompt.lower() else prompt[:1000],
-              "n": 1, "response_format": "b64_json"},
-        timeout=180)
-    if r.status_code != 200:
-        print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
-    data = r.json()["data"][0]
-    _png = base64.b64decode(data["b64_json"])
+    render_prompt = ((prompt + ", fully clothed, non-explicit, painterly")[:1000]
+                     if "unclothed" not in prompt.lower() and "spicy" not in prompt.lower()
+                     else prompt[:1000])
+    if src == "dream":
+        _png = _local_render(render_prompt)
+        revised_prompt = prompt
+        if not _png:
+            return
+    else:
+        # Want-born art keeps the paid renderer. The two paths cannot silently substitute for one another.
+        r = requests.post("https://api.x.ai/v1/images/generations",
+            headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+            json={"model": "grok-imagine-image", "prompt": render_prompt,
+                  "n": 1, "response_format": "b64_json"},
+            timeout=180)
+        if r.status_code != 200:
+            print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
+        data = r.json()["data"][0]
+        _png = base64.b64decode(data["b64_json"])
+        revised_prompt = data.get("revised_prompt", prompt)
     # name carries the content hash + a revision suffix: two paintings in one second, or one re-rendered,
     # never overwrite each other (review 279)
     _fpath, _rev = _am.unique_path(ART_DIR, "painting-" + datetime.now().strftime("%Y%m%d-%H%M%S"), ".png", _png)
@@ -87,7 +156,7 @@ def main():
         gallery = []
     gallery.append({
         "image": fname,
-        "prompt": data.get("revised_prompt", prompt)[:400],
+        "prompt": revised_prompt[:400],
         "timestamp": datetime.now().isoformat(),
         "dream_source": src,
         "image_class": "DREAM_BORN" if src == "dream" else "WANT_ACT",

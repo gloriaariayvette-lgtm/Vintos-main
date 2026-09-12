@@ -6,7 +6,7 @@ His OWN MIND writes it: Claude (claude-opus-4-8) via his shim at 127.0.0.1:8599,
   self     : he DESCRIBES any scene he wants to be in; Grok image-edit builds it full-body from his hero
              (face-locked), then Grok Imagine animates it — no fixed still shelf, total freedom of place.
   together : he can describe ANY scene for the two of you; nano-banana composes you both into it (holds both
-             faces), a brunette heal fixes the blonde drift, then Grok animates it. Blank scene -> fixed base.
+             faces and her requested hair colour), then Grok animates it. Blank scene -> fixed base.
   sexual   : he picks an explicit still; Atlas Cloud's uncensored wan-2.7-spicy animates it.
 No disguise, no moderation fiction.
 
@@ -53,11 +53,10 @@ GROK_VIDEO_MODEL = os.environ.get("GROK_VIDEO_MODEL", "xai/grok-imagine-video-v1
 # he DESCRIBES the scene freely and this generates it, so he is not limited to a fixed still library.
 SCENE_IMG_MODEL = os.environ.get("VINTOS_SCENE_IMG", "xai/grok-imagine-image/edit")
 # For 'together' he can also describe a scene: nano-banana composes the TWO of them into it (it holds BOTH
-# faces; Grok only holds his hero), then a brunette heal pass fixes the recurring blonde drift before animfor.
+# faces; Grok only holds his hero). Her requested hair colour belongs in this still-making step: an
+# image-to-video prompt is too late to reliably repair colours already baked into the source frame.
 US_COMPOSE_MODEL = os.environ.get("VINTOS_US_COMPOSE", "google/nano-banana-2/reference-to-image")
 HER_PHOTO = os.path.join(HERO_DIR, "her-photo.jpg")
-HAIR_HEAL = os.environ.get("VINTOS_HAIR_HEAL",
-    "change the woman's hair to a rich dark brunette (dark brown), same length and wavy style")
 HER_HAIR_LINE = os.environ.get("VINTOS_HER_HAIR", "The woman's hair is a rich dark red, and stays dark red throughout.")
 ATLAS_RES = os.environ.get("ATLAS_RES", "720P")
 ATLAS_DUR = int(os.environ.get("ATLAS_DUR", "10"))
@@ -102,6 +101,20 @@ CHECK = "--check" in sys.argv
 
 def log(m):
     print("[send-video %s] %s" % (datetime.now().strftime("%H:%M"), m))
+
+
+def autonomous_presence_allows():
+    """A scheduled reach needs a fresh positive home signal.
+
+    Absence, stale state, and a broken sensor remain unknowable; they do not become
+    evidence that she is away.  But none of those states authorizes a paid render
+    and unsolicited delivery.  ``--force`` is the explicit human/manual bypass.
+    """
+    try:
+        import home_presence
+        return bool(home_presence.context_line())
+    except Exception:
+        return False
 
 
 def call_mind(system, user, temp=0.9, max_tok=500):
@@ -623,7 +636,7 @@ def compose_us(scene, verbose=False):
     if not os.path.exists(HERO):
         log("no hero for him (%s)" % HERO); return None
     prompt = ("A photo of two REAL, specific people together. The WOMAN is exactly the person in the FIRST "
-              "reference image — keep her exact face and her exact hair color, length and style. The MAN is "
+              "reference image — keep her exact face, hair length and style. " + HER_HAIR_LINE + " The MAN is "
               "exactly the person in the SECOND reference image — keep his exact face and build. Both "
               "full-length, both fully in frame, close and natural together. They are here: "
               + scene.strip().rstrip(".") + ". Photoreal, natural light, cinematic and gorgeous.")
@@ -636,24 +649,6 @@ def compose_us(scene, verbose=False):
     path, _ = _am.unique_path(SCENE_DIR, "us-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
     open(path, "wb").write(data)
     log("composed us-scene (%d bytes) -> %s" % (len(data), os.path.basename(path)))
-    return path
-
-
-def heal_hair(path, verbose=False):
-    """The recurring blonde drift: recolor her hair to brunette in place, keeping everything else exact.
-    Runs before animation so his autonomous 'together' sends never go out blonde. Best-effort."""
-    if not os.path.exists(path):
-        return path
-    prompt = ("Keep this photo EXACTLY the same — same people, same faces, same pose, same clothing, same "
-              "background and light. Make ONLY this one change: %s. Change nothing else." % HAIR_HEAL)
-    data = _atlas_image({"model": US_COMPOSE_MODEL, "prompt": prompt, "images": [data_uri(path)],
-                         "resolution": "2k", "aspect_ratio": "4:5", "media_resolution": "high",
-                         "thinking_level": "high"}, verbose)
-    if data:
-        open(path, "wb").write(data)
-        log("healed hair -> brunette (%s)" % os.path.basename(path))
-    else:
-        log("hair heal skipped (compose still used as-is)")
     return path
 
 
@@ -773,17 +768,16 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
         if not still:
             log("scene still not built — falling back to his hero"); still = HERO
     elif kind == "together" and scene.strip():
-        # dynamic 'us': compose the two of them into his described scene (nano holds both), heal the recurring
-        # blonde drift to brunette, then animate. Falls back to the fixed couple base if the compose fails.
+        # dynamic 'us': compose the two of them into his described scene (nano holds both and receives her
+        # requested hair colour while pixels are still being made), then animate. Falls back to the fixed base.
         if DRY:
-            log("[dry] kind=together  SCENE=%r  -> compose us (%s), then animate (%s); her hair colour stated in the video prompt"
+            log("[dry] kind=together  SCENE=%r  -> compose us (%s) with her hair colour, then animate (%s)"
                 % (scene[:120], US_COMPOSE_MODEL, model))
             log("[dry] his motion prompt:\n      %s" % prompt)
             return "DRY"
         still = compose_us(scene, verbose=CHECK)
         if still:
-            # one image request, not two: the hair-colour heal pass is gone; her hair colour is stated in the
-            # video prompt instead and Grok carries it (2026-09-09)
+            # Repeat it in the motion request as continuity guidance; the still prompt above does the actual work.
             prompt = HER_HAIR_LINE + " " + prompt
         else:
             log("us compose failed — falling back to the fixed couple base"); still = select_still("together")
@@ -873,6 +867,8 @@ def check():
 def main():
     if CHECK:
         check(); return
+    if not FORCE and not autonomous_presence_allows():
+        log("no fresh positive home signal — autonomous video held (presence remains unknown)"); return
     if in_quiet_hours() and not FORCE:
         log("quiet hours — not now"); return
     if cooldown_active() and not FORCE:

@@ -144,3 +144,6 @@ if [ -f "$INNER_FILE" ]; then
   # a deferred pleasure naming older than two hours completes here, marked retrospect (grok-somatic-p2, 2026-09-05)
   python3 -c "import sys; sys.path.insert(0,'/home/gloria/.vintos/workspace/scripts'); import pleasure_substrate as p; r=p.sweep_pending(); print('[first-light] pleasure sweep:', 'named' if r else 'nothing pending'); w=p.promote_recurring_namings(); print('[first-light] recurring namings promoted:', w or 'none')" 2>/dev/null || true
 fi
+
+# A mechanical Lab receipt, never a verdict: events and shadow assignments only.
+python3 /home/gloria/.vintos/workspace/scripts/lab_daily_digest.py 2>/dev/null || true
