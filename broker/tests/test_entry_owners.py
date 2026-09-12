@@ -18,7 +18,18 @@ check("executables are marked", by["atelier-visit.py"]["executable"] is True and
 missing = [r["entry"] for r in o if not r["in_checkout"]]
 check("every manifest entry exists in the checkout", not missing, missing)
 a = EO.aliases()
-check("aliases are listed with targets; host-only links are named as such", len(a) > 100 and all(r["target"] for r in a) and any(r["note"].startswith("host path") for r in a))
+check("source aliases are listed and repository-local", len(a) > 100 and all(r["target"] and r["resolves_in_checkout"] and not os.path.isabs(r["target"]) for r in a))
+# Exercise host-path classification in scratch, not by requiring a live-source defect.
+with tempfile.TemporaryDirectory(prefix="entry-owners-fixture-") as scratch:
+    os.mkdir(os.path.join(scratch,"scripts"))
+    os.symlink("/home/fixture/absent.py", os.path.join(scratch,"scripts","alias.py"))
+    check("alias fixture writes only scratch", os.path.realpath(scratch).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep))
+    original=EO.REPO
+    try:
+        EO.REPO=scratch
+        check("host aliases are reported without following their source", EO.aliases()[0]["note"].startswith("host path"))
+    finally:
+        EO.REPO=original
 p = EO.parity()
 # This used to require that at least one twin set DIFFER, to prove the matrix could say so.
 # It proved the shape by depending on a defect, and it failed the moment the last divergence
