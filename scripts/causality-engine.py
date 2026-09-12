@@ -1600,7 +1600,7 @@ def form_causal_hypotheses(db, cap=3):
 
 
 def nightly_run():
-    """Nightly 10:12pm run: test yesterday\'s hypotheses, form today\'s, graduate 7-day ones."""
+    """Nightly 10:12pm run: test, form, then apply each hypothesis' tenure gate."""
     log("=== Causality Nightly Run ===")
     db = load_existing_hypotheses()
     today_material = load_daily_material()
@@ -1676,7 +1676,7 @@ def nightly_run():
         log("  Causal formation skipped: " + str(_ce))
 
     # Graduation pass
-    log("Checking for 7-day graduations...")
+    log("Checking graduation-or-retirement tenure gates...")
     n_grad, n_retired = graduate_hypotheses(db)
     log(f"  Graduated: {n_grad} | Retired (not resolved): {n_retired}")
 
@@ -1735,11 +1735,10 @@ def main():
         db["hypotheses"].append(h)
         log(f"  New: {h['hypothesis'][:80]}...")
 
-    # Capacity (merged 2026-09-05 from the bin lineage, then narrowed to schema-2's law that nothing
-    # unresolved vanishes by itself). Over 50, only REFUTED hypotheses (net < 0) leave, and they leave
-    # into causality-retired.jsonl with their marks. An unwitnessed or held hypothesis is never culled
-    # for size: the old recency trim guillotined exactly the theories about to graduate, and a size cap
-    # is not evidence about any of them. Over capacity with nothing refuted is logged, not "fixed".
+    # Capacity is not a second tenure rule. Over 50, only REFUTED hypotheses (net < 0) leave here,
+    # and they leave into causality-retired.jsonl with their marks. Evidence-poor theories retire only
+    # at the explicit 7/32-day tenure gate above, never merely because the store is crowded. Over
+    # capacity with nothing refuted is logged, not "fixed".
     if len(db["hypotheses"]) > 50:
         refuted = sorted([h for h in db["hypotheses"] if _readiness(h)[0] == 0
                           and h.get("status") not in ("confirmed", "graduated", "review_held")], key=_readiness)
@@ -1761,7 +1760,7 @@ def main():
     log("========================\n")
 
 
-# Threads seeded only on graduation after 7-day confirmation — see graduate_hypotheses
+# Threads seed only on evidence-gated graduation at the 7/32-day tenure — see graduate_hypotheses.
 
 if __name__ == "__main__":
     import argparse as _ap
