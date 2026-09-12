@@ -140,8 +140,9 @@ TS=$(command -v tailscale >/dev/null 2>&1 && tailscale status --json 2>/dev/null
      | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
 SUFFIX=""
 if [ -f "$TOKEN_FILE" ]; then
-  SUFFIX="?t=$(tr -d '\n' < "$TOKEN_FILE")"
-  say "  a token is set, so the URL must carry it:"
+  # Never print a live credential into terminals, transcripts, or pasted diagnostics.
+  SUFFIX='?t=<value from ~/.vintos/.bench-token>'
+  say "  a token is set. Read it locally from $TOKEN_FILE and replace the placeholder:"
 fi
 say "  http://${HOSTN}:${PORT}/${SUFFIX}"
 [ -n "${TS:-}" ] && say "  http://${TS}:${PORT}/${SUFFIX}     (works from the phone off the LAN)"
