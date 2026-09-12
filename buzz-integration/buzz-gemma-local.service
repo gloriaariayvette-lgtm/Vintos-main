@@ -1,0 +1,19 @@
+[Unit]
+Description=Buzz local Gemma (direct owner-signed tasks)
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/libexec/buzz-local-gemma.py
+Restart=on-failure
+RestartSec=15
+KillMode=control-group
+TimeoutStopSec=30
+MemoryMax=4G
+TasksMax=256
+UMask=0077
+
+[Install]
+WantedBy=default.target

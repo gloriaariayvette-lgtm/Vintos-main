@@ -11,18 +11,22 @@ It is the only place with a to-do in it.
 - The ACP `owner-signed` policy patch is committed as `242f8d6c6` in the separate
   Buzz checkout and preserved in `buzz-integration/owner-signed.patch`. Linux
   validation: 934 passed, zero failed, one existing ignored integration test.
-- **Not finished:** worker service installation, end-to-end approved task/handoff,
+- **Not finished:** paid worker service installation, end-to-end approved task/handoff,
   and visual native-client verification. Automatic approval review rejected the
   root installer because new accounts and scoped provider credential access need
-  explicit approval; that question is pending. No runner task has been started.
-- Provider metadata confirmed `gpt-6-astra`, `claude-opus-4-8`, and the Grok model
+  explicit approval; that question is pending. Gloria approved all four bot memberships, selecting Claude/Fable 5.1. All
+  eight channel additions succeeded. Local-only Gemma connects from the persistent
+  `buzz-gemma-local` user bubblewrap service and subscribes to both channels.
+  A live bot-message probe was separately rejected by automatic approval review
+  and was not sent. No approved channel task has been started.
+- Provider metadata confirmed `gpt-6-astra`, the previously configured Opus, and the Grok model
   list containing `grok-build-0.1`. Local LM Studio lists `google/gemma-4-12b-qat`.
   Paid-provider checks are metadata only. A disposable bubblewrap commissioning
   call through the official Gemma ACP agent returned `BUZZ_LOCAL_OK` with normal
   end of turn (66 input tokens, seven output tokens); no tools or paid fallback.
 - Budget repair implemented: reservation IDs, matching idempotent releases, and
   structured authentication errors instead of text matching. Historical releases
-  without receipt IDs remain conservatively counted. Deployment still pending.
+  without receipt IDs remain conservatively counted. Deployed in release `20260912-052317-9b9c1dc`.
 - Legacy bench HTTP now refuses missing/empty credentials. It is not the new
   runners' authority. Legacy CLI identity strings and multi-ledger concurrency
   remain unsuitable as an execution gate; no Buzz runner consumes that queue.
@@ -396,4 +400,4 @@ Independent post-deploy mapping found an old importable `causal_self_model.py` b
 - Actual `block/buzz` cloned locally and on Aegis at `~/repos/buzz`; upstream relay deployed separately with dedicated Postgres, Redis, MinIO and git volumes. The existing `bench/server.py` is not Buzz. Agent-room was not touched. Exact deployment evidence is recorded separately; native client installation and relay connection are verified; visual verification and approved agent execution remain unfinished.
 - The bench approval policy is not an authenticated boundary: an absent token allows approval POSTs, and the library defaults the caller to Gloria. No agent runner may rely on that as proof of her approval. Concurrent claim/handoff replay also remains unprotected by a complete transaction.
 - Repaired the new bench-page suite to use the existing OS-reserved fixture listener, propagate it to its subprocess and serialize the two fixture server lifetimes. The network isolation policy remains unchanged.
-- Compute-admission receipt repair now implemented and validated; deployment pending in this continuation. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
+- Compute-admission receipt repair deployed in `20260912-052317-9b9c1dc`. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
