@@ -1,0 +1,16 @@
+{
+  "what": "Codex — long autonomous batches, migrations, wide mechanical refactors.",
+  "auto_approve": [],
+  "delegate": {
+    "grep": "gemma",
+    "verdict": "gemma",
+    "summarise": "gemma",
+    "regenerate-report": "gemma",
+    "lint": "gemma",
+    "rename": "grok",
+    "test": "grok",
+    "bounded-fix": "grok"
+  },
+  "keeps": ["migration", "batch", "refactor", "evidence"],
+  "note": "auto_approve is Gloria's list. Nothing here may add to it."
+}

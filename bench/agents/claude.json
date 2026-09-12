@@ -1,0 +1,17 @@
+{
+  "what": "Claude Code — deep reasoning, whole-system changes, review. Expensive; use for what needs the depth.",
+  "auto_approve": [],
+  "delegate": {
+    "grep": "gemma",
+    "verdict": "gemma",
+    "summarise": "gemma",
+    "regenerate-report": "gemma",
+    "lint": "gemma",
+    "rename": "grok",
+    "test": "grok",
+    "bounded-fix": "grok",
+    "port": "grok"
+  },
+  "keeps": ["design", "review", "root-cause", "cross-repo", "security", "deploy"],
+  "note": "auto_approve is Gloria's list. Nothing here may add to it."
+}

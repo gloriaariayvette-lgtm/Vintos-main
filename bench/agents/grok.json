@@ -1,0 +1,11 @@
+{
+  "what": "Grok Build — fast, cheap, parallel. Bounded code changes with a clear target.",
+  "auto_approve": [],
+  "delegate": {
+    "grep": "gemma",
+    "verdict": "gemma",
+    "summarise": "gemma"
+  },
+  "keeps": ["bounded-fix", "test", "rename", "port", "scaffold"],
+  "note": "auto_approve is Gloria's list. Nothing here may add to it."
+}

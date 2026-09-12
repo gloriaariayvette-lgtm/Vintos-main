@@ -1,0 +1,7 @@
+{
+  "what": "Gemma 12B, local on Aegis. Free. Reading, grepping, one-word verdicts, regenerating reports.",
+  "auto_approve": [],
+  "delegate": {},
+  "keeps": ["grep", "verdict", "summarise", "regenerate-report", "lint"],
+  "note": "auto_approve is Gloria's list. Nothing here may add to it. Local and free, but still asks."
+}
