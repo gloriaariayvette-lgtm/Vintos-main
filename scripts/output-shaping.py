@@ -1,1 +1,1 @@
-/home/gloria/Vintos/output-shaping.py
+../bin/output_shaping.py

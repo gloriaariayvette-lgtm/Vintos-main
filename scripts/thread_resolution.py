@@ -1,1 +1,1 @@
-/home/gloria/Vintos/thread_resolution.py
+../bin/thread-resolution.py

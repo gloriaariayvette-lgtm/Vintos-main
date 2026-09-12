@@ -1,1 +1,1 @@
-/home/gloria/Vintos/vintos-video.py
+../bin/vintos-video.py

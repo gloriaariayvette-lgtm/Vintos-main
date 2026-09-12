@@ -1,1 +1,1 @@
-/home/gloria/Vintos/humor_reaction.py
+../bin/humor_reaction.py

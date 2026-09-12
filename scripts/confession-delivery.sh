@@ -1,1 +1,1 @@
-/home/gloria/Vintos/confession-delivery.sh
+../bin/confession-delivery.sh

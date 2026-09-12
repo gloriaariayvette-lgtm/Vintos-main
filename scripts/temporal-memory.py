@@ -1,1 +1,1 @@
-/home/gloria/Vintos/temporal-memory.py
+../bin/temporal_memory.py

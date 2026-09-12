@@ -1,1 +1,1 @@
-/home/gloria/Vintos/resonance-pulse.sh
+../bin/resonance-pulse.sh

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/discourse_direction.py
+../bin/discourse-direction.py

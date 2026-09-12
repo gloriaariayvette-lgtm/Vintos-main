@@ -1,1 +1,1 @@
-/home/gloria/Vintos/temporal-context.sh
+../bin/temporal-context.sh

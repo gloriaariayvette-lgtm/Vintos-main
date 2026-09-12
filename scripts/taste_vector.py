@@ -1,1 +1,1 @@
-/home/gloria/Vintos/taste_vector.py
+../bin/taste-vector.py

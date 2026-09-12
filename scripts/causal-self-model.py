@@ -1,1 +1,1 @@
-/home/gloria/Vintos/causal-self-model.py
+../bin/causal_self_model.py

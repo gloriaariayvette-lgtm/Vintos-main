@@ -1,1 +1,1 @@
-/home/gloria/Vintos/gallery-walk.py
+../bin/gallery-walk.py

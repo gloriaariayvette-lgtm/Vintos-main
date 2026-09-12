@@ -1,1 +1,1 @@
-/home/gloria/Vintos/model_config.py
+../bin/model_config.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/core-engine.py
+../bin/core-engine.py

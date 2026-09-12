@@ -1,1 +1,1 @@
-/home/gloria/Vintos/cause_reason.py
+../bin/cause_reason.py

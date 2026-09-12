@@ -1,1 +1,1 @@
-/home/gloria/Vintos/introspection.sh
+../bin/introspection.sh

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/imprint.py
+../bin/imprint.py

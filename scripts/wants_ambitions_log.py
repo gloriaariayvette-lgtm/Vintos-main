@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wants_ambitions_log.py
+../bin/wants-ambitions-log.py

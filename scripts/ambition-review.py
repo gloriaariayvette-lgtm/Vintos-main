@@ -1,1 +1,1 @@
-/home/gloria/Vintos/ambition-review.py
+../bin/ambition-review.py

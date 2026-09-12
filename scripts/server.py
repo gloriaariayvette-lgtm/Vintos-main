@@ -1,1 +1,1 @@
-/home/gloria/Vintos/server.py
+../bin/server.py

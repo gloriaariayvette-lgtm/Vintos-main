@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emotional-gravity-wells.py
+../bin/emotional_gravity_wells.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emotional-reflection.py
+../bin/emotional-reflection.py

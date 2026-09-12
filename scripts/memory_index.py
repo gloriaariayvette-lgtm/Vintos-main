@@ -1,1 +1,1 @@
-/home/gloria/Vintos/memory_index.py
+memory-index.py

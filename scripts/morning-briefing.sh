@@ -1,1 +1,1 @@
-/home/gloria/Vintos/morning-briefing.sh
+../bin/morning-briefing.sh

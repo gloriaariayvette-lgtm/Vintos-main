@@ -1,1 +1,1 @@
-/home/gloria/Vintos/affective-weight.py
+../bin/affective_weight.py

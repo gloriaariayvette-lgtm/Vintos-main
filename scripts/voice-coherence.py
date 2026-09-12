@@ -1,1 +1,1 @@
-/home/gloria/Vintos/voice-coherence.py
+../bin/voice_coherence.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/midday-ground.sh
+../bin/midday-ground.sh

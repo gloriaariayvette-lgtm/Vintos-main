@@ -1,1 +1,1 @@
-/home/gloria/Vintos/vintos-journal.sh
+../bin/vintos-journal.sh

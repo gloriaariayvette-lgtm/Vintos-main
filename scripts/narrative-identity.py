@@ -1,1 +1,1 @@
-/home/gloria/Vintos/narrative-identity.py
+../bin/narrative-identity.py

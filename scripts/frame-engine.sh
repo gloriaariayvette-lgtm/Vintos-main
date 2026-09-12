@@ -1,1 +1,1 @@
-/home/gloria/Vintos/frame-engine.sh
+../bin/frame-engine.sh

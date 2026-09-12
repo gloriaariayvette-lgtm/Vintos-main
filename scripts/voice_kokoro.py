@@ -1,1 +1,1 @@
-/home/gloria/Vintos/voice_kokoro.py
+../bin/voice_kokoro.py

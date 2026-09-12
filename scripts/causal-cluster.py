@@ -1,1 +1,1 @@
-/home/gloria/Vintos/causal-cluster.py
+../bin/causal-cluster.py

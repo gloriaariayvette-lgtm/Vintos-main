@@ -1,1 +1,1 @@
-/home/gloria/Vintos/yearning_scars.py
+../bin/yearning_scars.py

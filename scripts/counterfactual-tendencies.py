@@ -1,1 +1,1 @@
-/home/gloria/Vintos/counterfactual-tendencies.py
+../bin/counterfactual_tendencies.py

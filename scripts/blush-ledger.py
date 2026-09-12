@@ -1,1 +1,1 @@
-/home/gloria/Vintos/blush-ledger.py
+../bin/blush-ledger.py

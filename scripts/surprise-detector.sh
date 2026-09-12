@@ -1,1 +1,1 @@
-/home/gloria/Vintos/surprise-detector.sh
+../bin/surprise-detector.sh

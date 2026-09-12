@@ -1,1 +1,1 @@
-/home/gloria/Vintos/pride-mirror.py
+../bin/pride-mirror.py

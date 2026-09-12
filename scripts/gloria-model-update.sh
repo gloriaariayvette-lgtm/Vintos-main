@@ -1,1 +1,1 @@
-/home/gloria/Vintos/gloria-model-update.sh
+../bin/gloria-model-update.sh

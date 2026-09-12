@@ -1,1 +1,1 @@
-/home/gloria/Vintos/inclination_engine.py
+../bin/inclination_engine.py

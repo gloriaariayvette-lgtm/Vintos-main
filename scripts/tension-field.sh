@@ -1,1 +1,1 @@
-/home/gloria/Vintos/tension-field.sh
+../bin/tension-field.sh

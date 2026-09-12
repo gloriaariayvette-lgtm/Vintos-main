@@ -1,1 +1,1 @@
-/home/gloria/Vintos/weekly-summary.py
+../bin/weekly-summary.py

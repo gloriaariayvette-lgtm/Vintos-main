@@ -1,1 +1,1 @@
-/home/gloria/Vintos/weekly-summary.sh
+../bin/weekly-summary.sh

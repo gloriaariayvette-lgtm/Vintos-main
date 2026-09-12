@@ -1,1 +1,1 @@
-/home/gloria/Vintos/causal-observations.py
+../bin/causal-observations.py

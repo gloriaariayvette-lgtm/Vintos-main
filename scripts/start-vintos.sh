@@ -1,1 +1,1 @@
-/home/gloria/Vintos/start-vintos.sh
+../bin/start-vintos.sh

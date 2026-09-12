@@ -1,1 +1,1 @@
-/home/gloria/Vintos/resonance-afterglow.py
+resonance_afterglow.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/subconscious-drift.py
+subconscious_drift.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/autonomous_extract.py
+../bin/autonomous_extract.py

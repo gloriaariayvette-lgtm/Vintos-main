@@ -1,1 +1,1 @@
-/home/gloria/Vintos/memory_search.py
+memory-search.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/thread_weaver.py
+../bin/thread_weaver.py

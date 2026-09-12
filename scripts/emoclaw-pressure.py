@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emoclaw-pressure.py
+../bin/emoclaw-pressure.py

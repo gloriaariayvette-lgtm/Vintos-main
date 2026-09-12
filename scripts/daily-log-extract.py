@@ -1,1 +1,1 @@
-/home/gloria/Vintos/daily-log-extract.py
+../bin/daily-log-extract.py

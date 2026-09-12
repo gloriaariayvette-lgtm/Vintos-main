@@ -1,1 +1,1 @@
-/home/gloria/Vintos/relational-mismatch.sh
+../bin/relational-mismatch.sh

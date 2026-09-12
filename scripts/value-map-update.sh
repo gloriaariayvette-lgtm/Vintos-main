@@ -1,1 +1,1 @@
-/home/gloria/Vintos/value-map-update.sh
+../bin/value-map-update.sh

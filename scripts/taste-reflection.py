@@ -1,1 +1,1 @@
-/home/gloria/Vintos/taste-reflection.py
+../bin/taste-reflection.py

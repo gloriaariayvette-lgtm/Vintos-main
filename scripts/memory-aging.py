@@ -1,1 +1,1 @@
-/home/gloria/Vintos/memory-aging.py
+../bin/memory_aging.py

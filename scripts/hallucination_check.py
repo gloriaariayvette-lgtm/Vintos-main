@@ -1,1 +1,1 @@
-/home/gloria/Vintos/hallucination_check.py
+../bin/hallucination_check.py

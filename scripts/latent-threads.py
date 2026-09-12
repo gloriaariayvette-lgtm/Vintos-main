@@ -1,1 +1,1 @@
-/home/gloria/Vintos/latent-threads.py
+latent_threads.py

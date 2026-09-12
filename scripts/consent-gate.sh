@@ -1,1 +1,1 @@
-/home/gloria/Vintos/consent-gate.sh
+../bin/consent-gate.sh

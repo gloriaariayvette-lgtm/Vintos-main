@@ -1,1 +1,1 @@
-/home/gloria/Vintos/ambition-review.sh
+../bin/ambition-review.sh

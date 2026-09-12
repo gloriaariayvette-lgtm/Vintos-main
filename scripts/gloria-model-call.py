@@ -1,1 +1,1 @@
-/home/gloria/Vintos/gloria-model-call.py
+../bin/gloria-model-call.py

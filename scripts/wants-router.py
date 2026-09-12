@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wants-router.py
+../bin/wants-router.py

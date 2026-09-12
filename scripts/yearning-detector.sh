@@ -1,1 +1,1 @@
-/home/gloria/Vintos/yearning-detector.sh
+../bin/yearning-detector.sh

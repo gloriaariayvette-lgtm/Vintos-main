@@ -1,1 +1,1 @@
-/home/gloria/Vintos/counterfactual-archive.sh
+../bin/counterfactual-archive.sh

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/soul-review.sh
+../bin/soul-review.sh

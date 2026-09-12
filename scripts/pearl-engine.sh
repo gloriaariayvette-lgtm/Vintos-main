@@ -1,1 +1,1 @@
-/home/gloria/Vintos/pearl-engine.sh
+../bin/pearl-engine.sh

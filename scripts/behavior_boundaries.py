@@ -1,1 +1,1 @@
-/home/gloria/Vintos/behavior_boundaries.py
+../bin/behavior_boundaries.py

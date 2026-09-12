@@ -1,1 +1,1 @@
-/home/gloria/Vintos/dream_poetry.py
+../bin/dream_poetry.py

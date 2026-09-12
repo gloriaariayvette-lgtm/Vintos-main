@@ -1,1 +1,1 @@
-/home/gloria/Vintos/vintos-websearch.py
+../bin/vintos-websearch.py

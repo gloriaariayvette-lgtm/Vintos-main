@@ -1,1 +1,1 @@
-/home/gloria/Vintos/reality-anchor.py
+../bin/reality_anchor.py

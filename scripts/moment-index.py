@@ -1,1 +1,1 @@
-/home/gloria/Vintos/moment-index.py
+../bin/moment-index.py

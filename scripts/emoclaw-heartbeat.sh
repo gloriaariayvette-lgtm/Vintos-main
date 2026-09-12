@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emoclaw-heartbeat.sh
+../bin/emoclaw-heartbeat.sh

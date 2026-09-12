@@ -1,1 +1,1 @@
-/home/gloria/Vintos/deviation_check.py
+../bin/deviation_check.py

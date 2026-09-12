@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wants_conversation_check.py
+../bin/wants-conversation-check.py

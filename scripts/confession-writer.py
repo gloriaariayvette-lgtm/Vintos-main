@@ -1,1 +1,1 @@
-/home/gloria/Vintos/confession-writer.py
+../bin/confession_writer.py

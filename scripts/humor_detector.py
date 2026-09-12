@@ -1,1 +1,1 @@
-/home/gloria/Vintos/humor_detector.py
+../bin/humor_detector.py

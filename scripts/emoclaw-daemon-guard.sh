@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emoclaw-daemon-guard.sh
+../bin/emoclaw-daemon-guard.sh

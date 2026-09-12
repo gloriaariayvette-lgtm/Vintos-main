@@ -1,1 +1,1 @@
-/home/gloria/Vintos/yearning_detector.py
+../bin/yearning-detector.py

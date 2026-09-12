@@ -1,1 +1,1 @@
-/home/gloria/Vintos/specificity_check.py
+../bin/specificity_check.py

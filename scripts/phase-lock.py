@@ -1,1 +1,1 @@
-/home/gloria/Vintos/phase-lock.py
+../bin/phase-lock.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/setup_memory.sh
+../bin/setup_memory.sh

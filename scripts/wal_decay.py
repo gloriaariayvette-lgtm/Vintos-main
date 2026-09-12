@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wal_decay.py
+wal-decay.py

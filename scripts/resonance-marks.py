@@ -1,1 +1,1 @@
-/home/gloria/Vintos/resonance-marks.py
+../bin/resonance-marks.py

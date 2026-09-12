@@ -1,1 +1,1 @@
-/home/gloria/Vintos/absence-map.sh
+../bin/absence-map.sh

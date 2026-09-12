@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wal-extract.py
+../bin/wal-extract.py

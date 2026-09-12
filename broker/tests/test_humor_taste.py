@@ -9,6 +9,11 @@ import sys
 import types
 from pathlib import Path
 
+# Set HOME before lazy secondary imports capture their default stores.
+SCRATCH_HOME = tempfile.TemporaryDirectory(prefix="humor-taste-home-")
+os.environ["HOME"] = SCRATCH_HOME.name
+SEND_STUB = lambda *a, **k: None
+sys.modules["requests"] = types.SimpleNamespace(post=SEND_STUB)
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -22,6 +27,10 @@ def load(name, path):
 
 
 class HumorTasteTests(unittest.TestCase):
+    def test_isolation_is_explicit(self):
+        self.assertEqual(Path.home(), Path(SCRATCH_HOME.name))
+        self.assertIs(sys.modules["requests"].post, SEND_STUB)
+
     def test_both_humor_practice_copies_obey_no_silence_verdict(self):
         for rel in ("scripts/humor-practice.py", "bin/humor-practice.py"):
             src = (ROOT / rel).read_text()

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/emotional-reflection.sh
+../bin/emotional-reflection.sh

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/first-light.sh
+../bin/first-light.sh

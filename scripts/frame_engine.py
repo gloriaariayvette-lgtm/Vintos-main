@@ -1,1 +1,1 @@
-/home/gloria/Vintos/frame_engine.py
+../bin/frame_engine.py

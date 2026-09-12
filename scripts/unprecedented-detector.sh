@@ -1,1 +1,1 @@
-/home/gloria/Vintos/unprecedented-detector.sh
+../bin/unprecedented-detector.sh

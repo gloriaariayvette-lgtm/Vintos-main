@@ -1,1 +1,1 @@
-/home/gloria/Vintos/subconscious-context.py
+../bin/subconscious_context.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/thread_triage.py
+../bin/thread-triage.py

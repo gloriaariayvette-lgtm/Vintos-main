@@ -1,1 +1,1 @@
-/home/gloria/Vintos/music_share.py
+../bin/music-share.py

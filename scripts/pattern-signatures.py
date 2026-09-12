@@ -1,1 +1,1 @@
-/home/gloria/Vintos/pattern-signatures.py
+../bin/pattern-signatures.py

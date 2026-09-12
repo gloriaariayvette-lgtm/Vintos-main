@@ -1,1 +1,1 @@
-/home/gloria/Vintos/ghost_lean.py
+../bin/ghost_lean.py

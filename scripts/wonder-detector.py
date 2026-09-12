@@ -1,1 +1,1 @@
-/home/gloria/Vintos/wonder-detector.py
+../bin/wonder-detector.py

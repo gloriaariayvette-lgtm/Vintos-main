@@ -1,1 +1,1 @@
-/home/gloria/Vintos/soul-review.py
+../bin/soul-review.py

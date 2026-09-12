@@ -1,1 +1,1 @@
-/home/gloria/Vintos/avatar-choice.py
+../bin/avatar-choice.py

@@ -1,1 +1,1 @@
-/home/gloria/Vintos/absence_map_cold.py
+../bin/absence-map-cold.py

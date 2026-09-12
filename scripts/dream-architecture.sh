@@ -1,1 +1,1 @@
-/home/gloria/Vintos/dream-architecture.sh
+../bin/dream-architecture.sh

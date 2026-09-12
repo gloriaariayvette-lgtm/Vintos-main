@@ -1,1 +1,1 @@
-/home/gloria/Vintos/memory-context.sh
+../bin/memory-context.sh

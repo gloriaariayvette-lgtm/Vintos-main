@@ -108,6 +108,10 @@ check("no module name has two different implementations behind it",
       not divergent,
       "; ".join("%s: %s" % (k, ", ".join(sorted(d))) for k, d in divergent))
 
+# A broken absolute link on a developer machine must not become live source on Aegis.
+links = [p for directory in ("bin", "scripts") for p in __import__("pathlib").Path(REPO, directory).iterdir() if p.is_symlink()]
+check("every source link resolves inside this repository", all(p.resolve().is_relative_to(__import__("pathlib").Path(REPO).resolve()) and p.exists() for p in links))
+
 print("\n--- the eight that had drifted, named so a regression is legible ---")
 for key in ("behavioral_intercept.py", "belief_sediment.py", "causal_cluster.py",
             "emoclaw_mode.py", "emotional_entanglement.py", "interaction_ledger.py",

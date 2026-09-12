@@ -462,3 +462,11 @@ all gates. The earlier 120/121 runs exposed the voice extraction fixture gap;
 that fixture now includes the locked helper and tests duplicate/closed sessions.
 The broader trial/current-dismissed-wants and served-tension migrations from the
 handoff remain open; they are not silently credited to the hypothesis repair.
+
+Linux direct validation exposed 152 tracked absolute source symlinks into the live
+Aegis checkout. They resolved to different code on Aegis while remaining broken
+on the Mac. All now target repository-local implementations; the twin suite
+asserts every source symlink stays inside the repository. The humor/taste suite
+also now establishes scratch HOME before secondary imports and asserts its sender
+stub; its previously missed taste lock and fire-threshold writes cannot reach the
+inherited host workspace. Earlier Mac-green results did not cover this defect.

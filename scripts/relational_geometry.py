@@ -1,1 +1,1 @@
-/home/gloria/Vintos/relational_geometry.py
+../bin/relational_geometry.py

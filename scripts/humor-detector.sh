@@ -1,1 +1,1 @@
-/home/gloria/Vintos/humor-detector.sh
+../bin/humor-detector.sh
