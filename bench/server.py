@@ -22,14 +22,14 @@ private tab, on a page that failed to finish loading its script. The script is a
 enhancement and nothing more: it swaps the same server-rendered fragment in place so
 the page does not jump. If it never runs, she loses smoothness and loses nothing else.
 
-If ~/.vintos/.bench-token exists, every request must carry it as ?t=<token>. If it
-does not exist, the page is open on the tailnet, which is the same posture as his
-other rooms. A refusal is an HTML page that says so, not a JSON blob she has to read.
+Every request except health requires ~/.vintos/.bench-token, supplied through
+a Bearer header or ?t=<token>. A missing or empty token keeps the page closed. A refusal is an HTML page that says so, not a JSON blob she has to read.
 
 It is NOT the agent room, and it does not read his memory. It reads and writes the
 bench's own ledgers, through bench.py, and nothing else.
 """
 import json
+import hmac
 import os
 import sys
 import urllib.parse
@@ -319,7 +319,7 @@ def _diag():
              "ledgers dir   %s  exists=%s writable=%s"
              % (B.LEDGERS, os.path.isdir(B.LEDGERS), os.access(B.LEDGERS, os.W_OK)),
              "agents dir    %s  exists=%s" % (B.AGENTS, os.path.isdir(B.AGENTS)),
-             "token         %s" % ("required (?t=...)" if _token() else "none — open on the tailnet")]
+             "token         %s" % ("required (?t=...)" if _token() else "missing — access refused")]
     try:
         st = _state()
         lines.append("agents        %s" % ", ".join(sorted(st["agents"])) or "(none)")
@@ -342,8 +342,10 @@ class Handler(BaseHTTPRequestHandler):
     def _authed(self):
         want = _token()
         if not want:
-            return True
-        return self._q().get("t", [""])[0] == want
+            return False
+        supplied = self.headers.get("Authorization", "")
+        supplied = supplied[7:] if supplied.startswith("Bearer ") else self._q().get("t", [""])[0]
+        return hmac.compare_digest(supplied, want)
 
     def _send(self, code, body, ctype="application/json", extra=()):
         raw = body if isinstance(body, bytes) else body.encode()
@@ -444,7 +446,7 @@ def main():
                   flush=True)
         raise
     tok = _token()
-    print("bench on http://0.0.0.0:%d%s" % (PORT, "  (token required)" if tok else "  (open on the tailnet)"),
+    print("bench on http://0.0.0.0:%d%s" % (PORT, "  (token required)" if tok else "  (token missing; access refused)"),
           flush=True)
     srv.serve_forever()
 

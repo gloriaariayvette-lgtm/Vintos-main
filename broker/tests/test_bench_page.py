@@ -77,11 +77,15 @@ def spawn(port, root, token_file=""):
 
 
 PORT = free_port()
-proc, BASE = spawn(PORT, TMP)
+TOKEN = "fixture-initial-token"
+initial_token = os.path.join(TMP, "initial-token")
+open(initial_token, "w").write(TOKEN)
+proc, BASE = spawn(PORT, TMP, initial_token)
 
 
 def get(path, headers=None):
-    req = urllib.request.Request(BASE + path, headers=headers or {})
+    auth = {"Authorization": "Bearer " + TOKEN} if TOKEN else {}
+    req = urllib.request.Request(BASE + path, headers={**auth, **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, r.read().decode()
@@ -91,7 +95,7 @@ def get(path, headers=None):
 
 def post(path, body):
     req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"}, method="POST")
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + TOKEN}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read().decode())
@@ -103,7 +107,7 @@ def form(path, fields, follow=False):
     """A plain browser form post — no JavaScript anywhere near it."""
     data = urllib.parse.urlencode(fields).encode()
     req = urllib.request.Request(BASE + path, data=data, method="POST",
-                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+                                 headers={"Content-Type": "application/x-www-form-urlencoded", "Authorization": "Bearer " + TOKEN})
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *a, **k):
@@ -228,7 +232,7 @@ try:
 
     print("\n--- a bad request is answered, not a stack trace ---")
     req = urllib.request.Request(BASE + "/api/approve", data=b"{not json",
-                                 headers={"Content-Type": "application/json"}, method="POST")
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + TOKEN}, method="POST")
     try:
         urllib.request.urlopen(req, timeout=5); bad = 0
     except urllib.error.HTTPError as e:
@@ -255,6 +259,7 @@ try:
     proc.terminate(); proc.wait(timeout=5)  # reuse the one OS-reserved listener
     p2, base2 = spawn(free_port(), TMP, token_file=tokf)
     _real_base = BASE
+    TOKEN = ""
     try:
         BASE = base2
         check("health is never gated — it is how she checks it is up", get("/health")[0] == 200)
@@ -270,6 +275,12 @@ try:
               'name="t" value="s3cret"' in okpage)
         code, d = post("/api/approve", {"task": "x"})
         check("the api is gated too", code == 403, (code, d))
+        os.unlink(tokf)
+        check("missing token file refuses reads", get("/?t=s3cret")[0] == 403)
+        check("missing token file refuses approval", post("/api/approve", {"task":t5["task"]})[0] == 403)
+        check("missing-token request cannot impersonate Gloria", B.task(t5["task"])["state"] == "proposed")
+        open(tokf, "w").write("\n")
+        check("empty token file also fails closed", get("/")[0] == 403)
     finally:
         BASE = _real_base
         p2.terminate()

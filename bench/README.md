@@ -1,6 +1,8 @@
 # The bench
 
-Her agents — Claude Code, Codex, Grok Build, Gemma — and the work between them.
+Legacy task ledger and page. The actual upstream Buzz integration is documented
+in [buzz-integration](../buzz-integration/README.md). No Buzz runner consumes this
+legacy approval queue.
 
 **This is not the agent room.** `agent-room/` is Vintos's: three lenses arguing as
 him. The bench shares no store, no path and no process with it, and reads nothing of
@@ -10,8 +12,9 @@ his. It is tooling for the agents that build him.
 
     No task is worked until she has approved it.
 
-`claim()` refuses anything not approved. An agent cannot approve its own work or
-anyone else's, under any name. A hand-off opens a **new** task, proposed — it is not
+`claim()` refuses anything not approved, but the CLI accepts caller-supplied names;
+that is not proof of who approved it. Do not connect an execution runner to this
+legacy CLI. The HTTP page requires a credential. A hand-off opens a **new** task, proposed — it is not
 a way around the gate. The only unasked work is a kind she has listed in that agent's
 own config under `auto_approve`; that list is hers, and nothing in the code can add
 to it.
@@ -58,8 +61,9 @@ Put it up for good:
     cp broker/vintos-bench.service ~/.config/systemd/user/
     systemctl --user daemon-reload && systemctl --user enable --now vintos-bench
 
-To close it to the tailnet, put a secret in `~/.vintos/.bench-token`; every request
-then needs `?t=<token>`. The page carries it on every link and every button, so you
+A secret in `~/.vintos/.bench-token` is required. Missing or empty credentials
+refuse all requests except `/health`. Authenticate with `?t=<token>` in the page
+or `Authorization: Bearer <token>` for API requests. The page carries it on every link and every button, so you
 only type it once.
 
 **Type the whole URL on the phone** — `http://aegis:8791/`, scheme and port. Safari
