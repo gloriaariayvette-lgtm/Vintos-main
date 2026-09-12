@@ -2252,10 +2252,11 @@ function playBriefing() {
     if (!window._briefingUrl) return;
     player.src = window._briefingUrl;
     player.load();
-    player.play().catch(()=>{});
-    document.getElementById("voice-status").textContent = "Morning briefing.";
-    document.getElementById("voice-play-icon").style.display = "none";
-    document.getElementById("voice-pause-icon").style.display = "";
+    player.play().then(()=>{
+        document.getElementById("voice-status").textContent = "Morning briefing playing.";
+        document.getElementById("voice-play-icon").style.display = "none";
+        document.getElementById("voice-pause-icon").style.display = "";
+    }).catch(()=>{document.getElementById('voice-status').textContent='Playback failed; tap play to retry.';});
 }
 
 function fmtTime(s) {
@@ -2273,7 +2274,7 @@ function toggleVoicePlay() {
         player.play().then(() => {
             playIcon.style.display = "none";
             pauseIcon.style.display = "";
-        }).catch(() => {});
+        }).catch(() => {document.getElementById('voice-status').textContent='Playback failed; tap play to retry.';});
     } else {
         player.pause();
         playIcon.style.display = "";
@@ -2298,6 +2299,23 @@ let vcProcessing = false;
 let vcPendingRecording = null;
 let vcRecordStarting = false;
 let vcAudioPlayer = new Audio();
+vcAudioPlayer.controls=true;vcAudioPlayer.style.display='none';
+document.getElementById('vc-hint').after(vcAudioPlayer);
+let vcDraftURL=null;
+function vcKeepRecording(blob,transcript='') {
+    let panel=document.getElementById('vc-recording-draft');if(panel)panel.remove();
+    if(vcDraftURL)URL.revokeObjectURL(vcDraftURL);
+    panel=document.createElement('div');panel.id='vc-recording-draft';
+    const note=document.createElement('p');note.textContent='Unconfirmed recording. Transcribing again does not send another chat turn.';panel.appendChild(note);
+    const audio=document.createElement('audio');audio.controls=true;vcDraftURL=URL.createObjectURL(blob);audio.src=vcDraftURL;panel.appendChild(audio);
+    const draft=document.createElement('textarea');draft.id='vc-transcript-draft';draft.setAttribute('aria-label','Unconfirmed voice transcript');draft.value=transcript;panel.appendChild(draft);
+    const retry=document.createElement('button');retry.textContent='Transcribe recording';retry.onclick=async()=>{if(vcProcessing)return;retry.disabled=true;try{const form=new FormData();form.append('audio',blob,'voice.webm');const response=await VintosUI.request(API+'/api/voice/transcribe',{method:'POST',headers:{'X-Vintos-Secret':CONFIG.secret},body:form});const data=await response.json();if(panel.isConnected)draft.value=data.text||'';}catch(e){note.textContent='Transcription failed; recording and transcript kept.';}finally{retry.disabled=false;}};panel.appendChild(retry);
+    const copy=document.createElement('button');copy.textContent='Copy transcript to chat';copy.onclick=()=>{const input=document.getElementById('chat-input');input.value+=(input.value?'\n':'')+draft.value;input.dispatchEvent(new Event('input',{bubbles:true}));};panel.appendChild(copy);
+    const discard=document.createElement('button');discard.textContent='Discard recording';discard.onclick=vcClearRecording;panel.appendChild(discard);
+    document.getElementById('vc-hint').after(panel);return draft;
+}
+function vcClearRecording(){const panel=document.getElementById('vc-recording-draft');if(panel){panel.querySelectorAll('audio').forEach(a=>a.pause());panel.remove();}if(vcDraftURL){URL.revokeObjectURL(vcDraftURL);vcDraftURL=null;}vcPendingRecording=null;}
+
 let _vcHistory = [];
 
 async function loadVoiceChatHistory() {
@@ -2336,6 +2354,7 @@ function vcAppendBubble(text, who, opacity, container) {
 }
 
 async function vcStartRecord() {
+    if(vcPendingRecording){document.getElementById('vc-hint').textContent='Keep or discard the unconfirmed recording before starting another.';return;}
     if (vcProcessing || vcRecordStarting || (vcMediaRecorder && vcMediaRecorder.state === "recording")) return;
     const generation=++vcRecordGeneration; vcRecordStarting=true;
     try {
@@ -2364,6 +2383,7 @@ async function vcStopRecord() {
     vcMediaRecorder.onstop = async () => {
         const blob = new Blob(vcAudioChunks, { type: "audio/webm" });
         vcPendingRecording = blob;
+        let draft=vcKeepRecording(blob);
         const turn=VintosUI.begin('recorded-voice');
         if(!turn){document.getElementById('vc-hint').textContent='Recording kept; another turn is pending.';return;}
         vcProcessing=true;
@@ -2385,8 +2405,6 @@ async function vcStopRecord() {
             return;
         }
         if (!transcript) { document.getElementById("vc-hint").textContent = "No transcription; recording kept."; return; }
-        let draft=document.getElementById('vc-transcript-draft');
-        if(!draft){draft=document.createElement('textarea');draft.id='vc-transcript-draft';draft.setAttribute('aria-label','Unconfirmed voice transcript');document.getElementById('vc-hint').after(draft);}
         draft.value=transcript;
         if(!VintosUI.current(turn))return;
 
@@ -2411,12 +2429,13 @@ async function vcStopRecord() {
             const data = await res.json();
             document.getElementById("vc-typing").style.display = "none";
             if (data.success && VintosUI.current(turn)) {
-                VintosUI.ack(draft,transcript); draft.remove(); vcPendingRecording=null;
+                VintosUI.ack(draft,transcript); vcClearRecording();
                 vcAppendBubble(data.text, "him", 1, container);
                 vcCheckCommandBubble(container);
                 document.getElementById("vc-thread").scrollTop = document.getElementById("vc-thread").scrollHeight;
                 // Autoplay his response
                 if (data.audio_url) {
+                    vcAudioPlayer.style.display='block';
                     vcAudioPlayer.src = API + data.audio_url;
                     vcAudioPlayer.play().catch(() => { document.getElementById("vc-hint").textContent="Playback blocked. Tap play to hear the reply."; });
                 }
@@ -2967,6 +2986,7 @@ function closeAvatarOverlay() {
   VintosUI.invalidate();
   _avStage.roomGeneration=(_avStage.roomGeneration||0)+1; _avStage._seq=(_avStage._seq||0)+1;
   endVintosCall();
+  if(_avAudioEl)_avAudioEl.pause();
   if(window._avCmdPoll){clearInterval(window._avCmdPoll);window._avCmdPoll=null;}
   if(typeof _avStage!=='undefined') _avStage.layers.forEach(l=>{if(!l)return;if(l.fg)l.fg.pause();if(l.bg)l.bg.pause();});
   setTimeout(() => { if(closing===_avOverlayGeneration)overlay.style.display = 'none'; }, 400);
@@ -3329,6 +3349,7 @@ function _avRenderChatLog(){
   }
 }
 async function _avSpeakAndShow(raw, eventNote) {
+  const generation=_avOverlayGeneration;
   const {text:display, gestures, holds, spawns, color} = _avParseReply(raw);
   if(eventNote) _avChatHistory.push({role:'user', content:eventNote}); _avSaveHistory();
   _avChatHistory.push({role:'assistant', content:raw}); _avSaveHistory();
@@ -3349,11 +3370,16 @@ async function _avSpeakAndShow(raw, eventNote) {
       body:JSON.stringify({text:display})
     });
     const td = await tr.json();
+    if(generation!==_avOverlayGeneration||document.hidden)return;
     if(td.audio_url) {
       if(!_avAudioEl) _avAudioEl = new Audio();
       _avAudioEl.src = td.audio_url;
       _avAudioEl.onended = () => setTimeout(_avHideBubble, 1500);
-      _avAudioEl.play().catch(()=>{});
+      _avAudioEl.play().catch(()=>{
+        _avAudioEl.controls=true;_avAudioEl.style.cssText='position:absolute;bottom:90px;left:10%;width:80%;z-index:20';
+        document.getElementById('avatar-overlay').appendChild(_avAudioEl);
+        _avShowBubble('Playback failed. Use the audio controls to retry.');
+      });
     }
   } catch(e) { setTimeout(_avHideBubble, 5000); }
 }
@@ -5178,7 +5204,7 @@ function _renderTherapy(items) {
 <script>
 document.addEventListener('input',function(e){if(e.target.matches('textarea[id],input[type="text"][id]')){try{sessionStorage.setItem('draft:'+e.target.id,e.target.value);}catch(_){}}});
 document.querySelectorAll('textarea[id],input[type="text"][id]').forEach(function(el){try{const draft=sessionStorage.getItem('draft:'+el.id);if(draft!==null)el.value=draft;}catch(_){}});
-document.addEventListener('visibilitychange',function(){if(document.hidden){VintosUI.invalidate();_avStage.roomGeneration=(_avStage.roomGeneration||0)+1;_avStage._seq=(_avStage._seq||0)+1;if(_avAnimationFrame){cancelAnimationFrame(_avAnimationFrame);_avAnimationFrame=null;}++vcRecordGeneration; if(vcMediaRecorder&&vcMediaRecorder.state==='recording'){vcMediaRecorder.onstop=null;vcMediaRecorder.stop();vcMediaRecorder.stream.getTracks().forEach(t=>t.stop());} endVintosCall();vcAudioPlayer.pause();document.querySelectorAll('audio,video').forEach(m=>m.pause());}else{const overlay=document.getElementById('avatar-overlay');if(overlay&&overlay.style.display!=='none'){if(_avRenderer&&!_avAnimationFrame)_avAnimate();_avStage._unfreeze();}}});
+document.addEventListener('visibilitychange',function(){if(document.hidden){VintosUI.invalidate();_avStage.roomGeneration=(_avStage.roomGeneration||0)+1;_avStage._seq=(_avStage._seq||0)+1;if(_avAnimationFrame){cancelAnimationFrame(_avAnimationFrame);_avAnimationFrame=null;}++vcRecordGeneration; if(vcMediaRecorder&&vcMediaRecorder.state==='recording'){vcMediaRecorder.onstop=null;vcMediaRecorder.stop();vcMediaRecorder.stream.getTracks().forEach(t=>t.stop());} endVintosCall();if(_avAudioEl)_avAudioEl.pause();vcAudioPlayer.pause();document.querySelectorAll('audio,video').forEach(m=>m.pause());}else{const overlay=document.getElementById('avatar-overlay');if(overlay&&overlay.style.display!=='none'){if(_avRenderer&&!_avAnimationFrame)_avAnimate();_avStage._unfreeze();}}});
 </script>
 <script>
 setInterval(function(){if(lastEmotionReceipt&&Date.now()-lastEmotionReceipt>60000){let el=document.getElementById('telemetry-age');if(!el){el=document.createElement('div');el.id='telemetry-age';el.setAttribute('role','status');document.getElementById('state-card').appendChild(el);}el.textContent='Last received '+Math.floor((Date.now()-lastEmotionReceipt)/1000)+'s ago — stale';}},10000);

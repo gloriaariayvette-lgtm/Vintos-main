@@ -105,37 +105,37 @@ Three kinds only: evidence that only Aegis can show, the phone app, and consolid
 programmes whose mechanism landed and whose remainder the line names.
 
 ### P01 — Authoritative release and runtime map
-- **30** [PARTIAL] [P01] Installed user/system units, active crontab, 740+ source hashes and the external emotion daemon copy were collected on 11 September. Release 6b4fac5 deployed successfully. The wider untracked runtime still needs source-by-source review; hashes do not certify every module.
-- **31** [PARTIAL] [P01] The installed OpenAPI schema now succeeds with 212 mounted paths after repairing desktop Request annotations. Full schema and route profile collected; end-to-end chat/context/writer tracing remains open.
-- **32** [PARTIAL] [P01] Installed unit/route selections and real Astra/Fable paid-admission receipts collected. The one authorized forge run ended refused because Fable returned no text; provider response IDs/usage and every adapter route are not yet correlated.
-- **33** [PARTIAL] [P01] Installed memory-search selects text-embedding-nomic-embed-text-v1.5; three stored embedding samples have 768 dimensions. Those rows have no model field, so historical embedding provenance and the full index variant remain unverified.
+- **30** [PARTIAL] [P01] All 152 absolute source aliases now resolve inside the repository. The live server records 1,586 loaded module identities; wider untracked source-by-source review remains open.
+- **31** [PARTIAL] [P01] HTTP turn identities and central provider receipt correlation are deployed. Full context/writer tracing for independent routes remains open.
+- **32** [PARTIAL] [P01] Central OpenAI/Anthropic response IDs and usage are correlated; realtime voice carries provider response/session identities. Independent adapter coverage remains open. No new paid Forge run.
+- **33** [PARTIAL] [P01] The current semantic index is empty; 1,282 legacy rows lack model provenance. The local embedding service timed out, so the rebuild was stopped and the original index verified unchanged. Historical provenance remains unknown.
 
 ### P08 — Client, voice and avatar lifecycles
-- **315** [OPEN] [P08] Apply shared safe rendering across all active tabs — many views insert raw text into HTML — *no client rendering work in the record*
-- **316** [OPEN] [P08] Apply typed request/error handling — clients accept unsuccessful mutation responses — *no client typed request/error handling*
-- **317** [OPEN] [P08] Retain drafts until success and show actual failure — sends clear drafts before success — *no draft retention work*
-- **318** [OPEN] [P08] Order requests with turn identities so rapid sends/reopens/late callbacks do not reorder turns — *no turn-identity ordering in client*
-- **323** [OPEN] [P08] Make screenshot source match the visible stage — *no screenshot-source fix (desktop screenshot work is unrelated)*
-- **324** [OPEN] [P08] Correct read-only and stop status claims in the client — *no client status-claim fixes*
-- **325** [OPEN] [P08] Keep model/user text as text and zero state values as zero; show stale telemetry as stale — *no client text/zero/stale telemetry work*
-- **326** [OPEN] [P08] Make closing/hiding/backgrounding follow the agreed UX and release or suspend resources — *no close/hide/background lifecycle work*
-- **327** [OPEN] [P08] Move between text, voice and the visible stage without losing a draft, crossing sessions or claiming unplayed speech as heard — *no cross-surface draft/session continuity in client*
-- **334** [OPEN] [P08] Repair recorder start/stop races, silent playback failure, unclosed audio contexts and untracked pending speech — *no recorder/audio-context/pending-speech fixes*
-- **343** [OPEN] [P08] Consolidate active duplicate client handlers and request utilities — *a9974d5/b8afed3 removed server duplicates only; client handlers/request utilities untouched*
-- **344** [OPEN] [P08] Add capability-derived rendering to the client — *no capability-derived client rendering*
-- **345** [OPEN] [P08] Complete media/draft lifecycle for voice and stage — *no media/draft lifecycle for voice/stage*
-- **346** [OPEN] [P08] Fix native background runner registration/scheduling and notification permissions for outreach — *no native background runner/notification work*
+- **315** [PARTIAL] [P08] Shared escaping and hostile-content browser fixtures cover major active views. Exhaustive every-tab acceptance remains unclaimed.
+- **316** [IMPLEMENTED] [P08] All application requests use the shared HTTP/application-error helper. Browser fixtures verify rejection and visible failure.
+- **317** [IMPLEMENTED] [P08] Chat/photo/Study/avatar drafts clear only after acknowledgement. Unconfirmed recordings are playable, re-transcribable, copyable without overwriting text, and explicitly discardable; no automatic uncertain chat retry.
+- **318** [PARTIAL] [P08] Shared turn ownership and stale history/room/token/callback checks implemented and fixture-tested. Physical cross-surface acceptance remains open.
+- **323** [VERIFIED] [P08] Screenshot composition uses visible layers, actual DOM order and CSS group opacity. A rendered-pixel fixture verifies the blend and closed-stage refusal.
+- **324** [PARTIAL] [P08] Stop UI reflects the returned Boolean and reports failed requests. Physical stop effects remain separately unverified.
+- **325** [PARTIAL] [P08] Dynamic text escaping, zero preservation, finite dimension validation and a stale-telemetry indicator implemented. Exhaustive malformed payload acceptance remains open.
+- **326** [PARTIAL] [P08] Close/background cancels late capture/call/room/audio callbacks, pauses media and animation; foreground resumes the visible stage. Device-specific background acceptance remains open.
+- **327** [PARTIAL] [P08] Draft persistence and turn/session ownership implemented. Playback completion is recorded as client evidence; human hearing stays unknown. Physical cross-surface acceptance remains open.
+- **334** [IMPLEMENTED] [P08] Late microphone grants release tracks; audio contexts close; failed audio exposes usable controls. Unconfirmed recordings have explicit recovery and cannot be silently overwritten. Browser race/recovery tests pass.
+- **343** [IMPLEMENTED] [P08] Active duplicate dismiss/close handlers removed; one shared request helper serves application requests.
+- **344** [PARTIAL] [P08] Mounted-route availability disables unsupported photo/record/live-call controls. Broader capability-derived rendering remains open.
+- **345** [PARTIAL] [P08] Voice/stage draft and media ownership implemented with late-callback cancellation and explicit playback recovery. Physical device acceptance remains open.
+- **346** [PARTIAL] [P08] Native background registration, 15-minute requested interval and permission-result checks implemented. Capacitor sync and simulator build pass; actual iOS background notification delivery remains unobserved.
 
 ### P11 — Whole-system observability and acceptance
-- **396** [PARTIAL] [P11] Installed avatar-stage source hash and delivery/effect receipt metadata collected. Visible rendering, cache correctness and actual playback still need runtime/client evidence.
-- **397** [PARTIAL] [P11] Installed voice-session-ledger code collected in the runtime map. No voice-ledger.jsonl was present at the sampled path; playback acknowledgments and provider callback ordering remain open.
-- **398** [PARTIAL] [P11] Active schedules and a dream-log with 66 nights collected. Representative night structure is recorded; causal/thread run acceptance and cross-ledger joins remain open.
-- **399** [PARTIAL] [P11] Authoritative unit invokes emotion_model.daemon from the workspace; daemon source copied and five checkpoint files hashed. Training-data lineage and proof of the exact loaded checkpoint remain open.
-- **400** [PARTIAL] [P11] Live delivery/effect receipt metadata and want store schemas collected. No artifact-manifest.json existed at the sampled path. A successful want-to-artifact-to-observed-effect join is not established.
-- **401** [PARTIAL] [P11] Installed host/runtime map and external agent-room source hashes collected. Full source review and proof of runtime library selection remain open.
-- **402** [PARTIAL] [P11] Installed hashes, release and rollback records, and one live commissioning failure are recorded. No successful forge verification receipt or deployed Study UI acceptance is claimed.
-- **403** [PARTIAL] [P11] Atelier health, unchanged broker hashes, lineage agreement and refusal without a visit capability verified during deployment. No QLab source was found in the searched Aegis roots; its external location/implementation remains open.
-- **404** [PARTIAL] [P11] Fresh 11 September remote branch checks match all three local heads. This closes the stale September 5 push snapshot; whole-client/runtime acceptance remains open.
+- **396** [PARTIAL] [P11] Known/missing room manifests refresh; generation checks reject stale media. Browser pixel and lifecycle checks pass. User-visible avatar/cache/playback acceptance on device remains open.
+- **397** [PARTIAL] [P11] Provider response identities join audio completion; duplicate turns and callbacks from closed sessions are refused. Fixture end-to-end journey passes; no live provider/hardware call is manufactured.
+- **398** [PARTIAL] [P11] Aegis has 67 recorded nights without run IDs. Historical causal/thread cross-ledger joins remain unestablished.
+- **399** [PARTIAL] [P11] Live daemon PID matches its receipt; loaded parameters equal best_model.pt parameters, with stable checkpoint SHA. Checkpoint contains no training provenance metadata; historical training lineage remains unknown.
+- **400** [PARTIAL] [P11] Actual delivery-receipts.json and five effect-receipts.jsonl rows inspected by metadata. The effect rows have no want/artifact/observation IDs; a successful historical join is not established.
+- **401** [PARTIAL] [P11] Live server module selection is recorded with PID/file/hash metadata. Wider untracked source review remains open. agent-room was excluded.
+- **402** [PARTIAL] [P11] Study rendering and explicit approval enforcement pass browser fixtures. No new paid Forge run or successful paid verification is claimed.
+- **403** [PARTIAL] [P11] Additional bounded Aegis searches did not locate QLab. External location and implementation remain unknown.
+- **404** [PARTIAL] [P11] All three designated branch checkouts verified; release 20260912-145910-3114392 deployed, all six units active, served client hashes match. Final recording-recovery package pending deployment; whole-system physical acceptance remains open.
 
 ## The printer
 
@@ -470,3 +470,9 @@ asserts every source symlink stays inside the repository. The humor/taste suite
 also now establishes scratch HOME before secondary imports and asserts its sender
 stub; its previously missed taste lock and fire-threshold writes cannot reach the
 inherited host workspace. Earlier Mac-green results did not cover this defect.
+
+The first completion release **20260912-145910-3114392** deployed successfully.
+All 121 suites passed directly and isolated on both Mac and Aegis; Linux direct
+reported no inherited-HOME file writes. All six named services/timer are active,
+served assets match packaged hashes, and the live checkpoint parameters match.
+The recording recovery follow-up is source-complete and being packaged next.
