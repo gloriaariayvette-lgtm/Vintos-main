@@ -3729,7 +3729,7 @@ function _avCaptureScreenshot() {
     const bounds=overlay.getBoundingClientRect();
     const canvas=document.createElement('canvas'), scale=Math.min(1,1280/bounds.width);
     canvas.width=Math.round(bounds.width*scale);canvas.height=Math.round(bounds.height*scale);
-    const context=canvas.getContext('2d');context.scale(scale,scale);
+    let context=canvas.getContext('2d');context.scale(scale,scale);
     context.fillStyle=getComputedStyle(overlay).backgroundColor;context.fillRect(0,0,bounds.width,bounds.height);
     let drawn=false;
     function drawVideo(video){
@@ -3747,8 +3747,12 @@ function _avCaptureScreenshot() {
     }
     if(typeof _avStage!=='undefined'){
       _avStage.layers.filter(Boolean).sort((a,b)=>Array.from(overlay.children).indexOf(a.wrap)-Array.from(overlay.children).indexOf(b.wrap)).forEach(layer=>{
-        const opacity=Number(getComputedStyle(layer.wrap).opacity);if(opacity<=0)return;
-        context.globalAlpha=opacity;drawVideo(layer.bg);drawVideo(layer.fg);
+        const style=getComputedStyle(layer.wrap),opacity=Number(style.opacity);
+        if(opacity<=0||style.display==='none'||style.visibility==='hidden')return;
+        // CSS applies opacity to the composed layer, not independently to its two videos.
+        const destination=context,buffer=document.createElement('canvas');buffer.width=canvas.width;buffer.height=canvas.height;
+        context=buffer.getContext('2d');context.scale(scale,scale);drawVideo(layer.bg);drawVideo(layer.fg);
+        context=destination;context.globalAlpha=opacity;context.drawImage(buffer,0,0,bounds.width,bounds.height);
       });
     }
     if(drawn)return canvas.toDataURL('image/jpeg',0.85).split(',')[1];
