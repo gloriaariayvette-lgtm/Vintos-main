@@ -116,6 +116,14 @@ class RecoveryTests(unittest.TestCase):
         model.add_entry(**args)
         self.assertEqual(model.load_model(), before)
 
+    def test_deploy_names_every_recovery_destination(self):
+        import entry_owners
+        lists=entry_owners._lists()
+        self.assertIn('durable_projection.py', lists['SCRIPTS'])
+        for name in ('pearl-engine.py','pearl_engine.py'):
+            self.assertIn(name, lists['SCRIPTS'])
+            self.assertIn(name, lists['BINS'])
+
     def test_pearl_receipt_survives_candidate_removal(self):
         import pearl_engine as pearl
         self.assertTrue(Path(pearl.CANDIDATES_FILE).is_relative_to(self.tmp.name))

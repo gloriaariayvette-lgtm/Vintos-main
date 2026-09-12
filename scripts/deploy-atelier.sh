@@ -143,6 +143,9 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
 DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py"
+SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
+BINS="$BINS pearl-engine.py pearl_engine.py"
+
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
             printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"

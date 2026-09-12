@@ -476,3 +476,9 @@ All 121 suites passed directly and isolated on both Mac and Aegis; Linux direct
 reported no inherited-HOME file writes. All six named services/timer are active,
 served assets match packaged hashes, and the live checkpoint parameters match.
 The recording recovery follow-up is source-complete and being packaged next.
+
+Post-install hash audit of eec31eb found that pearl_engine.py was not in the deploy
+manifest: the new source was present in Git, but its two live import paths still
+had older bytes. Both Python spellings are now explicitly in SCRIPTS and BINS,
+and the recovery suite asserts these destinations are manifested. The final
+hypothesis deployment is not accepted until all of those installed hashes match.
