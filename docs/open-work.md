@@ -5,7 +5,7 @@ It is the only place with a to-do in it.
 
 ## 12 September — hypothesis recovery continuation
 
-Source repair, not yet deployed: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 120 suites passed directly locally after this increment; OS-isolated final validation and Aegis deployment remain pending.
+Deployed in 20260912-153539-aca1b32: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 122 suites passed directly and OS-isolated on Mac and Aegis; installed hypothesis/pearl entrypoint hashes match the source. A final client-only follow-up is being packaged.
 
 The 27 acceptance items below are being implemented and verified separately. This source repair does not close them or the unrelated trial/dismissed-wants and tension-view migrations.
 
@@ -39,11 +39,11 @@ The 27 acceptance items below are being implemented and verified separately. Thi
   fixed to the reviewed installation; arbitrary model/runtime/environment edits
   require updating that installation before redeployment. Buzz retains provider
   deployment receipts separately from presence; Offline does not clear a receipt.
-- Vintos house release remains `20260912-052317-9b9c1dc`, deployment output
+- At the Buzz checkpoint, Vintos house release was `20260912-052317-9b9c1dc`, deployment output
   `deploy OK`. Budget receipt/refund and missing bench-token repairs are deployed.
   This continuation changed Buzz integration, not installed house modules.
 - The broader engine/store migration, remaining review evidence, legacy bench
-  CLI/concurrency, avatar native sync and ring BLE work below remain open.
+  CLI/concurrency, ring BLE work below remain open. Native sync, signed build, installation and launch have since passed.
 
 ## Waiting on something, per organ
 
@@ -124,7 +124,7 @@ programmes whose mechanism landed and whose remainder the line names.
 - **343** [IMPLEMENTED] [P08] Active duplicate dismiss/close handlers removed; one shared request helper serves application requests.
 - **344** [PARTIAL] [P08] Mounted-route availability disables unsupported photo/record/live-call controls. Broader capability-derived rendering remains open.
 - **345** [PARTIAL] [P08] Voice/stage draft and media ownership implemented with late-callback cancellation and explicit playback recovery. Physical device acceptance remains open.
-- **346** [PARTIAL] [P08] Native background registration, 15-minute requested interval and permission-result checks implemented. Capacitor sync and simulator build pass; actual iOS background notification delivery remains unobserved.
+- **346** [PARTIAL] [P08] Native background registration, 15-minute requested interval and permission-result checks implemented. Capacitor sync, simulator and signed device builds pass; the updated app was installed and launched on the paired iPhone. Actual iOS background notification delivery remains unobserved.
 
 ### P11 — Whole-system observability and acceptance
 - **396** [PARTIAL] [P11] Known/missing room manifests refresh; generation checks reject stale media. Browser pixel and lifecycle checks pass. User-visible avatar/cache/playback acceptance on device remains open.
@@ -134,8 +134,8 @@ programmes whose mechanism landed and whose remainder the line names.
 - **400** [PARTIAL] [P11] Actual delivery-receipts.json and five effect-receipts.jsonl rows inspected by metadata. The effect rows have no want/artifact/observation IDs; a successful historical join is not established.
 - **401** [PARTIAL] [P11] Live server module selection is recorded with PID/file/hash metadata. Wider untracked source review remains open. agent-room was excluded.
 - **402** [PARTIAL] [P11] Study rendering and explicit approval enforcement pass browser fixtures. No new paid Forge run or successful paid verification is claimed.
-- **403** [PARTIAL] [P11] Additional bounded Aegis searches did not locate QLab. External location and implementation remain unknown.
-- **404** [PARTIAL] [P11] All three designated branch checkouts verified; release 20260912-145910-3114392 deployed, all six units active, served client hashes match. Final recording-recovery package pending deployment; whole-system physical acceptance remains open.
+- **403** [VERIFIED] [P11] QLab is /Users/kevin/qlab. Reviewed qremote/qrun/seedlib and all five seeds; Aegis status bridge works. Remote experiments now use OS isolation and parent-owned source/helper hashes and receipts (QLab 8f5c935). Four isolation tests and all five real seeds pass in scratch. Existing separate unsealed bench_remote.py was inspected but not changed; it remains an explicit execution-boundary gap.
+- **404** [PARTIAL] [P11] All three designated branch checkouts verified; release 20260912-145910-3114392 deployed, all six units active, served client hashes match. Recording-recovery and hypothesis package subsequently deployed in 20260912-153539-aca1b32; whole-system physical acceptance remains open.
 
 ## The printer
 
@@ -357,14 +357,14 @@ Remaining from the review and the three efforts:
 - Blender/Cura execution and a real slicer profile/output review. The new artifact and
   approval checks support a manual file workflow; `handoff_dir` alone does not implement
   modelling or slicing. Supplied slice time/material values are estimates, not measurements.
-- Ghost hypothesis seeding and recurrence now use complete shared transactions; simultaneous duplicate seeds return the persisted row, and distinct hypotheses receive unique IDs. Behavioral tally selection is revalidated against current rows after inference, and cluster confidence uses a fresh locked update. Replaying the same retained belief hypothesis ID no longer reinforces it twice. The nightly causality engine, durable graduation recovery, other projections and trial-ledger writers remain open.
+- Ghost hypothesis seeding and recurrence now use complete shared transactions; simultaneous duplicate seeds return the persisted row, and distinct hypotheses receive unique IDs. Behavioral tally selection is revalidated against current rows after inference, and cluster confidence uses a fresh locked update. Replaying the same retained belief hypothesis ID no longer reinforces it twice. The nightly causality engine and graduation recovery are now deployed; other projections and trial-ledger writers remain open.
 - Journal preparation and outreach now mutate the spark directive through the same lock as its producer/consumer. Handoff identity excludes mutable preparation counters; concurrent outreach admits one topic and records admission rather than claiming delivery.
 - Spark-pressure handoff now calls the real generation/admission API, acknowledges only a persisted want ID and recovers the same source event without regenerating after a partial handoff. Directive updates reject a replaced directive; consent updates preserve concurrent event history. Generated wants carry their own provenance as string-compatible values instead of exchanging metadata through `.pending-want-provenance.json`; the legacy file remains untouched and is no longer consumed. Candidate journal appends are locked. Broader migration remains open.
 - The ownership report now explicitly reports candidate writers and nearby locking references, not verified RMW safety; an unrelated helper cannot certify a raw writer. Observation appends now serialize complete mutations and use unique occurrence IDs. Cluster formation rejects changed stores, leaves failed formation retryable, and records consumed IDs before source flags so partial-commit retries do not double count. Other hypothesis writers still require migration.
 - Withheld-history migration now locks candidate publication and exposure together; embedding-based confirmation rejects a changed history. Frontier decisions merge against fresh rows, preserve concurrent additions and lock lineage privacy updates. Proposition binding/correction mutations share locks with the tension ledger, while candidate inference checks for obsolete mechanisms. Remaining projection recovery and other legacy writers are still open.
 - Tension-ledger migration now serializes actual influence-window mutations and refuses stale evidence/matching snapshots. Demotions update the served view under the same lock set; repair/thread side effects follow a committed decision. Regression fixtures exercise concurrent serving, forty window appends and stale-view refusal. Other snapshot writers remain open.
 - Commitment-store migration now locks candidate promotion, fracture, decay and the causal-model imprint writer. Legacy migration locks both stores in stable order, persists the destination before clearing the source, and deduplicates repeated patterns. Reply embeddings run outside the lock; their results apply only to unchanged current patterns and preserve concurrent fractures/appends. Remaining snapshot writers listed below are still open.
-- Further legacy migration: ambition classification/review, drift reasoning and opposition misuse scanning now reject stale model results under a shared compare-and-swap lock. Drift geometry writes atomically; calibration refresh preserves concurrent misuse history, including revoked terrains without retaining their license. Removed the shadowed duplicate ambition-review implementation. Provider fixtures exercise concurrent changes and cleared-trial deduplication. Broader snapshot writers (including the nightly causality engine and remaining ownership-table candidates) are still open; this is not a complete migration claim.
+- Further legacy migration: ambition classification/review, drift reasoning and opposition misuse scanning now reject stale model results under a shared compare-and-swap lock. Drift geometry writes atomically; calibration refresh preserves concurrent misuse history, including revoked terrains without retaining their license. Removed the shadowed duplicate ambition-review implementation. Provider fixtures exercise concurrent changes and cleared-trial deduplication. Broader snapshot writers (including remaining ownership-table candidates) are still open; this is not a complete migration claim.
 - Shared-store migration now covers the recovered domain mutation handlers, belief and causal-model mutations, correction projections, durable-memory recall/interpretation/graduation, and thread retirement/archive operations. Snapshot-only legacy writers elsewhere still require per-writer migration; helper presence alone is not proof. Dispatch checks are shared by toy, robot, outward delivery and supplied avatar admission; home-effect policy remains unchanged.
 - F14 source acquisition is complete: the three Aegis domain files are tracked with
   SHA-256 provenance and included in deployment beside the actual server. Their JSON mutation handlers now hold complete shared transactions; broader legacy writers remain listed separately.
@@ -412,7 +412,7 @@ Independent post-deploy mapping found an old importable `causal_self_model.py` b
 - Actual `block/buzz` cloned locally and on Aegis at `~/repos/buzz`; upstream relay deployed separately with dedicated Postgres, Redis, MinIO and git volumes. The existing `bench/server.py` is not Buzz. Agent-room was not touched. Exact deployment evidence is recorded separately; native client installation and relay connection are verified; visual verification and approved agent execution remain unfinished.
 - The bench approval policy is not an authenticated boundary: an absent token allows approval POSTs, and the library defaults the caller to Gloria. No agent runner may rely on that as proof of her approval. Concurrent claim/handoff replay also remains unprotected by a complete transaction.
 - Repaired the new bench-page suite to use the existing OS-reserved fixture listener, propagate it to its subprocess and serialize the two fixture server lifetimes. The network isolation policy remains unchanged.
-- Compute-admission receipt repair deployed in `20260912-052317-9b9c1dc`. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff remains unfinished.
+- Compute-admission receipt repair deployed in `20260912-052317-9b9c1dc`. Review still open: Device refusal state uses an unlocked fixed temporary path and read-delete; env reader behavior still differs in callers that return raw environment values before invoking it. Nightly causality/graduation recovery from the prior handoff is now deployed.
 
 
 ### 12 September completion repair — source checkpoint, deployment pending
@@ -424,7 +424,7 @@ do not establish missing historical evidence or physical outcomes.
 - Hypothesis source writes now use strict snapshots and CAS, with accepted delivery
   events before any projection. Recovery retries failed destinations; permanent
   belief, causal-occurrence and pearl receipts survive row culling. Commit 6cd1f03.
-  Nine scratch recovery tests cover stale writes, refusal, corruption and crashes.
+  Ten scratch recovery tests cover stale writes, refusal, corruption and crashes.
 - P08 315/316/317/318/323/324/325/326/327/334/343/344/345: client text escaping,
   shared checked requests, retained drafts, turn ownership, visible-layer screenshot
   composition, reported stop state, zero/stale telemetry, media cancellation,
@@ -450,12 +450,12 @@ do not establish missing historical evidence or physical outcomes.
   and hashes. Study approval UI is fixture-tested; no new paid Forge run was made.
   Actual physical avatar/playback and successful paid verification remain open.
 - P01 33: the current semantic projection was empty. An Aegis rebuild using the
-  existing local model is running. The 1,282 legacy embedding rows lack model
+  existing local model timed out and was stopped; the original index hash is unchanged. The 1,282 legacy embedding rows lack model
   provenance and are not being relabelled.
 - P11 398/400: historical causal/thread and want-artifact-observed-effect joins remain
   unestablished. New instrumentation cannot manufacture past observations.
-- P11 403: additional bounded searches did not locate QLab. Its external location
-  remains required; absence from those searches is not proof that it does not exist.
+- P11 403: QLab source and runtime bridge are verified; see item 403 for the isolated
+  quantum entrypoint and the separate unsealed Lab boundary still requiring repair.
 
 Final immutable-revision suite and deployment evidence will be recorded after
 all gates. The earlier 120/121 runs exposed the voice extraction fixture gap;
@@ -475,7 +475,7 @@ The first completion release **20260912-145910-3114392** deployed successfully.
 All 121 suites passed directly and isolated on both Mac and Aegis; Linux direct
 reported no inherited-HOME file writes. All six named services/timer are active,
 served assets match packaged hashes, and the live checkpoint parameters match.
-The recording recovery follow-up is source-complete and being packaged next.
+Recording recovery and the pearl manifest correction subsequently deployed in 20260912-153539-aca1b32; all critical hashes matched.
 
 Post-install hash audit of eec31eb found that pearl_engine.py was not in the deploy
 manifest: the new source was present in Git, but its two live import paths still

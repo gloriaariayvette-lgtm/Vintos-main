@@ -2560,8 +2560,10 @@ async function loadLedger(mode) {
 
 async function submitFragment() {
     const input = document.getElementById('ledger-fragment-input');
-    const text = input.value.trim();
+    const sentDraft = input.value;
+    const text = sentDraft.trim();
     if (!text) return;
+    const turn = VintosUI.begin('fragment'); if (!turn) return;
     try {
         const res = await VintosUI.request(`${API}/api/fragments`, {
             method: 'POST',
@@ -2569,7 +2571,7 @@ async function submitFragment() {
             body: JSON.stringify({ text })
         });
         if (res.ok) {
-            input.value = '';
+            VintosUI.ack(input, sentDraft);
             // Inject fragment directly — don't re-fetch
             const feed = document.getElementById('ledger-feed');
             const existing = feed.innerHTML;
@@ -2582,7 +2584,7 @@ async function submitFragment() {
             // Scroll to show it
             feed.scrollTop = feed.scrollHeight;
         }
-    } catch (e) { console.log('Fragment submit error:', e); }
+    } catch (e) { console.log('Fragment submit error:', e); } finally { VintosUI.finish(turn); }
 }
 
 // ============================================================
@@ -4828,7 +4830,10 @@ async function toggleScreenShare(){
   try{
     const r = await VintosUI.request(`${API}/api/desktop/share/${_shareOn ? 'stop' : 'start'}`, {method:'POST', headers:{'X-Vintos-Secret': CONFIG.secret}});
     const d = await r.json(); _shareOn = !!(d && d.state && d.state.active);
-  }catch(e){ _shareOn = false; }
+  }catch(e){
+    const el=_shareStatusEl(); if(el){el.style.display='block';el.textContent='Sharing state unknown. The request was not confirmed.';}
+    return;
+  }
   _shareButtons(_shareOn); pollShareStatus();
   if(_shareOn && !_sharePoll) _sharePoll = setInterval(pollShareStatus, 5000);
   if(!_shareOn && _sharePoll){ clearInterval(_sharePoll); _sharePoll = null; }
@@ -4843,7 +4848,7 @@ async function pollShareStatus(){
     el.style.display = 'block';
     el.textContent = 'SHARING' + (d.active_window ? ' · ' + d.active_window : '') + (age !== null ? ' · ' + age + 's ago' : ' · first look pending')
       + (d.description ? '\n' + d.description : '') + (d.describe_error ? '\n(eyes: ' + d.describe_error + ')' : '') + (d.capture_error ? '\n(capture: ' + d.capture_error + ')' : '');
-  }catch(e){ el.style.display='none'; }
+  }catch(e){ el.style.display='block'; el.textContent='Sharing state unknown: status unavailable.'; }
 }
 setTimeout(pollShareStatus, 1500);
 
