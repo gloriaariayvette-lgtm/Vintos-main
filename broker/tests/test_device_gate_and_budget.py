@@ -114,24 +114,30 @@ CA.WS = TMP
 led = os.path.join(TMP, "compute-ledger.jsonl")
 CA._ledger = lambda: led
 check("the day starts at nothing spent", CA.paid_today("openai") == 0)
-ok, why = CA.reserve_paid("test", "openai", "gpt-6-astra")
+ok, why = CA.reserve_paid("test", "openai", "gpt-6-astra", reservation_id="first")
 check("a call reserves before it is made", ok and CA.paid_today("openai") == 1, (ok, why))
-check("release_paid hands it back", CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401") is True)
+check("release_paid hands it back", CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401", reservation_id="first") is True)
 check("and the day is not charged for a call the provider refused at the door",
       CA.paid_today("openai") == 0, CA.paid_today("openai"))
 check("the release is its own row, so the reservation it cancels stays visible",
       sum(1 for l in open(led) if '"released"' in l) == 1
       and sum(1 for l in open(led) if '"reserved"' in l) == 1)
 check("the reason is on the record", '"HTTP 401"' in open(led).read())
-for _ in range(3):
-    CA.reserve_paid("test", "openai", "gpt-6-astra")
+for i in range(3):
+    CA.reserve_paid("test", "openai", "gpt-6-astra", reservation_id="call-%d" % i)
 check("three real calls count as three", CA.paid_today("openai") == 3, CA.paid_today("openai"))
-CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401")
+CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401", reservation_id="call-0")
 check("releasing one leaves the other two standing", CA.paid_today("openai") == 2)
 for _ in range(6):
-    CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401")
-check("more releases than reservations never reads as negative budget",
-      CA.paid_today("openai") == 0, CA.paid_today("openai"))
+    CA.release_paid("test", "openai", "gpt-6-astra", why="HTTP 401", reservation_id="call-0")
+check("repeated releases cannot erase unrelated reservations",
+      CA.paid_today("openai") == 2, CA.paid_today("openai"))
+check("missing receipt is rejected", not CA.release_paid("test", "openai", "gpt-6-astra"))
+check("wrong provider cannot use the receipt", not CA.release_paid("test", "anthropic", "gpt-6-astra", reservation_id="call-1"))
+check("wrong organ cannot use the receipt", not CA.release_paid("other", "openai", "gpt-6-astra", reservation_id="call-1"))
+check("wrong units cannot use the receipt", not CA.release_paid("test", "openai", "gpt-6-astra", units=2, reservation_id="call-1"))
+check("duplicate reservation IDs are refused", not CA.reserve_paid("test", "openai", "gpt-6-astra", reservation_id="call-1")[0])
+check("unrelated spending remains counted", CA.paid_today("openai") == 2)
 check("another provider's day is untouched", CA.paid_today("anthropic") == 0)
 
 print("\n--- and only an auth refusal is released ---")
@@ -141,9 +147,31 @@ check("and on nothing else — a timeout may have burned real tokens",
       "raise" in router.split("he.code in (401, 403)")[1][:200])
 astra = open(os.path.join(REPO, "scripts", "astra_call.py")).read()
 check("Astra releases on the same refusal, through the same door",
-      "release_paid" in astra and ('"401" in err' in astra or "'401' in err" in astra))
+      "release_paid" in astra and 'failure.get("http_status") in (401, 403)' in astra and "isinstance(exc, urllib.error.HTTPError)" in astra)
 check("a failure to release never becomes a second failure",
       "except Exception: pass" in astra and "except Exception:\n        pass" in router)
+
+print("\n--- the actual Astra call preserves ambiguous spending ---")
+import astra_call as AC
+import subprocess as SP
+from types import SimpleNamespace
+original_key, original_run = AC._key, SP.run
+AC._key = lambda: "fixture-only"
+try:
+    for error, refunded in [("worker failed near item 401", False),
+                            (json.dumps({"error": "HTTPError", "http_status": 401}), True),
+                            (json.dumps({"error": "HTTPError", "http_status": 500}), False)]:
+        fake_run = lambda *a, **kw: SimpleNamespace(returncode=1, stderr=error, stdout="")
+        SP.run = fake_run
+        check("provider worker is stubbed", SP.run is fake_run and AC._key() == "fixture-only")
+        before = CA.paid_today("openai")
+        try: AC.call("fixture", [{"role":"user", "content":"fixture"}])
+        except RuntimeError: pass
+        else: check("failed worker must raise", False)
+        check("only structured auth rejection refunds its own receipt",
+              CA.paid_today("openai") == before + (0 if refunded else 1), error)
+finally:
+    AC._key, SP.run = original_key, original_run
 
 print("\n--- it reached nothing outside its own scratch ---")
 check("every store it wrote is throwaway", led.startswith(TMP) and DC.MEM.startswith(TMP))

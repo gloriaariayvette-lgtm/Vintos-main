@@ -21,7 +21,7 @@ about quality. Also used by the shell cron scripts:
 import sys as _guard_sys
 from pathlib import Path as _GuardPath
 _guard_sys.path.insert(0, str(_GuardPath(__file__).resolve().parent))
-import os, sys, json, time, fcntl, contextlib, resource, subprocess
+import os, sys, json, time, fcntl, contextlib, resource, subprocess, uuid
 from datetime import datetime
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
@@ -122,62 +122,83 @@ class Admission:
 
 PAID_PER_DAY = int(os.environ.get("VINTOS_PAID_PER_DAY", "400"))
 
-def paid_today(provider=None):
-    """Reservations made today for paid/remote work, from the ledger (a refusal is not a reservation)."""
-    day = datetime.now().strftime("%Y-%m-%d"); n = 0
+def _paid_rows():
     try:
-        for ln in open(_ledger()):
-            try: r = json.loads(ln)
-            except Exception: continue
-            if r.get("class") != "paid" or not str(r.get("at", "")).startswith(day): continue
-            if provider is not None and r.get("provider") != provider: continue
-            if r.get("stage") == "reserved":
-                n += max(0, int(r.get("units", 1)))
-            elif r.get("stage") == "released":
-                # A reservation the provider rejected before doing any work. It is not spend,
-                # and counting it would let a dead key eat the whole day's budget on calls
-                # that never happened (Sol's 401 loop, 2026-09-11).
-                n -= max(0, int(r.get("units", 1)))
-    except Exception:
-        pass
-    return max(0, n)
+        with open(_ledger()) as stream:
+            for line in stream:
+                try: row = json.loads(line)
+                except (ValueError, TypeError): continue
+                if isinstance(row, dict) and row.get("class") == "paid": yield row
+    except FileNotFoundError:
+        return
 
-def reserve_paid(organ, provider, model="", units=1, cap=None):
+
+def paid_today(provider=None):
+    """Count reservations; only a matching, single-use receipt can cancel one.
+
+    Historical releases without IDs are ambiguous and do not reduce the cap.
+    A release on a later day belongs to its original reservation's day.
+    """
+    day = datetime.now().strftime("%Y-%m-%d")
+    reservations, released = {}, set()
+    legacy = 0
+    for row in _paid_rows():
+        rid = row.get("reservation_id")
+        if row.get("stage") == "reserved":
+            if rid: reservations.setdefault(rid, row)
+            elif str(row.get("at", "")).startswith(day) and (provider is None or row.get("provider") == provider):
+                legacy += max(0, int(row.get("units", 1)))
+        elif row.get("stage") == "released" and rid in reservations:
+            original = reservations[rid]
+            if (row.get("provider"), row.get("organ"), row.get("model"), row.get("units")) == (original.get("provider"), original.get("organ"), original.get("model"), original.get("units")):
+                released.add(rid)
+    return legacy + sum(max(0, int(row.get("units", 1))) for rid, row in reservations.items()
+        if rid not in released and str(row.get("at", "")).startswith(day)
+        and (provider is None or row.get("provider") == provider))
+
+def reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None):
     from store_guard import transaction
     if type(units) is not int or units < 1: return False,"positive integer reservation required"
     try:
         with transaction(_ledger()):
-            return _reserve_paid(organ,provider,model,units,cap)
+            return _reserve_paid(organ,provider,model,units,cap,reservation_id)
     except (OSError, ValueError) as exc:
         return False, "reservation could not be persisted: " + str(exc)
 
 
-def _reserve_paid(organ, provider, model="", units=1, cap=None):
+def _reserve_paid(organ, provider, model="", units=1, cap=None, reservation_id=None):
     """review 79: before paid or remote work, a reservation against the day's cap. (ok, why). A refused
     reservation is recorded (stage=refused) and the caller holds; a granted one is the ledger row the
     later usage line joins to. Foreground callers still never wait here - the cap is the only refusal."""
+    reservation_id = reservation_id or uuid.uuid4().hex
+    if any(row.get("reservation_id") == reservation_id for row in _paid_rows()):
+        return False, "reservation ID already used"
     cap = PAID_PER_DAY if cap is None else int(cap)
     used = paid_today(provider)
     if used + int(units) > cap:
         record(organ, cls="paid", provider=provider, model=model, stage="refused", extra={"units": int(units), "used_today": used, "cap": cap})
         return False, "paid budget: %d of %d reservations used today for %s; %d more refused" % (used, cap, provider, int(units))
-    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"units": int(units), "used_today": used + int(units), "cap": cap}, strict=True)
+    record(organ, cls="paid", provider=provider, model=model, stage="reserved", extra={"reservation_id": reservation_id, "units": int(units), "used_today": used + int(units), "cap": cap}, strict=True)
     return True, "reserved %d (%d/%d today)" % (int(units), used + int(units), cap)
 
-def release_paid(organ, provider, model="", units=1, why=""):
-    """Give a reservation back, for a call the provider REFUSED before doing any work.
+def release_paid(organ, provider, model="", units=1, why="", *, reservation_id=None):
+    """Cancel exactly one reservation after a structured provider auth rejection.
 
-    Only for a rejection that is certainly free: an authentication failure, where the
-    request was declined at the door. Never for a timeout, a dropped connection, or any
-    other failure after the request was accepted — those may have cost real tokens, and
-    a reservation released wrongly is a budget that undercounts real spend.
-
-    The release is its own ledger row, so the reservation it cancels stays visible."""
+    Missing, mismatched and already-used receipts never reduce other spending.
+    Callers must retain the reservation on ambiguous errors or timeouts.
+    """
+    if not reservation_id: return False
     try:
         from store_guard import transaction
         with transaction(_ledger()):
+            rows = [r for r in _paid_rows() if r.get("reservation_id") == reservation_id]
+            reserved = [r for r in rows if r.get("stage") == "reserved"]
+            if len(reserved) != 1: return False
+            original = reserved[0]
+            if (original.get("organ"), original.get("provider"), original.get("model"), original.get("units")) != (organ, provider, model, units): return False
+            if any(r.get("stage") == "released" for r in rows): return True
             record(organ, cls="paid", provider=provider, model=model, stage="released",
-                   extra={"units": int(units), "why": str(why or "")[:120]}, strict=True)
+                   extra={"reservation_id": reservation_id, "units": units, "why": str(why or "")[:120]}, strict=True)
         return True
     except Exception:
         return False

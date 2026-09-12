@@ -77,21 +77,23 @@ def call(system, messages, max_tokens=1800, timeout=180):
     if not math.isfinite(timeout) or timeout<=0: raise ValueError("positive finite timeout required")
     if not _key(): raise RuntimeError("no OpenAI key")
     from compute_admission import reserve_paid
-    allowed,why=reserve_paid("astra_call.py","openai",model=MODEL)
+    import uuid
+    receipt = uuid.uuid4().hex
+    allowed,why=reserve_paid("astra_call.py","openai",model=MODEL,reservation_id=receipt)
     if not allowed:raise RuntimeError(why)
     result=subprocess.run([sys.executable,os.path.abspath(__file__),"--request"],
         input=json.dumps({"system":system,"messages":messages,"max_tokens":max_tokens,"timeout":timeout}),
         capture_output=True,text=True,timeout=timeout)
     if result.returncode:
         err=result.stderr.strip()[:200] or "Astra worker failed"
-        # A key the provider rejects costs nothing, and the reservation was already taken.
-        # Left standing, a dead key spends the day's paid budget on calls that never
-        # happened, and the next real build is refused for a budget nothing used. Released
-        # ONLY for an authentication refusal — a timeout may have burned real tokens.
-        if "401" in err or "403" in err or "Unauthorized" in err:
+        # Only the trusted worker's structured HTTP status can release a receipt.
+        # Text that happens to contain "401" is not a provider rejection.
+        try: failure = json.loads(result.stderr)
+        except (ValueError, TypeError): failure = {}
+        if isinstance(failure, dict) and failure.get("http_status") in (401, 403):
             try:
                 from compute_admission import release_paid
-                release_paid("astra_call.py","openai",model=MODEL,why=err[:100])
+                release_paid("astra_call.py","openai",model=MODEL,why=err[:100],reservation_id=receipt)
             except Exception: pass
         raise RuntimeError(err)
     return result.stdout.strip()
@@ -101,7 +103,10 @@ if __name__ == "__main__":
     if "--request" in sys.argv:
         try: print(_direct_call(**json.load(sys.stdin)))
         except Exception as exc:
-            print(type(exc).__name__+": "+str(exc)[:160],file=sys.stderr);sys.exit(1)
+            import urllib.error
+            failure = {"error": type(exc).__name__, "message": str(exc)[:160]}
+            if isinstance(exc, urllib.error.HTTPError): failure["http_status"] = exc.code
+            print(json.dumps(failure),file=sys.stderr);sys.exit(1)
     else:
         print("model:  %s" % MODEL)
         print("key:    %s" % ("present" if _key() else "missing"))

@@ -91,18 +91,21 @@ def _reserve_provider(provider, model):
     import sys
     sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
     from compute_admission import reserve_paid
-    ok,why=reserve_paid("model_router",provider,model)
+    import uuid
+    receipt = uuid.uuid4().hex
+    ok,why=reserve_paid("model_router",provider,model,reservation_id=receipt)
     if not ok:raise RuntimeError(why)
+    return receipt
 
 
-def _release_provider(provider, model, why=""):
+def _release_provider(provider, model, why="", reservation_id=None):
     """Hand back a reservation for a call the provider refused at the door. Best effort:
     failing to release must never turn a provider error into a second failure."""
     try:
         import sys
         sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
         from compute_admission import release_paid
-        release_paid("model_router", provider, model, why=why)
+        release_paid("model_router", provider, model, why=why, reservation_id=reservation_id)
     except Exception:
         pass
 
@@ -116,7 +119,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"}}
     def _call():
-        _reserve_provider("openai",SOL_MODEL)
+        receipt = _reserve_provider("openai",SOL_MODEL)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
@@ -127,7 +130,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             # that never happened, and the next REAL Astra call - a forge build, the
             # printer's Blender script - is refused for a budget nothing used.
             if he.code in (401, 403):
-                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code)
+                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code, receipt)
             raise
     try:
         d = await _aio.to_thread(_call)
