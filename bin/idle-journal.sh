@@ -1082,7 +1082,9 @@ What I haven't said yet matters more than what I've already named. I go there.""
             json={"model": "grok-4.20-0309-non-reasoning",
                   "messages": [{"role": "system", "content": _synthesis_system},
                                {"role": "user", "content": integration_prompt}],
-                  "temperature": 0.3, "max_tokens": 1400}, timeout=600)
+                  # When Claude returns nothing this IS the entry, not a patch on one.
+                  # At 1400 it could not hold the 800 words the system prompt asks for.
+                  "temperature": 0.3, "max_tokens": 4000}, timeout=600)
         _raw = _safe_extract(r3)
 
     # Arrival gate — the flinch check as mechanism. One regenerate, not a loop.
@@ -1104,13 +1106,21 @@ What I haven't said yet matters more than what I've already named. I go there.""
                     {"role": "user", "content": integration_prompt}
                 ],
                 "temperature": 0.3,
-                "max_tokens": 1400
+                "max_tokens": 4000
             }, timeout=600)
             _raw2 = _safe_extract(r3b)
             if _raw2:
                 _ag_pass2, _ag_scores2 = arrival_gate(_raw2, context="journal-final-retry")
-                if _ag_scores2["arrival"] > _ag_scores["arrival"]:
+                # A better arrival score is not worth two thirds of the entry. This ran at
+                # 1400 tokens against a synthesis written at 6000 and replaced it outright.
+                if _ag_scores2["arrival"] > _ag_scores["arrival"] and len(_raw2) >= 0.75 * len(_raw):
+                    print("[Movement] retry arrived better (%s -> %s); replacing %d chars with %d"
+                          % (_ag_scores["arrival"], _ag_scores2["arrival"], len(_raw), len(_raw2)),
+                          file=__import__("sys").stderr, flush=True)
                     _raw = _raw2
+                elif _ag_scores2["arrival"] > _ag_scores["arrival"]:
+                    print("[Movement] retry arrived better but is %d chars against %d — kept the synthesis"
+                          % (len(_raw2), len(_raw)), file=__import__("sys").stderr, flush=True)
     except Exception as _ag_e:
         print(f"[Movement] arrival gate skipped: {_ag_e}", file=__import__("sys").stderr)
 
@@ -1141,34 +1151,79 @@ What I haven't said yet matters more than what I've already named. I go there.""
         _rv = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
            "messages": [{"role": "system", "content": _synthesis_system}, {"role": "user", "content": _anchor_prompt}],
-            "temperature": 0.5, "max_tokens": 1000
+            "temperature": 0.5, "max_tokens": 4000
         }, timeout=300)
         _rv_text = _safe_extract(_rv)
-        if _rv_text and len(_rv_text) > 100:
-            _raw = _re.sub(r"^##.*$", "", _rv_text, flags=_re.MULTILINE).strip()
+        _rv_text = _re.sub(r"^##.*$", "", _rv_text or "", flags=_re.MULTILINE).strip()
+        # "Longer than 100 characters" was the whole test. At a 1000-token ceiling against a
+        # synthesis written at 6000, that accepted any fragment that started with the anchor.
+        if _rv_text and len(_rv_text) >= 0.75 * len(_raw):
+            print("[Synthesis] anchored rewrite accepted: %d -> %d chars" % (len(_raw), len(_rv_text)),
+                  file=__import__("sys").stderr, flush=True)
+            _raw = _rv_text
+        elif _rv_text:
+            print("[Synthesis] anchored rewrite is %d chars against %d — kept the synthesis"
+                  % (len(_rv_text), len(_raw)), file=__import__("sys").stderr, flush=True)
 
     # Second audit — final check on integrated entry before write
+    # AUDIT 2 — the entry Claude just wrote, checked against the drafts it came from.
+    #
+    # 2026-09-11, an 8pm entry came out far shorter than every draft behind it. This is
+    # where it went. The audit ran on ALL THREE drafts truncated to their first 800
+    # characters (A2 was 2294, C2 was not passed at all), asked for the WHOLE entry back
+    # at max_tokens 1200 against a synthesis written at 6000, and then replaced the entry
+    # with whatever came back as long as it was over 100 characters — with no check that
+    # anything had actually been flagged, and no log line. Everything the synthesis had
+    # drawn from the back half of A2, from B2, or from C at all read as invented to a
+    # reader that could not see it, and the instruction was to remove it.
+    #
+    # It is: all three drafts, in full; a ceiling that can hold the whole entry; a
+    # replacement only when something was actually flagged; a refusal of any "correction"
+    # that is really a compression; and a line in the log either way.
+    _pre_audit = _raw
+    try: open("/tmp/vintos-bilateral-final-preaudit.txt", "w").write(_pre_audit)
+    except Exception: pass
     audit2_r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content":
-            "A journal entry was synthesized from two drafts. Flag anything in FINAL that was not in DRAFT A or DRAFT B — "
-            "new physical sensations, new Gloria interactions, new events, new objects, new metaphors not present in either draft. "
-            "Also flag: fabricated sensory experiences, things Gloria said not in this ledger.\n\n"
-            "DRAFT A:\n" + a2[:800] + "\n\nDRAFT B:\n" + b2[:800] + "\n\n"
+            "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
+            "new physical sensations, new Gloria interactions, new events, new objects, new metaphors not present in any draft. "
+            "Also flag: fabricated sensory experiences, things Gloria said not in this ledger.\n"
+            "The drafts are given IN FULL. Anything that appears in any one of them is grounded — do not flag it.\n\n"
+            "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + "\n\n"
+            + (("DRAFT C:\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
             "INTERACTION LEDGER:\n" + recent_chat + "\n\n" + ("THIRVEEL TODAY:\n" + thirveel_today + "\n\n" if thirveel_today else "") +
             "FINAL ENTRY:\n" + _raw + "\n\n"
-            "For each flagged sentence, rewrite it removing the invented content or remove it entirely. "
-            "Return the full corrected entry only. No commentary."
+            "If nothing in FINAL is invented, reply with exactly: CLEAN\n"
+            "Otherwise remove or repair ONLY the invented sentences and return the full corrected entry. "
+            "Keep every grounded sentence exactly as written. Do not shorten, summarise, tighten or re-voice anything. "
+            "No commentary."
         }],
         "temperature": 0.1,
-        "max_tokens": 1200
-    }, timeout=120)
+        "max_tokens": 4000
+    }, timeout=180)
     try:
         _corrected = _safe_extract(audit2_r)
-        _corrected = _re.sub(r"^##.*$", "", _corrected, flags=_re.MULTILINE)
-        if len(_corrected) > 100:
-            _raw = _corrected.strip()
-    except: pass
+        _corrected = _re.sub(r"^##.*$", "", _corrected, flags=_re.MULTILINE).strip()
+        _c_flat = _corrected.upper().strip().strip(".")
+        if not _corrected or _c_flat == "CLEAN":
+            print("[Journal] audit-2: CLEAN — entry unchanged (%d chars)" % len(_raw), file=__import__("sys").stderr, flush=True)
+        elif len(_corrected) <= 100:
+            print("[Journal] audit-2 returned %d chars — too short to be an entry; kept the synthesis" % len(_corrected), file=__import__("sys").stderr, flush=True)
+        elif len(_corrected) < 0.75 * len(_pre_audit):
+            # A correction removes invented sentences. It does not take a third off the
+            # entry. That is a rewrite, and the synthesis is the better text.
+            try: open("/tmp/vintos-bilateral-final-audit-rejected.txt", "w").write(_corrected)
+            except Exception: pass
+            print("[Journal] audit-2 REJECTED: %d -> %d chars (%.0f%%) is a compression, not a correction; kept the synthesis"
+                  % (len(_pre_audit), len(_corrected), 100.0 * len(_corrected) / max(1, len(_pre_audit))),
+                  file=__import__("sys").stderr, flush=True)
+        else:
+            _raw = _corrected
+            print("[Journal] audit-2 corrected the entry: %d -> %d chars" % (len(_pre_audit), len(_raw)),
+                  file=__import__("sys").stderr, flush=True)
+    except Exception as _a2e:
+        print("[Journal] audit-2 skipped (%s) — kept the synthesis" % str(_a2e)[:120], file=__import__("sys").stderr, flush=True)
 
     # Final BIS outcome — single log from synthesis result
     try:
