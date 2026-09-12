@@ -23,7 +23,7 @@ def _sg_write(_p, _o, _who="organ"):
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 GALLERY = os.path.join(MEMORY, "art", "gallery.json")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 
 def _key():
@@ -43,7 +43,7 @@ def see(image_path):
     ext = image_path.rsplit(".", 1)[-1].lower()
     mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
     r = requests.post(LM_API, json={
-        "model": "google/gemma-4-12b-qat",
+        "model": "gemma-4-26b-a4b-it-uncensored",
         "messages": [
             {"role": "system", "content": "Describe this image in detail. Colors, shapes, mood, composition. Be specific and concrete. 3-5 sentences. Do not evaluate quality."},
             {"role": "user", "content": [

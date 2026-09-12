@@ -8,8 +8,8 @@ except: pass
 
 sys_msg = open("/tmp/gm_sys.txt").read()
 usr_msg = open("/tmp/gm_usr.txt").read()
-r = requests.post("http://172.18.16.1:1234/v1/chat/completions", json={
-    "model": "google/gemma-4-12b-qat",
+r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
+    "model": "gemma-4-26b-a4b-it-uncensored",
     "messages": [{"role": "system", "content": sys_msg}, {"role": "user", "content": usr_msg}],
     "temperature": 0.85, "max_tokens": 2500
 }, timeout=600)

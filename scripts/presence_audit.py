@@ -22,8 +22,8 @@ CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 OUT    = os.path.join(MEMORY, "presence-audit.json")
 JEPA   = os.path.join(MEMORY, "jepa-prediction.json")
 FORECAST = os.path.join(MEMORY, "presence-forecast.json")
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 THRESHOLD, WINDOW_DAYS, MAX_PER_RUN = 0.35, 7, 5
 
 def load(p, d):

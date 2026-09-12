@@ -18,8 +18,8 @@ HOME_PY="$SCRIPTS/vintos-home.py"
 STATE_FILE="$MEMORY/emotional-state.txt"
 COOLDOWN="$MEMORY/.last-mischief"; ECHO_COOLDOWN="$MEMORY/.last-mischief-echo"
 LOG_DIR="$MEMORY/mischief"; mkdir -p "$LOG_DIR"
-LM_API="${VINTOS_GEMMA_URL:-http://172.18.16.1:1234/v1/chat/completions}"
-MODEL="${VINTOS_GEMMA_MODEL:-google/gemma-4-12b-qat}"
+LM_API="${VINTOS_GEMMA_URL:-http://100.79.177.103:1234/v1/chat/completions}"
+MODEL="${VINTOS_GEMMA_MODEL:-gemma-4-26b-a4b-it-uncensored}"
 FORCE=0; ONLY=""
 # --grok anywhere on the line: the chooser is Grok through his shim instead of local Gemma (Gloria, 2026-09-05:
 # "try to let Grok choose"). MISCHIEF_MODEL=grok does the same for the cron path.

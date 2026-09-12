@@ -32,7 +32,7 @@ MEM = os.path.join(WS, "memory")
 QUESTIONS = os.path.join(MEM, "tension-questions.json")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
 VIEW = os.path.join(MEM, "tension-field.json")
-GEMMA = "http://172.18.16.1:1234/v1/chat/completions"
+GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 EXPIRE_DAYS = 7
 def log(m): print("[tension-valve]", m, flush=True)
 def load(p, d):
@@ -42,7 +42,7 @@ def match_existing(text, candidates):
     if not candidates: return None
     listing = "\n".join("%s: %s" % (c["tension_id"], c["canonical"][:150]) for c in candidates[:20])
     try:
-        r = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
             "max_tokens": 20, "messages": [{"role": "user", "content":
             "Is this NEW tension the same underlying tension as any EXISTING one below? Same means the "
             "same specific pull/avoidance about the same specific subject - not merely a similar mood.\n"
@@ -75,7 +75,7 @@ def main():
         for j in range(i + 1, len(cands)):
             if j in used: continue
             try:
-                r2 = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.0,
+                r2 = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
                     "max_tokens": 60, "messages": [{"role": "user", "content":
                     "Is tension A the same underlying tension as tension B? Same means the same specific "
                     "pull/avoidance about the same specific subject - not merely a similar mood.\n"

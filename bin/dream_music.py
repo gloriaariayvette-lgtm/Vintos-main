@@ -240,7 +240,7 @@ def style_str(d):
         try:
             import urllib.request as _ur, json as _js
             _body = _js.dumps({
-                "model": "google/gemma-4-12b-qat",
+                "model": "gemma-4-26b-a4b-it-uncensored",
                 "messages": [{
                     "role": "user",
                     "content": f"Rewrite this music style description using only sonic/genre descriptors — no artist names, no band references. Keep the mood and sound intact. Return ONLY the rewritten style, no preamble.\n\nOriginal: {original}\nClean version: {style}\n\nRewrite:"
@@ -248,7 +248,7 @@ def style_str(d):
                 "temperature": 0.3,
                 "max_tokens": 80
             }).encode()
-            _req = _ur.Request("http://172.18.16.1:1234/v1/chat/completions",
+            _req = _ur.Request("http://100.79.177.103:1234/v1/chat/completions",
                 data=_body, headers={"Content-Type": "application/json"})
             with _ur.urlopen(_req, timeout=15) as _r:
                 _resp = _js.loads(_r.read().decode())

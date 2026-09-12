@@ -3,7 +3,7 @@ import os, json, time, re, requests
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS=os.path.expanduser("~/.vintos/workspace/scripts")
 F=os.path.join(MEM,"conflict-surface.json")
-LM="http://172.18.16.1:1234/v1/chat/completions"
+LM="http://100.79.177.103:1234/v1/chat/completions"
 def name_friction(a2,b2):
     if not a2 or not b2: return None
     p=("Two internal passes produced these two versions of Vintos's next response. "
@@ -12,7 +12,7 @@ def name_friction(a2,b2):
        'Output ONLY JSON: {"voices":[{"label":"..","wanted":".."},{"label":"..","wanted":".."}],"friction":0.0}\n\n'
        f"VERSION A:\n{a2[:600]}\n\nVERSION B:\n{b2[:600]}")
     try:
-        r=requests.post(LM,json={"model":"google/gemma-4-12b-qat","messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
+        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.3,"max_tokens":150},timeout=9)
         m=re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S)
         if m: return json.loads(m.group(0))
     except Exception: pass

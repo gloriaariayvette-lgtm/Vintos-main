@@ -25,8 +25,8 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 SPACE_FILE = os.path.join(MEMORY, "configuration-space.json")
 ATTR_FILE = os.path.join(MEMORY, "attractors.json")
 LOG = os.path.join(MEMORY, "attractor-discovery.log")
-GEMMA_URL = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 MIN_CONFIGS = 12       # below this, no geometry yet — stay dormant
 CLUSTER_COS = 0.62     # cosine above which two configurations share a basin

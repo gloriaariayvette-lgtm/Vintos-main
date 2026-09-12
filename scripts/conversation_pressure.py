@@ -4,7 +4,7 @@ Gemma = lightweight classification only."""
 import os, json, time, re, requests
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 STATE=os.path.join(MEM,"conversation-pressure.json")
-LM="http://172.18.16.1:1234/v1/chat/completions"
+LM="http://100.79.177.103:1234/v1/chat/completions"
 MODES={
  "light":"quick, buoyant, playful; short turns, low stakes.",
  "focused":"engaged and precise; stay on the thread, don't wander.",
@@ -30,7 +30,7 @@ def classify():
     p=("Classify the CURRENT pressure of this conversation as exactly one word from: "
        "light, focused, confessional, technical, play, threshold. Only the word.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":"google/gemma-4-12b-qat","messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
+        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.2,"max_tokens":4},timeout=15)
         w=re.sub(r'[^a-z]','',r.json()["choices"][0]["message"]["content"].strip().lower())
         if w in MODES:
             json.dump({"mode":w,"ts":time.time()},open(STATE,"w")); return w

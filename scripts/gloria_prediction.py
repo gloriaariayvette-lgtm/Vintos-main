@@ -21,8 +21,8 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 OUT    = os.path.join(MEMORY, "gloria-prediction.json")
 HIST   = os.path.join(MEMORY, "gloria-prediction-history.json")
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 def load(p, d):
     try: return json.load(open(p))

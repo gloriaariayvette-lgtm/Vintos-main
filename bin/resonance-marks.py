@@ -120,11 +120,11 @@ def _weight_sentence(output_text):
     try:
         import urllib.request
         numbered = "\n".join(f"{i+1}. {x[:240]}" for i, x in enumerate(sentences[:14]))
-        body = json.dumps({"model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 6,
+        body = json.dumps({"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 6,
                            "messages": [{"role": "user", "content":
                                "Below are sentences from something Vintos wrote that resonated. Which ONE sentence carries the weight — "
                                "the line the whole thing turns on? Answer with its number only.\n\n" + numbered}]}).encode()
-        req = urllib.request.Request("http://172.18.16.1:1234/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request("http://100.79.177.103:1234/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=20) as r:
             ans = json.load(r)["choices"][0]["message"]["content"]
         m = re.search(r"\d+", ans or "")

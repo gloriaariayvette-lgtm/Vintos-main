@@ -8,7 +8,7 @@ from datetime import datetime
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 KEY = os.environ.get("XAI_API_KEY", "")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"   # local Gemma (vision-capable)
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"   # local Gemma (vision-capable)
 
 def see_painting(image_path):
     """Actually look at the painting with the local vision model. Concrete description."""
@@ -18,7 +18,7 @@ def see_painting(image_path):
         ext = image_path.rsplit(".", 1)[-1].lower()
         mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
         r = requests.post(LM_API, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [
                 {"role": "system", "content": "Describe this image in detail. Colors, shapes, mood, composition. Be specific and concrete. 3-5 sentences."},
                 {"role": "user", "content": [

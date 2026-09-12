@@ -9,7 +9,7 @@ from datetime import datetime, date, timedelta
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 OUTPUT = os.path.join(MEMORY, "frame-state.json")
-LM_STUDIO = "http://172.18.16.1:1234/v1/chat/completions"
+LM_STUDIO = "http://100.79.177.103:1234/v1/chat/completions"
 
 def log(msg):
     print(f"[FrameEngine {datetime.now().strftime('%H:%M')}] {msg}", flush=True)
@@ -18,7 +18,7 @@ def ask_llm(prompt, system="", max_tokens=400, temp=0.4):
     import requests
     try:
         r = requests.post(LM_STUDIO, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=45)

@@ -15,14 +15,14 @@ MEM = os.path.expanduser("~/.vintos/workspace/memory")
 TRIALS = os.path.join(MEM, "lead-trials.json")
 SEEDS = os.path.join(MEM, "lead-evolutions.json")
 STATE = os.path.join(MEM, ".lead-grade-state.json")
-GEMMA = "http://172.18.16.1:1234/v1/chat/completions"
+GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
 def save(p, d): json.dump(d, open(p, "w"), indent=2)
 def ask(prompt, mt=200):
     try:
-        r = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.1,
+        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.1,
             "max_tokens": mt, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         return r.json()["choices"][0]["message"]["content"].strip()
     except Exception: return ""

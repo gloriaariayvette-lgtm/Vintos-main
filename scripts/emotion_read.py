@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # emotion_read.py -- real-time content-driven emotion via the local LLM, scene-aware.
 import sys, json, socket, os, re, urllib.request
-LM_URL = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM_URL = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 WS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEM = os.path.join(WS, "memory")
 NAME = "Velaris" if ".openclaw" in WS else "Vintos"

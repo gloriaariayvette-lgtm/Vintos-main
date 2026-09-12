@@ -28,8 +28,8 @@ HERO_FILES = {
     "lookup": os.path.join(VIDEO_DIR, "hero-lookup.jpg"),   # look-up / smile — intros + acknowledging her
 }
 
-GEMMA_URL = os.environ.get("GEMMA_URL", "http://172.18.16.1:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "google/gemma-4-12b-qat")
+GEMMA_URL = os.environ.get("GEMMA_URL", "http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = os.environ.get("GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
 # ---- verbatim from Grok's guidance -------------------------------------------------------------
 STYLE_BLOCK = (

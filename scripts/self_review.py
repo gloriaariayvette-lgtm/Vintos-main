@@ -70,10 +70,10 @@ EMBCACHE = os.path.join(MEM, "self-review-embcache.json")
 CONFIG = os.path.join(MEM, "self-review-config.json")
 LOCK = os.path.join(MEM, ".self-review.lock")
 
-EMBED_URL = os.environ.get("SELF_REVIEW_EMBED_URL", "http://172.18.16.1:1234/v1/embeddings")
+EMBED_URL = os.environ.get("SELF_REVIEW_EMBED_URL", "http://100.79.177.103:1234/v1/embeddings")
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
-GEMMA = os.environ.get("SELF_REVIEW_LLM_URL", "http://172.18.16.1:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("SELF_REVIEW_LLM_MODEL", "google/gemma-4-12b-qat")
+GEMMA = os.environ.get("SELF_REVIEW_LLM_URL", "http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = os.environ.get("SELF_REVIEW_LLM_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
 DEFAULTS = {
     "collision_window_hours": 72,

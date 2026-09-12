@@ -45,8 +45,8 @@ if _BACKEND == "self":
     MODEL = os.environ.get("CAUSALITY_MODEL", "grok-4.20-0309-non-reasoning")
     SPIKE_THRESHOLD = 0.06
 else:
-    LM_API = "http://172.18.16.1:1234/v1/chat/completions"
-    MODEL = os.environ.get("CAUSALITY_MODEL", "google/gemma-4-12b-qat")
+    LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+    MODEL = os.environ.get("CAUSALITY_MODEL", "gemma-4-26b-a4b-it-uncensored")
     SPIKE_THRESHOLD = 0.015
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))

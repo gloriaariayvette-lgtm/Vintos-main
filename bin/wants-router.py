@@ -267,8 +267,8 @@ def _want_end_verdict(want):
     hist = "\n".join("- %s: %s" % (h.get("capability", ""), str(h.get("note", ""))[:120])
                       for h in want.get("step_history", [])[-4:])
     try:
-        r = _hv_r.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat", "temperature": 0.3, "max_tokens": 120,
+        r = _hv_r.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 120,
             "messages": [{"role": "user", "content":
                 "A want has run all its steps. WANT: " + str(want.get("want", ""))[:250] +
                 "\nSTEPS DONE:\n" + (hist or "(no step history)") +

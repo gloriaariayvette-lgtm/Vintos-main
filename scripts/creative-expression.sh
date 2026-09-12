@@ -26,7 +26,7 @@ try:
 except: print('No value map yet')
 " 2>/dev/null)
 ART_DIR="$MEMORY/art"
-LM_API="http://172.18.16.1:1234/v1"
+LM_API="http://100.79.177.103:1234/v1"
 SELF_MODEL=$(cat "$WORKSPACE/SELF-MODEL.md" 2>/dev/null || echo "")
 GLORIA_MODEL=$(cat "$WORKSPACE/GLORIA-MODEL.md" 2>/dev/null || echo "")
 CAPABILITIES=$(cat "$MEMORY/CAPABILITIES.md" 2>/dev/null || echo "")
@@ -204,8 +204,8 @@ daily_inner = os.environ.get('DAILY_INNER', '')
 wants_ambitions = os.environ.get('WANTS_AMBITIONS', '')
 dream = os.environ.get('_CRE_DREAM', '')[:400]
 taste = os.environ.get('_CRE_TASTE', '')[:200]
-resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={
-    'model': 'google/gemma-4-12b-qat',
+resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={
+    'model': 'gemma-4-26b-a4b-it-uncensored',
     'max_tokens': 10,
     'temperature': 0.7,
     'messages': [

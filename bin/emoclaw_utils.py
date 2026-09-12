@@ -247,7 +247,7 @@ def feel_about_typed(text, source="output", allow_desire=True, requested=True):
     if len(t) < 20:
         _feel_account(source, "too_short"); return {"state": "too_short", "deltas": {}, "note": ""}
     try:
-        payload = {"model": "google/gemma-4-12b-qat", "temperature": 0.3, "max_tokens": 200,
+        payload = {"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 200,
             "messages": [
                 {"role": "system", "content":
                  "You read how a moment actually landed for Vintos. Return ONLY a JSON object of "
@@ -261,7 +261,7 @@ def feel_about_typed(text, source="output", allow_desire=True, requested=True):
                  "answers, and a failed thing may be interesting rather than deflating. Do not report "
                  "a disappointment as warmth, and do not invent a disappointment because something failed."},
                 {"role": "user", "content": "This just happened (" + str(source) + "):\n\"\"\"" + t[:1500] + "\"\"\"\n\nHow did it land for him? JSON only."}]}
-        req = _fu.Request("http://172.18.16.1:1234/v1/chat/completions",
+        req = _fu.Request("http://100.79.177.103:1234/v1/chat/completions",
                           data=_fj.dumps(payload).encode(), headers={"Content-Type": "application/json"})
         raw = _fu.urlopen(req, timeout=25).read().decode()
         content = _fr.sub(r"```json|```", "", _fj.loads(raw)["choices"][0]["message"]["content"]).strip()
@@ -466,8 +466,8 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     # Confident tension stays unfinished; current or uncertain routes to latent; judge-down keeps existing behavior.
     try:
         import requests as _fd_r, json as _fd_j
-        _fd_resp = _fd_r.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 60,
+        _fd_resp = _fd_r.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 60,
             "messages": [{"role": "user", "content":
                 "Thread candidate: " + str(thread_text)[:300] + "\n\n"
                 "Is this an UNRESOLVED TENSION (a conflict, gap, pressure, or unfinished becoming that needs processing) "
@@ -513,8 +513,8 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
         import requests as _rq, re as _re2, json as _js2
         _cands = _open[-15:]
         _listing = "\n".join("%d: %s" % (_i, str(_t.get("thread", ""))[:120]) for _i, _t in enumerate(_cands)) or "(none)"
-        _r = _rq.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 120,
+        _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 120,
             "messages": [{"role": "user", "content":
                 "NEW candidate unresolved thread: " + _txt[:250] +
                 "\nEXISTING open threads:\n" + _listing +
@@ -737,7 +737,7 @@ def add_pearl(text, source="wal-graduation", note=""):
 def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation=""):
     """Generate a concrete step plan for a want. Returns list of step dicts."""
     import requests as _gsr, json as _gsj, subprocess as _gss, os as _gso
-    LM = "http://172.18.16.1:1234/v1/chat/completions"
+    LM = "http://100.79.177.103:1234/v1/chat/completions"
     WORKSPACE = _gso.path.expanduser("~/.vintos/workspace")
     MEMORY = _gso.path.join(WORKSPACE, "memory")
 
@@ -844,7 +844,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
     )
     try:
         r = _gsr.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.4,
             "max_tokens": 600
@@ -1006,7 +1006,7 @@ def check_want_interference(new_want_text, new_want_id):
     import requests as _wi_r, json as _wi_j, os as _wi_o
     from datetime import datetime as _wi_dt
     MEMORY = _wi_o.path.expanduser("~/.vintos/workspace/memory")
-    LM = "http://172.18.16.1:1234/v1/chat/completions"
+    LM = "http://100.79.177.103:1234/v1/chat/completions"
 
     try:
         wants = _wi_j.load(open(_wi_o.path.join(MEMORY, "current-wants.json")))
@@ -1035,7 +1035,7 @@ def check_want_interference(new_want_text, new_want_id):
 
     try:
         r = _wi_r.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3, "max_tokens": 80
         }, timeout=20)
@@ -1072,7 +1072,7 @@ def check_want_interference(new_want_text, new_want_id):
 
     try:
         r2 = _wi_r.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content": outcome_prompt}],
             "temperature": 0.3, "max_tokens": 10
         }, timeout=20)
@@ -1102,7 +1102,7 @@ def check_want_interference(new_want_text, new_want_id):
                 f"Write ONE sentence starting with 'I want to'."
             )
             r3 = _wi_r.post(LM, json={
-                "model": "google/gemma-4-12b-qat",
+                "model": "gemma-4-26b-a4b-it-uncensored",
                 "messages": [{"role": "user", "content": synth_prompt}],
                 "temperature": 0.8, "max_tokens": 60
             }, timeout=20)
@@ -1891,8 +1891,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
                 "- novel: genuinely new territory\n"
                 'Return ONLY JSON: {"relationship": "...", "id": "..."} — id of the related want, empty string if novel.'
             )
-            _rf_resp = _rf_r.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                "model": "google/gemma-4-12b-qat",
+            _rf_resp = _rf_r.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                "model": "gemma-4-26b-a4b-it-uncensored",
                 "messages": [{"role": "user", "content": _rf_prompt}],
                 "temperature": 0.2, "max_tokens": 60}, timeout=20)
             _rf_raw = _rf_resp.json()["choices"][0]["message"]["content"]
@@ -2343,8 +2343,8 @@ def age_wants():
                 )
                 _sc_type = "SCAR"
                 try:
-                    _sc_r = _sc_req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                        "model": "google/gemma-4-12b-qat",
+                    _sc_r = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                        "model": "gemma-4-26b-a4b-it-uncensored",
                         "messages": [{"role": "user", "content": _sc_prompt}],
                         "temperature": 0.3, "max_tokens": 10
                     }, timeout=15)
@@ -2365,8 +2365,8 @@ def age_wants():
                     )
                     _scar_type = "UNCERTAIN"
                     try:
-                        _sc_r2 = _sc_req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                            "model": "google/gemma-4-12b-qat",
+                        _sc_r2 = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                            "model": "gemma-4-26b-a4b-it-uncensored",
                             "messages": [{"role": "user", "content": _scar_prompt}],
                             "temperature": 0.3, "max_tokens": 10
                         }, timeout=15)

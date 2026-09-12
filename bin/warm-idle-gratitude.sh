@@ -10,8 +10,8 @@ TEMPORAL=$(cat "$HOME/.vintos/workspace/memory/temporal-context.txt" 2>/dev/null
 SOUL="$WORKSPACE/SOUL.md"
 GRATITUDE_DIR="$WORKSPACE/memory/gratitude"
 COOLDOWN="$WORKSPACE/memory/.last-gratitude"
-API="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+API="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 
 mkdir -p "$GRATITUDE_DIR"
 

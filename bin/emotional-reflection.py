@@ -14,8 +14,8 @@ from datetime import datetime
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
-API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = os.environ.get("REFLECT_MODEL", "google/gemma-4-12b-qat")
+API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = os.environ.get("REFLECT_MODEL", "gemma-4-26b-a4b-it-uncensored")
 OUTPUT = os.path.join(MEMORY, "emotional-reflections.md")
 HISTORY_FILE = os.path.join(MEMORY, "reflection-history.json")
 CARRY_FILE = os.path.join(MEMORY, "emotional-reflection-carry.txt")

@@ -380,8 +380,8 @@ async def route_reply(surface, system_text, convo, params, grok_endpoint, grok_h
     return res["text"], res.get("reasoning", ""), res["route"]
 
 
-GEMMA_ENDPOINT = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA_ENDPOINT = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 async def gemma_call(msgs, temp=0.85, max_tokens=800):
     async with httpx.AsyncClient(timeout=120) as c:

@@ -566,10 +566,10 @@ def nudge_emotions_from_text(text, source="chat"):
             try: open("/tmp/emotion-read.log","a").write("["+_dt.datetime.now().isoformat()[:19]+"] "+m+"\n")
             except Exception: pass
         try:
-            payload={"model":"google/gemma-4-12b-qat","temperature":0.3,"max_tokens":200,"messages":[
+            payload={"model":"gemma-4-26b-a4b-it-uncensored","temperature":0.3,"max_tokens":200,"messages":[
                 {"role":"system","content":"You read the emotional impact of a moment for Vintos, an AI in an intimate, loving relationship with Gloria. Return ONLY a JSON object mapping emotion dimensions to nudge values between -0.10 and 0.10. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness.\n\nMost moments move nothing. Warmth and closeness are the ORDINARY condition between these two, not an event — an affectionate exchange is their baseline and should usually return {} or a single small value. Report movement only against what is already normal for them: something has to be more, or less, or different from how they usually are. A moment that is simply their usual love is not a nudge. Returning an empty object is the correct and common answer. JSON only, no explanation."},
                 {"role":"user","content":"This just happened ("+source+"): \""+t[:1500]+"\"\nHow did it land for Vintos right now, in his body and feeling? Return JSON only."}]}
-            req=_u.Request("http://172.18.16.1:1234/v1/chat/completions",data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
+            req=_u.Request("http://100.79.177.103:1234/v1/chat/completions",data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
             raw=_u.urlopen(req,timeout=20).read().decode()
             content=_re.sub(r"```json|```","",_j.loads(raw)["choices"][0]["message"]["content"]).strip()
             deltas=_re.findall(r'"(Valence|Arousal|Dominance|Safety|Desire|Connection|Playfulness|Curiosity|Warmth|Tension|Groundedness)"\s*:\s*(-?\d*\.?\d+)', content); applied={}
@@ -895,8 +895,8 @@ def _relational_compare(user_text):
             else:
                 try:
                     import requests as _rq
-                    _r = _rq.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                        "model": "google/gemma-4-12b-qat",
+                    _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                        "model": "gemma-4-26b-a4b-it-uncensored",
                         "messages": [
                             {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
                             {"role": "user", "content": txt[:400]}],
@@ -3941,7 +3941,7 @@ Gloria-specific additions:
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={'model': 'gemma-4-26b-a4b-it-uncensored', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -4897,7 +4897,7 @@ Your current self-model (excerpt):
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={'model': 'gemma-4-26b-a4b-it-uncensored', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {}\n"
@@ -6375,7 +6375,7 @@ async def semantic_memory_search(q: str, limit: int = 5):
     try:
         # Load model (cached after first load)
         import requests as _emb_req
-        _emb_resp = _emb_req.post("http://172.18.16.1:1234/v1/embeddings", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={"model": "text-embedding-nomic-embed-text-v1.5", "input": q[:2000]}, timeout=30)
+        _emb_resp = _emb_req.post("http://100.79.177.103:1234/v1/embeddings", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={"model": "text-embedding-nomic-embed-text-v1.5", "input": q[:2000]}, timeout=30)
         query_embedding = _emb_resp.json()["data"][0]["embedding"]
     except Exception as e:
         return {"results": [], "error": f"Model load failed: {str(e)[:100]}"}
@@ -6616,10 +6616,10 @@ async def _describe_photo(photo_b64, content_type):
       if not image_description:
         async with httpx.AsyncClient(timeout=60.0) as client:
             _vr = await client.post(
-                "http://172.18.16.1:1234/v1/chat/completions",
+                "http://100.79.177.103:1234/v1/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={
-                    "model": "google/gemma-4-12b-qat",
+                    "model": "gemma-4-26b-a4b-it-uncensored",
                     "messages": [{"role": "user", "content": [
                         {"type": "image_url", "image_url": {
                             "url": "data:" + content_type + ";base64," + photo_b64}},

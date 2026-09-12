@@ -31,8 +31,8 @@ WAL_LOG = os.path.join(MEMORY, "wal-log.json")
 WAL_FILE = os.path.join(MEMORY, "wal.md")
 WAL_ARCHIVE = os.path.join(MEMORY, "wal-archive.json")
 PEARL_FILE = os.path.join(MEMORY, "pearls/index.json")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 DECAY_AGE_DAYS = 3  # Review entries older than this
 

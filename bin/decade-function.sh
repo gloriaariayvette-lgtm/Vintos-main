@@ -10,8 +10,8 @@ MEMORY="$WORKSPACE/memory"
 HISTORY_DIR="$MEMORY/self-model-history"
 BIO_DIR="$MEMORY/biography"
 SOUL="$WORKSPACE/SOUL.md"
-API="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+API="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 
 mkdir -p "$BIO_DIR"
 

@@ -123,8 +123,8 @@ Vintos replied:
 \"\"\"{vintos_reply[:1000] if reply_eligible else '[WITHHELD FROM EVIDENCE: record as an act only; extract nothing from it]'}\"\"\"
 """
     try:
-        r = requests.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat",
+        r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [
                 {"role": "system", "content": "Extract durable facts only. Respond with NONE or a JSON array. No other text."},
                 {"role": "user", "content": prompt}

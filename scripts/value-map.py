@@ -43,8 +43,8 @@ def get_temporal_context():
             return f.read().strip()[:300]
     except: return ""
 MAP_FILE = os.path.join(MEMORY, "value-map.md")
-API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 

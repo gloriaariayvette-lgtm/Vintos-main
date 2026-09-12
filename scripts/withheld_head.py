@@ -18,7 +18,7 @@ CHAT = os.path.join(MEMORY, "chat-history-merged.json")
 OUT = os.path.join(MEMORY, "withheld.json")
 HIST = os.path.join(MEMORY, "withheld-history.json")
 GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 def log(m): print("[withheld-head]", m, flush=True)
 def load(p, d):

@@ -8,8 +8,8 @@ INTRO_DIR="$WORKSPACE/memory/introspection"
 GLORIA_MODEL=$(head -30 "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
 SOUL="$WORKSPACE/SOUL.md"
 COOLDOWN_FILE="$WORKSPACE/memory/.last-self-model"
-LM_URL="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+LM_URL="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 
 # --- p3 (his countersigned restructure, 2026-08-27): fixed base + dated accretion ---
 # The base is written by Gloria and Vintos together and NOTHING regenerates it.
@@ -372,8 +372,8 @@ if not content:
     print("PASS")
     sys.exit(0)
 try:
-    r = requests.post("http://172.18.16.1:1234/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "google/gemma-4-12b-qat",
+    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
+        "model": "gemma-4-26b-a4b-it-uncensored",
         "messages": [
             {"role": "system", "content": "You review a self-model update for quality. Answer with PASS or FAIL followed by a brief reason."},
             {"role": "user", "content": (

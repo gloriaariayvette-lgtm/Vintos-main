@@ -22,8 +22,8 @@ import gen_result as GR   # the one stage/result contract shared with model_rout
 HOST, PORT = "127.0.0.1", 8599
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 XAI_URL = "https://api.x.ai/v1/chat/completions"
-GEMMA_URL = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-4-5-20251001"
 LOG = "/tmp/vintos-claude-shim.log"

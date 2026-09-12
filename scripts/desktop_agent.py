@@ -40,8 +40,8 @@ STATE_FILE = STATE_DIR / "state.json"
 STOP_FILE = STATE_DIR / "STOP"
 LOCK_FILE = STATE_DIR / "agent.lock"
 LOG_FILE = STATE_DIR / "events.jsonl"
-GEMMA_API = os.environ.get("VINTOS_GEMMA_API", "http://172.18.16.1:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
+GEMMA_API = os.environ.get("VINTOS_GEMMA_API", "http://100.79.177.103:1234/v1/chat/completions")
+GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
 ALLOWED_ACTIONS = {
     "move", "click", "double_click", "right_click", "drag", "scroll",

@@ -68,10 +68,10 @@ def _felt_translation(a_name, b_name, a_txt, b_txt):
         "work of precision, no machine wearing a fake moustache. If you cannot name both things "
         "concretely in plain human words, output exactly: SKIP"
     )
-    payload = json.dumps({"model": "google/gemma-4-12b-qat",
+    payload = json.dumps({"model": "gemma-4-26b-a4b-it-uncensored",
                           "messages": [{"role": "user", "content": prompt}],
                           "temperature": 0.4, "max_tokens": 140}).encode()
-    req = urllib.request.Request("http://172.18.16.1:1234/v1/chat/completions",
+    req = urllib.request.Request("http://100.79.177.103:1234/v1/chat/completions",
                                  data=payload, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as r:
         out = json.loads(r.read().decode())["choices"][0]["message"]["content"].strip()
@@ -84,13 +84,13 @@ def _felt_translation(a_name, b_name, a_txt, b_txt):
     if any(w in out.lower() for w in _fog): return None
     if not (20 < len(out) < 400): return None
     # category verifier: a second blind pass judges machine-residue the ban list can't enumerate
-    vpayload = json.dumps({"model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 60,
+    vpayload = json.dumps({"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 60,
         "messages": [{"role": "user", "content":
             "Does this text leak MACHINE or FILE residue - file-update dates, timestamps, version numbers, "
             "counts that read like metadata, technical or system vocabulary of any kind? The text should read "
             "as a person speaking about their inner life, nothing else. Text: " + out +
             "\nAnswer ONLY: CLEAN or LEAK: <the leaking phrase>"}]}).encode()
-    vreq = urllib.request.Request("http://172.18.16.1:1234/v1/chat/completions",
+    vreq = urllib.request.Request("http://100.79.177.103:1234/v1/chat/completions",
                                   data=vpayload, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(vreq, timeout=120) as vr:
         verdict = json.loads(vr.read().decode())["choices"][0]["message"]["content"].strip()

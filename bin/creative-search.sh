@@ -5,8 +5,8 @@
 
 WORKSPACE="$HOME/.vintos/workspace"
 MEMORY="$WORKSPACE/memory"
-LM_API="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+LM_API="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 [ -f "$HOME/.vintos/vintos.env" ] && set -a && . "$HOME/.vintos/vintos.env" && set +a
 BRAVE_API_KEY="${BRAVE_API_KEY:-}"
 BRAVE_ENDPOINT="https://api.search.brave.com/res/v1/web/search"
@@ -157,7 +157,7 @@ topic = os.environ.get("_CS_TOPIC", "")
 emo_prompt = f'You just discovered something about {search_terms}: {topic[:200]}. Rate your emotional response. Each -0.05 to +0.05: {{"Curiosity": 0.0, "Valence": 0.0, "Playfulness": 0.0, "Tension": 0.0, "Groundedness": 0.0}}'
 try:
     import requests
-    r = requests.post('http://172.18.16.1:1234/v1/chat/completions', headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={'model':'google/gemma-4-12b-qat','messages':[{'role':'user','content':emo_prompt}],'temperature':0.3,'max_tokens':100}, timeout=30)
+    r = requests.post('http://100.79.177.103:1234/v1/chat/completions', headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={'model':'gemma-4-26b-a4b-it-uncensored','messages':[{'role':'user','content':emo_prompt}],'temperature':0.3,'max_tokens':100}, timeout=30)
     txt = r.json()['choices'][0]['message']['content']
     m = re.search(r'\{[^{}]+\}', txt)
     if m:

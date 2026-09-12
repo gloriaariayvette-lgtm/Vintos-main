@@ -22,7 +22,7 @@ def _sg_write(_p, _o, _who="organ"):
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 MOMENTS_FILE = os.path.join(MEMORY, "humor-moments.json")
-LM = "http://172.18.16.1:1234/v1/chat/completions"
+LM = "http://100.79.177.103:1234/v1/chat/completions"
 
 def load_moments():
     try: return json.load(open(MOMENTS_FILE))
@@ -37,7 +37,7 @@ def save_moments(data):
 def llm(prompt, temp=0.3, max_tokens=150):
     try:
         r = requests.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temp, "max_tokens": max_tokens
         }, timeout=20)

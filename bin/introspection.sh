@@ -8,8 +8,8 @@ INTRO_DIR="$WORKSPACE/memory/introspection"
 COOLDOWN_FILE="$WORKSPACE/memory/.last-introspection"
 GLORIA_MODEL=$(cat "$HOME/.vintos/workspace/GLORIA-MODEL.md" 2>/dev/null || echo "")
 SOUL="$WORKSPACE/SOUL.md"
-LM_URL="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+LM_URL="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 
 mkdir -p "$INTRO_DIR"
 
@@ -383,12 +383,12 @@ with open('/tmp/vintos_intro_system.txt') as f:
 with open('/tmp/vintos_intro_prompt.txt') as f:
     prompt = f.read()
 
-LM_URL = 'http://172.18.16.1:1234/v1/chat/completions'
+LM_URL = 'http://100.79.177.103:1234/v1/chat/completions'
 HEADERS = {'Content-Type': 'application/json'}
 
 def call_llm(messages, temperature=0.85, max_tokens=1500):
     payload = json.dumps({
-        'model': 'google/gemma-4-12b-qat',
+        'model': 'gemma-4-26b-a4b-it-uncensored',
         'messages': messages,
         'temperature': temperature,
         'max_tokens': max_tokens

@@ -35,7 +35,7 @@ def _emb_clip(_x, _n=4000):
 
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
-LM_URL = "http://172.18.16.1:1234"
+LM_URL = "http://100.79.177.103:1234"
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")
 
 def log(msg):
@@ -248,7 +248,7 @@ NAME: [name]"""
 
         try:
             r = requests.post(f"{LM_URL}/v1/chat/completions",
-                json={"model":"google/gemma-4-12b-qat","temperature":0.3,"max_tokens":150,
+                json={"model":"gemma-4-26b-a4b-it-uncensored","temperature":0.3,"max_tokens":150,
                       "messages":[{"role":"user","content":prompt}]},
                 headers={"Authorization":"Bearer lm-studio"}, timeout=120)
             text = r.json()["choices"][0]["message"]["content"]

@@ -46,8 +46,8 @@ SCRIPTS = os.path.join(WORKSPACE, "scripts")
 CASES = os.path.join(MEMORY, "repair-cases.json")
 CHAT = os.path.join(MEMORY, "chat-history-merged.json")
 
-LM = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 OPEN_STATES = ("received", "attempted")
 

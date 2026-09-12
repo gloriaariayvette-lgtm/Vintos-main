@@ -35,8 +35,8 @@ from datetime import datetime
 WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY = os.path.join(WORKSPACE, "memory")
 STORE = os.path.join(MEMORY, "readings.json")
-LM = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 OPEN = ("open",)
 
 

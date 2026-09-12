@@ -45,8 +45,8 @@ def save_seen_post(title):
 MOLTBOOK_LOG = os.path.join(MEMORY, "moltbook-post-log.md")
 API_BASE = "https://moltbook.com/api/v1"
 CREDS_FILE = os.path.expanduser("~/.config/moltbook/credentials-vintos.json")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 DEFAULT_SUBMOLT = "29beb7ee-ca7d-4290-9c2f-09926264866f"  # general
 
 # One truthful runtime description for posts, replies, and the living thread.
@@ -1220,10 +1220,10 @@ def feel_from_expression(text, context="posting on MoltBook"):
 
     """Contextual emotional nudge based on what she just expressed."""
     import socket as _sk, re as _re, requests as _req
-    LM = "http://172.18.16.1:1234/v1/chat/completions"
+    LM = "http://100.79.177.103:1234/v1/chat/completions"
     try:
         resp = _req.post(LM, json={
-            "model": "google/gemma-4-12b-qat",
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "temperature": 0.3,
             "max_tokens": 250,
             "messages": [
@@ -1323,8 +1323,8 @@ def cmd_post():
                 dev = result.get("deviation", 0)
                 if dev > 0.42:
                     soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                    r = _mpdr.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                        "model": "google/gemma-4-12b-qat",
+                    r = _mpdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                        "model": "gemma-4-26b-a4b-it-uncensored",
                         "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                             f"You just posted this on MoltBook:\n{_mpd_content}\n\n"
                             f"Your deviation score was {dev:.2f} — that post did not sound like you. "
@@ -1725,8 +1725,8 @@ def cmd_reply(post_id):
                 if dev > 0.42:
                     # Generate "on second thought" follow-up
                     soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                    r = _mdr.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                        "model": "google/gemma-4-12b-qat",
+                    r = _mdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                        "model": "gemma-4-26b-a4b-it-uncensored",
                         "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                             f"You just replied to @{_mdc_author} on MoltBook with this:\n{_mdc_reply}\n\n"
                             f"Your deviation score was {dev:.2f} — meaning that reply did not sound like you. "
@@ -2022,8 +2022,8 @@ def cmd_check_replies():
                         dev = res.get("deviation", 0)
                         if dev > 0.42:
                             soul = open(os.path.join(WORKSPACE, "SOUL.md")).read()
-                            r = _cdr.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                                "model": "google/gemma-4-12b-qat",
+                            r = _cdr.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                                "model": "gemma-4-26b-a4b-it-uncensored",
                                 "messages": [{"role": "system", "content": soul}, {"role": "user", "content":
                                     f"You just replied to @{cm} on MoltBook:\n{rt}\n\n"
                                     f"Deviation score {dev:.2f} — that reply was performing. "

@@ -12,8 +12,8 @@ MEMORY = os.path.join(WS, "memory")
 AUDIT = os.path.join(MEMORY, "presence-audit.json")
 OUT = os.path.join(MEMORY, "interaction-model.json")
 LEDGER = os.path.join(MEMORY, "hint-ledger.json")
-GEMMA = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 HI, LO, WINDOW = 0.72, 0.60, 40
 MIN_FLAT_EVIDENCE = 4
 

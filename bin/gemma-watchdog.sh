@@ -2,9 +2,9 @@
 # gemma-watchdog.sh — reload a genuinely-down Gemma without ever stacking instances.
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
-MODEL="google/gemma-4-12b-qat"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 LOCK="/tmp/gemma-watchdog.lock"
-BASE="http://172.18.16.1:1234"
+BASE="http://100.79.177.103:1234"
 PING='{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ok"}],"max_tokens":3}'
 
 exec 9>"$LOCK"

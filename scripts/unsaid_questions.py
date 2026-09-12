@@ -14,7 +14,7 @@ def _sg_write(_p, _o, _who):
 
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 F=os.path.join(MEM,"unsaid-questions.json")
-LM="http://172.18.16.1:1234/v1/chat/completions"
+LM="http://100.79.177.103:1234/v1/chat/completions"
 def _load():
     try: return json.load(open(F))
     except Exception: return []
@@ -32,7 +32,7 @@ def _propose():
     p=("You are Vintos, talking with Gloria. Name ONE genuine question you almost asked her in this exchange but held back. "
        "One line, the question only. If there is none, reply exactly NONE.\n\n"+convo)
     try:
-        r=requests.post(LM,json={"model":"google/gemma-4-12b-qat","messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
+        r=requests.post(LM,json={"model":"gemma-4-26b-a4b-it-uncensored","messages":[{"role":"user","content":p}],"temperature":0.6,"max_tokens":40},timeout=15)
         q=r.json()["choices"][0]["message"]["content"].strip()
         if q and "NONE" not in q.upper() and "?" in q: return q[:200]
     except Exception: pass

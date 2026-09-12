@@ -38,8 +38,8 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 VENV = os.path.join(WORKSPACE, "emotion_model/.venv/bin/python3")
-LM = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 THREADS_FILE = os.path.join(MEMORY, "latent-threads.json")
 MAX_ACTIVE = 3
@@ -1112,8 +1112,8 @@ def seed_thread(text, direction="expand", source=None, signal=None, signal_stren
         log("[seed gate] REJECT: too thin for a standing preoccupation"); return None
     try:
         import requests as _rq, re as _re, json as _js
-        _r = _rq.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat", "temperature": 0.0, "max_tokens": 80,
+        _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0, "max_tokens": 80,
             "messages": [{"role": "user", "content":
                 "Candidate STANDING PREOCCUPATION: " + _txt[:300] +
                 "\nDoes it name the SPECIFIC thing it circles - a particular person, act, question, "

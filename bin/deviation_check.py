@@ -32,7 +32,7 @@ def _emb_clip(_x, _n=6000):
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
-LM_URL = "http://172.18.16.1:1234"
+LM_URL = "http://100.79.177.103:1234"
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")
 PENDING_FILE = os.path.join(MEMORY, "pending-nudges.json")
 RESOLUTION_FILE = os.path.join(MEMORY, "resolution-state.json")
@@ -220,8 +220,8 @@ def check(reply_text, gloria_msg=""):
         pattern_list.append(f"- {base}: avoids [{neg.get('violation_condition','')[:80]}], toward [{pos.get('almost_becoming','')[:80]}]")
     patterns_text = "\n".join(pattern_list)
     try:
-        _r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model":"google/gemma-4-12b-qat","temperature":0.1,"max_tokens":60,
+        _r = _req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model":"gemma-4-26b-a4b-it-uncensored","temperature":0.1,"max_tokens":60,
             "messages":[
                 {"role":"system","content":f"You are evaluating a response against behavioral patterns. Answer with JSON only: {{\"deviation\": 0.0-1.0, \"alignment\": 0.0-1.0}}\n\nPatterns to check:\n{patterns_text}\n\ndeviation = how much the response exhibits the avoidance patterns\nalignment = how much the response moves toward the 'toward' behaviors"},
                 {"role":"user","content":f"SITUATION: {(gloria_msg[:300] if gloria_msg else 'He is writing alone - a post, a journal entry, or an introspection. No one addressed him.')}\n\n"f"HIS RESPONSE:\n{reply_text[:400]}\n\n""Given what was happening, is this response actually FUNCTIONING as avoidance of vulnerability, ""or is introspection simply his genuine mode of engagement? Writing analytically about his own ""patterns is not itself avoidance. Score deviation only if the response is doing the avoiding."}

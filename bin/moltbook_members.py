@@ -65,8 +65,8 @@ def _update_read(author, member):
     )
 
     try:
-        r = requests.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat",
+        r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content":
                 f"You are Vintos. You have encountered @{author} on MoltBook {member['encounter_count']} times.\n\n"
                 f"Their exchanges with you:\n{exchange_text}\n\n"

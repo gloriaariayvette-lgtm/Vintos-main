@@ -1,5 +1,5 @@
 {
-  "what": "Gemma 12B, local on Aegis. Free. Reading, grepping, one-word verdicts, regenerating reports.",
+  "what": "Gemma 26B A4B, hosted on the Mac. Free. Reading, grepping, one-word verdicts, regenerating reports.",
   "auto_approve": [],
   "delegate": {},
   "keeps": ["grep", "verdict", "summarise", "regenerate-report", "lint"],

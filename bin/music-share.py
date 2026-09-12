@@ -33,8 +33,8 @@ def _load_key(name, envfile):
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SHARES_FILE = os.path.join(MEMORY, "gloria-music-shares.json")
-API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 def log(msg):
     print(f"[MusicShare] {msg}")

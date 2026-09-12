@@ -32,8 +32,8 @@ LT        = os.path.join(MEMORY, "living-trajectory.json")
 YEARN     = os.path.join(MEMORY, "current-yearning.json")
 THREADS   = os.path.join(MEMORY, "latent-threads.json")
 EMO       = os.path.join(MEMORY, "emotional-state.txt")
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 EMB_MODEL   = "nomic-ai/nomic-embed-text-v1"
 CAP, MAX_PER_RUN, MATCH_MIN = 4, 2, 0.52
 

@@ -1148,7 +1148,7 @@ Gloria-specific additions:
             + f"reply = {repr(reply[:600])}\n"
             + f"gloria_msg = {repr(msg.message[:300])}\n"
             + "try:\n"
-            + "    resp = requests.post('http://172.18.16.1:1234/v1/chat/completions', json={'model': 'google/gemma-4-12b-qat', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
+            + "    resp = requests.post('http://100.79.177.103:1234/v1/chat/completions', json={'model': 'gemma-4-26b-a4b-it-uncensored', 'temperature': 0.3, 'max_tokens': 80, 'messages': [{'role': 'system', 'content': 'Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. No explanation.'}, {'role': 'user', 'content': 'Gloria said: ' + gloria_msg + chr(10) + 'Vintos replied: ' + reply + chr(10) + 'How did this exchange feel for Vintos? Return JSON only.'}]}, timeout=15)\n"
             + "    text = resp.json()['choices'][0]['message']['content']\n"
             + "    m = re.search(r'{[^}]+}', text, re.DOTALL)\n"
             + "    nudges = json.loads(m.group()) if m else {'Connection': 0.02, 'Valence': 0.02}\n"

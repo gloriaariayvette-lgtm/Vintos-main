@@ -2,8 +2,8 @@
 import os, sys, requests, json, uuid
 from datetime import datetime
 
-API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 FLAGS_FILE = os.path.join(MEMORY, "hallucination-flags.json")
 

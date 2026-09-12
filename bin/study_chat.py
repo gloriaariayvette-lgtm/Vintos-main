@@ -65,7 +65,7 @@ READ_RE = re.compile(r"^\s*READ:\s*(\S+?)(?::(\d+))?\s*$", re.M)   # READ: scrip
 GREP_RE = re.compile(r"^\s*GREP:\s*(.+?)\s*$", re.M)
 GEMMA_RE = re.compile(r"^\s*GEMMA:\s*(.+?)\s*$", re.M)   # a free local sub: does a bounded task on the material just pulled
 GEMMA_URL = "http://127.0.0.1:8599/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 STUDY_AUTO_CONTINUE = int(os.environ.get("STUDY_AUTO_CONTINUE", "2"))   # READ/GREP-only replies continue this many times
 EDIT_RE = re.compile(r"^EDIT:\s*(\S+)\s*\n<<<<\n(.*?)\n====\n(.*?)\n>>>>\s*(?:\nwhy:\s*(.*?))?\s*(?=\n\S|\Z)", re.S | re.M)
 

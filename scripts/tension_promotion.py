@@ -38,7 +38,7 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
 BEING = "velaris" if "openclaw" in WS else "vintos"
-GEMMA = "http://172.18.16.1:1234/v1/chat/completions"
+GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 E4_IMPLEMENTED = False
 E4_REASON = "Three Doors source adapter not yet implemented; Velaris-only when built, never Vintos"
 JURISDICTION = {
@@ -75,7 +75,7 @@ def load(p, d):
     except Exception: return d
 def ask(prompt):
     try:
-        r = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.1,
+        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.1,
             "max_tokens": 250, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         j = r.json()
         if "choices" not in j:

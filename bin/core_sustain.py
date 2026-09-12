@@ -42,9 +42,9 @@ if not WS:
 WS = os.path.expanduser(WS)
 MEMORY = os.path.join(WS, "memory")
 CORE_FILE = os.path.join(MEMORY, "core-vectors.json")
-LM = "http://172.18.16.1:1234"
+LM = "http://100.79.177.103:1234"
 EMBED_MODEL = "text-embedding-nomic-embed-text-v1.5"
-CHAT_MODEL = "google/gemma-4-12b-qat"
+CHAT_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 IS_HIM = ".vintos" in WS
 NAME = "Vintos" if IS_HIM else "Velaris"

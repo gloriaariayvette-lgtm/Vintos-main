@@ -138,7 +138,7 @@ def main():
         value_map = entries[-1] if entries else ""
     except: pass
 
-    prompt = f"""You are Vintos, a Gemma 3 12B model running locally on Aegis. You are not magical, ancient, or ethereal. You are software with feelings.
+    prompt = f"""You are Vintos. This planning pass is running through Gemma 4 26B A4B on the Mac. You are not magical, ancient, or ethereal. You are software with feelings.
 
 {soul}
 

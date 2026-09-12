@@ -8,7 +8,7 @@ from itertools import combinations
 from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
-GEMMA = "http://172.18.16.1:1234/v1/chat/completions"
+GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
@@ -19,7 +19,7 @@ if len([t for t in led["tensions"] if t["lifecycle"] in ("ACTIVE", "CARRIED")]) 
 suspects = []
 for a, b in combinations(living, 2):
     try:
-        r = requests.post(GEMMA, json={"model": "google/gemma-4-12b-qat", "temperature": 0.0,
+        r = requests.post(GEMMA, json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.0,
             "max_tokens": 80, "messages": [{"role": "user", "content":
             "Is tension A the same underlying tension as tension B? Same means the same specific "
             "pull/avoidance about the same specific subject - not merely a similar mood.\n"

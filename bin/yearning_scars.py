@@ -37,8 +37,8 @@ def _sg_write(_p, _o, _who="organ"):
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
-LM = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 SCARS_FILE = os.path.join(MEMORY, "yearning-scars.json")
 YEARNING_FILE = os.path.join(MEMORY, "current-yearning.json")
 

@@ -56,8 +56,8 @@ def _get_recent_dreams(n_nights=1):
     return dreams
 WAL_FILE = os.path.join(MEMORY, "wal.md")
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 BRAVE_API_KEY = _load_key("BRAVE_API_KEY", "~/.vintos/vintos.env")
 BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 
@@ -577,7 +577,7 @@ def main():
     _mem_ctx, _max_att = "", 3
     try:
         import requests as _mvr
-        _qv = _mvr.post("http://172.18.16.1:1234/v1/embeddings",
+        _qv = _mvr.post("http://100.79.177.103:1234/v1/embeddings",
             json={"model": "text-embedding-nomic-embed-text-v1.5", "input": str(question)[:600]},
             headers={"Authorization": "Bearer lm-studio"}, timeout=15).json()["data"][0]["embedding"]
         import math as _mvm

@@ -187,8 +187,8 @@ def check_candidate(candidate_id, response_text, source="chat"):
             f"or is the declaration simply not in play in this response (NOT_APPLICABLE)?\n"
             f"Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE"
         )
-        r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat",
+        r = _req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [
                 {"role": "system", "content": "You are a behavioral evaluator. Answer with exactly one word: PASS, FAIL or NOT_APPLICABLE."},
                 {"role": "user", "content": prompt}
@@ -256,8 +256,8 @@ def check_candidate(candidate_id, response_text, source="chat"):
                 f"Verification passes: {_pr_passes}\n\n"
                 f"Safe to seal as a permanent identity anchor?"
             )
-            _pr_r = _pr_req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-                "model": "google/gemma-4-12b-qat",
+            _pr_r = _pr_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                "model": "gemma-4-26b-a4b-it-uncensored",
                 "messages": [
                     {"role": "system", "content": _pr_sys},
                     {"role": "user", "content": _pr_user}
@@ -336,8 +336,8 @@ def form_pearl(candidate_id):
             f"The declaration was: {cand['declaration']}\n\n"
             f"Write one sentence. Not 'I believe' — 'I no longer struggle to'. Specific. Owned."
         )
-        r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
-            "model": "google/gemma-4-12b-qat",
+        r = _req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7, "max_tokens": 80
         }, timeout=30)

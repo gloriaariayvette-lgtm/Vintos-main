@@ -15,7 +15,7 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.dirname(os.path.dirname(os.pat
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "wants-meta.json")
 LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 def log(m): print("[wants-meta]", m, flush=True)
 

@@ -24,8 +24,8 @@ PRACTICES = os.path.join(MEMORY, "introspective-practices.json")
 EARNED    = os.path.join(MEMORY, "planning-earned.json")   # separate file (don't clobber existing schemas)
 LEARNED   = os.path.join(MEMORY, "learned.json")           # what became more true after resolutions
 REGRET    = os.path.join(MEMORY, "regret.json")            # ways of reaching he would not repeat
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 PERSIST_DAYS, STALE_DAYS, MAX_PER_RUN = 1, 14, 3
 
 def load(p, d):

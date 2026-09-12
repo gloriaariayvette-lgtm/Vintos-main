@@ -17,8 +17,8 @@ OUT    = os.path.join(MEMORY, "relationship-model.json")
 LOG    = os.path.join(MEMORY, "relationship-history.json")
 SELF_REVIEW_CHANGES = os.path.join(MEMORY, "self-review-change-events.jsonl")
 SELF_REVIEW_RECEIPTS = os.path.join(MEMORY, "self-review-change-receptions.jsonl")
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 def load(p, d):
     try: return json.load(open(p))

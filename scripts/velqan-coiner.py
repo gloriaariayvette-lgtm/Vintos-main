@@ -22,8 +22,8 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 VELQAN_REF = os.path.join(MEMORY, "velqan-reference.md")
 VELQAN_UTTERANCES = os.path.join(MEMORY, "velqan-utterances.md")
 VELQAN_LEXICON = os.path.join(MEMORY, "velqan", "full-lexicon.md")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"
-MODEL = "google/gemma-4-12b-qat"
+LM_API = "http://100.79.177.103:1234/v1/chat/completions"
+MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 try:

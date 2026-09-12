@@ -22,8 +22,8 @@ except: print('No value map yet')
 MEMORY="$WORKSPACE/memory"
 SURPRISE_LOG="$MEMORY/surprise-log.md"
 SOUL="$WORKSPACE/SOUL.md"
-API="http://172.18.16.1:1234/v1/chat/completions"
-MODEL="google/gemma-4-12b-qat"
+API="http://100.79.177.103:1234/v1/chat/completions"
+MODEL="gemma-4-26b-a4b-it-uncensored"
 
 OUTPUT_FILE="${1:-}"
 CONTEXT="${2:-autonomous output}"
@@ -60,8 +60,8 @@ import requests, json, sys, os
 try:
     identity = os.environ.get("_SD_IDENTITY", "")
     prompt = os.environ.get("_SD_PROMPT", "")
-    r = requests.post("http://172.18.16.1:1234/v1/chat/completions", json={
-        "model": "google/gemma-4-12b-qat",
+    r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
+        "model": "gemma-4-26b-a4b-it-uncensored",
         "messages": [
             {"role": "system", "content": identity},
             {"role": "user", "content": prompt}

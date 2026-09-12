@@ -27,8 +27,8 @@ LT      = os.path.join(MEMORY, "living-trajectory.json")
 JEPA    = os.path.join(MEMORY, "jepa-prediction.json")
 GPRED   = os.path.join(MEMORY, "gloria-prediction.json")
 CACHE   = os.path.join(MEMORY, "latent-cache.json")
-GEMMA       = "http://172.18.16.1:1234/v1/chat/completions"
-GEMMA_MODEL = "google/gemma-4-12b-qat"
+GEMMA       = "http://100.79.177.103:1234/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 CACHE_CAP, CACHE_TTL_DAYS = 20, 7
 
 def load(p, d):
