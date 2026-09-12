@@ -285,6 +285,8 @@ try:
     check("his workspace is not writable to it", ".vintos/workspace" not in unit)
     check("and it is hardened like the others",
           all(k in unit for k in ("NoNewPrivileges=true", "ProtectSystem=strict", "ProtectHome=read-only")))
+    check("the checkout is read-only inside it, so python is told not to write bytecode",
+          "PYTHONDONTWRITEBYTECODE=1" in unit)
     check("the deploy does not install it onto him",
           "vintos-bench" not in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 
@@ -305,17 +307,38 @@ try:
     print("\n--- and there is a doctor, so the next one is not a night ---")
     doc = os.path.join(BENCH, "doctor.sh")
     check("doctor.sh exists", os.path.isfile(doc))
+    dsrc = open(doc).read()
     check("it checks the directory, the unit, the port and the health in that order",
-          all(w in open(doc).read() for w in ("bench/ledgers is MISSING", "is not installed",
-                                              "nothing is listening", "/health")))
+          all(w in dsrc for w in ("bench/ledgers is MISSING", "is not installed",
+                                  "nothing is listening", "/health")))
+    # "active" one second after a restart means nothing: Type=simple marks a unit
+    # active the instant the process is spawned. The doctor said "ok and active"
+    # over a service that was already dead, and printed no reason at all.
+    check("it does not believe 'active' one second after a restart",
+          "still active two seconds later" in dsrc and "NRestarts" in dsrc)
+    check("a dead port prints the journal without being asked",
+          "journalctl --user -u" in dsrc and "-n 40" in dsrc)
+    check("and how it exited, with 226/NAMESPACE named so the sandbox is recognisable",
+          "ExecMainStatus" in dsrc and "226" in dsrc and "NAMESPACE" in dsrc)
+    check("and it runs the same code outside the sandbox, so the verdict is not a guess",
+          "outside the sandbox" in dsrc and "VERDICT" in dsrc and "8799" in dsrc)
+    check("the URL it prints is lowercase — the host answers to Aegis, the link should not shout",
+          'tr "A-Z" "a-z"' in dsrc)
     check("and it prints the whole URL, because Safari searches for a bare hostname",
-          "http://${HOSTN}:${PORT}/" in open(doc).read() and "turns a" in open(doc).read())
+          "http://${HOSTN}:${PORT}/" in dsrc and "turns a" in dsrc)
     out = subprocess.run(["bash", "-n", doc], capture_output=True, text=True)
     check("and it parses", out.returncode == 0, out.stderr[:300])
 
     print("\n--- and it reaches nothing of his ---")
     check("the server never names his room or his memory",
           "agent-room" not in src and ".vintos/workspace" not in src)
+    # A service that dies without saying why is a black page with nothing behind it.
+    check("the server says what it is about to do before it does it, and flushes",
+          "print(_diag(), flush=True)" in src and src.index("print(_diag()") < src.index("ThreadingHTTPServer(("))
+    check("a bind failure is a sentence, not a bare traceback",
+          "could not bind" in src and "already on that port" in src)
+    check("and anything else it dies of reaches the journal",
+          "traceback.print_exc()" in src)
     check("it wrote only under its own root", B.LEDGERS.startswith(TMP))
 
 finally:

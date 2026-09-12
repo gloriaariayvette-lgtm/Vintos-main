@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=%h/repos/vintos/bench
 Environment=PYTHONUNBUFFERED=1
+# The checkout is read-only inside this sandbox. Without this, python tries to write
+# bench/__pycache__ on every start — harmless, but it is noise in the journal on the
+# one occasion the journal is being read.
+Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=BENCH_PORT=8791
 ExecStart=/usr/bin/python3 %h/repos/vintos/bench/server.py
 Restart=on-failure

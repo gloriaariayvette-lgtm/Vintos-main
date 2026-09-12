@@ -432,13 +432,32 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    # Everything here is printed before anything is served, and flushed, because when
+    # this fails the journal is the only account of why. A service that dies silently
+    # is a black page with nothing behind it — which is exactly what happened once.
+    print(_diag(), flush=True)
+    try:
+        srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    except OSError as e:
+        print("bench: could not bind 0.0.0.0:%d — %s" % (PORT, e), flush=True)
+        if getattr(e, "errno", None) == 98:
+            print("bench: something is already on that port. `ss -ltnp | grep %d`" % PORT,
+                  flush=True)
+        raise
     tok = _token()
     print("bench on http://0.0.0.0:%d%s" % (PORT, "  (token required)" if tok else "  (open on the tailnet)"),
           flush=True)
-    print(_diag(), flush=True)
     srv.serve_forever()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        raise
