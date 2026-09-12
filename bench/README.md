@@ -59,7 +59,34 @@ Put it up for good:
     systemctl --user daemon-reload && systemctl --user enable --now vintos-bench
 
 To close it to the tailnet, put a secret in `~/.vintos/.bench-token`; every request
-then needs `?t=<token>`.
+then needs `?t=<token>`. The page carries it on every link and every button, so you
+only type it once.
+
+**Type the whole URL on the phone** — `http://aegis:8791/`, scheme and port. Safari
+turns a bare hostname into a search.
+
+### When the page does not come up
+
+    bash ~/repos/vintos/bench/doctor.sh
+
+It walks the chain in order — the directory, the unit, the port, the health — prints
+the first thing that is wrong and the command that fixes it, and ends with the URL to
+open. `http://aegis:8791/diag` says the same thing from the browser.
+
+It came up black once, and two separate faults each did it on their own:
+
+- `bench/ledgers/` was not tracked, so a fresh pull had no such directory. systemd
+  refuses to start a unit whose `ReadWritePaths=` names a path that does not exist —
+  226/NAMESPACE — and with `ProtectHome=read-only` the service cannot create it
+  either. Nothing was listening. The directory is tracked now and the path is marked
+  optional.
+- the page drew itself in JavaScript and shipped an empty `<main>` saying `loading…`.
+  Every pixel depended on a fetch succeeding.
+
+So **the page is rendered on the server**. Approve and Deny are real
+`<form method=post>`: they work with JavaScript off, in a private tab, on a page whose
+script never ran. The script only swaps the same server-rendered fragment in place so
+the page does not jump. Both faults have a test.
 
 ## Use from a shell
 

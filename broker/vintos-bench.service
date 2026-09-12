@@ -16,7 +16,12 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
 # It writes exactly one place: the bench's own ledgers. Not his workspace.
-ReadWritePaths=%h/repos/vintos/bench/ledgers
+# The leading '-' is load-bearing: systemd refuses to start a unit whose
+# ReadWritePaths= names a path that does not exist (226/NAMESPACE), and that is
+# exactly what a checkout without bench/ledgers/ gave her — a dead port and a
+# blank page. The directory is tracked now; this makes the failure survivable
+# rather than silent if it ever goes missing again.
+ReadWritePaths=-%h/repos/vintos/bench/ledgers
 
 [Install]
 WantedBy=default.target

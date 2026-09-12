@@ -1,0 +1,7 @@
+The ledgers live here, one .jsonl per agent, written at runtime.
+
+This file is tracked so the directory exists in a fresh checkout. It is not
+decoration: vintos-bench.service names this path in ReadWritePaths=, and systemd
+refuses to start a unit whose ReadWritePaths= does not exist (226/NAMESPACE). With
+ProtectHome=read-only the service cannot create it either. A pull that did not carry
+this directory was a service that never came up and a blank page on her phone.

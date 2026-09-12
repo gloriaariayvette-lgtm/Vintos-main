@@ -10,9 +10,22 @@ installed and can be edited in place.
     python3 server.py                 serve on 0.0.0.0:8791 (the tailnet)
     BENCH_PORT=... python3 server.py
 
+THE PAGE IS RENDERED HERE, IN PYTHON, NOT IN HER BROWSER.
+
+The first version drew itself with JavaScript and shipped an empty <main> that said
+"loading…". It reached her phone as a black rectangle. Two things were wrong at once
+— the unit was not running at all, and even had it been, every pixel depended on a
+fetch succeeding. Only one of those was fixed by fixing the unit.
+
+So: the server renders the whole page, every time, from state it already has. Approve
+and Deny are real <form method=post> — they work with JavaScript switched off, in a
+private tab, on a page that failed to finish loading its script. The script is an
+enhancement and nothing more: it swaps the same server-rendered fragment in place so
+the page does not jump. If it never runs, she loses smoothness and loses nothing else.
+
 If ~/.vintos/.bench-token exists, every request must carry it as ?t=<token>. If it
 does not exist, the page is open on the tailnet, which is the same posture as his
-other rooms.
+other rooms. A refusal is an HTML page that says so, not a JSON blob she has to read.
 
 It is NOT the agent room, and it does not read his memory. It reads and writes the
 bench's own ledgers, through bench.py, and nothing else.
@@ -28,14 +41,14 @@ sys.path.insert(0, HERE)
 import bench as B
 
 PORT = int(os.environ.get("BENCH_PORT", "8791"))
-TOKEN_FILE = os.path.expanduser("~/.vintos/.bench-token")
+# Overridable only so the suite can prove the gate without a token file on the host
+# that serves her. On Aegis it is the default and nothing sets the variable.
+TOKEN_FILE = os.environ.get("BENCH_TOKEN_FILE") or os.path.expanduser("~/.vintos/.bench-token")
+
+OPEN_STATES = ("proposed", "approved", "claimed")
 
 # Buzz's dark palette, taken from web/src/shared/styles/globals.css (Apache-2.0).
-PAGE = """<!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>bench</title>
-<style>
+STYLE = """<style>
 :root{
   --bg:hsl(232 23.4% 18.43%); --fg:hsl(227 68.25% 87.65%);
   --card:hsl(232 23.4% 21%); --muted:hsl(230 18.8% 26.08%);
@@ -48,8 +61,9 @@ PAGE = """<!doctype html>
 body{margin:0;background:var(--bg);color:var(--fg);
   font:15px/1.5 ui-sans-serif,-apple-system,"SF Pro Text",Inter,system-ui,sans-serif;
   padding-bottom:env(safe-area-inset-bottom)}
+a{color:inherit;text-decoration:none}
 header{position:sticky;top:0;z-index:5;background:var(--bg);
-  border-bottom:1px solid var(--border);padding:14px 16px calc(14px + env(safe-area-inset-top)) 16px;
+  border-bottom:1px solid var(--border);padding:14px 16px;
   padding-top:calc(14px + env(safe-area-inset-top));display:flex;align-items:center;gap:12px}
 header h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.02em}
 header .count{margin-left:auto;font-size:13px;color:var(--muted-fg)}
@@ -59,10 +73,11 @@ nav{border-bottom:1px solid var(--border);padding:10px 12px;display:flex;gap:8px
   -webkit-overflow-scrolling:touch}
 @media(min-width:900px){nav{flex-direction:column;border-bottom:0;border-right:1px solid var(--border);
   min-height:calc(100vh - 56px);overflow:visible}}
-nav button{flex:0 0 auto;background:transparent;color:var(--muted-fg);border:1px solid transparent;
-  border-radius:var(--radius);padding:9px 12px;font:inherit;font-size:14px;text-align:left;cursor:pointer}
-nav button.on{background:var(--muted);color:var(--fg);border-color:var(--border)}
-nav button .sub{display:block;font-size:11px;color:var(--muted-fg);margin-top:2px}
+nav a{flex:0 0 auto;background:transparent;color:var(--muted-fg);border:1px solid transparent;
+  border-radius:var(--radius);padding:9px 12px;font-size:14px;min-height:44px;
+  display:flex;flex-direction:column;justify-content:center;white-space:nowrap}
+nav a.on{background:var(--muted);color:var(--fg);border-color:var(--border)}
+nav a .sub{display:block;font-size:11px;color:var(--muted-fg);margin-top:2px}
 main{padding:16px;min-width:0}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   padding:14px;margin:0 0 12px}
@@ -72,11 +87,14 @@ main{padding:16px;min-width:0}
 .who{font-size:12px;color:var(--primary)}
 .what{margin:9px 0 0;font-size:15px}
 .why{margin:6px 0 0;font-size:13px;color:var(--muted-fg)}
-.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:stretch}
+.row form{flex:1 1 140px;display:flex;gap:8px;margin:0}
 button.act{flex:1 1 140px;min-height:44px;border-radius:var(--radius);border:1px solid var(--border);
   font:inherit;font-weight:600;cursor:pointer}
 button.yes{background:var(--primary);color:var(--primary-fg);border-color:transparent}
 button.no{background:transparent;color:var(--destructive);border-color:var(--destructive)}
+input.why{flex:2 1 160px;min-height:44px;border-radius:var(--radius);border:1px solid var(--border);
+  background:var(--bg);color:var(--fg);font:inherit;padding:0 12px;margin:0}
 .state{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--border);color:var(--muted-fg)}
 .state.approved{color:var(--warn);border-color:var(--warn)}
 .state.claimed{color:var(--primary);border-color:var(--primary)}
@@ -93,94 +111,47 @@ h2:first-child{margin-top:0}
   font:12px/1.7 ui-monospace,Menlo,monospace;color:var(--muted-fg)}
 .err{background:var(--destructive);color:var(--primary-fg);padding:10px 14px;border-radius:var(--radius);
   margin:0 0 12px;font-size:14px}
-</style>
-<header><h1>bench</h1><span class="count" id="count"></span></header>
-<div class="wrap"><nav id="nav"></nav><main id="main"><div class="empty">loading…</div></main></div>
-<script>
-const T = new URLSearchParams(location.search).get('t');
-const q = p => T ? p + (p.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(T) : p;
-let S = {agents:{}, tasks:[]}, view = 'pending', err = '';
+</style>"""
 
-const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+HEAD = ('<!doctype html>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n'
+        '<meta name="color-scheme" content="dark">\n'
+        '<title>bench</title>\n' + STYLE + '\n')
 
-async function load(){
-  try{ const r = await fetch(q('/api/state')); if(!r.ok) throw new Error('HTTP '+r.status);
-       S = await r.json(); err=''; }
-  catch(e){ err = String(e.message||e); }
-  draw();
-}
-async function act(path, body){
-  try{
-    const r = await fetch(q(path), {method:'POST', headers:{'Content-Type':'application/json'},
-                                    body: JSON.stringify(body)});
-    const d = await r.json();
-    if(d.error) err = d.error; else err='';
-  }catch(e){ err = String(e.message||e); }
-  load();
-}
-function drawNav(){
-  const pend = S.tasks.filter(t=>t.state==='proposed').length;
-  const items = [['pending','waiting on you', pend ? pend+' to approve' : 'nothing waiting'],
-                 ['all','every task', S.tasks.length+' total']];
-  for(const [name,cfg] of Object.entries(S.agents)){
-    const open = S.tasks.filter(t=>t.owner===name && ['proposed','approved','claimed'].includes(t.state)).length;
-    items.push(['a:'+name, name, open ? open+' open' : 'idle']);
+# The whole of the client side. It renders nothing — it asks the server for the same
+# fragment the server already rendered and puts it where it was. Switch it off and the
+# page still works; the forms below are real forms.
+SCRIPT = """<script>
+(function(){
+  var wrap = document.getElementById('wrap');
+  if(!wrap) return;
+  function swap(html){
+    var d = document.createElement('div');
+    d.innerHTML = html;
+    var w = d.querySelector('#wrap'), c = d.querySelector('#count');
+    if(w) wrap.innerHTML = w.innerHTML;
+    if(c) document.getElementById('count').textContent = c.textContent;
   }
-  document.getElementById('nav').innerHTML = items.map(([k,l,s]) =>
-    `<button class="${view===k?'on':''}" onclick="view='${k}';draw()">${esc(l)}<span class="sub">${esc(s)}</span></button>`).join('');
-  document.getElementById('count').textContent = pend ? pend+' waiting on you' : 'all clear';
-}
-function taskCard(t, withButtons){
-  const hist = (t.history||[]).map(h=>`${h.at.slice(11,16)} ${h.event}${h.by?' · '+h.by:''}${h.result?' — '+esc(h.result).slice(0,120):''}${h.why?' — '+esc(h.why).slice(0,120):''}`).join('<br>');
-  return `<div class="card">
-    <div class="top"><span class="id">${esc(t.task)}</span>
-      <span class="kind">${esc(t.kind||'—')}</span>
-      <span class="who">${esc(t.by)} → ${esc(t.owner)}</span>
-      <span class="state ${esc(t.state)}" style="margin-left:auto">${esc(t.state)}</span></div>
-    <p class="what">${esc(t.what)}</p>
-    ${t.why?`<p class="why">${esc(t.why)}</p>`:''}
-    ${withButtons&&t.state==='proposed'?`<div class="row">
-      <button class="act yes" onclick="act('/api/approve',{task:'${t.task}'})">Approve</button>
-      <button class="act no" onclick="deny('${t.task}')">Deny</button></div>`:''}
-    ${hist?`<div class="hist">${hist}</div>`:''}
-  </div>`;
-}
-function deny(id){
-  const why = prompt('Why not?') ; if(why===null) return;
-  act('/api/deny',{task:id, why:why});
-}
-function draw(){
-  drawNav();
-  const m = document.getElementById('main');
-  let h = err ? `<div class="err">${esc(err)}</div>` : '';
-  if(view==='pending'){
-    const rows = S.tasks.filter(t=>t.state==='proposed');
-    h += rows.length ? '<h2>waiting on you</h2>' + rows.map(t=>taskCard(t,true)).join('')
-                     : '<div class="empty">Nothing waiting on you.</div>';
-  } else if(view==='all'){
-    const open = S.tasks.filter(t=>['proposed','approved','claimed'].includes(t.state));
-    const shut = S.tasks.filter(t=>!['proposed','approved','claimed'].includes(t.state)).reverse();
-    h += open.length?'<h2>open</h2>'+open.map(t=>taskCard(t,true)).join(''):'';
-    h += shut.length?'<h2>closed</h2>'+shut.slice(0,40).map(t=>taskCard(t,false)).join(''):'';
-    if(!open.length&&!shut.length) h += '<div class="empty">No tasks yet.</div>';
-  } else {
-    const name = view.slice(2), cfg = S.agents[name]||{};
-    const d = cfg.delegate||{}, keys = Object.keys(d);
-    h += `<div class="card"><div class="top"><strong>${esc(name)}</strong></div>
-      <p class="why">${esc(cfg.what||'')}</p>
-      ${keys.length?`<div class="deleg">hands down: ${keys.map(k=>`<code>${esc(k)}</code> → ${esc(d[k])}`).join(' · ')}</div>`:''}
-      ${(cfg.keeps||[]).length?`<div class="deleg">keeps: ${cfg.keeps.map(k=>`<code>${esc(k)}</code>`).join(' ')}</div>`:''}
-      <div class="deleg">starts unasked: ${(cfg.auto_approve||[]).length?cfg.auto_approve.map(k=>`<code>${esc(k)}</code>`).join(' '):'nothing — everything waits on you'}</div>
-    </div>`;
-    const rows = S.tasks.filter(t=>t.owner===name||t.by===name).reverse();
-    h += rows.length?'<h2>its ledger</h2>'+rows.slice(0,60).map(t=>taskCard(t,true)).join('')
-                    :'<div class="empty">Nothing in this ledger yet.</div>';
+  function refresh(){
+    fetch(location.pathname + location.search, {headers:{'X-Fragment':'1'}})
+      .then(function(r){ return r.text(); }).then(swap).catch(function(){});
   }
-  m.innerHTML = h;
-}
-load(); setInterval(load, 5000);
-</script>
-"""
+  document.addEventListener('submit', function(e){
+    var f = e.target;
+    if(!f.matches('form.bench')) return;
+    e.preventDefault();
+    fetch(f.action, {method:'POST', body:new URLSearchParams(new FormData(f)),
+                     headers:{'X-Fragment':'1'}})
+      .then(function(r){ return r.text(); }).then(swap).catch(function(){ f.submit(); });
+  });
+  setInterval(refresh, 5000);
+})();
+</script>"""
+
+
+def esc(s):
+    return (str("" if s is None else s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
 
 
 def _token():
@@ -196,47 +167,241 @@ def _state():
     return {"agents": B.agents(), "tasks": tasks}
 
 
+def _link(view, tok):
+    q = {"view": view}
+    if tok:
+        q["t"] = tok
+    return "/?" + urllib.parse.urlencode(q)
+
+
+# --- the page, rendered here ------------------------------------------------------
+
+def _history(t):
+    out = []
+    for h in (t.get("history") or []):
+        at = str(h.get("at") or "")[11:16]
+        line = "%s %s" % (esc(at), esc(h.get("event")))
+        if h.get("by"):
+            line += " &middot; " + esc(h["by"])
+        for k in ("result", "why"):
+            if h.get(k):
+                line += " — " + esc(str(h[k])[:120])
+        out.append(line)
+    return "<br>".join(out)
+
+
+def _card(t, tok, view, buttons=True):
+    acts = ""
+    if buttons and t.get("state") == "proposed":
+        hidden = ('<input type="hidden" name="task" value="%s">'
+                  '<input type="hidden" name="view" value="%s">'
+                  % (esc(t.get("task")), esc(view)))
+        if tok:
+            hidden += '<input type="hidden" name="t" value="%s">' % esc(tok)
+        acts = ('<div class="row">'
+                '<form class="bench" method="post" action="/api/approve">%s'
+                '<button class="act yes" type="submit">Approve</button></form>'
+                '<form class="bench" method="post" action="/api/deny">%s'
+                '<input class="why" type="text" name="why" placeholder="why not?">'
+                '<button class="act no" type="submit">Deny</button></form>'
+                '</div>' % (hidden, hidden))
+    hist = _history(t)
+    return ('<div class="card">'
+            '<div class="top"><span class="id">%s</span>'
+            '<span class="kind">%s</span>'
+            '<span class="who">%s &rarr; %s</span>'
+            '<span class="state %s" style="margin-left:auto">%s</span></div>'
+            '<p class="what">%s</p>%s%s%s</div>'
+            % (esc(t.get("task")), esc(t.get("kind") or "—"), esc(t.get("by")),
+               esc(t.get("owner")), esc(t.get("state")), esc(t.get("state")),
+               esc(t.get("what")),
+               ('<p class="why">%s</p>' % esc(t["why"])) if t.get("why") else "",
+               acts,
+               ('<div class="hist">%s</div>' % hist) if hist else ""))
+
+
+def _nav(st, view, tok):
+    pend = [t for t in st["tasks"] if t.get("state") == "proposed"]
+    items = [("pending", "waiting on you",
+              ("%d to approve" % len(pend)) if pend else "nothing waiting"),
+             ("all", "every task", "%d total" % len(st["tasks"]))]
+    for name in st["agents"]:
+        open_n = len([t for t in st["tasks"]
+                      if t.get("owner") == name and t.get("state") in OPEN_STATES])
+        items.append(("a:" + name, name, ("%d open" % open_n) if open_n else "idle"))
+    out = []
+    for key, label, sub in items:
+        out.append('<a class="%s" href="%s">%s<span class="sub">%s</span></a>'
+                   % ("on" if view == key else "", esc(_link(key, tok)), esc(label), esc(sub)))
+    return "<nav>" + "".join(out) + "</nav>"
+
+
+def _main(st, view, tok, err):
+    h = ('<div class="err">%s</div>' % esc(err)) if err else ""
+    tasks = st["tasks"]
+    if view == "all":
+        open_t = [t for t in tasks if t.get("state") in OPEN_STATES]
+        shut = [t for t in tasks if t.get("state") not in OPEN_STATES][::-1]
+        if open_t:
+            h += "<h2>open</h2>" + "".join(_card(t, tok, view) for t in open_t)
+        if shut:
+            h += "<h2>closed</h2>" + "".join(_card(t, tok, view, False) for t in shut[:40])
+        if not open_t and not shut:
+            h += '<div class="empty">No tasks yet.</div>'
+    elif view.startswith("a:"):
+        name = view[2:]
+        cfg = st["agents"].get(name) or {}
+        d = cfg.get("delegate") or {}
+        keeps = cfg.get("keeps") or []
+        auto = cfg.get("auto_approve") or []
+        h += ('<div class="card"><div class="top"><strong>%s</strong></div>'
+              '<p class="why">%s</p>' % (esc(name), esc(cfg.get("what") or "")))
+        if d:
+            h += ('<div class="deleg">hands down: %s</div>'
+                  % " &middot; ".join("<code>%s</code> &rarr; %s" % (esc(k), esc(v))
+                                      for k, v in d.items()))
+        if keeps:
+            h += ('<div class="deleg">keeps: %s</div>'
+                  % " ".join("<code>%s</code>" % esc(k) for k in keeps))
+        h += ('<div class="deleg">starts unasked: %s</div></div>'
+              % (" ".join("<code>%s</code>" % esc(k) for k in auto) if auto
+                 else "nothing — everything waits on you"))
+        rows = [t for t in tasks if t.get("owner") == name or t.get("by") == name][::-1]
+        h += ("<h2>its ledger</h2>" + "".join(_card(t, tok, view) for t in rows[:60])) if rows \
+            else '<div class="empty">Nothing in this ledger yet.</div>'
+    else:
+        rows = [t for t in tasks if t.get("state") == "proposed"]
+        h += ("<h2>waiting on you</h2>" + "".join(_card(t, tok, view) for t in rows)) if rows \
+            else '<div class="empty">Nothing waiting on you.</div>'
+    return "<main>" + h + "</main>"
+
+
+def fragment(st, view, tok, err=""):
+    """The half that changes. Rendered identically for a full load and for a poll, so
+    there is exactly one renderer and the page cannot disagree with itself."""
+    pend = len([t for t in st["tasks"] if t.get("state") == "proposed"])
+    count = ("%d waiting on you" % pend) if pend else "all clear"
+    return ('<span class="count" id="count">%s</span>'
+            '<div class="wrap" id="wrap">%s%s</div>'
+            % (esc(count), _nav(st, view, tok), _main(st, view, tok, err)))
+
+
+def render(view="pending", tok="", err=""):
+    try:
+        st = _state()
+    except Exception as e:                      # a broken ledger is a message, not a blank page
+        st = {"agents": {}, "tasks": []}
+        err = err or ("the ledgers could not be read: %s" % e)
+    frag = fragment(st, view, tok, err)
+    head, _, body = frag.partition("<div class=\"wrap\"")
+    return (HEAD + "<header><h1>bench</h1>" + head + "</header>\n"
+            + "<div class=\"wrap\"" + body + "\n" + SCRIPT + "\n")
+
+
+REFUSED = (HEAD + '<header><h1>bench</h1></header><main>'
+           '<div class="err">bad or missing token</div>'
+           '<p class="why">This bench is behind a token. Open it with '
+           '<code>?t=&lt;token&gt;</code> — the token is the one line in '
+           '<code>~/.vintos/.bench-token</code> on Aegis.</p></main>\n')
+
+NOTFOUND = (HEAD + '<header><h1>bench</h1></header><main>'
+            '<div class="empty">no such path</div>'
+            '<p class="why" style="text-align:center"><a href="/">back to the bench</a></p>'
+            '</main>\n')
+
+
+def _diag():
+    """What is actually true on this host, in plain text, with no secret in it. When
+    the page does not come up, this is the first thing to read."""
+    lines = ["bench diagnostics",
+             "python        %s" % sys.version.split()[0],
+             "port          %d" % PORT,
+             "bench root    %s" % B.ROOT,
+             "ledgers dir   %s  exists=%s writable=%s"
+             % (B.LEDGERS, os.path.isdir(B.LEDGERS), os.access(B.LEDGERS, os.W_OK)),
+             "agents dir    %s  exists=%s" % (B.AGENTS, os.path.isdir(B.AGENTS)),
+             "token         %s" % ("required (?t=...)" if _token() else "none — open on the tailnet")]
+    try:
+        st = _state()
+        lines.append("agents        %s" % ", ".join(sorted(st["agents"])) or "(none)")
+        lines.append("tasks         %d, %d waiting on her"
+                     % (len(st["tasks"]), len([t for t in st["tasks"] if t.get("state") == "proposed"])))
+    except Exception as e:
+        lines.append("state         UNREADABLE: %s" % e)
+    return "\n".join(lines) + "\n"
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *a):
         pass
 
+    def _q(self):
+        return urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+
     def _authed(self):
         want = _token()
         if not want:
             return True
-        got = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("t", [""])[0]
-        return got == want
+        return self._q().get("t", [""])[0] == want
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", extra=()):
         raw = body if isinstance(body, bytes) else body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
+        for k, v in extra:
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(raw)
 
+    def _wants_fragment(self):
+        return self.headers.get("X-Fragment") == "1"
+
+    def _view(self, src):
+        v = (src.get("view") or ["pending"])[0]
+        return v if (v in ("pending", "all") or v.startswith("a:")) else "pending"
+
+    def _html(self, view, tok, err="", code=200):
+        if self._wants_fragment():
+            try:
+                st = _state()
+            except Exception as e:
+                st, err = {"agents": {}, "tasks": []}, err or str(e)
+            return self._send(code, fragment(st, view, tok, err), "text/html; charset=utf-8")
+        self._send(code, render(view, tok, err), "text/html; charset=utf-8")
+
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
+        if path == "/health":                    # never gated: it is how she checks it is up
+            return self._send(200, json.dumps({"ok": True}))
         if not self._authed():
-            return self._send(403, json.dumps({"error": "bad or missing token"}))
+            if path.startswith("/api/"):
+                return self._send(403, json.dumps({"error": "bad or missing token"}))
+            return self._send(403, REFUSED, "text/html; charset=utf-8")
+        q = self._q()
+        tok = q.get("t", [""])[0]
         if path in ("/", "/index.html"):
-            return self._send(200, PAGE, "text/html; charset=utf-8")
+            return self._html(self._view(q), tok)
         if path == "/api/state":
             return self._send(200, json.dumps(_state()))
-        if path == "/health":
-            return self._send(200, json.dumps({"ok": True}))
-        self._send(404, json.dumps({"error": "no such path"}))
+        if path == "/diag":
+            return self._send(200, _diag(), "text/plain; charset=utf-8")
+        self._send(404, NOTFOUND, "text/html; charset=utf-8")
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         if not self._authed():
             return self._send(403, json.dumps({"error": "bad or missing token"}))
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        form = ctype != "application/json"
         try:
             n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(n) or b"{}")
+            raw = self.rfile.read(n)
+            body = ({k: v[0] for k, v in urllib.parse.parse_qs(raw.decode()).items()}
+                    if form else json.loads(raw or b"{}"))
         except Exception:
             return self._send(400, json.dumps({"error": "bad json"}))
         tid = str(body.get("task") or "")
@@ -248,10 +413,22 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/deny":
             t, why = B.deny(tid, str(body.get("why") or ""))
         else:
+            if form:
+                return self._send(404, NOTFOUND, "text/html; charset=utf-8")
             return self._send(404, json.dumps({"error": "no such path"}))
-        if t is None:
-            return self._send(200, json.dumps({"error": why}))
-        self._send(200, json.dumps({"ok": True, "task": t["task"], "state": t["state"]}))
+        if not form:
+            if t is None:
+                return self._send(200, json.dumps({"error": why}))
+            return self._send(200, json.dumps({"ok": True, "task": t["task"], "state": t["state"]}))
+        # A form post answers with the page she is already looking at. With the script
+        # running that is a fragment swapped in place; without it, a plain redirect —
+        # so the two buttons work on a phone with JavaScript off.
+        view = self._view({k: [v] for k, v in body.items()})
+        tok = str(body.get("t") or "")
+        if self._wants_fragment():
+            return self._html(view, tok, "" if t is not None else (why or ""))
+        return self._send(303, b"", "text/html; charset=utf-8",
+                          extra=[("Location", _link(view, tok))])
 
 
 def main():
@@ -259,6 +436,7 @@ def main():
     tok = _token()
     print("bench on http://0.0.0.0:%d%s" % (PORT, "  (token required)" if tok else "  (open on the tailnet)"),
           flush=True)
+    print(_diag(), flush=True)
     srv.serve_forever()
 
 
