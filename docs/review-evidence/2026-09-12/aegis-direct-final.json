@@ -1,0 +1,734 @@
+[
+  {
+    "name": "test_armed_capsule_flow.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_arming_readiness.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_artifact_delivery.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_atelier_lineage.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_atelier_quantum.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_atelier_reveals.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_attacks.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_barrier.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_bench.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_bench_page.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_blush_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_broker_service.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_browser_agent.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_calibration_forecast.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_campaign_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_capability.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_capsule_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_causality_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_causality_recovery.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_commitment_store.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_completion_evidence.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_compute_admission.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_controls_wants.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_coordinator.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_deploy_timer_recovery.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_desktop_agent.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_device_gate_and_budget.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_device_integration.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_device_names.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_durable_stop.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_effect_gate.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_effect_provenance.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_emotion_guards.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_entry_owners.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_env_key.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_event_counts.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_evidence_provenance.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_evidence_view.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_forge_build.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_forge_resume.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_gates.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_heart_rate.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_home_presence.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_house_map.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_house_routes.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_humor_taste.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_import_twins.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journal_final_length.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journey_correction.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journey_dream.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journey_patch.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journey_voice.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_journey_want.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_last_consolidations.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_last_partials.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_ledger_late_imprint.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_lifecycle_honesty.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_look_kept_projects.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_memory_links.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_memory_projection.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_merged_chat.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_mischief_log.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_mischief_timing.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_one_contracts.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_organ_reads.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p02_p10_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p02_wal_ledger.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p03_04_p02_05_broker.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p03_device_execution.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p03_p04_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p03_p07_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p04_02_evidence_cutoff.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p04_09_relational_snapshot.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p04_memory_pipeline.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p04_p07_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p05_p08_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p05_p09_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p09_p11_closures.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_p0_round2.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_policy_decisions.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_prediction_identity.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_quantum_snapshot.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_recall_explain.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_record_contract.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_recovery_evidence.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reelroom.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reelroom_frame_and_cost.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reelroom_journal.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reelroom_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reelroom_room.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_release_profile.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_resonance_felt.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_reveal_flow.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_review_fixes.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_review_repairs.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_robot_core.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_room_review_guards.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_route_authz.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_schedule_graph.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_screen_share.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_self_review.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_sensor_reactions.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_settlement.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_shim_result_contract.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_skill_forge.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_somatic_bridge_reconnect.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_spark_sources.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_stop_semantics.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_store_guard.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_stratagem_e2e.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_stratagem_offer.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_surface_coverage.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_thread_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_threshold.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_twin_parity.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_visit_capability_wiring.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_want_artifact_guard.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_want_contract.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_want_enrichment.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_want_plan_lifecycle.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_want_thread_doors.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  },
+  {
+    "name": "test_worklist_repairs.py",
+    "exit": 0,
+    "unexpected_inherited_home_files": [],
+    "tail": ""
+  }
+]

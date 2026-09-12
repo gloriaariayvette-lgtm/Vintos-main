@@ -1,0 +1,166 @@
+{
+  "heads": {
+    "vintos": "aca1b3273c2ff3824300aea0657b64c025dc28cc",
+    "vintos-app": "2db8e875178bcf72ae34c9754b11fdb5e370dc92",
+    "plithra-app": "a801178296146587282dbdd3dc32ea66c0d30d80"
+  },
+  "units": {
+    "vintos-server.service": {
+      "MainPID": "2296361",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "vintos-emoclaw.service": {
+      "MainPID": "2296249",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "vintos-self-review.service": {
+      "MainPID": "2296187",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "vintos-robot-bridge.service": {
+      "MainPID": "2296089",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "vintos-skill-surf.timer": {
+      "ActiveState": "active",
+      "SubState": "waiting"
+    },
+    "vintos-atelier.service": {
+      "MainPID": "344578",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    }
+  },
+  "served_assets": {
+    "/app": {
+      "status": 200,
+      "matches_release": true,
+      "request_id_present": true,
+      "trace_recorded": "true"
+    },
+    "/client_lifecycle.js": {
+      "status": 200,
+      "matches_release": true,
+      "request_id_present": true,
+      "trace_recorded": "true"
+    },
+    "/avatar-bundle.js": {
+      "status": 200,
+      "matches_release": true,
+      "request_id_present": true,
+      "trace_recorded": "true"
+    },
+    "/app/client_lifecycle.js": {
+      "status": 200,
+      "matches_release": true,
+      "request_id_present": true,
+      "trace_recorded": "true"
+    }
+  },
+  "critical_installed_sources": {
+    "/home/gloria/Vintos/causality-engine.py": {
+      "matches_source": true,
+      "sha256": "af2d4328572ec47f594a117be4ba73e1a3e94a09946740d983fd586f9e53b669"
+    },
+    "/home/gloria/.vintos/workspace/scripts/causality-engine.py": {
+      "matches_source": true,
+      "sha256": "af2d4328572ec47f594a117be4ba73e1a3e94a09946740d983fd586f9e53b669"
+    },
+    "/home/gloria/Vintos/causal_self_model.py": {
+      "matches_source": true,
+      "sha256": "77658a93aa58c22d56d294ea18aef0fcb30ede6eb6abecc40533f698f9f8a20f"
+    },
+    "/home/gloria/.vintos/workspace/scripts/causal_self_model.py": {
+      "matches_source": true,
+      "sha256": "77658a93aa58c22d56d294ea18aef0fcb30ede6eb6abecc40533f698f9f8a20f"
+    },
+    "/home/gloria/Vintos/causal-self-model.py": {
+      "matches_source": true,
+      "sha256": "77658a93aa58c22d56d294ea18aef0fcb30ede6eb6abecc40533f698f9f8a20f"
+    },
+    "/home/gloria/.vintos/workspace/scripts/causal-self-model.py": {
+      "matches_source": true,
+      "sha256": "77658a93aa58c22d56d294ea18aef0fcb30ede6eb6abecc40533f698f9f8a20f"
+    },
+    "/home/gloria/Vintos/belief_sediment.py": {
+      "matches_source": true,
+      "sha256": "bc551ebf197f6387a99a3ec33b342483f59d26aab1d0a0e3dd3a6cf26583d187"
+    },
+    "/home/gloria/.vintos/workspace/scripts/belief_sediment.py": {
+      "matches_source": true,
+      "sha256": "bc551ebf197f6387a99a3ec33b342483f59d26aab1d0a0e3dd3a6cf26583d187"
+    },
+    "/home/gloria/Vintos/pearl_engine.py": {
+      "matches_source": true,
+      "sha256": "f3d5277eb2508615244ba2de31f79c75ec957c24f682c9d1f53e8942c50fc699"
+    },
+    "/home/gloria/.vintos/workspace/scripts/pearl_engine.py": {
+      "matches_source": true,
+      "sha256": "f3d5277eb2508615244ba2de31f79c75ec957c24f682c9d1f53e8942c50fc699"
+    },
+    "/home/gloria/Vintos/pearl-engine.py": {
+      "matches_source": true,
+      "sha256": "f3d5277eb2508615244ba2de31f79c75ec957c24f682c9d1f53e8942c50fc699"
+    },
+    "/home/gloria/.vintos/workspace/scripts/pearl-engine.py": {
+      "matches_source": true,
+      "sha256": "f3d5277eb2508615244ba2de31f79c75ec957c24f682c9d1f53e8942c50fc699"
+    }
+  },
+  "emotion-loaded-checkpoint.json": {
+    "schema": "loaded-emotion-1",
+    "pid": 2296249,
+    "at": 1789246281.1039157,
+    "requested_checkpoint": "/home/gloria/.vintos/workspace/emotion_model/checkpoints/best_model.pt",
+    "checkpoint_sha256_before_load": "5957a612b7caf72abef1a3ea0a886c7319e4b982828f4e5f955f7b30187f4945",
+    "loaded_parameters_sha256": "eea8ee8799a347f47539a1c7d3505b6133d1c90988d8d30634de0fbb4eb8549e",
+    "checkpoint_parameters_match": true,
+    "training_lineage": "not_established",
+    "checkpoint_sha256_after_load": "5957a612b7caf72abef1a3ea0a886c7319e4b982828f4e5f955f7b30187f4945",
+    "checkpoint_parameters_sha256": "eea8ee8799a347f47539a1c7d3505b6133d1c90988d8d30634de0fbb4eb8549e"
+  },
+  "server-loaded-modules.json": {
+    "schema": "loaded-python-1",
+    "pid": 2296361,
+    "module_count": 1586,
+    "selected_modules": [
+      {
+        "module": "__main__",
+        "file": "/home/gloria/Vintos/server.py",
+        "sha256": "a9ac2926a7042c9bf6ecdccfa801bdb3b5d6e1200d1500bb3f68e8f13808243c"
+      },
+      {
+        "module": "request_trace",
+        "file": "/home/gloria/.vintos/workspace/scripts/request_trace.py",
+        "sha256": "a54f457b3df76e5e3302189ef5ef8d0195601fa9c4e50d2ce9e4d05ef7778931"
+      }
+    ]
+  },
+  "release": {
+    "at": "2026-09-12T15:51:22",
+    "git_rev": "fa3949b",
+    "services": {
+      "vintos-server": "active",
+      "vintos-robot-bridge": "active",
+      "vintos-self-review": "active",
+      "vintos-emoclaw": "active",
+      "vintos-atelier": "active",
+      "vintos-skill-surf.timer": "active"
+    },
+    "broker_confirmed": true,
+    "backup": "/home/gloria/.vintos/backups/atelier-20260912-154812",
+    "rollback": "bash /home/gloria/.vintos/backups/atelier-20260912-154812/restore.sh",
+    "failures": [],
+    "record": "/home/gloria/.vintos/deploy/releases/20260912-155122-fa3949b.json",
+    "file_count": 320
+  }
+}

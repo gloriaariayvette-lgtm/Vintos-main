@@ -1,0 +1,109 @@
+[
+  {
+    "seed": "collision_resonance",
+    "ok": true,
+    "source_sha256": "2b91e4ca24757d732f59e74377111046cbf586ca04321b1998d67ee898ea9261",
+    "result_keys": [
+      "ancilla_zero_probability",
+      "angle_state_overlap",
+      "circuit",
+      "cosine",
+      "counts",
+      "dimensions",
+      "display",
+      "dream",
+      "music",
+      "question",
+      "sampled_swap_fidelity",
+      "shots",
+      "title"
+    ],
+    "isolation": {
+      "isolation": "OS-enforced",
+      "network": false,
+      "writes": "scratch only",
+      "receipt_owner": "parent"
+    }
+  },
+  {
+    "seed": "emotion_withheld",
+    "ok": true,
+    "source_sha256": "ebc689a5a46df6d2c476dd6369db9577f456b28f4c0df2f3c5e1ce95eaea0141",
+    "result_keys": [
+      "coupled",
+      "display",
+      "independent",
+      "largest_movements",
+      "question",
+      "reading_invitation",
+      "title",
+      "top_coupled_states"
+    ],
+    "isolation": {
+      "isolation": "OS-enforced",
+      "network": false,
+      "writes": "scratch only",
+      "receipt_owner": "parent"
+    }
+  },
+  {
+    "seed": "relationship_entanglement",
+    "ok": true,
+    "source_sha256": "ca609f4a8a693cc93f83aa05b6f08ef7b0259b59269bd69203e85f174e7d32f1",
+    "result_keys": [
+      "display",
+      "entangled",
+      "largest_movements",
+      "question",
+      "separate",
+      "title",
+      "top_entangled_states"
+    ],
+    "isolation": {
+      "isolation": "OS-enforced",
+      "network": false,
+      "writes": "scratch only",
+      "receipt_owner": "parent"
+    }
+  },
+  {
+    "seed": "stratagem_beliefs",
+    "ok": true,
+    "source_sha256": "441b1b50a7889f4aee31cc581511376fee39d9100721e32c87d74f5a828e4282",
+    "result_keys": [
+      "display",
+      "largest_movements",
+      "question",
+      "recursive",
+      "sequential",
+      "title",
+      "top_recursive_states"
+    ],
+    "isolation": {
+      "isolation": "OS-enforced",
+      "network": false,
+      "writes": "scratch only",
+      "receipt_owner": "parent"
+    }
+  },
+  {
+    "seed": "tactic_interference",
+    "ok": true,
+    "source_sha256": "ebd5c607c7e39d674b78db5d85f9d85827f0180a7f4201bc14e06b576fbf7d7f",
+    "result_keys": [
+      "alone",
+      "display",
+      "largest_movements",
+      "question",
+      "sequenced",
+      "title",
+      "top_sequences"
+    ],
+    "isolation": {
+      "isolation": "OS-enforced",
+      "network": false,
+      "writes": "scratch only",
+      "receipt_owner": "parent"
+    }
+  }
+]

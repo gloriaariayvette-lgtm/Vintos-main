@@ -1,0 +1,58 @@
+{
+  "failure": {
+    "draft": "kept",
+    "body": "\n        \n            \n            [Send not confirmed. Your draft is kept.]\n        \n        \n    "
+  },
+  "success": {
+    "draft": "",
+    "images": 0
+  },
+  "posts": 2,
+  "safe": {
+    "images": 0,
+    "text": "<img src=x onerror=\"window.injected=1\">→✕<img src=x onerror=\"window.injected=1\"><img src=x onerror=\"window.injected=1\">⏱ 8h 0m"
+  },
+  "fragment": {
+    "calls": 1,
+    "draft": "new fragment"
+  },
+  "sharing": "Sharing state unknown: status unavailable.",
+  "renderChecks": [
+    "atelier",
+    "value map",
+    "causality",
+    "blush",
+    "therapy",
+    "study",
+    "threads"
+  ],
+  "screenshot": [
+    127,
+    0,
+    129,
+    255
+  ],
+  "microphone": 1,
+  "recovery": {
+    "draft": "existing draft\nretained transcript",
+    "recordingReleased": true
+  },
+  "playback": {
+    "before": false,
+    "closed": true
+  },
+  "ledger": [
+    {
+      "gloria": "",
+      "vintos": "fixture response",
+      "response_id": "response-1",
+      "session_id": "provider-session",
+      "turn_id": "voice-1789245375275-1:response-1",
+      "playback_state": "completed",
+      "interrupted": false,
+      "heard": "",
+      "client_session_id": "voice-1789245375275-1"
+    }
+  ],
+  "pageErrors": []
+}

@@ -5,7 +5,7 @@ It is the only place with a to-do in it.
 
 ## 12 September — hypothesis recovery continuation
 
-Deployed in 20260912-153539-aca1b32: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 122 suites passed directly and OS-isolated on Mac and Aegis; installed hypothesis/pearl entrypoint hashes match the source. A final client-only follow-up is being packaged.
+Deployed in 20260912-153539-aca1b32: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 122 suites passed directly and OS-isolated on Mac and Aegis; installed hypothesis/pearl entrypoint hashes match the source. The final client follow-up deployed as 20260912-155122-fa3949b.
 
 The 27 acceptance items below are being implemented and verified separately. This source repair does not close them or the unrelated trial/dismissed-wants and tension-view migrations.
 
@@ -433,7 +433,9 @@ do not establish missing historical evidence or physical outcomes.
   ordering. They are not physical playback or exhaustive every-tab acceptance.
 - P08 346: iOS background task registration, 15-minute requested interval, actual
   notification permission checks and runner error handling implemented. Capacitor
-  sync and simulator compilation passed. Device background delivery remains unobserved.
+  sync, simulator and signed device compilation passed. Final app 2db8e87 installed;
+  its launch was refused because the iPhone had locked. Earlier 6ee9ecb launched.
+  Device background delivery and visual/audio acceptance remain unobserved.
 - P01 31/32: content-free HTTP request identities propagate into central provider
   usage receipts; central OpenAI/Anthropic responses record provider IDs. Independent
   adapters not using this router remain an explicit coverage gap.
@@ -457,8 +459,8 @@ do not establish missing historical evidence or physical outcomes.
 - P11 403: QLab source and runtime bridge are verified; see item 403 for the isolated
   quantum entrypoint and the separate unsealed Lab boundary still requiring repair.
 
-Final immutable-revision suite and deployment evidence will be recorded after
-all gates. The earlier 120/121 runs exposed the voice extraction fixture gap;
+Final immutable-revision suite and deployment evidence is recorded in
+[the completion review](completion-review-2026-09-12.md). The earlier 120/121 runs exposed the voice extraction fixture gap;
 that fixture now includes the locked helper and tests duplicate/closed sessions.
 The broader trial/current-dismissed-wants and served-tension migrations from the
 handoff remain open; they are not silently credited to the hypothesis repair.
@@ -481,4 +483,26 @@ Post-install hash audit of eec31eb found that pearl_engine.py was not in the dep
 manifest: the new source was present in Git, but its two live import paths still
 had older bytes. Both Python spellings are now explicitly in SCRIPTS and BINS,
 and the recovery suite asserts these destinations are manifested. The final
-hypothesis deployment is not accepted until all of those installed hashes match.
+hypothesis deployment was accepted after all twelve checked installed paths matched in
+20260912-155122-fa3949b.
+
+## Final completion release — 12 September
+
+**20260912-155122-fa3949b** deployed with `deploy OK`. All 122 suites pass directly
+and OS-isolated on Mac and Aegis; inherited-HOME write counts are zero. All six
+named units are active, including the skill-surf timer. All twelve checked
+hypothesis/pearl import paths and four served-client routes match the pinned source.
+The actual emotion daemon PID matches its receipt and loaded parameters match the
+checkpoint. App 2db8e87 is installed on the paired iPhone; the final launch request
+was refused by its lock screen. The earlier build launched successfully.
+
+The separately requested 7/32-day tenure commits were preserved during integration.
+QLab 8f5c935 is committed locally (that repository has no remote): four isolation
+checks and five real seeds passed in scratch; the Aegis status bridge confirms the
+new OS boundary. The separate unsealed Lab entrypoint remains listed under 403.
+
+Not all 27 items have full acceptance. The table above retains absent historical
+lineage/joins, the timed-out embedding rebuild, wider private-source/adapter review,
+broader client-view acceptance and physical device evidence. Paid Forge work is
+separate from this request. [The full item matrix and evidence](completion-review-2026-09-12.md)
+record what was implemented and what remains; green tests do not close those gaps.

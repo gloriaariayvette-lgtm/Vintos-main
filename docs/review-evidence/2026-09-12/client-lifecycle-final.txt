@@ -1,0 +1,12 @@
+✔ HTTP and application failures reject and surface an error (8.441542ms)
+✔ one pending turn, invalidation rejects old callbacks and finish cannot release a newer turn (0.073708ms)
+✔ acknowledgement clears only the exact submitted draft (0.048084ms)
+✔ text encoding preserves zero and quotes as text (0.072708ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34.137042

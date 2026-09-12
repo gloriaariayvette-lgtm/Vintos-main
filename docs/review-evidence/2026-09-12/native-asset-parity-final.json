@@ -1,0 +1,17 @@
+{
+  "index.html": {
+    "source_sha256": "8034dadcaec3004f1c52f127f74c381decf4bc3a932c12a6b9b1056a4856c403",
+    "built_sha256": "8034dadcaec3004f1c52f127f74c381decf4bc3a932c12a6b9b1056a4856c403",
+    "equal": true
+  },
+  "client_lifecycle.js": {
+    "source_sha256": "46ee56ad187c7c2dcec82fb8d73c5e8d12eed27fb19b5e31e9f36a4e9c1c2b31",
+    "built_sha256": "46ee56ad187c7c2dcec82fb8d73c5e8d12eed27fb19b5e31e9f36a4e9c1c2b31",
+    "equal": true
+  },
+  "avatar-bundle.js": {
+    "source_sha256": "9869b6a3db5f4df5fff24d4fe3213461b645dfa978cd6bc07e301909f29ffc7c",
+    "built_sha256": "9869b6a3db5f4df5fff24d4fe3213461b645dfa978cd6bc07e301909f29ffc7c",
+    "equal": true
+  }
+}
