@@ -30,36 +30,50 @@ The upstream stream, forum, thread sessions and agent memories are the interface
 for each agent's private CONTEXT.md and append-only task ledger. Those instructions
 are not claims that a task has already run or that an outcome has been verified.
 
-## Installation state
+## Installation and commissioning
 
 The relay listens on Aegis's tailnet address, port 8792. The official native client
-connects as Gloria; the four profiles are queryable and have bot membership in
-both channels. Native accessibility inspection confirmed the Build agents composer
-and Discussion forum composer. Forum Channels is enabled under Settings → Experiments.
-No channel message has been sent. The desktop Agents directory contains upstream
-starter agents, which have not been started; the four build agents currently appear
-as external channel members, not desktop-managed instances. Native management cards
-and an end-to-end approved channel task/handoff remain unfinished.
+connects as Gloria. Its launcher uses the upstream `--safe-rendering` option for
+WSLg. Both Build agents and Discussion include all four agents with bot membership.
+Forums are enabled under Settings → Experiments → Forum Channels.
 
-`run-local-gemma.py` is the credential-free fallback: bubblewrap mounts only the
-published binaries, TLS roots and `~/.local/share/buzz-gemma`. The owner key and
-live Vintos filesystem are absent. Its only provider is local LM Studio; it has
-no paid credentials or fallback. A separate disposable ACP commissioning call
-returned `BUZZ_LOCAL_OK`, 66 input and seven output tokens, normal end of turn.
-The local listener runs as `buzz-gemma-local.service` and subscribes to both
-channels. It awaits a directly approved task; no channel task has been run.
+Gloria explicitly approved service accounts, corresponding provider credentials,
+and local commissioning. `install-workers.py` installs `buzz-codex`, `buzz-claude`,
+`buzz-grok` and `buzz-gemma` as separate system users/units with independent clones,
+private workspaces, persistent CONTEXT.md and ledger.jsonl, and no owner identity
+or live-house access. It does not start model work. Stop the four units before
+upgrading installed binaries. Model IDs come from the checked-out `agents.json`;
+Claude additionally receives the required `ANTHROPIC_MODEL=claude-fable-5-1`.
 
-`install-workers.py` is a prepared **root installer, not yet executed**. Automatic
-approval review requires explicit permission for the four service accounts and
-scoped provider credentials. It makes independent repository copies, confines
-writes to each worker's home, and excludes live Vintos and `agent-room`. Before
-switching Gemma to this installation, stop the user-level `buzz-gemma-local` unit
-so the same identity cannot have two active harnesses.
+`register-native.py`, run as Gloria while Desktop is closed, backs up the native
+store and links the existing identities to their matching definitions. No new
+keypair is minted. The native registry and backup are mode 0600. Deploy receipts
+are created by actual provider success, not inferred from relay presence.
 
-Gloria approved the four bot memberships in Build agents and Discussion, with
-Claude corrected to Fable 5.1. All eight memberships were accepted by the relay.
-Automatic approval review separately rejected the proposed live bot-message
-commissioning probe; that probe has not been sent. Membership approval and task
-approval are separate. No owner impersonation or automatic approval is permitted.
+Install `buzz-backend-aegis` executable at `~/.local/bin/buzz-backend-aegis`.
+It implements Buzz's provider-v1 interface and validates the exact installed
+identity, owner, model, prompt and runtime before starting its fixed systemd unit.
+The accompanying polkit rule permits Gloria to start only those four units.
+Configuration changes outside the reviewed installation are rejected; keys and
+provider requests are never printed. Shutdown uses the upstream relay control.
+The native client retains deployment receipts independently of Offline presence.
 
-No paid inference commissioning or further live forge run has been performed.
+All four native launch controls were exercised successfully. All four units are
+active/running, with zero automatic restarts. The older `buzz-gemma-local` user
+service is disabled. It remains a credential-free fallback, not a second listener.
+
+Local live commissioning passed: a bot-signed handoff was dropped by the actual
+owner-signed gate before model work; an owner-approved task made Gemma create and
+read `commissioning-approved-20260912.txt` containing `BUZZ_CHANNEL_OK`, update
+private context and JSONL history, and post its result in the originating thread.
+Actual namespace probes confirmed each own workspace is writable and the house,
+owner key, house credentials and Windows home are inaccessible. No test suite
+performs this commissioning; those were separately approved live actions.
+
+Offline regression command: `python3 buzz-integration/test_native_provider.py`.
+Seven checks pass on macOS and Linux using temporary stores and stubbed service
+execution. The full Vintos suites also pass 119/119 directly and 119/119 isolated.
+
+Paid inference and cross-model implementation handoffs remain untested. The three
+paid listeners initialized no model sessions during commissioning. No additional
+live forge run was performed.

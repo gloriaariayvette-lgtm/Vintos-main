@@ -3,40 +3,41 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 12 September continuation — current deployment work
+## 12 September — Buzz native integration commissioned
 
-- Actual upstream Buzz relay and Linux native client are installed on Aegis; four
-  signed agent profiles and model cards are registered. Source is pinned to
-  `78618804ec86a014524ad7d1fb55928e8f5c3edf`; packaged native client is 0.5.23.
-- The ACP `owner-signed` policy patch is committed as `242f8d6c6` in the separate
-  Buzz checkout and preserved in `buzz-integration/owner-signed.patch`. Linux
-  validation: 934 passed, zero failed, one existing ignored integration test.
-- **Not finished:** paid worker service installation, end-to-end approved task/handoff,
-  and native management cards for the four external runners. Automatic approval review rejected the
-  root installer because new accounts and scoped provider credential access need
-  explicit approval; that question is pending. Gloria approved all four bot memberships, selecting Claude/Fable 5.1. All
-  eight channel additions succeeded. Local-only Gemma connects from the persistent
-  `buzz-gemma-local` user bubblewrap service and subscribes to both channels.
-  A live bot-message probe was separately rejected by automatic approval review
-  and was not sent. No approved channel task has been started.
-- Native onboarding is complete as Gloria. Build agents opens with a message composer;
-  Discussion opens with five members and its native forum composer after enabling
-  Settings → Experiments → Forum Channels. No post was sent. The Agents directory
-  still shows upstream starter agents; the four build identities are external runners,
-  not desktop-managed instances. Starter agents have not been started.
-- Provider metadata confirmed `gpt-6-astra`, `claude-fable-5-1`, and the Grok model
-  list containing `grok-build-0.1`. Local LM Studio lists `google/gemma-4-12b-qat`.
-  Paid-provider checks are metadata only. A disposable bubblewrap commissioning
-  call through the official Gemma ACP agent returned `BUZZ_LOCAL_OK` with normal
-  end of turn (66 input tokens, seven output tokens); no tools or paid fallback.
-- Budget repair implemented: reservation IDs, matching idempotent releases, and
-  structured authentication errors instead of text matching. Historical releases
-  without receipt IDs remain conservatively counted. Deployed in release `20260912-052317-9b9c1dc`.
-- Legacy bench HTTP now refuses missing/empty credentials. It is not the new
-  runners' authority. Legacy CLI identity strings and multi-ledger concurrency
-  remain unsuitable as an execution gate; no Buzz runner consumes that queue.
-- The broader engine/store migration, remaining review evidence, avatar native
-  sync and ring BLE work below remain open. No additional paid forge run.
+- Real upstream Buzz native 0.5.23 runs on Aegis with `--safe-rendering`; without
+  that flag the WSLg renderer produced a blank window on restart. Build agents
+  messaging and the Discussion forum are enabled.
+- Astra/Codex, Claude/Fable 5.1, Grok/Build and local Gemma are now native managed
+  identities, linked to their definitions without duplicate cards. All four
+  native launch controls succeeded with deployment receipts and Online presence.
+- Gloria explicitly approved the isolated accounts, scoped provider credentials
+  and local channel tests. All four system services are installed and running;
+  each owns independent repository copies and a private working context/ledger.
+  The old user-level Gemma listener is disabled to avoid duplicate consumers.
+- Actual namespace checks confirm own-workspace access and deny the live house,
+  house credentials, owner identity and Windows home. The native provider starts
+  only its four named units; incompatible configuration edits fail visibly.
+- The owner-signed ACP patch remains `242f8d6c6`, preserved in
+  `buzz-integration/owner-signed.patch` (934 Linux library checks passed, one
+  pre-existing ignored test). A live Grok-bot handoff was dropped by the actual
+  gate before inference, confirmed by its gate audit. An approved owner message
+  made Gemma write/read its exact scratch marker, persist context and a valid
+  JSONL outcome, and reply in the Buzz thread. The forbidden marker is absent.
+- Fresh validation: 119/119 Vintos suites directly with local loopback permission,
+  119/119 OS-isolated; seven native-provider/registration checks pass on macOS
+  and Linux with scratch stores and a stubbed service executor.
+- **Still untested:** paid inference and cross-model implementation handoffs.
+  Native launch and configuration checks do not prove those model calls work.
+  No additional paid forge run. Native provider configuration is deliberately
+  fixed to the reviewed installation; arbitrary model/runtime/environment edits
+  require updating that installation before redeployment. Buzz retains provider
+  deployment receipts separately from presence; Offline does not clear a receipt.
+- Vintos house release remains `20260912-052317-9b9c1dc`, deployment output
+  `deploy OK`. Budget receipt/refund and missing bench-token repairs are deployed.
+  This continuation changed Buzz integration, not installed house modules.
+- The broader engine/store migration, remaining review evidence, legacy bench
+  CLI/concurrency, avatar native sync and ring BLE work below remain open.
 
 ## Waiting on something, per organ
 

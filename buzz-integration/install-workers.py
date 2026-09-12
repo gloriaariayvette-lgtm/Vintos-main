@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 """Explicit root installer for four isolated Buzz workers. Never starts model work."""
-import json, os, pathlib, pwd, shutil, subprocess, shlex
+import json, os, pathlib, pwd, shutil, subprocess, shlex, re
 P=pathlib.Path
 SOURCE=P('/home/gloria')
 DEST=P('/opt/buzz-aegis')
 CONFIG=P('/etc/buzz-aegis')
 assert os.geteuid()==0, 'Run as root on Aegis'
+for ident in ('codex', 'claude', 'grok', 'gemma'):
+ if subprocess.run(['systemctl', 'is-active', '--quiet', 'buzz-'+ident+'.service']).returncode == 0:
+  raise SystemExit('Stop the four Buzz units before upgrading their installed binaries')
 DEST.mkdir(mode=0o755,exist_ok=True); CONFIG.mkdir(mode=0o700,exist_ok=True)
 # Separate copies: worker users cannot traverse Gloria's home or access owner keys.
 for src,name in [(SOURCE/'.local/opt/buzz/0.5.23/usr/bin','bin'),(SOURCE/'.local/opt/buzz-runtimes','runtimes')]:
+ # copytree does not replace existing symlinks even with dirs_exist_ok.
+ for source_link in src.rglob('*'):
+  target_link=DEST/name/source_link.relative_to(src)
+  if source_link.is_symlink() and target_link.is_symlink(): target_link.unlink()
  shutil.copytree(src,DEST/name,dirs_exist_ok=True,symlinks=True)
 shutil.copy2(SOURCE/'repos/buzz/target/debug/buzz-acp',DEST/'bin/buzz-acp')
-manifest=json.loads(P('/tmp/codex-buzz-agents.json').read_text())
+manifest=json.loads((SOURCE/'repos/vintos/buzz-integration/agents.json').read_text())
+assert len(manifest)==4 and {r['id'] for r in manifest}=={'codex','claude','grok','gemma'}
+for row in manifest:
+ assert re.fullmatch(r'[A-Za-z0-9._/-]+', row['model']), 'Invalid model identifier'
+ assert '\n' not in row['name'] and '\r' not in row['name'], 'Invalid unit description'
 secrets={}
 for line in (SOURCE/'.vintos/vintos.env').read_text().splitlines():
  k,sep,v=line.partition('=')
@@ -33,9 +44,10 @@ for row in manifest:
   source_repo=SOURCE/'repos'/repo_name
   target=workspace/repo_name
   if not target.exists():
-   subprocess.run(['git','clone','--no-local',str(source_repo),str(target)],check=True,stdout=subprocess.DEVNULL)
+   clone_env = dict(os.environ, GIT_CONFIG_COUNT='2', GIT_CONFIG_KEY_0='safe.directory', GIT_CONFIG_VALUE_0=str(source_repo), GIT_CONFIG_KEY_1='safe.directory', GIT_CONFIG_VALUE_1=str(source_repo/'.git'))
+   subprocess.run(['git','clone','--no-local','--upload-pack=git -c safe.directory='+shlex.quote(str(source_repo/'.git'))+' upload-pack',str(source_repo),str(target)],env=clone_env,check=True,stdout=subprocess.DEVNULL)
    # Retain a public origin URL, never a host-local writable origin.
-   origin=subprocess.check_output(['git','-C',str(source_repo),'remote','get-url','origin'],text=True).strip()
+   origin=subprocess.check_output(['git','-c','safe.directory='+str(source_repo),'-C',str(source_repo),'remote','get-url','origin'],text=True).strip()
    if not origin.startswith(('https://github.com/','git@github.com:')): raise ValueError('unexpected repository origin')
    subprocess.run(['git','-C',str(target),'remote','set-url','origin',origin],check=True)
    subprocess.run(['chown','-R',user+':'+user,str(target)],check=True)
@@ -55,7 +67,7 @@ for row in manifest:
  if ident=='gemma':
   env.update(BUZZ_AGENT_PROVIDER='openai',OPENAI_COMPAT_BASE_URL='http://172.18.16.1:1234/v1',OPENAI_COMPAT_API='chat',OPENAI_COMPAT_API_KEY='local-only',BUZZ_AGENT_MODEL=row['model'])
  elif ident=='codex': env['OPENAI_API_KEY']=secrets['OPENAI_API_KEY']
- elif ident=='claude': env.update(ANTHROPIC_API_KEY=secrets['ANTHROPIC_API_KEY'],CLAUDE_CODE_SUBAGENT_MODEL='opus')
+ elif ident=='claude': env.update(ANTHROPIC_API_KEY=secrets['ANTHROPIC_API_KEY'],ANTHROPIC_MODEL=row['model'],CLAUDE_CODE_SUBAGENT_MODEL='opus')
  else: env['XAI_API_KEY']=secrets['XAI_API_KEY']
  envpath=CONFIG/(ident+'.env')
  # systemd quoted EnvironmentFile assignments; no shell evaluation.
@@ -76,7 +88,7 @@ Group={user}
 WorkingDirectory={workspace}
 EnvironmentFile={envpath}
 LoadCredential=instructions:{prompt}
-ExecStart=/opt/buzz-aegis/bin/buzz-acp --channels 9c8a20c4-9d1c-4ebe-8895-6745d38b4515,57ab7a2f-b925-4e7d-bfbd-471c305b8c57 --agent-command {command} --agent-args={args} --model {row['model']} --respond-to owner-signed --allowed-respond-to owner-signed --subscribe mentions --agents 1 --lazy-pool --heartbeat-interval 0 --session-policy thread --multiple-event-handling queue --max-turn-duration 1800 --system-prompt-file %d/instructions
+ExecStart=/opt/buzz-aegis/bin/buzz-acp --channels 9c8a20c4-9d1c-4ebe-8895-6745d38b4515,57ab7a2f-b925-4e7d-bfbd-471c305b8c57 --agent-command {command} --agent-args={args} --mcp-command /opt/buzz-aegis/bin/buzz-dev-mcp --model {row['model']} --respond-to owner-signed --allowed-respond-to owner-signed --subscribe mentions --agents 1 --lazy-pool --heartbeat-interval 0 --session-policy thread --multiple-event-handling queue --max-turn-duration 1800 --system-prompt-file %d/instructions
 Restart=on-failure
 RestartSec=15
 TimeoutStopSec=30
@@ -101,4 +113,6 @@ WantedBy=multi-user.target
 '''
  (P('/etc/systemd/system')/(user+'.service')).write_text(unit)
  print('installed',user,'model',row['model'],'not started')
+shutil.copy2(SOURCE/'repos/vintos/buzz-integration/50-buzz-aegis.rules', P('/etc/polkit-1/rules.d/50-buzz-aegis.rules'))
+os.chmod('/etc/polkit-1/rules.d/50-buzz-aegis.rules', 0o644)
 subprocess.run(['systemctl','daemon-reload'],check=True)

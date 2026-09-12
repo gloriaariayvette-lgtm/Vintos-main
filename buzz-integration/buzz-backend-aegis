@@ -1,0 +1,84 @@
+#!/usr/bin/python3
+"""Buzz provider v1 for the four explicitly installed Aegis service identities.
+
+This adapter starts a fixed unit; it never executes a supplied command, writes
+credentials, or sends a task. Unsupported configuration edits fail visibly.
+"""
+import hmac
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+REGISTRY = Path.home() / '.config/buzz/native-registration.json'
+LIMIT = 131072
+
+
+def dispatch(request, registry_path=REGISTRY, run=subprocess.run):
+    if request.get('op') == 'info':
+        return {'ok': True, 'name': 'Aegis', 'version': '1.0.0',
+                'protocol_version': 1,
+                'description': 'Four isolated build agents; direct owner approval per task.',
+                'config_schema': {'type': 'object', 'properties': {}, 'additionalProperties': False}}
+    if request.get('op') != 'deploy':
+        raise ValueError('Unsupported provider operation')
+    if request.get('provider_config') != {}:
+        raise ValueError('Aegis has no editable provider configuration')
+    agent = request.get('agent', {})
+    rows = json.loads(registry_path.read_text())
+    supplied = agent.get('private_key_nsec', '')
+    if not isinstance(supplied, str) or not supplied:
+        raise ValueError('Missing agent identity')
+    matches = [r for r in rows if hmac.compare_digest(supplied, r['private_key_nsec'])]
+    if len(matches) != 1:
+        raise ValueError('Identity is not one of the four installed Aegis agents')
+    row = matches[0]
+    if row['id'] not in ('codex', 'claude', 'grok', 'gemma'):
+        raise ValueError('Invalid installed identity')
+    for key in ('relay_url', 'auth_tag', 'model', 'provider', 'system_prompt'):
+        if agent.get(key) != row[key]:
+            raise ValueError('Aegis configuration differs from the installed ' + key + '; update the reviewed installation first')
+    if agent.get('respond_to') != 'owner-only' or agent.get('respond_to_allowlist', []):
+        raise ValueError('Aegis requires direct owner approval')
+    launch = agent.get('launch', {})
+    if launch.get('owner_pubkey') != row['owner_pubkey']:
+        raise ValueError('Agent owner mismatch')
+    if launch.get('command') != row['agent_command'] or launch.get('args', []) != row['agent_args']:
+        raise ValueError('Runtime differs from the installed Aegis runtime')
+    # The approved unit is the execution authority. Refuse launch overrides
+    # rather than silently discarding edits to an environment or parallelism.
+    expected_env = {'BUZZ_AGENT_MODEL': row['model'], 'BUZZ_AGENT_PROVIDER': row['provider']} if row['id'] == 'gemma' else {}
+    unexpected = sorted(k for values in (agent.get('env_vars', {}), launch.get('env', {}))
+                        for k, v in values.items() if k not in expected_env or expected_env[k] != v)
+    if unexpected:
+        raise ValueError('Aegis environment overrides are unsupported')
+    if agent.get('parallelism') != 1:
+        raise ValueError('Aegis runs one approved task per identity')
+    unit = 'buzz-' + row['id'] + '.service'
+    result = run(['systemctl', 'start', unit], capture_output=True, text=True, timeout=45)
+    if result.returncode:
+        raise ValueError('Could not start the installed Aegis unit; check service installation and local permission')
+    state = run(['systemctl', 'is-active', unit], capture_output=True, text=True, timeout=10)
+    if state.returncode or state.stdout.strip() != 'active':
+        raise ValueError('Aegis unit did not reach active state')
+    return {'ok': True, 'agent_id': unit}
+
+
+def main():
+    try:
+        raw = sys.stdin.buffer.read(LIMIT + 1)
+        if len(raw) > LIMIT:
+            raise ValueError('Provider request exceeds limit')
+        result = dispatch(json.loads(raw))
+    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        # Never echo requests, keys, subprocess output or credential values.
+        message = str(error) if type(error) is ValueError else 'Aegis provider operation failed'
+        print(json.dumps({'ok': False, 'error': message}))
+        print(message, file=sys.stderr)
+        return 0
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -1,0 +1,11 @@
+// Native Buzz may start only its four preinstalled, isolated units.
+// Stop remains Buzz's authenticated relay control; no arbitrary unit management.
+polkit.addRule(function(action, subject) {
+    var units = ["buzz-codex.service", "buzz-claude.service", "buzz-grok.service", "buzz-gemma.service"];
+    if (subject.user === "gloria" &&
+        action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("verb") === "start" &&
+        units.indexOf(action.lookup("unit")) !== -1) {
+        return polkit.Result.YES;
+    }
+});
