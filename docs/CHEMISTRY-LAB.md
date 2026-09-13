@@ -107,6 +107,14 @@ model call or Mac contact. When on, it:
 4. lets local Aegis Gemma leave Vintos's reading and next question;
 5. appends the session to the visible Lab notebook and session ledger.
 
+When conversation arrives mid-session the reading is preempted, and the experiment has
+already finished. That result is not lost and not re-run: the session records the debt in
+`reading-owed.json`, and the next admitted occasion — the next scheduled session, or the
+daemon's reflect phase — interprets the result that was preserved. It costs no bench time.
+The lens index does not move; the lens already had its turn, and the notebook records the
+later reading as a later reading. A debt that ages out is marked `expired_unread` and stays
+in the open list: retiring it would file "he never got to this" under "handled".
+
 There is no automatic fallback from one frontier lens to another inside a
 session: refusal or failure is kept as a held occasion, not silently rewritten.
 The next offered session advances to the next lens. The scheduled path cannot

@@ -256,6 +256,11 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   not yet emit an instrument name and a source hash in its reply, no Mac instrument will
   ever become available, and that is the correct outcome rather than a bug to work around.
 
+A held reading is no longer lost. `chemistry_reading.py` records the debt against the
+preserved result and pays it on the next admitted occasion, holding its own lock because
+the session's and the daemon's are different locks and neither serialises this. An expired
+debt stays visibly open rather than being retired as settled.
+
 Protein material reaches the collision detector only through a deterministic
 source-metadata-to-text adapter. Self-review embeds that text with its own Nomic
 encoder. Raw ESM vectors remain content-addressed Lab artifacts and are never

@@ -433,6 +433,16 @@ def tools_status():
     return tools
 
 
+def _reading_owed_state():
+    """What the bench has run for him and he has not read yet. Late import: the reading
+    ledger reads this module, and status must still answer when it is absent."""
+    try:
+        import chemistry_reading
+        return chemistry_reading.state()
+    except Exception:
+        return {"owed": 0, "expired_unread": 0, "retired": 0, "oldest_owed": None}
+
+
 def status():
     cfg = config(); state = _load(STATE, {}); session = _load(SESSION_STATE, {})
     return {"ok": True, "lab": "chemistry", "enabled": cfg["enabled"],
@@ -442,6 +452,7 @@ def status():
             "scheduled_session": {"last_at": session.get("last_at"),
                                   "last_state": session.get("last_state"),
                                   "last_session_id": session.get("last_session_id")},
+            "reading_owed": _reading_owed_state(),
             "paths": {"root": "memory/chemistry-lab", "atelier": False}, "tools": tools_status()}
 
 
@@ -490,6 +501,13 @@ def tick():
                         "collision_adapter_records": [r["adapter_id"] for r in adapted],
                         "truth_status": "model_derived_representation_not_biological_finding"}
             else:
+                # Before reflecting on a browse, pay anything the bench already owes him.
+                # This turn is already admitted, so it does not ask for the slot again.
+                try:
+                    import chemistry_reading
+                    chemistry_reading.settle_one(already_admitted=True)
+                except Exception as exc:
+                    _fault("settle_owed", exc)
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])
                 visible_records = [{k: v for k, v in r.items() if k != "sequence"} for r in records]
                 reflection = _reflect(context, inquiry,

@@ -24,6 +24,7 @@ import chemistry_grade as grading
 import chemistry_lab as lab
 import chemistry_mac as mac
 import chemistry_probe as probe
+import chemistry_reading as owed
 
 SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
@@ -156,6 +157,10 @@ def run():
     with _exclusive():
         started = time.time(); state = _state(); lens = LENSES[int(state.get("lens_index", 0)) % len(LENSES)]
         session_id = "CHEM-" + uuid.uuid4().hex[:12]
+        # An experiment already run and never read is owed a reading before another is
+        # started. It costs no bench time: the result is already preserved.
+        try: settled = owed.settle_one()
+        except Exception as exc: lab._fault("settle_owed", exc); settled = {"outcome": "REFUSED"}
         remote = mac.status()
         # The Mac's word about its own instruments is filed as a claim, never as a measurement.
         try: probe.record_host_report(remote)
@@ -163,6 +168,7 @@ def run():
         experiments = remote.get("experiments") if remote.get("ok") else None
         if not isinstance(experiments, list) or not experiments:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_mac_unavailable",
+                   "owed_reading": settled.get("outcome"),
                    "detail": str(remote.get("error", "no experiments offered"))[:300]}
             lab._append(SESSIONS, row); return row
         context, receipt = lab.lab_context()
@@ -187,6 +193,7 @@ def run():
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "completed",
                    "plan": plan, "mac_run_id": result.get("run_id"), "mac_result": result,
                    "grade": grade, "reading": reading, "context_receipt": receipt["context_sha256"],
+                   "owed_reading": settled.get("outcome"),
                    "instrument_states": {name: state.get("state") for name, state in instruments.items()},
                    "truth_status": "generated_lab_interpretation_not_biological_evidence",
                    "elapsed_ms": int((time.time() - started) * 1000)}
@@ -204,8 +211,14 @@ def run():
             lab._atomic(SESSION_STATE, state)
             return row
         except TimeoutError:
+            held = bool(result and result.get("ok"))
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens,
-                   "state": "experiment_completed_reading_held" if result and result.get("ok") else "yielded_to_house"}
+                   "state": "experiment_completed_reading_held" if held else "yielded_to_house"}
+            if held:
+                # The experiment finished and its result is preserved. Owe the reading
+                # rather than leaving it for nobody.
+                try: owed.owe(session_id, lens, plan, result, grade, receipt["context_sha256"])
+                except Exception as exc: lab._fault("owe_reading", exc, session_id=session_id)
         except Exception as exc:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_fault",
                    "error": exc.__class__.__name__, "detail": str(exc)[:300]}
