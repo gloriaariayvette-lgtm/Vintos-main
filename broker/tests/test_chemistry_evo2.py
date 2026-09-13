@@ -27,7 +27,8 @@ assert 'unload "$MODEL"' in watchdog and "unload --all" not in watchdog
 assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in watchdog
 assert 'EXPECTED_VARIANT="google/gemma-4-12b-qat@q4_0"' in loader
 assert '"$LMS" load "$MODEL_KEY"' in loader and 'quantization") or {}).get("name") == "Q4_0"' in loader
-assert '"$LMS" server start' in loader and '"$BASE/api/v1/models"' in loader
+assert '"$LMS" server start --bind "$SERVER_BIND" --port "$SERVER_PORT"' in loader
+assert '"$LMS" server stop' in loader and '"$BASE/api/v1/models"' in loader
 assert '--identifier "$IDENTIFIER"' in loader and '--no-speculative-draft-mtp' in loader
 
 sequence = "ACGT" * 128

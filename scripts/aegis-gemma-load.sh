@@ -4,6 +4,8 @@
 set -euo pipefail
 LMS="${VINTOS_LMS_CLI:-/mnt/c/Users/glori/.lmstudio/bin/lms.exe}"
 BASE="${VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234}"
+SERVER_BIND="${VINTOS_LM_STUDIO_BIND:-172.18.16.1}"
+SERVER_PORT="${VINTOS_LM_STUDIO_PORT:-1234}"
 MODEL_KEY="google/gemma-4-12b-qat"
 EXPECTED_VARIANT="google/gemma-4-12b-qat@q4_0"
 IDENTIFIER="google/gemma-4-12b-qat"
@@ -23,7 +25,10 @@ if not ok: raise SystemExit("refusing Gemma load: installed artifact is not the 
 ' "$MODEL_KEY" "$EXPECTED_VARIANT"
 
 if ! curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null; then
-  "$LMS" server start
+  # LM Studio defaults to Windows loopback, which WSL cannot reach. A listener
+  # can therefore be "ON" to Windows and still be absent to the house.
+  "$LMS" server stop >/dev/null 2>&1 || true
+  "$LMS" server start --bind "$SERVER_BIND" --port "$SERVER_PORT"
   for _attempt in 1 2 3 4 5 6; do
     sleep 2
     curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null && break
