@@ -37,4 +37,6 @@ assert session.run()["state"] == "off"
 assert mac.reading("RUN-1", "a basin")["ok"]
 source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 assert '"action": "code"' not in source and "atelier" not in source.lower()
-print("8/8 passed")
+unit = open(os.path.join(REPO, "broker", "vintos-chemistry-session.service")).read()
+assert "EnvironmentFile=-%h/.vintos/vintos.env" in unit
+print("9/9 passed")

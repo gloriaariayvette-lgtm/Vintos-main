@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.vintos/vintos.env
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/chemistry_session.py run
 NoNewPrivileges=true
 PrivateTmp=true
