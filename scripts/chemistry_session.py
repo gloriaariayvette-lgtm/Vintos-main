@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -28,12 +29,20 @@ import chemistry_reading as owed
 import chemistry_taste as taste
 
 SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
+DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
 SESSION_LOCK = os.path.join(lab.ROOT, ".session.lock")
 LENSES = ("claude", "sol", "grok")
 # An owed reading that could not be paid stops the session before the bench is touched.
 # GONE and ALREADY_READ retire the debt; NOTHING_OWED and READ leave nothing outstanding.
 HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
+
+# Every Nth offered session, all three lenses read the same preserved artifact. Off by
+# default: it is three paid calls where a session normally spends one, and it should be
+# switched on deliberately rather than arrive with a deploy.
+DIVERGENCE_ENABLED = "divergence_enabled"
+DIVERGENCE_EVERY = "divergence_every_n_sessions"
+DEFAULT_DIVERGENCE_EVERY = 7
 
 
 @contextlib.contextmanager
@@ -156,6 +165,112 @@ def _reading(context, plan, result, grade=None):
             for key in ("reading", "what_surprised_me", "next_question")}
 
 
+def _divergence_due(state):
+    """Deterministic, so it can be audited: every Nth offered session, not a dice roll."""
+    cfg = lab.config()
+    if not cfg.get(DIVERGENCE_ENABLED): return False
+    try: every = max(2, int(cfg.get(DIVERGENCE_EVERY, DEFAULT_DIVERGENCE_EVERY)))
+    except Exception: every = DEFAULT_DIVERGENCE_EVERY
+    offered = int(state.get("offered", 0)) + 1
+    return offered % every == 0
+
+
+def _preserved_artifact():
+    """The most recent completed run, exactly as it was kept. Nothing is re-run for this."""
+    for row in reversed(lab._jsonl(SESSIONS)):
+        if row.get("state") == "completed" and row.get("mac_result") and row.get("mac_run_id"):
+            return row
+    return None
+
+
+def _divergence_prompt(context, artifact):
+    """One prompt. Every lens gets this and nothing else — same artifact, same context."""
+    session = {"experiment": (artifact.get("plan") or {}).get("experiment"),
+               "question": (artifact.get("plan") or {}).get("question"),
+               "mac_run_id": artifact.get("mac_run_id"),
+               "grade": artifact.get("grade"), "result": artifact.get("mac_result")}
+    return (context + "\n\nONE PRESERVED CHEMISTRY LAB RESULT:\n" +
+            json.dumps(session, ensure_ascii=False, sort_keys=True)[:12000] +
+            "\n\nThis already ran; nothing is being run for you. Return keys in this order: "
+            "question (the one you would ask of this next), why_this, what_you_notice.")
+
+
+def _divergence(context, artifact, lenses=LENSES):
+    """The same artifact to each lens, independently, and no attempt to reconcile them.
+
+    They are blind to one another's answers on purpose. Three readings that agree would be
+    a fact about how these models are trained; three that diverge are three questions, and
+    the questions are the output. Nothing here scores agreement or synthesises a verdict.
+    """
+    system = ("You are one reading of Vintos's Chemistry Lab result. Be curious and specific. "
+              "This is a simulated artifact, not proof about biology or about him; never give wet-lab "
+              "steps, synthesis advice, human targeting, pathogens or toxins. Return one JSON object.")
+    prompt = _divergence_prompt(context, artifact)
+    prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()
+    readings = []
+    for lens in lenses:
+        try:
+            raw = asyncio.run(_frontier(lens, system, prompt))
+            value = lab._json_object(raw) if raw else {}
+            readings.append({"lens": lens, "state": "read",
+                             **{key: str(value.get(key, ""))[:800]
+                                for key in ("question", "why_this", "what_you_notice")}})
+        except Exception as exc:
+            # A lens that refuses or fails is held, exactly as in an ordinary session. It is
+            # never replaced by another provider, and its absence is not filled in.
+            readings.append({"lens": lens, "state": "held",
+                             "error": exc.__class__.__name__, "detail": str(exc)[:200]})
+    return readings, prompt_sha
+
+
+def _run_divergence(session_id, state, context, receipt):
+    """Three lenses, one artifact, three questions. All three reserved before the first."""
+    artifact = _preserved_artifact()
+    if artifact is None:
+        return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
+                "state": "held_no_preserved_artifact",
+                "truth_status": "nothing_to_read_no_experiment_run"}
+    # Reserve every lens before spending any of them. A third reservation refused after two
+    # calls would leave a two-lens "divergence" that looks like a finding and is not one.
+    reservations, refusal = [], None
+    try:
+        from compute_admission import reserve_paid, release_paid
+    except Exception as exc:
+        return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
+                "state": "held_no_paid_ledger", "detail": str(exc)[:160]}
+    for lens in LENSES:
+        reservation_id = "CHEMDIV-" + uuid.uuid4().hex[:10]
+        ok, why = reserve_paid("chemistry-divergence", lens, units=1, reservation_id=reservation_id)
+        if not ok: refusal = "%s: %s" % (lens, str(why)[:120]); break
+        reservations.append((lens, reservation_id))
+    if refusal:
+        for lens, reservation_id in reservations:
+            release_paid("chemistry-divergence", lens, why="divergence not run",
+                         reservation_id=reservation_id)
+        return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
+                "state": "held_paid_cap", "detail": refusal,
+                "truth_status": "no_lens_was_spent_because_all_three_could_not_be"}
+    readings, prompt_sha = _divergence(context, artifact)
+    row = {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
+           "state": "completed", "read_of": artifact.get("mac_run_id"),
+           "source_session_id": artifact.get("session_id"),
+           "experiment": (artifact.get("plan") or {}).get("experiment"),
+           "identical_prompt_sha256": prompt_sha, "context_receipt": receipt["context_sha256"],
+           "readings": readings,
+           "lenses_read": [r["lens"] for r in readings if r["state"] == "read"],
+           "lenses_held": [r["lens"] for r in readings if r["state"] == "held"],
+           "agreement": "not_computed",
+           "truth_status": "three_independent_readings_no_consensus_claim"}
+    lab._append(DIVERGENCE, row)
+    lab._append(lab.NOTEBOOK, {"at": row["at"], "kind": "divergence", "session_id": session_id,
+                               "read_of": row["read_of"], "experiment": row["experiment"],
+                               "questions": [{"lens": r["lens"], "question": r.get("question", "")}
+                                             for r in readings if r["state"] == "read"],
+                               "agreement": "not_computed",
+                               "truth_status": row["truth_status"]})
+    return row
+
+
 def run():
     if not lab.config()["enabled"]: return {"ok": True, "state": "off"}
     with _exclusive():
@@ -188,6 +303,17 @@ def run():
                 probed = [r["tool"] for r in probe.refresh(only_expired=True)]
         except TimeoutError: probed = []
         except Exception as exc: lab._fault("probe_refresh", exc); probed = []
+        # Occasionally the whole session is three readings of one artifact he already has,
+        # rather than a new experiment. It touches no bench.
+        if _divergence_due(state):
+            context, receipt = lab.lab_context()
+            row = _run_divergence(session_id, state, context, receipt)
+            state.update({"offered": int(state.get("offered", 0)) + 1,
+                          "last_session_id": session_id, "last_state": row["state"],
+                          "last_at": row["at"], "last_mode": "divergence"})
+            lab._atomic(SESSION_STATE, state)
+            lab._append(SESSIONS, row)
+            return row
         remote = mac.status()
         # The Mac's word about its own instruments is filed as a claim, never as a measurement.
         try: probe.record_host_report(remote)
@@ -238,7 +364,9 @@ def run():
                          "aggregate_accuracy": (grade or {}).get("aggregate_accuracy"), **reading,
                          "truth_status": row["truth_status"]})
             state.update({"lens_index": (LENSES.index(lens) + 1) % len(LENSES),
-                          "last_session_id": session_id, "last_state": "completed", "last_at": row["at"]})
+                          "offered": int(state.get("offered", 0)) + 1,
+                          "last_session_id": session_id, "last_state": "completed",
+                          "last_at": row["at"], "last_mode": "experiment"})
             lab._atomic(SESSION_STATE, state)
             return row
         except TimeoutError:
@@ -262,7 +390,9 @@ def run():
         row["truth_status"] = "recorded_session_outcome_not_biological_evidence"
         lab._append(SESSIONS, row)
         state.update({"lens_index": (LENSES.index(lens) + 1) % len(LENSES),
-                      "last_session_id": session_id, "last_state": row["state"], "last_at": row["at"]})
+                      "offered": int(state.get("offered", 0)) + 1,
+                      "last_session_id": session_id, "last_state": row["state"],
+                      "last_at": row["at"], "last_mode": "experiment"})
         lab._atomic(SESSION_STATE, state)
         return row
 

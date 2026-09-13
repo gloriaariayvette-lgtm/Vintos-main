@@ -200,7 +200,13 @@ def propose(capability, why, want_id, step_note="", scope=None, permissions=None
         "why": str(why or "")[:600],
         "origin": {"want_id": want_id, "want": str(want.get("want", ""))[:300],
                    "source": want.get("source", ""), "spark": spark,
-                   "step_note": str(step_note or "")[:300], "at": _now()},
+                   "step_note": str(step_note or "")[:300], "at": _now(),
+                   # Where the want carries the occasion it came from, the proposal keeps
+                   # it: a capability asked for out of one Lab run should name that run.
+                   # Bounded and stringified — a want cannot grow a proposal from here.
+                   **({"lab_provenance": {str(k)[:40]: (v if isinstance(v, (bool, int, float)) else str(v)[:200])
+                                          for k, v in list(want["lab_provenance"].items())[:16]}}
+                      if isinstance(want.get("lab_provenance"), dict) else {})},
         # what he asks for. Her grant may narrow any of it and may never widen it.
         "asked": {"scope": dict(scope or {}), "permissions": list(permissions or []),
                   "invocation": invocation if invocation in INVOCATION else DEFAULT_INVOCATION},

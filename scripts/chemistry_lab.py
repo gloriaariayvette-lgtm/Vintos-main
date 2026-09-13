@@ -62,6 +62,10 @@ DEFAULTS = {
     "max_records_per_browse": 4,
     "context_budget_chars": 3800,
     "allow_public_database_reads": True,
+    # Three lenses on one preserved artifact, every Nth offered session. Off until she
+    # turns it on: it spends three paid calls where a session normally spends one.
+    "divergence_enabled": False,
+    "divergence_every_n_sessions": 7,
 }
 PHASES = ("orient", "browse", "embed", "reflect")
 DENIED_QUERY = re.compile(

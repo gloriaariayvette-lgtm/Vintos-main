@@ -184,6 +184,24 @@ def from_lab():
             line = line.strip()
             if len(line) < 25 or line.startswith("#"):
                 continue
+            # A lab that keeps structured records can hand them over whole, with the
+            # occasion they came from attached. Scraping prose out of a JSONL loses the
+            # session, the run and the standing before the want exists — and a want that
+            # cannot name its occasion is not provenance. The prose path below is
+            # unchanged, for a lab that is a folder of notes.
+            if line.startswith("{"):
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                text = str(row.get("text") or "").strip()
+                if not isinstance(row, dict) or len(text) < 25:
+                    continue
+                item = {"text": text[:300], "ref": str(row.get("ref") or os.path.basename(path))}
+                if isinstance(row.get("provenance"), dict):
+                    item["provenance"] = row["provenance"]
+                out.append(item)
+                continue
             if line.startswith(("-", "*")) or re.match(r"^\d{4}-\d{2}-\d{2}", line):
                 out.append({"text": line.lstrip("-* ").strip()[:300], "ref": os.path.basename(path)})
     return out
@@ -231,6 +249,11 @@ def gather(now=None):
                 continue
             row = {"key": k, "source": source, "text": t[:300], "ref": str(item.get("ref", ""))[:200],
                    "seen": now.isoformat(), "state": "standing"}
+            # Where a reader knows the occasion, the spark keeps it. Bounded, because a
+            # spark row is a small thing and a source should not be able to grow it.
+            if isinstance(item.get("provenance"), dict):
+                row["provenance"] = {str(pk)[:40]: (pv if isinstance(pv, (bool, int, float)) else str(pv)[:200])
+                                     for pk, pv in list(item["provenance"].items())[:16]}
             rows.append(row); known.add(k); added.append(row)
     _save(rows)
     return added
@@ -334,7 +357,11 @@ def adopt(key, want_text, want_id=""):
             r["state"] = "taken"
             r["became"] = {"want": str(want_text)[:300], "want_id": want_id, "at": _now().isoformat()}
             _save(rows)
-            return {"source": r["source"], "want": r["became"]["want"], "want_id": want_id}, ""
+            # The provenance travels with the source, so the want door can keep it and the
+            # forge can later name the occasion the capability was asked for.
+            taken = {"source": r["source"], "want": r["became"]["want"], "want_id": want_id}
+            if isinstance(r.get("provenance"), dict): taken["provenance"] = r["provenance"]
+            return taken, ""
     return None, "no spark %r" % key
 
 

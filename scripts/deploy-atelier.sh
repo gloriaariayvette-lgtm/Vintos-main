@@ -101,6 +101,7 @@ SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good 
 SCRIPTS="$SCRIPTS chemistry_probe.py"   # Lab instrument receipts: installation is not availability, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from correctness, 2026-09-13
+SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10

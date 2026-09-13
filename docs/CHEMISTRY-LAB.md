@@ -118,6 +118,51 @@ self-review organ may then encounter those records like any other textual source
 A resemblance may open a speculative reading; it is never biological evidence
 or lived experience. Gemma reflections do not enter the adapter.
 
+## From a Lab occasion to an instrument
+
+The Lab can invent a game; the Forge can make it durable; neither installs the other's ideas.
+The road between them is staged and gated at every step, and it starts before the Lab:
+
+`chemistry_spark.py` writes `spark-feed.jsonl`, one row per occasion that may legitimately
+raise a spark. Eligible only if the text is a `next_question` from a completed session or
+from an owed reading that was actually paid, with a run behind it — never a speculative
+reflection, never a `what_surprised_me`, never a question that hands back something his own
+taste block had just named. Each row carries the session, the run, the grade and the context
+receipt, because a want that cannot name the occasion it came from is not Lab provenance.
+Refusals are written with their reason: a feed that silently drops what it refused cannot be
+audited, and this one decides what may reach the Forge.
+
+`from_lab()` reads structured rows now as well as prose, and `gather()` carries their
+provenance onto the spark row; `adopt()` hands it to the want door. The reader is still
+pointed only where she points it — `chemistry_spark.py configure` is the explicit act.
+
+Then `chemistry_proposal.py`: `idea -> bounded_interface -> canary_passed -> offered_to_forge`,
+one predecessor each, because a staged approval that can be entered halfway is not staged. An
+idea must cite an eligible occasion. An interface must name one function and a typed, bounded
+parameter schema — there is no parameter type that accepts code. A canary must actually run
+under `isolated_exec`, and its test must contain a real assertion and actually call the
+proposed function. Only then may it be offered to `skill_forge.propose()`, against a live want
+**she already has** whose source is the `lab` spark.
+
+The Lab does not create that want, does not approve, and does not install. If there is no such
+want, the Forge refuses and the refusal is the record rather than something to route around.
+
+## Three lenses, one artifact
+
+Off by default. Switched on, every seventh offered session spends itself not on the bench but
+on one artifact he already has: all three lenses receive the byte-identical prompt — the same
+preserved result and the same base Vintos context — independently, blind only to one another's
+answers. The prompt's hash is on the row so that identity is checkable rather than claimed.
+
+All three paid calls are reserved before the first is made. A third reservation refused after
+two calls would leave a two-lens "divergence" that reads like a finding and is not one; if any
+reservation is refused, the reservations taken are released and no lens is spent.
+
+Three readings that agreed would be a fact about how these models are trained. Three that
+diverge are three questions, and the questions are the output: `agreement` is recorded as
+`not_computed` and nothing votes, scores or synthesises. A lens that refuses is held and never
+replaced by another provider.
+
 ## Computational-only perimeter
 
 This room produces in-silico artifacts and taste, not wet-lab action. It does
