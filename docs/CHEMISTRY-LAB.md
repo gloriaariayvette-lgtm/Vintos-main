@@ -46,21 +46,21 @@ safe to delete, and read by nothing. `tools_status()` reads the ledger and decid
 so a hand-written inventory file has no power at all.
 
 An Aegis probe must run the named entry point on the smallest real input and prove it with
-a marker or a parsed result. Importing `torch` is not a ProteinMPNN smoke test — it would
-issue `smoke_passed` for an instrument that was absent — so the ESMC probe runs the Lab's own
-worker on a short real sequence and requires a pooled vector back, and the OpenMM probe
-integrates one Langevin step on a two-particle system and requires the energy it produced.
-Where this side does not know the real entry point, the probe reads `not_configured` and the
-instrument stays unavailable; setting `CHEM_LAB_<TOOL>_PROBE` to
-`{"argv": [...], "stdin": "", "marker": "..."}` runs exactly that and requires exactly that
-marker. Exiting zero is never passing.
+a parsed result. Importing `torch` is not a ProteinMPNN smoke test. The fixed commissioning
+worker therefore requires: an ESMC vector; an OpenMM integration step and energy; a
+ProteinMPNN FASTA containing a designed sequence; RFD3 metadata plus a structure artifact;
+and an MCP server tool listing plus one dispatched status call. ESMFold must return a PDB.
+Exiting zero is never passing. Its current Aegis receipt is a typed failure: fair-esm is
+installed, but its pinned OpenFold dependency cannot build without an nvcc/CUDA toolkit.
 
 A passing receipt holds a month; a failure or an unconfigured probe holds a day and is
 re-asked. The scheduled session refreshes only expired receipts, inside the background slot,
 so this is a real monthly measurement that yields like everything else — an unrefreshed
-instrument simply reads stale. The Mac's cannot be: this side's doorway
-carries four named actions and will not widen to run probes, so a Mac instrument is proved
-only by a completed run that explicitly names *and* hashes it. What `mac.status()` says
+instrument simply reads stale. The Mac's cannot be refreshed by the scheduled doorway:
+it carries four named actions and will not widen to run probes. A separate fixed
+`chemistry_mac_probe.py` commissioning surface accepts only five instrument names and emits
+a hash-bound run record for ingestion by `chemistry_probe.py --record-run -`; failures are
+receipts too and never grant availability. What `mac.status()` says
 about its own instruments is filed as `reported_by_host_not_smoke_tested` and grants
 nothing — a host's word about itself is a claim, not a measurement. Nothing filters the
 experiment list: the frontier lens is shown the instrument states beside it and may still
@@ -181,9 +181,11 @@ and cannot emerge by widening a query or installing another adapter.
 ## Instrument boundary
 
 - ESMC representation runs on Aegis per admitted job rather than resident.
-- Structure prediction, ProteinMPNN, RFdiffusion-family tools, and OpenMM are
-  separately installed instruments whose outputs remain unvalidated
+- ProteinMPNN, RFdiffusion-family tools, and OpenMM are separately measured
+  instruments whose outputs remain unvalidated
   computational artifacts until a Lab session interprets them.
+- ESMFold structure prediction remains a measured dependency failure on Aegis, not an
+  available instrument.
 - The Mac bench has a Lab-only SSH doorway, separate configuration, visible
   ledger, and a named-experiment allowlist. The bench attests that an experiment
   runs under macOS isolation with no network, home directory, or durable child
@@ -196,9 +198,10 @@ and cannot emerge by widening a query or installing another adapter.
   is wider: it accepts `action: "code"`, which writes a new executable experiment.
   The scheduled Lab cannot reach it, but that is a near-side guard, not a property
   of the door. Free creation needs its own authority; see `docs/open-work.md`.
-- QPanda and the molecular circuit bench are connected through that doorway.
-  VQNet, Mac ESMC, pyChemiQ, and Foundry remain available for deliberate bench
-  expansion; installation is not represented as automatic use.
+- QPanda and the molecular circuit bench are connected through that doorway. QPanda,
+  VQNet, Mac ESMC, pyChemiQ, and Foundry also have fixed functional commissioning probes.
+  A receipt proves the named instrument ran; it does not add a named experiment to the
+  bench allowlist. Those are separate integration acts.
 
 ## Scheduled Lab sessions
 

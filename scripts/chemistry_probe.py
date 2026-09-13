@@ -59,6 +59,7 @@ PROBE_VERSION = "chemistry_probe/1"
 DEFAULT_TTL_DAYS = 30
 PROBE_TIMEOUT = 180
 VERSION_RE = re.compile(r"\b\d+(?:\.\d+){1,3}(?:[a-z0-9.+-]{0,12})?\b")
+INSTRUMENT_WORKER = os.path.join(HERE, "chemistry_instrument_probe.py")
 
 # Outcomes that make an instrument available, and only until the receipt expires.
 PROVING = ("smoke_passed", "proved_by_run")
@@ -100,6 +101,30 @@ def _esmc_verify(stdout):
             "device": str(value.get("device"))[:16]}
 
 
+class ProbeResultError(ValueError):
+    def __init__(self, failure, evidence=None):
+        super().__init__(str((failure or {}).get("type") or "probe_failed"))
+        self.failure = failure or {"type": "probe_failed"}
+        self.evidence = evidence or {}
+
+
+def _instrument_verify(stdout):
+    """Read only the controlled worker's bounded JSON, never arbitrary command output."""
+    value = json.loads((stdout or "").strip().splitlines()[-1])
+    entry = str(value.get("entry_point") or "")[:180]
+    if not value.get("ok"):
+        raw = value.get("failure") if isinstance(value.get("failure"), dict) else {}
+        failure = {"type": str(raw.get("type") or "probe_failed")[:60]}
+        for key in ("error", "traceback_sha256"):
+            if raw.get(key): failure[key] = str(raw[key])[:300]
+        raise ProbeResultError(failure, {"entry_point": entry})
+    output = value.get("output") if isinstance(value.get("output"), dict) else {}
+    safe_output = {str(k)[:40]: v for k, v in output.items()
+                   if isinstance(v, (str, int, float, bool)) or v is None}
+    return {"entry_point": entry, "verification": str(value.get("verification") or "")[:180],
+            "output": safe_output}
+
+
 # Thirty-three residues of a real, ordinary, non-pathogenic sequence: enough to make the
 # model actually run, small enough to cost nothing.
 PROBE_SEQUENCE = "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ"
@@ -122,11 +147,20 @@ AEGIS_PROBES = {
                         " c.getState(getEnergy=True).getPotentialEnergy().value_in_unit(u.kilojoule_per_mole))"],
                "marker": "stepped_energy", "timeout": 240,
                "entry": "one Langevin step on a two-particle harmonic system"},
-    # No entry point is known on this side for these. Saying so is the measurement.
-    "protein_mpnn": {"env": "CHEM_LAB_MPNN_PROBE", "entry": "a ProteinMPNN design on one tiny backbone"},
-    "structure_prediction": {"env": "CHEM_LAB_STRUCTURE_PROBE", "entry": "a fold of one short sequence"},
-    "rfdiffusion": {"env": "CHEM_LAB_RFDIFFUSION_PROBE", "entry": "one minimal diffusion run"},
-    "protein_design_mcp": {"env": "CHEM_LAB_MCP_PROBE", "entry": "one tool call answered by the server"},
+    "protein_mpnn": {"argv": [sys.executable, INSTRUMENT_WORKER, "protein_mpnn"],
+                     "verify": _instrument_verify, "timeout": 600,
+                     "entry": "a ProteinMPNN design on one fixed backbone"},
+    "structure_prediction": {"argv": [_venv("mcp", "CHEM_LAB_MCP_PYTHON"),
+                                       INSTRUMENT_WORKER, "structure_prediction"],
+                             "verify": _instrument_verify, "timeout": 900,
+                             "entry": "an ESMFold prediction of one short sequence"},
+    "rfdiffusion": {"argv": [sys.executable, INSTRUMENT_WORKER, "rfdiffusion"],
+                    "verify": _instrument_verify, "timeout": 900,
+                    "entry": "one 10-residue two-step RFD3 diffusion run"},
+    "protein_design_mcp": {"argv": [_venv("mcp", "CHEM_LAB_MCP_PYTHON"),
+                                     INSTRUMENT_WORKER, "protein_design_mcp"],
+                           "verify": _instrument_verify, "timeout": 300,
+                           "entry": "one tool dispatch answered by the MCP server"},
 }
 
 
@@ -228,6 +262,13 @@ def probe_aegis(name):
     blob = (done.stdout or "") + (done.stderr or "")
     digest = hashlib.sha256(blob.encode("utf-8", "replace")).hexdigest()
     if done.returncode != 0:
+        if spec.get("verify"):
+            try: spec["verify"](done.stdout)
+            except ProbeResultError as exc:
+                return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
+                                evidence={"exercised": entry, **exc.evidence},
+                                failure=exc.failure, source=argv[0][:120])
+            except Exception: pass
         return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
                         evidence={"exercised": entry},
                         failure={"type": "nonzero_exit", "exit_code": int(done.returncode)},
@@ -236,6 +277,10 @@ def probe_aegis(name):
     evidence = {"exercised": entry, "output_bytes": len(blob)}
     if spec.get("verify"):
         try: evidence.update(spec["verify"](done.stdout))
+        except ProbeResultError as exc:
+            return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
+                            evidence={"exercised": entry, **exc.evidence}, failure=exc.failure,
+                            source=argv[0][:120])
         except Exception as exc:
             return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
                             evidence={"exercised": entry},
@@ -304,20 +349,37 @@ def _run_hash(reply):
 
 def record_run_attestation(run_id, reply):
     """A completed Mac run proves only the instruments it names *and* hashes."""
-    if not isinstance(reply, dict) or not reply.get("ok"): return []
+    if not isinstance(reply, dict): return []
     digest = _run_hash(reply)
     rows, seen = [], set()
     for raw in _instruments_named(reply):
         tool = MAC_INSTRUMENTS.get(raw.strip().lower())
         if not tool or tool in seen: continue
         seen.add(tool)
+        detail = reply.get("receipt") if isinstance(reply.get("receipt"), dict) else reply
         if not digest:
             rows.append(_receipt(tool, "mac", "named_by_run_without_hash",
                                  evidence={"named_as": raw[:40], "run_id": str(run_id)[:64]},
                                  failure={"type": "no_source_hash_in_run"}, source="mac_run"))
             continue
+        if not reply.get("ok"):
+            raw_failure = detail.get("failure") if isinstance(detail.get("failure"), dict) else {}
+            failure = {"type": str(raw_failure.get("type") or "mac_run_failed")[:60]}
+            for key in ("error", "traceback_sha256"):
+                if raw_failure.get(key): failure[key] = str(raw_failure[key])[:300]
+            rows.append(_receipt(tool, "mac", "smoke_failed", evidence_sha256=digest,
+                                 evidence={"named_as": raw[:40], "run_id": str(run_id)[:64]},
+                                 failure=failure, source="mac_run"))
+            continue
+        evidence = {"named_as": raw[:40], "run_id": str(run_id)[:64]}
+        for key in ("entry_point", "verification", "version", "device"):
+            if isinstance(detail.get(key), (str, int, float, bool)):
+                evidence[key] = str(detail[key])[:180]
+        output = detail.get("output") if isinstance(detail.get("output"), dict) else {}
+        evidence["output"] = {str(k)[:40]: v for k, v in output.items()
+                              if isinstance(v, (str, int, float, bool)) or v is None}
         rows.append(_receipt(tool, "mac", "proved_by_run", evidence_sha256=digest,
-                             evidence={"named_as": raw[:40], "run_id": str(run_id)[:64]},
+                             evidence=evidence,
                              source="mac_run"))
     return rows
 
@@ -368,6 +430,14 @@ if __name__ == "__main__":
             print("%-22s %-10s %s" % (row["tool"], row["outcome"], row.get("failure") or row.get("evidence")))
     elif "--view" in sys.argv:
         print(json.dumps(write_view(), indent=2, sort_keys=True))
+    elif "--record-run" in sys.argv:
+        source = sys.stdin if sys.argv[-1] == "-" else open(sys.argv[-1], encoding="utf-8")
+        try: reply = json.load(source)
+        finally:
+            if source is not sys.stdin: source.close()
+        rows = record_run_attestation(reply.get("run_id"), reply)
+        write_view()
+        print(json.dumps({"recorded": len(rows), "outcomes": [r["outcome"] for r in rows]}))
     else:
         for name, state in sorted(lab.tools_status().items()):
             print("%-22s %-6s %-34s %s" % (name, "yes" if state["available"] else "no",

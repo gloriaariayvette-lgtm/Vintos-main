@@ -30,7 +30,7 @@ def check(name, ok, detail=""):
 check("test is in a scratch workspace",
       lab.WS == WS and HOME in lab.ROOT and HOME in P.PROBES and not lab.ROOT.startswith("/home/gloria"), P.PROBES)
 check("no probe interpreter outside the scratch tree",
-      all(HOME in spec["argv"][0] or "/.vintos/" in spec["argv"][0]
+      all(HOME in spec["argv"][0] or spec["argv"][0] == sys.executable
           for spec in P.AEGIS_PROBES.values() if spec.get("argv")),
       [s["argv"][0] for s in P.AEGIS_PROBES.values() if s.get("argv")])
 
@@ -66,27 +66,27 @@ check("the OpenMM probe integrates a step rather than importing the package",
       "i.step(1)" in " ".join(P.AEGIS_PROBES["openmm"]["argv"])
       and P.AEGIS_PROBES["openmm"]["marker"] == "stepped_energy")
 for name in ("protein_mpnn", "structure_prediction", "rfdiffusion", "protein_design_mcp"):
-    receipt = P.probe_aegis(name)
-    check("an instrument with no known entry point reads not_configured: " + name,
-          receipt["outcome"] == "not_configured" and receipt["failure"]["type"] == "no_entry_point_known"
-          and lab.tools_status()[name]["available"] is False, receipt)
+    spec = P.AEGIS_PROBES[name]
+    check("installed instruments have a fixed commissioning probe: " + name,
+          spec.get("argv") and spec.get("verify") is P._instrument_verify
+          and spec["argv"][1] == P.INSTRUMENT_WORKER, spec)
 check("not_configured is not a proving outcome", "not_configured" not in P.PROVING)
 
-# Her override runs exactly what she names, and must still show the entry point ran.
-os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps(
-    {"argv": [sys.executable, "-c", "print('designed 1 sequence')"], "marker": "designed"})
+# The fixed worker must return controlled JSON, and its declared success must still be usable.
+P.AEGIS_PROBES["protein_mpnn"] = {"argv": [sys.executable, "-c",
+    "import json;print(json.dumps({'ok':True,'entry_point':'fixed','verification':'designed one','output':{'records':2}}))"],
+    "verify": P._instrument_verify, "entry": "fake fixed worker"}
 ok = P.probe_aegis("protein_mpnn")
-check("a configured probe that shows its marker passes",
-      ok["outcome"] == "smoke_passed" and lab.tools_status()["protein_mpnn"]["available"] is True, ok)
-os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps(
-    {"argv": [sys.executable, "-c", "print('nothing happened')"], "marker": "designed"})
+check("a fixed worker that proves a real result passes",
+      ok["outcome"] == "smoke_passed" and ok["evidence"]["output"]["records"] == 2
+      and lab.tools_status()["protein_mpnn"]["available"] is True, ok)
+P.AEGIS_PROBES["protein_mpnn"] = {"argv": [sys.executable, "-c",
+    "import json;print(json.dumps({'ok':False,'entry_point':'fixed','failure':{'type':'artifact_absent','error':'no FASTA','traceback_sha256':'a'*64}}))"],
+    "verify": P._instrument_verify, "entry": "fake fixed worker"}
 silent = P.probe_aegis("protein_mpnn")
-check("exiting zero without the marker is not passing",
-      silent["outcome"] == "smoke_failed" and silent["failure"]["type"] == "marker_absent", silent)
-os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps({"argv": [sys.executable, "-c", "print('x')"]})
-check("a probe specification with no marker is refused",
-      P.probe_aegis("protein_mpnn")["failure"]["type"] == "probe_specification_invalid")
-os.environ.pop("CHEM_LAB_MPNN_PROBE")
+check("a typed worker failure never becomes availability",
+      silent["outcome"] == "smoke_failed" and silent["failure"]["type"] == "artifact_absent"
+      and silent["failure"]["error"] == "no FASTA", silent)
 check("a verify that cannot read the result is a failure, not a pass",
       P.probe_aegis("esmc")["outcome"] in ("not_installed", "smoke_failed"), P.probe_aegis("esmc"))
 
@@ -152,6 +152,12 @@ P.record_run_attestation("RUN-9", {"ok": True, "run": {"instrument": "qpanda",
 check("a run that names and hashes its instrument proves it",
       lab.tools_status()["qpanda"]["available"] is True
       and lab.tools_status()["qpanda"]["receipt_outcome"] == "proved_by_run", lab.tools_status()["qpanda"])
+rich = P.record_run_attestation("RUN-9B", {"ok": True, "instrument": "vqnet",
+    "source_sha256": "e" * 64, "receipt": {"entry_point": "QTensor arithmetic",
+    "verification": "functional run completed", "device": "mac", "output": {"result": "[2,5,10]"}}})
+check("a Mac commissioning receipt keeps its bounded call and result",
+      rich[0]["evidence"]["entry_point"] == "QTensor arithmetic"
+      and rich[0]["evidence"]["output"]["result"] == "[2,5,10]", rich)
 P.record_run_attestation("RUN-10", {"ok": True, "run": {"instrument": "vqnet"}})
 check("a run that names an instrument without a hash proves nothing",
       lab.tools_status()["vqnet"]["available"] is False
@@ -160,6 +166,13 @@ P.record_run_attestation("RUN-11", {"ok": True, "run": {"instrument": "wormhole_
 check("a run cannot invent an instrument slot", "wormhole_drive" not in lab.tools_status())
 P.record_run_attestation("RUN-12", {"ok": False, "run": {"instrument": "foundry", "source_sha256": "c" * 64}})
 check("a failed run proves nothing", lab.tools_status()["foundry"]["available"] is False)
+failed_mac = P.record_run_attestation("RUN-13", {"ok": False, "instrument": "foundry",
+    "source_sha256": "f" * 64, "receipt": {"failure": {"type": "RuntimeError",
+    "error": "child exit 2", "traceback_sha256": "d" * 64}}})
+check("a failed Mac commissioning run leaves a typed receipt",
+      failed_mac[0]["outcome"] == "smoke_failed"
+      and failed_mac[0]["failure"]["type"] == "RuntimeError"
+      and lab.tools_status()["foundry"]["available"] is False, failed_mac)
 
 # --- the ledger is append-only ---------------------------------------------------------------
 rows = lab._jsonl(P.PROBES)

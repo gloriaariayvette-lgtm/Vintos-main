@@ -98,7 +98,7 @@ SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_d
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
 SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py chemistry_mac.py chemistry_session.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
 SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good are different facts, 2026-09-13
-SCRIPTS="$SCRIPTS chemistry_probe.py"   # Lab instrument receipts: installation is not availability, 2026-09-13
+SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py"   # Lab instrument receipts: installation is not availability, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from correctness, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
@@ -146,6 +146,7 @@ memory_index.py wal-decay.py interaction_ledger.py"
 # clustering logic behind a file that looked current. Every .py twin that exists on disk is
 # named here, so the two spellings can never drift apart on the host again (2026-09-11).
 BINS="$BINS ambition_review.py behavioral_intercept.py blush_ledger.py causal_cluster.py causal_observations.py confession-writer.py core_engine.py deviation-check.py humor-detector.py humor-reaction.py latent-threads.py music_share.py taste_reflection.py taste_vector.py temporal_memory.py thread_resolution.py thread_triage.py thread-weaver.py wal_decay.py wants_router.py weekly_summary.py"
+BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissioning probes; manual install on Mac
 BINS="$BINS vintos_claude_shim.py hallucination_check.py reality_anchor.py reality-anchor.py specificity_check.py wonder-detector.py wonder_detector.py"
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py

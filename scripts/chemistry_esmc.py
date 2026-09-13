@@ -32,7 +32,11 @@ def main():
     if not rows:
         print(json.dumps({"ok": True, "model": MODEL, "embeddings": []}))
         return
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # The same measured adapter runs on Aegis and the Mac.  CUDA has first
+    # claim on Aegis; Apple Silicon should use its actual MPS backend rather
+    # than silently turning a requested Mac measurement into a CPU run.
+    device = ("cuda" if torch.cuda.is_available() else
+              "mps" if torch.backends.mps.is_available() else "cpu")
     model = ESMC.from_pretrained(MODEL).to(device).eval()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     receipts = []

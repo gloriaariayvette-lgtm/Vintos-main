@@ -248,17 +248,19 @@ an append-only `tool-probes.jsonl`; `tool-inventory.json` is a materialized view
 nothing reads. VQNet, Mac ESMC, pyChemiQ and Foundry each have a slot and each reads
 unavailable-with-a-reason until a receipt exists. Two limits are worth writing down:
 
-- ProteinMPNN, structure prediction, RFdiffusion and the protein-design MCP have **no real
-  probe**. This side does not know their entry points, so each reads `not_configured` and
-  stays unavailable — deliberately, after a first version that "smoke tested" three of them
-  by importing `torch` and the fourth by printing the Python version, any of which would
-  have passed for a broken or absent instrument. Setting `CHEM_LAB_MPNN_PROBE`,
-  `CHEM_LAB_STRUCTURE_PROBE`, `CHEM_LAB_RFDIFFUSION_PROBE` or `CHEM_LAB_MCP_PROBE` to
-  `{"argv": [...], "stdin": "", "marker": "..."}` wires each to its real entry point with no
-  code change. Until then four of the ten instruments are honestly unmeasured.
-- A Mac instrument can only be proved by a run that names and hashes it. If the bench does
-  not yet emit an instrument name and a source hash in its reply, no Mac instrument will
-  ever become available, and that is the correct outcome rather than a bug to work around.
+- The previously unconfigured Aegis instruments now have fixed real probes. ProteinMPNN
+  must produce a designed FASTA, RFD3 must produce JSON and CIF artifacts, and the protein
+  design MCP must list tools and dispatch one call. ESMFold is a measured failure:
+  fair-esm reaches its OpenFold import, while the pinned OpenFold build requires nvcc and
+  Aegis currently has CUDA PyTorch but no CUDA compiler. It remains unavailable.
+- Mac instruments have a versioned fixed commissioning surface. It does not widen the
+  scheduled bench doorway: its output is manually ingested as a hash-bound run receipt.
+  A measured receipt proves only that instrument and entry point; VQNet, Mac ESMC,
+  pyChemiQ, and Foundry still need explicit named-experiment routes before the autonomous
+  session can select them.
+- The protein-design MCP server is functionally callable but not house-connected. Its
+  receipt names the remaining boundary: register its stdio server with a bounded Lab
+  orchestrator. Until that exists the daemon does not pretend it can dispatch MCP work.
 
 The Lab has a route to the Forge now, and one step of it is hers to take. `chemistry_spark.py`
 writes the eligible, attributed feed; `from_lab()` reads structured rows; `gather()` and
