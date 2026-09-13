@@ -180,6 +180,20 @@ def lab_context():
         parts.append("[RECENT LAB NOTEBOOK]\n" + text); used += len(text)
         sources.append({"name": "lab_notebook", "path": "memory/chemistry-lab/notebook.jsonl",
                         "chars": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()})
+    # His taste, and a stamped record of having shown it to him: a thing named in the block
+    # cannot then be reinforced by the choice it prompted.  Late import for the same reason
+    # as the grades below.
+    if used < budget:
+        try:
+            import chemistry_taste
+            taste = chemistry_taste.taste_block()
+        except Exception:
+            taste = ""
+        if taste:
+            taste = taste[:budget - used]
+            parts.append(taste); used += len(taste)
+            sources.append({"name": "scientific_taste", "path": "memory/chemistry-lab/taste.json",
+                            "chars": len(taste), "sha256": hashlib.sha256(taste.encode()).hexdigest()})
     # What the grader concluded about recent runs, so the next question is asked by someone
     # who knows which of them were actually any good.  Late import: chemistry_grade reads
     # this module, and the Lab must still load when the grader is absent.

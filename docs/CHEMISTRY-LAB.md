@@ -53,6 +53,26 @@ nothing — a host's word about itself is a claim, not a measurement. Nothing fi
 experiment list: the frontier lens is shown the instrument states beside it and may still
 choose. Silencing the Lab is not the remedy for having overstated it.
 
+## Taste, and what it may not be made of
+
+Correctness has its own ledger. Taste is the other one: the folds he returns to, the
+molecules he finds elegant, the parameters he keeps moving, the surprises he writes about.
+`chemistry_taste.py` reads no grade and cannot — a wrong answer he keeps returning to is
+still taste, and a right answer he never revisits is not.
+
+A Lab like this can manufacture its own preferences, so three loops are closed. A generated
+`what_surprised_me` makes a *candidate*, never score, and becomes taste only when an
+independent choice arrives for the same thing. A key named in the taste block that preceded
+a choice cannot be reinforced by that choice — it is recorded as `echo_of_injected_taste`;
+since scores decay, a favourite falls out of the block, becomes eligible again, and can be
+re-earned, so the cycle limits itself rather than freezing. A repeat must name the eligible
+observation it repeats, and following a prior `next_question` counts only when the later
+session actually names its predecessor.
+
+Nothing is discarded: every observation lands in `taste-observations.jsonl` with its
+eligibility, the refused ones included. A ledger that silently drops what it refused cannot
+be audited for what it refused.
+
 ## Evidence and collision law
 
 An ESM protein vector and a nomic text vector do not inhabit a shared coordinate

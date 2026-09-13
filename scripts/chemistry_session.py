@@ -25,6 +25,7 @@ import chemistry_lab as lab
 import chemistry_mac as mac
 import chemistry_probe as probe
 import chemistry_reading as owed
+import chemistry_taste as taste
 
 SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
@@ -200,6 +201,9 @@ def run():
             if result.get("run_id"):
                 mac.reading(result["run_id"], reading.get("reading", ""))
             lab._append(SESSIONS, row)
+            # Taste accrues from what he chose, never from how the run scored.
+            try: taste.observe_session(row)
+            except Exception as exc: lab._fault("taste", exc, session_id=session_id)
             lab._append(lab.NOTEBOOK, {"at": row["at"], "kind": "frontier_session",
                          "session_id": session_id, "lens": lens, "experiment": plan["experiment"],
                          "question": plan["question"],
