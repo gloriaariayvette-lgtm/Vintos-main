@@ -147,3 +147,5 @@ fi
 
 # A mechanical Lab receipt, never a verdict: events and shadow assignments only.
 python3 /home/gloria/.vintos/workspace/scripts/lab_daily_digest.py 2>/dev/null || true
+# A separate mechanical Chemistry Lab receipt: what ran, how it graded, and what reading is owed.
+python3 /home/gloria/.vintos/workspace/scripts/chemistry_digest.py 2>/dev/null || true

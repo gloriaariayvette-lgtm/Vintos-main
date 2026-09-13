@@ -306,17 +306,19 @@ carries their provenance; and `origin` keeping it at the Forge. The Lab still do
 the want — that stays his act through the ordinary door, and hers to approve.
 
 The Lab has a visible body now: a `LAB` pane over five bounded, secret-guarded read
-endpoints, showing instrument state and scientific grade as two separate marks. One thing
-it exposed is not new and is not fixed here:
+endpoints, showing instrument state and scientific grade as two separate marks. The actual
+Capacitor client in `vintos-app/vintos-app/src/index.html` now carries its own TUNE control,
+live cadence/outcome line, and LAB pane over the same bounded endpoints. The two clients are
+not byte mirrors: their surrounding surfaces have diverged, so Chemistry was ported into the
+app's own fetch/host/API idiom rather than replacing that file from this repository.
 
-- **The `vintos-app` mirror of `clients/mobile/index.html` is far behind.** It predates the
-  Chemistry Lab entirely — no toggle, no pane. `test_completion_evidence.py` asserts byte
-  equality with `../vintos-app/vintos-app/src/index.html` *when that checkout is present*,
-  and that assertion already failed before this work; it passes on Aegis only because no
-  sibling checkout exists there. `clients/mobile/source.json` now says plainly that the
-  client is edited in this repository and that its `commit` field records where the mirror
-  was last taken from, not what the file currently contains. Re-syncing the app repo is a
-  separate reconciliation and has not been done.
+The ambient loop now waits up to 300 seconds for the background compute slot and polls every
+120 seconds by default. `status()` exposes both values plus the completed-turn count and last
+turn receipt; a busy house yields the turn rather than making a two-second refusal look like
+the Lab was idle. First light appends a separately marked, idempotent Chemistry receipt to
+daily inner life after the Admission Lab digest. It mechanically counts notebook kinds,
+records execution and grade as separate fields, names owed/settled readings, and carries the
+latest next question; it makes no scientific or personal inference.
 
 A held reading is no longer lost. `chemistry_reading.py` records the debt against the
 preserved result and pays it on the next admitted occasion, holding its own lock because
