@@ -9,7 +9,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 GEOMETRY_FILE = os.path.join(MEMORY, "relational-geometry.json")
-LM_STUDIO = "http://172.18.16.1:1234/v1/chat/completions"
+LM_STUDIO = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
 
 MAX_REGIONS = 24
 FAMILIARITY_DECAY = 0.95

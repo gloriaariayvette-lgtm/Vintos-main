@@ -236,6 +236,11 @@ proves only this bounded operation, not supported 1M-context inference. The peri
 turn runs once per 120 protein cycles under the same exclusive/recovery discipline. Goodfire
 feature extraction, arbitrary genomic browsing and Evo Designer are not built.
 
+Gemma restoration no longer depends on whichever local variant LM Studio happens to resolve.
+The Evo lane and watchdog share one reload door pinned to `Q4_0`; Aegis text inference is
+separately pinned to thinking-off at the native request boundary. This does not alter the
+Nomic embedding residency or route embedding work through the text shim.
+
 The Lab can now tell *it ran* from *it was good*. `chemistry_grade.py` computes the verdict
 on Aegis from the bench's numbers and writes `memory/chemistry-lab/experiment-grades.jsonl`;
 the first graded H2 run is recorded as operational and worse than Hartree-Fock rather than

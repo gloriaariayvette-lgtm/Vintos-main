@@ -105,6 +105,7 @@ SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions th
 SCRIPTS="$SCRIPTS chemistry_digest.py"   # daily Chemistry Lab receipt in inner life, separate from the Admission Lab, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_evo2.py"   # read-only Evo 2 comparative likelihood lane, 2026-09-13
+SCRIPTS="$SCRIPTS aegis-gemma-load.sh"   # exact Q4_0 Aegis Gemma reload contract
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
@@ -153,7 +154,7 @@ BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissionin
 BINS="$BINS vintos_claude_shim.py hallucination_check.py reality_anchor.py reality-anchor.py specificity_check.py wonder-detector.py wonder_detector.py"
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 BINS="$BINS gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
-EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py
+EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
 
 # Every file this deploy touches, relative to the checkout (the manifest above

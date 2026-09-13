@@ -23,7 +23,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 WONDER_LOG = os.path.join(MEMORY, "wonder-log.json")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
-LM_API = "http://172.18.16.1:1234/v1/chat/completions"  # gemma model -> local endpoint, not x.ai
+LM_API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"  # Aegis Gemma through the thinking-off shim
 MODEL = "google/gemma-4-12b-qat"
 
 def log(msg):

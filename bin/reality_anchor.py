@@ -11,7 +11,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 ANCHOR_FILE = os.path.join(MEMORY, "reality-anchor.json")
 MAX_EVENTS = 500
-LM = "http://172.18.16.1:1234/v1/chat/completions"
+LM = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
 
 SOURCE_WEIGHTS = {
     "chat": 1.0,           # direct interaction — highest trust

@@ -1,6 +1,7 @@
 #!/bin/bash
 # gemma-watchdog.sh — reload a genuinely-down Gemma without ever stacking instances.
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
+LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
 MODEL="google/gemma-4-12b-qat"
 # Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
@@ -26,7 +27,7 @@ fi
 
 "$LMS" unload "$MODEL" >> "$LOG" 2>&1
 sleep 3
-"$LMS" load "$MODEL" --gpu max -c 32000 --parallel 1 >> "$LOG" 2>&1
+"$LOADER" >> "$LOG" 2>&1
 sleep 3
 RESP2=$(curl -s --max-time 90 -X POST "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$PING" 2>/dev/null)
 if echo "$RESP2" | grep -q '"choices"'; then

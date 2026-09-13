@@ -76,6 +76,10 @@ XAI_OK = lambda body, h: {"id": "cc_9", "model": "grok-4", "choices": [{"index":
                                                                     "finish_reason": "stop"}], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}}
 ANTH_ERR = lambda body, h: urllib.error.HTTPError("u", 529, "overloaded", {}, __import__("io").BytesIO(b'{"error":{"message":"Overloaded"}}'))
 XAI_DOWN = lambda body, h: urllib.error.URLError(ConnectionRefusedError("refused"))
+AEGIS_OK = lambda body, h: {"model_instance_id": "google/gemma-4-12b-qat", "response_id": "aegis_1",
+                             "output": [{"type": "message", "content": "hello from aegis"}],
+                             "stats": {"input_tokens": 7, "total_output_tokens": 3,
+                                       "reasoning_output_tokens": 0}}
 BASE = {"model": "grok-4", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 500}
 
 print("--- 40: never 200 with empty content ---")
@@ -94,8 +98,28 @@ s, h, b = run(dict(BASE), path="/gemma/v1/chat/completions", gemma=lambda b_, h_
 check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 200 empty)", s == 502, (s, b))
 check("named Aegis utility lane does not inherit the Mac Gemma default",
       S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["aegis_gemma", "gemma", "xai"]
-      and S.AEGIS_GEMMA_URL.startswith("http://172.18.16.1:")
+      and S.AEGIS_GEMMA_URL == "http://172.18.16.1:1234/api/v1/chat"
       and S.AEGIS_GEMMA_MODEL == "google/gemma-4-12b-qat")
+s, h, b = run(dict(BASE), path="/gemma-aegis/v1/chat/completions", gemma=AEGIS_OK,
+              xai=XAI_DOWN)
+sent = CALLS[0][1]
+check("Aegis utility lane forces native thinking off and non-persistence",
+      s == 200 and h["x-vintos-provider"] == "aegis_gemma"
+      and sent.get("reasoning") == "off" and sent.get("store") is False
+      and sent.get("model") == S.AEGIS_GEMMA_MODEL
+      and sent.get("max_output_tokens") == BASE["max_tokens"]
+      and "messages" not in sent, (s, h, sent))
+check("Aegis native usage is preserved and contains no reasoning output",
+      b.get("usage") == {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}
+      and b["choices"][0]["message"]["content"] == "hello from aegis", b)
+CALLS.clear(); S.urllib.request.urlopen = fake_urlopen({"gemma": lambda body, h: {
+    "model_instance_id": S.AEGIS_GEMMA_MODEL,
+    "output": [{"type": "reasoning", "content": "should never escape"},
+               {"type": "message", "content": "answer"}],
+    "stats": {"reasoning_output_tokens": 4}}})
+bad = S.aegis_gemma_complete(dict(BASE))
+check("Aegis utility lane refuses a response that violates thinking-off",
+      bad["status"] == "error" and bad["reason"] == "thinking-off contract violated", bad)
 
 print("--- 41: real model / usage / provider ---")
 s, h, b = run(dict(BASE), anthropic=ANTH_OK, xai=XAI_OK)
@@ -220,6 +244,15 @@ check("router: Idempotency-Key on both provider posts", all(p[1].get("Idempotenc
 
 print("--- hygiene ---")
 import compute_admission as CA
+direct = []
+for root in (os.path.join(ROOTD, "scripts"), os.path.join(ROOTD, "bin")):
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if os.path.isfile(path):
+            try:
+                if "172.18.16.1:1234/v1/chat/completions" in open(path, errors="ignore").read(): direct.append(path)
+            except OSError: pass
+check("all Aegis text callers use the thinking-off shim, not LM Studio chat directly", direct == [], direct)
 check("compute ledger is isolated in this suite", os.path.commonpath([os.path.realpath(CA._ledger()), os.path.realpath(TMP)]) == os.path.realpath(TMP))
 check("provider clients are fakes", MR.httpx.AsyncClient is _FakeClient and S.urllib.request.urlopen.__name__ == "_open")
 check("usage log went to the tempdir, not ~/.vintos", os.path.exists(os.path.join(TMP, "usage.jsonl")), TMP)

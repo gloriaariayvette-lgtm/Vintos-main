@@ -210,8 +210,12 @@ and cannot emerge by widening a query or installing another adapter.
   delta is a model preference, never a functional-effect claim.
 - Evo 2 7B BF16 and resident Gemma do not fit together on Aegis's 16 GB GPU. Evo therefore
   runs only in an admitted background turn while holding the Gemma watchdog lock; it unloads
-  Gemma, runs one bounded comparison, and restores Gemma in `finally`. The ordinary watchdog
-  remains the crash-recovery path. Genomic turns are occasional rather than continuous.
+  Gemma, runs one bounded comparison, and restores Gemma in `finally`. Both that restoration
+  and the ordinary crash watchdog use `aegis-gemma-load.sh`: the exact `Q4_0` artifact is
+  loaded under the stable `google/gemma-4-12b-qat` identifier. Thinking is not a load-time
+  property in LM Studio, so every Aegis text caller goes through the shim's native Chat API
+  adapter, which sends `reasoning: "off"` and refuses a reply reporting reasoning output.
+  Genomic turns are occasional rather than continuous.
   The isolated environment is `~/.vintos/tools/chemistry-lab/evo2`; the checkpoint cache is
   `~/.vintos/tools/chemistry-lab/checkpoints/huggingface`. Availability still comes only
   from a completed reference/variant score recorded by `chemistry_probe.record_evo2_run()`,

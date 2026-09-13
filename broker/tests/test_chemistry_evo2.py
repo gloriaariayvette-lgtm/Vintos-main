@@ -20,9 +20,13 @@ probe = load("chemistry_probe", os.path.join(REPO, "scripts", "chemistry_probe.p
 assert HOME in evo.RUNS and HOME in probe.PROBES and not evo.RUNS.startswith("/home/gloria")
 assert evo.WATCHDOG_LOCK.startswith(WS), "watchdog lock must cross the service PrivateTmp boundary"
 watchdog = open(os.path.join(REPO, "bin", "gemma-watchdog.sh")).read()
+loader = open(os.path.join(REPO, "scripts", "aegis-gemma-load.sh")).read()
 assert 'LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"' in watchdog
 assert 'BASE="http://127.0.0.1:1234"' in watchdog and 'MODEL="google/gemma-4-12b-qat"' in watchdog
 assert 'unload "$MODEL"' in watchdog and "unload --all" not in watchdog
+assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in watchdog
+assert 'VARIANT="google/gemma-4-12b-qat@q4_0"' in loader
+assert '--identifier "$IDENTIFIER"' in loader and '--no-speculative-draft-mtp' in loader
 
 sequence = "ACGT" * 128
 source = {"source_key": "arabidopsis_chr1", "accession": "NC_003070.9", "taxon_id": 3702,
@@ -57,7 +61,7 @@ repeated = evo.analyze()
 evo.subprocess.run = real_run
 assert row["ok"] and row["gemma_restored"] is True and "sequence" not in row
 assert row["run_id"] != repeated["run_id"] and row["result_sha256"] == repeated["result_sha256"]
-assert calls[0][:2] == ("unload", lab.LLM_MODEL) and calls[-1][0] == "load"
+assert calls and all(call[:2] == ("unload", lab.LLM_MODEL) for call in calls), calls
 assert lab._jsonl(evo.RUNS)[-1]["truth_status"] == "evo2_model_likelihood_delta_not_functional_effect"
 
 receipt = probe.record_evo2_run(row)

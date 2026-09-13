@@ -24,7 +24,7 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 XAI_URL = "https://api.x.ai/v1/chat/completions"
 GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
-AEGIS_GEMMA_URL = "http://172.18.16.1:1234/v1/chat/completions"
+AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "google/gemma-4-12b-qat"
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-4-5-20251001"
@@ -37,6 +37,7 @@ PROVIDER_CAPS = {
     "anthropic": {"temperature", "top_p", "max_tokens", "stop", "tools", "tool_choice", "images"},
     "xai":       {"temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice", "images"},
     "gemma":     {"temperature", "top_p", "max_tokens", "stop", "response_format"},
+    "aegis_gemma":{"temperature", "top_p", "max_tokens"},
 }
 SAMPLING_KEYS = ("temperature", "top_p", "max_tokens", "stop", "response_format", "tools", "tool_choice")
 
@@ -263,16 +264,38 @@ def gemma_complete(j, call=None):
     return res
 
 def aegis_gemma_complete(j, call=None):
-    """Aegis-local utility Gemma, used only by explicitly named low-cost house lanes."""
+    """Aegis-local utility Gemma. Native LM Studio makes thinking-off inspectable."""
     call = call or _Call(j)
-    unsup = unsupported_features(j, "gemma")
+    unsup = unsupported_features(j, "aegis_gemma")
     if unsup: return GR.make_result("aegis_gemma", status="unavailable", reason="unsupported on aegis_gemma: " + ",".join(unsup))
-    body = {k: v for k, v in j.items() if k != "route"}; body["model"] = AEGIS_GEMMA_MODEL
+    systems, turns = [], []
+    for message in j.get("messages", []):
+        content = message.get("content", "")
+        if not isinstance(content, str): content = json.dumps(content, ensure_ascii=False)
+        if message.get("role") == "system": systems.append(content)
+        else: turns.append("%s:\n%s" % (str(message.get("role") or "user").upper(), content))
+    body = {"model": AEGIS_GEMMA_MODEL, "input": "\n\n".join(turns) or ".",
+            "system_prompt": "\n\n".join(systems), "reasoning": "off", "store": False,
+            "max_output_tokens": int(j.get("max_tokens") or 1024)}
+    if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])
+    if j.get("top_p") is not None: body["top_p"] = float(j["top_p"])
     _, d, err = _post_json("aegis_gemma", AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
     if err is not None and d is None: _log(f"aegis gemma error: {err['reason']}"); return err
-    res = GR.from_openai(d, "aegis_gemma")
-    if not res["model"]: res["model"] = AEGIS_GEMMA_MODEL
-    return res
+    if not isinstance(d, dict): return GR.make_result("aegis_gemma", status="error", reason="non-json body")
+    output = d.get("output") if isinstance(d.get("output"), list) else []
+    reasoning = [x for x in output if isinstance(x, dict) and x.get("type") == "reasoning" and x.get("content")]
+    stats = d.get("stats") if isinstance(d.get("stats"), dict) else {}
+    if reasoning or int(stats.get("reasoning_output_tokens") or 0) != 0:
+        return GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+                              status="error", reason="thinking-off contract violated")
+    text = "".join(str(x.get("content") or "") for x in output
+                   if isinstance(x, dict) and x.get("type") == "message")
+    usage = {"input_tokens": stats.get("input_tokens"),
+             "output_tokens": stats.get("total_output_tokens")}
+    state = "valid" if text else "error"
+    return GR.make_result("aegis_gemma", model=d.get("model_instance_id") or AEGIS_GEMMA_MODEL,
+                          request_id=d.get("response_id", ""), status=state, usage=usage,
+                          text=text, finish_reason="stop", reason="" if text else "empty completion")
 
 PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
              "aegis_gemma": aegis_gemma_complete}

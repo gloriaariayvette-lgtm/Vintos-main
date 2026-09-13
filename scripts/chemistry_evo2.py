@@ -36,6 +36,9 @@ EVO_PYTHON = os.environ.get("CHEM_LAB_EVO2_PYTHON",
 MODEL = "evo2_7b_base"
 LMS = os.environ.get("CHEM_LAB_LMS", "/mnt/c/Users/glori/.lmstudio/bin/lms.exe")
 GEMMA_MODEL = lab.LLM_MODEL
+GEMMA_LOADER = os.environ.get("CHEM_LAB_GEMMA_LOADER",
+                              os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           "aegis-gemma-load.sh"))
 # The Lab service has PrivateTmp=true.  A /tmp lock would therefore be invisible
 # to the host watchdog and both processes could change LM Studio at once.
 WATCHDOG_LOCK = os.path.join(lab.MEM, ".gemma-watchdog.lock")
@@ -138,7 +141,7 @@ def _lms(*args):
 
 
 def _restore_gemma():
-    done = _lms("load", GEMMA_MODEL, "--gpu", "max", "-c", "32000", "--parallel", "1")
+    done = subprocess.run([GEMMA_LOADER], text=True, capture_output=True, timeout=240, check=False)
     if done.returncode != 0: raise RuntimeError("Gemma reload failed")
 
 

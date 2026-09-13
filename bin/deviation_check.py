@@ -220,7 +220,7 @@ def check(reply_text, gloria_msg=""):
         pattern_list.append(f"- {base}: avoids [{neg.get('violation_condition','')[:80]}], toward [{pos.get('almost_becoming','')[:80]}]")
     patterns_text = "\n".join(pattern_list)
     try:
-        _r = _req.post("http://172.18.16.1:1234/v1/chat/completions", json={
+        _r = _req.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", json={
             "model":"google/gemma-4-12b-qat","temperature":0.1,"max_tokens":60,
             "messages":[
                 {"role":"system","content":f"You are evaluating a response against behavioral patterns. Answer with JSON only: {{\"deviation\": 0.0-1.0, \"alignment\": 0.0-1.0}}\n\nPatterns to check:\n{patterns_text}\n\ndeviation = how much the response exhibits the avoidance patterns\nalignment = how much the response moves toward the 'toward' behaviors"},
