@@ -23,7 +23,9 @@ his context” is verifiable without duplicating those documents into the Lab.
 
 ## Active loop
 
-The installed loop is `orient -> browse -> embed -> reflect`:
+The installed protein loop is `orient -> browse -> embed -> reflect`. When the separately
+commissioned genomics lane is due, that reflection continues once through
+`genome -> genome_reflect` before returning to `orient`:
 
 1. Aegis Gemma chooses a small protein-space question in Vintos's voice.
 2. The Lab makes a bounded, read-only UniProtKB query and records the exact
@@ -201,6 +203,20 @@ and cannot emerge by widening a query or installing another adapter.
   VQNet, Mac ESMC, pyChemiQ, and Foundry also have fixed functional commissioning probes.
   A receipt proves the named instrument ran; it does not add a named experiment to the
   bench allowlist. Those are separate integration acts.
+- Evo 2 is a separate Aegis instrument and does not accept arbitrary sequence input. Its
+  public action fetches one bounded window from a fixed non-human reference allowlist,
+  verifies accession, taxon, alphabet and digest, and compares the reference likelihood to
+  one deterministic single-base substitution. It has no generation action. A likelihood
+  delta is a model preference, never a functional-effect claim.
+- Evo 2 7B BF16 and resident Gemma do not fit together on Aegis's 16 GB GPU. Evo therefore
+  runs only in an admitted background turn while holding the Gemma watchdog lock; it unloads
+  Gemma, runs one bounded comparison, and restores Gemma in `finally`. The ordinary watchdog
+  remains the crash-recovery path. Genomic turns are occasional rather than continuous.
+  The isolated environment is `~/.vintos/tools/chemistry-lab/evo2`; the checkpoint cache is
+  `~/.vintos/tools/chemistry-lab/checkpoints/huggingface`. Availability still comes only
+  from a completed reference/variant score recorded by `chemistry_probe.record_evo2_run()`,
+  never from those paths existing. `chemistry_lab.py evo-on|evo-off` commissions or pauses
+  this lane; the main Tune switch remains authority for the whole Lab.
 
 ## Scheduled Lab sessions
 
@@ -215,6 +231,27 @@ model call or Mac contact. When on, it:
    result on both sides;
 4. lets local Aegis Gemma leave Vintos's reading and next question;
 5. appends the session to the visible Lab notebook and session ledger.
+
+### Local-to-frontier bridge
+
+The frontier lens already received a bounded Lab excerpt through `lab_context()`; it was
+the last three notebook rows inside the same attributed context budget as SOUL, self-model,
+trajectory, taste and grades. What was missing was proof that a particular local finding
+survived that excerpt and affected a later plan.
+
+`chemistry_frontier_bridge.py` closes that gap without letting Gemma grade itself.
+Completed reflections receive an event-sourced routing assessment based on independent,
+inspectable signals: whether the source query really succeeded, whether source accessions
+are new to this ledger, lexical contact with the Living Trajectory, and an already-written
+cross-organ collision. Repeating a question subtracts priority. `interest_score` means
+only "carry this forward sooner"; it is neither biological truth nor importance.
+
+Up to four unsatisfied flagged entries (at most 1,800 characters) are appended only to a
+frontier session's context. Their IDs and block hash enter the context receipt. The returned
+plan may name only IDs it was offered and is instructed to name one only if it affected the
+choice. `frontier-surfaces.jsonl` then records prompt delivery separately from frontier
+acknowledgment. The acknowledgment is a model attestation, not proof of comprehension.
+Three deliveries without acknowledgment raise `backlog_bug`; nothing is silently retired.
 
 An owed reading is paid before another experiment is started, and if it cannot be paid the
 session ends there: the house was busy or the reader faulted, and neither is a reason to

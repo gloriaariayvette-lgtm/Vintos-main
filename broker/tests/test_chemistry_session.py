@@ -24,7 +24,7 @@ sys.modules["chemistry_mac"] = mac
 def admitted(*args, **kwargs): yield object()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 session = load("chemistry_session_test", os.path.join(REPO, "scripts", "chemistry_session.py"))
-session._plan = lambda context, experiments, lens, instruments=None: {"experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
+session._plan = lambda context, experiments, lens, instruments=None, offered_entry_ids=None: {"addressed_entry_ids": list(offered_entry_ids or []), "experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
 seen = {}
 def _reading(context, plan, result, grade=None):
     seen["grade"] = grade; seen["verdict"] = session._verdict_block(grade)
@@ -32,8 +32,19 @@ def _reading(context, plan, result, grade=None):
             "next_question": "what changes the shape of this basin next?"}
 session._reading = _reading
 
+# One independently scored local finding is carried into the frontier prompt and the
+# returned plan acknowledges its exact ID. Delivery and acknowledgment are separate events.
+flagged = session.bridge.assess({"at": "2026-09-13T00:00:00+00:00", "source_accessions": ["P12345"],
+    "factual_observation": "A sourced compact protein structure was recorded.",
+    "attention": "the compact structure", "next_question": "what changes this compact structure?"},
+    source_query_succeeded=True)
+assert flagged["flagged_for_next_lab_session"] is True
+
 row = session.run()
 assert row["state"] == "completed" and row["mac_run_id"] == "RUN-1"
+surface = session.lab._jsonl(session.bridge.SURFACES)[-1]
+assert surface["offered_entry_ids"] == [flagged["entry_id"]]
+assert surface["acknowledged_entry_ids"] == [flagged["entry_id"]]
 # The run completed and carries no reference, so it is graded ungradeable rather than passed.
 assert row["grade"]["execution_state"] == "completed"
 assert row["grade"]["aggregate_accuracy"] == "NO_GRADEABLE_POINTS", row["grade"]

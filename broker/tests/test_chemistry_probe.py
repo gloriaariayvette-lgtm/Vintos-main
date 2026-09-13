@@ -195,7 +195,7 @@ session_source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).rea
 check("the session files the host report and the run attestation",
       "probe.record_host_report(remote)" in session_source and "probe.record_run_attestation(" in session_source)
 check("the lens is shown instrument states rather than a filtered list",
-      "INSTRUMENT STATES" in session_source and "instruments)" in session_source)
+      "INSTRUMENT STATES" in session_source and "_plan(context, experiments, lens, instruments," in session_source)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

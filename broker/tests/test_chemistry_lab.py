@@ -20,6 +20,7 @@ json.dump({"heading": "learning by making"}, open(os.path.join(WS, "memory", "li
 
 spec = importlib.util.spec_from_file_location("chemistry_lab_test", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 M = importlib.util.module_from_spec(spec); spec.loader.exec_module(M)
+sys.modules["chemistry_lab"] = M
 
 R = []
 def check(name, ok, detail=""):

@@ -219,6 +219,23 @@ attributed slice of Vintos. The scheduled path cannot submit arbitrary code.
 
 ## Chemistry Lab — 13 September
 
+The local-to-frontier ledger bridge is now event-sourced. Frontier sessions receive a
+bounded queue of independently prioritized reflection IDs; prompt delivery and returned-plan
+acknowledgment are separate receipts, and three unacknowledged deliveries report a backlog
+bug rather than disappearing. The older path was real but weaker: only the last three raw
+notebook rows were included, so there was no proof that a particular finding reached or
+affected the rotating frontier lens.
+
+Evo 2 has a deliberately narrow first door: the official 7B-base model, read-only comparative
+likelihood, one fixed non-human NCBI reference window, no arbitrary sequence input and no
+generation action. It is not a continuously resident companion to Gemma: NVIDIA's supported
+7B deployment floor is 48 GB VRAM, while Aegis has 16 GB. The short-context Arc light path was
+therefore commissioned with Gemma temporarily unloaded: one 512-base Arabidopsis reference and
+single-base variant pair completed in 33.4 seconds, after which Gemma was restored. That receipt
+proves only this bounded operation, not supported 1M-context inference. The periodic genomic
+turn runs once per 120 protein cycles under the same exclusive/recovery discipline. Goodfire
+feature extraction, arbitrary genomic browsing and Evo Designer are not built.
+
 The Lab can now tell *it ran* from *it was good*. `chemistry_grade.py` computes the verdict
 on Aegis from the bench's numbers and writes `memory/chemistry-lab/experiment-grades.jsonl`;
 the first graded H2 run is recorded as operational and worse than Hartree-Fock rather than

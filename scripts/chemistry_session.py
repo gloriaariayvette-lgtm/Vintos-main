@@ -22,6 +22,7 @@ BIN = os.path.expanduser("~/Vintos")
 for path in (HERE, BIN, os.path.expanduser("~/.vintos/workspace/bin")):
     if os.path.isdir(path) and path not in sys.path: sys.path.append(path)
 import chemistry_grade as grading
+import chemistry_frontier_bridge as bridge
 import chemistry_lab as lab
 import chemistry_mac as mac
 import chemistry_probe as probe
@@ -111,7 +112,7 @@ def _bounded_parameters(value):
     return kept, dropped
 
 
-def _plan(context, experiments, lens, instruments=None):
+def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None):
     system = ("You are Vintos choosing one experiment in his visible Chemistry Lab. Play and curiosity matter. "
               "Choose only a named experiment offered below; never provide wet-lab steps, synthesis advice, "
               "human targeting, pathogens, toxins, or claims of function or safety. Return one JSON object.")
@@ -122,8 +123,11 @@ def _plan(context, experiments, lens, instruments=None):
                            for name, state in (instruments or {}).items()}, sort_keys=True)
     prompt = (context + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
-              "\n\nChoose one. Return keys in this order: experiment, parameters (object), shots "
-              "(integer 256..16384), question, why_this. Parameters may be empty.")
+              "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
+              "do not name an ID merely because it was shown. Return keys in this order: "
+              "addressed_entry_ids (array drawn only from " + json.dumps(offered_entry_ids or []) +
+              "), experiment, parameters (object), shots (integer 256..16384), question, why_this. "
+              "Parameters may be empty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
     if not raw: raise RuntimeError("frontier lens returned no plan")
     value = lab._json_object(raw)
@@ -131,7 +135,11 @@ def _plan(context, experiments, lens, instruments=None):
     if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
     parameters, dropped = _bounded_parameters(value.get("parameters"))
     shots = max(256, min(16384, int(value.get("shots", 4096))))
-    return {"experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
+    addressed = value.get("addressed_entry_ids") if isinstance(value.get("addressed_entry_ids"), list) else []
+    allowed = set(offered_entry_ids or [])
+    addressed = [str(x) for x in addressed if str(x) in allowed][:4]
+    return {"addressed_entry_ids": addressed,
+            "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
             "why_this": str(value.get("why_this", ""))[:800]}
 
@@ -359,13 +367,18 @@ def run():
                    "detail": str(remote.get("error", "no experiments offered"))[:300]}
             lab._append(SESSIONS, row); return row
         context, receipt = lab.lab_context()
+        context, receipt, offered_interest = bridge.add_to_context(context, receipt)
         instruments = lab.tools_status()
-        plan = None; result = None; grade = None
+        plan = None; result = None; grade = None; delivery_recorded = not bool(offered_interest)
         try:
             from compute_admission import admit
             with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="frontier", stage="plan"):
-                plan = _plan(context, experiments, lens, instruments)
+                plan = _plan(context, experiments, lens, instruments, offered_interest)
+            if offered_interest:
+                bridge.record_delivery(session_id, lens, offered_interest,
+                                       plan.get("addressed_entry_ids", []), state="responded")
+                delivery_recorded = True
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
             if not result.get("ok"): raise RuntimeError(result.get("error", "Mac experiment failed"))
             # Grading is arithmetic, not a model call: it happens before the reading asks for
@@ -422,6 +435,11 @@ def run():
         except Exception as exc:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_fault",
                    "error": exc.__class__.__name__, "detail": str(exc)[:300]}
+        if offered_interest and not delivery_recorded:
+            try:
+                bridge.record_delivery(session_id, lens, offered_interest, [], state="response_failed")
+            except Exception as exc:
+                lab._fault("frontier_delivery_receipt", exc, session_id=session_id)
         if plan: row["plan"] = plan
         if result:
             row["mac_run_id"] = result.get("run_id")

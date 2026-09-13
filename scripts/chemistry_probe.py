@@ -189,6 +189,23 @@ RUN_INSTRUMENT_KEYS = ("instruments", "instrument", "backend", "backends", "engi
 RUN_HASH_KEYS = ("source_sha256", "source_hash", "sha256", "experiment_sha256")
 
 
+def record_evo2_run(result):
+    """A completed comparative scoring pair is the only Evo 2 availability proof."""
+    required = ("run_id", "model", "source_accession", "sequence_sha256",
+                "reference_mean_log_likelihood", "variant_mean_log_likelihood", "variant_delta")
+    if not isinstance(result, dict) or not result.get("ok") or any(result.get(key) is None for key in required):
+        return _receipt("evo2", "aegis", "smoke_failed",
+                        failure={"type": "evo2_run_incomplete"}, source="chemistry_evo2")
+    evidence = {"run_id": str(result["run_id"])[:80], "model": str(result["model"])[:40],
+                "source_accession": str(result["source_accession"])[:40],
+                "sequence_length": int(result.get("sequence_length") or 0),
+                "operation": "reference_and_single_variant_likelihood"}
+    digest = hashlib.sha256(json.dumps({key: result.get(key) for key in required},
+                                       sort_keys=True).encode()).hexdigest()
+    return _receipt("evo2", "aegis", "proved_by_run", evidence_sha256=digest,
+                    evidence=evidence, source="chemistry_evo2:" + str(result["run_id"])[:80])
+
+
 def _now(): return datetime.now(timezone.utc)
 
 

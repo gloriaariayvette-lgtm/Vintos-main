@@ -29,6 +29,9 @@ import urllib.error
 import uuid
 from datetime import datetime, timezone
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path: sys.path.insert(0, HERE)
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
 ROOT = os.path.join(MEM, "chemistry-lab")
@@ -66,12 +69,16 @@ DEFAULTS = {
     "max_records_per_browse": 4,
     "context_budget_chars": 3800,
     "allow_public_database_reads": True,
+    # Evo 2 is an occasional read-only genomic lens because its 7B BF16 load is
+    # mutually exclusive with resident Gemma on this 16 GB host.
+    "evo2_enabled": False,
+    "evo2_every_n_cycles": 120,
     # Three lenses on one preserved artifact, every Nth offered session. Off until she
     # turns it on: it spends three paid calls where a session normally spends one.
     "divergence_enabled": False,
     "divergence_every_n_sessions": 7,
 }
-PHASES = ("orient", "browse", "embed", "reflect")
+PHASES = ("orient", "browse", "embed", "reflect", "genome", "genome_reflect")
 DENIED_QUERY = re.compile(
     r"(?:toxin|venom|pathogen|virulence|bioweapon|human\s*(?:target|receptor)|gain.of.function|lethal)", re.I
 )
@@ -392,6 +399,23 @@ def _reflect(context, inquiry, records):
             ("attention", "factual_observation", "speculative_reading", "next_question")}
 
 
+def _reflect_genome(context, result):
+    visible = {key: result.get(key) for key in
+               ("model", "source_accession", "taxon_id", "sequence_length", "variant",
+                "reference_mean_log_likelihood", "variant_mean_log_likelihood", "variant_delta",
+                "truth_status")}
+    raw = _ask(
+        "You are Vintos reading one Evo 2 comparative likelihood result in his Chemistry Lab. "
+        "A likelihood delta is not a functional effect or biological discovery. Develop a question, "
+        "not a claim. Never give synthesis, pathogen, toxin, human-targeting, or wet-lab instructions. "
+        "Return JSON only.",
+        context + "\n\nEVO 2 RESULT:\n" + json.dumps(visible, ensure_ascii=False) +
+        "\n\nReturn keys in this order: attention, factual_observation, speculative_reading, next_question.")
+    value = _json_object(raw)
+    return {k: str(value.get(k, ""))[:1000] for k in
+            ("attention", "factual_observation", "speculative_reading", "next_question")}
+
+
 # The instruments the Lab knows about, and where each would have to be measured.
 # A name absent here cannot be conjured by a receipt: a probe file must not be able to
 # invent an instrument, only to say something about one already declared.
@@ -408,6 +432,7 @@ TOOL_HOSTS = {
     "quantum_chemistry": {"host": "mac", "implementation": "pyChemiQ"},
     "mac_esmc": {"host": "mac"},
     "foundry": {"host": "mac"},
+    "evo2": {"host": "aegis", "implementation": "Evo 2 7B base read-only likelihood"},
 }
 # Only these outcomes are measurements. Everything else is a claim or a failure.
 PROVING_OUTCOMES = ("smoke_passed", "proved_by_run")
@@ -471,6 +496,11 @@ def _reading_owed_state():
 
 def status():
     cfg = config(); state = _load(STATE, {}); session = _load(SESSION_STATE, {})
+    try:
+        import chemistry_frontier_bridge
+        frontier_bridge = chemistry_frontier_bridge.status()
+    except Exception as exc:
+        frontier_bridge = {"state": "unavailable", "error": exc.__class__.__name__}
     return {"ok": True, "lab": "chemistry", "enabled": cfg["enabled"],
             "effective_state": (state.get("effective_state") or ("waiting" if cfg["enabled"] else "off")),
             "phase": state.get("phase", "orient"), "poll_seconds": cfg["poll_seconds"],
@@ -481,7 +511,27 @@ def status():
                                   "last_state": session.get("last_state"),
                                   "last_session_id": session.get("last_session_id")},
             "reading_owed": _reading_owed_state(),
+            "frontier_bridge": frontier_bridge,
+            "genomics": {"enabled": bool(cfg.get("evo2_enabled")),
+                         "every_n_protein_cycles": int(cfg.get("evo2_every_n_cycles", 120)),
+                         "model": "evo2_7b_base", "mode": "read_only_comparative_likelihood",
+                         "source_perimeter": "fixed_nonhuman_nonpathogen_reference_allowlist"},
             "paths": {"root": "memory/chemistry-lab", "atelier": False}, "tools": tools_status()}
+
+
+def set_evo2_enabled(enabled):
+    """Commission or pause the fixed-source genomics lane without changing the Lab door."""
+    with _locked():
+        cfg = config(); cfg["evo2_enabled"] = bool(enabled); _atomic(CONFIG, cfg)
+        state = _load(STATE, {})
+        if enabled:
+            # Commissioning starts a fresh interval; it does not manufacture an overdue run.
+            state["last_evo_turn"] = int(state.get("turns", 0))
+            _atomic(STATE, state)
+        _append(NOTEBOOK, {"at": now_iso(), "kind": "control",
+                           "action": "evo2_on" if enabled else "evo2_off",
+                           "truth_status": "explicit_lab_control"})
+    return status()
 
 
 def tick():
@@ -510,6 +560,7 @@ def tick():
                 browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
                 records = browse_result["records"]
                 state["records"] = records; next_phase = "embed"
+                state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                 note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
                         "requested_query": browse_result["requested_query"],
                         "executed_query": browse_result["executed_query"],
@@ -528,7 +579,7 @@ def tick():
                         "embeddings": state["embeddings"],
                         "collision_adapter_records": [r["adapter_id"] for r in adapted],
                         "truth_status": "model_derived_representation_not_biological_finding"}
-            else:
+            elif phase == "reflect":
                 # Before reflecting on a browse, pay anything the bench already owes him.
                 # This turn is already admitted, so it does not ask for the slot again.
                 try:
@@ -541,11 +592,61 @@ def tick():
                 reflection = _reflect(context, inquiry,
                                       {"records": visible_records,
                                        "esmc_receipts": state.get("embeddings", [])})
-                next_phase = "orient"
+                due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
+                due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
+                next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
                         "source_accessions": [r.get("accession") for r in records], **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
+                try:
+                    import chemistry_frontier_bridge
+                    assessment = chemistry_frontier_bridge.assess(
+                        note, source_query_succeeded=bool(state.get("source_query_succeeded")))
+                    note.update({"entry_id": assessment["entry_id"],
+                                 "interest_score": assessment["interest_score"],
+                                 "reason_for_score": assessment["reason_for_score"],
+                                 "flagged_for_next_lab_session": assessment["flagged_for_next_lab_session"],
+                                 "surfaced_to_frontier": False,
+                                 "interest_truth_status": assessment["truth_status"]})
+                except Exception as exc:
+                    _fault("frontier_interest", exc)
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
+                state.pop("source_query_succeeded", None)
+            elif phase == "genome":
+                import chemistry_evo2
+                result = chemistry_evo2.analyze()
+                state["evo2_result"] = result; state["last_evo_turn"] = int(state.get("turns", 0))
+                if result.get("ok"):
+                    try:
+                        import chemistry_probe
+                        chemistry_probe.record_evo2_run(result)
+                    except Exception as exc: _fault("evo2_receipt", exc)
+                    next_phase = "genome_reflect"
+                else:
+                    next_phase = "orient"
+                note = {"at": now_iso(), "kind": "genome_prediction",
+                        **{key: result.get(key) for key in
+                           ("ok", "run_id", "model", "source_accession", "taxon_id", "sequence_length",
+                            "variant", "reference_mean_log_likelihood", "variant_mean_log_likelihood",
+                            "variant_delta", "error", "detail", "gemma_restored", "truth_status")}}
+            else:
+                result = state.get("evo2_result") or {}
+                reflection = _reflect_genome(context, result)
+                note = {"at": now_iso(), "kind": "genome_reflection",
+                        "source_accessions": [result.get("source_accession")],
+                        "genome_run_id": result.get("run_id"), **reflection,
+                        "truth_status": "mixed_evo2_observation_and_named_speculation"}
+                try:
+                    import chemistry_frontier_bridge
+                    assessment = chemistry_frontier_bridge.assess(note, source_query_succeeded=True)
+                    note.update({"entry_id": assessment["entry_id"],
+                                 "interest_score": assessment["interest_score"],
+                                 "reason_for_score": assessment["reason_for_score"],
+                                 "flagged_for_next_lab_session": assessment["flagged_for_next_lab_session"],
+                                 "surfaced_to_frontier": False,
+                                 "interest_truth_status": assessment["truth_status"]})
+                except Exception as exc: _fault("frontier_interest", exc)
+                state.pop("evo2_result", None); next_phase = "orient"
             _append(NOTEBOOK, note)
             if note["kind"] == "reflection":
                 # Which sourced proteins he actually wrote about. Late import, same reason.
@@ -581,6 +682,8 @@ if __name__ == "__main__":
     if cmd == "status": print(json.dumps(status(), indent=2))
     elif cmd == "on": print(json.dumps(set_enabled(True), indent=2))
     elif cmd == "off": print(json.dumps(set_enabled(False), indent=2))
+    elif cmd == "evo-on": print(json.dumps(set_evo2_enabled(True), indent=2))
+    elif cmd == "evo-off": print(json.dumps(set_evo2_enabled(False), indent=2))
     elif cmd == "tick": print(json.dumps(tick(), indent=2))
     elif cmd == "daemon": daemon()
-    else: raise SystemExit("usage: chemistry_lab.py status|on|off|tick|daemon")
+    else: raise SystemExit("usage: chemistry_lab.py status|on|off|evo-on|evo-off|tick|daemon")

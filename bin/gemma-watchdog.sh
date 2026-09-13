@@ -2,9 +2,11 @@
 # gemma-watchdog.sh — reload a genuinely-down Gemma without ever stacking instances.
 LMS="/mnt/c/Users/glori/.lmstudio/bin/lms.exe"
 LOG="/home/gloria/.vintos/logs/gemma-watchdog.log"
-MODEL="gemma-4-26b-a4b-it-uncensored"
-LOCK="/tmp/gemma-watchdog.lock"
-BASE="http://100.79.177.103:1234"
+MODEL="google/gemma-4-12b-qat"
+# Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
+# /tmp lock would be two unrelated locks carrying the same name.
+LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"
+BASE="http://127.0.0.1:1234"
 PING='{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ok"}],"max_tokens":3}'
 
 exec 9>"$LOCK"
@@ -22,7 +24,7 @@ else
   echo "[$(date '+%F %T')] Gemma not loaded — loading one instance" >> "$LOG"
 fi
 
-"$LMS" unload --all >> "$LOG" 2>&1
+"$LMS" unload "$MODEL" >> "$LOG" 2>&1
 sleep 3
 "$LMS" load "$MODEL" --gpu max -c 32000 --parallel 1 >> "$LOG" 2>&1
 sleep 3
