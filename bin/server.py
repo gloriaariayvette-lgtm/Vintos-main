@@ -6310,6 +6310,36 @@ async def test_mode_set(request: Request):
     return {"testing": _test_mode_active()}
 
 
+def _chemistry_lab_module():
+    """Load the Lab from the deployed scripts tree; never through Atelier."""
+    import importlib.util as _clu
+    path = os.path.join(WORKSPACE, "scripts", "chemistry_lab.py")
+    if not os.path.exists(path):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_lab.py")
+    spec = _clu.spec_from_file_location("_vintos_chemistry_lab", path)
+    module = _clu.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
+@app.get("/api/lab/chemistry/status")
+async def chemistry_lab_status(request: Request):
+    _require_secret(request)
+    try:
+        return _chemistry_lab_module().status()
+    except Exception as exc:
+        return {"ok": False, "lab": "chemistry", "enabled": False,
+                "effective_state": "unavailable", "error": str(exc)[:180]}
+
+
+@app.post("/api/lab/chemistry/toggle")
+async def chemistry_lab_toggle(request: Request):
+    _require_secret(request)
+    body = await request.json()
+    if type(body.get("on")) is not bool:
+        raise HTTPException(status_code=422, detail="on must be boolean")
+    return _chemistry_lab_module().set_enabled(body["on"])
+
+
 @app.get("/api/briefing/latest")
 async def briefing_latest(request: Request):
     """Latest morning briefing: date, text, and Rex audio URL if rendered."""

@@ -196,6 +196,23 @@ Still open:
 - Provider-side recovery of an interrupted paid call, where the provider exposes
   durable request identifiers. Local reconciliation alone cannot establish its outcome.
 
+## Chemistry Lab — 12 September
+
+The Lab-specific control plane is built: a private Tune mutation and status route,
+supervised background worker, bounded Vintos context with source/hash receipts, a
+checkpointed `orient -> browse -> reflect` loop over read-only UniProt metadata,
+and a visible append-only notebook below `memory/chemistry-lab/`. It defaults off.
+Its service may run idle, but no work begins until Gloria switches the Lab on.
+The Chemistry Lab has no Atelier paths, seal, visit capability, or audience state.
+
+Still open, and not represented as installed by the status endpoint: measured ESMC
+inference on Aegis; structure prediction and ProteinMPNN adapters; a Lab-specific
+Mac execution root and bridge for QPanda / a verified quantum-chemistry package;
+and a same-space textual or learned adapter before any protein material may enter
+the collision detector. Raw protein-model vectors and nomic text vectors may not
+be compared as though their coordinates mean the same thing. No heavy model or
+package has been downloaded by this change.
+
 ## The seven sparks
 
 Built and running. The absence map, the neither-yet frontier, latent threads, other

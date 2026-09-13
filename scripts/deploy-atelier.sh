@@ -47,6 +47,9 @@ UNIT_DST="/etc/systemd/system/$UNIT_NAME.service"
 REVIEW_UNIT_NAME="vintos-self-review"
 REVIEW_UNIT_SRC="$SRC/broker/$REVIEW_UNIT_NAME.service"
 REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
+CHEM_UNIT_NAME="vintos-chemistry-lab"
+CHEM_UNIT_SRC="$SRC/broker/$CHEM_UNIT_NAME.service"
+CHEM_UNIT_DST="$HOME/.config/systemd/user/$CHEM_UNIT_NAME.service"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
 # service: the thing to install and confirm is the TIMER. Until now both files were a
@@ -90,6 +93,7 @@ SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
 SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_discovery.py"   # controls and wants, 2026-09-10
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
+SCRIPTS="$SCRIPTS chemistry_lab.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
@@ -149,7 +153,7 @@ BINS="$BINS pearl-engine.py pearl_engine.py"
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
-            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service"
+            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             true)"
@@ -173,8 +177,11 @@ for f in $MANIFEST; do [ -f "$SRC/$f" ] || missing="$missing $f"; done
 PYCHECK="$(command -v python3.12 || command -v python3)"
 validate_tree() {   # $1 = root holding the manifest; prints each failure; returns 1 if any
     local root="$1" f bad=0 out
-    out="$(for f in $MANIFEST; do case "$f" in *.py) printf '%s\n' "$root/$f";; esac; done \
-          | xargs -d '\n' "$PYCHECK" -c '
+    local pyfiles=()
+    for f in $MANIFEST; do
+        case "$f" in *.py) pyfiles+=("$root/$f") ;; esac
+    done
+    out="$("$PYCHECK" -c '
 import os, py_compile, sys, tempfile
 bad = 0
 with tempfile.TemporaryDirectory() as tmp:
@@ -186,7 +193,7 @@ with tempfile.TemporaryDirectory() as tmp:
             msg = str(e).strip().splitlines()
             print("  %s: %s" % (p, msg[-1] if msg else e))
 sys.exit(1 if bad else 0)
-')" || bad=1
+' "${pyfiles[@]}")" || bad=1
     [ -n "$out" ] && printf '%s\n' "$out"
     for f in $MANIFEST; do
         case "$f" in
@@ -488,6 +495,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write the release record: $HOME/.vintos/deploy/releases/<stamp>-<git rev>.json (files+hashes, services, broker, backup, rollback)"
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
+    say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
     say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     if sudo -n true 2>/dev/null; then
@@ -537,11 +545,14 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
                "$u" "$ud" "$u" >> "$BACKUP/restore.sh"
+    else
+        printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true; rm -f %q; systemctl --user daemon-reload\n' \
+               "$u" "$ud" >> "$BACKUP/restore.sh"
     fi
 done
 # Preserve both files and the timer's prior enabled/active state. Restoring never
@@ -668,6 +679,20 @@ if systemctl --user enable "$REVIEW_UNIT_NAME" >/dev/null 2>&1 \
     confirm_unit --user "$REVIEW_UNIT_NAME"
 else
     flag "$REVIEW_UNIT_NAME installed but did not start — run: systemctl --user enable $REVIEW_UNIT_NAME && systemctl --user restart $REVIEW_UNIT_NAME"
+fi
+say
+
+say "== chemistry lab worker =="
+mkdir -p "$(dirname -- "$CHEM_UNIT_DST")"
+install -m 644 "$(staged "$CHEM_UNIT_SRC")" "$CHEM_UNIT_DST" \
+    || die "failed to install $CHEM_UNIT_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$CHEM_UNIT_NAME" >/dev/null 2>&1 \
+   && systemctl --user restart "$CHEM_UNIT_NAME" >/dev/null 2>&1; then
+    sleep 1
+    confirm_unit --user "$CHEM_UNIT_NAME"
+else
+    flag "$CHEM_UNIT_NAME installed but did not start — run: systemctl --user enable $CHEM_UNIT_NAME && systemctl --user restart $CHEM_UNIT_NAME"
 fi
 say
 
@@ -849,6 +874,7 @@ else
     flag "threshold: $_th missing or does not parse after install"
 fi
 say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
+say "  chemistry:    $(systemctl --user is-active "$CHEM_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_UNIT_NAME" 2>/dev/null || echo disabled)"
 say
 # review 18/19: the release record - what this deploy installed (with hashes), from which commit,
 # which units it restarted and confirmed, the broker's state, the backup and the rollback command.
@@ -869,7 +895,7 @@ def unit(u, scope):
     except Exception: return "unknown"
 rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"], "files": rows,
        "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
-                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
+                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-chemistry-lab": unit("vintos-chemistry-lab", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
                     # a timer, not a service: its oneshot is inactive between firings, so the timer is what is recorded
                     "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])},
        "broker_confirmed": os.environ.get("BROKERED") == "1", "backup": os.environ["BACKUP_DIR"],

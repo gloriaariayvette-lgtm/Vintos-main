@@ -803,6 +803,18 @@ input[type="range"]::-webkit-slider-thumb {
                         <span id="grounding-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
                     </label>
                 </div>
+                <!-- Chemistry Lab Toggle — separate from Atelier -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
+                    <div style="padding-right:14px;">
+                        <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">chemistry lab</div>
+                        <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;line-height:1.45;" id="chemistry-lab-status-text">loading...</div>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer;flex-shrink:0;">
+                        <input type="checkbox" id="chemistry-lab-toggle" style="opacity:0;width:0;height:0;" onchange="toggleChemistryLab()">
+                        <span style="position:absolute;inset:0;background:var(--surface-2);border-radius:12px;border:1px solid var(--border);transition:background 0.3s;"></span>
+                        <span id="chemistry-lab-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
+                    </label>
+                </div>
                 <div class="slider-group">
                     <div class="slider-label"><span>temperature</span><span class="val" id="temp-val">0.85</span></div>
                     <input type="range" id="temp-slider" min="0" max="2" step="0.01" value="0.85" oninput="updateSlider('temperature',this.value,'temp-val')">
@@ -1222,7 +1234,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'valuemap') loadValueMap();
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
-        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadChemistryLabStatus(); loadSystemStatus(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
         if (tab.dataset.tab === 'mischief') { loadPrideMirror(); loadMischief(); }
@@ -1459,6 +1471,33 @@ async function toggleGrounding() {
         haptic('light');
         loadGroundingStatus();
     } catch {}
+}
+function _setChemistryLabUI(data) {
+    const on = !!(data && data.enabled);
+    const cb = document.getElementById('chemistry-lab-toggle');
+    const knob = document.getElementById('chemistry-lab-knob');
+    const text = document.getElementById('chemistry-lab-status-text');
+    if (cb) cb.checked = on;
+    if (knob) { knob.style.transform = on ? 'translateX(20px)' : 'translateX(0)'; knob.style.background = on ? 'var(--accent)' : 'var(--text-dim)'; knob.parentElement.querySelector('span').style.background = on ? 'var(--accent-dim)' : 'var(--surface-2)'; }
+    if (text) text.textContent = on ? ((data.effective_state || 'waiting') + ' · ' + (data.phase || 'orient')) : 'off · notebook and artifacts kept';
+}
+async function loadChemistryLabStatus() {
+    try {
+        const res = await VintosUI.request(`${API}/api/lab/chemistry/status`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
+        _setChemistryLabUI(await res.json());
+    } catch(e) {
+        const text = document.getElementById('chemistry-lab-status-text'); if (text) text.textContent = 'unreachable';
+    }
+}
+async function toggleChemistryLab() {
+    const cb = document.getElementById('chemistry-lab-toggle');
+    try {
+        const res = await VintosUI.request(`${API}/api/lab/chemistry/toggle`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Vintos-Secret': CONFIG.secret },
+            body: JSON.stringify({ on: !!cb.checked }) });
+        if (!res.ok) throw new Error('toggle refused');
+        _setChemistryLabUI(await res.json()); haptic('light');
+    } catch(e) { cb.checked = !cb.checked; loadChemistryLabStatus(); }
 }
 async function loadParams() {
     try {
