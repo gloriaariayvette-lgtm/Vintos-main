@@ -256,6 +256,19 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   not yet emit an instrument name and a source hash in its reply, no Mac instrument will
   ever become available, and that is the correct outcome rather than a bug to work around.
 
+The Lab has a visible body now: a `LAB` pane over five bounded, secret-guarded read
+endpoints, showing instrument state and scientific grade as two separate marks. One thing
+it exposed is not new and is not fixed here:
+
+- **The `vintos-app` mirror of `clients/mobile/index.html` is far behind.** It predates the
+  Chemistry Lab entirely — no toggle, no pane. `test_completion_evidence.py` asserts byte
+  equality with `../vintos-app/vintos-app/src/index.html` *when that checkout is present*,
+  and that assertion already failed before this work; it passes on Aegis only because no
+  sibling checkout exists there. `clients/mobile/source.json` now says plainly that the
+  client is edited in this repository and that its `commit` field records where the mirror
+  was last taken from, not what the file currently contains. Re-syncing the app repo is a
+  separate reconciliation and has not been done.
+
 A held reading is no longer lost. `chemistry_reading.py` records the debt against the
 preserved result and pays it on the next admitted occasion, holding its own lock because
 the session's and the daemon's are different locks and neither serialises this. An expired

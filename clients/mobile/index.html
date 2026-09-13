@@ -494,6 +494,7 @@ input[type="range"]::-webkit-slider-thumb {
         <div class="tab" data-tab="atelier">ATELIER</div>
         <div class="tab" data-tab="therapy">THERAPY</div>
         <div class="tab" data-tab="study">STUDY</div>
+        <div class="tab" data-tab="lab">LAB</div>
     </div>
 
     <!-- Tab content -->
@@ -610,6 +611,16 @@ input[type="range"]::-webkit-slider-thumb {
         </div>
 
         <!-- STUDY: his code, with Gloria's y/n -->
+        <!-- Chemistry Lab — the visible body of the Lab, not just its switch.
+             Operational state and scientific grade are shown as two separate marks: a run
+             that completed and answered badly must never read as a run that worked. -->
+        <div class="tab-pane" id="pane-lab">
+            <div class="gallery-content">
+                <div id="lab-summary" style="font-size:0.62rem;color:var(--text-dim);line-height:1.6;margin-bottom:14px;">loading...</div>
+                <div id="lab-grid" class="gallery-grid"></div>
+            </div>
+        </div>
+
         <div class="tab-pane" id="pane-study">
             <div id="study-frame" style="display:flex;flex-direction:column;height:60vh;">
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 1rem;border-bottom:0.5px solid var(--border);">
@@ -1235,6 +1246,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
         if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadChemistryLabStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'lab') { loadLab(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
         if (tab.dataset.tab === 'mischief') { loadPrideMirror(); loadMischief(); }
@@ -1480,6 +1492,119 @@ function _setChemistryLabUI(data) {
     if (cb) cb.checked = on;
     if (knob) { knob.style.transform = on ? 'translateX(20px)' : 'translateX(0)'; knob.style.background = on ? 'var(--accent)' : 'var(--text-dim)'; knob.parentElement.querySelector('span').style.background = on ? 'var(--accent-dim)' : 'var(--surface-2)'; }
     if (text) text.textContent = on ? ((data.effective_state || 'waiting') + ' · ' + (data.phase || 'orient')) : 'off · notebook and artifacts kept';
+}
+// ---- Chemistry Lab -------------------------------------------------------------------
+// Two marks per session, never one: how the instrument behaved, and whether the answer was
+// any good. A completed run with a poor answer is the case this pane exists to show.
+const LAB_CURVE_CAP = 48;
+function _labNum(value) {
+    const n = typeof value === 'number' ? value : parseFloat(value);
+    return Number.isFinite(n) ? n : null;
+}
+function _labVerdict(accuracy) {
+    const marks = {
+        ALL_BETTER_THAN_HARTREE_FOCK: ['better than Hartree-Fock', 'var(--accent)'],
+        MIXED: ['mixed against Hartree-Fock', 'var(--text)'],
+        ALL_AT_HARTREE_FOCK: ['no correlation recovered', 'var(--text-dim)'],
+        ALL_WORSE_THAN_HARTREE_FOCK: ['worse than Hartree-Fock', '#c46a5a'],
+        ANY_INVALID_BELOW_EXACT: ['below the exact energy — a bug', '#c46a5a'],
+        NO_GRADEABLE_POINTS: ['ungraded — no reference', 'var(--text-dim)']
+    };
+    return marks[accuracy] || [accuracy ? String(accuracy).toLowerCase().replace(/_/g, ' ') : 'not graded', 'var(--text-dim)'];
+}
+function _labChip(label, colour) {
+    return '<span style="display:inline-block;font-size:0.54rem;letter-spacing:0.05em;padding:2px 7px;border:1px solid ' +
+        colour + ';color:' + colour + ';border-radius:10px;margin-right:6px;">' + _esc(label) + '</span>';
+}
+function _labCurve(points) {
+    // Hand-rolled SVG: there is no charting library here and this must not add one.
+    const rows = (points || []).slice(0, LAB_CURVE_CAP)
+        .map(p => ({ r: _labNum(p.bond_length), vqe: _labNum(p.vqe_energy), hf: _labNum(p.hartree_fock_energy) }))
+        .filter(p => p.r !== null && (p.vqe !== null || p.hf !== null));
+    if (rows.length < 2) return '';
+    const energies = rows.flatMap(p => [p.vqe, p.hf]).filter(v => v !== null);
+    const xs = rows.map(p => p.r);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...energies), y1 = Math.max(...energies);
+    const W = 280, H = 96, spanX = (x1 - x0) || 1, spanY = (y1 - y0) || 1;
+    const path = key => rows.filter(p => p[key] !== null).map((p, i) =>
+        (i ? 'L' : 'M') + (8 + (p.r - x0) / spanX * (W - 16)).toFixed(1) + ' ' +
+        (8 + (p[key] - y0) / spanY * (H - 16)).toFixed(1)).join(' ');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;margin:8px 0;" role="img" aria-label="energy against bond length">' +
+        '<path d="' + path('hf') + '" fill="none" stroke="var(--text-dim)" stroke-width="1" stroke-dasharray="3 3"></path>' +
+        '<path d="' + path('vqe') + '" fill="none" stroke="var(--accent)" stroke-width="1.5"></path></svg>' +
+        '<div style="font-size:0.52rem;color:var(--text-dim);">solid: variational · dashed: Hartree-Fock · ' +
+        _esc(x0.toFixed(2)) + '–' + _esc(x1.toFixed(2)) + ' \u00c5</div>';
+}
+async function _labGet(path) {
+    const res = await VintosUI.request(`${API}/api/lab/chemistry/${path}`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
+    return await res.json();
+}
+async function loadLab() {
+    const summary = document.getElementById('lab-summary');
+    const grid = document.getElementById('lab-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
+    let status, sessions, taste;
+    try {
+        [status, sessions, taste] = await Promise.all([_labGet('status'), _labGet('sessions?limit=12'), _labGet('taste')]);
+    } catch (e) {
+        grid.innerHTML = '<div class="gallery-empty">the Lab is unreachable</div>';
+        if (summary) summary.textContent = 'unreachable'; return;
+    }
+    const tools = (status && status.tools) || {};
+    const measured = Object.keys(tools).filter(k => tools[k].available);
+    const owed = (status && status.reading_owed) || {};
+    if (summary) {
+        summary.innerHTML =
+            _labChip(status && status.enabled ? ((status.effective_state || 'waiting') + ' \u00b7 ' + (status.phase || 'orient')) : 'off \u00b7 history kept',
+                     status && status.enabled ? 'var(--accent)' : 'var(--text-dim)') +
+            _labChip(measured.length + ' of ' + Object.keys(tools).length + ' instruments measured', 'var(--text-dim)') +
+            (owed.owed ? _labChip(owed.owed + ' reading owed', 'var(--text)') : '') +
+            (owed.expired_unread ? _labChip(owed.expired_unread + ' never read', '#c46a5a') : '') +
+            '<div style="margin-top:8px;">instruments: ' + Object.keys(tools).sort().map(name =>
+                _esc(name) + ' <span style="color:' + (tools[name].available ? 'var(--accent)' : 'var(--text-dim)') + ';">' +
+                _esc(tools[name].state || 'not measured') + '</span>').join(' \u00b7 ') + '</div>';
+    }
+    const rows = (sessions && sessions.sessions) || [];
+    const cards = [];
+    for (const row of rows.slice().reverse()) {
+        const [verdict, colour] = _labVerdict(row.aggregate_accuracy);
+        let curve = '';
+        if (row.mac_run_id) {
+            try {
+                const detail = await _labGet('curve/' + encodeURIComponent(row.mac_run_id));
+                if (detail && detail.ok) curve = _labCurve(detail.points);
+            } catch (e) { curve = ''; }
+        }
+        cards.push('<div class="gallery-item" style="padding:14px;">' +
+            '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">' +
+              '<div style="font-size:0.74rem;color:var(--text-bright);">' + _esc(row.experiment || 'session') + '</div>' +
+              '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(0, 16)) + '</time></div>' +
+            '<div style="margin:8px 0;">' +
+              _labChip('instrument: ' + (row.execution_state || row.state || 'unknown'), 'var(--text-dim)') +
+              _labChip('answer: ' + verdict, colour) +
+              (row.isolation_attestation === 'host_attested' ? _labChip('isolation attested by the bench', 'var(--text-dim)') : '') +
+              (row.owed_reading && row.owed_reading !== 'NOTHING_OWED' ? _labChip(String(row.owed_reading).toLowerCase().replace(/_/g, ' '), 'var(--text-dim)') : '') +
+            '</div>' + curve +
+            (row.question ? '<div style="font-size:0.64rem;color:var(--text-dim);font-style:italic;margin-top:6px;">' + _esc(row.question) + '</div>' : '') +
+            (row.reading ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(row.reading) + '</div>' : '') +
+            (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next \u2014 ' + _esc(row.next_question) + '</div>' : '') +
+            '<div style="font-size:0.52rem;color:var(--text-dim);margin-top:8px;">' + _esc(row.lens || '') + (row.mac_run_id ? ' \u00b7 ' + _esc(row.mac_run_id) : '') + '</div>' +
+        '</div>');
+    }
+    const entries = (taste && taste.taste) || [];
+    if (entries.length || (taste && (taste.candidates || []).length)) {
+        cards.push('<div class="gallery-item" style="padding:14px;">' +
+            '<div style="font-size:0.74rem;color:var(--text-bright);">scientific taste</div>' +
+            '<div style="font-size:0.56rem;color:var(--text-dim);margin:4px 0 10px;">what he returns to. Not what scored well \u2014 grades are a separate ledger.</div>' +
+            entries.map(e => '<div style="display:flex;justify-content:space-between;gap:10px;font-size:0.64rem;color:var(--text);padding:3px 0;">' +
+                '<span>' + _esc(e.kind || '') + ' \u00b7 ' + _esc(e.key || '') + '</span>' +
+                '<span style="color:var(--text-dim);">' + _esc(_labNum(e.score) === null ? '-' : _labNum(e.score).toFixed(2)) + '</span></div>').join('') +
+            ((taste.candidates || []).length ? '<div style="font-size:0.58rem;color:var(--text-dim);margin-top:8px;">noticed, not yet taste: ' +
+                (taste.candidates || []).map(c => _esc(c.key || '')).join(', ') + '</div>' : '') +
+        '</div>');
+    }
+    grid.innerHTML = cards.length ? cards.join('') : '<div class="gallery-empty">the Lab has not run yet</div>';
 }
 async function loadChemistryLabStatus() {
     try {

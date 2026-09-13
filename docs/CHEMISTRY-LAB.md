@@ -53,6 +53,19 @@ nothing — a host's word about itself is a claim, not a measurement. Nothing fi
 experiment list: the frontier lens is shown the instrument states beside it and may still
 choose. Silencing the Lab is not the remedy for having overstated it.
 
+## The visible body
+
+The Lab is not a switch with a JSON history behind it. The `LAB` pane reads five bounded,
+secret-guarded endpoints — notebook, sessions, grades, taste, and one run's curve — and shows
+each session with **two marks, never one**: how the instrument behaved, and whether the
+answer was any good. A run that completed and answered badly must not read as a run that
+worked, and this is where that distinction becomes visible rather than merely recorded.
+
+Energy curves are hand-rolled inline SVG; the client carries no charting library and this
+did not add one. Every value drawn passes a finite check first, curves are capped, and the
+huge Mac payload stays on the server — the page gets state, not the artifact. The endpoints
+recompute nothing: a curve is read from the grade that was already written.
+
 ## Taste, and what it may not be made of
 
 Correctness has its own ledger. Taste is the other one: the folds he returns to, the

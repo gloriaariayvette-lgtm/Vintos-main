@@ -23,6 +23,7 @@ Runs on Aegis at 0.0.0.0:8500 (internal via Tailscale)
 import asyncio
 import hashlib
 import json
+import math
 import os
 import re
 import glob
@@ -6338,6 +6339,115 @@ async def chemistry_lab_toggle(request: Request):
     if type(body.get("on")) is not bool:
         raise HTTPException(status_code=422, detail="on must be boolean")
     return _chemistry_lab_module().set_enabled(body["on"])
+
+
+def _chemistry_tail(name, limit, cap=60):
+    """Tail one Lab ledger. Read-only, bounded, and it recomputes nothing."""
+    module = _chemistry_lab_module()
+    limit = max(1, min(int(cap), int(limit)))
+    return module._jsonl(os.path.join(module.ROOT, name))[-limit:]
+
+
+def _chemistry_finite(value):
+    """A number the page may draw, or None. NaN and infinity are not plottable."""
+    if isinstance(value, bool) or value is None: return None
+    try: number = float(value)
+    except (TypeError, ValueError): return None
+    return number if math.isfinite(number) else None
+
+
+@app.get("/api/lab/chemistry/notebook")
+async def chemistry_lab_notebook(request: Request, limit: int = 20):
+    _require_secret(request)
+    try:
+        return {"ok": True, "entries": _chemistry_tail("notebook.jsonl", limit)}
+    except Exception as exc:
+        return {"ok": False, "entries": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/sessions")
+async def chemistry_lab_sessions(request: Request, limit: int = 12):
+    """Sessions without their full Mac payload: the page shows state, not the artifact."""
+    _require_secret(request)
+    try:
+        rows = []
+        for row in _chemistry_tail("sessions.jsonl", limit, cap=40):
+            grade = row.get("grade") if isinstance(row.get("grade"), dict) else {}
+            rows.append({"session_id": row.get("session_id"), "at": row.get("at"),
+                         "lens": row.get("lens"), "state": row.get("state"),
+                         "experiment": (row.get("plan") or {}).get("experiment"),
+                         "question": (row.get("plan") or {}).get("question"),
+                         "mac_run_id": row.get("mac_run_id"),
+                         "owed_reading": row.get("owed_reading"),
+                         "execution_state": grade.get("execution_state"),
+                         "aggregate_accuracy": grade.get("aggregate_accuracy"),
+                         "isolation_attestation": grade.get("isolation_attestation"),
+                         "reading": (row.get("reading") or {}).get("reading"),
+                         "next_question": (row.get("reading") or {}).get("next_question")})
+        return {"ok": True, "sessions": rows}
+    except Exception as exc:
+        return {"ok": False, "sessions": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/grades")
+async def chemistry_lab_grades(request: Request, limit: int = 12):
+    _require_secret(request)
+    try:
+        return {"ok": True, "grades": [
+            {k: row.get(k) for k in ("run_id", "at", "experiment", "execution_state",
+                                     "aggregate_accuracy", "graded_points", "total_points",
+                                     "grader_version", "isolation_attestation")}
+            for row in _chemistry_tail("experiment-grades.jsonl", limit, cap=40)]}
+    except Exception as exc:
+        return {"ok": False, "grades": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/taste")
+async def chemistry_lab_taste(request: Request):
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        book = module._load(os.path.join(module.ROOT, "taste.json"), {})
+        entries = [dict(value, entry_id=key) for key, value in (book.get("entries") or {}).items()]
+        # Sort through the finite guard: an unreadable score must fall to the bottom, not
+        # ride to the top on NaN's refusal to compare.
+        entries.sort(key=lambda e: -(_chemistry_finite(e.get("score")) or 0.0))
+        return {"ok": True,
+                "taste": [{"kind": e.get("kind"), "key": e.get("key"),
+                           "score": _chemistry_finite(e.get("score")),
+                           "signals": e.get("signals") or {}, "last_seen": e.get("last_seen")}
+                          for e in entries[:24]],
+                "candidates": [{"kind": c.get("kind"), "key": c.get("key"), "mentions": c.get("mentions")}
+                               for c in list((book.get("candidates") or {}).values())[:12]]}
+    except Exception as exc:
+        return {"ok": False, "taste": [], "candidates": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/curve/{run_id}")
+async def chemistry_lab_curve(request: Request, run_id: str):
+    """The graded points of one run, read from what was preserved. Nothing is recomputed."""
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        wanted = str(run_id)[:64]
+        found = None
+        for row in module._jsonl(os.path.join(module.ROOT, "experiment-grades.jsonl")):
+            if row.get("run_id") == wanted: found = row
+        if found is None:
+            return {"ok": False, "run_id": wanted, "points": [], "error": "no grade for that run"}
+        points = []
+        for point in (found.get("points") or [])[:64]:
+            energies = {k: _chemistry_finite(point.get(k)) for k in
+                        ("bond_length", "vqe_energy", "hartree_fock_energy", "exact_energy",
+                         "energy_above_hartree_fock", "correlation_recovered")}
+            if energies["vqe_energy"] is None and energies["hartree_fock_energy"] is None: continue
+            points.append(dict(energies, accuracy_outcome=point.get("accuracy_outcome"),
+                               counts_as=point.get("counts_as")))
+        return {"ok": True, "run_id": wanted, "experiment": found.get("experiment"),
+                "execution_state": found.get("execution_state"),
+                "aggregate_accuracy": found.get("aggregate_accuracy"), "points": points}
+    except Exception as exc:
+        return {"ok": False, "run_id": str(run_id)[:64], "points": [], "error": str(exc)[:180]}
 
 
 @app.get("/api/briefing/latest")
