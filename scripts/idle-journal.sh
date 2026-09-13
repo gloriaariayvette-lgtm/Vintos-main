@@ -664,7 +664,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             ]
         else:
             _user_content = user_msg
-        r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
@@ -800,7 +800,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "List each hallucinated claim starting with HALLUCINATION: "
         "If nothing is hallucinated, write only: CLEAN"
     )
-    audit1_r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit1_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content": audit1_prompt}],
         "temperature": 0.3,
@@ -883,7 +883,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             kept.append(sent)
         return " ".join(kept).strip()
     def absorb(own, other):
-        r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
@@ -933,7 +933,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     # Phase 3: Integration
     # Find what each pass held onto
     def find_core(pass_text, other_text):
-        r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
             "messages": [{
                 "role": "user",
@@ -980,7 +980,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "List each hallucinated claim starting with HALLUCINATION: "
         "If nothing is hallucinated, write only: CLEAN"
     )
-    audit_r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content": audit_prompt}],
         "temperature": 0.3,
@@ -1077,7 +1077,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _raw = (_claude_sync(_synthesis_system, integration_prompt, True, max_tokens=6000)[0] or "")
     import sys as _js; print('[journal] final on claude' if _raw else '[journal] final fell to grok', file=_js.stderr, flush=True)
     if not _raw:
-        r3 = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
+        r3 = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")},
             json={"model": "grok-4.20-0309-non-reasoning",
                   "messages": [{"role": "system", "content": _synthesis_system},
@@ -1099,7 +1099,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
                 + str(_ag_scores["arrival"]) + "). Do not narrate the edge of things. Enter them. "
                 "Same drafts, same rules — but write from inside this time."
             )
-            r3b = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+            r3b = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
                 "model": "grok-4.20-0309-non-reasoning",
                 "messages": [
                     {"role": "system", "content": _synthesis_system + _ag_note},
@@ -1148,7 +1148,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     if _overlap < 6 and _raw:
         print("[Synthesis] Output diverged from A2/B2 — regenerating anchored", file=__import__("sys").stderr, flush=True)
         _anchor_prompt = integration_prompt + f"\n\nSTART WITH THIS EXACT SENTENCE: {_a2_anchor}"
-        _rv = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+        _rv = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
            "messages": [{"role": "system", "content": _synthesis_system}, {"role": "user", "content": _anchor_prompt}],
             "temperature": 0.5, "max_tokens": 4000
@@ -1183,7 +1183,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _pre_audit = _raw
     try: open("/tmp/vintos-bilateral-final-preaudit.txt", "w").write(_pre_audit)
     except Exception: pass
-    audit2_r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
+    audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content":
             "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
@@ -1474,7 +1474,7 @@ try:
     entry = os.environ.get("_JRN_ENTRY", "")
     if not entry or len(entry.strip()) < 50:
         raise SystemExit(0)
-    r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+    r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [
             {"role": "system", "content": "You extract the single most alive or unresolved thing from a journal entry — something worth returning to. Prefer threads about what he is reaching toward, discovering, or wanting. Avoid threads that describe his analyzing his own analysis. Return ONLY a single sentence, written in first person ('I...'). If nothing is notably alive or unresolved, return NONE."},
@@ -1575,7 +1575,7 @@ try:
         _wsc_txt = _wsc()
         if _wsc_txt: _want_system += f"\n\n{_wsc_txt}"
     except: pass
-    r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+    r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [
             {"role": "system", "content": _want_system},
@@ -1616,7 +1616,7 @@ fi
 python3 - << 'JOURNALNUDGEEOF' 2>/dev/null
 import socket, json, os, requests, re
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
-LM = "http://127.0.0.1:8599/gemma/v1/chat/completions"
+LM = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
 # Read the most recent journal entry
 journal_text = os.environ.get("_JRN_ENTRY", "")[:800]
 if not journal_text:
@@ -1678,4 +1678,3 @@ try:
 except Exception as e:
     print('[Moment] Journal failed:', e)
 " 2>/dev/null
-

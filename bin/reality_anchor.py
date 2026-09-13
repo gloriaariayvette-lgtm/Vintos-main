@@ -11,7 +11,7 @@ WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 ANCHOR_FILE = os.path.join(MEMORY, "reality-anchor.json")
 MAX_EVENTS = 500
-LM = "http://100.79.177.103:1234/v1/chat/completions"
+LM = "http://172.18.16.1:1234/v1/chat/completions"
 
 SOURCE_WEIGHTS = {
     "chat": 1.0,           # direct interaction — highest trust
@@ -108,7 +108,7 @@ def check_contradiction_llm(new_statement, existing_statement):
     )
     try:
         r = requests.post(LM, json={
-            "model": "gemma-4-26b-a4b-it-uncensored",
+            "model": "google/gemma-4-12b-qat",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1, "max_tokens": 10
         }, timeout=15)

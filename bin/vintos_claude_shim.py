@@ -24,6 +24,8 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 XAI_URL = "https://api.x.ai/v1/chat/completions"
 GEMMA_URL = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
+AEGIS_GEMMA_URL = "http://172.18.16.1:1234/v1/chat/completions"
+AEGIS_GEMMA_MODEL = "google/gemma-4-12b-qat"
 CLAUDE_MODEL = "claude-opus-4-8"
 FLEET_DEFAULT = "claude-haiku-4-5-20251001"
 LOG = "/tmp/vintos-claude-shim.log"
@@ -260,7 +262,20 @@ def gemma_complete(j, call=None):
     if not res["model"]: res["model"] = GEMMA_MODEL
     return res
 
-PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete}
+def aegis_gemma_complete(j, call=None):
+    """Aegis-local utility Gemma, used only by explicitly named low-cost house lanes."""
+    call = call or _Call(j)
+    unsup = unsupported_features(j, "gemma")
+    if unsup: return GR.make_result("aegis_gemma", status="unavailable", reason="unsupported on aegis_gemma: " + ",".join(unsup))
+    body = {k: v for k, v in j.items() if k != "route"}; body["model"] = AEGIS_GEMMA_MODEL
+    _, d, err = _post_json("aegis_gemma", AEGIS_GEMMA_URL, body, {"Content-Type": "application/json"}, 180, call)
+    if err is not None and d is None: _log(f"aegis gemma error: {err['reason']}"); return err
+    res = GR.from_openai(d, "aegis_gemma")
+    if not res["model"]: res["model"] = AEGIS_GEMMA_MODEL
+    return res
+
+PROVIDERS = {"anthropic": claude_complete, "xai": xai_complete, "gemma": gemma_complete,
+             "aegis_gemma": aegis_gemma_complete}
 
 def forward_xai(path, raw):
     """Forward raw bytes to real x.ai on the SAME path (images / anything non-chat). Returns (status, body_bytes)."""
@@ -280,6 +295,7 @@ def forward_xai(path, raw):
 # ---------------------------------------------------------------- orchestration (40, 41, 43)
 
 def provider_chain(j, path):
+    if path.startswith("/gemma-aegis"): return ["aegis_gemma", "gemma", "xai"]
     if path.startswith("/gemma"): return ["gemma", "xai"]
     if j.get("route") == "grok": return ["xai"]
     # one-word verdicts / mechanical calls up to 120 tokens ride local gemma first (Gloria 2026-08-26/09-02)

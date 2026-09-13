@@ -20,8 +20,8 @@ WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/w
 MEMORY = os.path.join(WORKSPACE, "memory")
 ARCHIVE = os.path.join(MEMORY, "robot-ledger-archive.jsonl")
 OUT = os.path.join(MEMORY, "robot-subconscious.json")
-LLM = os.environ.get("VINTOS_GEMMA_URL", "http://100.79.177.103:1234/v1/chat/completions")
-MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+LLM = os.environ.get("VINTOS_GEMMA_URL", "http://172.18.16.1:1234/v1/chat/completions")
+MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
 MIN_ENTRIES = 5
 NOISE = {"that", "this", "with", "from", "have", "been", "there", "their", "they", "what", "which", "some", "also",
          "into", "than", "then", "when", "your", "will", "more", "very", "just", "over", "like", "only", "both", "here",

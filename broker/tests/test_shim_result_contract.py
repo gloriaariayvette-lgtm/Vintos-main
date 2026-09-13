@@ -92,6 +92,10 @@ s, h, b = run(dict(BASE), anthropic=EMPTY_ANTH, xai=EMPTY_XAI)
 check("empty completions from every provider -> 502, not 200+empty", s == 502 and "empty completion" in json.dumps(b), (s, b))
 s, h, b = run(dict(BASE), path="/gemma/v1/chat/completions", gemma=lambda b_, h_: socket.timeout("timed out"), xai=EMPTY_XAI)
 check("/gemma route with gemma timeout + empty grok -> 502 (old code answered 200 empty)", s == 502, (s, b))
+check("named Aegis utility lane does not inherit the Mac Gemma default",
+      S.provider_chain(BASE, "/gemma-aegis/v1/chat/completions") == ["aegis_gemma", "gemma", "xai"]
+      and S.AEGIS_GEMMA_URL.startswith("http://172.18.16.1:")
+      and S.AEGIS_GEMMA_MODEL == "google/gemma-4-12b-qat")
 
 print("--- 41: real model / usage / provider ---")
 s, h, b = run(dict(BASE), anthropic=ANTH_OK, xai=XAI_OK)

@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
-LM = "http://127.0.0.1:8599/v1/chat/completions"
+LM = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
 
 def _get_context():
     ctx = {}

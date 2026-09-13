@@ -37,8 +37,8 @@ ARCHIVE = os.path.join(MEMORY, "robot-ledger-archive.jsonl")        # what robot
 SUBCON = os.path.join(MEMORY, "robot-subconscious.json")
 ARCHIVE_SENSE_EVERY = 30.0                                            # one sense row per half minute, not per push
 
-GEMMA_URL = os.environ.get("VINTOS_GEMMA_URL", "http://100.79.177.103:1234/v1/chat/completions")
-GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "gemma-4-26b-a4b-it-uncensored")
+GEMMA_URL = os.environ.get("VINTOS_GEMMA_URL", "http://172.18.16.1:1234/v1/chat/completions")
+GEMMA_MODEL = os.environ.get("VINTOS_GEMMA_MODEL", "google/gemma-4-12b-qat")
 SONNET_MODEL = os.environ.get("VINTOS_ROBOT_VOICE_MODEL", "claude-sonnet-5")
 FRAME_MAX_AGE = float(os.environ.get("VINTOS_ROBOT_FRAME_MAX_AGE", "6"))
 MIN_MS, MAX_MS = 100, 1500

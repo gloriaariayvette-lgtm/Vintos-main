@@ -6,11 +6,11 @@ from datetime import date
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 LEDGER = os.path.join(MEMORY, "trial-ledger.json")
-LM_URL = "http://100.79.177.103:1234/v1/chat/completions"
+LM_URL = "http://172.18.16.1:1234/v1/chat/completions"
 
 def call_llm(prompt, temp=0.3, max_tokens=600):
     r = requests.post(LM_URL, json={
-        "model": "gemma-4-26b-a4b-it-uncensored",
+        "model": "google/gemma-4-12b-qat",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temp, "max_tokens": max_tokens
     }, timeout=60)
