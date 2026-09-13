@@ -37,7 +37,9 @@ check("context provenance is written", receipt["total_chars"] > 0 and all(x.get(
 def admitted(*a, **k): yield types.SimpleNamespace()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 M._orient = lambda context: {"uniprot_query": "reviewed:true AND length:[40 TO 350]", "question": "Which compact fold catches me?", "why_now": "shape"}
-M._browse = lambda query, limit: [{"accession": "P00001", "protein_name": "small test protein", "organism": "Example", "length": 80, "sequence": "A" * 80}]
+M._browse = lambda query, limit: {"records": [{"accession": "P00001", "protein_name": "small test protein", "organism": "Example", "length": 80, "sequence": "A" * 80}],
+                                  "requested_query": query, "executed_query": query,
+                                  "fallback_reason": None}
 M._embed_records = lambda records: {"ok": True, "model": "test-esmc", "device": "test",
                                     "embeddings": [{"accession": "P00001", "dimension": 4,
                                                     "embedding_sha256": "abc", "artifact": "memory/chemistry-lab/artifacts/esmc/test.npy"}]}
@@ -46,6 +48,8 @@ one, two, three, four = M.tick(), M.tick(), M.tick(), M.tick()
 check("four checkpointed turns complete the loop", [one.get("kind"), two.get("kind"), three.get("kind"), four.get("kind")] == ["inquiry", "source_read", "protein_representation", "reflection"], (one, two, three, four))
 notes = [json.loads(x) for x in open(M.NOTEBOOK) if x.strip()]
 check("source and speculation stay distinguishable", any(x.get("truth_status") == "source_metadata_not_lived_experience" for x in notes) and any("named_speculation" in x.get("truth_status", "") for x in notes))
+source_note = next(x for x in notes if x.get("kind") == "source_read")
+check("source note records requested and executed queries", source_note.get("requested_query") == source_note.get("executed_query") and source_note.get("fallback_reason") is None)
 check("dangerous generated query cannot widen the perimeter", "toxin" not in M._safe_query("toxin human target") and M._safe_query("toxin human target").startswith("reviewed:true"))
 
 before = open(M.NOTEBOOK).read()

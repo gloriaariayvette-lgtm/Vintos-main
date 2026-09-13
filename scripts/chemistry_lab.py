@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 import uuid
 from datetime import datetime, timezone
 
@@ -48,6 +49,7 @@ ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistr
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
+BASELINE_QUERY = "reviewed:true AND length:[40 TO 350]"
 DEFAULTS = {
     "enabled": False,
     # One complete browse cycle in roughly fifteen quiet minutes. The daemon is
@@ -204,9 +206,9 @@ def _safe_query(query):
     query = re.sub(r"[^A-Za-z0-9_()\[\]:*?+\-\s\"]", " ", str(query or ""))
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if not query or DENIED_QUERY.search(query):
-        return "reviewed:true AND length:[40 TO 350]"
+        return BASELINE_QUERY
     # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
-    return "reviewed:true AND length:[40 TO 350] AND (" + query + ")"
+    return BASELINE_QUERY + " AND (" + query + ")"
 
 
 def _orient(context):
@@ -225,12 +227,26 @@ def _orient(context):
 
 
 def _browse(query, limit):
-    params = urllib.parse.urlencode({"query": query, "format": "json", "size": int(limit),
-                                     "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function"})
-    req = urllib.request.Request(UNIPROT_URL + "?" + params,
-                                 headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
-    with urllib.request.urlopen(req, timeout=45) as response:
-        raw = json.loads(response.read())
+    requested_query = query
+    executed_query = query
+    fallback_reason = None
+    def fetch(value):
+        params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
+                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function"})
+        req = urllib.request.Request(UNIPROT_URL + "?" + params,
+                                     headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
+        with urllib.request.urlopen(req, timeout=45) as response:
+            return json.loads(response.read())
+    try:
+        raw = fetch(executed_query)
+    except urllib.error.HTTPError as exc:
+        # A model may invent a plausible-looking UniProt field. A rejected
+        # query is history, not a verdict and not permission to widen scope.
+        if exc.code != 400 or executed_query == BASELINE_QUERY:
+            raise
+        fallback_reason = "source_rejected_generated_query"
+        executed_query = BASELINE_QUERY
+        raw = fetch(executed_query)
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
@@ -239,7 +255,8 @@ def _browse(query, limit):
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
                      "length": (item.get("sequence") or {}).get("length"),
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
-    return rows
+    return {"records": rows, "requested_query": requested_query,
+            "executed_query": executed_query, "fallback_reason": fallback_reason}
 
 
 def _embed_records(records):
@@ -332,10 +349,13 @@ def tick():
             elif phase == "browse":
                 inquiry = state.get("inquiry") or {"uniprot_query": _safe_query("")}
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
-                records = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
+                browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
+                records = browse_result["records"]
                 state["records"] = records; next_phase = "embed"
                 note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
-                        "query": inquiry["uniprot_query"],
+                        "requested_query": browse_result["requested_query"],
+                        "executed_query": browse_result["executed_query"],
+                        "fallback_reason": browse_result["fallback_reason"],
                         "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
                         "truth_status": "source_metadata_not_lived_experience"}
             elif phase == "embed":
