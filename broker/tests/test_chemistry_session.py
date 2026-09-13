@@ -34,6 +34,7 @@ assert json.load(open(session.SESSION_STATE))["lens_index"] == 1
 assert any(json.loads(x).get("kind") == "frontier_session" for x in open(lab.NOTEBOOK) if x.strip())
 lab.set_enabled(False)
 assert session.run()["state"] == "off"
+assert mac.reading("RUN-1", "a basin")["ok"]
 source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 assert '"action": "code"' not in source and "atelier" not in source.lower()
 print("8/8 passed")
