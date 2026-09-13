@@ -248,10 +248,14 @@ an append-only `tool-probes.jsonl`; `tool-inventory.json` is a materialized view
 nothing reads. VQNet, Mac ESMC, pyChemiQ and Foundry each have a slot and each reads
 unavailable-with-a-reason until a receipt exists. Two limits are worth writing down:
 
-- The Aegis probe paths for ProteinMPNN, structure prediction, RFdiffusion and the
-  protein-design MCP are guesses at `~/.vintos/tools/chemistry-lab/<name>/bin/python`,
-  overridable by environment variable. Until they are pointed at the real environments
-  they will read `not_installed`, which is honest but uninformative.
+- ProteinMPNN, structure prediction, RFdiffusion and the protein-design MCP have **no real
+  probe**. This side does not know their entry points, so each reads `not_configured` and
+  stays unavailable — deliberately, after a first version that "smoke tested" three of them
+  by importing `torch` and the fourth by printing the Python version, any of which would
+  have passed for a broken or absent instrument. Setting `CHEM_LAB_MPNN_PROBE`,
+  `CHEM_LAB_STRUCTURE_PROBE`, `CHEM_LAB_RFDIFFUSION_PROBE` or `CHEM_LAB_MCP_PROBE` to
+  `{"argv": [...], "stdin": "", "marker": "..."}` wires each to its real entry point with no
+  code change. Until then four of the ten instruments are honestly unmeasured.
 - A Mac instrument can only be proved by a run that names and hashes it. If the bench does
   not yet emit an instrument name and a source hash in its reply, no Mac instrument will
   ever become available, and that is the correct outcome rather than a bug to work around.

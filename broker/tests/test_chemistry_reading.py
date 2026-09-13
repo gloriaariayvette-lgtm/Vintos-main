@@ -118,6 +118,42 @@ check("an off Lab does no reading", O.settle_one(reader=reader)["outcome"] == O.
 check("switching off preserves every debt", O.state()["expired_unread"] == 1 and O.state()["retired"] == 2)
 lab.set_enabled(True)
 
+# --- concurrency: one debt, two readers, one payment ------------------------------------------
+lab._atomic(O.OWED, {"open": [], "retired": []})
+open(lab.NOTEBOOK, "w").close()
+O.owe("CHEM-RACE", "claude", PLAN, RESULT)
+
+def _settle(index):
+    import importlib.util as _u, os as _o, sys as _s, contextlib as _c, types as _t, time as _time
+    _o.environ["HOME"] = HOME; _o.environ["SPARK_WORKSPACE"] = WS
+    _s.path.insert(0, os.path.join(REPO, "scripts"))
+    @_c.contextmanager
+    def _admitted(*a, **k): yield object()
+    _s.modules["compute_admission"] = _t.SimpleNamespace(admit=_admitted)
+    def _load(name, path):
+        spec = _u.spec_from_file_location(name, path)
+        mod = _u.module_from_spec(spec); _s.modules[name] = mod; spec.loader.exec_module(mod); return mod
+    _load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
+    owed = _load("chemistry_reading", os.path.join(REPO, "scripts", "chemistry_reading.py"))
+    def _slow(debt):
+        _time.sleep(0.4)   # long enough that both readers are inside settle_one at once
+        return {"reading": "read by %d" % index, "what_surprised_me": "", "next_question": ""}
+    return owed.settle_one(reader=_slow)["outcome"]
+
+import multiprocessing
+with multiprocessing.get_context("fork").Pool(2) as pool:
+    outcomes = pool.map(_settle, range(2))
+check("exactly one reader pays the debt", outcomes.count(O.READ) == 1, outcomes)
+check("the other is turned away rather than paying it again",
+      set(outcomes) - {O.READ} <= {O.REFUSED, O.NOTHING_OWED, O.ALREADY_READ}, outcomes)
+check("the reading is written exactly once",
+      sum(1 for n in lab._jsonl(lab.NOTEBOOK) if n.get("kind") == "owed_reading"
+          and n.get("session_id") == "CHEM-RACE") == 1,
+      [n.get("kind") for n in lab._jsonl(lab.NOTEBOOK)])
+check("the debt is retired exactly once",
+      sum(1 for r in O._book()["retired"] if r["session_id"] == "CHEM-RACE") == 1
+      and not O._book()["open"], O.state())
+
 # --- the wiring ---------------------------------------------------------------------------------
 session_source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 check("the held branch now owes the reading instead of stranding it",
@@ -125,6 +161,10 @@ check("the held branch now owes the reading instead of stranding it",
       and "experiment_completed_reading_held" in session_source)
 check("the session settles a debt before starting anything new",
       session_source.index("owed.settle_one()") < session_source.index("remote = mac.status()"))
+check("a debt that could not be paid stops the session before the bench is touched",
+      'HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")' in session_source
+      and session_source.index("HOLDS_THE_SESSION:") < session_source.index("remote = mac.status()")
+      and "held_reading_owed" in session_source)
 lab_source = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("the daemon settles inside its own admission, without asking for the slot twice",
       "chemistry_reading.settle_one(already_admitted=True)" in lab_source)

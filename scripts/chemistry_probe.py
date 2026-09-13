@@ -59,30 +59,88 @@ VERSION_RE = re.compile(r"\b\d+(?:\.\d+){1,3}(?:[a-z0-9.+-]{0,12})?\b")
 
 # Outcomes that make an instrument available, and only until the receipt expires.
 PROVING = ("smoke_passed", "proved_by_run")
-OUTCOMES = PROVING + ("smoke_failed", "not_installed", "reported_by_host_not_smoke_tested",
-                      "named_by_run_without_hash")
+OUTCOMES = PROVING + ("smoke_failed", "not_installed", "not_configured",
+                      "reported_by_host_not_smoke_tested", "named_by_run_without_hash")
+# A measurement holds for a month. Everything else is retried tomorrow: a broken or
+# unconfigured instrument should be re-asked about often, and a working one should not be
+# reloaded daily just to say so again.
+TTL_BY_OUTCOME = {"smoke_passed": DEFAULT_TTL_DAYS, "proved_by_run": DEFAULT_TTL_DAYS,
+                  "reported_by_host_not_smoke_tested": 7}
+FAILED_TTL_DAYS = 1
 
 TOOLS_ROOT = os.environ.get("CHEM_LAB_TOOLS", os.path.expanduser("~/.vintos/tools/chemistry-lab"))
 
 def _venv(name, env):
     return os.environ.get(env, os.path.join(TOOLS_ROOT, name, "bin", "python"))
 
-# Aegis instruments this side can actually measure. Each is its own interpreter importing
-# its own package: the smallest thing that distinguishes "installed" from "runs here".
+# Aegis instruments this side can actually measure -- and only those.
+#
+# The first version of this table imported torch and called it a ProteinMPNN smoke test.
+# That is not a smoke test of ProteinMPNN; it is a smoke test of torch, and it would have
+# issued `smoke_passed` for an instrument that was absent or broken. A probe here must run
+# the named entry point on the smallest real input and prove it by a marker in the output.
+#
+# Where this side does not know the real entry point, the probe is `not_configured` and the
+# instrument stays unavailable. That is the honest state, and it is recoverable without a
+# code change: set CHEM_LAB_<TOOL>_PROBE to a JSON object
+#     {"argv": ["/path/to/python", "/path/to/entry.py", "--tiny"], "stdin": "", "marker": "..."}
+# and the probe runs exactly that and requires exactly that marker.
+
+def _esmc_verify(stdout):
+    """A real representation of a real sequence, or nothing."""
+    value = json.loads(stdout)
+    rows = value.get("embeddings") or []
+    if not value.get("ok") or not rows: raise ValueError("no embedding returned")
+    dimension = int(rows[0].get("dimension") or 0)
+    if dimension <= 0: raise ValueError("embedding has no dimension")
+    return {"dimension": dimension, "model": str(value.get("model"))[:40],
+            "device": str(value.get("device"))[:16]}
+
+
+# Thirty-three residues of a real, ordinary, non-pathogenic sequence: enough to make the
+# model actually run, small enough to cost nothing.
+PROBE_SEQUENCE = "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ"
+
 AEGIS_PROBES = {
-    "esmc": {"python": lab.ESMC_PYTHON,
-             "code": "import esm, torch; print('esm', getattr(esm, '__version__', 'unknown'), 'torch', torch.__version__)"},
-    "openmm": {"python": _venv("openmm", "CHEM_LAB_OPENMM_PYTHON"),
-               "code": "import openmm; print('openmm', openmm.version.version)"},
-    "protein_mpnn": {"python": _venv("proteinmpnn", "CHEM_LAB_MPNN_PYTHON"),
-                     "code": "import torch; print('torch', torch.__version__)"},
-    "structure_prediction": {"python": _venv("structure", "CHEM_LAB_STRUCTURE_PYTHON"),
-                             "code": "import torch; print('torch', torch.__version__)"},
-    "rfdiffusion": {"python": _venv("rfdiffusion", "CHEM_LAB_RFDIFFUSION_PYTHON"),
-                    "code": "import torch; print('torch', torch.__version__)"},
-    "protein_design_mcp": {"python": _venv("protein-design-mcp", "CHEM_LAB_MCP_PYTHON"),
-                           "code": "import sys; print('python', '.'.join(map(str, sys.version_info[:3])))"},
+    # Runs the Lab's own ESMC worker end to end and requires a pooled vector back.
+    "esmc": {"argv": [lab.ESMC_PYTHON, lab.ESMC_WORKER],
+             "stdin": json.dumps({"records": [{"accession": "PROBE", "sequence": PROBE_SEQUENCE}]}),
+             "verify": _esmc_verify, "timeout": 600,
+             "entry": "chemistry_esmc.py on one short sequence"},
+    # Builds a two-particle system, integrates one step, and reports the energy it got.
+    "openmm": {"argv": [_venv("openmm", "CHEM_LAB_OPENMM_PYTHON"), "-c",
+                        "import openmm, openmm.unit as u;"
+                        "s=openmm.System(); s.addParticle(1.0); s.addParticle(1.0);"
+                        "f=openmm.HarmonicBondForce(); f.addBond(0,1,0.15,1000.0); s.addForce(f);"
+                        "i=openmm.LangevinIntegrator(300*u.kelvin, 1/u.picosecond, 0.001*u.picoseconds);"
+                        "c=openmm.Context(s, i, openmm.Platform.getPlatformByName('Reference'));"
+                        "c.setPositions([(0,0,0),(0.16,0,0)]); i.step(1);"
+                        "print('openmm', openmm.version.version, 'stepped_energy',"
+                        " c.getState(getEnergy=True).getPotentialEnergy().value_in_unit(u.kilojoule_per_mole))"],
+               "marker": "stepped_energy", "timeout": 240,
+               "entry": "one Langevin step on a two-particle harmonic system"},
+    # No entry point is known on this side for these. Saying so is the measurement.
+    "protein_mpnn": {"env": "CHEM_LAB_MPNN_PROBE", "entry": "a ProteinMPNN design on one tiny backbone"},
+    "structure_prediction": {"env": "CHEM_LAB_STRUCTURE_PROBE", "entry": "a fold of one short sequence"},
+    "rfdiffusion": {"env": "CHEM_LAB_RFDIFFUSION_PROBE", "entry": "one minimal diffusion run"},
+    "protein_design_mcp": {"env": "CHEM_LAB_MCP_PROBE", "entry": "one tool call answered by the server"},
 }
+
+
+def _configured(spec):
+    """Her override, if she has named a real entry point for an instrument we cannot reach."""
+    raw = os.environ.get(spec.get("env", ""), "").strip()
+    if not raw: return None
+    try: value = json.loads(raw)
+    except Exception: return {"broken": "probe specification is not JSON"}
+    argv = value.get("argv")
+    if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+        return {"broken": "probe specification needs an argv of strings"}
+    if not str(value.get("marker") or "").strip():
+        return {"broken": "probe specification needs a marker proving the entry point ran"}
+    return {"argv": argv[:12], "stdin": str(value.get("stdin") or ""),
+            "marker": str(value["marker"])[:80], "timeout": PROBE_TIMEOUT}
+
 
 # What a Mac run may name to prove an instrument. Anything not in this map is filed and
 # proves nothing: a bench cannot invent an instrument slot by naming one.
@@ -98,8 +156,9 @@ def _now(): return datetime.now(timezone.utc)
 
 
 def _receipt(tool, host, outcome, evidence_sha256=None, evidence=None, failure=None,
-             ttl_days=DEFAULT_TTL_DAYS, source=""):
+             ttl_days=None, source=""):
     if outcome not in OUTCOMES: raise ValueError("unknown probe outcome %r" % outcome)
+    if ttl_days is None: ttl_days = TTL_BY_OUTCOME.get(outcome, FAILED_TTL_DAYS)
     measured = _now()
     row = {"receipt_id": "CP-" + uuid.uuid4().hex[:10], "tool": str(tool)[:40], "host": str(host)[:24],
            "probe_version": PROBE_VERSION, "measured_at": measured.isoformat(),
@@ -119,32 +178,67 @@ def _version(text):
 
 
 def probe_aegis(name):
-    """One bounded smoke test. A missing interpreter is not_installed, not a failure to hide."""
+    """One bounded smoke test of the named entry point. Nothing else counts as passing."""
     spec = AEGIS_PROBES.get(name)
     if not spec: return _receipt(name, "aegis", "smoke_failed",
                                  failure={"type": "no_probe_defined"}, source="chemistry_probe")
-    python = spec["python"]
-    if not os.path.isfile(python):
-        return _receipt(name, "aegis", "not_installed",
-                        failure={"type": "missing_interpreter"}, source=python[:120])
+    entry = str(spec.get("entry", ""))[:120]
+    if not spec.get("argv"):
+        override = _configured(spec)
+        if override is None:
+            return _receipt(name, "aegis", "not_configured",
+                            failure={"type": "no_entry_point_known", "needs": spec.get("env", "")},
+                            evidence={"would_exercise": entry}, source="chemistry_probe")
+        if override.get("broken"):
+            return _receipt(name, "aegis", "not_configured",
+                            failure={"type": "probe_specification_invalid", "needs": spec.get("env", "")},
+                            evidence={"would_exercise": entry}, source=spec.get("env", ""))
+        spec = dict(spec, **override)
+    argv = list(spec["argv"])
+    if not os.path.isfile(argv[0]):
+        return _receipt(name, "aegis", "not_installed", failure={"type": "missing_interpreter"},
+                        evidence={"would_exercise": entry}, source=argv[0][:120])
+    for path in argv[1:]:
+        if path.endswith(".py") and not os.path.isfile(path):
+            return _receipt(name, "aegis", "not_installed", failure={"type": "missing_entry_point"},
+                            evidence={"would_exercise": entry}, source=path[:120])
     try:
-        done = subprocess.run([python, "-c", spec["code"]], text=True, capture_output=True,
-                              timeout=PROBE_TIMEOUT, check=False)
+        done = subprocess.run(argv, input=spec.get("stdin") or "", text=True, capture_output=True,
+                              timeout=int(spec.get("timeout", PROBE_TIMEOUT)), check=False,
+                              env={**os.environ, "HF_HOME": os.path.expanduser(
+                                  "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")})
     except subprocess.TimeoutExpired:
-        return _receipt(name, "aegis", "smoke_failed",
-                        failure={"type": "timeout", "seconds": PROBE_TIMEOUT}, source=python[:120])
+        return _receipt(name, "aegis", "smoke_failed", evidence={"would_exercise": entry},
+                        failure={"type": "timeout", "seconds": int(spec.get("timeout", PROBE_TIMEOUT))},
+                        source=argv[0][:120])
     except Exception as exc:
-        return _receipt(name, "aegis", "smoke_failed",
-                        failure={"type": "exception", "error": exc.__class__.__name__}, source=python[:120])
+        return _receipt(name, "aegis", "smoke_failed", evidence={"would_exercise": entry},
+                        failure={"type": "exception", "error": exc.__class__.__name__}, source=argv[0][:120])
     blob = (done.stdout or "") + (done.stderr or "")
     digest = hashlib.sha256(blob.encode("utf-8", "replace")).hexdigest()
     if done.returncode != 0:
         return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
+                        evidence={"exercised": entry},
                         failure={"type": "nonzero_exit", "exit_code": int(done.returncode)},
-                        source=python[:120])
-    return _receipt(name, "aegis", "smoke_passed", evidence_sha256=digest,
-                    evidence={"version": _version(done.stdout), "output_bytes": len(blob)},
-                    source=python[:120])
+                        source=argv[0][:120])
+    # Exiting zero is not passing. The entry point has to show it ran.
+    evidence = {"exercised": entry, "output_bytes": len(blob)}
+    if spec.get("verify"):
+        try: evidence.update(spec["verify"](done.stdout))
+        except Exception as exc:
+            return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
+                            evidence={"exercised": entry},
+                            failure={"type": "result_unusable", "error": exc.__class__.__name__},
+                            source=argv[0][:120])
+    elif spec.get("marker"):
+        if spec["marker"] not in blob:
+            return _receipt(name, "aegis", "smoke_failed", evidence_sha256=digest,
+                            evidence={"exercised": entry},
+                            failure={"type": "marker_absent", "marker": str(spec["marker"])[:40]},
+                            source=argv[0][:120])
+        evidence["version"] = _version(done.stdout)
+    return _receipt(name, "aegis", "smoke_passed", evidence_sha256=digest, evidence=evidence,
+                    source=argv[0][:120])
 
 
 def refresh(names=None, only_expired=True):
@@ -154,8 +248,10 @@ def refresh(names=None, only_expired=True):
     for name in (names or list(AEGIS_PROBES)):
         if name not in AEGIS_PROBES: continue
         if only_expired and not names:
+            # Skip while the receipt still holds, whatever it said. A pass holds for a
+            # month; a failure or an unconfigured probe holds for a day and is re-asked.
             held = current.get(name)
-            if held and held.get("outcome") in PROVING and not _expired(held): continue
+            if held and not _expired(held): continue
         done.append(probe_aegis(name))
     write_view()
     return done

@@ -71,4 +71,49 @@ assert "EnvironmentFile=-%h/.vintos/vintos.env" in unit
 # Instrument states ride with the session, and nothing is available without a receipt.
 assert row["instrument_states"]["qpanda"] == "not_measured", row["instrument_states"]
 assert row["instrument_states"]["foundry"] == "not_measured"
-print("23/23 passed")
+# An owed reading that could not be paid stops the session before the bench is touched.
+lab.set_enabled(True)
+import chemistry_reading as owed_mod
+touched = []
+mac.status = lambda: touched.append("status") or {"ok": True, "experiments": ["fold"]}
+owed_mod.owe("CHEM-HELD", "claude", {"experiment": "fold"}, {"ok": True, "run_id": "RUN-H"})
+def _held_reader(debt): raise TimeoutError("foreground live")
+owed_mod.default_reader = _held_reader
+held_row = session.run()
+assert held_row["state"] == "held_reading_owed", held_row
+assert held_row["owed_reading"] == "STILL_HELD", held_row
+assert touched == [], "the bench must not be touched while a reading is owed"
+assert json.load(open(session.SESSION_STATE))["lens_index"] == 2, "a held session does not spend a lens"
+def _broken_reader(debt): raise ValueError("model returned nothing")
+owed_mod.default_reader = _broken_reader
+refused_row = session.run()
+assert refused_row["state"] == "held_reading_owed" and refused_row["owed_reading"] == "REFUSED", refused_row
+assert touched == [], "a refused reading also stops the session"
+assert session.HOLDS_THE_SESSION == ("STILL_HELD", "REFUSED")
+# Once it is paid, the bench is reachable again.
+owed_mod.default_reader = lambda debt: {"reading": "read at last", "what_surprised_me": "", "next_question": ""}
+paid = session.run()
+assert paid["state"] == "completed" and touched == ["status"], (paid["state"], touched)
+assert paid["owed_reading"] == "READ", paid["owed_reading"]
+
+# The instrument refresh is actually connected, and only touches expired receipts.
+assert "instruments_refreshed" in paid, paid.keys()
+import chemistry_probe as probe_mod
+calls = []
+probe_mod.AEGIS_PROBES = {"openmm": {"argv": [sys.executable, "-c", "print('stepped_energy 1.0')"],
+                                     "marker": "stepped_energy", "entry": "fake"}}
+# Age the held receipt out so there is something expired to refresh; a live one must not be.
+from datetime import datetime, timedelta, timezone
+_now = datetime.now(timezone.utc)
+lab._append(probe_mod.PROBES, {"receipt_id": "CP-aged", "tool": "openmm", "host": "aegis",
+                               "outcome": "not_configured", "probe_version": "x",
+                               "measured_at": _now.isoformat(),
+                               "expires_at": (_now - timedelta(days=1)).isoformat()})
+before = len(lab._jsonl(probe_mod.PROBES))
+again = session.run()
+assert len(lab._jsonl(probe_mod.PROBES)) > before, "the session refreshes expired receipts"
+assert "openmm" in again["instruments_refreshed"], again["instruments_refreshed"]
+third = session.run()
+assert third["instruments_refreshed"] == [], "a fresh receipt is not re-measured daily"
+
+print("35/35 passed")

@@ -153,6 +153,81 @@ check("the session's follow-through was recognised as named",
       any(o["signal"] == "followed_next_question" and o["eligibility"] == T.ELIGIBLE for o in observed),
       [(o["signal"], o["eligibility"]) for o in observed])
 
+# --- the kinds are real, and the value is the thing ------------------------------------------
+lab._atomic(T.TASTE, {"entries": {}, "candidates": {}, "parameter_values": {}, "decayed_at": time.time()})
+open(T.OBSERVATIONS, "w").close(); open(T.INJECTIONS, "w").close()
+rows = T.observe_session({"session_id": "CHEM-K1", "at": lab.now_iso(),
+                          "plan": {"experiment": "molecule", "why_this": "curious",
+                                   "parameters": {"molecule": "H2", "ansatz": "hardware_efficient",
+                                                  "optimizer": "slsqp", "bond_length": 0.735}},
+                          "reading": {}})
+kinds = {(r["kind"], r["key"]) for r in rows if r["eligibility"] == T.ELIGIBLE}
+check("a molecule accrues as a molecule, by its value", ("molecule", "H2") in kinds, kinds)
+check("an ansatz accrues as an ansatz, by its value", ("ansatz", "hardware_efficient") in kinds, kinds)
+check("an optimizer accrues as an optimizer, by its value", ("optimizer", "slsqp") in kinds, kinds)
+check("an ordinary parameter accrues by name, not value", ("parameter", "bond_length") in kinds, kinds)
+check("the parameter name is not mistaken for the taste",
+      ("parameter", "molecule") not in kinds and ("parameter", "ansatz") not in kinds, kinds)
+
+# --- a parameter only counts as moved when it moves ---------------------------------------------
+same = T.observe_session({"session_id": "CHEM-K2", "at": lab.now_iso(),
+                          "plan": {"experiment": "titrate", "parameters": {"bond_length": 0.735}},
+                          "reading": {}})
+unchanged = [r for r in same if r["kind"] == "parameter"][0]
+check("re-setting a parameter to the same value is not movement",
+      unchanged["eligibility"] == T.UNCHANGED and unchanged["value_moved"] is False
+      and unchanged["weight"] == 0.0, unchanged)
+check("the unchanged observation is recorded, not dropped",
+      any(r["eligibility"] == T.UNCHANGED for r in lab._jsonl(T.OBSERVATIONS)))
+held = score("parameter", "bond_length")
+moved = T.observe_session({"session_id": "CHEM-K3", "at": lab.now_iso(),
+                           "plan": {"experiment": "titrate", "parameters": {"bond_length": 0.9}},
+                           "reading": {}})
+moved_row = [r for r in moved if r["kind"] == "parameter"][0]
+check("a parameter he actually moves counts",
+      moved_row["eligibility"] == T.ELIGIBLE and moved_row["value_moved"] is True
+      and score("parameter", "bond_length") > held, moved_row)
+check("the movement is recorded as from-to", "0.735 -> 0.9" in moved_row["detail"], moved_row["detail"])
+
+# --- accessions come from what he actually wrote about --------------------------------------------
+noted = T.observe_reflection({"kind": "reflection", "at": lab.now_iso(),
+                              "source_accessions": ["P00001", "P99999"],
+                              "attention": "P00001 keeps pulling me back",
+                              "factual_observation": "80 residues"})
+check("an accession he wrote about accrues as an accession",
+      [(r["kind"], r["key"]) for r in noted] == [("accession", "P00001")], noted)
+check("a record he was merely shown does not", score("accession", "P99999") == 0.0)
+check("a speculative reflection alone is not an observation", T.observe_reflection({"kind": "inquiry"}) == [])
+
+# --- concurrency: two organs, no lost bumps ---------------------------------------------------------
+import multiprocessing, functools
+def _bump(index):
+    import importlib.util as _u, os as _o, sys as _s
+    _o.environ["HOME"] = HOME; _o.environ["SPARK_WORKSPACE"] = WS
+    _s.path.insert(0, os.path.join(REPO, "scripts"))
+    def _load(name, path):
+        spec = _u.spec_from_file_location(name, path)
+        mod = _u.module_from_spec(spec); _s.modules[name] = mod; spec.loader.exec_module(mod); return mod
+    _load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
+    taste = _load("chemistry_taste", os.path.join(REPO, "scripts", "chemistry_taste.py"))
+    for step in range(6):
+        taste.observe("molecule", "CONC-%d" % index, "chosen", "CHEM-C%d-%d" % (index, step))
+    return index
+
+lab._atomic(T.TASTE, {"entries": {}, "candidates": {}, "parameter_values": {}, "decayed_at": time.time()})
+with multiprocessing.get_context("fork").Pool(4) as pool:
+    pool.map(_bump, range(4))
+book = T._book()
+check("concurrent writers lose no entries",
+      len(book["entries"]) == 4, sorted(book["entries"]))
+check("concurrent writers lose no bumps within an entry",
+      all(abs(float(e["score"]) - 6 * T.SIGNALS["chosen"]) < 1e-6 for e in book["entries"].values()),
+      {k: v["score"] for k, v in book["entries"].items()})
+check("every concurrent observation is on the ledger",
+      sum(1 for r in lab._jsonl(T.OBSERVATIONS) if r["session_id"].startswith("CHEM-C")) == 24)
+check("taste holds its own organ lock, not the Lab's",
+      T.TASTE_LOCK.endswith(".taste.lock") and T.TASTE_LOCK != lab.LOCK and "flock" in source)
+
 # --- wiring and perimeter ---------------------------------------------------------------------------------------
 lab_source = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("his taste enters his context", "chemistry_taste" in lab_source and "taste_block()" in lab_source)

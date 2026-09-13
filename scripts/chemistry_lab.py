@@ -533,6 +533,13 @@ def tick():
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
             _append(NOTEBOOK, note)
+            if note["kind"] == "reflection":
+                # Which sourced proteins he actually wrote about. Late import, same reason.
+                try:
+                    import chemistry_taste
+                    chemistry_taste.observe_reflection(note)
+                except Exception as exc:
+                    _fault("taste_reflection", exc)
             state.update({"phase": next_phase, "last_turn_at": now_iso(), "last_outcome": note["kind"],
                           "effective_state": "waiting", "turns": int(state.get("turns", 0)) + 1})
             _atomic(STATE, state)

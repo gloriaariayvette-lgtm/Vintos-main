@@ -30,8 +30,9 @@ def check(name, ok, detail=""):
 check("test is in a scratch workspace",
       lab.WS == WS and HOME in lab.ROOT and HOME in P.PROBES and not lab.ROOT.startswith("/home/gloria"), P.PROBES)
 check("no probe interpreter outside the scratch tree",
-      all(HOME in spec["python"] or "/.vintos/" in spec["python"] for spec in P.AEGIS_PROBES.values()),
-      [s["python"] for s in P.AEGIS_PROBES.values()])
+      all(HOME in spec["argv"][0] or "/.vintos/" in spec["argv"][0]
+          for spec in P.AEGIS_PROBES.values() if spec.get("argv")),
+      [s["argv"][0] for s in P.AEGIS_PROBES.values() if s.get("argv")])
 
 # --- nothing is available before anything is measured -------------------------------------
 before = lab.tools_status()
@@ -49,6 +50,47 @@ check("a hand-written tool-inventory.json cannot make a tool available",
       after["qpanda"]["available"] is False and after["foundry"]["available"] is False, after["qpanda"])
 check("the authority is the append-only ledger", lab.PROBE_LEDGER.endswith("tool-probes.jsonl"))
 
+# --- a probe must exercise the instrument it names ------------------------------------------
+check("every probe names the entry point it exercises",
+      all(spec.get("entry") for spec in P.AEGIS_PROBES.values()), list(P.AEGIS_PROBES))
+check("no probe passes an instrument by importing torch or printing a version",
+      not any("import torch" in " ".join(spec.get("argv") or []) or
+              "sys.version_info" in " ".join(spec.get("argv") or [])
+              for spec in P.AEGIS_PROBES.values()),
+      {k: (v.get("argv") or [None])[-1] for k, v in P.AEGIS_PROBES.items()})
+check("the ESMC probe runs the Lab's own worker on a real sequence",
+      P.AEGIS_PROBES["esmc"]["argv"][1].endswith("chemistry_esmc.py")
+      and P.PROBE_SEQUENCE in P.AEGIS_PROBES["esmc"]["stdin"]
+      and P.AEGIS_PROBES["esmc"]["verify"] is P._esmc_verify)
+check("the OpenMM probe integrates a step rather than importing the package",
+      "i.step(1)" in " ".join(P.AEGIS_PROBES["openmm"]["argv"])
+      and P.AEGIS_PROBES["openmm"]["marker"] == "stepped_energy")
+for name in ("protein_mpnn", "structure_prediction", "rfdiffusion", "protein_design_mcp"):
+    receipt = P.probe_aegis(name)
+    check("an instrument with no known entry point reads not_configured: " + name,
+          receipt["outcome"] == "not_configured" and receipt["failure"]["type"] == "no_entry_point_known"
+          and lab.tools_status()[name]["available"] is False, receipt)
+check("not_configured is not a proving outcome", "not_configured" not in P.PROVING)
+
+# Her override runs exactly what she names, and must still show the entry point ran.
+os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps(
+    {"argv": [sys.executable, "-c", "print('designed 1 sequence')"], "marker": "designed"})
+ok = P.probe_aegis("protein_mpnn")
+check("a configured probe that shows its marker passes",
+      ok["outcome"] == "smoke_passed" and lab.tools_status()["protein_mpnn"]["available"] is True, ok)
+os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps(
+    {"argv": [sys.executable, "-c", "print('nothing happened')"], "marker": "designed"})
+silent = P.probe_aegis("protein_mpnn")
+check("exiting zero without the marker is not passing",
+      silent["outcome"] == "smoke_failed" and silent["failure"]["type"] == "marker_absent", silent)
+os.environ["CHEM_LAB_MPNN_PROBE"] = json.dumps({"argv": [sys.executable, "-c", "print('x')"]})
+check("a probe specification with no marker is refused",
+      P.probe_aegis("protein_mpnn")["failure"]["type"] == "probe_specification_invalid")
+os.environ.pop("CHEM_LAB_MPNN_PROBE")
+check("a verify that cannot read the result is a failure, not a pass",
+      P.probe_aegis("esmc")["outcome"] in ("not_installed", "smoke_failed"), P.probe_aegis("esmc"))
+
+
 # --- a real Aegis probe against a missing interpreter --------------------------------------
 receipt = P.probe_aegis("openmm")
 check("a missing interpreter reads as not_installed, not as failure or success",
@@ -56,18 +98,21 @@ check("a missing interpreter reads as not_installed, not as failure or success",
 check("a not_installed receipt does not make it available", lab.tools_status()["openmm"]["available"] is False)
 
 # --- a passing smoke test does ---------------------------------------------------------------
-P.AEGIS_PROBES["openmm"] = {"python": sys.executable, "code": "print('openmm 8.1.1')"}
+P.AEGIS_PROBES["openmm"] = {"argv": [sys.executable, "-c", "print('openmm 8.1.1 stepped_energy 3.2')"],
+                            "marker": "stepped_energy", "entry": "fake openmm step"}
 passed = P.probe_aegis("openmm")
 check("a passing smoke test is a measurement", passed["outcome"] == "smoke_passed" and passed["evidence_sha256"], passed)
 check("only a bounded version string survives as text",
-      passed["evidence"] == {"version": "8.1.1", "output_bytes": len("openmm 8.1.1\n")}, passed["evidence"])
+      passed["evidence"].get("version") == "8.1.1" and "exercised" in passed["evidence"]
+      and set(passed["evidence"]) == {"version", "output_bytes", "exercised"}, passed["evidence"])
 state = lab.tools_status()["openmm"]
 check("a fresh passing receipt makes the instrument available",
       state["available"] is True and state["state"] == "measured" and state["version"] == "8.1.1", state)
 
 # --- no raw output, ever -----------------------------------------------------------------------
-P.AEGIS_PROBES["protein_mpnn"] = {"python": sys.executable,
-                                  "code": "import sys; sys.stderr.write('SECRET=hunter2 /home/gloria/.ssh/id_ed25519'); sys.exit(3)"}
+P.AEGIS_PROBES["protein_mpnn"] = {"argv": [sys.executable, "-c",
+                                  "import sys; sys.stderr.write('SECRET=hunter2 /home/gloria/.ssh/id_ed25519'); sys.exit(3)"],
+                                  "marker": "designed", "entry": "leaky fake"}
 failed = P.probe_aegis("protein_mpnn")
 blob = json.dumps(failed)
 check("a failing probe records a typed failure only",
@@ -78,7 +123,7 @@ check("a failed smoke test is not availability", lab.tools_status()["protein_mpn
 
 # --- staleness ------------------------------------------------------------------------------
 stale = dict(passed); stale["receipt_id"] = "CP-stale"; stale["tool"] = "rfdiffusion"
-stale["measured_at"] = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
+stale["measured_at"] = datetime.now(timezone.utc).isoformat()
 stale["expires_at"] = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
 lab._append(P.PROBES, stale)
 check("an expired receipt stops proving anything",

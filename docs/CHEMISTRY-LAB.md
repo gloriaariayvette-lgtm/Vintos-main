@@ -45,7 +45,20 @@ ledger. `tool-inventory.json` is now only a materialized view of that ledger —
 safe to delete, and read by nothing. `tools_status()` reads the ledger and decides in code,
 so a hand-written inventory file has no power at all.
 
-Aegis instruments are smoke-tested directly. The Mac's cannot be: this side's doorway
+An Aegis probe must run the named entry point on the smallest real input and prove it with
+a marker or a parsed result. Importing `torch` is not a ProteinMPNN smoke test — it would
+issue `smoke_passed` for an instrument that was absent — so the ESMC probe runs the Lab's own
+worker on a short real sequence and requires a pooled vector back, and the OpenMM probe
+integrates one Langevin step on a two-particle system and requires the energy it produced.
+Where this side does not know the real entry point, the probe reads `not_configured` and the
+instrument stays unavailable; setting `CHEM_LAB_<TOOL>_PROBE` to
+`{"argv": [...], "stdin": "", "marker": "..."}` runs exactly that and requires exactly that
+marker. Exiting zero is never passing.
+
+A passing receipt holds a month; a failure or an unconfigured probe holds a day and is
+re-asked. The scheduled session refreshes only expired receipts, inside the background slot,
+so this is a real monthly measurement that yields like everything else — an unrefreshed
+instrument simply reads stale. The Mac's cannot be: this side's doorway
 carries four named actions and will not widen to run probes, so a Mac instrument is proved
 only by a completed run that explicitly names *and* hashes it. What `mac.status()` says
 about its own instruments is filed as `reported_by_host_not_smoke_tested` and grants
@@ -81,6 +94,15 @@ since scores decay, a favourite falls out of the block, becomes eligible again, 
 re-earned, so the cycle limits itself rather than freezing. A repeat must name the eligible
 observation it repeats, and following a prior `next_question` counts only when the later
 session actually names its predecessor.
+
+Taste is kept in the terms the choice was actually made in. A molecule, an ansatz, an
+optimizer or a fold accrues under its *value* — choosing `uccsd` twice is a preference for
+that ansatz, while recording a preference for the word "ansatz" would say nothing. An
+ordinary parameter accrues by name, and only counts as moved when its value actually
+changed: recurrence of the name is not movement. Accessions accrue from the browse loop, and
+only the ones a reflection actually writes about — a record he was handed is not a
+preference. The ledger is read-modify-written by the session, the daemon and the decay pass,
+so it holds its own organ lock; without it the last writer silently drops the others' bumps.
 
 Nothing is discarded: every observation lands in `taste-observations.jsonl` with its
 eligibility, the refused ones included. A ledger that silently drops what it refused cannot
@@ -139,6 +161,11 @@ model call or Mac contact. When on, it:
    result on both sides;
 4. lets local Aegis Gemma leave Vintos's reading and next question;
 5. appends the session to the visible Lab notebook and session ledger.
+
+An owed reading is paid before another experiment is started, and if it cannot be paid the
+session ends there: the house was busy or the reader faulted, and neither is a reason to
+spend the bench again on top of an unread result. The lens does not advance — it never had
+its turn.
 
 When conversation arrives mid-session the reading is preempted, and the experiment has
 already finished. That result is not lost and not re-run: the session records the debt in

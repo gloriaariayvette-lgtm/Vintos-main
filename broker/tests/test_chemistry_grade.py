@@ -55,6 +55,32 @@ check("the bench's own error and correlation are kept as host_reported only",
       point["host_reported"].get("recovered_correlation") == -31.4654
       and "recovered_correlation" not in row, point["host_reported"])
 
+# --- the bench's real reply shape: isolation lives at run.execution -----------------------
+DB99249 = {"ok": True, "run_id": "RUN-REAL", "configured": True,
+           "run": {"experiment": "molecule", "shots": 4096,
+                   "source_sha256": "d" * 64,
+                   "execution": {"isolation": "OS-enforced", "network": False,
+                                 "home": False, "writes": "scratch only",
+                                 "receipt_owner": "parent"},
+                   "result": {"molecule": "H2", "basis": "sto-3g",
+                              "results": [{"bond_length": 0.735, "vqe_energy": -0.478030,
+                                           "hartree_fock_energy": -1.116999,
+                                           "exact_energy": -1.137306, "error": 0.659276,
+                                           "recovered_correlation": -31.4654}]}}}
+real = G.grade("RUN-REAL", "molecule", DB99249)
+check("the bench's real isolation receipt at run.execution is found",
+      real["isolation_receipted"] is True and real["isolation_attestation"] == "host_attested"
+      and real["isolation"]["network"] is False, real["isolation_attestation"])
+check("the real reply still grades as worse than Hartree-Fock",
+      real["aggregate_accuracy"] == "ALL_WORSE_THAN_HARTREE_FOCK" and real["execution_state"] == "completed", real)
+nested = G.grade("RUN-NESTED", "molecule", {"ok": True, "run": {"execution": {"isolation": {
+    "network": False, "writes": "scratch only"}}, "result": {"results": [{"vqe_energy": -1.0}]}}})
+check("an isolation block nested under execution is found too", nested["isolation_receipted"] is True, nested)
+notiso = G.grade("RUN-NOTISO", "molecule", {"ok": True, "run": {"execution": {"host": "mac", "seconds": 4},
+                                                                "result": {"results": [{"vqe_energy": -1.0}]}}})
+check("an execution block that says nothing about isolation is not read as one",
+      notiso["isolation_receipted"] is False, notiso["isolation_attestation"])
+
 # --- isolation is attested, never proven -------------------------------------------------
 check("isolation is host-attested", row["isolation_receipted"] is True and row["isolation_attestation"] == "host_attested", row["isolation_attestation"])
 bare = G.grade("RUN-BARE", "molecule", reply(REAL))

@@ -31,6 +31,9 @@ SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
 SESSION_LOCK = os.path.join(lab.ROOT, ".session.lock")
 LENSES = ("claude", "sol", "grok")
+# An owed reading that could not be paid stops the session before the bench is touched.
+# GONE and ALREADY_READ retire the debt; NOTHING_OWED and READ leave nothing outstanding.
+HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
 
 
 @contextlib.contextmanager
@@ -162,6 +165,29 @@ def run():
         # started. It costs no bench time: the result is already preserved.
         try: settled = owed.settle_one()
         except Exception as exc: lab._fault("settle_owed", exc); settled = {"outcome": "REFUSED"}
+        # And if that debt could not be paid, the session ends here. Running another
+        # experiment on top of an unread one is precisely how the pile grows: the house was
+        # busy or the reader faulted, and neither is a reason to spend the bench again.
+        if settled.get("outcome") in HOLDS_THE_SESSION:
+            row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens,
+                   "state": "held_reading_owed", "owed_reading": settled.get("outcome"),
+                   "owed_session_id": settled.get("session_id"),
+                   "detail": str(settled.get("detail") or settled.get("error") or "")[:200],
+                   "truth_status": "no_experiment_run_while_one_is_still_unread"}
+            lab._append(SESSIONS, row)
+            # The lens does not advance: it never got its turn.
+            return row
+        # Refresh only the instrument receipts that have actually expired. A passing
+        # receipt holds a month, so this is a real monthly measurement rather than a daily
+        # one, and it runs inside the background slot so it yields like everything else.
+        # An unrefreshed instrument simply reads stale, which is the honest outcome.
+        try:
+            from compute_admission import admit as _admit
+            with _admit("background", organ="chemistry-instrument-probe", wait_s=2,
+                        provider="local", stage="probe"):
+                probed = [r["tool"] for r in probe.refresh(only_expired=True)]
+        except TimeoutError: probed = []
+        except Exception as exc: lab._fault("probe_refresh", exc); probed = []
         remote = mac.status()
         # The Mac's word about its own instruments is filed as a claim, never as a measurement.
         try: probe.record_host_report(remote)
@@ -196,6 +222,7 @@ def run():
                    "grade": grade, "reading": reading, "context_receipt": receipt["context_sha256"],
                    "owed_reading": settled.get("outcome"),
                    "instrument_states": {name: state.get("state") for name, state in instruments.items()},
+                   "instruments_refreshed": probed,
                    "truth_status": "generated_lab_interpretation_not_biological_evidence",
                    "elapsed_ms": int((time.time() - started) * 1000)}
             if result.get("run_id"):

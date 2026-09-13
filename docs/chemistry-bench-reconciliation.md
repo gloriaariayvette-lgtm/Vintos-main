@@ -33,8 +33,13 @@ than as a silently ungraded run. Aliases currently accepted:
 decide anything.** The verdict is recomputed on Aegis from the energies; a host does not
 grade itself.
 
-An isolation block at `run.isolation` (or `run.result.isolation`) is copied verbatim and
-labelled `host_attested`. This repository holds no independent evidence for the chemistry
+The bench keeps its isolation claim at **`run.execution`** at `db99249`. That block is
+copied verbatim and labelled `host_attested`; `run.execution.isolation`, `run.isolation`,
+`isolation` and `run.result.isolation` are also accepted, and a block is only read as an
+isolation receipt if it actually names one of isolation, network, writes, sandbox, home or
+receipt_owner — an `execution` block that only records a host and a duration is not one.
+Searching only the paths this side found natural is how a real receipt gets reported absent,
+which is exactly what happened to the first H2 run. This repository holds no independent evidence for the chemistry
 bench's sandbox — the 2026-09-12 five-seed evidence covers the *Atelier* seeds through
 `qremote.py`, not this bench — so the grade row says attested, never verified.
 

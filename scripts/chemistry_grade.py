@@ -188,10 +188,23 @@ def _execution_state(mac_result, points, unreadable):
     return "completed"
 
 
+# Where the bench actually puts its sandbox claim. ``run.execution`` is the one the Mac
+# writes at db99249; the others are kept so an older or differently-shaped reply still
+# reads. Searching only the names this side found natural is how a real receipt gets
+# reported as absent.
+ISOLATION_PATHS = (("run", "execution"), ("run", "execution", "isolation"),
+                   ("run", "isolation"), ("isolation",), ("run", "result", "isolation"),
+                   ("run", "result", "execution"), ("execution",))
+ISOLATION_HINTS = ("isolation", "network", "writes", "sandbox", "home", "receipt_owner")
+
+
 def _isolation(mac_result):
     """The bench's own sandbox claim, kept as an attestation and labelled as one."""
-    block = _dig(mac_result, ("run", "isolation")) or _dig(mac_result, ("isolation",)) \
-        or _dig(mac_result, ("run", "result", "isolation"))
+    block = None
+    for path in ISOLATION_PATHS:
+        found = _dig(mac_result, path)
+        if isinstance(found, dict) and any(hint in key.lower() for key in found for hint in ISOLATION_HINTS):
+            block = found; break
     if not isinstance(block, dict):
         return {"isolation_receipted": False, "isolation_attestation": "absent", "isolation": None}
     return {"isolation_receipted": True, "isolation_attestation": "host_attested",
