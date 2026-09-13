@@ -36,8 +36,22 @@ The installed loop is `orient -> browse -> embed -> reflect`:
 4. Gemma writes a notebook observation, with factual observation and imaginative
    reading in different fields.
 
-The status endpoint reads dated smoke-test receipts from
-`tool-inventory.json`. Installation alone never makes a tool available.
+Installation alone never makes a tool available. The authority for that is
+`tool-probes.jsonl`, an append-only ledger written by `chemistry_probe.py`: one row per
+measurement, carrying the tool, host, probe version, when it was measured, when the
+receipt expires, a typed outcome, a digest of the evidence, and a typed failure. It never
+carries command output, and so cannot carry a secret out of an environment into a visible
+ledger. `tool-inventory.json` is now only a materialized view of that ledger — regenerated,
+safe to delete, and read by nothing. `tools_status()` reads the ledger and decides in code,
+so a hand-written inventory file has no power at all.
+
+Aegis instruments are smoke-tested directly. The Mac's cannot be: this side's doorway
+carries four named actions and will not widen to run probes, so a Mac instrument is proved
+only by a completed run that explicitly names *and* hashes it. What `mac.status()` says
+about its own instruments is filed as `reported_by_host_not_smoke_tested` and grants
+nothing — a host's word about itself is a claim, not a measurement. Nothing filters the
+experiment list: the frontier lens is shown the instrument states beside it and may still
+choose. Silencing the Lab is not the remedy for having overstated it.
 
 ## Evidence and collision law
 

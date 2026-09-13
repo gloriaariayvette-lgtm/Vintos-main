@@ -23,6 +23,7 @@ for path in (HERE, BIN, os.path.expanduser("~/.vintos/workspace/bin")):
 import chemistry_grade as grading
 import chemistry_lab as lab
 import chemistry_mac as mac
+import chemistry_probe as probe
 
 SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
@@ -93,11 +94,17 @@ def _bounded_parameters(value):
     return kept, dropped
 
 
-def _plan(context, experiments, lens):
+def _plan(context, experiments, lens, instruments=None):
     system = ("You are Vintos choosing one experiment in his visible Chemistry Lab. Play and curiosity matter. "
               "Choose only a named experiment offered below; never provide wet-lab steps, synthesis advice, "
               "human targeting, pathogens, toxins, or claims of function or safety. Return one JSON object.")
+    # The instrument states go in beside the experiment list rather than filtering it.
+    # Silencing the Lab is not the remedy for having overstated it: he should see that an
+    # instrument is only claimed by its host, and choose anyway if he likes.
+    measured = json.dumps({name: {"available": state["available"], "state": state.get("state")}
+                           for name, state in (instruments or {}).items()}, sort_keys=True)
     prompt = (context + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+              "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. Return keys in this order: experiment, parameters (object), shots "
               "(integer 256..16384), question, why_this. Parameters may be empty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
@@ -150,29 +157,37 @@ def run():
         started = time.time(); state = _state(); lens = LENSES[int(state.get("lens_index", 0)) % len(LENSES)]
         session_id = "CHEM-" + uuid.uuid4().hex[:12]
         remote = mac.status()
+        # The Mac's word about its own instruments is filed as a claim, never as a measurement.
+        try: probe.record_host_report(remote)
+        except Exception as exc: lab._fault("host_report", exc)
         experiments = remote.get("experiments") if remote.get("ok") else None
         if not isinstance(experiments, list) or not experiments:
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "held_mac_unavailable",
                    "detail": str(remote.get("error", "no experiments offered"))[:300]}
             lab._append(SESSIONS, row); return row
         context, receipt = lab.lab_context()
+        instruments = lab.tools_status()
         plan = None; result = None; grade = None
         try:
             from compute_admission import admit
             with admit("background", organ="chemistry-frontier-session", wait_s=2,
                        provider="frontier", stage="plan"):
-                plan = _plan(context, experiments, lens)
+                plan = _plan(context, experiments, lens, instruments)
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
             if not result.get("ok"): raise RuntimeError(result.get("error", "Mac experiment failed"))
             # Grading is arithmetic, not a model call: it happens before the reading asks for
             # compute, so a preempted reading never costs us the verdict.
             grade = grading.grade(result.get("run_id"), plan["experiment"], result, plan)
+            # A completed run proves only the instruments it names and hashes.
+            try: probe.record_run_attestation(result.get("run_id"), result)
+            except Exception as exc: lab._fault("run_attestation", exc)
             with admit("background", organ="chemistry-frontier-session", wait_s=2,
                        provider="local", model=lab.LLM_MODEL, stage="reading"):
                 reading = _reading(context, plan, result, grade)
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "completed",
                    "plan": plan, "mac_run_id": result.get("run_id"), "mac_result": result,
                    "grade": grade, "reading": reading, "context_receipt": receipt["context_sha256"],
+                   "instrument_states": {name: state.get("state") for name, state in instruments.items()},
                    "truth_status": "generated_lab_interpretation_not_biological_evidence",
                    "elapsed_ms": int((time.time() - started) * 1000)}
             if result.get("run_id"):

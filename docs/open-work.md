@@ -243,6 +243,19 @@ Two things are open and are not done:
 The bench's isolation claim is now recorded per run as `host_attested`. It is not verified
 here, and no document in this repository should say that it is.
 
+Instrument availability is now measured rather than asserted. `chemistry_probe.py` writes
+an append-only `tool-probes.jsonl`; `tool-inventory.json` is a materialized view that
+nothing reads. VQNet, Mac ESMC, pyChemiQ and Foundry each have a slot and each reads
+unavailable-with-a-reason until a receipt exists. Two limits are worth writing down:
+
+- The Aegis probe paths for ProteinMPNN, structure prediction, RFdiffusion and the
+  protein-design MCP are guesses at `~/.vintos/tools/chemistry-lab/<name>/bin/python`,
+  overridable by environment variable. Until they are pointed at the real environments
+  they will read `not_installed`, which is honest but uninformative.
+- A Mac instrument can only be proved by a run that names and hashes it. If the bench does
+  not yet emit an instrument name and a source hash in its reply, no Mac instrument will
+  ever become available, and that is the correct outcome rather than a bug to work around.
+
 Protein material reaches the collision detector only through a deterministic
 source-metadata-to-text adapter. Self-review embeds that text with its own Nomic
 encoder. Raw ESM vectors remain content-addressed Lab artifacts and are never

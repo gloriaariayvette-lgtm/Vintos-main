@@ -37,7 +37,8 @@ STATE = os.path.join(ROOT, "state.json")
 NOTEBOOK = os.path.join(ROOT, "notebook.jsonl")
 RECEIPTS = os.path.join(ROOT, "context-receipts.jsonl")
 FAULTS = os.path.join(ROOT, "faults.jsonl")
-INVENTORY = os.path.join(ROOT, "tool-inventory.json")
+INVENTORY = os.path.join(ROOT, "tool-inventory.json")   # materialized view; read by nobody
+PROBE_LEDGER = os.path.join(ROOT, "tool-probes.jsonl")   # the authority
 COLLISION_ADAPTER = os.path.join(ROOT, "collision-adapter.jsonl")
 SESSION_STATE = os.path.join(ROOT, "session-state.json")
 LOCK = os.path.join(ROOT, ".lock")
@@ -365,29 +366,70 @@ def _reflect(context, inquiry, records):
             ("attention", "factual_observation", "speculative_reading", "next_question")}
 
 
+# The instruments the Lab knows about, and where each would have to be measured.
+# A name absent here cannot be conjured by a receipt: a probe file must not be able to
+# invent an instrument, only to say something about one already declared.
+TOOL_HOSTS = {
+    "uniprot": {"host": "public_read_only"},
+    "esmc": {"host": "aegis"},
+    "structure_prediction": {"host": "aegis"},
+    "protein_mpnn": {"host": "aegis"},
+    "rfdiffusion": {"host": "aegis_and_mac"},
+    "openmm": {"host": "aegis"},
+    "protein_design_mcp": {"host": "aegis"},
+    "qpanda": {"host": "mac"},
+    "vqnet": {"host": "mac"},
+    "quantum_chemistry": {"host": "mac", "implementation": "pyChemiQ"},
+    "mac_esmc": {"host": "mac"},
+    "foundry": {"host": "mac"},
+}
+# Only these outcomes are measurements. Everything else is a claim or a failure.
+PROVING_OUTCOMES = ("smoke_passed", "proved_by_run")
+
+
+def _receipt_state(receipt):
+    """Decide here, from the receipt's own fields. Returns (available, state)."""
+    if not isinstance(receipt, dict): return False, "not_measured"
+    outcome = receipt.get("outcome")
+    if outcome not in PROVING_OUTCOMES:
+        return False, str(outcome or "not_measured")[:60]
+    measured, expires = receipt.get("measured_at"), receipt.get("expires_at")
+    if not measured or not receipt.get("probe_version"): return False, "receipt_incomplete"
+    if not (receipt.get("evidence_sha256") or receipt.get("evidence")): return False, "receipt_without_evidence"
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(str(expires)): return False, "receipt_stale"
+    except Exception:
+        return False, "receipt_unreadable"
+    return True, "measured"
+
+
 def tools_status():
-    # Read receipts from the host probes. Merely finding an executable is not
-    # enough: an installed package that has never completed a smoke test is not
-    # an available instrument. Probe results are replaceable operational state,
-    # kept with the Lab rather than smuggled in from the Atelier.
-    measured = _load(INVENTORY, {})
-    if not isinstance(measured, dict):
-        measured = {}
-    tools = {
-        "uniprot": {"available": True, "host": "public_read_only"},
-        "esmc": {"available": False, "host": "aegis", "state": "not_measured"},
-        "structure_prediction": {"available": False, "host": "aegis", "state": "not_measured"},
-        "protein_mpnn": {"available": False, "host": "aegis", "state": "not_measured"},
-        "rfdiffusion": {"available": False, "host": "aegis_and_mac", "state": "not_measured"},
-        "openmm": {"available": False, "host": "aegis", "state": "not_measured"},
-        "protein_design_mcp": {"available": False, "host": "aegis", "state": "not_measured"},
-        "qpanda": {"available": False, "host": "mac", "state": "not_measured"},
-        "vqnet": {"available": False, "host": "mac", "state": "not_measured"},
-        "quantum_chemistry": {"available": False, "host": "mac", "state": "not_measured"},
-    }
-    for name, receipt in measured.get("tools", {}).items():
-        if name in tools and isinstance(receipt, dict):
-            tools[name].update(receipt)
+    """What the Lab may honestly claim it can run.
+
+    The authority is the append-only probe ledger, never ``tool-inventory.json``: that
+    file used to be merged wholesale, so anything that could write it could assert
+    ``available`` with no date, no evidence and no probe behind it. Now the code decides
+    and the file is only a view. An installed package that has never completed a smoke
+    test is not an available instrument, and neither is one whose receipt has expired.
+    """
+    tools = {name: {"available": False, "state": "not_measured", **spec}
+             for name, spec in TOOL_HOSTS.items()}
+    tools["uniprot"].update({"available": True, "state": "public_read_only_source"})
+    latest = {}
+    for row in _jsonl(PROBE_LEDGER):
+        name = row.get("tool")
+        if name not in tools: continue   # a receipt cannot invent an instrument
+        held = latest.get(name)
+        if held is None or str(row.get("measured_at", "")) >= str(held.get("measured_at", "")):
+            latest[name] = row
+    for name, receipt in latest.items():
+        available, state = _receipt_state(receipt)
+        tools[name].update({
+            "available": available, "state": state, "receipt_outcome": receipt.get("outcome"),
+            "measured_at": receipt.get("measured_at"), "expires_at": receipt.get("expires_at"),
+            "probe_version": receipt.get("probe_version"),
+            "version": (receipt.get("evidence") or {}).get("version"),
+            "failure": (receipt.get("failure") or {}).get("type")})
     return tools
 
 

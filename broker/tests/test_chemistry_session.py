@@ -24,7 +24,7 @@ sys.modules["chemistry_mac"] = mac
 def admitted(*args, **kwargs): yield object()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 session = load("chemistry_session_test", os.path.join(REPO, "scripts", "chemistry_session.py"))
-session._plan = lambda context, experiments, lens: {"experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
+session._plan = lambda context, experiments, lens, instruments=None: {"experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
 seen = {}
 def _reading(context, plan, result, grade=None):
     seen["grade"] = grade; seen["verdict"] = session._verdict_block(grade)
@@ -68,4 +68,7 @@ real_mac = load("chemistry_mac_real", os.path.join(REPO, "scripts", "chemistry_m
 assert real_mac.request({"action": "code", "source": "print(1)"})["refused"] == "action_not_allowed"
 unit = open(os.path.join(REPO, "broker", "vintos-chemistry-session.service")).read()
 assert "EnvironmentFile=-%h/.vintos/vintos.env" in unit
-print("21/21 passed")
+# Instrument states ride with the session, and nothing is available without a receipt.
+assert row["instrument_states"]["qpanda"] == "not_measured", row["instrument_states"]
+assert row["instrument_states"]["foundry"] == "not_measured"
+print("23/23 passed")

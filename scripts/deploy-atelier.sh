@@ -98,6 +98,7 @@ SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_d
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
 SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py chemistry_mac.py chemistry_session.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
 SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good are different facts, 2026-09-13
+SCRIPTS="$SCRIPTS chemistry_probe.py"   # Lab instrument receipts: installation is not availability, 2026-09-13
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
