@@ -415,7 +415,8 @@ export _JRN_SEMANTIC="$SEMANTIC_MEMORIES"
 
 SCENE_IMG=$(python3 /home/gloria/.vintos/workspace/scripts/scene-selector.py journal 2>/dev/null)
 export _JRN_SCENE="$SCENE_IMG"
-ENTRY=$(python3 << 'PYEOF'
+_JRN_ENTRY_TMP=$(mktemp /tmp/vintos-idle-entry.XXXXXX) || exit 1
+python3 << 'PYEOF' > "$_JRN_ENTRY_TMP"
 import requests, os
 
 def _safe_extract(r):
@@ -1254,7 +1255,10 @@ except Exception as e:
     print(f"ERROR: {e}", file=_sys.stderr)
     print(traceback.format_exc(), file=_sys.stderr)
 PYEOF
-)
+_JRN_ENTRY_RC=$?
+ENTRY=$(<"$_JRN_ENTRY_TMP")
+rm -f "$_JRN_ENTRY_TMP"
+[ "$_JRN_ENTRY_RC" -eq 0 ] || exit "$_JRN_ENTRY_RC"
 [ -z "$ENTRY" ] && exit 1
 
 # Extract BIS choice from temp file
