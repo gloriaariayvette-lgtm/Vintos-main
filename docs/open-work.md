@@ -217,6 +217,32 @@ not reuse the Atelier's sealed quantum path. A daily Lab timer rotates one
 frontier lens per offered session, then local Gemma reads the result with a small,
 attributed slice of Vintos. The scheduled path cannot submit arbitrary code.
 
+## Chemistry Lab — 13 September
+
+The Lab can now tell *it ran* from *it was good*. `chemistry_grade.py` computes the verdict
+on Aegis from the bench's numbers and writes `memory/chemistry-lab/experiment-grades.jsonl`;
+the first graded H2 run is recorded as operational and worse than Hartree-Fock rather than
+as a plain success. The reading receives the verdict before it is written.
+
+Two things are open and are not done:
+
+- **The Mac bench source is still not in this repository.** `bench_remote.py` and
+  `molecule.py` live only on the Mac at `db99249`. The grader parses the bench's reply by
+  a generous alias table rather than by a pinned schema, because there is nothing here to
+  pin it to. `docs/chemistry-bench-reconciliation.md` gives the procedure; until it is
+  followed, a bench field rename degrades a run to ungraded instead of failing loudly, and
+  the scheduled session bounds only the *shape* of a lens's parameters, not their names.
+- **The bench's `code` action needs its own door.** `bench_remote.py` accepts
+  `action: "code"` and writes a new executable experiment. `chemistry_mac.py` now refuses
+  any action outside `status`/`ledger`/`run`/`reading` at the point of send, but that is a
+  guard on the near side; anything that can speak to the bench can still ask for `code`.
+  The free-experiment capacity belongs to the playground and should not be deleted — it
+  needs a separate authenticated authority so that scheduled Chemistry receives `run` only
+  and deliberate free creation receives `code` through a door of its own. Not built.
+
+The bench's isolation claim is now recorded per run as `host_attested`. It is not verified
+here, and no document in this repository should say that it is.
+
 Protein material reaches the collision detector only through a deterministic
 source-metadata-to-text adapter. Self-review embeds that text with its own Nomic
 encoder. Raw ESM vectors remain content-addressed Lab artifacts and are never

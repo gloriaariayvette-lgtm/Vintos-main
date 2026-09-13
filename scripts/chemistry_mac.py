@@ -4,6 +4,18 @@
 This deliberately has a separate config and command from Atelier QLab.  It
 accepts JSON, returns JSON, and never retries a timed-out experiment whose
 remote outcome is unknown.
+
+**The door on the far side is wider than this one.**  ``bench_remote.py`` accepts
+``action: "code"`` and will write a new executable experiment into the bench.  That
+capacity belongs to the playground and is not something to quietly delete -- but it is
+not the scheduled Lab's to reach.  Saying "this client simply has no code action" was an
+argument from omission: an omission is undone by one careless edit.  So the allowlist
+below is explicit and enforced at the point of send, and every refusal is returned as a
+value rather than raised, in the shape the callers already read.
+
+This is defence in depth on the near side only.  It does not make the far door safe.
+The Mac's own ``code`` action still needs its own authenticated authority, separate from
+the scheduled named-experiment route; ``docs/open-work.md`` carries that as open.
 """
 import argparse
 import json
@@ -15,6 +27,9 @@ import subprocess
 CONFIG = os.environ.get("VINTOS_CHEMISTRY_MAC_CONFIG",
                         os.path.expanduser("~/.vintos/chemistry-mac.json"))
 DEFAULT_COMMAND = "/Users/kevin/qlab/bench_remote.py"
+# The only actions the scheduled Lab may put through this door.  "code" is deliberately
+# absent and must stay absent: named experiments in, results out.
+ALLOWED_ACTIONS = ("status", "ledger", "run", "reading")
 HOST_RE = re.compile(r"^[A-Za-z0-9_.-]+@[A-Za-z0-9_.:-]+$")
 COMMAND_RE = re.compile(r"^/[A-Za-z0-9_./@+-]+$")
 
@@ -46,6 +61,13 @@ def _command(cfg):
 
 
 def request(body, timeout=600):
+    if not isinstance(body, dict):
+        return {"ok": False, "configured": False, "error": "Lab doorway body must be an object"}
+    action = str(body.get("action", ""))
+    if action not in ALLOWED_ACTIONS:
+        return {"ok": False, "configured": False, "refused": "action_not_allowed",
+                "error": "the Lab doorway carries %s only; %r is not the scheduled route's to send"
+                         % ("/".join(ALLOWED_ACTIONS), action[:40])}
     cfg, error = _read_config()
     if error: return {"ok": False, "configured": False, "error": error}
     try:

@@ -179,6 +179,20 @@ def lab_context():
         parts.append("[RECENT LAB NOTEBOOK]\n" + text); used += len(text)
         sources.append({"name": "lab_notebook", "path": "memory/chemistry-lab/notebook.jsonl",
                         "chars": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()})
+    # What the grader concluded about recent runs, so the next question is asked by someone
+    # who knows which of them were actually any good.  Late import: chemistry_grade reads
+    # this module, and the Lab must still load when the grader is absent.
+    if used < budget:
+        try:
+            import chemistry_grade
+            block = chemistry_grade.summary_block()
+        except Exception:
+            block = ""
+        if block:
+            block = block[:budget - used]
+            parts.append(block); used += len(block)
+            sources.append({"name": "experiment_grades", "path": "memory/chemistry-lab/experiment-grades.jsonl",
+                            "chars": len(block), "sha256": hashlib.sha256(block.encode()).hexdigest()})
     receipt = {"at": now_iso(), "sources": sources, "total_chars": used,
                "context_sha256": hashlib.sha256("\n\n".join(parts).encode()).hexdigest()}
     _append(RECEIPTS, receipt)

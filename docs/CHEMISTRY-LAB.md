@@ -64,8 +64,17 @@ and cannot emerge by widening a query or installing another adapter.
   separately installed instruments whose outputs remain unvalidated
   computational artifacts until a Lab session interprets them.
 - The Mac bench has a Lab-only SSH doorway, separate configuration, visible
-  ledger, named-experiment allowlist, and OS isolation. It cannot reach the
-  network, the home directory, or durable stores while an experiment runs.
+  ledger, and a named-experiment allowlist. The bench attests that an experiment
+  runs under macOS isolation with no network, home directory, or durable child
+  writes, and returns that attestation per run; each grade row records it as
+  `host_attested`. This repository holds no independent evidence for that
+  boundary — the 2026-09-12 five-seed receipts cover the Atelier seeds through
+  `qremote.py`, not this bench — so nothing here calls it verified.
+- This side of the doorway carries four actions: `status`, `ledger`, `run`,
+  `reading`, and refuses anything else at the point of send. The bench's own door
+  is wider: it accepts `action: "code"`, which writes a new executable experiment.
+  The scheduled Lab cannot reach it, but that is a near-side guard, not a property
+  of the door. Free creation needs its own authority; see `docs/open-work.md`.
 - QPanda and the molecular circuit bench are connected through that doorway.
   VQNet, Mac ESMC, pyChemiQ, and Foundry remain available for deliberate bench
   expansion; installation is not represented as automatic use.
@@ -87,7 +96,35 @@ model call or Mac contact. When on, it:
 There is no automatic fallback from one frontier lens to another inside a
 session: refusal or failure is kept as a held occasion, not silently rewritten.
 The next offered session advances to the next lens. The scheduled path cannot
-submit arbitrary code.
+submit arbitrary code: its doorway carries four named actions and refuses the
+rest, and a lens may choose only an experiment the Mac already offers. The bench
+itself can still be handed code by something else, which is a different door.
+
+## Ran, and good
+
+These are two facts and the Lab keeps them apart. A Mac experiment that completes,
+returns numbers and writes its ledger row is *operational*; whether its variational
+energy beat the Hartree-Fock reference is a separate verdict. The first graded H2
+optimisation completed cleanly and returned -0.478030 Ha against a Hartree-Fock
+reference of -1.116999 Ha and an exact energy of -1.137306 Ha: the instrument
+worked, and that particular shallow ansatz was not scientifically good.
+`experiment-grades.jsonl` now says exactly that.
+
+`chemistry_grade.py` computes the verdict on Aegis from the numbers the bench
+returned. The bench reports its own error and recovered correlation; those are kept
+as `host_reported` and decide nothing, because a host does not grade itself. Every
+curve point is graded and the row carries a named aggregate. `execution_state` is
+recorded separately from `aggregate_accuracy`. A variational energy below the exact
+ground state is checked before any success outcome and recorded as
+`INVALID_BELOW_EXACT`, since that is a bug rather than a triumph. A negative
+recovered correlation is a correct reading, not a malformed one — it is how "worse
+than Hartree-Fock" looks on that scale. Rows are keyed `(run_id, grader_version)`,
+so a better grader may revisit an old run without erasing what the old one said.
+
+The verdict reaches his reading before he writes it, so a poor answer arrives as a
+poor answer, and recent grades enter his Lab context. The bench's own source stays
+on the Mac; `docs/chemistry-bench-reconciliation.md` says how it is brought under
+version control, and why nothing here reimplements it.
 
 The tools never own the conversational path. Background use remains subordinate
 to compute admission, and installing an instrument does not authorize a new
