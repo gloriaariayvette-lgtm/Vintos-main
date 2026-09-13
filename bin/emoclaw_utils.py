@@ -946,7 +946,7 @@ def generate_third_order_want(trigger_want=None, trial=None):
         r = _to_r.post(LM, json={
             "model": "claude-sonnet-5",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.9, "max_tokens": 80
+            "max_tokens": 80
         }, timeout=30)
         want_text = r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
@@ -1172,7 +1172,7 @@ def spawn_echo_want(parent_want):
         r = _ew_r.post(LM, json={
             "model": "claude-sonnet-5",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.85, "max_tokens": 80
+            "max_tokens": 80
         }, timeout=60)
         echo_text = r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
@@ -1532,7 +1532,7 @@ def generate_structural_want(seed=None):
         r = _sw_r.post(LM, json={
             "model": "claude-sonnet-5",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7, "max_tokens": 80
+            "max_tokens": 80
         }, timeout=60)
         want = r.json()["choices"][0]["message"]["content"].strip()
         if not want or want.upper() == "NONE" or not want.lower().startswith("i want"):
@@ -1685,7 +1685,7 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
             ],
-            "temperature": 0.75, "max_tokens": 500
+            "max_tokens": 500
         }, timeout=60)
         import json as _gwj2
         raw = r.json()["choices"][0]["message"]["content"].strip()
@@ -2258,7 +2258,6 @@ def enrich_want(want_text, source_context="", source="unknown"):
     try:
         r = _er.post(LM, json={
             "model": "claude-sonnet-5",
-            "temperature": 0.6,
             "max_tokens": 600,
             "messages": [
                 {"role": "system", "content": system},

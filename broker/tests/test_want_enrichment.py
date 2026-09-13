@@ -97,6 +97,7 @@ class WantEnrichmentTests(unittest.TestCase):
         payload = self.calls[0][1]["json"]
         prompt = payload["messages"][-1]["content"]
         self.assertEqual(payload["max_tokens"], 600)
+        self.assertNotIn("temperature", payload)
         self.assertLess(prompt.index("- candidate_kind:"), prompt.index("- reasoning:"))
         self.assertLess(prompt.index("- present_pull:"), prompt.index("- reasoning:"))
         self.assertEqual(enriched["candidate_kind"], "current_desire")
