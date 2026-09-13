@@ -59,19 +59,22 @@ def _state():
     return value if isinstance(value, dict) else {}
 
 
-async def _frontier(lens, system, user):
+async def _frontier(lens, system, user, paid_reservation=None):
     import model_router
     convo = [{"role": "user", "content": user}]
     if lens == "claude":
-        text, _ = await model_router.claude_draft(system, convo, max_tokens=700)
+        text, _ = await model_router.claude_draft(system, convo, max_tokens=700,
+                                                   paid_reservation=paid_reservation)
         return text
     if lens == "sol":
-        text, _ = await model_router.sol_draft(system, convo, max_tokens=700)
+        text, _ = await model_router.sol_draft(system, convo, max_tokens=700,
+                                                paid_reservation=paid_reservation)
         return text
     import model_config
     result = await model_router.route_reply_result(
         "chemistry_lab", system, convo, {"max_tokens": 700, "temperature": 0.8},
-        model_config.GROK_API, model_config.GROK_HEADERS, model_config.VINTOS_MODEL, reason=False)
+        model_config.GROK_API, model_config.GROK_HEADERS, model_config.VINTOS_MODEL, reason=False,
+        paid_reservation=paid_reservation)
     return result.get("text") if result.get("status") == "valid" else None
 
 # The bench owns its parameter vocabulary and this side does not invent one.  Naming
@@ -195,7 +198,7 @@ def _divergence_prompt(context, artifact):
             "question (the one you would ask of this next), why_this, what_you_notice.")
 
 
-def _divergence(context, artifact, lenses=LENSES):
+def _divergence(context, artifact, reservations, lenses=LENSES):
     """The same artifact to each lens, independently, and no attempt to reconcile them.
 
     They are blind to one another's answers on purpose. Three readings that agree would be
@@ -206,21 +209,46 @@ def _divergence(context, artifact, lenses=LENSES):
               "This is a simulated artifact, not proof about biology or about him; never give wet-lab "
               "steps, synthesis advice, human targeting, pathogens or toxins. Return one JSON object.")
     prompt = _divergence_prompt(context, artifact)
-    prompt_sha = hashlib.sha256(prompt.encode()).hexdigest()
+    prompt_sha = hashlib.sha256(json.dumps({"system": system, "user": prompt},
+                                           sort_keys=True).encode()).hexdigest()
     readings = []
     for lens in lenses:
         try:
-            raw = asyncio.run(_frontier(lens, system, prompt))
+            from compute_admission import admit
+            with admit("background", organ="chemistry-divergence", wait_s=2,
+                       provider=reservations[lens]["provider"],
+                       model=reservations[lens]["model"], stage="lens:" + lens):
+                raw = asyncio.run(_frontier(lens, system, prompt,
+                                            paid_reservation=reservations[lens]))
             value = lab._json_object(raw) if raw else {}
             readings.append({"lens": lens, "state": "read",
                              **{key: str(value.get(key, ""))[:800]
                                 for key in ("question", "why_this", "what_you_notice")}})
         except Exception as exc:
+            # Admission can refuse before a provider is contacted. That reservation did
+            # no work and is returned; after entry, failures are ambiguous and stay spent.
+            if isinstance(exc, TimeoutError):
+                try:
+                    from compute_admission import release_paid
+                    r = reservations[lens]
+                    release_paid(r["organ"], r["provider"], r["model"], why="yielded before call",
+                                 reservation_id=r["reservation_id"])
+                except Exception: pass
             # A lens that refuses or fails is held, exactly as in an ordinary session. It is
             # never replaced by another provider, and its absence is not filled in.
             readings.append({"lens": lens, "state": "held",
                              "error": exc.__class__.__name__, "detail": str(exc)[:200]})
     return readings, prompt_sha
+
+
+def _divergence_specs():
+    """The real provider buckets/models which the router will claim, not lens nicknames."""
+    import model_router, model_config
+    return {
+        "claude": ("anthropic", model_router.current_claude_model()),
+        "sol": ("openai", model_router.SOL_MODEL),
+        "grok": ("xai", model_config.VINTOS_MODEL),
+    }
 
 
 def _run_divergence(session_id, state, context, receipt):
@@ -232,33 +260,39 @@ def _run_divergence(session_id, state, context, receipt):
                 "truth_status": "nothing_to_read_no_experiment_run"}
     # Reserve every lens before spending any of them. A third reservation refused after two
     # calls would leave a two-lens "divergence" that looks like a finding and is not one.
-    reservations, refusal = [], None
+    reservations, refusal = {}, None
     try:
         from compute_admission import reserve_paid, release_paid
+        specs = _divergence_specs()
     except Exception as exc:
         return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
                 "state": "held_no_paid_ledger", "detail": str(exc)[:160]}
     for lens in LENSES:
         reservation_id = "CHEMDIV-" + uuid.uuid4().hex[:10]
-        ok, why = reserve_paid("chemistry-divergence", lens, units=1, reservation_id=reservation_id)
+        provider, model = specs[lens]
+        ok, why = reserve_paid("chemistry-divergence", provider, model=model, units=1,
+                               reservation_id=reservation_id)
         if not ok: refusal = "%s: %s" % (lens, str(why)[:120]); break
-        reservations.append((lens, reservation_id))
+        reservations[lens] = {"organ": "chemistry-divergence", "provider": provider,
+                              "model": model, "reservation_id": reservation_id}
     if refusal:
-        for lens, reservation_id in reservations:
-            release_paid("chemistry-divergence", lens, why="divergence not run",
-                         reservation_id=reservation_id)
+        for reserved in reservations.values():
+            release_paid(reserved["organ"], reserved["provider"], reserved["model"],
+                         why="divergence not run", reservation_id=reserved["reservation_id"])
         return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
                 "state": "held_paid_cap", "detail": refusal,
                 "truth_status": "no_lens_was_spent_because_all_three_could_not_be"}
-    readings, prompt_sha = _divergence(context, artifact)
+    readings, prompt_sha = _divergence(context, artifact, reservations)
+    held = [r["lens"] for r in readings if r["state"] == "held"]
     row = {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
-           "state": "completed", "read_of": artifact.get("mac_run_id"),
+           "state": "completed_with_held_lenses" if held else "completed",
+           "read_of": artifact.get("mac_run_id"),
            "source_session_id": artifact.get("session_id"),
            "experiment": (artifact.get("plan") or {}).get("experiment"),
            "identical_prompt_sha256": prompt_sha, "context_receipt": receipt["context_sha256"],
            "readings": readings,
            "lenses_read": [r["lens"] for r in readings if r["state"] == "read"],
-           "lenses_held": [r["lens"] for r in readings if r["state"] == "held"],
+           "lenses_held": held,
            "agreement": "not_computed",
            "truth_status": "three_independent_readings_no_consensus_claim"}
     lab._append(DIVERGENCE, row)
@@ -363,6 +397,13 @@ def run():
                          "execution_state": (grade or {}).get("execution_state"),
                          "aggregate_accuracy": (grade or {}).get("aggregate_accuracy"), **reading,
                          "truth_status": row["truth_status"]})
+            # Keep the Lab's candidate feed current even while the want door remains an
+            # explicit, separately configured act. A deployed producer with no caller is
+            # not a route; it is a command somebody has to remember to run.
+            try:
+                import chemistry_spark
+                chemistry_spark.refresh()
+            except Exception as exc: lab._fault("spark_refresh", exc, session_id=session_id)
             state.update({"lens_index": (LENSES.index(lens) + 1) % len(LENSES),
                           "offered": int(state.get("offered", 0)) + 1,
                           "last_session_id": session_id, "last_state": "completed",

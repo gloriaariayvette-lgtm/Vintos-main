@@ -63,7 +63,8 @@ check("the spark carries the occasion it came from",
       and result["written"][0]["provenance"]["session_id"] == "CHEM-1", result["written"][0]["provenance"])
 verdicts = {row["verdict"] for row in result["refused"]}
 check("a speculative reflection may not spark a capability", S.SPECULATIVE in verdicts, verdicts)
-check("a question with no run behind it may not either", S.NO_RUN in verdicts, verdicts)
+check("a question with no completed occasion may not either",
+      S.NO_COMPLETED_OCCASION in verdicts, verdicts)
 check("every refusal is written down with its reason",
       len(result["refused"]) == 2 and all(r.get("truth_status") for r in result["refused"]), result["refused"])
 check("refreshing twice writes nothing twice",
@@ -227,6 +228,21 @@ check("it writes only below the Lab root", P.PROPOSALS.startswith(lab.ROOT))
 check("withdrawing is possible from any live stage, and only once",
       P.withdraw(P.idea("another idea worth writing out at length", key)["proposal_id"])["state"] == P.WITHDRAWN
       and P.withdraw(offered["proposal_id"]).get("refused"))
+
+# Two processes seeing the same predecessor must not both append a successor.
+race = P.idea("a concurrent proposal must still have one successor only", key)
+def _withdraw_race(index):
+    result = P.withdraw(race["proposal_id"], "worker %d" % index)
+    return result.get("state") or result.get("refused")
+import multiprocessing
+with multiprocessing.get_context("fork").Pool(2) as pool:
+    race_outcomes = pool.map(_withdraw_race, range(2))
+race_rows = [r for r in P._rows() if r.get("proposal_id") == race["proposal_id"]
+             and r.get("state") == P.WITHDRAWN]
+check("concurrent stages have one winner and one refusal",
+      len(race_rows) == 1 and sum(x == P.WITHDRAWN for x in race_outcomes) == 1,
+      race_outcomes)
+check("the proposal has its own process lock", P.PROPOSAL_LOCK.endswith(".proposal.lock"))
 
 # --- the spark layer carries it -------------------------------------------------------------------
 sparks = load("spark_sources", os.path.join(REPO, "scripts", "spark_sources.py"))

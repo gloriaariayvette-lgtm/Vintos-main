@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts")); sys.path.insert(0, os.path.jo
 print("\n--- 161: foreground never waits; background yields to a live turn, bounded ---")
 CA = load("compute_admission_t", os.path.join(REPO, "scripts", "compute_admission.py"))
 CA.MEMORY = MEM; CA.POLL_S = 0.05
+sys.modules["compute_admission"] = CA
 check("no foreground yet", not CA.foreground_live())
 with CA.admit("foreground", organ="chat") as a:
     check("foreground admitted at once", a.admitted and a.waited == 0.0)
@@ -71,6 +72,23 @@ check("no quality claim in the report", "quality" not in json.dumps(summ).lower(
 print("\n--- 164: a local profile makes no provider request ---")
 GR = load("gen_result_t", os.path.join(REPO, "bin", "gen_result.py")); sys.modules["gen_result"] = GR
 MR = load("model_router_t", os.path.join(REPO, "bin", "model_router.py"))
+ok, why = CA.reserve_paid("chemistry-divergence", "anthropic", "lens-test",
+                          reservation_id="prepaid-test")
+receipt = {"organ": "chemistry-divergence", "provider": "anthropic",
+           "model": "lens-test", "reservation_id": "prepaid-test"}
+claimed = MR._reserve_provider("anthropic", "lens-test", receipt)
+check("the router claims a prepaid call without charging it a second time",
+      ok and claimed == "prepaid-test" and CA.paid_today("anthropic") == 1, why)
+try:
+    MR._reserve_provider("anthropic", "lens-test", receipt)
+    check("a prepaid reservation is single-use", False)
+except RuntimeError:
+    check("a prepaid reservation is single-use", True)
+try:
+    MR._reserve_provider("openai", "lens-test", receipt)
+    check("a different provider cannot claim the receipt", False)
+except RuntimeError:
+    check("a different provider cannot claim the receipt", True)
 sent = []
 async def fake_gemma(msgs, temp=0.85, max_tokens=800):
     sent.append(("gemma", msgs)); return "a local answer"

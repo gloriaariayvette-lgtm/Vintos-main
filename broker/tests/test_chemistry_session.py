@@ -28,7 +28,8 @@ session._plan = lambda context, experiments, lens, instruments=None: {"experimen
 seen = {}
 def _reading(context, plan, result, grade=None):
     seen["grade"] = grade; seen["verdict"] = session._verdict_block(grade)
-    return {"reading": "a basin", "what_surprised_me": "its depth", "next_question": "what turns it?"}
+    return {"reading": "a basin", "what_surprised_me": "its depth",
+            "next_question": "what changes the shape of this basin next?"}
 session._reading = _reading
 
 row = session.run()
@@ -41,6 +42,9 @@ assert "not_biological_evidence" in row["truth_status"]
 assert json.load(open(session.SESSION_STATE))["lens_index"] == 1
 note = [json.loads(x) for x in open(lab.NOTEBOOK) if x.strip() and json.loads(x).get("kind") == "frontier_session"][-1]
 assert note["execution_state"] == "completed" and note["aggregate_accuracy"] == "NO_GRADEABLE_POINTS"
+import chemistry_spark as spark_mod
+assert spark_mod.feed() and spark_mod.feed()[-1]["provenance"]["mac_run_id"] == "RUN-1", \
+       "a completed session refreshes the Lab spark feed without a remembered CLI step"
 
 # A run whose answer is worse than Hartree-Fock must reach him saying so.
 mac.run = lambda experiment, parameters, shots: {"ok": True, "run_id": "RUN-2", "run": {"result": {"results": [

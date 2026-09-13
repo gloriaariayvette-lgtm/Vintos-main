@@ -40,6 +40,8 @@ through the ordinary door, and approving stays hers.
 from __future__ import annotations
 
 import hashlib
+import contextlib
+import fcntl
 import json
 import os
 import sys
@@ -51,6 +53,7 @@ import chemistry_lab as lab
 FEED = os.path.join(lab.ROOT, "spark-feed.jsonl")
 REFUSED_FEED = os.path.join(lab.ROOT, "spark-refusals.jsonl")
 SPARK_CONFIG = os.path.join(lab.MEM, "spark-config.json")
+SPARK_LOCK = os.path.join(lab.ROOT, ".spark.lock")
 
 # Notebook kinds an occasion may come from, and what each is worth here.
 FROM_COMPLETED_SESSION = "frontier_session"
@@ -67,7 +70,16 @@ SPECULATIVE = "refused_speculative_reflection_only"
 GENERATED_INTEREST = "refused_generated_surprise"
 ECHO = "refused_echo_of_injected_taste"
 NO_RUN = "refused_no_run_behind_it"
+NO_COMPLETED_OCCASION = "refused_session_did_not_complete"
 TOO_SHORT = "refused_too_short_to_be_a_question"
+
+
+@contextlib.contextmanager
+def _locked():
+    lab._ensure()
+    with open(SPARK_LOCK, "a+") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        yield
 
 
 def _sessions():
@@ -108,6 +120,12 @@ def _judge(note, sessions):
     if not text: return None, NOT_A_QUESTION
     if len(text) < MIN_TEXT: return None, TOO_SHORT
     session = sessions.get(note.get("session_id")) or {}
+    if kind == FROM_COMPLETED_SESSION and session.get("state") != "completed":
+        return None, NO_COMPLETED_OCCASION
+    if kind == FROM_PAID_READING and not (
+            note.get("reread_of_preserved_result") is True and
+            note.get("truth_status") == "later_reading_of_a_preserved_result_no_rerun"):
+        return None, NO_COMPLETED_OCCASION
     grade = session.get("grade") if isinstance(session.get("grade"), dict) else {}
     run_id = session.get("mac_run_id") or grade.get("run_id")
     if not run_id:
@@ -131,7 +149,7 @@ def _judge(note, sessions):
             "provenance": provenance}, ELIGIBLE
 
 
-def refresh():
+def _refresh():
     """Rewrite the feed from the Lab's own record. Refusals are appended, never dropped."""
     sessions = _sessions()
     known = {row.get("key") for row in lab._jsonl(FEED)}
@@ -156,6 +174,10 @@ def refresh():
     return {"written": written, "refused": refused}
 
 
+def refresh():
+    with _locked(): return _refresh()
+
+
 def feed(limit=FEED_LIMIT):
     return lab._jsonl(FEED)[-int(limit):]
 
@@ -167,11 +189,12 @@ def configure():
     filename and read two dead logs from another project. This is the explicit act, not a
     default — it writes one key, and it does not touch the others.
     """
-    value = lab._load(SPARK_CONFIG, {})
-    if not isinstance(value, dict): value = {}
-    value["lab"] = FEED
-    lab._atomic(SPARK_CONFIG, value)
-    return value
+    with _locked():
+        value = lab._load(SPARK_CONFIG, {})
+        if not isinstance(value, dict): value = {}
+        value["lab"] = FEED
+        lab._atomic(SPARK_CONFIG, value)
+        return value
 
 
 def state():

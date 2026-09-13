@@ -226,6 +226,11 @@ def settle_one(already_admitted=False, wait_s=2, reader=None):
                                "owed_since": debt.get("at"), "reread_of_preserved_result": True,
                                **reading,
                                "truth_status": "later_reading_of_a_preserved_result_no_rerun"})
+    try:
+        import chemistry_spark
+        chemistry_spark.refresh()
+    except Exception as exc:
+        lab._fault("spark_refresh", exc, session_id=session_id)
     _retire(session_id, how="read", detail=str(reading.get("reading", ""))[:200])
     return {"outcome": READ, "session_id": session_id, "reading": reading}
 

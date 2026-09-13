@@ -45,6 +45,10 @@ PLAN = {"experiment": "molecule", "parameters": {}, "shots": 4096}
 GRADE = {"execution_state": "completed", "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK"}
 
 # --- the debt is recorded, once ------------------------------------------------------------
+lab._append(os.path.join(lab.ROOT, "sessions.jsonl"), {
+    "session_id": "CHEM-1", "state": "experiment_completed_reading_held",
+    "mac_run_id": "RUN-A", "plan": PLAN, "grade": GRADE,
+})
 row = O.owe("CHEM-1", "claude", PLAN, RESULT, GRADE, "ctx-sha")
 check("a held reading becomes an open debt", row and O.state()["owed"] == 1, O.state())
 check("owing twice does not double the debt", O.owe("CHEM-1", "claude", PLAN, RESULT) is None and O.state()["owed"] == 1)
@@ -56,7 +60,8 @@ check("the Lab status reports what it owes", lab.status()["reading_owed"]["owed"
 seen = {}
 def reader(debt):
     seen["debt"] = debt
-    return {"reading": "a shallow basin", "what_surprised_me": "how far off it sat", "next_question": "deeper?"}
+    return {"reading": "a shallow basin", "what_surprised_me": "how far off it sat",
+            "next_question": "would a deeper ansatz change this curve?"}
 out = O.settle_one(reader=reader)
 check("the owed reading is paid", out["outcome"] == O.READ and out["session_id"] == "CHEM-1", out)
 check("it read the preserved result rather than a fresh one", seen["debt"]["result"] == RESULT)
@@ -65,6 +70,10 @@ check("it never asked the bench for anything",
 note = [n for n in lab._jsonl(lab.NOTEBOOK) if n.get("kind") == "owed_reading"][-1]
 check("the reading says it is a later reading of a preserved result",
       note["reread_of_preserved_result"] is True and "no_rerun" in note["truth_status"] and note["owed_since"], note)
+import chemistry_spark as spark_mod
+check("paying an owed reading refreshes the Lab spark feed",
+      spark_mod.feed() and spark_mod.feed()[-1]["provenance"]["mac_run_id"] == "RUN-A",
+      spark_mod.feed())
 check("the debt is retired with a receipt, not deleted",
       O.state()["owed"] == 0 and O.state()["retired"] == 1
       and O._book()["retired"][0]["how"] == "read" and O._book()["retired"][0]["session_id"] == "CHEM-1", O.state())

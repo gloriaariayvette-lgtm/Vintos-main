@@ -270,17 +270,22 @@ design rather than omission:
   `memory/spark-config.json`. It is not defaulted, because `from_lab()`'s law is that it reads
   only where she points it — it once guessed a filename and read two dead logs from another
   project.
+- The feed itself refreshes after completed sessions and paid owed readings. Only the
+  decision to let the general spark reader consume it remains manual.
 - **The want is still his to form and hers to approve.** Nothing in the Lab creates it. A
   staged proposal with no live `lab`-sourced want behind it is refused by the Forge, and that
   refusal is the record.
 
 Three lenses on one artifact is built and **off by default** (`divergence_enabled`). It spends
-three paid calls where a session spends one, so it should be switched on deliberately.
+three paid calls where a session spends one, so it should be switched on deliberately. The
+three real provider/model buckets are reserved once and claimed by the router; the first
+implementation reserved lens nicknames and then charged the real providers again. Partial
+reads are now named `completed_with_held_lenses`.
 
-The following was the gap and is now closed; kept for the record of what was wrong: The spark
+The following was the gap and is now closed; kept for the record of what was wrong. The spark
 layer already carries `lab` as one of the seven sources, `from_lab()` already reads wherever
 `memory/spark-config.json` points it, `adopt()` already refuses to write a want, and
-`skill_forge.SPARK_SOURCES` already allows `lab`. Four things are missing, none of them large:
+`skill_forge.SPARK_SOURCES` already allowed `lab`. Four things were missing:
 
 - `from_lab()` is a text scraper — lines starting with `-`, `*` or a date. Pointed at
   `notebook.jsonl` it finds nothing, because every line starts with `{`. Pointing the config
@@ -293,10 +298,10 @@ layer already carries `lab` as one of the seven sources, `from_lab()` already re
   none of them may become collision evidence.
 - `skill_forge.propose()`'s `origin` does not carry a Lab provenance it could keep.
 
-The shape of the fix: a Lab-written `spark-feed.jsonl` of eligible, attributed occasions; two
+The implemented shape is a Lab-written `spark-feed.jsonl` of eligible, attributed occasions; two
 small changes in `spark_sources.py` so `from_lab()` can read structured rows and `gather()`
-carries their provenance; and `origin` keeping it at the Forge. The Lab still would not create
-the want — that stays his act through the ordinary door, and hers to approve. Not built.
+carries their provenance; and `origin` keeping it at the Forge. The Lab still does not create
+the want — that stays his act through the ordinary door, and hers to approve.
 
 The Lab has a visible body now: a `LAB` pane over five bounded, secret-guarded read
 endpoints, showing instrument state and scientific grade as two separate marks. One thing

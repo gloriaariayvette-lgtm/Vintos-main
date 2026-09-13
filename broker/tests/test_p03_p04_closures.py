@@ -34,7 +34,10 @@ rows = [json.loads(l) for l in open(CA._ledger())]
 check("reserved and refused are both in the ledger as class paid", [r["stage"] for r in rows if r["class"] == "paid"] == ["reserved", "reserved", "refused"])
 check("a different provider has its own count", CA.reserve_paid("router", "anthropic", "x", cap=2)[0])
 mr = src("bin/model_router.py")
-check("the router reserves before every provider stage and holds when refused", '_ca.reserve_paid("model_router:%s" % surface, "xai", grok_model)' in mr and 'status="held", reason=_why' in mr)
+check("the router reserves or claims before every provider stage",
+      'def _reserve_provider(provider, model, paid_reservation=None, organ="model_router")' in mr
+      and '_reserve_provider("xai", grok_model, paid_reservation)' in mr
+      and 'organ="model_router:%s" % surface' in mr and 'claim_paid' in mr)
 
 print("\n--- 81: unavailable broker is not no project ---")
 AL = load("atelier_ledger", os.path.join(REPO, "scripts", "atelier_ledger.py"))

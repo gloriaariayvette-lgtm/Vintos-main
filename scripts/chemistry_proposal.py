@@ -39,6 +39,8 @@ What this module may never do, and the suite proves each one:
 from __future__ import annotations
 
 import ast
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -52,6 +54,7 @@ import chemistry_lab as lab
 import chemistry_spark as spark
 
 PROPOSALS = os.path.join(lab.ROOT, "instrument-proposals.jsonl")
+PROPOSAL_LOCK = os.path.join(lab.ROOT, ".proposal.lock")
 
 IDEA = "idea"
 INTERFACE = "bounded_interface"
@@ -87,8 +90,15 @@ def _write(row):
     return row
 
 
-def _advance(pid, state, **extra):
-    """Append the next stage, or a refusal saying why it could not be entered."""
+@contextlib.contextmanager
+def _locked():
+    lab._ensure()
+    with open(PROPOSAL_LOCK, "a+") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        yield
+
+
+def _advance_unlocked(pid, state, **extra):
     current = _latest(pid)
     if current is None: return {"refused": "no proposal %s" % pid}
     if current["state"] in TERMINAL:
@@ -101,6 +111,11 @@ def _advance(pid, state, **extra):
     return _write(row)
 
 
+def _advance(pid, state, **extra):
+    """Compare and append under one lock; simultaneous stages cannot both win."""
+    with _locked(): return _advance_unlocked(pid, state, **extra)
+
+
 def idea(text, spark_key):
     """An instrument idea, cited to the Lab occasion that raised it."""
     text = str(text or "").strip()[:400]
@@ -110,11 +125,12 @@ def idea(text, spark_key):
         if row.get("key") == spark_key: cited = row
     if cited is None:
         return {"refused": "no eligible Lab occasion %r: an idea must cite one" % str(spark_key)[:40]}
-    return _write({"proposal_id": "CI-" + uuid.uuid4().hex[:10], "at": lab.now_iso(),
-                   "state": IDEA, "idea": text, "spark_key": spark_key,
-                   "provenance": cited.get("provenance") or {},
-                   "history": [{"at": lab.now_iso(), "state": IDEA}],
-                   "truth_status": "lab_instrument_idea_not_a_want_and_not_a_capability"})
+    with _locked():
+        return _write({"proposal_id": "CI-" + uuid.uuid4().hex[:10], "at": lab.now_iso(),
+                       "state": IDEA, "idea": text, "spark_key": spark_key,
+                       "provenance": cited.get("provenance") or {},
+                       "history": [{"at": lab.now_iso(), "state": IDEA}],
+                       "truth_status": "lab_instrument_idea_not_a_want_and_not_a_capability"})
 
 
 def _bounded(parameters):
@@ -217,45 +233,45 @@ def offer(pid, want_id, why="", risks="", scope=None, permissions=None):
     live want whose source is the lab spark, the Forge refuses and that refusal is the
     record — it is not something to route around.
     """
-    current = _latest(pid)
-    if current is None: return {"refused": "no proposal %s" % pid}
-    if current.get("state") != CANARY_PASSED:
-        return {"refused": "%s follows %s, not %s" % (OFFERED, CANARY_PASSED, current.get("state"))}
-    face = current.get("interface") or {}
-    try:
-        import skill_forge
-    except Exception as exc:
-        return {"refused": "the Forge is not reachable: %s" % str(exc)[:120]}
-    proposal, refusal = skill_forge.propose(
-        capability=face.get("function", ""),
-        why=(str(why)[:400] or current.get("idea", ""))[:600],
-        want_id=want_id,
-        step_note="Chemistry Lab instrument, canary %s" % (current.get("canary") or {}).get("sha256", "")[:12],
-        scope={"parameters": face.get("parameters", {}), "returns": face.get("returns", "")},
-        permissions=list(permissions or []),
-        risks=str(risks)[:600],
-        touches=["memory/chemistry-lab"],
-        tests="canary ran under isolated_exec; sha256 %s" % (current.get("canary") or {}).get("sha256", "")[:16],
-        block={"block_type": "CAPABILITY_ABSENT", "blocked_step": face.get("function", "")},
-    )
-    if proposal is None:
-        return _write(dict(current, state=REFUSED, at=lab.now_iso(), refused_reason=str(refusal)[:300],
-                           history=(current.get("history", []) +
-                                    [{"at": lab.now_iso(), "state": REFUSED, "why": str(refusal)[:200]}])[-12:]))
-    return _advance(pid, OFFERED, forge_proposal_id=proposal.get("id"),
-                    forge_state=proposal.get("state"))
+    with _locked():
+        current = _latest(pid)
+        if current is None: return {"refused": "no proposal %s" % pid}
+        if current.get("state") != CANARY_PASSED:
+            return {"refused": "%s follows %s, not %s" % (OFFERED, CANARY_PASSED, current.get("state"))}
+        face = current.get("interface") or {}
+        try:
+            import skill_forge
+        except Exception as exc:
+            return {"refused": "the Forge is not reachable: %s" % str(exc)[:120]}
+        proposal, refusal = skill_forge.propose(
+            capability=face.get("function", ""),
+            why=(str(why)[:400] or current.get("idea", ""))[:600],
+            want_id=want_id,
+            step_note="Chemistry Lab instrument, canary %s" % (current.get("canary") or {}).get("sha256", "")[:12],
+            scope={"parameters": face.get("parameters", {}), "returns": face.get("returns", "")},
+            permissions=list(permissions or []), risks=str(risks)[:600],
+            touches=["memory/chemistry-lab"],
+            tests="canary ran under isolated_exec; sha256 %s" % (current.get("canary") or {}).get("sha256", "")[:16],
+            block={"block_type": "CAPABILITY_ABSENT", "blocked_step": face.get("function", "")})
+        if proposal is None:
+            return _write(dict(current, state=REFUSED, at=lab.now_iso(), refused_reason=str(refusal)[:300],
+                               history=(current.get("history", []) +
+                                        [{"at": lab.now_iso(), "state": REFUSED, "why": str(refusal)[:200]}])[-12:]))
+        return _advance_unlocked(pid, OFFERED, forge_proposal_id=proposal.get("id"),
+                                 forge_state=proposal.get("state"))
 
 
 def withdraw(pid, why=""):
     """Abandoning is allowed from anywhere except a terminal state — it is the one move
     that does not need a predecessor, because giving up on an idea is not a stage."""
-    current = _latest(pid)
-    if current is None: return {"refused": "no proposal %s" % pid}
-    if current["state"] in TERMINAL:
-        return {"refused": "proposal %s is %s and does not move again" % (pid, current["state"])}
-    return _write(dict(current, state=WITHDRAWN, at=lab.now_iso(), withdrawn_reason=str(why)[:200],
-                       history=(current.get("history", []) +
-                                [{"at": lab.now_iso(), "state": WITHDRAWN}])[-12:]))
+    with _locked():
+        current = _latest(pid)
+        if current is None: return {"refused": "no proposal %s" % pid}
+        if current["state"] in TERMINAL:
+            return {"refused": "proposal %s is %s and does not move again" % (pid, current["state"])}
+        return _write(dict(current, state=WITHDRAWN, at=lab.now_iso(), withdrawn_reason=str(why)[:200],
+                           history=(current.get("history", []) +
+                                    [{"at": lab.now_iso(), "state": WITHDRAWN}])[-12:]))
 
 
 def open_proposals():

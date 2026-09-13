@@ -135,6 +135,8 @@ audited, and this one decides what may reach the Forge.
 `from_lab()` reads structured rows now as well as prose, and `gather()` carries their
 provenance onto the spark row; `adopt()` hands it to the want door. The reader is still
 pointed only where she points it — `chemistry_spark.py configure` is the explicit act.
+The feed itself refreshes at the write site after a completed session or a paid owed
+reading. It does not depend on somebody remembering a second command after the occasion.
 
 Then `chemistry_proposal.py`: `idea -> bounded_interface -> canary_passed -> offered_to_forge`,
 one predecessor each, because a staged approval that can be entered halfway is not staged. An
@@ -157,11 +159,16 @@ answers. The prompt's hash is on the row so that identity is checkable rather th
 All three paid calls are reserved before the first is made. A third reservation refused after
 two calls would leave a two-lens "divergence" that reads like a finding and is not one; if any
 reservation is refused, the reservations taken are released and no lens is spent.
+Reservations use the actual provider/model buckets and are claimed by the router rather
+than charged again. Each lens separately enters background compute admission. A lens that
+yields before provider contact returns its unused reservation; any partial result is
+`completed_with_held_lenses`, never the unqualified `completed`.
 
 Three readings that agreed would be a fact about how these models are trained. Three that
 diverge are three questions, and the questions are the output: `agreement` is recorded as
 `not_computed` and nothing votes, scores or synthesises. A lens that refuses is held and never
-replaced by another provider.
+replaced by another provider. The recorded identity hash binds both system and user parts of
+the common prompt.
 
 ## Computational-only perimeter
 

@@ -39,6 +39,8 @@ Two hosts, two standards of proof:
 from __future__ import annotations
 
 import hashlib
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -52,6 +54,7 @@ if HERE not in sys.path: sys.path.insert(0, HERE)
 import chemistry_lab as lab
 
 PROBES = os.path.join(lab.ROOT, "tool-probes.jsonl")
+PROBE_LOCK = os.path.join(lab.ROOT, ".probe.lock")
 PROBE_VERSION = "chemistry_probe/1"
 DEFAULT_TTL_DAYS = 30
 PROBE_TIMEOUT = 180
@@ -155,6 +158,14 @@ RUN_HASH_KEYS = ("source_sha256", "source_hash", "sha256", "experiment_sha256")
 def _now(): return datetime.now(timezone.utc)
 
 
+@contextlib.contextmanager
+def _locked():
+    lab._ensure()
+    with open(PROBE_LOCK, "a+") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        yield
+
+
 def _receipt(tool, host, outcome, evidence_sha256=None, evidence=None, failure=None,
              ttl_days=None, source=""):
     if outcome not in OUTCOMES: raise ValueError("unknown probe outcome %r" % outcome)
@@ -241,7 +252,7 @@ def probe_aegis(name):
                     source=argv[0][:120])
 
 
-def refresh(names=None, only_expired=True):
+def _refresh(names=None, only_expired=True):
     """Measure the Aegis instruments. Expensive probes are skipped while their receipt holds."""
     current = current_receipts()
     done = []
@@ -255,6 +266,12 @@ def refresh(names=None, only_expired=True):
         done.append(probe_aegis(name))
     write_view()
     return done
+
+
+def refresh(names=None, only_expired=True):
+    # A manual refresh and the scheduled session must not load the same heavy model
+    # together or issue competing claims from one measurement occasion.
+    with _locked(): return _refresh(names, only_expired)
 
 
 def _instruments_named(reply):

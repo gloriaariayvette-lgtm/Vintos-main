@@ -87,29 +87,37 @@ def _openai_key():
     except Exception:
         return ""
 
-def _reserve_provider(provider, model):
+def _reserve_provider(provider, model, paid_reservation=None, organ="model_router"):
     import sys
     sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
-    from compute_admission import reserve_paid
+    from compute_admission import claim_paid, reserve_paid
+    if paid_reservation is not None:
+        if not isinstance(paid_reservation, dict):
+            raise RuntimeError("paid reservation is malformed")
+        ok, why = claim_paid(str(paid_reservation.get("organ") or ""), provider, model,
+                             units=1, reservation_id=paid_reservation.get("reservation_id"))
+        if not ok: raise RuntimeError(why)
+        return paid_reservation.get("reservation_id")
     import uuid
     receipt = uuid.uuid4().hex
-    ok,why=reserve_paid("model_router",provider,model,reservation_id=receipt)
+    ok,why=reserve_paid(organ,provider,model,reservation_id=receipt)
     if not ok:raise RuntimeError(why)
     return receipt
 
 
-def _release_provider(provider, model, why="", reservation_id=None):
+def _release_provider(provider, model, why="", reservation_id=None, paid_reservation=None):
     """Hand back a reservation for a call the provider refused at the door. Best effort:
     failing to release must never turn a provider error into a second failure."""
     try:
         import sys
         sys.path.insert(0,os.path.join(os.path.dirname(os.path.dirname(__file__)),"scripts"))
         from compute_admission import release_paid
-        release_paid("model_router", provider, model, why=why, reservation_id=reservation_id)
+        organ = (paid_reservation or {}).get("organ", "model_router") if isinstance(paid_reservation, dict) else "model_router"
+        release_paid(organ, provider, model, why=why, reservation_id=reservation_id)
     except Exception:
         pass
 
-async def sol_draft(system_text, convo, max_tokens=1500):
+async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
     """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
     k = _openai_key()
@@ -119,7 +127,7 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"}}
     def _call():
-        receipt = _reserve_provider("openai",SOL_MODEL)
+        receipt = _reserve_provider("openai",SOL_MODEL,paid_reservation)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
@@ -130,7 +138,8 @@ async def sol_draft(system_text, convo, max_tokens=1500):
             # that never happened, and the next REAL Astra call - a forge build, the
             # printer's Blender script - is refused for a budget nothing used.
             if he.code in (401, 403):
-                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code, receipt)
+                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code,
+                                  receipt, paid_reservation)
             raise
     try:
         d = await _aio.to_thread(_call)
@@ -226,7 +235,7 @@ def _sysblocks(system_text):
         return blocks
     return [{"type": "text", "text": system_text}]
 
-async def _claude(system_text, convo, params, reason):
+async def _claude(system_text, convo, params, reason, paid_reservation=None):
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
     if reason:
@@ -242,7 +251,7 @@ async def _claude(system_text, convo, params, reason):
         if params.get(k) is not None and k not in body:
             body[k] = float(params[k]); break   # Anthropic takes one of the two
     if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
-    _reserve_provider("anthropic",current_claude_model())
+    _reserve_provider("anthropic",current_claude_model(),paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",
@@ -287,7 +296,8 @@ def _ledger(res, surface, t0, stage=""):
 ROUTE_BUDGET_S = float(os.environ.get("VINTOS_ROUTE_BUDGET_S", "150"))   # primary model, whole call
 ROUTE_FLOOR_S = float(os.environ.get("VINTOS_ROUTE_FLOOR_S", "45"))      # the fallback always gets at least this
 
-async def route_reply_result(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True):
+async def route_reply_result(surface, system_text, convo, params, grok_endpoint, grok_headers, grok_model, reason=True,
+                             paid_reservation=None):
     """One GR result (provider, model, request_id, status, usage, text, ...) plus:
          route  - why that provider was chosen ("claude:<model>", "grok(surface)", "grok(primary timed out ...)")
          stages - every stage result in order (the claude stage that timed out / refused is kept, status held/unavailable)
@@ -316,12 +326,11 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
     async def grok_stage(tag, timeout=None):
         _tg0 = _rb_t.time()
         try:   # review 79: a provider call reserves against the day's paid budget first; refused -> held, named
-            import compute_admission as _ca
-            _ok, _why = _ca.reserve_paid("model_router:%s" % surface, "xai", grok_model)
-            if not _ok:
-                return GR.make_result("xai", model=grok_model, status="held", reason=_why)
-        except ImportError:
-            return GR.make_result("xai",model=grok_model,status="held",reason="paid admission unavailable")
+            _reserve_provider("xai", grok_model, paid_reservation,
+                              organ="model_router:%s" % surface)
+        except Exception as exc:
+            return GR.make_result("xai", model=grok_model, status="held",
+                                  reason=("paid admission unavailable: %s" % exc)[:200])
         try:
             coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
@@ -355,7 +364,7 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         # the primary gets at most the route budget; the safety net gets what is left, never less than a
         # floor. Before this the two stages could take 120s each while the caller had already given up
         # and answered "no reply formed" (review P10, 2026-09-05).
-        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason), timeout=ROUTE_BUDGET_S)
+        res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason, paid_reservation), timeout=ROUTE_BUDGET_S)
         stages.append(res); _ledger(res, surface, _t0, "claude")
         if GR.usable(res):
             res["route"] = "claude:" + current_claude_model(); res["stages"] = stages
@@ -390,7 +399,7 @@ async def gemma_call(msgs, temp=0.85, max_tokens=800):
         d = r.json()
         return d["choices"][0]["message"]["content"] if "choices" in d else None
 
-async def claude_draft(system_text, convo, max_tokens=1500):
+async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
     """Two-first-pass draft on Claude with reasoning. Returns (text|None, reasoning). None on refusal."""
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
@@ -400,7 +409,7 @@ async def claude_draft(system_text, convo, max_tokens=1500):
     body = {"model": current_claude_model(), "max_tokens": max_tokens,
             "system": _sysblocks(system_text),
             "messages": _cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
-    _reserve_provider("anthropic",current_claude_model())
+    _reserve_provider("anthropic",current_claude_model(),paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",

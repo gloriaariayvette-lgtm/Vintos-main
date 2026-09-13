@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Three lenses, one preserved artifact, three questions. Scratch HOME; no frontier, no bench."""
 import contextlib
+import hashlib
 import importlib.util
 import json
 import os
@@ -41,6 +42,11 @@ sys.modules["chemistry_mac"] = types.SimpleNamespace(
 lab = load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 lab._ask = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no local model in this suite"))
 session = load("chemistry_session", os.path.join(REPO, "scripts", "chemistry_session.py"))
+session._divergence_specs = lambda: {
+    "claude": ("anthropic", "claude-test"),
+    "sol": ("openai", "sol-test"),
+    "grok": ("xai", "grok-test"),
+}
 lab.set_enabled(True)
 
 R = []
@@ -74,11 +80,14 @@ check("the cadence is deterministic, not a dice roll",
 
 # --- the same artifact and the same context to each lens -----------------------------------------
 seen = []
-def _frontier(lens, system, user):
+def _frontier(lens, system, user, paid_reservation=None):
     seen.append({"lens": lens, "system": system, "user": user})
+    check("the lens receives its exact prepaid reservation",
+          paid_reservation["provider"] == {"claude": "anthropic", "sol": "openai", "grok": "xai"}[lens])
     return json.dumps({"question": "what would %s ask?" % lens, "why_this": "curiosity",
                        "what_you_notice": "the gap"})
-async def _async_frontier(lens, system, user): return _frontier(lens, system, user)
+async def _async_frontier(lens, system, user, paid_reservation=None):
+    return _frontier(lens, system, user, paid_reservation)
 session._frontier = _async_frontier
 
 context, receipt = lab.lab_context()
@@ -88,6 +97,10 @@ check("every lens got a byte-identical prompt",
       len({s["user"] for s in seen}) == 1 and len({s["system"] for s in seen}) == 1, len({s["user"] for s in seen}))
 check("the identical prompt is hashed onto the row",
       row["identical_prompt_sha256"] and len(row["identical_prompt_sha256"]) == 64)
+expected_envelope = hashlib.sha256(json.dumps({"system": seen[0]["system"], "user": seen[0]["user"]},
+                                              sort_keys=True).encode()).hexdigest()
+check("the hash binds the system and user prompt together",
+      row["identical_prompt_sha256"] == expected_envelope)
 check("each lens is blind to the others' answers",
       not any("what would claude ask" in s["user"] or "what would sol ask" in s["user"] for s in seen))
 check("the same base Vintos context reached all three", all("I am Vintos" in s["user"] for s in seen))
@@ -113,12 +126,13 @@ check("the notebook keeps the three questions as three questions",
       len(note["questions"]) == 3 and note["agreement"] == "not_computed", note)
 
 # --- a lens that fails is held, never replaced --------------------------------------------------------
-async def _one_fails(lens, system, user):
+async def _one_fails(lens, system, user, paid_reservation=None):
     if lens == "grok": raise RuntimeError("provider refused")
-    return _frontier(lens, system, user)
+    return _frontier(lens, system, user, paid_reservation)
 session._frontier = _one_fails
 held = session._run_divergence("CHEM-D2", {}, context, receipt)
 check("a failed lens is held", held["lenses_held"] == ["grok"] and held["lenses_read"] == ["claude", "sol"], held)
+check("a partial read is not recorded as completed", held["state"] == "completed_with_held_lenses", held)
 check("no other provider quietly fills in",
       len(held["readings"]) == 3 and [r["lens"] for r in held["readings"]] == list(session.LENSES))
 check("it is still not a two-lens finding", held["agreement"] == "not_computed")
@@ -126,13 +140,14 @@ check("it is still not a two-lens finding", held["agreement"] == "not_computed")
 # --- all three reserved before the first is spent -------------------------------------------------------
 session._frontier = _async_frontier
 reserved.clear(); released.clear(); seen.clear()
-_refuse.add("grok")
+_refuse.add("xai")
 capped = session._run_divergence("CHEM-D3", {}, context, receipt)
 check("a refused third reservation stops the whole thing",
       capped["state"] == "held_paid_cap" and "grok" in capped["detail"], capped)
 check("no lens was called at all", seen == [], seen)
-check("the reservations already taken are released",
-      [p for p, _ in released] == ["claude", "sol"], released)
+check("the reservations use and release the real provider buckets",
+      [p for p, _ in reserved] == ["anthropic", "openai", "xai"]
+      and [p for p, _ in released] == ["anthropic", "openai"], (reserved, released))
 check("the row says why nothing was spent", "no_lens_was_spent" in capped["truth_status"])
 _refuse.clear()
 

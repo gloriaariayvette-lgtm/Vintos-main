@@ -205,6 +205,35 @@ def release_paid(organ, provider, model="", units=1, why="", *, reservation_id=N
     except Exception:
         return False
 
+def claim_paid(organ, provider, model="", units=1, *, reservation_id=None):
+    """Atomically bind one earlier reservation to exactly one provider call.
+
+    Pre-reserving a group of calls is useful only if the eventual callers can consume
+    those exact reservations instead of charging the ledger again.  A claim is a
+    single-use handoff receipt; it neither adds nor removes paid capacity.
+    """
+    if not reservation_id: return False, "reservation ID required"
+    try:
+        from store_guard import transaction
+        with transaction(_ledger()):
+            rows = [r for r in _paid_rows() if r.get("reservation_id") == reservation_id]
+            reserved = [r for r in rows if r.get("stage") == "reserved"]
+            if len(reserved) != 1: return False, "reservation not found"
+            original = reserved[0]
+            expected = (organ, provider, model, units)
+            actual = (original.get("organ"), original.get("provider"),
+                      original.get("model"), original.get("units"))
+            if actual != expected: return False, "reservation does not match this call"
+            if any(r.get("stage") == "released" for r in rows):
+                return False, "reservation was released"
+            if any(r.get("stage") == "claimed" for r in rows):
+                return False, "reservation was already claimed"
+            record(organ, cls="paid", provider=provider, model=model, stage="claimed",
+                   extra={"reservation_id": reservation_id, "units": units}, strict=True)
+        return True, "claimed"
+    except Exception as exc:
+        return False, "reservation could not be claimed: " + str(exc)
+
 
 def admit(cls, organ="", wait_s=None, provider="", model="", stage=""):
     return Admission(cls, organ, wait_s, provider, model, stage)
