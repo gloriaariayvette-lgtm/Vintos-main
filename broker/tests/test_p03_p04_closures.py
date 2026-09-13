@@ -36,7 +36,7 @@ check("a different provider has its own count", CA.reserve_paid("router", "anthr
 mr = src("bin/model_router.py")
 check("the router reserves or claims before every provider stage",
       'def _reserve_provider(provider, model, paid_reservation=None, organ="model_router")' in mr
-      and '_reserve_provider("xai", grok_model, paid_reservation)' in mr
+      and '_reserve_provider("xai", grok_model, paid_reservation,' in mr
       and 'organ="model_router:%s" % surface' in mr and 'claim_paid' in mr)
 
 print("\n--- 81: unavailable broker is not no project ---")
