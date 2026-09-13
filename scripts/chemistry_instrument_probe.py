@@ -100,27 +100,30 @@ def rfdiffusion():
 
 
 def structure_prediction():
-    entry = "protein_design_mcp.tools.predict_structure.predict_structure(predictor=esmfold)"
-    async def invoke():
-        from protein_design_mcp.tools.predict_structure import predict_structure
-        return await predict_structure(sequence=SEQUENCE, predictor="esmfold")
+    entry = "transformers.EsmForProteinFolding.from_pretrained(facebook/esmfold_v1)"
     try:
-        result = asyncio.run(invoke())
-        pdb = pathlib.Path(str(result.get("predicted_structure_pdb", "")))
-        if not pdb.is_file():
+        import torch
+        from transformers import AutoTokenizer, EsmForProteinFolding
+        model_name = "facebook/esmfold_v1"
+        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        model = EsmForProteinFolding.from_pretrained(
+            model_name, local_files_only=True, low_cpu_mem_usage=True)
+        model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
+        sequence = SEQUENCE[:20]
+        inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
+        with torch.no_grad(): result = model(inputs)
+        pdb = model.output_to_pdb(result)[0]
+        if "ATOM" not in pdb:
             return _failure("structure_prediction", entry, failure_type="artifact_absent",
                             detail="ESMFold returned no PDB")
         _emit({"ok": True, "instrument": "structure_prediction", "entry_point": entry,
                "verification": "ESMFold predicted one short sequence",
-               "output": {"sequence_length": result.get("sequence_length"),
-                          "plddt": result.get("plddt"), "ptm": result.get("ptm")}})
+               "output": {"sequence_length": len(sequence), "pdb_lines": len(pdb.splitlines()),
+                          "mean_plddt": round(float(result.plddt.mean().cpu()), 6),
+                          "device": "cuda"}})
         return 0
     except Exception as exc:
-        detail = str(exc)
-        if "openfold" in traceback.format_exc().lower():
-            detail = "OpenFold dependency unavailable; pinned build requires nvcc/CUDA toolkit"
-        return _failure("structure_prediction", entry, exc, failure_type="dependency_unavailable",
-                        detail=detail)
+        return _failure("structure_prediction", entry, exc, failure_type="prediction_failed")
 
 
 def protein_design_mcp():

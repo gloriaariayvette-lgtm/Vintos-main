@@ -49,9 +49,8 @@ An Aegis probe must run the named entry point on the smallest real input and pro
 a parsed result. Importing `torch` is not a ProteinMPNN smoke test. The fixed commissioning
 worker therefore requires: an ESMC vector; an OpenMM integration step and energy; a
 ProteinMPNN FASTA containing a designed sequence; RFD3 metadata plus a structure artifact;
-and an MCP server tool listing plus one dispatched status call. ESMFold must return a PDB.
-Exiting zero is never passing. Its current Aegis receipt is a typed failure: fair-esm is
-installed, but its pinned OpenFold dependency cannot build without an nvcc/CUDA toolkit.
+and an MCP server tool listing plus one dispatched status call. ESMFold loads the cached
+checkpoint through Transformers on CUDA and must return a PDB. Exiting zero is never passing.
 
 A passing receipt holds a month; a failure or an unconfigured probe holds a day and is
 re-asked. The scheduled session refreshes only expired receipts, inside the background slot,
@@ -184,8 +183,8 @@ and cannot emerge by widening a query or installing another adapter.
 - ProteinMPNN, RFdiffusion-family tools, and OpenMM are separately measured
   instruments whose outputs remain unvalidated
   computational artifacts until a Lab session interprets them.
-- ESMFold structure prediction remains a measured dependency failure on Aegis, not an
-  available instrument.
+- ESMFold structure prediction is measured separately through its cached Transformers
+  checkpoint; it does not depend on the MCP package's broken fair-esm/OpenFold wrapper.
 - The Mac bench has a Lab-only SSH doorway, separate configuration, visible
   ledger, and a named-experiment allowlist. The bench attests that an experiment
   runs under macOS isolation with no network, home directory, or durable child

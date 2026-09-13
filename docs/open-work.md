@@ -250,9 +250,9 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
 
 - The previously unconfigured Aegis instruments now have fixed real probes. ProteinMPNN
   must produce a designed FASTA, RFD3 must produce JSON and CIF artifacts, and the protein
-  design MCP must list tools and dispatch one call. ESMFold is a measured failure:
-  fair-esm reaches its OpenFold import, while the pinned OpenFold build requires nvcc and
-  Aegis currently has CUDA PyTorch but no CUDA compiler. It remains unavailable.
+  design MCP must list tools and dispatch one call. ESMFold uses the already-cached
+  `facebook/esmfold_v1` checkpoint through Transformers on CUDA and must return a PDB; this
+  avoids the MCP package's fair-esm/OpenFold wrapper, whose pinned build requires nvcc.
 - Mac instruments have a versioned fixed commissioning surface. It does not widen the
   scheduled bench doorway: its output is manually ingested as a hash-bound run receipt.
   A measured receipt proves only that instrument and entry point; VQNet, Mac ESMC,
