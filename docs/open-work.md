@@ -312,10 +312,12 @@ live cadence/outcome line, and LAB pane over the same bounded endpoints. The two
 not byte mirrors: their surrounding surfaces have diverged, so Chemistry was ported into the
 app's own fetch/host/API idiom rather than replacing that file from this repository.
 
-The ambient loop now waits up to 300 seconds for the background compute slot and polls every
-120 seconds by default. `status()` exposes both values plus the completed-turn count and last
-turn receipt; a busy house yields the turn rather than making a two-second refusal look like
-the Lab was idle. First light appends a separately marked, idempotent Chemistry receipt to
+The ambient loop now waits up to 300 seconds for the background compute slot and advances a
+phase every 15 seconds by default. Because orient and reflect are the two Gemma phases, that
+is roughly one local-model call every 30 seconds and one complete Lab cycle per quiet minute;
+every phase still yields through compute admission. `status()` exposes both cadence values
+plus the completed-turn count and last turn receipt. First light appends a separately marked,
+idempotent Chemistry receipt to
 daily inner life after the Admission Lab digest. It mechanically counts notebook kinds,
 records execution and grade as separate fields, names owed/settled readings, and carries the
 latest next question; it makes no scientific or personal inference.

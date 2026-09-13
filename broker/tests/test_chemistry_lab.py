@@ -28,11 +28,11 @@ def check(name, ok, detail=""):
 check("test is in a scratch workspace", M.WS == WS and HOME in M.ROOT and not M.ROOT.startswith("/home/gloria"), M.ROOT)
 check("starts disabled", M.status()["enabled"] is False and M.status()["effective_state"] == "off")
 check("requested cadence and patient compute wait are visible",
-      M.status()["poll_seconds"] == 120 and M.status()["turn_wait_seconds"] == 300
+      M.status()["poll_seconds"] == 15 and M.status()["turn_wait_seconds"] == 300
       and M.status()["turns"] == 0 and M.DEFAULTS["turn_wait_seconds"] == 300, M.status())
 M._ensure(); json.dump({"enabled": True, "poll_seconds": 300, "turn_wait_seconds": 2}, open(M.CONFIG, "w"))
 check("persisted legacy cadence migrates instead of defeating new defaults",
-      M.config()["cadence_version"] == 2 and M.config()["poll_seconds"] == 120
+      M.config()["cadence_version"] == 3 and M.config()["poll_seconds"] == 15
       and M.config()["turn_wait_seconds"] == 300, M.config())
 on = M.set_enabled(True)
 check("Tune control enables without deleting state", on["enabled"] is True and not os.path.exists(M.STOP))

@@ -54,14 +54,14 @@ LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 BASELINE_QUERY = "reviewed:true AND length:[40 TO 350]"
 DEFAULTS = {
-    # Version 2 replaces the original 300s poll / 2s compute-slot wait.  Persisted
-    # version-1 config must migrate too; changing these defaults alone would leave
-    # the running house on the old cadence indefinitely.
-    "cadence_version": 2,
+    # Version 3 makes the background Lab near-continuous. Only orient and reflect
+    # are Gemma phases, so a 120s phase poll meant an average four-minute gap
+    # between Gemma calls. Persisted older cadence must migrate too.
+    "cadence_version": 3,
     "enabled": False,
-    # One complete browse cycle in roughly eight quiet minutes. The daemon is
-    # continuously available; it is not entitled to turn availability into churn.
-    "poll_seconds": 120,
+    # One complete browse cycle in roughly one quiet minute. Every phase still
+    # enters compute admission and yields to conversation or another house organ.
+    "poll_seconds": 15,
     "turn_wait_seconds": 300,
     "max_records_per_browse": 4,
     "context_budget_chars": 3800,
@@ -133,7 +133,7 @@ def config():
     value = dict(DEFAULTS)
     loaded = _load(CONFIG, {})
     if isinstance(loaded, dict): value.update({k: loaded[k] for k in DEFAULTS if k in loaded})
-    if isinstance(loaded, dict) and int(loaded.get("cadence_version", 1) or 1) < 2:
+    if isinstance(loaded, dict) and int(loaded.get("cadence_version", 1) or 1) < 3:
         value["poll_seconds"] = DEFAULTS["poll_seconds"]
         value["turn_wait_seconds"] = DEFAULTS["turn_wait_seconds"]
         value["cadence_version"] = DEFAULTS["cadence_version"]
