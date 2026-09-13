@@ -14,8 +14,8 @@ It was audit 2, which runs after the synthesis, every night, and was:
     third lens, read as invented to a reader that could not see it, and the instruction
     was to remove it.
   - asked to return the WHOLE entry at max_tokens 1200, against a synthesis written at
-    6000, on the one shim path that never reaches Claude: /gemma routes ["gemma", "xai"],
-    so a local 12B model re-emitted the entry.
+    6000, on a named shim path that never reaches Claude. The journal now uses
+    /gemma-aegis: Aegis 12B first, Mac Gemma only as fail-open fallback, then x.ai.
   - allowed to replace the entry on `len(_corrected) > 100` alone, with no check that
     anything had been flagged.
   - silent. No log line, either way.
@@ -135,14 +135,14 @@ check("an empty audit response changes nothing", keeps("x" * 4000, "") == "uncha
 
 print("\n--- which shim path each call actually takes ---")
 shim = src(os.path.join(REPO, "bin", "vintos_claude_shim.py"))
-check("/gemma is the one chain that never reaches Claude",
-      'if path.startswith("/gemma"): return ["gemma", "xai"]' in shim)
+check("the named Aegis journal chain never reaches Claude",
+      'if path.startswith("/gemma-aegis"): return ["aegis_gemma", "gemma", "xai"]' in shim)
 check("and the plain chat path goes to Claude first, whatever model name is in the body",
       'return ["anthropic", "xai"]' in shim)
-check("so a grok model name on /gemma is served by local Gemma, which forces its own model",
-      'body["model"] = GEMMA_MODEL' in shim)
-check("audit 2 is still on that path, knowingly",
-      "8599/gemma/v1/chat/completions" in audit2)
+check("so a grok model name on /gemma-aegis is served by Aegis, which forces 12B",
+      'body["model"] = AEGIS_GEMMA_MODEL' in shim)
+check("audit 2 is on the named Aegis path, knowingly",
+      "8599/gemma-aegis/v1/chat/completions" in audit2)
 
 print("\n--- it reached nothing outside the repository ---")
 check("this suite only reads source", not os.path.exists(
