@@ -215,7 +215,7 @@ def _divergence(context, artifact, reservations, lenses=LENSES):
     for lens in lenses:
         try:
             from compute_admission import admit
-            with admit("background", organ="chemistry-divergence", wait_s=2,
+            with admit("background", organ="chemistry-divergence", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider=reservations[lens]["provider"],
                        model=reservations[lens]["model"], stage="lens:" + lens):
                 raw = asyncio.run(_frontier(lens, system, prompt,
@@ -332,7 +332,7 @@ def run():
         # An unrefreshed instrument simply reads stale, which is the honest outcome.
         try:
             from compute_admission import admit as _admit
-            with _admit("background", organ="chemistry-instrument-probe", wait_s=2,
+            with _admit("background", organ="chemistry-instrument-probe", wait_s=float(lab.config()["turn_wait_seconds"]),
                         provider="local", stage="probe"):
                 probed = [r["tool"] for r in probe.refresh(only_expired=True)]
         except TimeoutError: probed = []
@@ -363,7 +363,7 @@ def run():
         plan = None; result = None; grade = None
         try:
             from compute_admission import admit
-            with admit("background", organ="chemistry-frontier-session", wait_s=2,
+            with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="frontier", stage="plan"):
                 plan = _plan(context, experiments, lens, instruments)
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
@@ -374,7 +374,7 @@ def run():
             # A completed run proves only the instruments it names and hashes.
             try: probe.record_run_attestation(result.get("run_id"), result)
             except Exception as exc: lab._fault("run_attestation", exc)
-            with admit("background", organ="chemistry-frontier-session", wait_s=2,
+            with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="local", model=lab.LLM_MODEL, stage="reading"):
                 reading = _reading(context, plan, result, grade)
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "completed",

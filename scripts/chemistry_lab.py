@@ -54,11 +54,15 @@ LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 BASELINE_QUERY = "reviewed:true AND length:[40 TO 350]"
 DEFAULTS = {
+    # Version 2 replaces the original 300s poll / 2s compute-slot wait.  Persisted
+    # version-1 config must migrate too; changing these defaults alone would leave
+    # the running house on the old cadence indefinitely.
+    "cadence_version": 2,
     "enabled": False,
-    # One complete browse cycle in roughly fifteen quiet minutes. The daemon is
+    # One complete browse cycle in roughly eight quiet minutes. The daemon is
     # continuously available; it is not entitled to turn availability into churn.
-    "poll_seconds": 300,
-    "turn_wait_seconds": 2,
+    "poll_seconds": 120,
+    "turn_wait_seconds": 300,
     "max_records_per_browse": 4,
     "context_budget_chars": 3800,
     "allow_public_database_reads": True,
@@ -129,6 +133,10 @@ def config():
     value = dict(DEFAULTS)
     loaded = _load(CONFIG, {})
     if isinstance(loaded, dict): value.update({k: loaded[k] for k in DEFAULTS if k in loaded})
+    if isinstance(loaded, dict) and int(loaded.get("cadence_version", 1) or 1) < 2:
+        value["poll_seconds"] = DEFAULTS["poll_seconds"]
+        value["turn_wait_seconds"] = DEFAULTS["turn_wait_seconds"]
+        value["cadence_version"] = DEFAULTS["cadence_version"]
     value["enabled"] = bool(value["enabled"])
     return value
 
@@ -465,8 +473,10 @@ def status():
     cfg = config(); state = _load(STATE, {}); session = _load(SESSION_STATE, {})
     return {"ok": True, "lab": "chemistry", "enabled": cfg["enabled"],
             "effective_state": (state.get("effective_state") or ("waiting" if cfg["enabled"] else "off")),
-            "phase": state.get("phase", "orient"), "last_turn_at": state.get("last_turn_at"),
-            "last_outcome": state.get("last_outcome"), "stop_requested": stop_requested(),
+            "phase": state.get("phase", "orient"), "poll_seconds": cfg["poll_seconds"],
+            "turn_wait_seconds": cfg["turn_wait_seconds"], "turns": int(state.get("turns", 0)),
+            "last_turn_at": state.get("last_turn_at"), "last_outcome": state.get("last_outcome"),
+            "stop_requested": stop_requested(),
             "scheduled_session": {"last_at": session.get("last_at"),
                                   "last_state": session.get("last_state"),
                                   "last_session_id": session.get("last_session_id")},
@@ -563,7 +573,7 @@ def daemon():
     while True:
         try: tick()
         except Exception as exc: _fault("daemon", exc)
-        time.sleep(max(15, min(300, int(config()["poll_seconds"]))))
+        time.sleep(max(15, min(3600, int(config()["poll_seconds"]))))
 
 
 if __name__ == "__main__":

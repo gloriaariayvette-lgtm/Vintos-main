@@ -193,7 +193,7 @@ def default_reader(debt):
     return {key: str(value.get(key, ""))[:1200] for key in ("reading", "what_surprised_me", "next_question")}
 
 
-def settle_one(already_admitted=False, wait_s=2, reader=None):
+def settle_one(already_admitted=False, wait_s=300, reader=None):
     """Pay one owed reading, if one is owed and the house is not busy."""
     if not lab.config()["enabled"]: return {"outcome": REFUSED, "detail": "the Lab is off"}
     try: debt = _take()

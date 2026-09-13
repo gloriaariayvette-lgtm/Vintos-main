@@ -27,6 +27,13 @@ def check(name, ok, detail=""):
 
 check("test is in a scratch workspace", M.WS == WS and HOME in M.ROOT and not M.ROOT.startswith("/home/gloria"), M.ROOT)
 check("starts disabled", M.status()["enabled"] is False and M.status()["effective_state"] == "off")
+check("requested cadence and patient compute wait are visible",
+      M.status()["poll_seconds"] == 120 and M.status()["turn_wait_seconds"] == 300
+      and M.status()["turns"] == 0 and M.DEFAULTS["turn_wait_seconds"] == 300, M.status())
+M._ensure(); json.dump({"enabled": True, "poll_seconds": 300, "turn_wait_seconds": 2}, open(M.CONFIG, "w"))
+check("persisted legacy cadence migrates instead of defeating new defaults",
+      M.config()["cadence_version"] == 2 and M.config()["poll_seconds"] == 120
+      and M.config()["turn_wait_seconds"] == 300, M.config())
 on = M.set_enabled(True)
 check("Tune control enables without deleting state", on["enabled"] is True and not os.path.exists(M.STOP))
 ctx, receipt = M.lab_context()
@@ -46,6 +53,9 @@ M._embed_records = lambda records: {"ok": True, "model": "test-esmc", "device": 
 M._reflect = lambda context, inquiry, records: {"attention": "the compactness", "factual_observation": "the record says length 80", "speculative_reading": "it feels architectural", "next_question": "what recurs?"}
 one, two, three, four = M.tick(), M.tick(), M.tick(), M.tick()
 check("four checkpointed turns complete the loop", [one.get("kind"), two.get("kind"), three.get("kind"), four.get("kind")] == ["inquiry", "source_read", "protein_representation", "reflection"], (one, two, three, four))
+check("status accounts for completed turns and their last receipt",
+      M.status()["turns"] == 4 and M.status()["last_outcome"] == "reflection"
+      and bool(M.status()["last_turn_at"]), M.status())
 adapted = [json.loads(x) for x in open(M.COLLISION_ADAPTER) if x.strip()]
 check("protein material crosses by source text, never raw vector coordinates",
       len(adapted) == 1 and adapted[0].get("transform") == "uniprot_metadata_to_text_v1_then_house_nomic"
