@@ -39,5 +39,16 @@ curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null || {
   exit 1
 }
 
+# A reload contract must also work when the expected identifier is already
+# resident. Unload only this model; the Nomic embedding model stays untouched.
+if "$LMS" ps --json | python3 -c '
+import json, sys
+identifier = sys.argv[1]
+rows = json.load(sys.stdin)
+raise SystemExit(0 if any(row.get("identifier") == identifier for row in rows) else 1)
+' "$IDENTIFIER"; then
+  "$LMS" unload "$IDENTIFIER"
+fi
+
 exec "$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
   --context-length 32000 --parallel 1 --no-speculative-draft-mtp --yes
