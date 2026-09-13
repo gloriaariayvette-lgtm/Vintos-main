@@ -6,11 +6,11 @@ stratagem path, and writes only below memory/chemistry-lab/.  Its daemon is
 continuously *eligible*, not continuously entitled to the GPU: every small turn
 must enter compute_admission's background slot and yields between turns.
 
-Phase 1 is intentionally useful without pretending heavy scientific tools are
-installed.  It lets his local Aegis Gemma form a sourced UniProt browsing query,
-fetches public records read-only, and reflects into an append-only notebook. Tool
-adapters report unavailable until ESMC / structure / design / quantum chemistry
-are separately installed and measured on their actual host.
+The active loop lets his local Aegis Gemma form a sourced UniProt browsing query,
+fetches public records read-only, derives a content-addressed ESMC representation,
+and reflects into an append-only notebook. Other instruments become available
+only through dated smoke-test receipts; a successful package install is not proof
+that a scientific tool can run on its actual host.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import hashlib
 import json
 import os
 import re
-import shutil
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -36,8 +36,14 @@ STATE = os.path.join(ROOT, "state.json")
 NOTEBOOK = os.path.join(ROOT, "notebook.jsonl")
 RECEIPTS = os.path.join(ROOT, "context-receipts.jsonl")
 FAULTS = os.path.join(ROOT, "faults.jsonl")
+INVENTORY = os.path.join(ROOT, "tool-inventory.json")
 LOCK = os.path.join(ROOT, ".lock")
 STOP = os.path.join(ROOT, ".stop-requested")
+ESMC_PYTHON = os.environ.get(
+    "CHEM_LAB_ESMC_PYTHON",
+    os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"),
+)
+ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_esmc.py")
 
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
@@ -52,7 +58,7 @@ DEFAULTS = {
     "context_budget_chars": 3800,
     "allow_public_database_reads": True,
 }
-PHASES = ("orient", "browse", "reflect")
+PHASES = ("orient", "browse", "embed", "reflect")
 DENIED_QUERY = re.compile(
     r"(?:toxin|venom|pathogen|virulence|bioweapon|human\s*(?:target|receptor)|gain.of.function|lethal)", re.I
 )
@@ -220,7 +226,7 @@ def _orient(context):
 
 def _browse(query, limit):
     params = urllib.parse.urlencode({"query": query, "format": "json", "size": int(limit),
-                                     "fields": "accession,id,protein_name,organism_name,length,cc_function"})
+                                     "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function"})
     req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                  headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
     with urllib.request.urlopen(req, timeout=45) as response:
@@ -231,8 +237,27 @@ def _browse(query, limit):
                 .get("fullName", {}).get("value", ""))
         rows.append({"accession": item.get("primaryAccession"), "id": item.get("uniProtkbId"),
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
-                     "length": (item.get("sequence") or {}).get("length")})
+                     "length": (item.get("sequence") or {}).get("length"),
+                     "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
     return rows
+
+
+def _embed_records(records):
+    if not (os.path.isfile(ESMC_PYTHON) and os.path.isfile(ESMC_WORKER)):
+        return {"ok": False, "state": "adapter_unavailable", "embeddings": []}
+    done = subprocess.run(
+        [ESMC_PYTHON, ESMC_WORKER],
+        input=json.dumps({"records": records}), text=True, capture_output=True,
+        timeout=240, check=False,
+        env={**os.environ, "HF_HOME": os.path.expanduser(
+            "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")},
+    )
+    if done.returncode:
+        raise RuntimeError("ESMC adapter failed: " + done.stderr.strip()[-400:])
+    value = json.loads(done.stdout)
+    if not isinstance(value, dict) or not value.get("ok"):
+        raise RuntimeError("ESMC adapter returned no valid receipt")
+    return value
 
 
 def _reflect(context, inquiry, records):
@@ -250,15 +275,29 @@ def _reflect(context, inquiry, records):
 
 
 def tools_status():
-    # Honest availability only. Importing large models here would itself consume the resource we are reporting.
-    return {
+    # Read receipts from the host probes. Merely finding an executable is not
+    # enough: an installed package that has never completed a smoke test is not
+    # an available instrument. Probe results are replaceable operational state,
+    # kept with the Lab rather than smuggled in from the Atelier.
+    measured = _load(INVENTORY, {})
+    if not isinstance(measured, dict):
+        measured = {}
+    tools = {
         "uniprot": {"available": True, "host": "public_read_only"},
-        "esmc": {"available": bool(shutil.which("chem-lab-esmc")), "host": "aegis", "state": "adapter_required"},
-        "structure_prediction": {"available": bool(shutil.which("chem-lab-fold")), "host": "measured_later", "state": "adapter_required"},
-        "protein_mpnn": {"available": bool(shutil.which("chem-lab-mpnn")), "host": "measured_later", "state": "adapter_required"},
-        "qpanda": {"available": False, "host": "mac", "state": "lab_bridge_not_wired"},
-        "quantum_chemistry": {"available": False, "host": "mac", "state": "compatibility_probe_required"},
+        "esmc": {"available": False, "host": "aegis", "state": "not_measured"},
+        "structure_prediction": {"available": False, "host": "aegis", "state": "not_measured"},
+        "protein_mpnn": {"available": False, "host": "aegis", "state": "not_measured"},
+        "rfdiffusion": {"available": False, "host": "aegis_and_mac", "state": "not_measured"},
+        "openmm": {"available": False, "host": "aegis", "state": "not_measured"},
+        "protein_design_mcp": {"available": False, "host": "aegis", "state": "not_measured"},
+        "qpanda": {"available": False, "host": "mac", "state": "not_measured"},
+        "vqnet": {"available": False, "host": "mac", "state": "not_measured"},
+        "quantum_chemistry": {"available": False, "host": "mac", "state": "not_measured"},
     }
+    for name, receipt in measured.get("tools", {}).items():
+        if name in tools and isinstance(receipt, dict):
+            tools[name].update(receipt)
+    return tools
 
 
 def status():
@@ -294,17 +333,32 @@ def tick():
                 inquiry = state.get("inquiry") or {"uniprot_query": _safe_query("")}
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
                 records = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
-                state["records"] = records; next_phase = "reflect"
+                state["records"] = records; next_phase = "embed"
                 note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
-                        "query": inquiry["uniprot_query"], "records": records,
+                        "query": inquiry["uniprot_query"],
+                        "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
                         "truth_status": "source_metadata_not_lived_experience"}
+            elif phase == "embed":
+                records = state.get("records", [])
+                embedding_result = _embed_records(records)
+                state["embeddings"] = embedding_result.get("embeddings", [])
+                next_phase = "reflect"
+                note = {"at": now_iso(), "kind": "protein_representation",
+                        "model": embedding_result.get("model"),
+                        "device": embedding_result.get("device"),
+                        "embeddings": state["embeddings"],
+                        "truth_status": "model_derived_representation_not_biological_finding"}
             else:
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])
-                reflection = _reflect(context, inquiry, records); next_phase = "orient"
+                visible_records = [{k: v for k, v in r.items() if k != "sequence"} for r in records]
+                reflection = _reflect(context, inquiry,
+                                      {"records": visible_records,
+                                       "esmc_receipts": state.get("embeddings", [])})
+                next_phase = "orient"
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
                         "source_accessions": [r.get("accession") for r in records], **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
-                state.pop("records", None); state.pop("inquiry", None)
+                state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
             _append(NOTEBOOK, note)
             state.update({"phase": next_phase, "last_turn_at": now_iso(), "last_outcome": note["kind"],
                           "effective_state": "waiting", "turns": int(state.get("turns", 0)) + 1})

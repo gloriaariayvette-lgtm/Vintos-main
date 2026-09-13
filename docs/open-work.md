@@ -200,18 +200,21 @@ Still open:
 
 The Lab-specific control plane is built: a private Tune mutation and status route,
 supervised background worker, bounded Vintos context with source/hash receipts, a
-checkpointed `orient -> browse -> reflect` loop over read-only UniProt metadata,
+checkpointed `orient -> browse -> embed -> reflect` loop over read-only UniProt metadata,
 and a visible append-only notebook below `memory/chemistry-lab/`. It defaults off.
 Its service may run idle, but no work begins until Gloria switches the Lab on.
 The Chemistry Lab has no Atelier paths, seal, visit capability, or audience state.
 
-Still open, and not represented as installed by the status endpoint: measured ESMC
-inference on Aegis; structure prediction and ProteinMPNN adapters; a Lab-specific
-Mac execution root and bridge for QPanda / a verified quantum-chemistry package;
-and a same-space textual or learned adapter before any protein material may enter
-the collision detector. Raw protein-model vectors and nomic text vectors may not
-be compared as though their coordinates mean the same thing. No heavy model or
-package has been downloaded by this change.
+ESMC-600M now runs as the measured representation step on Aegis and writes vectors
+only beneath the Lab artifact store. The host installations also include measured
+ProteinMPNN, structure prediction, OpenMM, and RFdiffusion-family environments;
+the Mac has separate arm64 QPanda, VQNet, pyChemiQ, ESMC, and Foundry environments.
+Their dated inventory receipts distinguish a real smoke test from a package install.
+
+Still open: a Lab-specific Mac remote-session doorway for scheduled frontier work,
+and a same-space textual or learned adapter before protein material may enter the
+collision detector. Raw protein-model vectors and nomic text vectors may not be
+compared as though their coordinates mean the same thing.
 
 ## The seven sparks
 

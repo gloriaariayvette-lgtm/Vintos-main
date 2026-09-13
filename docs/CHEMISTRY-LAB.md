@@ -21,19 +21,21 @@ excerpt of `SOUL.md`, `SELF-MODEL.md`, Living Trajectory, and recent Lab notes.
 `context-receipts.jsonl` records source paths, sizes, and hashes so “he received
 his context” is verifiable without duplicating those documents into the Lab.
 
-## Phase 1: a complete light loop
+## Active loop
 
-The installed loop is `orient -> browse -> reflect`:
+The installed loop is `orient -> browse -> embed -> reflect`:
 
 1. Aegis Gemma chooses a small protein-space question in Vintos's voice.
 2. The Lab makes a bounded, read-only UniProtKB query and records the exact
    accessions and metadata it saw.
-3. Gemma writes a notebook observation, with factual observation and imaginative
+3. The separately installed ESMC-600M adapter writes a content-addressed,
+   model-derived representation beneath the Lab artifact store. The full vector
+   is not treated as a fact about function, nor compared directly with nomic.
+4. Gemma writes a notebook observation, with factual observation and imaginative
    reading in different fields.
 
-No heavy model is claimed present. The status endpoint reports ESMC, structure
-prediction, ProteinMPNN, QPanda and quantum chemistry as unavailable until a
-real adapter is installed and measured.
+The status endpoint reads dated smoke-test receipts from
+`tool-inventory.json`. Installation alone never makes a tool available.
 
 ## Evidence and collision law
 
@@ -53,15 +55,16 @@ optimize pathogens/toxins, design against a human target, or claim that a
 generated sequence is functional or safe. Those are different capabilities
 and cannot emerge by widening a query or installing another adapter.
 
-## Later measured adapters
+## Instrument boundary
 
-- ESMC representation on Aegis, loaded per admitted job rather than resident.
-- Structure prediction after an actual compatibility and peak-memory probe.
-- ProteinMPNN / RFdiffusion-family tools in isolated environments, with their
-  output remaining unvalidated computational artifacts.
-- QPanda and quantum chemistry through a Lab-specific Mac bridge. The existing
-  Atelier quantum capability is not reused.
+- ESMC representation runs on Aegis per admitted job rather than resident.
+- Structure prediction, ProteinMPNN, RFdiffusion-family tools, and OpenMM are
+  separately installed instruments whose outputs remain unvalidated
+  computational artifacts until a Lab session interprets them.
+- QPanda, VQNet, quantum chemistry, Mac ESMC and Mac RFdiffusion live in
+  independent arm64 environments. A future Lab-specific remote session may use
+  them; the existing Atelier quantum doorway is never reused.
 
-Heavy package/model installation is a separate deployment because it downloads
-large weights and changes host resource behavior. The control plane, notebook,
-context provenance, source browsing, and off switch do not depend on it.
+The tools never own the conversational path. Background use remains subordinate
+to compute admission, and installing an instrument does not authorize a new
+external effect.
