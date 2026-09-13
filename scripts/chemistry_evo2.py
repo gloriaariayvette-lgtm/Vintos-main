@@ -27,6 +27,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import uuid
 
 import chemistry_lab as lab
 
@@ -166,7 +167,10 @@ def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True):
                                (done.returncode, (done.stderr or done.stdout)[-500:]))
         result = json.loads((done.stdout or "").strip().splitlines()[-1])
         if not result.get("ok"): raise RuntimeError("Evo 2 worker returned no result")
-        row = {**result, "run_id": "EVO-" + _sha(result)[:16], "at": lab.now_iso(),
+        # Recurrence is history, not deduplication. Identical scores on two real runs
+        # need two run identities; the result digest remains available independently.
+        row = {**result, "run_id": "EVO-" + uuid.uuid4().hex[:16],
+               "result_sha256": _sha(result), "at": lab.now_iso(),
                "source_receipt": {key: source[key] for key in
                                   ("source", "source_key", "accession", "taxon_id", "organism",
                                   "start", "stop", "source_header", "sequence_sha256", "fetched_at", "truth_status")},

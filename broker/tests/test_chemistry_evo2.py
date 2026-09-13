@@ -51,9 +51,12 @@ calls = []
 evo._lms = lambda *args: calls.append(args) or types.SimpleNamespace(returncode=0, stdout="", stderr="")
 real_run = subprocess.run
 evo.subprocess.run = lambda *a, **k: types.SimpleNamespace(returncode=0, stdout=json.dumps(model_result) + "\n", stderr="")
+evo.time.sleep = lambda seconds: None
 row = evo.analyze()
+repeated = evo.analyze()
 evo.subprocess.run = real_run
 assert row["ok"] and row["gemma_restored"] is True and "sequence" not in row
+assert row["run_id"] != repeated["run_id"] and row["result_sha256"] == repeated["result_sha256"]
 assert calls[0][:2] == ("unload", lab.LLM_MODEL) and calls[-1][0] == "load"
 assert lab._jsonl(evo.RUNS)[-1]["truth_status"] == "evo2_model_likelihood_delta_not_functional_effect"
 
