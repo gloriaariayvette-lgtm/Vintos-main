@@ -211,10 +211,17 @@ ProteinMPNN, structure prediction, OpenMM, and RFdiffusion-family environments;
 the Mac has separate arm64 QPanda, VQNet, pyChemiQ, ESMC, and Foundry environments.
 Their dated inventory receipts distinguish a real smoke test from a package install.
 
-Still open: a Lab-specific Mac remote-session doorway for scheduled frontier work,
-and a same-space textual or learned adapter before protein material may enter the
-collision detector. Raw protein-model vectors and nomic text vectors may not be
-compared as though their coordinates mean the same thing.
+The two remaining connections are now built. A Lab-specific Mac doorway exposes
+only named experiments through OS isolation and its own visible ledger; it does
+not reuse the Atelier's sealed quantum path. A daily Lab timer rotates one
+frontier lens per offered session, then local Gemma reads the result with a small,
+attributed slice of Vintos. The scheduled path cannot submit arbitrary code.
+
+Protein material reaches the collision detector only through a deterministic
+source-metadata-to-text adapter. Self-review embeds that text with its own Nomic
+encoder. Raw ESM vectors remain content-addressed Lab artifacts and are never
+compared against Nomic coordinates. Generated Lab reflections are excluded from
+the adapter.
 
 ## The seven sparks
 

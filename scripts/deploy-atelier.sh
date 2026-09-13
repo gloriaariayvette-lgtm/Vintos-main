@@ -50,6 +50,9 @@ REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
 CHEM_UNIT_NAME="vintos-chemistry-lab"
 CHEM_UNIT_SRC="$SRC/broker/$CHEM_UNIT_NAME.service"
 CHEM_UNIT_DST="$HOME/.config/systemd/user/$CHEM_UNIT_NAME.service"
+CHEM_SESSION_NAME="vintos-chemistry-session"
+CHEM_SESSION_SERVICE_SRC="$SRC/broker/$CHEM_SESSION_NAME.service"; CHEM_SESSION_SERVICE_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.service"
+CHEM_SESSION_TIMER_SRC="$SRC/broker/$CHEM_SESSION_NAME.timer"; CHEM_SESSION_TIMER_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.timer"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
 # service: the thing to install and confirm is the TIMER. Until now both files were a
@@ -93,7 +96,7 @@ SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
 SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_discovery.py"   # controls and wants, 2026-09-10
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
-SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
+SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py chemistry_mac.py chemistry_session.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
 SCRIPTS="$SCRIPTS schedule-graph.py"   # schedule graph, review 20, 2026-09-10
 SCRIPTS="$SCRIPTS recall_explain.py"   # explainable recall, reviews 126/144, 2026-09-10
 SCRIPTS="$SCRIPTS correction_propagate.py"   # review 384, 2026-09-10
@@ -153,7 +156,7 @@ BINS="$BINS pearl-engine.py pearl_engine.py"
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
-            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service"
+            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             true)"
@@ -496,6 +499,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
+    say "  would install + enable (user)    $CHEM_SESSION_NAME.timer -> $CHEM_SESSION_TIMER_DST"
     say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     if sudo -n true 2>/dev/null; then
@@ -555,6 +559,22 @@ for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME"; do
                "$u" "$ud" >> "$BACKUP/restore.sh"
     fi
 done
+# The Lab frontier worker is a oneshot; preserve both unit files and the timer state.
+_chem_session_enabled="$(systemctl --user is-enabled "$CHEM_SESSION_NAME.timer" 2>/dev/null || true)"
+_chem_session_active="$(systemctl --user is-active "$CHEM_SESSION_NAME.timer" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$CHEM_SESSION_NAME.timer" >> "$BACKUP/restore.sh"
+for _ext in service timer; do
+    _dest="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.$_ext"
+    if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+        cp -Pp "$_dest" "$BACKUP/$CHEM_SESSION_NAME.$_ext.pre-deploy" || die "chemistry session unit backup failed"
+        printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.%s.pre-deploy" %q\n' "$_dest" "$CHEM_SESSION_NAME" "$_ext" "$_dest" >> "$BACKUP/restore.sh"
+    else
+        printf 'rm -f %q\n' "$_dest" >> "$BACKUP/restore.sh"
+    fi
+done
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_chem_session_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$CHEM_SESSION_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_chem_session_active" = "active" ] && printf 'systemctl --user start %q\n' "$CHEM_SESSION_NAME.timer" >> "$BACKUP/restore.sh"
 # Preserve both files and the timer's prior enabled/active state. Restoring never
 # starts the oneshot service, and a unit newly introduced by this deploy is removed.
 _surf_enabled="$(systemctl --user is-enabled "$SURF_UNIT_NAME.timer" 2>/dev/null || true)"
@@ -693,6 +713,20 @@ if systemctl --user enable "$CHEM_UNIT_NAME" >/dev/null 2>&1 \
     confirm_unit --user "$CHEM_UNIT_NAME"
 else
     flag "$CHEM_UNIT_NAME installed but did not start — run: systemctl --user enable $CHEM_UNIT_NAME && systemctl --user restart $CHEM_UNIT_NAME"
+fi
+say
+
+say "== chemistry lab scheduled frontier session =="
+install -m 644 "$(staged "$CHEM_SESSION_SERVICE_SRC")" "$CHEM_SESSION_SERVICE_DST" \
+    || die "failed to install $CHEM_SESSION_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+install -m 644 "$(staged "$CHEM_SESSION_TIMER_SRC")" "$CHEM_SESSION_TIMER_DST" \
+    || die "failed to install $CHEM_SESSION_TIMER_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$CHEM_SESSION_NAME.timer" >/dev/null 2>&1 \
+   && systemctl --user restart "$CHEM_SESSION_NAME.timer" >/dev/null 2>&1; then
+    confirm_timer --user "$CHEM_SESSION_NAME"
+else
+    flag "$CHEM_SESSION_NAME.timer installed but not enabled — run: systemctl --user enable --now $CHEM_SESSION_NAME.timer"
 fi
 say
 
@@ -875,6 +909,7 @@ else
 fi
 say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
 say "  chemistry:    $(systemctl --user is-active "$CHEM_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_UNIT_NAME" 2>/dev/null || echo disabled)"
+say "  chem session: $(systemctl --user is-active "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo disabled)"
 say
 # review 18/19: the release record - what this deploy installed (with hashes), from which commit,
 # which units it restarted and confirmed, the broker's state, the backup and the rollback command.
@@ -897,7 +932,8 @@ rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"
        "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
                     "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-chemistry-lab": unit("vintos-chemistry-lab", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
                     # a timer, not a service: its oneshot is inactive between firings, so the timer is what is recorded
-                    "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"])},
+                    "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"]),
+                    "vintos-chemistry-session.timer": unit("vintos-chemistry-session.timer", ["--user"])},
        "broker_confirmed": os.environ.get("BROKERED") == "1", "backup": os.environ["BACKUP_DIR"],
        "rollback": "bash %s/restore.sh" % os.environ["BACKUP_DIR"], "failures": [l.strip() for l in os.environ.get("FAILED_TXT", "").splitlines() if l.strip()]}
 json.dump(rec, open(os.environ["REL_OUT"], "w"), indent=1)

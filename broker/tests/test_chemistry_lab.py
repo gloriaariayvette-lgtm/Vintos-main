@@ -46,6 +46,10 @@ M._embed_records = lambda records: {"ok": True, "model": "test-esmc", "device": 
 M._reflect = lambda context, inquiry, records: {"attention": "the compactness", "factual_observation": "the record says length 80", "speculative_reading": "it feels architectural", "next_question": "what recurs?"}
 one, two, three, four = M.tick(), M.tick(), M.tick(), M.tick()
 check("four checkpointed turns complete the loop", [one.get("kind"), two.get("kind"), three.get("kind"), four.get("kind")] == ["inquiry", "source_read", "protein_representation", "reflection"], (one, two, three, four))
+adapted = [json.loads(x) for x in open(M.COLLISION_ADAPTER) if x.strip()]
+check("protein material crosses by source text, never raw vector coordinates",
+      len(adapted) == 1 and adapted[0].get("transform") == "uniprot_metadata_to_text_v1_then_house_nomic"
+      and "vector" not in adapted[0] and adapted[0].get("source_accession") == "P00001", adapted)
 notes = [json.loads(x) for x in open(M.NOTEBOOK) if x.strip()]
 check("source and speculation stay distinguishable", any(x.get("truth_status") == "source_metadata_not_lived_experience" for x in notes) and any("named_speculation" in x.get("truth_status", "") for x in notes))
 source_note = next(x for x in notes if x.get("kind") == "source_read")
@@ -62,9 +66,11 @@ server = open(os.path.join(REPO, "bin", "server.py")).read()
 ui = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
 check("status and toggle routes are private", '@app.get("/api/lab/chemistry/status")' in server and '@app.post("/api/lab/chemistry/toggle")' in server and server[server.index('async def chemistry_lab_status'):server.index('async def chemistry_lab_toggle')].count("_require_secret") == 1)
 check("Tune exposes and reloads the control", "chemistry-lab-toggle" in ui and "loadChemistryLabStatus()" in ui and "toggleChemistryLab()" in ui)
-check("service and deploy manifest name both workers", os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-lab.service")) and all(x in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read() for x in ("chemistry_lab.py", "chemistry_esmc.py")))
+check("service and deploy manifest name background and scheduled workers", os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-lab.service")) and os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")) and all(x in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read() for x in ("chemistry_lab.py", "chemistry_esmc.py", "chemistry_mac.py", "chemistry_session.py")))
 deploy = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("release and rollback own the new service", '"vintos-chemistry-lab": unit(' in deploy and 'CHEM_UNIT_NAME' in deploy and 'disable --now %q' in deploy)
+self_review = open(os.path.join(REPO, "scripts", "self_review.py")).read()
+check("self-review consumes only the Chemistry text adapter", '"chemistry_lab", "chemistry-lab/collision-adapter.jsonl"' in self_review and "artifacts/esmc" not in self_review)
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 raise SystemExit(0 if all(R) else 1)

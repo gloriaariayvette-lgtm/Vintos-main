@@ -38,6 +38,8 @@ NOTEBOOK = os.path.join(ROOT, "notebook.jsonl")
 RECEIPTS = os.path.join(ROOT, "context-receipts.jsonl")
 FAULTS = os.path.join(ROOT, "faults.jsonl")
 INVENTORY = os.path.join(ROOT, "tool-inventory.json")
+COLLISION_ADAPTER = os.path.join(ROOT, "collision-adapter.jsonl")
+SESSION_STATE = os.path.join(ROOT, "session-state.json")
 LOCK = os.path.join(ROOT, ".lock")
 STOP = os.path.join(ROOT, ".stop-requested")
 ESMC_PYTHON = os.environ.get(
@@ -251,9 +253,15 @@ def _browse(query, limit):
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
                 .get("fullName", {}).get("value", ""))
+        functions = []
+        for comment in item.get("comments") or []:
+            if comment.get("commentType") != "FUNCTION": continue
+            for value in comment.get("texts") or []:
+                if value.get("value"): functions.append(str(value["value"]))
         rows.append({"accession": item.get("primaryAccession"), "id": item.get("uniProtkbId"),
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
                      "length": (item.get("sequence") or {}).get("length"),
+                     "function": " ".join(functions)[:1200],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
     return {"records": rows, "requested_query": requested_query,
             "executed_query": executed_query, "fallback_reason": fallback_reason}
@@ -275,6 +283,58 @@ def _embed_records(records):
     if not isinstance(value, dict) or not value.get("ok"):
         raise RuntimeError("ESMC adapter returned no valid receipt")
     return value
+
+
+def _write_collision_adapter(records, embeddings):
+    """Put source-backed descriptors into the house text space.
+
+    The ESM vector is retained only as lineage.  It is never compared with a
+    Nomic vector.  self_review embeds ``text`` with its own encoder later.
+    """
+    prior = {row.get("adapter_id") for row in _jsonl(COLLISION_ADAPTER)}
+    by_accession = {str(row.get("accession")): row for row in embeddings if row.get("accession")}
+    written = []
+    for record in records:
+        accession = str(record.get("accession") or "").strip()
+        receipt = by_accession.get(accession)
+        if not accession or not receipt: continue
+        descriptor = {
+            "accession": accession,
+            "protein_name": str(record.get("protein_name") or "")[:500],
+            "organism": str(record.get("organism") or "")[:300],
+            "length": record.get("length"),
+            "function": str(record.get("function") or "")[:1200],
+        }
+        source_sha = hashlib.sha256(json.dumps(descriptor, sort_keys=True).encode()).hexdigest()
+        adapter_id = hashlib.sha256((source_sha + "\x1f" + str(receipt.get("embedding_sha256") or "")).encode()).hexdigest()[:24]
+        if adapter_id in prior: continue
+        pieces = ["UniProtKB protein record", descriptor["protein_name"],
+                  "organism " + descriptor["organism"] if descriptor["organism"] else "",
+                  "length %s residues" % descriptor["length"] if descriptor["length"] else "",
+                  "function annotation " + descriptor["function"] if descriptor["function"] else ""]
+        row = {"adapter_id": adapter_id, "at": now_iso(), "source": "UniProtKB",
+               "source_accession": accession, "source_metadata_sha256": source_sha,
+               "protein_representation_sha256": receipt.get("embedding_sha256"),
+               "protein_representation_artifact": receipt.get("artifact"),
+               "transform": "uniprot_metadata_to_text_v1_then_house_nomic",
+               "text": "; ".join(x for x in pieces if x),
+               "truth_status": "source_metadata_adapter_not_biological_inference",
+               "evidence_standing": "eligible_as_text_collision_source_only"}
+        _append(COLLISION_ADAPTER, row); prior.add(adapter_id); written.append(row)
+    return written
+
+
+def _jsonl(path):
+    rows = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                try:
+                    if line.strip(): rows.append(json.loads(line))
+                except Exception: pass
+    except FileNotFoundError:
+        pass
+    return rows
 
 
 def _reflect(context, inquiry, records):
@@ -318,11 +378,14 @@ def tools_status():
 
 
 def status():
-    cfg = config(); state = _load(STATE, {})
+    cfg = config(); state = _load(STATE, {}); session = _load(SESSION_STATE, {})
     return {"ok": True, "lab": "chemistry", "enabled": cfg["enabled"],
             "effective_state": (state.get("effective_state") or ("waiting" if cfg["enabled"] else "off")),
             "phase": state.get("phase", "orient"), "last_turn_at": state.get("last_turn_at"),
             "last_outcome": state.get("last_outcome"), "stop_requested": stop_requested(),
+            "scheduled_session": {"last_at": session.get("last_at"),
+                                  "last_state": session.get("last_state"),
+                                  "last_session_id": session.get("last_session_id")},
             "paths": {"root": "memory/chemistry-lab", "atelier": False}, "tools": tools_status()}
 
 
@@ -362,11 +425,13 @@ def tick():
                 records = state.get("records", [])
                 embedding_result = _embed_records(records)
                 state["embeddings"] = embedding_result.get("embeddings", [])
+                adapted = _write_collision_adapter(records, state["embeddings"])
                 next_phase = "reflect"
                 note = {"at": now_iso(), "kind": "protein_representation",
                         "model": embedding_result.get("model"),
                         "device": embedding_result.get("device"),
                         "embeddings": state["embeddings"],
+                        "collision_adapter_records": [r["adapter_id"] for r in adapted],
                         "truth_status": "model_derived_representation_not_biological_finding"}
             else:
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])

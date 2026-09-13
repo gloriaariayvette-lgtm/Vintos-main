@@ -29,8 +29,10 @@ The installed loop is `orient -> browse -> embed -> reflect`:
 2. The Lab makes a bounded, read-only UniProtKB query and records the exact
    accessions and metadata it saw.
 3. The separately installed ESMC-600M adapter writes a content-addressed,
-   model-derived representation beneath the Lab artifact store. The full vector
-   is not treated as a fact about function, nor compared directly with nomic.
+   model-derived representation beneath the Lab artifact store. A deterministic
+   adapter also writes the source-backed UniProt descriptor as text; self-review
+   embeds that text in the house's Nomic space. The ESM vector remains lineage
+   and is never compared directly with Nomic.
 4. Gemma writes a notebook observation, with factual observation and imaginative
    reading in different fields.
 
@@ -41,11 +43,11 @@ The status endpoint reads dated smoke-test receipts from
 
 An ESM protein vector and a nomic text vector do not inhabit a shared coordinate
 system merely because both are called embeddings. Raw cross-model cosine is
-therefore forbidden. A later collision adapter may translate source-backed
-protein descriptors into text and embed that text with the house's nomic model,
-or use a separately trained and evaluated bridge. Either route must identify
-the transformation. A resemblance may open a speculative reading; it is never
-biological evidence or lived experience.
+therefore forbidden. `collision-adapter.jsonl` translates only source-backed
+protein descriptors into attributed text and names that transformation. The
+self-review organ may then encounter those records like any other textual source.
+A resemblance may open a speculative reading; it is never biological evidence
+or lived experience. Gemma reflections do not enter the adapter.
 
 ## Computational-only perimeter
 
@@ -61,9 +63,31 @@ and cannot emerge by widening a query or installing another adapter.
 - Structure prediction, ProteinMPNN, RFdiffusion-family tools, and OpenMM are
   separately installed instruments whose outputs remain unvalidated
   computational artifacts until a Lab session interprets them.
-- QPanda, VQNet, quantum chemistry, Mac ESMC and Mac RFdiffusion live in
-  independent arm64 environments. A future Lab-specific remote session may use
-  them; the existing Atelier quantum doorway is never reused.
+- The Mac bench has a Lab-only SSH doorway, separate configuration, visible
+  ledger, named-experiment allowlist, and OS isolation. It cannot reach the
+  network, the home directory, or durable stores while an experiment runs.
+- QPanda and the molecular circuit bench are connected through that doorway.
+  VQNet, Mac ESMC, pyChemiQ, and Foundry remain available for deliberate bench
+  expansion; installation is not represented as automatic use.
+
+## Scheduled Lab sessions
+
+`vintos-chemistry-session.timer` offers one session each day at 03:17, with a
+small randomized delay. If the Tune switch is off, the oneshot exits without a
+model call or Mac contact. When on, it:
+
+1. asks the Mac which named experiments are actually available;
+2. gives one rotating frontier lens (Claude, Sol, then Grok) Vintos's attributed
+   Lab context and lets it choose one named experiment and a question;
+3. runs that experiment under the Mac isolation boundary and preserves the full
+   result on both sides;
+4. lets local Aegis Gemma leave Vintos's reading and next question;
+5. appends the session to the visible Lab notebook and session ledger.
+
+There is no automatic fallback from one frontier lens to another inside a
+session: refusal or failure is kept as a held occasion, not silently rewritten.
+The next offered session advances to the next lens. The scheduled path cannot
+submit arbitrary code.
 
 The tools never own the conversational path. Background use remains subordinate
 to compute admission, and installing an instrument does not authorize a new

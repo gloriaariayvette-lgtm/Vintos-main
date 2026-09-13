@@ -115,6 +115,8 @@ SOURCE_SPECS = (
     ("self_prediction", ".self-prediction-history.json", "json"),
     ("drift", "drift.json", "json"),
     ("causality", "causality-hypotheses.json", "json"),
+    # Textual bridge only. Raw ESM vectors do not share coordinates with Nomic.
+    ("chemistry_lab", "chemistry-lab/collision-adapter.jsonl", "jsonl"),
 )
 
 PROTECTED_EFFECTS = {
