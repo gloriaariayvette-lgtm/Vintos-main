@@ -3,6 +3,7 @@
 # enforced by vintos_claude_shim.py; this door fixes the resident artifact.
 set -euo pipefail
 LMS="${VINTOS_LMS_CLI:-/mnt/c/Users/glori/.lmstudio/bin/lms.exe}"
+BASE="${VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234}"
 MODEL_KEY="google/gemma-4-12b-qat"
 EXPECTED_VARIANT="google/gemma-4-12b-qat@q4_0"
 IDENTIFIER="google/gemma-4-12b-qat"
@@ -20,6 +21,18 @@ ok = len(matches) == 1 and matches[0].get("selectedVariant") == expected \
      and int((matches[0].get("quantization") or {}).get("bits") or 0) == 4
 if not ok: raise SystemExit("refusing Gemma load: installed artifact is not the expected Q4_0 variant")
 ' "$MODEL_KEY" "$EXPECTED_VARIANT"
+
+if ! curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null; then
+  "$LMS" server start
+  for _attempt in 1 2 3 4 5 6; do
+    sleep 2
+    curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null && break
+  done
+fi
+curl -fsS --max-time 5 "$BASE/api/v1/models" >/dev/null || {
+  echo "refusing Gemma load: LM Studio HTTP server is not answering at $BASE" >&2
+  exit 1
+}
 
 exec "$LMS" load "$MODEL_KEY" --identifier "$IDENTIFIER" --gpu max \
   --context-length 32000 --parallel 1 --no-speculative-draft-mtp --yes
