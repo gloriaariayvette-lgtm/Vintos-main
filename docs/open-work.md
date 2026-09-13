@@ -256,6 +256,27 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   not yet emit an instrument name and a source hash in its reply, no Mac instrument will
   ever become available, and that is the correct outcome rather than a bug to work around.
 
+The Lab still has no route to the Forge, and now the gap is named precisely. The spark
+layer already carries `lab` as one of the seven sources, `from_lab()` already reads wherever
+`memory/spark-config.json` points it, `adopt()` already refuses to write a want, and
+`skill_forge.SPARK_SOURCES` already allows `lab`. Four things are missing, none of them large:
+
+- `from_lab()` is a text scraper — lines starting with `-`, `*` or a date. Pointed at
+  `notebook.jsonl` it finds nothing, because every line starts with `{`. Pointing the config
+  at the Lab today would produce silence that looked like having no ideas.
+- A spark row is `{key, source, text, ref, seen, state}`. Session, run, grade and truth status
+  are gone before the want exists, and a want that cannot name its occasion is not Lab
+  provenance.
+- Nothing yet decides what may spark. A speculative reflection, a generated
+  `what_surprised_me`, or a taste echo must not commission a capability, for the same reason
+  none of them may become collision evidence.
+- `skill_forge.propose()`'s `origin` does not carry a Lab provenance it could keep.
+
+The shape of the fix: a Lab-written `spark-feed.jsonl` of eligible, attributed occasions; two
+small changes in `spark_sources.py` so `from_lab()` can read structured rows and `gather()`
+carries their provenance; and `origin` keeping it at the Forge. The Lab still would not create
+the want — that stays his act through the ordinary door, and hers to approve. Not built.
+
 The Lab has a visible body now: a `LAB` pane over five bounded, secret-guarded read
 endpoints, showing instrument state and scientific grade as two separate marks. One thing
 it exposed is not new and is not fixed here:
