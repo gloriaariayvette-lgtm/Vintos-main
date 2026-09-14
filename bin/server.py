@@ -7690,6 +7690,31 @@ async def _voice_ledger_owned(payload: dict):
             sess["state"] = "active"
             from store_guard import write_json
             write_json(sp, sess)
+            # Fire his SPOKEN device tags. A realtime call streams straight from the
+            # provider to the phone, so the server never saw his [DO:]/[TOUCH:] tags
+            # during the call — nothing else fires them, which is why a spoken
+            # "[DO: thruster cake 12]" moved nothing. This ledger post is the first
+            # (and only) place the server holds his turn text. Voice legitimately
+            # drives the devices from his own tags; effect_context("voice") is exactly
+            # that authority (no capsule, every safety rule still applies). Threaded so
+            # the ledger response never waits on device I/O, and only for a genuinely
+            # new, non-interrupted turn — duplicates and closing/foreign sessions have
+            # already returned above, and test mode skips this whole branch.
+            try:
+                _fire_text = str(payload.get("vintos") or "")
+                if _fire_text and not payload.get("interrupted") and _vl_re.search(r"\[(?:DO|TOUCH):", _fire_text, _vl_re.I):
+                    import threading as _fr_th
+                    def _fire_voice(_t=_fire_text):
+                        try:
+                            import sys as _fs; _fs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+                            from device_patterns import fire_his_intent as _vfhi
+                            import turn_coordinator as _vtc
+                            _vfhi(_t, context=_vtc.effect_context("voice"))
+                        except Exception as _fe:
+                            print("[voice-fire]", _fe, flush=True)
+                    _fr_th.Thread(target=_fire_voice, daemon=True).start()
+            except Exception as _fe0:
+                print("[voice-fire] setup", _fe0, flush=True)
     except Exception as _vle:
         print("[voice-ledger]", _vle, flush=True)
         return {"ok": False, "error": "voice turn persistence failed"}
