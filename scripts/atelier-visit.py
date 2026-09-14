@@ -24,9 +24,10 @@ SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
 
 def ask(system, user, max_tokens=2000, temp=0.7):
-    r = requests.post(SHIM, json={"model": _model(), "temperature": temp, "max_tokens": max_tokens,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}, timeout=600)
-    return r.json()["choices"][0]["message"]["content"]
+    scripts = os.path.join(WSP, "scripts")
+    if scripts not in sys.path: sys.path.append(scripts)
+    import atelier_voice
+    return atelier_voice.ask(system, user, max_tokens=max_tokens)
 
 
 def _model():

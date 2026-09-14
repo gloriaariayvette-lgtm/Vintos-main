@@ -73,12 +73,8 @@ def voice():
 
 
 def ask(system, user, max_tokens=900, temp=0.8):
-    r = requests.post(SHIM, json={"model": _model(), "temperature": temp,
-                                  "max_tokens": max_tokens,
-                                  "messages": [{"role": "system", "content": system},
-                                               {"role": "user", "content": user}]},
-                      timeout=600)
-    return r.json()["choices"][0]["message"]["content"]
+    import atelier_voice
+    return atelier_voice.ask(system, user, max_tokens=max_tokens)
 
 
 def eligible_roots():

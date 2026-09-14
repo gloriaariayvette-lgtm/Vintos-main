@@ -117,17 +117,18 @@ def _release_provider(provider, model, why="", reservation_id=None, paid_reserva
     except Exception:
         pass
 
-async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
+async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
     """Sol (OpenAI) draft. Returns (text, reason_tag) like claude_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
     k = _openai_key()
     if not k: return None, ""
-    body = {"model": SOL_MODEL,
+    chosen = model or SOL_MODEL
+    body = {"model": chosen,
             "input": [{"role": "system", "content": system_text}] + convo,
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"}}
     def _call():
-        receipt = _reserve_provider("openai",SOL_MODEL,paid_reservation)
+        receipt = _reserve_provider("openai",chosen,paid_reservation)
         rq = _u.Request("https://api.openai.com/v1/responses", data=json.dumps(body).encode(),
                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
         try:
@@ -138,7 +139,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
             # that never happened, and the next REAL Astra call - a forge build, the
             # printer's Blender script - is refused for a budget nothing used.
             if he.code in (401, 403):
-                _release_provider("openai", SOL_MODEL, "HTTP %d from the provider" % he.code,
+                _release_provider("openai", chosen, "HTTP %d from the provider" % he.code,
                                   receipt, paid_reservation)
             raise
     try:
@@ -147,7 +148,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
             _u2 = d.get("usage") or {}
             import time as _ut
             open(os.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(json.dumps({
-                "ts": _ut.time(), "src": "router", "model": SOL_MODEL, "provider_request_id": d.get("id"), "provider_status": d.get("status"),
+                "ts": _ut.time(), "src": "router", "model": chosen, "provider_request_id": d.get("id"), "provider_status": d.get("status"),
                 "in": _u2.get("input_tokens", 0), "out": _u2.get("output_tokens", 0),
                 "cached": (_u2.get("input_tokens_details") or {}).get("cached_tokens", 0),
                 "reasoning": (_u2.get("output_tokens_details") or {}).get("reasoning_tokens", 0)}) + "\n")
@@ -399,17 +400,18 @@ async def gemma_call(msgs, temp=0.85, max_tokens=800):
         d = r.json()
         return d["choices"][0]["message"]["content"] if "choices" in d else None
 
-async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=None):
+async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
     """Two-first-pass draft on Claude with reasoning. Returns (text|None, reasoning). None on refusal."""
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
     convo = list(convo)
     while convo and convo[0].get("role") != "user":
         convo = convo[1:]
-    body = {"model": current_claude_model(), "max_tokens": max_tokens,
+    chosen = model or current_claude_model()
+    body = {"model": chosen, "max_tokens": max_tokens,
             "system": _sysblocks(system_text),
             "messages": _cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
-    _reserve_provider("anthropic",current_claude_model(),paid_reservation)
+    _reserve_provider("anthropic",chosen,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,
             headers={"content-type": "application/json", "anthropic-version": "2023-06-01",

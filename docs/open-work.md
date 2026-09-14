@@ -58,6 +58,9 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   live-want proposal gate; an installed build returns as a formation root with
   the original provenance class intact. Approval, review, verification, and
   installation remain the Forge's existing gates.
+- The threshold and working visit now use an Atelier-only route: Fable 5.1 is
+  first, and an empty, filtered, refused, or failed call falls once to Astra.
+  No house conversation toggle or other model route is changed.
 
 ## 12 September — hypothesis recovery continuation
 
