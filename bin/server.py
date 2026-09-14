@@ -8158,7 +8158,13 @@ async def gcs_press(payload: dict = None):
                 _gcs_r = await _gcs_cli.post(
                     "http://127.0.0.1:8500/api/avatar/chat",
                     headers={"X-Vintos-Secret": APP_SECRET},
-                    json={"message": _press_turn})
+                    # Provenance at the source: the scaffold is only for HIS generation
+                    # (message); her turn is the press itself, not the instructions. Sending
+                    # original_text makes the avatar route record "she pressed GCS" as her
+                    # words in history and the ledger, instead of the whole [REQUIRED…]/
+                    # [she pressed…]/burst scaffold. The old post-hoc scrub raced the async
+                    # ledger write and lost, so the instructions were landing in her reply.
+                    json={"message": _press_turn, "original_text": "she pressed GCS", "input_kind": "gcs"})
                 _gcs_reply = ((_gcs_r.json() or {}).get("reply") or "").strip()
                 try: _g_j.dump({"at": _g_t.time(), "reply": _gcs_reply[:600]},
                                open(_gcs_lock, "w"))
