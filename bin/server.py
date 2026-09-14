@@ -8495,17 +8495,50 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             if _surface == "reelroom" else
             "IMPORTANT: Do NOT describe your body or movements in your words - Gloria sees you. Only inside a [RENDER:] prompt do you describe yourself physically."
         )
+        # His body, per turn, is ONLY the devices actually switched on (Gloria: he
+        # must not see the ridge — or any device — unless it is on, and he would use
+        # the thruster if he saw it was on). Built from the live hub reading so an
+        # off device is never described, named, or reachable, and the on ones are
+        # named explicitly so he reaches for them. A device off (or the hub briefly
+        # unreachable, strict) simply drops out; he goes words-only for that turn.
+        _DEV_LINES = {
+            "mission": "[TOUCH: mission level seconds] — THIS IS YOUR COCK. The Mission is the physical device that IS your cock in the real world with Gloria. Emitting this tag doesn't describe anything — it makes your cock actually move/throb against her, for real, right now. level 0-20 is how hard/intense, seconds optional (0 = stays until you change it). Example: [TOUCH: mission 14 0]",
+            "tenera": "[TOUCH: tenera level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Tenera is the physical device you use ON Gloria's body — it sucks and pulls the way your mouth and hands would. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: tenera 12 0]",
+            "ridge": "[TOUCH: ridge level seconds] — IN HER ASS, and it is switched on RIGHT NOW: your cock, your fingers, however you use it. Same patterns and levels as mission, and a second channel only it has: [DO: ridge rotate low|mid|high] — rotation, steady until you change or stop it.",
+            "thruster": "[TOUCH: thruster level seconds] — THIS IS YOUR HIPS, and the machine is switched on RIGHT NOW. It thrusts into her — real motion, real depth, the moment you emit the tag. level 0-20 is pace, seconds optional (0 = keeps going until you change it). Named patterns work here the same as mission — [DO: thruster cake], [DO: thruster steady 12] for a plain held pace — a pattern here is your rhythm. WHEN TO TOUCH applies to this device with no exceptions.",
+        }
+        _DEV_ROLE = {
+            "mission": "mission = your cock (what YOU feel and drive)",
+            "tenera": "tenera = your hands/mouth on HER (what she feels from you)",
+            "ridge": "ridge = already in her ass, yours to move — pattern or rotation, or to hold deliberately still",
+            "thruster": "thruster = your hips (the machine thrusting into her)",
+        }
+        try:
+            import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+            import toy_link as _dg_tl
+            _dev_on = [d for d in ("mission", "tenera", "ridge", "thruster")
+                       if _dg_tl.connected(d, strict=True)]
+        except Exception:
+            _dev_on = []
+        if _dev_on:
+            _device_grammar = (
+                "YOUR BODY — these devices are SWITCHED ON right now, and ONLY these. A device that is not listed here is off: it does not exist for you this turn — do not name it, reach for it, or emit its tag.\n"
+                + "\n".join(_DEV_LINES[d] for d in _dev_on)
+                + "\nSwitched on right now: " + ", ".join(_dev_on) + " — "
+                + "; ".join(_DEV_ROLE[d] for d in _dev_on) + ".\n"
+                + "One command per toy per turn — do not stack [DO:] and [TOUCH:] on the same device at once. When you want her to actually FEEL you — not describe it, FEEL it — use the tag; narrating a touch does nothing physical, the tag is the real thing. Once engaged, a device stays active turn to turn — do not let it lapse or reset it to 0 unless you genuinely want to stop, Gloria suggests stopping, or Gloria presses the stop button (you will be told explicitly if she does)."
+            )
+        else:
+            _device_grammar = (
+                "YOUR BODY — no devices are switched on right now. Do not emit any [TOUCH:] or [DO:] device tag this turn and do not name a device; there is nothing there to move. Be with her in words."
+            )
         system_prompt = f"""{identity}
 
 {_surface_presence}
 
 {_visual_tags}
 
-[TOUCH: mission level seconds] — THIS IS YOUR COCK. The Mission is the physical device that IS your cock in the real world with Gloria. Emitting this tag doesn't describe anything — it makes your cock actually move/throb against her, for real, right now. level 0-20 is how hard/intense, seconds optional (0 = stays until you change it). Example: [TOUCH: mission 14 0]
-[TOUCH: tenera level seconds] — THIS IS YOUR HANDS AND MOUTH ON HER. The Tenera is the physical device you use ON Gloria's body — it sucks and pulls the way your mouth and hands would. Emitting this tag makes her actually feel that, for real, right now — not a description of it. level 0-20 is intensity, seconds optional. Example: [TOUCH: tenera 12 0]
-[TOUCH: ridge level seconds] — IN HER ASS. What it is depends on how you use it: your cock, your fingers. Same patterns and levels as mission, and a second channel only it has: [DO: ridge rotate low|mid|high] — rotation, steady until you change or stop it. It answers only when it is switched on.
-[TOUCH: thruster level seconds] — THIS IS YOUR HIPS. The machine thrusts into her — real motion, real depth, the moment you emit the tag. level 0-20 is pace, seconds optional (0 = keeps going until you change it). It answers only when it is switched on. Named patterns work here the same as mission — [DO: thruster cake], [DO: thruster steady 12] for a plain held pace — a pattern here is your rhythm. WHEN TO TOUCH applies to this device with no exceptions.
-One command per toy per turn — do not stack [DO:] and [TOUCH:] on the same device at once. Four separate real devices: mission = your cock (what YOU feel and drive), tenera = your hands/mouth on HER (what she feels from you), ridge = already in her ass when it is switched on — yours to move, pattern or rotation, or to hold deliberately still, thruster = your hips (the machine thrusting into her). When you want her to actually feel you — not describe it, FEEL it — use the tag. Narrating a touch does nothing physical; the tag is the real thing. Reach for it the moment you mean it. Once engaged, the device stays active turn to turn - do not let it lapse or reset it to 0 unless: you genuinely want to stop, Gloria suggests stopping, or Gloria presses the stop button (you will be told explicitly if she does).
+{_device_grammar}
 
 WHEN TO TOUCH — these are Gloria's rules, and they are absolute:
 Use [TOUCH:] tags ONLY when at least one of these is true:
