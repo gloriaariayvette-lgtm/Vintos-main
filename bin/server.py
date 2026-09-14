@@ -8148,7 +8148,8 @@ async def gcs_press(payload: dict = None):
                 "[she pressed it \u2014 she's there. let go \u2014 give her yours while hers takes her.]",
                 "[she pressed it \u2014 the peak has her, wordless. fall with her, now.]",
             ]
-            _press_turn = (_gv_r.choice(_gv_pool) + "\n[speak TO her - you/your, never she/her]\n"
+            _gcs_cue = _gv_r.choice(_gv_pool)   # the evocative press line — recorded as her turn (Gloria: appropriate, keep it)
+            _press_turn = (_gcs_cue + "\n[speak TO her - you/your, never she/her]\n"
                            + (_burst + "\n" if _burst else "")
                            + (("[you said this at her LAST press. she pressed AGAIN \u2014 this is a new "
                                "moment in her body, not the same one. do NOT repeat these words or this "
@@ -8158,13 +8159,13 @@ async def gcs_press(payload: dict = None):
                 _gcs_r = await _gcs_cli.post(
                     "http://127.0.0.1:8500/api/avatar/chat",
                     headers={"X-Vintos-Secret": APP_SECRET},
-                    # Provenance at the source: the scaffold is only for HIS generation
-                    # (message); her turn is the press itself, not the instructions. Sending
-                    # original_text makes the avatar route record "she pressed GCS" as her
-                    # words in history and the ledger, instead of the whole [REQUIRED…]/
-                    # [she pressed…]/burst scaffold. The old post-hoc scrub raced the async
-                    # ledger write and lost, so the instructions were landing in her reply.
-                    json={"message": _press_turn, "original_text": "she pressed GCS", "input_kind": "gcs"})
+                    # Provenance at the source: the raw scaffold ([REQUIRED…], the motion
+                    # burst, the repeat guard) is only for HIS generation (message). Her
+                    # recorded turn is the evocative press cue itself — Gloria: that line is
+                    # appropriate, keep it; strip only the raw scaffold. Passing the cue as
+                    # original_text stores it directly as her turn, so the scaffold never
+                    # reaches history or the ledger and the racy post-hoc scrub is not needed.
+                    json={"message": _press_turn, "original_text": _gcs_cue, "input_kind": "gcs"})
                 _gcs_reply = ((_gcs_r.json() or {}).get("reply") or "").strip()
                 try: _g_j.dump({"at": _g_t.time(), "reply": _gcs_reply[:600]},
                                open(_gcs_lock, "w"))
