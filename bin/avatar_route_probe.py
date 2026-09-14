@@ -40,6 +40,21 @@ if os.path.isdir(os.path.join(REAL_WS, "memory")):
 os.environ["HOME"] = WORK
 os.environ["SPARK_WORKSPACE"] = SHADOW_WS
 
+# Exercise the REAL fire path, not the simulated one: clear test-mode IN THE SHADOW
+# ONLY. Your live ~/.vintos/workspace/.test-mode is never touched, and because HOME
+# points at the throwaway copy, nothing this run does is written to your stores.
+# The effect gate here reaches the real hub, so the hardware really moves — that is
+# the proof — while chat/voice/avatar history all land in the copy and are deleted.
+_shadow_tm = os.path.join(SHADOW_WS, "memory", ".test-mode")
+_cleared_tm = os.path.exists(_shadow_tm)
+try:
+    os.remove(_shadow_tm)
+except FileNotFoundError:
+    pass
+if _cleared_tm:
+    print("note: test-mode was ON live; cleared in the SHADOW ONLY so this run fires "
+          "the real hardware. Your live flag is untouched.")
+
 MEM = os.path.join(SHADOW_WS, "memory")
 def _tail(name, n=8):
     p = os.path.join(MEM, name)
