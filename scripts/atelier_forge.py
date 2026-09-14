@@ -22,7 +22,8 @@ def _append(row):
         try:
             with open(STORE) as source: existing = [json.loads(x) for x in source if x.strip()]
         except Exception: pass
-        if any(x.get("proposal_id") == row.get("proposal_id") for x in existing): return existing[-1]
+        prior = next((x for x in existing if x.get("proposal_id") == row.get("proposal_id")), None)
+        if prior: return prior
         with open(STORE, "a") as out:
             out.write(json.dumps(row, ensure_ascii=False) + "\n"); out.flush(); os.fsync(out.fileno())
     return row
