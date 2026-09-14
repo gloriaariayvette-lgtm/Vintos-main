@@ -164,6 +164,7 @@ SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/sho
 DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py"
 SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
 BINS="$BINS pearl-engine.py pearl_engine.py"
+BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
