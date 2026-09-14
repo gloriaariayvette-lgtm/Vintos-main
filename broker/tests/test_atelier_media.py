@@ -53,6 +53,13 @@ class AtelierMediaTests(unittest.TestCase):
         self.assertTrue(got["content"].startswith("data:image/png;base64,"))
         self.assertTrue(os.path.realpath(os.path.join(BK._p(pid), "artifacts", made["file"])).startswith(os.path.realpath(self.tmp)))
 
+        BK.inspect({"id": pid, "kind": "image", "artifact": made["file"], "note": "seen"})
+        song = BK.make({"id": pid, "kind": "music", "ext": "wav",
+                        "content_b64": base64.b64encode(b"RIFF-entirely-ascii").decode()})
+        heard = BK.read_artifact({"id": pid, "file": song["file"]})
+        self.assertEqual(heard["encoding"], "base64", "a valid-UTF8 WAV is still binary by its medium")
+        self.assertTrue(heard["content"].startswith("data:audio/wav;base64,"))
+
     def test_visit_elects_image_and_broker_receives_only_encoded_bytes(self):
         renderer = types.SimpleNamespace(render_image=lambda _p: {"ok": True, "kind": "image",
             "ext": "png", "mime_type": "image/png", "bytes": b"pngbytes", "size": 8})

@@ -639,7 +639,7 @@ def make(b):
         revision = 1
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S'); ext = b.get('ext', 'md')
     fname = f"{stamp}_{kind}.{ext}"
-    binary = bool(b.get("content_b64"))
+    binary = "content_b64" in b
     try:
         data = (base64.b64decode(b["content_b64"], validate=True) if binary else
                 (b["content"] if isinstance(b["content"], str) else str(b["content"])))
@@ -704,10 +704,14 @@ def read_artifact(b):
     ext = os.path.splitext(fname)[1].lower()
     mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
             ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4"}.get(ext, "")
-    try: content, encoding = raw.decode("utf-8"), "utf-8"
-    except UnicodeDecodeError:
+    if mime:
         content = "data:%s;base64,%s" % (mime or "application/octet-stream", base64.b64encode(raw).decode("ascii"))
         encoding = "base64"
+    else:
+        try: content, encoding = raw.decode("utf-8"), "utf-8"
+        except UnicodeDecodeError:
+            content = "data:application/octet-stream;base64,%s" % base64.b64encode(raw).decode("ascii")
+            encoding = "base64"
     if b.get("look_capability"):
         _ev(b["id"], "looked_quietly")     # the view is chained like every other kind
     rec = _lineage(b["id"]).get(fname) or {"id": fname, "previous_artifact_id": None, "revision": 1}
