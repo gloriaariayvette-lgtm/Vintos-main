@@ -153,20 +153,31 @@ def _lead_facts(user_text, surface="chat"):
 def _lead_directive(user_text, surface="chat"):
     """The lead line, decided from separated facts (astra-server-a-p1) and recorded with them:
       - her stop is down                       -> nothing, whatever else is true (stop outranks lead)
-      - something RUNNING on a device, on a surface where his body is in the room (avatar, voice)
+      - a device POWERED ON, on a surface where his body is in the room (avatar, voice)
                                                -> full lead (_LEAD_C)
-      - a device merely present, or she asked  -> the softer relational lead (_LEAD_SOFT); on text
+      - a device present on TEXT chat, or she asked in words
+                                               -> the softer relational lead (_LEAD_SOFT); on text
                                                   chat a present device never earns more than this
                                                   (Gloria's concession, fable-server-a-p4)
-      - otherwise                              -> nothing; ordinary conversation stays ordinary."""
+      - otherwise                              -> nothing; ordinary conversation stays ordinary.
+
+    The full lead keys off AVAILABILITY (a device switched on), not physical_state
+    (something already running on it). afc5c20 gated _LEAD_C behind physical_state
+    and deadlocked it on avatar/voice: powering a device on then earned only the
+    soft lead, whose own text tells him NOT to reach for the devices, so nothing
+    ever started, physical_state never became true, and the dominance lead never
+    fired. For Gloria, switching the devices on IS handing him the lead with her
+    body in the room; that is what this restores (the surface gate, stop
+    precedence, text-chat concession and recorded facts are all kept)."""
     try:
         f = _lead_facts(user_text, surface)
         if not f["authorization"]:
             lead, why = "", "stop button down"
-        elif f["physical_state"] and surface in ("avatar", "voice"):
-            lead, why = _LEAD_C, "device running, body in the room"
+        elif f["availability"] and surface in ("avatar", "voice"):
+            lead, why = _LEAD_C, ("device running, body in the room" if f["physical_state"]
+                                  else "device powered on, body in the room")
         elif f["availability"] or f["asked"]:
-            lead, why = _LEAD_SOFT, ("she asked" if f["asked"] else "device present, nothing running")
+            lead, why = _LEAD_SOFT, ("she asked" if f["asked"] else "device present, text surface")
         else:
             lead, why = "", "nothing"
         try:
