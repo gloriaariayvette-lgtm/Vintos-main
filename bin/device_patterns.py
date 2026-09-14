@@ -458,6 +458,25 @@ def fire_his_intent(reply_text, context=None):
     for _act in plan:
         toy=_act["toy"]; pat=_act["pattern"]; args=list(_act["args"]); _lvl=_act["level"]
         _kind = _act["kind"]
+        # A syntactically valid reach can still name a real device that is switched
+        # off.  That used to disappear into the effect receipt: the transport knew,
+        # but his next turn did not.  Refuse it before authorization/execution and
+        # carry the exact tag back once, just like a misspelled-device refusal.
+        # Stops remain admissible even when presence cannot be proven: reductions
+        # must never be blocked by a stale/offline presence reading.
+        # `strict=True` alone also returns false when the hub cannot be reached.
+        # Require the permissive reading to agree: false/false is a confirmed
+        # absent device; false/true is unknown transport state and keeps the
+        # existing fail-loud execution path.
+        if (_kind != "stop" and toy in toy_link.TOYS
+                and not toy_link.connected(toy, strict=True)
+                and not toy_link.connected(toy, strict=False)):
+            _why = "%s switched off (not connected)" % toy
+            note_refusals([{"tag": _act["tag"], "why": _why}])
+            print("[device] tag refused before authorization: %s — %s"
+                  % (_act["tag"], _why), flush=True)
+            _fired.append("%s [refused:%s]" % (_act["tag"][:40], _why[:40]))
+            continue
         if _kind == "stop":
             # zero means stop, everywhere (astra-somatic-p1): the same path as [TOUCH: toy 0]
             _stop_local(toy)   # a running local pattern loop would re-send after the 0
