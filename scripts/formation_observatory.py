@@ -54,6 +54,7 @@ def _signals():
         "curiosity": ("curiosity",     "self_originated"),
         "thread":    ("want",          "self_originated"),
         "spark":     ("drift_novelty", "self_originated"),
+        "lab":       ("lab_question",   "self_originated"),
         "forge":     ("forged_capability", "unclassified"),
         "repair":    ("repair",        "relational_obligation"),
         "encounter": ("encounter",     "relational_obligation"),
@@ -108,6 +109,26 @@ def _signals():
                 add("spark", f.get("description", ""), f.get("id", "?"),
                     min(1.0, f.get("observed", 0) / 4.0),
                     ["configuration-space.json:configurations:%s" % f.get("id", "?")])
+    except Exception: pass
+    # Lab questions reach this threshold only after chemistry_spark has proved
+    # that a real run completed, the question came from its later reading, and
+    # it was not merely an echo of the taste block shown to that reading.  Read
+    # the screened feed rather than notebook prose: generated surprise and
+    # speculative reflection are deliberately absent from this source.
+    try:
+        path = os.path.join(MEM, "chemistry-lab", "spark-feed.jsonl")
+        with open(path, encoding="utf-8") as source:
+            questions = [json.loads(line) for line in source if line.strip()]
+        for q in questions[-40:]:
+            provenance = q.get("provenance") if isinstance(q.get("provenance"), dict) else {}
+            key = str(q.get("key") or "").strip()
+            if (not key or q.get("truth_status") != "lab_occasion_eligible_to_spark_not_a_want"
+                    or provenance.get("truth_status") != "question_from_a_run_that_completed_not_a_finding"):
+                continue
+            formed = ["chemistry-lab/spark-feed.jsonl:%s" % key]
+            for name in ("session_id", "mac_run_id"):
+                if provenance.get(name): formed.append("chemistry-lab:%s:%s" % (name, provenance[name]))
+            add("lab", q.get("text", ""), "lab-question@%s" % key, 0.5, formed)
     except Exception: pass
     # A completed Forge build is a new hand he may privately explore, but the
     # hand keeps the ancestry of the intention that commissioned it.

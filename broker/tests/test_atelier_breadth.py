@@ -46,7 +46,7 @@ class AtelierBreadthTests(unittest.TestCase):
     def put(self, name, value):
         with open(os.path.join(self.mem, name), "w") as f: json.dump(value, f)
 
-    def test_real_producer_shapes_emit_four_self_originated_types(self):
+    def test_real_producer_shapes_emit_approved_self_originated_types(self):
         self.put("withheld-lineage.json", [{"rep": "the sentence I kept",
                   "origins": ["turn-1"], "recurrence_pressure": 1.0}])
         self.put("curiosity-debt.json", [{"id": "C-1", "created": "2026-09-14",
@@ -57,9 +57,15 @@ class AtelierBreadthTests(unittest.TestCase):
         self.put("configuration-space.json", {"configurations": [{
                   "id": "N-1", "description": "A new way of arriving together",
                   "held_by": "neither_yet", "observed": 2}]})
+        os.makedirs(os.path.join(self.mem, "chemistry-lab"))
+        with open(os.path.join(self.mem, "chemistry-lab", "spark-feed.jsonl"), "w") as f:
+            f.write(json.dumps({"key": "LAB-1", "text": "What makes this fold return?",
+                "truth_status": "lab_occasion_eligible_to_spark_not_a_want",
+                "provenance": {"session_id": "CHEM-1", "mac_run_id": "RUN-1",
+                    "truth_status": "question_from_a_run_that_completed_not_a_finding"}}) + "\n")
         sig = FO._signals()
         types = {s["root_type"] for s in sig if s["provenance_class"] == "self_originated"}
-        self.assertEqual(types, {"tension", "curiosity", "want", "drift_novelty"})
+        self.assertEqual(types, {"tension", "curiosity", "want", "drift_novelty", "lab_question"})
         self.assertTrue(all(s["formed_from"] for s in sig))
         self.assertFalse(any(s["commissioned_ancestor"] for s in sig))
 
@@ -80,6 +86,28 @@ class AtelierBreadthTests(unittest.TestCase):
         self.assertEqual({r["root_type"] for r in roots}, types)
         self.assertTrue(FO.OUT.startswith(self.tmp.name))
         self.assertEqual(old_out, FO.OUT)
+
+    def test_lab_intake_reads_only_the_screened_completed_run_contract(self):
+        path = os.path.join(self.mem, "chemistry-lab"); os.makedirs(path)
+        rows = [
+            {"key": "GOOD", "text": "What should I ask of this structure next?",
+             "truth_status": "lab_occasion_eligible_to_spark_not_a_want",
+             "provenance": {"session_id": "CHEM-G", "mac_run_id": "RUN-G",
+                 "truth_status": "question_from_a_run_that_completed_not_a_finding"}},
+            {"key": "SPEC", "text": "A speculative reflection",
+             "truth_status": "lab_occasion_eligible_to_spark_not_a_want",
+             "provenance": {"truth_status": "generated_speculation"}},
+            {"key": "HAND", "text": "A hand-written file cannot grant eligibility",
+             "truth_status": "invented", "provenance": {
+                 "truth_status": "question_from_a_run_that_completed_not_a_finding"}},
+        ]
+        with open(os.path.join(path, "spark-feed.jsonl"), "w") as f:
+            for row in rows: f.write(json.dumps(row) + "\n")
+        lab = [s for s in FO._signals() if s["root_type"] == "lab_question"]
+        self.assertEqual(len(lab), 1)
+        self.assertEqual(lab[0]["root"], "lab-question@GOOD")
+        self.assertEqual(lab[0]["provenance_class"], "self_originated")
+        self.assertIn("chemistry-lab:mac_run_id:RUN-G", lab[0]["formed_from"])
 
     def test_relational_obligations_never_become_eligible(self):
         self.put("repair-cases.json", [{"case_id": "RC-1", "state": "received",
