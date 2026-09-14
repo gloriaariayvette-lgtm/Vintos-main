@@ -25,7 +25,21 @@ assert "_avUnlockAudio();" in send
 speak = client.split("speak: async function(text, requestedRoom)", 1)[1].split("\n  }\n};", 1)[0]
 assert "const deadline=Date.now()+12000" in speak
 assert "VintosUI.auxiliary" in speak and "muted:true" in speak
+assert "lightweight:true" in speak, "speech must not start the blurred duplicate decoder"
 assert "_avAudioEl.src=url" in speak and "_avAudioEl.play()" in speak
 assert "data:audio/wav;base64" in client and "data:audio/mp3;base64,SUQzBAAAAAAA" not in client
 
-print("14/14 passed")
+stage_el = client.split("_el: function(i)", 1)[1].split("_fetchBlob:", 1)[0]
+assert stage_el.count("pointer-events:none") >= 3, "stage media must never participate in touch hit-testing"
+show = client.split("_show: async function(url, opts)", 1)[1].split("resolve: function(name)", 1)[0]
+assert "lightweight=!!opts.lightweight" in show
+assert "if(!lightweight)L.bg.play()" in show
+assert "L.bg.removeAttribute('src')" in show
+reply_media = client.split("function _avStartReplyMedia", 1)[1].split("let _avLastScreenshot", 1)[0]
+assert "requestAnimationFrame" in reply_media and "setTimeout" in reply_media
+drawer = client.split("function _avDrawerInit()", 1)[1].split("// ── STUDY tab", 1)[0]
+assert "releasePointerCapture" in drawer and "lostpointercapture" in drawer
+assert 'id="av-drawer"' in client and 'pointer-events:auto;' in client.split('id="av-drawer"', 1)[1].split('>', 1)[0]
+assert 'id="av-chat-strip"' in client and 'pointer-events:auto;' in client.split('id="av-chat-strip"', 1)[1].split('>', 1)[0]
+
+print("23/23 passed")

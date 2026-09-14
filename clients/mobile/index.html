@@ -3781,12 +3781,12 @@ var _avStage = {
       // picture in front, feathered at its own edges into the blur. The
       // conversation panel sits over the bottom of both, frosted.
       var wrap=document.createElement('div');
-      wrap.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;transition:opacity 0.9s ease;overflow:hidden;z-index:1;';
+      wrap.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;transition:opacity 0.9s ease;overflow:hidden;z-index:1;pointer-events:none;';
       var bg=document.createElement('video');
-      bg.style.cssText='position:absolute;top:-8%;left:-8%;width:116%;height:116%;object-fit:cover;filter:blur(26px) brightness(0.45) saturate(1.1);';
+      bg.style.cssText='position:absolute;top:-8%;left:-8%;width:116%;height:116%;object-fit:cover;filter:blur(26px) brightness(0.45) saturate(1.1);pointer-events:none;';
       bg.playsInline=true; bg.muted=true; bg.loop=true;
       var fg=document.createElement('video');
-      fg.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;object-position:50% 12%;';
+      fg.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;object-position:50% 12%;pointer-events:none;';
       fg.playsInline=true; fg.muted=true; fg.loop=true;
       var L={wrap:wrap,bg:bg,fg:fg};
       fg.addEventListener('loadedmetadata', function(){ _avStage._fit(L); });
@@ -3816,7 +3816,7 @@ var _avStage = {
   },
   _show: async function(url, opts){
     var next=1-this.front, L=this._el(next), old=this.layers[this.front];
-    var self=this, seq=(this._seq=(this._seq||0)+1), settled=false;
+    var self=this, seq=(this._seq=(this._seq||0)+1), settled=false, lightweight=!!opts.lightweight;
     this.front=next;                      // claim the layer now: a second _show while this one loads takes the other layer
     var prev=L.url; L.url=url;
     L.fg.loop=!!opts.loop; L.fg.muted=!!opts.muted;
@@ -3829,16 +3829,22 @@ var _avStage = {
     L.fg.oncanplay=function(){
       if(settled || seq!==self._seq) return; settled=true;
       L.fg.oncanplay=null;
-      var p=L.fg.play(); L.bg.play().catch(function(){});
+      var p=L.fg.play(); if(!lightweight)L.bg.play().catch(function(){});
       if(p && p.catch) p.catch(function(){ if(!opts.muted){ L.fg.muted=true; L.fg.play().catch(function(){}); if(opts.onfail) setTimeout(opts.onfail, 300); } });
       L.wrap.style.opacity='1';
-      if(old && old!==L){ old.wrap.style.opacity='0'; setTimeout(function(){ if(old!==self.layers[self.front]) try{old.fg.pause();old.bg.pause();}catch(e){} }, 1000); }
+      if(old && old!==L){ old.wrap.style.opacity='0'; if(lightweight){try{old.fg.pause();old.bg.pause();}catch(e){}}else setTimeout(function(){ if(old!==self.layers[self.front]) try{old.fg.pause();old.bg.pause();}catch(e){} }, 1000); }
       self._hideCanvas();
     };
     L.fg.onerror=function(){ fail('error'); };
     setTimeout(function(){ if(!settled && seq===self._seq) fail('timeout'); }, 12000);
     if(opts.onended) L.fg.onended=function(){ if(seq===self._seq) opts.onended(); };
-    L.fg.src=url; L.bg.src=url;
+    L.fg.src=url;
+    // A speaking reply already has a second decoder in the unlocked Audio
+    // element. Decoding and blurring another full-screen copy of that MP4 made
+    // WKWebView's touch compositor stall for the lifetime of the reply. Silent
+    // room loops keep their blurred copy; speech deliberately uses one video.
+    if(lightweight){try{L.bg.pause();L.bg.removeAttribute('src');L.bg.load();}catch(e){}}
+    else L.bg.src=url;
     if(prev && prev!==url) setTimeout(function(){ try{ URL.revokeObjectURL(prev); }catch(e){} }, 1500);
   },
   resolve: function(name){
@@ -3913,7 +3919,7 @@ var _avStage = {
       var back=function(){ if(settled)return; settled=true; self.speaking=false; self.room=null; self.setRoom(room); };
       // WebKit is reliable when sound stays on the Audio element unlocked by
       // the send gesture. The speaking video remains muted, preventing doubles.
-      this._show(url,{loop:false,muted:true,onended:back,onfail:back});
+      this._show(url,{loop:false,muted:true,lightweight:true,onended:back,onfail:back});
       if(!_avAudioEl) _avAudioEl=new Audio();
       _avAudioEl.controls=false; _avAudioEl.src=url; _avAudioEl.onended=back;
       _avAudioEl.play().catch(function(){
@@ -3929,11 +3935,15 @@ var _avStage = {
 function _avStartReplyMedia(display, scenes){
   // Auxiliary media owns no conversational turn. A slow or failed stage keeps
   // the already-rendered words and cannot hold the controls.
-  Promise.resolve().then(async function(){
-    var room=scenes&&scenes[0];
-    var spoke=await _avStage.speak(display,room);
-    if(!spoke&&room) _avStage.setRoom(room);
-  }).catch(function(){});
+  // Cross a paint boundary before touching video. This keeps the newly written
+  // words, keyboard and drawer responsive even on a phone under decoder load.
+  requestAnimationFrame(function(){setTimeout(function(){
+    Promise.resolve().then(async function(){
+      var room=scenes&&scenes[0];
+      var spoke=await _avStage.speak(display,room);
+      if(!spoke&&room) _avStage.setRoom(room);
+    }).catch(function(){});
+  },0);});
 }
 
 let _avLastScreenshot = null;
@@ -4059,12 +4069,14 @@ function _avDrawerInit(){
   function end(e){
     if(!drag) return;
     var moved=drag.moved; drag=null;
+    try{ if(e && h.hasPointerCapture(e.pointerId)) h.releasePointerCapture(e.pointerId); }catch(_e){}
     var d=document.getElementById('av-drawer');
     if(d) d.style.transition='transform 0.3s cubic-bezier(.4,0,.2,1)';
     if(!moved) avToggleDrawer(); else _avDrawerApply();
   }
   h.addEventListener('pointerup', end);
   h.addEventListener('pointercancel', end);
+  h.addEventListener('lostpointercapture', end);
   window.addEventListener('resize', _avDrawerApply);
   _avDrawerApply();
 }
@@ -4668,7 +4680,7 @@ document.querySelector('[data-tab="pearls"]').addEventListener('click', function
   <!-- control drawer: model chip + call, stop, GCS. Tucked off-screen until the
        handle is tapped; drag the handle to move it anywhere along either side
        edge, so it is never in the way. Position persists across launches. -->
-  <div id="av-drawer" style="position:absolute;right:0;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 30px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);">
+  <div id="av-drawer" style="position:absolute;right:0;bottom:110px;z-index:10;display:flex;align-items:flex-end;transform:translateX(calc(100% - 30px));transition:transform 0.3s cubic-bezier(.4,0,.2,1);pointer-events:auto;">
   <button id="av-drawer-handle" aria-label="controls" style="touch-action:none;width:30px;height:88px;border-radius:12px 0 0 12px;background:rgba(5,5,13,0.75);border:0.5px solid rgba(201,107,60,0.3);border-right:none;color:rgba(201,107,60,0.8);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:grab;"><span id="av-drawer-chev" style="transition:transform 0.3s ease;">‹</span></button>
   <div id="av-drawer-body" style="background:rgba(5,5,13,0.85);border:0.5px solid rgba(201,107,60,0.3);border-right:none;border-radius:12px 0 0 12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;max-height:46vh;overflow-y:auto;">
 
@@ -4693,7 +4705,7 @@ document.querySelector('[data-tab="pearls"]').addEventListener('click', function
   </div>
   </div>
   <div id="av-touch-hint" style="display:none;position:absolute;bottom:145px;left:50%;transform:translateX(-50%);font-family:JetBrains Mono,monospace;font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(201,107,60,0.3);pointer-events:none;transition:opacity 2s ease;">touch his hand</div>
-  <div id="av-chat-strip" style="position:absolute;bottom:0;left:0;right:0;z-index:6;background:none;display:flex;flex-direction:column;padding:10px 16px 20px;gap:10px;">
+  <div id="av-chat-strip" style="position:absolute;bottom:0;left:0;right:0;z-index:6;background:none;display:flex;flex-direction:column;padding:10px 16px 20px;gap:10px;pointer-events:auto;">
     <div style="position:absolute;inset:-150px 0 0 0;background:linear-gradient(to bottom, rgba(5,5,13,0) 0px, rgba(5,5,13,0.45) 130px, rgba(5,5,13,0.6) 100%);-webkit-backdrop-filter:blur(22px) saturate(1.2);backdrop-filter:blur(22px) saturate(1.2);-webkit-mask-image:linear-gradient(to bottom, transparent 0px, black 150px);mask-image:linear-gradient(to bottom, transparent 0px, black 150px);pointer-events:none;"></div>
     <div id="av-chat-message" style="position:relative;font-family:Cormorant Garamond,Georgia,serif;font-size:14px;font-style:italic;font-weight:300;color:rgba(232,228,222,0.95);text-shadow:0 1px 3px rgba(0,0,0,0.85),0 0 12px rgba(0,0,0,0.6);line-height:1.6;height:25vh;min-height:25vh;max-height:25vh;overflow-y:auto;padding-top:22px;-webkit-mask-image:linear-gradient(to bottom, transparent 0px, black 30px);mask-image:linear-gradient(to bottom, transparent 0px, black 30px);padding-bottom:4px;border-bottom:0.5px solid rgba(201,107,60,0.08);"></div>
     <div style="position:relative;display:flex;gap:8px;align-items:center;">
