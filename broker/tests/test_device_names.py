@@ -94,6 +94,28 @@ check("the ridge's own rotation channel still compiles",
 check("and none of them is refused", rejected == [], rejected)
 check("a recording failure never breaks the reply that carried it", DP.note_refusals([]) is False)
 
+print("\n--- a real but switched-off device also comes back next turn ---")
+_connected = DP.toy_link.connected
+_authorize = DP._authorize
+_play = DP.play
+try:
+    DP.toy_link.connected = lambda toy, strict=False: False if toy == "mission" else True
+    DP._authorize = lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("an absent device must be refused before authorization"))
+    DP.play = lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("an absent device must never execute"))
+    DP.fire_his_intent("Closer. [DO: mission cake 14]", context=object())
+finally:
+    DP.toy_link.connected = _connected
+    DP._authorize = _authorize
+    DP.play = _play
+off = DC.refusal_line()
+check("the exact valid tag is carried into the next context",
+      "[DO: mission cake 14]" in off, off)
+check("the reason distinguishes switched-off hardware from bad grammar",
+      "mission switched off (not connected)" in off, off)
+check("the switched-off refusal is also read once", DC.refusal_line() == "")
+
 print("\n--- it reached nothing outside its own scratch ---")
 check("no device store was written under the real workspace",
       not os.path.exists(os.path.join(os.path.expanduser("~"), ".vintos", "workspace",
