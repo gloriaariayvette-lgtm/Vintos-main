@@ -3449,8 +3449,10 @@ let _avAudioEl = null;
 function _avUnlockAudio() {
   if(_avAudioUnlocked) return;
   _avAudioEl = new Audio();
-  _avAudioEl.src = 'data:audio/mp3;base64,SUQzBAAAAAAA';
-  _avAudioEl.play().then(()=>{ _avAudioUnlocked=true; }).catch(()=>{});
+  // A real 10ms silent WAV, played by the same element that later carries his
+  // MP4 audio. An empty ID3 header did not unlock WebKit media playback.
+  _avAudioEl.src = 'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  _avAudioEl.play().then(()=>{ _avAudioEl.pause(); _avAudioEl.currentTime=0; _avAudioUnlocked=true; }).catch(()=>{});
 }
 
 function _avShowBubble(text) {
@@ -3796,8 +3798,8 @@ var _avStage = {
     }
     return this.layers[i];
   },
-  _fetchBlob: async function(path){
-    var r=await VintosUI.request(API+path,{headers:{'X-Vintos-Secret':CONFIG.secret}});
+  _fetchBlob: async function(path, timeoutMs){
+    var r=await VintosUI.auxiliary(API+path,{headers:{'X-Vintos-Secret':CONFIG.secret}},timeoutMs||12000);
     if(!r.ok) throw new Error('stage fetch '+r.status);
     return URL.createObjectURL(await r.blob());
   },
@@ -3893,24 +3895,46 @@ var _avStage = {
     var L=this.layers[this.front]; if(!L||!L.fg||!L.fg.src) return;
     try{ L.fg.loop=true; L.fg.muted=true; L.fg.play().catch(function(){}); }catch(e){}
   },
-  speak: async function(text){
+  speak: async function(text, requestedRoom){
     if(!this.active() || !text) return false;
-    const generation=this.roomGeneration;
+    var room=this.resolve(requestedRoom)||this.room;
+    if(!room) return false;
+    const generation=(this.roomGeneration=(this.roomGeneration||0)+1);
+    const deadline=Date.now()+12000;
     try{
-      var r=await VintosUI.request(API+'/api/avatar/stage/speak',{method:'POST',
+      var r=await VintosUI.auxiliary(API+'/api/avatar/stage/speak',{method:'POST',
         headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},
-        body:JSON.stringify({text:text, room:this.room})});
+        body:JSON.stringify({text:text, room:room})},Math.max(1,deadline-Date.now()));
       if(!r.ok) return false;
       var d=await r.json(); if(!d.url) return false;
-      var url=await this._fetchBlob(d.url);
+      var url=await this._fetchBlob(d.url,Math.max(1,deadline-Date.now()));
       if(generation!==this.roomGeneration){URL.revokeObjectURL(url);return false;}
-      var self=this; this.speaking=true;
-      var back=function(){ self.speaking=false; var rm=self.room; self.room=null; self.setRoom(rm); };
-      this._show(url,{loop:false,muted:false,onended:back,onfail:back});
+      var self=this, settled=false; this.room=room; this.speaking=true;
+      var back=function(){ if(settled)return; settled=true; self.speaking=false; self.room=null; self.setRoom(room); };
+      // WebKit is reliable when sound stays on the Audio element unlocked by
+      // the send gesture. The speaking video remains muted, preventing doubles.
+      this._show(url,{loop:false,muted:true,onended:back,onfail:back});
+      if(!_avAudioEl) _avAudioEl=new Audio();
+      _avAudioEl.controls=false; _avAudioEl.src=url; _avAudioEl.onended=back;
+      _avAudioEl.play().catch(function(){
+        _avAudioEl.controls=true; _avAudioEl.style.cssText='position:absolute;bottom:90px;left:10%;width:80%;z-index:20';
+        var ov=document.getElementById('avatar-overlay'); if(ov&&!_avAudioEl.parentNode)ov.appendChild(_avAudioEl);
+        _avShowBubble('Playback was blocked. Tap play to hear him.');
+      });
       return true;
-    }catch(e){ this.speaking=false; return false; }
+    }catch(e){ this.speaking=false; if(requestedRoom)this.setRoom(requestedRoom); return false; }
   }
 };
+
+function _avStartReplyMedia(display, scenes){
+  // Auxiliary media owns no conversational turn. A slow or failed stage keeps
+  // the already-rendered words and cannot hold the controls.
+  Promise.resolve().then(async function(){
+    var room=scenes&&scenes[0];
+    var spoke=await _avStage.speak(display,room);
+    if(!spoke&&room) _avStage.setRoom(room);
+  }).catch(function(){});
+}
 
 let _avLastScreenshot = null;
 
@@ -4172,8 +4196,10 @@ async function avSendChat() {
   const text = inp.value.trim();
   if (_avPendingPhoto) return avSendPhoto(_avPendingPhoto, text);
   if(!text) return;
+  _avUnlockAudio();
   const turn=VintosUI.begin('avatar'); if(!turn)return;
   const sentDraft=inp.value;
+  let turnOpen=true;
   
   try {
     _avLoadBrain(); const r = await VintosUI.request(API+'/api/avatar/chat', {
@@ -4190,14 +4216,13 @@ async function avSendChat() {
     if(!VintosUI.current(turn))return;
     const {text:display, gestures, holds, spawns, color, scenes, renders} = _avParseReply(raw);
     _avLogMsg('assistant', display);
+    _avShowBubble(display);
     try{ var _bm=String(d.model||''); if(_bm.indexOf('grok')===0)_avSetBrainLabel('grok'); else if(_bm.indexOf('claude')===0)_avSetBrainLabel('claude'); }catch(e){}
     setTimeout(_avPollReason, 300);
-    // Preset stage: move rooms on his [SCENE:] tag, then speak the reply
-    // locally (kokoro + Wav2Lip on the server). No-ops when no presets exist.
-    try{
-      if(scenes && scenes[0]) await _avStage.setRoom(scenes[0]);
-      _avStage.speak(display);
-    }catch(e){}
+    // His words are committed to the screen now. Release the global turn before
+    // any scene or voice I/O; media is bounded auxiliary work below.
+    VintosUI.finish(turn); turnOpen=false;
+    _avStartReplyMedia(display,scenes);
     // Live path: [RENDER: description] — he chose to render a fresh scene.
     // Runs in the background (~2 min), then crossfades into it.
     if(renders && renders[0]){
@@ -4235,7 +4260,7 @@ async function avSendChat() {
     // Apply color to glow
     if(color){ if(!_avTargetColor) _avTargetColor = new THREE.Color(); _avTargetColor.set(color); }
   } catch(e) { _avLogMsg("system", "[Send not confirmed. Your draft is kept.]"); }
-  finally { VintosUI.finish(turn); }
+  finally { if(turnOpen)VintosUI.finish(turn); }
 }
 
 // ── THREADS TAB ──────────────────────────────────────────────────────────────

@@ -25,6 +25,15 @@
         throw error;
       }
     }
+    async function auxiliary(url, init = {}, timeoutMs = 12000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 12000));
+      try {
+        const response = await fetcher(url, Object.assign({}, init, { signal: controller.signal }));
+        if (!response.ok) throw new RequestError('Auxiliary request failed (' + response.status + ').', response.status);
+        return response;
+      } finally { clearTimeout(timer); }
+    }
     function begin(surface) {
       if (active) { notify('The previous turn is still pending. Your draft is kept.'); return null; }
       active = { id: 'client-' + Date.now() + '-' + (++sequence), epoch, surface };
@@ -42,7 +51,7 @@
     function text(value) {
       return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
-    return { request, begin, current, finish, invalidate, ack, text, RequestError };
+    return { request, auxiliary, begin, current, finish, invalidate, ack, text, RequestError };
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { create };
   else {

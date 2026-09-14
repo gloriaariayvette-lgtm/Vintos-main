@@ -123,7 +123,7 @@ programmes whose mechanism landed and whose remainder the line names.
 - **334** [IMPLEMENTED] [P08] Late microphone grants release tracks; audio contexts close; failed audio exposes usable controls. Unconfirmed recordings have explicit recovery and cannot be silently overwritten. Browser race/recovery tests pass.
 - **343** [IMPLEMENTED] [P08] Active duplicate dismiss/close handlers removed; one shared request helper serves application requests.
 - **344** [PARTIAL] [P08] Mounted-route availability disables unsupported photo/record/live-call controls. Broader capability-derived rendering remains open.
-- **345** [PARTIAL] [P08] Voice/stage draft and media ownership implemented with late-callback cancellation and explicit playback recovery. Physical device acceptance remains open.
+- **345** [PARTIAL] [P08] Avatar words now render and release the global turn before stage work; local-stage requests use a 12-second authority-free budget, and the MP4 audio track plays through the Audio element unlocked by the send gesture while its video stays muted. A slow/failing-stage fixture proves the bubble persists and another control turn opens immediately. Physical device hearing remains open until Gloria accepts the rebuilt app by ear.
 - **346** [PARTIAL] [P08] Native background registration, 15-minute requested interval and permission-result checks implemented. Capacitor sync, simulator and signed device builds pass; the updated app was installed and launched on the paired iPhone. Actual iOS background notification delivery remains unobserved.
 
 ### P11 — Whole-system observability and acceptance
