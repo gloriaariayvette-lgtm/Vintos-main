@@ -68,15 +68,18 @@ def _signals():
                         "root_type": rtype, "provenance_class": pclass,
                         "commissioned_ancestor": pclass != "self_originated",
                         "formed_from": [str(x)[:120] for x in formed_from if x]})
-    # withheld lineages under pressure (roots: origin exchange hashes - real roots)
+    # A lineage is already a recurrent/clustered record.  The live producer's
+    # floor is 1.0, so requiring 2 here made the whole organ structurally mute.
+    # Keep its measured pressure; do not manufacture a stronger one.
     for L in _load("withheld-lineage.json", []):
-        if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 2 and not _bound(L):
+        if isinstance(L, dict) and L.get("recurrence_pressure", 0) >= 1 and not _bound(L):
             add("withheld", L.get("rep", ""), ",".join(L.get("origins", [])[:3]),
                 min(1.0, L.get("recurrence_pressure", 0) / 4.0),
                 ["withheld-lineage.json:%s" % o for o in L.get("origins", [])] or ["withheld-lineage.json:%s" % L.get("id", L.get("rep", ""))])
-    # curiosity debt (roots: object hash + created date)
+    # Curiosity debt prunes below 0.15 and deliberately records modest pulls.
+    # The old 0.5 threshold exceeded every value the producer currently emits.
     for x in _load("curiosity-debt.json", []):
-        if isinstance(x, dict) and x.get("pull", 0) >= 0.5:
+        if isinstance(x, dict) and x.get("pull", 0) >= 0.2:
             add("curiosity", x.get("question", ""), "%s@%s" % (x.get("id", ""), str(x.get("created", ""))[:10]),
                 x.get("pull", 0), ["curiosity-debt.json:%s" % x.get("id", "")])
     # unfinished threads (roots: source + seeded text hash)
@@ -93,12 +96,16 @@ def _signals():
         if isinstance(e, dict) and e.get("state") == "dispatched":
             add("encounter", "reached, unanswered", e.get("id", str(e.get("at", ""))[:16]), 0.5,
                 ["encounters.json:%s" % e.get("id", str(e.get("at", ""))[:16])])
-    # spark frontier near threshold
+    # Spark's frontier is configuration-space.json.  spark-pressure.json was a
+    # stale, never-written path, so novelty could never reach this observatory.
     try:
-        sp = _load("spark-pressure.json", {})
-        for f in (sp.get("frontier", []) if isinstance(sp, dict) else []):
-            if isinstance(f, dict) and f.get("observed", 0) >= 2:
-                add("spark", f.get("text", f.get("name", "")), f.get("id", "?"), 0.5, ["spark-pressure.json:frontier:%s" % f.get("id", "?")])
+        sp = _load("configuration-space.json", {})
+        for f in (sp.get("configurations", []) if isinstance(sp, dict) else []):
+            if (isinstance(f, dict) and f.get("held_by") == "neither_yet"
+                    and f.get("observed", 0) >= 2):
+                add("spark", f.get("description", ""), f.get("id", "?"),
+                    min(1.0, f.get("observed", 0) / 4.0),
+                    ["configuration-space.json:configurations:%s" % f.get("id", "?")])
     except Exception: pass
     return sig
 

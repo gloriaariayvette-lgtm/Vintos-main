@@ -37,6 +37,14 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   she says it is NOT acoustic echo. Investigate the transcription config / ledger
   normalization changed last week; do not assume echo.
 
+## 14 September — Atelier breadth
+
+- The four already-established self-originated formation streams now read the
+  stores and ranges their producers actually write. Additional roots remain
+  deliberately disabled pending Gloria's selection from
+  `docs/ATELIER-BREADTH.md`; no repair, encounter, rating, or externally
+  supplied Lab prompt may be laundered into a self-originated root.
+
 ## 12 September — hypothesis recovery continuation
 
 Deployed in 20260912-153539-aca1b32: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 122 suites passed directly and OS-isolated on Mac and Aegis; installed hypothesis/pearl entrypoint hashes match the source. The final client follow-up deployed as 20260912-155122-fa3949b.
