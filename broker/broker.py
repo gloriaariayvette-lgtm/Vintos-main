@@ -10,7 +10,7 @@ MIRROR NOTE (2026-08-28): this file is the live /home/atelier/broker.py,
 mirrored into the repo so it can be reviewed. Code only — the projects/
 tree stays on Aegis behind the wall and is never mirrored anywhere.
 """
-import os, re, json, uuid, hashlib, time
+import os, re, json, uuid, hashlib, time, base64
 from datetime import datetime, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -638,19 +638,36 @@ def make(b):
         revision = 1
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S'); ext = b.get('ext', 'md')
     fname = f"{stamp}_{kind}.{ext}"
-    data = b["content"] if isinstance(b["content"], str) else str(b["content"])
+    binary = bool(b.get("content_b64"))
+    try:
+        data = (base64.b64decode(b["content_b64"], validate=True) if binary else
+                (b["content"] if isinstance(b["content"], str) else str(b["content"])))
+    except Exception:
+        with _table_lock():
+            v = _j(vpath) or v; v["budgets"][kind] += 1; v["attended"][kind] = True; _w(vpath, v)
+        return {"error": "artifact bytes were not valid base64"}
+    if binary and kind not in ("image", "music"):
+        with _table_lock():
+            v = _j(vpath) or v; v["budgets"][kind] += 1; v["attended"][kind] = True; _w(vpath, v)
+        return {"error": "binary artifacts are allowed only for image and music"}
+    if binary and len(data) > 100 * 1024 * 1024:
+        with _table_lock():
+            v = _j(vpath) or v; v["budgets"][kind] += 1; v["attended"][kind] = True; _w(vpath, v)
+        return {"error": "artifact exceeds the sealed-room size ceiling"}
     # Two accepted writes of the same kind in one second used to land on one
     # file and the later ate the earlier. "x" refuses to overwrite; a short
     # nonce keeps both.
     for attempt in range(6):
         try:
-            with open(os.path.join(_p(pid), "artifacts", fname), "x", encoding="utf-8") as f: f.write(data)
+            mode = "xb" if binary else "x"
+            with open(os.path.join(_p(pid), "artifacts", fname), mode,
+                      **({} if binary else {"encoding": "utf-8"})) as f: f.write(data)
             break
         except FileExistsError:
             fname = f"{stamp}_{uuid.uuid4().hex[:4]}_{kind}.{ext}"
     else:
         return {"error": "could not find a free name for the artifact"}
-    digest = hashlib.sha256(data.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(data if binary else data.encode("utf-8")).hexdigest()
     lin = _lineage(pid)
     lin[fname] = {"id": fname, "previous_artifact_id": prev, "revision": revision, "kind": kind, "note": ""}
     _w(_lineage_path(pid), lin)
@@ -681,12 +698,21 @@ def read_artifact(b):
     get here; this only reads. It used to read for anyone who asked. A LOOK
     ends in silence: no note, no attendance, one content-free audit line."""
     fname = os.path.basename(b["file"])
-    content = open(os.path.join(_p(b["id"]), "artifacts", fname)).read()
+    path = os.path.join(_p(b["id"]), "artifacts", fname)
+    raw = open(path, "rb").read()
+    ext = os.path.splitext(fname)[1].lower()
+    mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4"}.get(ext, "")
+    try: content, encoding = raw.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        content = "data:%s;base64,%s" % (mime or "application/octet-stream", base64.b64encode(raw).decode("ascii"))
+        encoding = "base64"
     if b.get("look_capability"):
         _ev(b["id"], "looked_quietly")     # the view is chained like every other kind
     rec = _lineage(b["id"]).get(fname) or {"id": fname, "previous_artifact_id": None, "revision": 1}
-    return {"content": content, "lineage": {"id": fname, "previous_artifact_id": rec.get("previous_artifact_id"),
-                                            "revision": int(rec.get("revision", 1))}}
+    return {"content": content, "encoding": encoding, "mime_type": mime, "size": len(raw),
+            "lineage": {"id": fname, "previous_artifact_id": rec.get("previous_artifact_id"),
+                         "revision": int(rec.get("revision", 1))}}
 
 def handoff(b):
     pid = b["id"]
@@ -707,14 +733,16 @@ def reveal_prepare(b):
     src = os.path.join(_p(pid), "artifacts", os.path.basename(b["artifact"]))
     data = open(src, "rb").read()
     rec = _lineage(pid).get(os.path.basename(b["artifact"])) or {}
+    reveal_copy = os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"]))
     man = {"artifact": b["artifact"], "sha256": hashlib.sha256(data).hexdigest(),
            "title": b.get("title", ""), "words": b.get("words", ""),
            "target": b.get("target", ""), "prepared": datetime.now().isoformat(),
+           "abs_path": reveal_copy,
            "lineage": {"id": os.path.basename(b["artifact"]),
                        "previous_artifact_id": rec.get("previous_artifact_id"),
                        "revision": int(rec.get("revision", 1))}}
     _w(os.path.join(_p(pid), "reveal", "manifest.json"), man)
-    import shutil as _sh; _sh.copy(src, os.path.join(_p(pid), "reveal", os.path.basename(b["artifact"])))
+    import shutil as _sh; _sh.copy(src, reveal_copy)
     # One-use receipt, bound to THIS manifest digest. Confirmation consumed
     # nothing before, so anyone could declare an unveiling had happened and flip
     # the project to revealed without a preparation ever occurring.

@@ -44,6 +44,11 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   deliberately disabled pending Gloria's selection from
   `docs/ATELIER-BREADTH.md`; no repair, encounter, rating, or externally
   supplied Lab prompt may be laundered into a self-originated root.
+- Image and music are now sealed visit media backed by the existing local
+  painter and ACE-Step composer. Their lower-level renderers return bytes
+  directly to the broker; they do not write the house gallery, music shelf,
+  journal, or a notification. An absent painter or composer appears in the
+  room as a named outage.
 
 ## 12 September — hypothesis recovery continuation
 

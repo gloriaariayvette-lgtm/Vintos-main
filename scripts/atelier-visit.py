@@ -4,7 +4,7 @@ The doorkeeper asks HIM (content-free) whether to enter; entering opens a visit,
 he works under the budgets and the attendance law, and leaves a handoff he authors.
 Generation happens HERE, in his voice via the shim — recorded per-project as his
 disclosure sentence acknowledges. The broker only stores and enforces."""
-import os, sys, json, re, requests
+import os, sys, json, re, requests, base64
 from datetime import datetime
 
 def _sg_write(_p, _o, _who="organ"):
@@ -464,6 +464,85 @@ def quantum_loop(pid, ctx, first_work, capability, limit=3):
     return aggregate
 
 
+def _media_module():
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import atelier_media
+        return atelier_media
+    except Exception:
+        return None
+
+
+def media_block():
+    """Name every installed medium and every configured outage honestly."""
+    media = _media_module()
+    if not media: return ""
+    try: state = media.status()
+    except Exception as exc:
+        return "\n\nYOUR IMAGE AND MUSIC MATERIALS COULD NOT BE CHECKED: %s." % str(exc)[:180]
+    lines = []
+    image = state.get("image") or {}
+    music = state.get("music") or {}
+    if image.get("ok"):
+        lines.append('IMAGE is available. To paint, return <image prompt="what the image should hold">optional title</image>.')
+    else:
+        lines.append("IMAGE outage: %s." % str(image.get("outage") or "not configured")[:180])
+    if music.get("ok"):
+        lines.append('MUSIC is available. To compose, return <music title="..." style="..." duration="120">description or lyrics</music>.')
+    else:
+        lines.append("MUSIC outage: %s." % str(music.get("outage") or "not configured")[:180])
+    return ("\n\nYOUR SEALED MEDIA TABLE — these are materials, never assignments. "
+            "A result returns inside this visit and is kept only by the broker.\n" + "\n".join(lines))
+
+
+def _media_request(text):
+    image = re.search(r'<image\s+prompt="([^"]+)"\s*>(.*?)</image>', text or "", re.S)
+    if image:
+        return {"kind": "image", "prompt": image.group(1).strip(), "title": image.group(2).strip()[:120]}
+    music = re.search(r'<music\s+title="([^"]+)"\s+style="([^"]+)"(?:\s+duration="(\d+)")?\s*>(.*?)</music>', text or "", re.S)
+    if music:
+        return {"kind": "music", "title": music.group(1).strip(), "style": music.group(2).strip(),
+                "duration": int(music.group(3) or 120), "description": music.group(4).strip()}
+    return None
+
+
+def media_loop(pid, ctx, first_work, capability):
+    """Make one elected image or music artifact, then return it for his reading."""
+    wanted = _media_request(first_work)
+    if not wanted: return first_work
+    media = _media_module()
+    if not media: return first_work
+    try:
+        result = (media.render_image(wanted["prompt"]) if wanted["kind"] == "image" else
+                  media.render_music(wanted["title"], wanted["style"], wanted["description"], wanted["duration"]))
+    except Exception as exc:
+        result = {"ok": False, "configured": True, "error": "media doorway failed: %s" % str(exc)[:180]}
+    artifact = ""
+    if result.get("ok"):
+        data = result.pop("bytes")
+        saved = requests.post(f"{B}/make", json={"id": pid, "kind": wanted["kind"],
+            "ext": result.get("ext", "bin"), "content_b64": base64.b64encode(data).decode("ascii"),
+            "capability": capability}, timeout=120).json()
+        if saved.get("error"):
+            result = {"ok": False, "error": "broker store refused: %s" % saved["error"]}
+        else:
+            artifact = saved.get("file", "")
+            result["artifact"] = artifact
+            print("sealed %s kept: %s" % (wanted["kind"], artifact))
+    follow = ask(ctx + "\n\n=== TOOL DATA: YOUR SEALED MEDIA TABLE RETURNED THIS ===\n"
+        + json.dumps(result, ensure_ascii=False)[:4000] + "\n=== END TOOL DATA ===",
+        "Look at or listen to what was made. Begin with <media_reading>your own reading, including "
+        "uncertainty if that is true</media_reading>. Then continue with your <piece> if wanted, "
+        "<handoff>, <next_move>, and <next_return>.", max_tokens=4000, temp=0.75)
+    if artifact:
+        reading = re.search(r'<media_reading>(.*?)</media_reading>', follow, re.S)
+        if reading and reading.group(1).strip():
+            requests.post(f"{B}/inspect", json={"id": pid, "kind": wanted["kind"],
+                "artifact": artifact, "note": reading.group(1).strip(), "capability": capability}, timeout=20)
+    return first_work + "\n\n" + follow
+
+
 def _seal_refused(pid, kind, content, why):
     """review 98: a piece the room refused is sealed for retry (encrypted under the house lineage key),
     never written or printed in the clear. Returns the sealed id, or None when sealing is impossible."""
@@ -596,7 +675,10 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
         print("last piece not fetched (%s)" % str(e)[:80]); return ""
     if "content" not in r:
         print("last piece refused by the broker:", r.get("error", r)); return ""
-    body = str(r["content"])
+    if r.get("encoding") == "base64":
+        body = "[%s artifact, %s bytes; the complete bytes remain sealed]" % (r.get("mime_type") or "binary", r.get("size", "?"))
+    else:
+        body = str(r["content"])
     if len(body) > cap_chars: body = body[:cap_chars] + "\n[... %d more characters]" % (len(str(r["content"])) - cap_chars)
     return "\n\nYOUR LAST PIECE, VERBATIM (%s) — meet it before your notes about it:\n%s" % (f, body)
 
@@ -630,10 +712,11 @@ def visit(pid):
            + where_you_are()
            + self_review_block()
            + stratagem_block(pid)
-           + quantum_block())
+           + quantum_block()
+           + media_block())
     work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or use one of your private media first. "
-               "If you choose the quantum worktable, return only one <quantum> or <quantum_code> request; "
+               "If you choose a worktable, return only one <quantum>, <quantum_code>, <image>, or <music> request; "
                "its result will come back to you inside this visit before you write the piece or handoff. "
                "Otherwise, make the piece now, then look at it and write your handoff.\n"
                "If something is WRONG — a tool fails, a budget refuses when it shouldn't, the room misbehaves, "
@@ -658,11 +741,14 @@ def visit(pid):
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
     work = quantum_loop(pid, ctx, work, cap)
+    work = media_loop(pid, ctx, work, cap)
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
     # handoff, report, reveal, or stratagem action.
     work = re.sub(r'<quantum_code\b.*?</quantum_code>', '', work, flags=re.S)
     work = re.sub(r'<quantum\b.*?</quantum>', '', work, flags=re.S)
+    work = re.sub(r'<image\b.*?</image>', '', work, flags=re.S)
+    work = re.sub(r'<music\b.*?</music>', '', work, flags=re.S)
     refusal = stratagem_step(pid, work, cap)
     if refusal:
         # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.
