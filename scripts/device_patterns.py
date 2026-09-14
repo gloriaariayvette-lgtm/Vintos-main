@@ -464,8 +464,13 @@ def fire_his_intent(reply_text, context=None):
         # carry the exact tag back once, just like a misspelled-device refusal.
         # Stops remain admissible even when presence cannot be proven: reductions
         # must never be blocked by a stale/offline presence reading.
+        # `strict=True` alone also returns false when the hub cannot be reached.
+        # Require the permissive reading to agree: false/false is a confirmed
+        # absent device; false/true is unknown transport state and keeps the
+        # existing fail-loud execution path.
         if (_kind != "stop" and toy in toy_link.TOYS
-                and not toy_link.connected(toy, strict=True)):
+                and not toy_link.connected(toy, strict=True)
+                and not toy_link.connected(toy, strict=False)):
             _why = "%s switched off (not connected)" % toy
             note_refusals([{"tag": _act["tag"], "why": _why}])
             print("[device] tag refused before authorization: %s — %s"
