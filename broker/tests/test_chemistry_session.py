@@ -74,7 +74,8 @@ lab.set_enabled(False)
 assert session.run()["state"] == "off"
 assert mac.reading("RUN-1", "a basin")["ok"]
 source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
-assert '"action": "code"' not in source and "atelier" not in source.lower()
+assert '"action": "code"' not in source
+assert "atelier_lab_lean.today()" in source, "only the explicit dated lean may steer a session"
 assert "wait_s=2" not in source and 'lab.config()["turn_wait_seconds"]' in source
 # The far door is wider than this one; the near side refuses explicitly rather than by omission.
 door = open(os.path.join(REPO, "scripts", "chemistry_mac.py")).read()

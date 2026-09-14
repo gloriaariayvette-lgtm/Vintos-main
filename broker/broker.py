@@ -605,7 +605,8 @@ def open_visit(b):
     else:
         _ev(pid, "return_resumed", {"visit": visit["id"]})
     return {"visit_capability": mint_capability(pid, visit["id"], "vintos"),
-            "intent": p["intent"], "state": p["state"], "artifacts": arts,
+            "intent": p["intent"], "root": p.get("root", ""), "root_type": p.get("root_type", ""),
+            "state": p["state"], "artifacts": arts,
             "manifest": manifest_rows(pid),      # id, revision, kind, his one-line note — to continue one
             "last_handoff": ho.get("text", ""), "next_move": ho.get("next_move", ""),
             "next_return": p.get("next_return"), "recent_events": evs,

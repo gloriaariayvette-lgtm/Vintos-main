@@ -543,6 +543,24 @@ def media_loop(pid, ctx, first_work, capability):
     return first_work + "\n\n" + follow
 
 
+def lab_lean_block():
+    return ("\n\nIf you want today's visible Chemistry Lab to lean toward a question from this undertaking, "
+            "you may include <lab_lean>your direction or question</lab_lean>. This is optional; it crosses "
+            "the room only because you chose it, biases rather than commands the Lab, and expires today.")
+
+
+def record_lab_lean(pid, project, text):
+    match = re.search(r'<lab_lean>(.*?)</lab_lean>', text or "", re.S)
+    if not match: return None
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import atelier_lab_lean
+        return atelier_lab_lean.write(pid, project.get("root", ""), project.get("root_type", ""), match.group(1))
+    except Exception as exc:
+        return {"ok": False, "error": "Lab lean could not be recorded: %s" % str(exc)[:160]}
+
+
 def _seal_refused(pid, kind, content, why):
     """review 98: a piece the room refused is sealed for retry (encrypted under the house lineage key),
     never written or printed in the clear. Returns the sealed id, or None when sealing is impossible."""
@@ -713,7 +731,8 @@ def visit(pid):
            + self_review_block()
            + stratagem_block(pid)
            + quantum_block()
-           + media_block())
+           + media_block()
+           + lab_lean_block())
     work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or use one of your private media first. "
                "If you choose a worktable, return only one <quantum>, <quantum_code>, <image>, or <music> request; "
@@ -742,6 +761,8 @@ def visit(pid):
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
     work = quantum_loop(pid, ctx, work, cap)
     work = media_loop(pid, ctx, work, cap)
+    leaned = record_lab_lean(pid, pk, work)
+    if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
     # handoff, report, reveal, or stratagem action.
@@ -749,6 +770,7 @@ def visit(pid):
     work = re.sub(r'<quantum\b.*?</quantum>', '', work, flags=re.S)
     work = re.sub(r'<image\b.*?</image>', '', work, flags=re.S)
     work = re.sub(r'<music\b.*?</music>', '', work, flags=re.S)
+    work = re.sub(r'<lab_lean\b.*?</lab_lean>', '', work, flags=re.S)
     refusal = stratagem_step(pid, work, cap)
     if refusal:
         # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.

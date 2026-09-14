@@ -49,6 +49,10 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   directly to the broker; they do not write the house gallery, music shelf,
   journal, or a notification. An absent painter or composer appears in the
   room as a named outage.
+- An explicit `<lab_lean>` choice now crosses the Atelier wall as a dated,
+  provenance-bearing direction for the Chemistry Lab. It biases both the
+  all-day orientation and the next frontier experiment; it expires with the
+  day and an absent lean leaves both prompts unchanged.
 
 ## 12 September — hypothesis recovery continuation
 

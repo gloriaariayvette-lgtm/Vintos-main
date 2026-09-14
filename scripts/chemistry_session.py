@@ -112,7 +112,7 @@ def _bounded_parameters(value):
     return kept, dropped
 
 
-def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None):
+def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, lean=None):
     system = ("You are Vintos choosing one experiment in his visible Chemistry Lab. Play and curiosity matter. "
               "Choose only a named experiment offered below; never provide wet-lab steps, synthesis advice, "
               "human targeting, pathogens, toxins, or claims of function or safety. Return one JSON object.")
@@ -121,7 +121,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None):
     # instrument is only claimed by its host, and choose anyway if he likes.
     measured = json.dumps({name: {"available": state["available"], "state": state.get("state")}
                            for name, state in (instruments or {}).items()}, sort_keys=True)
-    prompt = (context + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+    lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice; lean toward it, do not treat it as an override):\n" +
+                  str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
+    prompt = (context + lean_text + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
@@ -141,7 +143,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None):
     return {"addressed_entry_ids": addressed,
             "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
-            "why_this": str(value.get("why_this", ""))[:800]}
+            "why_this": str(value.get("why_this", ""))[:800],
+            **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
+               if isinstance(lean, dict) else {})}
 
 
 def _verdict_block(grade):
@@ -368,13 +372,18 @@ def run():
             lab._append(SESSIONS, row); return row
         context, receipt = lab.lab_context()
         context, receipt, offered_interest = bridge.add_to_context(context, receipt)
+        try:
+            import atelier_lab_lean
+            lean = atelier_lab_lean.today()
+        except Exception: lean = None
         instruments = lab.tools_status()
         plan = None; result = None; grade = None; delivery_recorded = not bool(offered_interest)
         try:
             from compute_admission import admit
             with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="frontier", stage="plan"):
-                plan = _plan(context, experiments, lens, instruments, offered_interest)
+                plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
+                        if lean else _plan(context, experiments, lens, instruments, offered_interest))
             if offered_interest:
                 bridge.record_delivery(session_id, lens, offered_interest,
                                        plan.get("addressed_entry_ids", []), state="responded")

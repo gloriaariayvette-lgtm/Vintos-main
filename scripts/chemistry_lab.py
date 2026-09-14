@@ -261,19 +261,23 @@ def _safe_query(query):
     return BASELINE_QUERY + " AND (" + query + ")"
 
 
-def _orient(context):
+def _orient(context, lean=None):
+    lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
+                  str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
     raw = _ask(
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
-        context + "\n\nChoose one small protein-space curiosity for today. Return keys in this order: "
+        context + lean_text + "\n\nChoose one small protein-space curiosity for today. Return keys in this order: "
         "uniprot_query (a simple UniProt field query), question, why_now. Prefer reviewed, non-human, "
         "non-pathogenic proteins and aesthetic/structural curiosity."
     )
     value = _json_object(raw)
     return {"uniprot_query": _safe_query(value.get("uniprot_query")),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
-            "why_now": str(value.get("why_now", "curiosity"))[:500]}
+            "why_now": str(value.get("why_now", "curiosity"))[:500],
+            **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
+               if isinstance(lean, dict) else {})}
 
 
 def _browse(query, limit):
@@ -551,7 +555,12 @@ def tick():
             phase = state.get("phase", "orient")
             state["effective_state"] = "working"; _atomic(STATE, state)
             if phase == "orient":
-                inquiry = _orient(context); state["inquiry"] = inquiry; next_phase = "browse"
+                try:
+                    import atelier_lab_lean
+                    lean = atelier_lab_lean.today()
+                except Exception: lean = None
+                inquiry = _orient(context, lean) if lean else _orient(context)
+                state["inquiry"] = inquiry; next_phase = "browse"
                 note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
                         "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
             elif phase == "browse":
