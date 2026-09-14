@@ -57,10 +57,14 @@ with tempfile.TemporaryDirectory() as td:
     lab = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(lab)
     check("Lab destination is scratch", pathlib.Path(lab.MEMORY).is_relative_to(td))
-    wrote, path = lab.append(day)
-    again, _ = lab.append(day)
+    # first-light summarizes the previous day: rows dated `day` are reported into the
+    # morning-after file, marker keyed to the summarized day.
+    file_day = "2026-09-13"
+    wrote, path = lab.append(file_day)
+    again, _ = lab.append(file_day)
     text = pathlib.Path(path).read_text()
-    check("Lab digest appends once", wrote is True and again is False and text.count("q1-lab-digest") == 1)
+    check("Lab digest writes into the morning-after file", pathlib.Path(path).name == f"daily-inner-life-{file_day}.md")
+    check("Lab digest appends once", wrote is True and again is False and text.count("q1-lab-digest:" + day) == 1)
     check("Lab digest reports events and assignments", "proposed 1" in text and "withheld_head 1" in text)
     check("Lab digest does not surface sealed result arithmetic", "99" not in text)
     check("Lab digest names consequence as unmeasured", "Functional consequence was not measured" in text)

@@ -10,12 +10,16 @@ import fcntl
 import json
 import os
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 HYPOTHESES = os.path.join(MEMORY, "hypothesis-ledger.jsonl")
 TRIALS = os.path.join(MEMORY, "shadow-trials.jsonl")
+
+
+def _yesterday(file_day):
+    return (date.fromisoformat(file_day) - timedelta(days=1)).isoformat()
 
 
 def _rows(path):
@@ -59,22 +63,29 @@ def render(day=None):
         if touched:
             lines.append("Hypotheses touched: " + ", ".join(touched[:12]))
     else:
-        lines.append("Hypothesis-ledger events: none recorded today.")
+        lines.append("Hypothesis-ledger events: none recorded.")
 
     if trial_counts:
         lines.append("Shadow withholdings: " + str(len(trials)) + " (" + ", ".join(
             f"{name} {trial_counts[name]}" for name in sorted(trial_counts)) + ").")
     else:
-        lines.append("Shadow withholdings: none recorded today.")
+        lines.append("Shadow withholdings: none recorded.")
     lines.append("These are ledger and assignment receipts only. Functional consequence was not measured here; no result or fitness is inferred.")
     return "\n".join(lines) + "\n"
 
 
-def append(day=None):
-    day = day or date.today().isoformat()
+def append(file_day=None, data_day=None):
+    """Summarize `data_day` (default: the day before `file_day`) into `file_day`'s file.
+
+    first-light summarizes the previous day; a 5am receipt of the current day is empty by
+    construction. So this writes yesterday's finished receipt into today's carry-forward
+    file, with the marker keyed to the summarized day for idempotence.
+    """
+    file_day = file_day or date.today().isoformat()
+    data_day = data_day or _yesterday(file_day)
     os.makedirs(MEMORY, exist_ok=True)
-    path = os.path.join(MEMORY, f"daily-inner-life-{day}.md")
-    marker = f"<!-- q1-lab-digest:{day} -->"
+    path = os.path.join(MEMORY, f"daily-inner-life-{file_day}.md")
+    marker = f"<!-- q1-lab-digest:{data_day} -->"
     lock_path = os.path.join(MEMORY, ".daily-inner-life.lock")
     with open(lock_path, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -87,7 +98,7 @@ def append(day=None):
         with open(path, "a", encoding="utf-8") as handle:
             if old and not old.endswith("\n"):
                 handle.write("\n")
-            handle.write("\n" + render(day))
+            handle.write("\n" + render(data_day))
     return True, path
 
 
