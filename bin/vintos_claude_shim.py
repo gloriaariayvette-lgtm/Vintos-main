@@ -195,9 +195,11 @@ def claude_complete(j, call=None, model=None):
     body = {"model": _mdl, "max_tokens": _mt, "messages": conv}
     if "fable" not in _mdl.lower():
         body["thinking"] = {"type": "disabled"}
-    # sampling / tools pass-through (review 42)
-    if j.get("temperature") is not None: body["temperature"] = float(j["temperature"])
-    if j.get("top_p") is not None and j.get("temperature") is None: body["top_p"] = float(j["top_p"])
+    # tools / stop pass-through. NOT temperature or top_p: Anthropic's current
+    # models reject them ("temperature is deprecated for this model") — review 42
+    # added a sampling pass-through here and it 400'd every Claude call through the
+    # shim (all providers then failed -> 502). Anthropic never took temperature for
+    # these models; do not forward sampling params to it.
     if j.get("stop"): body["stop_sequences"] = [j["stop"]] if isinstance(j["stop"], str) else list(j["stop"])
     if j.get("tools"):
         body["tools"] = [{"name": (t.get("function") or {}).get("name", ""),
