@@ -145,7 +145,7 @@ TOOL_ANTH = lambda body, h: {"id": "m2", "model": "claude-haiku-4-5-20251001", "
                              "content": [{"type": "tool_use", "id": "tu_1", "name": "f", "input": {"x": "1"}}], "usage": {"input_tokens": 3, "output_tokens": 2}}
 s, h, b = run(req, anthropic=TOOL_ANTH, xai=XAI_OK)
 sent = CALLS[0][1]
-check("temperature + stop reach anthropic", sent.get("temperature") == 0.3 and sent.get("stop_sequences") == ["END"], sent)
+check("stop reaches anthropic; temperature is NOT sent (rejected by current models)", sent.get("temperature") is None and sent.get("stop_sequences") == ["END"], sent)
 check("tools + tool_choice translated for anthropic", sent["tools"][0]["name"] == "f" and sent["tools"][0]["input_schema"]["properties"]["x"]
       and sent["tool_choice"] == {"type": "any"}, sent.get("tools"))
 check("image part translated to an anthropic image block", sent["messages"][0]["content"][1] ==
@@ -205,7 +205,7 @@ check("router result has the same contract keys (+ route/reasoning/stages)", set
 check("router: provider/model/request_id/usage are the provider's real values", r["provider"] == "anthropic" and r["model"] == "claude-opus-4-8"
       and r["request_id"] == "msg_r" and r["usage"]["total_tokens"] == 70, r)
 check("router: stop_reason=max_tokens -> truncated", r["status"] == "truncated" and r["finish_reason"] == "length", r["status"])
-check("router: temperature passed to anthropic", _FakeClient.posts[0][2].get("temperature") == 0.4, _FakeClient.posts[0][2])
+check("router: temperature is NOT sent to anthropic (rejected by current models)", _FakeClient.posts[0][2].get("temperature") is None, _FakeClient.posts[0][2])
 t = asyncio.run(MR.route_reply("avatar", "sys", [{"role": "user", "content": "hi"}], {"max_tokens": 50},
                                "http://127.0.0.1:8599/v1/chat/completions", {}, "grok-4"))
 check("route_reply tuple view unchanged for existing callers", t[0] == "router text" and t[2] == "claude:claude-opus-4-8", t)

@@ -247,9 +247,9 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
     body = {"model": current_claude_model(), "max_tokens": max_tok,
             "system": _sysblocks(system_text),
             "messages": _cachetail(convo), "thinking": thinking}
-    for k in ("temperature", "top_p"):
-        if params.get(k) is not None and k not in body:
-            body[k] = float(params[k]); break   # Anthropic takes one of the two
+    # Do NOT send temperature/top_p to Anthropic: its current models reject them
+    # ("temperature is deprecated for this model"), which 400'd the whole claude
+    # route. Only stop passes through.
     if params.get("stop"): body["stop_sequences"] = [params["stop"]] if isinstance(params["stop"], str) else list(params["stop"])
     _reserve_provider("anthropic",current_claude_model(),paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
