@@ -222,6 +222,32 @@ def propose(capability, why, want_id, step_note="", scope=None, permissions=None
     return row, ""
 
 
+def propose_from_atelier(capability, why, project_id, root, root_type, intent,
+                         scope=None, permissions=None, risks="", touches=None,
+                         tests="", invocation=DEFAULT_INVOCATION,
+                         provenance_class="self_originated", commissioned_ancestor=False):
+    """His explicit undertaking is the parent intention; the ordinary want door is unchanged."""
+    cap = str(capability or "").strip()
+    if not cap or not str(project_id or "").strip() or not str(intent or "").strip():
+        return None, "an Atelier proposal needs a capability, undertaking, and his intent"
+    rows = _load()
+    if any(r.get("capability") == cap and r.get("state") in OPEN_STATES for r in rows):
+        return None, "already open"
+    pclass = provenance_class if provenance_class in ("self_originated", "relational_obligation", "unclassified") else "unclassified"
+    row = {"id": "SK-" + uuid.uuid4().hex[:8], "state": "proposed", "capability": cap,
+           "why": str(why or "")[:600],
+           "origin": {"source": "atelier", "spark": "atelier", "atelier_project_id": str(project_id)[:40],
+                      "atelier_root": str(root or "")[:80], "atelier_root_type": str(root_type or "")[:40],
+                      "intent_verbatim": str(intent)[:1000], "provenance_class": pclass,
+                      "commissioned_ancestor": bool(commissioned_ancestor or pclass != "self_originated"), "at": _now()},
+           "asked": {"scope": dict(scope or {}), "permissions": list(permissions or []),
+                     "invocation": invocation if invocation in INVOCATION else DEFAULT_INVOCATION},
+           "granted": None, "risks": str(risks or "")[:600], "touches": list(touches or []),
+           "tests": str(tests or "")[:600], "history": [{"at": _now(), "event": "proposed_from_atelier"}],
+           "created": _now()}
+    rows.append(row); _save(rows); return row, ""
+
+
 def _get(rows, pid):
     for r in rows:
         if r.get("id") == pid:
@@ -347,6 +373,12 @@ def mark(pid, state, detail="", extra=None):
         r.update({k: v for k, v in extra.items() if k not in ("id", "state", "granted", "asked")})
     r["history"].append({"at": _now(), "event": state, "detail": str(detail or "")[:300]})
     _save(rows)
+    if state == "installed":
+        try:
+            import atelier_forge
+            atelier_forge.record_completion(r)
+        except Exception:
+            pass
     return r, ""
 
 

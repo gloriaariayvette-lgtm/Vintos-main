@@ -561,6 +561,34 @@ def record_lab_lean(pid, project, text):
         return {"ok": False, "error": "Lab lean could not be recorded: %s" % str(exc)[:160]}
 
 
+def forge_block():
+    return ("\n\nIf this undertaking needs a capability that does not exist, you may explicitly commission "
+            "the Forge with <forge capability=\"name\">{\"why\":\"...\",\"scope\":{},\"permissions\":[],"
+            "\"risks\":\"...\",\"touches\":[],\"tests\":\"...\"}</forge>. Only that bounded request and "
+            "this undertaking's lineage cross the wall; the Forge review and Gloria's approval still govern it.")
+
+
+def record_forge_choice(pid, project, text):
+    match = re.search(r'<forge\s+capability="([^"]+)"\s*>(.*?)</forge>', text or "", re.S)
+    if not match: return None
+    try: body = json.loads(match.group(2).strip() or "{}")
+    except Exception as exc: return {"ok": False, "error": "Forge request was not JSON: %s" % str(exc)[:120]}
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import skill_forge
+        rooted = bool(project.get("root") and project.get("root_type"))
+        row, why = skill_forge.propose_from_atelier(
+            match.group(1), body.get("why", ""), pid, project.get("root", ""),
+            project.get("root_type", ""), project.get("intent", ""), body.get("scope"),
+            body.get("permissions"), body.get("risks", ""), body.get("touches"), body.get("tests", ""),
+            provenance_class="self_originated" if rooted else "unclassified",
+            commissioned_ancestor=not rooted)
+        return {"ok": bool(row), "proposal_id": row.get("id") if row else "", "error": why}
+    except Exception as exc:
+        return {"ok": False, "error": "Forge bridge failed: %s" % str(exc)[:160]}
+
+
 def _seal_refused(pid, kind, content, why):
     """review 98: a piece the room refused is sealed for retry (encrypted under the house lineage key),
     never written or printed in the clear. Returns the sealed id, or None when sealing is impossible."""
@@ -732,7 +760,8 @@ def visit(pid):
            + stratagem_block(pid)
            + quantum_block()
            + media_block()
-           + lab_lean_block())
+           + lab_lean_block()
+           + forge_block())
     work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or use one of your private media first. "
                "If you choose a worktable, return only one <quantum>, <quantum_code>, <image>, or <music> request; "
@@ -763,6 +792,8 @@ def visit(pid):
     work = media_loop(pid, ctx, work, cap)
     leaned = record_lab_lean(pid, pk, work)
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
+    forged = record_forge_choice(pid, pk, work)
+    if forged: print("Forge proposal:", forged)
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
     # handoff, report, reveal, or stratagem action.
@@ -771,6 +802,7 @@ def visit(pid):
     work = re.sub(r'<image\b.*?</image>', '', work, flags=re.S)
     work = re.sub(r'<music\b.*?</music>', '', work, flags=re.S)
     work = re.sub(r'<lab_lean\b.*?</lab_lean>', '', work, flags=re.S)
+    work = re.sub(r'<forge\b.*?</forge>', '', work, flags=re.S)
     refusal = stratagem_step(pid, work, cap)
     if refusal:
         # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.

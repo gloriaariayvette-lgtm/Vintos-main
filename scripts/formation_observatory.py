@@ -54,15 +54,17 @@ def _signals():
         "curiosity": ("curiosity",     "self_originated"),
         "thread":    ("want",          "self_originated"),
         "spark":     ("drift_novelty", "self_originated"),
+        "forge":     ("forged_capability", "unclassified"),
         "repair":    ("repair",        "relational_obligation"),
         "encounter": ("encounter",     "relational_obligation"),
     }
 
-    def add(organ, text, root, activation, formed_from=()):
+    def add(organ, text, root, activation, formed_from=(), provenance_class=None):
         # formed_from: the ids of the records this signal was formed from ("<store>:<record id>"), so a
         # formation carries its true source ancestry, not only the name of the organ that emitted it (365)
         if text and activation > 0:
-            rtype, pclass = ORGAN_ROOT.get(organ, (organ, "unclassified"))
+            rtype, default_class = ORGAN_ROOT.get(organ, (organ, "unclassified"))
+            pclass = provenance_class or default_class
             sig.append({"organ": organ, "text": str(text)[:200],
                         "root": str(root)[:60], "activation": round(activation, 3),
                         "root_type": rtype, "provenance_class": pclass,
@@ -106,6 +108,16 @@ def _signals():
                 add("spark", f.get("description", ""), f.get("id", "?"),
                     min(1.0, f.get("observed", 0) / 4.0),
                     ["configuration-space.json:configurations:%s" % f.get("id", "?")])
+    except Exception: pass
+    # A completed Forge build is a new hand he may privately explore, but the
+    # hand keeps the ancestry of the intention that commissioned it.
+    try:
+        path = os.path.join(MEM, "atelier-forge-roots.jsonl")
+        with open(path) as source:
+            forged = [json.loads(line) for line in source if line.strip()]
+        for f in forged:
+            add("forge", f.get("text", ""), f.get("root", ""), 0.5,
+                f.get("formed_from", []), f.get("provenance_class"))
     except Exception: pass
     return sig
 

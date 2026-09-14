@@ -53,6 +53,11 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   provenance-bearing direction for the Chemistry Lab. It biases both the
   all-day orientation and the next frontier experiment; it expires with the
   day and an absent lean leaves both prompts unchanged.
+- The Atelier and Forge now retain a bidirectional, typed lineage. An explicit
+  room choice may create a Forge proposal without weakening the ordinary
+  live-want proposal gate; an installed build returns as a formation root with
+  the original provenance class intact. Approval, review, verification, and
+  installation remain the Forge's existing gates.
 
 ## 12 September — hypothesis recovery continuation
 
