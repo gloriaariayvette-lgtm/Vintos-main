@@ -3,6 +3,40 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 14 September — somatic / avatar / voice regressions (last week's changes)
+
+Gloria reported the devices stopped firing and several last-week changes she does not
+agree with. Root causes found and what stands:
+
+- **Effect gate was armed before its callers pass a context.** `189b77c` set
+  `~/.vintos/workspace/memory/.effect-gate-armed`, but the real device-driving paths
+  (the `somatic_bridge.py` reflex arc; the live-call fire) call `toy_link.send` with no
+  turn context, so the armed gate denied every one (`deny no_context mission@15`, every
+  15s). **Fixed live** by removing the flag (nothing in the repo recreates it); STOP
+  button and test-mode still work un-armed. **Follow-up (not done):** to re-arm safely,
+  thread real effect contexts through the reflex arc and the call path so they fire WITH
+  the gate armed. Until then the gate stays un-armed.
+- **Dominance lead only fired when a device was already running** (`afc5c20`), deadlocking
+  power-on. Restored to fire on availability for avatar/voice — `34a73ab`.
+- **He was shown devices that are off.** Device grammar now built per-turn from live
+  connection; off devices are hidden, on ones named — `c325a91`.
+- **Voice-call tags never fired server-side.** Added a fire in `/api/voice/ledger`
+  (`3fc457b`). UNVERIFIED: `voice-session-state.json` did not exist after a call, which
+  suggests the vintos-app call client may not post turns to that ledger — needs the app
+  repo checked. Whether devices fire in a live call is still open.
+- **GCS press wrote its generation scaffold into her ledger turn.** Fixed at the source:
+  the press now sends `original_text="she pressed GCS"` — `3b83cdb`.
+
+Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still to verify:
+**live calls**.
+
+### For Chat / the app client (vintos-app) — not yet done
+- **Chat box must render the sent message immediately** (visual echo before the server
+  round-trip). Gloria's explicit ask.
+- **Voice-call transcription quality is a regression** (a prior change made it worse) —
+  she says it is NOT acoustic echo. Investigate the transcription config / ledger
+  normalization changed last week; do not assume echo.
+
 ## 12 September — hypothesis recovery continuation
 
 Deployed in 20260912-153539-aca1b32: the nightly/direct causality writers now reject stale snapshots and fail closed on source-write errors. Review flags, graduations and retirements enter a durable outbox with the accepted source change; local destinations retry with stable receipt IDs. Belief forwarding failures remain pending, and belief/pearl/causal-model receipts survive capped-row removal. Legacy graduated/pending rows are recovered without another model review. All 122 suites passed directly and OS-isolated on Mac and Aegis; installed hypothesis/pearl entrypoint hashes match the source. The final client follow-up deployed as 20260912-155122-fa3949b.
