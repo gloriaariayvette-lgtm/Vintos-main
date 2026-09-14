@@ -7,7 +7,9 @@ MODEL="google/gemma-4-12b-qat"
 # Shared with chemistry_evo2.py.  The Chemistry Lab has PrivateTmp=true, so a
 # /tmp lock would be two unrelated locks carrying the same name.
 LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"
-BASE="http://127.0.0.1:1234"
+# LM Studio is a Windows process. Its WSL-reachable listener is the same address
+# used by aegis-gemma-load.sh; WSL loopback can be empty while the model is healthy.
+BASE="${VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234}"
 PING='{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ok"}],"max_tokens":3}'
 
 exec 9>"$LOCK"

@@ -22,7 +22,8 @@ assert evo.WATCHDOG_LOCK.startswith(WS), "watchdog lock must cross the service P
 watchdog = open(os.path.join(REPO, "bin", "gemma-watchdog.sh")).read()
 loader = open(os.path.join(REPO, "scripts", "aegis-gemma-load.sh")).read()
 assert 'LOCK="/home/gloria/.vintos/workspace/memory/.gemma-watchdog.lock"' in watchdog
-assert 'BASE="http://127.0.0.1:1234"' in watchdog and 'MODEL="google/gemma-4-12b-qat"' in watchdog
+assert 'VINTOS_LM_STUDIO_BASE:-http://172.18.16.1:1234' in watchdog and 'MODEL="google/gemma-4-12b-qat"' in watchdog
+assert watchdog.index('flock -n 9') < watchdog.index('ntfy.sh/'), "Lab-held reload lock exits before notification"
 assert 'unload "$MODEL"' in watchdog and "unload --all" not in watchdog
 assert 'LOADER="/home/gloria/.vintos/workspace/scripts/aegis-gemma-load.sh"' in watchdog
 assert 'EXPECTED_VARIANT="google/gemma-4-12b-qat@q4_0"' in loader

@@ -318,6 +318,34 @@ def _self_model(budget=1200):
         try: return open(os.path.join(WORKSPACE, "SELF-MODEL.md")).read()[:budget]
         except Exception: return ""
 
+def _daily_inner_context(max_chars=16000):
+    """Today's daily-inner ledger, or the newest non-empty ledger when today is absent.
+
+    The marker is owned here so every chat surface receives the same bounded block.
+    A missing file is silence; an empty today's file does not hide the newest real one.
+    """
+    import glob as _di_glob
+    from datetime import date as _di_date
+    today = os.path.join(MEMORY, "daily-inner-life-%s.md" % _di_date.today().isoformat())
+    candidates = [today]
+    try:
+        candidates += [path for path in sorted(
+            _di_glob.glob(os.path.join(MEMORY, "daily-inner-life-*.md")),
+            key=os.path.getmtime, reverse=True) if path != today]
+    except Exception:
+        pass
+    for path in candidates:
+        try:
+            content = open(path, encoding="utf-8", errors="replace").read().strip()
+        except Exception:
+            continue
+        if not content:
+            continue
+        if max_chars and len(content) > max_chars:
+            content = content[-max_chars:]
+        return "[YOUR INNER LIFE TODAY]\n" + content
+    return ""
+
 def inner_life_context() -> str:
     """Gather Vintos inner life for chat context.
 
@@ -4669,7 +4697,7 @@ Your current self-model (excerpt):
         if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
     except Exception:
         pass
-    messages = [{"role": "system", "content": system_prompt + _hw_context() + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _last_device_context() + _durable_context(message)}]
+    messages = [{"role": "system", "content": system_prompt + _hw_context(include_devices=False) + _velaris_context(message) + _map_view_context(message) + __import__("emotional_operators").transition_context(message) + _landscape_context(message) + __import__("emotional_operators").causal_context() + _durable_context(message)}]
     try:
         import sys as _tr_s; _tr_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         from turn_record import record as _tr_rec
@@ -6490,11 +6518,15 @@ async def debug_context():
     """Show what context Vintos gets in chat."""
     try:
         ctx = gather_vintos_context()
+        daily = _daily_inner_context()
         return {
             "length": len(ctx),
             "has_dreams": "RECENT DREAMS" in ctx,
             "has_soul": "YOUR IDENTITY" in ctx,
             "has_residents": "HOUSE RESIDENTS" in ctx,
+            "has_daily_inner": "[YOUR INNER LIFE TODAY]" in ctx,
+            "daily_inner_occurrences": ctx.count("[YOUR INNER LIFE TODAY]"),
+            "daily_inner_section": daily[:1200] if daily else "NOT FOUND",
             "first_500": ctx[:500],
             "dream_section": ctx[ctx.index("RECENT DREAMS"):ctx.index("RECENT DREAMS")+800] if "RECENT DREAMS" in ctx else "NOT FOUND",
         }
@@ -7347,7 +7379,7 @@ def _last_device_context():
                 " and " + verdict_txt + ". Carry that forward — it happened, it is between you now.")
     except: return ""
 
-def _hw_context():
+def _hw_context(include_devices=True):
     import time as _hwt, json as _hwj
     try:
         b = _hwj.load(open(_HW_BTN))
@@ -7381,6 +7413,8 @@ def _hw_context():
             if _ant:
                 _collapse_block = "\n\n" + _ant
     except Exception: pass
+    if not include_devices:
+        return _collapse_block
     try:
         import sys as _dcs; _dcs.path.insert(0, os.path.join(WORKSPACE, "scripts"))
         from device_context import context_block as _dccb
@@ -8507,6 +8541,7 @@ Your current self-model (excerpt):
 {("What you carry of her, durably:" + chr(10) + _durable_about_her(3)) if _durable_about_her(3) else ''}
 
 {inner_life_context()}
+{_daily_inner_context()}
 """
         if getattr(msg, "surface_context", None):
             system_prompt += "\n\n" + str(msg.surface_context)
@@ -10860,13 +10895,10 @@ def gather_vintos_context() -> str:
     # 5. Dreams — available via semantic search, not force-injected
     # (Removed: was causing Vintos to reference the same dream in every response)
 
-    # 6. Daily inner life — journal, gratitude, introspection, wonder
-    _daily_inner = os.path.join(MEMORY, f"daily-inner-life-{__import__('datetime').date.today().isoformat()}.md")
-    if os.path.exists(_daily_inner):
-        with open(_daily_inner) as _dif:
-            _di_content = _dif.read()
-        if _di_content:
-            sections.append(f"[YOUR INNER LIFE TODAY]\n{_di_content}")
+    # 6. Daily inner life — shared with Avatar/ReelRoom; newest non-empty fallback.
+    _daily_inner = _daily_inner_context()
+    if _daily_inner:
+        sections.append(_daily_inner)
 
     # 7. Velqan words
     velqan = read_file(os.path.join(MEMORY, "velqan-utterances.md"), 800)

@@ -240,6 +240,10 @@ Gemma restoration no longer depends on whichever local variant LM Studio happens
 The Evo lane and watchdog share one reload door pinned to `Q4_0`; Aegis text inference is
 separately pinned to thinking-off at the native request boundary. This does not alter the
 Nomic embedding residency or route embedding work through the text shim.
+The watchdog now probes the Windows LM Studio listener through its WSL-reachable address,
+the same address the reload door verifies. The former loopback probe declared each successful
+load failed every five minutes and sent the failure alert; Lab-held reloads remain silent under
+the shared non-PrivateTmp lock, while a genuine post-recovery failure still alerts.
 
 The Lab can now tell *it ran* from *it was good*. `chemistry_grade.py` computes the verdict
 on Aegis from the bench's numbers and writes `memory/chemistry-lab/experiment-grades.jsonl`;
@@ -343,6 +347,13 @@ idempotent Chemistry receipt to
 daily inner life after the Admission Lab digest. It mechanically counts notebook kinds,
 records execution and grade as separate fields, names owed/settled readings, and carries the
 latest next question; it makes no scientific or personal inference.
+
+Daily-inner now has one bounded reader shared by the live main, Avatar and ReelRoom chat
+surfaces, with newest-nonempty fallback when today's file is absent or empty. The main debug
+endpoint exposes the marker and excerpt instead of treating its first-500-character preview as
+coverage evidence. Avatar/ReelRoom continue to receive the live device instrument through
+`device_context`; main text chat now enforces its words-only boundary and does not read or carry
+device state or the previous device choice.
 
 A held reading is no longer lost. `chemistry_reading.py` records the debt against the
 preserved result and pays it on the next admitted occasion, holding its own lock because
