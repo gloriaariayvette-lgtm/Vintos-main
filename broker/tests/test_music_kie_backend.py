@@ -54,6 +54,7 @@ kie_body = next(b for m, u, b in SEEN if m == "POST" and "api.kie.ai" in u)
 check("Kie custom mode carries model V6, title and style", kie_body["model"] == "V6" and kie_body["customMode"] is True and kie_body["title"] == "Under the Duvet" and kie_body["style"].startswith("warm indie folk"))
 check("a vocal turn sends lyrics as the prompt and a male vocal gender", "stay with me" in kie_body["prompt"] and kie_body.get("vocalGender") == "m")
 check("an authored ACE-Step-only knob is not sent to Kie", "thinking" not in kie_body and "bpm" not in kie_body)
+check("a callBackUrl is sent (Kie rejects the request without one, even when we poll)", bool(kie_body.get("callBackUrl")))
 
 # ── poll() dispatches by tag and normalizes Kie tracks to the ACE-Step shape ─────
 tracks = DM.poll(tid)

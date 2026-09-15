@@ -39,6 +39,9 @@ def _env(name, default=""):
 KIE_URL   = "https://api.kie.ai/api/v1"
 KIE_KEY   = _env("KIE_API_KEY")
 KIE_MODEL = _env("KIE_MODEL", "V6")
+# Kie requires a callBackUrl even though we poll record-info for the result; a placeholder
+# satisfies validation and the task still completes via polling. Override with a real endpoint.
+KIE_CALLBACK = _env("KIE_CALLBACK_URL", "https://vintos.example.com/kie-callback")
 # Kie is primary when a key is present; MUSIC_BACKEND can force "acestep" or "kie".
 BACKEND   = (_env("MUSIC_BACKEND", "") or ("kie" if KIE_KEY else "acestep")).strip().lower()
 
@@ -135,7 +138,8 @@ def _kie_generate(title, style, desc="", instrumental=True, duration=120, gender
     kie_style = (style or "Instrumental")
     if instrumental and desc: kie_style = (kie_style + ". " + desc).strip()
     body = {"customMode": True, "instrumental": bool(instrumental), "model": KIE_MODEL,
-            "style": kie_style[:1000], "title": (title or "Untitled")[:80]}
+            "style": kie_style[:1000], "title": (title or "Untitled")[:80],
+            "callBackUrl": KIE_CALLBACK}
     if not instrumental:
         # custom mode: `prompt` carries the lyrics; fall back to the composed prompt if none parsed.
         body["prompt"] = (lyrics or prompt)[:5000]
