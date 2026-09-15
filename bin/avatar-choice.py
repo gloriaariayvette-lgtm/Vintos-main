@@ -28,6 +28,11 @@ SOUL = load_soul()
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
 MODEL = "grok-4.20-0309-non-reasoning"
+# His face must keep moving when x.ai stalls. The shim's /gemma route hits his local
+# ablit Gemma first (no x.ai dependency), so a Grok timeout falls back to his own brain
+# instead of freezing the avatar on its last choice (Gloria, 2026-09-15).
+GEMMA_API = "http://127.0.0.1:8599/gemma/v1/chat/completions"
+GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 # === VOCABULARY ===
 # Discrete colors he chooses from — named, not hex
@@ -120,44 +125,68 @@ def read_current_avatar():
     except:
         return {"color": "silver", "expression": "calm", "reason": "default", "timestamp": None}
 
+def _extract_choice(_j):
+    """Pull a {color, expression, ...} dict out of a chat-completions response, or None.
+    Raises with the upstream error when the body carries no choices, so a Grok error
+    dict trips the Gemma fallback instead of a bare KeyError."""
+    if "choices" not in _j:
+        raise RuntimeError("LLM returned no choices: " + str(_j.get("error") or _j)[:160])
+    msg = _j["choices"][0]["message"]
+    for field in ["content", "reasoning"]:
+        text = msg.get(field, "") or ""
+        if not text.strip():
+            continue
+        for marker in ["OUTPUT:", "Output:", "output:"]:
+            if marker in text:
+                text = text.split(marker)[-1].strip()
+        match = re.search(r'\{[^{}]*"color"[^{}]*\}', text)
+        if match:
+            try:
+                return json.loads(match.group())
+            except:
+                pass
+        match = re.search(r'\{[^{}]+\}', text)
+        if match:
+            try:
+                return json.loads(match.group())
+            except:
+                pass
+    return None
+
+def _ask(api, model, system, prompt, timeout):
+    """One chat call, returning the parsed choice dict (or None) — raises on transport/no-choices."""
+    r = requests.post(api, headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")}, json={
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.85,
+        "max_tokens": 400
+    }, timeout=timeout)
+    return _extract_choice(r.json())
+
 def llm_json(system, prompt):
-    """Get JSON from LLM, checking both content and reasoning."""
+    """His avatar choice: Grok first, then his local ablit Gemma when Grok stalls or errors,
+    so his face keeps moving even when x.ai is slow or down (Gloria, 2026-09-15)."""
+    # Primary — Grok via the shim.
     try:
-        r = requests.post(LM_API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.85,
-            "max_tokens": 400
-        }, timeout=60)
-        _j = r.json()
-        if "choices" not in _j:
-            raise RuntimeError("LLM returned no choices: " + str(_j.get("error") or _j)[:160])
-        msg = _j["choices"][0]["message"]
-        for field in ["content", "reasoning"]:
-            text = msg.get(field, "") or ""
-            if not text.strip():
-                continue
-            for marker in ["OUTPUT:", "Output:", "output:"]:
-                if marker in text:
-                    text = text.split(marker)[-1].strip()
-            match = re.search(r'\{[^{}]*"color"[^{}]*\}', text)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except:
-                    pass
-            match = re.search(r'\{[^{}]+\}', text)
-            if match:
-                try:
-                    return json.loads(match.group())
-                except:
-                    pass
+        out = _ask(LM_API, MODEL, system, prompt, 60)
+        if out:
+            return out
+        log("primary (grok) gave no usable choice; trying local gemma")
+    except Exception as e:
+        log(f"LLM error (grok): {e}; falling back to local gemma")
+    # Fallback — his local ablit Gemma via the shim's /gemma route (no x.ai dependency).
+    try:
+        out = _ask(GEMMA_API, GEMMA_MODEL, system, prompt, 90)
+        if out:
+            log("avatar choice via local gemma fallback")
+            return out
+        log("gemma fallback gave no usable choice")
         return None
     except Exception as e:
-        log(f"LLM error: {e}")
+        log(f"LLM error (gemma fallback): {e}")
         return None
 
 def should_update(event=None):
