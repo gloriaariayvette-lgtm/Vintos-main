@@ -102,6 +102,22 @@ def append(file_day=None, data_day=None):
     return True, path
 
 
+def backfill(days=7):
+    """Self-heal: for each of the last `days` carry-forward files that exist but are
+    missing their receipt, append it. A missed first-light morning then repairs itself
+    instead of leaving a permanent hole."""
+    healed = []
+    today = date.today()
+    for n in range(1, days + 1):
+        fd = (today - timedelta(days=n)).isoformat()
+        if os.path.exists(os.path.join(MEMORY, f"daily-inner-life-{fd}.md")):
+            wrote, path = append(file_day=fd)
+            if wrote: healed.append(path)
+    return healed
+
+
 if __name__ == "__main__":
     wrote, target = append()
     print("[lab-digest] %s %s" % ("appended" if wrote else "already present", target))
+    healed = backfill(7)
+    if healed: print("[lab-digest] backfilled %d missed day(s): %s" % (len(healed), ", ".join(healed)))

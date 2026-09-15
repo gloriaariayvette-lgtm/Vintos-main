@@ -76,7 +76,22 @@ assert Path(path2).name == f"daily-inner-life-{date.today().isoformat()}.md"
 y = (date.today() - timedelta(days=1)).isoformat()
 assert f"<!-- chemistry-lab-digest:{y} -->" in Path(path2).read_text(), "default summarizes yesterday"
 
+# Self-heal: a recent carry-forward file that exists but lacks its receipt gets backfilled,
+# once, and a day that never had a morning file is never fabricated. One missed first-light
+# morning repairs itself instead of becoming a daily battle.
+R = (date.today() - timedelta(days=2)).isoformat()        # a morning that happened
+R_data = (date.today() - timedelta(days=3)).isoformat()   # the day it should summarize
+inner = Path(M.MEMORY) / f"daily-inner-life-{R}.md"
+inner.write_text("# morning\ncarry-forward text\n")       # exists, but no chemistry receipt
+healed = M.backfill(7)
+assert str(inner) in healed, "backfill repairs a file that is missing its receipt"
+assert f"<!-- chemistry-lab-digest:{R_data} -->" in inner.read_text(), "backfilled marker keyed to the summarized day"
+assert M.backfill(7) == [] or str(inner) not in M.backfill(7), "backfill is idempotent once a day is healed"
+ghost = date.today() - timedelta(days=6)
+assert not (Path(M.MEMORY) / f"daily-inner-life-{ghost.isoformat()}.md").exists(), "a day with no morning file is never fabricated"
+
 source = (REPO / "scripts" / "chemistry_digest.py").read_text()
 assert "memory/atelier" not in source and "atelier-reveals" not in source
 assert "_yesterday(" in source, "the day-boundary helper is in use"
-print("16/16 passed")
+assert "def backfill(" in source, "self-healing backfill is present"
+print("all chemistry-digest checks passed (append + backfill)")
