@@ -50,7 +50,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_failed_source_write_never_falls_back(self):
         db = self.c.load_existing_hypotheses()
-        with patch.object(self.c, 'write_json', side_effect=OSError('fixture disk failure')):
+        with patch.object(self.c, '_save_hypotheses_locked', side_effect=OSError('fixture disk failure')):
             with self.assertRaises(OSError):
                 self.c.save_hypotheses(db)
         self.assertFalse(self.path.exists())
@@ -68,7 +68,9 @@ class RecoveryTests(unittest.TestCase):
             self.c.save_hypotheses(db)
         self.assertEqual(db['deliveries'][key]['state'], 'pending')
         self.c.recover_deliveries()
-        self.assertEqual(self.c.load_existing_hypotheses()['deliveries'][key]['state'], 'delivered')
+        self.assertNotIn(key, self.c.load_existing_hypotheses().get('deliveries', {}))
+        rows = json.loads((self.path.parent / 'hallucination-flags.json').read_text())
+        self.assertEqual([row['transition_id'] for row in rows], [key])
 
     def test_crash_after_destination_before_ack_does_not_duplicate(self):
         db = self.c.load_existing_hypotheses()
