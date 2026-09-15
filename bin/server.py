@@ -7475,7 +7475,7 @@ async def voice_token(provider: str = "grok"):
     import requests as _vt_req, json as _vt_j
     provider = (provider or "grok").lower()
     tok = {}
-    if provider != "openai":
+    if provider == "grok":
         r = _vt_req.post("https://api.x.ai/v1/realtime/client_secrets",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
             json={"expires_after": {"seconds": 300}}, timeout=15)
@@ -7540,6 +7540,16 @@ async def voice_token(provider: str = "grok"):
                 start_new_session=True, stdout=open("/tmp/voice-somatic-driver.log","a"),
                 stderr=__import__("subprocess").STDOUT)
     except Exception as _vsde: print("[voice-driver spawn]", _vsde, flush=True)
+    if provider == "local":
+        try:
+            import voice_local as _vl
+            _jit = await __import__("asyncio").to_thread(_vl.models, True)
+        except Exception as _ve:
+            return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
+                    "provider":"local", "instructions":instructions}
+        return {"token":"local", "instructions":instructions, "provider":"local",
+                "model":"gemma-4-26b-a4b-it-uncensored", "voice":"orpheus", "jit":_jit,
+                "audio_understanding":"local transcript plus measured PCM prosody"}
     if provider == "openai":
         _ok = _openai_key()
         if not _ok:
@@ -7562,6 +7572,43 @@ async def voice_token(provider: str = "grok"):
         return {"token": tok.get("value", ""), "expires_at": tok.get("expires_at", 0), "instructions": instructions, "provider": "openai",
                 "model": _session["model"], "voice": _session["audio"]["output"]["voice"]}
     return {"token": tok.get("value",""), "expires_at": tok.get("expires_at",0), "instructions": instructions, "provider": "grok"}
+
+@app.post("/api/voice/local/turn")
+async def voice_local_turn(request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    body = await request.json()
+    try:
+        import voice_local as _vl
+        from compute_admission import touch_foreground as _vlf
+        _vlf()
+        return await __import__("asyncio").to_thread(_vl.turn, str(body.get("audio") or ""),
+            int(body.get("sample_rate") or 24000), str(body.get("instructions") or ""),
+            str(body.get("framing") or ""))
+    except Exception as exc:
+        return {"ok":False,"stage":"transport","error":str(exc)[:300]}
+
+@app.post("/api/voice/local/heartbeat")
+async def voice_local_heartbeat(request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    from compute_admission import touch_foreground as _vlf
+    _vlf(); _live = os.path.join(MEMORY, ".voice-live")
+    try: open(_live,"a").close(); os.utime(_live,None)
+    except Exception: pass
+    return {"ok":True}
+
+@app.post("/api/voice/local/end")
+async def voice_local_end(request: Request):
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET: raise HTTPException(status_code=403, detail="Unauthorized")
+    try:
+        import voice_local as _vl
+        result = await __import__("asyncio").to_thread(_vl.models, False)
+        try: os.unlink(os.path.join(MEMORY, ".voice-live"))
+        except OSError: pass
+        return result
+    except Exception as exc: return {"ok":False,"error":str(exc)[:240]}
 
 # Expressive cues are the call. Laughs, sighs, whispers, pauses, breaths are what
 # make a voice call an experience and not a short crude exchange, so they are kept
@@ -9243,7 +9290,7 @@ async def avatar_set_brain(request: Request):
     try:
         body = await request.json()
         want = str(body.get("brain") or body.get("mode") or "").lower()
-        mode = want if want in ("grok", "sol", "sonnet", "fable") else "claude"
+        mode = want if want in ("grok", "sol", "sonnet", "fable", "local") else "claude"
         import model_router as _mr
         m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
         return {"mode": mode}
@@ -9252,7 +9299,7 @@ async def avatar_set_brain(request: Request):
 
 @app.post("/api/avatar/speak")
 async def avatar_speak(request: Request):
-    """Convert text to speech via MiniMax, return audio URL. No memory writes."""
+    """Convert text to speech on the Mac via Orpheus; Kokoro is its outage fallback."""
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -9267,15 +9314,14 @@ async def avatar_speak(request: Request):
         text = re.sub(r'\*+', '', text)
         text = text.strip()[:2000]
         import requests as _tts_req
-        _tts_r = _tts_req.post("https://api.x.ai/v1/tts",
-            headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY",""), "Content-Type": "application/json"},
-            json={"text": text[:15000], "voice_id": "rex", "language": "en", "speed": 1.12}, timeout=60)
-        _tts_ct = _tts_r.headers.get("Content-Type", "audio/mpeg")
+        _stage = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
+        _tts_r = _tts_req.post(_stage + "/tts", json={"text":text,"voice":os.environ.get("VINTOS_ORPHEUS_VOICE","leo")}, timeout=210)
+        _tts_ct = _tts_r.headers.get("Content-Type", "audio/wav")
         if _tts_r.status_code != 200 or "json" in _tts_ct or not _tts_r.content:
-            return {"error": "tts failed: " + _tts_r.text[:200]}
+            return {"error": "local tts failed: " + _tts_r.text[:200]}
         import base64 as _tts_b64m
         _tts_b64 = _tts_b64m.b64encode(_tts_r.content).decode()
-        return {"audio_url": f"data:{_tts_ct};base64,{_tts_b64}"}
+        return {"audio_url": f"data:{_tts_ct};base64,{_tts_b64}", "voice_engine":_tts_r.headers.get("X-Vintos-Voice","unknown")}
     except Exception as e:
         return {"error": str(e)}
 

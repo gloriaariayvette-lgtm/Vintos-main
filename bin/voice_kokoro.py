@@ -5,9 +5,23 @@ Handles voice output for Vintos when voice mode is active.
 """
 import os, sys, subprocess, tempfile
 
-VOICE_MODEL = os.environ.get("VINTOS_VOICE_MODEL", "am_adam")
+VOICE_MODEL = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_michael")
 VOICE_SPEED = float(os.environ.get("VINTOS_VOICE_SPEED", "1.0"))
 KOKORO_PATH = os.path.expanduser("~/.vintos/kokoro")
+
+def render_to_file(text, out_path, voice=None, speed=None):
+    """Fallback renderer used only when the preferred Orpheus lane is unavailable."""
+    voice = voice or VOICE_MODEL; speed = speed or VOICE_SPEED; text = str(text or "").strip()
+    if not text: return False
+    try:
+        sys.path.insert(0, KOKORO_PATH)
+        from kokoro import KPipeline
+        import numpy as np, soundfile as sf
+        chunks = [audio for _, _, audio in KPipeline(lang_code="a")(text, voice=voice, speed=speed, split_pattern=r"\n+")]
+        if not chunks: return False
+        sf.write(out_path, np.concatenate(chunks), 24000); return True
+    except Exception: return False
+
 
 def speak(text, voice=None, speed=None):
     """Synthesize and play speech."""
@@ -20,25 +34,18 @@ def speak(text, voice=None, speed=None):
     try:
         import sys as _cas; _cas.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
         from compute_admission import touch_foreground as _tf, record as _rec
-        _tf(); _rec("voice-kokoro", "foreground", provider="kokoro", model=str(voice), stage="speak")
+        _tf(); _rec("voice-orpheus", "foreground", provider="local", model="orpheus", stage="speak")
     except Exception:
         pass
-    # Try Kokoro python API
+    # Compatibility entry point, preferred engine changed to Orpheus. Its own
+    # fallback calls render_to_file above without recursing into speak().
     try:
-        import sys
-        sys.path.insert(0, KOKORO_PATH)
-        from kokoro import KPipeline
-        pipeline = KPipeline(lang_code="a")
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             out_path = f.name
-        audio_chunks = []
-        for _, _, audio in pipeline(text, voice=voice, speed=speed, split_pattern=r"\n+"):
-            audio_chunks.append(audio)
-        if audio_chunks:
-            import numpy as np
-            import soundfile as sf
-            audio = np.concatenate(audio_chunks)
-            sf.write(out_path, audio, 24000)
+        sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import voice_orpheus
+        receipt = voice_orpheus.speak_to_file(text, out_path, speed=speed, fallback=True)
+        if receipt.get("ok"):
             subprocess.run(["aplay", out_path], check=False, capture_output=True)
             os.unlink(out_path)
             return True

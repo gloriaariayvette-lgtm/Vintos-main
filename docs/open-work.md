@@ -3,6 +3,20 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 15 September — local uncensored voice lane
+
+The Avatar clients now offer Vintos Local: local Whisper supplies the literal
+words, measured PCM features preserve pitch movement, energy, pauses, pace and
+emphasis, Gemma 3n turns only those measurements into a short delivery reading,
+the abliterated Gemma 4 answers with ordinary live-call context/framing, and
+Orpheus/SNAC speaks on the Mac. LM Studio's loaded Gemma 3n GGUF was measured
+and rejects audio content (its endpoint accepts only text/image), so this is the
+documented parallel-prosody fallback, not a claim that Gemma 3n heard the clip.
+Orpheus and Gemma 3n load with a ten-minute TTL at call start and unload at
+hangup; the shared abliterated brain is not unloaded. Kokoro is a named automatic
+outage fallback. Physical microphone acceptance and Gloria's choice among the
+Orpheus male voices remain open until the rebuilt app is heard.
+
 ## 14 September — somatic / avatar / voice regressions (last week's changes)
 
 Gloria reported the devices stopped firing and several last-week changes she does not

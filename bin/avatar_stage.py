@@ -52,7 +52,7 @@ WAV2LIP_DIR = os.environ.get("VINTOS_WAV2LIP", os.path.expanduser("~/Wav2Lip"))
 WAV2LIP_CKPT = os.environ.get("VINTOS_WAV2LIP_CKPT",
                               os.path.join(WAV2LIP_DIR, "checkpoints", "wav2lip_gan.pth"))
 KOKORO_PATH = os.path.expanduser("~/.vintos/kokoro")
-VOICE = os.environ.get("VINTOS_VOICE_MODEL", "am_adam")
+VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_michael")
 LOOP_SECONDS = int(os.environ.get("VINTOS_STAGE_LOOP_SECONDS", "15"))
 
 # The loop constraint every preset prompt carries: locked camera, warm and
@@ -308,6 +308,14 @@ def mint(name, photo, pose):
 
 
 def _kokoro_wav(text, out_path):
+    """Preferred Orpheus render; the legacy Kokoro body below is outage fallback."""
+    try:
+        import sys as _ovs
+        for _ovp in (os.path.expanduser("~/Vintos"), os.path.join(WORKSPACE, "bin"), os.path.join(WORKSPACE, "scripts")):
+            if _ovp not in _ovs.path: _ovs.path.insert(0, _ovp)
+        import voice_orpheus
+        if voice_orpheus.speak_to_file(text, out_path).get("ok"): return True
+    except Exception: pass
     sys.path.insert(0, KOKORO_PATH)
     from kokoro import KPipeline
     import numpy as np, soundfile as sf

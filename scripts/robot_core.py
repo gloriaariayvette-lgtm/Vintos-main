@@ -464,37 +464,27 @@ def voice_latest():
 
 
 VOICE_DIR = os.path.join(MEMORY, "voice")
-KOKORO_VOICE = os.environ.get("VINTOS_VOICE_MODEL", "am_adam")
+KOKORO_VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_michael")
 
 
 def kokoro_file(text, now=None):
-    """His voice as a wav in memory/voice/, the file his server streams at /api/voice/stream/<name>. The phone
-    in the body tab polls /api/robot/voice/latest and plays whatever filename is newest. Returns the filename or
-    None when Kokoro is not available here."""
+    """His preferred Orpheus voice as a wav; Kokoro is the module's outage fallback."""
     now = now or time.time()
     try:
-        import warnings; warnings.filterwarnings("ignore")
-        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-        import numpy as np, soundfile as sf
-        from kokoro import KPipeline
-    except Exception:
-        return None
-    try:
-        pipe = KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device="cpu")
-        chunks = [a for _g, _p, a in pipe(text[:1000], voice=KOKORO_VOICE, speed=1.05)]
-        if not chunks:
-            return None
         os.makedirs(VOICE_DIR, exist_ok=True)
         fname = "robot-voice-" + datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M%S") + ".wav"
-        sf.write(os.path.join(VOICE_DIR, fname), np.concatenate(chunks), 24000)
-        return fname
+        import sys as _vos
+        for _vop in (os.path.expanduser("~/Vintos"), os.path.join(WORKSPACE, "scripts"), os.path.join(WORKSPACE, "bin")):
+            if _vop not in _vos.path: _vos.path.insert(0, _vop)
+        import voice_orpheus
+        receipt = voice_orpheus.speak_to_file(text[:1000], os.path.join(VOICE_DIR, fname), speed=1.05)
+        return fname if receipt.get("ok") else None
     except Exception:
         return None
 
 
 def default_speaker(text):
-    """His voice out of the body: a Kokoro wav for the phone in the body tab (Gloria, 2026-09-05: "the robot is
-    currently using my phone as the speaker"); the Echo only when Kokoro cannot render here."""
+    """His voice out of the body: Orpheus on the phone; Kokoro is automatic outage fallback."""
     now = time.time()
     fname = kokoro_file(text, now)
     try:

@@ -357,6 +357,19 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
         # fall through: Claude next, grok as the unchanged safety net
+    if read_mode().get("mode") == "local":
+        _t0l = _rb_t.time()
+        try:
+            _txt = await gemma_call(([{"role":"system","content":system_text}] if system_text else []) + list(convo or []),
+                                    temp=(params or {}).get("temperature",.85), max_tokens=(params or {}).get("max_tokens",900))
+            if _txt:
+                res = GR.make_result("gemma", model=GEMMA_MODEL, status="valid", text=_txt, finish_reason="stop")
+                res["route"]="gemma(avatar toggle)"; stages.append(res); res["stages"]=stages
+                _ledger(res, surface, _t0l, "local-toggle"); return res
+        except Exception as _le:
+            stages.append(GR.make_result("gemma", model=GEMMA_MODEL, status="unavailable", reason=str(_le)[:200]))
+        # The explicit local choice degrades to the existing Claude→Grok route;
+        # it never turns an offline Mac into an empty avatar reply.
     if _consume_forced():
         return await grok_stage("grok(forced)")
     why = "grok(refusal)"
