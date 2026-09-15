@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Causality compaction is bounded and epistemically conservative. Scratch HOME; no senders."""
-import os, sys, json, tempfile, importlib.util
+import os, sys, json, tempfile, importlib.util, subprocess, shutil
 from datetime import date, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -73,6 +73,19 @@ fresh = row("fresh-formation", 0)
 CE._stamp_formation(fresh, {"seed": "a real new occasion with enough words to fingerprint"})
 catalog = CE._catalog_item(str(today), "interaction", "a separate new occasion with enough words to count", 0)
 check("formation and nightly testing still operate", fresh["formation"]["root_fingerprints"] and CE._record_nightly(fresh, str(today), "yes", evidence=catalog["text"], items=[catalog]) and fresh["marks"][0]["verdict"] == "yes")
+
+# The production entry is a cross-tree symlink. Exercise that exact shape from
+# an unrelated real-file directory with helpers only under scratch workspace.
+foreign = os.path.join(HOME, "Vintos"); os.makedirs(foreign, exist_ok=True)
+foreign_script = os.path.join(foreign, "causality-engine.py")
+shutil.copy2(os.path.join(REPO, "scripts", "causality-engine.py"), foreign_script)
+entry = os.path.join(WS, "scripts", "causality-engine.py")
+os.makedirs(os.path.dirname(entry), exist_ok=True)
+os.symlink(foreign_script, entry)
+shutil.copy2(os.path.join(REPO, "scripts", "store_guard.py"), os.path.join(WS, "scripts", "store_guard.py"))
+probe = subprocess.run([sys.executable, entry, "--compact"], env={**os.environ, "HOME": HOME},
+                       capture_output=True, text=True)
+check("deployed cross-tree symlink imports its workspace helper", probe.returncode == 0 and '"after_bytes"' in probe.stdout, {"returncode": probe.returncode, "stderr": probe.stderr})
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

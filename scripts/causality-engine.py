@@ -16,7 +16,13 @@ from datetime import datetime, timedelta
 import subprocess
 import copy
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+# The deployed script is a symlink whose real file sits in ~/Vintos while its
+# importable helpers sit in the workspace scripts tree. Prefer the invoked
+# checkout directory when it owns store_guard (so tests never import live
+# code); use the deployed helper tree only when this is that cross-tree link.
+_INVOKED_SCRIPTS = Path(__file__).absolute().parent
+_DEPLOYED_SCRIPTS = Path(os.path.expanduser("~/.vintos/workspace/scripts"))
+sys.path.insert(0, str(_INVOKED_SCRIPTS if (_INVOKED_SCRIPTS / "store_guard.py").exists() else _DEPLOYED_SCRIPTS))
 from store_guard import transaction, save_json
 
 def _sg_write(_p, _o, _who="organ"):
