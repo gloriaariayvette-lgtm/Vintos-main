@@ -7549,7 +7549,7 @@ async def voice_token(provider: str = "grok"):
                     "provider":"local", "instructions":instructions}
         return {"token":"local", "instructions":instructions, "provider":"local",
                 "model":"gemma-4-26b-a4b-it-uncensored", "voice":"orpheus", "jit":_jit,
-                "audio_understanding":"local transcript plus measured PCM prosody"}
+                "audio_understanding":"Gemma 3n audio-native MLX-VLM"}
     if provider == "openai":
         _ok = _openai_key()
         if not _ok:

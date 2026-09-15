@@ -8,7 +8,7 @@ POST /speak and gets the finished mp4 back; nothing renders on Aegis.
 Runs under the Wav2Lip venv python (which has torch, kokoro, soundfile).
 Started by the LaunchAgent com.vintos.stage (port 8511).
 """
-import os, sys, json, hashlib, subprocess, base64, tempfile, wave
+import os, sys, json, hashlib, subprocess, base64, tempfile, wave, threading, gc
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 def _sg_write(_p, _o, _who="organ"):
@@ -34,19 +34,20 @@ W2L_CKPT = os.path.join(W2L, "checkpoints", "wav2lip_gan.pth")
 VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_michael")
 PORT = int(os.environ.get("VINTOS_STAGE_PORT", "8511"))
 LM_BASE = os.environ.get("VINTOS_MAC_LM_BASE", "http://127.0.0.1:1234").rstrip("/")
-EARS_MODEL = os.environ.get("VINTOS_EARS_MODEL", "google_gemma-3n-e4b-it")
-WHISPER_MODEL = os.environ.get("VINTOS_WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
+EARS_MODEL = os.environ.get("VINTOS_EARS_MODEL", "unsloth/gemma-3n-E2B-it")
 LMS = os.path.expanduser("~/.lmstudio/bin/lms")
 
 # LaunchAgents don't inherit the shell PATH; Wav2Lip's last step shells out to
 # ffmpeg, so make sure the common install dirs are reachable.
 ENV = dict(os.environ)
 ENV["PATH"] = ENV.get("PATH", "") + ":/usr/local/bin:/opt/homebrew/bin"
-os.environ["PATH"] = ENV["PATH"]  # mlx-whisper launches ffmpeg through the process environment
+os.environ["PATH"] = ENV["PATH"]
 import shutil as _sh
 FFMPEG = _sh.which("ffmpeg") or "/usr/local/bin/ffmpeg"
 
 _pipeline = None
+_ears_pipe = None
+_ears_lock = threading.RLock()
 
 def log(m):
     print("[mac-stage] %s" % m, flush=True)
@@ -75,77 +76,96 @@ def orpheus_wav(text, out_path, voice=None, speed=None):
                 "orpheus_error": receipt.get("error", "")}
     return receipt
 
-def _pitch(frame, rate):
-    import numpy as np
-    frame = frame - np.mean(frame)
-    if float(np.sqrt(np.mean(frame * frame))) < .012: return None
-    corr = np.correlate(frame, frame, mode="full")[len(frame)-1:]
-    lo, hi = max(1, rate // 420), min(len(corr), rate // 70)
-    if hi <= lo: return None
-    lag = lo + int(np.argmax(corr[lo:hi]))
-    return round(rate / lag, 1) if corr[lag] > corr[0] * .22 else None
+def _ears_load():
+    """Load a complete multimodal checkpoint; the LM Studio GGUF is text-only."""
+    global _ears_pipe
+    with _ears_lock:
+        if _ears_pipe is None:
+            import torch
+            from transformers import pipeline
+            _ears_pipe = pipeline("image-text-to-text", model=EARS_MODEL,
+                                  device="mps", dtype=torch.bfloat16)
+        return True
 
-def _prosody(samples, rate, transcript=""):
-    """Measured delivery only: no emotion label is manufactured from acoustics."""
-    import numpy as np, re
-    x = np.asarray(samples, dtype=np.float32); width = max(160, int(rate * .04))
-    frames = [x[i:i+width] for i in range(0, len(x)-width+1, width)]
-    rms = [float(np.sqrt(np.mean(f*f))) for f in frames] or [0.0]
-    floor = max(.008, float(np.percentile(rms, 30)) * 1.8)
-    voiced = [v > floor for v in rms]
-    pitches = [_pitch(f, rate) for f, on in zip(frames, voiced) if on]
-    pitches = [p for p in pitches if p]
-    dur = len(x) / float(rate or 1); words = len(re.findall(r"\b[\w']+\b", transcript or ""))
-    return {"duration_seconds": round(dur, 2), "mean_energy": round(float(np.mean(rms)), 4),
-        "energy_range": round(float(np.percentile(rms, 90)-np.percentile(rms, 10)), 4),
-        "pause_ratio": round(1.0-(sum(voiced)/max(1,len(voiced))), 3),
-        "words_per_minute": round(words * 60.0 / dur, 1) if dur and words else None,
-        "pitch_median_hz": round(float(np.median(pitches)), 1) if pitches else None,
-        "pitch_range_hz": round(float(np.percentile(pitches,90)-np.percentile(pitches,10)),1) if len(pitches)>3 else None,
-        "pitch_finish_hz": round(float(np.median(pitches[-4:])),1) if pitches else None,
-        "pitch_start_hz": round(float(np.median(pitches[:4])),1) if pitches else None,
-        "emphasis_peaks": sum(v > float(np.mean(rms)) + 1.5*float(np.std(rms)) for v in rms),
-        "truth_status": "measured_from_pcm_not_emotion_inference"}
+def _ears_unload():
+    global _ears_pipe
+    with _ears_lock:
+        _ears_pipe = None
+        gc.collect()
+        try:
+            import torch
+            torch.mps.empty_cache()
+        except Exception: pass
+
+def _heard_fields(text):
+    text = str(text or "").replace("```json", "").replace("```", "").strip()
+    a, b = text.find("{"), text.rfind("}")
+    if a >= 0 and b > a:
+        try:
+            value = json.loads(text[a:b+1])
+            if value.get("transcript") and value.get("audio_reading"): return value
+        except Exception: pass
+    import re
+    trans = re.search(r"(?is)transcription(?: of recording)?\s*:\s*[\"']?(.+?)[\"']?\s*(?:\n|$)", text)
+    reading = re.search(r"(?is)speaker(?:'s)? delivery description\s*:\s*(.+)$", text)
+    if not trans or not reading: raise ValueError("audio model omitted transcript or delivery reading")
+    return {"transcript": trans.group(1).strip(" \t\r\n\"'"),
+            "audio_reading": reading.group(1).strip()}
+
+def _hear_audio(wav_path):
+    """Give the waveform itself to Gemma 3n's USM audio tower."""
+    _ears_load()
+    request = ("Listen to the attached recording itself. First transcribe the words under "
+        "the heading 'Transcription of Recording:'. Then under the heading \"Speaker's "
+        "Delivery Description:\" describe audible inflection, tone, pacing, emphasis, "
+        "hesitation, laughter, breath, and other paralinguistic information that matters "
+        "to how it was said. Do not infer facts that are not audible and do not omit "
+        "explicit language.")
+    messages = [{"role":"user", "content":[{"type":"audio", "audio":wav_path},
+                                             {"type":"text", "text":request}]}]
+    with _ears_lock:
+        result = _ears_pipe(text=messages, max_new_tokens=420)
+    generated = result[0]["generated_text"][-1]["content"]
+    return _heard_fields(generated)
 
 def hear_pcm(audio_b64, rate=24000):
-    import numpy as np
-    pcm = base64.b64decode(audio_b64); samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+    pcm = base64.b64decode(audio_b64)
+    fd, raw_path = tempfile.mkstemp(suffix=".wav"); os.close(fd)
     fd, wav_path = tempfile.mkstemp(suffix=".wav"); os.close(fd)
     try:
-        with wave.open(wav_path, "wb") as out:
+        with wave.open(raw_path, "wb") as out:
             out.setnchannels(1); out.setsampwidth(2); out.setframerate(int(rate)); out.writeframes(pcm)
-        import mlx_whisper
-        result = mlx_whisper.transcribe(wav_path, path_or_hf_repo=WHISPER_MODEL)
-        transcript = str(result.get("text", "")).strip()
-        measured = _prosody(samples, int(rate), transcript)
-        reading = ""
-        try:
-            import urllib.request
-            prompt = ("Describe only the audible delivery implied by these measured acoustic features. "
-                      "Do not infer motive, truth, identity, or emotion. One short factual clause.\n" + json.dumps(measured))
-            req = urllib.request.Request(LM_BASE + "/v1/chat/completions",
-                data=json.dumps({"model": EARS_MODEL, "messages":[{"role":"user","content":prompt}],
-                                 "temperature":.2,"max_tokens":100}).encode(),
-                headers={"Content-Type":"application/json"})
-            data = json.loads(urllib.request.urlopen(req, timeout=45).read())
-            reading = data["choices"][0]["message"]["content"].strip()[:400]
-        except Exception: pass
-        return {"ok": bool(transcript), "transcript": transcript, "prosody": measured,
-                "delivery_reading": reading, "ears": "mlx-whisper+measured-prosody+gemma3n-text",
-                "audio_native_gemma": False}
+        # The audio tower needs enough frames for its convolutional subsampler.
+        # Normalize to its documented 16 kHz mono input and pad short turns only.
+        subprocess.run([FFMPEG,"-y","-loglevel","error","-i",raw_path,
+            "-af","apad=whole_dur=10","-t","30","-ar","16000","-ac","1",wav_path],
+            check=True, timeout=20, env=ENV)
+        heard = _hear_audio(wav_path); transcript = str(heard.get("transcript", "")).strip()
+        reading = str(heard.get("audio_reading", "")).strip()[:1200]
+        return {"ok": bool(transcript), "transcript": transcript,
+                "audio_reading": reading, "ears": "gemma3n-audio-native-mlx-vlm",
+                "audio_native_gemma": True, "model": EARS_MODEL}
     finally:
-        try: os.unlink(wav_path)
-        except OSError: pass
+        for path in (raw_path, wav_path):
+            try: os.unlink(path)
+            except OSError: pass
 
 def voice_models(active):
     """JIT auxiliaries only. The abliterated brain is shared and never unloaded here."""
     if not os.path.exists(LMS): return {"ok": False, "error": "lms CLI missing"}
     actions = []
-    for ident in ("orpheus-3b-ft.gguf", "google_gemma-3n-e4b-it"):
+    for ident in ("orpheus-3b-ft.gguf",):
         cmd = [LMS, "load", ident, "--ttl", "600", "-y"] if active else [LMS, "unload", ident]
         r = subprocess.run(cmd, env=ENV, capture_output=True, text=True, timeout=90)
         actions.append({"model": ident, "ok": r.returncode == 0,
                         "detail": (r.stdout or r.stderr)[-160:]})
+    try:
+        if active: _ears_load()
+        else: _ears_unload()
+        actions.append({"model": EARS_MODEL, "ok": True,
+                        "detail": "audio-native MLX model %s" % ("loaded" if active else "unloaded")})
+    except Exception as exc:
+        actions.append({"model": EARS_MODEL, "ok": False, "detail": str(exc)[:160]})
     return {"ok": all(a["ok"] for a in actions), "active": bool(active), "actions": actions}
 
 def face_for(room):
