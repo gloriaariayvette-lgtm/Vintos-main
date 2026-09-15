@@ -57,4 +57,6 @@ check("the local text toggle names the abliterated local route", "ABLIT GEMMA" i
 check("the server exposes start, turn, heartbeat and unload boundaries", 'provider == "local"' in server and '/api/voice/local/turn' in server and '/api/voice/local/heartbeat' in server and '/api/voice/local/end' in server)
 check("Mac ears route the waveform through Gemma 3n's audio tower", '"type":"audio"' in stage and '"audio_native_gemma": True' in stage and "mlx_whisper" not in stage)
 check("JIT auxiliaries load and unload while the brain is untouched", '"--ttl", "600"' in stage and '"unload", ident' in stage and "_ears_unload()" in stage and "abliterated brain is shared" in stage)
+check("short live turns bound both language generations", '"max_tokens":360' in open(os.path.join(REPO,"scripts","voice_local.py")).read() and "max_new_tokens=140" in stage and 'apad=whole_dur=4' in stage)
+check("ending during a local turn preserves and finishes its late reply", "if(vc.busy){_avCallLit('thinking');return;}" in client and "if(session.closing)_finishLocalVoiceSession(session)" in client and "then(async d=>{if(window._vc!==session)return" not in client)
 check("test writes remain under scratch HOME", out.startswith(scratch.name))

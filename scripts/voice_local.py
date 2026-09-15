@@ -44,7 +44,7 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     brain_raw, _ = _post(LM + "/v1/chat/completions", {"model":BRAIN,
         "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-        "temperature":.85,"max_tokens":1200}, 180)
+        "temperature":.85,"max_tokens":360}, 180)
     brain = json.loads(brain_raw); reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content","").strip()
     if not reply: return {"ok":False,"stage":"brain","error":"local brain returned no words","hearing":heard}
     voice_raw, headers = _post(STAGE + "/tts", {"text":reply}, 210)

@@ -115,16 +115,17 @@ def _heard_fields(text):
 def _hear_audio(wav_path):
     """Give the waveform itself to Gemma 3n's USM audio tower."""
     _ears_load()
-    request = ("Listen to the attached recording itself. First transcribe the words under "
-        "the heading 'Transcription of Recording:'. Then under the heading \"Speaker's "
-        "Delivery Description:\" describe audible inflection, tone, pacing, emphasis, "
-        "hesitation, laughter, breath, and other paralinguistic information that matters "
-        "to how it was said. Do not infer facts that are not audible and do not omit "
-        "explicit language.")
+    request = ('Listen to the recording itself. Return JSON only as '
+        '{"transcript":"exact words","audio_reading":"one concise sentence about audible '
+        'inflection, tone, pace, emphasis, hesitation, laughter, or breath"}. Preserve '
+        'explicit language. Do not infer anything that is not audible.')
     messages = [{"role":"user", "content":[{"type":"audio", "audio":wav_path},
                                              {"type":"text", "text":request}]}]
     with _ears_lock:
-        result = _ears_pipe(text=messages, max_new_tokens=420)
+        # A live turn needs a transcript plus a compact delivery reading, not an
+        # essay.  The former 420-token allowance made short utterances spend
+        # most of a minute generating analysis after the words were understood.
+        result = _ears_pipe(text=messages, max_new_tokens=140)
     generated = result[0]["generated_text"][-1]["content"]
     return _heard_fields(generated)
 
@@ -138,7 +139,7 @@ def hear_pcm(audio_b64, rate=24000):
         # The audio tower needs enough frames for its convolutional subsampler.
         # Normalize to its documented 16 kHz mono input and pad short turns only.
         subprocess.run([FFMPEG,"-y","-loglevel","error","-i",raw_path,
-            "-af","apad=whole_dur=10","-t","30","-ar","16000","-ac","1",wav_path],
+            "-af","apad=whole_dur=4","-t","30","-ar","16000","-ac","1",wav_path],
             check=True, timeout=20, env=ENV)
         heard = _hear_audio(wav_path); transcript = str(heard.get("transcript", "")).strip()
         reading = str(heard.get("audio_reading", "")).strip()[:1200]
