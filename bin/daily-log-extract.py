@@ -162,22 +162,35 @@ def build_inner():
     out += "".join(parts)
 
     path = os.path.join(MEMORY, f"daily-inner-life-{TODAY}.md")
-    # Preserve First Light section if already written by first-light.sh
-    try:
-        if os.path.exists(path):
-            existing = open(path).read()
-            if "## First Light" in existing:
-                fl_start = existing.index("## First Light")
-                fl_block = existing[fl_start:]
-                # Only keep up to next ## section that daily-log-extract owns
-                import re as _flre
-                _next = _flre.search(r'\n## (?!First Light)', fl_block)
-                if _next:
-                    fl_block = fl_block[:_next.start()]
-                out += "\n" + fl_block.strip() + "\n"
-    except: pass
-    with open(path, "w") as f:
-        f.write(out)
+    # We rebuild our own content and overwrite the file, so we MUST carry forward the sections
+    # other authors appended after us — First Light (first-light.sh) and the lab digest blocks
+    # (chemistry_digest / lab_daily_digest, marker AND body). They always land after our
+    # content, so everything from "## First Light" (or the first lab marker) to EOF is theirs.
+    # The old code kept only First Light and truncated at the next heading — which was the lab
+    # digest's own heading — so it ate the body and left the orphan marker. That is exactly why
+    # "the lab kept coming off the ledger" (Gloria, 2026-09-15). We also take the shared
+    # daily-inner lock so a digest append can't race our read-modify-write.
+    import fcntl as _fc
+    lock_path = os.path.join(MEMORY, ".daily-inner-life.lock")
+    with open(lock_path, "a") as _lock:
+        _fc.flock(_lock, _fc.LOCK_EX)
+        try:
+            if os.path.exists(path):
+                existing = open(path).read()
+                tail = ""
+                if "## First Light" in existing:
+                    tail = existing[existing.index("## First Light"):]
+                else:
+                    import re as _labre
+                    _m = _labre.search(r'<!-- (?:chemistry-lab|q1-lab)-digest:', existing)
+                    if _m:
+                        tail = existing[_m.start():]
+                if tail.strip():
+                    out += "\n" + tail.strip() + "\n"
+        except Exception:
+            pass
+        with open(path, "w") as f:
+            f.write(out)
     print(f"[DailyLog] inner life: {path}")
 
 def build_creative():

@@ -86,6 +86,7 @@ def append(file_day=None, data_day=None):
     os.makedirs(MEMORY, exist_ok=True)
     path = os.path.join(MEMORY, f"daily-inner-life-{file_day}.md")
     marker = f"<!-- q1-lab-digest:{data_day} -->"
+    heading = "## Admission Lab — daily receipt"
     lock_path = os.path.join(MEMORY, ".daily-inner-life.lock")
     with open(lock_path, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -93,12 +94,16 @@ def append(file_day=None, data_day=None):
             old = open(path, encoding="utf-8", errors="replace").read()
         except FileNotFoundError:
             old = ""
-        if marker in old:
+        # Idempotent only when the FULL block is present. A marker with no body — left when a
+        # rewriter stripped the section — must not count as present, or it blocks the restore
+        # forever. Drop the orphan marker, then rewrite the full block.
+        if marker in old and heading in old:
             return False, path
-        with open(path, "a", encoding="utf-8") as handle:
-            if old and not old.endswith("\n"):
-                handle.write("\n")
-            handle.write("\n" + render(data_day))
+        if marker in old:
+            old = "\n".join(l for l in old.splitlines() if l.strip() != marker.strip()).rstrip()
+        new = old + ("\n" if old and not old.endswith("\n") else "") + "\n" + render(data_day)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(new); handle.flush(); os.fsync(handle.fileno())
     return True, path
 
 

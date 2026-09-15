@@ -90,8 +90,25 @@ assert M.backfill(7) == [] or str(inner) not in M.backfill(7), "backfill is idem
 ghost = date.today() - timedelta(days=6)
 assert not (Path(M.MEMORY) / f"daily-inner-life-{ghost.isoformat()}.md").exists(), "a day with no morning file is never fabricated"
 
+# Orphan heal: a marker left with NO body (a rewriter stripped the section) must be restored,
+# not read as already-present. This is the "comes off the ledger and won't come back" bug —
+# the lingering marker was blocking the digest from re-adding the block.
+O_FILE = (date.today() - timedelta(days=4)).isoformat()
+O_DATA = (date.today() - timedelta(days=5)).isoformat()
+orph = Path(M.MEMORY) / f"daily-inner-life-{O_FILE}.md"
+orph.write_text(f"# inner\n\n## First Light\nkept body\n\n<!-- chemistry-lab-digest:{O_DATA} -->\n")
+healed_wrote, _ = M.append(O_FILE)
+ht = orph.read_text()
+assert healed_wrote, "an orphan marker is healed, not skipped as already-present"
+assert f"## Chemistry Lab — {O_DATA}" in ht, "the body is restored under the orphan marker"
+assert ht.count(f"<!-- chemistry-lab-digest:{O_DATA} -->") == 1, "no duplicate marker after healing"
+assert "## First Light\nkept body" in ht, "healing preserves the rest of the file"
+assert not M.append(O_FILE)[0], "a fully-restored block is idempotent again"
+
 source = (REPO / "scripts" / "chemistry_digest.py").read_text()
 assert "memory/atelier" not in source and "atelier-reveals" not in source
 assert "_yesterday(" in source, "the day-boundary helper is in use"
 assert "def backfill(" in source, "self-healing backfill is present"
-print("all chemistry-digest checks passed (append + backfill)")
+dle = (REPO / "bin" / "daily-log-extract.py").read_text()
+assert "chemistry-lab|q1-lab" in dle and ".daily-inner-life.lock" in dle, "daily-log-extract carries the lab blocks under the shared lock"
+print("all chemistry-digest checks passed (append + backfill + orphan heal)")
