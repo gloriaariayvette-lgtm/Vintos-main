@@ -569,8 +569,14 @@ def main():
 import sys as _guard_sys
 from pathlib import Path as _GuardPath
 _guard_here = _GuardPath(__file__).resolve().parent
+# The deployed entrypoint is a symlink (scripts/dream_music.py -> /home/gloria/Vintos/...);
+# .resolve() follows it to the target dir, where store_guard is NOT a sibling. The install
+# dir — the symlink's own unresolved parent — is where store_guard.py actually lives, so
+# insert it too, or a symlinked entrypoint crashes at import (Gloria, 2026-09-15).
+_guard_link = _GuardPath(__file__).parent
 _guard_sys.path.insert(0, str(_guard_here.parent / "scripts"))
 _guard_sys.path.insert(0, str(_guard_here))
+_guard_sys.path.insert(0, str(_guard_link))
 from store_guard import serialized as _serialized
 process_file=_serialized("LOG")(process_file)
 direct=_serialized("LOG")(direct)
