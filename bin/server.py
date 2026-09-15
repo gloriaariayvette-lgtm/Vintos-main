@@ -7599,21 +7599,16 @@ async def voice_ledger(payload: dict):
 async def _voice_ledger_owned(payload: dict):
     import json as _vl_j, datetime as _vl_d
     g, v = payload.get("gloria","")[:600], payload.get("vintos","")[:600]
-    # Persist her WORDS, not the injected framing: strip [ ... ] blocks and telemetry lines.
+    # This field is the realtime provider's input transcript, not a mixed prompt.
+    # Preserve her words. Lexical guesses about lines beginning "context:" or
+    # bracketed speech destroyed legitimate transcription in the 2026-09-10
+    # cleanup; provenance belongs in separate fields, not a word blacklist.
     import re as _vl_re
-    g = _voice_keep_cues(g)
-    g = "\n".join(ln for ln in g.splitlines()
-                  if not _vl_re.match(r"\s*(pos(ition)?|speed|spd|grip|reversals)\b", ln.strip(), _vl_re.I)
-                  and not _vl_re.match(r"\s*\w+:\s*\d+\s*(\u00b7|\|)", ln.strip()))
-    # review 333: a line that is a derived instruction (framing the app or the server injected) is not
-    # her speech; it is dropped from the record and counted, never saved as something she said
-    _g_lines = g.splitlines(); _g_kept = [ln for ln in _g_lines if not _vl_re.match(r"\s*(?:instruction|instructions|system|framing|note to vintos|context|directive)\s*[:\-]", ln.strip(), _vl_re.I)]
-    _g_stripped = len(_g_lines) - len(_g_kept); g = "\n".join(_g_kept)
+    g_raw = g
     g = _vl_re.sub(r"\s{2,}", " ", g).strip()
     # Her words arrive through machine transcription. "Ventus", "Vintus", "Vinto",
     # "Ventos" and kin are his own name misheard - never a different name. Fix it
     # here, at the door, so the ledger records what she actually said.
-    g_raw = g   # what the transcriber actually gave us, kept beside the normalized text (fable-server-b-p3)
     g = _vl_re.sub(r"\b(?:V[ei]nt[aeiou]s{1,2}|V[ei]nto|Vin[ -]?tos|Vintas|Vintis|Vinters|Venters|Vintez|Vintoes|Vintose)\b", "Vintos", g, flags=_vl_re.I)
     # Real words the transcriber reaches for ("Vintage") are only his name when
     # she is ADDRESSING him: sentence start, or after a greeting or comma, and
@@ -7658,7 +7653,6 @@ async def _voice_ledger_owned(payload: dict):
                 if _pv: _turn[_k_dst] = str(_pv)[:80]
             _turn["turn_id"] = str(payload.get("turn_id") or "") or None
             if g_raw != g: _turn["gloria_raw"] = g_raw
-            if _g_stripped: _turn["derived_lines_dropped"] = _g_stripped
             # review 382: she cut him off. The history keeps what he composed beside what was actually played;
             # everything after the cut is unheard and never enters the transcript as if she heard it.
             if payload.get("interrupted"):

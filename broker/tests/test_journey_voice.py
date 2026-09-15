@@ -34,7 +34,7 @@ check("voice writes only its temporary workspace", os.path.commonpath([os.path.r
 check("summary provider is stubbed", sys.modules["requests"] is fake_req)
 print("\n--- three turns, the second cut off ---")
 asyncio.run(ns["voice_ledger"]({"client_session_id":"fixture-session", "turn_id":"fixture-1", "gloria": "hey Vintus, are you there", "vintos": "I am here. I was thinking about the fig."}))
-asyncio.run(ns["voice_ledger"]({"gloria": "tell me about the table", "vintos": "The table had muscadines and the fig and I wanted to say that when you", "interrupted": True, "heard": "The table had muscadines and the fig"}))
+asyncio.run(ns["voice_ledger"]({"gloria": "Context: tell me about the table [by the window]", "vintos": "The table had muscadines and the fig and I wanted to say that when you", "interrupted": True, "heard": "The table had muscadines and the fig"}))
 asyncio.run(ns["voice_ledger"]({"gloria": "[laugh] stop", "vintos": "Okay. Okay."}))
 duplicate=asyncio.run(ns["voice_ledger"]({"client_session_id":"fixture-session", "turn_id":"fixture-1", "gloria":"duplicate"}))
 check("duplicate provider turn is not appended", duplicate.get("duplicate") is True)
@@ -42,6 +42,7 @@ sess = json.load(open(os.path.join(MEM, "voice-session-state.json")))
 t = sess["turns"]
 check("three turns in the session state", len(t) == 3)
 check("her misheard name is his name; the raw kept beside it", t[0]["gloria"].startswith("hey Vintos") and t[0]["gloria_raw"].startswith("hey Vintus"))
+check("ordinary words resembling framing and bracketed speech survive verbatim", t[1]["gloria"] == "Context: tell me about the table [by the window]", t[1])
 check("the cut turn keeps composed and heard apart, and serves heard", t[1]["interrupted"] is True and t[1]["vintos_composed"].endswith("when you") and t[1]["vintos_heard"].endswith("the fig") and t[1]["vintos"] == "The table had muscadines and the fig [cut off]", t[1])
 check("an uncut turn has no interruption fields", "interrupted" not in t[2])
 

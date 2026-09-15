@@ -30,12 +30,31 @@ agree with. Root causes found and what stands:
 Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still to verify:
 **live calls**.
 
-### For Chat / the app client (vintos-app) — not yet done
-- **Chat box must render the sent message immediately** (visual echo before the server
-  round-trip). Gloria's explicit ask.
-- **Voice-call transcription quality is a regression** (a prior change made it worse) —
-  she says it is NOT acoustic echo. Investigate the transcription config / ledger
-  normalization changed last week; do not assume echo.
+### App client follow-up
+- Avatar text send now paints her message and clears the submitted draft before
+  the server round-trip. The request uses the pre-send history snapshot and only
+  commits that optimistic line to saved history after acknowledgement; a failed
+  request restores it only when she has not typed something newer. Browser and
+  source-order fixtures establish that the input and drawer remain responsive.
+  Signed-device visual acceptance remains to be observed after the app rebuild.
+- The voice transcription model and vocabulary prompt did not change last week.
+  The September 12 response-lifecycle patch instead froze Gloria's transcript at
+  `response.created`, before the completed transcription event. The response copy
+  now follows updated/completed events. The September 10 semantic line blacklist
+  also no longer deletes legitimate speech such as `Context: ...` or bracketed
+  words. Provider output is preserved; this is not an echo treatment. A real call
+  remains the final acoustic/transcriber acceptance test.
+
+### Causality store compaction
+- Histories and readable formation duplicates now have configurable bounds; the
+  complete formation fingerprints and evidence IDs remain unbounded because they
+  enforce the no-self-confirmation law. Delivered outbox receipts are purged only
+  after their idempotent destination acknowledges them, and the store writes
+  compact JSON. The explicit migration retires overdue evidence-poor ordinary
+  hypotheses at day 7 and Ghost Branch hypotheses at day 32, while never dropping
+  confirmed/self-knowledge rows or an eligible row awaiting review. Live backup,
+  migration byte counts and post-migration formation/graduation health remain
+  deployment evidence, not facts inferred from the isolated fixture.
 
 ## 14 September — Atelier breadth
 

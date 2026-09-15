@@ -14,7 +14,7 @@ STORE = re.compile(r'["\']([A-Za-z0-9_.\-]+\.(?:json|jsonl))["\']')
 WRITE = re.compile(r'json\.dump\(|open\([^)]*["\'](?:w|a)\+?["\']|_atomic|save_ledger|append_ledger|atomic_json|_save\(|save_pool|save_json|compare_and_swap|os\.replace\(')
 LOCK = re.compile(r'fcntl\.flock|LOCK_EX|save_ledger|append_ledger|_Lock\(|_table_lock|\.lock["\']|flock\(')
 # Recognize nearby helper calls without claiming anything about their lock scope.
-LOCKED_HELPERS = re.compile(r'compare_and_swap\(|write_json\(|_sg_write\(|locked_update|_locked_write|save_pool\(|save_ledger\(|append_ledger\(|atelier_ledger\.mark|_lu\(|_lu2\(|prediction_ledger\.')
+LOCKED_HELPERS = re.compile(r'transaction\(|compare_and_swap\(|write_json\(|_sg_write\(|locked_update|_locked_write|save_pool\(|save_ledger\(|append_ledger\(|atelier_ledger\.mark|_lu\(|_lu2\(|prediction_ledger\.')
 SKIP = ("broker/tests", "__pycache__", "scripts/entry_owners.py", "scripts/store_owners.py")
 
 

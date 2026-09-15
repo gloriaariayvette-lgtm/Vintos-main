@@ -17,7 +17,7 @@ import subprocess
 import copy
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from store_guard import transaction, write_json
+from store_guard import transaction, save_json
 
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
@@ -378,6 +378,11 @@ def _queue_delivery(db, kind, payload, key):
     return event_id
 
 
+def _save_hypotheses_locked(value):
+    """Compact atomic replacement; safe both outside and inside the store transaction."""
+    with transaction(HYPOTHESIS_DB): save_json(HYPOTHESIS_DB, value, indent=None)
+
+
 def _deliver(event_id, event):
     from durable_projection import append_once
     kind, payload = event["kind"], event["payload"]
@@ -420,7 +425,17 @@ def recover_deliveries():
                         if _hypothesis_id(h) == hid:
                             h.pop("promotion_pending", None)
                             h["promotion_state"] = "delivered"
-                write_json(HYPOTHESIS_DB, fresh)
+                _save_hypotheses_locked(fresh)
+    # A delivered outbox row has already crossed its destination's idempotent
+    # door. Keeping its full hypothesis payload here forever is not evidence;
+    # the destination ledger is the receipt. Pending failures remain intact.
+    with transaction(HYPOTHESIS_DB):
+        fresh = _read_hypotheses()
+        events = fresh.get("deliveries", {})
+        pending = {k: v for k, v in events.items() if v.get("state") != "delivered"}
+        if len(pending) != len(events):
+            fresh["deliveries"] = pending
+            _save_hypotheses_locked(fresh)
 
 
 def save_hypotheses(db):
@@ -430,10 +445,11 @@ def save_hypotheses(db):
     db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
     db["confirmed"] = sum(1 for h in rows if h.get("self_knowledge"))
     db["tested"] = sum(1 for h in rows if _nightly_rows(h))
+    _compact_db_in_place(db)
     with transaction(HYPOTHESIS_DB):
         if _read_hypotheses() != db.original:
             raise RuntimeError("hypotheses changed during inference; obsolete pass refused")
-        write_json(HYPOTHESIS_DB, dict(db))
+        _save_hypotheses_locked(dict(db))
     recover_deliveries()
     fresh = load_existing_hypotheses()
     db.clear()
@@ -448,6 +464,91 @@ MIN_NIGHTLY_EVALUATIONS = 7
 MIN_SUPPORTING_OCCASIONS = 2
 ORDINARY_TENURE_DAYS = 7
 GHOST_BRANCH_TENURE_DAYS = 32
+HISTORY_CAP = max(GHOST_BRANCH_TENURE_DAYS + 1, int(os.environ.get("CAUSALITY_HISTORY_CAP", "40")))
+FORMATION_SNIPPET_CAP = max(1, int(os.environ.get("CAUSALITY_FORMATION_SNIPPET_CAP", "16")))
+DISTRIBUTION_CAP = max(1, int(os.environ.get("CAUSALITY_DISTRIBUTION_CAP", "8")))
+
+
+def _cap_list(owner, key, cap):
+    rows = owner.get(key)
+    if not isinstance(rows, list) or len(rows) <= cap:
+        return 0
+    omitted = len(rows) - cap
+    owner[key] = rows[-cap:]
+    owner[key + "_omitted"] = int(owner.get(key + "_omitted", 0)) + omitted
+    return omitted
+
+
+def _compact_db_in_place(db):
+    """Bound duplicate/history material without weakening causal lineage.
+
+    Root fingerprints and evidence ids are never capped: they are the guard
+    which prevents formation material from later voting for itself. Only the
+    readable duplicate snippets and bounded histories are shortened.
+    """
+    stats = {"history_rows_omitted": 0, "root_snippets_omitted": 0,
+             "distribution_rows_omitted": 0}
+    for h in db.get("hypotheses", []):
+        for key in ("marks", "evidence", "nightly_evaluations", "history"):
+            stats["history_rows_omitted"] += _cap_list(h, key, HISTORY_CAP)
+        formation = h.get("formation")
+        if isinstance(formation, dict):
+            stats["root_snippets_omitted"] += _cap_list(
+                formation, "root_snippets", FORMATION_SNIPPET_CAP)
+        stats["distribution_rows_omitted"] += _cap_list(
+            h, "distribution", DISTRIBUTION_CAP)
+    return stats
+
+
+def _retire_stale_unconfirmed(db, today=None):
+    """Retire overdue evidence-poor rows; never retire settled self-knowledge.
+
+    An overdue row which is actually eligible stays for the normal independent
+    graduation reviewer. Ghost Branch keeps its explicit 32-day tenure.
+    """
+    from datetime import date as _date
+    now = today or _date.today()
+    if isinstance(now, str):
+        now = _date.fromisoformat(now[:10])
+    kept, retired = [], []
+    for h in db.get("hypotheses", []):
+        if (h.get("self_knowledge") or h.get("graduated")
+                or h.get("status") in ("confirmed", "graduated")):
+            kept.append(h); continue
+        formed = str(h.get("formed_date", h.get("formed", "")))[:10]
+        try: age = (now - _date.fromisoformat(formed)).days
+        except Exception:
+            kept.append(h); continue
+        tenure = GHOST_BRANCH_TENURE_DAYS if h.get("source") == "ghost_branch" else ORDINARY_TENURE_DAYS
+        ready = graduation_readiness(h, today=now)
+        if age < tenure or ready.get("state") == "eligible_day_7":
+            kept.append(h); continue
+        h["status"] = "retired"
+        h["retirement"] = {"at": datetime.now().isoformat(),
+            "reason": "tenure_ended_without_graduation", "tenure_days": tenure,
+            "readiness": copy.deepcopy(ready), "resolved": False, "refuted": False}
+        _queue_delivery(db, "retired", h, _hypothesis_id(h))
+        retired.append(h)
+    db["hypotheses"] = kept
+    return retired
+
+
+def compact_store(today=None):
+    """One explicit, lock-held migration for the live causality store."""
+    before = os.path.getsize(HYPOTHESIS_DB) if os.path.exists(HYPOTHESIS_DB) else 0
+    with transaction(HYPOTHESIS_DB):
+        db = _read_hypotheses()
+        retired = _retire_stale_unconfirmed(db, today=today)
+        stats = _compact_db_in_place(db)
+        rows = db.get("hypotheses", [])
+        db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
+        db["confirmed"] = sum(1 for h in rows if h.get("self_knowledge"))
+        db["tested"] = sum(1 for h in rows if _nightly_rows(h))
+        _save_hypotheses_locked(db)
+    recover_deliveries()
+    after = os.path.getsize(HYPOTHESIS_DB) if os.path.exists(HYPOTHESIS_DB) else 0
+    return {"before_bytes": before, "after_bytes": after,
+            "retired": len(retired), **stats}
 
 
 def _norm_evidence(text):
@@ -1766,8 +1867,11 @@ if __name__ == "__main__":
     import argparse as _ap
     _p = _ap.ArgumentParser()
     _p.add_argument("--nightly", action="store_true")
+    _p.add_argument("--compact", action="store_true")
     _args, _ = _p.parse_known_args()
-    if _args.nightly:
+    if _args.compact:
+        print(json.dumps(compact_store(), sort_keys=True))
+    elif _args.nightly:
         nightly_run()
     else:
         main()

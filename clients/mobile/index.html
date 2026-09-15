@@ -4211,19 +4211,26 @@ async function avSendChat() {
   _avUnlockAudio();
   const turn=VintosUI.begin('avatar'); if(!turn)return;
   const sentDraft=inp.value;
+  const historyForRequest=_avChatHistory.slice(-6);
   let turnOpen=true;
-  
+
+  // Paint the send before any network/model work. This is a visual receipt,
+  // not a storage acknowledgement: history is still committed only after the
+  // server accepts the turn. Keeping it outside the awaited path also leaves
+  // the input and drawer on the browser's event loop while he is thinking.
+  VintosUI.ack(inp,sentDraft);
+  _avLogMsg('user',text);
+
   try {
     _avLoadBrain(); const r = await VintosUI.request(API+'/api/avatar/chat', {
       method:'POST',
       headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},
-      body:JSON.stringify({message:text, history:_avChatHistory.slice(-6), image:_avLastScreenshot || undefined})
+      body:JSON.stringify({message:text, history:historyForRequest, image:_avLastScreenshot || undefined})
     });
     const d = await r.json();
     const raw = d.reply||d.message;
     if(typeof raw!=='string')throw new Error('Missing reply');
-    VintosUI.ack(inp,sentDraft);
-    _avChatHistory.push({role:'user',content:text}); _avLogMsg('user',text);
+    _avChatHistory.push({role:'user',content:text});
     _avChatHistory.push({role:'assistant', content:raw.replace(/\[(?:COLOR|GESTURE|HOLD|SPAWN|RELEASE)[^\]]*\]/gi,'').trim()}); _avSaveHistory();
     if(!VintosUI.current(turn))return;
     const {text:display, gestures, holds, spawns, color, scenes, renders} = _avParseReply(raw);
@@ -4271,7 +4278,11 @@ async function avSendChat() {
     })();
     // Apply color to glow
     if(color){ if(!_avTargetColor) _avTargetColor = new THREE.Color(); _avTargetColor.set(color); }
-  } catch(e) { _avLogMsg("system", "[Send not confirmed. Your draft is kept.]"); }
+  } catch(e) {
+    // Never overwrite something she typed while this request was in flight.
+    if(!inp.value){ inp.value=sentDraft; inp.dispatchEvent(new Event('input',{bubbles:true})); }
+    _avLogMsg("system", "[Send not confirmed. The unsent words were restored if the box was still empty.]");
+  }
   finally { if(turnOpen)VintosUI.finish(turn); }
 }
 
@@ -4892,6 +4903,11 @@ function startVoiceCallWithToken(token, instructions, provider){
           } else if((m.type==='conversation.item.input_audio_transcription.updated'||m.type==='conversation.item.input_audio_transcription.completed') && (m.transcript||m.delta)){
             session.itemId=m.item_id||session.itemId;
             if(window._vc) window._vc.gloriaTurn = m.transcript || ((window._vc.gloriaTurn||'')+(m.delta||''));
+            // response.created commonly precedes the completed input transcript.
+            // Keep the owned response's copy live instead of freezing a partial
+            // transcript at creation time (the 2026-09-12 regression).
+            const response=session.currentResponse&&session.responses.get(session.currentResponse);
+            if(response&&!response.posted)response.gloria=session.gloriaTurn||'';
             if(m.type==='conversation.item.input_audio_transcription.completed') _vcRefreshFraming();
           } else if(m.type==='response.output_audio_transcript.done'){
             const response=responseFor(m);if(response&&m.transcript)response.text=m.transcript;

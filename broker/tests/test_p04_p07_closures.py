@@ -42,9 +42,9 @@ print("\n--- 304: the eye fails closed ---")
 si = src("scripts/image_sight.py")
 check("a failed look is recorded unsighted with no suitability; no VERDICT line is unjudged, never keep", 'e["verdict"] = "unsighted"' in si and 'e["suitable"] = None' in si and 'verdict, words = "unjudged", ""' in si and '"keep": True, "take_down": False' in si)
 
-print("\n--- 333: derived instructions are not her speech ---")
+print("\n--- 333 correction: her transcript is not classified by vocabulary ---")
 sv = src("bin/server.py")
-check("the voice ledger drops instruction/system/framing lines and counts them", "derived_lines_dropped" in sv and "instruction|instructions|system|framing|note to vintos|context|directive" in sv)
+check("the voice ledger preserves the provider transcript and has no semantic line blacklist", "g_raw = g" in sv and "derived_lines_dropped" not in sv and "instruction|instructions|system|framing|note to vintos|context|directive" not in sv)
 
 print("\n--- 213: a pending naming binds to its own response ---")
 PS = load("pleasure_substrate", os.path.join(REPO, "scripts", "pleasure_substrate.py"))

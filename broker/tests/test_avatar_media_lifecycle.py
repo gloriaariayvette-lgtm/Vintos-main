@@ -14,6 +14,11 @@ assert "AbortController" in aux and "12000" in aux
 assert "X-Client-Turn-Id" not in aux, "auxiliary media must carry no conversational authority"
 
 send = client.split("async function avSendChat()", 1)[1].split("// ── THREADS TAB", 1)[0]
+requested = send.index("await VintosUI.request(API+'/api/avatar/chat'")
+assert send.index("VintosUI.ack(inp,sentDraft)") < requested
+assert send.index("_avLogMsg('user',text)") < requested
+assert send.index("_avChatHistory.push({role:'user',content:text})") > requested
+assert "history:historyForRequest" in send
 visible = send.index("_avShowBubble(display)")
 released = send.index("VintosUI.finish(turn); turnOpen=false")
 media = send.index("_avStartReplyMedia(display,scenes)")
@@ -42,4 +47,9 @@ assert "releasePointerCapture" in drawer and "lostpointercapture" in drawer
 assert 'id="av-drawer"' in client and 'pointer-events:auto;' in client.split('id="av-drawer"', 1)[1].split('>', 1)[0]
 assert 'id="av-chat-strip"' in client and 'pointer-events:auto;' in client.split('id="av-chat-strip"', 1)[1].split('>', 1)[0]
 
-print("23/23 passed")
+voice = client.split("function startVoiceCallWithToken", 1)[1].split("function endVintosCall", 1)[0]
+transcript = voice.split("conversation.item.input_audio_transcription.updated", 1)[1].split("response.output_audio_transcript.done", 1)[0]
+assert "response.gloria=session.gloriaTurn||''" in transcript
+assert transcript.index("response.gloria=session.gloriaTurn||''") < transcript.index("_vcRefreshFraming()")
+
+print("29/29 passed")
