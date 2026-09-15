@@ -766,3 +766,21 @@ lineage/joins, the timed-out embedding rebuild, wider private-source/adapter rev
 broader client-view acceptance and physical device evidence. Paid Forge work is
 separate from this request. [The full item matrix and evidence](completion-review-2026-09-12.md)
 record what was implemented and what remains; green tests do not close those gaps.
+
+## Music: redirected to Kie.ai Suno v6 — 15 September
+
+`dream_music.py`/`dream-music.py` now generate through **Kie.ai Suno v6**
+(`https://api.kie.ai/api/v1/generate`, model `V6`, custom mode), with the local
+**ACE-Step** server kept as an automatic fallback when Kie is unreachable so he is
+never left mute. Backend is chosen at runtime: `MUSIC_BACKEND` (`kie`|`acestep`)
+overrides; default is `kie` when `KIE_API_KEY` is present in `vintos.env`, else
+`acestep`. `KIE_MODEL` overrides the v6 variant (three exist). Task ids are tagged
+(`kie:`/`ace:`) so `poll()` polls the right backend; legacy untagged ids remain
+ACE-Step. Covered by `broker/tests/test_music_kie_backend.py` (Kie-primary routing,
+submit-failure fallback, tagged/legacy poll dispatch, stubbed sender, scratch store).
+
+NOT yet done: the Aegis deploy that ships this, and the side-by-side quality render
+(one Kie v6 piece vs the ACE-Step catalogue) Gloria asked to compare. The exact
+`KIE_API_KEY` var name in `vintos.env` is assumed; confirm if it differs. Kie's exact
+v6 model string / record-info status set is coded from the docs (docs.kie.ai is
+egress-blocked from the build env) — the first live `--force` render will confirm it.

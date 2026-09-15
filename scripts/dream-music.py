@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""dream-music.py — Vintos Music via Kie.ai Suno V5"""
+"""dream-music.py — Vintos Music. Primary backend Kie.ai Suno v6; local ACE-Step is the
+fallback so he is never left mute when Kie is unreachable (Gloria, 2026-09-15)."""
 import os,sys,json,time,glob,re,hashlib,argparse,unicodedata
 from datetime import datetime
 from urllib.request import Request,urlopen
@@ -12,6 +13,34 @@ LOG=os.path.join(MUSIC,"music.json")
 JOURNAL=os.path.expanduser("~/.vintos/workspace/memory/activity-log")
 MODEL="acestep-v15-turbo"
 TEMPORAL_FILE=os.path.expanduser("~/.vintos/workspace/memory/temporal-context.txt")
+
+def _env(name, default=""):
+    """Read a value from ~/.vintos/vintos.env through the one canonical reader."""
+    import sys as _es
+    _es.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    _es.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+    try:
+        from env_file import value as _ev
+        return _ev(name, default)
+    except Exception:
+        try:
+            for l in open(os.path.expanduser("~/.vintos/vintos.env")):
+                t = l.strip()
+                if t.startswith("export "): t = t[7:].lstrip()
+                if t.startswith(name + "="):
+                    v = t.split("=", 1)[1].strip().rstrip("\r")
+                    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'): v = v[1:-1]
+                    return v.strip() or default
+        except Exception:
+            pass
+        return default
+
+# Kie.ai Suno v6. Key lives in vintos.env; KIE_MODEL overrides the v6 variant (there are three).
+KIE_URL   = "https://api.kie.ai/api/v1"
+KIE_KEY   = _env("KIE_API_KEY")
+KIE_MODEL = _env("KIE_MODEL", "V6")
+# Kie is primary when a key is present; MUSIC_BACKEND can force "acestep" or "kie".
+BACKEND   = (_env("MUSIC_BACKEND", "") or ("kie" if KIE_KEY else "acestep")).strip().lower()
 
 def get_temporal_context():
     try:
@@ -33,14 +62,21 @@ def api(method, path, data=None):
 
 LAST_SUBMISSION = {}
 
-def generate(title, style, desc="", instrumental=True, duration=120, gender=None):
-    """Submit music generation to local ACE-Step server."""
-    import requests as _rq
-    print(f"  Submitting: {title}")
-    print(f"  Style: {style[:80]}")
-    print(f"  Duration: {duration}s | Gender: {gender or 'unspecified'}")
+def _admit_ctx(provider, stage):
+    """review 170: a music render is background work on the same machine as his voice; it waits
+    for a live turn to pass (bounded) instead of starving it. The payload and files are untouched."""
+    try:
+        import sys as _cas; _cas.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        from compute_admission import admit as _admit
+        return _admit("background", organ="dream-music", provider=provider, stage=stage)
+    except Exception:
+        import contextlib as _cl
+        return _cl.nullcontext()
 
-    # Build structured prompt with section guidance
+def _compose(title, style, desc, instrumental, duration, gender):
+    """Shared prompt/lyrics building for any backend. Records LAST_SUBMISSION (the exact
+    payload handed to the backend, truncation explicit — astra-creative-p1/p3)."""
+    global LAST_SUBMISSION
     structure_hint = (
         "Structure: [Intro] establish mood and texture (0-8s), "
         "[Verse] develop the theme with full instrumentation (8-30s), "
@@ -48,12 +84,9 @@ def generate(title, style, desc="", instrumental=True, duration=120, gender=None
         "[Verse 2] deepen the narrative (45-90s), "
         "[Outro] resolve and fade with grace."
     )
-    # Add gender to style if specified
     gender_hint = ""
     if gender and "instrumental" not in (gender or ""):
         gender_hint = f"{gender} lead vocal, sung throughout. "
-
-    global LAST_SUBMISSION
     prompt = f"{gender_hint}{style}. {structure_hint}"
     if desc and not instrumental:
         lyrics = desc
@@ -62,51 +95,88 @@ def generate(title, style, desc="", instrumental=True, duration=120, gender=None
         lyrics = ""
     else:
         lyrics = ""
-
-    payload = {
-        "prompt": prompt[:800],
-        "duration": duration,
-        "instrumental": instrumental,
-        "thinking": True,
-        "bpm": None,
-    }
     if lyrics:
         import re as _lg
         lyrics = _lg.split(r"(?im)^\s*\*{0,2}\s*(How it feels|Emotional state|Internal note)", lyrics)[0]
         lyrics = "\n".join(l for l in lyrics.splitlines()
                             if not _lg.match(r"\s*\*\*(?!\[)", l))   # spec headers out, [Verse] labels stay
-        payload["lyrics"] = lyrics.strip()[:3000]
+        lyrics = lyrics.strip()[:3000]
+    LAST_SUBMISSION = {"title": title, "style_sent": style[:400], "prompt_sent": prompt[:2000], "lyrics_sent": (lyrics or "")[:4000],
+                       "instrumental": bool(instrumental), "duration_requested": duration, "gender": gender,
+                       "truncated": bool(len(prompt) > 2000 or len(lyrics or "") > 4000), "at": datetime.now().isoformat()}
+    return prompt, (lyrics or "")
 
+def _ace_generate(title, style, desc="", instrumental=True, duration=120, gender=None):
+    """Submit to the local ACE-Step server. Returns its raw task id or None."""
+    import requests as _rq
+    prompt, lyrics = _compose(title, style, desc, instrumental, duration, gender)
+    payload = {"prompt": prompt[:800], "duration": duration, "instrumental": instrumental, "thinking": True, "bpm": None}
+    if lyrics: payload["lyrics"] = lyrics
     try:
-        # the exact payload handed to the backend is kept, with any truncation made explicit (astra-creative-p1/p3)
-        LAST_SUBMISSION = {"title": title, "style_sent": style[:400], "prompt_sent": prompt[:2000], "lyrics_sent": (lyrics or "")[:4000],
-                           "instrumental": bool(instrumental), "duration_requested": duration, "gender": gender,
-                           "truncated": bool(len(prompt) > 2000 or len(lyrics or "") > 4000), "at": datetime.now().isoformat()}
-        # review 170: a music render is background work on the same machine as his voice; it waits
-        # for a live turn to pass (bounded) instead of starving it. The payload and files are untouched.
-        try:
-            import sys as _cas; _cas.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
-            from compute_admission import admit as _admit
-        except Exception:
-            import contextlib as _cl
-            _admit = lambda *a, **k: _cl.nullcontext()
-        with _admit("background", organ="dream-music", provider="ace-step", stage="release_task"):
-            r = _rq.post(f"{ACESTEP_URL}/release_task",
-                         json=payload,
-                         headers={"Content-Type": "application/json"},
-                         timeout=30)
+        with _admit_ctx("ace-step", "release_task"):
+            r = _rq.post(f"{ACESTEP_URL}/release_task", json=payload,
+                         headers={"Content-Type": "application/json"}, timeout=30)
         data = r.json()
         tid = data.get("data", {}).get("task_id")
         if not tid:
-            print(f"  Failed: {data}", file=sys.stderr)
-            return None
-        print(f"  Task: {tid}")
-        return tid
+            print(f"  ACE-Step failed: {str(data)[:200]}", file=sys.stderr); return None
+        print(f"  ACE-Step task: {tid}"); return tid
     except Exception as e:
-        print(f"  Failed: {e}", file=sys.stderr)
-        return None
+        print(f"  ACE-Step failed: {e}", file=sys.stderr); return None
 
-def poll(tid):
+def _kie_generate(title, style, desc="", instrumental=True, duration=120, gender=None):
+    """Submit to Kie.ai Suno v6 (custom mode). Returns its raw taskId or None."""
+    import requests as _rq
+    if not KIE_KEY:
+        print("  Kie: no KIE_API_KEY in vintos.env", file=sys.stderr); return None
+    prompt, lyrics = _compose(title, style, desc, instrumental, duration, gender)
+    # custom mode keys off `style`; an instrumental turn has no lyrics prompt, so his mood
+    # description must ride in style or it is lost. A vocal turn carries it as the lyrics prompt.
+    kie_style = (style or "Instrumental")
+    if instrumental and desc: kie_style = (kie_style + ". " + desc).strip()
+    body = {"customMode": True, "instrumental": bool(instrumental), "model": KIE_MODEL,
+            "style": kie_style[:1000], "title": (title or "Untitled")[:80]}
+    if not instrumental:
+        # custom mode: `prompt` carries the lyrics; fall back to the composed prompt if none parsed.
+        body["prompt"] = (lyrics or prompt)[:5000]
+    g = (gender or "").strip().lower()
+    if g.startswith("m"): body["vocalGender"] = "m"
+    elif g.startswith("f"): body["vocalGender"] = "f"
+    try:
+        with _admit_ctx("kie-suno", "generate"):
+            r = _rq.post(f"{KIE_URL}/generate", json=body,
+                         headers={"Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json"},
+                         timeout=30)
+        data = r.json()
+        # success envelope: {"code":200,"data":{"taskId":"..."}}; anything else is an error to surface.
+        if data.get("code") not in (200, None) and not (data.get("data") or {}).get("taskId"):
+            print(f"  Kie failed: {str(data)[:200]}", file=sys.stderr); return None
+        tid = (data.get("data") or {}).get("taskId") or data.get("taskId")
+        if not tid:
+            print(f"  Kie failed: {str(data)[:200]}", file=sys.stderr); return None
+        print(f"  Kie task: {tid}  (model {KIE_MODEL})"); return tid
+    except Exception as e:
+        print(f"  Kie failed: {e}", file=sys.stderr); return None
+
+def generate(title, style, desc="", instrumental=True, duration=120, gender=None):
+    """Dispatch to the configured backend, tagging the task id so poll() polls the right one.
+    Kie is primary; ACE-Step is the fallback so he is never left mute (Gloria, 2026-09-15)."""
+    print(f"  Submitting: {title}")
+    print(f"  Style: {style[:80]}")
+    print(f"  Duration: {duration}s | Gender: {gender or 'unspecified'} | backend: {BACKEND}")
+    order = ["kie", "acestep"] if BACKEND == "kie" else ["acestep", "kie"]
+    for be in order:
+        if be == "kie":
+            if not KIE_KEY: continue
+            tid = _kie_generate(title, style, desc, instrumental, duration, gender)
+            if tid: return "kie:" + tid
+            if BACKEND == "kie": print("  Kie failed — falling back to ACE-Step", file=sys.stderr)
+        else:
+            tid = _ace_generate(title, style, desc, instrumental, duration, gender)
+            if tid: return "ace:" + tid
+    return None
+
+def _ace_poll(tid):
     """Poll ACE-Step task until complete. Returns list of track dicts."""
     import requests as _rq, json as _json
     start = time.time(); att = 0
@@ -136,6 +206,43 @@ def poll(tid):
     print("  Timeout", file=sys.stderr)
     return None
 
+def _kie_poll(tid):
+    """Poll Kie.ai record-info until the tracks land. Normalizes to ACE-Step's track shape
+    ({file,duration,id}) so download/record code downstream is unchanged."""
+    import requests as _rq
+    start = time.time(); att = 0
+    FAIL = {"CREATE_TASK_FAILED", "GENERATE_AUDIO_FAILED", "CALLBACK_EXCEPTION", "SENSITIVE_WORD_ERROR", "FAILED"}
+    while (time.time() - start) < 600:
+        time.sleep(6); att += 1
+        try:
+            r = _rq.get(f"{KIE_URL}/generate/record-info", params={"taskId": tid},
+                        headers={"Authorization": "Bearer " + KIE_KEY}, timeout=20)
+            data = r.json()
+            d = (data.get("data") or {})
+            status = str(d.get("status") or "")
+            if status in FAIL:
+                print(f"  Kie failed: {status}", file=sys.stderr); return None
+            resp = d.get("response") or {}
+            items = resp.get("sunoData") or resp.get("data") or []
+            tracks = [{"file": (it.get("audioUrl") or it.get("audio_url") or it.get("streamAudioUrl")),
+                       "duration": it.get("duration"), "id": it.get("id")}
+                      for it in items if (it.get("audioUrl") or it.get("audio_url") or it.get("streamAudioUrl"))]
+            if tracks and status in ("SUCCESS", "COMPLETE"):
+                print(f"  Kie done! {len(tracks)} track(s)"); return tracks
+        except Exception as e:
+            print(f"  Kie poll error: {e}", file=sys.stderr)
+        if att % 5 == 0:
+            print(f"  Composing (kie)... {int(time.time()-start)}s")
+    print("  Kie timeout", file=sys.stderr)
+    return None
+
+def poll(tid):
+    """Poll whichever backend produced this task id (tag prefix); legacy untagged ids are ACE-Step."""
+    if not tid: return None
+    if tid.startswith("kie:"): return _kie_poll(tid[4:])
+    if tid.startswith("ace:"): return _ace_poll(tid[4:])
+    return _ace_poll(tid)
+
 def listen(fp):
     """review 314: what the piece actually is, measured from the bytes - duration, peak, loudness - so the
     record carries a listening, not only what was asked for. wav only; anything else says unmeasured."""
@@ -154,6 +261,18 @@ def listen(fp):
         return {"duration_s": round(dur, 1), "sample_rate": sr, "channels": ch, "peak": (round(peak, 3) if peak is not None else None), "rms": (round(rms, 4) if rms is not None else None), "measured": True}
     except Exception as e:
         return {"measured": False, "why": str(e)[:80]}
+
+def _ext_for(url):
+    """Extension for the saved track: Kie hands remote mp3/wav URLs, ACE-Step local wav paths."""
+    low = (url or "").lower()
+    for ext in (".mp3", ".wav", ".flac", ".m4a", ".ogg"):
+        if ext in low: return ext
+    return ".mp3" if low.startswith("http") else ".wav"
+
+def _model_of(tid):
+    """What actually rendered this task, for the record line."""
+    if tid and str(tid).startswith("kie:"): return "suno-%s (kie)" % KIE_MODEL.lower()
+    return MODEL
 
 def dl(url, fp):
     """Download/copy audio from ACE-Step local path or remote URL."""
@@ -319,12 +438,12 @@ def resume_landings():
             os.makedirs(MUSIC,exist_ok=True)
             landed=[]
             for i,t in enumerate(tracks):
-                path=os.path.join(MUSIC,"recovered-"+hashlib.sha256(str(tid).encode()).hexdigest()[:16]+"-"+str(i+1)+".wav")
+                path=os.path.join(MUSIC,"recovered-"+hashlib.sha256(str(tid).encode()).hexdigest()[:16]+"-"+str(i+1)+_ext_for(t.get("file")))
                 if not (os.path.isfile(path) and os.path.getsize(path)>0) and not (t.get("file") and dl(t["file"],path)): break
                 landed.append({"version":i+1,"audio_url":t.get("file"),"duration":t.get("duration"),"local_file":path})
             if len(landed)!=len(tracks): continue
             entry=dict(pending.get("metadata") or {})
-            entry.update(title=pending.get("title",""),task_id=tid,model=MODEL,tracks=landed,generated_at=datetime.now().isoformat(),recovered=True)
+            entry.update(title=pending.get("title",""),task_id=tid,model=_model_of(tid),tracks=landed,generated_at=datetime.now().isoformat(),recovered=True)
             log=load_log();log.setdefault("generated",[])[:]=[e for e in log.get("generated",[]) if e.get("task_id")!=tid]
             log["generated"].append(entry)
             source=entry.get("source")
@@ -333,11 +452,12 @@ def resume_landings():
     return recovered
 
 
-def journal(title,tracks,style):
+def journal(title,tracks,style,tid=None):
     today=datetime.now().strftime("%Y-%m-%d")
     jf=os.path.join(JOURNAL,f"{today}.md")
     now=datetime.now().strftime("%H:%M")
-    e=f"\n\n## {now} — Music: {title}\n\nComposed *{title}* ({style}) via ACE-Step (local).\n"
+    backend = ("Kie Suno %s" % KIE_MODEL) if (tid and str(tid).startswith("kie:")) else "ACE-Step (local)"
+    e=f"\n\n## {now} — Music: {title}\n\nComposed *{title}* ({style}) via {backend}.\n"
     for i,t in enumerate(tracks): e+=f"- Version {i+1}: {t.get('duration','?')}s\n"
     os.makedirs(JOURNAL,exist_ok=True)
     with open(jf,"a",encoding="utf-8") as f: f.write(e)
@@ -399,7 +519,7 @@ def process_file(fp,force=False):
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
-            mp3=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
+            mp3=os.path.join(MUSIC,f"{safe}_v{i+1}{_ext_for(t.get('file'))}")
             print(f"  Downloading track {i+1}...")
             if dl(t["file"],mp3):
                 sz=os.path.getsize(mp3)/(1024*1024)
@@ -434,7 +554,7 @@ def process_file(fp,force=False):
         if _lkey: desc = ("\U0001F3A7 What to listen for: " + _lkey + ("\n\n" + desc if desc else "")).strip()
     except Exception as _lke:
         print("  listener-key skip:", _lke)
-    entry={"title":d["title"],"style":style,"description":desc,"felt_sense":d.get("felt",""),"prompt":d.get("raw",""),"lyrics":d.get("lyrics",""),"instrumental":not bool(d.get("lyrics","")),"model":MODEL,"task_id":tid,"source":fp,"generated_at":datetime.now().isoformat(),"emotional_state_at_composition":_emo_at_composition,"tracks":[],
+    entry={"title":d["title"],"style":style,"description":desc,"felt_sense":d.get("felt",""),"prompt":d.get("raw",""),"lyrics":d.get("lyrics",""),"instrumental":not bool(d.get("lyrics","")),"model":_model_of(tid),"task_id":tid,"source":fp,"generated_at":datetime.now().isoformat(),"emotional_state_at_composition":_emo_at_composition,"tracks":[],
            # the composition contract, separately: what he authored (parsed fields) vs what was submitted (astra-creative-p1)
            "authored":{"title":d.get("title"),"genre":d.get("genre"),"tempo":d.get("tempo"),"key":d.get("key"),"duration":d.get("duration"),"gender":d.get("gender"),"has_lyrics":bool(d.get("lyrics"))},
            "submitted":dict(LAST_SUBMISSION)}
@@ -448,7 +568,7 @@ def process_file(fp,force=False):
     log=load_log()
     log["generated"].append(entry)
     if fp not in log.get("processed_files",[]): log.setdefault("processed_files",[]).append(fp)
-    save_log(log); journal(d["title"],tracks,style)
+    save_log(log); journal(d["title"],tracks,style,tid)
     try:   # the shares that were in the composer's context now carry this title (grok-creative-p3, 2026-09-05)
         _sc=json.load(open(fp+".shares.json")); _ids=set(_sc.get("share_ids") or [])
         if _ids:
@@ -501,7 +621,7 @@ def direct(title,style,desc="",lyrics=""):
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
-            wav=os.path.join(MUSIC,f"{safe}_v{i+1}.wav")
+            wav=os.path.join(MUSIC,f"{safe}_v{i+1}{_ext_for(t.get('file'))}")
             print(f"  Downloading track {i+1}...")
             if dl(t["file"],wav):
                 sz=os.path.getsize(wav)/(1024*1024)
@@ -512,7 +632,7 @@ def direct(title,style,desc="",lyrics=""):
     _want_text=os.environ.get("MUSIC_WANT_TEXT","")
     _want_source=os.environ.get("MUSIC_WANT_SOURCE","")
     _want_id=os.environ.get("MUSIC_WANT_ID","")
-    entry={"title":title,"style":style,"description":desc,"lyrics":lyrics,"prompt":desc,"instrumental":not bool(lyrics),"model":MODEL,"task_id":tid,"source":"direct","generated_at":datetime.now().isoformat(),"tracks":[]}
+    entry={"title":title,"style":style,"description":desc,"lyrics":lyrics,"prompt":desc,"instrumental":not bool(lyrics),"model":_model_of(tid),"task_id":tid,"source":"direct","generated_at":datetime.now().isoformat(),"tracks":[]}
     if _want_text: entry["want_text"]=_want_text; entry["want_source"]=_want_source or "wants-router"
     if _want_id: entry["want_id"]=_want_id
     for i,t in enumerate(tracks):
@@ -520,12 +640,12 @@ def direct(title,style,desc="",lyrics=""):
     entry["download"]={"requested":len(tracks),"got":len(downloaded),"partial":len(downloaded)<len(tracks)}
     if entry["download"]["partial"]: print(f"  PARTIAL: {len(downloaded)}/{len(tracks)} tracks on disk")
     entry["listening"] = [listen(f) for f in downloaded]   # review 314
-    log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style)
+    log["generated"].append(entry); _feel_landed(entry); save_log(log); journal(title,tracks,style,tid)
     if not entry["download"]["partial"]: _landing_done(tid, downloaded)
     print(f"\n  '{title}' complete!"); return True
 
 def main():
-    p=argparse.ArgumentParser(description="Vintos Music via Kie.ai Suno V5")
+    p=argparse.ArgumentParser(description="Vintos Music via Kie.ai Suno v6 (ACE-Step fallback)")
     p.add_argument("--force",action="store_true")
     p.add_argument("--all",action="store_true")
     p.add_argument("--title")
