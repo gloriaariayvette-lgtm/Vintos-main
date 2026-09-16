@@ -26,6 +26,9 @@ check("the displayed reply contains words rather than synthesis markup",
       VO.display_text("[A low laugh] <laugh> hello <pause>love</pause>")=="hello love")
 check("the selected local voice has no destructive post-synthesis pitch shift",
       VO.VOICE=="dan" and VO.PITCH_STEPS==0.0)
+check("Chatterbox preserves native cues and strips unsupported stage prose",
+      MS._chatterbox_text("<sigh> here [A breath, closer] <laugh>yes</laugh> [pause] now") ==
+      "[sigh] here [laugh] yes, now")
 VO._post = lambda *a, **k: (b"RIFF" + b"x"*80, "audio/wav")
 out = os.path.join(scratch.name,"voice.wav"); VO.synthesize_remote("hello",out)
 check("remote Orpheus writes a measured WAV", open(out,"rb").read().startswith(b"RIFF"))
@@ -49,10 +52,10 @@ def post(url, body, timeout):
             "ears":"gemma3n-audio-native-mlx-vlm","audio_native_gemma":True}).encode(), {}
     if url.endswith("/chat/completions"):
         return json.dumps({"choices":[{"message":{"content":"I heard you."}}]}).encode(), {}
-    return b"RIFF"+b"y"*80, {"X-Vintos-Voice":"orpheus"}
+    return b"RIFF"+b"y"*80, {"X-Vintos-Voice":"chatterbox_turbo"}
 VL._post=post; result=VL.turn("AA==",24000,"SOUL","fresh frame")
 brain_prompt=seen[1][1]["messages"][1]["content"]
-check("the turn returns local brain, Orpheus and literal transcript", result["ok"] and result["voice_engine"]=="orpheus" and result["transcript"]=="I am fine")
+check("the turn returns local brain, Chatterbox and literal transcript", result["ok"] and result["voice_engine"]=="chatterbox_turbo" and result["transcript"]=="I am fine")
 check("audio-native inflection reaches the brain beside the words", "emphasis rose" in brain_prompt and '"audio_native_gemma": true' in brain_prompt)
 check("the local reply shown to Gloria strips synthesis markup", result["reply"]=="I heard you.")
 check("the local lane calls no hosted provider", all("api.x.ai" not in url and "api.openai.com" not in url for url,_ in seen))
@@ -61,8 +64,16 @@ router=open(os.path.join(REPO,"bin","model_router.py")).read(); stage=open(os.pa
 check("the app offers Vintos Local and retains between-turn framing", "Vintos Local" in client and "provider==='local'" in client and "/api/voice/framing" in client)
 check("the local text toggle names the abliterated local route", "ABLIT GEMMA" in client and "gemma(avatar toggle)" in router)
 check("the server exposes start, turn, heartbeat and unload boundaries", 'provider == "local"' in server and '/api/voice/local/turn' in server and '/api/voice/local/heartbeat' in server and '/api/voice/local/end' in server)
+check("the live start receipt names the promoted voice", '"voice":"chatterbox-turbo-onyx"' in server)
 check("Mac ears route the waveform through Gemma 3n's audio tower", '"type":"audio"' in stage and '"audio_native_gemma": True' in stage and "mlx_whisper" not in stage)
 check("the ears stay warm until a heavy bench explicitly evicts them", 'elif evict_ears: _ears_unload()' in stage and '"evict_ears": bool(evict_ears)' in open(os.path.join(REPO,"scripts","voice_local.py")).read())
+check("the expressive MLX voice is call-scoped and Kokoro remains the outage fallback",
+      "_chatterbox_load(); _chatterbox_call_active = True" in stage and
+      "_chatterbox_call_active = False; _chatterbox_unload()" in stage and
+      '"engine": "kokoro_fallback"' in stage)
+check("one-off avatar speech cannot leave the live voice resident",
+      "transient_voice = not _chatterbox_call_active" in stage and
+      "if transient_voice: _chatterbox_unload()" in stage)
 check("short live turns bound both language generations", '"max_tokens":180' in open(os.path.join(REPO,"scripts","voice_local.py")).read() and "max_new_tokens=140 if not attempt else 180" in stage and 'apad=whole_dur=4' in stage)
 check("a malformed first ears reading gets one warm retry", "for attempt in range(2)" in stage)
 check("ending during a local turn preserves and finishes its late reply", "if(vc.busy){_avCallLit('thinking');return;}" in client and "if(session.closing)_finishLocalVoiceSession(session)" in client and "then(async d=>{if(window._vc!==session)return" not in client)

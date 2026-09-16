@@ -53,10 +53,10 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
     system = str(instructions or "")
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
     system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
-        "Gloria explicitly asks for something longer. For audible expression you may use at most "
-        "one exact Orpheus cue from <giggle>, <laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, "
-        "<groan>, <yawn>, or <gasp>. Never write bracketed stage directions. Never use whisper, "
-        "pause, emphasis, breath, or other invented tags.")
+        "Gloria explicitly asks for something longer. Your Chatterbox voice performs these exact "
+        "native cues: [laugh], [chuckle], [sigh], [gasp], or [cough]. You may use at most one, "
+        "only when you genuinely mean it. Never write any other bracketed stage direction and "
+        "never describe the cue in prose.")
     brain_raw, _ = _post(LM + "/v1/chat/completions", {"model":BRAIN,
         "messages":[{"role":"system","content":system},{"role":"user","content":user}],
         "temperature":.85,"max_tokens":180}, 180)

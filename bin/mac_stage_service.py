@@ -8,7 +8,7 @@ POST /speak and gets the finished mp4 back; nothing renders on Aegis.
 Runs under the Wav2Lip venv python (which has torch, kokoro, soundfile).
 Started by the LaunchAgent com.vintos.stage (port 8511).
 """
-import os, sys, json, hashlib, subprocess, base64, tempfile, wave, threading, gc
+import os, sys, json, hashlib, subprocess, base64, tempfile, wave, threading, gc, re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 def _sg_write(_p, _o, _who="organ"):
@@ -31,11 +31,15 @@ MANIFEST = os.path.join(STAGE, "manifest.json")
 W2L = os.path.join(HOME, "Wav2Lip")
 W2L_PY = os.path.join(W2L, ".venv", "bin", "python")
 W2L_CKPT = os.path.join(W2L, "checkpoints", "wav2lip_gan.pth")
-VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_michael")
+VOICE = os.environ.get("VINTOS_KOKORO_FALLBACK_VOICE", "am_onyx")
 PORT = int(os.environ.get("VINTOS_STAGE_PORT", "8511"))
 LM_BASE = os.environ.get("VINTOS_MAC_LM_BASE", "http://127.0.0.1:1234").rstrip("/")
 EARS_MODEL = os.environ.get("VINTOS_EARS_MODEL", "unsloth/gemma-3n-E2B-it")
 LMS = os.path.expanduser("~/.lmstudio/bin/lms")
+CHATTERBOX_MODEL = os.environ.get("VINTOS_CHATTERBOX_MODEL",
+    os.path.expanduser("~/.lmstudio/models/mlx-community/chatterbox-turbo-4bit"))
+CHATTERBOX_REFERENCE = os.environ.get("VINTOS_CHATTERBOX_REFERENCE",
+    os.path.join(STAGE, "voice-reference-onyx.wav"))
 
 # LaunchAgents don't inherit the shell PATH; Wav2Lip's last step shells out to
 # ffmpeg, so make sure the common install dirs are reachable.
@@ -48,6 +52,9 @@ FFMPEG = _sh.which("ffmpeg") or "/usr/local/bin/ffmpeg"
 _pipeline = None
 _ears_pipe = None
 _ears_lock = threading.RLock()
+_chatterbox = None
+_chatterbox_lock = threading.RLock()
+_chatterbox_call_active = False
 
 def log(m):
     print("[mac-stage] %s" % m, flush=True)
@@ -63,6 +70,67 @@ def kokoro_wav(text, out_path):
         return False
     sf.write(out_path, np.concatenate(chunks), 24000)
     return True
+
+_CHATTERBOX_CUES = "laugh|chuckle|sigh|gasp|cough|clear throat|sniff|groan|shush"
+_CHATTERBOX_CUE_SET = set(_CHATTERBOX_CUES.split("|"))
+
+def _chatterbox_text(text):
+    """Preserve only native Chatterbox controls; stage prose is never spoken."""
+    out = str(text or "")
+    # Accept the earlier Orpheus spelling while callers roll forward.
+    out = re.sub(r"<(giggle|sniffle)\s*>",
+                 lambda m: "[chuckle]" if m.group(1).lower() == "giggle" else "[sniff]",
+                 out, flags=re.I)
+    out = re.sub(r"<(%s)\s*>" % _CHATTERBOX_CUES,
+                 lambda m: "[%s] " % m.group(1).lower(), out, flags=re.I)
+    out = re.sub(r"</(?:%s|giggle|sniffle)\s*>", " ", out, flags=re.I)
+    out = re.sub(r"\[(pause|beat)\]", ", ", out, flags=re.I)
+    out = re.sub(r"\[(long[- ]pause)\]", "... ", out, flags=re.I)
+    out = re.sub(r"\[(breath|inhale|exhale)\]", "[sigh]", out, flags=re.I)
+    out = re.sub(r"\[([^\]\n]{1,240})\]",
+                 lambda m: "[%s]" % m.group(1).lower()
+                 if m.group(1).lower() in _CHATTERBOX_CUE_SET else " ", out)
+    out = re.sub(r"</?[A-Za-z][^>\n]{0,80}>", " ", out)
+    out = re.sub(r"\*+", "", out)
+    out = " ".join(out.split())
+    return re.sub(r"\s+([,.;!?])", r"\1", out)
+
+def _chatterbox_load():
+    """Keep the small MLX voice hot only for the lifetime of a local call."""
+    global _chatterbox
+    with _chatterbox_lock:
+        if _chatterbox is None:
+            if not os.path.isdir(CHATTERBOX_MODEL):
+                raise FileNotFoundError("Chatterbox model is not installed")
+            if not os.path.isfile(CHATTERBOX_REFERENCE):
+                raise FileNotFoundError("Onyx voice reference is not installed")
+            from mlx_audio.tts.utils import load_model
+            _chatterbox = load_model(model_path=CHATTERBOX_MODEL)
+            _chatterbox.prepare_conditionals(CHATTERBOX_REFERENCE)
+        return _chatterbox
+
+def _chatterbox_unload():
+    global _chatterbox
+    with _chatterbox_lock:
+        _chatterbox = None
+        gc.collect()
+        try:
+            import mlx.core as mx
+            mx.clear_cache()
+        except Exception: pass
+
+def chatterbox_wav(text, out_path):
+    """Local-call voice: Onyx timbre cloned once, native cues rendered in one pass."""
+    import numpy as np, soundfile as sf
+    with _chatterbox_lock:
+        model = _chatterbox_load()
+        chunks = [np.array(result.audio, dtype=np.float32) for result in model.generate(
+            text=_chatterbox_text(text)[:5000], temperature=0.7, top_p=0.95,
+            top_k=1000, repetition_penalty=1.2, max_tokens=800)]
+    if not chunks: return {"ok": False, "engine": "chatterbox_turbo", "error": "no audio"}
+    sf.write(out_path, np.concatenate(chunks), model.sample_rate, subtype="PCM_16")
+    return {"ok": True, "engine": "chatterbox_turbo", "voice": "onyx-reference",
+            "path": out_path}
 
 def orpheus_wav(text, out_path, voice=None, speed=None):
     """Preferred voice. The Mac owns SNAC decoding; Kokoro is the outage fallback."""
@@ -157,14 +225,19 @@ def hear_pcm(audio_b64, rate=24000):
             except OSError: pass
 
 def voice_models(active, evict_ears=False):
-    """Keep the ears warm between calls; heavy Mac benches may explicitly evict them."""
-    if not os.path.exists(LMS): return {"ok": False, "error": "lms CLI missing"}
+    """The live voice is call-scoped; the ears stay warm unless a heavy bench evicts them."""
+    global _chatterbox_call_active
     actions = []
-    for ident in ("orpheus-3b-ft.gguf",):
-        cmd = [LMS, "load", ident, "--ttl", "600", "-y"] if active else [LMS, "unload", ident]
-        r = subprocess.run(cmd, env=ENV, capture_output=True, text=True, timeout=90)
-        actions.append({"model": ident, "ok": r.returncode == 0,
-                        "detail": (r.stdout or r.stderr)[-160:]})
+    try:
+        if active:
+            _chatterbox_load(); _chatterbox_call_active = True
+        else:
+            _chatterbox_call_active = False; _chatterbox_unload()
+        actions.append({"model": "chatterbox-turbo-4bit", "ok": True,
+                        "detail": "MLX voice %s" % ("loaded" if active else "unloaded")})
+    except Exception as exc:
+        actions.append({"model": "chatterbox-turbo-4bit", "ok": False,
+                        "detail": str(exc)[:160]})
     try:
         if active: _ears_load()
         elif evict_ears: _ears_unload()
@@ -403,16 +476,25 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc: self._send(500, json.dumps({"ok":False,"error":str(exc)[:300]}).encode())
             return
         if self.path == "/tts":
+            transient_voice = not _chatterbox_call_active
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
                 fd, out = tempfile.mkstemp(suffix=".wav"); os.close(fd)
-                receipt = orpheus_wav(str(body.get("text", "")), out, body.get("voice"), body.get("speed"))
+                try:
+                    receipt = chatterbox_wav(str(body.get("text", "")), out)
+                except Exception as voice_exc:
+                    receipt = ({"ok": True, "engine": "kokoro_fallback", "path": out,
+                                "chatterbox_error": str(voice_exc)[:200]}
+                               if kokoro_wav(_chatterbox_text(str(body.get("text", ""))), out)
+                               else {"ok": False, "engine": "none", "error": str(voice_exc)[:240]})
                 if not receipt.get("ok"): self._send(500, json.dumps(receipt).encode()); return
                 data = open(out,"rb").read(); os.unlink(out)
                 self.send_response(200); self.send_header("Content-Type","audio/wav")
                 self.send_header("X-Vintos-Voice", receipt.get("engine","unknown")); self.send_header("Content-Length",str(len(data)))
                 self.end_headers(); self.wfile.write(data)
             except Exception as exc: self._send(500, json.dumps({"ok":False,"error":str(exc)[:300]}).encode())
+            finally:
+                if transient_voice: _chatterbox_unload()
             return
         if self.path == "/live":
             try:

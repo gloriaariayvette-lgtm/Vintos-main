@@ -7548,7 +7548,7 @@ async def voice_token(provider: str = "grok"):
             return {"token":"", "error":"local voice auxiliaries did not load: " + str(_ve)[:180],
                     "provider":"local", "instructions":instructions}
         return {"token":"local", "instructions":instructions, "provider":"local",
-                "model":"gemma-4-26b-a4b-it-uncensored", "voice":"orpheus", "jit":_jit,
+                "model":"gemma-4-26b-a4b-it-uncensored", "voice":"chatterbox-turbo-onyx", "jit":_jit,
                 "audio_understanding":"Gemma 3n audio-native MLX-VLM"}
     if provider == "openai":
         _ok = _openai_key()
@@ -9299,7 +9299,7 @@ async def avatar_set_brain(request: Request):
 
 @app.post("/api/avatar/speak")
 async def avatar_speak(request: Request):
-    """Convert text to speech on the Mac via Orpheus; Kokoro is its outage fallback."""
+    """Convert text to speech on the Mac; Chatterbox is preferred, Kokoro is fallback."""
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -9315,7 +9315,7 @@ async def avatar_speak(request: Request):
         text = text.strip()[:2000]
         import requests as _tts_req
         _stage = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
-        _tts_r = _tts_req.post(_stage + "/tts", json={"text":text,"voice":os.environ.get("VINTOS_ORPHEUS_VOICE","leo")}, timeout=210)
+        _tts_r = _tts_req.post(_stage + "/tts", json={"text":text}, timeout=210)
         _tts_ct = _tts_r.headers.get("Content-Type", "audio/wav")
         if _tts_r.status_code != 200 or "json" in _tts_ct or not _tts_r.content:
             return {"error": "local tts failed: " + _tts_r.text[:200]}

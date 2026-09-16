@@ -8,12 +8,15 @@ It is the only place with a to-do in it.
 The Avatar clients now offer Vintos Local. Gemma 3n receives the recording itself
 through the reference Transformers runtime and returns the literal words together with an audio-native reading
 of inflection and other audible delivery; the abliterated Gemma 4 answers with the
-ordinary live-call context/framing, and Orpheus/SNAC speaks on the Mac. The loaded
-LM Studio GGUF remains text-only and is deliberately not used as the ears. Orpheus
-and the full Gemma 3n checkpoint load at call start and unload at hangup; the shared
-abliterated brain is not unloaded. Kokoro is a named voice-out outage fallback.
-There is no transcript-only hearing fallback. Physical microphone acceptance and
-Gloria's choice among the Orpheus male voices remain open until the rebuilt app is heard.
+ordinary live-call context/framing, and Chatterbox-Turbo 4-bit speaks through MLX
+using Gloria's selected Onyx sample as a synthetic timbre reference. Native cues
+such as sigh and chuckle render in the same generation rather than being spoken or
+spliced. LM Studio stores the model files but cannot load this speech architecture;
+the Mac stage owns the correct MLX runtime. Chatterbox loads at call start and
+unloads at hangup; the audio-native ears stay warm unless a heavy bench evicts them,
+and the shared abliterated brain is not unloaded. Kokoro Onyx is the named voice-out
+outage fallback. There is no transcript-only hearing fallback. Physical microphone
+acceptance of the promoted Chatterbox lane remains open until the next real call.
 
 ## 14 September — somatic / avatar / voice regressions (last week's changes)
 
