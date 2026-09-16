@@ -15,6 +15,7 @@ LM_BASE = os.environ.get("VINTOS_MAC_LM_BASE", "http://127.0.0.1:1234").rstrip("
 STAGE_BASE = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
 MODEL = os.environ.get("VINTOS_ORPHEUS_MODEL", "orpheus-3b-ft.gguf")
 VOICE = os.environ.get("VINTOS_ORPHEUS_VOICE", "dan")
+PITCH_STEPS = float(os.environ.get("VINTOS_ORPHEUS_PITCH_STEPS", "-2.0"))
 SAMPLE_RATE = 24000
 _TOKEN = re.compile(r"<custom_token_(\d+)>")
 _SNAC = None
@@ -86,6 +87,17 @@ def _decode(text, out_path):
     return out_path
 
 
+def _pitch_wav(path, steps=PITCH_STEPS):
+    """Lower or raise pitch without changing duration; zero disables it."""
+    if not steps: return path
+    import librosa, soundfile as sf
+    audio, rate = librosa.load(path, sr=None, mono=True)
+    shifted = librosa.effects.pitch_shift(audio, sr=rate, n_steps=float(steps),
+                                           res_type="soxr_hq")
+    sf.write(path, shifted, rate, subtype="PCM_16")
+    return path
+
+
 def synthesize_local(text, out_path, voice=None, speed=None):
     """Mac path: LM Studio Orpheus → SNAC decode → WAV."""
     voice = (voice or VOICE).strip().lower()
@@ -94,7 +106,8 @@ def synthesize_local(text, out_path, voice=None, speed=None):
         "max_tokens": 4096, "temperature": 0.6, "top_p": 0.9,
         "repeat_penalty": 1.1, "stream": False}, timeout=180)
     data = json.loads(raw); generated = (data.get("choices") or [{}])[0].get("text", "")
-    return _decode(generated, out_path)
+    _decode(generated, out_path)
+    return _pitch_wav(out_path)
 
 
 def synthesize_remote(text, out_path, voice=None, speed=None):

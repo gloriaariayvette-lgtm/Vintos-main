@@ -24,6 +24,8 @@ check("audible cues survive while stage prose and unsupported tags never get spo
       VO.spoken_text("[sigh] [A breath, closer] here <whisper>love</whisper> <laugh>yes</laugh> [DO: mission cake]")=="<sigh> here love <laugh>yes")
 check("the displayed reply contains words rather than synthesis markup",
       VO.display_text("[A low laugh] <laugh> hello <pause>love</pause>")=="hello love")
+check("the selected local voice is lowered without changing the text tempo",
+      VO.VOICE=="dan" and VO.PITCH_STEPS==-2.0 and "pitch_shift" in open(os.path.join(REPO,"bin","voice_orpheus.py")).read())
 VO._post = lambda *a, **k: (b"RIFF" + b"x"*80, "audio/wav")
 out = os.path.join(scratch.name,"voice.wav"); VO.synthesize_remote("hello",out)
 check("remote Orpheus writes a measured WAV", open(out,"rb").read().startswith(b"RIFF"))
