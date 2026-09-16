@@ -38,6 +38,7 @@ def spoken_text(text):
     out = re.sub(r"\[[^\]\n]{1,240}\]", " ", out)
     # Orpheus does not implement whisper/pause/emphasis. Keep the enclosed
     # words, remove every non-cue tag, and preserve only its documented cues.
+    out = re.sub(r"</(?:%s)\s*>" % _CUES, " ", out, flags=re.I)
     out = re.sub(r"</?(?!%s\b)[A-Za-z][^>\n]{0,80}>" % _CUES, " ", out, flags=re.I)
     out = re.sub(r"\*+", "", out)
     return " ".join(out.split())

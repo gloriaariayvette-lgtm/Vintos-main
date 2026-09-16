@@ -21,7 +21,7 @@ raw = "<custom_token_4><custom_token_5><custom_token_1>" + "".join(
 c0,c1,c2 = VO._codes(raw)
 check("Orpheus control tokens are skipped and one complete SNAC frame survives", (len(c0),len(c1),len(c2)) == (1,2,4))
 check("audible cues survive while stage prose and unsupported tags never get spoken",
-      VO.spoken_text("[sigh] [A breath, closer] here <whisper>love</whisper> [DO: mission cake]")=="<sigh> here love")
+      VO.spoken_text("[sigh] [A breath, closer] here <whisper>love</whisper> <laugh>yes</laugh> [DO: mission cake]")=="<sigh> here love <laugh>yes")
 check("the displayed reply contains words rather than synthesis markup",
       VO.display_text("[A low laugh] <laugh> hello <pause>love</pause>")=="hello love")
 VO._post = lambda *a, **k: (b"RIFF" + b"x"*80, "audio/wav")
