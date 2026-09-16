@@ -70,6 +70,12 @@ def request(body, timeout=600):
                          % ("/".join(ALLOWED_ACTIONS), action[:40])}
     cfg, error = _read_config()
     if error: return {"ok": False, "configured": False, "error": error}
+    if action == "run":
+        try:
+            from voice_local import models as _voice_models
+            _voice_models(False, evict_ears=True)
+        except Exception:
+            pass
     try:
         done = subprocess.run(_command(cfg), input=json.dumps(body), text=True,
                               capture_output=True, timeout=timeout, check=False)

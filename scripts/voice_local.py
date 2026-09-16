@@ -24,9 +24,19 @@ def _post(url, body, timeout):
         raise RuntimeError("%s: %s" % (exc.code, exc.read().decode(errors="replace")[:300]))
 
 
-def models(active):
-    raw, _ = _post(STAGE + "/voice/models", {"active": bool(active)}, 100)
+def models(active, evict_ears=False):
+    raw, _ = _post(STAGE + "/voice/models", {"active": bool(active),
+        "evict_ears": bool(evict_ears)}, 100)
     return json.loads(raw)
+
+
+def _display_text(text):
+    """The house copy cannot assume the Mac module is importable."""
+    import re
+    out = re.sub(r"\[[^\]\n]{1,240}\]", " ", str(text or ""))
+    out = re.sub(r"</?[A-Za-z][^>\n]{0,80}>", " ", out)
+    out = re.sub(r"\*+", "", out)
+    return " ".join(out.split())
 
 
 def turn(audio_b64, sample_rate, instructions, framing=""):
@@ -42,12 +52,18 @@ def turn(audio_b64, sample_rate, instructions, framing=""):
             json.dumps(evidence, ensure_ascii=False))
     system = str(instructions or "")
     if framing: system += "\n\nLIVE RIGHT NOW (this replaces earlier LIVE blocks):\n" + str(framing)
+    system += ("\n\nLOCAL LIVE VOICE: answer in one to three conversational sentences unless "
+        "Gloria explicitly asks for something longer. For audible expression you may use at most "
+        "one exact Orpheus cue from <giggle>, <laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, "
+        "<groan>, <yawn>, or <gasp>. Never write bracketed stage directions. Never use whisper, "
+        "pause, emphasis, breath, or other invented tags.")
     brain_raw, _ = _post(LM + "/v1/chat/completions", {"model":BRAIN,
         "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-        "temperature":.85,"max_tokens":360}, 180)
-    brain = json.loads(brain_raw); reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content","").strip()
+        "temperature":.85,"max_tokens":180}, 180)
+    brain = json.loads(brain_raw); raw_reply = ((brain.get("choices") or [{}])[0].get("message") or {}).get("content","").strip()
+    reply = _display_text(raw_reply)
     if not reply: return {"ok":False,"stage":"brain","error":"local brain returned no words","hearing":heard}
-    voice_raw, headers = _post(STAGE + "/tts", {"text":reply}, 210)
+    voice_raw, headers = _post(STAGE + "/tts", {"text":raw_reply}, 210)
     if not voice_raw.startswith(b"RIFF"):
         return {"ok":False,"stage":"voice","error":"voice returned no WAV","reply":reply,"hearing":heard}
     return {"ok":True,"transcript":heard["transcript"],

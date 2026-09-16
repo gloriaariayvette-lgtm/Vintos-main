@@ -121,13 +121,18 @@ def _hear_audio(wav_path):
         'explicit language. Do not infer anything that is not audible.')
     messages = [{"role":"user", "content":[{"type":"audio", "audio":wav_path},
                                              {"type":"text", "text":request}]}]
-    with _ears_lock:
-        # A live turn needs a transcript plus a compact delivery reading, not an
-        # essay.  The former 420-token allowance made short utterances spend
-        # most of a minute generating analysis after the words were understood.
-        result = _ears_pipe(text=messages, max_new_tokens=140)
-    generated = result[0]["generated_text"][-1]["content"]
-    return _heard_fields(generated)
+    last_error = None
+    for attempt in range(2):
+        with _ears_lock:
+            # A live turn needs a transcript plus a compact delivery reading,
+            # not an essay. Retry one malformed first generation while the
+            # model is already warm; the old path exposed that parse miss as a
+            # phone-visible 500 and made Gloria start the call over.
+            result = _ears_pipe(text=messages, max_new_tokens=140 if not attempt else 180)
+        generated = result[0]["generated_text"][-1]["content"]
+        try: return _heard_fields(generated)
+        except Exception as exc: last_error = exc
+    raise last_error or ValueError("audio model returned no readable fields")
 
 def hear_pcm(audio_b64, rate=24000):
     pcm = base64.b64decode(audio_b64)
@@ -151,8 +156,8 @@ def hear_pcm(audio_b64, rate=24000):
             try: os.unlink(path)
             except OSError: pass
 
-def voice_models(active):
-    """JIT auxiliaries only. The abliterated brain is shared and never unloaded here."""
+def voice_models(active, evict_ears=False):
+    """Keep the ears warm between calls; heavy Mac benches may explicitly evict them."""
     if not os.path.exists(LMS): return {"ok": False, "error": "lms CLI missing"}
     actions = []
     for ident in ("orpheus-3b-ft.gguf",):
@@ -162,9 +167,10 @@ def voice_models(active):
                         "detail": (r.stdout or r.stderr)[-160:]})
     try:
         if active: _ears_load()
-        else: _ears_unload()
+        elif evict_ears: _ears_unload()
         actions.append({"model": EARS_MODEL, "ok": True,
-                        "detail": "audio-native MLX model %s" % ("loaded" if active else "unloaded")})
+                        "detail": "audio-native model %s" %
+                                  ("loaded" if active else ("evicted" if evict_ears else "kept warm"))})
     except Exception as exc:
         actions.append({"model": EARS_MODEL, "ok": False, "detail": str(exc)[:160]})
     return {"ok": all(a["ok"] for a in actions), "active": bool(active), "actions": actions}
@@ -387,7 +393,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/voice/models":
             try: body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             except Exception: body = {}
-            self._send(200, json.dumps(voice_models(bool(body.get("active")))).encode()); return
+            self._send(200, json.dumps(voice_models(bool(body.get("active")),
+                bool(body.get("evict_ears")))).encode()); return
         if self.path == "/listen":
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))

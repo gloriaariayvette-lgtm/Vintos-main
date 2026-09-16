@@ -14,17 +14,31 @@ import base64, json, os, re, tempfile, urllib.error, urllib.request, wave
 LM_BASE = os.environ.get("VINTOS_MAC_LM_BASE", "http://127.0.0.1:1234").rstrip("/")
 STAGE_BASE = os.environ.get("VINTOS_MAC_STAGE", "http://100.79.177.103:8511").rstrip("/")
 MODEL = os.environ.get("VINTOS_ORPHEUS_MODEL", "orpheus-3b-ft.gguf")
-VOICE = os.environ.get("VINTOS_ORPHEUS_VOICE", "leo")
+VOICE = os.environ.get("VINTOS_ORPHEUS_VOICE", "dan")
 SAMPLE_RATE = 24000
 _TOKEN = re.compile(r"<custom_token_(\d+)>")
 _SNAC = None
 _CUES = "giggle|laugh|chuckle|sigh|cough|sniffle|groan|yawn|gasp"
 
+
+def display_text(text):
+    """What Gloria reads: words only, never synthesis markup or stage prose."""
+    out = str(text or "")
+    out = re.sub(r"\[[^\]\n]{1,240}\]", " ", out)
+    out = re.sub(r"</?[A-Za-z][^>\n]{0,80}>", " ", out)
+    out = re.sub(r"\*+", "", out)
+    return " ".join(out.split())
+
 def spoken_text(text):
-    """Keep audible cues, remove device/visual control tags from the waveform."""
+    """Give Orpheus only its eight real cues; never ask it to read stage prose."""
     out = str(text or "")
     out = re.sub(r"\[(%s)\]" % _CUES, lambda m: "<%s>" % m.group(1).lower(), out, flags=re.I)
-    out = re.sub(r"\[(?:DO|TOUCH|COMMAND|SCENE|RENDER|COLOR|GESTURE|HOLD|SPAWN|RELEASE)[^\]]*\]", "", out, flags=re.I)
+    # A bracketed aside such as "[A soft, low laugh]" is prose, not an
+    # Orpheus control token.  It used to be displayed and literally spoken.
+    out = re.sub(r"\[[^\]\n]{1,240}\]", " ", out)
+    # Orpheus does not implement whisper/pause/emphasis. Keep the enclosed
+    # words, remove every non-cue tag, and preserve only its documented cues.
+    out = re.sub(r"</?(?!%s\b)[A-Za-z][^>\n]{0,80}>" % _CUES, " ", out, flags=re.I)
     out = re.sub(r"\*+", "", out)
     return " ".join(out.split())
 
