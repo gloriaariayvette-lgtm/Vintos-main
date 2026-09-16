@@ -180,10 +180,17 @@ def _heard_fields(text):
     return {"transcript": trans.group(1).strip(" \t\r\n\"'"),
             "audio_reading": reading.group(1).strip()}
 
+# Same transcription vocabulary the hosted lanes prime their transcriber with
+# (server.py's OpenAI lane: "Expect these names and words: ..."). Copied here so the
+# local ears reach for the same proper nouns instead of mangling them; kept as a
+# literal copy for now (not yet a shared source — keep in sync with server.py).
+VOICE_VOCAB = "Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel"
+
 def _hear_audio(wav_path):
     """Give the waveform itself to Gemma 3n's USM audio tower."""
     _ears_load()
-    request = ('Listen to the recording itself. Return JSON only as '
+    request = ('Listen to the recording itself. You may hear these names and words — '
+        'transcribe them correctly when you hear them: ' + VOICE_VOCAB + '. Return JSON only as '
         '{"transcript":"exact words","audio_reading":"one concise sentence about audible '
         'inflection, tone, pace, emphasis, hesitation, laughter, or breath"}. Preserve '
         'explicit language. Do not infer anything that is not audible.')

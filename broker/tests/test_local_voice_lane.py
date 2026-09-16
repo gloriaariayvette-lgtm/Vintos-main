@@ -79,4 +79,6 @@ check("a malformed first ears reading gets one warm retry", "for attempt in rang
 check("ending during a local turn preserves and finishes its late reply", "if(vc.busy){_avCallLit('thinking');return;}" in client and "if(session.closing)_finishLocalVoiceSession(session)" in client and "then(async d=>{if(window._vc!==session)return" not in client)
 check("local calls stop listening throughout generation and playback",
       "_localMicEnabled(session,false)" in client and "_localMicEnabled(session,true)" in client and "session.busy||session.listening===false" in client)
+check("local ears prompt injects the shared voice vocabulary", "VOICE_VOCAB" in stage and "transcribe them correctly" in stage)
+check("local transcription vocabulary matches the hosted lane's, no drift", MS.VOICE_VOCAB and all(n.strip() and n.strip() in server for n in MS.VOICE_VOCAB.split(",")))
 check("test writes remain under scratch HOME", out.startswith(scratch.name))
