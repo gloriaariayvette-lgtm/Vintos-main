@@ -22,10 +22,22 @@ class BlushLifecycleTests(unittest.TestCase):
         BL.LOCK_FILE = BL.LEDGER + ".lock"
         BL.CORE_FILE = os.path.join(self.tmp.name, "core-vectors.json")
         BL.get_emotional_context = lambda: {}
+        # Never reach the real device hub from a test; default devices OFF.
+        self.old_dev = BL._devices_on
+        BL._devices_on = lambda: False
 
     def tearDown(self):
         BL.MEMORY, BL.LEDGER, BL.LOCK_FILE, BL.CORE_FILE = self.old
+        BL._devices_on = self.old_dev
         self.tmp.cleanup()
+
+    def test_blush_is_suppressed_while_devices_are_on(self):
+        BL._devices_on = lambda: True
+        self.assertIsNone(self.write(1), "devices on = intimacy; blush does not fire")
+        self.assertEqual(len(BL.load_ledger()), 0)
+        BL._devices_on = lambda: False
+        self.assertIsNotNone(self.write(2), "devices off = blush records normally")
+        self.assertEqual(len(BL.load_ledger()), 1)
 
     def write(self, n):
         return BL.write_blush("self_prediction", "same_pattern", {}, "test",

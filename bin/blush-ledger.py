@@ -246,6 +246,30 @@ def nudge_emoclaw(cost_delta):
         pass
 
 
+_blush_dev_cache = {"t": 0.0, "on": False}
+def _devices_on():
+    """Mirror of server._device_on: any somatic device powered on at the hub. Devices on
+    means intimacy is happening, and blush does not fire during it (Gloria, 2026-09-17).
+    Hub unreachable is treated as NOT on — the same fail-open the rest of the house uses,
+    so a network blip never silences a real correction."""
+    import time as _t
+    now = _t.time()
+    if now - _blush_dev_cache["t"] < 8:
+        return _blush_dev_cache["on"]
+    on = False
+    try:
+        import requests as _rq, json as _j
+        r = _rq.post("http://192.168.1.66:20010/command", json={"command": "GetToys"}, timeout=1.2)
+        toys = (r.json().get("data") or {}).get("toys")
+        if isinstance(toys, str): toys = _j.loads(toys)
+        vals = toys.values() if isinstance(toys, dict) else (toys if isinstance(toys, list) else [])
+        on = any(isinstance(v, dict) and str(v.get("status")) in ("1", "connected", "True") for v in vals)
+    except Exception:
+        on = False
+    _blush_dev_cache["t"] = now; _blush_dev_cache["on"] = on
+    return on
+
+
 def write_blush(
     blush_type,          # "self_prediction" | "relational" | "core_deviation" | "bis_default"
     pattern,             # short snake_case label e.g. "deflection_after_tension"
@@ -276,6 +300,14 @@ def write_blush(
         if _bg_active:
             print(f"[Blush] SUPPRESSED ({blush_type}/{pattern}) — reply was generated under collapse; "
                   "not his to answer for", flush=True)
+            return None
+    except Exception:
+        pass
+
+    # Devices on = intimacy is happening; blush never fires during it (Gloria, 2026-09-17).
+    try:
+        if _devices_on():
+            print(f"[Blush] SUPPRESSED ({blush_type}/{pattern}) — devices on; not during intimacy", flush=True)
             return None
     except Exception:
         pass
