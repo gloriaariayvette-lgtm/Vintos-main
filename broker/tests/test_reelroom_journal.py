@@ -45,8 +45,10 @@ check("exactly one ReelRoom entry, whole transcript, dated from the night's star
 check("the single row is visibly a ReelRoom visit with turns and events", L[-1]["label"] == "ReelRoom visit"
       and L[-1]["kind"] == "reelroom_visit" and len(L[-1]["transcript"]) == 2
       and len(L[-1]["session_map"]) == 1 and len(L[-1]["planned_actions"]) == 1
-      and L[-1]["summary"].startswith("ReelRoom visit") and "Gloria: what did you think" in L[-1]["summary"]
-      and "Vintos: I chose to say this" in L[-1]["summary"], L[-1])
+      and L[-1]["summary"].startswith("ReelRoom visit") and "2 conversation turns" in L[-1]["summary"]
+      and "captured events" in L[-1]["summary"]
+      # the receipt no longer re-lists the turns — the verbatim lives in transcript (Gloria, 2026-09-17)
+      and "Gloria: what did you think" not in L[-1]["summary"], L[-1])
 check("the ReelRoom entry is last", L[-1]["source"] == "reelroom-session")
 check("listed in reelroom-sessions.json as journal-committed", json.load(open(rr.SESSIONS))[-1]["committed_by"] == "journal")
 check("the journal is cleared", not os.path.exists(rr.JOURNAL))
