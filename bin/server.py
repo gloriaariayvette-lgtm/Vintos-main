@@ -10066,6 +10066,31 @@ def _reelroom_mod():
     return _il.import_module("reelroom")
 
 
+_reelroom_idle_task = None
+
+
+async def _reelroom_idle_closer():
+    """A closed Plithra app cannot call the summary route; the house closes it."""
+    import asyncio as _rr_asyncio
+    await _rr_asyncio.sleep(20)  # also catches a visit stranded across a restart
+    while True:
+        try:
+            out = await _rr_asyncio.to_thread(_reelroom_mod().commit_if_idle)
+            if out.get("committed"):
+                print("[reelroom] idle visit committed:", out.get("file"), flush=True)
+        except Exception as exc:
+            print("[reelroom] idle closer:", str(exc)[:180], flush=True)
+        await _rr_asyncio.sleep(300)
+
+
+@app.on_event("startup")
+async def start_reelroom_idle_closer():
+    global _reelroom_idle_task
+    import asyncio as _rr_asyncio
+    if _reelroom_idle_task is None or _reelroom_idle_task.done():
+        _reelroom_idle_task = _rr_asyncio.create_task(_reelroom_idle_closer())
+
+
 @app.post("/api/game/reelroom/film")
 async def reelroom_film(request: Request):
     """The film, read by Gemma on the server: the page no longer needs LM Studio on the LAN."""
@@ -10135,6 +10160,17 @@ async def reelroom_chat(request: Request):
             return {"reply": str((_out or {}).get("reply") or ""), "mode": mode,
                     "model": (_out or {}).get("model"), "error": (_out or {}).get("error")}
         reply = await _a.get_event_loop().run_in_executor(None, fn)
+        # Look/decide calls are activity too. They carry the page's latest room
+        # events and action state even when neither person speaks, so the eventual
+        # single visit row contains the evening rather than only its last chat.
+        try:
+            rr.journal("", "", history=body.get("history") or [],
+                       film_title=str(body.get("film_title") or ""),
+                       film_year=str(body.get("film_year") or ""),
+                       elapsed_min=body.get("elapsed_min"),
+                       extra={"session_map": body.get("session_map") or [],
+                              "planned_actions": body.get("planned_actions") or []})
+        except Exception as _je0: print("[reelroom] journal(activity):", _je0, flush=True)
         if mode == "decide":
             try:
                 _decision = json.loads(reply)

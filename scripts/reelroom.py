@@ -272,18 +272,6 @@ def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_fi
     if not session_file:
         return False
     path = os.path.join(MEMORY, "interaction-ledger.json")
-    try:
-        ledger = json.load(open(path))
-    except Exception:
-        ledger = []
-    if isinstance(ledger, dict):
-        entries = ledger.setdefault("entries", [])
-    elif isinstance(ledger, list):
-        entries = ledger
-    else:
-        ledger = entries = []
-    if any(isinstance(e, dict) and e.get("reelroom_file") == session_file for e in entries):
-        return False
     hist = payload.get("chat_history") or []
     transcript, pair = [], {}
     for m in hist:
@@ -297,33 +285,88 @@ def append_session_ledger(payload: Dict[str, Any], summary_text: str, session_fi
             transcript.append(pair); pair = {}
     if pair:
         transcript.append(pair)
-    entries.append({
+    events = [e for e in (payload.get("session_map") or []) if isinstance(e, dict)][-120:]
+    actions = [a for a in (payload.get("planned_actions") or []) if isinstance(a, dict)]
+    visit_summary = _visit_summary(payload, transcript, events, actions)
+    session_id = str(payload.get("session_id") or "")
+    row = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(when)) if when else time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "label": "ReelRoom visit",
+        "kind": "reelroom_visit",
         "channel": "reelroom",
         "source": "reelroom-session",
+        "reelroom_session_id": session_id,
         "reelroom_file": session_file,
         "film": str(payload.get("film_title") or "unknown film"),
         "duration_seconds": int(payload.get("elapsed_seconds") or 0),
         "turns": len(transcript),
         "transcript": transcript,
         "narrative": summary_text[:1200],
-        "summary": summary_text[:1200],
-        "session_map": (payload.get("session_map") or [])[-30:],
-        "planned_actions": payload.get("planned_actions") or [],
-    })
-    if when:
-        entries.sort(key=lambda e: str(e.get("timestamp", "")) if isinstance(e, dict) else "")
-    tmp = path + ".reelroom.tmp"
-    with open(tmp, "w") as f:
-        json.dump(ledger, f, indent=2)
-    os.replace(tmp, path)
-    return True
+        "summary": visit_summary,
+        "session_map": events,
+        "planned_actions": actions,
+        "event_count": len(events),
+        "message_count": len([m for m in hist if isinstance(m, dict) and m.get("role") in ("user", "assistant")]),
+    }
+    # The interaction ledger has several writers. Its ordinary writer takes this
+    # same sidecar lock; ReelRoom used to read/replace without it, so a visit that
+    # had apparently committed could be erased by the next ordinary turn.
+    from store_guard import transaction, load_json, save_json
+    with transaction(path):
+        ledger = load_json(path, [], reader="reelroom.append_session_ledger")
+        if isinstance(ledger, dict):
+            entries = ledger.setdefault("entries", [])
+        elif isinstance(ledger, list):
+            entries = ledger
+        else:
+            ledger = entries = []
+        if any(isinstance(e, dict) and
+               (e.get("reelroom_file") == session_file or
+                (session_id and e.get("reelroom_session_id") == session_id)) for e in entries):
+            return False
+        entries.append(row)
+        if when:
+            entries.sort(key=lambda e: str(e.get("timestamp", "")) if isinstance(e, dict) else "")
+        save_json(path, ledger)
+        return True
+
+
+def _visit_summary(payload: Dict[str, Any], transcript: List[Dict[str, str]],
+                   events: List[Dict[str, Any]], actions: List[Dict[str, Any]]) -> str:
+    """A mechanical receipt, never a substitute for his optional narrative.
+
+    The row itself retains the complete captured transcript and up to 120 room
+    events. This line makes that breadth legible to ledger views without asking a
+    paid model whether the visit happened.
+    """
+    film = str(payload.get("film_title") or "unknown film")
+    minutes = max(0, int(payload.get("elapsed_seconds") or 0) // 60)
+    parts = [f"ReelRoom visit — {film}; {minutes} minutes; {len(transcript)} conversation turns"]
+    if transcript:
+        spoken = []
+        for pair in transcript[-24:]:
+            if pair.get("gloria"):
+                spoken.append("Gloria: " + str(pair["gloria"]).replace("\n", " ")[:220])
+            if pair.get("vintos"):
+                spoken.append("Vintos: " + str(pair["vintos"]).replace("\n", " ")[:220])
+        parts.append("Conversation: " + " | ".join(spoken))
+    if events:
+        glimpses = []
+        for event in events[-8:]:
+            stamp = str(event.get("timestamp") or event.get("at") or "").strip()
+            detail = str(event.get("visual_description") or event.get("edge") or event.get("event") or event.get("kind") or "room event").strip()
+            glimpses.append((stamp + " " + detail).strip()[:140])
+        parts.append(f"{len(events)} captured events: " + "; ".join(glimpses))
+    if actions:
+        fired = [a for a in actions if a.get("fired")]
+        parts.append(f"{len(actions)} planned actions, {len(fired)} recorded as fired")
+    return ". ".join(parts)[:8000]
 
 
 # ---------------------------------------------------------------- the journal of the night
 
 JOURNAL = os.path.join(ROOM_DIR, "live-session.json")
-JOURNAL_STALE_S = int(os.environ.get("VINTOS_REELROOM_STALE_S", "10800"))   # three hours of silence: the night is over
+JOURNAL_STALE_S = int(os.environ.get("VINTOS_REELROOM_STALE_S", "3600"))   # one hour of silence: the visit is over
 
 
 def _load_journal() -> Dict[str, Any]:
@@ -334,9 +377,9 @@ def _load_journal() -> Dict[str, Any]:
         return {}
 
 
-def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = None, film_title: str = "",
-            film_year: str = "", elapsed_min: Optional[int] = None, extra: Optional[Dict[str, Any]] = None,
-            now: Optional[float] = None) -> Dict[str, Any]:
+def _journal_unlocked(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = None, film_title: str = "",
+                      film_year: str = "", elapsed_min: Optional[int] = None, extra: Optional[Dict[str, Any]] = None,
+                      now: Optional[float] = None) -> Dict[str, Any]:
     """Every spoken turn of the night lands here as it happens, so the conversation exists on the server
     before the app decides to summarise (Gloria, 2026-09-10: a whole ReelRoom night reached nothing because
     the summary call never came). A different film, or a journal older than JOURNAL_STALE_S, is committed
@@ -349,7 +392,8 @@ def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = 
         commit_journal("new session began", now=now)
         j = {}
     if not j:
-        j = {"film_title": film_title, "film_year": film_year, "started_at": now, "chat_history": [],
+        j = {"session_id": "rr-%d-%d" % (int(now * 1000), os.getpid()),
+             "film_title": film_title, "film_year": film_year, "started_at": now, "chat_history": [],
              "session_map": [], "planned_actions": []}
     if film_title and not j.get("film_title"):
         j["film_title"] = film_title
@@ -379,10 +423,19 @@ def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = 
     return j
 
 
+def journal(message: str, reply: str, history: Optional[List[Dict[str, Any]]] = None, film_title: str = "",
+            film_year: str = "", elapsed_min: Optional[int] = None, extra: Optional[Dict[str, Any]] = None,
+            now: Optional[float] = None) -> Dict[str, Any]:
+    """Serialize activity updates against the autonomous one-hour closer."""
+    from store_guard import transaction
+    with transaction(JOURNAL):
+        return _journal_unlocked(message, reply, history, film_title, film_year, elapsed_min, extra, now)
+
+
 def journal_payload(j: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """The journal in the shape summary()/append_session_ledger() take."""
     j = j if j is not None else _load_journal()
-    return {"film_title": j.get("film_title") or "unknown film", "film_year": j.get("film_year") or "",
+    return {"session_id": j.get("session_id") or "", "film_title": j.get("film_title") or "unknown film", "film_year": j.get("film_year") or "",
             "elapsed_seconds": int(j.get("elapsed_seconds") or 0), "chat_history": j.get("chat_history") or [],
             "session_map": j.get("session_map") or [], "planned_actions": j.get("planned_actions") or []}
 
@@ -416,6 +469,25 @@ def commit_journal(reason: str = "", now: Optional[float] = None, summary_text: 
     try: os.remove(JOURNAL)
     except OSError: pass
     return {"committed": True, "file": os.path.basename(path), "ledger": wrote, "turns": len(payload["chat_history"])}
+
+
+def commit_if_idle(now: Optional[float] = None) -> Dict[str, Any]:
+    """Close one ReelRoom visit after one hour with no ReelRoom activity.
+
+    This is deliberately model-free. The transcript and room events are facts;
+    his first-person narrative remains optional. The server calls this on its own
+    cadence, so closing the Plithra app cannot strand the visit.
+    """
+    now = now or time.time()
+    from store_guard import transaction
+    with transaction(JOURNAL):
+        j = _load_journal()
+        if not j.get("chat_history"):
+            return {"committed": False, "reason": "no turns"}
+        idle = max(0.0, now - float(j.get("updated_at") or now))
+        if idle < JOURNAL_STALE_S:
+            return {"committed": False, "reason": "visit active", "idle_seconds": int(idle)}
+        return commit_journal("one hour without ReelRoom activity", now=now)
 
 
 # ---------------------------------------------------------------- the TV

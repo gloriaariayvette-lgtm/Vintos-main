@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 16 September — ReelRoom visit close
+
+ReelRoom now retains the captured transcript, up to 120 room/TV events, and the
+planned/fired action receipts in one interaction-ledger object visibly labelled
+`ReelRoom visit`. The interaction-ledger append shares the ordinary writer's
+sidecar lock instead of racing it. The server closes the scratch visit after one
+hour without ReelRoom activity, so app closure does not have to deliver a final
+summary request; look/decide calls also refresh the activity and carry the latest
+event state. His optional first-person memory remains separate from the mechanical
+visit receipt and may fail without losing the visit.
+
+The September 13 visit cannot be faithfully backfilled: Aegis retains six
+ReelRoom lifecycle IDs (one on September 13), but no ReelRoom scratch journal,
+saved session, or transcript-bearing ledger row. No synthetic conversation entry
+was created from those IDs.
+
 ## 15 September — local uncensored voice lane
 
 The Avatar clients now offer Vintos Local. Gemma 3n receives the recording itself

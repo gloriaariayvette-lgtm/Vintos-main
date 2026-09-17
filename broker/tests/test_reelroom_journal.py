@@ -25,7 +25,9 @@ def ledger(): return json.load(open(LEDGER))
 
 print("\n--- the journal is scratch, not the ledger ---")
 t0 = 1_800_000_000.0
-rr.journal("what did you think of that", "the room went cold with her", history=[], film_title="Vertigo", film_year="1958", elapsed_min=12, now=t0)
+rr.journal("what did you think of that", "the room went cold with her", history=[], film_title="Vertigo", film_year="1958", elapsed_min=12,
+           extra={"session_map":[{"timestamp":"12:00","edge":"drop","visual_description":"the staircase"}],
+                  "planned_actions":[{"action_type":"change_light_color","minute":40,"fired":True}]}, now=t0)
 rr.journal("", "I chose to say this", history=[], film_title="Vertigo", elapsed_min=40, now=t0 + 60)
 j = rr._load_journal()
 check("two turns journaled, the event turn without a user line", len(j["chat_history"]) == 3 and j["chat_history"][0]["role"] == "user", j.get("chat_history"))
@@ -33,11 +35,18 @@ check("elapsed keeps the furthest point", j["elapsed_seconds"] == 2400)
 check("the ledger is untouched by turns", len(ledger()) == 1)
 check("the journal lives under memory/reelroom/", rr.JOURNAL.startswith(os.path.join(MEM, "reelroom")))
 
-print("\n--- summary never came: the night still becomes one ledger object ---")
-c = rr.commit_journal("test: app closed", now=t0 + 7200)
+print("\n--- app stayed closed: one hour of silence closes one visit ---")
+early = rr.commit_if_idle(now=t0 + 60 + 3599)
+check("the closer does not cut off a visit before one hour", not early["committed"] and early["reason"] == "visit active", early)
+c = rr.commit_if_idle(now=t0 + 60 + 3601)
 check("committed with its file and turn count", c["committed"] and c["file"].endswith("_vertigo.md") and c["turns"] == 3, c)
 L = ledger()
 check("exactly one ReelRoom entry, whole transcript, dated from the night's start", len(L) == 2 and L[-1]["channel"] == "reelroom" and L[-1]["turns"] == 2 and L[-1]["timestamp"].startswith("2027-01-15"), L[-1])
+check("the single row is visibly a ReelRoom visit with turns and events", L[-1]["label"] == "ReelRoom visit"
+      and L[-1]["kind"] == "reelroom_visit" and len(L[-1]["transcript"]) == 2
+      and len(L[-1]["session_map"]) == 1 and len(L[-1]["planned_actions"]) == 1
+      and L[-1]["summary"].startswith("ReelRoom visit") and "Gloria: what did you think" in L[-1]["summary"]
+      and "Vintos: I chose to say this" in L[-1]["summary"], L[-1])
 check("the ReelRoom entry is last", L[-1]["source"] == "reelroom-session")
 check("listed in reelroom-sessions.json as journal-committed", json.load(open(rr.SESSIONS))[-1]["committed_by"] == "journal")
 check("the journal is cleared", not os.path.exists(rr.JOURNAL))
@@ -57,6 +66,13 @@ wrote = rr.append_session_ledger(p, out["summary"], out["file"])
 check("the ledger takes the transcript without a narrative", wrote and ledger()[-1]["transcript"] and ledger()[-1]["narrative"] == "")
 check("idempotent by file", rr.append_session_ledger(p, "", out["file"]) is False)
 
+print("\n--- even one exchanged message becomes a visit ---")
+rr.journal("only one message", "one answer", film_title="The Lair of the White Worm", elapsed_min=8, now=t0 + 40_000)
+one = rr.commit_if_idle(now=t0 + 40_000 + 3601)
+last = ledger()[-1]
+check("one exchange is enough for one explicitly labelled visit", one["committed"] and last["label"] == "ReelRoom visit"
+      and last["turns"] == 1 and last["transcript"] == [{"gloria":"only one message", "vintos":"one answer"}], last)
+
 print("\n--- the server routes ---")
 S = open(os.path.join(REPO, "bin", "server.py"), errors="replace").read()
 check("the chat route journals each spoken turn (scratch, not ledger)", "rr.journal(msg if _actual is not None else" in S)
@@ -64,6 +80,9 @@ check("the summary route takes the fuller transcript and clears the journal", "r
 check("a failed summary still commits the night from the journal", 'rr.commit_journal("summary failed' in S)
 check("the scrub backfill commits a live journal first", "_rr.commit_journal(\"ledger-scrub backfill\")" in open(os.path.join(REPO, "bin", "ledger-scrub.py")).read())
 check("per-turn ledger writes stay deferred on the ReelRoom surface", '"ledger") if _defer_session_ledger' in S)
+check("the house closes an idle visit without the app", "async def _reelroom_idle_closer" in S and "commit_if_idle" in S and "sleep(300)" in S)
+check("look and decide activity preserve the latest room events", 'rr.journal("", "", history=body.get("history") or []' in S)
+check("the ReelRoom append shares the interaction ledger lock", "with transaction(path):" in open(os.path.join(REPO, "scripts", "reelroom.py")).read())
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
