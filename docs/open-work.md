@@ -815,8 +815,8 @@ DoorDash cart for adjustments or accept an explicit tip and approve. Approval re
 is bound to the exact cart/price/ETA/address/card fingerprint; a change sends a fresh proposal.
 The non-idempotent submit is claimed before execution and is never automatically retried.
 
-Still open: the official beta binary must be installed on Aegis, and Gloria must sign in on
-an approved desktop account and transfer only `DD_CLI_ACCESS_TOKEN` into Aegis's protected
-environment. Until that account step succeeds, the code records `dd_cli_not_authenticated`
-and cannot produce a real restaurant/cart/quote receipt. No live order has been placed while
-commissioning this path.
+The checksum-verified official v0.2.4 binary is installed on the Mac and Aegis, and the Mac
+login succeeded. Still open: transferring only `DD_CLI_ACCESS_TOKEN` directly into Aegis's
+protected environment requires Gloria's explicit credential-transfer authorization. Until
+that step succeeds, the code records `dd_cli_not_authenticated` and cannot produce a real
+restaurant/cart/quote receipt. No live order has been placed while commissioning this path.
