@@ -10434,11 +10434,47 @@ async def reelroom_screenshot(request: Request):
     _require_secret(request)
     from fastapi.responses import Response as _Resp
     import asyncio as _a
+    rr = _reelroom_mod()
+    # When she is mirroring her phone/computer screen into the room, that IS the screen — his eyes
+    # and the capture button read it instead of the Bravia over ADB (Gloria, 2026-09-17).
+    _cast = rr.cast_get()
+    if _cast:
+        return _Resp(content=_cast, media_type="image/jpeg")
     try:
-        png = await _a.get_event_loop().run_in_executor(None, _reelroom_mod().tv_screenshot)
+        png = await _a.get_event_loop().run_in_executor(None, rr.tv_screenshot)
         return _Resp(content=png, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e)[:200])
+
+
+@app.post("/api/game/reelroom/cast")
+async def reelroom_cast(request: Request):
+    """Her device pushes one screen frame (image/jpeg body). Latest frame only; freshness-gated."""
+    _require_secret(request)
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="empty frame")
+    try:
+        return _reelroom_mod().cast_put(body)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)[:200])
+
+
+@app.get("/api/game/reelroom/cast/frame")
+async def reelroom_cast_frame(request: Request):
+    """The latest mirrored frame, for the pane to show live. 404 when no fresh cast is running."""
+    _require_secret(request)
+    from fastapi.responses import Response as _Resp
+    frame = _reelroom_mod().cast_get()
+    if not frame:
+        raise HTTPException(status_code=404, detail="no active cast")
+    return _Resp(content=frame, media_type="image/jpeg")
+
+
+@app.get("/api/game/reelroom/cast/status")
+async def reelroom_cast_status(request: Request):
+    _require_secret(request)
+    return _reelroom_mod().cast_status()
 
 
 @app.post("/api/game/reelroom/audio")

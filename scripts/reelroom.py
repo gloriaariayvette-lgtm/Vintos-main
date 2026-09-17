@@ -497,6 +497,54 @@ def resume_state(now: Optional[float] = None) -> Dict[str, Any]:
             "planned_actions": j.get("planned_actions") or []}
 
 
+# ---------------------------------------------------------------- casting her screen in
+CAST_FRAME = os.path.join(ROOM_DIR, "cast-frame.jpg")
+CAST_META = os.path.join(ROOM_DIR, "cast-frame.meta.json")
+CAST_FRESH_S = int(os.environ.get("VINTOS_REELROOM_CAST_FRESH_S", "20"))   # a mirror older than this is not the screen any more
+
+
+def cast_put(jpeg: bytes, now: Optional[float] = None) -> Dict[str, Any]:
+    """Her phone or computer is mirroring its screen into the room. Keep only the latest frame,
+    so his eyes and the capture button read what is on her screen now — the way past a streaming
+    app that blocks in-page screenshots, since the OS screen capture on her device does not
+    (Gloria, 2026-09-17)."""
+    now = now or time.time()
+    if not jpeg:
+        raise ValueError("empty cast frame")
+    os.makedirs(ROOM_DIR, exist_ok=True)
+    tmp = CAST_FRAME + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(jpeg)
+    os.replace(tmp, CAST_FRAME)
+    json.dump({"at": now, "bytes": len(jpeg)}, open(CAST_META, "w"))
+    return {"ok": True, "bytes": len(jpeg), "at": now}
+
+
+def cast_get(now: Optional[float] = None) -> Optional[bytes]:
+    """The latest cast frame if one landed within CAST_FRESH_S, else None so callers fall back to
+    the Bravia/ADB path. A stale mirror is not the screen."""
+    now = now or time.time()
+    try:
+        meta = json.load(open(CAST_META))
+        if now - float(meta.get("at") or 0) > CAST_FRESH_S:
+            return None
+        with open(CAST_FRAME, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
+def cast_status(now: Optional[float] = None) -> Dict[str, Any]:
+    """Whether a device is currently mirroring, for the app's cast indicator."""
+    now = now or time.time()
+    try:
+        meta = json.load(open(CAST_META))
+        age = now - float(meta.get("at") or 0)
+        return {"active": age <= CAST_FRESH_S, "age_seconds": int(age), "bytes": int(meta.get("bytes") or 0)}
+    except Exception:
+        return {"active": False}
+
+
 def commit_journal(reason: str = "", now: Optional[float] = None, summary_text: str = "") -> Dict[str, Any]:
     """The journal becomes a session: a file under memory/reelroom/ (his memory of it if given, else the note
     that it was committed without one), a row in reelroom-sessions.json, and the ledger entry with the whole

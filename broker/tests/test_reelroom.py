@@ -190,5 +190,20 @@ stale = RR.resume_state(now=rs["updated_at"] + RR.JOURNAL_STALE_S + 1)
 check("resume: past the one-hour idle window it is no longer offered (the closer owns it then)",
       stale["resumable"] is False and len(stale["chat_history"]) == 2, stale)
 check("resume: reading the night never committed or removed it", os.path.exists(RR.JOURNAL))
+
+# Cast: her device mirrors its screen in; latest frame only, and stale frames are not served.
+check("cast: nothing to serve before a frame is pushed", RR.cast_get() is None and RR.cast_status()["active"] is False)
+RR.cast_put(b"\xff\xd8\xff-frame-one", now=1000.0)
+RR.cast_put(b"\xff\xd8\xff-frame-two", now=1001.0)
+check("cast: only the latest mirrored frame is kept and served fresh",
+      RR.cast_get(now=1001.5) == b"\xff\xd8\xff-frame-two" and RR.cast_status(now=1001.5)["active"] is True, RR.cast_status(now=1001.5))
+check("cast: a frame older than the freshness window is not the screen any more",
+      RR.cast_get(now=1001.0 + RR.CAST_FRESH_S + 1) is None and RR.cast_status(now=1001.0 + RR.CAST_FRESH_S + 1)["active"] is False)
+check("cast: the store stayed under scratch ROOM_DIR", RR.CAST_FRAME.startswith(TMP))
+try:
+    RR.cast_put(b"", now=1002.0); empty_rejected = False
+except ValueError:
+    empty_rejected = True
+check("cast: an empty frame is refused, never written over the last good one", empty_rejected and RR.cast_get(now=1002.0) == b"\xff\xd8\xff-frame-two")
 shutil.rmtree(TMP)
 print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)
