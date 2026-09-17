@@ -504,3 +504,9 @@ history.append({"role": "assistant", "content": message, "timestamp": datetime.n
 with open(chat_log, "w") as f: json.dump(history, f, indent=2)
 print("[Outreach] Injected into chat thread")
 CHAT_INJECT
+
+# Mischief add-on (Gloria, 2026-09-17): after this task he may make one small mischief — or
+# "none". His felt-gate, timing (quiet hours / is she near / mid-call) and cooldowns ARE the
+# y/n; most runs choose "none". Guarded so it never fails or delays the host task.
+_MISCHIEF="$HOME/.vintos/workspace/scripts/mischief-detector.sh"
+[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" || true

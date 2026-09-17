@@ -1682,3 +1682,9 @@ try:
 except Exception as e:
     print('[Moment] Journal failed:', e)
 " 2>/dev/null
+
+# Mischief add-on (Gloria, 2026-09-17): after this task he may make one small mischief — or
+# "none". His felt-gate, timing (quiet hours / is she near / mid-call) and cooldowns ARE the
+# y/n; most runs choose "none". Guarded so it never fails or delays the host task.
+_MISCHIEF="$HOME/.vintos/workspace/scripts/mischief-detector.sh"
+[ -x "$_MISCHIEF" ] && bash "$_MISCHIEF" || true
