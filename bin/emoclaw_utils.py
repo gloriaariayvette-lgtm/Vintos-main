@@ -483,7 +483,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
     except Exception:
         _door = {"classification": "unresolved_tension", "classification_confidence": None,
                  "classification_basis": "judge_down"}
-    if _door["classification"] == "thematic_current":
+    if _door["classification"] == "thematic_current" and not str(source or "").startswith("somatic"):
         try:
             import sys as _fd_s
             _fd_s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -529,7 +529,7 @@ def seed_thread(source, thread_text, max_threads=30, extra=None, reasoning=""):
         if not (reasoning or "").strip() and _d.get("why_unresolved"):
             reasoning = str(_d["why_unresolved"])[:250]
             _rsrc = "derived"
-        if _d.get("ok") is False:
+        if _d.get("ok") is False and not str(source or "").startswith("somatic"):
             print("[seed_thread] REJECT (%s) quality: %s" % (source, str(_d.get("why", ""))[:80]), file=_sys.stderr); return
         _di = int(_d.get("duplicate_of", -1))
         if 0 <= _di < len(_cands):
