@@ -29,6 +29,18 @@ def gemma(messages, **kw):
 f = RR.film_lookup("alien", caller=gemma)
 check("film lookup: JSON out of a fenced answer, runtime coerced to a number, page fields present", f["title"] == "Alien" and f["runtime_minutes"] == 117 and f["timed_moments"][0]["minute"] == 52 and "tonal_shifts" in f, f)
 
+def gemma_literal_newline(messages, **kw):
+    return '{"title":"The Night of the Hunter","year":"1955","runtime_minutes":92,"genre":"noir","director":"Charles Laughton","logline":"Two children flee a false preacher.","full_summary":"Harry arrives in town.\nThe children recognize the danger.","tone_arc":"menace to refuge","pace_notes":"patient","timed_moments":[],"jump_scares":[],"tonal_shifts":[]}'
+f_control = RR.film_lookup("The Night of the Hunter", caller=gemma_literal_newline)
+check("film lookup: a literal control character inside model prose is recovered without accepting broken JSON structure",
+      f_control["title"] == "The Night of the Hunter" and "\n" in f_control["full_summary"], f_control)
+try:
+    RR._json_in('{"title":"still broken",}')
+    broken_json_rejected = False
+except json.JSONDecodeError:
+    broken_json_rejected = True
+check("film lookup: control-character recovery does not excuse structurally invalid JSON", broken_json_rejected)
+
 seen = {}
 def sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
     seen.update(system=system, messages=messages, image=image_b64); return "  Ripley is holding her breath. So am I.  "

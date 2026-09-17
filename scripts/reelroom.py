@@ -44,7 +44,16 @@ def _json_in(raw: str, opener: str = "{", closer: str = "}") -> Any:
     a, b = text.find(opener), text.rfind(closer)
     if a == -1 or b == -1:
         raise ValueError("no JSON in the model's answer")
-    return json.loads(text[a:b + 1])
+    payload = text[a:b + 1]
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        # Model-written summaries occasionally contain a literal newline or tab
+        # inside a quoted JSON string.  Retry only that one well-defined defect;
+        # strict=False still rejects broken structure, missing delimiters, etc.
+        if "Invalid control character" not in str(exc):
+            raise
+        return json.loads(payload, strict=False)
 
 
 # ---------------------------------------------------------------- the film
