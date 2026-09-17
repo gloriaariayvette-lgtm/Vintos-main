@@ -582,6 +582,8 @@ def tv_screenshot(timeout: float = 12.0) -> bytes:
         subprocess.run(["adb", "connect", TV_ADB], capture_output=True,
                        timeout=min(timeout, 8.0))
         r = subprocess.run(command, capture_output=True, timeout=timeout)
+    if r.returncode == 0 and not r.stdout:
+        return _tv_screenrecord_frame(timeout=max(timeout, 15.0))
     if r.returncode != 0 or not r.stdout.startswith(b"\x89PNG"):
         err = r.stderr.decode("utf-8", "replace").strip()[:200]
         raise RuntimeError("the TV did not give a screenshot: " + (err or "no image; is the TV on and ADB authorised?"))

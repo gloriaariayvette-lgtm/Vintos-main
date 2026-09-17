@@ -129,6 +129,17 @@ def _fallback_run(argv, **kw):
 RR.shutil.which, RR.subprocess.run = lambda name: "/usr/bin/"+name, _fallback_run
 check("TV capture: a black SurfaceView still falls back to a real screen-record frame",
       RR.tv_screenshot() == fallback and any("screenrecord" in row for row in fallback_calls), fallback_calls)
+empty_calls=[]
+def _empty_fallback_run(argv, **kw):
+    empty_calls.append(argv)
+    if "screencap" in argv: return _Proc(out=b"")
+    if "screenrecord" in argv: return _Proc(out=b"")
+    if "cat" in argv: return _Proc(out=b"mp4")
+    if argv[0] == "ffmpeg": return _Proc(out=fallback)
+    return _Proc(out=b"")
+RR.subprocess.run = _empty_fallback_run
+check("TV capture: an empty successful screencap also tries the screen-record doorway",
+      RR.tv_screenshot() == fallback and any("screenrecord" in row for row in empty_calls), empty_calls)
 RR.shutil.which, RR.subprocess.run = _old_which, _old_run
 
 RR.shutil.which = lambda name: None
