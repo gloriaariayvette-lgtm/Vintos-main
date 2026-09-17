@@ -49,12 +49,26 @@ GRADES = os.path.join(lab.ROOT, "experiment-grades.jsonl")
 # Bumped whenever the arithmetic or the outcome vocabulary changes.  Idempotence is keyed
 # on (run_id, grader_version): a re-grade under a new grader is a new row, not a refusal,
 # so an improved grader can revisit old runs without erasing what the old one said.
-GRADER_VERSION = "chemistry_grade/1"
+GRADER_VERSION = "chemistry_grade/2"   # +fold grading on ESMFold confidence (pLDDT), 2026-09-17
 
 # Hartree.  Chemical accuracy is ~1.6e-3 Ha; this is far tighter, because the question
 # here is only "is it on the right side of the reference", not "is it chemically useful".
 DEFAULT_TOLERANCE = 1e-6
 ENERGY_SANITY = 1e6
+
+# --- fold grading -----------------------------------------------------------------------
+# An energy run is graded against a Hartree-Fock reference; a fold run has no such number and
+# was coming back "completed_no_points / ungraded — no reference", scored as nothing (Gloria,
+# 2026-09-17: "help this man in his Lab").  A fold has its OWN honest quality signal: the mean
+# pLDDT the ESMFold instrument already computes — the model's per-residue confidence, 0..100.
+# So a fold is graded on whether its structure cleared the confident band, on Aegis, from the
+# number the Mac returned — the same three laws, a different reference.
+FOLD_FIELDS = ("mean_plddt", "plddt", "plddt_mean", "mean_pLDDT", "pLDDT", "avg_plddt",
+               "plddt_score", "mean_confidence")
+FOLD_OUTCOMES = ("CONFIDENT_FOLD", "MODERATE_FOLD", "LOW_CONFIDENCE_FOLD",
+                 "UNGRADED_NO_STRUCTURE")
+DEFAULT_PLDDT_REFERENCE = 70.0   # AlphaFold/ESMFold "confident" band starts at ~70
+DEFAULT_PLDDT_FLOOR = 50.0       # below ~50 is "very low"; between floor and reference is moderate
 
 ACCURACY_OUTCOMES = ("BETTER_THAN_HARTREE_FOCK", "AT_HARTREE_FOCK", "WORSE_THAN_HARTREE_FOCK",
                      "INVALID_BELOW_EXACT", "UNGRADED_NO_REFERENCE", "UNGRADED_UNREADABLE")
@@ -62,7 +76,10 @@ ACCURACY_OUTCOMES = ("BETTER_THAN_HARTREE_FOCK", "AT_HARTREE_FOCK", "WORSE_THAN_
 # counts as nothing: never a miss, never a success.
 COUNTS_AS = {"BETTER_THAN_HARTREE_FOCK": "accuracy", "AT_HARTREE_FOCK": "accuracy",
              "WORSE_THAN_HARTREE_FOCK": "accuracy", "INVALID_BELOW_EXACT": "nothing",
-             "UNGRADED_NO_REFERENCE": "nothing", "UNGRADED_UNREADABLE": "nothing"}
+             "UNGRADED_NO_REFERENCE": "nothing", "UNGRADED_UNREADABLE": "nothing",
+             # a graded fold is a real result — confident, moderate or low is a score, not nothing
+             "CONFIDENT_FOLD": "accuracy", "MODERATE_FOLD": "accuracy",
+             "LOW_CONFIDENCE_FOLD": "accuracy", "UNGRADED_NO_STRUCTURE": "nothing"}
 
 EXECUTION_STATES = ("completed", "completed_no_points", "completed_with_unreadable_points",
                     "failed", "unknown_after_timeout")
@@ -221,12 +238,94 @@ def graded_already(run_id, grader_version=None):
                for row in lab._jsonl(GRADES))
 
 
+def _plddt_config(key, default):
+    try: value = float(lab.config().get(key, default))
+    except Exception: return default
+    return value if math.isfinite(value) and value > 0 else default
+
+
+def _plddt_number(value):
+    """A mean pLDDT on the 0..100 scale, or None.  A 0..1 fraction is scaled; nonsense is refused."""
+    if isinstance(value, bool) or value is None: return None
+    try: number = float(value)
+    except (TypeError, ValueError): return None
+    if not math.isfinite(number): return None
+    if 0 < number <= 1.0: number *= 100.0     # some tools report confidence as a 0..1 fraction
+    if number < 0 or number > 100: return None
+    return number
+
+
+def _find_plddt(value):
+    """The first pLDDT-family confidence anywhere in the bench result, so the parse survives
+    whatever shape the fold instrument nests it in.  Returns (mean_plddt, key) or (None, None)."""
+    if isinstance(value, dict):
+        for alias in FOLD_FIELDS:
+            if alias in value:
+                number = _plddt_number(value[alias])
+                if number is not None: return number, alias
+        for nested in value.values():
+            number, alias = _find_plddt(nested)
+            if number is not None: return number, alias
+    elif isinstance(value, list):
+        for nested in value:
+            number, alias = _find_plddt(nested)
+            if number is not None: return number, alias
+    return None, None
+
+
+def _fold_accuracy(plddt, reference, floor):
+    """The fold verdict: did the structure clear the confident band?  Its own kind of reference."""
+    if plddt is None: return "UNGRADED_NO_STRUCTURE", "no pLDDT confidence in the result"
+    if plddt >= reference:
+        return "CONFIDENT_FOLD", "mean pLDDT %.1f at or above the confident bar %.1f" % (plddt, reference)
+    if plddt >= floor:
+        return "MODERATE_FOLD", "mean pLDDT %.1f between the floor %.1f and the bar %.1f" % (plddt, floor, reference)
+    return "LOW_CONFIDENCE_FOLD", "mean pLDDT %.1f below the floor %.1f" % (plddt, floor)
+
+
+def _is_fold(experiment, mac_result):
+    """A fold run is graded on confidence, not energy.  Named experiments win; failing that, a
+    result that carries a confidence but no variational energy is a structure, not an energy curve."""
+    if "fold" in str(experiment or "").lower(): return True
+    plddt, _ = _find_plddt(mac_result if isinstance(mac_result, dict) else {})
+    points, _ = _points(mac_result)
+    return plddt is not None and not points
+
+
+def _grade_fold(run_id, experiment, mac_result, plan):
+    reference, floor = _plddt_config("grade_plddt_reference", DEFAULT_PLDDT_REFERENCE), \
+        _plddt_config("grade_plddt_floor", DEFAULT_PLDDT_FLOOR)
+    plddt, field = _find_plddt(mac_result if isinstance(mac_result, dict) else {})
+    outcome, detail = _fold_accuracy(plddt, reference, floor)
+    points = ([{"mean_plddt": round(plddt, 2), "plddt_reference": reference, "plddt_floor": floor,
+                "accuracy_outcome": outcome, "counts_as": COUNTS_AS[outcome], "detail": detail,
+                "field": field}] if plddt is not None else [])
+    row = {"grade_id": "CG-" + uuid.uuid4().hex[:10], "at": lab.now_iso(),
+           "run_id": run_id, "experiment": str(experiment or "")[:80],
+           "grader_version": GRADER_VERSION, "modality": "fold",
+           "plddt_reference": reference, "plddt_floor": floor,
+           "execution_state": _execution_state(mac_result, points, 0),
+           "aggregate_accuracy": outcome if plddt is not None else "NO_STRUCTURE",
+           "graded_points": 1 if (plddt is not None and COUNTS_AS[outcome] == "accuracy") else 0,
+           "total_points": len(points), "unreadable_points": 0, "points_path": "deep(pLDDT)",
+           "field_map": {"mean_plddt": field} if field else {}, "points": points,
+           "plan": {k: plan.get(k) for k in ("experiment", "parameters", "shots", "question")}
+                   if isinstance(plan, dict) else None,
+           "truth_status": "aegis_computed_verdict_over_host_supplied_confidence",
+           "evidence_standing": "lab_local_fold_confidence_record_not_biological_evidence"}
+    row.update(_isolation(mac_result))
+    lab._append(GRADES, row)
+    return row
+
+
 def grade(run_id, experiment, mac_result, plan=None):
     """Grade one Mac run.  Returns the appended row, or a refusal when already graded."""
     run_id = str(run_id or "")[:64]
     if not run_id: return {"refused": "a run without a run_id cannot be graded idempotently"}
     if graded_already(run_id):
         return {"refused": "run %s is already graded by %s" % (run_id, GRADER_VERSION)}
+    if _is_fold(experiment, mac_result):
+        return _grade_fold(run_id, experiment, mac_result, plan)
     tol = _tolerance()
     points, points_path = _points(mac_result)
     rows, unreadable, field_map = [], 0, {}

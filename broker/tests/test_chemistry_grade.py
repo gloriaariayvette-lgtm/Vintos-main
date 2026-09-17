@@ -34,6 +34,11 @@ def reply(points, ok=True, isolation=None, **extra):
     if isolation is not None: run["isolation"] = isolation
     value = {"ok": ok, "run": run}; value.update(extra); return value
 
+def fold_reply(plddt=None, ok=True):
+    result = {"pdb": "ATOM      1  N   MET A   1", "sequence": "MKV"}
+    if plddt is not None: result["mean_plddt"] = plddt
+    return {"ok": ok, "run": {"experiment": "fold", "result": result}}
+
 # --- the run that started this: operational, and not good --------------------------------
 REAL = [{"bond_length": 0.735, "vqe_energy": -0.478030, "hartree_fock_energy": -1.116999,
          "exact_energy": -1.137306, "error": 0.659276, "recovered_correlation": -31.4654,
@@ -120,6 +125,33 @@ check("each point keeps its own verdict",
       [p["accuracy_outcome"] for p in curve["points"]] ==
       ["BETTER_THAN_HARTREE_FOCK", "WORSE_THAN_HARTREE_FOCK", "AT_HARTREE_FOCK"],
       [p["accuracy_outcome"] for p in curve["points"]])
+
+# --- folds are graded on their own confidence (pLDDT), not a Hartree-Fock reference -------
+conf = G.grade("RUN-FOLD-1", "fold", fold_reply(85.2))
+check("a confident fold is a real score, not 'ungraded — no reference'",
+      conf["aggregate_accuracy"] == "CONFIDENT_FOLD" and conf["execution_state"] == "completed"
+      and conf["graded_points"] == 1 and conf["points"][0]["counts_as"] == "accuracy"
+      and conf.get("modality") == "fold", conf)
+mod = G.grade("RUN-FOLD-2", "fold", fold_reply(61.0))
+check("a mid-confidence fold is MODERATE_FOLD", mod["aggregate_accuracy"] == "MODERATE_FOLD", mod["aggregate_accuracy"])
+low = G.grade("RUN-FOLD-3", "fold", fold_reply(40.0))
+check("a poor fold is LOW_CONFIDENCE_FOLD — still a graded score, never 'nothing'",
+      low["aggregate_accuracy"] == "LOW_CONFIDENCE_FOLD" and low["points"][0]["counts_as"] == "accuracy", low)
+nostruct = G.grade("RUN-FOLD-4", "fold", fold_reply(None))
+check("a fold with no confidence returned is completed_no_points / NO_STRUCTURE, never a failure verdict",
+      nostruct["aggregate_accuracy"] == "NO_STRUCTURE" and nostruct["execution_state"] == "completed_no_points", nostruct)
+deep = G.grade("RUN-FOLD-5", "fold", {"ok": True, "run": {"result": {"metrics": {"confidence": {"mean_plddt": 92.0}}}}})
+check("the pLDDT is found however deep the bench nests it", deep["aggregate_accuracy"] == "CONFIDENT_FOLD", deep)
+frac = G.grade("RUN-FOLD-6", "fold", fold_reply(0.88))
+check("a 0..1 confidence is scaled onto the 0..100 pLDDT band",
+      frac["aggregate_accuracy"] == "CONFIDENT_FOLD" and abs(frac["points"][0]["mean_plddt"] - 88.0) < 1e-6, frac["points"][0]["mean_plddt"])
+byshape = G.grade("RUN-FOLD-7", "structure_run", {"ok": True, "run": {"result": {"plddt": 77.0}}})
+check("a result carrying a confidence but no energy is graded as a fold by shape",
+      byshape.get("modality") == "fold" and byshape["aggregate_accuracy"] == "CONFIDENT_FOLD", byshape)
+check("energy runs are never diverted into the fold branch",
+      G.latest("RUN-H2")["aggregate_accuracy"] == "ALL_WORSE_THAN_HARTREE_FOCK" and "modality" not in G.latest("RUN-REAL"))
+check("the confident-fold verdict counts toward accuracy in the ledger, not 'nothing'",
+      G.COUNTS_AS["CONFIDENT_FOLD"] == "accuracy" and G.COUNTS_AS["UNGRADED_NO_STRUCTURE"] == "nothing")
 
 # --- idempotence on (run_id, grader_version) ---------------------------------------------
 again = G.grade("RUN-H2", "molecule", reply(REAL, isolation=ISO))
