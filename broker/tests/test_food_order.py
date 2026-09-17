@@ -95,6 +95,23 @@ class FoodOrderTest(unittest.TestCase):
         self.assertEqual("failed", rec["state"]); self.assertIn("existing_cart_requires_review", rec["error"])
         self.assertFalse(any(x[:2] == ("cart", "add-items") for x in self.calls))
 
+    def test_token_file_supplies_dd_cli_credential(self):
+        # Aegis has no Keychain; the token file is how the credential reaches dd-cli's env.
+        tokfile = pathlib.Path(self.td.name) / "secrets" / "dd-cli.token"
+        tokfile.parent.mkdir(parents=True); tokfile.write_text("  tok-abc123\n")
+        fo.DD_TOKEN_FILE = str(tokfile)
+        saved = os.environ.pop("DD_CLI_ACCESS_TOKEN", None)
+        try:
+            self.assertEqual("tok-abc123", fo._dd_env()["DD_CLI_ACCESS_TOKEN"])
+            os.environ["DD_CLI_ACCESS_TOKEN"] = "env-wins"
+            self.assertEqual("env-wins", fo._dd_env()["DD_CLI_ACCESS_TOKEN"])  # a set env is never overwritten
+            os.environ.pop("DD_CLI_ACCESS_TOKEN", None)
+            fo.DD_TOKEN_FILE = str(pathlib.Path(self.td.name) / "nope.token")
+            self.assertNotIn("DD_CLI_ACCESS_TOKEN", fo._dd_env())  # a missing file is not an error
+        finally:
+            os.environ.pop("DD_CLI_ACCESS_TOKEN", None)
+            if saved is not None: os.environ["DD_CLI_ACCESS_TOKEN"] = saved
+
     def test_suite_is_isolated_and_sender_stubbed(self):
         self.assertTrue(fo.ROOT.startswith(self.td.name)); self.assertEqual("<lambda>", fo._notify.__name__)
         self.assertNotIn(os.path.expanduser("~/.vintos/workspace"), fo.ROOT)

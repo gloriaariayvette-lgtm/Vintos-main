@@ -816,7 +816,12 @@ is bound to the exact cart/price/ETA/address/card fingerprint; a change sends a 
 The non-idempotent submit is claimed before execution and is never automatically retried.
 
 The checksum-verified official v0.2.4 binary is installed on the Mac and Aegis, and the Mac
-login succeeded. Still open: transferring only `DD_CLI_ACCESS_TOKEN` directly into Aegis's
-protected environment requires Gloria's explicit credential-transfer authorization. Until
-that step succeeds, the code records `dd_cli_not_authenticated` and cannot produce a real
-restaurant/cart/quote receipt. No live order has been placed while commissioning this path.
+login succeeded. The Mac keeps the token in the Keychain; Aegis (Linux) has no Keychain, so
+dd-cli there reads `DD_CLI_ACCESS_TOKEN` from its environment and, absent it, `food_order._cli`
+records `dd_cli_not_authenticated` — which is exactly the wall Chat hit. `food_order.py` now
+sources that token from a protected file, `~/.vintos/secrets/dd-cli.token` (override
+`DD_CLI_TOKEN_FILE`), the same convention as the Govee key, and hands it only to the dd-cli
+subprocess — never the repo, the process list, or a log. Still open, and only Gloria can do it:
+drop the Mac's `DD_CLI_ACCESS_TOKEN` value into that file on Aegis (`chmod 600`). Until that one
+step, no real restaurant/cart/quote receipt can be produced. No live order has been placed while
+commissioning this path.

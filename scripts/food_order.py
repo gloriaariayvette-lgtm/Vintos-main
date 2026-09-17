@@ -21,6 +21,11 @@ ORDERS = os.path.join(ROOT, "proposals.json")
 EVENTS = os.path.join(ROOT, "events.jsonl")
 LOCK = os.path.join(ROOT, ".lock")
 DD = os.path.expanduser(os.environ.get("DD_CLI_BIN", "~/.local/bin/dd-cli"))
+# dd-cli reads its token from the macOS Keychain on the Mac; Aegis (Linux) has no Keychain, so it
+# needs DD_CLI_ACCESS_TOKEN in the environment. Gloria drops it once into a protected file on Aegis
+# (same convention as ~/.vintos/secrets/govee.key); the token never rides the repo, the process
+# list, or a log. This is the last mile of commissioning the DoorDash lane (open-work, 16 Sep).
+DD_TOKEN_FILE = os.path.expanduser(os.environ.get("DD_CLI_TOKEN_FILE", "~/.vintos/secrets/dd-cli.token"))
 MODEL_URL = os.environ.get("VINTOS_ORDER_MODEL_URL", "http://127.0.0.1:8599/gemma/v1/chat/completions")
 PUBLIC_BASE = os.environ.get("VINTOS_PUBLIC_BASE", "http://100.72.225.119:8500").rstrip("/")
 TTL_SECONDS = int(os.environ.get("VINTOS_ORDER_APPROVAL_TTL", "1800"))
@@ -69,10 +74,24 @@ def _intent(user_text):
     return 'Summary: Help Gloria and Vintos choose a meal\nuser prompt/purpose: "%s"' % clean
 
 
+def _dd_env():
+    """dd-cli's environment: os.environ, plus DD_CLI_ACCESS_TOKEN read from the protected token
+    file when it is not already set. Never logged; only handed to the dd-cli subprocess."""
+    env = dict(os.environ)
+    if not env.get("DD_CLI_ACCESS_TOKEN"):
+        try:
+            with open(DD_TOKEN_FILE, encoding="utf-8") as f:
+                tok = f.read().strip()
+            if tok: env["DD_CLI_ACCESS_TOKEN"] = tok
+        except Exception:
+            pass
+    return env
+
+
 def _cli(parts, intent, timeout=CLI_TIMEOUT):
     if not os.path.isfile(DD): raise RuntimeError("dd_cli_not_installed")
     cmd = [DD, "--json-output"] + list(parts) + ["--intent", intent]
-    p = RUN(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ))
+    p = RUN(cmd, capture_output=True, text=True, timeout=timeout, env=_dd_env())
     if p.returncode:
         err = (p.stderr or p.stdout or "dd-cli failed").strip()
         if "DD_CLI_ACCESS_TOKEN" in err or "Keychain unavailable" in err or "sign-in" in err.lower():
