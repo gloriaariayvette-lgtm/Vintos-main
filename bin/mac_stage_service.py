@@ -317,18 +317,25 @@ def render(text, room):
     close = os.path.join(CLIPS, "%s-close.mp4" % room)
     if os.path.exists(close):
         face = close
-    key = hashlib.sha1(("%s|%s|%s" % (room, VOICE, text)).encode()).hexdigest()[:16]
+    key = hashlib.sha1(("chatterbox-onyx-v1|%s|%s" % (room, text)).encode()).hexdigest()[:16]
     os.makedirs(CACHE, exist_ok=True)
     out = os.path.join(CACHE, key + ".mp4")
     if os.path.exists(out):
         return out, None
     wav = os.path.join(CACHE, key + ".wav")
+    transient_voice = not _chatterbox_call_active
     try:
-        receipt = orpheus_wav(text, wav)
+        try:
+            receipt = chatterbox_wav(text, wav)
+        except Exception as voice_exc:
+            receipt = ({"ok": True, "engine": "kokoro_fallback", "path": wav,
+                        "chatterbox_error": str(voice_exc)[:200]}
+                       if kokoro_wav(_chatterbox_text(text), wav)
+                       else {"ok": False, "engine": "none", "error": str(voice_exc)[:240]})
         if not receipt.get("ok"):
             return None, "voice produced no audio: " + str(receipt.get("error", ""))
-    except Exception as e:
-        return None, "kokoro failed: %s" % e
+    finally:
+        if transient_voice: _chatterbox_unload()
     # DEFAULT: voice-over - his voice plays instantly over the living close-up,
     # no mouth edit (Gloria's call: charm over lip-flap). Wav2Lip runs only if
     # the file ~/VintosStage/mouth-on exists (touch/rm to toggle).

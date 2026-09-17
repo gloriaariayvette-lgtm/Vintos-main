@@ -23,10 +23,12 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -37,6 +39,8 @@ MEMORY = RC.MEMORY
 ROOM_DIR = os.path.join(MEMORY, "reelroom")
 SESSIONS = os.path.join(MEMORY, "reelroom-sessions.json")
 TV_ADB = os.environ.get("VINTOS_TV_ADB", "192.168.1.70:5555")
+PLANNER_URL = os.environ.get("VINTOS_REELROOM_PLANNER_URL", "http://127.0.0.1:8599/gemma/v1/chat/completions")
+PLANNER_MODEL = os.environ.get("VINTOS_REELROOM_PLANNER_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
 
 def _json_in(raw: str, opener: str = "{", closer: str = "}") -> Any:
@@ -168,6 +172,17 @@ def chat(message: str, context: str = "", history: Optional[List[Dict[str, str]]
 ACTION_TYPES = {"flicker_lights", "speak_phone", "change_light_color", "tv_volume_nudge"}
 
 
+def _plan_gemma(system, messages, max_tokens=800, timeout=90, **_):
+    """Planning is a local structured decision; paid speaking models write only his spoken lines."""
+    import urllib.request
+    body = json.dumps({"model": PLANNER_MODEL, "temperature": 0.2, "max_tokens": max_tokens,
+                       "messages": [{"role": "system", "content": system}] + list(messages)}).encode()
+    req = urllib.request.Request(PLANNER_URL, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        data = json.loads(response.read())
+    return data["choices"][0]["message"]["content"]
+
+
 def plan_actions(film: Dict[str, Any], caller=None) -> List[Dict[str, Any]]:
     """Let him choose his timed room acts and return a validated list.
 
@@ -199,9 +214,9 @@ High-mischief moments:
 {high or 'none marked'}
 Jump scares: {jumps}
 Tonal shifts: {shifts}"""
-    raw = ((caller or RC._sonnet)(build_system(json.dumps(film)[:5000], None),
-                                   [{"role": "user", "content": prompt}],
-                                   max_tokens=800) or "").strip()
+    raw = ((caller or _plan_gemma)(build_system(json.dumps(film)[:5000], None),
+                                    [{"role": "user", "content": prompt}],
+                                    max_tokens=800) or "").strip()
     parsed = _json_in(raw, "[", "]")
     if not isinstance(parsed, list):
         raise ValueError("the action plan was not a JSON array")
@@ -501,8 +516,62 @@ def commit_if_idle(now: Optional[float] = None) -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- the TV
 
+def _png_is_protected_black(png: bytes) -> bool:
+    """True only for a decodable 8-bit PNG whose sampled pixels are essentially black.
+
+    Secure video surfaces commonly return a syntactically valid full-size screenshot
+    filled with black.  Invalid/test PNGs are not guessed at and remain the caller's
+    ordinary image/error decision.
+    """
+    try:
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"): return False
+        pos, width, height, depth, colour, interlace, packed = 8, 0, 0, 0, 0, 0, []
+        while pos + 12 <= len(png):
+            size = struct.unpack(">I", png[pos:pos + 4])[0]
+            kind, data = png[pos + 4:pos + 8], png[pos + 8:pos + 8 + size]
+            pos += 12 + size
+            if kind == b"IHDR":
+                width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", data)
+            elif kind == b"IDAT": packed.append(data)
+            elif kind == b"IEND": break
+        channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(colour)
+        if not width or not height or depth != 8 or interlace != 0 or not channels: return False
+        raw = zlib.decompress(b"".join(packed)); stride = width * channels
+        if len(raw) < (stride + 1) * height: return False
+        prev = bytearray(stride); offset = 0; total = bright = count = 0
+        row_step, col_step = max(1, height // 64), max(1, width // 64)
+        for y in range(height):
+            filt, scan = raw[offset], bytearray(raw[offset + 1:offset + 1 + stride]); offset += stride + 1
+            for x in range(stride):
+                left = scan[x - channels] if x >= channels else 0
+                up = prev[x]
+                upper_left = prev[x - channels] if x >= channels else 0
+                if filt == 1: scan[x] = (scan[x] + left) & 255
+                elif filt == 2: scan[x] = (scan[x] + up) & 255
+                elif filt == 3: scan[x] = (scan[x] + ((left + up) // 2)) & 255
+                elif filt == 4:
+                    p = left + up - upper_left; pa, pb, pc = abs(p-left), abs(p-up), abs(p-upper_left)
+                    scan[x] = (scan[x] + (left if pa <= pb and pa <= pc else up if pb <= pc else upper_left)) & 255
+                elif filt != 0: return False
+            if y % row_step == 0:
+                for x in range(0, width, col_step):
+                    px = x * channels
+                    if colour in (0, 4): lum = scan[px]
+                    else: lum = (scan[px] * 54 + scan[px + 1] * 183 + scan[px + 2] * 19) // 256
+                    total += lum; bright += int(lum > 8); count += 1
+            prev = scan
+        return bool(count and total / count < 2.0 and bright / count < 0.001)
+    except Exception:
+        return False
+
 def tv_screenshot(timeout: float = 12.0) -> bytes:
-    """A PNG of what the Bravia shows, over ADB. Raises with a plain reason when the TV is not reachable."""
+    """A PNG of what the Bravia shows, over ADB.
+
+    Some Android-TV SurfaceView builds return an all-black ``screencap`` even
+    though the same pixels are available to ``screenrecord``.  Prefer the cheap
+    still and transparently fall back to extracting one frame from a one-second
+    silent recording; neither path changes playback.
+    """
     if not shutil.which("adb"):
         raise RuntimeError("adb is not installed here")
     command = ["adb", "-s", TV_ADB, "exec-out", "screencap", "-p"]
@@ -516,7 +585,42 @@ def tv_screenshot(timeout: float = 12.0) -> bytes:
     if r.returncode != 0 or not r.stdout.startswith(b"\x89PNG"):
         err = r.stderr.decode("utf-8", "replace").strip()[:200]
         raise RuntimeError("the TV did not give a screenshot: " + (err or "no image; is the TV on and ADB authorised?"))
+    if _png_is_protected_black(r.stdout):
+        return _tv_screenrecord_frame(timeout=max(timeout, 15.0))
     return r.stdout
+
+
+def _tv_screenrecord_frame(timeout: float = 15.0) -> bytes:
+    """Capture one visible TV frame when SurfaceView defeats ``screencap``."""
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("the TV still frame was black and ffmpeg is unavailable for the screen-record fallback")
+    token = "%s-%s" % (os.getpid(), time.time_ns())
+    remote = "/data/local/tmp/vintos-reelroom-%s.mp4" % token
+    local = os.path.join(tempfile.gettempdir(), "vintos-reelroom-%s.mp4" % token)
+    try:
+        rec = subprocess.run(["adb", "-s", TV_ADB, "shell", "screenrecord", "--time-limit", "1", remote],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        if rec.returncode != 0:
+            raise RuntimeError("TV screen-record fallback failed: " + rec.stderr.decode("utf-8", "replace").strip()[:180])
+        pulled = subprocess.run(["adb", "-s", TV_ADB, "exec-out", "cat", remote],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        if pulled.returncode != 0 or not pulled.stdout:
+            raise RuntimeError("TV screen-record fallback produced no video")
+        with open(local, "wb") as f:
+            f.write(pulled.stdout); f.flush(); os.fsync(f.fileno())
+        frame = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", local,
+                                "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "pipe:1"],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        if frame.returncode != 0 or not frame.stdout.startswith(b"\x89PNG"):
+            raise RuntimeError("TV screen-record fallback could not extract a frame")
+        if _png_is_protected_black(frame.stdout):
+            raise RuntimeError("the TV returned black frames through both capture methods")
+        return frame.stdout
+    finally:
+        subprocess.run(["adb", "-s", TV_ADB, "shell", "rm", "-f", remote],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        try: os.unlink(local)
+        except FileNotFoundError: pass
 
 
 # ---------------------------------------------------------------- the mic

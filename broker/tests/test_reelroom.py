@@ -3,7 +3,7 @@
 the page reads; chat carries the film and the frame to Sonnet and never claims a frame it was not given; the
 summary is written by him, kept under memory/reelroom and listed; the mic without ffmpeg says so instead of
 inventing a mood. Scratch workspace only."""
-import os, sys, json, tempfile, shutil
+import os, sys, json, tempfile, shutil, struct, zlib
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(os.path.dirname(HERE))
 TMP = tempfile.mkdtemp(); os.makedirs(os.path.join(TMP, "memory")); os.environ["SPARK_WORKSPACE"] = TMP
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -58,6 +58,11 @@ check("no frame: the prompt says the film has not started and forbids claiming a
 
 plan = RR.plan_actions(f, caller=lambda system, messages, **kw: '[{"id":"p1","minute":52,"action_type":"speak_phone","payload":"Boo.","reason":"the chestburster","emoji":"👻","tone_requirement":"shock"}]')
 check("plan: his action plan is parsed and phone speech is available instead of Echo", len(plan) == 1 and plan[0]["action_type"] == "speak_phone" and plan[0]["minute"] == 52, plan)
+_old_planner = RR._plan_gemma; routed = []
+RR._plan_gemma = lambda system, messages, **kw: routed.append((system, messages)) or '[]'
+RR.plan_actions(f)
+RR._plan_gemma = _old_planner
+check("plan: local Gemma owns structured planning; paid speaking models do not", len(routed) == 1 and routed[0][1][0]["role"] == "user")
 check("plan: an explicit empty array remains an honest choice", RR.plan_actions(f, caller=lambda *a, **k: "[]") == [])
 try:
     RR.plan_actions(f, caller=lambda *a, **k: "I could not decide")
@@ -104,6 +109,26 @@ _old_which, _old_run = RR.shutil.which, RR.subprocess.run
 RR.shutil.which, RR.subprocess.run = lambda name: "/usr/bin/adb", _adb_run
 check("TV capture reconnects wireless ADB once and retries the frame",
       RR.tv_screenshot().startswith(b"\x89PNG") and _adb_calls[1] == ["adb", "connect", RR.TV_ADB], _adb_calls)
+RR.shutil.which, RR.subprocess.run = _old_which, _old_run
+
+def _png(rgb):
+    w, h = 8, 8; rows = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", __import__("binascii").crc32(kind + data) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w,h,8,2,0,0,0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+check("TV capture: protected all-black video is distinguished from an ordinary dark scene",
+      RR._png_is_protected_black(_png((0,0,0))) and not RR._png_is_protected_black(_png((12,8,5))))
+fallback = _png((40,22,10)); fallback_calls=[]
+def _fallback_run(argv, **kw):
+    fallback_calls.append(argv)
+    if "screencap" in argv: return _Proc(out=_png((0,0,0)))
+    if "screenrecord" in argv: return _Proc(out=b"")
+    if "cat" in argv: return _Proc(out=b"mp4")
+    if argv[0] == "ffmpeg": return _Proc(out=fallback)
+    return _Proc(out=b"")
+RR.shutil.which, RR.subprocess.run = lambda name: "/usr/bin/"+name, _fallback_run
+check("TV capture: a black SurfaceView still falls back to a real screen-record frame",
+      RR.tv_screenshot() == fallback and any("screenrecord" in row for row in fallback_calls), fallback_calls)
 RR.shutil.which, RR.subprocess.run = _old_which, _old_run
 
 RR.shutil.which = lambda name: None

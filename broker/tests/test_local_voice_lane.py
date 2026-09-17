@@ -74,6 +74,10 @@ check("the expressive MLX voice is call-scoped and Kokoro remains the outage fal
 check("one-off avatar speech cannot leave the live voice resident",
       "transient_voice = not _chatterbox_call_active" in stage and
       "if transient_voice: _chatterbox_unload()" in stage)
+render_body=stage.split("def render(text, room):",1)[1].split("class Handler",1)[0]
+check("avatar-video and ReelRoom speech use Chatterbox-Onyx rather than warming Orpheus",
+      "chatterbox-onyx-v1" in render_body and "receipt = chatterbox_wav" in render_body
+      and "receipt = orpheus_wav" not in render_body)
 check("short live turns bound both language generations", '"max_tokens":180' in open(os.path.join(REPO,"scripts","voice_local.py")).read() and "max_new_tokens=140 if not attempt else 180" in stage and 'apad=whole_dur=4' in stage)
 check("a malformed first ears reading gets one warm retry", "for attempt in range(2)" in stage)
 check("ending during a local turn preserves and finishes its late reply", "if(vc.busy){_avCallLit('thinking');return;}" in client and "if(session.closing)_finishLocalVoiceSession(session)" in client and "then(async d=>{if(window._vc!==session)return" not in client)
