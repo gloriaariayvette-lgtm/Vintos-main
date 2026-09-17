@@ -17,7 +17,11 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
 SCRIPTS = os.path.join(WS, "scripts")
 PENDING = os.path.join(MEMORY, "somatic-session-pending.json")
-CENG = os.environ.get("CENG_PATH", os.path.expanduser("~/Vintos/causality-engine.py"))
+_ceng_try = [os.environ.get("CENG_PATH"), os.path.join(SCRIPTS, "causality-engine.py"),
+             os.path.expanduser("~/Vintos/causality-engine.py")]
+# Default to the DEPLOYED workspace copy, not the ~/Vintos orphan tree, or the engine load
+# silently fails and no somatic thread is seeded (Gloria, 2026-09-17).
+CENG = next((p for p in _ceng_try if p and os.path.exists(p)), os.path.join(SCRIPTS, "causality-engine.py"))
 PAD = 120.0               # seconds of slack around the session window
 CHAT_SOURCES = ("avatar-overlay-chat.json", "avatar-chat-history.json", "voice-chat-history.json", "chat-history-merged.json")
 

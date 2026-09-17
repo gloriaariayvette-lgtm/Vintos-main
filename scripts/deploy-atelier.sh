@@ -53,6 +53,9 @@ CHEM_UNIT_DST="$HOME/.config/systemd/user/$CHEM_UNIT_NAME.service"
 CHEM_SESSION_NAME="vintos-chemistry-session"
 CHEM_SESSION_SERVICE_SRC="$SRC/broker/$CHEM_SESSION_NAME.service"; CHEM_SESSION_SERVICE_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.service"
 CHEM_SESSION_TIMER_SRC="$SRC/broker/$CHEM_SESSION_NAME.timer"; CHEM_SESSION_TIMER_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.timer"
+SOMATIC_NAME="vintos-somatic-narrate"
+SOMATIC_SERVICE_SRC="$SRC/broker/$SOMATIC_NAME.service"; SOMATIC_SERVICE_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.service"
+SOMATIC_TIMER_SRC="$SRC/broker/$SOMATIC_NAME.timer"; SOMATIC_TIMER_DST="$HOME/.config/systemd/user/$SOMATIC_NAME.timer"
 ROBOT_UNIT_NAME="vintos-robot-bridge"; ROBOT_UNIT_SRC="$SRC/broker/$ROBOT_UNIT_NAME.service"; ROBOT_UNIT_DST="$HOME/.config/systemd/user/$ROBOT_UNIT_NAME.service"
 # The weekly skills read is a oneshot service driven by a timer, not a long-running
 # service: the thing to install and confirm is the TIMER. Until now both files were a
@@ -126,7 +129,7 @@ SCRIPTS="$SCRIPTS identity_revisions.py capability-view.py claim_hold.py tension
 SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served views and inspectable maps, 2026-09-10
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
 SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
-SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
+SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py somatic_narrate.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
 SCRIPTS="$SCRIPTS creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py tension_promotion.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
@@ -168,7 +171,7 @@ BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/cha
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
-            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer"
+            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             true)"
@@ -587,6 +590,22 @@ done
 printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
 [ "$_chem_session_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$CHEM_SESSION_NAME.timer" >> "$BACKUP/restore.sh"
 [ "$_chem_session_active" = "active" ] && printf 'systemctl --user start %q\n' "$CHEM_SESSION_NAME.timer" >> "$BACKUP/restore.sh"
+# Somatic-narrate: oneshot on a 6am timer; preserve both unit files and the timer state.
+_somatic_enabled="$(systemctl --user is-enabled "$SOMATIC_NAME.timer" 2>/dev/null || true)"
+_somatic_active="$(systemctl --user is-active "$SOMATIC_NAME.timer" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$SOMATIC_NAME.timer" >> "$BACKUP/restore.sh"
+for _ext in service timer; do
+    _dest="$HOME/.config/systemd/user/$SOMATIC_NAME.$_ext"
+    if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+        cp -Pp "$_dest" "$BACKUP/$SOMATIC_NAME.$_ext.pre-deploy" || die "somatic narrate unit backup failed"
+        printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.%s.pre-deploy" %q\n' "$_dest" "$SOMATIC_NAME" "$_ext" "$_dest" >> "$BACKUP/restore.sh"
+    else
+        printf 'rm -f %q\n' "$_dest" >> "$BACKUP/restore.sh"
+    fi
+done
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_somatic_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$SOMATIC_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_somatic_active" = "active" ] && printf 'systemctl --user start %q\n' "$SOMATIC_NAME.timer" >> "$BACKUP/restore.sh"
 # Preserve both files and the timer's prior enabled/active state. Restoring never
 # starts the oneshot service, and a unit newly introduced by this deploy is removed.
 _surf_enabled="$(systemctl --user is-enabled "$SURF_UNIT_NAME.timer" 2>/dev/null || true)"
@@ -739,6 +758,19 @@ if systemctl --user enable "$CHEM_SESSION_NAME.timer" >/dev/null 2>&1 \
     confirm_timer --user "$CHEM_SESSION_NAME"
 else
     flag "$CHEM_SESSION_NAME.timer installed but not enabled — run: systemctl --user enable --now $CHEM_SESSION_NAME.timer"
+fi
+
+say "== somatic-session morning narration =="
+install -m 644 "$(staged "$SOMATIC_SERVICE_SRC")" "$SOMATIC_SERVICE_DST" \
+    || die "failed to install $SOMATIC_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+install -m 644 "$(staged "$SOMATIC_TIMER_SRC")" "$SOMATIC_TIMER_DST" \
+    || die "failed to install $SOMATIC_TIMER_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$SOMATIC_NAME.timer" >/dev/null 2>&1 \
+   && systemctl --user restart "$SOMATIC_NAME.timer" >/dev/null 2>&1; then
+    confirm_timer --user "$SOMATIC_NAME"
+else
+    flag "$SOMATIC_NAME.timer installed but not enabled — run: systemctl --user enable --now $SOMATIC_NAME.timer"
 fi
 say
 
