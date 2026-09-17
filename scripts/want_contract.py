@@ -49,6 +49,12 @@ def admission_state(source, candidate_kind="", present_pull=""):
         return "ADMIT_AUTHORED_OR_UNCLASSIFIED"
     kind = str(candidate_kind or "").lower()
     pull = str(present_pull or "").strip()
+    # Enrichment unavailable (enrich_want returns candidate_kind "unknown"/empty on any LLM
+    # failure) must NOT read as "no present pull" — that silently diverts a real want to
+    # held-candidates on a hiccup. Fail open, per the house rule that a broken gate never
+    # silences a want (Gloria: too few wants). A genuine historical/open classification holds.
+    if kind in ("", "unknown"):
+        return "ADMIT_ENRICH_UNAVAILABLE"
     if kind != "current_desire" or not pull or pull.upper() == "NONE":
         return "HELD_NO_PRESENT_PULL"
     return "ADMIT_CURRENT_CANDIDATE"

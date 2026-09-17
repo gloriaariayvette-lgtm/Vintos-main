@@ -50,6 +50,11 @@ check("a current generated candidate may enter",
       wc.admission_state("structural", "current_desire", "I want the act now") == "ADMIT_CURRENT_CANDIDATE")
 check("an authored want is not made suspect for missing generated rationale",
       wc.admission_state("chat", "", "") == "ADMIT_AUTHORED_OR_UNCLASSIFIED")
+check("an enrichment-unavailable candidate fails open, not silently held",
+      not wc.admission_state("structural", "unknown", "").startswith("HELD")
+      and not wc.admission_state("latent_thread", "", "").startswith("HELD"))
+check("a genuine open-question classification is still held",
+      wc.admission_state("web-search", "open_question", "") == "HELD_NO_PRESENT_PULL")
 
 # Integration: the actual planner must invoke the contract after its model
 # returns a structurally valid but semantically absurd route.
