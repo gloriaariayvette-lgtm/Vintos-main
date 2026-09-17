@@ -825,3 +825,12 @@ subprocess — never the repo, the process list, or a log. Still open, and only 
 drop the Mac's `DD_CLI_ACCESS_TOKEN` value into that file on Aegis (`chmod 600`). Until that one
 step, no real restaurant/cart/quote receipt can be produced. No live order has been placed while
 commissioning this path.
+
+The token expires every few days, so it no longer has to be refreshed by hand: `dd-cli` has an
+`export-token` command that mints a fresh access token from the Mac's longer-lived keychain login.
+`mac_stage_service.py` exposes a secret-gated `POST /dd-token` (refuses unless `VINTOS_STAGE_SECRET`
+is set and matches) that runs `dd-cli export-token`; `bin/dd-token-refresh.py` on Aegis fetches it
+over the tailnet and rewrites `~/.vintos/secrets/dd-cli.token` (0600), and `first-light.sh` runs it
+once a day. Setup: set the same `VINTOS_STAGE_SECRET` in the Mac stage's env and in Aegis's
+`~/.vintos/vintos.env`. Then the only remaining manual step is re-running `dd-cli login` on the Mac
+if the keychain login itself ever expires (rare).

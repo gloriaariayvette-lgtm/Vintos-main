@@ -17,6 +17,10 @@ if [ -f "$FIRSTLIGHT_MARKER" ]; then
     exit 0
 fi
 
+# Once a day, refresh the DoorDash token from the Mac so ordering never silently expires on Gloria
+# (2026-09-17). Runs before the morning LLM work so a shim hiccup can't skip it; never fatal.
+python3 "$SCRIPTS/dd-token-refresh.py" 2>/dev/null || true
+
 SELF_MODEL=$(cat "$MEMORY/SELF-MODEL.md" 2>/dev/null | head -c 800 || echo "")
 VALUE_MAP=$(cat "$MEMORY/value-map.md" 2>/dev/null | head -c 600 || echo "")
 YESTERDAY_INNER=$(cat "$MEMORY/daily-inner-life-$YESTERDAY.md" 2>/dev/null | tail -c 1500 || echo "")

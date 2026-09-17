@@ -143,7 +143,7 @@ SCRIPTS="$SCRIPTS spark_pressure.py withheld_confirm.py tension_ledger.py commit
 BINS="causal-cluster.py ambition-check.py ambition-review.py causal-observations.py robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
-avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py daily-log-extract.py
+avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py daily-log-extract.py dd-token-refresh.py
 wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate.sh deviation_check.py memory_search.py
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py

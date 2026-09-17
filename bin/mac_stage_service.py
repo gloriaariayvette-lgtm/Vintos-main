@@ -510,6 +510,25 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 if transient_voice: _chatterbox_unload()
             return
+        if self.path == "/dd-token":
+            # Mint a fresh DoorDash access token from this Mac's keychain login, for Aegis (which
+            # has no keychain). Secret-gated: with no VINTOS_STAGE_SECRET set it refuses, never open.
+            secret = os.environ.get("VINTOS_STAGE_SECRET", "")
+            if not secret or self.headers.get("X-Vintos-Stage-Secret", "") != secret:
+                self._send(403, b'{"ok":false,"error":"forbidden"}'); return
+            dd = os.path.expanduser(os.environ.get("DD_CLI_BIN", "~/.local/bin/dd-cli"))
+            try:
+                proc = subprocess.run([dd, "export-token"], capture_output=True, text=True, timeout=180, env=ENV)
+                tok = (proc.stdout or "").strip()
+                if tok.startswith("{"):
+                    try: tok = str((json.loads(tok) or {}).get("access_token") or (json.loads(tok) or {}).get("token") or "").strip()
+                    except Exception: pass
+                if proc.returncode != 0 or not tok:
+                    self._send(502, json.dumps({"ok": False, "error": (proc.stderr or proc.stdout or "no token")[:200]}).encode()); return
+                self._send(200, json.dumps({"ok": True, "token": tok}).encode())
+            except Exception as exc:
+                self._send(500, json.dumps({"ok": False, "error": str(exc)[:200]}).encode())
+            return
         if self.path == "/live":
             try:
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
