@@ -92,6 +92,10 @@ d = json.loads(RR.decide("Should you say anything?", "", [], 10, gemma=lambda m,
 check("decide: silence costs no Sonnet call", d["speak"] is False and not son, (d, son))
 d = json.loads(RR.decide("?", "", [], 10, gemma=lambda m, **k: "I would rather not say", sonnet=sonnet_line))
 check("decide: an unparseable answer means stay quiet", d["speak"] is False and d["action"] == "none")
+def _gemma_down(m, **k): raise RuntimeError("gemma unreachable")
+d = json.loads(RR.decide("?", "", [], 10, gemma=_gemma_down, sonnet=sonnet_line))
+check("decide: an unreachable Gemma holds quietly, never raising a ⚠ to her mid-film",
+      d["speak"] is False and d["action"] == "none")
 decision_prompts = []
 RR.decide("?", "", [], 10, gemma=lambda m, **k: decision_prompts.append(m[0]["content"]) or '{"speak": false, "action": "none"}', sonnet=sonnet_line)
 check("decide: spontaneous actions name phone speech and never offer Echo speech", "speak_phone" in decision_prompts[0] and "speak_echo" not in decision_prompts[0])

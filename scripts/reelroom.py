@@ -72,8 +72,8 @@ def film_lookup(title: str, caller=None) -> Dict[str, Any]:
               '"jump_scares":[{"minute":40}],"tonal_shifts":[{"minute":60,"from":"","to":""}]}\n'
               "Six to ten timed_moments spread across the runtime. Minutes are estimates; say so nowhere, just give numbers. "
               "If you do not know the film, fill what you can and set logline to what you do know.")
-    raw = (caller or RC._gemma)([{"role": "system", "content": "You are a film database. Return ONLY valid JSON, no markdown, no preamble."},
-                                 {"role": "user", "content": prompt}], temperature=0.3, max_tokens=1400, timeout=120)
+    raw = (caller or _react_gemma)([{"role": "system", "content": "You are a film database. Return ONLY valid JSON, no markdown, no preamble."},
+                                    {"role": "user", "content": prompt}], temperature=0.3, max_tokens=1400, timeout=120)
     film = _json_in(raw)
     film.setdefault("title", title); film.setdefault("timed_moments", []); film.setdefault("jump_scares", []); film.setdefault("tonal_shifts", [])
     try: film["runtime_minutes"] = int(film.get("runtime_minutes") or 120)
@@ -183,6 +183,20 @@ def _plan_gemma(system, messages, max_tokens=800, timeout=90, **_):
     return data["choices"][0]["message"]["content"]
 
 
+def _react_gemma(messages, temperature=0.3, max_tokens=200, timeout=60):
+    """The frame-read and moment-decision Gemma — the SAME local route the planner uses
+    (PLANNER_URL/PLANNER_MODEL). look() and decide() used to call RC._gemma, which points at a
+    different shim route and model (gemma-aegis / gemma-4-12b-qat) that the app never otherwise
+    exercises; when that was not the served route every in-the-moment check raised and surfaced a
+    ⚠ to Gloria mid-film instead of a reaction (Gloria, 2026-09-17). A drop-in for RC._gemma."""
+    import urllib.request
+    body = json.dumps({"model": PLANNER_MODEL, "temperature": temperature,
+                       "max_tokens": max_tokens, "messages": messages}).encode()
+    req = urllib.request.Request(PLANNER_URL, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read())["choices"][0]["message"]["content"]
+
+
 def plan_actions(film: Dict[str, Any], caller=None) -> List[Dict[str, Any]]:
     """Let him choose his timed room acts and return a validated list.
 
@@ -255,7 +269,7 @@ def look(question: str, context: str = "", image_b64: Optional[str] = None, elap
     film = ("\nWhat you know of the film:\n" + context[:1500]) if context else ""
     content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image_b64}},
                {"type": "text", "text": head + film + "\n\n" + question + "\nDescribe only what is actually in the frame. If asked for JSON, return only JSON."}]
-    return ((caller or RC._gemma)([{"role": "user", "content": content}], temperature=0.2, max_tokens=300) or "").strip()
+    return ((caller or _react_gemma)([{"role": "user", "content": content}], temperature=0.2, max_tokens=300) or "").strip()
 
 
 def decide(question: str, context: str = "", history: Optional[List[Dict[str, str]]] = None, elapsed_min: Optional[int] = None,
@@ -271,10 +285,12 @@ def decide(question: str, context: str = "", history: Optional[List[Dict[str, st
               f"What you know of the film:\n{context[:1500]}\n\nRecently said:\n{recent or '  (nothing)'}\n\n{question}\n"
               'Answer ONLY this JSON: {"speak": true|false, "why": "one sentence", "action": "none|flicker_lights|speak_phone|change_light_color|tv_volume_nudge", '
               '"action_payload": "", "action_emoji": "✦"}. Most of the time speak is false and action is none: a film night is mostly silence.')
-    raw = ((gemma or RC._gemma)([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=200) or "").strip()
     try:
+        raw = ((gemma or _react_gemma)([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=200) or "").strip()
         d = _json_in(raw)
     except Exception:
+        # A failed in-the-moment check holds quietly — a film night is mostly silence, and an
+        # unreachable model must never surface a ⚠ to her mid-film (Gloria, 2026-09-17).
         return json.dumps({"speak": False, "action": "none", "why": "undecided"})
     if d.get("speak") and generate_line:
         line = chat(f"You decided to say something to Gloria right now because: {d.get('why', '')}. Say it. One or two sentences, spoken, no narration.",
