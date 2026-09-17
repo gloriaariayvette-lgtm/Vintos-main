@@ -1508,11 +1508,7 @@ function _labVerdict(accuracy) {
         ALL_AT_HARTREE_FOCK: ['no correlation recovered', 'var(--text-dim)'],
         ALL_WORSE_THAN_HARTREE_FOCK: ['worse than Hartree-Fock', '#c46a5a'],
         ANY_INVALID_BELOW_EXACT: ['below the exact energy — a bug', '#c46a5a'],
-        NO_GRADEABLE_POINTS: ['ungraded — no reference', 'var(--text-dim)'],
-        CONFIDENT_FOLD: ['confident fold — pLDDT cleared the bar', 'var(--accent)'],
-        MODERATE_FOLD: ['moderate fold — partial confidence', 'var(--text)'],
-        LOW_CONFIDENCE_FOLD: ['low-confidence fold', '#c46a5a'],
-        NO_STRUCTURE: ['ungraded — no structure returned', 'var(--text-dim)']
+        NO_GRADEABLE_POINTS: ['ungraded — no reference', 'var(--text-dim)']
     };
     return marks[accuracy] || [accuracy ? String(accuracy).toLowerCase().replace(/_/g, ' ') : 'not graded', 'var(--text-dim)'];
 }

@@ -138,8 +138,8 @@ low = G.grade("RUN-FOLD-3", "fold", fold_reply(40.0))
 check("a poor fold is LOW_CONFIDENCE_FOLD — still a graded score, never 'nothing'",
       low["aggregate_accuracy"] == "LOW_CONFIDENCE_FOLD" and low["points"][0]["counts_as"] == "accuracy", low)
 nostruct = G.grade("RUN-FOLD-4", "fold", fold_reply(None))
-check("a fold with no confidence returned is completed_no_points / NO_STRUCTURE, never a failure verdict",
-      nostruct["aggregate_accuracy"] == "NO_STRUCTURE" and nostruct["execution_state"] == "completed_no_points", nostruct)
+check("a fold that returns no gradeable numbers stays completed_no_points, never a failure verdict",
+      nostruct["aggregate_accuracy"] == "NO_GRADEABLE_POINTS" and nostruct["execution_state"] == "completed_no_points", nostruct)
 deep = G.grade("RUN-FOLD-5", "fold", {"ok": True, "run": {"result": {"metrics": {"confidence": {"mean_plddt": 92.0}}}}})
 check("the pLDDT is found however deep the bench nests it", deep["aggregate_accuracy"] == "CONFIDENT_FOLD", deep)
 frac = G.grade("RUN-FOLD-6", "fold", fold_reply(0.88))

@@ -284,9 +284,9 @@ def _fold_accuracy(plddt, reference, floor):
 
 
 def _is_fold(experiment, mac_result):
-    """A fold run is graded on confidence, not energy.  Named experiments win; failing that, a
-    result that carries a confidence but no variational energy is a structure, not an energy curve."""
-    if "fold" in str(experiment or "").lower(): return True
+    """A fold run is graded on confidence, not energy — decided by the RESULT, never the name.
+    A result that carries a pLDDT confidence and no variational energy is a structure; an
+    experiment merely *called* "fold" that returns an energy is still graded as an energy."""
     plddt, _ = _find_plddt(mac_result if isinstance(mac_result, dict) else {})
     points, _ = _points(mac_result)
     return plddt is not None and not points
