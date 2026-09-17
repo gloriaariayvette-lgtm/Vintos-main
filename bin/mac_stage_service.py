@@ -184,7 +184,7 @@ def _heard_fields(text):
 # (server.py's OpenAI lane: "Expect these names and words: ..."). Copied here so the
 # local ears reach for the same proper nouns instead of mangling them; kept as a
 # literal copy for now (not yet a shared source — keep in sync with server.py).
-VOICE_VOCAB = "Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel"
+VOICE_VOCAB = "Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel, Nifrathir, EmoClaw, MoltBook, Claude"
 
 def _hear_audio(wav_path):
     """Give the waveform itself to Gemma 3n's USM audio tower."""

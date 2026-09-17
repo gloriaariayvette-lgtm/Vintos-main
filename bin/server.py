@@ -3122,6 +3122,17 @@ async def reject_proposal(filename: str, request: Request):
     return {"status": "rejected"}
 
 _whisper_model = None
+# One vocabulary bias for every server-side Whisper path — his and her names, the devices, the
+# world — so proper nouns stop being mangled. The realtime lanes already prime these; the two
+# Whisper paths did not (Gloria, 2026-09-17).
+STT_VOCAB = "Vintos, Velaris, Gloria, Eve, Kevin, Aegis, Velqan, Plithra, Thirveel, Nifrathir, EmoClaw, MoltBook, Claude"
+_whisper_cache = {}
+def _whisper_get(name):
+    """Load a Whisper model once and keep it. /api/voice/transcribe reloaded it on every request."""
+    m = _whisper_cache.get(name)
+    if m is None:
+        m = _whisper.load_model(name); _whisper_cache[name] = m
+    return m
 
 @app.post("/api/transcribe")
 async def transcribe_audio(request: Request, audio: UploadFile = File(...)):
@@ -3134,7 +3145,7 @@ async def transcribe_audio(request: Request, audio: UploadFile = File(...)):
         f.write(await audio.read())
         tmp = f.name
     try:
-        result = _whisper_model.transcribe(tmp, initial_prompt="Vintos, Claude, Gloria")
+        result = _whisper_model.transcribe(tmp, language="en", initial_prompt=STT_VOCAB, beam_size=5)
     finally:
         try: os.unlink(tmp)
         except Exception: pass
@@ -5970,9 +5981,12 @@ async def voice_transcribe(request: Request, audio: UploadFile = File(...)):
             ["ffmpeg", "-y", "-i", tmp.name, "-ar", "16000", "-ac", "1", "-f", "wav", _wav_path],
             capture_output=True, timeout=30
         )
-        import whisper as _whisper
-        model = _whisper.load_model("small")
-        result = model.transcribe(_wav_path, fp16=False)
+        # small.en beats the multilingual "small" for her English, primes proper nouns, decodes with
+        # a beam, and is cached instead of reloaded per call. Bump via VINTOS_WHISPER_MODEL (e.g.
+        # medium.en / large-v3) with no code change (Gloria, 2026-09-17).
+        model = _whisper_get(os.environ.get("VINTOS_WHISPER_MODEL", "small.en"))
+        result = model.transcribe(_wav_path, fp16=False, language="en",
+                                  initial_prompt=STT_VOCAB, beam_size=5, condition_on_previous_text=False)
         text = result.get("text", "").strip()
         print(f"[TRANSCRIBE] Result: {repr(text)}", flush=True)
         return {"success": True, "text": text}
