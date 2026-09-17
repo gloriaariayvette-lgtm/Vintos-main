@@ -10487,6 +10487,17 @@ async def reelroom_sessions(request: Request):
     return {"sessions": _reelroom_mod().sessions()}
 
 
+@app.get("/api/game/reelroom/resume")
+async def reelroom_resume(request: Request):
+    """The live, uncommitted night, so the app can pick back up where it left off after a
+    timeout or an early close. Read-only: it never commits or closes the visit."""
+    _require_secret(request)
+    try:
+        return {"ok": True, **_reelroom_mod().resume_state()}
+    except Exception as e:
+        return {"ok": False, "resumable": False, "error": str(e)[:200]}
+
+
 @app.post("/api/home/lights/color")
 async def home_lights_color(req: LightsColorRequest, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")

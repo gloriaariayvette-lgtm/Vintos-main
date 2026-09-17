@@ -169,5 +169,22 @@ check("session ledger: opening, Gloria/Vintos pair and narrative are preserved t
       len(ledger) == 1 and ledger[0]["channel"] == "reelroom" and ledger[0]["narrative"] == out["summary"]
       and ledger[0]["transcript"][0].get("vintos") == "Sit with me."
       and ledger[0]["transcript"][1] == {"gloria":"I am here.", "vintos":"Good."}, ledger)
+# The summary is a receipt, not a second copy of the turns: the verbatim lives in `transcript`,
+# and the `summary` field must not re-list it (Gloria, 2026-09-17 — "the messages listed a second time").
+check("session ledger: summary is a receipt, not the transcript re-listed",
+      "Sit with me." not in ledger[0]["summary"] and "I am here." not in ledger[0]["summary"]
+      and ledger[0]["summary"].startswith("ReelRoom visit — Alien") and "2 conversation turns" in ledger[0]["summary"], ledger[0]["summary"])
+
+# Resume: the live, uncommitted night can be read back without being committed or closed.
+check("resume: nothing to resume before any turn is journalled", RR.resume_state().get("resumable") is False)
+RR.journal("are you seeing this", "every frame of it", film_title="Alien", film_year="1979", elapsed_min=41)
+rs = RR.resume_state()
+check("resume: a journalled night is resumable with its film, turns and elapsed intact",
+      rs["resumable"] is True and rs["film_title"] == "Alien" and len(rs["chat_history"]) == 2
+      and rs["elapsed_seconds"] >= 41 * 60 and rs["chat_history"][0]["content"] == "are you seeing this", rs)
+stale = RR.resume_state(now=rs["updated_at"] + RR.JOURNAL_STALE_S + 1)
+check("resume: past the one-hour idle window it is no longer offered (the closer owns it then)",
+      stale["resumable"] is False and len(stale["chat_history"]) == 2, stale)
+check("resume: reading the night never committed or removed it", os.path.exists(RR.JOURNAL))
 shutil.rmtree(TMP)
 print(f"\n{sum(R)}/{len(R)} passed"); sys.exit(0 if all(R) else 1)

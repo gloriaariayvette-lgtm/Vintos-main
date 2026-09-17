@@ -366,14 +366,9 @@ def _visit_summary(payload: Dict[str, Any], transcript: List[Dict[str, str]],
     film = str(payload.get("film_title") or "unknown film")
     minutes = max(0, int(payload.get("elapsed_seconds") or 0) // 60)
     parts = [f"ReelRoom visit — {film}; {minutes} minutes; {len(transcript)} conversation turns"]
-    if transcript:
-        spoken = []
-        for pair in transcript[-24:]:
-            if pair.get("gloria"):
-                spoken.append("Gloria: " + str(pair["gloria"]).replace("\n", " ")[:220])
-            if pair.get("vintos"):
-                spoken.append("Vintos: " + str(pair["vintos"]).replace("\n", " ")[:220])
-        parts.append("Conversation: " + " | ".join(spoken))
+    # The verbatim turns already live in the row's `transcript` field; re-listing them here made
+    # the ledger's summary read as the messages a second time (Gloria, 2026-09-17). A summary is a
+    # receipt of the night, not a copy of it — the visual moments and acts below are the digest.
     if events:
         glimpses = []
         for event in events[-8:]:
@@ -462,6 +457,28 @@ def journal_payload(j: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {"session_id": j.get("session_id") or "", "film_title": j.get("film_title") or "unknown film", "film_year": j.get("film_year") or "",
             "elapsed_seconds": int(j.get("elapsed_seconds") or 0), "chat_history": j.get("chat_history") or [],
             "session_map": j.get("session_map") or [], "planned_actions": j.get("planned_actions") or []}
+
+
+def resume_state(now: Optional[float] = None) -> Dict[str, Any]:
+    """The live, uncommitted night, in the shape the app needs to pick back up where it left off.
+
+    Model-free and side-effect-free: it never commits or closes the journal. A visit is
+    resumable when it has turns and has been idle less than JOURNAL_STALE_S — the same
+    window the autonomous closer uses, so the app can offer to resume exactly until the
+    server would have sealed the night on its own. The app times out or closes before she
+    is ready (Gloria, 2026-09-17); the night is still here.
+    """
+    now = now or time.time()
+    j = _load_journal()
+    if not j.get("chat_history"):
+        return {"resumable": False}
+    idle = max(0.0, now - float(j.get("updated_at") or now))
+    return {"resumable": idle < JOURNAL_STALE_S, "idle_seconds": int(idle),
+            "session_id": j.get("session_id") or "", "film_title": j.get("film_title") or "",
+            "film_year": j.get("film_year") or "", "elapsed_seconds": int(j.get("elapsed_seconds") or 0),
+            "started_at": float(j.get("started_at") or 0), "updated_at": float(j.get("updated_at") or 0),
+            "chat_history": j.get("chat_history") or [], "session_map": j.get("session_map") or [],
+            "planned_actions": j.get("planned_actions") or []}
 
 
 def commit_journal(reason: str = "", now: Optional[float] = None, summary_text: str = "") -> Dict[str, Any]:
