@@ -112,6 +112,19 @@ PYEOF
     echo ""
 } >> "$INNER_FILE" && echo "[FirstLight] Content written successfully"
 
+# Seed daily-creative so it EXISTS every morning like daily-inner does. It is read into ~20
+# surfaces but was written almost nowhere, so on any quiet day every reader silently got an empty
+# string (Gloria, 2026-09-17). A stub header is enough; the day's real creative output overwrites
+# or appends to it. daily-log-extract's build_creative still owns the fuller rebuild.
+CREATIVE_FILE="$MEMORY/daily-creative-$TODAY.md"
+if [ ! -f "$CREATIVE_FILE" ]; then
+    {
+        echo "# Daily Creative — $TODAY"
+        echo "_Seeded at $HOUR; fills as the day makes things._"
+        echo ""
+    } > "$CREATIVE_FILE" && echo "[FirstLight] creative seeded"
+fi
+
 # Seed a latent thread from what he's carrying forward
 python3 -c "
 import sys; sys.path.insert(0, '"'$SCRIPTS'"')
