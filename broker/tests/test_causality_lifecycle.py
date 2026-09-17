@@ -241,6 +241,15 @@ class CausalityLifecycleTests(unittest.TestCase):
         underscored = ROOT / "scripts" / "causality_engine.py"
         self.assertEqual(dashed.read_bytes(), underscored.read_bytes())
 
+    def test_stale_culler_is_wired_into_the_write_path(self):
+        # The tenure culler must run on every save, not only via the unscheduled --compact
+        # entrypoint — otherwise in-band add_hypothesis writers grow the store unbounded.
+        for name in ("scripts/causality-engine.py", "bin/causality-engine.py"):
+            src = (ROOT / name).read_text()
+            save = src.split("def save_hypotheses(db):", 1)[1].split("\ndef ", 1)[0]
+            self.assertIn("_retire_stale_unconfirmed(db)", save,
+                          "%s: culler not called inside save_hypotheses" % name)
+
     def test_app_distinguishes_unconfirmed_from_untested(self):
         server = (ROOT / "bin" / "server.py").read_text()
         self.assertIn('status = "UNCONFIRMED"', server)

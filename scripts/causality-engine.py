@@ -447,6 +447,11 @@ def recover_deliveries():
 def save_hypotheses(db):
     if not isinstance(db, HypothesisSnapshot):
         raise ValueError("save requires a loaded hypothesis snapshot")
+    # Age out past-tenure, evidence-poor hypotheses on every write. This culler existed but was
+    # orphaned (reachable only via the unscheduled --compact), so in-band add_hypothesis writers
+    # grew the store with nothing reducing it (Gloria: too many hypotheses). Confirmed and
+    # self_knowledge rows are never dropped.
+    _retire_stale_unconfirmed(db)
     rows = db.get("hypotheses", [])
     db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
     db["confirmed"] = sum(1 for h in rows if h.get("self_knowledge"))
