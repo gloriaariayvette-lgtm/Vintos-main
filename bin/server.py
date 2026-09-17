@@ -972,7 +972,7 @@ def _relational_compare(user_text):
 # _resolve_intent removed 2026-09-04 (grok-server-a-p6): its body had become a comment and a thread that did nothing.
 
 POST_TURN_ITEMS = ("nudge_gloria", "compare", "direction", "curiosity", "predict", "adopt", "marks",
-                   "self_prediction", "wal", "imprint", "ledger", "voice_coherence")
+                   "self_prediction", "wal", "imprint", "ledger", "voice_coherence", "food_order")
 
 def _canon_append(entries, surface="chat"):
     """Lossless canonical record (astra-server-a-p3, 2026-09-05): chat-history.json is a bounded
@@ -1081,6 +1081,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     _bg("imprint", ["", os.path.join(SC, "imprint.py"), "capture", gloria_text[:300], reply[:300]], f"/tmp/imprint{log_suffix}.log")
     _bg("ledger", ["", os.path.join(SC, "interaction-ledger.py"), gloria_text, reply], "/tmp/interaction-ledger.log")
     _bg("voice_coherence", ["", os.path.join(SC, "voice-coherence.py"), "check", reply[:500]], "/tmp/voice-coherence.log")
+    # Explicit meal requests begin only after his reply has been delivered. Discovery and cart
+    # construction are reversible; payment remains behind food_order's expiring quote-bound link.
+    _bg("food_order", ["", os.path.join(SC, "food_order.py"), "start", gloria_text[:1000], reply[:1000]],
+        "/tmp/food-order.log")
     try:
         with open(os.path.join(MEMORY, "post-turn-record.jsonl"), "a") as f:
             f.write(_pt_j.dumps({"t": _pt_t.time(), "surface": surface, "turn_id": turn_id, "ran": ran,
@@ -1088,6 +1092,33 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     except Exception:
         pass
     return {"ran": ran, "skipped": skipped, "failed": failed}
+
+
+@app.get("/api/food-order/review/{token}")
+async def food_order_review(token: str):
+    """The random capability in the URL authorizes viewing one proposal, never purchase."""
+    try:
+        import sys as _fos; _fop = os.path.join(WORKSPACE, "scripts")
+        if _fop not in _fos.path: _fos.path.insert(0, _fop)
+        import food_order as _fo
+        page = _fo.review_html(token)
+        if page is None: raise HTTPException(status_code=404, detail="review not found")
+        return HTMLResponse(page, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+    except HTTPException: raise
+    except Exception as e: raise HTTPException(status_code=503, detail=str(e)[:160])
+
+
+@app.post("/api/food-order/review/{token}/approve")
+async def food_order_approve(token: str, request: Request):
+    """One explicit tap; food_order re-quotes and binds it before the single submit attempt."""
+    try:
+        import sys as _fos; _fop = os.path.join(WORKSPACE, "scripts")
+        if _fop not in _fos.path: _fos.path.insert(0, _fop)
+        import food_order as _fo
+        body = await request.json()
+        return _fo.approve(token, int(body.get("tip_cents", -1)), bool(body.get("accept_pin", False)))
+    except (TypeError, ValueError): raise HTTPException(status_code=400, detail="valid tip_cents required")
+    except Exception as e: raise HTTPException(status_code=503, detail=str(e)[:160])
 
 @app.delete("/api/value-map/rank")
 async def delete_value_map_rank(request: Request):

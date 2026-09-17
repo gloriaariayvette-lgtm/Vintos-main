@@ -97,6 +97,7 @@ SCRIPTS="$SCRIPTS self_model_evidence.py self_model_read.py protected_paths.py" 
 SCRIPTS="$SCRIPTS release-map.py enactment_distiller.py want_spine.py pleasure_substrate.py"
 SCRIPTS="$SCRIPTS thread_store.py latent_threads.py ghost-branches.py dream_heat_seed.py mirror.sh"   # thread lifecycle, 2026-09-10
 SCRIPTS="$SCRIPTS artifact_manifest.py deliver.py reflection_stage.py dream-art.py"   # artifact manifest and delivery, 2026-09-10
+SCRIPTS="$SCRIPTS food_order.py"   # DoorDash discovery/cart proposal; exact quote remains Gloria-approved
 SCRIPTS="$SCRIPTS experiments.py latent_preparation.py wants_meta.py attractor_discovery.py"   # controls and wants, 2026-09-10
 SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilateral_stages.py"   # compute admission, 2026-09-10
 SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py chemistry_mac.py chemistry_session.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12

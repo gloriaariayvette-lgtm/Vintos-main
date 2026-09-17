@@ -803,3 +803,20 @@ NOT yet done: the Aegis deploy that ships this, and the side-by-side quality ren
 `KIE_API_KEY` var name in `vintos.env` is assumed; confirm if it differs. Kie's exact
 v6 model string / record-info status set is coded from the docs (docs.kie.ai is
 egress-blocked from the build env) — the first live `--force` render will confirm it.
+
+## DoorDash review-before-purchase lane — 16 September
+
+The chat post-turn now recognizes only explicit meal-ordering requests and starts a
+background official `dd-cli` workflow after his reply has been delivered. He chooses one
+restaurant and one or two real menu items, builds a cart only when no forgotten cart is
+already open at that store, obtains DoorDash's own total/ETA/address and the default card's
+brand/last four, then sends Gloria an expiring ntfy review link. The review page can open the
+DoorDash cart for adjustments or accept an explicit tip and approve. Approval re-previews and
+is bound to the exact cart/price/ETA/address/card fingerprint; a change sends a fresh proposal.
+The non-idempotent submit is claimed before execution and is never automatically retried.
+
+Still open: the official beta binary must be installed on Aegis, and Gloria must sign in on
+an approved desktop account and transfer only `DD_CLI_ACCESS_TOKEN` into Aegis's protected
+environment. Until that account step succeeds, the code records `dd_cli_not_authenticated`
+and cannot produce a real restaurant/cart/quote receipt. No live order has been placed while
+commissioning this path.
