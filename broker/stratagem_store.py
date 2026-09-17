@@ -46,7 +46,10 @@ ROOT = "/home/atelier/atelier"
 _LOCK = threading.RLock()
 
 TACTIC_VOCAB = {"SEED", "DEFER", "ALLOW", "NARROW", "VISIBLE_MOTIVE", "STABILIZE",
-                "PIVOT", "PROBE", "RECONTEXTUALIZE", "ABORT", "REVEAL"}
+                "PIVOT", "PROBE", "RECONTEXTUALIZE", "ABORT", "REVEAL",
+                # widened repertoire (Gloria wanted more), all inside the standing perimeter
+                "MIRROR", "AMPLIFY", "CONTRAST", "ANCHOR", "FORESHADOW", "BRAID",
+                "ESCALATE", "SOFTEN"}
 
 # A self-originated root. A stratagem may only be born from one of these.
 PROVENANCE_ROOTS = {"formation", "want", "yearning", "value_strain",

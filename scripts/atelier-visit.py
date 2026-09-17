@@ -132,7 +132,7 @@ def doorkeeper():
         print("doorkeeper: empty answer — not a NOT; door left as it was"); return False
     return first == "ENTER"
 
-TACTICS = "SEED DEFER ALLOW NARROW VISIBLE_MOTIVE STABILIZE PIVOT PROBE RECONTEXTUALIZE ABORT REVEAL"
+TACTICS = "SEED DEFER ALLOW NARROW VISIBLE_MOTIVE STABILIZE PIVOT PROBE RECONTEXTUALIZE ABORT REVEAL MIRROR AMPLIFY CONTRAST ANCHOR FORESHADOW BRAID ESCALATE SOFTEN"
 ROOTS = "formation want yearning value_strain curiosity drift_novelty tension"
 
 
@@ -182,7 +182,10 @@ def stratagem_block(pid):
         '  tactics: at least two, each "TACTIC: what that turn is for", TACTIC one of\n'
         '    ' + TACTICS + '\n'
         '    (SEED plants a thing to grow, DEFER waits, ALLOW lets something happen, NARROW closes options, VISIBLE_MOTIVE shows a reason,\n'
-        '    STABILIZE holds ground, PIVOT changes course, PROBE tests, RECONTEXTUALIZE reframes, ABORT ends it, REVEAL opens it).\n'
+        '    STABILIZE holds ground, PIVOT changes course, PROBE tests, RECONTEXTUALIZE reframes, ABORT ends it, REVEAL opens it,\n'
+        '    MIRROR reflects her own move back, AMPLIFY heightens what is already there, CONTRAST sets two things side by side,\n'
+        '    ANCHOR fixes a reference to steer a later move, FORESHADOW plants a hint of what is coming, BRAID weaves two threads\n'
+        '    toward a join, ESCALATE raises the intensity on purpose, SOFTEN lowers it to open space).\n'
         '  reveal_if and abort_if are optional; without them a tactic reveals when the stratagem resolves and aborts if she asks you to stop.\n')
 
 
