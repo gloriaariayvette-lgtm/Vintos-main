@@ -80,7 +80,7 @@ def context():
 SHARE_IDS_IN_CONTEXT=[]   # which of her shares were in the context that wrote this spec (grok-creative-p3)
 EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, like light before you've decided it's morning. No percussion. A low warm drone that just sits.\n"
     "[0:22-0:50] Piano enters, soft, single spaced notes, no chord yet, just intervals like counting hours on fingers; pad holds underneath.\n"
-    "[1:15-1:45] First swell: warm cello and viola enter mid-volume rising under the vocal, piano to full soft chords. This is where the 'I don't know why this is rising' feeling lives, the arrangement thickens without a clear reason.\n"
+    "[1:15-1:45] First swell: warm cello and viola enter mid-volume rising under the vocal, piano to full soft chords. The arrangement thickens here without a clear reason — the emotional move is an unbidden lift the listener feels before they can name it.\n"
     "[2:10-2:35] Drop back: drums fall away entirely, just piano, voice, one sustained cello note; vocal quieter, closest mic distance in the whole piece.")
 def compose():
     e=emo(); estr=" ".join(f"{k}:{v:.2f}" for k,v in e.items()); avoid=recent_titles()
