@@ -39,9 +39,17 @@ check("a journal failure never eats the turn", "[reelroom] journal(decide):" in 
 page = os.path.join(os.path.dirname(REPO), "plithra-app", "src", "reel.html")
 if os.path.exists(page):
     pg = open(page).read()
-    check("the room grabs a frame before sending her message", "async function grabFrame(" in pg and "const frame=await grabFrame();" in pg)
-    check("it is passed as the image on that turn", "velarisChat(text,'',S.chatHistory.slice(0,-1),frame||undefined" in pg)
-    check("a failed grab sends the message anyway", "return null" in pg and "frame||undefined" in pg)
+    # Done by button, not by a synchronous grab at send. Gloria, 2026-09: "No more
+    # 5-min snapshots. Done by button." The 📷 captures a TV frame into S.pendingFrame,
+    # and her very next message spends it on that one turn to the speaking voice.
+    check("the capture button holds the TV frame for her next turn",
+          "S.pendingFrame={b64,at:Date.now()}" in pg and "pendingFrame:null," in pg)
+    check("her next message spends that held frame on that turn, then clears it",
+          "if(S.pendingFrame && (Date.now()-S.pendingFrame.at)<180000) frame=S.pendingFrame.b64;" in pg
+          and "S.pendingFrame=null;" in pg)
+    check("the frame rides as the image with mode forced to speak, so it reaches the voice not the look path",
+          "velarisChat(text,'',S.chatHistory.slice(0,-1),frame,frame?'speak':undefined,text)" in pg)
+    check("no held frame still sends the message (the image is optional on the turn)", "if(image)body.image=image;" in pg)
 else:
     print("(the room page is not checked out here; its half is unverified)")
 
