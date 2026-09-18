@@ -32,6 +32,24 @@ def _reading(context, plan, result, grade=None):
             "next_question": "what changes the shape of this basin next?"}
 session._reading = _reading
 
+# A test never reaches the world (CLAUDE.md): the Aegis instrument probes shell out to
+# real tools and load real model checkpoints on the host that serves her. Replace the
+# probe boundary with a pure, in-process measurement BEFORE any session.run() below, so
+# no run ever spawns a subprocess or touches a real instrument. The refresh logic under
+# test -- expiry, current-receipt selection, "measured once a month, not daily" -- is the
+# real chemistry_probe code; only the smoke test itself is stubbed. Without this, every
+# session.run() before the line-120 override reached the real instruments on Aegis, which
+# is why this suite passed on a box without them and failed on the host that has them.
+import chemistry_probe as probe_mod
+probe_mod.AEGIS_PROBES = {"openmm": {"marker": "stepped_energy", "entry": "fake"}}
+def _fake_probe_aegis(name):
+    return probe_mod._receipt(name, "aegis", "smoke_passed",
+                              evidence={"exercised": "test-stub"}, source="test-stub")
+probe_mod.probe_aegis = _fake_probe_aegis
+# Assert the isolation, so a later edit cannot quietly let a run reach a real instrument.
+assert probe_mod.probe_aegis is _fake_probe_aegis
+assert probe_mod.PROBES.startswith(HOME), probe_mod.PROBES
+
 # One independently scored local finding is carried into the frontier prompt and the
 # returned plan acknowledges its exact ID. Delivery and acknowledgment are separate events.
 flagged = session.bridge.assess({"at": "2026-09-13T00:00:00+00:00", "source_accessions": ["P12345"],
@@ -114,11 +132,8 @@ assert paid["state"] == "completed" and touched == ["status"], (paid["state"], t
 assert paid["owed_reading"] == "READ", paid["owed_reading"]
 
 # The instrument refresh is actually connected, and only touches expired receipts.
+# (probe_mod / AEGIS_PROBES / probe_aegis are stubbed at the top so this reaches nothing real.)
 assert "instruments_refreshed" in paid, paid.keys()
-import chemistry_probe as probe_mod
-calls = []
-probe_mod.AEGIS_PROBES = {"openmm": {"argv": [sys.executable, "-c", "print('stepped_energy 1.0')"],
-                                     "marker": "stepped_energy", "entry": "fake"}}
 # Age the held receipt out so there is something expired to refresh; a live one must not be.
 from datetime import datetime, timedelta, timezone
 _now = datetime.now(timezone.utc)
