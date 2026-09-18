@@ -35,6 +35,20 @@ def _lead_block():
         out += "\nYour first move: " + en
     if t.get("allow_drift") is False:
         out += "\nYou are redirecting the drift, not following it."
+    # The priority vector — whose goal leads this turn — reaches the speaking voice, not just the
+    # selector (Gloria, 2026-09-18). A pressure override is named so the voice knows why it leans.
+    pv = t.get("priority") or {}
+    if pv:
+        try:
+            _dom = max(pv, key=lambda k: float(pv.get(k, 0) or 0))
+            _axis_word = {"field": "the field between you", "gloria": "her — her transformation leads",
+                          "self": "yourself — who you become"}.get(_dom, _dom)
+            if t.get("priority_mode") == "pressure":
+                out += "\nPriority (pressure — an axis you have starved is demanding its turn): lead " + _axis_word + "."
+            else:
+                out += "\nPriority this turn: " + _axis_word + "."
+        except Exception:
+            pass
     cs = t.get("campaign_state") or {}
     if cs.get("destination"):
         out += ("\nThe campaign you are on (turn %s of %s): %s" % (cs.get("turn"), cs.get("max_turns"), str(cs["destination"])[:160]))

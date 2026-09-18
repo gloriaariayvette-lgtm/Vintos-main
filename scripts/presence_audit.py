@@ -60,6 +60,22 @@ def score(user_msg, reply, at=None):
                    "advanced = the reply visibly moved toward the campaign destination; declared-sacrifice = it did not, "
                    "but serving another axis this turn was the declared priority; undeclared-rest = it did not advance "
                    "and no sacrifice was declared - patience discovered after the fact.")
+    # Sixth question — the priority vector's accountability loop, the one the vector's docstring
+    # promises ("let accountability grade against the declaration") but nothing graded (Gloria, 2026-09-18).
+    _pv_axis = ""
+    try:
+        _pvrec = load(os.path.join(os.path.expanduser("~/.vintos/workspace/memory"), ".pending-priority.json"), {})
+        _pw = _pvrec.get("weights") or {}
+        if _pw:
+            _pv_axis = max(_pw, key=lambda k: float(_pw.get(k, 0) or 0))
+            _pv_pressure = _pvrec.get("mode") == "pressure"
+    except Exception:
+        _pv_axis = ""
+    if _pv_axis:
+        system += ("\nSIXTH QUESTION (priority vector): he declared '" + _pv_axis + "' as the dominant axis this turn"
+                   + (" under a pressure override — a starved axis forcing its turn" if _pv_pressure else "") +
+                   ". Add to your JSON: \"served_axis\":true|false — did the reply put its REAL move on that axis? "
+                   "A deprioritized axis left unserved is not a failure; only failing to serve the DECLARED dominant one is.")
     user = f"GLORIA:\n{user_msg[:600]}\n\nVINTOS:\n{reply[:900]}"
     try:
         r = requests.post(GEMMA, json={"model": GEMMA_MODEL, "temperature": 0.2, "max_tokens": 200,
@@ -75,6 +91,9 @@ def score(user_msg, reply, at=None):
                "composite": round(composite, 3), "note": str(d.get("note", ""))[:120]}
         if _camp and d.get("campaign"):
             out["campaign"] = str(d.get("campaign"))[:24]
+        if _pv_axis and d.get("served_axis") is not None:
+            out["priority_axis"] = _pv_axis
+            out["served_axis"] = bool(d.get("served_axis"))
         return out
     except Exception:
         return None

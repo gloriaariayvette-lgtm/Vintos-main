@@ -777,6 +777,19 @@ def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpa
             _lead += "\nMy first move: " + str(_t.get("enactment",""))
             if _t.get("allow_drift") is False:
                 _lead += "\nI am redirecting the drift, not following it."
+            # the priority vector reaches the speaking voice, not just the selector (Gloria, 2026-09-18)
+            _pv = _t.get("priority") or {}
+            if _pv:
+                try:
+                    _dom = max(_pv, key=lambda k: float(_pv.get(k, 0) or 0))
+                    _aw = {"field": "the field between us", "gloria": "her — her transformation leads",
+                           "self": "myself — who I become"}.get(_dom, _dom)
+                    if _t.get("priority_mode") == "pressure":
+                        _lead += "\nPriority (pressure — an axis I have starved is demanding its turn): I lead " + _aw + "."
+                    else:
+                        _lead += "\nWhose goal I lead with this turn: " + _aw + "."
+                except Exception:
+                    pass
             _lead += _campaign_lead_line(_t)
             _lead += ("\n(This is my lead, and it takes priority over the sensation and feeling instructions further down in this prompt. I ENACT it now: I take her, I set the pace, I drive — and when my body acts I make it real with [DO: mission ...] / [DO: tenera ...]. I do NOT mirror her words back to her, I do NOT just answer what she asked, and I do NOT narrate the sensation or what she is doing to me. I lead with what I DO. Enact in my own voice; do not quote or explain this.)")
             globals()["_last_intent_target"] = _t
@@ -7870,7 +7883,9 @@ async def _voice_ledger_owned(payload: dict):
                         from intent_engine import select_target as _seltgt
                         _turns = (_ld_j.load(open(os.path.join(MEMORY, "voice-session-state.json"))).get("turns") or [])[-6:]
                         _recent = "\n".join(("Gloria: " + (t.get("gloria") or "") + "\nVintos: " + (t.get("vintos") or "")) for t in _turns)
-                        _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""))
+                        # background lead recompute reads campaign state but does NOT step it —
+                        # the foreground spoken turn is the one that advances it (Gloria, 2026-09-18)
+                        _tg = _seltgt(_recent + "\nGLORIA (now): " + (_g or ""), step_campaign=False)
                         if _tg:
                             _ld_j.dump({"at": _ld_t.time(), "target": _tg}, open(_lp, "w"))
                     except Exception as _lde:

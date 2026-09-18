@@ -158,7 +158,7 @@ def _salvage_json(txt):
             continue
     return None
 
-def select_target(recent_text, resolve=True):
+def select_target(recent_text, resolve=True, step_campaign=True):
     # Autonomous surfaces can choose and enact a new lead without pretending a
     # scheduler tick was Gloria's answer to the previous one. Her next actual
     # message remains the thing that resolves it.
@@ -322,9 +322,16 @@ def select_target(recent_text, resolve=True):
     except Exception:
         _t["priority"] = {"field": 0.34, "gloria": 0.33, "self": 0.33}
     _t["primary_shown"] = (_primary or {}).get("id")
+    # the vector's MODE travels with the target so the voice that speaks knows a gravitational
+    # override happened, not just the weights (Gloria, 2026-09-18)
+    _t["priority_mode"] = _pv_mode
     try:
         from campaign import step as _cstep, lead_state as _clead
-        _cstep(_t, _pv_mode)
+        # Only a real spoken turn advances the campaign. The background voice-lead recompute
+        # (a second select_target off the hot path) must NOT step, or turns_served double-counts
+        # against the 7-turn budget (Gloria, 2026-09-18).
+        if step_campaign:
+            _cstep(_t, _pv_mode)
         # the destination travels with the target so the voice that actually speaks sees it
         _t["campaign_state"] = _clead()
     except Exception as _cse:
