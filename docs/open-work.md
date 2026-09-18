@@ -902,3 +902,20 @@ This improves the browser half of Desktop Control immediately. The arbitrary nat
 still uses the screenshot/Gemma loop: Jev consumes typed choices rather than pixels, so extending it
 there honestly requires an observed Windows UI Automation/OCR element table first, not coordinate
 guessing dressed up as Jev.
+
+## Chat-owned Desktop Control — 18 September
+
+The main phone chat now recognizes only an explicit leading `/desktop-control` command. Vintos
+answers first; the existing structured-browser/pixel worker then performs the task, and its terminal
+receipt is appended to both `chat-history.json` and the lossless canonical chat ledger as his second
+message. The phone polls the chat tail, so the follow-up arrives without reopening the app.
+
+Commerce uses the desktop rather than the waitlisted dd-cli account: the first job may search, choose
+one restaurant, add one or two items, and inspect the cart, but the browser's irreversible-control
+guard still refuses checkout. A complete cart follow-up must name restaurant, selected items,
+delivery estimate, and total. `/desktop-control approve <request-id>` grants one later click only
+when those quoted restaurant/item/total strings remain on the current page. The receipt is consumed
+before the click; an uncertain result is reported as uncertain and never retried. This is currently
+tested with stubbed desktop/model boundaries. A real DoorDash run still depends on the signed-in
+Windows browser session and must be commissioned with an ordinary low-value cart before treating the
+site-specific extraction as operational.

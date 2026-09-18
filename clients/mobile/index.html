@@ -1066,22 +1066,29 @@ async function fetchInitialState() {
 // ============================================================
 //  CHAT
 // ============================================================
-async function loadChatHistory() {
-    if (chatLoaded) return;
+let _chatHistoryTail = '';
+async function loadChatHistory(force = false) {
+    if (chatLoaded && !force) return;
     const version = document.getElementById("chat-messages").childElementCount;
     try {
         const res = await VintosUI.request(`${API}/api/chat/history?limit=30`);
         const data = await res.json();
         const container = document.getElementById('chat-messages');
-        if (container.childElementCount !== version) return;
+        const rows = data.messages || [];
+        const tail = rows.length ? JSON.stringify(rows[rows.length - 1]) : 'empty';
+        if (force && tail === _chatHistoryTail) return;
+        if (!force && container.childElementCount !== version) return;
         container.innerHTML = '';
-        (data.messages || []).forEach(m =>
+        rows.forEach(m =>
             appendMsg(m.role === 'user' ? 'user' : 'vintos', m.content, m.timestamp)
         );
         container.scrollTop = container.scrollHeight;
-        chatLoaded = true;
+        chatLoaded = true; _chatHistoryTail = tail;
     } catch {}
 }
+// Desktop work can finish after the initiating HTTP turn. Refreshing only when
+// the server's tail changes makes that second message appear in this same chat.
+setInterval(() => { if (chatLoaded) loadChatHistory(true); }, 4000);
 
 function appendMsg(who, text, ts, photoUrl) {
     const container = document.getElementById('chat-messages');

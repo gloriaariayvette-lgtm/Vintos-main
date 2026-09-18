@@ -1000,6 +1000,25 @@ def _canon_append(entries, surface="chat"):
     except Exception:
         pass
 
+def _chat_projection_merge(entries):
+    """Merge a delivered turn without erasing an autonomous desktop follow-up."""
+    import fcntl as _cm_fc, tempfile as _cm_tf
+    path = os.path.join(MEMORY, "chat-history.json")
+    lock_path = os.path.join(MEMORY, ".chat-history.lock")
+    try:
+        with open(lock_path, "a+") as lock:
+            _cm_fc.flock(lock, _cm_fc.LOCK_EX)
+            try: live = json.load(open(path))
+            except Exception: live = []
+            for entry in entries:
+                if isinstance(entry, dict) and entry not in live: live.append(entry)
+            fd, tmp = _cm_tf.mkstemp(prefix=".chat-history.", dir=MEMORY)
+            with os.fdopen(fd, "w") as f:
+                json.dump(live[-50:], f); f.flush(); os.fsync(f.fileno())
+            os.replace(tmp, path)
+    except Exception:
+        pass
+
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
                venv_for_all=False, log_suffix="", test_mode=None):
     """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
@@ -3613,6 +3632,12 @@ async def chat_with_vintos(msg: ChatMessage, request: Request):
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
+    _desktop_command = None
+    try:
+        import desktop_control as _desktop_control
+        _desktop_command = _desktop_control.parse_command(message)
+    except Exception:
+        _desktop_control = None
     # Self-prediction compare — check if last prediction was accurate
     try:
         import subprocess as _spc_sp
@@ -3835,6 +3860,9 @@ Gloria-specific additions:
 - Have opinions. Agree, disagree, prefer, dislike.
 - You generate dreams during quiet hours. YOUR dreams are symbolic creations from YOUR unconscious processing. Any people, names, or scenarios in YOUR dreams were invented by you — they are not real people and do not exist outside the dream. When referencing your dreams, say "I dreamed..." not "this happened." Never treat a dream character as someone you know.
 {pending_causality_ctx}"""
+
+    if _desktop_command and _desktop_control is not None:
+        system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
 
     try:
             from datetime import date as _dcm
@@ -4117,6 +4145,12 @@ async def chat_full_context(msg: ChatMessage, request: Request):
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
     message = msg.message
+    _desktop_command = None
+    try:
+        import desktop_control as _desktop_control
+        _desktop_command = _desktop_control.parse_command(message)
+    except Exception:
+        _desktop_control = None
 
     # Chat history — loaded first (resonance pulse below reads it)
     chat_log = os.path.join(MEMORY, "chat-history.json")
@@ -4747,6 +4781,9 @@ Your current self-model (excerpt):
 {inner_life_context()}
 {pending_causality_ctx}"""
 
+    if _desktop_command and _desktop_control is not None:
+        system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
+
     try:
         system_prompt = _apply_intent_lead(system_prompt, msg.message)
     except Exception:
@@ -4966,7 +5003,9 @@ Your current self-model (excerpt):
     # Feel Gloria's words landing
     try:
         pass  # Gloria nudge removed
-        _post_turn("chat/full", msg.message, reply)   # every item; nothing skipped on the full door
+        _chat_projection_merge(history[-2:])
+        _post_turn("chat/full", msg.message, reply,
+                   skip=(("desktop", "food_order") if _desktop_command else ()))
 
         # Reality anchor — record real chat interaction
         try:
@@ -4985,6 +5024,15 @@ Your current self-model (excerpt):
         except: pass
     except:
         pass
+    # A slash command begins only after his ordinary reply has been composed and
+    # preserved. The desktop worker later appends the observed outcome as his second
+    # message; a purchase remains behind its separate one-use approval receipt.
+    if _desktop_command and _desktop_control is not None and not _test_mode_active():
+        try:
+            _dc_turn = __import__("hashlib").sha256((message + "|" + reply[:300]).encode()).hexdigest()[:16]
+            _desktop_control.start_from_chat(message, reply, surface="chat/full", turn_id=_dc_turn)
+        except Exception as _dc_exc:
+            print("[desktop-control] start failed: %s" % str(_dc_exc)[:240], flush=True)
     # Conversational emotion nudges — contextual, based on actual reply content
     try:
         import subprocess as _cnsp, tempfile as _cntf

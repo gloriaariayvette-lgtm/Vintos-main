@@ -552,7 +552,8 @@ def run_task(task: str, max_steps: int = DEFAULT_MAX_STEPS, interval: float = .2
         return result
 
 
-def start_task(task: str, max_steps: int = DEFAULT_MAX_STEPS) -> Dict[str, Any]:
+def start_task(task: str, max_steps: int = DEFAULT_MAX_STEPS,
+               extra_env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     current = read_state()
     if current.get("status") in ("starting", "running", "stopping"):
         return {"accepted": False, "reason": "a desktop task is already active", "state": current}
@@ -564,6 +565,10 @@ def start_task(task: str, max_steps: int = DEFAULT_MAX_STEPS) -> Dict[str, Any]:
     _state(status="starting", pid=0, job_id=job_id, task=task, started_at=time.time())
     log = open(STATE_DIR / "runner.log", "ab", buffering=0)
     child_env = os.environ.copy(); child_env["VINTOS_DESKTOP_CHILD"] = "1"
+    # Only trusted in-process callers may add a bounded authority receipt. The public
+    # /api/desktop/start door never accepts environment fields from its request body.
+    for key, value in (extra_env or {}).items():
+        if key in ("VINTOS_DESKTOP_APPROVAL_ID",): child_env[key] = str(value)[:80]
     try:
         proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "run", "--task", task,
                                  "--max-steps", str(max_steps), "--job-id", job_id],

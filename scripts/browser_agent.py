@@ -299,7 +299,12 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
                 n = int(action.get("n")); label = elements[n]["text"][:60] if 0 <= n < len(elements) else "?"
                 ckind = elements[n].get("kind", "") if 0 <= n < len(elements) else ""
                 if IRREVERSIBLE_CLICK.search(label):
-                    raise ValueError("purchase controls require the separate receipt-bound approval door")
+                    approval = os.environ.get("VINTOS_DESKTOP_APPROVAL_ID", "")
+                    if not approval:
+                        raise ValueError("purchase controls require the separate receipt-bound approval door")
+                    import desktop_control
+                    allowed, why = desktop_control.authorize_purchase_click(approval, label, text)
+                    if not allowed: raise ValueError("purchase approval refused: " + str(why)[:160])
                 if 0 <= n < len(elements) and elements[n].get("disabled"):
                     stuck += 1
                     raise ValueError(f"[{n}] '{label}' is DISABLED: the page will not accept it until its requirements are met (a rating chosen? required text present? a box ticked? signed in?). Do that first")
