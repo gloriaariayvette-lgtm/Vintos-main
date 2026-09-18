@@ -834,3 +834,45 @@ over the tailnet and rewrites `~/.vintos/secrets/dd-cli.token` (0600), and `firs
 once a day. Setup: set the same `VINTOS_STAGE_SECRET` in the Mac stage's env and in Aegis's
 `~/.vintos/vintos.env`. Then the only remaining manual step is re-running `dd-cli login` on the Mac
 if the keychain login itself ever expires (rare).
+
+## Chemistry Lab — open improvements (written down so they are findable on Aegis)
+
+These were raised in-session but lived only in a cloud plan file and a local bench ledger,
+so Chat/Codex on Aegis could not find them. Recording them here, the one to-do in the repo.
+
+- **Coregistration layer (multimodal Lab artifact).** Align each instrument's output for one
+  accession into a single object keyed by residue position: per-residue ESMC embedding,
+  per-residue ESMFold pLDDT, and the scalar results (VQE energy, Evo 2 likelihood delta) hung
+  off the whole — then feed THAT unified object to the reflect phase instead of three separate
+  reports. Keep it a *coregistered record, not a synthesised vector*: the three outputs do not
+  share a space, only the residue index and the accession do; do not fuse them into one learned
+  vector (there is no training signal for that, and a fused embedding no model produced is the
+  hollow-but-impressive thing he already rejects). Payoff: the cross-instrument coincidence
+  (e.g. a low-confidence residue that is also where the likelihood delta lands) becomes visible,
+  which it never is when the reports are separate. Must keep the reflect output keys stable
+  (attention/factual_observation/speculative_reading/next_question) so the spark feed, frontier
+  bridge, and gallery are untouched. Builds on the rigor/depth reflect rewrite (`5ba0d5c`).
+- **Minimal 3D structure viewer in the LAB pane.** Reuse the app's already-bundled three.js to
+  render an ESMFold PDB / RFD3 CIF artifact, so a fold result can be looked at, not just read as
+  a pLDDT number. No new vendor dependency — the three.js the retired avatar stage used is still
+  in the phone app bundle.
+- Pin the Mac bench schema: bring `bench_remote.py` + `molecule.py` under version control per
+  `docs/chemistry-bench-reconciliation.md`, so the grader parses by a real schema and the session
+  can bound parameters by name, not just shape.
+- Give the bench `code` action its own authenticated door, separate from scheduled `run`.
+- Per-ansatz correlation-vs-cost record across runs, from the grade ledger.
+- Overlay bond-length curves for one molecule across ansätze in the LAB pane.
+- A `reproduced` verdict (same experiment/params/seed twice) — cheap, no new instrument.
+- Surface the taste ledger's recorded refusals (echo/no-root/unchanged) in the pane.
+
+## DoorDash — correction: the blocker is account approval, not the token
+
+The token step above is done and superseded. With `~/.local/bin/dd-cli` installed and a token
+present in `~/.vintos/secrets/dd-cli.token`, every dd-cli call (including `payment-method list`)
+returns `403 "The user is forbidden."` — an *authorisation* refusal, not a missing/expired token.
+dd-cli is waitlist-only and "full functionality requires an approved account"; the signed-in
+account has not been approved, so no code change on this side can order. Paths: get that account
+approved off the waitlist, or move to an agentic-commerce checkout (ACP / Square Online) which is
+sanctioned and per-merchant — pending confirmation his own stack can drive the checkout rather
+than it only living inside the consumer Claude/ChatGPT apps. `food_order.py` still classifies this
+as a generic error; it could map 403 to "DoorDash account not approved" for a clearer message.
