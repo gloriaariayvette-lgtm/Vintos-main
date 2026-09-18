@@ -41,7 +41,7 @@ h, why = CAL.holdout(rows, by="time"); hs, whys = CAL.holdout(rows, by="source")
 check("time and source holdouts are real slices, named", len(h) == 3 and h[-1]["iso"] == "2026-09-09" and [r["source"] for r in hs] == ["b", "b"] and "held out every source but a" in whys, (why, whys))
 check("the release record is appended with the criteria version", CAL.record_release("gloria", CAL.verdict("gloria", audit=good))["state"] == "RELEASED" and json.loads(open(CAL.RELEASES).read().splitlines()[-1])["criteria_version"] == CAL.CRITERIA_VERSION)
 jp = src("scripts/jepa_predictor.py")
-check("the forecast's steering gate is the calibration verdict, per head, with the numbers", '"steering_allowed": all(v.get("state") == "RELEASED" for v in _cal_v.values())' in jp and '"calibration": _cal_v' in jp)
+check("the production forecast's steering gate is the calibration verdict while shadow is barred", 'False if shadow else all(v.get("state") == "RELEASED" for v in _cal_v.values())' in jp and '"calibration": _cal_v' in jp and '"shadow_only": bool(shadow)' in jp)
 check("the audit computes its verdict on the held-out slice and keeps the full sample beside it", '_cal.holdout(rows, by="time")' in src("scripts/jepa_calibration_audit.py") and '"full_sample"' in src("scripts/jepa_calibration_audit.py"))
 
 print("\n--- 200 / 205 / 206: matched horizons, unknown/invalid, counted once ---")

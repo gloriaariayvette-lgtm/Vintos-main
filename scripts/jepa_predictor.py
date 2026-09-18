@@ -31,6 +31,9 @@ CHAT   = os.path.join(MEMORY, "chat-history-merged.json")
 AUDIT  = os.path.join(MEMORY, "presence-audit.json")
 MODEL  = os.path.join(MEMORY, "jepa-predictor.pt")
 OUT    = os.path.join(MEMORY, "jepa-prediction.json")
+SHADOW_MODEL = os.path.join(MEMORY, "jepa-predictor-structured-shadow.pt")
+SHADOW_OUT = os.path.join(MEMORY, "jepa-prediction-structured-shadow.json")
+SHADOW_HISTORY = os.path.join(MEMORY, "jepa-prediction-structured-shadow-history.jsonl")
 CTX_TURNS = 6
 MIN_PRESENCE_PAIRS = 6
 EMB_MODEL = "nomic-ai/nomic-embed-text-v1"
@@ -149,7 +152,42 @@ def training_sources(turns):
     return {"gloria_turns": total, "by_source": {k: {"n": n, "share": round(n / total, 3)} for k, n in sorted(counts.items())}}
 
 
-def build_pairs(turns, enc):
+def _gap_bucket(previous, current):
+    """A bounded temporal marker. Exact timestamps would let the encoder memorize dates;
+    the bucket preserves conversational rhythm without making a clock a target."""
+    try:
+        from datetime import datetime
+        a = datetime.fromisoformat(str(previous or "").replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(current or "").replace("Z", "+00:00"))
+        seconds = max(0.0, (b - a).total_seconds())
+    except Exception:
+        return "unknown"
+    if seconds < 60: return "under_1m"
+    if seconds < 300: return "1_to_5m"
+    if seconds < 1800: return "5_to_30m"
+    if seconds < 7200: return "30m_to_2h"
+    if seconds < 86400: return "2_to_24h"
+    return "over_24h"
+
+
+def format_context(window, schema="legacy-concat-v1"):
+    """Render a context window. Production remains on its checkpoint's legacy schema;
+    the structured schema is trained and evaluated as a separate shadow checkpoint."""
+    if schema != "structured-turns-v1":
+        return " \n".join(str(t.get("content", ""))[:300] for t in window)
+    lines, previous = [], ""
+    for index, turn in enumerate(window):
+        speaker = str(turn.get("speaker") or ("gloria" if turn.get("role") == "user" else "vintos"))
+        surface = str(turn.get("surface") or "chat").strip().lower()[:32]
+        timestamp = str(turn.get("timestamp") or "")
+        gap = "start" if index == 0 else _gap_bucket(previous, timestamp)
+        lines.append("[TURN=%d][SPEAKER=%s][SURFACE=%s][GAP=%s] %s" %
+                     (index + 1, speaker, surface, gap, str(turn.get("content", ""))[:300]))
+        previous = timestamp
+    return "\n".join(lines)
+
+
+def build_pairs(turns, enc, context_schema="legacy-concat-v1"):
     import numpy as np
     ctx_txt, tgt_txt, head = [], [], []
     for i in range(CTX_TURNS, len(turns)):
@@ -165,7 +203,7 @@ def build_pairs(turns, enc):
                 continue
         except Exception:
             pass
-        ctx_txt.append(" \n".join(str(t.get("content", ""))[:300] for t in turns[i - CTX_TURNS:i]))
+        ctx_txt.append(format_context(turns[i - CTX_TURNS:i], context_schema))
         tgt_txt.append(str(tgt.get("content", ""))[:400])
         head.append(1 if tgt.get("role") == "assistant" else 0)   # 1=self, 0=gloria
     if not ctx_txt:
@@ -174,7 +212,7 @@ def build_pairs(turns, enc):
     Y = np.asarray(enc.encode(tgt_txt, show_progress_bar=False), dtype="float32")
     return X, Y, np.asarray(head)
 
-def build_presence_pairs(turns, enc):
+def build_presence_pairs(turns, enc, context_schema="legacy-concat-v1"):
     """(context before his reply) -> that reply's audited presence composite."""
     import numpy as np
     comp = {a.get("id"): a.get("composite") for a in load(AUDIT, [])
@@ -185,15 +223,31 @@ def build_presence_pairs(turns, enc):
     for i in range(CTX_TURNS, len(turns)):
         t = turns[i]
         if t.get("role") == "assistant" and _rid(t) in comp:
-            ctx_txt.append(" \n".join(str(x.get("content", ""))[:300] for x in turns[i - CTX_TURNS:i]))
+            ctx_txt.append(format_context(turns[i - CTX_TURNS:i], context_schema))
             y.append(float(comp[_rid(t)]))
     if len(ctx_txt) < MIN_PRESENCE_PAIRS:
         return None
     Xp = np.asarray(enc.encode(ctx_txt, show_progress_bar=False), dtype="float32")
     return Xp, np.asarray(y, dtype="float32").reshape(-1, 1)
 
-def make_net(dim):
+def make_net(dim, architecture="shared-v1"):
     import torch, torch.nn as nn
+    if architecture == "head-specific-confidence-v2":
+        class PredV2(nn.Module):
+            def __init__(self, d):
+                super().__init__()
+                self.trunk = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, d), nn.GELU())
+                self.adapter = nn.ModuleList([
+                    nn.Sequential(nn.Linear(d, d // 2), nn.GELU()) for _ in range(3)])
+                self.head = nn.ModuleList([nn.Linear(d // 2, d), nn.Linear(d // 2, d)])
+                self.presence = nn.Linear(d // 2, 1)
+                self.head_logvar = nn.ModuleList([nn.Linear(d // 2, 1) for _ in range(3)])
+            def forward(self, x):
+                h = self.trunk(x); z = [a(h) for a in self.adapter]
+                lv = torch.cat([self.head_logvar[i](z[i]) for i in range(3)], dim=1)
+                return (self.head[0](z[0]), self.head[1](z[1]), torch.sigmoid(self.presence(z[2])),
+                        torch.clamp(lv, -12.0, 6.0))
+        return PredV2(dim)
     class Pred(nn.Module):
         def __init__(self, d):
             super().__init__()
@@ -208,7 +262,7 @@ def make_net(dim):
                     torch.clamp(self.logvar(h), -12.0, 6.0))
     return Pred(dim)
 
-def train():
+def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="shared-v1"):
     import numpy as np, torch
     turns = training_turns()                    # chat-history + implanted ledger (Gloria's real voice)
     if len(turns) <= CTX_TURNS + 2:
@@ -217,9 +271,9 @@ def train():
     log(f"training corpus: {len(turns)} turns ({len(turns_of(load(CHAT, [])))} chat + ledger); gloria-head sources: "
         + ", ".join(f"{k} {v['share']:.0%}" for k, v in _srcs["by_source"].items()))
     enc = encoder()
-    X, Y, H = build_pairs(turns, enc)
+    X, Y, H = build_pairs(turns, enc, context_schema=context_schema)
     Xt, Yt, Ht = torch.tensor(X), torch.tensor(Y), torch.tensor(H).long()
-    pp = build_presence_pairs(turns, enc)
+    pp = build_presence_pairs(turns, enc, context_schema=context_schema)
     if pp is not None:
         Xp, yp = torch.tensor(pp[0]), torch.tensor(pp[1])
         log(f"presence head: {pp[0].shape[0]} labeled pairs")
@@ -227,7 +281,7 @@ def train():
         Xp = None
         log("presence head: not enough audited replies yet — skipping (fail-open)")
 
-    net = make_net(X.shape[1])
+    net = make_net(X.shape[1], architecture=architecture)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     for epoch in range(300):
         opt.zero_grad()
@@ -248,8 +302,10 @@ def train():
         opt.step()
         if epoch % 100 == 0:
             log(f"epoch {epoch} loss {loss.item():.4f}")
-    torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None, "training_sources": _srcs}, MODEL)
-    log(f"trained on {len(X)} pairs (presence_trained={Xp is not None}); saved {MODEL}")
+    torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None,
+                "training_sources": _srcs, "context_schema": context_schema,
+                "architecture": architecture, "shadow_only": model_path != MODEL}, model_path)
+    log(f"trained on {len(X)} pairs (presence_trained={Xp is not None}); saved {model_path}")
 
 def _cos(a, b):
     import numpy as np
@@ -271,14 +327,14 @@ def _conf(lv):
     lv = max(-6.0, min(6.0, float(lv)))
     return round(1.0 / (1.0 + float(np.exp(lv))), 3)   # tight variance -> high confidence
 
-def predict():
+def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     import numpy as np, torch
-    if not os.path.exists(MODEL):
+    if not os.path.exists(model_path):
         log("no model — run `train` first"); return
     import io, hashlib
-    checkpoint_bytes=open(MODEL,"rb").read()
+    checkpoint_bytes=open(model_path,"rb").read()
     loaded_checkpoint=hashlib.sha256(checkpoint_bytes).hexdigest()
-    ck = torch.load(io.BytesIO(checkpoint_bytes)); net = make_net(ck["dim"]); net.load_state_dict(ck["state"]); net.eval()
+    ck = torch.load(io.BytesIO(checkpoint_bytes)); net = make_net(ck["dim"], architecture=ck.get("architecture", "shared-v1")); net.load_state_dict(ck["state"]); net.eval()
     turns = turns_of(load(CHAT, []))
     if len(turns) < 2:
         log("no context"); return
@@ -289,7 +345,8 @@ def predict():
     if len(turns) < 2:
         log("no live context above the ledger floor"); return
     enc = encoder()
-    ctx = " \n".join(str(t.get("content", ""))[:300] for t in turns[-CTX_TURNS:])
+    _schema = ck.get("context_schema", "legacy-concat-v1")
+    ctx = format_context(turns[-CTX_TURNS:], _schema)
     xe = np.asarray(enc.encode([ctx], show_progress_bar=False), dtype="float32")
     with torch.no_grad():
         g_pred, s_pred, p_pred, logvar = net(torch.tensor(xe))
@@ -299,7 +356,7 @@ def predict():
     # distribution - absolute sigmoid(0-centered) reads tiny embedding-space variances as 0.998
     # forever. Tighter-than-usual variance = confident; looser = uncertain; spreadless = refuses
     # to call itself calibrated at all.
-    _cal_ctx = [" \n".join(str(t.get("content",""))[:300] for t in turns[max(0,i-CTX_TURNS):i])
+    _cal_ctx = [format_context(turns[max(0,i-CTX_TURNS):i], _schema)
                 for i in range(CTX_TURNS, len(turns))][-40:]
     _lv_mean = _lv_std = None
     if len(_cal_ctx) >= 12:
@@ -353,7 +410,7 @@ def predict():
            "context_last_event": (turns[-1].get("event_id") if turns else None),
            "checkpoint_id": _ck_id,
            "qualification": {"gloria": _qual(_cg), "self": _qual(_cs), "presence": _qual(_cp)},
-           "steering_allowed": all(v.get("state") == "RELEASED" for v in _cal_v.values()),
+           "steering_allowed": (False if shadow else all(v.get("state") == "RELEASED" for v in _cal_v.values())),
            "calibration": _cal_v,   # per head: RELEASED / WITHHELD / INSUFFICIENT, with the numbers and the criteria version
            # backward-compatible top-level = the gloria triple (gloria_prediction + latent read these)
            "confidence": gloria["confidence"], "novelty": gloria["novelty"],
@@ -361,25 +418,30 @@ def predict():
            "gloria": gloria, "self": self_h, "presence": presence,
            "variance_qualified": (_cg is not None),
            "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
-           "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; logvars appear COLLAPSED (~0.998 constant) - uncalibrated, may not steer"}
+           "context_schema": _schema, "architecture": ck.get("architecture", "shared-v1"),
+           "shadow_only": bool(shadow),
+           "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; shadow checkpoints may never steer"}
     out["gloria_latest_turn"] = next((str(t.get("content","")) for t in reversed(turns) if t.get("role") == "user"), "")[:200]
     try:   # _srcs was train()-local: every predict raised NameError here before the forecast was saved (review P05)
         out["training_sources"] = (ck.get("training_sources") if isinstance(ck, dict) else None) or training_sources(turns)
     except Exception as _tse:
         out["training_sources"] = {"unavailable": str(_tse)[:80]}
-    json.dump(out, open(OUT, "w"), indent=2)
+    json.dump(out, open(out_path, "w"), indent=2)
     # calibration ledger: one line per prediction, BOTH signals (repaired logvar-relative confidence
     # AND legacy decode_similarity) plus raw predicted embeddings, so the audit can test which one -
     # if either - actually predicts realized error. Variance is not calibration.
     try:
         import time as _ht
         hist_line = {"checkpoint_id": _ck_id, "ts": _ht.time(), "iso": __import__("datetime").datetime.now().isoformat(),
+                     "context_schema": _schema,
+                     "context_emb": [round(float(x), 4) for x in xe[0]],
                      "gloria": {"confidence": gloria["confidence"], "decode_similarity": gloria["decode_similarity"],
                                 "novelty": gloria["novelty"], "emb": [round(float(x), 4) for x in g]},
                      "self": {"confidence": self_h["confidence"], "decode_similarity": self_h["decode_similarity"],
                               "novelty": self_h["novelty"], "emb": [round(float(x), 4) for x in s]},
                      "variance_qualified": (_cg is not None)}
-        open(os.path.join(MEMORY, "jepa-prediction-history.jsonl"), "a").write(json.dumps(hist_line) + "\n")
+        _hp = history_path or os.path.join(MEMORY, "jepa-prediction-history.jsonl")
+        open(_hp, "a").write(json.dumps(hist_line) + "\n")
     except Exception as _he:
         log(f"history append failed: {_he}")
     log(f"gloria conf {gloria['confidence']} nov {gloria['novelty']} | self conf {self_h['confidence']} nov {self_h['novelty']}"
@@ -389,4 +451,8 @@ def predict():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "train"
-    (train if cmd == "train" else predict)()
+    if cmd == "train": train()
+    elif cmd == "predict": predict()
+    elif cmd == "train-shadow": train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2")
+    elif cmd == "predict-shadow": predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True)
+    else: print("usage: jepa_predictor.py train|predict|train-shadow|predict-shadow")

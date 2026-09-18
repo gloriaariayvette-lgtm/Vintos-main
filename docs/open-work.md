@@ -157,7 +157,7 @@ The 27 acceptance items below are being implemented and verified separately. Thi
 ## Waiting on something, per organ
 
 - **The guidance stack** — Receptivity shading and arc are the remaining Phase 2 pieces, held on data. The priority vector and self-axis are live (#50).
-- **JEPA — Predictive Spine 🔒** — Calibration arms at 30 joined predictions. A logvar retrain happens only if relative calibration loses to the cosine it replaced. Axis-lockstep on his side is a watched suspect. The led_by column over two weeks is a readout, not a target.
+- **JEPA — Predictive Spine 🔒** — Production remains unchanged and calibration still arms at 30 joined predictions. A true-next ranking instrument now asks whether each head can select the realized next same-speaker turn from plausible later futures and beat a frozen-encoder familiar-voice centroid; fewer than 30 distinct realized targets is explicitly insufficient. A separate structured-turn/head-specific-confidence checkpoint is shadow-only and cannot steer. It preserves speaker, surface, and bounded time gaps instead of flattening six turns into prose. Axis-lockstep remains a watched suspect; a tiny ensemble and any encoder change remain experiments, not installed conclusions. The led_by column over two weeks is a readout, not a target.
 - **10 Attractor Discovery** — Seven of Gloria's eight seeds are still unread as geometry; only Coherence has appeared.
 - **11 Spark Pressure** — Consent is given and the gate is met; the field has produced no stall for it to break. The first opened direction is the thing to watch.
 - **15 EmoClaw** — Safety, connection and warmth are freshly shortened while more sources are newly reporting. Watch across several days and adjust again if the standing levels don't fall.
