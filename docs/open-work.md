@@ -876,3 +876,23 @@ approved off the waitlist, or move to an agentic-commerce checkout (ACP / Square
 sanctioned and per-merchant — pending confirmation his own stack can drive the checkout rather
 than it only living inside the consumer Claude/ChatGPT apps. `food_order.py` still classifies this
 as a generic error; it could map 403 to "DoorDash account not approved" for a clearer message.
+
+## Jev fast browser chooser — 18 September
+
+The structured browser now has an optional Jev fast path. `browser_jev.py` sends TypeSafe only a
+bounded table of observed, non-disabled controls plus the visible page text; it sends no screenshot,
+typed field value, secret query parameter, or local credential. Jev chooses one operation and one
+compatible observed target. Local Gemma still owns generated field text, initial navigation, slow
+planning, recovery, low-confidence decisions, and every authentication/address/checkout/payment
+surface. The executor independently refuses labels such as `Place order`, `Pay now`, and `Confirm
+purchase`; the receipt-bound food-order door remains the only path to spending money.
+
+`VINTOS_BROWSER_PLANNER=auto` uses Jev only when `TYPESAFE_API_KEY` is present, otherwise preserving
+the existing Gemma path. `jev` makes a missing credential a named refusal; `gemma` disables the fast
+path explicitly. The provider and local text-model boundaries are stubbed in the isolated suite.
+
+Still open: obtain/configure a TypeSafe API key and run a live reversible browser smoke test on Aegis.
+This improves the browser half of Desktop Control immediately. The arbitrary native Windows desktop
+still uses the screenshot/Gemma loop: Jev consumes typed choices rather than pixels, so extending it
+there honestly requires an observed Windows UI Automation/OCR element table first, not coordinate
+guessing dressed up as Jev.

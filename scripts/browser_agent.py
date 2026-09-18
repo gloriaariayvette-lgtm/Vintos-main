@@ -27,6 +27,7 @@ import desktop_agent as DA
 
 ACTIONS = {"goto", "click", "type", "scroll", "scrollto", "key", "play", "back", "dismiss", "wait", "done", "fail"}
 WEB_HINT = re.compile(r"\b(youtube|browser|website|web ?site|web|search (for|the web)|video|review|url|https?://|google|recipe|reddit|wikipedia|tab|page|site|amazon|spotify web|open .{0,30}\.(com|org|net))\b", re.I)
+IRREVERSIBLE_CLICK = re.compile(r"\b(?:place|submit|confirm|complete)\s+(?:the\s+)?order\b|\b(?:pay|buy)\s+now\b|\bconfirm\s+purchase\b", re.I)
 
 
 def looks_like_web(task: str) -> bool:
@@ -242,8 +243,12 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             if reflections >= 4:
                 return DA.RunResult("failed", "stuck four times over; last diagnosis: " + str(r.get("diagnosis", ""))[:200], step, calls, job_id)
         try:
-            try: action = planner(task, summary, step, last_result, recent, _notes_block(plan, notes))
-            except TypeError: action = planner(task, summary, step, last_result, recent)
+            if hasattr(planner, "choose_page"):
+                action = planner.choose_page(task, summary, step, last_result, recent, _notes_block(plan, notes),
+                                             st, elements, text, outline)
+            else:
+                try: action = planner(task, summary, step, last_result, recent, _notes_block(plan, notes))
+                except TypeError: action = planner(task, summary, step, last_result, recent)
             errors = 0
         except Exception as exc:
             errors += 1; calls += 1
@@ -293,6 +298,8 @@ def run(task: str, browser, planner: Callable[..., Dict[str, Any]], max_steps: i
             elif kind == "click":
                 n = int(action.get("n")); label = elements[n]["text"][:60] if 0 <= n < len(elements) else "?"
                 ckind = elements[n].get("kind", "") if 0 <= n < len(elements) else ""
+                if IRREVERSIBLE_CLICK.search(label):
+                    raise ValueError("purchase controls require the separate receipt-bound approval door")
                 if 0 <= n < len(elements) and elements[n].get("disabled"):
                     stuck += 1
                     raise ValueError(f"[{n}] '{label}' is DISABLED: the page will not accept it until its requirements are met (a rating chosen? required text present? a box ticked? signed in?). Do that first")
@@ -444,9 +451,20 @@ class GemmaPageVerifier:
             return False, "verifier unavailable: " + str(exc)[:120]
 
 
+def planner_for_house():
+    """Jev is the fast browser chooser when configured; Gemma remains the safe complete fallback."""
+    slow = GemmaTextPlanner(); choice = os.environ.get("VINTOS_BROWSER_PLANNER", "auto").strip().lower()
+    if choice not in ("auto", "jev", "gemma"): raise RuntimeError("unknown VINTOS_BROWSER_PLANNER")
+    if choice == "gemma": return slow
+    import browser_jev
+    if browser_jev.configured(): return browser_jev.JevPlanner(slow)
+    if choice == "jev": raise RuntimeError("Jev requested but TYPESAFE_API_KEY is not configured")
+    return slow
+
+
 def run_task(task: str, max_steps: int = DA.DEFAULT_MAX_STEPS, job_id: Optional[str] = None) -> DA.RunResult:
     import browser_winpy
-    return run(task, browser_winpy.EdgeBrowser(), GemmaTextPlanner(), max_steps, job_id=job_id,
+    return run(task, browser_winpy.EdgeBrowser(), planner_for_house(), max_steps, job_id=job_id,
                progress=lambda step, calls: DA._state(step=step, gemma_calls=calls, mode="browser"), verifier=GemmaPageVerifier(), reflector=GemmaReflector())
 
 
