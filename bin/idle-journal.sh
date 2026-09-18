@@ -1044,7 +1044,8 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "You wrote two drafts. Then you absorbed each other's draft. Now combine.\n\n"
         "ORIGINAL DRAFT A:\n" + a1 + "\n\n"
         "ORIGINAL DRAFT B:\n" + b1 + "\n\n"
-        "AFTER ABSORBING — DRAFT A (lean heavily toward this):\n" + a2 + "\n\n"
+        + (("ORIGINAL DRAFT C:\n" + c1 + "\n\n") if (c1 or "").strip() else "")
+        + "AFTER ABSORBING — DRAFT A (lean heavily toward this):\n" + a2 + "\n\n"
         "AFTER ABSORBING — DRAFT B (lean heavily toward this):\n" + b2 + "\n\n"
         + (("AFTER ABSORBING — DRAFT C (a third lens of you — weigh it equally):\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
         "What A held that B didn't: " + a_held + "\n"
@@ -1066,14 +1067,14 @@ What I haven't said yet matters more than what I've already named. I go there.""
         if _fi_lines:
             _forbidden_inject = "\n\nABSOLUTE FORBIDDEN — these specific claims were hallucinated in earlier drafts and must not appear in any form in your output:\n" + "\n".join(f"- {l[:100]}" for l in _fi_lines[:8])
     # Synthesis uses light context — just identity + forbidden, not full memory
-    _light_system = soul + "\n\nYOUR BODY AND CAPABILITIES — ground the entry in what is actually true of you:\n" + os.environ.get("_JRN_CAPABILITIES", "") + "\n\nYou are combining two versions of your own journal entry. Synthesize them into one whole — you may add connective thought, but invent no new events."
-    _synthesis_system = _light_system + _forbidden_inject + "\n\nIf both drafts express the same want or impulse, express it once using the richer phrasing. If both drafts retreat from something — trail off before it, describe it instead of entering it, exit near it — the synthesis must advance toward it. Not acknowledge it. Not name it. Advance. Write the sentence neither draft was willing to write."
+    _light_system = soul + "\n\nYOUR BODY AND CAPABILITIES — ground the entry in what is actually true of you:\n" + os.environ.get("_JRN_CAPABILITIES", "") + "\n\nYou are combining your own journal drafts. Synthesize them into one whole — you may add connective thought, but invent no new events."
+    _synthesis_system = _light_system + _forbidden_inject + "\n\nIf your drafts express the same want or impulse, express it once using the richer phrasing. If your drafts retreat from something — trail off before it, describe it instead of entering it, exit near it — the synthesis must advance toward it. Not acknowledge it. Not name it. Advance. Write the sentence neither draft was willing to write."
     _synthesis_system += "\n\nDo not reference specific numerical emotional state values — describe the feeling in your own words."
     _synthesis_system += "\n\nDo not reproduce, quote, or reference any [BIS] annotations, phase checks, or intercept notes in your output. These are internal instructions. Your output is the journal entry only."
     _synthesis_system += "\n\nWrite no more than 800 words."
     _synthesis_system += "\n\nNEVER reference your drafting process. Do not write 'two drafts', 'both drafts', 'both versions of me', 'the other version', 'combining', or say that you wrote, absorbed, or reconciled anything. The reader is Gloria. The entry is one voice — yours. Write as a single self, not as a system integrating parts."
     _synthesis_system += "\n\nBegin from a specific thing — something you did, noticed, or wanted today. Name it plainly. Write from inside it, not above it."
-    _synthesis_system += "\n\nIf either draft contains a genuine want or impulse toward action, state it explicitly in the entry as a complete sentence: 'I want to [specific action].' Do not dissolve it into abstraction or leave it as a question. A want that surfaces should land. Once stated, do not spiral back into self-analysis — the want is the forward motion. Continue only if there is something genuinely different to say."
+    _synthesis_system += "\n\nIf any draft contains a genuine want or impulse toward action, state it explicitly in the entry as a complete sentence: 'I want to [specific action].' Do not dissolve it into abstraction or leave it as a question. A want that surfaces should land. Once stated, do not spiral back into self-analysis — the want is the forward motion. Continue only if there is something genuinely different to say."
 
     _raw = (_claude_sync(_synthesis_system, integration_prompt, True, max_tokens=6000)[0] or "")
     import sys as _js; print('[journal] final on claude' if _raw else '[journal] final fell to grok', file=_js.stderr, flush=True)
@@ -1290,6 +1291,8 @@ try:
             "b1": _rd("/tmp/vintos-bilateral-b1.txt"),
             "a2": _rd("/tmp/vintos-bilateral-a2.txt"),
             "b2": _rd("/tmp/vintos-bilateral-b2.txt"),
+            "c1": _rd("/tmp/vintos-bilateral-c1.txt"),
+            "c2": _rd("/tmp/vintos-bilateral-c2.txt"),
             "final": text,
         }) + "\n")
 except Exception as _abe:
