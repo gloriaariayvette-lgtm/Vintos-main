@@ -69,8 +69,9 @@ choose. Silencing the Lab is not the remedy for having overstated it.
 
 ## The visible body
 
-The Lab is not a switch with a JSON history behind it. The `LAB` pane reads five bounded,
-secret-guarded endpoints — notebook, sessions, grades, taste, and one run's curve — and shows
+The Lab is not a switch with a JSON history behind it. The `LAB` pane reads bounded,
+secret-guarded endpoints — notebook, sessions, grades, taste, one run's curve, and the
+structure inventory/view doors — and shows
 each session with **two marks, never one**: how the instrument behaved, and whether the
 answer was any good. A run that completed and answered badly must not read as a run that
 worked, and this is where that distinction becomes visible rather than merely recorded.
@@ -79,6 +80,12 @@ Energy curves are hand-rolled inline SVG; the client carries no charting library
 did not add one. Every value drawn passes a finite check first, curves are capped, and the
 huge Mac payload stays on the server — the page gets state, not the artifact. The endpoints
 recompute nothing: a curve is read from the grade that was already written.
+
+PDB and gzipped/plain mmCIF artifacts already produced beneath the Lab artifact root may be
+opened in a small three.js structure gallery. The server resolves opaque inventory ids, enforces
+path and byte/atom bounds, and returns parsed coordinates rather than filesystem access. The
+phone uses its existing three.js bundle to draw atoms and a backbone trace. Every view remains
+labelled as a computational structure artifact, not biological fact.
 
 ## Taste, and what it may not be made of
 

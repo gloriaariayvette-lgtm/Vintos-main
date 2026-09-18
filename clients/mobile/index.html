@@ -1535,6 +1535,74 @@ function _labCurve(points) {
         '<div style="font-size:0.52rem;color:var(--text-dim);">solid: variational · dashed: Hartree-Fock · ' +
         _esc(x0.toFixed(2)) + '–' + _esc(x1.toFixed(2)) + ' \u00c5</div>';
 }
+let _labStructureView = null;
+function _labElementColour(element) {
+    return ({H:0xe8e1db,C:0xb4a9a0,N:0x7098d8,O:0xd86d62,S:0xd9b84a,P:0xd48655,F:0x78b982,CL:0x78b982,BR:0x9d6654})[String(element || 'C').toUpperCase()] || 0xb99acb;
+}
+function _labStopStructure() {
+    if (!_labStructureView) return;
+    if (_labStructureView.frame) cancelAnimationFrame(_labStructureView.frame);
+    if (_labStructureView.renderer) _labStructureView.renderer.dispose();
+    _labStructureView = null;
+}
+function _labDrawStructure(payload) {
+    const canvas = document.getElementById('lab-structure-canvas');
+    const note = document.getElementById('lab-structure-note');
+    if (!canvas || !payload || !payload.ok) return;
+    if (!window.THREE) { if (note) note.textContent = 'three.js is unavailable in this build'; return; }
+    _labStopStructure();
+    const atoms = (payload.atoms || []).filter(a => [a.x,a.y,a.z].every(Number.isFinite));
+    if (!atoms.length) { if (note) note.textContent = 'no readable atoms'; return; }
+    const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    const W = Math.max(260, canvas.clientWidth || 300), H = 250;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2)); renderer.setSize(W, H, false);
+    renderer.setClearColor(0x000000, 0);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, W/H, 0.01, 100);
+    camera.position.set(0, 0, 7);
+    const group = new THREE.Group(); scene.add(group);
+    let cx=0, cy=0, cz=0;
+    atoms.forEach(a => { cx+=a.x; cy+=a.y; cz+=a.z; }); cx/=atoms.length; cy/=atoms.length; cz/=atoms.length;
+    let radius=0;
+    atoms.forEach(a => { radius=Math.max(radius, Math.hypot(a.x-cx,a.y-cy,a.z-cz)); });
+    const scale = 2.55 / Math.max(radius, 0.01);
+    const positions = new Float32Array(atoms.length*3), colours = new Float32Array(atoms.length*3);
+    atoms.forEach((a,i) => {
+        positions[i*3]=(a.x-cx)*scale; positions[i*3+1]=(a.y-cy)*scale; positions[i*3+2]=(a.z-cz)*scale;
+        const c=new THREE.Color(_labElementColour(a.element)); colours[i*3]=c.r; colours[i*3+1]=c.g; colours[i*3+2]=c.b;
+    });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(positions,3)); geo.setAttribute('color',new THREE.BufferAttribute(colours,3));
+    group.add(new THREE.Points(geo,new THREE.PointsMaterial({size:0.085,vertexColors:true,transparent:true,opacity:0.92,sizeAttenuation:true})));
+    const traces = [], last = {};
+    atoms.forEach(a => {
+        if (a.name !== 'CA' && a.name !== 'P') return;
+        const key=(a.chain||'_')+':'+a.name, here=new THREE.Vector3((a.x-cx)*scale,(a.y-cy)*scale,(a.z-cz)*scale);
+        if (last[key]) traces.push(last[key].x,last[key].y,last[key].z,here.x,here.y,here.z); last[key]=here;
+    });
+    if (traces.length) { const lineGeo=new THREE.BufferGeometry(); lineGeo.setAttribute('position',new THREE.Float32BufferAttribute(traces,3)); group.add(new THREE.LineSegments(lineGeo,new THREE.LineBasicMaterial({color:0xd7a578,transparent:true,opacity:0.72}))); }
+    let dragging=false, px=0, py=0;
+    canvas.onpointerdown=e=>{dragging=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId);};
+    canvas.onpointermove=e=>{if(!dragging)return;group.rotation.y+=(e.clientX-px)*0.012;group.rotation.x+=(e.clientY-py)*0.012;px=e.clientX;py=e.clientY;};
+    canvas.onpointerup=()=>{dragging=false;}; canvas.onpointercancel=()=>{dragging=false;};
+    const view={renderer,frame:0}; _labStructureView=view;
+    const draw=()=>{ if(_labStructureView!==view)return; if(!dragging)group.rotation.y+=0.003; renderer.render(scene,camera); view.frame=requestAnimationFrame(draw); }; draw();
+    if (note) note.textContent = payload.name+' · '+payload.atom_count+' atoms'+(payload.truncated?' · display capped':'')+' · computational artifact, not biological fact';
+}
+async function _labOpenStructure(id) {
+    const note=document.getElementById('lab-structure-note'); if(note)note.textContent='opening structure…';
+    try { const payload=await _labGet('structure/'+encodeURIComponent(id)); if(!payload.ok)throw new Error(payload.error||'unreadable'); _labDrawStructure(payload); }
+    catch(e) { if(note)note.textContent='could not open structure · '+String(e.message||e); }
+}
+function _labStructureCard(rows) {
+    if (!rows || !rows.length) return '';
+    return '<div class="gallery-item" style="padding:14px;grid-column:1/-1;">' +
+        '<div style="font-size:0.74rem;color:var(--text-bright);">structure gallery</div>' +
+        '<div style="font-size:0.56rem;color:var(--text-dim);margin:4px 0 8px;">drag to turn · atoms plus backbone trace</div>' +
+        '<canvas id="lab-structure-canvas" style="display:block;width:100%;height:250px;touch-action:none;border:0.5px solid var(--border);border-radius:10px;background:radial-gradient(circle at 50% 45%,rgba(207,133,90,0.10),transparent 64%);"></canvas>' +
+        '<div id="lab-structure-note" style="font-size:0.54rem;color:var(--text-dim);margin:7px 0 10px;">choose a structure</div>' +
+        '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;">' + rows.slice(0,12).map((s,i) =>
+          '<button type="button" data-lab-structure="'+_esc(s.artifact_id)+'" style="flex:0 0 auto;background:'+(i?'var(--surface)':'var(--accent-dim)')+';border:0.5px solid var(--border);border-radius:12px;color:var(--text);padding:6px 9px;font-size:0.56rem;">'+_esc(s.name)+'</button>').join('') + '</div></div>';
+}
 async function _labGet(path) {
     const res = await VintosUI.request(`${API}/api/lab/chemistry/${path}`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
     return await res.json();
@@ -1544,9 +1612,9 @@ async function loadLab() {
     const grid = document.getElementById('lab-grid');
     if (!grid) return;
     grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
-    let status, sessions, taste;
+    let status, sessions, taste, structures;
     try {
-        [status, sessions, taste] = await Promise.all([_labGet('status'), _labGet('sessions?limit=12'), _labGet('taste')]);
+        [status, sessions, taste, structures] = await Promise.all([_labGet('status'), _labGet('sessions?limit=12'), _labGet('taste'), _labGet('structures?limit=24')]);
     } catch (e) {
         grid.innerHTML = '<div class="gallery-empty">the Lab is unreachable</div>';
         if (summary) summary.textContent = 'unreachable'; return;
@@ -1567,6 +1635,8 @@ async function loadLab() {
     }
     const rows = (sessions && sessions.sessions) || [];
     const cards = [];
+    const structureRows = (structures && structures.structures) || [];
+    if (structureRows.length) cards.push(_labStructureCard(structureRows));
     for (const row of rows.slice().reverse()) {
         const [verdict, colour] = _labVerdict(row.aggregate_accuracy);
         let curve = '';
@@ -1604,7 +1674,11 @@ async function loadLab() {
                 (taste.candidates || []).map(c => _esc(c.key || '')).join(', ') + '</div>' : '') +
         '</div>');
     }
+    _labStopStructure();
     grid.innerHTML = cards.length ? cards.join('') : '<div class="gallery-empty">the Lab has not run yet</div>';
+    const structureButtons=grid.querySelectorAll('[data-lab-structure]');
+    structureButtons.forEach(button=>button.addEventListener('click',()=>_labOpenStructure(button.dataset.labStructure)));
+    if (structureButtons.length) _labOpenStructure(structureButtons[0].dataset.labStructure);
 }
 async function loadChemistryLabStatus() {
     try {

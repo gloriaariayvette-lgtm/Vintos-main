@@ -6420,6 +6420,18 @@ def _chemistry_lab_module():
     return module
 
 
+def _chemistry_structure_module():
+    """Load the Lab's read-only structure parser from the deployed scripts tree."""
+    import importlib.util as _csu
+    path = os.path.join(WORKSPACE, "scripts", "chemistry_structure.py")
+    if not os.path.exists(path):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "scripts", "chemistry_structure.py")
+    spec = _csu.spec_from_file_location("_vintos_chemistry_structure", path)
+    module = _csu.module_from_spec(spec); spec.loader.exec_module(module)
+    return module
+
+
 @app.get("/api/lab/chemistry/status")
 async def chemistry_lab_status(request: Request):
     _require_secret(request)
@@ -6546,6 +6558,26 @@ async def chemistry_lab_curve(request: Request, run_id: str):
                 "aggregate_accuracy": found.get("aggregate_accuracy"), "points": points}
     except Exception as exc:
         return {"ok": False, "run_id": str(run_id)[:64], "points": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/structures")
+async def chemistry_lab_structures(request: Request, limit: int = 24):
+    """Bounded metadata for PDB/mmCIF artifacts the Lab has actually produced."""
+    _require_secret(request)
+    try:
+        return {"ok": True, "structures": _chemistry_structure_module().inventory(limit)}
+    except Exception as exc:
+        return {"ok": False, "structures": [], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/structure/{artifact_id}")
+async def chemistry_lab_structure(request: Request, artifact_id: str):
+    """Parsed display coordinates only; no arbitrary path ever crosses this door."""
+    _require_secret(request)
+    try:
+        return _chemistry_structure_module().structure(str(artifact_id)[:32])
+    except Exception as exc:
+        return {"ok": False, "artifact_id": str(artifact_id)[:32], "error": str(exc)[:180]}
 
 
 @app.get("/api/briefing/latest")

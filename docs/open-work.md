@@ -840,6 +840,12 @@ if the keychain login itself ever expires (rare).
 These were raised in-session but lived only in a cloud plan file and a local bench ledger,
 so Chat/Codex on Aegis could not find them. Recording them here, the one to-do in the repo.
 
+The minimal 3D structure viewer is complete: the LAB pane now lists the bounded PDB/mmCIF
+artifacts already beneath `memory/chemistry-lab/artifacts`, parses them through a secret-gated,
+read-only server door, and renders atoms plus a backbone trace with the app's bundled three.js.
+The view explicitly labels these as computational artifacts rather than biological fact. It does
+not expose arbitrary paths or add another vendor dependency.
+
 - **Coregistration layer (multimodal Lab artifact).** Align each instrument's output for one
   accession into a single object keyed by residue position: per-residue ESMC embedding,
   per-residue ESMFold pLDDT, and the scalar results (VQE energy, Evo 2 likelihood delta) hung
@@ -852,10 +858,6 @@ so Chat/Codex on Aegis could not find them. Recording them here, the one to-do i
   which it never is when the reports are separate. Must keep the reflect output keys stable
   (attention/factual_observation/speculative_reading/next_question) so the spark feed, frontier
   bridge, and gallery are untouched. Builds on the rigor/depth reflect rewrite (`5ba0d5c`).
-- **Minimal 3D structure viewer in the LAB pane.** Reuse the app's already-bundled three.js to
-  render an ESMFold PDB / RFD3 CIF artifact, so a fold result can be looked at, not just read as
-  a pLDDT number. No new vendor dependency — the three.js the retired avatar stage used is still
-  in the phone app bundle.
 - Pin the Mac bench schema: bring `bench_remote.py` + `molecule.py` under version control per
   `docs/chemistry-bench-reconciliation.md`, so the grader parses by a real schema and the session
   can bound parameters by name, not just shape.
@@ -891,7 +893,11 @@ purchase`; the receipt-bound food-order door remains the only path to spending m
 the existing Gemma path. `jev` makes a missing credential a named refusal; `gemma` disables the fast
 path explicitly. The provider and local text-model boundaries are stubbed in the isolated suite.
 
-Still open: obtain/configure a TypeSafe API key and run a live reversible browser smoke test on Aegis.
+Still open: TypeSafe direct API access is currently waitlisted, so there is no key Gloria can
+self-serve from its console and no live Jev smoke should be claimed. The deployed code therefore
+keeps the local Gemma planner active. Supporting a separately available gateway would be a new
+provider contract and needs an explicit decision rather than silently routing Jev through another
+billable account.
 This improves the browser half of Desktop Control immediately. The arbitrary native Windows desktop
 still uses the screenshot/Gemma loop: Jev consumes typed choices rather than pixels, so extending it
 there honestly requires an observed Windows UI Automation/OCR element table first, not coordinate

@@ -21,6 +21,7 @@ def load(name, path):
     module = importlib.util.module_from_spec(spec); sys.modules[name] = module
     spec.loader.exec_module(module); return module
 lab = load("chemistry_lab", os.path.join(REPO, "scripts", "chemistry_lab.py"))
+structure = load("chemistry_structure", os.path.join(REPO, "scripts", "chemistry_structure.py"))
 
 R = []
 def check(name, ok, detail=""):
@@ -36,11 +37,13 @@ block = "\n".join(l for l in block.splitlines() if not l.startswith("@app."))
 secrets = []
 scope = {"os": os, "math": __import__("math"), "Request": object,
          "_chemistry_lab_module": lambda: lab,
+         "_chemistry_structure_module": lambda: structure,
          "_require_secret": lambda request: secrets.append(request)}
 exec(compile(ast.parse(block), "server-chemistry-block", "exec"), scope)
 check("the Lab endpoints are ordinary code that can be exercised",
       all(k in scope for k in ("chemistry_lab_notebook", "chemistry_lab_sessions",
-                               "chemistry_lab_grades", "chemistry_lab_taste", "chemistry_lab_curve")))
+                               "chemistry_lab_grades", "chemistry_lab_taste", "chemistry_lab_curve",
+                               "chemistry_lab_structures", "chemistry_lab_structure")))
 
 GRADE = {"run_id": "RUN-A", "at": "2026-09-13T03:20:00+00:00", "experiment": "molecule",
          "execution_state": "completed", "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK",
@@ -68,6 +71,10 @@ lab._atomic(os.path.join(lab.ROOT, "taste.json"),
                                                   "signals": {"chosen": 2}, "last_seen": "x"},
                          "broken||nan": {"kind": "broken", "key": "nan", "score": float("nan"), "signals": {}}},
              "candidates": {"accession||P00001": {"kind": "accession", "key": "P00001", "mentions": 2}}})
+artifact_root = os.path.join(lab.ROOT, "artifacts", "esmfold")
+os.makedirs(artifact_root, exist_ok=True)
+open(os.path.join(artifact_root, "P00001.pdb"), "w").write(
+    "ATOM      1  CA  ALA A   1       1.000   2.000   3.000  1.00 20.00           C  \n")
 
 req = object()
 sessions = asyncio.run(scope["chemistry_lab_sessions"](req, limit=5))
@@ -105,7 +112,11 @@ check("a non-finite score is nulled, not drawn",
 notebook = asyncio.run(scope["chemistry_lab_notebook"](req, limit=3))
 check("the notebook tail is bounded", notebook["ok"] and len(notebook["entries"]) <= 3)
 check("a limit cannot be widened past the cap", len(asyncio.run(scope["chemistry_lab_notebook"](req, limit=10000))["entries"]) <= 60)
-check("every Lab read required the secret", len(secrets) == 7, len(secrets))
+structures = asyncio.run(scope["chemistry_lab_structures"](req, limit=10))
+view = asyncio.run(scope["chemistry_lab_structure"](req, structures["structures"][0]["artifact_id"]))
+check("the gallery lists and parses a real preserved structure", structures["ok"] and view["ok"] and view["atom_count"] == 1, (structures, view))
+check("the endpoint returns coordinates, not the artifact filesystem", not view["source"].startswith("/") and "text" not in view, view)
+check("every Lab read required the secret", len(secrets) == 9, len(secrets))
 
 # --- the page ------------------------------------------------------------------------------------
 PAGE = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
@@ -120,13 +131,17 @@ check("the page escapes through the shared escaper", "_labChip" in PAGE and PAGE
 check("no charting library was added",
       not any(lib in PAGE.lower() for lib in ("chart.js", "d3.min.js", "plotly", "recharts", "3dmol", "cdn.jsdelivr")))
 check("the curve is hand-rolled svg", "<svg viewBox=" in PAGE and "stroke-dasharray" in PAGE)
+check("the structure gallery reuses bundled three.js without a vendor dependency",
+      "_labDrawStructure" in PAGE and "new THREE.WebGLRenderer" in PAGE and "data-lab-structure" in PAGE)
+check("the structure view says what it is epistemically",
+      "computational artifact, not biological fact" in PAGE and "atoms plus backbone trace" in PAGE)
 check("taste is labelled as taste, not as score", "grades are a separate ledger" in PAGE)
 check("what he wants to try next is shown", "what I want to try next" in PAGE)
 
 check("the routes are all behind the secret",
       SERVER.count("_require_secret(request)") >= 7 and
       all(('@app.get("/api/lab/chemistry/%s' % name) in SERVER
-          for name in ("notebook", "sessions", "grades", "taste", "curve/{run_id}")))
+          for name in ("notebook", "sessions", "grades", "taste", "curve/{run_id}", "structures", "structure/{artifact_id}")))
 check("no Lab endpoint writes anything",
       not any(w in block for w in ("_append(", "_atomic(", "set_enabled(", "open(")), 
       [w for w in ("_append(", "_atomic(", "set_enabled(", "open(") if w in block])
