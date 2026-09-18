@@ -262,7 +262,7 @@ def make_net(dim, architecture="shared-v1"):
                     torch.clamp(self.logvar(h), -12.0, 6.0))
     return Pred(dim)
 
-def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="shared-v1"):
+def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="shared-v1", validation_fraction=0.0):
     import numpy as np, torch
     turns = training_turns()                    # chat-history + implanted ledger (Gloria's real voice)
     if len(turns) <= CTX_TURNS + 2:
@@ -283,28 +283,55 @@ def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="sha
 
     net = make_net(X.shape[1], architecture=architecture)
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    # Production retains its established full-batch training. The shadow candidate uses a
+    # chronological holdout and restores the best validation weights; its first live run showed
+    # why "last finite epoch" is not a model-selection rule (loss improved, then deteriorated).
+    split = len(Xt)
+    if validation_fraction and len(Xt) >= 30:
+        split = max(20, min(len(Xt) - 8, int(len(Xt) * (1.0 - validation_fraction))))
+    Xtr, Ytr, Htr = Xt[:split], Yt[:split], Ht[:split]
+    Xv, Yv, Hv = Xt[split:], Yt[split:], Ht[split:]
+    if Xp is not None and validation_fraction and len(Xp) >= 10:
+        psplit = max(6, min(len(Xp) - 3, int(len(Xp) * (1.0 - validation_fraction))))
+        Xptr, yptr, Xpv, ypv = Xp[:psplit], yp[:psplit], Xp[psplit:], yp[psplit:]
+    else:
+        Xptr, yptr, Xpv, ypv = Xp, (yp if Xp is not None else None), None, None
+    def _loss(x, y, heads, px=None, py=None):
+        g_pred, s_pred, _, logvar = net(x)
+        pred = torch.where(heads.unsqueeze(1) == 1, s_pred, g_pred)
+        mse = ((pred - y) ** 2).mean(dim=1, keepdim=True)
+        lv = logvar.gather(1, heads.unsqueeze(1))
+        value = (mse * torch.exp(-lv) + lv).mean()
+        if px is not None:
+            _, _, p_pred, p_logvar = net(px); pmse = (p_pred - py) ** 2; plv = p_logvar[:, 2:3]
+            value = value + (pmse * torch.exp(-plv) + plv).mean()
+        return value
+    best_state, best_val, stale = None, float("inf"), 0
     for epoch in range(300):
         opt.zero_grad()
-        g_pred, s_pred, _, logvar = net(Xt)
-        pred = torch.where(Ht.unsqueeze(1) == 1, s_pred, g_pred)          # right embedding head per sample
-        mse = ((pred - Yt) ** 2).mean(dim=1, keepdim=True)
-        head_lv = logvar.gather(1, Ht.unsqueeze(1))                       # per-head uncertainty (col 0/1)
-        loss = (mse * torch.exp(-head_lv) + head_lv).mean()
-        if Xp is not None:
-            _, _, p_pred, logvar_p = net(Xp)
-            pmse = (p_pred - yp) ** 2
-            lv2 = logvar_p[:, 2:3]
-            loss = loss + (pmse * torch.exp(-lv2) + lv2).mean()
+        loss = _loss(Xtr, Ytr, Htr, Xptr, yptr)
         if not torch.isfinite(loss):
             log(f"epoch {epoch} non-finite loss — stopping early, keeping last stable weights"); break
         loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)   # stabilize the heteroscedastic term
         opt.step()
+        if len(Xv):
+            with torch.no_grad(): val = float(_loss(Xv, Yv, Hv, Xpv, ypv).item())
+            if val < best_val - 1e-5:
+                import copy
+                best_val, best_state, stale = val, copy.deepcopy(net.state_dict()), 0
+            else:
+                stale += 1
+            if stale >= 40:
+                log(f"early stop epoch {epoch}; best held-out loss {best_val:.4f}"); break
         if epoch % 100 == 0:
-            log(f"epoch {epoch} loss {loss.item():.4f}")
+            log(f"epoch {epoch} loss {loss.item():.4f}" + (f" held-out {val:.4f}" if len(Xv) else ""))
+    if best_state is not None:
+        net.load_state_dict(best_state)
     torch.save({"state": net.state_dict(), "dim": X.shape[1], "presence_trained": Xp is not None,
                 "training_sources": _srcs, "context_schema": context_schema,
-                "architecture": architecture, "shadow_only": model_path != MODEL}, model_path)
+                "architecture": architecture, "shadow_only": model_path != MODEL,
+                "validation": ({"kind": "latest_time_slice", "n": len(Xv), "best_loss": round(best_val, 6)} if len(Xv) else None)}, model_path)
     log(f"trained on {len(X)} pairs (presence_trained={Xp is not None}); saved {model_path}")
 
 def _cos(a, b):
@@ -453,6 +480,6 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "train"
     if cmd == "train": train()
     elif cmd == "predict": predict()
-    elif cmd == "train-shadow": train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2")
+    elif cmd == "train-shadow": train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2)
     elif cmd == "predict-shadow": predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True)
     else: print("usage: jepa_predictor.py train|predict|train-shadow|predict-shadow")

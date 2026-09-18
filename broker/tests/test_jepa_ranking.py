@@ -85,6 +85,7 @@ print("\n--- shadow boundary ---")
 src = (REPO / "scripts" / "jepa_predictor.py").read_text()
 check("structured model has separate checkpoint output and history", "jepa-predictor-structured-shadow.pt" in src and "jepa-prediction-structured-shadow-history.jsonl" in src)
 check("shadow prediction is structurally barred from steering", '"steering_allowed": (False if shadow else' in src and '"shadow_only": bool(shadow)' in src)
-check("head-specific confidence is confined to the shadow architecture", 'head-specific-confidence-v2' in src and 'train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2")' in src)
+check("head-specific confidence is confined to the shadow architecture", 'head-specific-confidence-v2' in src and 'train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2)' in src)
+check("shadow training selects weights on a later time slice", '"kind": "latest_time_slice"' in src and 'net.load_state_dict(best_state)' in src and 'early stop epoch' in src)
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)
