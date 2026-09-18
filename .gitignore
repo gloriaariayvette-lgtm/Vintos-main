@@ -23,3 +23,6 @@ logs/
 memory/
 node_modules/
 secrets/
+
+# Bench runtime ledgers — per-agent append-only state, never committed (test_bench uses a throwaway copy)
+bench/ledgers/*.jsonl
