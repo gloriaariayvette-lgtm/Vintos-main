@@ -1614,7 +1614,10 @@ async function loadLab() {
     grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
     let status, sessions, taste, structures;
     try {
-        [status, sessions, taste, structures] = await Promise.all([_labGet('status'), _labGet('sessions?limit=12'), _labGet('taste'), _labGet('structures?limit=24')]);
+        [status, sessions, taste, structures] = await Promise.all([
+            _labGet('status'), _labGet('sessions?limit=12'), _labGet('taste'),
+            _labGet('structures?limit=24').catch(error => ({ok:false, structures:[], error:String(error)}))
+        ]);
     } catch (e) {
         grid.innerHTML = '<div class="gallery-empty">the Lab is unreachable</div>';
         if (summary) summary.textContent = 'unreachable'; return;

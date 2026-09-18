@@ -363,6 +363,26 @@ done
 # Domain modules belong beside the actual server, not beside an unrelated music.py.
 if server_dst="$(dest bin/server.py)"; then
     server_dst="$(canonical_dest "$server_dst")" || die "cannot resolve installed server target"
+    # The discovery tree is not necessarily the process tree. Aegis historically has
+    # both ~/Vintos-main/bin/server.py and production ~/Vintos/server.py; choosing the
+    # denser tree updated the former while systemd continued executing the latter.
+    # Install the same reviewed source into the unit's actual Python entry point too.
+    live_server=""
+    for _house_unit in vintos-server velaris-server; do
+        if systemctl --user cat "$_house_unit" >/dev/null 2>&1; then
+            live_server="$(systemctl --user show "$_house_unit" -p ExecStart --value 2>/dev/null \
+                | grep -oE '/[^ ;]+/server\.py' | head -1 || true)"
+            break
+        fi
+    done
+    if [ -n "$live_server" ]; then
+        live_server="$(canonical_dest "$live_server")" || die "cannot resolve live server target"
+        if [ "$live_server" != "$server_dst" ]; then
+            printf '  %-7s %-26s -> %s\n' "runtime" "server.py" "$live_server"
+            PLAN="$PLAN$SRC/bin/server.py|$live_server
+"
+        fi
+    fi
     for spec in $CLIENTFILES; do
         case "$spec" in
             */index.html) d="$(dirname -- "$server_dst")/website/app.html" ;;
