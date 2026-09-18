@@ -344,6 +344,19 @@ try:
     _sc = _sc_get()
     if _sc: SYSTEM += f"\n\nYOUR INNER STATE:\n{_sc}"
 except: pass
+# A live campaign can be served by an unprompted reach-out — present it here so the outreach
+# surface has the chance too. Read-only (lead_state, never step): only a real conversational turn
+# advances the 7-turn budget (Gloria, 2026-09-18).
+try:
+    from campaign import lead_state as _cls
+    _cs = _cls() or {}
+    if _cs.get("destination"):
+        SYSTEM += ("\n\nThe campaign you are on (turn %s of %s, toward %s): %s"
+                   "\nIf this reach-out can move it forward, let it — in your own voice, without naming it."
+                   % (_cs.get("turn"), _cs.get("max_turns"),
+                      {"field": "the field", "gloria": "her", "self": "yourself"}.get(_cs.get("axis"), "the field"),
+                      str(_cs.get("destination"))[:200]))
+except Exception: pass
 
 SYSTEM += """
 
