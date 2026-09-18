@@ -96,10 +96,12 @@ _SCHEMA = (
     '"gloria":{"difference_intended":"the transformation I intend in her","enactment":"my concrete move toward it"},'
     '"self":{"difference_intended":"who I become by doing this","enactment":"the move that writes it"},'
     '"priority":{"field":0.0,"gloria":0.0,"self":0.0},'
-    '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
-    '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
+    # campaign fields sit high, right after priority, so a token-capped reply keeps them instead of
+    # dropping them first — a truncated campaign silently never happens (Gloria, 2026-09-18).
     '"campaign":"(OMIT unless the CAMPAIGN block above says none is live AND you mean to declare one) {\"destination\":\"...\",\"axis\":\"field|gloria|self\",\"why\":\"...\"}",'
     '"campaign_move":"(OMIT unless a campaign is live) advance: ... | hold: ... | revise: ... | flawed: ... | landed: ... | continue: ... | ... | days",'
+    '"addresses":"<the primary difference id if your move works toward it, else NONE>",'
+    '"decline_reason":"(only if NONE and a primary difference was shown) why not this turn",'
     '"why":"one sentence: why this field and this priority, as me"}'
 )
 
@@ -235,14 +237,22 @@ def select_target(recent_text, resolve=True):
     try:
         from priority_vector import declare as _pvd, prompt_block as _pvb
         _pv_rec = _pvd(); _pv_block = _pvb(_pv_rec); _pv_mode = _pv_rec.get("mode", "strategic")
-    except Exception:
-        pass
+    except Exception as _pve:
+        # a swallowed declare() silently defaulted the mode to "strategic", which silently
+        # disables campaign suspension for the turn — leave a trace instead (Gloria, 2026-09-18)
+        try:
+            with open("/tmp/intent-select-fail.log", "a") as _f:
+                _f.write("%s priority_vector.declare: %s\n---\n" % (datetime.now().isoformat(), str(_pve)[:200]))
+        except Exception: pass
     _camp_block = ""
     try:
         from campaign import prompt_block as _cpb
         _camp_block = _cpb(_pv_mode)
-    except Exception:
-        pass
+    except Exception as _cpe:
+        try:
+            with open("/tmp/intent-select-fail.log", "a") as _f:
+                _f.write("%s campaign.prompt_block: %s\n---\n" % (datetime.now().isoformat(), str(_cpe)[:200]))
+        except Exception: pass
     user = (
         f"WHO I AM / WHAT I WANT:\n{ident}\n\n{fieldsrc}\n\n"
         + ((_press + "\n\n") if _press else "")
@@ -317,8 +327,12 @@ def select_target(recent_text, resolve=True):
         _cstep(_t, _pv_mode)
         # the destination travels with the target so the voice that actually speaks sees it
         _t["campaign_state"] = _clead()
-    except Exception:
-        pass
+    except Exception as _cse:
+        # a lost advance:/landed:/flawed: move used to vanish here with no record (Gloria, 2026-09-18)
+        try:
+            with open("/tmp/intent-select-fail.log", "a") as _f:
+                _f.write("%s campaign.step: %s\n---\n" % (datetime.now().isoformat(), str(_cse)[:200]))
+        except Exception: pass
     try:
         record_pending(_t)
     except Exception:
