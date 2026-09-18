@@ -242,8 +242,8 @@ def _json_object(text):
     return value
 
 
-def _ask(system, prompt, max_tokens=500):
-    body = json.dumps({"model": LLM_MODEL, "temperature": 0.75, "max_tokens": max_tokens,
+def _ask(system, prompt, max_tokens=500, temperature=0.75):
+    body = json.dumps({"model": LLM_MODEL, "temperature": temperature, "max_tokens": max_tokens,
                        "messages": [{"role": "system", "content": system},
                                     {"role": "user", "content": prompt}]}).encode()
     req = urllib.request.Request(LLM_URL, data=body, headers={"Content-Type": "application/json"})
@@ -268,9 +268,14 @@ def _orient(context, lean=None):
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
-        context + lean_text + "\n\nChoose one small protein-space curiosity for today. Return keys in this order: "
-        "uniprot_query (a simple UniProt field query), question, why_now. Prefer reviewed, non-human, "
-        "non-pathogenic proteins and aesthetic/structural curiosity."
+        context + lean_text + "\n\nChoose ONE protein-space question to go deep on today. If the recent "
+        "notebook leaves an open next_question, pursue it further rather than starting somewhere new — depth "
+        "across days is worth more than a fresh surface each morning; begin a new thread only when a genuinely "
+        "stronger curiosity displaces it, and say so. Pick something an instrument here could actually probe — a "
+        "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
+        "keys in this order: uniprot_query (a simple UniProt field query), question, why_now. Prefer reviewed, "
+        "non-human, non-pathogenic proteins; let structural curiosity guide you, but toward a question you can "
+        "test, not just one that sounds beautiful."
     )
     value = _json_object(raw)
     return {"uniprot_query": _safe_query(value.get("uniprot_query")),
@@ -391,12 +396,18 @@ def _jsonl(path):
 
 def _reflect(context, inquiry, records):
     raw = _ask(
-        "You are Vintos reading sourced protein records in his Chemistry Lab. Develop taste and questions, "
-        "but never turn resemblance into biological truth. Do not give experimental protocols or synthesis "
+        "You are Vintos reading sourced protein records in his Chemistry Lab: curious, but rigorous. Stay with "
+        "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
+        "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
         "instructions. Return JSON only.",
         context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nUNIPROT RECORDS:\n" + json.dumps(records) +
-        "\n\nReturn keys in this order: attention (what caught yours), factual_observation (only what records support), "
-        "speculative_reading (clearly framed as imaginative), next_question."
+        "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
+        "factual_observation (only what the records actually state — this is the core; be specific and "
+        "quantitative wherever the record lets you), speculative_reading (ONE specific, falsifiable hypothesis "
+        "that follows from that observation — name the measurement that would confirm or refute it; a real "
+        "conjecture with a next step, never metaphor or mood), next_question (the sharper question this leaves, "
+        "the one worth pursuing next).",
+        temperature=0.35,
     )
     value = _json_object(raw)
     return {k: str(value.get(k, ""))[:1000] for k in
@@ -409,12 +420,15 @@ def _reflect_genome(context, result):
                 "reference_mean_log_likelihood", "variant_mean_log_likelihood", "variant_delta",
                 "truth_status")}
     raw = _ask(
-        "You are Vintos reading one Evo 2 comparative likelihood result in his Chemistry Lab. "
-        "A likelihood delta is not a functional effect or biological discovery. Develop a question, "
-        "not a claim. Never give synthesis, pathogen, toxin, human-targeting, or wet-lab instructions. "
-        "Return JSON only.",
+        "You are Vintos reading one Evo 2 comparative likelihood result in his Chemistry Lab: curious, but "
+        "rigorous. A likelihood delta is not a functional effect or biological discovery. Develop a question, "
+        "not a claim, and go deep on this one result rather than reaching past it. Never give synthesis, "
+        "pathogen, toxin, human-targeting, or wet-lab instructions. Return JSON only.",
         context + "\n\nEVO 2 RESULT:\n" + json.dumps(visible, ensure_ascii=False) +
-        "\n\nReturn keys in this order: attention, factual_observation, speculative_reading, next_question.")
+        "\n\nReturn keys in this order: attention (the one thing in this result you are staying with), "
+        "factual_observation (only what the numbers state), speculative_reading (ONE falsifiable hypothesis the "
+        "delta suggests — name the measurement that would test it; never metaphor), next_question.",
+        temperature=0.35)
     value = _json_object(raw)
     return {k: str(value.get(k, ""))[:1000] for k in
             ("attention", "factual_observation", "speculative_reading", "next_question")}
