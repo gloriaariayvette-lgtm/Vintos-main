@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "law": "candidate labels are hypotheses until held-out validation admits them",
+  "auc_minimum": 0.85,
+  "merge_review_cosine": 0.5,
+  "independence_target_cosine": 0.3,
+  "candidates": [
+    "Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection",
+    "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"
+  ]
+}

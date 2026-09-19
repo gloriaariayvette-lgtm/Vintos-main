@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "at": "2026-09-19T17:57:00-05:00",
+  "model": {
+    "identity": "gemma-4-26b-a4b-it-uncensored",
+    "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+    "format": "GGUF Q4_K_M"
+  },
+  "extractor": {
+    "llama_cpp_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+    "backend": "Metal",
+    "exit_code": 0,
+    "observed_shape": [30, 2816],
+    "pooling": ["final", "mean"]
+  },
+  "artifacts": {
+    "target_final": "c153dc8319e51f887561923f16db6e8da21f301c66c26ae8db4250f153ea9545",
+    "target_mean": "c4c9f5e0e53cb94a6ab35fa6155808041d29b4d51b425b815bf67ebe6a5cf76a",
+    "control_final": "bea0f20bad649db370a36742dc476773dfaeee39cfa40795a7185e5b4294ede2",
+    "control_mean": "48fe14e4163c061f5d16ccffa0f4e1a6f97212f8912bf04430ca1ba1ed549e39"
+  },
+  "truth_status": "operational_smoke_only_not_direction_validation",
+  "deployed": false,
+  "connected_to_emoclaw": false
+}

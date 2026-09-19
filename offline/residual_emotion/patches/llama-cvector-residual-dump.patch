@@ -1,0 +1,105 @@
+diff --git a/tools/cvector-generator/cvector-generator.cpp b/tools/cvector-generator/cvector-generator.cpp
+index 558c37e..90756a8 100644
+--- a/tools/cvector-generator/cvector-generator.cpp
++++ b/tools/cvector-generator/cvector-generator.cpp
+@@ -23,6 +23,8 @@
+ #include <cstdio>
+ #include <cstring>
+ #include <fstream>
++#include <filesystem>
++#include <cstdint>
+ #include <iostream>
+ #include <string>
+ #include <tuple>
+@@ -96,4 +98,41 @@ struct callback_data {
+         }
+     }
+ 
++    void dump_rows(const std::string & dir, size_t pair_index, const char * label,
++                   const std::vector<struct ggml_tensor *> & tensors, size_t real_tokens) const {
++        if (dir.empty() || tensors.empty() || real_tokens == 0) return;
++        std::filesystem::create_directories(dir);
++        const uint32_t magic = 0x56525344; // "VRSD"
++        const uint32_t version = 1;
++        const uint32_t layers = (uint32_t) tensors.size();
++        const uint32_t embd = (uint32_t) tensors.front()->ne[0];
++        for (const char * pooling : {"final", "mean"}) {
++            char name[128];
++            snprintf(name, sizeof(name), "%06zu_%s_%s.f32", pair_index, label, pooling);
++            std::ofstream out(std::filesystem::path(dir) / name, std::ios::binary);
++            out.write((const char *) &magic, sizeof(magic));
++            out.write((const char *) &version, sizeof(version));
++            out.write((const char *) &layers, sizeof(layers));
++            out.write((const char *) &embd, sizeof(embd));
++            for (const auto * tensor : tensors) {
++                const size_t usable = std::min(real_tokens, (size_t) tensor->ne[1]);
++                for (uint32_t col = 0; col < embd; ++col) {
++                    float value = 0.0f;
++                    if (strcmp(pooling, "final") == 0) {
++                        value = ggml_get_f32_nd(tensor, col, usable - 1, 0, 0);
++                    } else {
++                        for (size_t row = 0; row < usable; ++row) {
++                            value += ggml_get_f32_nd(tensor, col, row, 0, 0);
++                        }
++                        value /= (float) usable;
++                    }
++                    out.write((const char *) &value, sizeof(value));
++                }
++            }
++            if (!out.good()) {
++                throw std::runtime_error("failed writing residual dump");
++            }
++        }
++    }
++
+     // calculate diff (v_pos - v_neg) and place the result back to v_pos
+@@ -274,3 +313,5 @@ struct tokenized_prompt {
+     std::vector<llama_token> tokens_neg;
+     size_t max_seq_len;
++    size_t real_pos_len;
++    size_t real_neg_len;
+ 
+@@ -281,3 +322,5 @@ struct tokenized_prompt {
+         tokens_pos = common_tokenize(ctx, pos, add_bos, true);
+         tokens_neg = common_tokenize(ctx, neg, add_bos, true);
++        real_pos_len = tokens_pos.size();
++        real_neg_len = tokens_neg.size();
+         max_seq_len = std::max(tokens_pos.size(), tokens_neg.size());
+@@ -414,3 +457,5 @@ int main(int argc, char ** argv) {
+ 
+     callback_data cb_data;
++    const char * dump_env = getenv("VINTOS_RESIDUAL_DUMP");
++    const std::string dump_dir = dump_env ? dump_env : "";
+ 
+@@ -471,10 +516,17 @@ int main(int argc, char ** argv) {
+         cb_data.is_eval_pos = true;
+         success = get_hidden_layers(ctx, t.tokens_pos);
+         if (!success) break;
++        cb_data.dump_rows(dump_dir, i, "target", cb_data.v_pos, t.real_pos_len);
+ 
+         cb_data.is_eval_pos = false;
+         success = get_hidden_layers(ctx, t.tokens_neg);
+         if (!success) break;
++        cb_data.dump_rows(dump_dir, i, "control", cb_data.v_neg, t.real_neg_len);
+ 
++        if (!dump_dir.empty()) {
++            cb_data.reset();
++            continue;
++        }
++
+         // calculate diff and remove all zero rows
+         auto v_diff_filtered = cb_data.calc_diff();
+@@ -486,5 +533,13 @@ int main(int argc, char ** argv) {
+     // done with the model, we can now free it to make gain some memory
+     printf("Done evaluate prompts, unload model...\n");
+ 
++    // Residual-dump mode is observational. Gemma-4 MoE exposes a different count of
++    // l_out tensors than the steering-vector path assumes, and no steering artifact
++    // is needed for measurement.
++    if (!dump_dir.empty()) {
++        llama_backend_free();
++        return 0;
++    }
++
+     bool use_pca = params.cvector_dimre_method == DIMRE_METHOD_PCA;
+ 

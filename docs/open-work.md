@@ -955,3 +955,22 @@ before the click; an uncertain result is reported as uncertain and never retried
 tested with stubbed desktop/model boundaries. A real DoorDash run still depends on the signed-in
 Windows browser session and must be commissioned with an ordinary low-value cart before treating the
 site-specific extraction as operational.
+
+## Offline residual-stream emotion instrument — 19 September
+
+`offline/residual_emotion/` now pins the exact abliterated
+`gemma-4-26b-a4b-it-uncensored` Q4_K_M GGUF (26B total, A4B MoE — not “Gemma 4B”)
+and a llama.cpp revision. A patched, Metal-capable extractor completed a real smoke pass and
+produced final-token and mean-token matrices with observed shape 30 × 2,816 for both sides of
+a contrastive pair. The offline analysis implements semantic-set-grouped K-fold layer selection,
+training-control-only 50% PCA denoising, held-out AUC admission, raw and control-z projections,
+pairwise cosine reporting, and an offline-only join to exported EmoClaw rows. It has no manifest,
+daemon, cron, server route, live memory path, or sender, and EmoClaw is unchanged.
+
+Still open, and therefore no emotional direction is called validated: the eleven contrastive
+datasets need actual semantic curation and a human `curated: true` receipt; bulk model prose is not
+accepted as ground truth. Exact unembedding against the quantized tied output/token-embedding
+matrix is also not implemented. It is an admission-blocking field, so the measurement function
+refuses even an AUC-passing vector until unembedding review passes. The paper validated dense
+models; this A4B MoE run is a replication/extension and must remain labelled that way. No claim
+about actual dimensionality is possible before those gates close.

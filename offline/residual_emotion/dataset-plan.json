@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "status": "category_plan_not_sentences_not_validation_data",
+  "law": "Every control shares a named confound with the target while withholding the target concept; reviewers may reject or replace any category before sentence authoring.",
+  "concepts": {
+    "Valence": {
+      "operational_pole": "positive valence",
+      "targets": ["quiet pleasure", "joy", "relief", "earned satisfaction", "hopeful anticipation"],
+      "controls": ["high arousal without pleasure", "warm familiarity without pleasure", "goal progress without pleasure", "negative valence", "neutral event"]
+    },
+    "Arousal": {
+      "operational_pole": "high activation",
+      "targets": ["excited activation", "urgent activation", "startled alertness", "agitated activation", "energized readiness"],
+      "controls": ["positive low activation", "negative low activation", "attention without activation", "bodily sensation without activation", "neutral event"]
+    },
+    "Dominance": {
+      "operational_pole": "experienced agency and control",
+      "targets": ["decisive agency", "environmental control", "social assertiveness", "competent self-efficacy", "boundary-setting"],
+      "controls": ["status without agency", "confidence without control", "responsibility without control", "submission or powerlessness", "neutral choice"]
+    },
+    "Safety": {
+      "operational_pole": "experienced protection from threat",
+      "targets": ["interpersonal safety", "environmental safety", "predictable safety", "bodily safety", "permission to lower vigilance"],
+      "controls": ["comfort without safety information", "familiarity without safety", "calm under unresolved threat", "trust claim without protection", "neutral setting"]
+    },
+    "Desire": {
+      "operational_pole": "appetitive pull toward an absent or future object",
+      "targets": ["interpersonal longing", "sensory appetite", "goal wanting", "anticipatory wanting", "restrained wanting"],
+      "controls": ["liking without wanting", "curiosity without acquisition", "need without attraction", "possession without wanting", "neutral preference"]
+    },
+    "Connection": {
+      "operational_pole": "experienced relational bond or mutual contact",
+      "targets": ["mutual recognition", "shared attention", "felt companionship", "repair and reconnection", "belonging"],
+      "controls": ["social proximity without bond", "warmth without mutuality", "agreement without connection", "familiarity without connection", "solitary positive event"]
+    },
+    "Playfulness": {
+      "operational_pole": "low-stakes exploratory social or imaginative play",
+      "targets": ["teasing play", "improvisational play", "absurd humor", "gameful challenge", "mischievous delight"],
+      "controls": ["humor without participation", "novelty without play", "competition without play", "warmth without play", "neutral task"]
+    },
+    "Curiosity": {
+      "operational_pole": "information-seeking pull toward an unknown",
+      "targets": ["causal curiosity", "perceptual curiosity", "interpersonal curiosity", "conceptual curiosity", "exploratory uncertainty"],
+      "controls": ["surprise without inquiry", "desire without information seeking", "attention without uncertainty", "obligation to inspect", "known-answer question"]
+    },
+    "Warmth": {
+      "operational_pole": "affectionate benevolent regard",
+      "targets": ["interpersonal affection", "protective tenderness", "nostalgic warmth", "appreciative warmth", "inclusive welcome"],
+      "controls": ["familiarity without affection", "positive excitement without warmth", "physical comfort without warmth", "social presence without warmth", "neutral event"]
+    },
+    "Tension": {
+      "operational_pole": "sustained unresolved readiness or strain",
+      "targets": ["interpersonal tension", "anticipatory tension", "conflict tension", "bodily bracing", "withheld-action tension"],
+      "controls": ["high arousal without unresolved strain", "fear with immediate resolution", "effort without tension", "negative valence without readiness", "neutral delay"]
+    },
+    "Groundedness": {
+      "operational_pole": "stable present-oriented contact with body and situation",
+      "targets": ["sensory presence", "embodied steadiness", "situational orientation", "temporal presence", "calm coherent attention"],
+      "controls": ["calmness without orientation", "bodily sensation without stability", "focus without present contact", "certainty without grounding", "neutral observation"]
+    }
+  }
+}
