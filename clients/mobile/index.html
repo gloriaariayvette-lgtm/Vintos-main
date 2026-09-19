@@ -1238,6 +1238,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById(`pane-${tab.dataset.tab}`).classList.add('active');
+        _labSetRefresh(tab.dataset.tab === 'lab');
 
         // Lazy load content
         if (tab.dataset.tab === 'chat' && !chatLoaded) loadChatHistory();
@@ -1504,6 +1505,10 @@ function _setChemistryLabUI(data) {
 // Two marks per session, never one: how the instrument behaved, and whether the answer was
 // any good. A completed run with a poor answer is the case this pane exists to show.
 const LAB_CURVE_CAP = 48;
+const LAB_REVIEW_LIMIT = 20;
+const LAB_REFRESH_MS = 15000;
+let _labRefreshTimer = null;
+let _labLoading = false;
 function _labNum(value) {
     const n = typeof value === 'number' ? value : parseFloat(value);
     return Number.isFinite(n) ? n : null;
@@ -1610,24 +1615,64 @@ function _labStructureCard(rows) {
         '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;">' + rows.slice(0,12).map((s,i) =>
           '<button type="button" data-lab-structure="'+_esc(s.artifact_id)+'" style="flex:0 0 auto;background:'+(i?'var(--surface)':'var(--accent-dim)')+';border:0.5px solid var(--border);border-radius:12px;color:var(--text);padding:6px 9px;font-size:0.56rem;">'+_esc(s.name)+'</button>').join('') + '</div></div>';
 }
+function _labReviewCard(row) {
+    const observation = row.factual_observation || row.attention || '';
+    const speculation = row.speculative_reading || '';
+    const score = _labNum(row.interest_score);
+    return '<div class="gallery-item" style="padding:14px;">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">' +
+          '<div style="font-size:0.74rem;color:var(--text-bright);">' + _esc(row.kind === 'genome_reflection' ? 'genome review' : 'protein review') + '</div>' +
+          '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(0, 16)) + '</time></div>' +
+        (observation ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(observation) + '</div>' : '') +
+        (speculation ? '<div style="font-size:0.63rem;color:var(--text-dim);line-height:1.55;margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere;">speculative — ' + _esc(speculation) + '</div>' : '') +
+        (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next — ' + _esc(row.next_question) + '</div>' : '') +
+        '<div style="font-size:0.52rem;color:var(--text-dim);margin-top:8px;">' +
+          (score === null ? 'interest unscored' : 'interest ' + _esc(score.toFixed(2))) +
+          (row.flagged_for_next_lab_session ? ' · flagged for frontier' : '') +
+          (row.surfaced_to_frontier ? ' · surfaced' : '') + '</div></div>';
+}
 async function _labGet(path) {
     const res = await VintosUI.request(`${API}/api/lab/chemistry/${path}`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
     return await res.json();
 }
+async function _labLoadStructures(grid) {
+    try {
+        const payload = await _labGet('structures?limit=24');
+        const rows = (payload && payload.structures) || [];
+        if (!rows.length || !grid.isConnected || !grid.closest('#pane-lab')) return;
+        grid.insertAdjacentHTML('afterbegin', _labStructureCard(rows));
+        const buttons = grid.querySelectorAll('[data-lab-structure]');
+        buttons.forEach(button => button.addEventListener('click', () => _labOpenStructure(button.dataset.labStructure)));
+        if (buttons.length) _labOpenStructure(buttons[0].dataset.labStructure);
+    } catch (error) {
+        // Structures are an optional view of preserved artifacts. Their door must never
+        // stall or erase the continuously updating review ledger.
+    }
+}
+function _labSetRefresh(on) {
+    if (_labRefreshTimer) { clearInterval(_labRefreshTimer); _labRefreshTimer = null; }
+    if (on) _labRefreshTimer = setInterval(() => {
+        const pane = document.getElementById('pane-lab');
+        if (!document.hidden && pane && pane.classList.contains('active')) loadLab();
+    }, LAB_REFRESH_MS);
+    else _labStopStructure();
+}
 async function loadLab() {
     const summary = document.getElementById('lab-summary');
     const grid = document.getElementById('lab-grid');
-    if (!grid) return;
-    grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
-    let status, sessions, taste, structures;
+    if (!grid || _labLoading) return;
+    _labLoading = true;
+    if (!grid.children.length) grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
+    let status, reviews, sessions, taste;
     try {
-        [status, sessions, taste, structures] = await Promise.all([
-            _labGet('status'), _labGet('sessions?limit=12'), _labGet('taste'),
-            _labGet('structures?limit=24').catch(error => ({ok:false, structures:[], error:String(error)}))
+        [status, reviews, sessions, taste] = await Promise.all([
+            _labGet('status'), _labGet('reviews?limit=' + LAB_REVIEW_LIMIT),
+            _labGet('sessions?limit=4'), _labGet('taste')
         ]);
     } catch (e) {
         grid.innerHTML = '<div class="gallery-empty">the Lab is unreachable</div>';
-        if (summary) summary.textContent = 'unreachable'; return;
+        if (summary) summary.textContent = 'unreachable';
+        _labLoading = false; return;
     }
     const tools = (status && status.tools) || {};
     const measured = Object.keys(tools).filter(k => tools[k].available);
@@ -1639,14 +1684,19 @@ async function loadLab() {
             _labChip(measured.length + ' of ' + Object.keys(tools).length + ' instruments measured', 'var(--text-dim)') +
             (owed.owed ? _labChip(owed.owed + ' reading owed', 'var(--text)') : '') +
             (owed.expired_unread ? _labChip(owed.expired_unread + ' never read', '#c46a5a') : '') +
+            _labChip(((reviews && reviews.reviews) || []).length + ' of ' + LAB_REVIEW_LIMIT + ' recent reviews', 'var(--text-dim)') +
             '<div style="margin-top:8px;">instruments: ' + Object.keys(tools).sort().map(name =>
                 _esc(name) + ' <span style="color:' + (tools[name].available ? 'var(--accent)' : 'var(--text-dim)') + ';">' +
                 _esc(tools[name].state || 'not measured') + '</span>').join(' \u00b7 ') + '</div>';
     }
     const rows = (sessions && sessions.sessions) || [];
     const cards = [];
-    const structureRows = (structures && structures.structures) || [];
-    if (structureRows.length) cards.push(_labStructureCard(structureRows));
+    const reviewRows = ((reviews && reviews.reviews) || []).slice(-LAB_REVIEW_LIMIT).reverse();
+    if (reviewRows.length) {
+        cards.push('<div style="grid-column:1/-1;font-size:0.58rem;letter-spacing:0.12em;color:var(--text-dim);">RECENT REVIEWS · ROLLING ' + LAB_REVIEW_LIMIT + '</div>');
+        reviewRows.forEach(row => cards.push(_labReviewCard(row)));
+    }
+    if (rows.length) cards.push('<div style="grid-column:1/-1;font-size:0.58rem;letter-spacing:0.12em;color:var(--text-dim);margin-top:8px;">EXPERIMENT RECEIPTS</div>');
     for (const row of rows.slice().reverse()) {
         const [verdict, colour] = _labVerdict(row.aggregate_accuracy);
         let curve = '';
@@ -1686,9 +1736,8 @@ async function loadLab() {
     }
     _labStopStructure();
     grid.innerHTML = cards.length ? cards.join('') : '<div class="gallery-empty">the Lab has not run yet</div>';
-    const structureButtons=grid.querySelectorAll('[data-lab-structure]');
-    structureButtons.forEach(button=>button.addEventListener('click',()=>_labOpenStructure(button.dataset.labStructure)));
-    if (structureButtons.length) _labOpenStructure(structureButtons[0].dataset.labStructure);
+    _labLoading = false;
+    _labLoadStructures(grid);
 }
 async function loadChemistryLabStatus() {
     try {

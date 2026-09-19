@@ -478,6 +478,10 @@ Capacitor client in `vintos-app/vintos-app/src/index.html` now carries its own T
 live cadence/outcome line, and LAB pane over the same bounded endpoints. The two clients are
 not byte mirrors: their surrounding surfaces have diverged, so Chemistry was ported into the
 app's own fetch/host/API idiom rather than replacing that file from this repository.
+The visible activity feed reads the meaningful `reflection`/`genome_reflection` notebook rows,
+not the much slower frontier-session ledger: it is a newest-first rolling log capped at 20 and
+refreshes every 15 seconds while LAB is open. Structure inventory and 3D parsing are optional
+follow-up reads; an absent or slow structure door cannot hold or erase the review feed.
 
 The ambient loop now waits up to 300 seconds for the background compute slot and advances a
 phase every 15 seconds by default. Because orient and reflect are the two Gemma phases, that

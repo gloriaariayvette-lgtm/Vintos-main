@@ -6523,6 +6523,26 @@ async def chemistry_lab_notebook(request: Request, limit: int = 20):
         return {"ok": False, "entries": [], "error": str(exc)[:180]}
 
 
+@app.get("/api/lab/chemistry/reviews")
+async def chemistry_lab_reviews(request: Request, limit: int = 20):
+    """The rolling visible review log: meaningful reflections, never every mechanical turn."""
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        limit = max(1, min(20, int(limit)))
+        rows = []
+        for row in module._jsonl(os.path.join(module.ROOT, "notebook.jsonl")):
+            if row.get("kind") not in ("reflection", "genome_reflection"):
+                continue
+            rows.append({key: row.get(key) for key in
+                         ("at", "kind", "entry_id", "factual_observation", "speculative_reading",
+                          "attention", "next_question", "interest_score", "reason_for_score",
+                          "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")})
+        return {"ok": True, "reviews": rows[-limit:], "limit": 20}
+    except Exception as exc:
+        return {"ok": False, "reviews": [], "limit": 20, "error": str(exc)[:180]}
+
+
 @app.get("/api/lab/chemistry/sessions")
 async def chemistry_lab_sessions(request: Request, limit: int = 12):
     """Sessions without their full Mac payload: the page shows state, not the artifact."""
