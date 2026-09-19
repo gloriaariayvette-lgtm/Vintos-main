@@ -14,7 +14,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve
+from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
@@ -82,6 +82,8 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     curves = grouped_layer_curve(analysis_rows, target, control)
     check(max(curves, key=lambda value: value["auc_mean"])["layer"] == 1, "select signal layer")
     check(len(curves[1]["held_out_auc_by_target_category"]) == 5, "category diagnostics")
+    nested = nested_grouped_validation(analysis_rows, {"final": (target, control), "mean": (target, control)}, outer_folds=5, inner_folds=4)
+    check(len(nested["fold_selections"]) == 5 and nested["auc_mean"] > 0.99, "nested layer selection")
     direction = fit_direction(target[:, 1, :], control[:, 1, :])
     check(auc(target[:, 1, :], control[:, 1, :], direction) > 0.99, "separate held concept")
 

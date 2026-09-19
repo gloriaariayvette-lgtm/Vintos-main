@@ -970,9 +970,11 @@ daemon, cron, server route, live memory path, or sender, and EmoClaw is unchange
 Still open, and therefore no emotional direction is called validated: Pain now has a pinned,
 MIT-licensed import of the paper authors' published 1,200-pair corpus; the other thirteen datasets
 still need actual semantic curation and a valid curation receipt, and bulk model prose is not
-accepted as ground truth. The first full Pain extraction attempt could not allocate a Metal command
-queue while the active Mac model stack was resident and the llama.cpp cvector executable then died
-by signal 11; that is an execution block, not a negative result. Exact unembedding now streams the quantized tied output/token-embedding
+accepted as ground truth. Pain extraction completed against the exact checkpoint. Proper nested
+pooling/layer selection rejected it at held-out AUC 0.82543 against the 0.85 bar; the earlier
+non-nested 0.85074 estimate is explicitly not admissible. Its weak per-category results remain
+diagnostics for a future preregistered dataset revision, not permission to prune this evaluation.
+Exact unembedding now streams the quantized tied output/token-embedding
 matrix and records promoted/suppressed vocabulary, but its semantic review is admission-blocking:
 the measurement function refuses even an AUC-passing vector until a human records a pass. The
 paper validated dense models; this A4B MoE run is a replication/extension and must remain labelled

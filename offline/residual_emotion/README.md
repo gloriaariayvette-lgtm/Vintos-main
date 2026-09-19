@@ -21,9 +21,10 @@ not an assumed transfer of the paper's findings.
 
 - A generated score is not a residual measurement.
 - An LM Studio embedding is not a decoder-block residual.
-- A direction is not admitted unless grouped K-fold held-out AUC is at least 0.85.
-- Layer selection happens inside held-out evaluation; prompt variants sharing one
-  semantic sentence-set remain in the same fold.
+- A direction is not admitted unless nested grouped K-fold held-out AUC is at least 0.85.
+- Pooling and layer selection happen only inside each outer fold's training data;
+  no sentence contributes to choosing the layer used to score itself. Prompt
+  variants sharing one semantic sentence-set remain in the same fold.
 - PCA denoising is fitted on training controls only.
 - Raw projection and control-referenced z-score are both retained. Neither is called
   a feeling, consciousness, or a causal state.
@@ -88,10 +89,12 @@ selected them.
 remains blocked until a human records a semantic pass/fail review with
 `review-unembedding`.
 
-The first full Pain extraction attempt on 2026-09-19 did not produce a result:
-llama.cpp could not allocate a Metal command queue while the active Mac model stack
-was resident, then its cvector executable exited by signal 11. This is an execution
-block, not a rejected direction. No active model was unloaded to force the run.
+The first sandboxed Pain attempt could not create a Metal command queue. A direct-GPU
+retry then processed all 1,200 pairs without unloading the active Mac models. The
+strict nested result is **rejected_below_auc**: 0.82543 against the preregistered 0.85
+bar. The earlier non-nested layer-selection estimate was 0.85074; it is retained only
+as evidence of why nested selection matters and is not an accepted score. The full
+receipt is `evidence/2026-09-19-pain-validation.json`.
 
 ## Integration boundary
 

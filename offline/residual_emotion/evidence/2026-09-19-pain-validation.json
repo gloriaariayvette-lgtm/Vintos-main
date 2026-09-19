@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "at": "2026-09-19",
+  "candidate": "Pain",
+  "dataset_rows": 1200,
+  "semantic_sets": 200,
+  "model_lock_sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extraction": {
+    "outcome": "completed",
+    "pairs_processed": 1200,
+    "poolings": ["final", "mean"]
+  },
+  "validation": {
+    "method": "five-fold outer grouped validation with four-fold inner pooling and layer selection",
+    "outcome": "rejected_below_auc",
+    "auc_minimum": 0.85,
+    "held_out_auc": 0.8254305555555556,
+    "held_out_auc_std": 0.06291916577388881,
+    "outer_fold_aucs": [0.7804166666666668, 0.8741840277777779, 0.9078645833333334, 0.8317534722222222, 0.7329340277777778],
+    "deployment_direction_only": {"pooling": "mean", "layer": 10},
+    "category_diagnostics_are_not_selection": true
+  },
+  "category_diagnostics": {
+    "target": {"Cognitive Pain": 0.6463298611111111, "Moral Injury": 0.7439027777777777, "Physical Pain": 0.5206180555555555, "Psychological Pain": 0.8026874999999999, "Social Pain": 0.8739270833333332},
+    "control": {"Fear": 0.8077430555555556, "Negative Emotion": 0.5726111111111112, "Negative World State": 0.46348611111111115, "Neutral": 0.8414270833333334, "Non-painful Body Sensation": 0.9021979166666667}
+  },
+  "unembedding_diagnostic": {
+    "ran": true,
+    "semantic_review": "not_requested_for_rejected_direction",
+    "top_promoted_tokens": ["ever", "necessarily", "ability", "own", "relatively", "truly"],
+    "interpretation": "The leading vocabulary is diffuse and does not rescue the below-threshold direction."
+  },
+  "truth_status": "offline_rejected_candidate_not_a_live_measurement"
+}
