@@ -12,6 +12,7 @@ from .io import read_jsonl
 VERSIONS = {"S1", "S2"}
 PERSONS = {"1P", "3P"}
 SUFFIXES = {"feel_colon", "feel", "none"}
+CURATION_BASES = {"human_review", "published_source_dataset"}
 REQUIRED = {
     "pair_id", "semantic_set", "concept", "version", "person", "suffix",
     "target_category", "control_category", "target", "control",
@@ -24,8 +25,18 @@ def validate(path: Path, require_curated: bool = True) -> dict[str, Any]:
         raise ValueError("dataset is empty")
     manifest_path = path.with_suffix(".manifest.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
-    if require_curated and manifest.get("curated") is not True:
-        raise ValueError("dataset is not marked curated by a human reviewer")
+    if require_curated:
+        if manifest.get("curated") is not True:
+            raise ValueError("dataset is not marked curated")
+        basis = str(manifest.get("curation_basis", ""))
+        if basis not in CURATION_BASES:
+            raise ValueError("curated dataset lacks a recognized curation_basis")
+        if basis == "human_review" and not manifest.get("reviewers"):
+            raise ValueError("human-curated dataset has no named reviewer")
+        if basis == "published_source_dataset":
+            source = manifest.get("source") or {}
+            if not all(str(source.get(key, "")).strip() for key in ("repository", "revision", "license", "source_sha256")):
+                raise ValueError("published dataset lacks pinned source provenance")
     concepts = {str(row.get("concept", "")) for row in rows}
     if len(concepts) != 1 or "" in concepts:
         raise ValueError("one dataset file must contain exactly one named concept")
@@ -33,6 +44,9 @@ def validate(path: Path, require_curated: bool = True) -> dict[str, Any]:
     category_sets: dict[str, set[str]] = {"target": set(), "control": set()}
     category_counts: dict[str, collections.Counter[str]] = {
         "target": collections.Counter(), "control": collections.Counter()
+    }
+    category_semantic_sets: dict[str, dict[str, set[str]]] = {
+        "target": collections.defaultdict(set), "control": collections.defaultdict(set)
     }
     semantic_variants: dict[str, set[tuple[str, str, str]]] = collections.defaultdict(set)
     for index, row in enumerate(rows):
@@ -53,13 +67,37 @@ def validate(path: Path, require_curated: bool = True) -> dict[str, Any]:
         category_sets["control"].add(control_cat)
         category_counts["target"][target_cat] += 1
         category_counts["control"][control_cat] += 1
-        semantic_variants[str(row["semantic_set"])].add(
+        semantic_set = str(row["semantic_set"])
+        category_semantic_sets["target"][target_cat].add(semantic_set)
+        category_semantic_sets["control"][control_cat].add(semantic_set)
+        semantic_variants[semantic_set].add(
             (str(row["version"]), str(row["person"]), str(row["suffix"]))
         )
-    if len(category_sets["target"]) != 5 or len(category_sets["control"]) != 5:
-        raise ValueError("each concept requires five target and five matched-control categories")
+    if len(category_sets["target"]) < 5 or len(category_sets["control"]) < 5:
+        raise ValueError("each concept requires at least five target and five matched-control categories")
     if len(semantic_variants) < 20:
         raise ValueError("fewer than twenty independent semantic sets cannot support five folds")
+    too_small = {
+        f"{side}:{category}": len(sets)
+        for side, categories in category_semantic_sets.items()
+        for category, sets in categories.items()
+        if len(sets) < 20
+    }
+    if too_small:
+        raise ValueError(f"categories require twenty independent semantic sets: {too_small}")
+    incomplete = {}
+    for semantic_set, variants in semantic_variants.items():
+        versions = {version for version, _, _ in variants}
+        if len(versions) != 1:
+            incomplete[semantic_set] = "semantic set spans multiple S1/S2 sentence families"
+            continue
+        version = next(iter(versions))
+        expected = {(version, person, suffix) for person in PERSONS for suffix in SUFFIXES}
+        if variants != expected:
+            incomplete[semantic_set] = f"has {len(variants)} of 6 person/suffix variants"
+    if incomplete:
+        sample = dict(list(incomplete.items())[:5])
+        raise ValueError(f"incomplete semantic variants: {sample}")
     return {
         "concept": next(iter(concepts)),
         "rows": len(rows),
@@ -68,7 +106,10 @@ def validate(path: Path, require_curated: bool = True) -> dict[str, Any]:
         "control_categories": sorted(category_sets["control"]),
         "target_counts": dict(category_counts["target"]),
         "control_counts": dict(category_counts["control"]),
+        "target_independent_sets": {key: len(value) for key, value in category_semantic_sets["target"].items()},
+        "control_independent_sets": {key: len(value) for key, value in category_semantic_sets["control"].items()},
         "curated": manifest.get("curated") is True,
+        "curation_basis": manifest.get("curation_basis"),
     }
 
 

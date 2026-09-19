@@ -1,11 +1,20 @@
 {
   "schema": 1,
-  "law": "candidate labels are hypotheses until held-out validation admits them",
+  "law": "candidate labels and subcategories are hypotheses until held-out validation admits them; extra categories may be tested and weak categories revised or removed only in a later preregistered dataset version",
   "auc_minimum": 0.85,
   "merge_review_cosine": 0.5,
   "independence_target_cosine": 0.3,
-  "candidates": [
+  "emoclaw_content_dimensions": [
     "Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection",
     "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"
-  ]
+  ],
+  "slow_modifier_dimension": {
+    "name": "Nifrathir",
+    "role": "effect_modifier",
+    "ordinary_dimension_count": 11,
+    "excluded_from_peer_merge": true,
+    "validation_question": "does its measured value change how strongly the other directions predict initiation, continuation, and expressive richness?"
+  },
+  "exploratory_candidates": ["Pain", "Fear"],
+  "candidate_count": 14
 }

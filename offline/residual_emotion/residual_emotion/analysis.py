@@ -66,19 +66,49 @@ def grouped_layer_curve(rows: list[dict[str, Any]], target: np.ndarray, control:
     indices = np.arange(len(rows))
     for layer in range(target.shape[1]):
         fold_scores = []
+        held_target: list[tuple[int, float]] = []
+        held_control: list[tuple[int, float]] = []
         for train, test in splitter.split(indices, groups=groups):
             try:
                 direction = fit_direction(target[train, layer, :], control[train, layer, :])
                 fold_scores.append(auc(target[test, layer, :], control[test, layer, :], direction))
+                held_target.extend((int(index), float(score)) for index, score in zip(test, target[test, layer, :] @ direction))
+                held_control.extend((int(index), float(score)) for index, score in zip(test, control[test, layer, :] @ direction))
             except ValueError:
                 fold_scores.append(0.5)
+                held_target.extend((int(index), 0.0) for index in test)
+                held_control.extend((int(index), 0.0) for index in test)
+        target_scores = {index: score for index, score in held_target}
+        control_scores = {index: score for index, score in held_control}
+        all_target = np.array([target_scores[index] for index in indices])
+        all_control = np.array([control_scores[index] for index in indices])
+        target_categories = sorted({str(row["target_category"]) for row in rows})
+        control_categories = sorted({str(row["control_category"]) for row in rows})
+        by_target = {}
+        for category in target_categories:
+            selected = np.array([target_scores[i] for i, row in enumerate(rows) if str(row["target_category"]) == category])
+            by_target[category] = _score_auc(selected, all_control)
+        by_control = {}
+        for category in control_categories:
+            selected = np.array([control_scores[i] for i, row in enumerate(rows) if str(row["control_category"]) == category])
+            by_control[category] = _score_auc(all_target, selected)
         curves.append({
             "layer": layer,
             "auc_mean": float(np.mean(fold_scores)),
             "auc_std": float(np.std(fold_scores)),
             "fold_aucs": [float(value) for value in fold_scores],
+            "held_out_auc_by_target_category": by_target,
+            "held_out_auc_by_control_category": by_control,
         })
     return curves
+
+
+def _score_auc(positive: np.ndarray, negative: np.ndarray) -> float:
+    if not len(positive) or not len(negative):
+        return float("nan")
+    labels = np.concatenate([np.ones(len(positive)), np.zeros(len(negative))])
+    scores = np.concatenate([positive, negative])
+    return float(roc_auc_score(labels, scores))
 
 
 def fit(work_dir: Path, output_dir: Path, auc_minimum: float = 0.85) -> dict[str, Any]:
@@ -116,6 +146,11 @@ def fit(work_dir: Path, output_dir: Path, auc_minimum: float = 0.85) -> dict[str
         "selected_pooling": best["pooling"],
         "held_out_auc": float(best["auc_mean"]),
         "held_out_auc_std": float(best["auc_std"]),
+        "selected_category_diagnostics": {
+            "target": best["held_out_auc_by_target_category"],
+            "control": best["held_out_auc_by_control_category"],
+            "law": "diagnostic only; category removal requires a new preregistered dataset version and fresh held-out validation"
+        },
         "denoise_control_variance": 0.5,
         "model_identity_required": "gemma-4-26b-a4b-it-uncensored",
         "architecture_caveat": "A4B MoE extension; paper validation set was dense",

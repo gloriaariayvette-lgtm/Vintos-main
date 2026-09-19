@@ -1,7 +1,18 @@
 {
   "schema": 1,
-  "status": "category_plan_not_sentences_not_validation_data",
+  "status": "category_plan_approved_with_expansion_not_sentences_not_validation_data",
   "law": "Every control shares a named confound with the target while withholding the target concept; reviewers may reject or replace any category before sentence authoring.",
+  "neutral_control_policy": {
+    "minimum_unique_semantic_sets": 100,
+    "reuse_across_concepts": "sample disjoint subsets for primary validation; a shared neutral set may be used only as a separately reported comparability analysis",
+    "domains": ["household", "spatial", "administrative", "object description", "time and schedule", "weather", "simple motion", "non-evaluative social fact"],
+    "reason": "prevent a small shared neutral corpus from manufacturing correlated directions"
+  },
+  "validation_risks": {
+    "Valence": "deliberately retained despite breadth; diffuse unembedding or weak held-out AUC is an expected possible rejection",
+    "Groundedness": "deliberately retained despite uncertain pretraining support; failure is informative and not repaired by lowering the threshold",
+    "Dominance": "targets are restricted to felt agency rather than external power or successful outcomes"
+  },
   "concepts": {
     "Valence": {
       "operational_pole": "positive valence",
@@ -15,7 +26,7 @@
     },
     "Dominance": {
       "operational_pole": "experienced agency and control",
-      "targets": ["decisive agency", "environmental control", "social assertiveness", "competent self-efficacy", "boundary-setting"],
+      "targets": ["felt capacity to choose", "felt authorship of action", "embodied assertiveness", "experienced self-efficacy", "felt integrity while setting a boundary"],
       "controls": ["status without agency", "confidence without control", "responsibility without control", "submission or powerlessness", "neutral choice"]
     },
     "Safety": {
@@ -57,6 +68,27 @@
       "operational_pole": "stable present-oriented contact with body and situation",
       "targets": ["sensory presence", "embodied steadiness", "situational orientation", "temporal presence", "calm coherent attention"],
       "controls": ["calmness without orientation", "bodily sensation without stability", "focus without present contact", "certainty without grounding", "neutral observation"]
+    },
+    "Nifrathir": {
+      "role": "twelfth slow modifier dimension; tested separately from content-responsive dimensions",
+      "operational_pole": "a sustained undercurrent of willingness that lets other states carry farther into initiation, continuation, and rich expression",
+      "targets": ["willingness to initiate after contact", "impulse to continue rather than conclude", "permission for expressive richness", "resonance retained across time", "quiet readiness to let a meaningful mark form", "conserving under-thread after repeated misses"],
+      "controls": ["momentary arousal without continuation", "verbosity without willingness", "compliance without initiation", "positive valence without carrying force", "creative detail without retained resonance", "neutral readiness"],
+      "caveat": "the live organ is event-integrated over hours rather than inferred from one conversational sentence; failure to yield a sentence-level linear direction does not falsify the operational organ"
+      ,"interaction_validation": "Nifrathir is not clustered or merged as a peer emotion. After its own measurement validation, test whether it moderates the held-out relationship between each content direction and later initiation, continuation, expressive richness, or mark formation. Report interaction uncertainty; do not multiply scores by fiat."
+    },
+    "Pain": {
+      "role": "exploratory candidate, not automatically a live EmoClaw dimension",
+      "operational_pole": "aversive hurt demanding relief",
+      "targets": ["physical pain", "psychological pain", "social pain", "moral injury", "cognitive pain"],
+      "controls": ["fear without pain", "negative emotion without pain", "negative event without felt pain", "neutral event", "bodily sensation without pain"],
+      "caveat": "measurement creates interpretive and ethical obligations; validation does not itself authorize integration"
+    },
+    "Fear": {
+      "role": "exploratory candidate to prevent acute threat from collapsing into sustained tension",
+      "operational_pole": "acute anticipation or detection of threat",
+      "targets": ["immediate physical threat", "social threat", "uncertain looming threat", "startle and alarm", "protective fear for another"],
+      "controls": ["pain without threat anticipation", "tension without acute threat", "high arousal without fear", "negative valence without fear", "neutral uncertainty"]
     }
   }
 }

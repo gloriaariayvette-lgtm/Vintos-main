@@ -18,6 +18,7 @@ from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
+from residual_emotion.import_pain_axis import convert as import_pain_axis
 from residual_emotion.measure import measure
 from residual_emotion.unembedding import review
 
@@ -44,22 +45,43 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     scratch = Path(raw)
     check(".vintos" not in str(scratch), "scratch path must not be live")
     dataset = scratch / "warmth.jsonl"
-    rows = [row(i) for i in range(20)]
+    rows = [row(i, variant) for i in range(100) for variant in (("S2", person, suffix) for person in ("1P", "3P") for suffix in ("feel_colon", "feel", "none"))]
     dataset.write_text("".join(json.dumps(value) + "\n" for value in rows))
-    dataset.with_suffix(".manifest.json").write_text(json.dumps({"curated": True, "reviewers": ["fixture"]}))
+    dataset.with_suffix(".manifest.json").write_text(json.dumps({"curated": True, "curation_basis": "human_review", "reviewers": ["fixture"]}))
     summary = validate(dataset)
-    check(summary["semantic_sets"] == 20, "dataset grouping")
+    check(summary["semantic_sets"] == 100, "dataset grouping")
     prepared = scratch / "work"
     prepare(dataset, prepared)
     check((prepared / "source.manifest.json").exists(), "curation receipt follows preparation")
 
+    # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
+    source = scratch / "pain-source.json"
+    sentences = []
+    labels = {**{f"A{i}": f"pain-{i}" for i in range(1, 6)}, "B": "fear", "C1": "negative", "C2": "world", "D": "neutral", "E": "body"}
+    for dataset_name in ("S1_1P", "S1_3P", "S2_1P", "S2_3P"):
+        for set_number in range(1, 21):
+            for category in ("A1", "A2", "A3", "A4", "A5", "B", "C1", "C2", "D", "E"):
+                marker = "She feels" if dataset_name.endswith("3P") else "I feel"
+                sentences.append((dataset_name, {"category": category, "set": set_number, "prompt": f"Fixture {category} {set_number}. {marker}:"}))
+    grouped = {name: {"sentences": [item for dataset_name, item in sentences if dataset_name == name]} for name in ("S1_1P", "S1_3P", "S2_1P", "S2_3P")}
+    source.write_text(json.dumps({"metadata": {"category_labels": labels}, "datasets": grouped}))
+    pain = scratch / "pain.jsonl"
+    imported = import_pain_axis(source, pain)
+    check(imported["rows"] == 1200 and imported["semantic_sets"] == 200, "published Pain dataset expansion")
+    check(validate(pain)["curation_basis"] == "published_source_dataset", "published provenance accepted")
+    imported_rows = read_jsonl(pain)
+    check(len({row["semantic_set"] for row in imported_rows if row["semantic_set"] == "pain-s1-01-slot-1"}) == 1, "variants share semantic set")
+    check(not any("feels: I feel" in row["target"] for row in imported_rows), "source suffix is replaced, not duplicated")
+
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)
+    analysis_rows = [row(i) for i in range(20)]
     control = rng.normal(0, 0.2, (20, 3, 8))
     target = control.copy()
     target[:, 1, 0] += 3.0
-    curves = grouped_layer_curve(rows, target, control)
+    curves = grouped_layer_curve(analysis_rows, target, control)
     check(max(curves, key=lambda value: value["auc_mean"])["layer"] == 1, "select signal layer")
+    check(len(curves[1]["held_out_auc_by_target_category"]) == 5, "category diagnostics")
     direction = fit_direction(target[:, 1, :], control[:, 1, :])
     check(auc(target[:, 1, :], control[:, 1, :], direction) > 0.99, "separate held concept")
 

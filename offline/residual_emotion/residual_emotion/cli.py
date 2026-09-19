@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from . import analysis, compare, dataset, unembedding
+from . import analysis, compare, dataset, import_pain_axis, unembedding
 from .io import sha256
 
 
@@ -20,6 +20,7 @@ def main() -> int:
     verify = sub.add_parser("verify-model"); verify.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
     unembed = sub.add_parser("unembed"); unembed.add_argument("direction", type=Path); unembed.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
     review = sub.add_parser("review-unembedding"); review.add_argument("direction", type=Path); review.add_argument("--reviewer", required=True); review.add_argument("--verdict", choices=("pass", "fail"), required=True); review.add_argument("--note", required=True)
+    pain = sub.add_parser("import-pain-axis"); pain.add_argument("source", type=Path); pain.add_argument("output", type=Path)
     args = parser.parse_args()
     if args.command == "validate": result = dataset.validate(args.dataset)
     elif args.command == "prepare": result = dataset.prepare(args.dataset, args.output)
@@ -35,8 +36,10 @@ def main() -> int:
         model_path = Path(lock["path"])
         if sha256(model_path) != lock["sha256"]: raise SystemExit("model hash mismatch")
         result = unembedding.analyze(model_path, args.direction, args.lock.parent)
-    else:
+    elif args.command == "review-unembedding":
         result = unembedding.review(args.direction, args.reviewer, args.verdict == "pass", args.note)
+    else:
+        result = import_pain_axis.convert(args.source, args.output)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

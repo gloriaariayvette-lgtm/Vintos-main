@@ -27,8 +27,13 @@ not an assumed transfer of the paper's findings.
 - PCA denoising is fitted on training controls only.
 - Raw projection and control-referenced z-score are both retained. Neither is called
   a feeling, consciousness, or a causal state.
-- The current eleven EmoClaw dimensions are hypotheses. No twelfth dimension is
-  invented to satisfy an old count.
+- The eleven content-responsive EmoClaw dimensions and the separately implemented
+  slow modifier Nifrathir are hypotheses. Pain and Fear are exploratory candidates;
+  candidate status does not authorize live integration.
+- Nifrathir is not a twelfth peer emotion. It is excluded from ordinary merge/drop
+  clustering. If it validates as a measurement at all, its separate question is
+  whether it changes how well the other eleven predict later initiation,
+  continuation, expressive richness, and mark formation.
 
 ## Layout
 
@@ -39,6 +44,8 @@ not an assumed transfer of the paper's findings.
   denoises directions, measures frozen inputs, and joins offline EmoClaw exports.
 - `datasets/` contains curated data only. Dataset generation may propose drafts, but
   a draft is not eligible for extraction until its manifest says `curated: true`.
+  The Pain candidate is imported from the paper authors' pinned MIT-licensed corpus;
+  locally authored candidates still require an explicitly named human review.
 - `results/` is ignored. It contains model-derived artifacts and validation reports.
 
 ## Build the extractor
@@ -64,12 +71,27 @@ LLAMA_CPP_GGUF_PY=.build/llama.cpp/gguf-py \
   .venv/bin/python -m residual_emotion.cli unembed results/warmth
 ```
 
-`fit` refuses uncurated data, incomplete category coverage, model-hash mismatch,
+The published Pain corpus can be reproduced from a checkout of the paper's code:
+
+```bash
+.venv/bin/python -m residual_emotion.cli import-pain-axis \
+  /path/to/Pain-axis/datasets/3.1_pain_and_control_datasets.json datasets/pain.jsonl
+```
+
+`fit` refuses uncurated data, fewer than five target/control categories, model-hash mismatch,
 missing dumps, fold leakage, or a direction below the configured AUC threshold.
+It reports held-out AUC per category so weak categories can be revised in a new
+preregistered dataset version; it never drops categories on the evaluation set that
+selected them.
 `unembed` streams the exact quantized `output.weight`, or Gemma's tied
 `token_embd.weight`, instead of materializing a multi-gigabyte matrix. Measurement
 remains blocked until a human records a semantic pass/fail review with
 `review-unembedding`.
+
+The first full Pain extraction attempt on 2026-09-19 did not produce a result:
+llama.cpp could not allocate a Metal command queue while the active Mac model stack
+was resident, then its cvector executable exited by signal 11. This is an execution
+block, not a rejected direction. No active model was unloaded to force the run.
 
 ## Integration boundary
 

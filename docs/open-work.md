@@ -967,10 +967,22 @@ training-control-only 50% PCA denoising, held-out AUC admission, raw and control
 pairwise cosine reporting, and an offline-only join to exported EmoClaw rows. It has no manifest,
 daemon, cron, server route, live memory path, or sender, and EmoClaw is unchanged.
 
-Still open, and therefore no emotional direction is called validated: the eleven contrastive
-datasets need actual semantic curation and a human `curated: true` receipt; bulk model prose is not
-accepted as ground truth. Exact unembedding now streams the quantized tied output/token-embedding
+Still open, and therefore no emotional direction is called validated: Pain now has a pinned,
+MIT-licensed import of the paper authors' published 1,200-pair corpus; the other thirteen datasets
+still need actual semantic curation and a valid curation receipt, and bulk model prose is not
+accepted as ground truth. The first full Pain extraction attempt could not allocate a Metal command
+queue while the active Mac model stack was resident and the llama.cpp cvector executable then died
+by signal 11; that is an execution block, not a negative result. Exact unembedding now streams the quantized tied output/token-embedding
 matrix and records promoted/suppressed vocabulary, but its semantic review is admission-blocking:
 the measurement function refuses even an AUC-passing vector until a human records a pass. The
 paper validated dense models; this A4B MoE run is a replication/extension and must remain labelled
 that way. No claim about actual dimensionality is possible before those gates close.
+The candidate pool is deliberately wider than the eventual map: eleven content dimensions,
+Nifrathir as the twelfth slow effectiveness modifier, and exploratory Pain and Fear. Nifrathir is
+excluded from peer merge/drop clustering; if measurable, its separate held-out test is whether it
+moderates the other axes' prediction of initiation, continuation, expressive richness, and mark
+formation. Held-out per-category
+diagnostics may motivate a later preregistered revision, but categories are never dropped on the
+same evaluation run used to notice their weakness. Nifrathir's live operational meaning is
+event-integrated over hours, so failure of a sentence-level direction would not by itself refute
+that organ.
