@@ -18,6 +18,8 @@ from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
+from residual_emotion.measure import measure
+from residual_emotion.unembedding import review
 
 
 def check(condition: bool, message: str) -> None:
@@ -75,5 +77,18 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     result = join(emo, measured, output)
     check(result["joined"] == 1, "comparison join")
     check(read_jsonl(output)[0]["agreement"] == "not_computed_scale_not_calibrated", "no false agreement")
+
+    # AUC alone cannot admit a direction; exact unembedding requires an explicit review receipt.
+    direction_dir = scratch / "direction"; direction_dir.mkdir()
+    np.savez_compressed(direction_dir / "direction.npz", direction=np.ones(8, dtype="f4") / np.sqrt(8), layer=1, pooling="final", control_mean=0.0, control_std=1.0)
+    (direction_dir / "validation.json").write_text(json.dumps({"concept": "Warmth", "status": "validated", "unembedding": {"status": "not_run"}}))
+    try:
+        measure(residual, direction_dir)
+        raise AssertionError("unreviewed direction was admitted")
+    except ValueError:
+        pass
+    (direction_dir / "unembedding.json").write_text(json.dumps({"tensor": "token_embd.weight_tied_output"}))
+    review(direction_dir, "fixture-reviewer", True, "synthetic vocabulary aligns with fixture")
+    check(measure(residual, direction_dir)["truth_status"].startswith("residual_projection"), "review admits measurement")
 
 print("PASS residual-emotion offline isolation and analysis")

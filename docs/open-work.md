@@ -969,8 +969,8 @@ daemon, cron, server route, live memory path, or sender, and EmoClaw is unchange
 
 Still open, and therefore no emotional direction is called validated: the eleven contrastive
 datasets need actual semantic curation and a human `curated: true` receipt; bulk model prose is not
-accepted as ground truth. Exact unembedding against the quantized tied output/token-embedding
-matrix is also not implemented. It is an admission-blocking field, so the measurement function
-refuses even an AUC-passing vector until unembedding review passes. The paper validated dense
-models; this A4B MoE run is a replication/extension and must remain labelled that way. No claim
-about actual dimensionality is possible before those gates close.
+accepted as ground truth. Exact unembedding now streams the quantized tied output/token-embedding
+matrix and records promoted/suppressed vocabulary, but its semantic review is admission-blocking:
+the measurement function refuses even an AUC-passing vector until a human records a pass. The
+paper validated dense models; this A4B MoE run is a replication/extension and must remain labelled
+that way. No claim about actual dimensionality is possible before those gates close.

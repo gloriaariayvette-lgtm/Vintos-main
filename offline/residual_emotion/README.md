@@ -60,10 +60,16 @@ python3 -m venv .venv
 .venv/bin/python -m residual_emotion.cli prepare datasets/warmth.jsonl work/warmth
 ./run_extractor.sh work/warmth
 .venv/bin/python -m residual_emotion.cli fit work/warmth results/warmth
+LLAMA_CPP_GGUF_PY=.build/llama.cpp/gguf-py \
+  .venv/bin/python -m residual_emotion.cli unembed results/warmth
 ```
 
 `fit` refuses uncurated data, incomplete category coverage, model-hash mismatch,
 missing dumps, fold leakage, or a direction below the configured AUC threshold.
+`unembed` streams the exact quantized `output.weight`, or Gemma's tied
+`token_embd.weight`, instead of materializing a multi-gigabyte matrix. Measurement
+remains blocked until a human records a semantic pass/fail review with
+`review-unembedding`.
 
 ## Integration boundary
 
