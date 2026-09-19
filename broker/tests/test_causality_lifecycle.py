@@ -130,7 +130,7 @@ class CausalityLifecycleTests(unittest.TestCase):
         self.assertEqual(ready["state"], "HELD")
         self.assertEqual(ready["reason"], "nightly_history_incomplete")
 
-    def test_unreachable_reviewer_cannot_turn_eligibility_into_graduation(self):
+    def test_unreachable_reviewer_retires_at_the_tenure_gate(self):
         h = self.hypothesis(formed="2026-08-01")
         for n in range(1, 8):
             day = f"2026-08-{n+1:02d}"
@@ -153,10 +153,11 @@ class CausalityLifecycleTests(unittest.TestCase):
                     sys.modules.pop("requests", None)
                 else:
                     sys.modules["requests"] = old_requests
-        self.assertEqual((graduated, retired), (0, 0))
+        self.assertEqual((graduated, retired), (0, 1))
         self.assertFalse(h["graduated"])
-        self.assertEqual(h["status"], "review_held")
-        self.assertIn(h, db["hypotheses"])
+        self.assertEqual(h["status"], "retired")
+        self.assertEqual(h["retirement"]["reason"], "graduation_review_held")
+        self.assertNotIn(h, db["hypotheses"])
 
     def test_empty_material_is_recorded_not_silently_skipped(self):
         h = self.hypothesis()
@@ -249,6 +250,8 @@ class CausalityLifecycleTests(unittest.TestCase):
             save = src.split("def save_hypotheses(db):", 1)[1].split("\ndef ", 1)[0]
             self.assertIn("_retire_stale_unconfirmed(db)", save,
                           "%s: culler not called inside save_hypotheses" % name)
+            self.assertIn("_retire_formation_overflow(db)", save,
+                          "%s: shared daily formation cap not called inside save_hypotheses" % name)
 
     def test_app_distinguishes_unconfirmed_from_untested(self):
         server = (ROOT / "bin" / "server.py").read_text()

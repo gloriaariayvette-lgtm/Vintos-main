@@ -18,6 +18,7 @@ class WantPlanLifecycleTests(unittest.TestCase):
         self.assertIn("_ensure_plan(want", text)
         self.assertIn('want["plan_state"] = "READY"', text)
         self.assertIn('want["plan_state"] = "BLOCKED"', text)
+        self.assertIn('source=want.get("source", "")', text)
 
     def test_journal_action_and_receipt_use_the_same_store(self):
         text = (ROOT / "bin/wants-router.py").read_text(errors="replace")

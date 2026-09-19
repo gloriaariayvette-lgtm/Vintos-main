@@ -161,6 +161,9 @@ except: pass
 # === PULL RECENT ACTIVITY (last 90 min) ===
 cutoff = (datetime.now() - timedelta(minutes=90)).isoformat()
 recent_activity = ""
+source_kind = "wants-check"
+source_event_id = ""
+source_thread_id = ""
 
 # Most recent journal section written in last 90 min
 try:
@@ -186,6 +189,43 @@ try:
             if recent:
                 recent_activity += f"MOLTBOOK POST/REPLY JUST SENT:\n{recent[:400]}\n\n"
 except: pass
+
+# If the clock saw no fresh journal or MoltBook event, do not pretend the identified unresolved
+# pool is empty. Select one still-open thread whose stable id has never been offered through the
+# want door. Selection is not consumption: the thread stays unresolved, with its own counters and
+# provenance, whether or not a genuine present want forms from it.
+if not recent_activity:
+    try:
+        threads = json.load(open(os.path.join(MEMORY, "unfinished-threads.json")))
+        current = json.load(open(os.path.join(MEMORY, "current-wants.json")))
+        try:
+            fulfilled = json.load(open(os.path.join(MEMORY, "fulfilled-wants.json")))
+            if isinstance(fulfilled, dict): fulfilled = fulfilled.get("fulfilled", [])
+        except Exception:
+            fulfilled = []
+        offered = {str(w.get("source_thread_id") or "") for w in current + fulfilled}
+        offered.update(str(w.get("source_event_id") or "").removeprefix("thread:")
+                       for w in current + fulfilled)
+        thread_offers_today = sum(1 for w in current + fulfilled
+                                  if w.get("source_thread_id")
+                                  and str(w.get("timestamp", "")).startswith(TODAY))
+        open_threads = [t for t in threads if thread_offers_today < 2 and t.get("id")
+                        and not t.get("consumed") and not t.get("retired")
+                        and str(t.get("id")) not in offered]
+        open_threads.sort(key=lambda t: (
+            1 if t.get("source") == "structural-gap" else 0,
+            int(t.get("priority", 0) or 0), str(t.get("timestamp", ""))), reverse=True)
+        if open_threads:
+            chosen = open_threads[0]
+            source_thread_id = str(chosen["id"])
+            source_event_id = "thread:" + source_thread_id
+            source_kind = "latent_thread"
+            recent_activity = ("IDENTIFIED UNRESOLVED THREAD [%s] (source %s; still open, not consumed):\n%s\n\n"
+                               % (source_thread_id, chosen.get("source", "unknown"),
+                                  str(chosen.get("thread", ""))[:700]))
+            print("[Wants] Reviewing unresolved thread %s without consuming it" % source_thread_id)
+    except Exception as thread_error:
+        print("[Wants] Unresolved-thread bridge unavailable: %s" % str(thread_error)[:120])
 
 if not recent_activity:
     print("[Wants] No recent activity to spark from — skipping")
@@ -236,11 +276,13 @@ try:
     _wc_src = recent_activity + (f"\nWHAT KEEPS PULLING AT YOU:\n{latent}\n" if latent else "")
     _wc_want = _wc_gw(
         trigger_description="given the current unresolved tensions, what genuinely wants movement?",
-        source="wants-check",
+        source=source_kind,
         source_context=_wc_src[:900])
     if _wc_want:
-        _wc_e = _wc_en(_wc_want, source_context=recent_activity[:400], source="wants-check")
-        _wc_ew(_wc_want, source="wants-check", intensity=3, **_wc_e)
+        _wc_e = _wc_en(_wc_want, source_context=recent_activity[:400], source=source_kind)
+        _wc_ew(_wc_want, source=source_kind, intensity=3,
+               source_event_id=source_event_id or None,
+               source_thread_id=source_thread_id or None, **_wc_e)
         print(f"[Wants] Seeded via organ: {_wc_want[:80]}")
     else:
         print("[Wants] Organ: nothing genuinely wants movement this hour.")

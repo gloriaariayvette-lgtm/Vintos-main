@@ -2053,7 +2053,8 @@ def _ensure_plan(want, force=False):
         from emoclaw_utils import generate_steps
         steps = generate_steps(
             want.get("want", ""), want.get("possible_approach", ""),
-            want.get("reasoning", ""), want.get("self_interpretation", ""))
+            want.get("reasoning", ""), want.get("self_interpretation", ""),
+            source=want.get("source", ""))
         if steps:
             want["steps"] = steps
             want["current_step_index"] = 0

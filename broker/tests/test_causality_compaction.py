@@ -69,6 +69,30 @@ check("cause distributions are bounded", len(by_id["CH-active"]["distribution"])
 check("delivered outbox rows purge while pending failures survive", "old-receipt" not in after["deliveries"] and after["deliveries"].get("pending-receipt", {}).get("state") == "pending" and len(delivered) == 2, {"deliveries": after["deliveries"], "sent": delivered})
 check("compact writer actually shrinks the fixture", result["after_bytes"] < result["before_bytes"], result)
 
+# Realtime formation once lacked the nightly engine's shared daily budget. Historical repair keeps
+# the first three ordinary rows for a day, preserves Ghost Branch and settled knowledge, and retires
+# only the overflow as neither resolved nor refuted.
+same_day = [row("burst-%d" % i, 0) for i in range(7)]
+ghost_same_day = row("burst-ghost", 0, source="ghost_branch")
+settled_same_day = row("burst-settled", 0, status="confirmed", self_knowledge={"text": "kept"})
+budget_db = {"hypotheses": same_day + [ghost_same_day, settled_same_day]}
+overflow = CE._retire_formation_overflow(budget_db, daily_cap=3)
+check("one shared daily cap retires realtime formation overflow", len(overflow) == 4 and len(budget_db["hypotheses"]) == 5)
+check("formation overflow never removes Ghost Branch or settled knowledge",
+      ghost_same_day in budget_db["hypotheses"] and settled_same_day in budget_db["hypotheses"])
+check("overflow retirement is honest, not a false resolution",
+      all(h["retirement"]["reason"] == "daily_formation_cap_exceeded"
+          and not h["retirement"]["resolved"] and not h["retirement"]["refuted"] for h in overflow))
+
+# Direct producers share the same budget instead of appending and letting save silently cull the
+# new row. Ghost Branch remains the sole explicitly protected formation kind.
+actual_today = date.today().isoformat()
+direct_budget = [dict(same_day[i], formed=actual_today + "T01:00:0%d" % i,
+                      formed_date=actual_today) for i in range(3)]
+CE.load_existing_hypotheses = lambda: CE.HypothesisSnapshot({"hypotheses": direct_budget, "deliveries": {}})
+check("direct ordinary formation refuses a fourth row for the day",
+      CE._add_hypothesis("a fourth ordinary theory", "watch tomorrow", "direct") is None)
+
 fresh = row("fresh-formation", 0)
 CE._stamp_formation(fresh, {"seed": "a real new occasion with enough words to fingerprint"})
 catalog = CE._catalog_item(str(today), "interaction", "a separate new occasion with enough words to count", 0)

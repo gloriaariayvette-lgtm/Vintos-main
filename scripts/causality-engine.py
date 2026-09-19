@@ -452,6 +452,7 @@ def save_hypotheses(db):
     # grew the store with nothing reducing it (Gloria: too many hypotheses). Confirmed and
     # self_knowledge rows are never dropped.
     _retire_stale_unconfirmed(db)
+    _retire_formation_overflow(db)
     rows = db.get("hypotheses", [])
     db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
     db["confirmed"] = sum(1 for h in rows if h.get("self_knowledge"))
@@ -475,6 +476,7 @@ MIN_NIGHTLY_EVALUATIONS = 7
 MIN_SUPPORTING_OCCASIONS = 2
 ORDINARY_TENURE_DAYS = 7
 GHOST_BRANCH_TENURE_DAYS = 32
+DAILY_FORMATION_CAP = max(1, int(os.environ.get("CAUSALITY_DAILY_FORMATION_CAP", "3")))
 HISTORY_CAP = max(GHOST_BRANCH_TENURE_DAYS + 1, int(os.environ.get("CAUSALITY_HISTORY_CAP", "40")))
 FORMATION_SNIPPET_CAP = max(1, int(os.environ.get("CAUSALITY_FORMATION_SNIPPET_CAP", "16")))
 DISTRIBUTION_CAP = max(1, int(os.environ.get("CAUSALITY_DISTRIBUTION_CAP", "8")))
@@ -544,12 +546,53 @@ def _retire_stale_unconfirmed(db, today=None):
     return retired
 
 
+def _retire_formation_overflow(db, daily_cap=None):
+    """Repair the realtime writer's missing shared daily budget.
+
+    The nightly engine already counted everything formed that day before adding more. The
+    realtime JEPA path did not: it could add one hypothesis per new spike, roughly twenty a day.
+    Keep the first bounded ordinary formations from each historical day, exactly the rows the
+    gate would have admitted had it existed. Ghost Branch is the explicit long-form exception;
+    confirmed or self-knowledge rows are never touched.
+    """
+    cap = max(1, int(daily_cap or DAILY_FORMATION_CAP))
+    ordinary = {}
+    for index, h in enumerate(db.get("hypotheses", [])):
+        if (h.get("source") == "ghost_branch" or h.get("self_knowledge") or h.get("graduated")
+                or h.get("status") in ("confirmed", "graduated")):
+            continue
+        day = str(h.get("formed_date", h.get("formed", "")))[:10]
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+            continue
+        ordinary.setdefault(day, []).append((str(h.get("formed", "")), index, h))
+    overflow_ids = set()
+    for rows in ordinary.values():
+        rows.sort(key=lambda item: (item[0], item[1]))
+        overflow_ids.update(id(h) for _, _, h in rows[cap:])
+    if not overflow_ids:
+        return []
+    kept, retired = [], []
+    for h in db.get("hypotheses", []):
+        if id(h) not in overflow_ids:
+            kept.append(h); continue
+        h["status"] = "retired"
+        h["retirement"] = {"at": datetime.now().isoformat(),
+            "reason": "daily_formation_cap_exceeded", "daily_cap": cap,
+            "formed_date": str(h.get("formed_date", h.get("formed", "")))[:10],
+            "resolved": False, "refuted": False}
+        _queue_delivery(db, "retired", h, _hypothesis_id(h))
+        retired.append(h)
+    db["hypotheses"] = kept
+    return retired
+
+
 def compact_store(today=None):
     """One explicit, lock-held migration for the live causality store."""
     before = os.path.getsize(HYPOTHESIS_DB) if os.path.exists(HYPOTHESIS_DB) else 0
     with transaction(HYPOTHESIS_DB):
         db = _read_hypotheses()
         retired = _retire_stale_unconfirmed(db, today=today)
+        overflow = _retire_formation_overflow(db)
         stats = _compact_db_in_place(db)
         rows = db.get("hypotheses", [])
         db["revised"] = sum(1 for h in rows if h.get("status") in ("revised", "challenged"))
@@ -559,7 +602,8 @@ def compact_store(today=None):
     recover_deliveries()
     after = os.path.getsize(HYPOTHESIS_DB) if os.path.exists(HYPOTHESIS_DB) else 0
     return {"before_bytes": before, "after_bytes": after,
-            "retired": len(retired), **stats}
+            "retired": len(retired) + len(overflow),
+            "formation_overflow_retired": len(overflow), **stats}
 
 
 def _norm_evidence(text):
@@ -1021,8 +1065,13 @@ def graduate_hypotheses(db):
                 ])
                 _prior_review = h.get("graduation_review") or {}
                 if _prior_review.get("state") == "held" and _prior_review.get("basis") == _review_basis:
-                    remaining.append(h)
-                    log("  REVIEW HELD: no new bearing evidence since the last review")
+                    h["status"] = "retired"
+                    h["retirement"] = {"at": datetime.now().isoformat(),
+                        "reason": "graduation_review_held", "tenure_days": tenure_days,
+                        "readiness": copy.deepcopy(ready), "resolved": False, "refuted": False}
+                    _queue_delivery(db, "retired", h, _hypothesis_id(h))
+                    retired.append(h)
+                    log("  RETIRED: prior graduation review held this theory at its tenure gate")
                     continue
                 # --- Graduation review: Gemma checks accuracy before belief/narrative update ---
                 _rv_ok = True
@@ -1156,10 +1205,15 @@ def graduate_hypotheses(db):
                 else:
                     h["graduated"] = False
                     h["self_knowledge"] = False
-                    h["status"] = "review_held"
+                    h["status"] = "retired"
                     h["graduation_review"] = {"state": "held", "basis": _review_basis,
                                                 "at": datetime.now().isoformat()}
-                    remaining.append(h)
+                    h["retirement"] = {"at": datetime.now().isoformat(),
+                        "reason": "graduation_review_held", "tenure_days": tenure_days,
+                        "readiness": copy.deepcopy(ready), "resolved": False, "refuted": False}
+                    _queue_delivery(db, "retired", h, _hypothesis_id(h))
+                    retired.append(h)
+                    log("  RETIRED: graduation did not pass the independent review")
         else:
             remaining.append(h)
 
@@ -1574,13 +1628,20 @@ def queue_question(question, source, evidence=None, subject="self", memory=None)
 
 
 def _add_hypothesis(hypothesis_text, test_text, source, subject="self", confidence="medium"):
-    """Add a direct hypothesis to the causality ledger. Bypasses daily cap.
+    """Add a direct hypothesis to the causality ledger through the shared daily cap.
     subject: 'self' for Vintos patterns, 'gloria' for patterns about Gloria."""
     db = load_existing_hypotheses()
     from datetime import date as _ahd
+    _today = _ahd.today().isoformat()
+    _ordinary_today = sum(1 for row in db.get("hypotheses", [])
+                          if str(row.get("formed_date", row.get("formed", "")))[:10] == _today
+                          and row.get("source") != "ghost_branch")
+    if source != "ghost_branch" and _ordinary_today >= DAILY_FORMATION_CAP:
+        log("  [Hypothesis] Daily formation cap reached; direct hypothesis not added")
+        return None
     h = {
         "formed": datetime.now().isoformat(),
-        "formed_date": _ahd.today().isoformat(),
+        "formed_date": _today,
         "status": "untested",
         "marks": [],
         "days_tested": 0,
@@ -1673,6 +1734,11 @@ def form_causal_hypotheses(db, cap=3):
         except Exception:
             return None
 
+    today = _cdate.today().isoformat()
+    already_today = sum(1 for h in db.get("hypotheses", [])
+                        if str(h.get("formed_date", h.get("formed", "")))[:10] == today
+                        and h.get("source") != "ghost_branch")
+    cap = min(max(0, int(cap)), max(0, DAILY_FORMATION_CAP - already_today))
     dist_out, added = [], 0
     for ev in evidence:
         if ev.get("untraceable"):

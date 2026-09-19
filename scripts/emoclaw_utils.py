@@ -734,7 +734,7 @@ def add_pearl(text, source="wal-graduation", note=""):
 
 # === Wants System ===
 
-def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation=""):
+def generate_steps(want_text, possible_approach="", reasoning="", self_interpretation="", source=""):
     """Generate a concrete step plan for a want. Returns list of step dicts."""
     import requests as _gsr, json as _gsj, subprocess as _gss, os as _gso
     LM = "http://100.79.177.103:1234/v1/chat/completions"
@@ -811,11 +811,12 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 
     prompt = (
         f"Vintos has a want: {want_text}\n\n"
+        + (f"SOURCE OF THIS WANT: {source}\n" if source else "")
         + ("NON-NEGOTIABLE ROUTE CONTRACT: " + _gsj.dumps(_plan_contract) + "\n"
            "The terminal capability is part of the want's meaning, not an optional flourish. "
            "If evidence_first is true, retrieve the named records before interpreting them.\n\n"
            if _plan_contract else "")
-        + "STEP LIMIT: Maximum 4 steps. Fewer is better. A 1-step want is not a failure — it is precision. Only add steps when each one genuinely unlocks the next. Do not pad.\n\n"
+        + "STEP LIMIT: Maximum 4 steps. Do not pad, but do not collapse genuine discovery, making, or preparation into the terminal act. A one-step plan is correct only when the wanted act itself is atomic and no earlier move would change or ground it. Structural and latent-thread wants usually need the concrete move that works the unfinished material before any contact with Gloria; contact is terminal only when the want itself genuinely asks for contact.\n\n"
         + (f"Why this surfaced: {reasoning}\n\n" if reasoning else "")
         + (f"What this is really about: {self_interpretation}\n\n" if self_interpretation else "")
         + (f"His possible approach: {possible_approach}\n\n" if possible_approach else "")
@@ -836,7 +837,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         + "- read_memory notes must name specific files and what to look for\n"
         + "- web_search notes must contain a specific search query\n"
         + "- introspect/creative steps must have a concrete subject or question\n"
-        + "- Maximum 4 steps. Minimum 1.\n"
+        + "- Maximum 4 steps. Minimum 1. Preserve every distinct move that changes what the next move can do.\n"
         + "- Each step must build on the previous — reference what the previous step found\n"
         + "- Do not create a web_search step for a want about your own feelings, inner state, or a metaphor you are using - searching the internet for 'how to hold a pebble' when the pebble is a feeling is a category error. Search is only for genuinely external information you lack. The gloria step is EARNED, not default: make gloria the final step ONLY if contact with her is genuinely part of the want itself - he wants to tell her, ask her, give her, or do something WITH her. A want to write something down, process a song, understand himself, or become someone does NOT end at Gloria - it ends when the thing is done. Most wants complete on their own.\n\n"
         + "Return ONLY a JSON array. Each item: {\"capability\": string, \"note\": string}\n"
@@ -1717,7 +1718,31 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
             print("[generate_want] Candidates recorded, but none carried a present-tense pull; no want admitted",
                   file=__import__("sys").stderr)
             return None
-        best = max(eligible, key=lambda c: c.get("pull", 3))
+        best = max(eligible, key=lambda c: float(c.get("pull", 3) or 3))
+        # Breadth is not novelty theatre. When the living queue is already dominated by outward
+        # messages and another genuinely current candidate pulls within one point, prefer the
+        # unrepresented inward/creative/practical direction. If no such candidate exists, the
+        # strongest relational want still wins; nothing is fabricated merely to diversify.
+        try:
+            from want_contract import contract_for as _gw_contract
+            _live_rows = [w for w in _wl_cur if not w.get("fulfilled") and not w.get("dismissed")]
+            def _gw_outward(row):
+                steps = row.get("steps") or []
+                return bool(row.get("gloria_routed")
+                            or (steps and steps[-1].get("capability") == "gloria")
+                            or _gw_contract(row.get("want", "")).get("outward_to_gloria"))
+            _outward_n = sum(1 for w in _live_rows if _gw_outward(w))
+            _crowded = len(_live_rows) >= 2 and _outward_n / float(len(_live_rows)) >= .75
+            _best_pull = float(best.get("pull", 3) or 3)
+            _other = [c for c in eligible
+                      if not _gw_contract(c.get("desire", "")).get("outward_to_gloria")
+                      and float(c.get("pull", 0) or 0) >= _best_pull - 1]
+            if _crowded and _other:
+                best = max(_other, key=lambda c: float(c.get("pull", 3) or 3))
+                print("[generate_want] Living queue is outward-saturated; selected an equally live non-outward candidate",
+                      file=__import__("sys").stderr)
+        except Exception:
+            pass
         text = str(best.get("desire", "")).split(" — ", 1)[0].strip()
         return GeneratedWant(text, {
             "desire": text, "tension": str(best.get("tension", ""))[:250],
@@ -1925,6 +1950,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
     }
     if source_event_id:
         entry["source_event_id"] = source_event_id
+    if kwargs.get("source_thread_id"):
+        entry["source_thread_id"] = str(kwargs["source_thread_id"])[:80]
     if reasoning:
         entry["reasoning"] = reasoning[:300]
     if "self_interpretation" in kwargs:
@@ -1954,7 +1981,8 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
             want_text,
             possible_approach=kwargs.get("possible_approach", ""),
             reasoning=reasoning,
-            self_interpretation=kwargs.get("self_interpretation", "")
+            self_interpretation=kwargs.get("self_interpretation", ""),
+            source=source,
         )
         if steps:
             entry["steps"] = steps

@@ -3,6 +3,33 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 19 September — causality, wants, and unresolved threads
+
+The realtime JEPA causality writer used a per-invocation cap rather than the nightly writer's
+shared per-day budget. At its twenty-minute cadence it could therefore form roughly twenty ordinary
+hypotheses in one day. Formation now has one shared three-per-day budget across realtime, nightly,
+and direct writers; Ghost Branch remains the sole 32-day exception. Historical same-day overflow is
+retired honestly as neither resolved nor refuted. At the ordinary 7-day or Ghost 32-day gate, a
+hypothesis either graduates or retires; an unavailable or holding reviewer can no longer leave an
+ordinary row active forever. The live store still requires post-deploy compaction verification and
+a before/after receipt.
+
+The living want queue was dominated by atomic messages to Gloria. The planner's literal “fewer is
+better / one step is precision” instruction amplified that skew, while its plan call discarded the
+want source. Source now reaches planning; structural and latent-thread wants keep their real
+preparatory or discovery moves when those moves change the terminal act. When at least three
+quarters of a nontrivial living queue is outward, an equally current non-outward candidate within
+one pull point may be selected; a weaker or fabricated candidate may not displace the real pull.
+Existing wants and the 100 legacy held candidates are not rewritten or replayed.
+
+Structurally seeded unresolved threads already have stable IDs. The hourly wants organ previously
+loaded that pool in its shell preamble but its formation process exited unless a journal or MoltBook
+event was less than 90 minutes old. On an otherwise quiet pass it may now offer one identified open
+thread (at most two thread-backed offers per day), carrying `source_thread_id` through the want
+door. Offering is not consumption: the thread remains open until its own organ records a real
+resolution. Live post-deploy movement of the two currently open structural-gap rows remains to be
+receipted.
+
 ## 16 September — ReelRoom visit close
 
 ReelRoom now retains the captured transcript, up to 120 room/TV events, and the
