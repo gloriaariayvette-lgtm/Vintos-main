@@ -11,8 +11,11 @@ hypotheses in one day. Formation now has one shared three-per-day budget across 
 and direct writers; Ghost Branch remains the sole 32-day exception. Historical same-day overflow is
 retired honestly as neither resolved nor refuted. At the ordinary 7-day or Ghost 32-day gate, a
 hypothesis either graduates or retires; an unavailable or holding reviewer can no longer leave an
-ordinary row active forever. The live store still requires post-deploy compaction verification and
-a before/after receipt.
+ordinary row active forever. Release `20260919-044632-a1600e8` compacted the live store from 121
+rows / 423,340 bytes to 28 rows / 98,174 bytes, retiring 93 formation-overflow rows as unresolved
+and unrefuted. The seven Ghost Branch rows survived, and the remaining ordinary maximum is three
+formations on any day. The three active causality crons now name the installed release-owned file;
+the old workspace path was itself a cross-tree symlink to a stale copy and is no longer scheduled.
 
 The living want queue was dominated by atomic messages to Gloria. The planner's literal “fewer is
 better / one step is precision” instruction amplified that skew, while its plan call discarded the

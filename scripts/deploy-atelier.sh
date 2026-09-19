@@ -143,7 +143,7 @@ SCRIPTS="$SCRIPTS spark_pressure.py withheld_confirm.py tension_ledger.py commit
 BINS="causal-cluster.py ambition-check.py ambition-review.py causal-observations.py robot-pi-repoint.sh purge-test-residue.py avatar-choice.py resonance-rescore.py systems-checkup.py music-share.py music-composer.py server.py model_router.py gen_result.py merged_full_route.py humor_detector.py humor_reaction.py
 taste-reflection.py taste-vector.py gloria-model-update.sh self-model-update.sh
 blush-ledger.py wants-router.py
-avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py daily-log-extract.py dd-token-refresh.py
+avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py daily-log-extract.py dd-token-refresh.py wants-check.sh
 wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate.sh deviation_check.py memory_search.py
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
 vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
@@ -159,7 +159,7 @@ BINS="$BINS vintos_claude_shim.py hallucination_check.py reality_anchor.py reali
 BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py voice_orpheus.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 BINS="$BINS gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh
-atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh"
+atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh wants-check.sh"
 
 # Every file this deploy touches, relative to the checkout (the manifest above
 # plus the broker's two files and the units). This is what gets staged.

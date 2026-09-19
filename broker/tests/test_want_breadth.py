@@ -36,6 +36,9 @@ def express_want(want, **kwargs):
     json.dump({"want":want,"kwargs":kwargs}, open(os.path.join(os.environ["HOME"], "offer.json"), "w"))
 ''')
 shell = (ROOT / "bin" / "wants-check.sh").read_text()
+deploy = (ROOT / "scripts" / "deploy-atelier.sh").read_text()
+check("the hourly organ is in the deploy manifest and executable list",
+      "dd-token-refresh.py wants-check.sh" in deploy and "atelier-status.sh wants-check.sh" in deploy)
 body = re.search(r"python3 << 'WANTSCALLEOF'\n(.*?)\nWANTSCALLEOF", shell, re.S).group(1)
 run = subprocess.run([sys.executable, "-c", body], env={**os.environ, "PYTHONPATH": str(SCRIPTS)},
                      text=True, capture_output=True, timeout=30)
