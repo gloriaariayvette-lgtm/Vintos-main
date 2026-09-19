@@ -15,3 +15,5 @@ VINTOS_RESIDUAL_DUMP="$WORK/dumps" "$BIN" \
   -m "$MODEL" -ngl 99 --method mean \
   --positive-file "$WORK/target.txt" --negative-file "$WORK/control.txt" \
   -o "$WORK/unused-control-vector.gguf"
+cp "$ROOT/model-lock.json" "$WORK/extraction-model-lock.json.tmp"
+mv "$WORK/extraction-model-lock.json.tmp" "$WORK/extraction-model-lock.json"

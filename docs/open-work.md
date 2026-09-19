@@ -958,8 +958,10 @@ site-specific extraction as operational.
 
 ## Offline residual-stream emotion instrument — 19 September
 
-`offline/residual_emotion/` now pins the exact abliterated
-`gemma-4-26b-a4b-it-uncensored` Q4_K_M GGUF (26B total, A4B MoE — not “Gemma 4B”)
+`offline/residual_emotion/` now pins Aegis's exact dense Gemma 4 12B QAT Q4_0 GGUF
+(not the proposal's mistaken “Gemma 4B”) by path and SHA-256 after Gloria moved the
+experiment on 2026-09-19. The prior abliterated 26B A4B lock remains only as the identity
+receipt for its completed Pain candidate run; cross-model results may not be pooled.
 and a llama.cpp revision. A patched, Metal-capable extractor completed a real smoke pass and
 produced final-token and mean-token matrices with observed shape 30 × 2,816 for both sides of
 a contrastive pair. The offline analysis implements semantic-set-grouped K-fold layer selection,

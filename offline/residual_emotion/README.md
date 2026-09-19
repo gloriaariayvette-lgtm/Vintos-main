@@ -5,17 +5,21 @@ read a live Vintos store, send a notification, or appear in the deployment manif
 
 ## Model lock
 
-The only target is Gloria's abliterated checkpoint:
+The active target is Aegis's pinned Gemma 12B QAT checkpoint:
 
 ```
-/Users/kevin/.lmstudio/models/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF/
-gemma-4-26B-A4B-it-uncensored-Q4_K_M.gguf
-sha256 d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3
+/mnt/c/Users/glori/.lmstudio/models/lmstudio-community/gemma-4-12B-it-QAT-GGUF/
+gemma-4-12B-it-QAT-Q4_0.gguf
+sha256 929fde4e951e520b74806268e8e8ffaa20a20fab955f3606d5ce7b2c35798501
 ```
 
-It is a 26B A4B mixture-of-experts GGUF, not a 4B Gemma. The Pain Axis paper tested
-dense models. Results here are therefore an explicit replication/extension question,
-not an assumed transfer of the paper's findings.
+It is a dense 12B Gemma 4 GGUF, not the proposal's mistaken “Gemma 4B.” Gloria moved
+the experiment to this model on 2026-09-19 and paused the Chemistry Lab to give it
+the Aegis compute window. Thinking is disabled for its house inference route, but
+generation settings are irrelevant to residual extraction because no text is decoded.
+The former abliterated 26B A4B lock is retained as
+`model-lock-ablit-reference.json` solely to identify the already completed Pain run;
+results from the two checkpoints must never be pooled.
 
 ## Evidence law
 
@@ -58,6 +62,8 @@ cd offline/residual_emotion
 
 The script clones the pinned llama.cpp revision into a local build directory, applies
 the patch, and builds only `llama-cvector-generator`. It never alters LM Studio.
+Successful extraction copies the active lock into the work directory; analysis refuses
+dumps without that receipt, preventing a later model switch from relabelling old vectors.
 
 ## Run order
 

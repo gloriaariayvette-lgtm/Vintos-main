@@ -53,6 +53,7 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     prepared = scratch / "work"
     prepare(dataset, prepared)
     check((prepared / "source.manifest.json").exists(), "curation receipt follows preparation")
+    (prepared / "extraction-model-lock.json").write_text(json.dumps({"identity": "fixture", "sha256": "0" * 64, "llama_cpp_revision": "fixture"}))
 
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"

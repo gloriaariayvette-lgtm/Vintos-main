@@ -182,6 +182,12 @@ def fit(work_dir: Path, output_dir: Path, auc_minimum: float = 0.85) -> dict[str
     source_manifest = work_dir / "source.manifest.json"
     if not source_manifest.exists() or json.loads(source_manifest.read_text()).get("curated") is not True:
         raise ValueError("prepared work is missing its curated source manifest")
+    extraction_lock_path = work_dir / "extraction-model-lock.json"
+    if not extraction_lock_path.exists():
+        raise ValueError("prepared work lacks the exact model lock used for extraction")
+    extraction_lock = json.loads(extraction_lock_path.read_text(encoding="utf-8"))
+    if not all(str(extraction_lock.get(key, "")).strip() for key in ("identity", "sha256", "llama_cpp_revision")):
+        raise ValueError("extraction model lock is incomplete")
     output_dir.mkdir(parents=True, exist_ok=True)
     pooling_reports = {}
     arrays = {}
@@ -221,8 +227,10 @@ def fit(work_dir: Path, output_dir: Path, auc_minimum: float = 0.85) -> dict[str
             "law": "diagnostic only; category removal requires a new preregistered dataset version and fresh held-out validation"
         },
         "denoise_control_variance": 0.5,
-        "model_identity_required": "gemma-4-26b-a4b-it-uncensored",
-        "architecture_caveat": "A4B MoE extension; paper validation set was dense",
+        "model_identity": extraction_lock["identity"],
+        "model_sha256": extraction_lock["sha256"],
+        "extractor_revision": extraction_lock["llama_cpp_revision"],
+        "architecture_note": extraction_lock.get("architecture_note"),
         "pooling_reports": pooling_reports,
         "deployment_selection_note": "selected pooling/layer is fitted on all data only after nested validation; its inner-CV score is not the reported held-out score",
         "unembedding": {"status": "not_run", "admission_blocking": True},
