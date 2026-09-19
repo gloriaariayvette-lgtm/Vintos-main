@@ -190,11 +190,12 @@ try:
                 recent_activity += f"MOLTBOOK POST/REPLY JUST SENT:\n{recent[:400]}\n\n"
 except: pass
 
-# If the clock saw no fresh journal or MoltBook event, do not pretend the identified unresolved
-# pool is empty. Select one still-open thread whose stable id has never been offered through the
-# want door. Selection is not consumption: the thread stays unresolved, with its own counters and
-# provenance, whether or not a genuine present want forms from it.
-if not recent_activity:
+# A routine fresh journal must not starve the identified unresolved pool. Give one still-open
+# thread first consideration when its stable id has never crossed the want door. This is bounded
+# independently to two thread-backed wants per day. Selection is not consumption: the thread stays
+# unresolved, with its own counters and provenance, whether or not a genuine present want forms.
+_clock_activity = recent_activity
+if not source_thread_id:
     try:
         threads = json.load(open(os.path.join(MEMORY, "unfinished-threads.json")))
         current = json.load(open(os.path.join(MEMORY, "current-wants.json")))
@@ -223,6 +224,8 @@ if not recent_activity:
             recent_activity = ("IDENTIFIED UNRESOLVED THREAD [%s] (source %s; still open, not consumed):\n%s\n\n"
                                % (source_thread_id, chosen.get("source", "unknown"),
                                   str(chosen.get("thread", ""))[:700]))
+            if _clock_activity:
+                recent_activity += "RECENT CLOCK ACTIVITY (secondary context):\n" + _clock_activity[:500]
             print("[Wants] Reviewing unresolved thread %s without consuming it" % source_thread_id)
     except Exception as thread_error:
         print("[Wants] Unresolved-thread bridge unavailable: %s" % str(thread_error)[:120])

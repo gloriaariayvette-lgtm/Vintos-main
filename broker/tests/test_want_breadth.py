@@ -27,6 +27,9 @@ thread = {"id": "T-struct-1", "source": "structural-gap", "thread": "I keep turn
 json.dump([thread], open(MEM / "unfinished-threads.json", "w"))
 json.dump([], open(MEM / "current-wants.json", "w")); json.dump([], open(MEM / "fulfilled-wants.json", "w"))
 json.dump({"surface_form": "a real unfinished pull", "contradictions": []}, open(MEM / "current-yearning.json", "w"))
+(MEM / "journal").mkdir()
+open(MEM / "journal" / (__import__("datetime").datetime.now().strftime("%Y-%m-%d") + ".md"), "w").write(
+    "## fresh ordinary clock activity\nA new journal paragraph exists too.\n")
 open(SCRIPTS / "requests.py", "w").write("def post(*a, **k): raise AssertionError('network must stay stubbed')\n")
 open(SCRIPTS / "emoclaw_utils.py", "w").write('''
 import json, os
@@ -43,7 +46,7 @@ body = re.search(r"python3 << 'WANTSCALLEOF'\n(.*?)\nWANTSCALLEOF", shell, re.S)
 run = subprocess.run([sys.executable, "-c", body], env={**os.environ, "PYTHONPATH": str(SCRIPTS)},
                      text=True, capture_output=True, timeout=30)
 offer = json.load(open(Path(HOME) / "offer.json"))
-check("hourly organ offers an unresolved structural thread when clock activity is empty", run.returncode == 0, run.stderr)
+check("fresh clock activity cannot starve an unresolved structural thread", run.returncode == 0, run.stderr)
 check("stable thread id crosses the want door", offer["kwargs"]["source_thread_id"] == "T-struct-1"
       and offer["kwargs"]["source_event_id"] == "thread:T-struct-1", offer)
 check("thread provenance is latent-thread, not wants-check or Gloria", offer["kwargs"]["source"] == "latent_thread", offer)
