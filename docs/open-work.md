@@ -30,8 +30,10 @@ loaded that pool in its shell preamble but its formation process exited unless a
 event was less than 90 minutes old. On an otherwise quiet pass it may now offer one identified open
 thread (at most two thread-backed offers per day), carrying `source_thread_id` through the want
 door. Offering is not consumption: the thread remains open until its own organ records a real
-resolution. Live post-deploy movement of the two currently open structural-gap rows remains to be
-receipted.
+resolution. After release `20260919-050042-b9d473c`, a live hourly pass selected structural-gap
+thread `e44b713f` by ID despite fresh clock activity and offered it to formation without consuming
+it. Formation returned no present want on that pass; no desire was fabricated merely to populate
+the app. The thread remains open for a later genuine pull.
 
 ## 16 September — ReelRoom visit close
 
