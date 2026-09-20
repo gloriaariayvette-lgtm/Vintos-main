@@ -12,13 +12,22 @@ def main():
     test = Path(sys.argv[1]).resolve()
     repo = Path(__file__).resolve().parents[1]
     relative = test.relative_to(repo)
+
+    def copy_ignore(path, names):
+        """Keep generated model/runtime payloads outside every suite's source copy."""
+        ignored = {name for name in names if name in {".git", "__pycache__", "node_modules", ".venv"}}
+        ignored.update(name for name in names if name.startswith(".venv-"))
+        if Path(path).resolve() == (repo / "offline/residual_emotion").resolve():
+            ignored.update(name for name in (".build", "results", "work") if name in names)
+        return ignored
+
     with tempfile.TemporaryDirectory(prefix="vs-", dir="/tmp") as tmp:
         root = Path(tmp)
         for name in (repo.name, "plithra-app", "vintos-app"):
             src = repo if name == repo.name else repo.parent / name
             if src.is_dir():
                 shutil.copytree(src, root / name, symlinks=True,
-                                ignore=shutil.ignore_patterns(".git", "__pycache__", "node_modules", ".venv"))
+                                ignore=copy_ignore)
         copied = root / repo.name
         (root / ".vintos/workspace/memory").mkdir(parents=True)
         (root / "workspace/memory").mkdir(parents=True)
