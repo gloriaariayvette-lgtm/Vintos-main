@@ -11,6 +11,7 @@ mirrored into the repo so it can be reviewed. Code only — the projects/
 tree stays on Aegis behind the wall and is never mirrored anywhere.
 """
 import os, re, json, uuid, hashlib, time, base64
+import contextlib, fcntl
 from datetime import datetime, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -139,7 +140,7 @@ def verify_look(cap, pid, sha256):
     return True, None
 
 
-_PID_RE = re.compile(r"^[0-9a-f]{12}$")
+_PID_RE = re.compile(r"^(?:[0-9a-f]{12}|forge-[0-9a-f]{32})$")
 
 
 class BadProject(ValueError):
@@ -191,13 +192,20 @@ def _ev_hash(ev):
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+@contextlib.contextmanager
+def _event_lock(pid):
+    with _EV_LOCK, open(os.path.join(_p(pid), '.events.lock'), 'a+') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def _ev(pid, typ, data=None):
     """Append one hash-chained project event. EVERY kind goes through here —
     born, to_table, made, looked, looked_quietly (a LOOK), handoff_written,
     settled, aborted, re_adopted — so a view is as bound as a make. Lines
     written before the chain existed carry no hash; they are tolerated only as
     a prefix, never after the first chained line."""
-    with _EV_LOCK:
+    with _event_lock(pid):
         path = os.path.join(_p(pid), "events.jsonl")
         prev, seq = "0" * 64, 0
         try:
@@ -1060,6 +1068,16 @@ POLICY = {
 
 def authorize_route(path, body):
     """(ok, reason). The only place a broker door is opened."""
+    pid = body.get("id")
+    if pid and os.path.isfile(os.path.join(_p(pid), '.forge-owner.json')) and path in (
+            '/make', '/handoff', '/state', '/state/kept', '/settle', '/table'):
+        return False, "Forge loop owns this project's writes; use its authenticated controls"
+    if pid and os.path.isfile(os.path.join(_p(pid), '.forge-owner.json')):
+        loop = _j(os.path.join(_p(pid), 'forge-status.json'), {}) or {}
+        if loop.get('private', True) and path in (
+                '/visit/open', '/artifact', '/look/offer', '/look/mint', '/inspect',
+                '/reveal/prepare', '/reveal/confirm'):
+            return False, "private Forge interval; use the owner's explicit audit control"
     pol = POLICY.get(path)
     if pol is None or path not in ROUTES:
         return False, "unknown door"

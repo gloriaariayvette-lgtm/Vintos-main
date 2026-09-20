@@ -5,7 +5,9 @@ This is not a sequence-design surface. The public CLI accepts no sequence, promp
 accession or generation arguments. It fetches one bounded window from a declared
 non-human reference source, verifies the source identity and sequence digest, then
 asks Evo 2 only for comparative likelihood under one deterministic substitution.
-The result is a model preference, not a functional-impact claim.
+The result is a model preference, not a functional-impact claim. A separate
+Atlas-directed entry point accepts an observed public GRCh38 variant and a
+reference-checked window; it does not widen the legacy CLI source allowlist.
 
 Evo 2 7B in BF16 cannot coexist with resident Gemma on this 16 GB host. A run holds
 the house background-compute lock before reaching this module; this module holds the
@@ -101,7 +103,11 @@ def _validate_payload(payload):
 
 def _worker(payload):
     """The isolated environment's only model operation: score reference and one variant."""
-    sequence = _validate_payload(payload)
+    if payload.get('source_key') == 'atlas_grch38':
+        from chemistry_genomic import validate_payload
+        sequence = validate_payload(payload)
+    else:
+        sequence = _validate_payload(payload)
     import torch
     from evo2 import Evo2
     model = Evo2(MODEL, use_kernels=True)
@@ -114,8 +120,8 @@ def _worker(payload):
             -1, ids[:, 1:].long().unsqueeze(-1)).squeeze(-1)
         return float(token_logp.mean().item())
 
-    position = len(sequence) // 2
-    old = sequence[position]; new = {"A": "C", "C": "G", "G": "T", "T": "A", "N": "A"}[old]
+    position = payload.get("variant_offset", len(sequence) // 2)
+    old = sequence[position]; new = (payload.get("atlas_variant") or {}).get("alternate_bases") or {"A": "C", "C": "G", "G": "T", "T": "A", "N": "A"}[old]
     variant = sequence[:position] + new + sequence[position + 1:]
     reference_score, variant_score = score(sequence), score(variant)
     return {"ok": True, "model": MODEL, "source_key": payload["source_key"],
@@ -145,9 +151,12 @@ def _restore_gemma():
     if done.returncode != 0: raise RuntimeError("Gemma reload failed")
 
 
-def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True):
+def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True, source_payload=None):
     """Fetch a safe public window, run one bounded pair, and preserve a typed receipt."""
-    source = fetch_source(source_key)
+    source = source_payload if source_payload is not None else fetch_source(source_key)
+    if source_payload is not None:
+        from chemistry_genomic import validate_payload
+        validate_payload(source)
     started = time.time(); restored = None
     try:
         with _watchdog_exclusion():
@@ -177,6 +186,8 @@ def analyze(source_key="arabidopsis_chr1", *, manage_gemma=True):
                "source_receipt": {key: source[key] for key in
                                   ("source", "source_key", "accession", "taxon_id", "organism",
                                   "start", "stop", "source_header", "sequence_sha256", "fetched_at", "truth_status")},
+               "atlas_receipt_id": source.get("atlas_receipt_id"),
+               "atlas_variant": source.get("atlas_variant"),
                "gemma_restored": restored, "elapsed_ms": int((time.time() - started) * 1000)}
         lab._append(RUNS, row); return row
     except Exception as exc:

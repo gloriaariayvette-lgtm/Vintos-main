@@ -1,0 +1,16 @@
+{
+  "atelier_root": "/home/atelier/atelier",
+  "public_base": "https://REPLACE-WITH-AUTHENTICATED-ATELIER-ORIGIN",
+  "port": 8612,
+  "owner_token_file": "/home/atelier/forge-secrets/owner",
+  "worker_token_file": "/home/atelier/forge-secrets/worker",
+  "lab_intake_token_file": "/home/atelier/forge-secrets/lab-intake",
+  "compute_memory": "/home/gloria/.vintos/workspace/memory",
+  "local_model_url": "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
+  "local_model": "REPLACE-WITH-VERIFIED-LOCAL-MODEL-ID",
+  "ntfy": {
+    "server": "https://ntfy.sh",
+    "topic": "REPLACE-WITH-PRIVATE-TOPIC",
+    "token_file": "/home/atelier/forge-secrets/ntfy"
+  }
+}

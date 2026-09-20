@@ -1,0 +1,2 @@
+# Verified SDK contract locally, no API call in tests. Install into a dedicated Python 3.12 venv.
+alphagenome==0.9.0

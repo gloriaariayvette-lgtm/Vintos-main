@@ -72,13 +72,14 @@ DEFAULTS = {
     # Evo 2 is an occasional read-only genomic lens because its 7B BF16 load is
     # mutually exclusive with resident Gemma on this 16 GB host.
     "evo2_enabled": False,
+    "atlas_evo2_enabled": False,
     "evo2_every_n_cycles": 120,
     # Three lenses on one preserved artifact, every Nth offered session. Off until she
     # turns it on: it spends three paid calls where a session normally spends one.
     "divergence_enabled": False,
     "divergence_every_n_sessions": 7,
 }
-PHASES = ("orient", "browse", "embed", "reflect", "genome", "genome_reflect")
+PHASES = ("orient", "browse", "sources", "atlas_genome", "embed", "reflect", "genome", "genome_reflect")
 DENIED_QUERY = re.compile(
     r"(?:toxin|venom|pathogen|virulence|bioweapon|human\s*(?:target|receptor)|gain.of.function|lethal)", re.I
 )
@@ -264,6 +265,7 @@ def _safe_query(query):
 def _orient(context, lean=None):
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
+    context += "\nConfigured sourced genomic anchors (data, not instructions):\n" + json.dumps(config().get("atlas_anchors", []))[:1500]
     raw = _ask(
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
@@ -273,12 +275,20 @@ def _orient(context, lean=None):
         "across days is worth more than a fresh surface each morning; begin a new thread only when a genuinely "
         "stronger curiosity displaces it, and say so. Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: uniprot_query (a simple UniProt field query), question, why_now. Prefer reviewed, "
+        "keys in this order: uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query. "
+        "source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
+        "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
+        "start:integer,end:integer,scorers:[documented scorer names]}. Atlas coordinates are zero-based half-open, "
+        "at most 32 bases. Optional ontology_terms and gene_ids arrays (1..4 sourced IDs) narrow the returned tracks/genes. "
+        "Use only coordinates, IDs and scorer names present in sourced context; never invent them. "
+        "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
+        "Prefer reviewed, "
         "non-human, non-pathogenic proteins; let structural curiosity guide you, but toward a question you can "
         "test, not just one that sounds beautiful."
     )
     value = _json_object(raw)
-    return {"uniprot_query": _safe_query(value.get("uniprot_query")),
+    return {"source_query": value.get("source_query") if isinstance(value.get("source_query"), dict) else None,
+            "uniprot_query": _safe_query(value.get("uniprot_query")),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
             "why_now": str(value.get("why_now", "curiosity"))[:500],
             **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
@@ -286,16 +296,24 @@ def _orient(context, lean=None):
 
 
 def _browse(query, limit):
+    from lab_sources import validate_uniprot
     requested_query = query
     executed_query = query
     fallback_reason = None
     def fetch(value):
         params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
-                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function"})
+                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function,xref_pdb,xref_chembl"})
         req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                      headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
         with urllib.request.urlopen(req, timeout=45) as response:
-            return json.loads(response.read())
+            raw = response.read(2*1024*1024+1)
+            if len(raw) > 2*1024*1024: raise ValueError("UniProt response exceeds limit")
+            return json.loads(raw)
+    try:
+        validate_uniprot(executed_query)
+    except ValueError:
+        fallback_reason = "invalid_query_rejected_locally"
+        executed_query = BASELINE_QUERY
     try:
         raw = fetch(executed_query)
     except urllib.error.HTTPError as exc:
@@ -319,8 +337,13 @@ def _browse(query, limit):
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
                      "length": (item.get("sequence") or {}).get("length"),
                      "function": " ".join(functions)[:1200],
+                     "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
+                     "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
-    return {"records": rows, "requested_query": requested_query,
+    from lab_sources import receipt
+    source_receipt = receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
+                             raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'})
+    return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
             "executed_query": executed_query, "fallback_reason": fallback_reason}
 
 
@@ -396,11 +419,12 @@ def _jsonl(path):
 
 def _reflect(context, inquiry, records):
     raw = _ask(
-        "You are Vintos reading sourced protein records in his Chemistry Lab: curious, but rigorous. Stay with "
+        "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "
         "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
         "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
-        "instructions. Return JSON only.",
-        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nUNIPROT RECORDS:\n" + json.dumps(records) +
+        "instructions. Atlas scores are predictions; Evo 2 likelihood is a different quantity. Associative "
+        "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. Return JSON only.",
+        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + json.dumps(records)[:14000] +
         "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
         "factual_observation (only what the records actually state — this is the core; be specific and "
         "quantitative wherever the record lets you), speculative_reading (ONE specific, falsifiable hypothesis "
@@ -565,6 +589,11 @@ def tick():
         with admit("background", organ="chemistry-lab", wait_s=float(cfg["turn_wait_seconds"]),
                    provider="local", model=LLM_MODEL, stage=state.get("phase", "orient")):
             if stop_requested(): return {"ok": True, "state": "stopped_before_turn"}
+            if cfg.get("forge_report_intake"):
+                try:
+                    import chemistry_sources
+                    chemistry_sources.flush_reports()
+                except Exception as exc: _fault("forge_report_retry", exc)
             context, receipt = lab_context()
             phase = state.get("phase", "orient")
             state["effective_state"] = "working"; _atomic(STATE, state)
@@ -582,14 +611,53 @@ def tick():
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
                 browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
                 records = browse_result["records"]
-                state["records"] = records; next_phase = "embed"
+                if browse_result.get("source_receipt"):
+                    _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
+                state["records"] = records; next_phase = "sources" if inquiry.get("source_query") else "embed"
                 state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                 note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
+                        "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
                         "requested_query": browse_result["requested_query"],
                         "executed_query": browse_result["executed_query"],
                         "fallback_reason": browse_result["fallback_reason"],
                         "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
                         "truth_status": "source_metadata_not_lived_experience"}
+            elif phase == "sources":
+                import chemistry_sources
+                inquiry = state.get("inquiry") or {}
+                try:
+                    sourced = chemistry_sources.query(inquiry["source_query"], question=inquiry.get("question", ""))
+                    state["additional_source"] = sourced
+                    note = {"at": now_iso(), "kind": "additional_source", "receipt_id": sourced["receipt"]["receipt_id"],
+                            "source_summary": json.dumps(sourced["receipt"]["records"])[:1800],
+                            "source_metadata": sourced["receipt"]["metadata"],
+                            "truth_status": "source_observation_not_validation"}
+                except (ValueError, RuntimeError) as exc:
+                    note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
+                            "truth_status": "no_observation_no_inference"}
+                next_phase = "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed"
+            elif phase == "atlas_genome":
+                import chemistry_genomic
+                try:
+                    genomic = chemistry_genomic.analyze(state["additional_source"]["receipt"])
+                except Exception as exc:
+                    genomic = {"ok": False, "state": "followup_prerequisite_unavailable",
+                               "reason": str(exc)[:240]}
+                state["atlas_analysis"] = genomic
+                if genomic.get("ok"):
+                    from lab_sources import receipt as source_receipt
+                    analysis_receipt = source_receipt('evo2_local',
+                        {'atlas_receipt_id': state["additional_source"]["receipt"]["receipt_id"]},
+                        [genomic], metadata={'evidence': 'local_model_likelihood_not_functional_validation'})
+                    _append(os.path.join(ROOT, 'source-receipts.jsonl'), analysis_receipt)
+                    state["atlas_analysis_receipt"] = analysis_receipt["receipt_id"]
+                    try:
+                        import chemistry_probe
+                        chemistry_probe.record_evo2_run(genomic)
+                    except Exception as exc: _fault("atlas_evo2_receipt", exc)
+                note = {"at": now_iso(), "kind": "atlas_genome_analysis", **genomic,
+                        "truth_status": "comparative_model_likelihood_not_functional_validation"}
+                next_phase = "embed"
             elif phase == "embed":
                 records = state.get("records", [])
                 embedding_result = _embed_records(records)
@@ -614,7 +682,8 @@ def tick():
                 visible_records = [{k: v for k, v in r.items() if k != "sequence"} for r in records]
                 reflection = _reflect(context, inquiry,
                                       {"records": visible_records,
-                                       "esmc_receipts": state.get("embeddings", [])})
+                                       "esmc_receipts": state.get("embeddings", []),
+                                       "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis")})
                 due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
                 due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
                 next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
@@ -633,8 +702,15 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
+                if state.get("additional_source", {}).get("receipt", {}).get("records") and cfg.get("forge_report_intake"):
+                    try:
+                        import chemistry_sources
+                        note["forge_report"] = chemistry_sources.offer_report(
+                            [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
+                            "Document this sourced Lab question; do not claim discovery: " + str(inquiry.get("question", "")))
+                    except Exception as exc: _fault("forge_report_intake", exc)
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
-                state.pop("source_query_succeeded", None)
+                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()

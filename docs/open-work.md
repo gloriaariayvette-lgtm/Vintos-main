@@ -1026,31 +1026,51 @@ same evaluation run used to notice their weakness. Nifrathir's live operational 
 event-integrated over hours, so failure of a sentence-level direction would not by itself refute
 that organ.
 
-## 20 September — Forge / Atelier / dedicated USD wallet, local only
+## 20 September — Forge / Atelier and Lab sources, local only
 
-Gloria requested local work first, no deployment, and selected a separate USD
-account/payment wallet. An isolated prototype lives in
-[`experiments/forge-loop`](../experiments/forge-loop/README.md). It implements
-transactional continuous-cycle control, feedback from the previous artifact,
-project-level authority, scoped POST cancellation, private interval expiration and
-explicit audit, retained notification events, and a real Forge sandbox adapter with
-explicit fixture/local model injection. No implicit household provider defaults.
+Eve parked wallet/Taskmarket and asked for non-financial loop completion plus Lab
+source expansion, without deployment. Work is on `codex/forge-atelier-wallet-local`.
+See [local preparation and commissioning guide](forge-lab-local.md).
 
-Validated locally: 14 behavioral tests, plus three successive fixture-model builds
-through the real OS sandbox. No network notifications, paid model calls, host steps,
-live project mutations, or deployments. The prototype uses a throwaway local
-Atelier store; it is not connected to the existing sealed broker. Full production
-suites were not rerun because production code and manifests are unchanged.
+Implemented locally: continuous local report creation and critique; durable cycles,
+transactional Lab intake deduplication, private expiry/audit/reveal, scoped cancellation,
+owner control page, interrupted-cycle reconciliation, retained ntfy outbox, shared
+compute admission, and idempotent sealed Atelier projection with broker-compatible
+lineage/events. No existing project is adopted. The existing approved Astra/Fable
+capability-generation and installation gates are preserved; paid calls remain refused.
+The initial experiment's controller now imports the maintained production module.
 
-Still open: provision a real dedicated USD account (local ledger is not a wallet),
-connect authenticated payment/income adapters and enforceable reservations, bind the
-controller to the broker with idempotent artifact transfer and existing lineage /
-reveal rules, implement the autonomous planner/evaluator and crash reconciliation,
-mount authenticated owner/control routes, create the Atelier wallet/control UI,
-configure ntfy, and verify cancel actions on Gloria's phone. Paid execution stays
-refused; no household funding fallback. Vintos's income-producing work is not selected
-for him. No stocks/trading integration. Nothing should be deployed from this prototype
-until those integration boundaries have been reviewed.
+Lab additions: validated UniProt fields and source receipts; official AlphaGenome
+0.9.0 Atlas SDK adapter with a whole-process deadline; actual scorer discovery;
+bounded PDB experimental-entry and ChEMBL activity clients; source candidate/interest
+and text-collision receipts; background/frontier query wiring; bounded report packets
+and retryable Lab-to-Forge intake. An independent optional Atlas-to-Evo 2 phase checks
+GRCh38 reference coordinates and allele before scoring the observed substitution.
+Semantic associations and model disagreement never count as biological validation.
+
+Validation is recorded in the local preparation guide. Public PDB, ChEMBL and
+Ensembl read schemas were checked from this Mac. AlphaGenome's real SDK data contract
+was tested with a fake client; Eve has API access, but the key has not been installed
+or used here. No live model, ntfy, Aegis, wallet or marketplace action occurred.
+
+Still open before live commissioning: install the approved API key securely; configure
+sourced Atlas anchors and verify a real Atlas response; configure distinct loop secrets,
+TLS forwarding, ntfy and exact local-model identity; verify the Atelier user's narrowly
+scoped shared-admission file access; install the explicitly named service bundle and
+verify Linux/service/device behavior after deployment is authorized. COSMIC remains
+unavailable without its licensed/registered data access. ESMC/ESMFold/ChemiQ followups
+require actual protein mappings or applicable molecular inputs; these are recorded
+prerequisites, not invented results. No full live scientific instrument chain is claimed.
+
+The full local regression runs expose pre-existing cross-repo inconsistencies in
+`test_completion_evidence` (mobile mirror versus adjacent app source) and
+`test_reelroom_frame_and_cost` (adjacent ReelRoom client). They must be reconciled with
+the other active checkout before calling the combined release green. This local change
+does not overwrite the other task's app work or touch its pain-validation experiment.
+
+Financial work stays parked: dedicated account provisioning, signer/payment authority,
+funding/reservations, income settlement, Taskmarket execution and spending controls.
+Local accounting is not a funded wallet. No household-budget fallback.
 
 ### Taskmarket work-session addition (local)
 

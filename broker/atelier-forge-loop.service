@@ -1,0 +1,24 @@
+[Unit]
+Description=Non-financial Forge to Atelier creation loop
+After=network.target
+
+[Service]
+Type=simple
+User=atelier
+Group=atelier
+WorkingDirectory=/home/atelier/forge-loop
+ExecStart=/usr/bin/python3 /home/atelier/forge-loop/forge_loop_runtime.py --config /home/atelier/forge-loop-config.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/atelier/atelier
+ReadWritePaths=/home/gloria/.vintos/workspace/memory/.compute.lock /home/gloria/.vintos/workspace/memory/compute-ledger.jsonl
+# Shared compute admission needs narrowly scoped write access, configured at installation.
+# Do not enable before granting access to the house admission lock/ledger and verifying --check.
+
+[Install]
+WantedBy=multi-user.target

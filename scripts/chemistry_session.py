@@ -129,7 +129,12 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "do not name an ID merely because it was shown. Return keys in this order: "
               "addressed_entry_ids (array drawn only from " + json.dumps(offered_entry_ids or []) +
               "), experiment, parameters (object), shots (integer 256..16384), question, why_this. "
-              "Parameters may be empty.")
+              "Parameters may be empty. Optionally return source_query for ONE additional public source read: "
+              "{source:pdb,entry_id:known ID}, {source:chembl,target_id:known CHEMBL target}, or "
+              "{source:atlas,assembly:GRCh38,chromosome:chrN,start:integer,end:integer,scorers:[documented names]}. "
+              "Atlas uses 0-based half-open intervals up to 32bp. Optional ontology_terms and gene_ids arrays may "
+              "filter to 1..4 sourced IDs. Use sourced coordinates/IDs only, never invent them. "
+              "Source predictions and model disagreements are hypotheses, not validation or proof of novelty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
     if not raw: raise RuntimeError("frontier lens returned no plan")
     value = lab._json_object(raw)
@@ -140,7 +145,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
     addressed = value.get("addressed_entry_ids") if isinstance(value.get("addressed_entry_ids"), list) else []
     allowed = set(offered_entry_ids or [])
     addressed = [str(x) for x in addressed if str(x) in allowed][:4]
-    return {"addressed_entry_ids": addressed,
+    return {"source_query": value.get("source_query") if isinstance(value.get("source_query"), dict) else None,
+            "addressed_entry_ids": addressed,
             "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
             "why_this": str(value.get("why_this", ""))[:800],
@@ -384,6 +390,11 @@ def run():
                        provider="frontier", stage="plan"):
                 plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
                         if lean else _plan(context, experiments, lens, instruments, offered_interest))
+                if plan.get("source_query"):
+                    import chemistry_sources
+                    source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
+                    plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]
+                    context += "\nADDITIONAL SOURCE (not validation):\n" + json.dumps(source_result)[:12000]
             if offered_interest:
                 bridge.record_delivery(session_id, lens, offered_interest,
                                        plan.get("addressed_entry_ids", []), state="responded")

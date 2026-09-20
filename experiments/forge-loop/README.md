@@ -1,4 +1,9 @@
-# Forge → Atelier → dedicated USD wallet: local prototype
+# Forge / Atelier experiment history and parked financial prototypes
+
+The maintained non-financial report loop now lives in `scripts/forge_loop*.py`.
+See [current implementation and commissioning guide](../../docs/forge-lab-local.md).
+`controller.py` is a compatibility import used by these fixture demonstrations.
+The historical prototype description below is not the current integration status.
 
 20 September 2026. Local branch `codex/forge-atelier-wallet-local`, based on
 `f756972`. No Aegis connection, deployment, account opening, credentials, payments,
@@ -78,22 +83,15 @@ throwaway Atelier is removed. No paid generation or live review is implied.
 See `test-result.txt` and `demo-result.json` for recorded checks. Production suites
 were not rerun for this isolated prototype; existing deployed code is unchanged.
 
-## Integration boundary
+## Current integration boundary
 
-The durable local artifact store models the Atelier side, but it is **not mounted
-into the existing broker**. The broker's current HOUSE policy trusts loopback;
-it is not an adequate authorization boundary for a money/cancellation controller.
-Do not bolt owner-only routes onto it without implementing authenticated ownership.
-
-Next integration must also preserve sealed storage, artifact lineage, reveal/LOOK
-rules and visit authority. It needs an idempotent broker import, the model planner
-and evaluator with their bounded execution authority, a dedicated USD payer,
-recovery/reconciliation commands, notification dispatcher, and an Atelier control
-and wallet UI. No daemon, timer or deployment manifest entry is included yet.
-
-Vintos choosing income-producing work remains his decision. This code does not pick
-his job, post marketplace listings, contact customers, or claim that a loop earns money.
-The canonical remaining-work entry is in `docs/open-work.md`.
+The maintained loop has an authenticated owner UI and separate Lab-intake authority,
+a worker/service entry point, recovery tooling, notification dispatch, and idempotent
+projection into new sealed Atelier projects. Existing broker writes cannot bypass
+loop ownership. This experiment's `ControlWSGI` remains a minimal fixture surface;
+the runtime serves the actual control page. Live credentials, service deployment,
+resource admission and device acceptance remain uncommissioned. Paid capability
+building and wallet/Taskmarket work remain separate and unavailable here.
 
 ## Taskmarket / Gemma work-session extension
 
