@@ -49,6 +49,21 @@ class Tests(unittest.TestCase):
         self.assertTrue(publisher({'message':'fixture'}))
         self.assertFalse(sent[0].has_header('Authorization'))
 
+    def test_local_model_accepts_single_json_fence_not_surrounding_prose(self):
+        from contextlib import nullcontext
+        class Response:
+            def __init__(self,text): self.text=text
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            def read(self,n): return json.dumps({'choices':[{'message':{'content':self.text}}]}).encode()
+        for payload in ('{"ok":true}', '```json\n{"ok":true}\n```', '```\n{"ok":true}\n```'):
+            transport=lambda *a,**k:Response(payload)
+            model=LocalModel('http://127.0.0.1:1234/v1/chat/completions','fixture',transport=transport,admission=nullcontext)
+            self.assertIs(model.transport,transport)
+            self.assertEqual(model('fixture','fixture'),{'ok':True})
+        model=LocalModel('http://127.0.0.1:1234/v1/chat/completions','fixture',transport=lambda *a,**k:Response('Prose\n```json\n{"ok":true}\n```'),admission=nullcontext)
+        with self.assertRaises(ValueError): model('fixture','fixture')
+
     def send(self,payload):self.sent.append(payload);return True
     def build(self,claim,context):
         self.contexts.append(context)

@@ -51,6 +51,11 @@ class LocalModel:
             data = response.read(MAX_BODY+1)
         if len(data) > MAX_BODY: raise ValueError('model response too large')
         text = json.loads(data)['choices'][0]['message']['content']
+        # Local instruction models commonly wrap valid JSON in one Markdown fence.
+        # Accept that transport wrapper only; prose, partial JSON and mixed blocks fail closed.
+        text = text.strip()
+        if text.startswith(('```json\n', '```\n')) and text.endswith('\n```'):
+            text = text.split('\n', 1)[1].rsplit('\n', 1)[0]
         return json.loads(text)
 
 
