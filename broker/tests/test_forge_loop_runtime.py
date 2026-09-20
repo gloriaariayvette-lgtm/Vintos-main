@@ -89,6 +89,59 @@ class Tests(unittest.TestCase):
         restarted=Controller(self.root/'forge.sqlite',self.owner,self.worker,'https://atelier.invalid')
         self.assertEqual(restarted.step_budget(self.owner)['used'],1)
 
+    def test_capability_builds_and_reports_share_atomic_budget(self):
+        p = self.create()
+        self.assertTrue(self.c.reserve_build(self.owner, 'a'*32, 'SK-12345678')['reserved'])
+        self.assertTrue(self.c.reserve_build(self.owner, 'a'*32, 'SK-12345678')['reserved'])
+        self.assertEqual(self.c.step_budget(self.owner)['used'], 1)
+        self.assertTrue(self.r.step(p['id']))
+        self.assertTrue(self.c.reserve_build(self.owner, 'b'*32, 'SK-87654321')['reserved'])
+        self.assertFalse(self.r.step(p['id']))
+        self.assertFalse(self.c.reserve_build(self.owner, 'c'*32, 'SK-87654321')['reserved'])
+        self.assertEqual(self.call('/api/build-reservation', 'POST', {'proposal':'SK-12345678','attempt':'d'*32},token=self.worker)[0],403)
+
+    def test_real_gap_waits_for_install_and_respects_cancellation(self):
+        row = {'proposal':'SK-12345678','want_id':'w-one','intent':'I want to email a collaborator',
+               'capability':'send_email','source':'latent_thread','state':'proposed'}
+        result = self.r.sync_gaps(self.owner, [row])[0]
+        pid = result['id']
+        self.assertEqual(self.r.sync_gaps(self.owner, [row])[0]['id'], pid)
+        def model(system, user):
+            return {'title':'Persistent email access','required_components':['address','inbox','authorized sending'],
+                    'acceptance_tests':['test delivery to an explicitly authorized fixture recipient'],
+                    'external_requirements':['provider account'], 'limitations':'No account provisioned'}
+        self.r.builder = ReportBuilder(model)
+        self.assertTrue(self.r.step(pid))
+        self.assertEqual(self.c.status(self.owner,pid)['state'],'awaiting_capability')
+        self.assertFalse(self.r.step(pid))
+        row['state']='installed'
+        self.r.sync_gaps(self.owner,[row])
+        self.assertEqual(self.c.status(self.owner,pid)['state'],'awaiting_capability')
+        row['artifact_verified']=True
+        self.r.sync_gaps(self.owner,[row])
+        self.assertEqual(self.c.status(self.owner,pid)['state'],'complete')
+        row.update(proposal='SK-87654321',state='proposed')
+        pid2=self.r.sync_gaps(self.owner,[row])[0]['id']
+        self.call('/api/projects/'+pid2+'/cancel','POST',{})
+        self.assertFalse(self.c.reserve_build(self.owner,'e'*32,row['proposal'])['reserved'])
+        self.r.sync_gaps(self.owner,[row])
+        self.assertEqual(self.c.status(self.owner,pid2)['state'],'cancelled')
+
+    def test_source_fairness_selects_nonlab_before_another_lab_cycle(self):
+        lab = self.create(origin={'source':'lab'})
+        self.r.step(lab['id'])
+        other = self.create(origin={'source':'absence_map'})
+        self.assertEqual(self.c.ready_queue(self.worker)[0],other['id'])
+        self.r.step(other['id'])
+        self.assertEqual(self.c.ready_queue(self.worker)[0],lab['id'])
+
+    def test_ended_parent_stops_gap_before_model_use(self):
+        row={'proposal':'SK-12345678','want_id':'gone','intent':'Ended intention',
+             'capability':'inbox','source':'latent_thread','state':'origin_ended'}
+        pid=self.r.sync_gaps(self.owner,[row])[0]['id']
+        self.assertFalse(self.r.step(pid))
+        self.assertEqual(self.c.step_budget(self.owner)['used'],0)
+
     def send(self,payload):self.sent.append(payload);return True
     def build(self,claim,context):
         self.contexts.append(context)

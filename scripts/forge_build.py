@@ -29,6 +29,11 @@ import re
 import subprocess
 import sys
 import tempfile
+import uuid
+
+def reserve_step(proposal, attempt):
+    from forge_house import reserve
+    return reserve(proposal, attempt)
 
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WS, "memory")
@@ -251,6 +256,12 @@ def _run_owned(proposal_id, astra=None, fable=None):
     with transaction(sf.PROPOSALS):
         rows = sf._load(); live = sf._get(rows, proposal_id)
         if not live or live.get("state") != "approved": return None, "already claimed"
+        attempt = uuid.uuid4().hex
+        try:
+            if not reserve_step(proposal_id, attempt): return None, "Forge daily limit reached or project cancelled"
+        except Exception:
+            return None, "PRECONDITION_FORGE_BUDGET_UNAVAILABLE: start the Forge service; no build attempted"
+        live["forge_attempt"] = attempt
         live["state"] = "building"
         live["build_started_at"] = sf._now()
         live.setdefault("history", []).append({"at": live["build_started_at"], "event": "building"})

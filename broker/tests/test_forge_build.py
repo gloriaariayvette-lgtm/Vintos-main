@@ -23,6 +23,12 @@ SF = load("skill_forge", os.path.join(REPO, "scripts", "skill_forge.py"))
 SF.MEMORY = MEM; SF.PROPOSALS = os.path.join(MEM, "skill-proposals.json")
 FB = load("forge_build", os.path.join(REPO, "scripts", "forge_build.py"))
 FB.STAGING = STAGING; FB.SKILL_DEST = DEST
+reservations = []
+def reserve_fixture(proposal, attempt):
+    reservations.append((proposal, attempt)); return True
+FB.reserve_step = reserve_fixture
+assert FB.reserve_step is reserve_fixture
+assert os.path.commonpath([FB.STAGING, HOME]) == HOME
 
 # --- fakes: they stand in for Astra and Fable so nothing is called and nothing is spent ---
 GOOD_MODULE = "def clap_hands():\n    return 'clap'\n"
@@ -60,6 +66,13 @@ def a_proposal(cap, want_id="w-forge"):
         raise RuntimeError("propose refused: %s" % why)
     SF.approve(p["id"], granted={"permissions": ["return_a_string"]})
     return p["id"]
+
+held_pid = a_proposal("budget held capability")
+FB.reserve_step = lambda *args: False
+held, why = FB.run(held_pid, astra=lambda *a, **k: (_ for _ in ()).throw(AssertionError("provider called past budget")))
+check("shared budget refuses before provider and leaves approval pending", held is None and SF._get(SF._load(),held_pid)["state"] == "approved")
+FB.reserve_step = reserve_fixture
+assert FB.reserve_step is reserve_fixture
 
 print("\n--- an approved proposal, Astra writes it, Fable passes, the sandbox proves it ---")
 pid = a_proposal("clap on request")

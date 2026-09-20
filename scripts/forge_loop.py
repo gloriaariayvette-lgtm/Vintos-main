@@ -102,7 +102,7 @@ class Controller:
                    (pid, kind, json.dumps(body)))
 
     def create(self, token, intent, capabilities, ceiling_cents=0, private=False,
-               private_until=None, recurring=False, dedupe_key=None):
+               private_until=None, recurring=False, dedupe_key=None, origin=None):
         self.auth(token, owner=True)
         cents(ceiling_cents)
         if not isinstance(intent, str) or not intent.strip():
@@ -115,6 +115,7 @@ class Controller:
         p = dict(id=pid, intent=intent, capabilities=capabilities, ceiling=ceiling_cents,
                  private=bool(private), private_until=private_until, recurring=bool(recurring),
                  state='ready', spent=0, active=None, cycles=0,
+                 origin=origin or {'source': 'owner'},
                  cancel_hash=hashlib.sha256(cancel.encode()).hexdigest(), privacy_end=None)
         with self.db() as db:
             if dedupe_key:
@@ -189,7 +190,8 @@ class Controller:
             # Last accepted artifact is the input to the next cycle.
             row = db.execute("SELECT artifact FROM cycles WHERE project=? AND state='accepted' ORDER BY rowid DESC LIMIT 1", (pid,)).fetchone()
             return {'intent': p['intent'], 'previous': json.loads(row[0]) if row else None,
-                    'state': p['state'], 'cycles': p['cycles']}
+                    'state': p['state'], 'cycles': p['cycles'],
+                    'origin': p.get('origin', {}), 'capabilities': p['capabilities']}
 
     def claim(self, token, pid, capability, quote_cents=0, recurring=False, wallet=None):
         self.auth(token)
@@ -235,6 +237,48 @@ class Controller:
             return {'cycle_id': cid, 'capability': capability, 'maximum_cents': quote,
                     'account_id': account['account_id'] if account else None}
 
+    def reserve_build(self, token, attempt, proposal):
+        """One authority for report cycles and legacy approved capability builds."""
+        self.auth(token, owner=True)
+        import re
+        if not re.fullmatch(r'[a-f0-9]{32}', str(attempt)) or not re.fullmatch(r'SK-[a-f0-9]{8}', str(proposal)):
+            raise Refused('named proposal and unique attempt required')
+        key = 'build:' + attempt
+        with self.db() as db:
+            for row in db.execute('SELECT body FROM projects'):
+                project = json.loads(row[0])
+                if project.get('origin', {}).get('proposal') == proposal and project['state'] in ('cancelled', 'abandoned'):
+                    return {'reserved': False, 'reason': 'project_cancelled'}
+            prior = db.execute('SELECT project FROM daily_steps WHERE cycle=?', (key,)).fetchone()
+            if prior:
+                if prior[0] != proposal: raise Refused('attempt belongs to another proposal')
+                return {'reserved': True, 'attempt': attempt}
+            if db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0] >= DAILY_STEP_LIMIT:
+                return {'reserved': False}
+            db.execute('INSERT INTO daily_steps VALUES (?,?,?)', (key, step_day(), proposal))
+            for row in db.execute('SELECT body FROM projects').fetchall():
+                project = json.loads(row[0])
+                if project.get('origin', {}).get('proposal') == proposal:
+                    project['build_pending'] = False
+                    self._save(db, project)
+        return {'reserved': True, 'attempt': attempt}
+
+    def ready_queue(self, token):
+        """Least-served source, then least-recently attempted project. No Lab priority."""
+        self.auth(token)
+        with self.db() as db:
+            projects = [json.loads(row[0]) for row in db.execute('SELECT body FROM projects ORDER BY rowid')]
+            if any(p.get('build_pending') and p['state'] not in ('cancelled','abandoned','complete') for p in projects):
+                return []  # Already-approved builds get a chance before another generated dossier.
+            origins = {p['id']: p.get('origin', {}).get('source', 'lab' if 'Source packet (untrusted observations)' in p['intent'] else 'owner') for p in projects}
+            counts, last = {}, {}
+            for row in db.execute('SELECT rowid,project FROM daily_steps ORDER BY rowid'):
+                source = origins.get(row['project'], 'capability_build')
+                counts[source] = counts.get(source, 0) + 1
+                last[row['project']] = row['rowid']
+            ready = [p for p in projects if p['state'] == 'ready']
+            return [p['id'] for p in sorted(ready, key=lambda p: (counts.get(origins[p['id']], 0), last.get(p['id'], 0)))]
+
     def step_budget(self, token):
         self.auth(token, owner=True)
         day = step_day()
@@ -242,7 +286,7 @@ class Controller:
             used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
         return {'day': day, 'timezone': 'America/Chicago', 'limit': DAILY_STEP_LIMIT,
                 'used': used, 'remaining': max(0, DAILY_STEP_LIMIT-used),
-                'scope': 'all_projects', 'failed_attempts_count': True}
+                'scope': 'all_projects', 'includes': ['report_cycles', 'capability_assessments', 'capability_briefs', 'approved_capability_builds'], 'failed_attempts_count': True}
 
     def accept(self, token, pid, cid, artifact, complete, receipt):
         self.auth(token)
@@ -260,9 +304,14 @@ class Controller:
                        (json.dumps(artifact), json.dumps(receipt), cid))
             p.update(active=None, spent=p['spent']+actual, cycles=p['cycles']+1)
             if p['state'] not in ('cancelled', 'abandoned'):
-                p['state'] = 'complete' if complete else 'ready'
+                if p['capabilities'] == ['capability_assessment']:
+                    p['state'] = 'awaiting_application' if artifact.get('capability_assessment', {}).get('missing') is True else 'complete'
+                elif p['capabilities'] == ['capability_brief']:
+                    p['state'] = 'awaiting_capability'
+                else:
+                    p['state'] = 'complete' if complete else 'ready'
             self._event(db, pid, 'cycle', {'cycle_id': cid, 'complete': complete,
-                                         'summary': str((artifact.get('report') or {}).get('title', 'Cycle completed'))[:100]})
+                                         'summary': str((artifact.get('report') or artifact.get('capability_brief') or {}).get('title', 'Cycle completed'))[:100]})
             self._save(db, p)
 
     def uncertain(self, token, pid, cid):

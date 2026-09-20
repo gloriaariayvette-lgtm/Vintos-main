@@ -310,6 +310,8 @@ def approve(pid, granted=None, by="gloria"):
         return None, "no proposal %r" % pid
     if r["state"] != "proposed":
         return None, "proposal is %s, not proposed" % r["state"]
+    if (r.get("asked", {}).get("scope") or {}).get("execution") == "unresolved_external_integration":
+        return None, "resolve the external account/integration and submit its concrete scope before approving; a pure substitute is not the capability"
     try:
         r["granted"] = _narrower(r.get("asked"), granted)
     except ValueError as exc:

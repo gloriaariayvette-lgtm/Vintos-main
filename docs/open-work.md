@@ -1108,3 +1108,29 @@ weights, a lexical-diversity penalty, stable tie-breaking, and adaptive source q
 2,200 base pairs with all reviewer-approved alternates retained. No row has a human acceptance, no
 expanded dataset exists, and nothing from this lane is deployed or read by EmoClaw. Checkpoint artifacts remain under the ignored
 `offline/residual_emotion/work/authoring-2026-09-20/` directory on this Mac.
+
+## 20 September — broaden Forge beyond Lab reports
+
+The report-only worker was not the intended general Forge. The new house bridge
+submits existing eligible standing wants with their current plan and installed
+action inventory. A local capability assessment may name a necessary missing
+operation; adoption checks the live want fingerprint, preserves completed steps,
+and records a precise absence block and parent-bound proposal. It creates no desire
+and never marks the originating want fulfilled. Changed/ended wants cancel obsolete
+assessments. Existing installed-capability verification and want resume remain the
+completion path. Lab is one source in a least-served-source queue; approved builds
+get an opportunity before further generated work.
+
+The same SQLite counter now covers report cycles, capability assessments, capability
+briefs and approved Astra/Fable build attempts: three total attempted steps per
+Chicago day. A missing budget service refuses a build before any provider call.
+Failures remain charged. Reports and capability briefs cannot reset the allowance.
+Account provisioning and external effects cannot be approved as pure string
+transformations; unresolved email/inbox/outreach integrations remain explicitly
+blocked for concrete provider, credential, recipient and effect scope.
+
+Validation/deployment of this extension is in progress. Still open: a real persistent
+email account, inbox provider adapter and authorized external-send commissioning.
+No email address was created and no third party was contacted by this change.
+Wallet and marketplace work remain parked. The local assessment is a planning
+judgment, not proof that every absent capability or equivalent tool was identified.

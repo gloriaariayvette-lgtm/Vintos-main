@@ -99,7 +99,7 @@ def proposal_details(capability, note, want):
     expected = step.get("expected_output") or params.get("expected_output")
     acceptance = step.get("acceptance") or params.get("acceptance")
     goal = str(note or step.get("note") or want.get("want") or "")[:600]
-    return {
+    details = {
         "why": ("Blocked capability %s. Intended step: %s" % (capability, goal))[:600],
         "scope": {"execution": "pure string transformation", "max_input_chars": 6000,
                   "input_contract": "One note string describing this step: " + goal[:300],
@@ -110,6 +110,17 @@ def proposal_details(capability, note, want):
         "risks": "Output may be incorrect. No external resource or effect authority is inferred. If this step needs an external effect, its adapter and scope remain unresolved; do not approve a pure substitute as completion.",
         "tests": ("Execute the named function with representative note text; assert the expected nonempty result, handle empty input explicitly, and verify failure cases in OS isolation. Acceptance: " + str(acceptance or "UNRESOLVED: needs a step-specific example"))[:600],
     }
+
+
+    # An external capability cannot be built honestly as a pure text transformer.
+    external = step.get("execution") == "external" or any(
+        word in str(capability).lower() for word in ("email", "inbox", "outreach", "publish", "contact_person"))
+    if external:
+        details["scope"]["execution"] = "unresolved_external_integration"
+        details["scope"]["output_contract"] = str(expected or goal)[:400]
+        details["risks"] = "Needs concrete provider/account, credential storage, recipient/resource scope and separate invocation authority. A text-only stand-in cannot satisfy this capability. Resolve the integration before approving a build."
+    return details
+
 
 
 def missing_hand(capability, note, want, path=None):

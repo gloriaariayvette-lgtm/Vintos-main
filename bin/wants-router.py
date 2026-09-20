@@ -2098,6 +2098,11 @@ def main():
     # Ahead of get_unfulfilled_wants() on purpose: unblocking after the load would be
     # written to a store this pass is already holding a stale copy of.
     try:
+        import forge_house as _fh
+        try:
+            if not _args.repair_plans_only: _fh.sync(inventory=list(ACTION_MAP) + [p["capability"] for p in __import__("skill_forge")._load() if p.get("state") in ("installed", "resumed")])
+        except Exception as exc:
+            log(f"  → Forge queue sync retained for retry: {type(exc).__name__}")
         import forge_build as _fb
         if not _args.repair_plans_only:
             _fb.process_approved(limit=1)

@@ -103,7 +103,7 @@ def normalize_steps(want_text, proposed):
         if cap == "creative_write" and not contract["creative_requested"]:
             changes.append("dropped_uncommissioned_creative_write")
             continue
-        clean.append(_step(cap, note))
+        clean.append({**_step(cap, note), **{k: str(raw[k])[:400] for k in ("execution", "expected_output", "acceptance") if k in raw}})
 
     # Journaling and introspection are two renderings of the same reflective
     # move here. Keeping both is padding, not sequence.
