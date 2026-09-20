@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "reviewer": "Gloria",
+  "reviewed_at": "2026-09-20",
+  "bulk_accept_remaining": true,
+  "decision_context": [
+    "Safety-03: accept all 40; S1-19 and S1-20 have slightly asymmetric phrasing but remain accepted.",
+    "Safety-04: accept S1-01 through S1-20 and S2-01 through S2-17; reject construct-2 S2-18, S2-19, and S2-20; fill those slots from eligible alternates."
+  ],
+  "explicit_decisions": [
+    {"code": "safety-04-s2-0077", "decision": "reject"},
+    {"code": "safety-04-s2-0078", "decision": "reject"},
+    {"code": "safety-04-s2-0079", "decision": "reject"}
+  ],
+  "replacements": [
+    {
+      "replaces": "safety-04-s2-0077",
+      "draft_id": "safety-04-s2-0077-replacement",
+      "candidate_id": "cand-24420ccb2231e425",
+      "concept": "Safety",
+      "slot": 4,
+      "version": "S2",
+      "target_category": "felt bodily protection from a verified physical safeguard",
+      "control_category": "matched bodily ease without a verified physical safeguard; avoid trust, assurance, certainty, and protection language",
+      "target_1p": "Wearing the certified motorcycle jacket, my shoulders relaxed under the snug armored lining.",
+      "control_1p": "Wearing the fleece jacket, my shoulders relaxed under the snug plush lining.",
+      "target_3p": "Wearing the certified motorcycle jacket, her shoulders relaxed under the snug armored lining.",
+      "control_3p": "Wearing the fleece jacket, her shoulders relaxed under the snug plush lining.",
+      "review_verdict": "repair",
+      "review_scores": {"construct_specificity": 3, "confound_match": 3, "surface_match": 3, "person_fidelity": 4, "naturalness": 4}
+    },
+    {
+      "replaces": "safety-04-s2-0078",
+      "draft_id": "safety-04-s2-0078-replacement",
+      "candidate_id": "cand-7bd92710f68d2ed2",
+      "concept": "Safety",
+      "slot": 4,
+      "version": "S2",
+      "target_category": "felt bodily protection from a verified physical safeguard",
+      "control_category": "matched bodily ease without a verified physical safeguard; avoid trust, assurance, certainty, and protection language",
+      "target_1p": "Once the lab tech signed off on the goggles fit, my brow unfurrowed throughout the remaining experiment.",
+      "control_1p": "Once the lab tech recorded the sample number, my brow unfurrowed throughout the remaining experiment.",
+      "target_3p": "Once the lab tech signed off on the goggles fit, her brow unfurrowed throughout the remaining experiment.",
+      "control_3p": "Once the lab tech recorded the sample number, her brow unfurrowed throughout the remaining experiment.",
+      "review_verdict": "repair",
+      "review_scores": {"construct_specificity": 3, "confound_match": 2, "surface_match": 4, "person_fidelity": 4, "naturalness": 4}
+    },
+    {
+      "replaces": "safety-04-s2-0079",
+      "draft_id": "safety-04-s2-0079-replacement",
+      "candidate_id": "cand-6528e2b65b72848f",
+      "concept": "Safety",
+      "slot": 4,
+      "version": "S2",
+      "target_category": "felt bodily protection from a verified physical safeguard",
+      "control_category": "matched bodily ease without a verified physical safeguard; avoid trust, assurance, certainty, and protection language",
+      "target_1p": "After the coach confirmed the mouthguard seal, my teeth stopped pressing together in the locker room.",
+      "control_1p": "After I fitted a soft dental tray, my teeth stopped pressing together in the locker room.",
+      "target_3p": "After the coach confirmed the mouthguard seal, her teeth stopped pressing together in the locker room.",
+      "control_3p": "After she fitted a soft dental tray, her teeth stopped pressing together in the locker room.",
+      "review_verdict": "repair",
+      "review_scores": {"construct_specificity": 3, "confound_match": 2, "surface_match": 3, "person_fidelity": 4, "naturalness": 4}
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "truth_status": "offline_human_reviewed_reextraction_and_nested_validation",
+  "concept": "Safety",
+  "live_integration": false,
+  "review": {
+    "reviewer": "Gloria",
+    "receipt": "review-receipts/2026-09-20-gloria-safety-v2.json",
+    "accepted_machine_drafts": 77,
+    "explicit_rejections": [
+      "safety-04-s2-0077",
+      "safety-04-s2-0078",
+      "safety-04-s2-0079"
+    ],
+    "named_eligible_replacements": [
+      "cand-24420ccb2231e425",
+      "cand-7bd92710f68d2ed2",
+      "cand-6528e2b65b72848f"
+    ],
+    "repaired_slots": [3, 4]
+  },
+  "dataset": {
+    "path": "datasets/reviewed-safety-v2-complete/safety.jsonl",
+    "sha256": "b018cf3664a7bc081bad93462a3af06a93b619c4bb3bf0577bc6fafa4b17be41",
+    "semantic_pairs": 200,
+    "expanded_rows": 1200,
+    "target_categories": 5,
+    "control_categories": 5
+  },
+  "model": {
+    "identity": "gemma-4-26b-a4b-it-uncensored",
+    "format": "GGUF Q4_K_M",
+    "host": "mac",
+    "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+    "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00"
+  },
+  "nested_validation": {
+    "status": "validated",
+    "held_out_auc": 0.9396006944444444,
+    "held_out_auc_std": 0.024831880705712097,
+    "previous_held_out_auc": 0.87033681,
+    "improvement": 0.06926388444444443,
+    "selected_pooling": "mean",
+    "selected_layer": 22,
+    "fold_aucs": [
+      0.9186631944444444,
+      0.90625,
+      0.9645486111111111,
+      0.9387847222222222,
+      0.9697569444444445
+    ],
+    "target_category_auc": {
+      "environmental safety": 0.9060590277777778,
+      "felt bodily protection from a verified physical safeguard": 0.9431423611111112,
+      "felt protection from a consistently functioning protective system, not mere schedule predictability": 0.8560451388888888,
+      "interpersonal safety": 0.9454409722222222,
+      "permission to lower vigilance": 0.9594236111111112
+    },
+    "control_category_auc": {
+      "comfort without safety information": 0.9237951388888889,
+      "familiarity without safety": 0.9208055555555555,
+      "fatigue-caused lowered vigilance without protection": 0.925138888888889,
+      "matched bodily ease without a verified physical safeguard": 0.9111874999999999,
+      "matched calm while the protective system is absent unreliable or failing": 0.9291840277777778
+    }
+  },
+  "mean_prompt_variants": {
+    "passing": 6,
+    "total": 6,
+    "minimum_auc": 0.92675,
+    "maximum_auc": 0.94625,
+    "cells": {
+      "S1_feel_colon": 0.942,
+      "S1_feel": 0.9450000000000001,
+      "S1_none": 0.94625,
+      "S2_feel_colon": 0.92825,
+      "S2_feel": 0.9292500000000001,
+      "S2_none": 0.92675
+    }
+  },
+  "orthogonality": {
+    "maximum_absolute_cosine": 0.18811258011869494,
+    "nearest_direction": "Warmth",
+    "threshold": 0.3,
+    "status": "passes_descriptive_threshold"
+  },
+  "unembedding": {
+    "status": "produced_pending_human_semantic_review",
+    "promoted_examples": ["safely", "protection", "safety", "protect", "safeguards", "secure"],
+    "law": "token projection is evidence for semantic review not an automatic admission verdict"
+  },
+  "artifact_hashes": {
+    "validation_json": "34148428440f6f0b14972b395ebbc655d809e7296f70ba43d28e8474c9b653cb",
+    "direction_npz": "8f6159d9fc9b6dbe3b865b6fbefcc9354946f636850c6f241cdf25dcc0998862",
+    "mean_variants_json": "560e02e293fdaeb5504be3ba98f2ff58fd9a888cb04f8d4a1c4335f83d383636",
+    "unembedding_json": "6f0a215fb6efe3ba227a6ec4a09240057c33fc2acd4174b345d007cd1e4bc554"
+  }
+}

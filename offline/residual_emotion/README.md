@@ -122,7 +122,17 @@ python -m residual_emotion.authoring render-human-review-sheets \
   work/safety-v2/safety-v2-human-review.jsonl review-sheets/safety-v2
 ```
 
-No Safety v2 extraction or claim is allowed before that human gate.
+Gloria reviewed the repair, accepted 77 selected pairs, rejected the three
+construct-2 Safety/4 S2 pairs, and authorized named eligible alternates for those
+slots. The repaired categories were merged with the previously reviewed Safety
+slots 1, 2, and 5, preserving 20 S1 and 20 S2 pairs per category. Fresh extraction
+on the pinned Mac checkpoint raised strict nested held-out AUC from `0.87034` to
+`0.93960 ± 0.02483`; all five outer folds passed, and all six mean-pooled prompt
+variants now pass (`0.92675–0.94625`). The nearest other direction remains below
+the orthogonality threshold (Warmth, cosine `0.18811`). The exact receipt is
+`evidence/2026-09-20-safety-v2-validation.json`. Unembedding is semantically
+promising but still awaits named human review, so live measurement admission
+remains blocked.
 
 Nifrathir is excluded from this content-dimension authoring pass; it remains the twelfth
 slow modifier rather than a twelfth peer emotion. Its modifier dataset and predictive

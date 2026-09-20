@@ -1213,6 +1213,44 @@ def expand_reviewed_suite(base_path: Path, output_dir: Path, reviewer: str) -> d
             "expanded_rows": sum(row["rows"] for row in summaries), "outputs": summaries}
 
 
+def merge_reviewed_repair(original_path: Path, repair_path: Path, output: Path) -> dict[str, Any]:
+    """Replace complete reviewed category slots; partial or unreviewed repairs are refused."""
+    original = read_jsonl(original_path); repair = read_jsonl(repair_path)
+    if not original or not repair:
+        raise ValueError("reviewed repair merge requires non-empty original and repair datasets")
+    if any(row.get("review_state") != "accepted" for row in original + repair):
+        raise ValueError("reviewed repair merge refuses unaccepted material")
+    concepts = {str(row["concept"]) for row in original + repair}
+    if len(concepts) != 1:
+        raise ValueError("reviewed repair merge must remain within one concept")
+    repair_slots = {int(row["slot"]) for row in repair}
+    for slot in repair_slots:
+        for version in ("S1", "S2"):
+            count = sum(int(row["slot"]) == slot and row["version"] == version for row in repair)
+            if count != FULL_FINAL_PER_VERSION:
+                raise ValueError(f"repair slot {slot} has {count} {version} rows, expected 20")
+    merged = [row for row in original if int(row["slot"]) not in repair_slots] + repair
+    counts: dict[tuple[int, str], int] = {}
+    for row in merged:
+        key = (int(row["slot"]), str(row["version"])); counts[key] = counts.get(key, 0) + 1
+    expected_slots = {int(row["slot"]) for row in original}
+    expected = {(slot, version) for slot in expected_slots for version in ("S1", "S2")}
+    bad = {str(key): value for key, value in counts.items() if value != FULL_FINAL_PER_VERSION}
+    if set(counts) != expected or bad:
+        raise ValueError(f"reviewed repair merge changed category balance: {bad}")
+    merged.sort(key=lambda row: (int(row["slot"]), str(row["version"]), str(row["draft_id"])))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in merged), encoding="utf-8")
+    atomic_json(output.with_suffix(".manifest.json"), {
+        "schema": 1, "curated": True, "curation_basis": "human_reviewed_category_repair",
+        "concept": next(iter(concepts)), "repaired_slots": sorted(repair_slots),
+        "original_sha256": hashlib.sha256(original_path.read_bytes()).hexdigest(),
+        "repair_sha256": hashlib.sha256(repair_path.read_bytes()).hexdigest(),
+        "rows": len(merged), "truth_status": "reviewed_complete_dataset_with_named_slot_repair",
+    })
+    return {"concept": next(iter(concepts)), "rows": len(merged), "repaired_slots": sorted(repair_slots)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     pilot_p = sub.add_parser("pilot"); pilot_p.add_argument("concept"); pilot_p.add_argument("slot", type=int); pilot_p.add_argument("output", type=Path)
@@ -1246,6 +1284,8 @@ def main() -> int:
     apply_p.add_argument("receipt", type=Path); apply_p.add_argument("output", type=Path)
     suite_p = sub.add_parser("expand-reviewed-suite"); suite_p.add_argument("base", type=Path)
     suite_p.add_argument("output", type=Path); suite_p.add_argument("--reviewer", required=True)
+    merge_p = sub.add_parser("merge-reviewed-repair"); merge_p.add_argument("original", type=Path)
+    merge_p.add_argument("repair", type=Path); merge_p.add_argument("output", type=Path)
     args = parser.parse_args()
     if args.command == "pilot":
         result = pilot(args.plan, args.concept, args.slot, args.output)
@@ -1267,6 +1307,8 @@ def main() -> int:
         result = assemble_human_review_draft(args.adjudication_dir, args.output)
     elif args.command == "render-human-review-sheets":
         result = render_human_review_sheets(args.base, args.output)
+    elif args.command == "merge-reviewed-repair":
+        result = merge_reviewed_repair(args.original, args.repair, args.output)
     elif args.command == "apply-review-receipt":
         result = apply_review_receipt(args.base, args.receipt, args.output)
     else:

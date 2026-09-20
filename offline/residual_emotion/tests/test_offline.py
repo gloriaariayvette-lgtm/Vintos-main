@@ -18,7 +18,7 @@ from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, n
 from residual_emotion.authoring import (
     _declared_category_count, _deterministic_selection, _load_full_candidate_pool, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
     apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
-    render_human_review_sheets,
+    merge_reviewed_repair, render_human_review_sheets,
 )
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
@@ -172,6 +172,28 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     bounded_result = apply_review_receipt(bounded_base, bounded_receipt, bounded_output)
     check(bounded_result["rows"] == 40 and bounded_result["replacements"] == 1,
           "bounded human review preserves 20-per-version balance with a named alternate")
+    original_complete = scratch / "original-complete.jsonl"
+    original_rows = []
+    for slot in (1, 2):
+        for version in ("S1", "S2"):
+            for number in range(20):
+                original_rows.append({**bounded_rows[0], "slot": slot, "version": version,
+                                      "draft_id": f"original-{slot}-{version}-{number}",
+                                      "candidate_id": f"original-candidate-{slot}-{version}-{number}",
+                                      "review_state": "accepted"})
+    original_complete.write_text("".join(json.dumps(item) + "\n" for item in original_rows))
+    repair_complete = scratch / "repair-complete.jsonl"
+    repair_rows = [{**item, "slot": 2, "draft_id": f"repair-{item['version']}-{index}",
+                    "candidate_id": f"repair-candidate-{item['version']}-{index}",
+                    "review_state": "accepted"}
+                   for index, item in enumerate(bounded_rows)]
+    repair_complete.write_text("".join(json.dumps(item) + "\n" for item in repair_rows))
+    merged_path = scratch / "merged-reviewed.jsonl"
+    merged_result = merge_reviewed_repair(original_complete, repair_complete, merged_path)
+    merged_rows = read_jsonl(merged_path)
+    check(merged_result["repaired_slots"] == [2] and len(merged_rows) == 80
+          and not any(str(item["draft_id"]).startswith("original-2-") for item in merged_rows),
+          "complete reviewed slots replace originals without mixing category versions")
 
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"
