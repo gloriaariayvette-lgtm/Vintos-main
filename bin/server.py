@@ -265,6 +265,7 @@ PUBLIC_MUTATIONS = {
     "/api/voice/token":        "the voice client fetches its own 300-second ephemeral realtime token; LAN-only door",
     "/api/hardware/button":    "her physical stop button; the device client carries no header",
     "/api/ring/live":          "the R21M ring bridge; optional bearer token in ~/.vintos/.ring-token, refused readings are not stored",
+    "/api/ring/sleep":         "the R21M ring bridge sleep estimate; same optional bearer token, validated device estimates only",
     "/api/food-order/review/{token}/approve": "ntfy carries an expiring random one-proposal capability; approval is re-quoted and single-use",
 }
 
