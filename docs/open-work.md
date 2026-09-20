@@ -965,8 +965,10 @@ receipt for its completed Pain candidate run; cross-model results may not be poo
 The Aegis 12B residual path is functionally tested: a 12-pair published-Pain smoke produced
 48 finite residual tensors shaped `[12,48,3840]`, with non-identical target/control states and
 an extraction-time model lock; the Lab stayed paused and the thinking-off shim remained healthy.
-This is not an AUC result. The full 1,200-pair run is still open because Aegis exposes its RTX
-runtime but has no CUDA compiler, so the pinned patched extractor currently builds CPU-only.
+The full CPU run subsequently completed all 1,200 pairs. Proper nested validation rejected
+Pain at held-out AUC `0.51330 ± 0.15155` against the `0.85` bar; layer/pooling selection was
+unstable and exact unembedding was diffuse. This is a real negative result for this candidate
+and checkpoint, not a failure of the extraction path. Other candidate datasets remain open.
 and a llama.cpp revision. A patched, Metal-capable extractor completed a real smoke pass and
 produced final-token and mean-token matrices with observed shape 30 × 2,816 for both sides of
 a contrastive pair. The offline analysis implements semantic-set-grouped K-fold layer selection,

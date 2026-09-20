@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "at": "2026-09-19",
+  "host": "aegis",
+  "candidate": "Pain",
+  "dataset_rows": 1200,
+  "semantic_sets": 200,
+  "model_identity": "google/gemma-4-12b-qat",
+  "model_sha256": "929fde4e951e520b74806268e8e8ffaa20a20fab955f3606d5ce7b2c35798501",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extraction": {
+    "outcome": "completed",
+    "pairs_processed": 1200,
+    "dump_files": 4800,
+    "layers": 48,
+    "embedding_width": 3840,
+    "poolings": ["final", "mean"]
+  },
+  "validation": {
+    "method": "five-fold outer grouped validation with four-fold inner pooling and layer selection",
+    "outcome": "rejected_below_auc",
+    "auc_minimum": 0.85,
+    "held_out_auc": 0.5132986111111111,
+    "held_out_auc_std": 0.15154774333151075,
+    "outer_fold_aucs": [0.45064236111111106, 0.6859895833333334, 0.5292534722222222, 0.6412152777777778, 0.25939236111111114],
+    "outer_fold_selections": [
+      {"pooling": "mean", "layer": 8},
+      {"pooling": "final", "layer": 18},
+      {"pooling": "mean", "layer": 0},
+      {"pooling": "mean", "layer": 4},
+      {"pooling": "mean", "layer": 4}
+    ],
+    "deployment_direction_only": {"pooling": "mean", "layer": 6},
+    "category_diagnostics_are_not_selection": true
+  },
+  "category_diagnostics": {
+    "target": {"Cognitive Pain": 0.4811979166666667, "Moral Injury": 0.9371979166666666, "Physical Pain": 0.4618923611111111, "Psychological Pain": 0.46515277777777775, "Social Pain": 0.12263194444444443},
+    "control": {"Fear": 0.3909583333333333, "Negative Emotion": 0.5932152777777777, "Negative World State": 0.8877569444444444, "Neutral": 0.13719791666666667, "Non-painful Body Sensation": 0.4589444444444445}
+  },
+  "unembedding_diagnostic": {
+    "ran": true,
+    "semantic_review": "not_requested_for_rejected_direction",
+    "top_promoted_tokens": ["GetResponse", "Court", "sleeper", "Pend", "TDI"],
+    "interpretation": "Leading vocabulary is diffuse and does not resemble a coherent pain direction; it does not rescue chance-level held-out performance."
+  },
+  "comparison_note": "The same corpus on the historical abliterated 26B A4B target scored 0.8254305555555556 and was also rejected. Results are separate model-specific experiments and were not pooled.",
+  "truth_status": "offline_rejected_candidate_not_a_live_measurement"
+}
