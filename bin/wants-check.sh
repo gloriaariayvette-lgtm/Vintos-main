@@ -230,6 +230,29 @@ if not source_thread_id:
     except Exception as thread_error:
         print("[Wants] Unresolved-thread bridge unavailable: %s" % str(thread_error)[:120])
 
+# Give standing Forge sources a direct, bounded opportunity. Alternate with the
+# unresolved-thread lane; a spark is context, never an automatically adopted want.
+source_spark = None
+try:
+    import spark_sources
+    from forge_want_context import select as select_forge_context
+    spark_sources.gather()
+    _existing = json.load(open(os.path.join(MEMORY, "current-wants.json")))
+    try:
+        _fulfilled = json.load(open(os.path.join(MEMORY, "fulfilled-wants.json")))
+        if isinstance(_fulfilled, dict): _fulfilled = _fulfilled.get("fulfilled", [])
+    except Exception:
+        _fulfilled = []
+    if not source_thread_id or datetime.now().hour % 2 == 0:
+        source_spark = select_forge_context(spark_sources.standing(), _existing + _fulfilled)
+    if source_spark:
+        source_kind = source_spark["source"]
+        source_event_id = source_spark["source_event_id"]
+        source_thread_id = ""
+        recent_activity = source_spark["context"]
+except Exception as spark_error:
+    print("[Wants] Spark context unavailable: %s" % str(spark_error)[:120])
+
 if not recent_activity:
     print("[Wants] No recent activity to spark from — skipping")
     sys.exit(0)
@@ -267,7 +290,7 @@ try:
         dismissed = "\n".join(f"- {d.get('surface_form','')[:100]}" for d in dy[:2])
 except: pass
 
-if not any([yearning, latent, trial_failures]):
+if not source_spark and not any([yearning, latent, trial_failures]):
     print("[Wants] No tension signals — skipping")
     sys.exit(0)
 
@@ -350,8 +373,10 @@ if _intensity < 3:
 want_text = want.split(" — ", 1)[0].strip()
 
 from emoclaw_utils import express_want, enrich_want
-enriched = enrich_want(want_text, source_context=recent_activity[:400], source="wants-check")
-express_want(want_text, source="wants-check", intensity=_intensity, **enriched)
+enriched = enrich_want(want_text, source_context=recent_activity[:400], source=source_kind)
+express_want(want_text, source=source_kind, intensity=_intensity,
+             source_event_id=source_event_id or None,
+             source_thread_id=source_thread_id or None, **enriched)
 print(f"[Wants] Seeded: {want_text[:80]}")
 WANTSCALLEOF
 echo "[Wants] Done."

@@ -90,7 +90,8 @@ class EvidenceTests(unittest.TestCase):
             deployed=(ROOT/'clients/mobile'/name).read_bytes()
             manifest=json.loads((ROOT/'clients/mobile/source.json').read_text())
             self.assertEqual(hashlib.sha256(deployed).hexdigest(), manifest['sha256'][name])
-            if app.exists():
+            # The Lab HTML is authored here; only shared JS is mirrored.
+            if app.exists() and name != 'index.html':
                 self.assertEqual((app/name).read_bytes(), deployed, name)
 
 

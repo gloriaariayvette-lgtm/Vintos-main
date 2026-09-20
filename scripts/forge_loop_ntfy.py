@@ -6,20 +6,20 @@ from lab_http import open_request
 
 
 class NtfyPublisher:
-    def __init__(self, server, topic, token, *, transport=None):
+    def __init__(self, server, topic, token=None, *, transport=None, anonymous=False):
         parsed=urlsplit(server)
         if parsed.scheme != 'https' or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError('explicit HTTPS ntfy server required')
         if not topic or '/' in topic or any(c in topic for c in '\r\n'):
             raise ValueError('single explicit topic required')
-        if not token or any(c in token for c in '\r\n'):
+        if (not token and not anonymous) or (token and any(c in token for c in '\r\n')):
             raise ValueError('explicit ntfy authorization required')
         self.server,self.topic,self.token,self.transport=server.rstrip('/'),topic,token,transport or open_request
 
     def __call__(self, payload):
         body=dict(payload,topic=self.topic)
         request=Request(self.server+'/',data=json.dumps(body).encode(),method='POST',
-                        headers={'Authorization':'Bearer '+self.token,'Content-Type':'application/json'})
+                        headers=dict({'Content-Type':'application/json'}, **({'Authorization':'Bearer '+self.token} if self.token else {})))
         with self.transport(request,timeout=10) as response:
             if not 200 <= response.status < 300:return False
             receipt=json.loads(response.read(65536))

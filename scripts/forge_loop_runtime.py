@@ -34,6 +34,8 @@ class LocalModel:
         parsed = urlsplit(url)
         if parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', '::1') or parsed.username or parsed.query:
             raise ValueError('non-financial loop requires a local inference endpoint')
+        if parsed.port == 8599 and parsed.path != "/gemma-aegis-local/v1/chat/completions":
+            raise ValueError("Forge requires the shim local-only route without paid fallback")
         self.url, self.model, self.transport = url, model, transport or open_request
         self.admission = admission
 
@@ -256,7 +258,7 @@ def load(config_file, *, check_only=False):
                                                provider='local', model=config['local_model'], stage='report'))
     ntfy = config.get('ntfy')
     if not ntfy: raise ValueError('PRECONDITION_NTFY_CONFIGURATION_REQUIRED')
-    publisher = NtfyPublisher(ntfy['server'], ntfy['topic'], secret(ntfy['token_file'])) if ntfy else None
+    publisher = NtfyPublisher(ntfy['server'], ntfy['topic'], secret(ntfy['token_file']) if ntfy.get('token_file') else None, anonymous=ntfy.get('anonymous') is True) if ntfy else None
     if check_only:
         return {'configuration':'valid','paid_execution':'disabled','ntfy_configured':True,'live_access':'not_tested'}
     c = Controller(root/'forge-loop.sqlite', owner, worker, config['public_base'])

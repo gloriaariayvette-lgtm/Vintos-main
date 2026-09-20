@@ -320,6 +320,7 @@ def forward_xai(path, raw):
 # ---------------------------------------------------------------- orchestration (40, 41, 43)
 
 def provider_chain(j, path):
+    if path == "/gemma-aegis-local/v1/chat/completions": return ["aegis_gemma"]
     if path.startswith("/gemma-aegis"): return ["aegis_gemma", "gemma", "xai"]
     if path.startswith("/gemma"): return ["gemma", "xai"]
     if j.get("route") == "grok": return ["xai"]

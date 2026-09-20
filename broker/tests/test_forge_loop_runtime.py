@@ -28,6 +28,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.r.publisher,self.send)
         self.block=patch('urllib.request.urlopen',side_effect=AssertionError('live network forbidden'))
         self.block.start();self.addCleanup(self.block.stop)
+    def test_local_only_route_and_explicit_notification_transport(self):
+        import ast
+        tree=ast.parse((REPO/'bin/vintos_claude_shim.py').read_text())
+        fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='provider_chain')
+        scope={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'fixture','exec'),scope)
+        self.assertEqual(scope['provider_chain']({},'/gemma-aegis-local/v1/chat/completions'),['aegis_gemma'])
+        with self.assertRaises(ValueError): LocalModel('http://127.0.0.1:8599/gemma-aegis/v1/chat/completions','fixture')
+        from forge_loop_ntfy import NtfyPublisher
+        with self.assertRaises(ValueError): NtfyPublisher('https://ntfy.invalid','fixture')
+        sent=[]
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            status=200
+            def read(self,n): return b'{"event":"message","topic":"fixture","id":"test"}'
+        def transport(req,timeout): sent.append(req);return Response()
+        publisher=NtfyPublisher('https://ntfy.invalid','fixture',anonymous=True,transport=transport)
+        self.assertIs(publisher.transport,transport)
+        self.assertTrue(publisher({'message':'fixture'}))
+        self.assertFalse(sent[0].has_header('Authorization'))
+
     def send(self,payload):self.sent.append(payload);return True
     def build(self,claim,context):
         self.contexts.append(context)
@@ -150,7 +171,7 @@ class Tests(unittest.TestCase):
 
     def test_model_requires_compute_admission(self):
         with self.assertRaisesRegex(Refused,'admission'):
-            LocalModel('http://127.0.0.1:8599/local','fixture')('system','user')
+            LocalModel('http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions','fixture')('system','user')
     def test_intake_survives_projection_failure_without_duplicate(self):
         from lab_sources import receipt
         self.r.intake_token='i'*40
@@ -172,7 +193,7 @@ class Tests(unittest.TestCase):
         for name in ('.compute.lock','compute-ledger.jsonl'):(memory/name).touch()
         config={'atelier_root':str(self.root/'check-only-root'),'public_base':'https://fixture.invalid',
                 'owner_token_file':paths['owner'],'worker_token_file':paths['worker'],
-                'compute_memory':str(memory),'local_model_url':'http://127.0.0.1:8599/local',
+                'compute_memory':str(memory),'local_model_url':'http://127.0.0.1:8599/gemma-aegis-local/v1/chat/completions',
                 'local_model':'fixture-local','ntfy':{'server':'https://ntfy.invalid','topic':'fixture','token_file':paths['ntfy']}}
         path=self.root/'config.json';path.write_text(json.dumps(config))
         run=subprocess.run([sys.executable,str(bundle/'forge_loop_runtime.py'),'--config',str(path),'--check'],

@@ -1087,3 +1087,13 @@ validator/probe receipts; enforce callback timeouts; connect cancellation/contro
 endpoint and ntfy; validate the Coinbase product/network and signing identity;
 then commission bounded marketplace execution and reconciliation. Read-only discovery
 and a local artifact are not permission to sign, bid, submit or report earnings.
+
+### 20 September deployment continuation
+
+The two cross-repository failures are repaired: mobile checks retain canonical HTML
+hash validation and compare only the shared JS to the app; ReelRoom merges the
+current manual-frame client with prior phone-action safeguards. Standing sparks now
+get a bounded direct opportunity in wants-check (two admitted source events per day),
+alternating with unresolved threads. Selection creates no want and consumes no spark.
+The report loop uses a dedicated local-only shim route; no paid provider fallback.
+Deployment and live acceptance are in progress, not yet complete.
