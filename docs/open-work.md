@@ -1106,7 +1106,23 @@ current manual-frame client with prior phone-action safeguards. Standing sparks 
 get a bounded direct opportunity in wants-check (two admitted source events per day),
 alternating with unresolved threads. Selection creates no want and consumes no spark.
 The report loop uses a dedicated local-only shim route; no paid provider fallback.
-Deployment and live acceptance are in progress, not yet complete.
+Merged release 01ad0a3 passed all 162 suites both through the isolation runner and
+by direct script invocation in OS isolation. ReelRoom integration is 55e31bf, pushed
+to the designated app branch. An authenticated Atlas metadata request succeeded on
+the Mac with SDK 0.9.0 (22 scorer entries).
+
+Deployment is NOT complete: Aegis initially answered over the documented SSH bridge
+and had bubblewrap, but went offline before the release pull/check could be confirmed.
+Tailscale reported Aegis offline, last seen seven minutes earlier. Stalled SSH
+provisioning connections were stopped. No deploy command was run. Host SDK/key
+provisioning is unconfirmed; recheck before retrying. The staged local commissioning
+script remains in the workspace review-evidence directory, not installed.
+Remaining: host pull, --check, actual deploy and unit/hash verification; install and
+configure the separate Forge service, private HTTPS endpoint and dedicated secrets;
+commission local-only inference, ntfy cancellation and Lab intake; verify Atlas from
+Aegis. The deployed main shim must be restarted after installing the local-only route.
+The existing anonymous ntfy topic requires explicit anonymous:true configuration;
+token-backed topics remain supported. No wallet or marketplace actions were enabled.
 The 20 September multi-model authoring pass is offline and incomplete by design. Sonnet 5 and
 Grok 4.6 authored 9,160 candidates; GPT-5.6 Sol performed blind candidate review. The quality gate
 found that Dominance/3 and Safety/5 used unmatched controls, so those definitions were corrected

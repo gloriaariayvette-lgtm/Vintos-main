@@ -157,3 +157,13 @@ Per-suite results and logs are retained locally under
 [ChEMBL API](https://www.ebi.ac.uk/chembl/api/data/docs),
 [COSMIC registration/licensing](https://cancer.sanger.ac.uk/cosmic/download/cosmic),
 [Ensembl reference sequence](https://rest.ensembl.org/documentation/info/sequence_region).
+
+## Deployment continuation
+
+Release 01ad0a3 passed all 162 suites in both invocation modes after the client
+integration fixes. Atlas metadata authentication succeeded locally. Aegis went
+offline before the host release gates could start; deployment is still outstanding.
+See docs/open-work.md for the remaining commissioning steps. The Forge shim endpoint
+must be `/gemma-aegis-local/v1/chat/completions`, which has no remote or paid fallback.
+An existing anonymous ntfy topic can be configured with `anonymous: true` and no
+`token_file`; this choice must be explicit.
