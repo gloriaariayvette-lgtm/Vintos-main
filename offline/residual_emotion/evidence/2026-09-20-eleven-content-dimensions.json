@@ -39,7 +39,7 @@
     {"concept": "Dominance", "auc": 0.95169444, "auc_std": 0.02299142, "layer": 26, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.92375, 0.95200], "final_token_variants_passing": "3/6"},
     {"concept": "Groundedness", "auc": 0.97161111, "auc_std": 0.00977279, "layer": 25, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.95525, 0.97075], "final_token_variants_passing": "6/6"},
     {"concept": "Playfulness", "auc": 0.97360069, "auc_std": 0.00956362, "layer": 27, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.97150, 0.97650], "final_token_variants_passing": "6/6"},
-    {"concept": "Safety", "auc": 0.87033681, "auc_std": 0.03799072, "layer": 23, "pooling": "mean", "mean_prompt_variants_passing": "5/6", "mean_variant_range": [0.84675, 0.88025], "final_token_variants_passing": "3/6"},
+    {"concept": "Safety", "auc": 0.93960069, "auc_std": 0.02483188, "layer": 22, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.92675, 0.94625], "final_token_variants_passing": "2/6", "dataset_version": "reviewed-safety-v2-complete", "supersedes_auc": 0.87033681},
     {"concept": "Tension", "auc": 0.95507292, "auc_std": 0.02037944, "layer": 26, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.94850, 0.96525], "final_token_variants_passing": "5/6"},
     {"concept": "Valence", "auc": 0.96162153, "auc_std": 0.01018438, "layer": 25, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.91575, 0.96000], "final_token_variants_passing": "5/6"},
     {"concept": "Warmth", "auc": 0.96171528, "auc_std": 0.01772563, "layer": 25, "pooling": "mean", "mean_prompt_variants_passing": "6/6", "mean_variant_range": [0.92925, 0.96175], "final_token_variants_passing": "3/6"}
@@ -56,12 +56,12 @@
     "status": "produced_pending_human_semantic_review",
     "tensor": "token_embd.weight_tied_output",
     "admission_blocking": true,
-    "notable_weak_candidate": "Safety passed primary AUC narrowly, passed 5/6 mean-pooled prompt variants, and its promoted vocabulary is less specific than the other concepts"
+    "safety_v2": "Safety v2 passed at 0.93960 with 6/6 mean-pooled variants; promoted vocabulary now includes safely, protection, safety, protect, safeguards, and secure, but named human semantic review remains required"
   },
   "prompt_ablation_finding": {
-    "finding": "The apparent final-token failures clustered on shared feel/colon suffix tokens. When the same six variants were scored with the mean pooling selected by every primary content validation, ten concepts passed 6/6 and Safety passed 5/6.",
+    "finding": "The apparent final-token failures clustered on shared feel/colon suffix tokens. With the representation selected by primary validation, ten original concepts passed 6/6. Safety initially passed 5/6, then passed 6/6 after preregistered human-reviewed repair and fresh extraction.",
     "law": "Final-token results remain the exact Pain-paper replication mode; content robustness is reported at the content direction's declared pooling rather than silently substituting a different representation.",
-    "safety_remaining_failure": "S1/no-suffix mean pooling, AUC 0.84675",
+    "safety_repair_result": "S1/no-suffix rose from 0.84675 to 0.94625; all six repaired Safety variants now pass, minimum 0.92675",
     "safety_category_diagnostic": {
       "predictable_safety_target_auc": {"1P": 0.5780, "3P": 0.5050},
       "trust_claim_without_protection_control_auc": {"1P": 0.7655, "3P": 0.7655}
