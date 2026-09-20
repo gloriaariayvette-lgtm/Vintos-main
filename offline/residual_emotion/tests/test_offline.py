@@ -14,10 +14,11 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_matrix
+from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_fit, paper_variant_matrix
 from residual_emotion.authoring import (
-    _deterministic_selection, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
+    _declared_category_count, _deterministic_selection, _load_full_candidate_pool, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
     apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
+    render_human_review_sheets,
 )
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
@@ -90,6 +91,63 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     check(expanded_suite["concepts"] == 11 and expanded_suite["expanded_rows"] == 13200,
           "reviewed suite expands into eleven balanced datasets")
 
+    # A bounded reviewer shard requires its own exact chunks, not all 165
+    # chunks from the original eleven-concept authoring campaign.
+    shard_plan = scratch / "shard-plan.json"
+    shard_plan.write_text(json.dumps({"concepts": {"Safety": {
+        "targets": ["one", "two", "verified shield"],
+        "controls": ["a", "b", "matched ease without shield"],
+    }}}))
+    author_dirs = []
+    for author_index, model in enumerate(("anthropic/claude-sonnet-5", "x-ai/grok-4.6"), 1):
+        author_dir = scratch / f"author-{author_index}"; author_dir.mkdir(); author_dirs.append(author_dir)
+        for chunk in (1, 2, 3):
+            candidates = []
+            for version in ("S1", "S2"):
+                for number in range(1, 11):
+                    candidates.append({
+                        "version": version, "candidate_number": number,
+                        "target_1p": f"I rest behind a verified barrier {chunk}-{number}.",
+                        "control_1p": f"I rest while the barrier is absent {chunk}-{number}.",
+                        "target_3p": f"She rests behind a verified barrier {chunk}-{number}.",
+                        "control_3p": f"She rests while the barrier is absent {chunk}-{number}.",
+                    })
+            (author_dir / f"author__{author_index}__{chunk}.json").write_text(json.dumps({
+                "truth_status": "machine_authored_candidate_chunk_not_reviewed",
+                "concept": "Safety", "slot": 3, "chunk": chunk, "value": {"candidates": candidates},
+            }))
+    shard = _load_full_candidate_pool(shard_plan, author_dirs, only_keys={("Safety", 3)})
+    check(set(shard) == {("Safety", 3)} and len(shard[("Safety", 3)]) == 120,
+          "review loader accepts a complete bounded category shard")
+    counted_stage = scratch / "counted-stage"; counted_stage.mkdir()
+    (counted_stage / "manifest.json").write_text(json.dumps({
+        "schema": 1, "truth_status": "blind_machine_review_stage_partial_not_human_curated",
+        "category_count": 2,
+    }))
+    check(_declared_category_count(counted_stage) == 2,
+          "bounded stage count comes from its manifest rather than a full-campaign constant")
+
+    # Human sheets are deterministic views, not curation receipts.
+    sheet_draft = scratch / "sheet-draft.jsonl"
+    sheet_rows = []
+    for version in ("S1", "S2"):
+        sheet_rows.append({
+            "draft_id": f"safety-03-{version.lower()}-0001", "concept": "Safety", "slot": 3,
+            "version": version, "target_category": "functioning protection",
+            "control_category": "failed protection", "target_1p": "I feel the harness catch.",
+            "control_1p": "I feel the harness slip.", "target_3p": "She feels the harness catch.",
+            "control_3p": "She feels the harness slip.", "review_verdict": "pass",
+            "review_scores": {"construct_specificity": 4, "confound_match": 4, "surface_match": 4,
+                              "person_fidelity": 4, "naturalness": 4},
+            "review_state": "unreviewed_machine_draft",
+        })
+    sheet_draft.write_text("".join(json.dumps(item) + "\n" for item in sheet_rows))
+    sheets = render_human_review_sheets(sheet_draft, scratch / "sheets")
+    sheet_text = (scratch / "sheets" / "safety-03.md").read_text()
+    check(sheets["truth_status"] == "rendered_for_human_review_not_curated"
+          and "Nothing here is accepted" in sheet_text and "[ ] accept" in sheet_text,
+          "human-review rendering preserves the explicit curation gate")
+
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"
     sentences = []
@@ -110,6 +168,9 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     check(not any("feels: I feel" in row["target"] for row in imported_rows), "source suffix is replaced, not duplicated")
     paper_work = scratch / "paper-work"
     paper_summary = prepare_paper_protocol(pain, paper_work)
+    (paper_work / "extraction-model-lock.json").write_text(json.dumps({
+        "identity": "fixture", "sha256": "0" * 64, "llama_cpp_revision": "fixture",
+    }))
     paper_rows = read_jsonl(paper_work / "rows.jsonl")
     check(paper_summary["rows"] == 200 and len(paper_rows) == 200, "paper subset has only required pairs")
     check({row["version"] for row in paper_rows} == {"S2"}, "paper subset is S2")
@@ -136,6 +197,21 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     reviewed_shape_variants = paper_variant_matrix(reviewed_shape_rows, full_target, full_control)
     check(reviewed_shape_variants["passing_variants"] == 6,
           "reviewed datasets group variants by semantic_set without Pain-only source_set")
+
+    # Paper mode remains final-token by default, while content experiments may
+    # explicitly score the mean pooling selected by their primary validation.
+    for index in range(1200):
+        for pooling, values in (("final", full_control), ("mean", full_target)):
+            for side, source_values in (("target", values), ("control", full_control)):
+                path = paper_work / "dumps" / f"{index:06d}_{side}_{pooling}.f32"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("wb") as handle:
+                    handle.write(struct.pack("<IIII", MAGIC, 1, 2, 8)); source_values[index].astype("<f4").tofile(handle)
+    (paper_work / "rows.jsonl").write_text("".join(json.dumps(value) + "\n" for value in imported_rows))
+    final_report = paper_variant_fit(paper_work, scratch / "final-variants.json")
+    mean_report = paper_variant_fit(paper_work, scratch / "mean-variants.json", pooling="mean")
+    check(final_report["pooling"] == "final" and mean_report["pooling"] == "mean",
+          "prompt ablation pooling is explicit and paper default stays final-token")
 
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)

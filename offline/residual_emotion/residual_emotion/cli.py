@@ -18,7 +18,7 @@ def main() -> int:
     paper_prepare = sub.add_parser("prepare-paper"); paper_prepare.add_argument("dataset", type=Path); paper_prepare.add_argument("output", type=Path)
     fit = sub.add_parser("fit"); fit.add_argument("work", type=Path); fit.add_argument("output", type=Path); fit.add_argument("--auc-minimum", type=float, default=0.85)
     paper_fit = sub.add_parser("paper-fit"); paper_fit.add_argument("work", type=Path); paper_fit.add_argument("output", type=Path); paper_fit.add_argument("--auc-minimum", type=float, default=0.85)
-    variant_fit = sub.add_parser("paper-variant-fit"); variant_fit.add_argument("work", type=Path); variant_fit.add_argument("output", type=Path); variant_fit.add_argument("--auc-minimum", type=float, default=0.85)
+    variant_fit = sub.add_parser("paper-variant-fit"); variant_fit.add_argument("work", type=Path); variant_fit.add_argument("output", type=Path); variant_fit.add_argument("--auc-minimum", type=float, default=0.85); variant_fit.add_argument("--pooling", choices=("final", "mean"), default="final")
     compare_cmd = sub.add_parser("compare"); compare_cmd.add_argument("emoclaw", type=Path); compare_cmd.add_argument("residual", type=Path); compare_cmd.add_argument("output", type=Path)
     verify = sub.add_parser("verify-model"); verify.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
     unembed = sub.add_parser("unembed"); unembed.add_argument("direction", type=Path); unembed.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
@@ -31,7 +31,7 @@ def main() -> int:
     elif args.command == "prepare-paper": result = dataset.prepare_paper_protocol(args.dataset, args.output)
     elif args.command == "fit": result = analysis.fit(args.work, args.output, args.auc_minimum)
     elif args.command == "paper-fit": result = analysis.paper_fit(args.work, args.output, args.auc_minimum)
-    elif args.command == "paper-variant-fit": result = analysis.paper_variant_fit(args.work, args.output, args.auc_minimum)
+    elif args.command == "paper-variant-fit": result = analysis.paper_variant_fit(args.work, args.output, args.auc_minimum, args.pooling)
     elif args.command == "compare": result = compare.join(args.emoclaw, args.residual, args.output)
     elif args.command == "verify-model":
         lock = json.loads(args.lock.read_text(encoding="utf-8")); path = Path(lock["path"])

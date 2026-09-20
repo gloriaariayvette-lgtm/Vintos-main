@@ -98,12 +98,31 @@ misrepresented as 2,160 individual inspections.
 All eleven content directions cleared the fixed nested held-out AUC threshold on the
 pinned abliterated checkpoint. Scores ranged from Safety at 0.87034 to Arousal at
 0.98406. Every absolute off-diagonal direction cosine was below 0.3 (maximum 0.18906,
-Arousal versus Desire). Prompt-ablation sensitivity remains visible: Safety, Curiosity,
-Dominance, and Warmth passed only three of six variants, while Arousal, Desire,
-Groundedness, and Playfulness passed all six. Exact tied-output unembedding reports were
-produced for all eleven but remain pending named human semantic review, so measurement
-admission stays blocked. The complete compact receipt is
+Arousal versus Desire). The first prompt-ablation report used the paper's final-token
+representation and was highly suffix-sensitive: shared `feel`/colon tokens drove the
+apparent 3/6 and 5/6 failures. Every primary content validation had selected mean
+pooling. Repeating the same six variant tests with that declared representation produced
+6/6 passes for ten concepts. Safety passed 5/6; its S1/no-suffix score was 0.84675, and
+held-out category diagnostics localized the weakness to predictable-safety targets and
+trust-without-protection controls. Final-token scoring remains the exact Pain-paper
+replication mode rather than being rewritten after the fact. Exact tied-output
+unembedding reports were produced for all eleven but remain pending named human semantic
+review, so measurement admission stays blocked. The complete compact receipt is
 `evidence/2026-09-20-eleven-content-dimensions.json`.
+
+Safety alone therefore has a preregistered two-category repair in
+`dataset-plan-safety-v2.json`: functioning protection replaces mere schedule
+predictability, and verified physical safeguards replace trust-laden controls. Two
+authors and an independent blind reviewer produced a bounded 80-pair machine draft.
+Its category sheets are under `review-sheets/safety-v2/`; they remain explicitly
+uncurated until Gloria reviews them. Re-rendering those sheets is deterministic:
+
+```bash
+python -m residual_emotion.authoring render-human-review-sheets \
+  work/safety-v2/safety-v2-human-review.jsonl review-sheets/safety-v2
+```
+
+No Safety v2 extraction or claim is allowed before that human gate.
 
 Nifrathir is excluded from this content-dimension authoring pass; it remains the twelfth
 slow modifier rather than a twelfth peer emotion. Its modifier dataset and predictive

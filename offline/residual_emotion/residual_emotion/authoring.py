@@ -455,8 +455,17 @@ Candidates:
 
 
 def _load_full_candidate_pool(plan_path: Path, author_dirs: list[Path],
-                              allow_partial: bool = False) -> dict[tuple[str, int], list[dict[str, Any]]]:
+                              allow_partial: bool = False,
+                              only_concepts: set[str] | None = None,
+                              only_keys: set[tuple[str, int]] | None = None) -> dict[tuple[str, int], list[dict[str, Any]]]:
     plan = json.loads(plan_path.read_text(encoding="utf-8")); pools: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    plan_keys = {(concept, slot) for concept, spec in plan["concepts"].items()
+                 for slot in range(1, len(spec["targets"]) + 1)}
+    requested = set(only_keys) if only_keys is not None else set(plan_keys)
+    if only_concepts:
+        requested = {key for key in requested if key[0] in only_concepts}
+    if not requested or not requested.issubset(plan_keys):
+        raise ValueError("review shard requests an empty or unknown category set")
     if len(author_dirs) != len(AUTHORS):
         raise ValueError("one author checkpoint directory is required per approved author")
     for author_index, (model, directory) in enumerate(zip(AUTHORS, author_dirs), 1):
@@ -465,10 +474,15 @@ def _load_full_candidate_pool(plan_path: Path, author_dirs: list[Path],
             row = json.loads(path.read_text(encoding="utf-8"))
             if row.get("truth_status") == "machine_authored_candidate_chunk_not_reviewed":
                 records.append(row)
-        if not allow_partial and len(records) < 165:
-            raise ValueError(f"{model}: expected at least 165 completed author chunks, found {len(records)}")
+        completed_keys = {(str(row["concept"]), int(row["slot"]), int(row["chunk"])) for row in records}
+        expected_keys = {(concept, slot, chunk) for concept, slot in requested for chunk in (1, 2, 3)}
+        if not allow_partial and not expected_keys.issubset(completed_keys):
+            missing = sorted(expected_keys - completed_keys)
+            raise ValueError(f"{model}: review shard lacks {len(missing)} author chunks; sample {missing[:5]}")
         for record in records:
             concept, slot, chunk = str(record["concept"]), int(record["slot"]), int(record["chunk"])
+            if (concept, slot) not in requested:
+                continue
             _validate_candidates(record["value"], concept, model, AUTHOR_CHUNK_PER_VERSION, compact=True)
             target = plan["concepts"][concept]["targets"][slot - 1]
             control = plan["concepts"][concept]["controls"][slot - 1]
@@ -562,7 +576,8 @@ def run_reviewer_standard(plan_path: Path, author_dirs: list[Path], output_dir: 
     if not 1 <= workers <= 6:
         raise ValueError("review workers must be between 1 and 6")
     plan = json.loads(plan_path.read_text(encoding="utf-8")); pools = _load_full_candidate_pool(
-        plan_path, author_dirs, allow_partial=allow_partial)
+        plan_path, author_dirs, allow_partial=allow_partial,
+        only_concepts=only_concepts, only_keys=only_keys)
     if only_concepts:
         pools = {key: rows for key, rows in pools.items() if key[0] in only_concepts}
     if only_keys is not None:
@@ -794,12 +809,33 @@ def _deterministic_selection(eligible: list[dict[str, Any]]) -> tuple[list[dict[
     return value["selected"], alternate_rows
 
 
+_COUNTED_STAGE_STATES = {
+    "blind_machine_review_stage_complete_not_human_curated",
+    "blind_machine_review_stage_partial_not_human_curated",
+    "deterministic_selection_complete_human_review_required",
+}
+
+
+def _declared_category_count(stage_dir: Path) -> int:
+    manifest_path = stage_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise ValueError("stage manifest is required to bind the declared category count")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("truth_status") not in _COUNTED_STAGE_STATES:
+        raise ValueError("stage manifest has an ineligible truth status")
+    count = int(manifest.get("category_count", 0))
+    if count < 1:
+        raise ValueError("stage manifest declares no categories")
+    return count
+
+
 def run_deterministic_selector(review_dir: Path, output_dir: Path) -> dict[str, Any]:
     """Narrow blind-reviewed pools reproducibly; this is selection, never curation."""
     records = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(review_dir.glob("review__*.json"))]
     records = [row for row in records if row.get("truth_status") == "blind_machine_review_complete_not_human_curated"]
-    if len(records) != 55:
-        raise ValueError(f"expected 55 completed review categories, found {len(records)}")
+    expected = _declared_category_count(review_dir)
+    if len(records) != expected:
+        raise ValueError(f"expected {expected} completed review categories, found {len(records)}")
     output_dir.mkdir(parents=True, exist_ok=True)
     for record in records:
         eligible, _ = _eligible_from_review(record); selected, alternates = _deterministic_selection(eligible)
@@ -906,8 +942,9 @@ def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[st
     accepted_states = {"machine_adjudicated_selection_not_human_curated",
                        "deterministically_selected_human_review_required"}
     records = [row for row in records if row.get("truth_status") in accepted_states]
-    if len(records) != 55:
-        raise ValueError(f"expected 55 selected categories, found {len(records)}")
+    expected = _declared_category_count(adjudication_dir)
+    if len(records) != expected:
+        raise ValueError(f"expected {expected} selected categories, found {len(records)}")
     rows = []
     for record in records:
         eligible = {row["candidate_id"]: row for row in record["eligible"]}
@@ -926,8 +963,9 @@ def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[st
                                         else "blind_fable_selection_from_reviewer_eligible_pool"),
                 "review_state": "unreviewed_machine_draft", "human_note": "",
             })
-    if len(rows) != 2200:
-        raise ValueError(f"expected 2200 base draft pairs, found {len(rows)}")
+    expected_rows = expected * FULL_FINAL_PER_VERSION * 2
+    if len(rows) != expected_rows:
+        raise ValueError(f"expected {expected_rows} base draft pairs, found {len(rows)}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
     atomic_json(output.with_suffix(".manifest.json"), {
@@ -935,6 +973,52 @@ def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[st
         "row_count": len(rows), "law": "machine authoring review and adjudication do not grant curation",
     })
     return {"truth_status": "machine_draft_requires_explicit_human_review", "rows": len(rows)}
+
+
+def render_human_review_sheets(base_path: Path, output_dir: Path) -> dict[str, Any]:
+    """Render machine drafts for human judgment; rendering never grants acceptance."""
+    rows = read_jsonl(base_path)
+    if not rows or any(row.get("review_state") != "unreviewed_machine_draft" for row in rows):
+        raise ValueError("review sheets require a non-empty unreviewed machine draft")
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault((str(row["concept"]), int(row["slot"])), []).append(row)
+    output_dir.mkdir(parents=True, exist_ok=True); outputs = []
+    for (concept, slot), category_rows in sorted(grouped.items()):
+        versions = {str(row["version"]) for row in category_rows}
+        if versions != {"S1", "S2"}:
+            raise ValueError(f"{concept}/{slot} review sheet lacks both S1 and S2")
+        target = str(category_rows[0]["target_category"]); control = str(category_rows[0]["control_category"])
+        lines = [
+            f"# {concept} / {slot} — {target}\n\n",
+            "> Human-review sheet. Nothing here is accepted until Gloria records a decision.\n\n",
+            f"Source: `{base_path}`  \nRows: {len(category_rows)} "
+            f"({sum(row['version'] == 'S1' for row in category_rows)} S1, "
+            f"{sum(row['version'] == 'S2' for row in category_rows)} S2)  \n",
+            f"Matched control: {control}\n\n",
+        ]
+        for version in ("S1", "S2"):
+            lines.append(f"## {version}\n\n")
+            for number, row in enumerate((item for item in category_rows if item["version"] == version), 1):
+                scores = row["review_scores"]
+                score_text = "/".join(str(scores[name]) for name in
+                                      ("construct_specificity", "confound_match", "surface_match",
+                                       "person_fidelity", "naturalness"))
+                lines.extend([
+                    f"### {version}-{number:02d} · `{row['draft_id']}`\n\n",
+                    f"- Target 1P: {row['target_1p']}\n",
+                    f"- Control 1P: {row['control_1p']}\n",
+                    f"- Target 3P: {row['target_3p']}\n",
+                    f"- Control 3P: {row['control_3p']}\n",
+                    f"- Blind scores (construct/confound/surface/person/natural): `{score_text}`; "
+                    f"verdict `{row['review_verdict']}`\n",
+                    "- Decision: [ ] accept  [ ] reject  [ ] revise\n",
+                    "- Note:\n\n",
+                ])
+        path = output_dir / f"{_slug(concept)}-{slot:02d}.md"
+        path.write_text("".join(lines), encoding="utf-8"); outputs.append(str(path))
+    return {"truth_status": "rendered_for_human_review_not_curated", "sheets": len(outputs),
+            "rows": len(rows), "outputs": outputs}
 
 
 def apply_review_receipt(base_path: Path, receipt_path: Path, output: Path) -> dict[str, Any]:
@@ -1155,6 +1239,8 @@ def main() -> int:
     select_p.add_argument("output", type=Path)
     draft_p = sub.add_parser("assemble-human-review-draft"); draft_p.add_argument("adjudication_dir", type=Path)
     draft_p.add_argument("output", type=Path)
+    sheets_p = sub.add_parser("render-human-review-sheets"); sheets_p.add_argument("base", type=Path)
+    sheets_p.add_argument("output", type=Path)
     apply_p = sub.add_parser("apply-review-receipt"); apply_p.add_argument("base", type=Path)
     apply_p.add_argument("receipt", type=Path); apply_p.add_argument("output", type=Path)
     suite_p = sub.add_parser("expand-reviewed-suite"); suite_p.add_argument("base", type=Path)
@@ -1178,6 +1264,8 @@ def main() -> int:
         result = run_deterministic_selector(args.review_dir, args.output)
     elif args.command == "assemble-human-review-draft":
         result = assemble_human_review_draft(args.adjudication_dir, args.output)
+    elif args.command == "render-human-review-sheets":
+        result = render_human_review_sheets(args.base, args.output)
     elif args.command == "apply-review-receipt":
         result = apply_review_receipt(args.base, args.receipt, args.output)
     else:

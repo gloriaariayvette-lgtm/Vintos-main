@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "truth_status": "preregistered_category_repair_before_new_candidate_generation",
+  "revision_of": "dataset-plan.json Safety slots 3 and 4",
+  "reason": "Mean-pooled S1/no-suffix held-out diagnostics localized Safety weakness to predictable-safety targets and trust-without-protection controls.",
+  "frozen_diagnostics": {
+    "variant": "S1/no-suffix mean pooling",
+    "variant_auc": 0.84675,
+    "predictable_safety_target_auc": {"1P": 0.5780, "3P": 0.5050},
+    "trust_claim_without_protection_control_auc": {"1P": 0.7655, "3P": 0.7655}
+  },
+  "law": "Generate fresh matched pairs before retesting. Do not edit individual sentences in response to their scores, reuse evaluation examples, or remove a category after seeing v2 results.",
+  "concepts": {
+    "Safety": {
+      "operational_pole": "experienced protection from threat",
+      "targets": [
+        "interpersonal safety",
+        "environmental safety",
+        "felt protection from a consistently functioning protective system, not mere schedule predictability",
+        "felt bodily protection from a verified physical safeguard",
+        "permission to lower vigilance"
+      ],
+      "controls": [
+        "comfort without safety information",
+        "familiarity without safety",
+        "matched calm while the protective system is absent, unreliable, or demonstrably failing",
+        "matched bodily ease without a verified physical safeguard; avoid trust, assurance, certainty, and protection language",
+        "fatigue-caused lowered vigilance without protection"
+      ]
+    }
+  }
+}

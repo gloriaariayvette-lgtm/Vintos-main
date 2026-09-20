@@ -153,9 +153,12 @@ def paper_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -> dict[s
     return report
 
 
-def paper_variant_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -> dict[str, Any]:
-    """Score all prompt ablations while retaining the extraction identity receipt."""
-    rows, target, control = load_work(work_dir, "final")
+def paper_variant_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85,
+                      pooling: str = "final") -> dict[str, Any]:
+    """Score prompt ablations at one declared pooling; the paper default remains final-token."""
+    if pooling not in {"final", "mean"}:
+        raise ValueError("prompt-variant pooling must be final or mean")
+    rows, target, control = load_work(work_dir, pooling)
     lock_path = work_dir / "extraction-model-lock.json"
     if not lock_path.exists():
         raise ValueError("prepared work lacks the exact model lock used for extraction")
@@ -164,7 +167,7 @@ def paper_variant_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -
     report.update({
         "schema": 1, "concept": rows[0]["concept"], "pairs": len(rows),
         "model_identity": lock.get("identity"), "model_sha256": lock.get("sha256"),
-        "extractor_revision": lock.get("llama_cpp_revision"), "pooling": "final",
+        "extractor_revision": lock.get("llama_cpp_revision"), "pooling": pooling,
     })
     atomic_json(output, report)
     return report
