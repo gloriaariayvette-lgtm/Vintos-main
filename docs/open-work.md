@@ -969,11 +969,15 @@ restoration can reconnect around BLE activity, but iOS does not promise an exact
 wake while the app is suspended or disconnected.
 
 The house now validates and stores completed R21M sleep estimates (total and awake/light/deep/REM/nap
-minutes, score and wake count) and includes the latest completed estimate in temporal context for 48
-hours as a device estimate, never a medical measurement. The iOS bridge still needs the official
-Jieli small-file transport integrated and proven on the physical R21M before it can automatically
-download type `0x05` sleep files; the server path and parser contract are ready, but transport is not
-falsely marked complete.
+minutes, with optional score and wake count) and includes the latest completed estimate in temporal
+context for 48 hours as a device estimate, never a medical measurement. Repeated delivery of one
+session is idempotent. The ring's UUIDs and working handshake match its YCBT/Jieli application
+protocol, not generic Jieli small-file transfer: the signed iOS bridge now pauses real-time streaming,
+requests `0x0504`, reassembles and decodes `0x0513` session/stage records, POSTs them to the sibling
+sleep route, then resumes streaming. Its revised native framing/decoder suite executes 5/5 green and
+the signed build is installed on the attached iPhone. Physical acceptance remains open until this
+specific R21M returns a non-empty sleep-history record and Aegis acknowledges it; compatible firmware
+is documented to sometimes return an honest empty record even after a night.
 
 ## Offline residual-stream emotion instrument — 19 September
 
