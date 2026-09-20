@@ -129,5 +129,33 @@ def prepare(path: Path, out_dir: Path) -> dict[str, Any]:
     return summary
 
 
+def prepare_paper_protocol(path: Path, out_dir: Path) -> dict[str, Any]:
+    """Prepare only the pinned paper's S2 colon prompts for both persons."""
+    source_summary = validate(path)
+    rows = [row for row in read_jsonl(path)
+            if row["version"] == "S2" and row["suffix"] == "feel_colon"]
+    counts = collections.Counter(str(row["person"]) for row in rows)
+    if counts != {"1P": 100, "3P": 100}:
+        raise ValueError(f"paper protocol requires 100 S2 colon pairs per person: {dict(counts)}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "target.txt").write_text(
+        "".join(_escape(str(row["target"])) + "\n" for row in rows), encoding="utf-8")
+    (out_dir / "control.txt").write_text(
+        "".join(_escape(str(row["control"])) + "\n" for row in rows), encoding="utf-8")
+    (out_dir / "rows.jsonl").write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
+    source_manifest = path.with_suffix(".manifest.json")
+    if source_manifest.exists():
+        (out_dir / "source.manifest.json").write_text(
+            source_manifest.read_text(encoding="utf-8"), encoding="utf-8")
+    summary = {
+        "concept": source_summary["concept"], "rows": len(rows),
+        "persons": dict(counts), "version": "S2", "suffix": "feel_colon",
+        "protocol": "pinned Pain-axis layer curves; persons separate; five shuffled sentence-set folds",
+    }
+    (out_dir / "dataset-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return summary
+
+
 def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("\n", "\\n")

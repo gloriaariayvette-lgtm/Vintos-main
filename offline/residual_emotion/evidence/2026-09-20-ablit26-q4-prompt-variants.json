@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "at": "2026-09-20",
+  "host": "mac",
+  "candidate": "Pain",
+  "model_identity": "gemma-4-26b-a4b-it-uncensored",
+  "model_format": "GGUF Q4_K_M",
+  "model_sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extraction": {
+    "source": "frozen_complete_mac_residual_dump",
+    "pairs": 1200,
+    "pooling_scored": "final",
+    "original_receipt": "offline/residual_emotion/evidence/2026-09-19-pain-validation.json"
+  },
+  "validation": {
+    "protocol": "each S1/S2 and suffix variant selected independently; first and third person scored separately; five-fold KFold sentence-set split with shuffle seed 42; layer curves averaged",
+    "auc_minimum": 0.85,
+    "passing_variants": 6,
+    "variant_count": 6,
+    "variants": [
+      {"version": "S1", "suffix": "feel_colon", "held_out_auc": 0.8615, "selected_layer": 16, "person_auc": {"1P": 0.867, "3P": 0.856}},
+      {"version": "S1", "suffix": "feel", "held_out_auc": 0.8755, "selected_layer": 16, "person_auc": {"1P": 0.9005, "3P": 0.8505}},
+      {"version": "S1", "suffix": "none", "held_out_auc": 0.878, "selected_layer": 11, "person_auc": {"1P": 0.856, "3P": 0.9}},
+      {"version": "S2", "suffix": "feel_colon", "held_out_auc": 0.91175, "selected_layer": 14, "person_auc": {"1P": 0.928, "3P": 0.8955}},
+      {"version": "S2", "suffix": "feel", "held_out_auc": 0.94425, "selected_layer": 17, "person_auc": {"1P": 0.9735, "3P": 0.915}},
+      {"version": "S2", "suffix": "none", "held_out_auc": 0.93225, "selected_layer": 10, "person_auc": {"1P": 0.931, "3P": 0.9335}}
+    ]
+  },
+  "reproducibility_note": {
+    "fresh_aegis_s2_feel_colon_auc": 0.90675,
+    "frozen_mac_s2_feel_colon_auc": 0.91175,
+    "absolute_difference": 0.005,
+    "interpretation": "both clear the fixed 0.85 threshold; host/run variance is retained rather than pooled"
+  },
+  "full_result_sha256": "85e8498ed6356c1609dc678f20ddae63df7c9273c85790aea4a2069dfdd8cde5",
+  "truth_status": "offline_prompt_ablation_not_a_live_measurement"
+}

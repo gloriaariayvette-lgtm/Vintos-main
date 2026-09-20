@@ -1,0 +1,7 @@
+{
+  "curated": false,
+  "law": "machine authoring review and adjudication do not grant curation",
+  "row_count": 2200,
+  "schema": 1,
+  "truth_status": "machine_draft_requires_explicit_human_review"
+}

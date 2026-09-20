@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "at": "2026-09-20",
+  "host": "mac",
+  "truth_status": "offline_held_out_validation_not_a_live_measurement",
+  "review": {
+    "reviewer": "Gloria",
+    "explicit_accepts": 38,
+    "explicit_rejects": 2,
+    "named_replacements": 2,
+    "bulk_accept_remaining": 2160,
+    "receipt_sha256": "f9a6c30377f42b0b3e151fec59447cbb18ecff86fa4fe3fd74d4feca8b3d10a5",
+    "reviewed_draft_sha256": "44ef39b51367461b15c722e8cca0209f1e4b963f315a17322779bb7e15a2eaa4"
+  },
+  "model": {
+    "identity": "gemma-4-26b-a4b-it-uncensored",
+    "format": "GGUF Q4_K_M",
+    "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+    "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00"
+  },
+  "protocol": {
+    "base_pairs_per_concept": 200,
+    "expanded_pairs_per_concept": 1200,
+    "persons": ["1P", "3P"],
+    "suffixes": ["feel_colon", "feel", "none"],
+    "versions": ["S1", "S2"],
+    "outer_folds": 5,
+    "inner_folds": 4,
+    "group": "semantic_set",
+    "auc_minimum": 0.85,
+    "denoise_control_variance": 0.5,
+    "selection_law": "pooling and layer are selected inside each outer training fold"
+  },
+  "results": [
+    {"concept": "Arousal", "auc": 0.98406250, "auc_std": 0.01180715, "layer": 25, "pooling": "mean", "prompt_variants_passing": "6/6", "variant_range": [0.85625, 0.95375]},
+    {"concept": "Connection", "auc": 0.90102431, "auc_std": 0.01718086, "layer": 26, "pooling": "mean", "prompt_variants_passing": "5/6", "variant_range": [0.84750, 0.96175]},
+    {"concept": "Curiosity", "auc": 0.95605208, "auc_std": 0.01252225, "layer": 24, "pooling": "mean", "prompt_variants_passing": "3/6", "variant_range": [0.82300, 0.98025]},
+    {"concept": "Desire", "auc": 0.98305556, "auc_std": 0.01079720, "layer": 25, "pooling": "mean", "prompt_variants_passing": "6/6", "variant_range": [0.87375, 0.94650]},
+    {"concept": "Dominance", "auc": 0.95169444, "auc_std": 0.02299142, "layer": 26, "pooling": "mean", "prompt_variants_passing": "3/6", "variant_range": [0.80450, 0.96100]},
+    {"concept": "Groundedness", "auc": 0.97161111, "auc_std": 0.00977279, "layer": 25, "pooling": "mean", "prompt_variants_passing": "6/6", "variant_range": [0.89250, 0.97400]},
+    {"concept": "Playfulness", "auc": 0.97360069, "auc_std": 0.00956362, "layer": 27, "pooling": "mean", "prompt_variants_passing": "6/6", "variant_range": [0.91000, 0.95450]},
+    {"concept": "Safety", "auc": 0.87033681, "auc_std": 0.03799072, "layer": 23, "pooling": "mean", "prompt_variants_passing": "3/6", "variant_range": [0.70400, 0.90550]},
+    {"concept": "Tension", "auc": 0.95507292, "auc_std": 0.02037944, "layer": 26, "pooling": "mean", "prompt_variants_passing": "5/6", "variant_range": [0.82425, 0.92625]},
+    {"concept": "Valence", "auc": 0.96162153, "auc_std": 0.01018438, "layer": 25, "pooling": "mean", "prompt_variants_passing": "5/6", "variant_range": [0.84750, 0.97700]},
+    {"concept": "Warmth", "auc": 0.96171528, "auc_std": 0.01772563, "layer": 25, "pooling": "mean", "prompt_variants_passing": "3/6", "variant_range": [0.82675, 0.96825]}
+  ],
+  "orthogonality": {
+    "maximum_absolute_off_diagonal_cosine": 0.18905895394616035,
+    "maximum_pair": ["Arousal", "Desire"],
+    "valence_warmth_cosine": 0.09965649123684076,
+    "threshold": 0.3,
+    "status": "all_eleven_below_threshold",
+    "caveat": "descriptive comparison of selected residual directions; not dimensionality proof"
+  },
+  "unembedding": {
+    "status": "produced_pending_human_semantic_review",
+    "tensor": "token_embd.weight_tied_output",
+    "admission_blocking": true,
+    "notable_weak_candidate": "Safety passed AUC narrowly, passed 3/6 prompt variants, and its promoted vocabulary is less specific than the other concepts"
+  },
+  "boundary": "These eleven are the content-responsive hypotheses. Nifrathir remains the separate twelfth slow modifier and was not extracted in this pass. Pain and Fear remain exploratory candidates, not peers silently added to EmoClaw. Nothing is deployed or connected to EmoClaw."
+}

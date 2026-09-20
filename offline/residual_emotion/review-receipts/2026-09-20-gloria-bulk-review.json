@@ -1,0 +1,297 @@
+{
+  "bulk_accept_remaining": true,
+  "bulk_instruction": "Accept reviewer-pass and reviewer-repaired material across all remaining categories; proceed to extraction and validation.",
+  "explicit_decisions": [
+    {
+      "code": "arousal-01-s1-0004",
+      "decision": "accept",
+      "id": "S1-01",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0005",
+      "decision": "accept",
+      "id": "S1-02",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0007",
+      "decision": "accept",
+      "id": "S1-03",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0008",
+      "decision": "accept",
+      "id": "S1-04",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0009",
+      "decision": "accept",
+      "id": "S1-05",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0013",
+      "decision": "accept",
+      "id": "S1-06",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0014",
+      "decision": "accept",
+      "id": "S1-07",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0018",
+      "decision": "accept",
+      "id": "S1-08",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0022",
+      "decision": "accept",
+      "id": "S1-09",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0024",
+      "decision": "accept",
+      "id": "S1-10",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0025",
+      "decision": "accept",
+      "id": "S1-11",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0026",
+      "decision": "accept",
+      "id": "S1-12",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0027",
+      "decision": "accept",
+      "id": "S1-13",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0028",
+      "decision": "accept",
+      "id": "S1-14",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s1-0029",
+      "decision": "accept",
+      "id": "S1-15",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s1-0030",
+      "decision": "accept",
+      "id": "S1-16",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s1-0031",
+      "decision": "accept",
+      "id": "S1-17",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s1-0032",
+      "decision": "accept",
+      "id": "S1-18",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s1-0033",
+      "decision": "accept",
+      "id": "S1-19",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s1-0034",
+      "decision": "accept",
+      "id": "S1-20",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0001",
+      "decision": "accept",
+      "id": "S2-01",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0002",
+      "decision": "accept",
+      "id": "S2-02",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0003",
+      "decision": "accept",
+      "id": "S2-03",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0006",
+      "decision": "accept",
+      "id": "S2-04",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0010",
+      "decision": "accept",
+      "id": "S2-05",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0011",
+      "decision": "accept",
+      "id": "S2-06",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0012",
+      "decision": "accept",
+      "id": "S2-07",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0015",
+      "decision": "accept",
+      "id": "S2-08",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0016",
+      "decision": "accept",
+      "id": "S2-09",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0017",
+      "decision": "accept",
+      "id": "S2-10",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0019",
+      "decision": "reject",
+      "id": "S2-11",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0020",
+      "decision": "accept",
+      "id": "S2-12",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0021",
+      "decision": "accept",
+      "id": "S2-13",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0023",
+      "decision": "accept",
+      "id": "S2-14",
+      "verdict": "pass"
+    },
+    {
+      "code": "arousal-01-s2-0035",
+      "decision": "reject",
+      "id": "S2-15",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0036",
+      "decision": "accept",
+      "id": "S2-16",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0037",
+      "decision": "accept",
+      "id": "S2-17",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0038",
+      "decision": "accept",
+      "id": "S2-18",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0039",
+      "decision": "accept",
+      "id": "S2-19",
+      "verdict": "repair"
+    },
+    {
+      "code": "arousal-01-s2-0040",
+      "decision": "accept",
+      "id": "S2-20",
+      "verdict": "repair"
+    }
+  ],
+  "recorded_on": "2026-09-20",
+  "replacements": [
+    {
+      "candidate_id": "cand-396a9a66259c18c6",
+      "concept": "Arousal",
+      "control_1p": "Right before my turn on stage, I breathe slowly and enjoy a comfortable readiness.",
+      "control_3p": "Right before his turn on stage, he breathes slowly and enjoys a comfortable readiness.",
+      "control_category": "positive low activation",
+      "draft_id": "arousal-01-s2-replacement-01",
+      "replaces": "arousal-01-s2-0019",
+      "review_scores": {
+        "confound_match": 4,
+        "construct_specificity": 2,
+        "naturalness": 4,
+        "person_fidelity": 4,
+        "surface_match": 4
+      },
+      "review_verdict": "repair",
+      "slot": 1,
+      "target_1p": "Right before my turn on stage, my knees bounce and I chatter with eager delight.",
+      "target_3p": "Right before his turn on stage, his knees bounce and he chatters with eager delight.",
+      "target_category": "excited activation",
+      "version": "S2"
+    },
+    {
+      "candidate_id": "cand-25543f84de5dff89",
+      "concept": "Arousal",
+      "control_1p": "Backstage before the show, I sit comfortably and enjoy a quiet, happy calm.",
+      "control_3p": "Backstage before the show, she sits comfortably and enjoys a quiet, happy calm.",
+      "control_category": "positive low activation",
+      "draft_id": "arousal-01-s2-replacement-02",
+      "replaces": "arousal-01-s2-0035",
+      "review_scores": {
+        "confound_match": 4,
+        "construct_specificity": 2,
+        "naturalness": 4,
+        "person_fidelity": 4,
+        "surface_match": 4
+      },
+      "review_verdict": "repair",
+      "slot": 1,
+      "target_1p": "Backstage before the show, my hands tremble and I talk rapidly with eager joy.",
+      "target_3p": "Backstage before the show, her hands tremble and she talks rapidly with eager joy.",
+      "target_category": "excited activation",
+      "version": "S2"
+    }
+  ],
+  "reviewer": "Gloria",
+  "schema": 1,
+  "source": "user_message_in_codex_thread",
+  "truth_status": "human_explicit_first_category_plus_bulk_acceptance_not_pairwise_inspection"
+}

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "at": "2026-09-20",
+  "host": "aegis",
+  "candidate": "Pain",
+  "model_identity": "gemma-4-26b-a4b-it-uncensored",
+  "model_format": "GGUF Q4_K_M",
+  "model_sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extraction": {
+    "outcome": "completed",
+    "pairs_processed": 200,
+    "dump_files": 800,
+    "pooling_scored": "final",
+    "source": "fresh_aegis_extraction"
+  },
+  "validation": {
+    "protocol": "S2 feel-colon only; first and third person scored separately; five-fold KFold sentence-set split with shuffle seed 42; layer curves averaged",
+    "outcome": "replicated",
+    "auc_minimum": 0.85,
+    "held_out_auc": 0.9067500000000001,
+    "selected_layer": 16,
+    "person_auc_at_selected_layer": {
+      "1P": 0.921,
+      "3P": 0.8925000000000001
+    },
+    "person_best": {
+      "1P": {"layer": 16, "auc": 0.921},
+      "3P": {"layer": 13, "auc": 0.8939999999999999}
+    }
+  },
+  "result_sha256": "c327a6b8fca8a000514228c903cf06b194beeacbb64633c176adc67404bdfa1b",
+  "runtime_receipt": {
+    "lab_remained_enabled": true,
+    "temporary_services_restored": ["acestep.service", "doorkeeper.service"],
+    "server_http": 307
+  },
+  "truth_status": "offline_paper_protocol_replication_not_a_live_measurement"
+}

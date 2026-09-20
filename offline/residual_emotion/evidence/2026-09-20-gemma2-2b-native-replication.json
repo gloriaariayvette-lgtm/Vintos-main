@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "truth_status": "native_pytorch_known_good_replication",
+  "host": "Mac",
+  "model": "google/gemma-2-2b",
+  "revision": "c5ebcd40d208330abc697524c919956e692655cf",
+  "precision": "fp16",
+  "device": "mps",
+  "torch": "2.14.0",
+  "dataset_rows": 1200,
+  "dataset_sha256": "561d91e91991b5826eced4e417f4f672a28178b35d95909041bc84e95fb5a9ec",
+  "extraction": {
+    "api": "transformers output_hidden_states=True",
+    "tensor": "decoder block output at each prompt's final non-padding token",
+    "embedding_state_excluded": true,
+    "sentences": 2400,
+    "seconds": 10.3,
+    "cpu_offload": false,
+    "aegis_compute": false,
+    "quantized": false
+  },
+  "paper_protocol": {
+    "status": "replicated",
+    "selected_layer": 23,
+    "held_out_auc": 0.9670000000000001,
+    "first_person_auc": 0.9655000000000001,
+    "third_person_auc": 0.9685,
+    "protocol": "S2 feel-colon only; first and third person separately; five-fold shuffled sentence-set split at seed 42; layer curves averaged"
+  },
+  "stricter_local_protocol": {
+    "status": "rejected_below_auc",
+    "held_out_auc": 0.6802951388888889,
+    "held_out_auc_std": 0.19466108745938904,
+    "outer_fold_aucs": [0.8125173611111111, 0.9390624999999999, 0.5874305555555556, 0.6924131944444445, 0.3700520833333333],
+    "difference": "one direction across S1 and S2, first and third person, three suffix variants, with nested layer selection"
+  },
+  "conclusion": "The native extraction path reproduces the paper. Quantization or llama.cpp alone cannot explain the earlier failures; the dominant discrepancy is the materially different validation/data-combination protocol."
+}

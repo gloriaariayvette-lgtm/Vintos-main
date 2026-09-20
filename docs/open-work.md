@@ -981,10 +981,10 @@ is documented to sometimes return an honest empty record even after a night.
 
 ## Offline residual-stream emotion instrument — 19 September
 
-`offline/residual_emotion/` now pins Aegis's exact dense Gemma 4 12B QAT Q4_0 GGUF
-(not the proposal's mistaken “Gemma 4B”) by path and SHA-256 after Gloria moved the
-experiment on 2026-09-19. The prior abliterated 26B A4B lock remains only as the identity
-receipt for its completed Pain candidate run; cross-model results may not be pooled.
+`offline/residual_emotion/` now pins the exact abliterated Gemma 4 26B-A4B Q4_K_M GGUF
+Gloria selected as the real target (not the proposal's mistaken “Gemma 4B”), by path and
+SHA-256. The 12B QAT and standard-source Q8 locks remain negative Pain baselines only;
+cross-model results may not be pooled.
 The Aegis 12B residual path is functionally tested: a 12-pair published-Pain smoke produced
 48 finite residual tensors shaped `[12,48,3840]`, with non-identical target/control states and
 an extraction-time model lock; the Lab stayed paused and the thinking-off shim remained healthy.
@@ -1005,8 +1005,9 @@ pairwise cosine reporting, and an offline-only join to exported EmoClaw rows. It
 daemon, cron, server route, live memory path, or sender, and EmoClaw is unchanged.
 
 Still open, and therefore no emotional direction is called validated: Pain now has a pinned,
-MIT-licensed import of the paper authors' published 1,200-pair corpus; the other thirteen datasets
-still need actual semantic curation and a valid curation receipt, and bulk model prose is not
+MIT-licensed import of the paper authors' published 1,200-pair corpus; the eleven content-dimension
+datasets still need actual human semantic curation and valid curation receipts, while Nifrathir and
+Fear remain separate later candidates. Bulk model prose is not
 accepted as ground truth. Pain extraction completed against the exact checkpoint. Proper nested
 pooling/layer selection rejected it at held-out AUC 0.82543 against the 0.85 bar; the earlier
 non-nested 0.85074 estimate is explicitly not admissible. Its weak per-category results remain
@@ -1016,6 +1017,15 @@ matrix and records promoted/suppressed vocabulary, but its semantic review is ad
 the measurement function refuses even an AUC-passing vector until a human records a pass. The
 paper validated dense models; this A4B MoE run is a replication/extension and must remain labelled
 that way. No claim about actual dimensionality is possible before those gates close.
+
+The earlier `0.82543` figure above is the deliberately stricter all-variant nested
+experiment, not the paper's estimator. The paper's exact S2 feel-colon protocol now
+replicates on the abliterated 26B Q4 checkpoint at AUC `0.90675` in a fresh Aegis run.
+The complete Mac residual dump independently clears `0.85` for all six S1/S2 × suffix
+ablations (`0.86150`–`0.94425`); its matching S2-colon value is `0.91175`, a retained
+`0.005` host/run difference. This establishes prompt-variant robustness for the Pain
+candidate, but does not fabricate the missing semantic curation receipts for the eleven
+content dimensions, Nifrathir, or Fear, and does not bypass Pain's human unembedding review.
 The candidate pool is deliberately wider than the eventual map: eleven content dimensions,
 Nifrathir as the twelfth slow effectiveness modifier, and exploratory Pain and Fear. Nifrathir is
 excluded from peer merge/drop clustering; if measurable, its separate held-out test is whether it
@@ -1097,3 +1107,14 @@ get a bounded direct opportunity in wants-check (two admitted source events per 
 alternating with unresolved threads. Selection creates no want and consumes no spark.
 The report loop uses a dedicated local-only shim route; no paid provider fallback.
 Deployment and live acceptance are in progress, not yet complete.
+The 20 September multi-model authoring pass is offline and incomplete by design. Sonnet 5 and
+Grok 4.6 authored 9,160 candidates; GPT-5.6 Sol performed blind candidate review. The quality gate
+found that Dominance/3 and Safety/5 used unmatched controls, so those definitions were corrected
+and entirely fresh pools were authored rather than reviving rejected candidates. The final 55
+review records now have at least 28 eligible candidates in every S1/S2 cell for a required final
+20. Fable was dropped as an unnecessary paid second opinion after its structured selections proved
+costly and unreliable. A versioned deterministic selector now applies fixed blind-review score
+weights, a lexical-diversity penalty, stable tie-breaking, and adaptive source quotas. It produced
+2,200 base pairs with all reviewer-approved alternates retained. No row has a human acceptance, no
+expanded dataset exists, and nothing from this lane is deployed or read by EmoClaw. Checkpoint artifacts remain under the ignored
+`offline/residual_emotion/work/authoring-2026-09-20/` directory on this Mac.

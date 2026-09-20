@@ -1,0 +1,10 @@
+{
+  "curated": true,
+  "curation_basis": "human_review",
+  "law": "expanded only after every selected base pair was explicitly accepted",
+  "reviewers": [
+    "Gloria"
+  ],
+  "schema": 1,
+  "source_draft": "offline/residual_emotion/datasets/reviewed-eleven/curiosity-base-reviewed.jsonl"
+}

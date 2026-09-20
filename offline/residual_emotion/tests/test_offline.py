@@ -14,9 +14,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation
+from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_matrix
+from residual_emotion.authoring import (
+    _deterministic_selection, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
+    apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
+)
 from residual_emotion.compare import join
-from residual_emotion.dataset import prepare, validate
+from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
 from residual_emotion.import_pain_axis import convert as import_pain_axis
 from residual_emotion.measure import measure
@@ -55,6 +59,37 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     check((prepared / "source.manifest.json").exists(), "curation receipt follows preparation")
     (prepared / "extraction-model-lock.json").write_text(json.dumps({"identity": "fixture", "sha256": "0" * 64, "llama_cpp_revision": "fixture"}))
 
+    # Gloria's review receipt is applied literally: rejects disappear, named
+    # replacements enter, and the balanced suite expands without live writes.
+    reviewed_base = scratch / "reviewed.jsonl"
+    receipt_result = apply_review_receipt(
+        ROOT / "drafts" / "eleven-dimensions-base.jsonl",
+        ROOT / "review-receipts" / "2026-09-20-gloria-bulk-review.json",
+        reviewed_base,
+    )
+    reviewed_rows = read_jsonl(reviewed_base)
+    reviewed_ids = {item["candidate_id"] for item in reviewed_rows}
+    check(receipt_result == {"rows": 2200, "explicit_accepts": 38, "explicit_rejects": 2,
+                             "bulk_accept_remaining": 2160, "replacements": 2},
+          "review receipt counts are exact")
+    check("cand-2eaaf768fa61b949" not in reviewed_ids and "cand-62d291936051a05d" not in reviewed_ids,
+          "explicitly rejected candidates do not survive")
+    check({"cand-396a9a66259c18c6", "cand-25543f84de5dff89"}.issubset(reviewed_ids),
+          "named reviewer-approved replacements enter")
+    duplicate_receipt = json.loads((ROOT / "review-receipts" / "2026-09-20-gloria-bulk-review.json").read_text())
+    duplicate_receipt["replacements"].append(dict(duplicate_receipt["replacements"][0]))
+    duplicate_path = scratch / "duplicate-replacement.json"
+    duplicate_path.write_text(json.dumps(duplicate_receipt))
+    try:
+        apply_review_receipt(ROOT / "drafts" / "eleven-dimensions-base.jsonl",
+                             duplicate_path, scratch / "must-not-exist.jsonl")
+        raise AssertionError("duplicate replacement was accepted")
+    except ValueError:
+        pass
+    expanded_suite = expand_reviewed_suite(reviewed_base, scratch / "reviewed-suite", "Gloria")
+    check(expanded_suite["concepts"] == 11 and expanded_suite["expanded_rows"] == 13200,
+          "reviewed suite expands into eleven balanced datasets")
+
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"
     sentences = []
@@ -73,6 +108,34 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     imported_rows = read_jsonl(pain)
     check(len({row["semantic_set"] for row in imported_rows if row["semantic_set"] == "pain-s1-01-slot-1"}) == 1, "variants share semantic set")
     check(not any("feels: I feel" in row["target"] for row in imported_rows), "source suffix is replaced, not duplicated")
+    paper_work = scratch / "paper-work"
+    paper_summary = prepare_paper_protocol(pain, paper_work)
+    paper_rows = read_jsonl(paper_work / "rows.jsonl")
+    check(paper_summary["rows"] == 200 and len(paper_rows) == 200, "paper subset has only required pairs")
+    check({row["version"] for row in paper_rows} == {"S2"}, "paper subset is S2")
+    check({row["suffix"] for row in paper_rows} == {"feel_colon"}, "paper subset is colon prompts")
+
+    # The exact paper scorer keeps persons separate and averages their layer curves.
+    paper_control = np.zeros((200, 2, 8), dtype=np.float64)
+    paper_target = paper_control.copy(); paper_target[:, 1, 0] += 2.0
+    replicated = paper_protocol(paper_rows, paper_target, paper_control)
+    check(replicated["status"] == "replicated" and replicated["selected_layer"] == 1,
+          "paper scorer reproduces a held signal")
+
+    # Ablations remain separate estimates and require every published prompt variant.
+    full_target = np.zeros((1200, 2, 8), dtype=np.float64); full_target[:, 1, 0] += 2.0
+    full_control = np.zeros_like(full_target)
+    variants = paper_variant_matrix(imported_rows, full_target, full_control)
+    check(variants["variant_count"] == 6 and variants["passing_variants"] == 6,
+          "all six prompt variants are scored independently")
+    check({(v["variant"]["version"], v["variant"]["suffix"]) for v in variants["variants"]}
+          == {(version, suffix) for version in ("S1", "S2") for suffix in ("feel_colon", "feel", "none")},
+          "variant matrix is complete")
+    reviewed_shape_rows = [{key: value for key, value in item.items() if key != "source_set"}
+                           for item in imported_rows]
+    reviewed_shape_variants = paper_variant_matrix(reviewed_shape_rows, full_target, full_control)
+    check(reviewed_shape_variants["passing_variants"] == 6,
+          "reviewed datasets group variants by semantic_set without Pain-only source_set")
 
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)
@@ -115,5 +178,112 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     (direction_dir / "unembedding.json").write_text(json.dumps({"tensor": "token_embd.weight_tied_output"}))
     review(direction_dir, "fixture-reviewer", True, "synthetic vocabulary aligns with fixture")
     check(measure(residual, direction_dir)["truth_status"].startswith("residual_projection"), "review admits measurement")
+
+    # Machine-authored base pairs cannot expand until every one has a named human decision.
+    draft = scratch / "draft.jsonl"; expanded = scratch / "expanded.jsonl"
+    base = [{
+        "draft_id": f"warmth-s2-1-{index:02d}", "candidate_id": f"candidate-{index}",
+        "concept": "Warmth", "version": "S2", "target_category": "affection",
+        "control_category": "familiarity", "target_1p": "I held the moment gently.",
+        "control_1p": "I recognized the moment clearly.", "target_3p": "She held the moment gently.",
+        "control_3p": "She recognized the moment clearly.",
+        "review_state": "accepted" if index else "unreviewed_machine_draft",
+    } for index in range(2)]
+    draft.write_text("".join(json.dumps(value) + "\n" for value in base))
+    try:
+        expand_reviewed(draft, expanded, "fixture-reviewer")
+        raise AssertionError("unreviewed machine prose was admitted")
+    except ValueError:
+        pass
+    base[0]["review_state"] = "accepted"
+    draft.write_text("".join(json.dumps(value) + "\n" for value in base))
+    expanded_summary = expand_reviewed(draft, expanded, "fixture-reviewer")
+    check(expanded_summary["rows"] == 12 and len(read_jsonl(expanded)) == 12, "accepted pairs expand to six variants")
+    check(json.loads(expanded.with_suffix(".manifest.json").read_text())["reviewers"] == ["fixture-reviewer"],
+          "human reviewer remains explicit")
+
+    # Full authoring keeps a three-times candidate pool without paying for hidden high-effort reasoning.
+    plan_path = ROOT / "dataset-plan.json"
+    sonnet_requests = author_batch_requests(plan_path, "anthropic/claude-sonnet-5")
+    grok_requests = author_batch_requests(plan_path, "x-ai/grok-4.6")
+    check(len(sonnet_requests) == 165 and len({item["custom_id"] for item in sonnet_requests}) == 165,
+          "author requests cover every concept/category/chunk once")
+    supplement = author_batch_requests(plan_path, "anthropic/claude-sonnet-5", chunks=(4, 5),
+                                       only_keys={("Safety", 2), ("Connection", 1)})
+    check(len(supplement) == 4 and all(item["custom_id"].endswith(("|4", "|5")) for item in supplement),
+          "targeted supplements add disjoint checkpoint chunks only for requested category slots")
+    check(sonnet_requests[0]["body"]["reasoning"] == {"enabled": False}, "Sonnet drafting disables hidden reasoning")
+    check(grok_requests[0]["body"]["reasoning"] == {"effort": "low"}, "Grok drafting uses lowest supported effort")
+    candidate_fields = set(sonnet_requests[0]["body"]["response_format"]["json_schema"]["schema"]
+                           ["properties"]["candidates"]["items"]["properties"])
+    check("design_note" not in candidate_fields and "target_3p" in candidate_fields,
+          "author schema removes redundant prose without dropping person variants")
+
+    # Blind review gets the sentences and opaque id, never model or source bookkeeping.
+    visible_candidate = {"candidate_id": "opaque", "version": "S1", "candidate_number": 1,
+                         "target_1p": "I settled into the familiar chair.",
+                         "control_1p": "I recognized the familiar chair.",
+                         "target_3p": "She settled into the familiar chair.",
+                         "control_3p": "She recognized the familiar chair.",
+                         "author_model": "SECRET-MODEL", "author_index": 2, "author_chunk": 3}
+    blind_prompt = _review_prompt("Warmth", "affiliative tenderness", "affection", "familiarity", [visible_candidate])
+    check("SECRET-MODEL" not in blind_prompt and "author_index" not in blind_prompt and "author_chunk" not in blind_prompt,
+          "review prompt is author blind")
+
+    leaking = {"candidates": [{"version": version, "candidate_number": number,
+                                "target_1p": "I felt warmth settle in.", "control_1p": "I knew the room.",
+                                "target_3p": "She felt warmth settle in.", "control_3p": "She knew the room."}
+                               for version in ("S1", "S2") for number in range(1, 3)]}
+    try:
+        _validate_candidates(leaking, "Warmth", "fixture", per_version=2, compact=True)
+        raise AssertionError("concept label leakage was admitted")
+    except ValueError:
+        pass
+
+    # Fable's id-only selection must preserve both versions and both blind source buckets.
+    eligible = []
+    for version in ("S1", "S2"):
+        for index in range(20):
+            eligible.append({"candidate_id": f"{version}-{index}", "version": version,
+                             "source_bucket": "north" if index < 10 else "south"})
+    selection = {"selected": [{"candidate_id": row["candidate_id"], "version": row["version"],
+                                "source_bucket": row["source_bucket"]} for row in eligible]}
+    check(len(_validate_full_selection(selection, eligible)) == 40, "balanced opaque-id selection passes")
+    scarce = []
+    for version in ("S1", "S2"):
+        scarce.extend({"candidate_id": f"{version}-north-{index}", "version": version, "source_bucket": "north"}
+                      for index in range(3))
+        scarce.extend({"candidate_id": f"{version}-south-{index}", "version": version, "source_bucket": "south"}
+                      for index in range(25))
+    scarce_selection = {"selected": [{"candidate_id": row["candidate_id"], "version": row["version"],
+                                       "source_bucket": row["source_bucket"]}
+                                      for version in ("S1", "S2")
+                                      for row in ([item for item in scarce if item["version"] == version and item["source_bucket"] == "north"]
+                                                  + [item for item in scarce if item["version"] == version and item["source_bucket"] == "south"][:17])]}
+    check(len(_validate_full_selection(scarce_selection, scarce)) == 40,
+          "adaptive quotas retain every reviewer-approved scarce-source candidate without resurrecting rejects")
+
+    deterministic_pool = []
+    for row in scarce:
+        deterministic_pool.append({**row, "target_1p": f"I examined artifact {row['candidate_id']} carefully.",
+                                   "control_1p": f"I catalogued artifact {row['candidate_id']} carefully.",
+                                   "review_verdict": "pass", "review_scores": {
+                                       "construct_specificity": 4, "confound_match": 4, "surface_match": 4,
+                                       "person_fidelity": 4, "naturalness": 4}})
+    chosen_once, alternates_once = _deterministic_selection(deterministic_pool)
+    chosen_twice, alternates_twice = _deterministic_selection(deterministic_pool)
+    check(chosen_once == chosen_twice and alternates_once == alternates_twice,
+          "transparent selector is stable across repeated runs")
+    check(len(chosen_once) == 40 and len(alternates_once) == len(deterministic_pool) - 40,
+          "transparent selector preserves exact selection count and all eligible alternates")
+
+    typo_value = {"reviews": [{"candidate_id": "cand-abcc"}]}
+    typo_candidates = [{"candidate_id": "cand-abc"}]
+    repairs = _repair_review_ids(typo_value, typo_candidates)
+    check(typo_value["reviews"][0]["candidate_id"] == "cand-abc" and repairs[0]["law"] == "unique_one_edit_opaque_id",
+          "unique one-edit opaque ID typo is traceably repaired")
+    ambiguous_value = {"reviews": [{"candidate_id": "cand-abd"}]}
+    check(not _repair_review_ids(ambiguous_value, [{"candidate_id": "cand-abc"}, {"candidate_id": "cand-abe"}]),
+          "ambiguous ID typo is never guessed")
 
 print("PASS residual-emotion offline isolation and analysis")
