@@ -85,6 +85,19 @@ QAT-source checkpoint. The delta therefore cannot be attributed to precision
 alone. See `model-lock-gemma12-q8.json` and
 `evidence/2026-09-19-gemma12-q8-pain-validation.json`.
 
+A known-good Mac replication then isolated the extraction path.  Native arm64
+PyTorch/Transformers loaded `google/gemma-2-2b` revision `c5ebcd40...` at fp16 on
+Metal and read each decoder block's final-token output directly from
+`output_hidden_states=True`; the full 2,400 sentences extracted in 10.3 seconds.
+The pinned paper protocol replicated at AUC `0.96700` (layer 23; first person
+`0.96550`, third person `0.96850`).  Our stricter, different experiment still
+failed at `0.68030 ± 0.19466`: it combines S1/S2, both persons, and all suffix
+ablations into one direction and nests layer selection.  The paper instead scores
+S2 colon prompts separately by person and averages their five-fold layer curves.
+Therefore llama.cpp/quantization were not the sole cause, and the stricter score
+must not be described as a failure to reproduce the paper.  See
+`evidence/2026-09-20-gemma2-2b-native-replication.json`.
+
 ## Run order
 
 ```bash
