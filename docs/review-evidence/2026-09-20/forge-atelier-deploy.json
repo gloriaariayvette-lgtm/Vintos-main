@@ -1,0 +1,96 @@
+{
+  "release": "20260920-180036-dc30734",
+  "source": "dc30734",
+  "deploy_ok": true,
+  "release_failures": [],
+  "tests": {
+    "local_isolated": [
+      162,
+      162
+    ],
+    "local_direct": [
+      162,
+      162
+    ],
+    "aegis_isolated": [
+      162,
+      162
+    ],
+    "aegis_direct": [
+      162,
+      162
+    ]
+  },
+  "main_files_verified": 374,
+  "main_hash_mismatches": [],
+  "forge_bundle_files_verified": 9,
+  "forge_bundle_matches": true,
+  "forge_budget": {
+    "day": "2026-09-20",
+    "timezone": "America/Chicago",
+    "limit": 3,
+    "used": 8,
+    "remaining": 0,
+    "scope": "all_projects",
+    "failed_attempts_count": true
+  },
+  "https_cancel": {
+    "project": "6f89d5a2e1694a918ace42970974882a",
+    "https_cancel_status": 200,
+    "result": {
+      "cancelled": true,
+      "inflight_may_finish": true
+    },
+    "cancel_token_read_status": 403
+  },
+  "units": {
+    "vintos-server.service": {
+      "exit": 0,
+      "stdout": "MainPID=168524\nResult=success\nNRestarts=0\nExecMainStatus=0\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled",
+      "stderr": ""
+    },
+    "vintos-self-review.service": {
+      "exit": 0,
+      "stdout": "MainPID=167750\nResult=success\nNRestarts=0\nExecMainStatus=0\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled",
+      "stderr": ""
+    },
+    "vintos-robot-bridge.service": {
+      "exit": 0,
+      "stdout": "MainPID=167697\nResult=success\nNRestarts=0\nExecMainStatus=0\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled",
+      "stderr": ""
+    },
+    "vintos-skill-surf.timer": {
+      "exit": 0,
+      "stdout": "NextElapseUSecRealtime=Mon 2026-09-21 09:00:00 CDT\nLastTriggerUSec=Mon 2026-09-14 09:00:19 CDT\nResult=success\nLoadState=loaded\nActiveState=active\nSubState=waiting\nUnitFileState=enabled",
+      "stderr": ""
+    },
+    "vintos-skill-surf.service": {
+      "exit": 0,
+      "stdout": "MainPID=0\nResult=success\nNRestarts=0\nExecMainStatus=0\nLoadState=loaded\nActiveState=inactive\nSubState=dead\nUnitFileState=static",
+      "stderr": ""
+    },
+    "vintos-atelier.service": {
+      "exit": 0,
+      "stdout": "MainPID=168399\nResult=success\nNRestarts=0\nExecMainStatus=0\nLoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled",
+      "stderr": ""
+    }
+  },
+  "forge_units": {
+    "atelier-forge-loop": "NRestarts=0\nActiveState=active\nSubState=running\nUnitFileState=enabled",
+    "vintos-atelier": "NRestarts=0\nActiveState=active\nSubState=running\nUnitFileState=enabled"
+  },
+  "atlas": {
+    "sdk": "0.9.0",
+    "authenticated_on_aegis": true,
+    "scorers": 22,
+    "bounded_query_variants": 3
+  },
+  "limitations": [
+    "Phone cancellation button tap not observed; HTTPS endpoint verified",
+    "COSMIC access not configured",
+    "Full scientific instrument chain not commissioned",
+    "Wallet and Taskmarket parked"
+  ],
+  "backup": "/home/gloria/.vintos/backups/atelier-20260920-175653",
+  "forge_backup": "/home/atelier/forge-loop-backup-pre-dc30734"
+}

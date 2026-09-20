@@ -1036,51 +1036,50 @@ same evaluation run used to notice their weakness. Nifrathir's live operational 
 event-integrated over hours, so failure of a sentence-level direction would not by itself refute
 that organ.
 
-## 20 September — Forge / Atelier and Lab sources, local only
+## 20 September — Forge / Atelier and Lab sources deployed
 
-Eve parked wallet/Taskmarket and asked for non-financial loop completion plus Lab
-source expansion, without deployment. Work is on `codex/forge-atelier-wallet-local`.
-See [local preparation and commissioning guide](forge-lab-local.md).
+Eve authorized deployment after local preparation. Final release `20260920-180036-dc30734` deployed successfully. All 162 suites
+passed in both invocation modes on Mac and Aegis. Independent verification matched
+374 main release files and all nine dedicated Forge bundle files to source; no
+release failures were recorded. Server, Lab, Atelier and Forge are active; the
+skill-surf timer is enabled and waiting. See the [deployment evidence](review-evidence/2026-09-20/forge-atelier-deploy.json). See
+[commissioning and remaining limits](forge-lab-local.md).
 
-Implemented locally: continuous local report creation and critique; durable cycles,
-transactional Lab intake deduplication, private expiry/audit/reveal, scoped cancellation,
-owner control page, interrupted-cycle reconciliation, retained ntfy outbox, shared
-compute admission, and idempotent sealed Atelier projection with broker-compatible
-lineage/events. No existing project is adopted. The existing approved Astra/Fable
-capability-generation and installation gates are preserved; paid calls remain refused.
-The initial experiment's controller now imports the maintained production module.
+The actual Lab-to-Forge-to-Atelier path completed a source-backed commissioning
+report on Aegis using local Gemma. Atlas SDK 0.9.0 authenticated on Aegis, returned
+22 scorer entries, and returned three variants for a one-base GRCh38 AVI query.
+Accepted reports are retained with provenance. Completion/reveal pushes reached Eve.
+Scoped HTTPS cancellation returned 200; the same credential was denied project
+reads (403). Private reads, expiry/audit, crash recovery and projection hash chains
+have isolated regression coverage. A physical phone-button tap was not observed.
 
-Lab additions: validated UniProt fields and source receipts; official AlphaGenome
-0.9.0 Atlas SDK adapter with a whole-process deadline; actual scorer discovery;
-bounded PDB experimental-entry and ChEMBL activity clients; source candidate/interest
-and text-collision receipts; background/frontier query wiring; bounded report packets
-and retryable Lab-to-Forge intake. An independent optional Atlas-to-Evo 2 phase checks
-GRCh38 reference coordinates and allele before scoring the observed substitution.
-Semantic associations and model disagreement never count as biological validation.
+**Eve's execution limit: three attempted Forge report cycles per Chicago calendar
+day, across all projects.** A cycle is a local draft plus critique. Failed attempts
+consume a slot. SQLite reserves before execution; concurrent claims, restart and
+reconciliation cannot reset the counter. Existing undated cycles are conservatively
+charged to upgrade day. Live status after migration was 8 used, 0 remaining, so
+no additional steps may run today. This is an execution cap, not a notification cap.
+The earlier uncapped run and excess notifications were an implementation mistake.
 
-Validation is recorded in the local preparation guide. Public PDB, ChEMBL and
-Ensembl read schemas were checked from this Mac. AlphaGenome's real SDK data contract
-was tested with a fake client; Eve has API access, but the key has not been installed
-or used here. No live model, ntfy, Aegis, wallet or marketplace action occurred.
+The report loop is local-only: its dedicated shim route cannot fall back to paid
+providers. The shim service now launches the manifest-managed source through a
+reversible systemd drop-in. Atelier has traversal access plus write access only to
+the shared compute lock and ledger. The control page is tailnet-only at
+https://aegis.tailaa3de5.ts.net:9443/ . Distinct owner, worker and Lab-intake secrets
+are provisioned. Eve approved delivery of the owner key to the Mac's private
+`~/.config/vintos/forge-owner` file. No key is in Git.
 
-Still open before live commissioning: install the approved API key securely; configure
-sourced Atlas anchors and verify a real Atlas response; configure distinct loop secrets,
-TLS forwarding, ntfy and exact local-model identity; verify the Atelier user's narrowly
-scoped shared-admission file access; install the explicitly named service bundle and
-verify Linux/service/device behavior after deployment is authorized. COSMIC remains
-unavailable without its licensed/registered data access. ESMC/ESMFold/ChemiQ followups
-require actual protein mappings or applicable molecular inputs; these are recorded
-prerequisites, not invented results. No full live scientific instrument chain is claimed.
+The two original cross-repository checks are repaired. Standing Forge sparks now
+get direct, bounded consideration in wants-check without a separate tension-store
+prerequisite; selection creates no want and consumes no spark. Existing approved
+Astra/Fable capability-build and installation gates remain separate and intact.
 
-The full local regression runs expose pre-existing cross-repo inconsistencies in
-`test_completion_evidence` (mobile mirror versus adjacent app source) and
-`test_reelroom_frame_and_cost` (adjacent ReelRoom client). They must be reconciled with
-the other active checkout before calling the combined release green. This local change
-does not overwrite the other task's app work or touch its pain-validation experiment.
-
-Financial work stays parked: dedicated account provisioning, signer/payment authority,
-funding/reservations, income settlement, Taskmarket execution and spending controls.
-Local accounting is not a funded wallet. No household-budget fallback.
+Still open: source-specific genomic anchors for interest-driven exploration;
+COSMIC registered/licensed access; actual protein mappings and applicable molecular
+inputs before ESMC/ESMFold/ChemiQ followups; full scientific instrument-chain
+commissioning. Semantic association and model disagreement are not biological
+validation. Wallet/Taskmarket, signing, settlement and income remain parked. No
+household-budget fallback or marketplace work is enabled.
 
 ### Taskmarket work-session addition (local)
 
@@ -1098,31 +1097,6 @@ endpoint and ntfy; validate the Coinbase product/network and signing identity;
 then commission bounded marketplace execution and reconciliation. Read-only discovery
 and a local artifact are not permission to sign, bid, submit or report earnings.
 
-### 20 September deployment continuation
-
-The two cross-repository failures are repaired: mobile checks retain canonical HTML
-hash validation and compare only the shared JS to the app; ReelRoom merges the
-current manual-frame client with prior phone-action safeguards. Standing sparks now
-get a bounded direct opportunity in wants-check (two admitted source events per day),
-alternating with unresolved threads. Selection creates no want and consumes no spark.
-The report loop uses a dedicated local-only shim route; no paid provider fallback.
-Merged release 01ad0a3 passed all 162 suites both through the isolation runner and
-by direct script invocation in OS isolation. ReelRoom integration is 55e31bf, pushed
-to the designated app branch. An authenticated Atlas metadata request succeeded on
-the Mac with SDK 0.9.0 (22 scorer entries).
-
-Deployment is NOT complete: Aegis initially answered over the documented SSH bridge
-and had bubblewrap, but went offline before the release pull/check could be confirmed.
-Tailscale reported Aegis offline, last seen seven minutes earlier. Stalled SSH
-provisioning connections were stopped. No deploy command was run. Host SDK/key
-provisioning is unconfirmed; recheck before retrying. The staged local commissioning
-script remains in the workspace review-evidence directory, not installed.
-Remaining: host pull, --check, actual deploy and unit/hash verification; install and
-configure the separate Forge service, private HTTPS endpoint and dedicated secrets;
-commission local-only inference, ntfy cancellation and Lab intake; verify Atlas from
-Aegis. The deployed main shim must be restarted after installing the local-only route.
-The existing anonymous ntfy topic requires explicit anonymous:true configuration;
-token-backed topics remain supported. No wallet or marketplace actions were enabled.
 The 20 September multi-model authoring pass is offline and incomplete by design. Sonnet 5 and
 Grok 4.6 authored 9,160 candidates; GPT-5.6 Sol performed blind candidate review. The quality gate
 found that Dominance/3 and Safety/5 used unmatched controls, so those definitions were corrected
