@@ -956,6 +956,9 @@ before the click; an uncertain result is reported as uncertain and never retried
 tested with stubbed desktop/model boundaries. A real DoorDash run still depends on the signed-in
 Windows browser session and must be commissioned with an ordinary low-value cart before treating the
 site-specific extraction as operational.
+DoorDash/restaurant/delivery language now selects the structured Edge browser rather than falling
+through to the slower screenshot-coordinate loop; checkout and private surfaces still force the
+local planner and retain the quote-bound one-click guard.
 
 ## R21M temporal and sleep receipts — 19 September
 

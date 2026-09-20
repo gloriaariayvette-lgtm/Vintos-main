@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import desktop_agent as DA
 
 ACTIONS = {"goto", "click", "type", "scroll", "scrollto", "key", "play", "back", "dismiss", "wait", "done", "fail"}
-WEB_HINT = re.compile(r"\b(youtube|browser|website|web ?site|web|search (for|the web)|video|review|url|https?://|google|recipe|reddit|wikipedia|tab|page|site|amazon|spotify web|open .{0,30}\.(com|org|net))\b", re.I)
+WEB_HINT = re.compile(r"\b(youtube|browser|website|web ?site|web|search (for|the web)|video|review|url|https?://|google|recipe|reddit|wikipedia|tab|page|site|amazon|doordash|restaurant|delivery|online order|spotify web|open .{0,30}\.(com|org|net))\b", re.I)
 IRREVERSIBLE_CLICK = re.compile(r"\b(?:place|submit|confirm|complete)\s+(?:the\s+)?order\b|\b(?:pay|buy)\s+now\b|\bconfirm\s+purchase\b", re.I)
 
 

@@ -70,7 +70,10 @@ def planner_from(script):
     plan.seen = seen; return plan
 
 TASK = "search YouTube for cat knocks glass off table and play the first real one"
-check("routing: a web task goes to the browser, a desktop task does not", BA.looks_like_web(TASK) and BA.looks_like_web("open the recipe website") and not BA.looks_like_web("open Calculator and add 12 and 7"))
+check("routing: web and food-order tasks use the structured browser, a desktop task does not",
+      BA.looks_like_web(TASK) and BA.looks_like_web("open the recipe website") and
+      BA.looks_like_web("choose two desserts on DoorDash for delivery") and
+      not BA.looks_like_web("open Calculator and add 12 and 7"))
 
 fb = FakeBrowser()
 pl = planner_from([{"action": "goto", "url": "https://www.youtube.com/results?search_query=cat+knocks+glass"},
