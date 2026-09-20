@@ -1041,8 +1041,9 @@ Grok 4.6 authored 9,160 candidates; GPT-5.6 Sol performed blind candidate review
 found that Dominance/3 and Safety/5 used unmatched controls, so those definitions were corrected
 and entirely fresh pools were authored rather than reviving rejected candidates. The final 55
 review records now have at least 28 eligible candidates in every S1/S2 cell for a required final
-20. Fable selection is not complete: the dedicated OpenRouter key reported $39.2188 used from
-$40.00 credit, and work stopped with $0.78 remaining. No adjudication draft was assembled, no row
-has a human acceptance, no expanded dataset exists, and nothing from this lane is deployed or read
-by EmoClaw. Checkpoint artifacts remain under the ignored
+20. Fable was dropped as an unnecessary paid second opinion after its structured selections proved
+costly and unreliable. A versioned deterministic selector now applies fixed blind-review score
+weights, a lexical-diversity penalty, stable tie-breaking, and adaptive source quotas. It produced
+2,200 base pairs with all reviewer-approved alternates retained. No row has a human acceptance, no
+expanded dataset exists, and nothing from this lane is deployed or read by EmoClaw. Checkpoint artifacts remain under the ignored
 `offline/residual_emotion/work/authoring-2026-09-20/` directory on this Mac.

@@ -61,8 +61,9 @@ prompt ablations independently (AUC 0.86150–0.94425). See
 
 The eleven content dimensions use a staged, resumable authoring lane. Sonnet 5 and
 Grok 4.6 independently produce a three-times candidate pool; GPT-5.6 Sol reviews a
-shuffled pool without author identity; Fable 5.1 selects opaque candidate IDs while
-preserving both independent source buckets. Successfully parsed paid calls have local receipts and
+shuffled pool without author identity. A deterministic, versioned selector then narrows
+the reviewer-eligible pool using fixed score weights, lexical-diversity pressure, stable
+tie-breaking, and adaptive source quotas. Successfully parsed paid calls have local receipts and
 each stage has a client-side cost cap. Concept-name leakage, wrong counts, duplicate IDs, incomplete
 repairs, source collapse, and attempts to resurrect reviewer-rejected candidates fail
 closed. OpenRouter's advertised Sonnet batch model rejected live Batch API submissions,
@@ -76,12 +77,14 @@ lowered vigilance lacking protection. Fresh independent pools raised those cells
 11/16 and 5/16 eligible S1/S2 pairs to 66/87 and 84/81. Across the final 55 review
 records, every version has at least 28 eligible choices for the required 20.
 
-Fable adjudication is checkpointed but incomplete. OpenRouter reported $39.2188 used
-from $40.00 credit, so paid work stopped with no attempt to spend the last $0.78. Two
-truncated Fable responses predated transport-failure receipt persistence; the provider
-credit total, not the incomplete local receipt sum, is authoritative for spend. Current
-code preserves future paid-but-unparseable responses and their usage as rejected evidence.
-No machine-selected base draft exists yet, and no data is curated.
+An attempted Fable adjudication was abandoned as an unnecessary and costly second machine
+opinion. Two truncated responses predated transport-failure receipt persistence; OpenRouter's
+provider total remains authoritative for that spend, and current code preserves future
+paid-but-unparseable responses and their usage as rejected evidence. The reproducible selector
+produced 2,200 base pairs at
+`drafts/eleven-dimensions-base.jsonl` (SHA-256
+`5cc871dbee503b4c5aeb50ca2fbe7b0539cf2f12956793d4ee2ad50e997c4705`). Every row is
+still an `unreviewed_machine_draft`; no data is curated.
 
 The final output of this lane is still only `unreviewed_machine_draft`. It cannot enter
 extraction until a named human explicitly accepts every base semantic pair. Only then

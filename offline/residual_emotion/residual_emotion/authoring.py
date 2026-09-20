@@ -734,6 +734,96 @@ def _validate_full_selection(value: dict[str, Any], eligible: list[dict[str, Any
     return selected
 
 
+_DIVERSITY_STOPWORDS = {
+    "a", "an", "and", "as", "at", "by", "for", "from", "he", "her", "his", "i", "in", "is", "it",
+    "of", "on", "she", "that", "the", "their", "they", "this", "to", "was", "we", "with",
+}
+_DETERMINISTIC_SELECTOR_VERSION = "blind-score-diversity-v1"
+
+
+def _selection_tokens(candidate: dict[str, Any]) -> set[str]:
+    text = " ".join(str(candidate[key]) for key in ("target_1p", "control_1p"))
+    return {token for token in re.findall(r"[a-z]+", text.lower())
+            if len(token) > 2 and token not in _DIVERSITY_STOPWORDS}
+
+
+def _selection_quality(candidate: dict[str, Any]) -> int:
+    scores = candidate["review_scores"]
+    weighted = (3 * int(scores["construct_specificity"]) + 3 * int(scores["confound_match"])
+                + 2 * int(scores["surface_match"]) + 2 * int(scores["person_fidelity"])
+                + int(scores["naturalness"]))
+    return weighted - (1 if candidate["review_verdict"] == "repair" else 0)
+
+
+def _deterministic_selection(eligible: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Select reviewer-eligible pairs transparently; no model judgment is implied."""
+    quotas = _selection_quotas(eligible); selected = []; remaining = list(eligible)
+    selected_counts = {version: {bucket: 0 for bucket in ("north", "south")} for version in ("S1", "S2")}
+    token_cache = {row["candidate_id"]: _selection_tokens(row) for row in eligible}
+    while len(selected) < FULL_FINAL_PER_VERSION * 2:
+        options = []
+        for row in remaining:
+            version, bucket = row["version"], row["source_bucket"]
+            if selected_counts[version][bucket] >= quotas[version][bucket]:
+                continue
+            tokens = token_cache[row["candidate_id"]]
+            similarities = []
+            for chosen in selected:
+                if chosen["version"] != version:
+                    continue
+                other = token_cache[chosen["candidate_id"]]; union = tokens | other
+                similarities.append(len(tokens & other) / len(union) if union else 0.0)
+            maximum_similarity = max(similarities, default=0.0)
+            adjusted = _selection_quality(row) - 8.0 * maximum_similarity
+            tie = hashlib.sha256(f"{_DETERMINISTIC_SELECTOR_VERSION}:{row['candidate_id']}".encode()).hexdigest()
+            options.append((adjusted, _selection_quality(row), -maximum_similarity, tie, row))
+        if not options:
+            raise ValueError("deterministic selector exhausted candidates before satisfying quotas")
+        chosen = max(options, key=lambda item: item[:4])[-1]
+        selected.append(chosen); remaining.remove(chosen)
+        selected_counts[chosen["version"]][chosen["source_bucket"]] += 1
+    value = {"selected": [{"candidate_id": row["candidate_id"], "version": row["version"],
+                            "source_bucket": row["source_bucket"]} for row in selected]}
+    _validate_full_selection(value, eligible)
+    selected_ids = {row["candidate_id"] for row in selected}
+    alternates = sorted((row for row in eligible if row["candidate_id"] not in selected_ids),
+                        key=lambda row: (-_selection_quality(row), row["candidate_id"]))
+    alternate_rows = [{"candidate_id": row["candidate_id"], "version": row["version"],
+                       "source_bucket": row["source_bucket"], "quality_score": _selection_quality(row)}
+                      for row in alternates]
+    return value["selected"], alternate_rows
+
+
+def run_deterministic_selector(review_dir: Path, output_dir: Path) -> dict[str, Any]:
+    """Narrow blind-reviewed pools reproducibly; this is selection, never curation."""
+    records = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(review_dir.glob("review__*.json"))]
+    records = [row for row in records if row.get("truth_status") == "blind_machine_review_complete_not_human_curated"]
+    if len(records) != 55:
+        raise ValueError(f"expected 55 completed review categories, found {len(records)}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for record in records:
+        eligible, _ = _eligible_from_review(record); selected, alternates = _deterministic_selection(eligible)
+        result = {
+            "schema": 1, "truth_status": "deterministically_selected_human_review_required",
+            "concept": record["concept"], "slot": record["slot"], "eligible": eligible,
+            "value": {"selected": selected}, "alternates": alternates,
+            "selector": {
+                "version": _DETERMINISTIC_SELECTOR_VERSION,
+                "score_weights": {"construct_specificity": 3, "confound_match": 3, "surface_match": 2,
+                                  "person_fidelity": 2, "naturalness": 1, "repair_penalty": 1},
+                "maximum_jaccard_penalty": 8, "source_quotas": _selection_quotas(eligible),
+                "tie_break": "sha256 selector-version plus opaque candidate id",
+            },
+        }
+        atomic_json(output_dir / f"selection__{_slug(record['concept'])}__{record['slot']}.json", result)
+    manifest = {
+        "schema": 1, "truth_status": "deterministic_selection_complete_human_review_required",
+        "category_count": len(records), "selector_version": _DETERMINISTIC_SELECTOR_VERSION,
+        "law": "selection is reproducible narrowing only; no row is curated without explicit human acceptance",
+    }
+    atomic_json(output_dir / "manifest.json", manifest); return manifest
+
+
 def run_adjudicator_standard(review_dir: Path, output_dir: Path, workers: int = 2,
                               cost_cap_usd: float = 15.0, limit: int | None = None) -> dict[str, Any]:
     """Use Fable to select frozen pairs by opaque id; selected prose remains a human-review draft."""
@@ -811,10 +901,13 @@ def run_adjudicator_standard(review_dir: Path, output_dir: Path, workers: int = 
 
 
 def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[str, Any]:
-    records = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(adjudication_dir.glob("adjudication__*.json"))]
-    records = [row for row in records if row.get("truth_status") == "machine_adjudicated_selection_not_human_curated"]
+    paths = sorted(adjudication_dir.glob("adjudication__*.json")) + sorted(adjudication_dir.glob("selection__*.json"))
+    records = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    accepted_states = {"machine_adjudicated_selection_not_human_curated",
+                       "deterministically_selected_human_review_required"}
+    records = [row for row in records if row.get("truth_status") in accepted_states]
     if len(records) != 55:
-        raise ValueError(f"expected 55 adjudicated categories, found {len(records)}")
+        raise ValueError(f"expected 55 selected categories, found {len(records)}")
     rows = []
     for record in records:
         eligible = {row["candidate_id"]: row for row in record["eligible"]}
@@ -828,7 +921,9 @@ def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[st
                 "target_3p": source["target_3p"], "control_3p": source["control_3p"],
                 "candidate_id": source["candidate_id"], "review_verdict": source["review_verdict"],
                 "review_scores": source["review_scores"],
-                "adjudication_basis": "blind_fable_selection_from_reviewer_eligible_pool",
+                "adjudication_basis": ("deterministic_blind_score_and_diversity_selection"
+                                        if record["truth_status"] == "deterministically_selected_human_review_required"
+                                        else "blind_fable_selection_from_reviewer_eligible_pool"),
                 "review_state": "unreviewed_machine_draft", "human_note": "",
             })
     if len(rows) != 2200:
@@ -975,6 +1070,8 @@ def main() -> int:
     adjudicate_p.add_argument("output", type=Path); adjudicate_p.add_argument("--workers", type=int, default=2)
     adjudicate_p.add_argument("--cost-cap-usd", type=float, default=15.0)
     adjudicate_p.add_argument("--limit", type=int)
+    select_p = sub.add_parser("select-deterministic"); select_p.add_argument("review_dir", type=Path)
+    select_p.add_argument("output", type=Path)
     draft_p = sub.add_parser("assemble-human-review-draft"); draft_p.add_argument("adjudication_dir", type=Path)
     draft_p.add_argument("output", type=Path)
     args = parser.parse_args()
@@ -992,6 +1089,8 @@ def main() -> int:
                                        args.manifest_name)
     elif args.command == "run-adjudicator-standard":
         result = run_adjudicator_standard(args.review_dir, args.output, args.workers, args.cost_cap_usd, args.limit)
+    elif args.command == "select-deterministic":
+        result = run_deterministic_selector(args.review_dir, args.output)
     else:
         result = assemble_human_review_draft(args.adjudication_dir, args.output)
     print(json.dumps(result, indent=2, sort_keys=True)); return 0

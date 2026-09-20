@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_matrix
 from residual_emotion.authoring import (
-    _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
+    _deterministic_selection, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
     author_batch_requests, expand_reviewed,
 )
 from residual_emotion.compare import join
@@ -226,6 +226,20 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
                                                   + [item for item in scarce if item["version"] == version and item["source_bucket"] == "south"][:17])]}
     check(len(_validate_full_selection(scarce_selection, scarce)) == 40,
           "adaptive quotas retain every reviewer-approved scarce-source candidate without resurrecting rejects")
+
+    deterministic_pool = []
+    for row in scarce:
+        deterministic_pool.append({**row, "target_1p": f"I examined artifact {row['candidate_id']} carefully.",
+                                   "control_1p": f"I catalogued artifact {row['candidate_id']} carefully.",
+                                   "review_verdict": "pass", "review_scores": {
+                                       "construct_specificity": 4, "confound_match": 4, "surface_match": 4,
+                                       "person_fidelity": 4, "naturalness": 4}})
+    chosen_once, alternates_once = _deterministic_selection(deterministic_pool)
+    chosen_twice, alternates_twice = _deterministic_selection(deterministic_pool)
+    check(chosen_once == chosen_twice and alternates_once == alternates_twice,
+          "transparent selector is stable across repeated runs")
+    check(len(chosen_once) == 40 and len(alternates_once) == len(deterministic_pool) - 40,
+          "transparent selector preserves exact selection count and all eligible alternates")
 
     typo_value = {"reviews": [{"candidate_id": "cand-abcc"}]}
     typo_candidates = [{"candidate_id": "cand-abc"}]
