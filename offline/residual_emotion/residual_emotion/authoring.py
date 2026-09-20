@@ -1051,11 +1051,11 @@ def apply_review_receipt(base_path: Path, receipt_path: Path, output: Path) -> d
             or set(replaced_codes) != rejected_codes):
         raise ValueError("every explicit rejection requires exactly one named replacement")
     for replacement in replacements:
-        required = {"draft_id", "candidate_id", "concept", "slot", "version", "target_category", "control_category",
+        required = {"replaces", "draft_id", "candidate_id", "concept", "slot", "version", "target_category", "control_category",
                     "target_1p", "control_1p", "target_3p", "control_3p", "review_verdict", "review_scores"}
         if not required.issubset(replacement):
             raise ValueError("replacement receipt lacks required candidate fields")
-        row = {key: replacement[key] for key in required}
+        row = {key: replacement[key] for key in required if key != "replaces"}
         row.update({"adjudication_basis": "reviewer_eligible_alternate_after_explicit_human_rejection",
                     "review_state": "accepted", "human_review_basis": "gloria_bulk_accept_replacement",
                     "human_note": f"Replaces explicitly rejected {replacement['replaces']}."})
@@ -1070,8 +1070,9 @@ def apply_review_receipt(base_path: Path, receipt_path: Path, output: Path) -> d
     for row in reviewed:
         key = (str(row["concept"]), int(row["slot"]), str(row["version"]))
         counts[key] = counts.get(key, 0) + 1
+    expected_keys = {(str(row["concept"]), int(row["slot"]), str(row["version"])) for row in rows}
     bad = {str(key): value for key, value in counts.items() if value != FULL_FINAL_PER_VERSION}
-    if bad or len(counts) != 110:
+    if bad or set(counts) != expected_keys:
         raise ValueError(f"reviewed suite lost its 20-per-version category balance: {bad}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in reviewed), encoding="utf-8")

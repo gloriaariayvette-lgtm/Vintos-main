@@ -148,6 +148,31 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
           and "Nothing here is accepted" in sheet_text and "[ ] accept" in sheet_text,
           "human-review rendering preserves the explicit curation gate")
 
+    # A bounded repair campaign uses the same literal review law without being
+    # mistaken for the original 55-category suite.
+    bounded_base = scratch / "bounded-base.jsonl"
+    bounded_rows = []
+    for version in ("S1", "S2"):
+        for number in range(20):
+            bounded_rows.append({
+                **sheet_rows[0], "draft_id": f"safety-03-{version.lower()}-{number:04d}",
+                "candidate_id": f"candidate-{version}-{number}", "version": version,
+            })
+    bounded_base.write_text("".join(json.dumps(item) + "\n" for item in bounded_rows))
+    rejected = bounded_rows[-1]
+    replacement = {**rejected, "replaces": rejected["draft_id"],
+                   "draft_id": "safety-03-s2-replacement", "candidate_id": "candidate-S2-alternate"}
+    bounded_receipt = scratch / "bounded-receipt.json"
+    bounded_receipt.write_text(json.dumps({
+        "reviewer": "Gloria", "bulk_accept_remaining": True,
+        "explicit_decisions": [{"code": rejected["draft_id"], "decision": "reject"}],
+        "replacements": [replacement],
+    }))
+    bounded_output = scratch / "bounded-reviewed.jsonl"
+    bounded_result = apply_review_receipt(bounded_base, bounded_receipt, bounded_output)
+    check(bounded_result["rows"] == 40 and bounded_result["replacements"] == 1,
+          "bounded human review preserves 20-per-version balance with a named alternate")
+
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"
     sentences = []
