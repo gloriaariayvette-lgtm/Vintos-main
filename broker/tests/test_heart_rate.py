@@ -64,7 +64,8 @@ check("temporal block carries bounded pulse and sleep receipts", "Ring periodic 
 check("sleep rejects impossible duration", not HR.record_sleep({"ended_at":"2026-08-29T12:00:00Z","stages_minutes":{"deep":2000}})[0])
 
 print("\n--- freshness: live / stale / silent ---")
-HR.record(GOOD)
+fresh = {**GOOD, "observed_at":HR.datetime.now(HR.timezone.utc).isoformat()}
+HR.record(fresh)
 st, bpm, age = HR.status()
 check("a just-received reading is LIVE", st == "live" and bpm == 86, (st, bpm))
 line = HR.context_line()
@@ -72,16 +73,19 @@ check("the live line names her real pulse", "86 bpm" in line and "live" in line.
 check("the live line tells him not to recite it back", "recite" in line.lower())
 
 # age it past the freshness window, but within mention
-r = HR.latest(); r["received_ts"] = time.time() - 200; json.dump(r, open(HR.LATEST, "w"))
+r = HR.latest(); r["observed_ts"] = time.time() - 200; json.dump(r, open(HR.LATEST, "w"))
 st, bpm, age = HR.status()
 check("past the window it is STALE, not live", st == "stale", (st, age))
 check("the stale line flags it as not-now",
       "ago" in HR.context_line().lower() and "not" in HR.context_line().lower())
 
 # age it far past — silent
-r = HR.latest(); r["received_ts"] = time.time() - 5000; json.dump(r, open(HR.LATEST, "w"))
+r = HR.latest(); r["observed_ts"] = time.time() - 5000; json.dump(r, open(HR.LATEST, "w"))
 check("a very old reading is silent, never presented as now", HR.context_line() == "")
 check("status reports none for a very old reading", HR.status()[0] == "none")
+
+ok, _ = HR.record({**GOOD, "heart_rate_bpm": 72, "observed_at":"2026-08-29T01:00:00Z", "source":"0x0518"})
+check("late-delivered ring history is never called live", ok and HR.status()[0] == "none")
 
 print("\n--- nothing stored yet ---")
 os.remove(HR.LATEST)

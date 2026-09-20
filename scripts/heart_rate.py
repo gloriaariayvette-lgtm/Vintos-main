@@ -175,7 +175,9 @@ def status(now=None):
     if not r:
         return "none", None, None
     now = now if now is not None else time.time()
-    age = now - float(r.get("received_ts") or 0)
+    # A recovered ring-history record can arrive minutes or hours after it was
+    # measured. Freshness belongs to the observation, never the HTTP receipt.
+    age = now - float(r.get("observed_ts") or r.get("received_ts") or 0)
     bpm = r.get("bpm")
     if age <= FRESH_SECONDS:
         return "live", bpm, age
@@ -208,7 +210,7 @@ def temporal_block(now=None):
     """Bounded ring facts for temporal-context.txt, with explicit staleness."""
     now = time.time() if now is None else now; lines = []
     try:
-        snap = json.load(open(SNAPSHOT)); age = max(0, now - float(snap.get("received_ts") or 0))
+        snap = json.load(open(SNAPSHOT)); age = max(0, now - float(snap.get("observed_ts") or snap.get("received_ts") or 0))
         if age <= 7200:
             lines.append("Ring periodic update: %s bpm observed %d minutes ago (delivered snapshot, not continuous monitoring)." %
                          (snap.get("bpm"), int(age / 60)))
