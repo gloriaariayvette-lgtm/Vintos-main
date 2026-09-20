@@ -1051,3 +1051,19 @@ configure ntfy, and verify cancel actions on Gloria's phone. Paid execution stay
 refused; no household funding fallback. Vintos's income-producing work is not selected
 for him. No stocks/trading integration. Nothing should be deployed from this prototype
 until those integration boundaries have been reviewed.
+
+### Taskmarket work-session addition (local)
+
+Coinbase wallet setup reported by Gloria; product, address and network not yet
+verified. Added read-only marketplace discovery, task-bound capability/probe
+screening, and local pilot orchestration with durable Lab pause/restore obligation.
+Nine additional scratch tests cover admission, cancellation, failure restoration,
+restart recovery and notification failures. Added explicit-topic HTTPS ntfy sender,
+not configured live. No claimed/submitted jobs or income; no Lab pause/deployment.
+
+Remaining: identify which live Lab/Gemma lane to borrow; implement its owned,
+checkpoint-acknowledged pause adapter; wire actual Gemma assessment and local
+validator/probe receipts; enforce callback timeouts; connect cancellation/control
+endpoint and ntfy; validate the Coinbase product/network and signing identity;
+then commission bounded marketplace execution and reconciliation. Read-only discovery
+and a local artifact are not permission to sign, bid, submit or report earnings.
