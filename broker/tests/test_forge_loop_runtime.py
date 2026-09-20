@@ -64,6 +64,31 @@ class Tests(unittest.TestCase):
         model=LocalModel('http://127.0.0.1:1234/v1/chat/completions','fixture',transport=lambda *a,**k:Response('Prose\n```json\n{"ok":true}\n```'),admission=nullcontext)
         with self.assertRaises(ValueError): model('fixture','fixture')
 
+    def test_three_steps_global_persistent_and_failed_attempts_count(self):
+        import concurrent.futures
+        projects=[self.create() for _ in range(8)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            claims=list(pool.map(lambda p:self.c.claim(self.worker,p['id'],'research_report'),projects))
+        self.assertEqual(sum(c is not None for c in claims),3)
+        restarted=Controller(self.root/'forge.sqlite',self.owner,self.worker,'https://atelier.invalid')
+        self.assertEqual(restarted.step_budget(self.owner)['remaining'],0)
+        for p,claim in zip(projects,claims):
+            if claim: restarted.uncertain(self.worker,p['id'],claim['cycle_id'])
+        self.assertEqual(restarted.step_budget(self.owner)['used'],3)
+        with patch('forge_loop.step_day',return_value='2099-01-02'):
+            self.assertEqual(restarted.step_budget(self.owner)['remaining'],3)
+            untouched=next(p for p,c in zip(projects,claims) if c is None)
+            self.assertIsNotNone(restarted.claim(self.worker,untouched['id'],'research_report'))
+        self.assertEqual(json.loads(self.call('/api/budget')[1])['limit'],3)
+
+    def test_step_budget_upgrade_does_not_reset_existing_cycles(self):
+        p=self.create();self.r.step(p['id'])
+        with self.c.db() as db: db.execute('DROP TABLE daily_steps')
+        migrated=Controller(self.root/'forge.sqlite',self.owner,self.worker,'https://atelier.invalid')
+        self.assertEqual(migrated.step_budget(self.owner)['used'],1)
+        restarted=Controller(self.root/'forge.sqlite',self.owner,self.worker,'https://atelier.invalid')
+        self.assertEqual(restarted.step_budget(self.owner)['used'],1)
+
     def send(self,payload):self.sent.append(payload);return True
     def build(self,claim,context):
         self.contexts.append(context)

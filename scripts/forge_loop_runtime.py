@@ -177,6 +177,10 @@ class Runtime:
         while not self.stopping.is_set():
             try:
                 with self.mutex: self.projection.sync(self.c)
+                if self.c.step_budget(self.c.owner_token)['remaining'] == 0:
+                    self.dispatch()
+                    self.stopping.wait(30)
+                    continue
                 ready = [p['id'] for p in self.c.projects(self.c.owner_token) if p['state'] == 'ready']
                 for pid in ready:
                     if self.stopping.is_set(): break
@@ -216,7 +220,8 @@ class API:
                 if not 0 <= size <= MAX_BODY: raise Refused('request too large')
                 data = json.loads(env['wsgi.input'].read(size)) if size else {}
                 with self.r.mutex:
-                    if path == '/api/projects' and method == 'GET': body = self.r.c.projects(token)
+                    if path == '/api/budget' and method == 'GET': body = self.r.c.step_budget(token)
+                    elif path == '/api/projects' and method == 'GET': body = self.r.c.projects(token)
                     elif path == '/api/projects' and method == 'POST': body = self.r.create(token, data)
                     elif path.startswith('/api/projects/'):
                         parts = path.split('/'); pid = parts[3]; action = parts[4] if len(parts)==5 else ''

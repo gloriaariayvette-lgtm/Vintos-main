@@ -13,6 +13,14 @@ import secrets
 import sqlite3
 import time
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+DAILY_STEP_LIMIT = 3
+STEP_TIMEZONE = ZoneInfo("America/Chicago")
+
+def step_day():
+    return datetime.fromtimestamp(time.time(), STEP_TIMEZONE).date().isoformat()
 
 
 class Refused(Exception):
@@ -52,6 +60,13 @@ class Controller:
               id INTEGER PRIMARY KEY, project TEXT NOT NULL, kind TEXT NOT NULL,
               body TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
             ''')
+        with self.db() as db:
+            existed = db.execute("SELECT 1 FROM sqlite_master WHERE name='daily_steps'").fetchone()
+            db.execute('CREATE TABLE IF NOT EXISTS daily_steps (cycle TEXT PRIMARY KEY, day TEXT NOT NULL, project TEXT NOT NULL)')
+            if not existed:
+                # Old cycles lack timestamps. Conservatively charge them to upgrade day;
+                # never give an already-busy installation a fresh allowance on restart.
+                db.execute('INSERT OR IGNORE INTO daily_steps SELECT id,?,project FROM cycles', (step_day(),))
         self.path.chmod(0o600)
 
     @contextmanager
@@ -209,12 +224,25 @@ class Controller:
                 self._event(db, pid, 'authorization', {'reason': reason})
                 self._save(db, p)
                 return None
+            day = step_day()
+            if db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0] >= DAILY_STEP_LIMIT:
+                return None
             cid = uuid.uuid4().hex
+            db.execute('INSERT INTO daily_steps(cycle,day,project) VALUES (?,?,?)', (cid,day,pid))
             db.execute("INSERT INTO cycles(id,project,state,quote) VALUES (?,?,'running',?)", (cid, pid, quote))
             p.update(active=cid, state='running')
             self._save(db, p)
             return {'cycle_id': cid, 'capability': capability, 'maximum_cents': quote,
                     'account_id': account['account_id'] if account else None}
+
+    def step_budget(self, token):
+        self.auth(token, owner=True)
+        day = step_day()
+        with self.db() as db:
+            used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
+        return {'day': day, 'timezone': 'America/Chicago', 'limit': DAILY_STEP_LIMIT,
+                'used': used, 'remaining': max(0, DAILY_STEP_LIMIT-used),
+                'scope': 'all_projects', 'failed_attempts_count': True}
 
     def accept(self, token, pid, cid, artifact, complete, receipt):
         self.auth(token)
