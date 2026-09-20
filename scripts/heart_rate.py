@@ -17,6 +17,11 @@ from datetime import datetime, timezone
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 LATEST = os.path.join(MEM, "heart-rate.json")
 HIST = os.path.join(MEM, "heart-rate-history.jsonl")
+SNAPSHOT = os.path.join(MEM, "ring-temporal-snapshot.json")
+SNAPSHOT_HIST = os.path.join(MEM, "ring-temporal-snapshots.jsonl")
+SLEEP = os.path.join(MEM, "ring-sleep-latest.json")
+SLEEP_HIST = os.path.join(MEM, "ring-sleep-history.jsonl")
+SNAPSHOT_SECONDS = 1800
 
 # A reading older than this is not "now". The ring streams ~1/1-2s, so 90s is
 # generous headroom that still refuses a genuinely stale value.
@@ -33,6 +38,40 @@ def _parse_ts(s):
         return datetime.fromisoformat(str(s).replace("Z", "+00:00")).timestamp()
     except Exception:
         return None
+
+
+def _atomic(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(value, f); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            if os.path.exists(tmp): os.unlink(tmp)
+        except OSError: pass
+
+
+def _append(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(value) + "\n"); f.flush(); os.fsync(f.fileno())
+
+
+def _maybe_snapshot(rec, force=False):
+    """Keep a temporal receipt roughly every half hour of delivered data.
+
+    This never claims iOS woke on schedule while suspended or disconnected.
+    """
+    try: old = json.load(open(SNAPSHOT))
+    except Exception: old = {}
+    if not force and time.time() - float(old.get("received_ts") or 0) < SNAPSHOT_SECONDS:
+        return False
+    snap = {k: rec.get(k) for k in ("bpm", "observed_at", "observed_ts", "received_at", "received_ts", "source", "device")}
+    snap.update({"kind":"ring_periodic_snapshot", "truth_status":"delivered_ring_reading_not_continuous_monitoring"})
+    _atomic(SNAPSHOT, snap); _append(SNAPSHOT_HIST, snap)
+    return True
 
 
 def record(payload):
@@ -62,11 +101,7 @@ def record(payload):
         "provenance": "r21m_ring",
     }
     try:
-        os.makedirs(MEM, exist_ok=True)
-        tmp = LATEST + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(rec, f)
-        os.replace(tmp, LATEST)                      # atomic single-record replace
+        _atomic(LATEST, rec)
     except OSError as e:
         return False, "could not store: %s" % e
     try:                                             # a bounded trail, best-effort
@@ -75,12 +110,47 @@ def record(payload):
                                 "source": rec["source"]}) + "\n")
     except OSError:
         pass
+    try: _maybe_snapshot(rec)
+    except OSError: pass
     try:                                             # review 94: a fresh change may move him, within limits
         import sensor_reactions as _sr
         _sr.observe("heart_rate", bpm, at=rec["observed_ts"])
     except Exception:
         pass
     return True, {"stored": True, "bpm": bpm}
+
+
+def record_sleep(payload):
+    """Store a completed ring sleep estimate; never reinterpret it medically."""
+    if not isinstance(payload, dict): return False, "body is not an object"
+    stages = payload.get("stages_minutes") or {}
+    if not isinstance(stages, dict): return False, "stages_minutes is not an object"
+    clean = {}
+    try:
+        for name in ("awake", "light", "deep", "rem", "nap"):
+            value = int(stages.get(name, 0) or 0)
+            if value < 0 or value > 1440: return False, "%s minutes outside range" % name
+            clean[name] = value
+    except (TypeError, ValueError): return False, "sleep minutes are not integers"
+    total = int(payload.get("total_sleep_minutes") or (clean["light"] + clean["deep"] + clean["rem"] + clean["nap"]))
+    if total < 0 or total > 1440: return False, "total_sleep_minutes outside range"
+    ended = str(payload.get("ended_at") or payload.get("observed_at") or "")[:40]
+    if not _parse_ts(ended): return False, "ended_at missing or unreadable"
+    score = payload.get("score")
+    if score is not None:
+        try: score = max(0, min(100, int(score)))
+        except (TypeError, ValueError): return False, "score is not numeric"
+    try: wake_count = max(0, min(200, int(payload.get("wake_count") or 0)))
+    except (TypeError, ValueError): return False, "wake_count is not numeric"
+    rec = {"kind":"ring_sleep_estimate", "started_at":str(payload.get("started_at") or "")[:40],
+           "ended_at":ended, "ended_ts":_parse_ts(ended), "received_at":datetime.now(timezone.utc).isoformat(),
+           "received_ts":time.time(), "total_sleep_minutes":total, "stages_minutes":clean,
+           "score":score, "wake_count":wake_count,
+           "source":str(payload.get("source") or "r21m_sleep_file")[:40], "provenance":"r21m_ring",
+           "truth_status":"device_estimate_not_medical_measurement"}
+    try: _atomic(SLEEP, rec); _append(SLEEP_HIST, rec)
+    except OSError as e: return False, "could not store: %s" % e
+    return True, {"stored":True, "total_sleep_minutes":total, "ended_at":ended}
 
 
 def latest():
@@ -127,9 +197,32 @@ def context_line(now=None):
     return ""
 
 
+def temporal_block(now=None):
+    """Bounded ring facts for temporal-context.txt, with explicit staleness."""
+    now = time.time() if now is None else now; lines = []
+    try:
+        snap = json.load(open(SNAPSHOT)); age = max(0, now - float(snap.get("received_ts") or 0))
+        if age <= 7200:
+            lines.append("Ring periodic update: %s bpm observed %d minutes ago (delivered snapshot, not continuous monitoring)." %
+                         (snap.get("bpm"), int(age / 60)))
+    except Exception: pass
+    try:
+        sl = json.load(open(SLEEP)); age = max(0, now - float(sl.get("ended_ts") or 0))
+        if age <= 172800:
+            st = sl.get("stages_minutes") or {}; detail = ", ".join("%s %dm" % (k, st.get(k, 0)) for k in ("deep","rem","light","awake"))
+            score = " score %s," % sl["score"] if sl.get("score") is not None else ""
+            mins = int(sl.get("total_sleep_minutes", 0))
+            lines.append("Ring sleep estimate:%s total %dh %02dm (%s), ended %d hours ago. Device estimate, not a medical measurement." %
+                         (score, mins // 60, mins % 60, detail, int(age / 3600)))
+    except Exception: pass
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "line":
         print(context_line() or "(no fresh reading)")
+    elif len(sys.argv) > 1 and sys.argv[1] == "temporal":
+        print(temporal_block())
     else:
         print(json.dumps(latest() or {}, indent=2))

@@ -478,6 +478,10 @@ except:
 EMOEOF
 )
 
+# Opportunistic receipts only: iOS can restore a BLE connection, but it does
+# not promise that this app wakes at an exact half-hour while suspended.
+RING_TEMPORAL=$(python3 "$WORKSPACE/scripts/heart_rate.py" temporal 2>/dev/null || true)
+
 # === Write it ===
 cat > "$OUTPUT" << EOF
 Time: $TIME_HUMAN
@@ -498,6 +502,7 @@ Day density: $DENSITY
 EOF
 [ -n "$EMOTIONAL_CURRENT" ] && echo "Emotional current: $EMOTIONAL_CURRENT" >> "$OUTPUT"
 [ -n "$PREOCCUPATION_LINE" ] && echo "$PREOCCUPATION_LINE" >> "$OUTPUT"
+[ -n "$RING_TEMPORAL" ] && echo "$RING_TEMPORAL" >> "$OUTPUT"
 if [ -n "$LAST_ACTIVITY" ]; then
     echo "Recent activity:" >> "$OUTPUT"
     echo "$LAST_ACTIVITY" | while IFS= read -r line; do

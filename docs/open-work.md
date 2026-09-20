@@ -941,10 +941,11 @@ guessing dressed up as Jev.
 
 ## Chat-owned Desktop Control — 18 September
 
-The main phone chat now recognizes only an explicit leading `/desktop-control` command. Vintos
+Main phone chat and Avatar chat recognize an explicit leading `/desktop-control` command. Vintos
 answers first; the existing structured-browser/pixel worker then performs the task, and its terminal
-receipt is appended to both `chat-history.json` and the lossless canonical chat ledger as his second
-message. The phone polls the chat tail, so the follow-up arrives without reopening the app.
+receipt is appended to that same surface plus the lossless canonical chat ledger as his second
+message. Avatar now polls its server history while open, so the follow-up arrives without reopening
+the app. ReelRoom deliberately does not inherit this command.
 
 Commerce uses the desktop rather than the waitlisted dd-cli account: the first job may search, choose
 one restaurant, add one or two items, and inspect the cart, but the browser's irreversible-control
@@ -955,6 +956,21 @@ before the click; an uncertain result is reported as uncertain and never retried
 tested with stubbed desktop/model boundaries. A real DoorDash run still depends on the signed-in
 Windows browser session and must be commissioned with an ordinary low-value cart before treating the
 site-specific extraction as operational.
+
+## R21M temporal and sleep receipts — 19 September
+
+Delivered ring readings now mint a bounded temporal snapshot at most once per 30 minutes. The
+15-minute temporal-context builder includes a fresh snapshot for up to two hours, explicitly marked
+as delivered rather than continuous monitoring. This cadence is opportunistic: CoreBluetooth state
+restoration can reconnect around BLE activity, but iOS does not promise an exact half-hour background
+wake while the app is suspended or disconnected.
+
+The house now validates and stores completed R21M sleep estimates (total and awake/light/deep/REM/nap
+minutes, score and wake count) and includes the latest completed estimate in temporal context for 48
+hours as a device estimate, never a medical measurement. The iOS bridge still needs the official
+Jieli small-file transport integrated and proven on the physical R21M before it can automatically
+download type `0x05` sleep files; the server path and parser contract are ready, but transport is not
+falsely marked complete.
 
 ## Offline residual-stream emotion instrument — 19 September
 

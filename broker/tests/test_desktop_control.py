@@ -13,7 +13,7 @@ def check(name, ok, detail=""):
     checks.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + ((" -- " + str(detail)) if detail and not ok else ""))
 
 check("every store is scratch", all(str(Path(p)).startswith(tmp.name) for p in
-      (dc.ROOT, dc.STORE, dc.EVENTS, dc.CHAT, dc.CANON, dc.CHAT_LOCK)))
+      (dc.ROOT, dc.STORE, dc.EVENTS, dc.CHAT, dc.AVATAR_CHAT, dc.CANON, dc.CHAT_LOCK)))
 check("start syntax is explicit", dc.parse_command("/desktop-control to choose two desserts on DoorDash")["commerce"])
 check("ordinary talk cannot start it", dc.parse_command("could you use the desktop?") is None)
 check("approval and stop are distinct", dc.parse_command("/desktop-control approve")["kind"] == "approve" and
@@ -47,6 +47,13 @@ check("one factual double text reaches both chat records", len(hist)==1 and hist
 dc.settle(rid, {"status":"completed","job_id":"JOB1","reason":"cart visibly ready"})
 check("settlement is idempotent", len(json.load(open(dc.CHAT))) == 1)
 
+avatar=dc.start_from_chat("/desktop-control to open the dessert menu", "I'll take a look.", surface="avatar")
+dc.settle(avatar["request_id"], {"status":"completed","job_id":"JOB1","reason":"menu opened"})
+avhist=json.load(open(dc.AVATAR_CHAT)); canon=[json.loads(x) for x in open(dc.CANON)]
+check("avatar work double-texts the avatar surface", len(avhist)==1 and
+      avhist[0]["desktop_request_id"]==avatar["request_id"] and canon[-1]["surface"]=="avatar")
+check("avatar settlement does not leak into main history", len(json.load(open(dc.CHAT))) == 1)
+
 approved=dc.start_from_chat("/desktop-control approve " + rid, "Go on, then.")
 check("chat approval starts the exact checkout job", approved["accepted"] and calls[-1][1] == {"VINTOS_DESKTOP_APPROVAL_ID":rid})
 page="Sweet Place Chocolate cake Lemon tart Delivery 35-45 min Total $31.42"
@@ -62,6 +69,9 @@ check("a changed quote consumes nothing", not ok and "no longer shows" in why an
 server=(ROOT/"bin/server.py").read_text(); browser=(ROOT/"scripts/browser_agent.py").read_text()
 check("the real chat route parses and starts the command", "_desktop_control.parse_command(message)" in server and
       "_desktop_control.start_from_chat(message, reply" in server)
+check("avatar route owns explicit desktop work and its same-surface receipt",
+      '_surface == "avatar"' in server and 'surface="avatar"' in server and
+      'avatar-overlay-chat.json' in dc.__loader__.get_source("desktop_control"))
 check("the purchase guard calls the one-use authority", "authorize_purchase_click(approval, label, text)" in browser)
 check("the public desktop route cannot inject authority", 'start_task(str(body.get("task", ""))' in (ROOT/"scripts/desktop_agent.py").read_text())
 check("all process and model boundaries were stubbed", dc.RUNNER is Proc and dc._model.__module__ == "__main__")

@@ -16,6 +16,10 @@ TMP = tempfile.mkdtemp(prefix="hr-")
 HR.MEM = TMP
 HR.LATEST = os.path.join(TMP, "heart-rate.json")
 HR.HIST = os.path.join(TMP, "heart-rate-history.jsonl")
+HR.SNAPSHOT = os.path.join(TMP, "ring-temporal-snapshot.json")
+HR.SNAPSHOT_HIST = os.path.join(TMP, "ring-temporal-snapshots.jsonl")
+HR.SLEEP = os.path.join(TMP, "ring-sleep-latest.json")
+HR.SLEEP_HIST = os.path.join(TMP, "ring-sleep-history.jsonl")
 # HR.record() reaches sensor_reactions, which appended to HIS sensor-reactions log and
 # rewrote its state on every deploy's suite phase. Repoint both before the first record.
 import sensor_reactions as SR
@@ -42,6 +46,17 @@ check("latest reflects the newest reading", HR.latest()["bpm"] == 91)
 check("it is exactly one record", isinstance(HR.latest(), dict))
 check("provenance is stamped", HR.latest().get("provenance") == "r21m_ring")
 check("received time is stamped", bool(HR.latest().get("received_ts")))
+check("first delivered reading creates a temporal snapshot", json.load(open(HR.SNAPSHOT))["bpm"] == 86)
+
+print("\n--- sleep estimate and temporal context ---")
+ok, sleep = HR.record_sleep({"started_at":"2026-08-29T04:00:00Z", "ended_at":"2026-08-29T12:00:00Z",
+    "stages_minutes":{"awake":24,"light":220,"deep":105,"rem":131,"nap":0}, "score":82, "wake_count":2})
+check("device sleep estimate is stored", ok and sleep["total_sleep_minutes"] == 456)
+snap=json.load(open(HR.SNAPSHOT)); snap["received_ts"]=HR._parse_ts("2026-08-29T12:30:00Z"); json.dump(snap,open(HR.SNAPSHOT,"w"))
+block=HR.temporal_block(now=HR._parse_ts("2026-08-29T13:00:00Z"))
+check("temporal block carries bounded pulse and sleep receipts", "Ring periodic update" in block and
+      "7h 36m" in block and "Device estimate" in block, block)
+check("sleep rejects impossible duration", not HR.record_sleep({"ended_at":"2026-08-29T12:00:00Z","stages_minutes":{"deep":2000}})[0])
 
 print("\n--- freshness: live / stale / silent ---")
 HR.record(GOOD)

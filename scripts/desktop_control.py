@@ -20,6 +20,7 @@ STORE = os.path.join(ROOT, "requests.json")
 EVENTS = os.path.join(ROOT, "events.jsonl")
 LOCK = os.path.join(ROOT, ".lock")
 CHAT = os.path.join(MEMORY, "chat-history.json")
+AVATAR_CHAT = os.path.join(MEMORY, "avatar-overlay-chat.json")
 CANON = os.path.join(MEMORY, "chat-canonical.jsonl")
 CHAT_LOCK = os.path.join(MEMORY, ".chat-history.lock")
 MODEL_URL = os.environ.get("VINTOS_DESKTOP_MODEL_URL", "http://100.79.177.103:1234/v1/chat/completions")
@@ -219,15 +220,17 @@ def _followup(rec, terminal, page=""):
     return ("Desktop work finished: " if status == "completed" else "Desktop work stopped: ") + (reason or status)
 
 
-def _write_chat(text, rid):
+def _write_chat(text, rid, surface="chat/full"):
     row = {"role":"assistant", "content":str(text)[:4000], "timestamp":_now(),
            "source":"desktop-control", "desktop_request_id":rid}
+    chat_path = AVATAR_CHAT if surface == "avatar" else CHAT
+    if surface == "avatar": row["ts"] = time.time()
     lock = _locked(CHAT_LOCK)
     try:
-        try: history = json.load(open(CHAT, encoding="utf-8"))
+        try: history = json.load(open(chat_path, encoding="utf-8"))
         except Exception: history = []
         if not any(x.get("desktop_request_id") == rid and x.get("content") == row["content"] for x in history if isinstance(x, dict)):
-            history.append(row); _atomic(CHAT, history[-50:]); _append(CANON, dict(row, surface="chat/full"))
+            history.append(row); _atomic(chat_path, history[-50:]); _append(CANON, dict(row, surface=surface))
     finally: lock.close()
     return row
 
@@ -242,7 +245,7 @@ def settle(rid, terminal=None):
         sys.path.insert(0, str(Path(__file__).resolve().parent)); import desktop_agent as da
         terminal = da.read_state()
     text = _followup(rec, terminal, _page_text())
-    _write_chat(text, rid)
+    _write_chat(text, rid, str(rec.get("surface") or "chat/full"))
     rec["followup_at"] = _now(); rec["desktop_status"] = terminal.get("status"); rec["desktop_reason"] = str(terminal.get("reason") or "")[:1200]
     lock = _locked()
     try: db = _load(); db[rid] = rec; _atomic(STORE, db)

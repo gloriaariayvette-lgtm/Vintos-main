@@ -3273,7 +3273,7 @@ function openAvatarOverlay() {
   if(_avRenderer&&!_avAnimationFrame)_avAnimate();
   _avPing('open');
   _avUpdateTelemetry();
-  if(!window._avCmdPoll){ window._avCmdPoll = setInterval(function(){ var _ov=document.getElementById('avatar-overlay'); if(_ov && _ov.style.display!=='none') _avCheckCommandBubble(); }, 8000); }
+  if(!window._avCmdPoll){ window._avCmdPoll = setInterval(function(){ var _ov=document.getElementById('avatar-overlay'); if(_ov && _ov.style.display!=='none'){ _avCheckCommandBubble(); _avLoadHistory(); } }, 8000); }
 }
 
 function closeAvatarOverlay() {

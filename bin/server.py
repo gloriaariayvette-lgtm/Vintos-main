@@ -8527,6 +8527,13 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                                                    admit=_avatar_scene_admit(_turn, _tc)))
         except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
     message = msg.message
+    _desktop_control = _desktop_command = None
+    if _surface == "avatar":
+        try:
+            import desktop_control as _desktop_control
+            _desktop_command = _desktop_control.parse_command(message)
+        except Exception as _dc_e:
+            print("[avatar/desktop-control] parse:", _dc_e, flush=True)
     try:
         # Load full context — same as main chat
         identity = ""
@@ -8821,6 +8828,8 @@ Your current self-model (excerpt):
 {inner_life_context()}
 {_daily_inner_context()}
 """
+        if _desktop_command and _desktop_control is not None:
+            system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)
         if getattr(msg, "surface_context", None):
             system_prompt += "\n\n" + str(msg.surface_context)
 
@@ -9236,6 +9245,16 @@ Your current self-model (excerpt):
                 with open(av_chat_log, "w") as f:
                     json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in av_history[-40:]], f, indent=2)
         except: pass
+
+        # Explicit Avatar desktop commands begin only after his ordinary reply
+        # has been formed and stored. The watcher writes its observed outcome
+        # back to avatar-overlay-chat as a second message on this same surface.
+        if _desktop_command and _desktop_control is not None and not _test_mode_active():
+            try:
+                _dc_turn = _turn.turn_id if _turn is not None else ""
+                _desktop_control.start_from_chat(message, reply, surface="avatar", turn_id=_dc_turn)
+            except Exception as _dc_e:
+                print("[avatar/desktop-control] start:", _dc_e, flush=True)
 
         try:
             _imp_script = os.path.join(WORKSPACE, "scripts", "imprint.py")
@@ -10082,6 +10101,24 @@ async def ring_latest():
     import heart_rate as _hr
     st, bpm, age = _hr.status()
     return {"state": st, "bpm": bpm, "age_seconds": round(age, 1) if age is not None else None}
+
+
+@app.post("/api/ring/sleep")
+async def ring_sleep(request: Request):
+    """Receive one completed device-estimated sleep record from the ring app."""
+    token_path = os.path.expanduser("~/.vintos/.ring-token")
+    try: expected = open(token_path).read().strip()
+    except Exception: expected = ""
+    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if expected and supplied != expected:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    body = await request.json()
+    import sys as _hrs_s
+    _hrs_s.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import heart_rate as _hrs
+    ok, res = _hrs.record_sleep(body)
+    if not ok: raise HTTPException(status_code=422, detail=res)
+    return res
 
 
 @app.get("/api/voice/framing")
