@@ -69,6 +69,12 @@ check("a changed quote consumes nothing", not ok and "no longer shows" in why an
 server=(ROOT/"bin/server.py").read_text(); browser=(ROOT/"scripts/browser_agent.py").read_text()
 check("the real chat route parses and starts the command", "_desktop_control.parse_command(message)" in server and
       "_desktop_control.start_from_chat(message, reply" in server)
+check("avatar test mode is snapshotted onto the turn before any writer runs",
+      "_test_turn = bool(_test_mode_active())" in server and
+      "_tc.begin(_counterpart_text, _surface, test_mode=_test_turn)" in server)
+check("avatar history and desktop execution obey the same immutable turn mode",
+      'if _surface != "reelroom" and not _test_turn:' in server and
+      "if _desktop_command and _desktop_control is not None and not _test_turn:" in server)
 check("avatar route owns explicit desktop work and its same-surface receipt",
       '_surface == "avatar"' in server and 'surface="avatar"' in server and
       'avatar-overlay-chat.json' in dc.__loader__.get_source("desktop_control"))

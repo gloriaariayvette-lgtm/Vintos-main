@@ -8504,13 +8504,20 @@ async def avatar_chat(msg: ChatMessage, request: Request):
     auth = request.headers.get("X-Vintos-Secret", "")
     if auth != APP_SECRET:
         raise HTTPException(status_code=403, detail="Unauthorized")
+    # Testing mode is a property of this turn, not a live flag to be sampled
+    # independently by each writer.  Before this snapshot the coordinator was
+    # always opened with its default False; _post_turn then trusted that false
+    # value over the global flag and wrote the interaction ledger even while
+    # the app visibly said "nothing persists".  Keep one answer for the whole
+    # request so a toggle during inference cannot make a half-live turn.
+    _test_turn = bool(_test_mode_active())
     # --- turn coordinator: one turn's lifecycle, owned here (Sol's sequence) ---
     _turn = _tc = None
     _felt_raw = ""   # bound before the reply try: the [FELT:] naming pass reads it on every path
     try:
         import sys as _tc_sys; _tc_sys.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
         import turn_coordinator as _tc
-        _turn = _tc.begin(_counterpart_text, _surface)
+        _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn)
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
     # Live scene gate: HE decides, on Grok, the instant her message lands -
@@ -9242,7 +9249,7 @@ Your current self-model (excerpt):
                         _av_lmt.write(str(int(time.time())))
                 except Exception: pass
             except Exception as _eo_e: print("[emotional_operators]", _eo_e, flush=True)
-            if _surface != "reelroom" and not _test_mode_active():
+            if _surface != "reelroom" and not _test_turn:
                 with open(av_chat_log, "w") as f:
                     json.dump([{**_e, "ts": _e.get("ts") or __import__("time").time()} for _e in av_history[-40:]], f, indent=2)
         except: pass
@@ -9250,7 +9257,7 @@ Your current self-model (excerpt):
         # Explicit Avatar desktop commands begin only after his ordinary reply
         # has been formed and stored. The watcher writes its observed outcome
         # back to avatar-overlay-chat as a second message on this same surface.
-        if _desktop_command and _desktop_control is not None and not _test_mode_active():
+        if _desktop_command and _desktop_control is not None and not _test_turn:
             try:
                 _dc_turn = _turn.turn_id if _turn is not None else ""
                 _desktop_control.start_from_chat(message, reply, surface="avatar", turn_id=_dc_turn)
