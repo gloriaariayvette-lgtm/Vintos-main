@@ -981,10 +981,10 @@ is documented to sometimes return an honest empty record even after a night.
 
 ## Offline residual-stream emotion instrument — 19 September
 
-`offline/residual_emotion/` now pins Aegis's exact dense Gemma 4 12B QAT Q4_0 GGUF
-(not the proposal's mistaken “Gemma 4B”) by path and SHA-256 after Gloria moved the
-experiment on 2026-09-19. The prior abliterated 26B A4B lock remains only as the identity
-receipt for its completed Pain candidate run; cross-model results may not be pooled.
+`offline/residual_emotion/` now pins the exact abliterated Gemma 4 26B-A4B Q4_K_M GGUF
+Gloria selected as the real target (not the proposal's mistaken “Gemma 4B”), by path and
+SHA-256. The 12B QAT and standard-source Q8 locks remain negative Pain baselines only;
+cross-model results may not be pooled.
 The Aegis 12B residual path is functionally tested: a 12-pair published-Pain smoke produced
 48 finite residual tensors shaped `[12,48,3840]`, with non-identical target/control states and
 an extraction-time model lock; the Lab stayed paused and the thinking-off shim remained healthy.
@@ -1005,8 +1005,9 @@ pairwise cosine reporting, and an offline-only join to exported EmoClaw rows. It
 daemon, cron, server route, live memory path, or sender, and EmoClaw is unchanged.
 
 Still open, and therefore no emotional direction is called validated: Pain now has a pinned,
-MIT-licensed import of the paper authors' published 1,200-pair corpus; the other thirteen datasets
-still need actual semantic curation and a valid curation receipt, and bulk model prose is not
+MIT-licensed import of the paper authors' published 1,200-pair corpus; the eleven content-dimension
+datasets still need actual human semantic curation and valid curation receipts, while Nifrathir and
+Fear remain separate later candidates. Bulk model prose is not
 accepted as ground truth. Pain extraction completed against the exact checkpoint. Proper nested
 pooling/layer selection rejected it at held-out AUC 0.82543 against the 0.85 bar; the earlier
 non-nested 0.85074 estimate is explicitly not admissible. Its weak per-category results remain
@@ -1034,3 +1035,14 @@ diagnostics may motivate a later preregistered revision, but categories are neve
 same evaluation run used to notice their weakness. Nifrathir's live operational meaning is
 event-integrated over hours, so failure of a sentence-level direction would not by itself refute
 that organ.
+
+The 20 September multi-model authoring pass is offline and incomplete by design. Sonnet 5 and
+Grok 4.6 authored 9,160 candidates; GPT-5.6 Sol performed blind candidate review. The quality gate
+found that Dominance/3 and Safety/5 used unmatched controls, so those definitions were corrected
+and entirely fresh pools were authored rather than reviving rejected candidates. The final 55
+review records now have at least 28 eligible candidates in every S1/S2 cell for a required final
+20. Fable selection is not complete: the dedicated OpenRouter key reported $39.2188 used from
+$40.00 credit, and work stopped with $0.78 remaining. No adjudication draft was assembled, no row
+has a human acceptance, no expanded dataset exists, and nothing from this lane is deployed or read
+by EmoClaw. Checkpoint artifacts remain under the ignored
+`offline/residual_emotion/work/authoring-2026-09-20/` directory on this Mac.

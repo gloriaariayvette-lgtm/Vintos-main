@@ -27,12 +27,12 @@
     "Dominance": {
       "operational_pole": "experienced agency and control",
       "targets": ["felt capacity to choose", "felt authorship of action", "embodied assertiveness", "experienced self-efficacy", "felt integrity while setting a boundary"],
-      "controls": ["status without agency", "confidence without control", "responsibility without control", "submission or powerlessness", "neutral choice"]
+      "controls": ["status without agency", "confidence without control", "rehearsed assertive behavior without felt authorship", "submission or powerlessness", "neutral choice"]
     },
     "Safety": {
       "operational_pole": "experienced protection from threat",
       "targets": ["interpersonal safety", "environmental safety", "predictable safety", "bodily safety", "permission to lower vigilance"],
-      "controls": ["comfort without safety information", "familiarity without safety", "calm under unresolved threat", "trust claim without protection", "neutral setting"]
+      "controls": ["comfort without safety information", "familiarity without safety", "calm under unresolved threat", "trust claim without protection", "fatigue-caused lowered vigilance without protection"]
     },
     "Desire": {
       "operational_pole": "appetitive pull toward an absent or future object",

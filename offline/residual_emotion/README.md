@@ -5,23 +5,20 @@ read a live Vintos store, send a notification, or appear in the deployment manif
 
 ## Model lock
 
-The active target is Aegis's pinned Gemma 12B QAT checkpoint:
+The active target is the pinned abliterated Gemma 4 26B-A4B checkpoint on Aegis:
 
 ```
-/mnt/c/Users/glori/.lmstudio/models/lmstudio-community/gemma-4-12B-it-QAT-GGUF/
-gemma-4-12B-it-QAT-Q4_0.gguf
-sha256 929fde4e951e520b74806268e8e8ffaa20a20fab955f3606d5ce7b2c35798501
+/home/gloria/.vintos/models/residual-validation/
+gemma-4-26B-A4B-it-uncensored-Q4_K_M.gguf
+sha256 d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3
 ```
 
-It is a dense 12B Gemma 4 GGUF, not the proposal's mistaken “Gemma 4B.” Gloria moved
-the experiment to this model on 2026-09-19 and paused the Chemistry Lab to give it
-the Aegis compute window. Thinking is disabled for its house inference route, but
-generation settings are irrelevant to residual extraction because no text is decoded.
-The former abliterated 26B A4B lock is retained as
-`model-lock-ablit-reference.json` solely to identify the already completed Pain run;
-results from the two checkpoints must never be pooled.
+It is the 26B-total, A4B mixture-of-experts GGUF Gloria identified as the real target,
+not the proposal's mistaken “Gemma 4B.” The 12B QAT and Q8 locks remain only as failed
+Pain baselines; results from distinct checkpoints must never be pooled. Thinking settings
+for a serving route are irrelevant to residual extraction because no text is decoded.
 
-The later paper-protocol replication deliberately selected that abliterated lock with
+The paper-protocol replication selected the same abliterated lock with
 `VINTOS_RESIDUAL_MODEL_LOCK`; it did not relabel the 12B dumps. Its fresh Aegis S2
 feel-colon result was AUC 0.90675. The complete Mac dump then passed all six published
 prompt ablations independently (AUC 0.86150–0.94425). See
@@ -59,6 +56,38 @@ prompt ablations independently (AUC 0.86150–0.94425). See
   The Pain candidate is imported from the paper authors' pinned MIT-licensed corpus;
   locally authored candidates still require an explicitly named human review.
 - `results/` is ignored. It contains model-derived artifacts and validation reports.
+
+## Dataset authoring boundary
+
+The eleven content dimensions use a staged, resumable authoring lane. Sonnet 5 and
+Grok 4.6 independently produce a three-times candidate pool; GPT-5.6 Sol reviews a
+shuffled pool without author identity; Fable 5.1 selects opaque candidate IDs while
+preserving both independent source buckets. Successfully parsed paid calls have local receipts and
+each stage has a client-side cost cap. Concept-name leakage, wrong counts, duplicate IDs, incomplete
+repairs, source collapse, and attempts to resurrect reviewer-rejected candidates fail
+closed. OpenRouter's advertised Sonnet batch model rejected live Batch API submissions,
+so the lane uses checkpointed ordinary calls unless that provider door is proven later.
+
+The 20 September author/review pass produced 9,160 machine candidates. Blind review
+exposed two defective matched controls rather than merely asking for more prose:
+Dominance/3 now contrasts embodied authorship with rehearsed assertive behavior lacking
+authorship, and Safety/5 contrasts permission to lower vigilance with fatigue-caused
+lowered vigilance lacking protection. Fresh independent pools raised those cells from
+11/16 and 5/16 eligible S1/S2 pairs to 66/87 and 84/81. Across the final 55 review
+records, every version has at least 28 eligible choices for the required 20.
+
+Fable adjudication is checkpointed but incomplete. OpenRouter reported $39.2188 used
+from $40.00 credit, so paid work stopped with no attempt to spend the last $0.78. Two
+truncated Fable responses predated transport-failure receipt persistence; the provider
+credit total, not the incomplete local receipt sum, is authoritative for spend. Current
+code preserves future paid-but-unparseable responses and their usage as rejected evidence.
+No machine-selected base draft exists yet, and no data is curated.
+
+The final output of this lane is still only `unreviewed_machine_draft`. It cannot enter
+extraction until a named human explicitly accepts every base semantic pair. Only then
+does `expand-reviewed` create the six person/suffix variants and a curated manifest.
+Nifrathir is excluded from this content-dimension authoring pass; its modifier dataset
+and predictive validation remain separate.
 
 ## Build the extractor
 
