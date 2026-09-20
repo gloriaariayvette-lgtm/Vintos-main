@@ -1,0 +1,11 @@
+{
+  "fixture_models": true,
+  "live_calls": 0,
+  "paid_calls": 0,
+  "host_writes": 0,
+  "state": "complete",
+  "accepted_artifacts": 3,
+  "sandbox_checks": 3,
+  "ntfy_payloads_built_not_sent": 3,
+  "wallet": "unconnected"
+}

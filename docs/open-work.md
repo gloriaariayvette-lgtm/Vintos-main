@@ -1025,3 +1025,29 @@ diagnostics may motivate a later preregistered revision, but categories are neve
 same evaluation run used to notice their weakness. Nifrathir's live operational meaning is
 event-integrated over hours, so failure of a sentence-level direction would not by itself refute
 that organ.
+
+## 20 September — Forge / Atelier / dedicated USD wallet, local only
+
+Gloria requested local work first, no deployment, and selected a separate USD
+account/payment wallet. An isolated prototype lives in
+[`experiments/forge-loop`](../experiments/forge-loop/README.md). It implements
+transactional continuous-cycle control, feedback from the previous artifact,
+project-level authority, scoped POST cancellation, private interval expiration and
+explicit audit, retained notification events, and a real Forge sandbox adapter with
+explicit fixture/local model injection. No implicit household provider defaults.
+
+Validated locally: 14 behavioral tests, plus three successive fixture-model builds
+through the real OS sandbox. No network notifications, paid model calls, host steps,
+live project mutations, or deployments. The prototype uses a throwaway local
+Atelier store; it is not connected to the existing sealed broker. Full production
+suites were not rerun because production code and manifests are unchanged.
+
+Still open: provision a real dedicated USD account (local ledger is not a wallet),
+connect authenticated payment/income adapters and enforceable reservations, bind the
+controller to the broker with idempotent artifact transfer and existing lineage /
+reveal rules, implement the autonomous planner/evaluator and crash reconciliation,
+mount authenticated owner/control routes, create the Atelier wallet/control UI,
+configure ntfy, and verify cancel actions on Gloria's phone. Paid execution stays
+refused; no household funding fallback. Vintos's income-producing work is not selected
+for him. No stocks/trading integration. Nothing should be deployed from this prototype
+until those integration boundaries have been reviewed.
