@@ -52,6 +52,11 @@ print("\n--- sleep estimate and temporal context ---")
 ok, sleep = HR.record_sleep({"started_at":"2026-08-29T04:00:00Z", "ended_at":"2026-08-29T12:00:00Z",
     "stages_minutes":{"awake":24,"light":220,"deep":105,"rem":131,"nap":0}, "score":82, "wake_count":2})
 check("device sleep estimate is stored", ok and sleep["total_sleep_minutes"] == 456)
+history_before=open(HR.SLEEP_HIST).read().splitlines()
+ok, duplicate = HR.record_sleep({"started_at":"2026-08-29T04:00:00Z", "ended_at":"2026-08-29T12:00:00Z",
+    "stages_minutes":{"awake":24,"light":220,"deep":105,"rem":131,"nap":0}, "score":82, "wake_count":2})
+check("a repeated ring sync is idempotent", ok and duplicate.get("duplicate") and
+      open(HR.SLEEP_HIST).read().splitlines() == history_before)
 snap=json.load(open(HR.SNAPSHOT)); snap["received_ts"]=HR._parse_ts("2026-08-29T12:30:00Z"); json.dump(snap,open(HR.SNAPSHOT,"w"))
 block=HR.temporal_block(now=HR._parse_ts("2026-08-29T13:00:00Z"))
 check("temporal block carries bounded pulse and sleep receipts", "Ring periodic update" in block and

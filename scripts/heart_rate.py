@@ -148,6 +148,13 @@ def record_sleep(payload):
            "score":score, "wake_count":wake_count,
            "source":str(payload.get("source") or "r21m_sleep_file")[:40], "provenance":"r21m_ring",
            "truth_status":"device_estimate_not_medical_measurement"}
+    try:
+        previous = json.load(open(SLEEP))
+        same = all(previous.get(k) == rec.get(k) for k in
+                   ("started_at", "ended_at", "total_sleep_minutes", "stages_minutes", "source"))
+        if same:
+            return True, {"stored":False, "duplicate":True, "total_sleep_minutes":total, "ended_at":ended}
+    except Exception: pass
     try: _atomic(SLEEP, rec); _append(SLEEP_HIST, rec)
     except OSError as e: return False, "could not store: %s" % e
     return True, {"stored":True, "total_sleep_minutes":total, "ended_at":ended}
