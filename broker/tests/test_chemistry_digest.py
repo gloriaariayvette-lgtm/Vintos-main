@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+from datetime import date, timedelta
 from pathlib import Path
 import tempfile
 
@@ -21,9 +22,12 @@ LAB = WS / "memory" / "chemistry-lab"
 LAB.mkdir(parents=True)
 os.environ["HOME"] = str(HOME); os.environ["SPARK_WORKSPACE"] = str(WS)
 
-DATA_DAY = "2026-09-13"   # the finished day, with real rows (like the 1,177 seen live)
-FILE_DAY = "2026-09-14"   # the morning after — the file first-light writes into
-PRIOR = "2026-09-12"      # the day before that — must not bleed in
+# Keep the fixed-fixture exercise outside the rolling seven-day backfill window. A
+# calendar literal eventually entered that window and made the later "ghost" assertion
+# refer to the fixture file itself.
+FILE_DAY = (date.today() - timedelta(days=20)).isoformat()
+DATA_DAY = (date.fromisoformat(FILE_DAY) - timedelta(days=1)).isoformat()
+PRIOR = (date.fromisoformat(DATA_DAY) - timedelta(days=1)).isoformat()
 
 def rows(name, values):
     with open(LAB / name, "w") as handle:
@@ -70,7 +74,6 @@ again, _ = M.append(FILE_DAY)
 assert not again and Path(path).read_text() == text
 
 # Regression: the default call summarizes YESTERDAY into TODAY, not today-at-dawn.
-from datetime import date, timedelta
 wrote2, path2 = M.append()   # file_day=today, data_day=yesterday
 assert Path(path2).name == f"daily-inner-life-{date.today().isoformat()}.md"
 y = (date.today() - timedelta(days=1)).isoformat()
