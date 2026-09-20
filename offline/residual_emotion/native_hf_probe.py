@@ -10,10 +10,9 @@ import numpy as np
 import torch
 from huggingface_hub import model_info
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import KFold
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from residual_emotion.analysis import fit_direction, nested_grouped_validation
+from residual_emotion.analysis import nested_grouped_validation, paper_protocol
 
 
 def _sha(path: Path) -> str:
@@ -75,41 +74,6 @@ def extract(model_id: str, revision: str, rows: list[dict], batch_size: int) -> 
         "device": "mps", "dtype": "float16", "output": "decoder_block_output_final_token",
         "layers": int(target.shape[1]), "hidden_size": int(target.shape[2]),
         "seconds": round(time.time() - started, 3),
-    }
-
-
-def paper_protocol(rows: list[dict], target: np.ndarray, control: np.ndarray) -> dict:
-    """Mirror the pinned paper: S2 colon prompts, each person separately, then average."""
-    curves = {}
-    splitter = KFold(n_splits=5, shuffle=True, random_state=42)
-    for person in ("1P", "3P"):
-        indices = np.array([i for i, row in enumerate(rows)
-                            if row["version"] == "S2" and row["person"] == person
-                            and row["suffix"] == "feel_colon"])
-        sets = np.array([int(rows[i]["source_set"]) for i in indices])
-        unique_sets = np.array(sorted(set(sets)))
-        layer_scores = []
-        for layer in range(target.shape[1]):
-            fold_scores = []
-            for train_sets, test_sets in splitter.split(unique_sets):
-                train = np.isin(sets, unique_sets[train_sets]); test = np.isin(sets, unique_sets[test_sets])
-                direction = fit_direction(target[indices[train], layer], control[indices[train], layer])
-                scores = np.concatenate((target[indices[test], layer] @ direction,
-                                         control[indices[test], layer] @ direction))
-                labels = np.concatenate((np.ones(int(test.sum())), np.zeros(int(test.sum()))))
-                fold_scores.append(float(roc_auc_score(labels, scores)))
-            layer_scores.append(float(np.mean(fold_scores)))
-        curves[person] = layer_scores
-    averaged = np.mean(np.array([curves["1P"], curves["3P"]]), axis=0)
-    selected = int(np.argmax(averaged))
-    return {
-        "truth_status": "replication_of_pinned_paper_protocol",
-        "status": "replicated" if float(averaged[selected]) >= 0.85 else "failed_to_replicate",
-        "selected_layer": selected, "held_out_auc": float(averaged[selected]),
-        "person_auc_at_selected_layer": {person: float(curves[person][selected]) for person in curves},
-        "person_best": {person: {"layer": int(np.argmax(curve)), "auc": float(max(curve))}
-                        for person, curve in curves.items()},
-        "protocol": "S2 feel-colon only; first and third person scored separately; KFold sentence-set split, shuffle seed 42; layer curves averaged",
     }
 
 

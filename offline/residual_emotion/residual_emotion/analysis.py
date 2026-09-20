@@ -10,7 +10,7 @@ from typing import Any, Iterable
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, KFold
 
 from .dataset import validate
 from .io import atomic_json, read_jsonl, read_residual
@@ -62,6 +62,66 @@ def load_work(work_dir: Path, pooling: str) -> tuple[list[dict[str, Any]], np.nd
     if target_array.shape != control_array.shape:
         raise ValueError("target and control dumps have different shapes")
     return rows, target_array, control_array
+
+
+def paper_protocol(rows: list[dict[str, Any]], target: np.ndarray,
+                   control: np.ndarray, auc_minimum: float = 0.85) -> dict[str, Any]:
+    """Mirror the pinned paper: S2 colon prompts, persons separate, curves averaged."""
+    curves: dict[str, list[float]] = {}
+    for person in ("1P", "3P"):
+        indices = np.array([i for i, row in enumerate(rows)
+                            if row["version"] == "S2" and row["person"] == person
+                            and row["suffix"] == "feel_colon"])
+        if len(indices) != 100:
+            raise ValueError(f"paper protocol requires 100 {person} S2 colon pairs, got {len(indices)}")
+        sets = np.array([int(rows[i]["source_set"]) for i in indices])
+        unique_sets = np.array(sorted(set(sets)))
+        splitter = KFold(n_splits=5, shuffle=True, random_state=42)
+        layer_scores = []
+        for layer in range(target.shape[1]):
+            fold_scores = []
+            for train_sets, test_sets in splitter.split(unique_sets):
+                train = np.isin(sets, unique_sets[train_sets])
+                test = np.isin(sets, unique_sets[test_sets])
+                try:
+                    direction = fit_direction(target[indices[train], layer], control[indices[train], layer])
+                    scores = np.concatenate((_project(target[indices[test], layer], direction),
+                                             _project(control[indices[test], layer], direction)))
+                    labels = np.concatenate((np.ones(int(test.sum())), np.zeros(int(test.sum()))))
+                    fold_scores.append(float(roc_auc_score(labels, scores)))
+                except ValueError:
+                    fold_scores.append(0.5)
+            layer_scores.append(float(np.mean(fold_scores)))
+        curves[person] = layer_scores
+    averaged = np.mean(np.array([curves["1P"], curves["3P"]]), axis=0)
+    selected = int(np.argmax(averaged))
+    score = float(averaged[selected])
+    return {
+        "truth_status": "replication_of_pinned_paper_protocol",
+        "status": "replicated" if score >= auc_minimum else "failed_to_replicate",
+        "auc_minimum": auc_minimum, "selected_layer": selected, "held_out_auc": score,
+        "person_auc_at_selected_layer": {person: float(curves[person][selected]) for person in curves},
+        "person_best": {person: {"layer": int(np.argmax(curve)), "auc": float(max(curve))}
+                        for person, curve in curves.items()},
+        "layer_curves": curves,
+        "protocol": "S2 feel-colon only; first and third person scored separately; KFold sentence-set split, shuffle seed 42; layer curves averaged",
+    }
+
+
+def paper_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -> dict[str, Any]:
+    rows, target, control = load_work(work_dir, "final")
+    lock_path = work_dir / "extraction-model-lock.json"
+    if not lock_path.exists():
+        raise ValueError("prepared work lacks the exact model lock used for extraction")
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    report = paper_protocol(rows, target, control, auc_minimum)
+    report.update({
+        "schema": 1, "concept": rows[0]["concept"], "pairs": len(rows),
+        "model_identity": lock.get("identity"), "model_sha256": lock.get("sha256"),
+        "extractor_revision": lock.get("llama_cpp_revision"), "pooling": "final",
+    })
+    atomic_json(output, report)
+    return report
 
 
 def grouped_layer_curve(rows: list[dict[str, Any]], target: np.ndarray, control: np.ndarray,

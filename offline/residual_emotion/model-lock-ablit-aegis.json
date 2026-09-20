@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "identity": "gemma-4-26b-a4b-it-uncensored",
+  "architecture_note": "26B total, A4B mixture-of-experts; abliterated validation target",
+  "format": "GGUF Q4_K_M",
+  "host": "aegis",
+  "path": "/home/gloria/.vintos/models/residual-validation/gemma-4-26B-A4B-it-uncensored-Q4_K_M.gguf",
+  "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+  "llama_cpp_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "serving_api_is_not_measurement": true
+}

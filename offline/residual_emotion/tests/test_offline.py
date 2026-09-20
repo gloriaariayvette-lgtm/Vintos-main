@@ -14,9 +14,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation
+from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol
 from residual_emotion.compare import join
-from residual_emotion.dataset import prepare, validate
+from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
 from residual_emotion.import_pain_axis import convert as import_pain_axis
 from residual_emotion.measure import measure
@@ -73,6 +73,19 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     imported_rows = read_jsonl(pain)
     check(len({row["semantic_set"] for row in imported_rows if row["semantic_set"] == "pain-s1-01-slot-1"}) == 1, "variants share semantic set")
     check(not any("feels: I feel" in row["target"] for row in imported_rows), "source suffix is replaced, not duplicated")
+    paper_work = scratch / "paper-work"
+    paper_summary = prepare_paper_protocol(pain, paper_work)
+    paper_rows = read_jsonl(paper_work / "rows.jsonl")
+    check(paper_summary["rows"] == 200 and len(paper_rows) == 200, "paper subset has only required pairs")
+    check({row["version"] for row in paper_rows} == {"S2"}, "paper subset is S2")
+    check({row["suffix"] for row in paper_rows} == {"feel_colon"}, "paper subset is colon prompts")
+
+    # The exact paper scorer keeps persons separate and averages their layer curves.
+    paper_control = np.zeros((200, 2, 8), dtype=np.float64)
+    paper_target = paper_control.copy(); paper_target[:, 1, 0] += 2.0
+    replicated = paper_protocol(paper_rows, paper_target, paper_control)
+    check(replicated["status"] == "replicated" and replicated["selected_layer"] == 1,
+          "paper scorer reproduces a held signal")
 
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)

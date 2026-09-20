@@ -3,8 +3,9 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 WORK=${1:?usage: run_extractor.sh WORK_DIR}
-MODEL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["path"])' "$ROOT/model-lock.json")
-EXPECTED=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$ROOT/model-lock.json")
+LOCK=${VINTOS_RESIDUAL_MODEL_LOCK:-$ROOT/model-lock.json}
+MODEL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["path"])' "$LOCK")
+EXPECTED=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$LOCK")
 ACTUAL=$(shasum -a 256 "$MODEL" | awk '{print $1}')
 [ "$ACTUAL" = "$EXPECTED" ] || { echo "model hash mismatch" >&2; exit 3; }
 
@@ -16,5 +17,5 @@ VINTOS_RESIDUAL_DUMP="$WORK/dumps" "$BIN" \
   -m "$MODEL" -ngl "$GPU_LAYERS" --method mean \
   --positive-file "$WORK/target.txt" --negative-file "$WORK/control.txt" \
   -o "$WORK/unused-control-vector.gguf"
-cp "$ROOT/model-lock.json" "$WORK/extraction-model-lock.json.tmp"
+cp "$LOCK" "$WORK/extraction-model-lock.json.tmp"
 mv "$WORK/extraction-model-lock.json.tmp" "$WORK/extraction-model-lock.json"
