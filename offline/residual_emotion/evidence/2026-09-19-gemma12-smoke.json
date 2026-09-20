@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "at": "2026-09-19",
+  "host": "aegis",
+  "model_identity": "google/gemma-4-12b-qat",
+  "model_sha256": "929fde4e951e520b74806268e8e8ffaa20a20fab955f3606d5ce7b2c35798501",
+  "format": "GGUF Q4_0",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extractor_backend": "cpu_only_no_cuda_compiler",
+  "dataset": "published Pain Axis import",
+  "pairs": 12,
+  "dump_files": 48,
+  "all_finite": true,
+  "shapes": {
+    "final": [12, 48, 3840],
+    "mean": [12, 48, 3840]
+  },
+  "target_control_separation": {
+    "final": {"mean_l2_by_layer": 19.190399881799237, "max_abs_difference": 12.635307312011719, "identical": false},
+    "mean": {"mean_l2_by_layer": 10.912009369185958, "max_abs_difference": 9.8885498046875, "identical": false}
+  },
+  "extraction_model_lock_present": true,
+  "lab_during_test": {"enabled": false, "stop_requested": true},
+  "resident_model_after_test": {"thinking_off_probe": "READY"},
+  "outcome": "functional_residual_extraction_smoke_passed",
+  "not_proven": "Twelve pairs prove the extraction path, not a direction or AUC. Full nested validation remains pending."
+}

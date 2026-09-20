@@ -33,7 +33,17 @@ else
   fi
   git -C "$SRC" apply "$ROOT/patches/llama-cvector-residual-dump.patch"
 fi
-cmake -S "$SRC" -B "$SRC/build" -DGGML_METAL=ON -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF
-JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+SYSTEM=$(uname -s)
+if [ "$SYSTEM" = "Darwin" ]; then
+  BACKEND_FLAGS="-DGGML_METAL=ON -DGGML_CUDA=OFF"
+elif command -v nvcc >/dev/null 2>&1; then
+  BACKEND_FLAGS="-DGGML_METAL=OFF -DGGML_CUDA=ON"
+else
+  BACKEND_FLAGS="-DGGML_METAL=OFF -DGGML_CUDA=OFF"
+  echo "building CPU-only extractor: no CUDA compiler found" >&2
+fi
+# shellcheck disable=SC2086
+cmake -S "$SRC" -B "$SRC/build" $BACKEND_FLAGS -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=OFF
+JOBS=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 cmake --build "$SRC/build" --target llama-cvector-generator -j "$JOBS"
 echo "$SRC/build/bin/llama-cvector-generator"

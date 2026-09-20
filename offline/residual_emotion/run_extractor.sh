@@ -9,10 +9,11 @@ ACTUAL=$(shasum -a 256 "$MODEL" | awk '{print $1}')
 [ "$ACTUAL" = "$EXPECTED" ] || { echo "model hash mismatch" >&2; exit 3; }
 
 BIN=${LLAMA_CVECTOR_BIN:-$ROOT/.build/llama.cpp/build/bin/llama-cvector-generator}
+GPU_LAYERS=${LLAMA_GPU_LAYERS:-99}
 [ -x "$BIN" ] || { echo "extractor missing; run ./build_extractor.sh" >&2; exit 4; }
 mkdir -p "$WORK/dumps"
 VINTOS_RESIDUAL_DUMP="$WORK/dumps" "$BIN" \
-  -m "$MODEL" -ngl 99 --method mean \
+  -m "$MODEL" -ngl "$GPU_LAYERS" --method mean \
   --positive-file "$WORK/target.txt" --negative-file "$WORK/control.txt" \
   -o "$WORK/unused-control-vector.gguf"
 cp "$ROOT/model-lock.json" "$WORK/extraction-model-lock.json.tmp"

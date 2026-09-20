@@ -64,6 +64,12 @@ The script clones the pinned llama.cpp revision into a local build directory, ap
 the patch, and builds only `llama-cvector-generator`. It never alters LM Studio.
 Successful extraction copies the active lock into the work directory; analysis refuses
 dumps without that receipt, preventing a later model switch from relabelling old vectors.
+The Aegis Gemma 12B path has a completed 12-pair functional smoke receipt at
+`evidence/2026-09-19-gemma12-smoke.json`: all 48 final/mean target/control dumps
+were finite with shape `[12, 48, 3840]` and nonzero target/control separation.
+That proves extraction functionality, not a direction. Aegis currently has no CUDA
+compiler, so its pinned extractor builds CPU-only; full 1,200-pair nested validation
+remains pending an acceptable accelerated path or a deliberately long CPU run.
 
 ## Run order
 
