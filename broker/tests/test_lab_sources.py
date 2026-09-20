@@ -27,6 +27,19 @@ class Tests(unittest.TestCase):
         self.assertTrue(Path(lab.ROOT).is_relative_to(SCRATCH.name))
         self.assertTrue(Path(frontier.INTEREST).is_relative_to(SCRATCH.name))
         self.calls = []
+    def test_real_config_retains_source_and_intake_settings(self):
+        with tempfile.TemporaryDirectory(dir=SCRATCH.name) as tmp:
+            config=Path(tmp)/'config.json'
+            expected={'alphagenome_key_file':str(Path(tmp)/'key'),
+                      'alphagenome_python':str(Path(tmp)/'python'),
+                      'atlas_anchors':[{'chromosome':'chr1'}],
+                      'forge_report_intake':{'url':'http://127.0.0.1:8612/api/lab-intake','token_file':str(Path(tmp)/'intake')}}
+            config.write_text(json.dumps(expected))
+            with patch.object(lab,'CONFIG',str(config)):
+                actual=lab.config()
+                self.assertEqual({k:actual[k] for k in expected},expected)
+                self.assertEqual(bridge.configured_sources().atlas.key_file,expected['alphagenome_key_file'])
+
     def fetch(self, url):
         self.calls.append(url)
         if 'uniprot' in url: return {'results':[{'primaryAccession':'P12345'}]}, {'X-UniProt-Release':'test-release'}

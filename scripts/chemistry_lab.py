@@ -73,6 +73,10 @@ DEFAULTS = {
     # mutually exclusive with resident Gemma on this 16 GB host.
     "evo2_enabled": False,
     "atlas_evo2_enabled": False,
+    "alphagenome_key_file": None,
+    "alphagenome_python": None,
+    "atlas_anchors": [],
+    "forge_report_intake": None,
     "evo2_every_n_cycles": 120,
     # Three lenses on one preserved artifact, every Nth offered session. Off until she
     # turns it on: it spends three paid calls where a session normally spends one.

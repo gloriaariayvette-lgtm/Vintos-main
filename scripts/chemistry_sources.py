@@ -15,7 +15,7 @@ from lab_sources import Sources, AtlasProcess, collision_descriptor, followups
 def configured_sources():
     cfg = lab.config()
     key_file = cfg.get('alphagenome_key_file')
-    return Sources(atlas=AtlasProcess(key_file, cfg.get('alphagenome_python', sys.executable)) if key_file else None)
+    return Sources(atlas=AtlasProcess(key_file, cfg.get('alphagenome_python') or sys.executable) if key_file else None)
 
 
 def query(spec, *, client=None, question=''):
