@@ -86,11 +86,29 @@ produced 2,200 base pairs at
 `5cc871dbee503b4c5aeb50ca2fbe7b0539cf2f12956793d4ee2ad50e997c4705`). Every row is
 still an `unreviewed_machine_draft`; no data is curated.
 
-The final output of this lane is still only `unreviewed_machine_draft`. It cannot enter
-extraction until a named human explicitly accepts every base semantic pair. Only then
-does `expand-reviewed` create the six person/suffix variants and a curated manifest.
-Nifrathir is excluded from this content-dimension authoring pass; its modifier dataset
-and predictive validation remain separate.
+Gloria then supplied 40 explicit Arousal decisions (38 accepts and two rejects) and the
+blanket instruction to accept reviewer-pass and repaired material across the remaining
+categories. The two rejects were replaced only by named reviewer-eligible repaired
+alternatives. The exact receipt is
+`review-receipts/2026-09-20-gloria-bulk-review.json`; applying it produces 2,200 reviewed
+base pairs and eleven separately validated 1,200-row concept datasets under
+`datasets/reviewed-eleven/`. Bulk authorization is recorded as bulk authorization, not
+misrepresented as 2,160 individual inspections.
+
+All eleven content directions cleared the fixed nested held-out AUC threshold on the
+pinned abliterated checkpoint. Scores ranged from Safety at 0.87034 to Arousal at
+0.98406. Every absolute off-diagonal direction cosine was below 0.3 (maximum 0.18906,
+Arousal versus Desire). Prompt-ablation sensitivity remains visible: Safety, Curiosity,
+Dominance, and Warmth passed only three of six variants, while Arousal, Desire,
+Groundedness, and Playfulness passed all six. Exact tied-output unembedding reports were
+produced for all eleven but remain pending named human semantic review, so measurement
+admission stays blocked. The complete compact receipt is
+`evidence/2026-09-20-eleven-content-dimensions.json`.
+
+Nifrathir is excluded from this content-dimension authoring pass; it remains the twelfth
+slow modifier rather than a twelfth peer emotion. Its modifier dataset and predictive
+validation remain separate. Pain and Fear remain exploratory candidates and are not
+silently promoted into the twelve-dimension EmoClaw model.
 
 ## Build the extractor
 

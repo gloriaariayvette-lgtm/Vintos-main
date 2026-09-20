@@ -77,7 +77,10 @@ def paper_variant_protocol(rows: list[dict[str, Any]], target: np.ndarray,
                             and row["suffix"] == suffix])
         if len(indices) != 100:
             raise ValueError(f"paper protocol requires 100 {person} {version}/{suffix} pairs, got {len(indices)}")
-        sets = np.array([int(rows[i]["source_set"]) for i in indices])
+        # Imported Pain rows retain the paper's numeric ``source_set`` while
+        # reviewed house datasets use the shared ``semantic_set`` contract.
+        # Both identify the sentence family that must stay within one fold.
+        sets = np.array([str(rows[i].get("source_set", rows[i]["semantic_set"])) for i in indices])
         unique_sets = np.array(sorted(set(sets)))
         splitter = KFold(n_splits=5, shuffle=True, random_state=42)
         layer_scores = []

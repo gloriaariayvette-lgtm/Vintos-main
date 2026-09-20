@@ -1,0 +1,15 @@
+{
+  "bulk_accept_remaining": 2160,
+  "curated": true,
+  "curation_basis": "human_review",
+  "explicit_accepts": 38,
+  "explicit_rejects": 2,
+  "replacement_count": 2,
+  "review_receipt": "offline/residual_emotion/review-receipts/2026-09-20-gloria-bulk-review.json",
+  "review_receipt_sha256": "f9a6c30377f42b0b3e151fec59447cbb18ecff86fa4fe3fd74d4feca8b3d10a5",
+  "reviewers": [
+    "Gloria"
+  ],
+  "schema": 1,
+  "truth_status": "human_reviewed_with_explicit_and_bulk_decisions"
+}

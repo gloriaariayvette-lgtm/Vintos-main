@@ -937,6 +937,73 @@ def assemble_human_review_draft(adjudication_dir: Path, output: Path) -> dict[st
     return {"truth_status": "machine_draft_requires_explicit_human_review", "rows": len(rows)}
 
 
+def apply_review_receipt(base_path: Path, receipt_path: Path, output: Path) -> dict[str, Any]:
+    """Apply Gloria's explicit and bulk decisions; rejected rows never survive by implication."""
+    rows = read_jsonl(base_path); receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if receipt.get("reviewer") != "Gloria" or receipt.get("bulk_accept_remaining") is not True:
+        raise ValueError("review receipt lacks Gloria's named bulk authorization")
+    supplied = receipt.get("explicit_decisions", [])
+    decisions = {str(row["code"]): str(row["decision"]) for row in supplied}
+    if len(decisions) != len(supplied):
+        raise ValueError("review receipt contains duplicate explicit decision codes")
+    known = {str(row["draft_id"]) for row in rows}
+    if not set(decisions).issubset(known) or any(value not in {"accept", "reject"} for value in decisions.values()):
+        raise ValueError("review receipt has an unknown code or decision")
+    reviewed = []
+    for row in rows:
+        draft_id = str(row["draft_id"]); decision = decisions.get(draft_id, "accept")
+        if decision == "reject":
+            continue
+        accepted = dict(row); accepted["review_state"] = "accepted"
+        accepted["human_review_basis"] = ("explicit_item_decision" if draft_id in decisions else
+                                            "gloria_bulk_accept_pass_and_repair")
+        accepted["human_note"] = ("Accepted explicitly by Gloria." if draft_id in decisions else
+                                    "Accepted under Gloria's bulk instruction for reviewer pass/repair material.")
+        reviewed.append(accepted)
+    rejected_codes = {code for code, decision in decisions.items() if decision == "reject"}
+    replacements = receipt.get("replacements", [])
+    replaced_codes = [str(row.get("replaces")) for row in replacements]
+    if (len(replacements) != len(rejected_codes) or len(set(replaced_codes)) != len(replaced_codes)
+            or set(replaced_codes) != rejected_codes):
+        raise ValueError("every explicit rejection requires exactly one named replacement")
+    for replacement in replacements:
+        required = {"draft_id", "candidate_id", "concept", "slot", "version", "target_category", "control_category",
+                    "target_1p", "control_1p", "target_3p", "control_3p", "review_verdict", "review_scores"}
+        if not required.issubset(replacement):
+            raise ValueError("replacement receipt lacks required candidate fields")
+        row = {key: replacement[key] for key in required}
+        row.update({"adjudication_basis": "reviewer_eligible_alternate_after_explicit_human_rejection",
+                    "review_state": "accepted", "human_review_basis": "gloria_bulk_accept_replacement",
+                    "human_note": f"Replaces explicitly rejected {replacement['replaces']}."})
+        reviewed.append(row)
+    reviewed_drafts = [str(row["draft_id"]) for row in reviewed]
+    reviewed_candidates = [str(row["candidate_id"]) for row in reviewed]
+    if len(set(reviewed_drafts)) != len(reviewed_drafts) or len(set(reviewed_candidates)) != len(reviewed_candidates):
+        raise ValueError("review receipt produced a duplicate draft or candidate identity")
+    if len(reviewed) != len(rows):
+        raise ValueError(f"reviewed row count changed: {len(rows)} -> {len(reviewed)}")
+    counts = {}
+    for row in reviewed:
+        key = (str(row["concept"]), int(row["slot"]), str(row["version"]))
+        counts[key] = counts.get(key, 0) + 1
+    bad = {str(key): value for key, value in counts.items() if value != FULL_FINAL_PER_VERSION}
+    if bad or len(counts) != 110:
+        raise ValueError(f"reviewed suite lost its 20-per-version category balance: {bad}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in reviewed), encoding="utf-8")
+    atomic_json(output.with_suffix(".manifest.json"), {
+        "schema": 1, "curated": True, "curation_basis": "human_review", "reviewers": ["Gloria"],
+        "review_receipt": str(receipt_path), "review_receipt_sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+        "explicit_accepts": sum(value == "accept" for value in decisions.values()),
+        "explicit_rejects": len(rejected_codes), "bulk_accept_remaining": len(rows) - len(decisions),
+        "replacement_count": len(replacements),
+        "truth_status": "human_reviewed_with_explicit_and_bulk_decisions",
+    })
+    return {"rows": len(reviewed), "explicit_accepts": sum(value == "accept" for value in decisions.values()),
+            "explicit_rejects": len(rejected_codes), "bulk_accept_remaining": len(rows) - len(decisions),
+            "replacements": len(replacements)}
+
+
 def _adjudicate_prompt(concept: str, pole: str, target: str, control: str,
                        candidates: list[dict[str, Any]], reviews: list[dict[str, Any]]) -> str:
     visible = [{key: row[key] for key in row if key != "author_model"} for row in candidates]
@@ -1047,6 +1114,20 @@ def expand_reviewed(base_path: Path, output: Path, reviewer: str) -> dict[str, A
     return {"concept": rows[0]["concept"], "base_pairs": len(rows), "rows": len(expanded)}
 
 
+def expand_reviewed_suite(base_path: Path, output_dir: Path, reviewer: str) -> dict[str, Any]:
+    """Expand a reviewed multi-concept suite into validator-compatible concept files."""
+    rows = read_jsonl(base_path); concepts = sorted({str(row["concept"]) for row in rows})
+    output_dir.mkdir(parents=True, exist_ok=True); summaries = []
+    for concept in concepts:
+        concept_rows = [row for row in rows if row["concept"] == concept]
+        base = output_dir / f"{_slug(concept)}-base-reviewed.jsonl"
+        base.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in concept_rows), encoding="utf-8")
+        output = output_dir / f"{_slug(concept)}.jsonl"
+        summaries.append(expand_reviewed(base, output, reviewer))
+    return {"concepts": len(summaries), "base_pairs": sum(row["base_pairs"] for row in summaries),
+            "expanded_rows": sum(row["rows"] for row in summaries), "outputs": summaries}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     pilot_p = sub.add_parser("pilot"); pilot_p.add_argument("concept"); pilot_p.add_argument("slot", type=int); pilot_p.add_argument("output", type=Path)
@@ -1074,6 +1155,10 @@ def main() -> int:
     select_p.add_argument("output", type=Path)
     draft_p = sub.add_parser("assemble-human-review-draft"); draft_p.add_argument("adjudication_dir", type=Path)
     draft_p.add_argument("output", type=Path)
+    apply_p = sub.add_parser("apply-review-receipt"); apply_p.add_argument("base", type=Path)
+    apply_p.add_argument("receipt", type=Path); apply_p.add_argument("output", type=Path)
+    suite_p = sub.add_parser("expand-reviewed-suite"); suite_p.add_argument("base", type=Path)
+    suite_p.add_argument("output", type=Path); suite_p.add_argument("--reviewer", required=True)
     args = parser.parse_args()
     if args.command == "pilot":
         result = pilot(args.plan, args.concept, args.slot, args.output)
@@ -1091,8 +1176,12 @@ def main() -> int:
         result = run_adjudicator_standard(args.review_dir, args.output, args.workers, args.cost_cap_usd, args.limit)
     elif args.command == "select-deterministic":
         result = run_deterministic_selector(args.review_dir, args.output)
-    else:
+    elif args.command == "assemble-human-review-draft":
         result = assemble_human_review_draft(args.adjudication_dir, args.output)
+    elif args.command == "apply-review-receipt":
+        result = apply_review_receipt(args.base, args.receipt, args.output)
+    else:
+        result = expand_reviewed_suite(args.base, args.output, args.reviewer)
     print(json.dumps(result, indent=2, sort_keys=True)); return 0
 
 

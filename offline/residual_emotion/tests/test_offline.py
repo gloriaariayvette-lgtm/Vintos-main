@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_matrix
 from residual_emotion.authoring import (
     _deterministic_selection, _repair_review_ids, _review_prompt, _validate_candidates, _validate_full_selection,
-    author_batch_requests, expand_reviewed,
+    apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
 )
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
@@ -58,6 +58,37 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     prepare(dataset, prepared)
     check((prepared / "source.manifest.json").exists(), "curation receipt follows preparation")
     (prepared / "extraction-model-lock.json").write_text(json.dumps({"identity": "fixture", "sha256": "0" * 64, "llama_cpp_revision": "fixture"}))
+
+    # Gloria's review receipt is applied literally: rejects disappear, named
+    # replacements enter, and the balanced suite expands without live writes.
+    reviewed_base = scratch / "reviewed.jsonl"
+    receipt_result = apply_review_receipt(
+        ROOT / "drafts" / "eleven-dimensions-base.jsonl",
+        ROOT / "review-receipts" / "2026-09-20-gloria-bulk-review.json",
+        reviewed_base,
+    )
+    reviewed_rows = read_jsonl(reviewed_base)
+    reviewed_ids = {item["candidate_id"] for item in reviewed_rows}
+    check(receipt_result == {"rows": 2200, "explicit_accepts": 38, "explicit_rejects": 2,
+                             "bulk_accept_remaining": 2160, "replacements": 2},
+          "review receipt counts are exact")
+    check("cand-2eaaf768fa61b949" not in reviewed_ids and "cand-62d291936051a05d" not in reviewed_ids,
+          "explicitly rejected candidates do not survive")
+    check({"cand-396a9a66259c18c6", "cand-25543f84de5dff89"}.issubset(reviewed_ids),
+          "named reviewer-approved replacements enter")
+    duplicate_receipt = json.loads((ROOT / "review-receipts" / "2026-09-20-gloria-bulk-review.json").read_text())
+    duplicate_receipt["replacements"].append(dict(duplicate_receipt["replacements"][0]))
+    duplicate_path = scratch / "duplicate-replacement.json"
+    duplicate_path.write_text(json.dumps(duplicate_receipt))
+    try:
+        apply_review_receipt(ROOT / "drafts" / "eleven-dimensions-base.jsonl",
+                             duplicate_path, scratch / "must-not-exist.jsonl")
+        raise AssertionError("duplicate replacement was accepted")
+    except ValueError:
+        pass
+    expanded_suite = expand_reviewed_suite(reviewed_base, scratch / "reviewed-suite", "Gloria")
+    check(expanded_suite["concepts"] == 11 and expanded_suite["expanded_rows"] == 13200,
+          "reviewed suite expands into eleven balanced datasets")
 
     # Published-source curation must be pinned and the importer keeps person/suffix variants grouped.
     source = scratch / "pain-source.json"
@@ -100,6 +131,11 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     check({(v["variant"]["version"], v["variant"]["suffix"]) for v in variants["variants"]}
           == {(version, suffix) for version in ("S1", "S2") for suffix in ("feel_colon", "feel", "none")},
           "variant matrix is complete")
+    reviewed_shape_rows = [{key: value for key, value in item.items() if key != "source_set"}
+                           for item in imported_rows]
+    reviewed_shape_variants = paper_variant_matrix(reviewed_shape_rows, full_target, full_control)
+    check(reviewed_shape_variants["passing_variants"] == 6,
+          "reviewed datasets group variants by semantic_set without Pain-only source_set")
 
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)
