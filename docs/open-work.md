@@ -992,6 +992,11 @@ The full CPU run subsequently completed all 1,200 pairs. Proper nested validatio
 Pain at held-out AUC `0.51330 ± 0.15155` against the `0.85` bar; layer/pooling selection was
 unstable and exact unembedding was diffuse. This is a real negative result for this candidate
 and checkpoint, not a failure of the extraction path. Other candidate datasets remain open.
+The follow-up standard-source Q8_0 replication also completed all 1,200 pairs and
+failed admission at nested held-out AUC `0.66649 ± 0.18394`. All 4,800 dumps were
+finite, nonzero, and exactly 48 x 3,840. It improved numerically over QAT-Q4, but
+the available Q8 and Q4 files do not share a source checkpoint, so that delta is
+not evidence that quantization caused the Q4 failure. No direction is deployed.
 and a llama.cpp revision. A patched, Metal-capable extractor completed a real smoke pass and
 produced final-token and mean-token matrices with observed shape 30 × 2,816 for both sides of
 a contrastive pair. The offline analysis implements semantic-set-grouped K-fold layer selection,

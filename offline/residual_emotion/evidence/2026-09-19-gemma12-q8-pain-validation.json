@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "at": "2026-09-19",
+  "host": "aegis",
+  "candidate": "Pain",
+  "dataset_rows": 1200,
+  "semantic_sets": 200,
+  "model_identity": "ggml-org/gemma-4-12B-it-GGUF:Q8_0",
+  "model_sha256": "abfc3044b93795f6a446fc1a04468ac2d5fc5e9c92e237f09a5b3384c5a433e4",
+  "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "extraction": {
+    "outcome": "completed",
+    "pairs_processed": 1200,
+    "dump_files": 4800,
+    "layers": 48,
+    "embedding_width": 3840,
+    "poolings": ["final", "mean"],
+    "all_dumps_finite": true,
+    "all_zero_dump_files": 0
+  },
+  "validation": {
+    "method": "five-fold outer grouped validation with four-fold inner pooling and layer selection",
+    "outcome": "rejected_below_auc",
+    "auc_minimum": 0.85,
+    "held_out_auc": 0.6664895833333333,
+    "held_out_auc_std": 0.1839417780578542,
+    "outer_fold_aucs": [0.6005034722222222, 0.9360069444444445, 0.6716145833333333, 0.7497569444444444, 0.3745659722222222],
+    "outer_fold_selections": [
+      {"pooling": "final", "layer": 22},
+      {"pooling": "final", "layer": 24},
+      {"pooling": "mean", "layer": 23},
+      {"pooling": "final", "layer": 21},
+      {"pooling": "mean", "layer": 32}
+    ],
+    "deployment_direction_only": {"pooling": "final", "layer": 21},
+    "category_diagnostics_are_not_selection": true
+  },
+  "category_diagnostics": {
+    "target": {"Cognitive Pain": 0.7250520833333334, "Moral Injury": 0.5947604166666667, "Physical Pain": 0.07692361111111112, "Psychological Pain": 0.4949027777777778, "Social Pain": 0.9322256944444444},
+    "control": {"Fear": 0.8748506944444445, "Negative Emotion": 0.73515625, "Negative World State": 0.1395625, "Neutral": 0.7332881944444445, "Non-painful Body Sensation": 0.34100694444444446}
+  },
+  "comparison": {
+    "q4_qat_held_out_auc": 0.5132986111111111,
+    "q4_qat_held_out_auc_std": 0.15154774333151075,
+    "delta": 0.1531909722222222,
+    "causal_claim": "not_permitted",
+    "reason": "The Q4 baseline is Google's QAT checkpoint; this Q8 file was converted from the standard Gemma 4 12B Instruct source. Precision and source checkpoint changed together."
+  },
+  "unembedding_diagnostic": {
+    "ran": false,
+    "reason": "The direction failed the preregistered held-out AUC admission bar."
+  },
+  "truth_status": "offline_rejected_candidate_not_a_live_measurement"
+}

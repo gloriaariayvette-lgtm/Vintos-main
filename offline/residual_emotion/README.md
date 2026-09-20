@@ -74,6 +74,17 @@ against the `0.85` bar. Pooling/layer choices varied across outer folds and exac
 unembedding was semantically diffuse. See
 `evidence/2026-09-19-gemma12-pain-validation.json`.
 
+The requested Q8 replication also completed all 1,200 pairs. Every one of its
+4,800 residual dumps passed the 48 x 3,840 shape, finite-value, and nonzero checks.
+Nested grouped validation again rejected Pain: `0.66649 ± 0.18394`, below the
+same `0.85` bar, with outer-fold AUCs ranging from `0.37457` to `0.93601` and
+pooling/layer selection varying across folds. This is higher than the QAT-Q4
+result, but it is not a clean quantization experiment: the available Q8 GGUF is
+converted from standard Gemma 4 12B Instruct while the Q4 baseline is Google's
+QAT-source checkpoint. The delta therefore cannot be attributed to precision
+alone. See `model-lock-gemma12-q8.json` and
+`evidence/2026-09-19-gemma12-q8-pain-validation.json`.
+
 ## Run order
 
 ```bash

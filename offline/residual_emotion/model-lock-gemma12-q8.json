@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "identity": "ggml-org/gemma-4-12B-it-GGUF:Q8_0",
+  "architecture_note": "12B dense Gemma 4 Instruct; Q8 precision comparison target requested 2026-09-19; not the QAT-source checkpoint used by the Q4 baseline",
+  "format": "GGUF Q8_0",
+  "host": "aegis",
+  "path": "/home/gloria/.cache/vintos-models/gemma-4-12B-it-Q8_0/gemma-4-12B-it-Q8_0.gguf",
+  "sha256": "abfc3044b93795f6a446fc1a04468ac2d5fc5e9c92e237f09a5b3384c5a433e4",
+  "llama_cpp_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+  "serving_api_is_not_measurement": true,
+  "comparison_caveat": "Q4 baseline uses Google's QAT Q4 checkpoint; this Q8 checkpoint is converted from the standard Gemma 4 12B Instruct source, so a delta cannot be attributed to quantization alone."
+}
