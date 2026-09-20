@@ -21,6 +21,13 @@ The former abliterated 26B A4B lock is retained as
 `model-lock-ablit-reference.json` solely to identify the already completed Pain run;
 results from the two checkpoints must never be pooled.
 
+The later paper-protocol replication deliberately selected that abliterated lock with
+`VINTOS_RESIDUAL_MODEL_LOCK`; it did not relabel the 12B dumps. Its fresh Aegis S2
+feel-colon result was AUC 0.90675. The complete Mac dump then passed all six published
+prompt ablations independently (AUC 0.86150–0.94425). See
+`evidence/2026-09-20-ablit26-q4-paper-protocol.json` and
+`evidence/2026-09-20-ablit26-q4-prompt-variants.json`.
+
 ## Evidence law
 
 - A generated score is not a residual measurement.
@@ -107,6 +114,7 @@ python3 -m venv .venv
 .venv/bin/python -m residual_emotion.cli prepare datasets/warmth.jsonl work/warmth
 ./run_extractor.sh work/warmth
 .venv/bin/python -m residual_emotion.cli fit work/warmth results/warmth
+.venv/bin/python -m residual_emotion.cli paper-variant-fit work/pain results/pain-variants.json
 LLAMA_CPP_GGUF_PY=.build/llama.cpp/gguf-py \
   .venv/bin/python -m residual_emotion.cli unembed results/warmth
 ```
@@ -123,6 +131,9 @@ missing dumps, fold leakage, or a direction below the configured AUC threshold.
 It reports held-out AUC per category so weak categories can be revised in a new
 preregistered dataset version; it never drops categories on the evaluation set that
 selected them.
+`paper-variant-fit` is an ablation scorer, not a way around dataset admission. It requires
+the extraction-time model lock and scores each S1/S2 × suffix cell independently under
+the same person-separated, shuffled sentence-set K-fold protocol.
 `unembed` streams the exact quantized `output.weight`, or Gemma's tied
 `token_embd.weight`, instead of materializing a multi-gigabyte matrix. Measurement
 remains blocked until a human records a semantic pass/fail review with

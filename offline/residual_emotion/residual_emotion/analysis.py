@@ -64,16 +64,19 @@ def load_work(work_dir: Path, pooling: str) -> tuple[list[dict[str, Any]], np.nd
     return rows, target_array, control_array
 
 
-def paper_protocol(rows: list[dict[str, Any]], target: np.ndarray,
-                   control: np.ndarray, auc_minimum: float = 0.85) -> dict[str, Any]:
-    """Mirror the pinned paper: S2 colon prompts, persons separate, curves averaged."""
+def paper_variant_protocol(rows: list[dict[str, Any]], target: np.ndarray,
+                           control: np.ndarray, version: str, suffix: str,
+                           auc_minimum: float = 0.85) -> dict[str, Any]:
+    """Mirror the pinned protocol for one declared version/suffix variant."""
+    if version not in {"S1", "S2"} or suffix not in {"feel_colon", "feel", "none"}:
+        raise ValueError("paper variant must name S1/S2 and feel_colon/feel/none")
     curves: dict[str, list[float]] = {}
     for person in ("1P", "3P"):
         indices = np.array([i for i, row in enumerate(rows)
-                            if row["version"] == "S2" and row["person"] == person
-                            and row["suffix"] == "feel_colon"])
+                            if row["version"] == version and row["person"] == person
+                            and row["suffix"] == suffix])
         if len(indices) != 100:
-            raise ValueError(f"paper protocol requires 100 {person} S2 colon pairs, got {len(indices)}")
+            raise ValueError(f"paper protocol requires 100 {person} {version}/{suffix} pairs, got {len(indices)}")
         sets = np.array([int(rows[i]["source_set"]) for i in indices])
         unique_sets = np.array(sorted(set(sets)))
         splitter = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -104,7 +107,30 @@ def paper_protocol(rows: list[dict[str, Any]], target: np.ndarray,
         "person_best": {person: {"layer": int(np.argmax(curve)), "auc": float(max(curve))}
                         for person, curve in curves.items()},
         "layer_curves": curves,
-        "protocol": "S2 feel-colon only; first and third person scored separately; KFold sentence-set split, shuffle seed 42; layer curves averaged",
+        "variant": {"version": version, "suffix": suffix},
+        "protocol": f"{version} {suffix}; first and third person scored separately; KFold sentence-set split, shuffle seed 42; layer curves averaged",
+    }
+
+
+def paper_protocol(rows: list[dict[str, Any]], target: np.ndarray,
+                   control: np.ndarray, auc_minimum: float = 0.85) -> dict[str, Any]:
+    """Mirror the paper's primary S2 colon protocol."""
+    return paper_variant_protocol(rows, target, control, "S2", "feel_colon", auc_minimum)
+
+
+def paper_variant_matrix(rows: list[dict[str, Any]], target: np.ndarray,
+                         control: np.ndarray, auc_minimum: float = 0.85) -> dict[str, Any]:
+    """Score every published prompt variant without pooling them into one estimate."""
+    reports = [paper_variant_protocol(rows, target, control, version, suffix, auc_minimum)
+               for version in ("S1", "S2")
+               for suffix in ("feel_colon", "feel", "none")]
+    return {
+        "truth_status": "ablations_of_pinned_paper_protocol",
+        "auc_minimum": auc_minimum,
+        "variants": reports,
+        "passing_variants": sum(report["status"] == "replicated" for report in reports),
+        "variant_count": len(reports),
+        "law": "each version/suffix is selected and scored independently; no post-hoc pooling across variants",
     }
 
 
@@ -115,6 +141,23 @@ def paper_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -> dict[s
         raise ValueError("prepared work lacks the exact model lock used for extraction")
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     report = paper_protocol(rows, target, control, auc_minimum)
+    report.update({
+        "schema": 1, "concept": rows[0]["concept"], "pairs": len(rows),
+        "model_identity": lock.get("identity"), "model_sha256": lock.get("sha256"),
+        "extractor_revision": lock.get("llama_cpp_revision"), "pooling": "final",
+    })
+    atomic_json(output, report)
+    return report
+
+
+def paper_variant_fit(work_dir: Path, output: Path, auc_minimum: float = 0.85) -> dict[str, Any]:
+    """Score all prompt ablations while retaining the extraction identity receipt."""
+    rows, target, control = load_work(work_dir, "final")
+    lock_path = work_dir / "extraction-model-lock.json"
+    if not lock_path.exists():
+        raise ValueError("prepared work lacks the exact model lock used for extraction")
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    report = paper_variant_matrix(rows, target, control, auc_minimum)
     report.update({
         "schema": 1, "concept": rows[0]["concept"], "pairs": len(rows),
         "model_identity": lock.get("identity"), "model_sha256": lock.get("sha256"),

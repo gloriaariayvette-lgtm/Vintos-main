@@ -14,7 +14,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol
+from residual_emotion.analysis import auc, fit_direction, grouped_layer_curve, nested_grouped_validation, paper_protocol, paper_variant_matrix
 from residual_emotion.compare import join
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
@@ -86,6 +86,16 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     replicated = paper_protocol(paper_rows, paper_target, paper_control)
     check(replicated["status"] == "replicated" and replicated["selected_layer"] == 1,
           "paper scorer reproduces a held signal")
+
+    # Ablations remain separate estimates and require every published prompt variant.
+    full_target = np.zeros((1200, 2, 8), dtype=np.float64); full_target[:, 1, 0] += 2.0
+    full_control = np.zeros_like(full_target)
+    variants = paper_variant_matrix(imported_rows, full_target, full_control)
+    check(variants["variant_count"] == 6 and variants["passing_variants"] == 6,
+          "all six prompt variants are scored independently")
+    check({(v["variant"]["version"], v["variant"]["suffix"]) for v in variants["variants"]}
+          == {(version, suffix) for version in ("S1", "S2") for suffix in ("feel_colon", "feel", "none")},
+          "variant matrix is complete")
 
     # A high-signal dimension survives grouped folds; the control PCA is fitted without error.
     rng = np.random.default_rng(42)

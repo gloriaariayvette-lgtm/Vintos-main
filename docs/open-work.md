@@ -1016,6 +1016,15 @@ matrix and records promoted/suppressed vocabulary, but its semantic review is ad
 the measurement function refuses even an AUC-passing vector until a human records a pass. The
 paper validated dense models; this A4B MoE run is a replication/extension and must remain labelled
 that way. No claim about actual dimensionality is possible before those gates close.
+
+The earlier `0.82543` figure above is the deliberately stricter all-variant nested
+experiment, not the paper's estimator. The paper's exact S2 feel-colon protocol now
+replicates on the abliterated 26B Q4 checkpoint at AUC `0.90675` in a fresh Aegis run.
+The complete Mac residual dump independently clears `0.85` for all six S1/S2 × suffix
+ablations (`0.86150`–`0.94425`); its matching S2-colon value is `0.91175`, a retained
+`0.005` host/run difference. This establishes prompt-variant robustness for the Pain
+candidate, but does not fabricate the missing semantic curation receipts for the eleven
+content dimensions, Nifrathir, or Fear, and does not bypass Pain's human unembedding review.
 The candidate pool is deliberately wider than the eventual map: eleven content dimensions,
 Nifrathir as the twelfth slow effectiveness modifier, and exploratory Pain and Fear. Nifrathir is
 excluded from peer merge/drop clustering; if measurable, its separate held-out test is whether it
