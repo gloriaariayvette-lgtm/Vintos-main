@@ -227,13 +227,14 @@ class Tests(unittest.TestCase):
     def test_lab_intake_is_scoped_private_and_idempotent(self):
         from lab_sources import receipt
         self.r.intake_token='i'*40
+        for _ in range(4): self.create(kind='capability_brief',origin={'source':'latent_thread'})
         record=receipt('pdb',{'entry_id':'1ABC'},[{'exptl':[{'method':'fixture'}]}])
         body={'intent':'Make a sourced dossier','source_packet':{'kind':'lab_research_report','source_receipts':[record]}}
         status, raw=self.call('/api/lab-intake','POST',body,token='i'*40)
         self.assertEqual(status,200);pid=json.loads(raw)['id']
         status, raw=self.call('/api/lab-intake','POST',body,token='i'*40)
         self.assertTrue(json.loads(raw)['replayed'])
-        self.assertEqual(len(self.c.projects(self.owner)),1)
+        self.assertEqual(len(self.c.projects(self.owner)),5)
         self.assertTrue(self.c.status(self.owner,pid)['private'])
         self.assertEqual(self.call('/api/projects',token='i'*40)[0],403)
         record['records'][0]['exptl'][0]['method']='tampered'

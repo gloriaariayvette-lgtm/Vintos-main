@@ -182,8 +182,9 @@ class Runtime:
             with self.c.db() as db:
                 prior = db.execute('SELECT project FROM intake WHERE digest=?', (digest,)).fetchone()
             if prior: return {'id': prior[0], 'replayed': True}
-            active = [p for p in self.c.projects(self.c.owner_token) if p['state'] not in ('complete','cancelled','abandoned')]
-            if len(active) >= 4: raise Refused('four unfinished projects; retain Lab receipts until capacity returns')
+            active = [p for p in self.c.projects(self.c.owner_token) if p['state'] not in ('complete','cancelled','abandoned')
+                      and self.c.context(self.c.worker_token, p['id'])['capabilities'] == ['research_report']]
+            if len(active) >= 4: raise Refused('four unfinished reports; retain Lab receipts until capacity returns')
             # Creation stays private; the worker may reveal, the owner may audit/cancel, or seven days expires it.
             created = self.create(self.c.owner_token, {'intent': str(data.get('intent', 'Source dossier'))[:2000],
                                   'source_packet': packet, 'origin': {'source': 'lab'}, 'private': True, 'private_until': time.time()+7*86400}, dedupe_key=digest)
