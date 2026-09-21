@@ -29,6 +29,12 @@ LAB = os.path.join(MEMORY, "chemistry-lab")
 NOTEBOOK = os.path.join(LAB, "notebook.jsonl")
 SESSIONS = os.path.join(LAB, "sessions.jsonl")
 GRADES = os.path.join(LAB, "experiment-grades.jsonl")
+TASTE_OBS = os.path.join(LAB, "taste-observations.jsonl")
+
+
+def _clip(text, limit=300):
+    text = " ".join(str(text or "").split())
+    return (text[:limit] + "…") if len(text) > limit else text
 
 
 def _rows(path):
@@ -58,15 +64,61 @@ def _experiment_line(row):
     return f"- {experiment}: execution={execution}; accuracy={accuracy}" + (f"; run={run_id}" if run_id else "")
 
 
-def _latest_question(notebook, sessions):
+def _recent_questions(notebook, sessions, n=2):
+    """The n most recent next-questions, his own words — not a conclusion, just where he left off."""
+    seen, out = set(), []
     for row in reversed(notebook + sessions):
         candidates = [row.get("next_question")]
         for key in ("reading", "reflection"):
             nested = row.get(key)
             if isinstance(nested, dict): candidates.append(nested.get("next_question"))
         for value in candidates:
-            if str(value or "").strip(): return str(value).strip()[:500]
-    return ""
+            v = str(value or "").strip()
+            if v and v not in seen:
+                seen.add(v); out.append(_clip(v, 400))
+                if len(out) >= n: return out
+    return out
+
+
+def _reading_lines(notebook, n=2):
+    """A few of the day's actual reflections, verbatim — his attention in his own words."""
+    out = []
+    for row in reversed(notebook):
+        if row.get("kind") not in ("reflection", "genome_reflection"): continue
+        att = _clip(row.get("attention") or row.get("factual_observation"))
+        if not att: continue
+        inq = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
+        q = _clip(inq.get("question"), 120)
+        out.append("- " + att + (("  (on: " + q + ")") if q else ""))
+        if len(out) >= n: break
+    return out
+
+
+def _frontier_lines(notebook):
+    """The day's frontier session in his own words: what he read, and what surprised him."""
+    for row in reversed(notebook):
+        if row.get("kind") != "frontier_session": continue
+        reading = _clip(row.get("reading")); surprised = _clip(row.get("what_surprised_me"))
+        if not (reading or surprised): continue
+        lines = []
+        if reading: lines.append("- read: " + reading)
+        if surprised: lines.append("- what surprised me: " + surprised)
+        return lines
+    return []
+
+
+def _taste_lines(day, n=2):
+    """Verdicts he recorded that day (chosen/echo/no-root/kept), verbatim from the taste ledger."""
+    out = []
+    for row in reversed(_rows(TASTE_OBS)):
+        if not _on_day(row, day): continue
+        sig = _clip(row.get("signal"), 40)
+        if not sig: continue
+        subject = _clip(str(row.get("kind", "")) + ":" + str(row.get("key", "")), 60)
+        elig = _clip(row.get("eligibility"), 48)
+        out.append("- " + sig + " — " + subject + (" [" + elig + "]" if elig else ""))
+        if len(out) >= n: break
+    return out
 
 
 def render(day=None):
@@ -82,7 +134,6 @@ def render(day=None):
                ("experiment_completed_reading_held", "held_reading_owed") or
                str(r.get("owed_reading", "")) in ("STILL_HELD", "REFUSED"))
     settled = sum(1 for r in notebook if str(r.get("kind", "")) == "owed_reading")
-    question = _latest_question(notebook, sessions)
 
     lines = [f"<!-- chemistry-lab-digest:{day} -->", "", f"## Chemistry Lab — {day}", ""]
     if kinds:
@@ -95,7 +146,22 @@ def render(day=None):
     else:
         lines.append("Experiments: none recorded.")
     lines.append(f"Reading receipts: owed/held {owed}; settled {settled}.")
-    lines.append("Latest next question: " + (question if question else "none recorded."))
+    # His own words, quoted — not a conclusion, so the day is more than a row count.
+    readings = _reading_lines(notebook, 2)
+    if readings:
+        lines.append(""); lines.append("A few of today's readings:"); lines.extend(readings)
+    frontier = _frontier_lines(notebook)
+    if frontier:
+        lines.append(""); lines.append("Frontier session:"); lines.extend(frontier)
+    taste = _taste_lines(day, 2)
+    if taste:
+        lines.append(""); lines.append("Taste he noted:"); lines.extend(taste)
+    questions = _recent_questions(notebook, sessions, 2)
+    lines.append("")
+    if questions:
+        lines.append("Next questions:"); lines.extend("- " + q for q in questions)
+    else:
+        lines.append("Next questions: none recorded.")
     lines.append("These are Chemistry Lab receipts only. Execution is not correctness, and no scientific or personal conclusion is inferred.")
     return "\n".join(lines) + "\n"
 

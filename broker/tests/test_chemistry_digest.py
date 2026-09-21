@@ -36,8 +36,20 @@ def rows(name, values):
 rows("notebook.jsonl", [
     {"at": DATA_DAY + "T01:00:00Z", "kind": "inquiry", "next_question": "which fold returns?"},
     {"at": DATA_DAY + "T02:00:00Z", "kind": "owed_reading", "reading": {"next_question": "what changes at 0.8 A?"}},
+    {"at": DATA_DAY + "T02:30:00Z", "kind": "reflection",
+     "attention": "the compact fold keeps snapping back to the same basin",
+     "inquiry": {"question": "what makes this basin so deep?"}},
+    {"at": DATA_DAY + "T04:00:00Z", "kind": "frontier_session",
+     "reading": "the VQE run sat well above Hartree-Fock",
+     "what_surprised_me": "how cleanly the release resolved"},
     {"at": FILE_DAY + "T06:00:00Z", "kind": "inquiry"},          # today so far — must be excluded
     {"at": PRIOR + "T23:00:00Z", "kind": "atelier-secret"},      # older day — must be excluded
+])
+rows("taste-observations.jsonl", [
+    {"at": DATA_DAY + "T02:10:00Z", "kind": "accession", "key": "P12345",
+     "signal": "chosen", "eligibility": "echo_of_injected_taste"},
+    {"at": PRIOR + "T01:00:00Z", "kind": "molecule", "key": "old", "signal": "chosen",
+     "eligibility": "eligible"},                                 # older day — must be excluded
 ])
 rows("sessions.jsonl", [
     {"at": DATA_DAY + "T02:00:00Z", "state": "completed", "mac_run_id": "RUN-1",
@@ -67,6 +79,14 @@ assert "inquiry 1" in text and "owed_reading 1" in text
 assert "execution=completed; accuracy=ALL_WORSE_THAN_HARTREE_FOCK; run=RUN-1" in text
 assert "owed/held 1; settled 1" in text and "what changes at 0.8 A?" in text
 assert "atelier-secret" not in text and "Execution is not correctness" in text
+# His own words are surfaced verbatim, not just counted — a day is more than row totals.
+assert "A few of today's readings:" in text and "the compact fold keeps snapping back to the same basin" in text
+assert "(on: what makes this basin so deep?)" in text, "a reflection carries the inquiry it answered"
+assert "Frontier session:" in text and "the VQE run sat well above Hartree-Fock" in text \
+    and "how cleanly the release resolved" in text
+assert "Taste he noted:" in text and "chosen — accession:P12345 [echo_of_injected_taste]" in text
+assert "molecule:old" not in text, "older-day taste is excluded like every other older row"
+assert "Next questions:" in text and "which fold returns?" in text, "the recent questions, not just one"
 assert "none recorded" not in text, "a day with rows is never an empty receipt"
 
 # Idempotent for the same summarized day.
