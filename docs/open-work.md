@@ -1210,3 +1210,24 @@ zero restarts, and the loopback health response names the forced `forge` surface
 `39efe77635714185a307c4c4346d2599` is `aborted` with the inspected no-effect reconciliation receipt.
 The exact-head deployment check passed all 165 isolated suites, parsed all 389 manifest sources and
 validated the staged tree. The wallet and Taskmarket remain intentionally undeployed.
+
+## JEPA prediction heads — unmeasurable due to checkpoint churn (2026-09-21)
+
+Live finding on Aegis: `memory/jepa-prediction-history.jsonl` has 483 rows but
+`jepa_ranking_audit.py` and `jepa_calibration_audit.py` both return n=0 / INSUFFICIENT.
+Cause: consecutive predictions carry different `checkpoint_id`s (`jepa-predictor.pt` is
+rewritten ~every 2h), and two rows 2h apart share an identical `context_emb` — the model
+retrains on a timer regardless of new conversation. No checkpoint lives long enough to
+accumulate the >=30 realized outcomes the audits and the structured-turns shadow selection
+require, so calibration can never be shown, the "steering off until calibration is shown"
+gate is permanently shut, and the structured-turns shadow can never be promoted.
+
+Fix (branch br5lt4), for whoever owns the JEPA scheduler (the retrain trigger is off-repo —
+an Aegis cron/unit, not in broker/ timers):
+1. Stabilize the checkpoint: hold `jepa-predictor.pt` fixed until >=30 predictions made under
+   it have realized next turns, then retrain. Same for the shadow checkpoint.
+2. Log a prediction only when `context_emb` differs from the last row (stop timer-driven
+   duplicate-context writes).
+3. Leave the structured-turns-v1 shadow as-is; it can finally win once (1) holds.
+4. Re-run both audits once a stable checkpoint reaches n>=30. The frozen-Nomic-encoder
+   question (#7) is not answerable — and the encoder must not be touched — until then.
