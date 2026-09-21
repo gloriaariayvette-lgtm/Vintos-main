@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append one evidence-honest Q1 Lab digest to today's inner-life ledger.
+"""Append one evidence-honest Q1 Lab digest — yesterday's work — to the inner-life ledger.
 
 This is a mechanical receipt, not a verdict. It says what the hypothesis ledger
 recorded and which advisory blocks were withheld in shadow. It deliberately does
@@ -49,27 +49,50 @@ def render(day=None):
     event_counts = Counter(str(r.get("event") or "unknown") for r in events)
     trial_counts = Counter(str(r.get("block") or r.get("mod") or "unknown") for r in trials)
 
-    lines = [f"<!-- q1-lab-digest:{day} -->", "", "## Admission Lab — daily receipt", ""]
-    if event_counts:
-        lines.append("Hypothesis-ledger events: " + ", ".join(
-            f"{name} {event_counts[name]}" for name in sorted(event_counts)))
-        touched = []
-        for row in events:
-            hid = str(row.get("id") or "").strip()
-            block = str(row.get("block") or "").strip()
-            label = hid + (f"/{block}" if block else "")
-            if hid and label not in touched:
-                touched.append(label)
-        if touched:
-            lines.append("Hypotheses touched: " + ", ".join(touched[:12]))
-    else:
-        lines.append("Hypothesis-ledger events: none recorded.")
+    def _clip(text, limit=300):
+        text = " ".join(str(text or "").split())
+        return (text[:limit] + "…") if len(text) > limit else text
 
-    if trial_counts:
-        lines.append("Shadow withholdings: " + str(len(trials)) + " (" + ", ".join(
-            f"{name} {trial_counts[name]}" for name in sorted(trial_counts)) + ").")
+    lines = [f"<!-- q1-lab-digest:{day} -->", "", f"## Admission Lab — {day}", ""]
+    if not events and not trials:
+        lines.append("Quiet day — no hypothesis events or shadow withholdings recorded.")
     else:
-        lines.append("Shadow withholdings: none recorded.")
+        if event_counts:
+            lines.append("Hypothesis-ledger events: " + ", ".join(
+                f"{name} {event_counts[name]}" for name in sorted(event_counts)))
+            touched = []
+            for row in events:
+                hid = str(row.get("id") or "").strip()
+                block = str(row.get("block") or "").strip()
+                label = hid + (f"/{block}" if block else "")
+                if hid and label not in touched:
+                    touched.append(label)
+            if touched:
+                lines.append("Hypotheses touched: " + ", ".join(touched[:12]))
+        else:
+            lines.append("Hypothesis-ledger events: none recorded.")
+        if trial_counts:
+            lines.append("Shadow withholdings: " + str(len(trials)) + " (" + ", ".join(
+                f"{name} {trial_counts[name]}" for name in sorted(trial_counts)) + ").")
+        else:
+            lines.append("Shadow withholdings: none recorded.")
+        # His own words, quoted — the written falsifiable claim and any ruling's reason,
+        # never the sealed evaluation numbers. This is what a hypothesis IS, not a result.
+        proposed = [f"- {_clip(r.get('claim'))}" for r in events
+                    if r.get("event") == "proposed" and str(r.get("claim") or "").strip()][:2]
+        if proposed:
+            lines.append("Hypotheses proposed:"); lines.extend(proposed)
+        rulings = []
+        for r in events:
+            if r.get("event") != "ruled":
+                continue
+            rid = str(r.get("id") or "").strip(); verdict = str(r.get("verdict") or "").strip()
+            reason = _clip(r.get("reason"), 200)
+            rulings.append("- " + (rid + " " if rid else "") + verdict + (" — " + reason if reason else ""))
+            if len(rulings) >= 2:
+                break
+        if rulings:
+            lines.append("Rulings:"); lines.extend(rulings)
     lines.append("These are ledger and assignment receipts only. Functional consequence was not measured here; no result or fitness is inferred.")
     return "\n".join(lines) + "\n"
 
@@ -86,7 +109,7 @@ def append(file_day=None, data_day=None):
     os.makedirs(MEMORY, exist_ok=True)
     path = os.path.join(MEMORY, f"daily-inner-life-{file_day}.md")
     marker = f"<!-- q1-lab-digest:{data_day} -->"
-    heading = "## Admission Lab — daily receipt"
+    heading = f"## Admission Lab — {data_day}"
     lock_path = os.path.join(MEMORY, ".daily-inner-life.lock")
     with open(lock_path, "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

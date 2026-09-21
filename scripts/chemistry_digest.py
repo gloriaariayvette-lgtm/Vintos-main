@@ -149,7 +149,7 @@ def render(day=None):
     # His own words, quoted — not a conclusion, so the day is more than a row count.
     readings = _reading_lines(notebook, 2)
     if readings:
-        lines.append(""); lines.append("A few of today's readings:"); lines.extend(readings)
+        lines.append(""); lines.append("A few of the day's readings:"); lines.extend(readings)
     frontier = _frontier_lines(notebook)
     if frontier:
         lines.append(""); lines.append("Frontier session:"); lines.extend(frontier)

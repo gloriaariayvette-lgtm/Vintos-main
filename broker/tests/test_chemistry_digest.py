@@ -80,7 +80,7 @@ assert "execution=completed; accuracy=ALL_WORSE_THAN_HARTREE_FOCK; run=RUN-1" in
 assert "owed/held 1; settled 1" in text and "what changes at 0.8 A?" in text
 assert "atelier-secret" not in text and "Execution is not correctness" in text
 # His own words are surfaced verbatim, not just counted — a day is more than row totals.
-assert "A few of today's readings:" in text and "the compact fold keeps snapping back to the same basin" in text
+assert "A few of the day's readings:" in text and "the compact fold keeps snapping back to the same basin" in text
 assert "(on: what makes this basin so deep?)" in text, "a reflection carries the inquiry it answered"
 assert "Frontier session:" in text and "the VQE run sat well above Hartree-Fock" in text \
     and "how cleanly the release resolved" in text
