@@ -1170,7 +1170,9 @@ params, and Lab, Forge and Atelier return selected results into their next reaso
 preserving receipts. Release `20260921-002542-6c383d9` deployed the bridge after all 165 suites passed
 under the host's OS isolation gate. Aegis reached the Mac relay and live harmless `gmail.get_profile`
 and read-only `github.get_profile` calls produced mode-0600 private/project receipts. The Gmail calls
-used no outbound allowance. Remaining: commission the other connected providers only when a concrete
+used no outbound allowance. The production SSH identity is a dedicated key whose Mac authorization
+forces the relay command and applies OpenSSH `restrict`; the existing administrative key was not changed.
+Remaining: commission the other connected providers only when a concrete
 project supplies their required inputs, and separately decide whether Proto execution and BioNeMo
 hosted/local compute receive authority. Connector
 availability is not permission to write GitHub, purchase groceries or launch paid jobs. Gmail's

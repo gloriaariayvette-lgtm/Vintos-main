@@ -51,7 +51,7 @@ Aegis needs `~/.vintos/plugin-relay.json`, mode 0600:
 ```json
 {
   "host": "kevin@mac-tailnet-name",
-  "identity_file": "/home/gloria/.ssh/the-existing-mac-door-key",
+  "identity_file": "/home/gloria/.ssh/vintos_plugin_relay",
   "command": "/Users/kevin/Documents/Codex/2026-09-10/first-please-review-everything-claude-committed/forge-loop-local/scripts/plugin_relay_remote.py"
 }
 ```
@@ -60,6 +60,8 @@ The Mac command reads one request on stdin and writes one response on stdout. `s
 catalogue without contacting a provider. `call` executes one allowed connector tool. Artifact skills
 use an ephemeral, sandboxed Codex run in a disposable directory; BioNeMo is deliberately rejected.
 
+The production key is dedicated to this relay. Its Mac `authorized_keys` entry uses `restrict` and a
+forced command naming `plugin_relay_remote.py`; the request cannot select another remote program.
 No deployment is complete until the checked-out Mac command is executable, Aegis can reach it with
-the existing restricted SSH identity, `plugin_gateway.py instructions` works on Aegis, and a read-only
+that restricted SSH identity, `plugin_gateway.py instructions` works on Aegis, and a read-only
 commissioning call produces a receipt under the real workspace without exposing account credentials.
