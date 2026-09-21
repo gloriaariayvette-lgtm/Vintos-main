@@ -548,7 +548,7 @@ def process_file(fp,force=False):
     try:
         import requests as _lk_rq
         _lk = _lk_rq.post("http://127.0.0.1:8599/gemma/v1/chat/completions", json={
-            "model": "grok-4.20-0309-non-reasoning", "temperature": 0.3, "max_tokens": 110,
+            "model": "grok-4.7", "temperature": 0.3, "max_tokens": 110,
             "messages": [{"role": "user", "content":
                 "A song was requested in this style: \"" + style + "\". For a listener who does not know these genre terms, "
                 "write EXACTLY two short sentences: (1) what this style should sound like in plain words, "

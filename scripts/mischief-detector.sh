@@ -26,7 +26,7 @@ FORCE=0; ONLY=""
 for a in "$@"; do [ "$a" = "--grok" ] && MISCHIEF_MODEL=grok; done
 set -- $(printf '%s\n' "$@" | grep -vx -- --grok)
 if [ "${MISCHIEF_MODEL:-gemma}" = "grok" ]; then
-    LM_API="${VINTOS_GROK_URL:-http://127.0.0.1:8599/v1/chat/completions}"; MODEL="${VINTOS_GROK_MODEL:-grok-4.20-0309-non-reasoning}"
+    LM_API="${VINTOS_GROK_URL:-http://127.0.0.1:8599/v1/chat/completions}"; MODEL="${VINTOS_GROK_MODEL:-grok-4.7}"
 fi
 [ "${1:-}" = "--force" ] && FORCE=1 && ONLY="${2:-}"   # --force [echo|spotify|lights]: he still chooses the content, the kind is set
 

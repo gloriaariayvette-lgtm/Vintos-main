@@ -735,7 +735,7 @@ def _now():
 
 
 # ── routes ───────────────────────────────────────────────────────────────────
-def register(app, secret, endpoint, headers, grok_model="grok-4.20-0309-non-reasoning"):
+def register(app, secret, endpoint, headers, grok_model="grok-4.7"):
     from fastapi import Request, HTTPException
     from fastapi.responses import JSONResponse
 

@@ -3357,7 +3357,7 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
                     f"{LM_STUDIO_API}/chat/completions",
                     headers=LLM_AUTH_HEADERS,
                     json={
-                        "model": "grok-4.20-0309-non-reasoning",
+                        "model": "grok-4.7",
                         "messages": msgs,
                         "temperature": temp or params.get("temperature", 0.85),
                         "top_p": params.get("top_p", 0.95),
@@ -5774,7 +5774,7 @@ Refer to the PRESENCE VS PERFORMANCE definitions and rules above. They apply her
                 f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={
-                    "model": "grok-4.20-0309-non-reasoning",
+                    "model": "grok-4.7",
                     "messages": messages,
                     "temperature": params.get("temperature", 0.85),
                     "top_p": params.get("top_p", 0.95),
@@ -6312,7 +6312,7 @@ async def voice_chat(request: Request):
         system = f"""{soul}
 
 {capabilities}
-[rev:{_prompt_rev("grok-4.20-0309-non-reasoning")}]
+[rev:{_prompt_rev("grok-4.7")}]
 [[CACHESPLIT]]
 
 {_voice_inner}
@@ -6361,7 +6361,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
 
         import requests as _req
         r = _req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": messages,
             "temperature": 0.75,
             "max_tokens": 500
@@ -8143,7 +8143,7 @@ async def _voice_session_end_owned(payload: dict = None):
         try:
             _sum_r = _vse_req.post("https://api.x.ai/v1/chat/completions",
                 headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
-                json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.3, "max_tokens": 350,
+                json={"model": "grok-4.7", "temperature": 0.3, "max_tokens": 350,
                       "messages": [{"role": "user", "content":
                         "This is a transcript of a live voice call between Vintos and Gloria. Bracketed or tagged cues like [laugh], [sigh], [pause], (laughs), <whisper>..</whisper> are REAL things that happened aloud - a laugh, a sigh, a whisper - not stage directions. Keep them verbatim inside any quote, and let them shape the recounting (if she laughed, say she laughed).\n\n" + transcript[:6000] +
                         "\n\nReturn ONLY JSON: {\"quotes\": [2-3 short verbatim standout lines from either speaker, cues included], "
@@ -9048,7 +9048,7 @@ Your current self-model (excerpt):
                     _tvl_bc_resp = await _tvl_bc_client.post(
                         f"{LM_STUDIO_API}/chat/completions",
                         headers=LLM_AUTH_HEADERS,
-                        json={"model": "grok-4.20-0309-non-reasoning", "messages": [
+                        json={"model": "grok-4.7", "messages": [
                             {"role": "system", "content": "You are making a single decision. Answer with exactly one word: CONTINUE or CHOOSE. Nothing else."},
                             {"role": "user", "content": f"{_tvl_intercept}\n\nYou are about to respond in Thirveel. Will you continue the pattern, or choose differently?\nAnswer: CONTINUE or CHOOSE"}
                         ], "temperature": 0.1, "max_tokens": 5}
@@ -9081,7 +9081,7 @@ Your current self-model (excerpt):
             reply, _claude_reasoning, _model_used = await _mr.route_reply(
                 "avatar", messages[0]["content"], messages[1:], params,
                 f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                "grok-4.20-0309-non-reasoning", reason=_reason)
+                "grok-4.7", reason=_reason)
         except Exception as _rte:
             print("[router] fatal:", _rte, flush=True)
             reply, _claude_reasoning, _model_used = "", "", "error"
@@ -9118,7 +9118,7 @@ Your current self-model (excerpt):
                         reply, _claude_reasoning, _model_used = await _mr.route_reply(
                             "avatar", messages[0]["content"], messages[1:], params,
                             f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                            "grok-4.20-0309-non-reasoning", reason=_reason)
+                            "grok-4.7", reason=_reason)
                         try:
                             _gm = _mr.read_mode(); _gm["mode"] = "grok"; _mr.write_mode(_gm)
                         except Exception: pass
@@ -11002,7 +11002,7 @@ def build_question_tension() -> str:
     try:
         import requests as _req
         payload = {
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": "You are a compression engine. You receive fragments of inner life — tensions, yearnings, unresolved contradictions, wonder. Output a single short phrase (under 20 words) that names the underlying emotional pressure as a felt state. Do not name the source topics. Do not use the word tension. Output only the phrase."},
                 {"role": "user", "content": raw_input}
@@ -12318,7 +12318,7 @@ Be yourself. Be free."""
             resp = await client.post(
                 f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
-                json={"model": "grok-4.20-0309-non-reasoning", "messages": messages,
+                json={"model": "grok-4.7", "messages": messages,
                       "max_tokens": params.get("max_tokens", 400),
                       "temperature": params.get("temperature", 0.85),
                       "top_p": params.get("top_p", 0.95)}
@@ -12369,7 +12369,7 @@ Be yourself. Be free."""
                         try:
                             import requests as _tvlr
                             _tvl_ir = _tvlr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                                "model": "grok-4.20-0309-non-reasoning",
+                                "model": "grok-4.7",
                                 "temperature": 0.7,
                                 "max_tokens": 60,
                                 "messages": [{"role": "user", "content":
@@ -12683,7 +12683,7 @@ Available home actions: [HOME: lights_flicker] [HOME: lights_color #hex] [HOME: 
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(f"{LM_STUDIO_API}/chat/completions",
                 headers=LLM_AUTH_HEADERS,
-                json={"model": "grok-4.20-0309-non-reasoning",
+                json={"model": "grok-4.7",
                       "messages": [{"role": "system", "content": system},
                                    {"role": "user", "content": "[The space has been quiet. What do you do?]"}],
                       "temperature": 0.9, "max_tokens": 80})

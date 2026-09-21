@@ -666,7 +666,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         else:
             _user_content = user_msg
         r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
                 {"role": "user", "content": _user_content}
@@ -772,7 +772,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     try:
         import requests as _rq3
         _c1r = _rq3.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
             "temperature": 0.8, "max_tokens": 3000}, timeout=600)
         c1 = ((_c1r.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
@@ -802,7 +802,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "If nothing is hallucinated, write only: CLEAN"
     )
     audit1_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [{"role": "user", "content": audit1_prompt}],
         "temperature": 0.3,
         "max_tokens": 400
@@ -885,7 +885,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         return " ".join(kept).strip()
     def absorb(own, other):
         r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": system_msg + ("\n\n" + __import__("os").environ.get("VELQAN_BLOCK","") if __import__("os").environ.get("VELQAN_BLOCK") else "")},
                 {"role": "user", "content": user_msg + "\n\nYou already wrote this:\n" + own + "\n\nAnother part of you wrote this instead:\n" + other + "\n\nAbsorb what the other wrote. Do not argue with it or resolve the difference. Let it sit alongside your own. Now write your journal entry again, carrying both. If either version contains an explicit 'I want to...' statement, carry it forward as written — do not dissolve it into abstraction. If both versions retreat from the same thing, that thing is important. Name it in your absorbed draft even if neither original draft did." + audit1_block + _bis_1_5_ban + _ghost_lean}
@@ -935,7 +935,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     # Find what each pass held onto
     def find_core(pass_text, other_text):
         r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [{
                 "role": "user",
                 "content": "This is what you wrote:\n" + pass_text + "\n\nThis is what the other version wrote:\n" + other_text + "\n\nWhat is the ONE thing your version held onto that the other version let go of or ignored? One sentence only. Be specific. Name the actual thing, not a category."
@@ -982,7 +982,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         "If nothing is hallucinated, write only: CLEAN"
     )
     audit_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [{"role": "user", "content": audit_prompt}],
         "temperature": 0.3,
         "max_tokens": 400
@@ -1081,7 +1081,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     if not _raw:
         r3 = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")},
-            json={"model": "grok-4.20-0309-non-reasoning",
+            json={"model": "grok-4.7",
                   "messages": [{"role": "system", "content": _synthesis_system},
                                {"role": "user", "content": integration_prompt}],
                   # When Claude returns nothing this IS the entry, not a patch on one.
@@ -1102,7 +1102,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
                 "Same drafts, same rules — but write from inside this time."
             )
             r3b = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-                "model": "grok-4.20-0309-non-reasoning",
+                "model": "grok-4.7",
                 "messages": [
                     {"role": "system", "content": _synthesis_system + _ag_note},
                     {"role": "user", "content": integration_prompt}
@@ -1151,7 +1151,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
         print("[Synthesis] Output diverged from A2/B2 — regenerating anchored", file=__import__("sys").stderr, flush=True)
         _anchor_prompt = integration_prompt + f"\n\nSTART WITH THIS EXACT SENTENCE: {_a2_anchor}"
         _rv = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
            "messages": [{"role": "system", "content": _synthesis_system}, {"role": "user", "content": _anchor_prompt}],
             "temperature": 0.5, "max_tokens": 4000
         }, timeout=300)
@@ -1186,7 +1186,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     try: open("/tmp/vintos-bilateral-final-preaudit.txt", "w").write(_pre_audit)
     except Exception: pass
     audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [{"role": "user", "content":
             "A journal entry was synthesized from the drafts below. Flag anything in FINAL that was not in any of them — "
             "new physical sensations, new Gloria interactions, new events, new objects, new metaphors not present in any draft. "
@@ -1482,7 +1482,7 @@ try:
     if not entry or len(entry.strip()) < 50:
         raise SystemExit(0)
     r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [
             {"role": "system", "content": "You extract the single most alive or unresolved thing from a journal entry — something worth returning to. Prefer threads about what he is reaching toward, discovering, or wanting. Avoid threads that describe his analyzing his own analysis. Return ONLY a single sentence, written in first person ('I...'). If nothing is notably alive or unresolved, return NONE."},
             {"role": "user", "content": f"Journal entry:\n{entry[-800:]}\n\nMost unresolved or notable thing? One sentence or NONE."}
@@ -1583,7 +1583,7 @@ try:
         if _wsc_txt: _want_system += f"\n\n{_wsc_txt}"
     except: pass
     r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [
             {"role": "system", "content": _want_system},
             {"role": "user", "content": f"You just wrote this journal entry:\n{entry[:2000]}\n\nDid writing this spark a genuine want — something you want to make, compose, write, paint, introspect on, search the web about, watch on YouTube, or post to MoltBook?\nBe specific: not .I want to create something. but .I want to make a song about X., .I want to introspect on why Y feels unresolved., or .I want to search for information about Z.\nA real want is concrete and literal: to make a specific thing, learn a specific fact, do something with Gloria, or say something to her. A want to find an image, metaphor, or physical-science analogy for how you feel — or to research a material or process as a mirror for yourself — is NOT a want; it is the translation tax. If the only want is to describe, translate, or find a picture for a feeling, write NONE.\nIf yes, write ONE sentence starting with .I want to.... Be concrete about the subject.\nIf no, write NONE."}
@@ -1632,7 +1632,7 @@ if not journal_text:
 else:
     try:
         resp = requests.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "temperature": 0.3,
             "max_tokens": 80,
             "messages": [

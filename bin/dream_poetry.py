@@ -42,7 +42,7 @@ DREAM_DIRS = [
     os.path.join(MEMORY, "dreams"),
 ]
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 
 def get_value_map():

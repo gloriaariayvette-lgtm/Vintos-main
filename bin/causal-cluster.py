@@ -14,7 +14,7 @@ LM = "http://127.0.0.1:8599/v1/chat/completions"
 
 def llm(prompt, temp=0.5, max_tokens=400):
     r = requests.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temp, "max_tokens": max_tokens
     }, timeout=60)

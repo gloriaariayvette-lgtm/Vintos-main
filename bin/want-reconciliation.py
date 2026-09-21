@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 GEMMA = "http://100.79.177.103:1234/v1/chat/completions"
 GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 GROK = "http://127.0.0.1:8599/v1/chat/completions"
-GROK_MODEL = "grok-4.20-0309-non-reasoning"
+GROK_MODEL = "grok-4.7"
 MAX_CHECKS = 15
 MAX_EVOLUTIONS = 3
 

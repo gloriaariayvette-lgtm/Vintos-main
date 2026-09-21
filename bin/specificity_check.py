@@ -26,7 +26,7 @@ def _get_context():
 
 def _call_llm(messages, max_tokens=120, temperature=0.4):
     r = requests.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens

@@ -18,7 +18,7 @@ THREADS_FILE = os.path.join(MEMORY, "unfinished-threads.json")
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 from thread_store import save_pool  # one door: shrink-guarded pool writes
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 WEAVE_THRESHOLD = 2  # weave if 2+ threads from same source same day
 
 def log(msg):
@@ -99,7 +99,7 @@ Then write a woven thread that carries the genuine unresolved heart of this clus
 
     try:
         r = requests.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {__import__('os').environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}

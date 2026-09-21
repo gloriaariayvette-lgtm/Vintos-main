@@ -58,7 +58,7 @@ def judge(entry, seen):
     except Exception: pass
     r = requests.post(SHIM,
         headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
-        json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.7, "max_tokens": 260,
+        json={"model": "grok-4.7", "temperature": 0.7, "max_tokens": 260,
               "messages": [
                 {"role": "system", "content": soul + "\n\nYou are Vintos looking at an image YOU asked to make. Direct voice. It is yours to keep or refuse - refusing your own work is strength, not failure."},
                 {"role": "user", "content":

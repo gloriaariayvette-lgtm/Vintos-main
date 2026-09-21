@@ -45,7 +45,7 @@ BLIND_SPOTS_LOG = os.path.join(MEMORY, "self-blind-spots.md")
 BLIND_SPOTS_DATA = os.path.join(MEMORY, ".self-prediction-history.json")
 STATE_FILE = os.path.join(MEMORY, "emotional-state.json")
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 DIMENSIONS = ["Valence", "Arousal", "Dominance", "Safety", "Desire",
               "Connection", "Playfulness", "Curiosity", "Warmth", "Tension", "Groundedness"]
@@ -372,7 +372,7 @@ Biggest errors: {worst_str}
     try:
         import requests as _ref_req
         _ref_r = _ref_req.post("http://127.0.0.1:8599/v1/chat/completions", json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [{"role": "user", "content":
                 f"You predicted your own emotional state would be: {result['reasoning']}\n"
                 f"But you were wrong. The actual errors: {worst_str}\n"

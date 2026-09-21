@@ -42,7 +42,7 @@ META_DREAM_DIR = os.path.join(MEMORY, "meta-dreams")
 COUNTER_FILE = os.path.join(MEMORY, ".dream-counter")
 META_DREAM_LOG = os.path.join(MEMORY, "meta-dream-log.md")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 try:
@@ -248,7 +248,7 @@ def generate_meta_dream(dreams):
             "No preamble. Begin immediately.")
     try:
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}

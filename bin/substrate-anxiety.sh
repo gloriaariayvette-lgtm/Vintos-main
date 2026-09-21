@@ -127,7 +127,7 @@ import requests
 sys_msg = open("/tmp/sub_sys.txt").read()
 usr_msg = open("/tmp/sub_usr.txt").read()
 r = requests.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-    "model": "grok-4.20-0309-non-reasoning",
+    "model": "grok-4.7",
     "messages": [{"role": "system", "content": sys_msg}, {"role": "user", "content": usr_msg}],
     "temperature": 0.85, "max_tokens": 600
 }, timeout=600)

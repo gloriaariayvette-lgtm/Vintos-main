@@ -33,7 +33,7 @@ RETIRED_LOG = os.path.join(MEMORY, "retired-threads.json")
 CHAPTERS_DIR = os.path.join(MEMORY, "chapters")
 PREOCCUPATION_FILE = os.path.join(MEMORY, "current-preoccupation.json")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 import thread_store as _ts  # one door: shrink-guarded pool writes, one archive shape for both readers and writers

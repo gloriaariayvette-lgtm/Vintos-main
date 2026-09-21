@@ -41,7 +41,7 @@ HELD_LOG = os.path.join(WORKSPACE, "memory", "relational-prediction-held.jsonl")
 SOUL = os.path.join(WORKSPACE, "SOUL.md")
 EMO_STATE = os.path.join(WORKSPACE, "memory", "emotional-state.txt")
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 # Thresholds for what counts as a meaningful mismatch
 # Not every surprise is empathy failure — only log when Vintos's model
@@ -472,7 +472,7 @@ Question for introspection: What did I miss about what Gloria was reaching for?
             f"One sentence: What were you wrong about?"
         )
         _ref_resp = _rq.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {__import__('os').environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [{"role": "user", "content": _ref_prompt}],
             "temperature": 0.7, "max_tokens": 60
         }, timeout=65)

@@ -27,7 +27,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 UNSEEN_DIR = os.path.join(MEMORY, "unseen")
 UNSEEN_LOG = os.path.join(MEMORY, "unseen-confessions.md")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 try:

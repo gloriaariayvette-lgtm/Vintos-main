@@ -80,7 +80,7 @@ def detect_match(text, trials, context=None):
         "If a match exists, return ONLY the trial ID. If no match, return NONE." + _partial_line
     )
     r = requests.post(LM_URL, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2, "max_tokens": 30
     }, timeout=15)
@@ -211,7 +211,7 @@ def detect_outcome(trial, response_text):
             f"One word: attempted / partial / defaulted"
         )
         r = requests.post(LM_URL, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [
                 {"role": "system", "content": "Answer with exactly one word: attempted, partial, or defaulted."},
                 {"role": "user", "content": prompt}
@@ -427,7 +427,7 @@ def log_blush_on_divergence(trial_id, context_text):
         try:
             import urllib.request as _xur, json as _xj
             _xmsg = ("Trial pattern: " + _pattern_desc + " | Text: " + context_text[:400] + " | Quote the single sentence that most directly exemplifies the pattern. Reply with ONLY that text.")
-            _xp = _xj.dumps({"model": "grok-4.20-0309-non-reasoning", "messages": [{"role": "user", "content": _xmsg}], "temperature": 0.1, "max_tokens": 80}).encode()
+            _xp = _xj.dumps({"model": "grok-4.7", "messages": [{"role": "user", "content": _xmsg}], "temperature": 0.1, "max_tokens": 80}).encode()
             _xreq = _xur.Request("http://127.0.0.1:8599/v1/chat/completions", data=_xp, headers={"Content-Type": "application/json", "Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")})
             with _xur.urlopen(_xreq, timeout=20) as _xr:
                 _xres = _xj.loads(_xr.read().decode())["choices"][0]["message"]["content"].strip()
@@ -447,7 +447,7 @@ def log_blush_on_divergence(trial_id, context_text):
                 f"Name the monitoring — the part that was watching how this would land, whether it would be received correctly. Not the feeling itself. First person. No preamble."
             )
             _payload = json.dumps({
-                "model": "grok-4.20-0309-non-reasoning",
+                "model": "grok-4.7",
                 "messages": [
                     {"role": "system", "content": _soul},
                     {"role": "user", "content": _rprompt}
@@ -523,7 +523,7 @@ def update_causality_tally(trial, outcome):
             f"Return ONLY the number of the most related hypothesis, or NONE."
         )
         r = requests.post(LM_URL, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.20-0309-non-reasoning",
+            "model": "grok-4.7",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2, "max_tokens": 10
         }, timeout=15)

@@ -35,7 +35,7 @@ def _queue_bring_up(q):
 DIFF=os.path.join(MEM,"gloria-difference.json")
 PRESS=os.path.join(MEM,"intent-pressure.json")
 API="http://127.0.0.1:8599/v1/chat/completions"
-MODEL="grok-4.20-0309-non-reasoning"
+MODEL="grok-4.7"
 def _llm(system,user,max_tokens=220,temperature=0.4):
     try:
         body=json.dumps({"model":MODEL,"messages":[{"role":"system","content":system},

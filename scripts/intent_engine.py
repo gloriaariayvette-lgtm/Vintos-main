@@ -11,7 +11,7 @@ WS     = os.path.expanduser("~/.vintos/workspace")
 MEM    = os.path.join(WS, "memory")
 SCR    = os.path.join(WS, "scripts")
 LM_URL = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL  = "grok-4.20-0309-non-reasoning"   # shim routes this to his real model
+MODEL  = "grok-4.7"   # shim routes this to his real model
 AUTH   = {"Authorization": "Bearer " + os.environ.get("XAI_API_KEY", "")}
 LEDGER = os.path.join(MEM, "intent-ledger.json")
 

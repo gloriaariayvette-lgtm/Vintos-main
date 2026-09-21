@@ -413,7 +413,7 @@ def call_llm_at(api, system, user, temp=0.8, max_tok=200):
 
 def call_llm(system, user, temp=0.8, max_tok=200):
     resp = requests.post(API, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "grok-4.20-0309-non-reasoning",
+        "model": "grok-4.7",
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user}

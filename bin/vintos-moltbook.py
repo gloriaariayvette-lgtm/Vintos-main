@@ -1056,7 +1056,7 @@ def _one_shot_answer(challenge):
     llm = None
     try:
         import json as _aj, urllib.request as _au
-        body = _aj.dumps({"model": "grok-4.20-0309-non-reasoning", "temperature": 0.0, "max_tokens": 40,
+        body = _aj.dumps({"model": "grok-4.7", "temperature": 0.0, "max_tokens": 40,
             "messages": [
                 {"role": "system", "content":
                  "Solve the verification challenge. It may use leetspeak (0=o,3=e,1=i/l,4=a,5=s,7=t,@=a,$=s). "

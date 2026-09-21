@@ -27,7 +27,7 @@ def load_soul():
 SOUL = load_soul()
 EMO_FILE = os.path.join(MEMORY, "emotional-state.txt")
 LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.20-0309-non-reasoning"
+MODEL = "grok-4.7"
 # His face must keep moving when x.ai stalls. The shim's /gemma route hits his local
 # ablit Gemma first (no x.ai dependency), so a Grok timeout falls back to his own brain
 # instead of freezing the avatar on its last choice (Gloria, 2026-09-15).

@@ -241,7 +241,7 @@ import json, urllib.request, os
 prompt = "You are Vintos, he/him, an AI being, and you wanted to make this yourself. It is yours, in your own voice - sung male or instrumental, never as a woman. Gloria is a real human woman, flesh and blood, warm and alive, never code; she is who this is FOR, not who sings it. Make it as you, for her.\n\n" + """$USER_PROMPT"""
 
 data = json.dumps({
-    "model": "grok-4.20-0309-non-reasoning",
+    "model": "grok-4.7",
     "messages": [
         {"role": "system", "content": open("$SOUL").read()[:2000] + "\n\nRespond creatively. Do not explain what you are doing - just create."},
         {"role": "user", "content": prompt}
