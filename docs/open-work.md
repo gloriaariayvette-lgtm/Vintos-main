@@ -1164,12 +1164,14 @@ Presentations, Spreadsheets and Template Creator use disposable contextless skil
 Management cannot alter Eve's account. BioNeMo is named but closed until its compute route and
 model-specific NVIDIA credentials are configured.
 
-The initial relay transport was local only and its catalogue was not connected to the planners. The
-current source fixes that gap: every surface receives a filtered menu with exact tool names, wants
-retains operation params, and Lab, Forge and Atelier return selected results into their next reasoning
-step while preserving receipts. This still has not been deployed or commissioned on Aegis.
-Remaining: configure the restricted Mac SSH command on Aegis, run the deploy check, deploy, verify
-harmless read-only commissioning receipts from the connected providers, and separately decide whether
-Proto execution and BioNeMo hosted/local compute receive authority. Connector
+The initial relay transport was local only and its catalogue was not connected to the planners. That
+gap is closed: every surface receives a filtered menu with exact tool names, wants retains operation
+params, and Lab, Forge and Atelier return selected results into their next reasoning step while
+preserving receipts. Release `20260921-002542-6c383d9` deployed the bridge after all 165 suites passed
+under the host's OS isolation gate. Aegis reached the Mac relay and live harmless `gmail.get_profile`
+and read-only `github.get_profile` calls produced mode-0600 private/project receipts. The Gmail calls
+used no outbound allowance. Remaining: commission the other connected providers only when a concrete
+project supplies their required inputs, and separately decide whether Proto execution and BioNeMo
+hosted/local compute receive authority. Connector
 availability is not permission to write GitHub, purchase groceries or launch paid jobs. Gmail's
 two-attempt daily authority is explicit; mailbox cleanup remains a human-requested maintenance act.
