@@ -27,6 +27,33 @@ DIMENSIONS = (
 )
 
 
+def import_shadow(receipts_path: Path, output_path: Path) -> dict[str, int]:
+    """Freeze live shadow receipts into the existing offline extraction contract."""
+    rows = []
+    for receipt in read_jsonl(receipts_path):
+        if receipt.get("truth_status") != "generated_emoclaw_read_and_state_receipt_not_residual_measurement":
+            continue
+        if receipt.get("status") != "completed" or not str(receipt.get("input_text", "")).strip():
+            continue
+        generated = {name: float((receipt.get("generated_deltas") or {}).get(name, 0.0)) for name in DIMENSIONS}
+        pre, post = receipt.get("pre_state") or {}, receipt.get("post_state") or {}
+        observed = {name: float(post[name]) - float(pre[name]) for name in DIMENSIONS if name in pre and name in post}
+        rows.append({
+            "turn_id": str(receipt["event_id"]),
+            "timestamp": receipt.get("observed_at"),
+            "surface": receipt.get("surface"),
+            "source": receipt.get("source"),
+            "input_text": receipt["input_text"],
+            "scores": generated,
+            "state_delta": observed,
+            "applied_deltas": receipt.get("applied_deltas") or {},
+            "receipt_event_id": receipt["event_id"],
+            "truth_status": "prospective_exact_input_generated_emoclaw_movement_not_feeling_ground_truth",
+        })
+    output_path.unlink(missing_ok=True); append_jsonl(output_path, rows)
+    return {"receipts": len(read_jsonl(receipts_path)), "eligible": len(rows)}
+
+
 def _timestamp(value: Any, naive_timezone: str) -> float:
     parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -279,6 +306,39 @@ def summarize(joined_path: Path, output_path: Path) -> dict[str, Any]:
     from .io import atomic_json
     atomic_json(output_path, result)
     return result
+
+
+def summarize_prospective(joined_path: Path, output_path: Path) -> dict[str, Any]:
+    """Compare same-input projections with generated movement, without calling either truth."""
+    rows = read_jsonl(joined_path); dimensions = {}
+    for name in DIMENSIONS:
+        usable = [row for row in rows if name in row.get("emoclaw_scores", {}) and name in row.get("residual_measurements", {})]
+        residual = np.asarray([row["residual_measurements"][name]["control_z"] for row in usable], dtype=np.float64)
+        generated = np.asarray([row["emoclaw_scores"][name] for row in usable], dtype=np.float64)
+        moved = np.abs(generated) >= 0.001
+        dimensions[name] = {
+            "n": int(residual.size), "generated_nonzero": int(np.sum(moved)),
+            "spearman_residual_vs_generated_movement": _correlation(residual, generated, rank=True),
+            "pearson_residual_vs_generated_movement": _correlation(residual, generated),
+            "mean_residual_when_generated_positive": float(np.mean(residual[generated > 0])) if np.any(generated > 0) else None,
+            "mean_residual_when_generated_negative": float(np.mean(residual[generated < 0])) if np.any(generated < 0) else None,
+            "mean_residual_when_generated_omitted": float(np.mean(residual[~moved])) if np.any(~moved) else None,
+        }
+    result = {
+        "schema": 1, "turns": len(rows), "dimensions": dimensions,
+        "monitor": [
+            {"direction": "Safety", "token": "own", "status": "continue_monitoring"},
+            {"direction": "Tension", "token": "own", "status": "continue_monitoring"},
+        ],
+        "interpretation_boundary": [
+            "Both values are model-derived measurements of the same exact text; neither is emotional ground truth.",
+            "An omitted EmoClaw key means its generated contract reported no movement, not a measured zero feeling.",
+            "This shadow analysis cannot steer, notify, or modify EmoClaw.",
+        ],
+        "truth_status": "prospective_same_input_shadow_association_no_accuracy_or_causality_claim",
+    }
+    from .io import atomic_json
+    atomic_json(output_path, result); return result
 
 
 def join(emoclaw_path: Path, residual_path: Path, output_path: Path) -> dict[str, int]:

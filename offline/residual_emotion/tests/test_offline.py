@@ -20,7 +20,7 @@ from residual_emotion.authoring import (
     apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
     merge_reviewed_repair, render_human_review_sheets,
 )
-from residual_emotion.compare import align_history, join, prepare_extraction, summarize
+from residual_emotion.compare import align_history, import_shadow, join, prepare_extraction, summarize, summarize_prospective
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
 from residual_emotion.import_pain_axis import convert as import_pain_axis
@@ -327,6 +327,26 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
     summary = summarize(joined_fixture, scratch / "summary.json")
     check(summary["dimensions"]["Warmth"]["spearman_residual_vs_cumulative_state"] > 0.99, "rank association is computed")
     check({item["direction"] for item in summary["monitor"]} == {"Safety", "Tension"}, "both own tokens remain monitored")
+
+    # Prospective receipts preserve the exact input and compare generated movement, not cumulative state.
+    shadow = scratch / "shadow.jsonl"; prospective = scratch / "prospective.jsonl"
+    shadow.write_text(json.dumps({"event_id": "RESH-1", "observed_at": "2026-09-20T12:00:00+00:00",
+        "surface": "avatar", "source": "gloria", "input_text": "exact prospective input",
+        "status": "completed", "generated_deltas": {"Warmth": .04},
+        "pre_state": {"Warmth": .5}, "post_state": {"Warmth": .53},
+        "truth_status": "generated_emoclaw_read_and_state_receipt_not_residual_measurement"}) + "\n")
+    imported = import_shadow(shadow, prospective); prospective_rows = read_jsonl(prospective)
+    check(imported["eligible"] == 1 and prospective_rows[0]["input_text"] == "exact prospective input",
+          "prospective import preserves exact input")
+    check(prospective_rows[0]["scores"]["Safety"] == 0.0 and abs(prospective_rows[0]["state_delta"]["Warmth"] - .03) < 1e-12,
+          "omission and observed state change remain separate")
+    prospective_joined = scratch / "prospective-joined.jsonl"
+    prospective_joined.write_text("".join(json.dumps({"turn_id": str(i),
+        "emoclaw_scores": {"Warmth": [.04, 0, -.03][i % 3]},
+        "residual_measurements": {"Warmth": {"control_z": [1.2, 0.1, -1.0][i % 3]}}}) + "\n" for i in range(6)))
+    prospective_summary = summarize_prospective(prospective_joined, scratch / "prospective-summary.json")
+    check(prospective_summary["truth_status"].startswith("prospective_same_input_shadow"),
+          "prospective summary makes no ground-truth claim")
 
     # AUC alone cannot admit a direction; exact unembedding requires an explicit review receipt.
     direction_dir = scratch / "direction"; direction_dir.mkdir()
