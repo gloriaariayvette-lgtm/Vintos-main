@@ -1199,12 +1199,14 @@ parts and rough cost, wiring, firmware sketch, existing-house reporting and ackn
 safety limits, tests and unknowns. It reaches the ordinary Forge proposal card for Gloria to
 accept or deny and grants no purchase or construction authority.
 
-Still open: the root-owned `atelier-forge-loop.service` bundle has not yet been promoted to this
-head. Its exact rollback-capable transaction is staged at
-`/home/gloria/.vintos/deploy/apply-vintos-forge-f67c5c7.sh`, but remote sudo requires Gloria's
-password. That same transaction must stop the worker, reconcile project
-`80666644ae904051ace541aae6cce223` / cycle `39efe77635714185a307c4c4346d2599`
-with the inspected no-effect evidence, install the bounded gateway unit wiring, and restart the
-worker. Until it runs, the active system worker still has the prior Forge bundle and that project
-remains `reconciliation_required` at $0. The wallet and Taskmarket remain intentionally
-undeployed.
+The root-owned Forge bundle was promoted from exact source head `31dd5c3` by the rollback-capable
+transaction at `/home/gloria/.vintos/deploy/apply-vintos-forge-f67c5c7.sh`; its successful backup is
+`/home/gloria/.vintos/backups/forge-loop-20260921-045109`. The transaction grants the `atelier`
+account traversal only on the required parent directories and read/write access only to the shared
+compute lock and ledger, then verifies those rights before installation. All bundle files compared
+equal to source. `atelier-forge-loop.service` and `vintos-plugin-gateway.service` are active with
+zero restarts, and the loopback health response names the forced `forge` surface. Project
+`80666644ae904051ace541aae6cce223` is `ready`, with no active cycle and $0 spent; interrupted cycle
+`39efe77635714185a307c4c4346d2599` is `aborted` with the inspected no-effect reconciliation receipt.
+The exact-head deployment check passed all 165 isolated suites, parsed all 389 manifest sources and
+validated the staged tree. The wallet and Taskmarket remain intentionally undeployed.
