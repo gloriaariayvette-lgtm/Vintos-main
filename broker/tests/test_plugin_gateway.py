@@ -191,6 +191,11 @@ class PluginGatewayTests(unittest.TestCase):
             out=forge_house.plugin_query('github','github.get_profile',{},'ground report')
         self.assertTrue(out['ok']);self.assertEqual(seen['req'].get_header('Authorization'),'Bearer '+'g'*40)
 
+    def test_system_forge_fails_closed_without_loopback_gateway(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'gateway URL missing'):
+                forge_house.plugin_query('github','github.get_profile',{},'ground report')
+
     def test_each_planner_gets_a_filtered_menu_with_exact_tool_names(self):
         wants=catalog.instructions("wants")
         lab=catalog.instructions("lab")

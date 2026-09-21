@@ -26,24 +26,22 @@ def reserve(proposal, attempt):
 def plugin_query(plugin, tool, arguments, purpose):
     """Forge-side explicit plugin operation; the caller supplies the real project purpose."""
     gateway = os.environ.get('VINTOS_PLUGIN_GATEWAY_URL', '').strip()
-    if gateway:
-        from forge_loop_runtime import secret
-        token_file = os.environ.get('VINTOS_PLUGIN_GATEWAY_TOKEN', '').strip()
-        if not token_file: raise ValueError('Forge plugin gateway token credential missing')
-        req = Request(gateway, data=json.dumps({'plugin':plugin,'tool':tool,'arguments':arguments,
-                                                'purpose':purpose}).encode(), method='POST',
-                      headers={'Content-Type':'application/json','Authorization':'Bearer '+secret(token_file)})
-        with open_request(req, timeout=210) as response:
-            data=response.read(1024*1024+1)
-        if len(data)>1024*1024: raise ValueError('plugin gateway response too large')
-        result=json.loads(data)
-        if isinstance(result,dict) and result.get('held') is True and isinstance(result.get('receipt'),dict):
-            return result
-        if not isinstance(result,dict) or result.get('ok') is not True:
-            raise PermissionError('plugin gateway held or failed the call')
+    if not gateway: raise ValueError('Forge plugin gateway URL missing')
+    from forge_loop_runtime import secret
+    token_file = os.environ.get('VINTOS_PLUGIN_GATEWAY_TOKEN', '').strip()
+    if not token_file: raise ValueError('Forge plugin gateway token credential missing')
+    req = Request(gateway, data=json.dumps({'plugin':plugin,'tool':tool,'arguments':arguments,
+                                            'purpose':purpose}).encode(), method='POST',
+                  headers={'Content-Type':'application/json','Authorization':'Bearer '+secret(token_file)})
+    with open_request(req, timeout=210) as response:
+        data=response.read(1024*1024+1)
+    if len(data)>1024*1024: raise ValueError('plugin gateway response too large')
+    result=json.loads(data)
+    if isinstance(result,dict) and result.get('held') is True and isinstance(result.get('receipt'),dict):
         return result
-    from plugin_gateway import call
-    return call('forge', plugin, tool, arguments, purpose)
+    if not isinstance(result,dict) or result.get('ok') is not True:
+        raise PermissionError('plugin gateway held or failed the call')
+    return result
 
 
 def sync(inventory=None):
