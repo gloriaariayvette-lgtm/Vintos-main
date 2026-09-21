@@ -26,8 +26,13 @@ def load(name, path):
 
 JP = load("jepa_predictor_fixture", REPO / "scripts" / "jepa_predictor.py")
 RA = load("jepa_ranking_fixture", REPO / "scripts" / "jepa_ranking_audit.py")
+CA = load("jepa_calibration_fixture", REPO / "scripts" / "jepa_calibration_audit.py")
+JP.MEMORY = str(MEM); JP.MODEL = str(MEM / "model.pt"); JP.OUT = str(MEM / "prediction.json")
+JP.SHADOW_MODEL = str(MEM / "shadow.pt"); JP.SHADOW_OUT = str(MEM / "shadow-prediction.json")
+JP.CALIBRATION_AUDIT = str(MEM / "calibration.json"); JP.RANKING_AUDIT = str(MEM / "ranking.json")
+JP.SHADOW_RANKING_AUDIT = str(MEM / "shadow-ranking.json")
 RA.MEM = str(MEM); RA.HIST = str(MEM / "history.jsonl"); RA.LEDGER = str(MEM / "ledger.json"); RA.OUT = str(MEM / "ranking.json"); RA.MODEL = str(MEM / "model.pt")
-check("ranking fixture is isolated from the live workspace", str(HOME) in RA.OUT and ".vintos/workspace" in RA.OUT)
+check("ranking fixture is isolated from the live workspace", str(HOME) in RA.OUT and str(HOME) in JP.MODEL and ".vintos/workspace" in RA.OUT)
 
 
 print("\n--- structured turn context ---")
@@ -80,6 +85,48 @@ summary = RA._summary(enough, "gloria")
 check("a verdict needs thirty prospective targets and must beat voice retrieval", summary["n"] == 30 and summary["state"] == "EVIDENCE_OF_PREDICTION")
 check("fewer than thirty stays insufficient", RA._summary(enough[:29], "gloria")["state"] == "INSUFFICIENT")
 
+cal_history = [{"ts": forecast_ts, "iso": "one", "checkpoint_id": "ck",
+                "gloria": {"confidence": .5, "decode_similarity": .4, "emb": [1., 0., 0.]},
+                "self": {"confidence": .5, "decode_similarity": .4, "emb": [1., 0., 0.]}},
+               {"ts": forecast_ts + 1, "iso": "duplicate", "checkpoint_id": "ck",
+                "gloria": {"confidence": .6, "decode_similarity": .4, "emb": [1., 0., 0.]},
+                "self": {"confidence": .6, "decode_similarity": .4, "emb": [1., 0., 0.]}}]
+cal_turns = [(forecast_ts + 10, "g-target", "s-target")]
+cal_rows = CA.joined_rows(cal_history, cal_turns, Encoder(), "ck", 0)
+check("calibration counts repeated forecasts of one realized exchange once", len(cal_rows) == 1 and cal_rows[0]["iso"] == "one", cal_rows)
+
+
+print("\n--- stable checkpoint lifecycle ---")
+Path(JP.MODEL).write_bytes(b"production checkpoint")
+checkpoint = JP.checkpoint_fingerprint(JP.MODEL)
+ready, receipt = JP.retrain_readiness(JP.MODEL, shadow=False)
+check("an unaudited production checkpoint is held", ready is False and receipt["state"] == "HELD_UNAUDITED_CHECKPOINT")
+Path(JP.RANKING_AUDIT).write_text(json.dumps({"checkpoint": checkpoint, "gloria": {"n": 30}, "self": {"n": 29}}))
+ready, receipt = JP.retrain_readiness(JP.MODEL, shadow=False)
+check("raw history cannot replace thirty realized ranking outcomes", ready is False and receipt["ranking"]["self"] == 29)
+Path(JP.RANKING_AUDIT).write_text(json.dumps({"checkpoint": checkpoint, "gloria": {"n": 30}, "self": {"n": 30}}))
+Path(JP.CALIBRATION_AUDIT).write_text(json.dumps({"checkpoint": "stale", "n_joined": 300}))
+ready, receipt = JP.retrain_readiness(JP.MODEL, shadow=False)
+check("a receipt from a different checkpoint cannot release retraining", ready is False and "calibration" in receipt["need"])
+Path(JP.CALIBRATION_AUDIT).write_text(json.dumps({"checkpoint": checkpoint, "n_joined": 88, "n_holdout": 29, "verdict": "INSUFFICIENT"}))
+ready, receipt = JP.retrain_readiness(JP.MODEL, shadow=False)
+check("thirty ranking outcomes cannot bypass calibration's thirty-held-out law", ready is False and receipt["calibration_holdout_n"] == 29)
+Path(JP.CALIBRATION_AUDIT).write_text(json.dumps({"checkpoint": checkpoint, "n_joined": 89, "n_holdout": 30, "verdict": "WITHHELD"}))
+ready, receipt = JP.retrain_readiness(JP.MODEL, shadow=False)
+check("completed measurement permits the next cycle even when the verdict is negative", ready is True and receipt["state"] == "READY_AFTER_AUDIT")
+
+Path(JP.SHADOW_MODEL).write_bytes(b"shadow checkpoint")
+shadow_checkpoint = JP.checkpoint_fingerprint(JP.SHADOW_MODEL)
+Path(JP.SHADOW_RANKING_AUDIT).write_text(json.dumps({"checkpoint": shadow_checkpoint, "gloria": {"n": 30}, "self": {"n": 30}}))
+ready, receipt = JP.retrain_readiness(JP.SHADOW_MODEL, shadow=True)
+check("the shadow waits on its own ranking receipt without borrowing production calibration", ready is True and receipt["checkpoint"] == shadow_checkpoint)
+
+context_id = "ctx-1"
+Path(JP.OUT).write_text(json.dumps({"checkpoint_id": checkpoint, "context_id": context_id, "prediction_id": "old"}))
+check("same checkpoint plus same context is not predicted twice", JP.unchanged_forecast(JP.OUT, checkpoint, context_id) is True)
+check("a changed context still earns a fresh prospective prediction", JP.unchanged_forecast(JP.OUT, checkpoint, "ctx-2") is False)
+check("a new checkpoint may forecast the same context once", JP.unchanged_forecast(JP.OUT, shadow_checkpoint, context_id) is False)
+
 
 print("\n--- shadow boundary ---")
 src = (REPO / "scripts" / "jepa_predictor.py").read_text()
@@ -87,5 +134,7 @@ check("structured model has separate checkpoint output and history", "jepa-predi
 check("shadow prediction is structurally barred from steering", '"steering_allowed": (False if shadow else' in src and '"shadow_only": bool(shadow)' in src)
 check("head-specific confidence is confined to the shadow architecture", 'head-specific-confidence-v2' in src and 'train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2)' in src)
 check("shadow training selects weights on a later time slice", '"kind": "latest_time_slice"' in src and 'net.load_state_dict(best_state)' in src and 'early stop epoch' in src)
+check("duplicate suppression happens before the encoder is loaded", src.index("if unchanged_forecast(") < src.index("enc = encoder()", src.index("def predict(")))
+check("forced retraining is explicit and absent from ordinary scheduler commands", 'elif cmd == "train-force"' in src and 'elif cmd == "train-shadow-force"' in src)
 
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

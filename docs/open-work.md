@@ -1211,23 +1211,22 @@ zero restarts, and the loopback health response names the forced `forge` surface
 The exact-head deployment check passed all 165 isolated suites, parsed all 389 manifest sources and
 validated the staged tree. The wallet and Taskmarket remain intentionally undeployed.
 
-## JEPA prediction heads — unmeasurable due to checkpoint churn (2026-09-21)
+## JEPA prediction heads — checkpoint evidence window repaired (2026-09-21)
 
-Live finding on Aegis: `memory/jepa-prediction-history.jsonl` has 483 rows but
-`jepa_ranking_audit.py` and `jepa_calibration_audit.py` both return n=0 / INSUFFICIENT.
-Cause: consecutive predictions carry different `checkpoint_id`s (`jepa-predictor.pt` is
-rewritten ~every 2h), and two rows 2h apart share an identical `context_emb` — the model
-retrains on a timer regardless of new conversation. No checkpoint lives long enough to
-accumulate the >=30 realized outcomes the audits and the structured-turns shadow selection
-require, so calibration can never be shown, the "steering off until calibration is shown"
-gate is permanently shut, and the structured-turns shadow can never be promoted.
+The original diagnosis overstated the churn cadence. Live Aegis cron evidence shows training
+once daily (production 04:15, structured shadow 04:35), prediction every two hours, and audits
+only weekly — not retraining every two hours. The underlying failure was real: 479 of 483
+adjacent production history rows repeated an identical context, while a daily checkpoint could
+be replaced before the weekly instruments accumulated and receipted 30 distinct realized turns.
 
-Fix (branch br5lt4), for whoever owns the JEPA scheduler (the retrain trigger is off-repo —
-an Aegis cron/unit, not in broker/ timers):
-1. Stabilize the checkpoint: hold `jepa-predictor.pt` fixed until >=30 predictions made under
-   it have realized next turns, then retrain. Same for the shadow checkpoint.
-2. Log a prediction only when `context_emb` differs from the last row (stop timer-driven
-   duplicate-context writes).
-3. Leave the structured-turns-v1 shadow as-is; it can finally win once (1) holds.
-4. Re-run both audits once a stable checkpoint reaches n>=30. The frozen-Nomic-encoder
-   question (#7) is not answerable — and the encoder must not be touched — until then.
+`jepa_predictor.py` now holds an existing production checkpoint until both its calibration and
+true-next ranking receipts name that exact checkpoint. Ranking requires 30 distinct realized
+targets. Calibration retains its stricter existing law of 30 held-out targets (the latest third,
+roughly 89 joined outcomes); stopping at 30 joined would still make release impossible. The
+structured shadow waits for its own 30-outcome ranking receipt. Verdict success is not required
+to retrain, only completed measurement. Predictions compute the live context identity
+before loading Nomic and retain the existing forecast without appending history when neither the
+context nor checkpoint changed. The calibration audit also counts a realized turn pair once and
+keeps the current checkpoint identity in an insufficient receipt. A forced retrain remains an
+explicit operator command, never a cron default. The frozen-Nomic-encoder question stays parked
+until one stable checkpoint has enough fresh outcomes to measure.

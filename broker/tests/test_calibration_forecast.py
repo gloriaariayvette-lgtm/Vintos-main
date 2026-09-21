@@ -42,7 +42,10 @@ check("time and source holdouts are real slices, named", len(h) == 3 and h[-1]["
 check("the release record is appended with the criteria version", CAL.record_release("gloria", CAL.verdict("gloria", audit=good))["state"] == "RELEASED" and json.loads(open(CAL.RELEASES).read().splitlines()[-1])["criteria_version"] == CAL.CRITERIA_VERSION)
 jp = src("scripts/jepa_predictor.py")
 check("the production forecast's steering gate is the calibration verdict while shadow is barred", 'False if shadow else all(v.get("state") == "RELEASED" for v in _cal_v.values())' in jp and '"calibration": _cal_v' in jp and '"shadow_only": bool(shadow)' in jp)
-check("the audit computes its verdict on the held-out slice and keeps the full sample beside it", '_cal.holdout(rows, by="time")' in src("scripts/jepa_calibration_audit.py") and '"full_sample"' in src("scripts/jepa_calibration_audit.py"))
+audit_src = src("scripts/jepa_calibration_audit.py")
+check("the audit computes its verdict on the held-out slice and keeps the full sample beside it", '_cal.holdout(rows, by="time")' in audit_src and '"full_sample"' in audit_src)
+check("the calibration audit counts each realized next-turn pair once", 'def joined_rows(' in audit_src and 'if target_key in seen_targets: continue' in audit_src)
+check("an insufficient receipt remains bound to its checkpoint", '"checkpoint": checkpoint' in audit_src and '"n_joined": n' in audit_src)
 
 print("\n--- 200 / 205 / 206: matched horizons, unknown/invalid, counted once ---")
 GC = load("grading_contract", os.path.join(REPO, "scripts", "grading_contract.py")); GC.MEMORY = MEM; GC.GRADES = os.path.join(MEM, "prediction-grades.jsonl")

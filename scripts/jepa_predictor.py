@@ -34,14 +34,70 @@ OUT    = os.path.join(MEMORY, "jepa-prediction.json")
 SHADOW_MODEL = os.path.join(MEMORY, "jepa-predictor-structured-shadow.pt")
 SHADOW_OUT = os.path.join(MEMORY, "jepa-prediction-structured-shadow.json")
 SHADOW_HISTORY = os.path.join(MEMORY, "jepa-prediction-structured-shadow-history.jsonl")
+CALIBRATION_AUDIT = os.path.join(MEMORY, "jepa-calibration.json")
+RANKING_AUDIT = os.path.join(MEMORY, "jepa-ranking-audit.json")
+SHADOW_RANKING_AUDIT = os.path.join(MEMORY, "jepa-ranking-structured-shadow.json")
 CTX_TURNS = 6
 MIN_PRESENCE_PAIRS = 6
+MIN_REALIZED_FOR_RETRAIN = 30
+MIN_CALIBRATION_HOLDOUT_FOR_RETRAIN = 30
 EMB_MODEL = "nomic-ai/nomic-embed-text-v1"
 
 def log(m): print("[jepa]", m, flush=True)
 def load(p, d):
     try: return json.load(open(p))
     except Exception: return d
+
+
+def checkpoint_fingerprint(path):
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        return None
+
+
+def retrain_readiness(model_path=MODEL, shadow=False):
+    """A checkpoint is replaced only after its own prospective evidence was audited.
+
+    Raw history length is deliberately irrelevant: a timer can create rows without
+    creating realized next turns. Production requires both calibration and ranking;
+    the structured shadow has no calibration release path and requires ranking only.
+    The audit verdict may be positive or negative — evaluation, not success, earns a
+    new training cycle.
+    """
+    checkpoint = checkpoint_fingerprint(model_path)
+    if not checkpoint:
+        return True, {"state": "INITIAL_TRAIN", "checkpoint": None}
+    ranking_path = SHADOW_RANKING_AUDIT if shadow else RANKING_AUDIT
+    ranking = load(ranking_path, {})
+    if ranking.get("checkpoint") != checkpoint:
+        return False, {"state": "HELD_UNAUDITED_CHECKPOINT", "checkpoint": checkpoint,
+                       "need": "ranking receipt for current checkpoint"}
+    counts = {head: int((ranking.get(head) or {}).get("n", 0) or 0) for head in ("gloria", "self")}
+    if min(counts.values()) < MIN_REALIZED_FOR_RETRAIN:
+        return False, {"state": "HELD_NEEDS_REALIZED_OUTCOMES", "checkpoint": checkpoint,
+                       "ranking": counts, "minimum": MIN_REALIZED_FOR_RETRAIN}
+    if shadow:
+        return True, {"state": "READY_AFTER_AUDIT", "checkpoint": checkpoint, "ranking": counts}
+    calibration = load(CALIBRATION_AUDIT, {})
+    if calibration.get("checkpoint") != checkpoint:
+        return False, {"state": "HELD_UNAUDITED_CHECKPOINT", "checkpoint": checkpoint,
+                       "ranking": counts, "need": "calibration receipt for current checkpoint"}
+    joined = int(calibration.get("n_joined", 0) or 0)
+    held_out = int(calibration.get("n_holdout", 0) or 0)
+    if held_out < MIN_CALIBRATION_HOLDOUT_FOR_RETRAIN:
+        return False, {"state": "HELD_NEEDS_REALIZED_OUTCOMES", "checkpoint": checkpoint,
+                       "ranking": counts, "calibration_n": joined, "calibration_holdout_n": held_out,
+                       "minimum_calibration_holdout": MIN_CALIBRATION_HOLDOUT_FOR_RETRAIN}
+    return True, {"state": "READY_AFTER_AUDIT", "checkpoint": checkpoint,
+                  "ranking": counts, "calibration_n": joined, "calibration_holdout_n": held_out}
+
+
+def unchanged_forecast(out_path, checkpoint, context_id):
+    """True only when this exact checkpoint already forecast this exact live window."""
+    previous = load(out_path, {})
+    return bool(previous.get("checkpoint_id") == checkpoint and previous.get("context_id") == context_id)
 
 
 def _ev_load(path, default=None, _o=load):
@@ -262,7 +318,13 @@ def make_net(dim, architecture="shared-v1"):
                     torch.clamp(self.logvar(h), -12.0, 6.0))
     return Pred(dim)
 
-def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="shared-v1", validation_fraction=0.0):
+def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="shared-v1", validation_fraction=0.0, force=False):
+    shadow = model_path != MODEL
+    ready, receipt = retrain_readiness(model_path, shadow=shadow)
+    if not ready and not force:
+        log("retrain held: " + json.dumps(receipt, sort_keys=True)); return receipt
+    if force and os.path.exists(model_path):
+        log("FORCED retrain bypassed checkpoint evidence gate")
     import numpy as np, torch
     turns = training_turns()                    # chat-history + implanted ledger (Gloria's real voice)
     if len(turns) <= CTX_TURNS + 2:
@@ -333,6 +395,7 @@ def train(model_path=MODEL, context_schema="legacy-concat-v1", architecture="sha
                 "architecture": architecture, "shadow_only": model_path != MODEL,
                 "validation": ({"kind": "latest_time_slice", "n": len(Xv), "best_loss": round(best_val, 6)} if len(Xv) else None)}, model_path)
     log(f"trained on {len(X)} pairs (presence_trained={Xp is not None}); saved {model_path}")
+    return {"state": "TRAINED", "previous": receipt}
 
 def _cos(a, b):
     import numpy as np
@@ -371,9 +434,13 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     turns = [t for t in turns if not t.get("imported") and (not _floor or str(t.get("timestamp", "")) >= _floor or not t.get("timestamp"))]
     if len(turns) < 2:
         log("no live context above the ledger floor"); return
-    enc = encoder()
     _schema = ck.get("context_schema", "legacy-concat-v1")
     ctx = format_context(turns[-CTX_TURNS:], _schema)
+    _context_id = hashlib.md5(ctx.encode()).hexdigest()[:12]
+    if unchanged_forecast(out_path, loaded_checkpoint, _context_id):
+        log("unchanged context — retained existing forecast; no history row written")
+        return {"state": "UNCHANGED_CONTEXT", "checkpoint_id": loaded_checkpoint, "context_id": _context_id}
+    enc = encoder()
     xe = np.asarray(enc.encode([ctx], show_progress_bar=False), dtype="float32")
     with torch.no_grad():
         g_pred, s_pred, p_pred, logvar = net(torch.tensor(xe))
@@ -433,7 +500,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     out = {"source": "jepa",
            "prediction_id": "JP-" + __import__("uuid").uuid4().hex[:8],
            "predicted_at": __import__("datetime").datetime.now().isoformat(),
-           "context_id": hashlib.md5(ctx.encode()).hexdigest()[:12],           # which exchange window this forecast is about
+           "context_id": _context_id,           # which exchange window this forecast is about
            "context_last_event": (turns[-1].get("event_id") if turns else None),
            "checkpoint_id": _ck_id,
            "qualification": {"gloria": _qual(_cg), "self": _qual(_cs), "presence": _qual(_cp)},
@@ -444,7 +511,7 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
            "gloria_forecast_nearest": gloria["nearest"],
            "gloria": gloria, "self": self_h, "presence": presence,
            "variance_qualified": (_cg is not None),
-           "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 joined predictions (Vrika, 2026-08-10)",
+           "empirical_calibration": ("RELEASED under " + _cal_v["gloria"].get("criteria_version", "?")) if all(v.get("state") == "RELEASED" for v in _cal_v.values()) else "UNVERIFIED - variance gate passed is NOT calibration; see jepa-calibration.json when the audit has >=30 held-out predictions (Vrika, 2026-08-10)",
            "context_schema": _schema, "architecture": ck.get("architecture", "shared-v1"),
            "shadow_only": bool(shadow),
            "note": "embedding prediction; confidence = trained logvar (Vrika repair 2026-08-10); decode_similarity = nearest-turn cosine, NOT confidence; shadow checkpoints may never steer"}
@@ -460,6 +527,8 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
     try:
         import time as _ht
         hist_line = {"checkpoint_id": _ck_id, "ts": _ht.time(), "iso": __import__("datetime").datetime.now().isoformat(),
+                     "prediction_id": out["prediction_id"], "context_id": out["context_id"],
+                     "context_last_event": out["context_last_event"],
                      "context_schema": _schema,
                      "context_emb": [round(float(x), 4) for x in xe[0]],
                      "gloria": {"confidence": gloria["confidence"], "decode_similarity": gloria["decode_similarity"],
@@ -475,11 +544,14 @@ def predict(model_path=MODEL, out_path=OUT, history_path=None, shadow=False):
         + (f" | presence pred {presence['predicted']} conf {presence['confidence']}" if presence else " | presence n/a"))
     log(f"latest gloria turn:  {out['gloria_latest_turn'][:80]}")
     log(f"nearest gloria-forecast: {gloria['nearest'][:80]}")
+    return out
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "train"
     if cmd == "train": train()
+    elif cmd == "train-force": train(force=True)
     elif cmd == "predict": predict()
     elif cmd == "train-shadow": train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2)
+    elif cmd == "train-shadow-force": train(SHADOW_MODEL, "structured-turns-v1", "head-specific-confidence-v2", validation_fraction=0.2, force=True)
     elif cmd == "predict-shadow": predict(SHADOW_MODEL, SHADOW_OUT, SHADOW_HISTORY, shadow=True)
-    else: print("usage: jepa_predictor.py train|predict|train-shadow|predict-shadow")
+    else: print("usage: jepa_predictor.py train|train-force|predict|train-shadow|train-shadow-force|predict-shadow")

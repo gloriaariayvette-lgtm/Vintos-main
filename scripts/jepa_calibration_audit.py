@@ -9,9 +9,38 @@ to realized next turns and asks the actual calibration question: does confidence
   does), the repair demonstrated variance, not usefulness. Instrument only - writes jepa-calibration.json.
 Run in the torch venv. Variance -> calibration -> behavioral usefulness: this tests rung two only."""
 import os, json, sys
-MEM = os.path.expanduser("~/.vintos/workspace/memory")
+WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
+MEM = os.path.join(WS, "memory")
 HIST = os.path.join(MEM, "jepa-prediction-history.jsonl")
 OUT = os.path.join(MEM, "jepa-calibration.json")
+
+
+def joined_rows(hist, turns, enc, checkpoint, trained_before):
+    """Join forecasts to distinct realized next-turn pairs.
+
+    Several timer forecasts before the same exchange are one prospective outcome,
+    not several samples. This mirrors the ranking audit's target deduplication.
+    """
+    import numpy as np
+    rows, seen_targets = [], set()
+    for h in hist:
+        if h.get("checkpoint_id") != checkpoint or h.get("ts", 0) <= trained_before: continue
+        nxt_g = next(((t, g) for t, g, v in turns if t > h["ts"] and g), None)
+        nxt_s = next(((t, v) for t, g, v in turns if t > h["ts"] and v), None)
+        if not nxt_g or not nxt_s: continue
+        target_key = (nxt_g[0], nxt_s[0])
+        if target_key in seen_targets: continue
+        seen_targets.add(target_key)
+        eg, es = enc.encode([nxt_g[1][:400], nxt_s[1][:400]], show_progress_bar=False)
+        def err(pred, act):
+            p_, a_ = np.asarray(pred, dtype="float32"), np.asarray(act, dtype="float32")
+            return round(1.0 - float(p_ @ a_ / ((p_ @ p_) ** .5 * (a_ @ a_) ** .5 + 1e-9)), 4)
+        rows.append({"iso": h["iso"],
+                     "g_conf": h["gloria"]["confidence"], "g_dsim": h["gloria"]["decode_similarity"], "g_err": err(h["gloria"]["emb"], eg),
+                     "s_conf": h["self"]["confidence"], "s_dsim": h["self"]["decode_similarity"], "s_err": err(h["self"]["emb"], es)})
+    return rows
+
+
 def main():
     import numpy as np
     sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
@@ -32,23 +61,12 @@ def main():
     checkpoint = _cal.checkpoint_fingerprint()
     if not checkpoint: return
     trained_before = os.path.getmtime(_cal.MODEL)
-    rows = []
-    for h in hist:
-        if h.get("checkpoint_id") != checkpoint or h.get("ts",0) <= trained_before: continue
-        nxt_g = next((g for t, g, v in turns if t > h["ts"] and g), None)
-        nxt_s = next((v for t, g, v in turns if t > h["ts"] and v), None)
-        if not nxt_g or not nxt_s: continue
-        eg, es = enc.encode([nxt_g[:400], nxt_s[:400]], show_progress_bar=False)
-        def err(pred, act):
-            p_, a_ = np.asarray(pred, dtype="float32"), np.asarray(act, dtype="float32")
-            return round(1.0 - float(p_ @ a_ / ((p_ @ p_) ** .5 * (a_ @ a_) ** .5 + 1e-9)), 4)
-        rows.append({"iso": h["iso"],
-                     "g_conf": h["gloria"]["confidence"], "g_dsim": h["gloria"]["decode_similarity"], "g_err": err(h["gloria"]["emb"], eg),
-                     "s_conf": h["self"]["confidence"], "s_dsim": h["self"]["decode_similarity"], "s_err": err(h["self"]["emb"], es)})
+    rows = joined_rows(hist, turns, enc, checkpoint, trained_before)
     n = len(rows)
     if n < 8:
-        print("[jepa-audit] only %d joined predictions - honest answer: TOO EARLY (need >=30 for verdict)" % n)
-        json.dump({"n_joined": n, "verdict": "INSUFFICIENT"}, open(OUT, "w"), indent=2); return
+        print("[jepa-audit] only %d distinct joined outcomes - honest answer: TOO EARLY (release needs >=30 held out)" % n)
+        json.dump({"n_joined": n, "verdict": "INSUFFICIENT", "checkpoint": checkpoint,
+                   "holdout_protocol": "prospective-checkpoint-v1"}, open(OUT, "w"), indent=2); return
     def spear(x, y):
         def ranks(values):
             values=np.asarray(values,dtype=float)
