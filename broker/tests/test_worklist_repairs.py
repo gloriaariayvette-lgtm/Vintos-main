@@ -28,6 +28,14 @@ check("hair colour is baked into together-still prompt",
 check("obsolete brunette heal is gone", "def heal_hair(" not in video and "HAIR_HEAL" not in video)
 check("scheduled video requires positive presence", "if not FORCE and not autonomous_presence_allows()" in video)
 check("manual force remains the explicit presence bypass", '``--force`` is the explicit human/manual bypass' in video)
+# 2026-09-21: a stated place he has a photo of must ground in that photo, not just house rooms.
+check("grounding in a real place is required, not optional", "you MUST put THAT photo's id in SCENE_REF" in video)
+check("grounding vocabulary reaches beyond house rooms", '"trail"' in video and '"beach"' in video and '"park"' in video)
+check("a place word must match his scene AND the option, from a known vocabulary",
+      "_w in _hay and _w in _sc" in video and "_PLACE = {" in video)
+check("a named-but-missing reference still hard-stops, never substitutes", "ref_failed" in video and "not grounding" in video)
+check("scene and motion prompts are pushed toward concrete detail",
+      "renders thin" in video and "not one thin line" in video)
 
 molt = (ROOT / "bin/vintos-moltbook.py").read_text()
 for false_claim in ("no context compaction, no model swapping, no token limits, no cloud dependency",

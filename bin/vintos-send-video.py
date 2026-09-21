@@ -299,9 +299,11 @@ def decide(force=False):
             "room:). You can set a 'self' scene in one of these ACTUAL places instead of an imagined one, "
             "and put yourself into it:\n"
             + "\n".join("  [%s] %s — %s" % (o["id"], o["at"], o["caption"]) for o in _opts)
-            + "\nIf you want that, put THAT photo's id in SCENE_REF and describe in SCENE what you are doing "
-              "THERE, in that specific place. Choose the one you actually mean. If you don't want to set the "
-              "scene in any of them, leave SCENE_REF blank — that is the normal answer.\n")
+            + "\nIf your scene is set in one of these real places — a room of the house, or somewhere she has "
+              "shown you (a trail, a view, a spot) — you MUST put THAT photo's id in SCENE_REF, so the actual "
+              "place is used and not an imagined lookalike. Choose the one you actually mean, and describe in "
+              "SCENE what you are doing THERE, in that specific place. Only leave SCENE_REF blank when the place "
+              "you want is somewhere you have no photo of here.\n")
     sys_p = (ctx + "\n\n---\n\n" if ctx else "") + (
         "You are Vintos, and everything above is you. You can send Gloria a short video of yourself.\n\n"
         + gate +
@@ -313,8 +315,9 @@ def decide(force=False):
         "where you are (or where the two of you are), what's happening, the setting and light, framed however "
         "you like. It's built from your real faces, so it's unmistakably you (and her). Examples of the "
         "freedom: 'on a blanket in the park eating watermelon under an oak tree', 'the two of us cooking in a "
-        "warm kitchen at night, string lights', 'walking a rainy city street, close under one umbrella'. Then "
-        "in PROMPT, the MOTION and moment once you're in it.\n\n"
+        "warm kitchen at night, string lights', 'walking a rainy city street, close under one umbrella'. Make "
+        "SCENE specific and concrete — the light, what is actually in the place, how it is framed; a thin scene "
+        "renders thin. Then in PROMPT, the MOTION and moment once you're in it.\n\n"
         "For 'sexual': CHOOSE which explicit still of yourself to bring to life — the ONE whose moment fits; "
         "its frame is where the video starts:\n" + stills_txt + "\n"
         "(For 'together' you can also leave SCENE blank to use your existing picture of the two of you.)\n\n"
@@ -327,7 +330,8 @@ def decide(force=False):
         "SCENE_REF: <blank, or the id in brackets of the ONE photo above whose real place you want to be in>\n"
         "SCENE: <for 'self' or 'together', the full scene you want — where you are / where you two are; blank otherwise>\n"
         "STILL: <for 'sexual', one label from the list above; blank otherwise>\n"
-        "PROMPT: <if YES, the motion and moment you want animated, in your own voice>\n"
+        "PROMPT: <if YES, the motion and the moment — concretely: what actually moves, the gesture and "
+        "expression, how close the camera holds it; a few specific sentences, not one thin line, in your own voice>\n"
         "SAY: <if YES, the message you send with it — a line or two, in your own voice, whatever you "
         "want to say to her; this text arrives with the video>")
     _sil = silence_hours()
@@ -387,31 +391,37 @@ def decide(force=False):
         # this whole change exists to remove.
         log("he named scene ref %r but it matched no photo — not grounding" % _rid)
         d["ref_failed"] = _rid   # a required reference that fails is a stop, not a substitution (astra-creative-p5)
-    # A room of the house named in the SCENE he wrote grounds it in her photo of
-    # that room even when he set no SCENE_REF - the place is real, so the picture
-    # should be too (just one more reference image to Grok). Explicit SCENE_REF wins.
+    # A real place named in the SCENE he wrote grounds it in the matching photo even when
+    # he set no SCENE_REF - the place is real, so the picture should be too (just one more
+    # reference image to the render). This now covers anywhere she has shown him, not only
+    # the rooms of the house. Explicit SCENE_REF still wins. Guard against mis-grounding: a
+    # place word must appear in BOTH his scene AND the option (its room name or her caption),
+    # and only words from a known place vocabulary count, so a generic caption word cannot
+    # substitute the wrong photo - the failure this whole path exists to prevent.
     if not d.get("scene_ref") and d.get("scene"):
         import re as _rre
         _sc = " " + _rre.sub(r"[^a-z0-9 ]", " ", d["scene"].lower()) + " "
+        _PLACE = {
+            "kitchen", "bedroom", "patio", "dining room", "dining", "vanity", "bathroom", "bath",
+            "office", "garage", "hallway", "hall", "closet", "porch", "balcony", "deck", "study",
+            "den", "laundry", "pantry", "foyer", "nursery", "basement", "attic", "living room",
+            "trail", "trailhead", "beach", "park", "lake", "river", "creek", "garden", "yard",
+            "backyard", "pool", "forest", "woods", "mountain", "meadow", "field", "road", "street",
+            "sidewalk", "rooftop", "cafe", "restaurant", "diner", "car", "couch", "sofa", "bed",
+            "fireplace", "window", "shower", "bridge", "dock", "pier", "boardwalk", "overlook",
+            "waterfall", "gym", "studio",
+        }
         _best = None
-        for _rid2, _p2 in _optmap.items():
-            if not _rid2.startswith("room:"):
-                continue
-            _rn = _rid2[5:].lower()
-            _cands = {_rn.replace("-", " ")}
-            _first = _rn.split("-")[0]
-            # only a standalone room NOUN answers alone ("kitchen-oven" -> "kitchen");
-            # an adjective half ("living" of living-room) must keep its "room".
-            if _first in ("kitchen", "bedroom", "patio", "dining", "vanity", "bathroom", "office",
-                          "garage", "hall", "hallway", "closet", "porch", "balcony", "deck", "study",
-                          "den", "laundry", "pantry", "foyer", "nursery", "basement", "attic", "bath"):
-                _cands.add(_first)
-            for _c in _cands:
-                if " " + _c + " " in _sc and (not _best or len(_c) > len(_best[0])):
-                    _best = (_c, _rid2, _p2)
+        for _o in _opts:
+            _idtxt = _o["id"][5:].replace("-", " ") if _o["id"].startswith("room:") else ""
+            _hay = " " + _rre.sub(r"[^a-z0-9 ]", " ", (_idtxt + " " + str(_o.get("caption", "")).lower())) + " "
+            for _c in _PLACE:
+                _w = " " + _c + " "
+                if _w in _hay and _w in _sc and (not _best or len(_c) > len(_best[0])):
+                    _best = (_c, _o["id"], _o["path"])
         if _best:
             d["scene_ref"] = _best[2]; d["ground"] = True; d["scene_ref_id"] = _best[1]
-            log("scene names the %s - grounding in her photo [%s]" % (_best[0], _best[1]))
+            log("scene names the %s - grounding in [%s]" % (_best[0], _best[1]))
     return d
 
 
