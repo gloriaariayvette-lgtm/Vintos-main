@@ -14,6 +14,7 @@ import tempfile
 from datetime import datetime, timezone
 
 from plugin_catalog import policy, instructions
+from plugin_send_guard import PolicyHold, outbound_findings
 
 MEMORY = os.environ.get("VINTOS_MEMORY", os.path.expanduser("~/.vintos/workspace/memory"))
 CONFIG = os.environ.get("VINTOS_PLUGIN_RELAY_CONFIG", os.path.expanduser("~/.vintos/plugin-relay.json"))
@@ -54,8 +55,70 @@ def _send(request, timeout=210, transport=None):
     try: result = json.loads(done.stdout)
     except Exception as exc: raise RuntimeError("plugin relay returned unreadable output") from exc
     if not isinstance(result, dict) or not result.get("ok"):
+        if isinstance(result, dict) and isinstance(result.get("receipt"), dict):
+            raise PolicyHold(result["receipt"])
         raise RuntimeError("plugin relay refused or failed: " + str((result or {}).get("detail", "unknown"))[:160])
     return result
+
+
+def _hold_path():
+    return Path(MEMORY) / "plugin-policy-holds.jsonl"
+
+
+def _policy_hold(kind, surface, plugin, tool, findings):
+    hold_id = hashlib.sha256((kind + ":" + findings["request_sha256"]).encode()).hexdigest()
+    receipt = {"hold_id":hold_id, "type":kind, "at":datetime.now(timezone.utc).isoformat(),
+        "surface":surface, "plugin":plugin, "tool":tool,
+        "request_sha256":findings["request_sha256"], "rules":findings.get("rules", []),
+        "links":findings.get("links", []), "state":"awaiting_explicit_approval" if kind == "LINK_APPROVAL_REQUIRED" else "blocked"}
+    ledger = _hold_path(); ledger.parent.mkdir(parents=True, exist_ok=True); os.chmod(ledger.parent, 0o700)
+    with open(str(ledger)+".lock", "a+") as lock:
+        os.chmod(str(ledger)+".lock", 0o600); fcntl.flock(lock, fcntl.LOCK_EX)
+        prior = [] if not ledger.exists() else [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+        if not any(x.get("event") == "held" and x.get("hold_id") == hold_id for x in prior):
+            with open(ledger, "a", encoding="utf-8") as stream:
+                stream.write(json.dumps({"event":"held", **receipt}, sort_keys=True)+"\n")
+                stream.flush(); os.fsync(stream.fileno())
+        os.chmod(ledger, 0o600)
+    return receipt
+
+
+def _consume_link_approval(hold_id, request_sha256):
+    ledger = _hold_path()
+    if not ledger.exists(): return False
+    with open(str(ledger)+".lock", "a+") as lock:
+        os.chmod(str(ledger)+".lock", 0o600); fcntl.flock(lock, fcntl.LOCK_EX)
+        rows = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+        approvals = [x for x in rows if x.get("event") == "approved" and x.get("hold_id") == hold_id and
+                     x.get("request_sha256") == request_sha256]
+        consumed = sum(1 for x in rows if x.get("event") == "approval_consumed" and x.get("hold_id") == hold_id and
+                       x.get("request_sha256") == request_sha256)
+        if len(approvals) <= consumed: return False
+        with open(ledger, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"event":"approval_consumed", "hold_id":hold_id,
+                "request_sha256":request_sha256, "at":datetime.now(timezone.utc).isoformat()}, sort_keys=True)+"\n")
+            stream.flush(); os.fsync(stream.fileno())
+        os.chmod(ledger, 0o600)
+        return True
+
+
+def approve_link(hold_id):
+    """Record Gloria's exact-message approval from the administrative CLI."""
+    if not re.fullmatch(r"[0-9a-f]{64}", str(hold_id)): raise ValueError("invalid hold id")
+    ledger = _hold_path()
+    if not ledger.exists(): raise KeyError("unknown link hold")
+    with open(str(ledger)+".lock", "a+") as lock:
+        os.chmod(str(ledger)+".lock", 0o600); fcntl.flock(lock, fcntl.LOCK_EX)
+        rows = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+        held = next((x for x in reversed(rows) if x.get("event") == "held" and
+                     x.get("hold_id") == hold_id and x.get("type") == "LINK_APPROVAL_REQUIRED"), None)
+        if not held: raise KeyError("unknown link hold")
+        row = {"event":"approved", "hold_id":hold_id, "request_sha256":held["request_sha256"],
+               "at":datetime.now(timezone.utc).isoformat(), "authority":"gloria_cli"}
+        with open(ledger, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, sort_keys=True)+"\n"); stream.flush(); os.fsync(stream.fileno())
+        os.chmod(ledger, 0o600)
+    return row
 
 
 def _store(surface, plugin, tool, arguments, result, visibility):
@@ -91,10 +154,25 @@ def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     entry = policy(plugin, surface, tool)
     if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 1000: raise ValueError("bounded purpose required")
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")
-    response = _send({"action":"call", "surface":surface, "plugin":plugin, "tool":tool,
-                      "arguments":arguments, "purpose":purpose}, transport=transport)
+    request = {"action":"call", "surface":surface, "plugin":plugin, "tool":tool,
+               "arguments":arguments, "purpose":purpose}
+    outbound = entry.get("outbound_policy") or {}
+    if tool in outbound.get("tools", ()):
+        findings = outbound_findings(arguments)
+        if tool != "gmail.send_email":
+            findings["rules"] = sorted(set(findings["rules"] + ["provider_held_content_unavailable_for_inspection"]))
+        if findings["rules"]:
+            raise PolicyHold(_policy_hold("CONFIDENTIAL_INFORMATION_BLOCKED", surface, plugin, tool, findings))
+        if findings["links"]:
+            receipt = _policy_hold("LINK_APPROVAL_REQUIRED", surface, plugin, tool, findings)
+            if not _consume_link_approval(receipt["hold_id"], findings["request_sha256"]): raise PolicyHold(receipt)
+            request["link_approval"] = {"hold_id":receipt["hold_id"],
+                                         "request_sha256":findings["request_sha256"]}
+    response = _send(request, transport=transport)
     receipt = _store(surface, plugin, tool, arguments, response["result"], entry["visibility"])
-    return {"ok":True, "receipt":receipt, "summary":summary(response["result"])}
+    output = {"ok":True, "receipt":receipt, "summary":summary(response["result"])}
+    if response.get("link_gate"): output["link_gate"] = response["link_gate"]
+    return output
 
 
 def run_skill(surface, skill, instruction, *, transport=None):
@@ -139,10 +217,12 @@ def load_receipt(receipt_id, surface):
 def main():
     parser=argparse.ArgumentParser(description=__doc__); sub=parser.add_subparsers(dest="action",required=True)
     sub.add_parser("instructions")
+    approve=sub.add_parser("approve-link"); approve.add_argument("hold_id")
     invoke=sub.add_parser("call"); invoke.add_argument("--surface",required=True);invoke.add_argument("--plugin",required=True)
     invoke.add_argument("--tool",required=True);invoke.add_argument("--arguments",default="{}");invoke.add_argument("--purpose",required=True)
     args=parser.parse_args()
     if args.action == "instructions": print(json.dumps(instructions(),indent=2)); return
+    if args.action == "approve-link": print(json.dumps(approve_link(args.hold_id),indent=2)); return
     print(json.dumps(call(args.surface,args.plugin,args.tool,json.loads(args.arguments),args.purpose),indent=2))
 
 

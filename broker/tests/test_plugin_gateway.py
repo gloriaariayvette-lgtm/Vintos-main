@@ -16,6 +16,7 @@ import chemistry_sources
 import forge_house
 import atelier_plugin
 import plugin_relay_remote as remote
+from plugin_send_guard import PolicyHold
 import forge_loop_runtime
 
 
@@ -23,9 +24,13 @@ class PluginGatewayTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(prefix="plugin-gateway-")
         self.old=gateway.MEMORY; gateway.MEMORY=self.tmp.name
+        self.secrets=os.path.join(self.tmp.name,"secrets");os.mkdir(self.secrets)
+        os.chmod(self.secrets,0o700)
+        self.env=mock.patch.dict(os.environ,{"VINTOS_SECRETS":self.secrets})
+        self.env.start()
 
     def tearDown(self):
-        gateway.MEMORY=self.old; self.tmp.cleanup()
+        self.env.stop();gateway.MEMORY=self.old; self.tmp.cleanup()
 
     def fake(self, request):
         self.request=request
@@ -53,6 +58,66 @@ class PluginGatewayTests(unittest.TestCase):
         for surface in catalog.SURFACES:
             with self.subTest(surface=surface):
                 self.assertEqual(catalog.policy("gmail",surface,"gmail.send_email")["visibility"],"private")
+
+    def test_secret_bearing_send_is_blocked_before_transport_and_receipt_is_redacted(self):
+        secret="fixture-private-value-582904"
+        with open(os.path.join(self.secrets,"mail-token"),"w",encoding="utf-8") as stream: stream.write(secret)
+        os.chmod(os.path.join(self.secrets,"mail-token"),0o600)
+        with self.assertRaises(PolicyHold) as held:
+            gateway.call("forge","gmail","gmail.send_email",
+                {"to":"person@example.test","subject":"hello","body":"credential="+secret},
+                "bounded outreach",transport=lambda _:self.fail("transport reached"))
+        self.assertEqual(held.exception.receipt["type"],"CONFIDENTIAL_INFORMATION_BLOCKED")
+        ledger=__import__('pathlib').Path(self.tmp.name,"plugin-policy-holds.jsonl").read_text()
+        self.assertNotIn(secret,ledger)
+        self.assertEqual(os.stat(os.path.join(self.tmp.name,"plugin-policy-holds.jsonl")).st_mode & 0o077,0)
+
+    def test_link_send_requires_exact_message_approval_then_reaches_transport(self):
+        args={"to":"person@example.test","subject":"reference","body":"See https://example.test/a"}
+        with self.assertRaises(PolicyHold) as held:
+            gateway.call("wants","gmail","gmail.send_email",args,"send reference",transport=lambda _:self.fail("transport reached"))
+        receipt=held.exception.receipt
+        self.assertEqual(receipt["type"],"LINK_APPROVAL_REQUIRED")
+        gateway.approve_link(receipt["hold_id"])
+        out=gateway.call("wants","gmail","gmail.send_email",args,"send reference",transport=self.fake)
+        self.assertTrue(out["ok"]);self.assertEqual(self.request["link_approval"]["request_sha256"],receipt["request_sha256"])
+        with self.assertRaises(PolicyHold):
+            gateway.call("wants","gmail","gmail.send_email",args,"duplicate",transport=lambda _:self.fail("transport reached"))
+        changed=dict(args,body="See https://example.test/b")
+        with self.assertRaises(PolicyHold):
+            gateway.call("wants","gmail","gmail.send_email",changed,"changed",transport=lambda _:self.fail("transport reached"))
+
+    def test_remote_secret_and_link_checks_run_after_budget_but_before_provider(self):
+        old=remote.STATE_DIR;remote.STATE_DIR=__import__('pathlib').Path(self.tmp.name)/"relay-state"
+        try:
+            with self.assertRaises(PolicyHold):
+                remote.connector({"surface":"forge","plugin":"gmail","tool":"gmail.send_email",
+                    "arguments":{"to":"x@example.test","body":"password: fixture-value"},"purpose":"test"})
+            with self.assertRaises(PolicyHold):
+                remote.connector({"surface":"forge","plugin":"gmail","tool":"gmail.send_email",
+                    "arguments":{"to":"x@example.test","body":"https://example.test"},"purpose":"test"})
+            rows=(remote.STATE_DIR/"gmail-send-attempts.jsonl").read_text().splitlines()
+            self.assertEqual(len(rows),2)
+        finally: remote.STATE_DIR=old
+
+    def test_provider_held_draft_and_forward_are_fail_closed(self):
+        for tool,args in (("gmail.send_draft",{"draft_id":"D"}),
+                          ("gmail.forward_emails",{"message_id":"M","to":"x@example.test"})):
+            with self.subTest(tool=tool), self.assertRaises(PolicyHold) as held:
+                gateway.call("atelier","gmail",tool,args,"send mail",transport=lambda _:self.fail("transport reached"))
+            self.assertIn("provider_held_content_unavailable_for_inspection",held.exception.receipt["rules"])
+
+    def test_returned_mail_links_are_marked_without_being_opened(self):
+        fake_proc=mock.Mock();fake_proc.stdin=mock.Mock();fake_proc.stdout=mock.Mock()
+        replies=iter([{"result":{}},{"result":{"thread":{"id":"T"}}},
+                      {"result":{"structuredContent":{"body":"Read https://example.test/message"}}}])
+        with mock.patch.object(remote.Path,"is_file",return_value=True), \
+             mock.patch.object(remote.subprocess,"Popen",return_value=fake_proc), \
+             mock.patch.object(remote,"_rpc",side_effect=lambda *a,**k: next(replies)):
+            out=remote.connector({"surface":"lab","plugin":"gmail","tool":"gmail.read_email",
+                                  "arguments":{"message_id":"M"},"purpose":"read mail"})
+        self.assertEqual(out["link_gate"]["action"],"open_or_follow")
+        self.assertIn("https://example.test/message",out["link_gate"]["links"])
 
     def test_remote_side_reserves_only_two_send_attempts_per_chicago_day(self):
         from datetime import datetime

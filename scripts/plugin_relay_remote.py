@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
 from plugin_catalog import policy, skill_policy, instructions
+from plugin_send_guard import PolicyHold, outbound_findings, result_links
 
 CODEX = os.environ.get("VINTOS_CODEX_BIN", "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex")
 MAX_REQUEST = 128 * 1024
@@ -96,6 +97,19 @@ def connector(request):
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")
     if len(json.dumps(arguments, allow_nan=False).encode()) > MAX_REQUEST: raise ValueError("arguments too large")
     send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
+    outbound = entry.get("outbound_policy") or {}
+    if tool in outbound.get("tools", ()):
+        findings = outbound_findings(arguments)
+        if tool != "gmail.send_email":
+            findings["rules"] = sorted(set(findings["rules"] + ["provider_held_content_unavailable_for_inspection"]))
+        if findings["rules"]:
+            raise PolicyHold({"type":"CONFIDENTIAL_INFORMATION_BLOCKED", "state":"blocked",
+                              "request_sha256":findings["request_sha256"], "rules":findings["rules"]})
+        if findings["links"]:
+            approval = request.get("link_approval") or {}
+            if approval.get("request_sha256") != findings["request_sha256"] or not approval.get("hold_id"):
+                raise PolicyHold({"type":"LINK_APPROVAL_REQUIRED", "state":"awaiting_explicit_approval",
+                                  "request_sha256":findings["request_sha256"], "links":findings["links"]})
     if not Path(CODEX).is_file(): raise RuntimeError("Codex app-server binary is unavailable")
     proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True)
@@ -113,8 +127,12 @@ def connector(request):
         if result.get("isError"): raise RuntimeError("connected tool rejected the request")
         encoded = json.dumps(result, allow_nan=False).encode()
         if len(encoded) > MAX_RESPONSE: raise ValueError("connected tool response too large")
+        links = result_links(result) if plugin == "gmail" else []
         return {"ok":True, "plugin":plugin, "tool":tool, "surface":surface,
-                "visibility":entry["visibility"], "result":result}
+                "visibility":entry["visibility"], "result":result,
+                **({"link_gate":{"type":"LINK_APPROVAL_REQUIRED", "action":"open_or_follow",
+                                  "state":"awaiting_explicit_approval", "links":links}}
+                   if links else {})}
     finally:
         proc.terminate()
 
@@ -167,6 +185,8 @@ def main():
     raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
     if len(raw) > MAX_REQUEST: raise ValueError("request too large")
     try: response = handle(json.loads(raw))
+    except PolicyHold as exc:
+        response = {"ok":False, "error":type(exc).__name__, "detail":str(exc)[:240], "receipt":exc.receipt}
     except Exception as exc: response = {"ok":False, "error":type(exc).__name__, "detail":str(exc)[:240]}
     print(json.dumps(response, ensure_ascii=False, allow_nan=False))
 

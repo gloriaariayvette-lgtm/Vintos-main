@@ -17,7 +17,13 @@ PLUGINS = {
             "gmail.batch_read_email", "gmail.batch_read_email_threads", "gmail.read_attachment",
             "gmail.list_drafts", "gmail.create_draft", "gmail.update_draft", "gmail.send_email",
             "gmail.send_draft", "gmail.forward_emails")),
-        "limits": "Sending and forwarding share a hard limit of two attempts per America/Chicago day. Failed provider attempts count. Mailbox labels, archive, Trash and deletion remain unavailable to autonomous callers.",
+        "limits": "Sending and forwarding share a hard limit of two attempts per America/Chicago day. Failed provider attempts count. Direct send is autonomous after confidential-data inspection; provider-held drafts and forwards are held because their complete contents cannot be inspected. Mailbox labels, archive, Trash and deletion remain unavailable to autonomous callers.",
+        "outbound_policy": {
+            "tools": ("gmail.send_email", "gmail.send_draft", "gmail.forward_emails"),
+            "daily_attempt_limit": 2,
+            "confidential_information": "block",
+            "links": "exact-message human approval required",
+        },
     },
     "doordash": {
         "purpose": "Search deliverable groceries and build a reviewable grocery list.",
@@ -123,6 +129,8 @@ def instructions(surface=None):
             "tools": sorted(row.get("tools", ())),
             "tool_prefixes": list(row.get("prefixes", ())),
         }
+        if row.get("outbound_policy"):
+            connectors[name]["outbound_policy"] = row["outbound_policy"]
     skills = {}
     for name, row in SKILLS.items():
         if surface is not None and surface not in row["surfaces"]:
