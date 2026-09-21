@@ -1177,3 +1177,34 @@ project supplies their required inputs, and separately decide whether Proto exec
 hosted/local compute receive authority. Connector
 availability is not permission to write GitHub, purchase groceries or launch paid jobs. Gmail's
 two-attempt daily authority is explicit; mailbox cleanup remains a human-requested maintenance act.
+
+## 21 September — plugin relay guardrails and physical build proposals
+
+The account-backed relay is now on the designated deployment branch and in Aegis release
+`20260921-041146-f67c5c7`. Wants, Lab and Atelier use the installed gateway directly. The
+system Forge worker reaches the same policy through `vintos-plugin-gateway.service`, a
+loopback-only service owned by Gloria; Forge receives a dedicated gateway token and never
+receives the Mac SSH relay key. A harmless `github.get_profile` commissioning call returned a
+0600 receipt on the `forge` surface. The Aegis `--check` and deploying run each passed all 165
+isolated suites and staged 389 manifest files.
+
+Outbound Gmail direct sends retain the two-attempt daily cap. Secret values and credential
+patterns are blocked before transport with redacted typed receipts. URLs require a one-use
+approval bound to the exact message digest. Provider-held drafts and forwards remain held
+because their complete contents cannot be inspected before sending. URLs returned by read mail
+are surfaced as approval-required and are never opened or followed by the relay.
+
+A physical/external `physical_interaction` gap now produces a reviewable `hardware_proposal`:
+parts and rough cost, wiring, firmware sketch, existing-house reporting and acknowledgement,
+safety limits, tests and unknowns. It reaches the ordinary Forge proposal card for Gloria to
+accept or deny and grants no purchase or construction authority.
+
+Still open: the root-owned `atelier-forge-loop.service` bundle has not yet been promoted to this
+head. Its exact rollback-capable transaction is staged at
+`/home/gloria/.vintos/deploy/apply-vintos-forge-f67c5c7.sh`, but remote sudo requires Gloria's
+password. That same transaction must stop the worker, reconcile project
+`80666644ae904051ace541aae6cce223` / cycle `39efe77635714185a307c4c4346d2599`
+with the inspected no-effect evidence, install the bounded gateway unit wiring, and restart the
+worker. Until it runs, the active system worker still has the prior Forge bundle and that project
+remains `reconciliation_required` at $0. The wallet and Taskmarket remain intentionally
+undeployed.
