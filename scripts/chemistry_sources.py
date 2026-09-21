@@ -9,13 +9,26 @@ import hashlib
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
 import chemistry_lab as lab
-from lab_sources import Sources, AtlasProcess, collision_descriptor, followups
+from lab_sources import Sources, AtlasProcess, collision_descriptor, followups, receipt
 
 
 def configured_sources():
     cfg = lab.config()
     key_file = cfg.get('alphagenome_key_file')
     return Sources(atlas=AtlasProcess(key_file, cfg.get('alphagenome_python') or sys.executable) if key_file else None)
+
+
+def query_plugin(plugin, tool, arguments, purpose):
+    """Run one Lab-approved connected source and enter its result into Lab provenance."""
+    from plugin_gateway import call, load_receipt
+    outcome = call('lab', plugin, tool, arguments, purpose)
+    stored = load_receipt(outcome['receipt']['receipt_id'], 'lab')
+    result = receipt('plugin:'+plugin, {'tool':tool, 'arguments_sha256':outcome['receipt']['arguments_sha256']},
+                     stored['result'], metadata={'plugin_receipt_id':outcome['receipt']['receipt_id'],
+                     'coverage':'tool_defined', 'evidence':'connected_tool_output'})
+    lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
+    lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))
+    return {'plugin_receipt': outcome['receipt'], 'source_receipt': result}
 
 
 def query(spec, *, client=None, question=''):

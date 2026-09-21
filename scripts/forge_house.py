@@ -23,6 +23,12 @@ def reserve(proposal, attempt):
     return request('/api/build-reservation', {'proposal': proposal, 'attempt': attempt}).get('reserved') is True
 
 
+def plugin_query(plugin, tool, arguments, purpose):
+    """Forge-side explicit plugin operation; the caller supplies the real project purpose."""
+    from plugin_gateway import call
+    return call('forge', plugin, tool, arguments, purpose)
+
+
 def sync(inventory=None):
     import skill_forge as sf
     from forge_build import artifact_valid

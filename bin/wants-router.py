@@ -327,6 +327,16 @@ def _maybe_scar_unfulfilled(want):
 # a route or invents one. A capability added here is available to every reader on the next request.
 CAPABILITIES = [
     {
+        "keywords": ["check my email", "read email", "search email", "grocery list", "groceries", "github repository", "github issue", "github pull request"],
+        "action": "plugin_query",
+        "desc": "Use one explicitly named, policy-approved connected tool and preserve its receipt. Gmail and DoorDash are private read/search lanes; GitHub is read-only.",
+    },
+    {
+        "keywords": ["make a pdf", "create a pdf", "make a presentation", "create a presentation", "make a spreadsheet", "create a spreadsheet", "make a reusable template"],
+        "action": "plugin_skill",
+        "desc": "Create a PDF, presentation, spreadsheet or reusable template in a disposable account-backed skill session, then retain the verified artifact receipt.",
+    },
+    {
         "keywords": ["poem", "poetry", "sestina", "sestine", "villanelle", "haiku", "sonnet", "write verse", "write something", "express in words", "virelay", "ghazal", "pantoum", "terzanelle", "rondeau", "kyrielle", "triolet", "cinquain", "terza rima", "ode", "elegy", "lyric", "verse", "stanza", "couplet", "ballad", "aubade", "canzone", "madrigal", "ottava rima", "sapphic", "alcaic", "structured writing form", "poetic form"],
         "action": "write_poem",
         "desc": "Write a poem",
@@ -1529,6 +1539,13 @@ def tell_gloria(want_text, reasoning="", immediate=False):
 # with a log line, wrong types are coerced or rejected, a missing required key blocks the step
 # with a named cause instead of letting the adapter guess. Actions not listed take no params.
 PARAM_SCHEMAS = {
+    "plugin_query": {"plugin": {"type": "str", "required": True},
+                     "tool": {"type": "str", "required": True},
+                     "arguments": {"type": "dict", "required": True},
+                     "purpose": {"type": "str", "required": True}},
+    "plugin_skill": {"skill": {"type": "str", "required": True,
+                                "enum": ["pdf", "presentations", "spreadsheets", "template_creator"]},
+                     "instruction": {"type": "str", "required": True}},
     "read_memory":   {"target": {"type": "str", "required": False}, "n": {"type": "int", "required": False, "min": 1, "max": 50}},
     "introspect":    {"target": {"type": "str", "required": False}, "n": {"type": "int", "required": False, "min": 1, "max": 50}},
     "make_video":    {"duration": {"type": "int", "required": False, "min": 3, "max": 12},
@@ -1559,6 +1576,8 @@ def validate_step_params(action, params):
                 v = int(v)
                 if "min" in spec and v < spec["min"]: v = spec["min"]; problems.append("%s raised to min %s" % (k, spec["min"]))
                 if "max" in spec and v > spec["max"]: v = spec["max"]; problems.append("%s capped at max %s" % (k, spec["max"]))
+            elif t == "dict":
+                if not isinstance(v, dict): raise TypeError("object required")
             elif t == "str":
                 v = str(v).strip()
                 if "enum" in spec and v.lower() not in spec["enum"]:
@@ -1589,6 +1608,39 @@ ACTION_MAP = {
     "make_chart": make_chart,
     "write_poem": write_poem,
 }
+
+
+def plugin_query(want_text):
+    """Execute one already-planned connected read/prediction and return its receipt."""
+    try:
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}"))
+        sys.path.insert(0, SCRIPTS)
+        import plugin_gateway
+        result = plugin_gateway.call("wants", params["plugin"], params["tool"],
+                                     params["arguments"], params["purpose"])
+        return "Plugin receipt: %s\n%s" % (result["receipt"]["artifact"], result["summary"])
+    except Exception as exc:
+        log("  → plugin query held: %s" % str(exc)[:180])
+        return False
+
+
+ACTION_MAP["plugin_query"] = plugin_query
+
+
+def plugin_skill(want_text):
+    try:
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}"))
+        sys.path.insert(0, SCRIPTS)
+        import plugin_gateway
+        result = plugin_gateway.run_skill("wants", params["skill"], params["instruction"])
+        return "Skill receipt: %s\nFiles: %s\n%s" % (result["receipt"]["artifact"],
+            ", ".join(result["files"]), result["summary"][:600])
+    except Exception as exc:
+        log("  → plugin skill held: %s" % str(exc)[:180])
+        return False
+
+
+ACTION_MAP["plugin_skill"] = plugin_skill
 
 
 def creative_write(want_text):

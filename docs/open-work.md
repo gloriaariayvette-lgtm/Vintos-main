@@ -1141,3 +1141,20 @@ email account, inbox provider adapter and authorized external-send commissioning
 No email address was created and no third party was contacted by this change.
 Wallet and marketplace work remain parked. The local assessment is a planning
 judgment, not proof that every absent capability or equivalent tool was identified.
+
+## 20 September — account-backed plugin relay prepared locally
+
+The shared relay is implemented for Wants, Forge, Lab and Atelier. It uses an ephemeral Codex App
+Server thread on Eve's Mac for direct connector calls and retains hash-addressed receipts and private
+artifacts on Aegis. Policy is code, checked on both sides: Gmail is read-only; DoorDash is grocery
+search only; GitHub is read-only regardless of Eve's wider account authority; Tamarind, Proto,
+Inductive and Genomic Intelligence are bounded scientific discovery/prediction lanes. PDF,
+Presentations, Spreadsheets and Template Creator use disposable contextless skill runs. Plugin
+Management cannot alter Eve's account. BioNeMo is named but closed until its compute route and
+model-specific NVIDIA credentials are configured.
+
+This is local source and fixture validation only. It has not been deployed or commissioned on Aegis.
+Remaining: configure the restricted Mac SSH command on Aegis, run the full suite in both invocation
+modes, deploy, verify one harmless read-only receipt from each connected provider, and separately
+decide whether Proto execution and BioNeMo hosted/local compute receive authority. Connector
+availability is not permission to send mail, write GitHub, purchase groceries or launch paid jobs.

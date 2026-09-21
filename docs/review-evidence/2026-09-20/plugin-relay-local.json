@@ -1,0 +1,20 @@
+{
+  "date": "2026-09-20",
+  "deployment": false,
+  "account_probe": {
+    "route": "plugin_relay_remote.py -> ephemeral Codex App Server thread -> direct connected tool call",
+    "tool": "proto.workspace_info",
+    "surface": "lab",
+    "result": "success",
+    "modal_connected": true,
+    "huggingface_connected": true,
+    "tools_deployed": 0,
+    "local_modal_install_required_for_this_route": false,
+    "note": "Proto reports that executions use and bill the connected Modal workspace; execution is not enabled by the relay policy. Account identifiers and tokens are omitted."
+  },
+  "fixture_checks": {
+    "direct": "5/5",
+    "isolated": "5/5",
+    "network_or_live_home_access": false
+  }
+}
