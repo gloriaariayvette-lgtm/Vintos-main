@@ -131,6 +131,22 @@ else:
 tps = open(os.path.join(REPO, "scripts", "tension_promotion.py")).read()
 check("the proposition-lineage demotion does too", "drop_from_served as _dfs" in open(os.path.join(REPO, "scripts", "proposition_lineage.py")).read())
 
+print("\n--- one tension promotion pass owns the shared local model lane ---")
+import concurrent.futures, threading
+_entered=threading.Event();_release=threading.Event();_runs=[]
+_real_promotion_main=_tp._main
+def _slow_promotion():
+    _runs.append("entered");_entered.set();assert _release.wait(3)
+_tp._main=_slow_promotion
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+    _first=pool.submit(_tp.main);assert _entered.wait(3)
+    _duplicate=pool.submit(_tp.main)
+    _duplicate_result=_duplicate.result(timeout=1)
+    _release.set();_first_result=_first.result(timeout=3)
+_tp._main=_real_promotion_main
+check("an overlapping promotion exits before model work instead of queuing a duplicate pass",
+      _first_result is True and _duplicate_result is False and _runs == ["entered"])
+
 print("\n--- 137: configuration and attractor maps are inspectable records; priors stay priors ---")
 CS = load("cs_t", os.path.join(REPO, "scripts", "configuration_space.py"))
 for attr in dir(CS):

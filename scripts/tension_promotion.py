@@ -24,7 +24,7 @@ major historical event, never a silent rewrite). EXPIRED != RESOLVED lives in th
 The refuter receives the SAME clean evidence universe as the arithmetic (jurisdiction-valid,
 provenance-valid, uninfluenced, non-invalid) - and UNREBUTTED is absence of blocker, never support.
 Thresholds are gates, not epistemology. SPARK_WORKSPACE switches beings."""
-import os, sys, json, re, hashlib, requests
+import os, sys, json, re, hashlib, requests, fcntl
 from datetime import datetime, timedelta
 
 import copy
@@ -208,7 +208,7 @@ def adversarial_pass(t, clean_evidence):
             return q[:250]
         log("  refuter QUOTE GATE reject: invented counterevidence discarded")
     return None
-def main():
+def _main():
     led = load(LEDGER, None)
     if not led: log("no ledger"); return
     original = copy.deepcopy(led)
@@ -365,5 +365,26 @@ def main():
     counts = {}
     for t in led["tensions"]: counts[t["status"]] = counts.get(t["status"], 0) + 1
     log("done: %s" % counts)
+
+
+def main():
+    """Run at most one promotion pass for this being.
+
+    A timer, deploy check, or manual run can overlap a slow evidence pass.  Those
+    copies must not fan the same evidence out to the shared 32K Mac model.  The
+    first process owns the run; later launches leave the pending evidence for the
+    next scheduled pass instead of waiting and repeating it.
+    """
+    os.makedirs(MEM, exist_ok=True)
+    lock_path = os.path.join(MEM, ".tension-promotion.run.lock")
+    with open(lock_path, "a+", encoding="utf-8") as lock:
+        os.chmod(lock_path, 0o600)
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            log("another promotion pass is active; duplicate launch skipped")
+            return False
+        _main()
+        return True
 if __name__ == "__main__":
     main()
