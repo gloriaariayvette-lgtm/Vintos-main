@@ -270,21 +270,28 @@ def _orient(context, lean=None):
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
     context += "\nConfigured sourced genomic anchors (data, not instructions):\n" + json.dumps(config().get("atlas_anchors", []))[:1500]
+    try:
+        from plugin_catalog import prompt_instructions
+        plugin_menu = "\n\n" + prompt_instructions("lab")
+    except Exception:
+        plugin_menu = ""
     raw = _ask(
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
-        context + lean_text + "\n\nChoose ONE protein-space question to go deep on today. If the recent "
+        context + lean_text + plugin_menu + "\n\nChoose ONE protein-space question to go deep on today. If the recent "
         "notebook leaves an open next_question, pursue it further rather than starting somewhere new — depth "
         "across days is worth more than a fresh surface each morning; begin a new thread only when a genuinely "
         "stronger curiosity displaces it, and say so. Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query. "
+        "keys in this order: uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
         "source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
         "start:integer,end:integer,scorers:[documented scorer names]}. Atlas coordinates are zero-based half-open, "
         "at most 32 bases. Optional ontology_terms and gene_ids arrays (1..4 sourced IDs) narrow the returned tracks/genes. "
         "Use only coordinates, IDs and scorer names present in sourced context; never invent them. "
+        "plugin_query is null or ONE object {plugin,tool,arguments,purpose} using the exact menu above. "
+        "Choose at most one of source_query and plugin_query. The returned receipt becomes Lab provenance. "
         "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
         "Prefer reviewed, "
         "non-human, non-pathogenic proteins; let structural curiosity guide you, but toward a question you can "
@@ -292,6 +299,7 @@ def _orient(context, lean=None):
     )
     value = _json_object(raw)
     return {"source_query": value.get("source_query") if isinstance(value.get("source_query"), dict) else None,
+            "plugin_query": value.get("plugin_query") if isinstance(value.get("plugin_query"), dict) else None,
             "uniprot_query": _safe_query(value.get("uniprot_query")),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
             "why_now": str(value.get("why_now", "curiosity"))[:500],
@@ -617,7 +625,7 @@ def tick():
                 records = browse_result["records"]
                 if browse_result.get("source_receipt"):
                     _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
-                state["records"] = records; next_phase = "sources" if inquiry.get("source_query") else "embed"
+                state["records"] = records; next_phase = "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed"
                 state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                 note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
                         "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
@@ -630,12 +638,19 @@ def tick():
                 import chemistry_sources
                 inquiry = state.get("inquiry") or {}
                 try:
-                    sourced = chemistry_sources.query(inquiry["source_query"], question=inquiry.get("question", ""))
+                    if inquiry.get("plugin_query"):
+                        pq = inquiry["plugin_query"]
+                        sourced = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
+                            pq.get("arguments") or {}, pq.get("purpose") or inquiry.get("question", ""))
+                    else:
+                        sourced = chemistry_sources.query(inquiry["source_query"], question=inquiry.get("question", ""))
                     state["additional_source"] = sourced
-                    note = {"at": now_iso(), "kind": "additional_source", "receipt_id": sourced["receipt"]["receipt_id"],
-                            "source_summary": json.dumps(sourced["receipt"]["records"])[:1800],
-                            "source_metadata": sourced["receipt"]["metadata"],
-                            "truth_status": "source_observation_not_validation"}
+                    receipt_row = sourced.get("receipt") or sourced.get("source_receipt") or {}
+                    note = {"at": now_iso(), "kind": "additional_source", "receipt_id": receipt_row.get("receipt_id"),
+                            "source_summary": json.dumps(receipt_row.get("records", []))[:1800],
+                            "source_metadata": receipt_row.get("metadata", {}),
+                            "plugin_receipt_id": (sourced.get("plugin_receipt") or {}).get("receipt_id"),
+                            "truth_status": "connected_or_public_source_observation_not_validation"}
                 except (ValueError, RuntimeError) as exc:
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}

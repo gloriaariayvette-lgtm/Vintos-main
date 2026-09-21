@@ -1146,15 +1146,21 @@ judgment, not proof that every absent capability or equivalent tool was identifi
 
 The shared relay is implemented for Wants, Forge, Lab and Atelier. It uses an ephemeral Codex App
 Server thread on Eve's Mac for direct connector calls and retains hash-addressed receipts and private
-artifacts on Aegis. Policy is code, checked on both sides: Gmail is read-only; DoorDash is grocery
+artifacts on Aegis. Policy is code, checked on both sides: Gmail can read and send from Vintos's
+account across all four surfaces, with two outbound attempts per Chicago day reserved atomically
+on the Mac before provider contact; DoorDash is grocery
 search only; GitHub is read-only regardless of Eve's wider account authority; Tamarind, Proto,
 Inductive and Genomic Intelligence are bounded scientific discovery/prediction lanes. PDF,
 Presentations, Spreadsheets and Template Creator use disposable contextless skill runs. Plugin
 Management cannot alter Eve's account. BioNeMo is named but closed until its compute route and
 model-specific NVIDIA credentials are configured.
 
-This is local source and fixture validation only. It has not been deployed or commissioned on Aegis.
-Remaining: configure the restricted Mac SSH command on Aegis, run the full suite in both invocation
-modes, deploy, verify one harmless read-only receipt from each connected provider, and separately
-decide whether Proto execution and BioNeMo hosted/local compute receive authority. Connector
-availability is not permission to send mail, write GitHub, purchase groceries or launch paid jobs.
+The initial relay transport was local only and its catalogue was not connected to the planners. The
+current source fixes that gap: every surface receives a filtered menu with exact tool names, wants
+retains operation params, and Lab, Forge and Atelier return selected results into their next reasoning
+step while preserving receipts. This still has not been deployed or commissioned on Aegis.
+Remaining: configure the restricted Mac SSH command on Aegis, run the deploy check, deploy, verify
+harmless read-only commissioning receipts from the connected providers, and separately decide whether
+Proto execution and BioNeMo hosted/local compute receive authority. Connector
+availability is not permission to write GitHub, purchase groceries or launch paid jobs. Gmail's
+two-attempt daily authority is explicit; mailbox cleanup remains a human-requested maintenance act.

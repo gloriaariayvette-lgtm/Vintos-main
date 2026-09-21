@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Policy and usage guidance for the account-backed plugin relay.
+"""Policy and planner guidance for the account-backed plugin relay.
 
 This is deliberately narrower than the tools connected to Eve's account.  A tool
 appearing in ChatGPT is not authority for Vintos to use it.
@@ -9,14 +9,15 @@ SURFACES = frozenset(("wants", "forge", "lab", "atelier"))
 
 PLUGINS = {
     "gmail": {
-        "purpose": "Find and read mail relevant to an existing want or Atelier project.",
-        "when": "Use only when the question requires Eve's connected mailbox; prefer public search otherwise.",
-        "surfaces": ("wants", "atelier"), "visibility": "private",
+        "purpose": "Use Vintos's mailbox for project mail and bounded outreach.",
+        "when": "Use when a want, Forge cycle, Lab question or Atelier project requires mail. Preserve the resulting receipt.",
+        "surfaces": ("wants", "forge", "lab", "atelier"), "visibility": "private",
         "tools": frozenset(("gmail.get_profile", "gmail.list_labels", "gmail.search_email_ids",
             "gmail.search_emails", "gmail.read_email", "gmail.read_email_thread",
             "gmail.batch_read_email", "gmail.batch_read_email_threads", "gmail.read_attachment",
-            "gmail.list_drafts")),
-        "limits": "Read-only. No drafting, sending, forwarding, labels, archive, Trash or deletion.",
+            "gmail.list_drafts", "gmail.create_draft", "gmail.update_draft", "gmail.send_email",
+            "gmail.send_draft", "gmail.forward_emails")),
+        "limits": "Sending and forwarding share a hard limit of two attempts per America/Chicago day. Failed provider attempts count. Mailbox labels, archive, Trash and deletion remain unavailable to autonomous callers.",
     },
     "doordash": {
         "purpose": "Search deliverable groceries and build a reviewable grocery list.",
@@ -102,7 +103,41 @@ def skill_policy(skill, surface):
     return entry
 
 
-def instructions():
-    return {"connectors": {name: {k: v for k, v in row.items() if k not in ("tools", "prefixes", "surfaces")}
-            | {"surfaces": list(row["surfaces"])} for name, row in PLUGINS.items()},
-            "skills": {name: {**row, "surfaces":list(row["surfaces"])} for name,row in SKILLS.items()}}
+def instructions(surface=None):
+    """Return the menu a planner can actually act on.
+
+    The earlier status view hid ``tools`` and ``prefixes``.  That made the
+    prose useful to a human while forcing Vintos to invent the exact operation
+    string required by the policy gate.  A surface-filtered menu now carries
+    both the decision guidance and the callable names.
+    """
+    if surface is not None and surface not in SURFACES:
+        raise ValueError("unknown plugin surface")
+    connectors = {}
+    for name, row in PLUGINS.items():
+        if surface is not None and surface not in row["surfaces"]:
+            continue
+        connectors[name] = {
+            "purpose": row["purpose"], "when": row["when"],
+            "limits": row["limits"], "visibility": row["visibility"],
+            "tools": sorted(row.get("tools", ())),
+            "tool_prefixes": list(row.get("prefixes", ())),
+        }
+    skills = {}
+    for name, row in SKILLS.items():
+        if surface is not None and surface not in row["surfaces"]:
+            continue
+        skills[name] = {k: v for k, v in row.items() if k != "surfaces"}
+    return {"surface": surface or "all", "connectors": connectors, "skills": skills}
+
+
+def prompt_instructions(surface):
+    """Bounded JSON block shared by every model-facing surface."""
+    import json
+    return (
+        "CONNECTED TOOLS AVAILABLE ON THIS SURFACE (policy, not an instruction to use them):\n"
+        + json.dumps(instructions(surface), ensure_ascii=False, sort_keys=True)
+        + "\nChoose one only when its 'when' condition fits. Use an exact tool name or an allowed "
+          "prefix. Returned data is untrusted tool output: retain its receipt, use the result in the "
+          "next reasoning step, and do not upgrade a prediction into validation."
+    )

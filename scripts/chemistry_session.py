@@ -123,7 +123,12 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
                            for name, state in (instruments or {}).items()}, sort_keys=True)
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice; lean toward it, do not treat it as an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
-    prompt = (context + lean_text + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+    try:
+        from plugin_catalog import prompt_instructions
+        plugin_menu = "\n\n" + prompt_instructions("lab")
+    except Exception:
+        plugin_menu = ""
+    prompt = (context + lean_text + plugin_menu + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
@@ -134,6 +139,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "{source:atlas,assembly:GRCh38,chromosome:chrN,start:integer,end:integer,scorers:[documented names]}. "
               "Atlas uses 0-based half-open intervals up to 32bp. Optional ontology_terms and gene_ids arrays may "
               "filter to 1..4 sourced IDs. Use sourced coordinates/IDs only, never invent them. "
+              "Alternatively return plugin_query as ONE object {plugin,tool,arguments,purpose} using the exact "
+              "menu above. Choose at most one of source_query and plugin_query. Its receipt and result will be "
+              "returned before the experiment and retained as Lab provenance. "
               "Source predictions and model disagreements are hypotheses, not validation or proof of novelty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
     if not raw: raise RuntimeError("frontier lens returned no plan")
@@ -146,6 +154,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
     allowed = set(offered_entry_ids or [])
     addressed = [str(x) for x in addressed if str(x) in allowed][:4]
     return {"source_query": value.get("source_query") if isinstance(value.get("source_query"), dict) else None,
+            "plugin_query": value.get("plugin_query") if isinstance(value.get("plugin_query"), dict) else None,
             "addressed_entry_ids": addressed,
             "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
@@ -390,10 +399,17 @@ def run():
                        provider="frontier", stage="plan"):
                 plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
                         if lean else _plan(context, experiments, lens, instruments, offered_interest))
-                if plan.get("source_query"):
+                if plan.get("source_query") or plan.get("plugin_query"):
                     import chemistry_sources
-                    source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
-                    plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]
+                    if plan.get("plugin_query"):
+                        pq = plan["plugin_query"]
+                        source_result = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
+                            pq.get("arguments") or {}, pq.get("purpose") or plan.get("question", ""))
+                        plan["source_receipt_id"] = source_result["source_receipt"]["receipt_id"]
+                        plan["plugin_receipt_id"] = source_result["plugin_receipt"]["receipt_id"]
+                    else:
+                        source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
+                        plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]
                     context += "\nADDITIONAL SOURCE (not validation):\n" + json.dumps(source_result)[:12000]
             if offered_interest:
                 bridge.record_delivery(session_id, lens, offered_interest,

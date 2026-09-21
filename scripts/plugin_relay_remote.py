@@ -7,11 +7,15 @@ no model turn for connector calls.  Authentication remains in the Mac Codex home
 import json
 import os
 import base64
+import fcntl
+import hashlib
 from pathlib import Path
 import select
 import subprocess
 import sys
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
@@ -20,6 +24,56 @@ from plugin_catalog import policy, skill_policy, instructions
 CODEX = os.environ.get("VINTOS_CODEX_BIN", "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex")
 MAX_REQUEST = 128 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
+SEND_TOOLS = frozenset(("gmail.send_email", "gmail.send_draft", "gmail.forward_emails"))
+SEND_LIMIT = 2
+SEND_ZONE = ZoneInfo("America/Chicago")
+STATE_DIR = Path(os.environ.get("VINTOS_PLUGIN_RELAY_STATE", "~/.codex/vintos-plugin-relay")).expanduser()
+
+
+def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
+    """Reserve one of the two daily outbound attempts before contacting Gmail.
+
+    Reservations are append-only and count even if the provider later fails.  The
+    lock makes the limit authoritative when several Forge/Lab calls arrive at once.
+    Message content and recipients are represented only by a digest.
+    """
+    if tool not in SEND_TOOLS:
+        return None
+    moment = now or datetime.now(SEND_ZONE)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=SEND_ZONE)
+    moment = moment.astimezone(SEND_ZONE)
+    root = Path(state_dir) if state_dir is not None else STATE_DIR
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(root, 0o700)
+    ledger = root / "gmail-send-attempts.jsonl"
+    lock_path = root / "gmail-send-attempts.lock"
+    day = moment.date().isoformat()
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        used = 0
+        if ledger.exists():
+            with ledger.open(encoding="utf-8") as rows:
+                for line in rows:
+                    try:
+                        row = json.loads(line)
+                    except (ValueError, TypeError):
+                        continue
+                    if row.get("day") == day and row.get("event") == "reserved":
+                        used += 1
+        if used >= SEND_LIMIT:
+            raise PermissionError("Gmail daily send limit reached (2 attempts per America/Chicago day)")
+        digest = hashlib.sha256(json.dumps(arguments, sort_keys=True, separators=(",", ":"),
+                                                   ensure_ascii=False).encode()).hexdigest()
+        row = {"event":"reserved", "day":day, "at":moment.isoformat(), "tool":tool,
+               "request_sha256":digest, "purpose_sha256":hashlib.sha256(purpose.encode()).hexdigest()}
+        with ledger.open("a", encoding="utf-8") as rows:
+            os.chmod(ledger, 0o600)
+            rows.write(json.dumps(row, sort_keys=True) + "\n")
+            rows.flush()
+            os.fsync(rows.fileno())
+        return {"day":day, "used":used + 1, "limit":SEND_LIMIT}
 
 
 def _rpc(proc, ident, method, params, timeout=60):
@@ -41,6 +95,7 @@ def connector(request):
     arguments = request.get("arguments") or {}
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")
     if len(json.dumps(arguments, allow_nan=False).encode()) > MAX_REQUEST: raise ValueError("arguments too large")
+    send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
     if not Path(CODEX).is_file(): raise RuntimeError("Codex app-server binary is unavailable")
     proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True)

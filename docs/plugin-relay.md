@@ -18,7 +18,7 @@ DoorDash outputs remain readable only by the surface that requested them.
 
 | Capability | Where and when | Initial authority |
 |---|---|---|
-| Gmail | Wants or Atelier, when an existing question requires Eve's connected mailbox | Search/read only. No draft, send, forward, labels, archive or deletion. |
+| Gmail | Any surface, when an existing question or project requires Vintos's mailbox | Search/read, drafts and outbound mail. Send, send-draft and forward share an authoritative limit of two attempts per Chicago day; failed attempts count. Labels, archive and deletion remain closed to autonomous callers. |
 | DoorDash | Wants or Atelier, for a concrete grocery list | Grocery search/list only. No restaurant ordering; no relay checkout. |
 | GitHub | All four surfaces, for repository and review evidence | Read only even though Eve's connection can write. |
 | Tamarind | Lab, Forge or Atelier, after scientific input and purpose are explicit | Catalogue, validation, estimates and existing-result retrieval. No submissions or uploads. |
@@ -32,7 +32,17 @@ DoorDash outputs remain readable only by the surface that requested them.
 
 Connector policy lives in `scripts/plugin_catalog.py`, rather than in prompts. Tool names outside
 the allowlist fail before SSH. The remote side repeats the policy check. Purchases, external
-messages, GitHub changes, account changes and paid/deployed scientific jobs are unavailable.
+GitHub changes, account changes and paid/deployed scientific jobs are unavailable. Gmail outbound
+authority is the narrow exception: the Mac-side relay reserves an attempt in a locked, mode-0600
+ledger before it contacts Gmail, so concurrent callers and provider failures cannot evade the limit.
+
+Each decision surface receives only its own filtered catalogue, including purpose, when-to-use,
+limits and exact callable names. Wants retains the selected operation and arguments in step params.
+Lab records connected results in its source ledger and collision adapter. Forge permits one selected
+connector call per cycle and requires the final artifact to reason over the returned receipt. Atelier
+permits one call per sealed visit, retains the full result as a project artifact, and returns the data
+to Vintos before he writes the piece or handoff. A tool result is always marked as provider output,
+not independent validation.
 
 ## Configuration
 

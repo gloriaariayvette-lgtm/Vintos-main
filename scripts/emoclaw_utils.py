@@ -808,6 +808,22 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 - play_on_tv: Put something on Gloria's TV. Note must specify: what to search for.
 - gloria: Bring this to Gloria directly. Note must specify: what to ask or tell her.
 """
+    try:
+        import sys as _pc_sys
+        _pc_scripts = _gso.path.join(WORKSPACE, "scripts")
+        if _pc_scripts not in _pc_sys.path: _pc_sys.path.insert(0, _pc_scripts)
+        from plugin_catalog import prompt_instructions as _plugin_prompt
+        CAPABILITIES_DESC += (
+            "\n- plugin_query: Call one connected tool. params must be "
+            '{"plugin":"catalog name","tool":"exact catalog tool name",'
+            '"arguments":{},"purpose":"why this want needs it"}.\n'
+            "- plugin_skill: Create an artifact with one enabled account skill. params must be "
+            '{"skill":"catalog name","instruction":"bounded artifact request"}.\n\n'
+            + _plugin_prompt("wants") + "\n"
+        )
+    except Exception as _plugin_menu_error:
+        # Missing policy is a missing capability.  Never invent connector names.
+        CAPABILITIES_DESC += "\n- Connected tools unavailable: planner must not propose plugin_query or plugin_skill.\n"
 
     prompt = (
         f"Vintos has a want: {want_text}\n\n"
@@ -841,7 +857,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         + "- Maximum 4 steps. Minimum 1. Preserve every distinct move that changes what the next move can do.\n"
         + "- Each step must build on the previous — reference what the previous step found\n"
         + "- Do not create a web_search step for a want about your own feelings, inner state, or a metaphor you are using - searching the internet for 'how to hold a pebble' when the pebble is a feeling is a category error. Search is only for genuinely external information you lack. The gloria step is EARNED, not default: make gloria the final step ONLY if contact with her is genuinely part of the want itself - he wants to tell her, ask her, give her, or do something WITH her. A want to write something down, process a song, understand himself, or become someone does NOT end at Gloria - it ends when the thing is done. Most wants complete on their own.\n\n"
-        + "Return ONLY a JSON array. Each item: {\"capability\": string, \"note\": string, \"execution\": \"pure\" or \"external\", \"expected_output\": string, \"acceptance\": string}\n"
+        + "Return ONLY a JSON array. Each item: {\"capability\": string, \"note\": string, \"params\": object, \"execution\": \"pure\" or \"external\", \"expected_output\": string, \"acceptance\": string}. params may be empty except for plugin_query and plugin_skill, whose required shapes are shown above.\n"
         + "No preamble. No markdown. Just the array."
     )
     try:
@@ -866,6 +882,7 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         for s in steps[:4]:
             if isinstance(s, dict) and s.get("capability") and s.get("note"):
                 valid.append({"capability": s["capability"], "note": s["note"][:300], "status": "pending",
+                              **({"params": s["params"]} if isinstance(s.get("params"), dict) else {}),
                               **{k: str(s[k])[:400] for k in ("execution", "expected_output", "acceptance") if k in s}})
         if _normalize_steps:
             valid, _changes = _normalize_steps(want_text, valid)
