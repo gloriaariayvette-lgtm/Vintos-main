@@ -11,6 +11,9 @@ ExecStart=/usr/bin/python3 /home/atelier/forge-loop/forge_loop_runtime.py --conf
 Restart=on-failure
 RestartSec=5
 UMask=0077
+LoadCredential=plugin-gateway-token:/home/gloria/.config/vintos/plugin-gateway-token
+Environment=VINTOS_PLUGIN_GATEWAY_URL=http://127.0.0.1:8624/call
+Environment=VINTOS_PLUGIN_GATEWAY_TOKEN=%d/plugin-gateway-token
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

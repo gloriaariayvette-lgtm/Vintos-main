@@ -18,6 +18,7 @@ import atelier_plugin
 import plugin_relay_remote as remote
 from plugin_send_guard import PolicyHold
 import forge_loop_runtime
+import plugin_gateway_service
 
 
 class PluginGatewayTests(unittest.TestCase):
@@ -144,6 +145,51 @@ class PluginGatewayTests(unittest.TestCase):
         self.assertIn("forge",catalog.PLUGINS["github"]["surfaces"])
         self.assertIn("lab",catalog.PLUGINS["github"]["surfaces"])
         self.assertIn("atelier",catalog.PLUGINS["github"]["surfaces"])
+
+    def test_system_forge_bundle_uses_bounded_loopback_gateway(self):
+        from pathlib import Path
+        bundle=set(Path(ROOT,"scripts","forge-loop-files.txt").read_text().splitlines())
+        self.assertTrue({"plugin_catalog.py","forge_house.py"} <= bundle)
+        unit=Path(ROOT,"broker","atelier-forge-loop.service").read_text()
+        self.assertIn("LoadCredential=plugin-gateway-token:",unit)
+        self.assertIn("VINTOS_PLUGIN_GATEWAY_URL=http://127.0.0.1:8624/call",unit)
+        self.assertIn("VINTOS_PLUGIN_GATEWAY_TOKEN=%d/plugin-gateway-token",unit)
+        self.assertNotIn("plugin-relay-identity",unit)
+        gateway_unit=Path(ROOT,"broker","vintos-plugin-gateway.service").read_text()
+        service_source=Path(ROOT,"scripts","plugin_gateway_service.py").read_text()
+        self.assertIn('make_server("127.0.0.1", 8624',service_source)
+        self.assertIn("ProtectHome=read-only",gateway_unit)
+
+    def test_loopback_gateway_forces_forge_surface_and_requires_its_token(self):
+        import io
+        seen={}
+        def caller(*args):
+            seen['args']=args
+            return {'ok':True,'receipt':{'receipt_id':'c'*64},'summary':'kept'}
+        api=plugin_gateway_service.API('t'*40,caller=caller)
+        body=json.dumps({'plugin':'github','tool':'github.get_profile','arguments':{},'purpose':'ground report'}).encode()
+        def invoke(token):
+            status=[]
+            out=api({'PATH_INFO':'/call','REQUEST_METHOD':'POST','HTTP_AUTHORIZATION':'Bearer '+token,
+                     'CONTENT_LENGTH':str(len(body)),'wsgi.input':io.BytesIO(body)},lambda s,h:status.append(s))
+            return int(status[0].split()[0]),json.loads(b''.join(out))
+        self.assertEqual(invoke('wrong')[0],403)
+        self.assertEqual(invoke('t'*40)[0],200)
+        self.assertEqual(seen['args'][0],'forge')
+
+    def test_system_forge_calls_loopback_gateway_without_relay_key(self):
+        token=__import__('pathlib').Path(self.tmp.name,'gateway-token');token.write_text('g'*40);os.chmod(token,0o600)
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            def read(self,n): return json.dumps({'ok':True,'receipt':{'receipt_id':'d'*64},'summary':'profile'}).encode()
+        seen={}
+        def transport(req,timeout): seen['req']=req;return Response()
+        with mock.patch.dict(os.environ,{'VINTOS_PLUGIN_GATEWAY_URL':'http://127.0.0.1:8624/call',
+                                        'VINTOS_PLUGIN_GATEWAY_TOKEN':str(token)}), \
+             mock.patch.object(forge_house,'open_request',side_effect=transport):
+            out=forge_house.plugin_query('github','github.get_profile',{},'ground report')
+        self.assertTrue(out['ok']);self.assertEqual(seen['req'].get_header('Authorization'),'Bearer '+'g'*40)
 
     def test_each_planner_gets_a_filtered_menu_with_exact_tool_names(self):
         wants=catalog.instructions("wants")

@@ -50,6 +50,10 @@ REVIEW_UNIT_DST="$HOME/.config/systemd/user/$REVIEW_UNIT_NAME.service"
 CHEM_UNIT_NAME="vintos-chemistry-lab"
 CHEM_UNIT_SRC="$SRC/broker/$CHEM_UNIT_NAME.service"
 CHEM_UNIT_DST="$HOME/.config/systemd/user/$CHEM_UNIT_NAME.service"
+PLUGIN_GATEWAY_UNIT_NAME="vintos-plugin-gateway"
+PLUGIN_GATEWAY_UNIT_SRC="$SRC/broker/$PLUGIN_GATEWAY_UNIT_NAME.service"
+PLUGIN_GATEWAY_UNIT_DST="$HOME/.config/systemd/user/$PLUGIN_GATEWAY_UNIT_NAME.service"
+PLUGIN_GATEWAY_TOKEN="$HOME/.config/vintos/plugin-gateway-token"
 CHEM_SESSION_NAME="vintos-chemistry-session"
 CHEM_SESSION_SERVICE_SRC="$SRC/broker/$CHEM_SESSION_NAME.service"; CHEM_SESSION_SERVICE_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.service"
 CHEM_SESSION_TIMER_SRC="$SRC/broker/$CHEM_SESSION_NAME.timer"; CHEM_SESSION_TIMER_DST="$HOME/.config/systemd/user/$CHEM_SESSION_NAME.timer"
@@ -108,7 +112,7 @@ SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still o
 SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from correctness, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_digest.py"   # daily Chemistry Lab receipt in inner life, separate from the Admission Lab, 2026-09-13
-SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
+SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_evo2.py"   # read-only Evo 2 comparative likelihood lane, 2026-09-13
 SCRIPTS="$SCRIPTS aegis-gemma-load.sh"   # exact Q4_0 Aegis Gemma reload contract
@@ -174,7 +178,7 @@ BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/cha
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
-            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
+            printf 'broker/%s\n' broker.py stratagem_store.py "$UNIT_NAME.service" "$REVIEW_UNIT_NAME.service" "$CHEM_UNIT_NAME.service" "$PLUGIN_GATEWAY_UNIT_NAME.service" "$CHEM_SESSION_NAME.service" "$CHEM_SESSION_NAME.timer" "$SOMATIC_NAME.service" "$SOMATIC_NAME.timer"
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             true)"
@@ -537,6 +541,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     [ -f "$ROBOT_UNIT_SRC" ] && say "  would install + restart (user)   $ROBOT_UNIT_NAME -> $ROBOT_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $REVIEW_UNIT_NAME -> $REVIEW_UNIT_DST, then confirm Id/ActiveState/MainPID"
     say "  would install + restart (user)   $CHEM_UNIT_NAME -> $CHEM_UNIT_DST (disabled in its own config until Tune enables it)"
+    say "  would install + restart (user)   $PLUGIN_GATEWAY_UNIT_NAME -> $PLUGIN_GATEWAY_UNIT_DST, loopback only"
     say "  would install + enable (user)    $CHEM_SESSION_NAME.timer -> $CHEM_SESSION_TIMER_DST"
     say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
@@ -587,7 +592,7 @@ else
     printf '# no %s existed before this deploy; to undo the unit: sudo systemctl disable --now %s && sudo rm -f %s\n' \
            "$UNIT_DST" "$UNIT_NAME" "$UNIT_DST" >> "$BACKUP/restore.sh"
 fi
-for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME"; do
+for u in "$ROBOT_UNIT_NAME" "$REVIEW_UNIT_NAME" "$CHEM_UNIT_NAME" "$PLUGIN_GATEWAY_UNIT_NAME"; do
     ud="$HOME/.config/systemd/user/$u.service"
     if [ -f "$ud" ] && cp -p "$ud" "$BACKUP/$u.service.pre-deploy" 2>/dev/null; then
         printf 'install -m 644 "$(dirname "$0")/%s.service.pre-deploy" %q && systemctl --user daemon-reload && systemctl --user restart %s\n' \
@@ -739,6 +744,30 @@ if [ -f "$ROBOT_UNIT_SRC" ]; then
     else
         flag "$ROBOT_UNIT_NAME installed but did not start - run: systemctl --user enable $ROBOT_UNIT_NAME && systemctl --user restart $ROBOT_UNIT_NAME"
     fi
+fi
+say
+
+say "== bounded plugin gateway =="
+mkdir -p "$(dirname -- "$PLUGIN_GATEWAY_TOKEN")" "$(dirname -- "$PLUGIN_GATEWAY_UNIT_DST")"
+chmod 700 "$(dirname -- "$PLUGIN_GATEWAY_TOKEN")"
+if [ ! -f "$PLUGIN_GATEWAY_TOKEN" ]; then
+    _gateway_tmp="$PLUGIN_GATEWAY_TOKEN.tmp.$$"
+    "$PYCHECK" -c 'import secrets;print(secrets.token_urlsafe(48))' > "$_gateway_tmp" \
+        || die "plugin gateway token generation failed"
+    chmod 600 "$_gateway_tmp"; mv "$_gateway_tmp" "$PLUGIN_GATEWAY_TOKEN"
+fi
+[ "$(stat -c '%a' "$PLUGIN_GATEWAY_TOKEN" 2>/dev/null || stat -f '%Lp' "$PLUGIN_GATEWAY_TOKEN")" = "600" ] \
+    || die "plugin gateway token must have mode 0600"
+install -m 644 "$(staged "$PLUGIN_GATEWAY_UNIT_SRC")" "$PLUGIN_GATEWAY_UNIT_DST" \
+    || die "failed to install $PLUGIN_GATEWAY_UNIT_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$PLUGIN_GATEWAY_UNIT_NAME" >/dev/null 2>&1 \
+   && systemctl --user restart "$PLUGIN_GATEWAY_UNIT_NAME" >/dev/null 2>&1; then
+    sleep 1
+    confirm_unit --user "$PLUGIN_GATEWAY_UNIT_NAME"
+    wait_http "$PLUGIN_GATEWAY_UNIT_NAME" http://127.0.0.1:8624/health 20
+else
+    flag "$PLUGIN_GATEWAY_UNIT_NAME installed but did not start"
 fi
 say
 
@@ -976,6 +1005,7 @@ else
 fi
 say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$REVIEW_UNIT_NAME" 2>/dev/null || echo disabled)"
 say "  chemistry:    $(systemctl --user is-active "$CHEM_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_UNIT_NAME" 2>/dev/null || echo disabled)"
+say "  plugin gate:  $(systemctl --user is-active "$PLUGIN_GATEWAY_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$PLUGIN_GATEWAY_UNIT_NAME" 2>/dev/null || echo disabled)"
 say "  chem session: $(systemctl --user is-active "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo disabled)"
 say
 # review 18/19: the release record - what this deploy installed (with hashes), from which commit,
@@ -997,7 +1027,7 @@ def unit(u, scope):
     except Exception: return "unknown"
 rec = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_rev": os.environ["GIT_REV"], "files": rows,
        "services": {"vintos-server": unit(os.environ.get("HOUSE") or "vintos-server", ["--user"]), "vintos-robot-bridge": unit("vintos-robot-bridge", ["--user"]),
-                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-chemistry-lab": unit("vintos-chemistry-lab", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
+                    "vintos-self-review": unit("vintos-self-review", ["--user"]), "vintos-chemistry-lab": unit("vintos-chemistry-lab", ["--user"]), "vintos-plugin-gateway": unit("vintos-plugin-gateway", ["--user"]), "vintos-emoclaw": unit("vintos-emoclaw", ["--user"]), "vintos-atelier": unit("vintos-atelier", []),
                     # a timer, not a service: its oneshot is inactive between firings, so the timer is what is recorded
                     "vintos-skill-surf.timer": unit("vintos-skill-surf.timer", ["--user"]),
                     "vintos-chemistry-session.timer": unit("vintos-chemistry-session.timer", ["--user"])},

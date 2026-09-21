@@ -1,0 +1,21 @@
+[Unit]
+Description=Vintos bounded plugin gateway for the Forge worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/plugin_gateway_service.py
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
+
+[Install]
+WantedBy=default.target

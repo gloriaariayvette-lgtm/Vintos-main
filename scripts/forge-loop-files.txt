@@ -7,3 +7,5 @@ compute_admission.py
 request_trace.py
 store_guard.py
 lab_http.py
+plugin_catalog.py
+forge_house.py
