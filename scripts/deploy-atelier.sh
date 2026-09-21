@@ -103,6 +103,7 @@ SCRIPTS="$SCRIPTS compute_admission.py compute-report.py store_compat.py bilater
 SCRIPTS="$SCRIPTS chemistry_lab.py chemistry_esmc.py chemistry_mac.py chemistry_session.py chemistry_structure.py"   # visible Chemistry Lab; separate from Atelier, 2026-09-12
 SCRIPTS="$SCRIPTS chemistry_grade.py"   # Lab correctness grading: ran and good are different facts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_probe.py chemistry_instrument_probe.py"   # Lab instrument receipts: installation is not availability, 2026-09-13
+SCRIPTS="$SCRIPTS residual_shadow.py"   # prospective exact-input EmoClaw receipts; residual inference remains offline
 SCRIPTS="$SCRIPTS chemistry_reading.py"   # the reading an experiment is still owed, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from correctness, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13

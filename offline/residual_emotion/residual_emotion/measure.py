@@ -19,7 +19,10 @@ def measure(dump: Path, direction_dir: Path) -> dict[str, Any]:
     matrix = read_residual(dump)
     layer = int(values["layer"])
     vector = values["direction"].astype(np.float64)
-    raw = float(matrix[layer] @ vector)
+    with np.errstate(all="ignore"):
+        raw = float(matrix[layer] @ vector)
+    if not np.isfinite(raw):
+        raise ValueError(f"non-finite projection for {dump} against {direction_dir}")
     mean = float(values["control_mean"])
     std = float(values["control_std"])
     return {

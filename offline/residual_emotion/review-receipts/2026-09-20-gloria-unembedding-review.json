@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "reviewer": "Gloria",
+  "reviewed_at": "2026-09-20",
+  "scope": "top ten promoted tokens for each of the eleven validated content directions",
+  "verdict": "pass",
+  "truth_status": "named_human_semantic_review_of_exact_quantized_unembedding",
+  "directions": {
+    "Arousal": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Connection": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Curiosity": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Desire": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Dominance": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Groundedness": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Playfulness": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Safety": {
+      "verdict": "pass",
+      "dataset_version": "reviewed-safety-v2-complete",
+      "note": "Token 'own' is plausible for self-possession and protection and is accepted, but its 0.423956 score is more than twice the next promoted token and must be monitored in comparison work."
+    },
+    "Tension": {
+      "verdict": "pass",
+      "note": "Token 'own' is plausible for self-referential unresolved tension and is accepted, but should be monitored in comparison work."
+    },
+    "Valence": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."},
+    "Warmth": {"verdict": "pass", "note": "Top promoted vocabulary accepted as semantically coherent."}
+  },
+  "monitor": [
+    {"direction": "Safety", "token": "own", "score": 0.423956, "why": "more than twice the next promoted token"},
+    {"direction": "Tension", "token": "own", "score": 0.181905, "why": "shared salient token with Safety despite different contextual interpretation"}
+  ],
+  "authorization": "Proceed to the offline comparison; both own instances make semantic sense and are retained for monitoring."
+}

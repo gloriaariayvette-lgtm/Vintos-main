@@ -20,6 +20,12 @@ def main() -> int:
     paper_fit = sub.add_parser("paper-fit"); paper_fit.add_argument("work", type=Path); paper_fit.add_argument("output", type=Path); paper_fit.add_argument("--auc-minimum", type=float, default=0.85)
     variant_fit = sub.add_parser("paper-variant-fit"); variant_fit.add_argument("work", type=Path); variant_fit.add_argument("output", type=Path); variant_fit.add_argument("--auc-minimum", type=float, default=0.85); variant_fit.add_argument("--pooling", choices=("final", "mean"), default="final")
     compare_cmd = sub.add_parser("compare"); compare_cmd.add_argument("emoclaw", type=Path); compare_cmd.add_argument("residual", type=Path); compare_cmd.add_argument("output", type=Path)
+    align_cmd = sub.add_parser("align-history"); align_cmd.add_argument("ledger", type=Path); align_cmd.add_argument("trajectory", type=Path); align_cmd.add_argument("output", type=Path); align_cmd.add_argument("--max-follow-seconds", type=float, default=900.0); align_cmd.add_argument("--limit", type=int)
+    shadow_cmd = sub.add_parser("import-shadow"); shadow_cmd.add_argument("receipts", type=Path); shadow_cmd.add_argument("output", type=Path)
+    prepare_comparison = sub.add_parser("prepare-comparison"); prepare_comparison.add_argument("rows", type=Path); prepare_comparison.add_argument("work", type=Path)
+    measure_comparison = sub.add_parser("measure-comparison"); measure_comparison.add_argument("rows", type=Path); measure_comparison.add_argument("dumps", type=Path); measure_comparison.add_argument("output", type=Path); measure_comparison.add_argument("--direction", action="append", required=True, metavar="NAME=PATH")
+    summarize_cmd = sub.add_parser("summarize-comparison"); summarize_cmd.add_argument("joined", type=Path); summarize_cmd.add_argument("output", type=Path)
+    prospective_cmd = sub.add_parser("summarize-prospective"); prospective_cmd.add_argument("joined", type=Path); prospective_cmd.add_argument("output", type=Path)
     verify = sub.add_parser("verify-model"); verify.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
     unembed = sub.add_parser("unembed"); unembed.add_argument("direction", type=Path); unembed.add_argument("--lock", type=Path, default=Path(__file__).resolve().parents[1] / "model-lock.json")
     review = sub.add_parser("review-unembedding"); review.add_argument("direction", type=Path); review.add_argument("--reviewer", required=True); review.add_argument("--verdict", choices=("pass", "fail"), required=True); review.add_argument("--note", required=True)
@@ -33,6 +39,20 @@ def main() -> int:
     elif args.command == "paper-fit": result = analysis.paper_fit(args.work, args.output, args.auc_minimum)
     elif args.command == "paper-variant-fit": result = analysis.paper_variant_fit(args.work, args.output, args.auc_minimum, args.pooling)
     elif args.command == "compare": result = compare.join(args.emoclaw, args.residual, args.output)
+    elif args.command == "align-history": result = compare.align_history(args.ledger, args.trajectory, args.output, max_follow_seconds=args.max_follow_seconds, limit=args.limit)
+    elif args.command == "import-shadow": result = compare.import_shadow(args.receipts, args.output)
+    elif args.command == "prepare-comparison": result = compare.prepare_extraction(args.rows, args.work)
+    elif args.command == "measure-comparison":
+        directions = {}
+        for value in args.direction:
+            if "=" not in value: raise SystemExit("--direction must be NAME=PATH")
+            name, path = value.split("=", 1); directions[name] = Path(path)
+        missing = sorted(set(compare.DIMENSIONS) - set(directions))
+        extra = sorted(set(directions) - set(compare.DIMENSIONS))
+        if missing or extra: raise SystemExit(f"direction set mismatch; missing={missing}, extra={extra}")
+        result = compare.measure_cohort(args.rows, args.dumps, directions, args.output)
+    elif args.command == "summarize-comparison": result = compare.summarize(args.joined, args.output)
+    elif args.command == "summarize-prospective": result = compare.summarize_prospective(args.joined, args.output)
     elif args.command == "verify-model":
         lock = json.loads(args.lock.read_text(encoding="utf-8")); path = Path(lock["path"])
         actual = sha256(path)

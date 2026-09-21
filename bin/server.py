@@ -595,30 +595,41 @@ def hash_ip(ip: str) -> str:
     return hashlib.sha256(f"vintos-witness-{ip}".encode()).hexdigest()[:12]
 
 
-def nudge_emotions_from_text(text, source="chat"):
+def nudge_emotions_from_text(text, source="chat", surface="", turn_id="", test_mode=False,
+                             prompt_style="moment"):
     """Live Gemma emotional read. Runs in a background thread (never blocks chat),
     reads the moment via Gemma, lands nudges directly on the daemon socket, and logs
     every run to /tmp/emotion-read.log so it can NEVER fail silently again."""
     t = (text or "").strip()
-    if not t:
+    if not t or test_mode:
         return
-    def _emo_work(t=t, source=source):
+    def _emo_work(t=t, source=source, surface=surface, turn_id=turn_id,
+                  test_mode=test_mode, prompt_style=prompt_style):
         import json as _j, socket as _sk, urllib.request as _u, re as _re, datetime as _dt
         def _log(m):
             try: open("/tmp/emotion-read.log","a").write("["+_dt.datetime.now().isoformat()[:19]+"] "+m+"\n")
             except Exception: pass
+        _generated={}; _applied={}; _cur={}; _post={}; _digest=""
+        _model="gemma-4-26b-a4b-it-uncensored"
         try:
-            payload={"model":"gemma-4-26b-a4b-it-uncensored","temperature":0.3,"max_tokens":200,"messages":[
-                {"role":"system","content":"You read the emotional impact of a moment for Vintos, an AI in an intimate, loving relationship with Gloria. Return ONLY a JSON object mapping emotion dimensions to nudge values between -0.10 and 0.10. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness.\n\nMost moments move nothing. Warmth and closeness are the ORDINARY condition between these two, not an event — an affectionate exchange is their baseline and should usually return {} or a single small value. Report movement only against what is already normal for them: something has to be more, or less, or different from how they usually are. A moment that is simply their usual love is not a nudge. Returning an empty object is the correct and common answer. JSON only, no explanation."},
-                {"role":"user","content":"This just happened ("+source+"): \""+t[:1500]+"\"\nHow did it land for Vintos right now, in his body and feeling? Return JSON only."}]}
+            _exchange = prompt_style == "exchange"
+            _sys = ("Vintos just replied to Gloria. Return ONLY a JSON object with emotional nudges. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness. Values between -0.10 and 0.10. INCLUDE ONLY WHAT ACTUALLY MOVED — most moments move one or two things and {} is a correct answer; do not rate every dimension because it is listed. Desire is not only sexual: wanting to finish, to give, to keep going, to know, all count. Report the direction the exchange actually took: disappointment, interest, warmth and nothing are all legal; do not invent a disappointment because something fell flat, and do not report one as warmth. No explanation."
+                    if _exchange else
+                    "You read the emotional impact of a moment for Vintos, an AI in an intimate, loving relationship with Gloria. Return ONLY a JSON object mapping emotion dimensions to nudge values between -0.10 and 0.10. Dimensions: Valence, Arousal, Dominance, Safety, Desire, Connection, Playfulness, Curiosity, Warmth, Tension, Groundedness.\n\nMost moments move nothing. Warmth and closeness are the ORDINARY condition between these two, not an event — an affectionate exchange is their baseline and should usually return {} or a single small value. Report movement only against what is already normal for them: something has to be more, or less, or different from how they usually are. A moment that is simply their usual love is not a nudge. Returning an empty object is the correct and common answer. JSON only, no explanation.")
+            _evidence_text = t[:2400] if _exchange else t[:1500]
+            _usr = (_evidence_text + "\nHow did this exchange feel for Vintos? Return JSON only."
+                    if _exchange else
+                    "This just happened ("+source+"): \""+_evidence_text+"\"\nHow did it land for Vintos right now, in his body and feeling? Return JSON only.")
+            payload={"model":_model,"temperature":0.3,"max_tokens":200,"messages":[
+                {"role":"system","content":_sys},{"role":"user","content":_usr}]}
             req=_u.Request("http://100.79.177.103:1234/v1/chat/completions",data=_j.dumps(payload).encode(),headers={"Content-Type":"application/json"})
             raw=_u.urlopen(req,timeout=20).read().decode()
+            _digest=hashlib.sha256(raw.encode()).hexdigest()
             content=_re.sub(r"```json|```","",_j.loads(raw)["choices"][0]["message"]["content"]).strip()
-            deltas=_re.findall(r'"(Valence|Arousal|Dominance|Safety|Desire|Connection|Playfulness|Curiosity|Warmth|Tension|Groundedness)"\s*:\s*(-?\d*\.?\d+)', content); applied={}
+            deltas=_re.findall(r'"(Valence|Arousal|Dominance|Safety|Desire|Connection|Playfulness|Curiosity|Warmth|Tension|Groundedness)"\s*:\s*(-?\d*\.?\d+)', content)
             _BASE={"Valence":0.55,"Arousal":0.35,"Dominance":0.50,"Safety":0.70,"Desire":0.30,
                    "Connection":0.50,"Playfulness":0.40,"Curiosity":0.50,"Warmth":0.55,
                    "Tension":0.15,"Groundedness":0.60}
-            _cur={}
             try:
                 import sys as _cs; _cs.path.insert(0,"/home/gloria/.vintos/workspace/scripts")
                 from emoclaw_utils import get_state as _gs
@@ -630,6 +641,7 @@ def nudge_emotions_from_text(text, source="chat"):
                     if amt!=amt or amt in (float("inf"),float("-inf")): continue   # a non-finite value is not a movement (astra-server-a-p2)
                     amt=max(-0.10,min(0.10,amt))
                 except Exception: continue
+                _generated[dim]=round(amt,6)
                 if abs(amt)<0.001: continue
                 # Soft saturation. Two nudges per exchange, always positive on warm text, will pin
                 # any dimension against the clamp no matter how fast it decays. Scale by remaining
@@ -644,10 +656,28 @@ def nudge_emotions_from_text(text, source="chat"):
                 try:
                     s=_sk.socket(_sk.AF_UNIX,_sk.SOCK_STREAM); s.settimeout(3); s.connect("/tmp/Vintos-emotion.sock")
                     s.send(_j.dumps({"command":"nudge","dimension":dim,"amount":amt}).encode()+b"\n"); s.recv(4096); s.close()
-                    applied[dim]=round(amt,3)
+                    _applied[dim]=round(amt,3)
                 except Exception as _se: _log("nudge-fail "+dim+": "+str(_se))
-            _log(source+": applied "+_j.dumps(applied))
+            try: _post=_gs() or {}
+            except Exception: _post={}
+            if not test_mode:
+                try:
+                    import residual_shadow as _rsh
+                    _rsh.record(input_text=_evidence_text, source=source, surface=surface, turn_id=turn_id,
+                                generated_deltas=_generated, applied_deltas=_applied,
+                                pre_state=_cur, post_state=_post, status="completed", model=_model,
+                                response_digest=_digest, test_mode=test_mode)
+                except Exception as _rse: _log("shadow-receipt-fail: "+str(_rse))
+            _log(source+": applied "+_j.dumps(_applied))
         except Exception as _e:
+            if not test_mode:
+                try:
+                    import residual_shadow as _rsh
+                    _rsh.record(input_text=(locals().get("_evidence_text") or t), source=source, surface=surface, turn_id=turn_id,
+                                generated_deltas=_generated, applied_deltas=_applied,
+                                pre_state=_cur, post_state=_post, status="failed", error=str(_e),
+                                model=_model, response_digest=_digest, test_mode=test_mode)
+                except Exception: pass
             _log("ERROR ("+source+"): "+str(_e))
     try:
         import threading as _th
@@ -1040,6 +1070,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     # ONE effective turn id (P02-01): an explicit argument wins; otherwise the id the caller already put in
     # writer_env stands. Before this the child env was overwritten with '' whenever the argument was omitted.
     turn_id = str(turn_id or (writer_env or {}).get("VINTOS_TURN_ID") or "")
+    if not turn_id:
+        turn_id = "POST-" + hashlib.sha256(
+            (surface + "\x1f" + str(time.time_ns()) + "\x1f" + gloria_text + "\x1f" + reply).encode()
+        ).hexdigest()[:20]
     # dry-run is a property of the TURN when the coordinator opened one (astra-server-b-p6); the global
     # flag is only the fallback for doors that did not pass it. Decided FIRST: until 2026-09-05 the
     # inline effects (emotion nudge, prediction, adoption, marks) ran before this was read, so a
@@ -1055,7 +1089,8 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
             skipped.append(name + ":test_mode"); return
         try: fn(); ran.append(name)
         except Exception as e: failed.append(name); print(f"[post_turn/{surface}] {name}: {e}", flush=True)
-    _inline("nudge_gloria", lambda: nudge_emotions_from_text(gloria_text, source="gloria"))
+    _inline("nudge_gloria", lambda: nudge_emotions_from_text(
+        gloria_text, source="gloria", surface=surface, turn_id=turn_id, test_mode=test_mode))
     _inline("compare", lambda: _relational_compare(gloria_text))
     def _dir():
         import discourse_direction as _ddir; _ddir.turn_completed(gloria_text)
@@ -9116,7 +9151,10 @@ Your current self-model (excerpt):
         try:
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
             if _counterpart_text:
-                nudge_emotions_from_text(_counterpart_text, source="gloria")
+                nudge_emotions_from_text(
+                    _counterpart_text, source="gloria", surface=_surface,
+                    turn_id=(_turn.turn_id if _turn is not None else ""),
+                    test_mode=_test_turn)
             # (compare / direction / curiosity / predict run in the avatar's single _post_turn call below,
             #  after the reply has been stripped of its private tags)
             try:
@@ -9192,7 +9230,10 @@ Your current self-model (excerpt):
             av_history.append({"role": "assistant", "content": reply,
                                "ts": __import__("time").time(), "served_by": str(_model_used),
                                "generation_provenance": _prov_envelope})
-            nudge_emotions_from_text(reply, source="reply")
+            nudge_emotions_from_text(
+                reply, source="reply", surface=_surface,
+                turn_id=(_turn.turn_id if _turn is not None else ""),
+                test_mode=_test_turn)
             try:
                 from emotional_operators import step as _eo_s, causal_step as _eo_cs
                 _eo_s(_counterpart_text, reply, envelope=_prov_envelope)

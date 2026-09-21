@@ -981,6 +981,15 @@ is documented to sometimes return an honest empty record even after a night.
 
 ## Offline residual-stream emotion instrument — 19 September
 
+Prospective same-input collection is now wired as a strictly non-causal shadow receipt. Each live
+generated EmoClaw read on main, Avatar, or ReelRoom records the exact text it received, generated
+and applied deltas, pre/post state, failure or empty-read status, surface, and coordinated turn ID
+under `memory/residual-emotion-shadow/`. Test-mode turns write nothing. The recorder has no provider,
+sender, state socket, inference, steering, or notification path; residual projection remains an
+explicit offline Mac batch. This closes the historical comparison's input-alignment gap, but it does
+not yet constitute prospective results: enough fresh receipts must accrue, be exported, measured
+against the eleven human-admitted directions, and analyzed before any integration decision.
+
 `offline/residual_emotion/` now pins the exact abliterated Gemma 4 26B-A4B Q4_K_M GGUF
 Gloria selected as the real target (not the proposal's mistaken “Gemma 4B”), by path and
 SHA-256. The 12B QAT and standard-source Q8 locks remain negative Pain baselines only;
