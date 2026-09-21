@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "at": "2026-09-20",
+  "truth_status": "offline_exploratory_association_against_cumulative_emoclaw_history",
+  "live_integration": false,
+  "deployment": false,
+  "model": {
+    "identity": "gemma-4-26b-a4b-it-uncensored",
+    "format": "GGUF Q4_K_M",
+    "sha256": "d482a5daba09e67c925359a1786c4c713d1c3bb35856d199cf296f7cf7bc6cb3",
+    "extractor_revision": "e613ef2c81bae98d59850d061ac29e6e3e88cb00",
+    "context_tokens": 8192,
+    "batch_tokens": 8192
+  },
+  "human_admission": {
+    "reviewer": "Gloria",
+    "receipt": "review-receipts/2026-09-20-gloria-unembedding-review.json",
+    "directions_passed": 11,
+    "monitor": [
+      {"direction": "Safety", "token": "own", "score": 0.423956, "reason": "more than twice the next promoted token"},
+      {"direction": "Tension", "token": "own", "score": 0.181905, "reason": "same salient token with a different plausible interpretation"}
+    ]
+  },
+  "frozen_sources": {
+    "interaction_ledger_sha256": "604629d7324150ce45f81357e2437f3bf516a6acb8175d9e98f7106bb2163c0f",
+    "dense_emotion_trajectory_sha256": "274a99882758485070a77398c087a8e8a95332701dc8ab4d8f96661400d333f4",
+    "aligned_private_jsonl_sha256": "894a86b0313498275db11e4f0ee93a8fdcff00934c684eee3459c24c154d120e",
+    "residual_private_jsonl_sha256": "b4c6494c780695f27daa0379e9df1e8a5d84216a2f8669b58756b2517e3fe071",
+    "raw_content_committed": false
+  },
+  "cohort": {
+    "ledger_turns_with_both_sides": 294,
+    "within_15_minutes_of_a_following_dense_snapshot": 134,
+    "unambiguous_single_turn_snapshot_intervals": 110,
+    "range": ["2026-08-19T04:36:06.861640", "2026-09-19T19:04:53.931067"],
+    "surfaces": {"legacy_or_unlabelled": 65, "avatar": 43, "reelroom": 1, "voice": 1},
+    "median_follow_delay_seconds": 307.7,
+    "residual_dump_files_expected": 440,
+    "residual_dump_files_present": 440
+  },
+  "same_name_spearman": {
+    "Valence": {"cumulative_state": 0.39551968, "snapshot_delta": 0.12235274, "absolute_specificity_rank": 5},
+    "Arousal": {"cumulative_state": 0.48492772, "snapshot_delta": 0.31169288, "absolute_specificity_rank": 2},
+    "Dominance": {"cumulative_state": 0.50543590, "snapshot_delta": 0.38405010, "absolute_specificity_rank": 6},
+    "Safety": {"cumulative_state": -0.17636490, "snapshot_delta": -0.13849492, "absolute_specificity_rank": 7},
+    "Desire": {"cumulative_state": 0.71852543, "snapshot_delta": 0.34199979, "absolute_specificity_rank": 3},
+    "Connection": {"cumulative_state": 0.65736608, "snapshot_delta": -0.24740604, "absolute_specificity_rank": 1},
+    "Playfulness": {"cumulative_state": 0.24570863, "snapshot_delta": 0.21622353, "absolute_specificity_rank": 2},
+    "Curiosity": {"cumulative_state": -0.01474208, "snapshot_delta": 0.00044633, "absolute_specificity_rank": 11},
+    "Warmth": {"cumulative_state": 0.37464807, "snapshot_delta": -0.01890786, "absolute_specificity_rank": 1},
+    "Tension": {"cumulative_state": 0.49974528, "snapshot_delta": 0.39879899, "absolute_specificity_rank": 2},
+    "Groundedness": {"cumulative_state": 0.11649851, "snapshot_delta": -0.04843422, "absolute_specificity_rank": 9}
+  },
+  "own_monitor": {
+    "turns_with_token_or_inflection": 28,
+    "turns_without": 82,
+    "Safety": {"mean_control_z_with": 2.20705573, "mean_control_z_without": 1.38636244, "difference": 0.82069329},
+    "Tension": {"mean_control_z_with": 3.05204323, "mean_control_z_without": 2.28939791, "difference": 0.76264533},
+    "safety_tension_residual_spearman": 0.54475576,
+    "boundary": "lexical co-occurrence is confounded by topic and cannot establish that the token caused either projection"
+  },
+  "reading": {
+    "strongest_same_name_cumulative_associations": ["Desire", "Connection", "Dominance", "Tension", "Arousal"],
+    "weak_or_reversed_in_this_cohort": ["Safety", "Curiosity", "Groundedness"],
+    "specificity": "only Connection and Warmth were each residual direction's strongest cumulative-state association; several activated directions co-varied strongly on this skewed historical cohort",
+    "meaning": "held-out contrastive separation and historical EmoClaw concordance answer different questions; this result neither invalidates a direction nor licenses live replacement",
+    "next": "collect prospective same-input per-turn EmoClaw receipts with pre/post state and a broader surface/topic balance, then repeat in shadow"
+  },
+  "limitations": [
+    "Dense EmoClaw values are cumulative sampled state, not the generated per-turn score object.",
+    "Snapshot deltas may contain decay or background-organ nudges even in a single-conversation interval.",
+    "The cohort is dominated by legacy/unlabelled and avatar turns; voice and ReelRoom each contribute one turn.",
+    "Association is not agreement, accuracy, causality, consciousness, or a feeling claim."
+  ]
+}

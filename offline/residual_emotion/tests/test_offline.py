@@ -20,7 +20,7 @@ from residual_emotion.authoring import (
     apply_review_receipt, author_batch_requests, expand_reviewed, expand_reviewed_suite,
     merge_reviewed_repair, render_human_review_sheets,
 )
-from residual_emotion.compare import join
+from residual_emotion.compare import align_history, join, prepare_extraction, summarize
 from residual_emotion.dataset import prepare, prepare_paper_protocol, validate
 from residual_emotion.io import MAGIC, read_jsonl, read_residual
 from residual_emotion.import_pain_axis import convert as import_pain_axis
@@ -283,11 +283,50 @@ with tempfile.TemporaryDirectory(prefix="residual-emotion-test-") as raw:
 
     # Comparison is a pure offline join and cannot send or import a live organ.
     emo = scratch / "emo.jsonl"; measured = scratch / "measured.jsonl"; output = scratch / "joined.jsonl"
-    emo.write_text(json.dumps({"turn_id": "T1", "scores": {"Warmth": 0.7}}) + "\n")
+    emo.write_text(json.dumps({"turn_id": "T1", "input_text": "frozen turn", "scores": {"Warmth": 0.7}}) + "\n")
     measured.write_text(json.dumps({"turn_id": "T1", "measurements": {"Warmth": {"control_z": 1.2}}}) + "\n")
     result = join(emo, measured, output)
     check(result["joined"] == 1, "comparison join")
     check(read_jsonl(output)[0]["agreement"] == "not_computed_scale_not_calibrated", "no false agreement")
+    check(read_jsonl(output)[0]["input_text"] == "frozen turn", "join preserves the frozen input from either side")
+
+    # Historical alignment admits only a solitary turn between sampled cumulative states.
+    ledger = scratch / "ledger.json"; trajectory = scratch / "dense.json"; aligned = scratch / "aligned.jsonl"
+    ledger.write_text(json.dumps([
+        {"turn_id": "clean", "timestamp": "2026-09-20T12:04:00", "gloria": "one", "vintos": "reply", "surface": "avatar"},
+        {"turn_id": "shared-a", "timestamp": "2026-09-20T12:11:00", "gloria": "two", "vintos": "reply", "surface": "avatar"},
+        {"turn_id": "shared-b", "timestamp": "2026-09-20T12:12:00", "gloria": "three", "vintos": "reply", "surface": "avatar"},
+    ]))
+    trajectory.write_text(json.dumps([
+        {"t": "2026-09-20T17:00:00+00:00", "v": [0.1] * 11},
+        {"t": "2026-09-20T17:05:00+00:00", "v": [0.2] * 11},
+        {"t": "2026-09-20T17:15:00+00:00", "v": [0.3] * 11},
+    ]))
+    aligned_result = align_history(ledger, trajectory, aligned)
+    aligned_rows = read_jsonl(aligned)
+    check(aligned_result["unambiguous"] == 1 and aligned_rows[0]["turn_id"] == "clean", "shared snapshot turns are excluded")
+    check(aligned_rows[0]["input_text"] == "She said:\none\n\nHe replied:\nreply", "whole delivered turn is frozen")
+    check(aligned_rows[0]["truth_status"].endswith("not_per_turn_score"), "cumulative state is not mislabeled")
+    comparison_work = scratch / "comparison-work"
+    prepared_comparison = prepare_extraction(aligned, comparison_work)
+    check(prepared_comparison["turns"] == 1 and "She said:\\none" in (comparison_work / "target.txt").read_text(),
+          "comparison prompts are one escaped line each")
+    check((comparison_work / "target.txt").read_text() == (comparison_work / "control.txt").read_text(),
+          "paired extractor contract does not invent a control prompt")
+
+    # Comparison reports exploratory association, including the two accepted `own` monitoring notes.
+    joined_fixture = scratch / "joined-fixture.jsonl"
+    fixture_rows = []
+    for index in range(5):
+        fixture_rows.append({
+            "turn_id": str(index), "emoclaw_scores": {name: index / 10 for name in ("Warmth",)},
+            "emoclaw_state_delta": {"Warmth": index / 100},
+            "residual_measurements": {"Warmth": {"control_z": float(index)}},
+        })
+    joined_fixture.write_text("".join(json.dumps(value) + "\n" for value in fixture_rows))
+    summary = summarize(joined_fixture, scratch / "summary.json")
+    check(summary["dimensions"]["Warmth"]["spearman_residual_vs_cumulative_state"] > 0.99, "rank association is computed")
+    check({item["direction"] for item in summary["monitor"]} == {"Safety", "Tension"}, "both own tokens remain monitored")
 
     # AUC alone cannot admit a direction; exact unembedding requires an explicit review receipt.
     direction_dir = scratch / "direction"; direction_dir.mkdir()

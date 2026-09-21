@@ -130,9 +130,28 @@ on the pinned Mac checkpoint raised strict nested held-out AUC from `0.87034` to
 `0.93960 ± 0.02483`; all five outer folds passed, and all six mean-pooled prompt
 variants now pass (`0.92675–0.94625`). The nearest other direction remains below
 the orthogonality threshold (Warmth, cosine `0.18811`). The exact receipt is
-`evidence/2026-09-20-safety-v2-validation.json`. Unembedding is semantically
-promising but still awaits named human review, so live measurement admission
-remains blocked.
+`evidence/2026-09-20-safety-v2-validation.json`. Its exact unembedding was then
+included in the named human review below.
+
+Gloria then reviewed the exact top-ten promoted vocabulary for all eleven directions and
+admitted each unembedding. The two appearances of `own` are accepted rather than edited away:
+Tension plausibly carries self-referential unresolvedness, while repaired Safety plausibly carries
+self-possession/protection. Both remain explicit monitoring targets because Safety's score is more
+than twice its next token. The named receipt is
+`review-receipts/2026-09-20-gloria-unembedding-review.json`.
+
+The first frozen historical comparison measured 110 complete delivered exchanges for which exactly
+one conversation turn occurred between the surrounding dense EmoClaw snapshots. No private turn
+text is committed. Same-name residual-versus-cumulative-state Spearman association was strongest
+for Desire (`0.719`) and Connection (`0.657`), moderate for Dominance/Tension/Arousal
+(`0.485–0.505`), and weak or reversed for Safety, Curiosity, and Groundedness. Only Connection and
+Warmth were their residual direction's strongest cumulative-state association in this skewed
+cohort. Turns containing `own` or an inflection had higher Safety and Tension projections, but topic
+confounding prevents a token-causal reading. This comparison is exploratory: the historical dense
+file is cumulative state, not a per-turn self-report receipt, and the sample has only one voice and
+one ReelRoom turn. See `evidence/2026-09-20-historical-comparison.json`. The next valid comparison is
+prospective and same-input, recording the per-turn generated EmoClaw result plus pre/post state while
+both systems remain in shadow.
 
 Nifrathir is excluded from this content-dimension authoring pass; it remains the twelfth
 slow modifier rather than a twelfth peer emotion. Its modifier dataset and predictive
@@ -207,6 +226,11 @@ The published Pain corpus can be reproduced from a checkout of the paper's code:
 
 `fit` refuses uncurated data, fewer than five target/control categories, model-hash mismatch,
 missing dumps, fold leakage, or a direction below the configured AUC threshold.
+`run_extractor.sh` explicitly requests an 8,192-token context and matching physical/logical
+batch by default. This matters for historical conversation comparison: llama.cpp's smaller
+implicit microbatch caused the callback to omit long turns even though inference completed,
+which would preferentially erase dense exchanges and bias the comparison cohort. Override these
+only explicitly with `LLAMA_CONTEXT`/`LLAMA_BATCH` and retain the settings in the comparison receipt.
 It reports held-out AUC per category so weak categories can be revised in a new
 preregistered dataset version; it never drops categories on the evaluation set that
 selected them.
@@ -214,9 +238,10 @@ selected them.
 the extraction-time model lock and scores each S1/S2 × suffix cell independently under
 the same person-separated, shuffled sentence-set K-fold protocol.
 `unembed` streams the exact quantized `output.weight`, or Gemma's tied
-`token_embd.weight`, instead of materializing a multi-gigabyte matrix. Measurement
-remains blocked until a human records a semantic pass/fail review with
-`review-unembedding`.
+`token_embd.weight`, instead of materializing a multi-gigabyte matrix. A direction
+cannot be measured until a human records a semantic pass/fail review with
+`review-unembedding`; all eleven content directions now have Gloria's pass receipt,
+but measurement remains offline by the experiment's separate integration boundary.
 
 The first sandboxed Pain attempt could not create a Metal command queue. A direct-GPU
 retry then processed all 1,200 pairs without unloading the active Mac models. The
