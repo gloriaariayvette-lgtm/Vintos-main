@@ -13,7 +13,7 @@ from datetime import datetime, date
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.7"
+MODEL = "grok-4.20-0309-non-reasoning"
 OUTPUT = os.path.join(MEMORY, "taste-reflections.md")
 CANDIDATES = os.path.join(MEMORY, "taste-candidates.json")
 

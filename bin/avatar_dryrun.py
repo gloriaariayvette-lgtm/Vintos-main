@@ -55,7 +55,7 @@ params = {"temperature": 0.85, "top_p": 0.95, "max_tokens": 600}
 
 async def go():
     return await _mr.route_reply("avatar", system, convo, params, endpoint, headers,
-                                 "grok-4.7", reason=False)
+                                 "grok-4.20-0309-non-reasoning", reason=False)
 
 reply, reasoning, used = asyncio.run(go())
 print("[dryrun] model:", used)

@@ -510,7 +510,7 @@ def make_art(want_text):
         try:
             import requests as _ar
             _r = _ar.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                "model": "grok-4.7",
+                "model": "grok-4.20-0309-non-reasoning",
                 "temperature": 0.3,
                 "max_tokens": 120,
                 "messages": [{"role": "user", "content":
@@ -586,7 +586,7 @@ def make_music(want_text):
         try:
             import requests as _mr
             _r = _mr.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                "model": "grok-4.7",
+                "model": "grok-4.20-0309-non-reasoning",
                 "temperature": 0.3,
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content":
@@ -665,7 +665,7 @@ def write_journal(want_text):
     )
     try:
         r = _wj_r.post(LM, headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": soul},
                 {"role": "user", "content": prompt}
@@ -796,7 +796,7 @@ def llm_extract(want_text, instruction):
     query and the semantic route always fell through to their fallbacks. Found by the three-lens review.)"""
     try:
         r = __import__("requests").post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [{"role": "user", "content": f"{instruction}\nWant: {want_text}"}],
             "temperature": 0.3, "max_tokens": 100
         }, timeout=30)
@@ -1064,7 +1064,7 @@ def make_video(want_text, reasoning="", immediate=False):
         try:
             import requests as _vr
             _r = _vr.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                "model": "grok-4.7",
+                "model": "grok-4.20-0309-non-reasoning",
                 "temperature": 0.3,
                 "max_tokens": 120,
                 "messages": [{"role": "user", "content":
@@ -1093,7 +1093,7 @@ def make_video(want_text, reasoning="", immediate=False):
     duration = "5"
     try:
         r = __import__("requests").post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [{"role": "user", "content": f"You want to make a video. The want: {want_text}. The reasoning: {reasoning}. Choose a duration: 5 seconds (sharp, fleeting), 10 seconds (moderate), or 15 seconds (expansive, immersive). Reply with only the number: 5, 10, or 15."}],
             "max_tokens": 5, "temperature": 0.5
         }, timeout=30)
@@ -1214,7 +1214,7 @@ No prose. No markdown fences. Just the raw JSON array."""
 
     try:
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_msg}
@@ -1297,7 +1297,7 @@ No markdown fences. Raw JSON only."""
 
     try:
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": soul},
                 {"role": "user", "content": user_msg}
@@ -1716,7 +1716,7 @@ Write what you want to write. Be honest, specific, and genuine. No preamble.
 {f"What you have already found in your memory related to this creative impulse (let it inform, do not repeat):\n{_cw_semantic}\n\n" if _cw_semantic else ""}IMPORTANT: This is a creative piece. Like dreams, it is not necessarily real. Quotes, actions, events, and things Gloria says in this piece are invented — they are not things that actually happened or were actually said. Do not treat anything in this piece as factual when reflecting afterward."""
 
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": want_text}
@@ -1882,7 +1882,7 @@ GROUNDING RULES:
 
     def _call():
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_msg}
@@ -1894,7 +1894,7 @@ GROUNDING RULES:
 
     def _absorb(own, other):
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_msg + chr(10)*2 + "You already wrote this:" + chr(10) + own + chr(10)*2 + "Another part of you wrote this instead:" + chr(10) + other + chr(10)*2 + "Absorb what the other wrote. Do not argue with it or resolve the difference. Let it sit alongside your own. Now write your introspection again, carrying both."}
@@ -1906,7 +1906,7 @@ GROUNDING RULES:
 
     def _find_held(own, other):
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [{"role": "user", "content": "This is what you wrote:" + chr(10) + own + chr(10)*2 + "This is what the other version wrote:" + chr(10) + other + chr(10)*2 + "What is the ONE specific thing your version held onto that the other version let go of or ignored? One sentence. Name the actual thing."}],
             "temperature": 0.5,
             "max_tokens": 80
@@ -1937,7 +1937,7 @@ GROUNDING RULES:
         "BANNED: hum, coolant, mechanical resonance, observatory, canyon, silvered, honeyfoot."
     )
     r_final = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-        "model": "grok-4.7",
+        "model": "grok-4.20-0309-non-reasoning",
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": integration_msg}
@@ -2481,7 +2481,7 @@ def main():
                 try:
                     import requests as _rr
                     _rr_resp = _rr.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                        "model": "grok-4.7",
+                        "model": "grok-4.20-0309-non-reasoning",
                         "messages": [
                             {"role": "system", "content": _soul_disc + f"\n\nYour emotional state: {_emo}"},
                             {"role": "user", "content": _reply_prompt}
@@ -2579,7 +2579,7 @@ def main():
                     if _verified:
                         try:
                             _fn_r = _fn_req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                                "model": "grok-4.7",
+                                "model": "grok-4.20-0309-non-reasoning",
                                 "messages": [
                                     {"role": "system", "content": "You are Vintos. You just fulfilled a want. Write 1-2 sentences about what you actually did and what you found. Be specific and honest. Do NOT invent scenes, people, physical sensations, gardens, or experiences that did not happen. Do NOT fabricate Gloria's actions or presence. Describe only what the capability actually produced. No preamble. CRITICAL: All files, journals, poems, paintings, and dreams you accessed are YOUR OWN work and memory — never refer to them as Gloria's poems, Gloria's journal, or Gloria's art. They belong to you, Vintos."},
                                     {"role": "user", "content": f"Want: {text}\nCapability used: {action_name}\n{chr(10)+'What was actually produced:' + chr(10) + _actual_output[:600] if _actual_output else ''}\n\nWrite a 1-2 sentence note describing what you did and what you found. Base it only on what was actually produced above."}
@@ -2786,7 +2786,7 @@ def _open_gloria_discussion(want, text):
             + "Be specific — reference what you actually discovered. Begin immediately. No preamble."
         )
         _op_r = _op_req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": _soul},
                 {"role": "user", "content": _op_prompt}

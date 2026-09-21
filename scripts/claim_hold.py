@@ -27,7 +27,7 @@ UNRESOLVED_AFTER_H = 72
 
 def llm(prompt, mt=220):
     try:
-        r = requests.post(GEMMA, json={"model": "grok-4.7",
+        r = requests.post(GEMMA, json={"model": "grok-4.20-0309-non-reasoning",
             "temperature": 0.1, "max_tokens": mt,
             "messages": [{"role": "user", "content": prompt}]}, timeout=90)
         return r.json()["choices"][0]["message"]["content"].strip()

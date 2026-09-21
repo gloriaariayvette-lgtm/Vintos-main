@@ -552,7 +552,7 @@ async def respond_to_want(want_id: str, request: Request):
                         from causality_engine import add_hypothesis
                         import requests as _igr
                         _classify = _igr.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                            "model": "grok-4.7",
+                            "model": "grok-4.20-0309-non-reasoning",
                             "messages": [
                                 {"role": "system", "content": "Answer with one word: GLORIA or VINTOS."},
                                 {"role": "user", "content": f"Gloria wrote this in response to Vintos.\nIs it primarily about Gloria herself (her feelings, behavior, personality) or about Vintos?\nMessage: {_response_snap[:200]}\n\nAnswer: GLORIA or VINTOS"}
@@ -763,7 +763,7 @@ async def describe_screen(request: Request):
                 LM_STUDIO_API + "/chat/completions",
                 headers=LLM_AUTH_HEADERS,
                 json={
-                    "model": "grok-4.7",
+                    "model": "grok-4.20-0309-non-reasoning",
                     "messages": [{
                         "role": "user",
                         "content": [

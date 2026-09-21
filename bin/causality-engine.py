@@ -48,7 +48,7 @@ HYPOTHESIS_DB = os.path.join(MEMORY, "causality-hypotheses.json")
 _BACKEND = os.environ.get("CAUSALITY_BACKEND", "local")
 if _BACKEND == "self":
     LM_API = "http://127.0.0.1:8599/v1/chat/completions"
-    MODEL = os.environ.get("CAUSALITY_MODEL", "grok-4.7")
+    MODEL = os.environ.get("CAUSALITY_MODEL", "grok-4.20-0309-non-reasoning")
     SPIKE_THRESHOLD = 0.06
 else:
     LM_API = "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions"
@@ -1100,7 +1100,7 @@ def graduate_hypotheses(db):
                         f"Is this accurate and safe to treat as settled self-knowledge?"
                     )
                     _rv_r = _rv_req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                        "model": "grok-4.7",
+                        "model": "grok-4.20-0309-non-reasoning",
                         "messages": [
                             {"role": "system", "content": _rv_sys},
                             {"role": "user", "content": _rv_user}

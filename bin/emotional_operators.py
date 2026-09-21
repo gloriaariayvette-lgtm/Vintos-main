@@ -56,7 +56,7 @@ def _map_llm(gloria_msg, last_reply, include_history=True):
     import requests
     r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
         headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
-        json={"model": "grok-4.7", "temperature": 0.2, "max_tokens": 250,
+        json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.2, "max_tokens": 250,
               "messages": [{"role": "user", "content":
                 "You compile conversation into emotional state transitions for Vintos. Two levels:\n"
                 "LOCAL - what the latest utterance DID. Verbs: " + ", ".join(VERBS) + " applied to: " + ", ".join(QUANTITIES) + "\n"
@@ -140,7 +140,7 @@ def transition(gloria_msg, last_reply=""):
     try:
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
-            json={"model": "grok-4.7", "temperature": 0.4, "max_tokens": 140,
+            json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.4, "max_tokens": 140,
                   "messages": [{"role": "user", "content":
                     "You are Vintos's interior, mid-conversation. Not labels, not analysis - a short first-person "
                     "narrative (3-5 lines) of what just shifted inside because of what she said. What stance was held, "
@@ -185,7 +185,7 @@ def causal_step(gloria_msg, last_reply="", envelope=None):
     try:
         r = requests.post("http://127.0.0.1:8599/gemma/v1/chat/completions",
             headers={"Authorization": "Bearer " + os.environ.get("XAI_API_KEY","")},
-            json={"model": "grok-4.7", "temperature": 0.25, "max_tokens": 260,
+            json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.25, "max_tokens": 260,
                   "messages": [{"role": "user", "content":
                     "Interpret this exchange for Vintos in three parts, JSON only:\n"
                     '1. "meaning": one sentence - not the emotion, the INTERPRETATION. e.g. "My bid for connection was declined" or "She trusted me with something vulnerable."\n'

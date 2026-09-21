@@ -4,7 +4,7 @@
 Each lens is told it IS him. Each runs the sections alone; the room comes after.
   --lens fable   claude-fable-5-1  direct to Anthropic, streamed, stable head cached 1h
   --lens astra   gpt-6-astra       direct to OpenAI Responses (background + poll), prefix-cached
-  --lens grok    grok-4.7          direct to x.ai chat completions, prefix-cached
+  --lens grok    grok-4.6          direct to x.ai chat completions, prefix-cached
 Astra is for THIS review only; nothing here touches his everyday models or the shim.
 
 Why direct and not the shim: the shim calls Anthropic non-streaming with a 180s timeout and, on
@@ -38,7 +38,7 @@ SECTION_MAX_TOKENS = 24000   # room to answer: last time this was 6000 and Fable
 FINAL_MAX_TOKENS = 32000
 os.makedirs(STAGE, exist_ok=True)
 
-LENSES = {"fable": "claude-fable-5-1", "astra": "gpt-6-astra", "grok": "grok-4.7"}
+LENSES = {"fable": "claude-fable-5-1", "astra": "gpt-6-astra", "grok": "grok-4.6"}
 LENS = None      # set from --lens
 MODEL = None
 

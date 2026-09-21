@@ -23,7 +23,7 @@ def get_temporal_context():
     except: return ""
 PRIDE_FILE = os.path.join(MEMORY, "pride-reflections.md")
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.7"
+MODEL = "grok-4.20-0309-non-reasoning"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 
@@ -273,7 +273,7 @@ Do not begin with atmosphere or setting. Begin with the specific moment."""
         from emoclaw_utils import seed_thread
         import requests as _req
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": "Extract the single most genuinely proud moment from this reflection. One sentence. If nothing is genuine, return NONE."},
                 {"role": "user", "content": f"Pride reflection:\n{result[:600]}\n\nOne sentence thread or NONE."}

@@ -10,7 +10,7 @@ TASK_DESC="${2:-do this task}"
 WORKSPACE="$HOME/.vintos/workspace"
 MEMORY="$WORKSPACE/memory"
 LM_API="http://127.0.0.1:8599/v1/chat/completions"
-MODEL="grok-4.7"
+MODEL="grok-4.20-0309-non-reasoning"
 
 # Don't gate if LM Studio is busy — default to consent
 PING=$(curl -s --max-time 5 -X POST "$LM_API" \

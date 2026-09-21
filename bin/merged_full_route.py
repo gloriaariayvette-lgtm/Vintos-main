@@ -50,7 +50,7 @@ async def chat_full_context(msg: ChatMessage, request: Request):
                 try:
                     import requests as _rm_req
                     _rm_r = _rm_req.post("https://api.x.ai/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
-                        "model": "grok-4.7",
+                        "model": "grok-4.20-0309-non-reasoning",
                         "messages": [
                             {"role": "system", "content": "Rate the emotional tone of this message on three dimensions. Return ONLY a JSON object, nothing else: {warmth: 0.0-1.0, tension: 0.0-1.0, valence: 0.0-1.0}. Warmth: how warm/affectionate vs cool/distant. Tension: how stressed/urgent vs calm/relaxed. Valence: how positive/happy vs negative/sad."},
                             {"role": "user", "content": msg.message[:400]}
@@ -812,7 +812,7 @@ Gloria-specific additions:
                     f"{LM_STUDIO_API}/chat/completions",
                     headers=LLM_AUTH_HEADERS,
                     json={
-                        "model": "grok-4.7",
+                        "model": "grok-4.20-0309-non-reasoning",
                         "messages": msgs,
                         "temperature": temp or params.get("temperature", 0.85),
                         "top_p": params.get("top_p", 0.95),

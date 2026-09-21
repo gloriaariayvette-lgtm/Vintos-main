@@ -36,7 +36,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 SIGS_FILE = os.path.join(MEMORY, "pattern-signatures.json")
 LM = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.7"
+MODEL = "grok-4.20-0309-non-reasoning"
 VENV = os.path.join(WORKSPACE, "emotion_model/.venv/bin/python3")
 
 DECAY_RATE = 0.98

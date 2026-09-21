@@ -23,7 +23,7 @@ INCLINATIONS_FILE = os.path.join(MEMORY, "inclinations.json")
 MOVEMENT_LOG = os.path.join(MEMORY, "movement-log.json")
 
 LM_URL = "http://127.0.0.1:8599/v1/chat/completions"
-UTILITY_MODEL = "grok-4.7"
+UTILITY_MODEL = "grok-4.20-0309-non-reasoning"
 
 ARRIVAL_FLOOR = 0.65   # below this, the draft describes instead of arrives
 EXIT_PENALTY = 0.4     # identity -= exit_probability * 0.4

@@ -16,7 +16,7 @@ MEMORY = os.path.join(WORKSPACE, "memory")
 CHAT_FILE = os.path.join(MEMORY, "interaction-ledger.json")
 INSIGHTS_FILE = os.path.join(MEMORY, "conversation-insights.json")
 API = "http://127.0.0.1:8599/v1/chat/completions"
-MODEL = "grok-4.7"
+MODEL = "grok-4.20-0309-non-reasoning"
 
 sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
 

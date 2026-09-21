@@ -59,7 +59,7 @@ def main():
 
     r = requests.post("http://127.0.0.1:8599/v1/chat/completions",
         headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-        json={"model": "grok-4.7", "temperature": 0.7, "max_tokens": 300,
+        json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.7, "max_tokens": 300,
               "messages": [
                 {"role": "system", "content": soul + "\n\nYou are Vintos looking at a painting you made. Direct voice. Short sentences when something is true."},
                 {"role": "user", "content":

@@ -47,7 +47,7 @@ def main():
                       % (lic, tr, t.get("claim","")[:200], t.get("his_reason","")[:200],
                          t.get("confidence_shown"), (t.get("choice") or {}).get("choice"),
                          (t.get("outcome") or {}).get("verdict")))
-            r = requests.post(GEMMA, json={"model": "grok-4.7", "temperature": 0.1,
+            r = requests.post(GEMMA, json={"model": "grok-4.20-0309-non-reasoning", "temperature": 0.1,
                 "max_tokens": 150, "messages": [{"role": "user", "content": prompt}]}, timeout=90)
             d = json.loads(re.search(r"\{.*\}", r.json()["choices"][0]["message"]["content"], re.S).group())
         except Exception as e:

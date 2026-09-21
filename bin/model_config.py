@@ -2,7 +2,7 @@
 import os
 
 # Primary generation model — Grok API
-VINTOS_MODEL = os.environ.get("VINTOS_MODEL", "grok-4.7")
+VINTOS_MODEL = os.environ.get("VINTOS_MODEL", "grok-4.20-0309-non-reasoning")
 
 # Lightweight model for classification/utility — Gemma local via LM Studio
 UTILITY_MODEL = "gemma-4-26b-a4b-it-uncensored"

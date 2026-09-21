@@ -22,7 +22,7 @@ _GROK_KEY = os.environ.get('XAI_API_KEY', '')
 def call(system, prompt, temperature=0.78, max_tokens=800):
     headers = {'Authorization': f'Bearer {_GROK_KEY}', 'Content-Type': 'application/json'}
     r = requests.post(_GROK_API, headers=headers, json={
-        'model': 'grok-4.7',
+        'model': 'grok-4.20-0309-non-reasoning',
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}],
         'temperature': temperature, 'max_tokens': max_tokens,
     }, timeout=90)

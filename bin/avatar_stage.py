@@ -599,7 +599,7 @@ def kick_from_reply(reply, slot=None, admit=None):
 
 
 # ── live scene gate: HE decides, the instant her message lands ───────────────
-async def scene_gate(message, endpoint, headers, model="grok-4.7", slot=None, admit=None):
+async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning", slot=None, admit=None):
     """Runs concurrently with his reply, on Grok, carrying who he is and the
     WHOLE video vocabulary his ntfy sends use - together / self / sexual, real
     places (her photos and the rooms), his explicit stills - plus what a live

@@ -27,7 +27,7 @@ def log(msg):
 def llm(system, user, temperature=0.4):
     try:
         r = requests.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {__import__('os').environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-            "model": "grok-4.7",
+            "model": "grok-4.20-0309-non-reasoning",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user}
