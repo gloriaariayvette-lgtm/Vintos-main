@@ -1129,7 +1129,14 @@ Account provisioning and external effects cannot be approved as pure string
 transformations; unresolved email/inbox/outreach integrations remain explicitly
 blocked for concrete provider, credential, recipient and effect scope.
 
-Validation/deployment of this extension is in progress. Still open: a real persistent
+Deployed as **20260920-190719-96c97b2** (`deploy OK`); all 163 suites passed
+in both invocation modes on Mac and Aegis. All 375 main files and nine worker files
+match source. Server, Lab, Atelier and Forge are running; skill-surf timer is enabled
+and waiting. Four existing latent-thread wants are queued for capability assessment.
+Today remains 8 historical attempts used, 0 remaining: no cap bypass or live
+assessment run was performed. See [verified evidence](review-evidence/2026-09-20/forge-broad-deploy.json).
+
+Still open: live assessment execution after the next daily allowance; a real persistent
 email account, inbox provider adapter and authorized external-send commissioning.
 No email address was created and no third party was contacted by this change.
 Wallet and marketplace work remain parked. The local assessment is a planning

@@ -1,18 +1,34 @@
 # Forge–Atelier and Lab deployment — 20 September 2026
 
-Release **20260920-180036-dc30734** is deployed on Aegis. All 162 suites passed
-through both the isolation runner and direct script invocation on Mac and Linux.
-The deploy reported `deploy OK`, with no release failures. Independent hash checks
-matched 374 main release files and all nine dedicated Forge bundle files to source.
-See [the deployment receipt](review-evidence/2026-09-20/forge-atelier-deploy.json)
-and [remaining work](open-work.md).
+Release **20260920-190719-96c97b2** is deployed on Aegis. All **163 suites** passed
+through both the isolation runner and direct invocation on Mac and Linux. The
+manifest reported `deploy OK`; all 375 main release files and nine worker files
+match source. Server, Lab, Atelier and Forge are running, and skill-surf timer is
+enabled/waiting. See [the broader Forge deployment receipt](review-evidence/2026-09-20/forge-broad-deploy.json).
+
+Standing eligible wants now enter capability assessment with their real intention,
+current plan and installed-action inventory. An assessment may identify a necessary
+missing action, but cannot invent a want, grant effects, or mark the want fulfilled.
+The house rechecks the live fingerprint and inventory before inserting that step,
+recording the absence and proposing the capability. The existing verified-install
+and resume path releases the originating want. Ended/changed wants invalidate old
+assessments. Capability briefs remain `awaiting_capability`, not completed builds.
+
+Four real latent-thread wants are queued. No live assessment was run past the daily
+cap; the full assessment-to-gap path was exercised with isolated fake inference.
+The queue chooses the least-served source and then least-recently attempted project;
+approved builds get a chance before more generated reports. The Lab retains its
+bounded report intake independently of capability projects waiting for approval.
 
 ## Three actual steps per day
 
-Eve's explicit limit is **three attempted Forge report cycles per Chicago calendar
-day, across all projects**. A step is one local draft-and-critique cycle. SQLite
+Eve's explicit limit is **three attempted Forge steps per Chicago calendar day**
+shared by report cycles, capability assessments, capability briefs and approved
+Astra/Fable capability builds. A report draft plus critique is one step. Ordinary
+want execution outside Forge is not counted here. SQLite
 reserves a slot atomically before execution. Failures, crashes and reconciled
-retries count; restarting cannot replenish the allowance. The worker waits when
+retries count; restarting cannot replenish the allowance. A capability build
+refuses before any provider call if the shared budget service is unavailable. The worker waits when
 exhausted and resumes after midnight America/Chicago. Calendar rollover handles DST.
 
 The original uncapped implementation was a mistake: eight attempts had run before
@@ -102,3 +118,11 @@ SQLite database: replacing it would erase both history and the daily allowance.
 [ChEMBL API](https://www.ebi.ac.uk/chembl/api/data/docs),
 [COSMIC access](https://cancer.sanger.ac.uk/cosmic/download/cosmic),
 [Ensembl reference sequence](https://rest.ensembl.org/documentation/info/sequence_region).
+
+
+The broader queue does not provision an email address. Persistent address, inbox,
+contact discovery and externally authorized sending remain distinct requirements.
+Unresolved external integrations cannot be approved as pure text transformers.
+A real provider/account, credential handling, recipient scope and successful scoped
+commissioning remain open. No third party was contacted. Wallet/Taskmarket remain
+parked. Current worker backup: `/home/atelier/forge-loop-backup-pre-96c97b2`.

@@ -1,0 +1,64 @@
+{
+  "source_revision": "96c97b2",
+  "release": "20260920-190719-96c97b2",
+  "deploy_result": "deploy OK",
+  "tests": {
+    "mac_isolated": {
+      "passed": 163,
+      "total": 163
+    },
+    "mac_direct": {
+      "passed": 163,
+      "total": 163
+    },
+    "linux_direct": {
+      "passed": 163,
+      "total": 163
+    },
+    "linux_preflight": {
+      "passed": 163,
+      "failures": 0
+    },
+    "linux_deploy": {
+      "passed": 163,
+      "failures": 0
+    }
+  },
+  "main_files": 375,
+  "main_source_mismatches": [],
+  "main_record_mismatches": [],
+  "worker_files": 9,
+  "worker_matches_source": true,
+  "release_failures": [],
+  "units": {
+    "vintos-server": "active/running; enabled; restarts=0",
+    "vintos-chemistry-lab": "active/running; enabled; restarts=0",
+    "vintos-atelier": "active/running; enabled; restarts=0",
+    "atelier-forge-loop": "active/running; enabled; restarts=0",
+    "vintos-skill-surf.timer": "active/waiting; enabled"
+  },
+  "shared_budget": {
+    "day": "2026-09-20",
+    "timezone": "America/Chicago",
+    "limit": 3,
+    "used": 8,
+    "remaining": 0,
+    "historical_pre_cap_attempts_preserved": true,
+    "includes": [
+      "report_cycles",
+      "capability_assessments",
+      "capability_briefs",
+      "approved_capability_builds"
+    ]
+  },
+  "queued_nonlab_wants": 4,
+  "queued_source": "latent_thread",
+  "inference_during_sync": false,
+  "main_rollback": "bash /home/gloria/.vintos/backups/atelier-20260920-190338/restore.sh",
+  "worker_backup": "/home/atelier/forge-loop-backup-pre-96c97b2",
+  "remaining": [
+    "Live capability-assessment execution waits for daily allowance; fixture execution verified",
+    "Persistent email account and real inbox/sending adapters not provisioned",
+    "Wallet and Taskmarket remain parked"
+  ]
+}
