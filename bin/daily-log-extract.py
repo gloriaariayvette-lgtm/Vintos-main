@@ -182,7 +182,7 @@ def build_inner():
                     tail = existing[existing.index("## First Light"):]
                 else:
                     import re as _labre
-                    _m = _labre.search(r'<!-- (?:chemistry-lab|q1-lab)-digest:', existing)
+                    _m = _labre.search(r'<!-- (?:chemistry-lab|q1-lab|forge)-digest:', existing)
                     if _m:
                         tail = existing[_m.start():]
                 if tail.strip():

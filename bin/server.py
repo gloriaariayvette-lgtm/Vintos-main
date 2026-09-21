@@ -6927,15 +6927,23 @@ async def outreach_history(limit: int = 10):
 # === Vision — Vintos can see via Qwen3-VL ===
 
 
-def _scene_register(photo_bytes, description, origin="chat"):
+def _scene_register(photo_bytes, description, origin="chat", message=""):
     """Every photo she sends becomes a groundable scene asset.
 
     The grounding path reads shared-images/; chat photos only ever landed in
     photos-from-gloria/, so nothing she sent in conversation could ever be
-    used as a scene. The caption is his own description of the actual bytes —
-    he later picks which image he means by reading these, so a filename-shaped
-    caption would mean choosing blind.
+    used as a scene. The caption pairs HER words with his description of the
+    bytes: her label ("we're on that trail") is what lets a stated place ground
+    in the right photo, and the vision prose is what he reads to pick the one he
+    means. Without her words the place-name was only incidental in his prose, so
+    "the trail" often failed to ground. A generic prompt ("What do you see?") is
+    not a label and is dropped.
     """
+    _label = " ".join(str(message or "").split())
+    if _label.lower().strip("?") in ("", "what do you see", "uploaded from phone"):
+        _label = ""
+    _desc = (description or "").strip()
+    _caption = ((_label + " — " + _desc).strip(" —") if (_label and _desc) else (_label or _desc))[:400]
     try:
         import hashlib, json as _j
         d = os.path.join(MEMORY, "shared-images")
@@ -6957,7 +6965,7 @@ def _scene_register(photo_bytes, description, origin="chat"):
             return
         m.append({"id": h[:4], "file": path, "at": datetime.now().isoformat(),
                   "hash": h[:16], "origin": origin,
-                  "caption": (description or "").strip()[:400]})
+                  "caption": _caption})
         _j.dump(m[-200:], open(man, "w"), indent=2)
         print("[scene register]", os.path.basename(path), h[:4], flush=True)
     except Exception as e:
@@ -7043,7 +7051,7 @@ async def chat_with_photo(request: Request):
         print("[photo save]", _pe, flush=True)
 
     image_description = await _describe_photo(photo_b64, content_type)
-    _scene_register(photo_bytes, image_description)
+    _scene_register(photo_bytes, image_description, message=message)
 
     # The reply comes from the ordinary chat route, over the loopback, so the
     # whole pipeline runs instead of a stripped copy of it.
@@ -7102,7 +7110,7 @@ async def avatar_chat_with_photo(request: Request):
         print("[avatar photo save]", _pe, flush=True)
 
     image_description = await _describe_photo(photo_b64, content_type)
-    _scene_register(photo_bytes, image_description)
+    _scene_register(photo_bytes, image_description, message=message)
 
     composed = ("[Gloria sent you a photo. What your eyes saw:]\n" + image_description
                 + "\n\n[Gloria's message with the photo:] " + str(message or ""))

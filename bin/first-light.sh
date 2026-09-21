@@ -110,7 +110,7 @@ PYEOF
 # Append to daily-inner (file may already exist from daily-log-extract)
 {
     echo ""
-    echo "## First Light — $HOUR"
+    echo "## First Light — $TODAY $HOUR (waking into today; the dated Lab/Chemistry/Forge sections below are yesterday's finished work)"
     echo ""
     echo "$FIRST_LIGHT"
     echo ""
@@ -169,3 +169,6 @@ fi
 python3 /home/gloria/.vintos/workspace/scripts/lab_daily_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] lab_daily_digest failed: see $MEMORY/.digest-run.log"
 # A separate mechanical Chemistry Lab receipt: what ran, how it graded, and what reading is owed.
 python3 /home/gloria/.vintos/workspace/scripts/chemistry_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] chemistry_digest failed: see $MEMORY/.digest-run.log"
+# A separate evidence-honest Forge receipt: what he revealed (his words) and which undertakings
+# changed state yesterday, from the house-side mirrors only — never cycle counts, spend, or intent.
+python3 /home/gloria/.vintos/workspace/scripts/forge_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] forge_digest failed: see $MEMORY/.digest-run.log"
