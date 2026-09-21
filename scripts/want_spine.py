@@ -111,11 +111,23 @@ def proposal_details(capability, note, want):
         "tests": ("Execute the named function with representative note text; assert the expected nonempty result, handle empty input explicitly, and verify failure cases in OS isolation. Acceptance: " + str(acceptance or "UNRESOLVED: needs a step-specific example"))[:600],
     }
 
+    hardware = step.get("hardware_proposal") if isinstance(step.get("hardware_proposal"), dict) else None
+    if hardware:
+        details["scope"] = {"execution":"reviewed_physical_build_proposal",
+            "hardware_proposal":hardware, "show_result":True,
+            "authorization":"Gloria must accept or deny this exact proposal before purchase or construction"}
+        details["permissions"] = ["proposal_only"]
+        details["touches"] = ["physical hardware"]
+        details["risks"] = ("Parts, cost, wiring and firmware are estimates pending Gloria's decision and physical "
+                            "validation. This proposal grants no purchase, assembly, installation or actuation authority.")
+        details["tests"] = ("Review the exact parts, cost, wiring, firmware sketch, reporting acknowledgement, safety "
+                            "limits and acceptance tests; accept or deny the proposal before any physical effect.")
+
 
     # An external capability cannot be built honestly as a pure text transformer.
     external = step.get("execution") == "external" or any(
         word in str(capability).lower() for word in ("email", "inbox", "outreach", "publish", "contact_person"))
-    if external:
+    if external and not hardware:
         details["scope"]["execution"] = "unresolved_external_integration"
         details["scope"]["output_contract"] = str(expected or goal)[:400]
         details["risks"] = "Needs concrete provider/account, credential storage, recipient/resource scope and separate invocation authority. A text-only stand-in cannot satisfy this capability. Resolve the integration before approving a build."

@@ -222,6 +222,30 @@ class Tests(unittest.TestCase):
                         {'complete':True,'reasons':'All sections supported or labeled speculation.','reveal':False}])
         result=ReportBuilder(lambda *args:next(responses))({'maximum_cents':0,'capability':'research_report','cycle_id':'fixture'}, {'intent':'report','previous':None})
         self.assertTrue(result['complete']);self.assertIn('not_validated',result['artifact']['truth_status'])
+
+    def test_physical_gap_becomes_reviewable_hardware_proposal(self):
+        responses=iter([
+            {'missing':True,'capability':'physical_interaction','note':'sense pressure on a small pad',
+             'expected_output':'timestamped pressure samples','acceptance':'known weights read within tolerance',
+             'execution':'external','reason':'no installed sensor or physical input'},
+            {'title':'Pressure pad input','objective':'Give Vintos a bounded pressure signal',
+             'parts':[{'name':'Arduino Nano','quantity':1,'rough_cost_usd':18.0,'purpose':'sample the sensor'},
+                      {'name':'force-sensitive resistor','quantity':1,'rough_cost_usd':9.0,'purpose':'measure pressure'}],
+             'rough_total_cost_usd':27.0,'wiring':['FSR divider to A0; common ground'],
+             'firmware_sketch':'Read A0, clamp range, emit one bounded JSON sample per second.',
+             'house_reporting':{'channel':'existing house MQTT bridge','payload':'pressure sample JSON',
+                                'acknowledgement':'bridge returns stored receipt id'},
+             'safety_limits':['USB low voltage only'],'acceptance_tests':['known weights remain within tolerance'],
+             'unknowns':['sensor range needs selection']}
+        ])
+        builder=ReportBuilder(lambda *args:next(responses))
+        claim={'maximum_cents':0,'capability':'capability_assessment','cycle_id':'fixture'}
+        context={'intent':'I want to feel pressure','origin':{'inventory':['web_search'],'house_channels':['MQTT']}}
+        result=builder(claim,context)
+        proposal=result['artifact']['hardware_proposal']
+        self.assertEqual(proposal['decision'],'gloria_accept_or_deny')
+        self.assertIn('nothing_purchased',proposal['truth_status'])
+        self.assertEqual(result['artifact']['capability_assessment']['hardware_proposal'],proposal)
     def test_unknown_request_cannot_expand_authority(self):
         with self.assertRaises(Refused):self.create(capabilities=['shell'])
     def test_lab_intake_is_scoped_private_and_idempotent(self):

@@ -95,6 +95,8 @@ def sync_assessments(wants, inventory, sf):
                 steps=w.setdefault('steps',[]); index=w.get('current_step_index',0)
                 if type(index) is not int or not 0<=index<=len(steps): continue
                 step={k:assessment[k] for k in ('capability','note','execution','expected_output','acceptance')}
+                if isinstance(assessment.get('hardware_proposal'), dict):
+                    step['hardware_proposal'] = assessment['hardware_proposal']
                 step.update(status='pending',forge_assessment=result['project'])
                 steps.insert(index,step)
                 w.update(multistep=True,capability='multistep',plan_state='READY')

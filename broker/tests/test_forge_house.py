@@ -74,4 +74,26 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.c.status(self.owner,pid)['state'],'complete')
         self.assertFalse(json.loads(self.path.read_text())[0].get('fulfilled',False))
 
+    def test_hardware_assessment_reaches_the_reviewable_proposal_card(self):
+        hardware={'title':'Pressure input','objective':'sense pressure',
+            'parts':[{'name':'sensor','quantity':1,'rough_cost_usd':8,'purpose':'measure'}],
+            'rough_total_cost_usd':8,'wiring':['sensor to A0'],'firmware_sketch':'read A0',
+            'house_reporting':{'channel':'MQTT','payload':'sample','acknowledgement':'receipt'},
+            'safety_limits':['low voltage'],'acceptance_tests':['known load'],'unknowns':[],
+            'decision':'gloria_accept_or_deny','truth_status':'proposal_only_nothing_purchased_or_built'}
+        self.want.update(want='I want to sense pressure',steps=[],current_step_index=0)
+        self.path.write_text(json.dumps([self.want]))
+        self.r.builder=ReportBuilder(lambda *a:{'missing':True,'capability':'physical_interaction',
+            'note':'sense pressure','execution':'external','expected_output':'samples','acceptance':'known load',
+            'reason':'no sensor','hardware_proposal':hardware})
+        # Exercise adoption with an already validated assessment artifact; ReportBuilder's generation is tested separately.
+        house.sync(inventory=['web_search']);pid=self.c.ready_queue('w'*40)[0]
+        self.r.builder=lambda claim,context:{'artifact':{'capability_assessment':{**self.model('', ''),
+            'capability':'physical_interaction','note':'sense pressure','hardware_proposal':hardware}},
+            'complete':False,'receipt':{'charged_cents':0,'cycle_id':claim['cycle_id']}}
+        self.r.step(pid);house.sync(inventory=['web_search'])
+        card=sf.open_cards()[0]
+        self.assertEqual(card['scope']['hardware_proposal']['title'],'Pressure input')
+        self.assertEqual(card['scope']['authorization'].split()[0],'Gloria')
+
 if __name__=='__main__':unittest.main()
