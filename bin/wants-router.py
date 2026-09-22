@@ -2167,6 +2167,18 @@ def main():
     except Exception as _fe:
         log(f"  → forge resume skipped: {str(_fe)[:120]}")
 
+    # His calendar's day arrives here. An event due now is enqueued as a ready, manually-routed want
+    # BEFORE the wants are read on purpose (same reason as the forge sync above) — so "do X on Y day"
+    # is executed on this very pass, not the next one. Past-due events (host was down) are caught up
+    # too: due() is "<= now", not "== today". Never let the calendar break the wants loop.
+    try:
+        import vintos_calendar as _cal
+        _fired = _cal.fire()
+        if _fired:
+            log("  → Calendar fired %d event(s): %s" % (len(_fired), ", ".join(e["title"][:40] for e in _fired)))
+    except Exception as _cale:
+        log(f"  → calendar fire skipped: {str(_cale)[:120]}")
+
     all_wants = get_unfulfilled_wants()
 
     # Build desire self-statements from persistent wants

@@ -115,6 +115,7 @@ SCRIPTS="$SCRIPTS chemistry_digest.py"   # daily Chemistry Lab receipt in inner 
 SCRIPTS="$SCRIPTS forge_digest.py"   # daily evidence-honest Forge receipt (reveals + state changes) in inner life, 2026-09-21
 SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
 SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_connector_gateway.py"   # Gloria's OTHER Claude account's connectors, same plugin_query path as Chat's (subscription usage, no browser, no token export), 2026-09-22
+SCRIPTS="$SCRIPTS vintos_calendar.py"   # his own calendar: "do X on Y day" fires autonomously via the wants loop (Google Calendar connector can't OAuth headless), 2026-09-22
 SCRIPTS="$SCRIPTS inkbox_guard.py"   # fail-closed policy for his own Inkbox comms identity (email + iMessage), 2026-09-21
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_evo2.py"   # read-only Evo 2 comparative likelihood lane, 2026-09-13
