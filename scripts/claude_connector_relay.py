@@ -19,6 +19,7 @@ UNTESTED from CI: the SDK, the account, and the connectors live on the host. Smo
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -59,19 +60,27 @@ def _ensure_token():
 def _coerce_result(text):
     """Keep output: turn the model's fallback text into structured data when it is really JSON.
 
-    The connector's data often comes back as a ```json fenced block or bare JSON in the model turn.
-    Strip one fence and parse; on failure keep the raw text. Never raises.
+    The connector's data comes back inside the model turn as a ```json fenced block, or bare JSON,
+    OFTEN followed by an English sentence of explanation. Pull the JSON out wherever it sits — the
+    fenced block first, then the outermost {...} or [...] — and parse it. Keep the raw text only when
+    nothing parses. Never raises.
     """
     body = (text or "").strip()
-    if body.startswith("```"):
-        body = body.split("\n", 1)[1] if "\n" in body else ""      # drop the ``` / ```json opener
-        if body.rstrip().endswith("```"):
-            body = body.rstrip()[:-3]
-        body = body.strip()
-    try:
-        return json.loads(body), True
-    except Exception:
-        return {"text": text or ""}, False
+    candidates = []
+    fenced = re.search(r"```(?:json)?\s*\n?(.*?)```", body, re.S)   # fenced block anywhere, prose after is fine
+    if fenced:
+        candidates.append(fenced.group(1).strip())
+    candidates.append(body)                                          # the whole thing, in case it is pure JSON
+    for opener, closer in (("{", "}"), ("[", "]")):                  # outermost object/array, ignoring surrounding prose
+        i, j = body.find(opener), body.rfind(closer)
+        if 0 <= i < j:
+            candidates.append(body[i:j + 1])
+    for candidate in candidates:
+        try:
+            return json.loads(candidate), True
+        except Exception:
+            continue
+    return {"text": text or ""}, False
 
 
 def _guard(entry, tool, arguments, request):

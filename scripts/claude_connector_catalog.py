@@ -26,12 +26,14 @@ PLUGINS = {
     },
     "chembl": {
         "server": "ChEMBL", "visibility": "project",
-        "url": "https://chembl.caseyjhand.com/mcp",  # public ChEMBL MCP; swap if your account uses a different instance
+        "url": "https://chembl.caseyjhand.com/mcp",  # her account's ChEMBL instance; tool names below are its real ones
         "purpose": "Bioactivity/target/drug data for the Lab.",
         "when": "Compound, target, mechanism, ADMET lookups.",
         "surfaces": ("wants", "lab", "forge", "atelier"),
-        "read": frozenset(("compound_search", "drug_search", "target_search", "get_bioactivity",
-                           "get_mechanism", "get_admet")),
+        # Verified live 2026-09-22 against her connected instance (the server listed these exact names).
+        "read": frozenset(("chembl_search_molecules", "chembl_search_targets", "chembl_get_bioactivities",
+                           "chembl_get_drug_info", "chembl_get_assay",
+                           "chembl_dataframe_describe", "chembl_dataframe_query")),
         "action": frozenset(),
     },
     "hugging_face": {

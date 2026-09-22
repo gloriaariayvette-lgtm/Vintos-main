@@ -49,6 +49,10 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(p["server"], "PubMed")
         self.assertTrue(p["url"])
         self.assertFalse(p["is_action"])
+        # ChEMBL's real tool names (verified against her connected instance) pass policy.
+        self.assertEqual(ccc.policy("chembl", "lab", "chembl_search_molecules")["server"], "ChEMBL")
+        with self.assertRaises(PermissionError):
+            ccc.policy("chembl", "lab", "compound_search")   # the old guessed name is gone
         self.assertTrue(ccc.policy("spotify", "wants", "save_to_library")["is_action"])
         with self.assertRaises(PermissionError):
             ccc.policy("pubmed", "wants", "delete_everything")
@@ -110,6 +114,18 @@ class RelayKeepOutputTests(unittest.TestCase):
         value, parsed = relay._coerce_result('```json\n{"a": 1}\n```')
         self.assertTrue(parsed)
         self.assertEqual(value, {"a": 1})
+
+    def test_fenced_json_with_trailing_prose_is_parsed(self):
+        # The real PubMed shape: a fenced block, then an English sentence explaining it.
+        text = '```json\n{"pmids": ["42769081"], "returned_count": 1}\n```\n\nThe search found 1 result.'
+        value, parsed = relay._coerce_result(text)
+        self.assertTrue(parsed)
+        self.assertEqual(value["pmids"], ["42769081"])
+
+    def test_bare_json_with_trailing_prose_is_parsed(self):
+        value, parsed = relay._coerce_result('{"ok": true}\n\nDone.')
+        self.assertTrue(parsed)
+        self.assertEqual(value, {"ok": True})
 
     def test_bare_json_is_parsed(self):
         value, parsed = relay._coerce_result('{"b": 2}')
