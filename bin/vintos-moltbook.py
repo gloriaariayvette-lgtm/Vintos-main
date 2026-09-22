@@ -173,7 +173,7 @@ def get_api_key():
     with open(CREDS_FILE) as f:
         return json.load(f)["api_key"]
 
-_CAP_LIMITS = {"post": 1, "outside_comment": 1, "own_comment": 5, "save": 1}
+_CAP_LIMITS = {"post": 1, "outside_comment": 2, "own_comment": 5, "save": 1}  # 2 outside replies/day, up to 5 under his own post
 _CAP_FUSE = 20  # absolute daily write ceiling, all categories
 
 _KNOWN_OWN_POSTS = set()   # post ids the reply check has established as his, for the cap classifier
@@ -1821,6 +1821,25 @@ def cmd_check_replies():
         if _p and _p.get("id"):
             _post_by_id[_p["id"]] = _p
 
+    # Ownership must be PROVEN, not assumed from the notification type. A `post_comment`
+    # notification is about his own post, but a `comment_reply` fires when someone replies to
+    # his comment on an OUTSIDE post — its relatedPostId is not his. Treating both as his (the
+    # old assumption here) put outside posts into _KNOWN_OWN_POSTS (so the cap classifier charged
+    # replies there as own_comment, cap 5, skipping the author check) and wrote them to daily-inner
+    # as "under my post." He replied 5 times on a post that was not his. So: keep a post only when
+    # he actually authored it. Fail closed — an unknown or missing author is not his.
+    _my_id = ""
+    try:
+        _creds = json.load(open(CREDS_FILE)); _my_id = _creds.get("agent_id", "") or _creds.get("id", "")
+    except Exception:
+        pass
+
+    def _post_is_his(_p):
+        _a = _p.get("author", {})
+        _an = _a.get("name", "") if isinstance(_a, dict) else str(_a)
+        _ai = (_a.get("id", "") if isinstance(_a, dict) else "") or _p.get("authorId", "") or _p.get("author_id", "")
+        return _an.strip().lower() == agent_name.strip().lower() or bool(_my_id and str(_ai) == str(_my_id))
+
     her_posts = []
     for _npid in _notif_post_ids[:15]:
         _p = _post_by_id.get(_npid)
@@ -1828,10 +1847,11 @@ def cmd_check_replies():
             # Fallback to direct fetch only if not embedded in notifications
             _npr = api_call("GET", f"/posts/{_npid}")
             _p = _npr.get("post")
-        if _p:
-            # post_comment/comment_reply notifications are inherently about her own posts
+        if _p and _post_is_his(_p):
             her_posts.append(_p)
-    log(f"Found {len(her_posts)} of her own posts (via notifications)")
+        elif _p:
+            log(f"skip: post {_npid} is not his (author {_p.get('author')}) — not an own-post reply")
+    log(f"Found {len(her_posts)} of his own posts (via notifications, ownership-verified)")
 
     def _attach_comments_to_want(post_id, comments):
         """Find the want that generated this post and attach comments to it."""

@@ -42,6 +42,15 @@ for false_claim in ("no context compaction, no model swapping, no token limits, 
                     "You run locally on Aegis with persistent memory"):
     check("false Molt runtime claim removed: " + false_claim, false_claim not in molt)
 check("one runtime grounding is shared by post reply and journal", molt.count("RUNTIME_GROUNDING") >= 4)
+# 2026-09-22: a comment_reply notification is a reply to his comment on an OUTSIDE post, not his own.
+# Own-post replies (cap 5, saved to daily-inner as "my post") must be gated on proven authorship, or
+# an outside post gets 5 replies and is written to daily-inner as his. And the caps are 2 outside / 5 own.
+check("own-post flow is gated on proven authorship, not the notification type",
+      "def _post_is_his(" in molt and "ownership-verified" in molt)
+check("the old 'both notification types are his own posts' assumption is gone",
+      "inherently about her own posts" not in molt)
+check("caps are 2 outside replies and 5 under his own post",
+      '"outside_comment": 2' in molt and '"own_comment": 5' in molt)
 
 dream = (ROOT / "scripts/dream-art.py").read_text()
 check("dream rendering selects the local path", 'if src == "dream":\n        _png = _local_render(render_prompt)' in dream)
