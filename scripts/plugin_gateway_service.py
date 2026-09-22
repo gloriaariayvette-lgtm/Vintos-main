@@ -43,7 +43,9 @@ class API:
                 if not 0 < size <= MAX_BODY: raise ValueError("bounded request required")
                 data = json.loads(env["wsgi.input"].read(size))
                 if set(data) != {"plugin", "tool", "arguments", "purpose"}: raise ValueError("exact call envelope required")
-                body = self.caller("forge", data["plugin"], data["tool"], data["arguments"], data["purpose"])
+                import claude_connector_gateway
+                caller = claude_connector_gateway.call if claude_connector_gateway.owns(data["plugin"]) else self.caller
+                body = caller("forge", data["plugin"], data["tool"], data["arguments"], data["purpose"])
             else:
                 status, body = 404, {"error":"unknown route"}
         except PolicyHold as exc:

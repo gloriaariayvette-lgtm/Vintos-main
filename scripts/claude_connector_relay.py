@@ -33,6 +33,45 @@ MAX_RESPONSE = 8 * 1024 * 1024
 TURN_TIMEOUT = int(os.environ.get("VINTOS_CLAUDE_RELAY_TIMEOUT", "180"))
 # Cheap, capable enough to emit one exact tool call; overridable per host.
 RELAY_MODEL = os.environ.get("VINTOS_CLAUDE_RELAY_MODEL", "claude-haiku-4-5")
+# Subscription OAuth token (from `claude setup-token`), read from a stable 0600 file when the env
+# var is unset — so Vintos (a service, not Gloria's shell) can reach the account. Never printed.
+TOKEN_FILE = Path(os.environ.get("VINTOS_CLAUDE_OAUTH_TOKEN_FILE",
+                                 os.path.expanduser("~/.vintos/secrets/claude-code-oauth-token")))
+
+
+def _ensure_token():
+    """Persist step: if CLAUDE_CODE_OAUTH_TOKEN is unset, load it from the 0600 token file.
+
+    Refuses a world/group-readable file (a token is a credential). Sets the env var in-process only
+    so the Agent SDK subprocess inherits it; the token value is never returned or logged.
+    """
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return
+    if not TOKEN_FILE.is_file():
+        return
+    if TOKEN_FILE.stat().st_mode & 0o077:
+        raise RuntimeError("oauth token file must be mode 0600")
+    token = TOKEN_FILE.read_text().strip()
+    if token:
+        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+
+
+def _coerce_result(text):
+    """Keep output: turn the model's fallback text into structured data when it is really JSON.
+
+    The connector's data often comes back as a ```json fenced block or bare JSON in the model turn.
+    Strip one fence and parse; on failure keep the raw text. Never raises.
+    """
+    body = (text or "").strip()
+    if body.startswith("```"):
+        body = body.split("\n", 1)[1] if "\n" in body else ""      # drop the ``` / ```json opener
+        if body.rstrip().endswith("```"):
+            body = body.rstrip()[:-3]
+        body = body.strip()
+    try:
+        return json.loads(body), True
+    except Exception:
+        return {"text": text or ""}, False
 
 
 def _guard(entry, tool, arguments, request):
@@ -82,6 +121,7 @@ async def _run(server, tool, arguments, url):
     (auth rides the account OAuth token in the environment). No dependence on `claude mcp add`.
     """
     from claude_agent_sdk import query, ClaudeAgentOptions   # imported lazily so CI can parse this file
+    _ensure_token()                                          # subscription OAuth token from env or 0600 file
     fq = f"mcp__{server}__{tool}"
     if not url:
         raise RuntimeError(f"no MCP url configured for connector '{server}' — cannot reach it headless")
@@ -105,9 +145,14 @@ async def _run(server, tool, arguments, url):
             final_text = result_attr
     if captured is not None:
         return {"result": captured, "source": "tool_result"}
-    # No tool_result captured — surface the model's text so the failure is visible, never silently ok.
-    return {"result": {"text": final_text}, "source": "model_text",
-            "warning": "no raw tool_result captured; connector may not have run"}
+    # No raw tool_result block — the SDK often folds the connector's data into the model turn as a
+    # (possibly fenced) JSON body. Parse it so the caller gets structured output, not prose.
+    coerced, parsed = _coerce_result(final_text)
+    if parsed:
+        return {"result": coerced, "source": "model_json"}
+    # Truly nothing usable: surface the text and warn, so a real failure is never reported as ok.
+    return {"result": coerced, "source": "model_text",
+            "warning": "connector returned no structured result; verify the call ran"}
 
 
 def connector(request):

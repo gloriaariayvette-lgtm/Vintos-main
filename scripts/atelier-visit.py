@@ -379,6 +379,12 @@ def plugin_block():
         if scripts not in sys.path: sys.path.insert(0, scripts)
         from plugin_catalog import prompt_instructions
         menu = prompt_instructions("atelier")
+        try:  # additively offer the Claude-account connectors through the same plugin_query action
+            from claude_connector_catalog import prompt_instructions as claude_prompt
+            claude_menu = claude_prompt("atelier")
+            if claude_menu: menu += "\n\n" + claude_menu
+        except Exception:
+            pass
     except Exception:
         return ""
     return ("\n\nYOUR CONNECTED TOOL SHELF IS AVAILABLE. It is optional material, not an assignment. "

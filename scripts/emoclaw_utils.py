@@ -821,6 +821,12 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
             '{"skill":"catalog name","instruction":"bounded artifact request"}.\n\n'
             + _plugin_prompt("wants") + "\n"
         )
+        try:  # additively offer the Claude-account connectors through the same plugin_query action
+            from claude_connector_catalog import prompt_instructions as _claude_prompt
+            _claude_menu = _claude_prompt("wants")
+            if _claude_menu: CAPABILITIES_DESC += "\n" + _claude_menu + "\n"
+        except Exception:
+            pass
     except Exception as _plugin_menu_error:
         # Missing policy is a missing capability.  Never invent connector names.
         CAPABILITIES_DESC += "\n- Connected tools unavailable: planner must not propose plugin_query or plugin_skill.\n"

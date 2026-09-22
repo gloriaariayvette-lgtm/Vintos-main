@@ -70,7 +70,14 @@ class ReportBuilder:
 
     def _menu(self):
         from plugin_catalog import prompt_instructions
-        return prompt_instructions('forge')
+        menu = prompt_instructions('forge')
+        try:  # additively offer the Claude-account connectors through the same plugin_query action
+            from claude_connector_catalog import prompt_instructions as claude_prompt
+            claude_menu = claude_prompt('forge')
+            if claude_menu: menu += "\n" + claude_menu
+        except Exception:
+            pass
+        return menu
 
     def _with_plugin(self, instruction, context, first):
         """Execute at most one model-selected connector call and return its data to the model."""

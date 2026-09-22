@@ -1615,9 +1615,10 @@ def plugin_query(want_text):
     try:
         params = json.loads(os.environ.get("STEP_PARAMS", "{}"))
         sys.path.insert(0, SCRIPTS)
-        import plugin_gateway
-        result = plugin_gateway.call("wants", params["plugin"], params["tool"],
-                                     params["arguments"], params["purpose"])
+        import plugin_gateway, claude_connector_gateway
+        gateway = claude_connector_gateway if claude_connector_gateway.owns(params["plugin"]) else plugin_gateway
+        result = gateway.call("wants", params["plugin"], params["tool"],
+                              params["arguments"], params["purpose"])
         return "Plugin receipt: %s\n%s" % (result["receipt"]["artifact"], result["summary"])
     except Exception as exc:
         log("  → plugin query held: %s" % str(exc)[:180])

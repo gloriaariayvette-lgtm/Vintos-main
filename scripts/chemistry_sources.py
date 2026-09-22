@@ -21,7 +21,9 @@ def configured_sources():
 def query_plugin(plugin, tool, arguments, purpose):
     """Run one Lab-approved connected source and enter its result into Lab provenance."""
     from plugin_gateway import call, load_receipt
-    outcome = call('lab', plugin, tool, arguments, purpose)
+    import claude_connector_gateway
+    gateway_call = claude_connector_gateway.call if claude_connector_gateway.owns(plugin) else call
+    outcome = gateway_call('lab', plugin, tool, arguments, purpose)
     stored = load_receipt(outcome['receipt']['receipt_id'], 'lab')
     result = receipt('plugin:'+plugin, {'tool':tool, 'arguments_sha256':outcome['receipt']['arguments_sha256']},
                      stored['result'], metadata={'plugin_receipt_id':outcome['receipt']['receipt_id'],
