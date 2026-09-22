@@ -153,6 +153,21 @@ class Tests(unittest.TestCase):
         out=API(self.r)({'PATH_INFO':path,'REQUEST_METHOD':method,'HTTP_AUTHORIZATION':'Bearer '+(token or self.owner),
                         'CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)},lambda s,h:status.append(s))
         return int(status[0].split()[0]),b''.join(out)
+    def test_projects_surface_intent_and_seal_private(self):
+        # The owner UI could not show WHAT he is making because status/projects dropped `intent`.
+        p=self.create();pid=p['id']
+        self.assertEqual(self.c.status(self.owner,pid).get('intent'),'Document the source')
+        self.assertTrue(any(r['id']==pid and r.get('intent')=='Document the source'
+                            for r in self.c.projects(self.owner)))
+        code,raw=self.call('/api/projects')
+        self.assertEqual(code,200)
+        self.assertTrue(any(r.get('intent')=='Document the source' for r in json.loads(raw)),
+                        'the /api/projects wire carries the intent to the UI')
+        # A private interval stays sealed: intent is None until an explicit audit, like its artifacts.
+        pv=self.create(private=True,private_until=__import__('time').time()+86400);pvid=pv['id']
+        self.assertIsNone(self.c.status(self.owner,pvid).get('intent'))
+        self.assertTrue(self.c.status(self.owner,pvid)['private'])
+
     def test_continuous_feedback_lineage_and_outbox(self):
         p=self.create();pid=p['id']
         self.assertTrue(self.r.step(pid));self.assertTrue(self.r.step(pid));self.assertFalse(self.r.step(pid))

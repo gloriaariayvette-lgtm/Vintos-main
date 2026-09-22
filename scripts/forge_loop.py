@@ -139,7 +139,12 @@ class Controller:
         with self.db() as db:
             p = self._get(db, pid)
             self._expiry(db, p)
-            return {k: p[k] for k in ('id', 'state', 'cycles', 'private', 'private_until', 'spent', 'ceiling', 'active')}
+            out = {k: p[k] for k in ('id', 'state', 'cycles', 'private', 'private_until', 'spent', 'ceiling', 'active')}
+            # The intent is WHAT he is trying to make — the owner UI could not show it because this
+            # projection dropped it. Surface it for the owner, but keep a private interval sealed
+            # (its intent is revealed only by the explicit audit, like its artifacts).
+            out['intent'] = None if p['private'] else p.get('intent')
+            return out
 
     def cancel(self, pid, cancel_token):
         if not isinstance(cancel_token, str):

@@ -1,19 +1,116 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atelier · Forge</title>
-<style>body{font:17px system-ui;max-width:850px;margin:3rem auto;padding:0 1rem;background:#171c20;color:#ebeeeb}input,textarea,button{font:inherit;padding:.6rem;margin:.25rem;border:1px solid #707b80;border-radius:6px;background:#242e34;color:inherit}textarea{display:block;width:90%;min-height:7rem}article{border-top:1px solid #657575;padding:1rem 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#bfcdca}button{cursor:pointer}#error{color:#ffd3a4}</style>
-<h1>Forge in the Atelier</h1><p>Forge takes at most three steps per day across all projects, then resumes the next day until complete or cancelled. Private work stays covered until reveal, expiry, or an explicit audit.</p>
-<label>Owner key <input id="key" type="password" autocomplete="off"></label><button id="connect">Open controls</button><p id="error" role="status"></p>
-<section id="controls" hidden><p id="budget"></p><h2>Begin a project</h2><textarea id="intent" placeholder="What should this report explore or make?"></textarea><label><input id="private" type="checkbox"> Private creation interval</label><label>Until <input id="until" type="datetime-local"></label><p><small>This form creates a report. Capability gaps from standing wants arrive automatically and stay open until the capability is verified and installed. Account setup and external sending require their own authorization.</small></p><button id="create">Begin</button><button id="refresh">Refresh</button><div id="projects"></div></section>
+<style>
+  :root{--bg:#171c20;--panel:#20272c;--panel2:#242e34;--ink:#ebeeeb;--dim:#a9b6b5;--line:#33403f;--accent:#f0b071;--good:#8fd6a0;--warn:#ffd3a4;--live:#7fc7ff}
+  *{box-sizing:border-box}
+  body{font:16px/1.5 system-ui,-apple-system,sans-serif;max-width:820px;margin:0 auto;padding:1.25rem 1rem 4rem;background:var(--bg);color:var(--ink)}
+  h1{font-size:1.5rem;margin:.2rem 0}
+  .lede{color:var(--dim);font-size:.95rem;margin:.25rem 0 1.25rem}
+  input,textarea,button,select{font:inherit;padding:.6rem .7rem;border:1px solid #5c686c;border-radius:8px;background:var(--panel2);color:inherit}
+  textarea{display:block;width:100%;min-height:6rem;margin:.4rem 0}
+  label{display:inline-flex;align-items:center;gap:.4rem;margin:.3rem .6rem .3rem 0}
+  button{cursor:pointer;border-color:#6b777b}
+  button.primary{background:var(--accent);color:#241a0e;border-color:var(--accent);font-weight:600}
+  button.ghost{background:transparent}
+  #error{color:var(--warn);min-height:1.2em;margin:.5rem 0}
+  .budget{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;color:var(--dim);font-size:.92rem}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem;margin:1rem 0}
+  .making{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 .2rem}
+  .intent{font-size:1.15rem;font-weight:600;margin:0 0 .6rem;white-space:pre-wrap;overflow-wrap:anywhere}
+  .intent.sealed{color:var(--dim);font-weight:400;font-style:italic}
+  .meta{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 .7rem}
+  .tag{font-size:.8rem;padding:.15rem .5rem;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+  .tag.state{color:var(--ink);border-color:#5c686c}
+  .tag.live{color:var(--live);border-color:var(--live)}
+  .tag.priv{color:var(--accent);border-color:var(--accent)}
+  .actions{display:flex;flex-wrap:wrap;gap:.5rem}
+  .work{margin-top:.8rem;border-top:1px solid var(--line);padding-top:.6rem}
+  .cyc{margin:.5rem 0;padding:.5rem .7rem;background:var(--panel2);border-radius:8px}
+  .cyc h4{margin:0 0 .3rem;font-size:.85rem;color:var(--dim)}
+  .kv{margin:.2rem 0}
+  .kv .k{color:var(--accent);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+  .kv .v{white-space:pre-wrap;overflow-wrap:anywhere}
+  .kv .v ul{margin:.2rem 0 .2rem 1rem;padding:0}
+  details{margin-top:.4rem}
+  summary{cursor:pointer;color:var(--dim);font-size:.85rem}
+  pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#12171a;padding:.6rem;border-radius:8px;font-size:.82rem;color:var(--dim)}
+  .empty{color:var(--dim);font-style:italic}
+</style>
+<h1>Forge in the Atelier</h1>
+<p class="lede">At most three steps a day across all projects, then it resumes the next day until complete or cancelled. Private work stays covered until reveal, expiry, or an explicit audit.</p>
+<label>Owner key <input id="key" type="password" autocomplete="off"></label>
+<button id="connect" class="primary">Open controls</button>
+<p id="error" role="status"></p>
+<section id="controls" hidden>
+  <p id="budget" class="budget"></p>
+  <h2>Begin a project</h2>
+  <textarea id="intent" placeholder="What should this report explore or make?"></textarea>
+  <div><label><input id="private" type="checkbox"> Private creation interval</label>
+  <label>Until <input id="until" type="datetime-local"></label></div>
+  <p><small style="color:var(--dim)">This form creates a report. Capability gaps from standing wants arrive automatically and stay open until the capability is verified and installed. Account setup and external sending require their own authorization.</small></p>
+  <button id="create" class="primary">Begin</button>
+  <button id="refresh" class="ghost">Refresh</button>
+  <div id="projects"></div>
+</section>
 <script>
 const $=id=>document.getElementById(id);let token='';
+const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
 async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data}
-function button(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=()=>run(fn);return b}
+function button(label,cls,fn){const b=el('button',cls,label);b.onclick=()=>run(fn);return b}
 async function run(fn){$('error').textContent='';try{await fn()}catch(e){$('error').textContent=e.message}}
-async function refresh(){const budget=await api('/api/budget');$('budget').textContent=budget.used+' of '+budget.limit+' steps used today ('+budget.timezone+'). Failed attempts count.';const rows=await api('/api/projects');$('projects').replaceChildren();for(const p of rows){const a=document.createElement('article'),h=document.createElement('h3'),pre=document.createElement('pre');h.textContent=p.id+' · '+p.state+(p.private?' · private':'');a.append(h);const text=document.createElement('p');text.textContent=p.cycles+' cycles retained';a.append(text);
-const base='/api/projects/'+p.id;
-a.append(button('Cancel next cycle',async()=>{await api(base+'/cancel','POST',{});await refresh()}));
-if(p.private)a.append(button('Audit and end private interval',async()=>{if(confirm('End this private interval and open its retained work?'))pre.textContent=JSON.stringify(await api(base+'/audit','POST',{}),null,2)}));
-else a.append(button('Read retained work',async()=>{const rows=await api(base+'/artifacts');pre.textContent=JSON.stringify(rows.map(x=>({...x,artifact:x.artifact?JSON.parse(x.artifact):null})),null,2)}));
-a.append(pre);$('projects').append(a)}}
-$('connect').onclick=()=>run(async()=>{token=$('key').value;$('key').value='';await refresh();$('controls').hidden=false});$('refresh').onclick=()=>run(refresh);
-$('create').onclick=()=>run(async()=>{const private=$('private').checked;const until=$('until').value;await api('/api/projects','POST',{intent:$('intent').value,private,private_until:private&&until?Date.parse(until)/1000:null});$('intent').value='';await refresh()});
+const money=c=>(typeof c==='number')?'$'+(c/100).toFixed(2):null;
+const STATE_LABEL={ready:'Ready',running:'Working now',needs_authorization:'Needs your authorization',reconciliation_required:'Needs reconciliation',complete:'Complete',cancelled:'Cancelled',abandoned:'Abandoned',uncertain:'Uncertain — awaiting reconcile'};
+
+// Render an arbitrary artifact object as labeled, readable sections instead of a JSON wall.
+function renderValue(v){
+  if(v==null)return el('span','empty','—');
+  if(Array.isArray(v)){const ul=el('ul');for(const item of v){const li=el('li');li.append(renderValue(item));ul.append(li)}return ul}
+  if(typeof v==='object'){const wrap=el('div');for(const [k,val] of Object.entries(v)){const kv=el('div','kv');kv.append(el('div','k',k));const vd=el('div','v');vd.append(renderValue(val));kv.append(vd);wrap.append(kv)}return wrap}
+  return el('span','v',String(v));
+}
+function renderArtifact(container,rows){
+  container.replaceChildren();
+  if(!rows||!rows.length){container.append(el('p','empty','No retained work yet.'));return}
+  for(const row of rows){
+    const cyc=el('div','cyc');
+    cyc.append(el('h4',null,'cycle '+(row.id||'')+' · '+(row.state||'')));
+    let art=row.artifact;try{if(typeof art==='string')art=JSON.parse(art)}catch(e){}
+    if(art&&typeof art==='object'){cyc.append(renderValue(art))}
+    else if(art!=null){cyc.append(el('div','v',String(art)))}
+    else{cyc.append(el('span','empty','(no artifact on this cycle)'))}
+    const d=el('details');d.append(el('summary',null,'raw'));const pre=el('pre',null,JSON.stringify(row,null,2));d.append(pre);cyc.append(d);
+    container.append(cyc);
+  }
+}
+async function refresh(){
+  const budget=await api('/api/budget');
+  $('budget').textContent=budget.used+' of '+budget.limit+' steps used today ('+budget.timezone+'). Failed attempts count.';
+  const rows=await api('/api/projects');
+  const box=$('projects');box.replaceChildren();
+  if(!rows.length){box.append(el('p','empty','No projects yet.'));return}
+  for(const p of rows){
+    const card=el('div','card');
+    card.append(el('p','making',p.private?'Private interval':'What he is making'));
+    if(p.private){card.append(el('p','intent sealed',p.private_until?('Sealed until '+new Date(p.private_until*1000).toLocaleString()+' — audit to open it.'):'Sealed — audit to open it.'))}
+    else{card.append(el('p','intent',p.intent||'(no intention recorded)'))}
+    const meta=el('div','meta');
+    meta.append(el('span','tag state',STATE_LABEL[p.state]||p.state));
+    if(p.active)meta.append(el('span','tag live','● working now'));
+    meta.append(el('span','tag',(p.cycles||0)+' cycle'+(p.cycles===1?'':'s')));
+    const spent=money(p.spent),ceil=money(p.ceiling);
+    if(spent!=null)meta.append(el('span','tag','spent '+spent+(ceil&&p.ceiling?(' / '+ceil):'')));
+    if(p.private)meta.append(el('span','tag priv','private'));
+    meta.append(el('span','tag',p.id));
+    card.append(meta);
+    const work=el('div','work');
+    const actions=el('div','actions');
+    actions.append(button('Cancel next cycle','ghost',async()=>{await api('/api/projects/'+p.id+'/cancel','POST',{});await refresh()}));
+    if(p.private)actions.append(button('Audit & open this work','',async()=>{if(confirm('End this private interval and open its retained work?')){const r=await api('/api/projects/'+p.id+'/audit','POST',{});renderArtifact(work,r);await refresh()}}));
+    else actions.append(button('Show retained work','',async()=>{const r=await api('/api/projects/'+p.id+'/artifacts');renderArtifact(work,r)}));
+    card.append(actions);card.append(work);
+    box.append(card);
+  }
+}
+$('connect').onclick=()=>run(async()=>{token=$('key').value;$('key').value='';await refresh();$('controls').hidden=false});
+$('refresh').onclick=()=>run(refresh);
+$('create').onclick=()=>run(async()=>{const priv=$('private').checked;const until=$('until').value;await api('/api/projects','POST',{intent:$('intent').value,private:priv,private_until:priv&&until?Date.parse(until)/1000:null});$('intent').value='';await refresh()});
 </script></html>
