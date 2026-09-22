@@ -34,6 +34,16 @@ class CatalogTests(unittest.TestCase):
         for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
             self.assertTrue(ccc.PLUGINS[name].get("url"), name)
 
+    def test_wired_connectors_are_available_on_all_four_surfaces(self):
+        # Gloria: available for wants, Lab, Forge and the Atelier.
+        for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
+            self.assertEqual(set(ccc.PLUGINS[name]["surfaces"]), set(ccc.SURFACES), name)
+        for surface in ccc.SURFACES:
+            block = ccc.prompt_instructions(surface)
+            for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
+                self.assertIn(name, block, "%s missing on %s" % (name, surface))
+            self.assertNotIn("uber_eats", block)
+
     def test_policy_shape_matches_chat_gateway(self):
         p = ccc.policy("pubmed", "lab", "search_articles")
         self.assertEqual(p["server"], "PubMed")

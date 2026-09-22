@@ -29,7 +29,7 @@ PLUGINS = {
         "url": "https://chembl.caseyjhand.com/mcp",  # public ChEMBL MCP; swap if your account uses a different instance
         "purpose": "Bioactivity/target/drug data for the Lab.",
         "when": "Compound, target, mechanism, ADMET lookups.",
-        "surfaces": ("lab", "forge", "atelier"),
+        "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("compound_search", "drug_search", "target_search", "get_bioactivity",
                            "get_mechanism", "get_admet")),
         "action": frozenset(),
@@ -39,7 +39,7 @@ PLUGINS = {
         "url": "https://huggingface.co/mcp",  # needs an HF token in the account session (OAuth/login)
         "purpose": "Model/dataset/Space discovery on the Hub.",
         "when": "Lab/Forge model work; identity via hf_whoami.",
-        "surfaces": ("lab", "forge", "atelier"),
+        "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("hf_whoami", "hub_repo_search", "hub_repo_details", "hf_fs")),
         "action": frozenset(),
     },
@@ -48,7 +48,7 @@ PLUGINS = {
         "url": "https://mcp-gateway-external-pilot.spotify.net/mcp",  # OAuth: one approval before first use
         "purpose": "Music — search and playback state (read); library and playlists (action).",
         "when": "When a want or moment calls for music. Autonomous per Gloria (low stakes).",
-        "surfaces": ("wants", "atelier"),
+        "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("search", "get_currently_playing")),
         "action": frozenset(("save_to_library", "remove_from_library", "generate_playlist")),
     },
@@ -57,7 +57,7 @@ PLUGINS = {
         "url": "https://calendarmcp.googleapis.com/mcp/v1",  # OAuth: one approval before first use
         "purpose": "Gloria's schedule — read her day (read); create/change events (action).",
         "when": "To know her day or, with her ok, place something on it.",
-        "surfaces": ("wants", "atelier", "forge"),
+        "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("list_calendars", "list_events", "get_event", "search_events", "suggest_time")),
         "action": frozenset(("create_event", "update_event", "delete_event", "respond_to_event")),
     },
