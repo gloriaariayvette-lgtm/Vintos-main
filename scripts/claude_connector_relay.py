@@ -25,7 +25,7 @@ from pathlib import Path
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
-from plugin_catalog import policy                                  # per-surface tool allow-list
+from claude_connector_catalog import policy                        # per-surface tool allow-list (NOT Chat's)
 from plugin_send_guard import PolicyHold, outbound_findings       # confidential-info block + link gate
 
 MAX_REQUEST = 128 * 1024
@@ -111,7 +111,7 @@ def connector(request):
     if len(json.dumps(arguments, allow_nan=False).encode()) > MAX_REQUEST:
         raise ValueError("arguments too large")
     _guard(entry, tool, arguments, request)
-    server = str(request.get("server") or plugin)                 # the MCP server name for mcp__<server>__<tool>
+    server = str(entry.get("server") or plugin)                   # MCP server segment for mcp__<server>__<tool>
     out = asyncio.run(_run_with_timeout(server, tool, arguments))
     encoded = json.dumps(out, allow_nan=False).encode()
     if len(encoded) > MAX_RESPONSE:
