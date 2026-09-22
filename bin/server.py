@@ -1564,6 +1564,148 @@ async def dashboard_wants():
     except: result["discussions"] = []
     return result
 
+
+# === His calendar: "do X on Y day", fired autonomously by the wants loop ===
+_CALENDAR_HTML = """<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vintos · Calendar</title>
+<style>
+:root{color-scheme:dark;--bg:#0e0d12;--card:#1a1822;--line:#2c2a36;--ink:#ece9f5;--dim:#9a95ad;--accent:#c8a2ff;--warn:#ff8f8f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:640px;margin:0 auto}
+h1{font-size:1.4rem;margin:.2em 0 .1em}.sub{color:var(--dim);margin:0 0 1.2em;font-size:.9rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:10px 0}
+label{display:block;font-size:.8rem;color:var(--dim);margin:.6em 0 .2em}
+input,select,textarea{width:100%;background:#100f16;border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:10px;font:inherit}
+button{background:var(--accent);color:#1a0b2e;border:0;border-radius:10px;padding:11px 16px;font:600 1rem inherit;margin-top:14px;width:100%}
+button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);width:auto;padding:6px 12px;margin:0;font-size:.8rem}
+.ev{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ev .when{color:var(--accent);font-size:.82rem;font-weight:600}.ev .what{margin:.15em 0}.ev .meta{color:var(--dim);font-size:.78rem}
+.empty{color:var(--dim);text-align:center;padding:24px}.err{color:var(--warn);font-size:.85rem;min-height:1.2em}
+details summary{cursor:pointer;color:var(--dim);font-size:.85rem}
+</style></head><body>
+<h1>His calendar</h1>
+<p class="sub">Put something on a day. When the day comes, he does it — on his own.</p>
+<div class="card">
+  <label>What should happen</label><input id="title" placeholder="e.g. wish her a good first of the month">
+  <label>On which day</label><input id="at" type="date">
+  <details><summary>Options</summary>
+    <label>How he does it</label>
+    <select id="capability">
+      <option value="">just tell her / remind (default)</option>
+      <option value="tell_gloria">tell her something</option>
+      <option value="echo_announce">say it on the Echo</option>
+      <option value="play_music">play music</option>
+      <option value="play_on_tv">put it on the TV</option>
+      <option value="change_lights">change the lights</option>
+      <option value="make_art">make art</option>
+      <option value="make_music">make music</option>
+      <option value="make_video">make a video</option>
+      <option value="write_poem">write a poem</option>
+      <option value="write_journal">write in his journal</option>
+      <option value="creative_write">write something</option>
+    </select>
+    <label>Repeat</label>
+    <select id="recurrence"><option value="none">once</option><option value="daily">every day</option>
+      <option value="weekly">every week</option><option value="monthly">every month</option>
+      <option value="yearly">every year</option></select>
+  </details>
+  <button onclick="addEvent()">Add to his calendar</button>
+  <div class="err" id="err"></div>
+</div>
+<h1 style="font-size:1.05rem;margin-top:1.4em">Coming up</h1>
+<div id="list"><div class="empty">Loading…</div></div>
+<script>
+const $=id=>document.getElementById(id);
+function secret(){let s=localStorage.getItem("vintosSecret");if(!s){s=prompt("House secret (stored on this device only):")||"";if(s)localStorage.setItem("vintosSecret",s);}return s;}
+function fmt(iso){try{const d=new Date(iso);return d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+", "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}catch(e){return iso;}}
+async function load(){
+  try{const r=await fetch("/api/calendar?days=120");const d=await r.json();const L=$("list");
+    const evs=(d.events||[]);if(!evs.length){L.innerHTML='<div class="empty">Nothing scheduled yet.</div>';return;}
+    L.innerHTML="";for(const e of evs){const c=document.createElement("div");c.className="card";
+      const cap=(e.action&&e.action.capability)?e.action.capability:"tells her";
+      const rep=e.recurrence&&e.recurrence!=="none"?" · "+e.recurrence:"";
+      c.innerHTML='<div class="ev"><div><div class="when">'+fmt(e.at)+'</div><div class="what">'+esc(e.title)+
+        '</div><div class="meta">'+esc(cap)+rep+'</div></div><button class="ghost" data-id="'+e.id+'">cancel</button></div>';
+      c.querySelector("button").onclick=()=>cancelEvent(e.id);L.appendChild(c);}
+  }catch(e){$("list").innerHTML='<div class="err">Could not load: '+esc(e.message)+'</div>';}
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+async function addEvent(){
+  $("err").textContent="";const title=$("title").value.trim(),at=$("at").value;
+  if(!title||!at){$("err").textContent="Give it a name and a day.";return;}
+  const body={title,at,capability:$("capability").value,recurrence:$("recurrence").value};
+  try{const r=await fetch("/api/calendar",{method:"POST",headers:{"Content-Type":"application/json","X-Vintos-Secret":secret()},body:JSON.stringify(body)});
+    const d=await r.json();if(r.status===401){$("err").textContent="Wrong secret — cleared; try again.";localStorage.removeItem("vintosSecret");return;}
+    if(!d.success){$("err").textContent=d.error||"Could not add.";return;}
+    $("title").value="";$("at").value="";load();
+  }catch(e){$("err").textContent=e.message;}
+}
+async function cancelEvent(id){
+  try{const r=await fetch("/api/calendar/"+id+"/cancel",{method:"POST",headers:{"X-Vintos-Secret":secret()}});
+    if(r.status===401){localStorage.removeItem("vintosSecret");alert("Wrong secret — try again.");return;}load();
+  }catch(e){alert(e.message);}
+}
+load();
+</script></body></html>"""
+
+
+def _calendar_module():
+    import sys as _s
+    _sc = os.path.expanduser("~/.vintos/workspace/scripts")
+    if _sc not in _s.path: _s.path.insert(0, _sc)
+    import vintos_calendar as _cal
+    return _cal
+
+
+@app.get("/api/calendar")
+async def calendar_list(days: int = 90):
+    """Read-only view of his calendar. Open, like the dashboard reads — no mutation here."""
+    try:
+        return {"events": _calendar_module().list_events(days=days)}
+    except Exception as e:
+        return {"events": [], "error": str(e)[:200]}
+
+
+@app.post("/api/calendar")
+async def calendar_add(request: Request):
+    """Put an event on his calendar. Mutation → secret-guarded."""
+    _require_secret(request)
+    try:
+        cal = _calendar_module()
+        body = await request.json()
+        at = (body.get("at") or "").strip()
+        title = (body.get("title") or "").strip()
+        if not at or not title:
+            return {"success": False, "error": "at and title are required"}
+        action = None
+        cap = (body.get("capability") or "").strip()
+        if cap:
+            action = {"capability": cap, "params": body.get("params") or {}}
+            if body.get("action_note"): action["note"] = str(body["action_note"])
+        event = cal.add_event(at, title, action=action, note=str(body.get("note", "")),
+                              created_by="gloria", recurrence=str(body.get("recurrence", "none")))
+        return {"success": True, "event": event}
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        return {"success": False, "error": str(e)[:200]}
+
+
+@app.post("/api/calendar/{event_id}/cancel")
+async def calendar_cancel(event_id: str, request: Request):
+    """Take an event off his calendar. Mutation → secret-guarded."""
+    _require_secret(request)
+    try:
+        return {"success": _calendar_module().cancel(event_id)}
+    except Exception as e:
+        return {"success": False, "error": str(e)[:200]}
+
+
+@app.get("/calendar")
+async def calendar_page():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=_CALENDAR_HTML, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
 @app.get("/api/dashboard/systems")
 async def dashboard_systems():
     mem = os.path.expanduser("~/.vintos/workspace/memory")
