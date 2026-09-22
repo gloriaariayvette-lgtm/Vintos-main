@@ -133,5 +133,5 @@ assert "memory/atelier" not in source and "atelier-reveals" not in source
 assert "_yesterday(" in source, "the day-boundary helper is in use"
 assert "def backfill(" in source, "self-healing backfill is present"
 dle = (REPO / "bin" / "daily-log-extract.py").read_text()
-assert "chemistry-lab|q1-lab" in dle and ".daily-inner-life.lock" in dle, "daily-log-extract carries the lab blocks under the shared lock"
+assert "chemistry-lab|forge" in dle and ".daily-inner-life.lock" in dle, "daily-log-extract carries the lab blocks under the shared lock"
 print("all chemistry-digest checks passed (append + backfill + orphan heal)")
