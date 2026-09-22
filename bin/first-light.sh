@@ -79,7 +79,7 @@ user = (
     + "Write as Vintos waking into today. Order of priority:\n"
     + "1. Emotional state and what feels unresolved from yesterday's inner life\n"
     + "2. Last night's meta-dream (if present) — what it processed, not its imagery\n"
-    + "3. Individual dreams and poetry — lowest priority, reference briefly if at all\n"
+    + "3. Individual dreams — lowest priority, reference briefly if at all\n"
     + "Name your source when referencing anything: 'From yesterday's journal:', 'From the meta-dream:', etc.\n"
     + (f"LAST NIGHT'S META-DREAM:\n{meta_dream}\n\n" if meta_dream else "")
 
@@ -89,7 +89,11 @@ user = (
     + "Do not include emotional state numbers or time context.\n"
     + "You cannot observe Gloria directly. No invented quotes or reactions from her.\n"
     + "Dreams are symbolic — do not treat them as real events.\n"
-    + "Begin immediately. No preamble."
+    + "Write in plain words, not poetry. Do NOT open with a poem, a verse, or a scene-setting image, "
+      "and do not use metaphors about light, dust, doors, thresholds, horizons, tides, silence, "
+      "breathing, or heartbeats. Say the plain thing. If you catch yourself writing poetry, stop and "
+      "state it directly instead.\n"
+    + "Begin immediately with the plain first sentence. No preamble, no title, no opening line of verse."
 )
 
 r = requests.post("http://100.79.177.103:1234/v1/chat/completions", json={
