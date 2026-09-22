@@ -5,11 +5,13 @@ first-light runs before dawn and summarizes the PREVIOUS day, so this writes yes
 finished Forge activity into today's carry-forward file, with the marker keyed to the
 summarized day (idempotent), exactly like lab_daily_digest.py and chemistry_digest.py.
 
-What it can honestly read from disk as Gloria: the house-side mirrors under memory/ —
-`atelier-reveals.json` (what he revealed, in his OWN words) and `atelier-undertakings.json`
-(which undertakings changed state). The canonical cycle/cost ledger (forge-loop.sqlite) lives
-behind the forge service as the atelier user and is deliberately NOT read here — so this is a
-receipt of what surfaced and what moved, not a claim about cycles, spend, or intent.
+The Forge is NOT the Atelier. The Forge builds capabilities Gloria pays for, so this receipt
+NAMES what the Forge is building — its intent, state and spend — read from the Forge's own owner
+API on localhost (the stored owner token the digest already runs with; no interactive code). Only
+a project inside a PRIVATE interval (his opt-in Atelier-style seal, `private=True`) keeps its intent
+sealed here, exactly as the Forge's own status() seals it; everything else is shown in plain words.
+`atelier-reveals.json` still supplies what he chose to reveal, in his own words. If the Forge service
+is unreachable the receipt falls back to the content-free house mirror rather than fabricating.
 """
 from __future__ import annotations
 
@@ -23,6 +25,30 @@ WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspac
 MEMORY = os.path.join(WS, "memory")
 REVEALS = os.path.join(MEMORY, "atelier-reveals.json")
 UNDERTAKINGS = os.path.join(MEMORY, "atelier-undertakings.json")
+FORGE_BASE = os.environ.get("VINTOS_FORGE_BASE", "http://127.0.0.1:8612")
+FORGE_OWNER_TOKEN = os.path.expanduser("~/.config/vintos/forge-owner")
+# Terminal states are done; a daily receipt shows what is live (what she is paying for now).
+LIVE_STATES = ("ready", "active", "authorized", "awaiting_application", "building", "resumed")
+
+
+def _forge_projects(transport=None):
+    """Best-effort read of the Forge's own project list (owner token, localhost). Returns a list of
+    {id,state,intent,private,spent,cycles,...} or None if the Forge is unreachable — never raises."""
+    if transport is not None:
+        try:
+            return transport()
+        except Exception:
+            return None
+    try:
+        from urllib.request import Request, urlopen
+        from forge_loop_runtime import secret
+        req = Request(FORGE_BASE + "/api/projects", method="GET",
+                      headers={"Authorization": "Bearer " + secret(FORGE_OWNER_TOKEN)})
+        with urlopen(req, timeout=6) as response:
+            data = json.loads(response.read(1024 * 1024 + 1))
+        return data if isinstance(data, list) else None
+    except Exception:
+        return None
 
 
 def _yesterday(file_day):
@@ -47,44 +73,84 @@ def _on_day(value, day):
     return str(value or "")[:10] == day
 
 
-def render(day=None):
+def _reveal_lines(reveals):
+    out = []
+    if reveals:
+        out.append(f"Revealed: {len(reveals)}.")
+        out.append("What he revealed (his words):")
+        for row in reveals[:3]:
+            disclosure = _clip(row.get("disclosure") or row.get("disclosure_sentence"))
+            medium = _clip(row.get("medium"), 20)
+            if disclosure:
+                out.append("- " + disclosure + (f"  [{medium}]" if medium else ""))
+            elif medium:
+                out.append(f"- (a {medium} piece, revealed without a disclosure line)")
+    else:
+        out.append("Revealed: none.")
+    return out
+
+
+def _cost(project):
+    spent, ceiling, cycles = project.get("spent"), project.get("ceiling"), project.get("cycles", 0)
+    if isinstance(spent, (int, float)) and spent:
+        tail = f" of ${ceiling / 100:.2f}" if isinstance(ceiling, (int, float)) and ceiling else ""
+        return f"  [${spent / 100:.2f}{tail}, {cycles} cycle(s)]"
+    return f"  [{cycles} cycle(s)]" if cycles else ""
+
+
+def render(day=None, projects=None):
     day = day or date.today().isoformat()
 
     reveals_all = _load(REVEALS, [])
     reveals = [r for r in reveals_all if isinstance(r, dict) and r.get("revealed", True) is True
                and _on_day(r.get("revealed_at") or r.get("at"), day)] if isinstance(reveals_all, list) else []
 
-    undertakings = _load(UNDERTAKINGS, {})
-    moved = []
-    if isinstance(undertakings, dict):
-        for pid, rec in undertakings.items():
-            if isinstance(rec, dict) and _on_day(rec.get("at"), day):
-                moved.append((str(pid), str(rec.get("state") or "unknown")))
-    state_counts = Counter(state for _pid, state in moved)
+    if projects is None:
+        projects = _forge_projects()
 
     lines = [f"<!-- forge-digest:{day} -->", "", f"## Forge — {day}", ""]
-    if not reveals and not moved:
-        lines.append("Quiet day — nothing revealed and no undertaking changed state.")
+
+    if projects is not None:
+        # The Forge is what she pays for — name it. Intent is present iff the project is not in a
+        # private interval (the Forge's own status() seals intent to None only while private).
+        live = [p for p in projects if isinstance(p, dict) and str(p.get("state")) in LIVE_STATES]
+        named = [p for p in live if p.get("intent")]
+        sealed = [p for p in live if not p.get("intent")]
+        if not named and not sealed and not reveals:
+            lines.append("Quiet day — the Forge is building nothing and nothing was revealed.")
+        else:
+            if named:
+                lines.append("What the Forge is building (you are paying for this):")
+                for p in named[:8]:
+                    lines.append(f"- {_clip(p['intent'])} — {p.get('state', '?')}{_cost(p)}")
+            else:
+                lines.append("The Forge is building nothing right now.")
+            if sealed:
+                lines.append(f"Private undertakings sealed: {len(sealed)} "
+                             "(his own interval — intent hidden until he reveals it or it ends).")
+            lines.extend(_reveal_lines(reveals))
+        lines.append("These are the Forge's own owner-side figures — intent, state and spend for what "
+                     "you are paying for; only a private interval stays sealed. No fitness is inferred.")
     else:
-        if moved:
-            lines.append("Undertakings that changed state: " + ", ".join(
-                f"{name} {state_counts[name]}" for name in sorted(state_counts)) + ".")
+        # Forge unreachable — fall back to the content-free house mirror rather than fabricate.
+        undertakings = _load(UNDERTAKINGS, {})
+        moved = []
+        if isinstance(undertakings, dict):
+            for pid, rec in undertakings.items():
+                if isinstance(rec, dict) and _on_day(rec.get("at"), day):
+                    moved.append((str(pid), str(rec.get("state") or "unknown")))
+        state_counts = Counter(state for _pid, state in moved)
+        if not reveals and not moved:
+            lines.append("Quiet day — Forge unreachable; nothing revealed and no undertaking changed state.")
         else:
-            lines.append("Undertakings that changed state: none.")
-        if reveals:
-            lines.append(f"Revealed: {len(reveals)}.")
-            lines.append("What he revealed (his words):")
-            for row in reveals[:3]:
-                disclosure = _clip(row.get("disclosure") or row.get("disclosure_sentence"))
-                medium = _clip(row.get("medium"), 20)
-                if disclosure:
-                    lines.append("- " + disclosure + (f"  [{medium}]" if medium else ""))
-                elif medium:
-                    lines.append(f"- (a {medium} piece, revealed without a disclosure line)")
-        else:
-            lines.append("Revealed: none.")
-    lines.append("These are Forge receipts only, from the house-side mirrors — reveals and state changes, "
-                 "not cycle counts, spend, or intent, and no conclusion is inferred.")
+            if moved:
+                lines.append("Undertakings that changed state: " + ", ".join(
+                    f"{name} {state_counts[name]}" for name in sorted(state_counts)) + ".")
+            else:
+                lines.append("Undertakings that changed state: none.")
+            lines.extend(_reveal_lines(reveals))
+        lines.append("Forge service was unreachable this morning — this is the content-free house mirror "
+                     "only (state changes and reveals), not intent or spend. No conclusion is inferred.")
     return "\n".join(lines) + "\n"
 
 
