@@ -7,9 +7,11 @@ One JSON request in, one JSON response out, same contract as plugin_relay_remote
 the existing plugin_gateway drives it unchanged (point the relay config `command` at this file).
 
 Mechanism (verified 2026-09-22): `claude -p` does NOT load MCP connectors in print mode
-(anthropics/claude-code#38987), so this uses the Claude Agent SDK. The account's UI-added
-connectors auto-load into a signed-in client (needs `user:mcp_servers` scope; sign in once with
-`claude setup-token`). There is no direct tool-call passthrough — a connector call is ONE bounded
+(anthropics/claude-code#38987), so this uses the Claude Agent SDK. Auth is the bundled claude's own
+stored credential: run `claude /login` ONCE as this user — it persists to ~/.claude/.credentials.json
+(0600) and auto-refreshes, so the service authenticates across restarts with nothing to paste. The
+relay sets no token; an env CLAUDE_CODE_OAUTH_TOKEN would rank above the stored login and a stale one
+would 401, so credential resolution is left to the SDK. There is no direct tool-call passthrough — a connector call is ONE bounded
 model turn, restricted to the single requested tool, with a tight instruction to call it once and
 return only its result. That costs a few tokens per call (unlike Chat's direct RPC); acceptable for
 occasional actions (play a track, place an order, pull a paper), and kept cheap by the one-tool cap.
@@ -34,27 +36,11 @@ MAX_RESPONSE = 8 * 1024 * 1024
 TURN_TIMEOUT = int(os.environ.get("VINTOS_CLAUDE_RELAY_TIMEOUT", "180"))
 # Cheap, capable enough to emit one exact tool call; overridable per host.
 RELAY_MODEL = os.environ.get("VINTOS_CLAUDE_RELAY_MODEL", "claude-haiku-4-5")
-# Subscription OAuth token (from `claude setup-token`), read from a stable 0600 file when the env
-# var is unset — so Vintos (a service, not Gloria's shell) can reach the account. Never printed.
-TOKEN_FILE = Path(os.environ.get("VINTOS_CLAUDE_OAUTH_TOKEN_FILE",
-                                 os.path.expanduser("~/.vintos/secrets/claude-code-oauth-token")))
-
-
-def _ensure_token():
-    """Persist step: if CLAUDE_CODE_OAUTH_TOKEN is unset, load it from the 0600 token file.
-
-    Refuses a world/group-readable file (a token is a credential). Sets the env var in-process only
-    so the Agent SDK subprocess inherits it; the token value is never returned or logged.
-    """
-    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
-        return
-    if not TOKEN_FILE.is_file():
-        return
-    if TOKEN_FILE.stat().st_mode & 0o077:
-        raise RuntimeError("oauth token file must be mode 0600")
-    token = TOKEN_FILE.read_text().strip()
-    if token:
-        os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = token
+# Auth is the bundled claude's OWN stored credential: run `claude /login` once as this user (it
+# persists to ~/.claude/.credentials.json, 0600, and auto-refreshes before expiry — per the Claude
+# Code auth docs). The relay injects NO token: an env CLAUDE_CODE_OAUTH_TOKEN ranks ABOVE the stored
+# login, so a stale/wrong one silently overrides a good login and 401s. We deliberately let the SDK
+# resolve credentials itself, so a valid /login just works across restarts with nothing to paste.
 
 
 def _coerce_result(text):
@@ -130,7 +116,6 @@ async def _run(server, tool, arguments, url):
     (auth rides the account OAuth token in the environment). No dependence on `claude mcp add`.
     """
     from claude_agent_sdk import query, ClaudeAgentOptions   # imported lazily so CI can parse this file
-    _ensure_token()                                          # subscription OAuth token from env or 0600 file
     fq = f"mcp__{server}__{tool}"
     if not url:
         raise RuntimeError(f"no MCP url configured for connector '{server}' — cannot reach it headless")

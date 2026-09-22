@@ -137,42 +137,11 @@ class RelayKeepOutputTests(unittest.TestCase):
         self.assertFalse(parsed)
         self.assertEqual(value, {"text": "I could not find that."})
 
-
-class RelayPersistTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="claude-token-")
-        self.token_path = relay.Path(self.tmp.name) / "token"
-        self.old_token_file = relay.TOKEN_FILE
-        relay.TOKEN_FILE = self.token_path
-
-    def tearDown(self):
-        relay.TOKEN_FILE = self.old_token_file
-        self.tmp.cleanup()
-
-    def _clean_env(self):
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_OAUTH_TOKEN"}
-        return mock.patch.dict(os.environ, env, clear=True)
-
-    def test_token_loaded_from_0600_file_when_env_unset(self):
-        self.token_path.write_text("sk-persisted\n")
-        os.chmod(self.token_path, 0o600)
-        with self._clean_env():
-            relay._ensure_token()
-            self.assertEqual(os.environ["CLAUDE_CODE_OAUTH_TOKEN"], "sk-persisted")
-
-    def test_world_readable_token_file_is_refused(self):
-        self.token_path.write_text("sk-leaky\n")
-        os.chmod(self.token_path, 0o644)
-        with self._clean_env():
-            with self.assertRaises(RuntimeError):
-                relay._ensure_token()
-
-    def test_env_token_is_left_untouched(self):
-        self.token_path.write_text("sk-file\n")
-        os.chmod(self.token_path, 0o600)
-        with mock.patch.dict(os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "sk-env"}):
-            relay._ensure_token()
-            self.assertEqual(os.environ["CLAUDE_CODE_OAUTH_TOKEN"], "sk-env")
+    def test_relay_injects_no_oauth_token(self):
+        # The relay must NOT set CLAUDE_CODE_OAUTH_TOKEN itself: an env token ranks above the bundled
+        # claude's stored /login, so a stale one would 401. Credential resolution is the SDK's job.
+        self.assertFalse(hasattr(relay, "_ensure_token"), "relay must not inject a token")
+        self.assertFalse(hasattr(relay, "TOKEN_FILE"), "relay must not read a token file")
 
 
 if __name__ == "__main__":
