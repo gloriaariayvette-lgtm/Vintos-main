@@ -657,7 +657,12 @@ def tick():
                             "source_metadata": receipt_row.get("metadata", {}),
                             "plugin_receipt_id": (sourced.get("plugin_receipt") or {}).get("receipt_id"),
                             "truth_status": "connected_or_public_source_observation_not_validation"}
-                except (ValueError, RuntimeError) as exc:
+                except Exception as exc:
+                    # Sourcing is best-effort: a public read that fails, OR a connector the model
+                    # picked that is out of policy / held / unreachable (PermissionError, PolicyHold,
+                    # RuntimeError), is recorded as an unavailable source and the Lab moves on. It must
+                    # NEVER escape to the tick handler and hold the whole Lab in held_fault — that halted
+                    # the Lab when a connector call raised PermissionError (2026-09-22).
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}
                 next_phase = "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed"
