@@ -60,40 +60,6 @@ check("dream failure cannot fall through to paid rendering", "dream held, no pai
 check("dream-art twins remain identical",
       (ROOT / "scripts/dream-art.py").read_bytes() == (ROOT / "bin/dream-art.py").read_bytes())
 
-with tempfile.TemporaryDirectory() as td:
-    os.environ["SPARK_WORKSPACE"] = td
-    memory = pathlib.Path(td) / "memory"
-    memory.mkdir()
-    day = "2026-09-12"
-    (memory / "hypothesis-ledger.jsonl").write_text(
-        json.dumps({"at": day + "T01:00:00", "event": "proposed", "id": "H-one", "block": "spark_block",
-                    "claim": "withholding the spark block raises admitted-want quality",
-                    "kill_criteria": "no lift after 20 trials"}) + "\n" +
-        json.dumps({"at": day + "T02:00:00", "event": "evaluated", "id": "H-one", "numbers": {"admitted": 99}}) + "\n" +
-        json.dumps({"at": day + "T03:00:00", "event": "ruled", "id": "H-one", "verdict": "held",
-                    "by": "gloria", "reason": "needs more trials before a call"}) + "\n")
-    (memory / "shadow-trials.jsonl").write_text(
-        json.dumps({"at": day + "T03:00:00", "trial_id": "st-1", "block": "withheld_head"}) + "\n")
-    spec = importlib.util.spec_from_file_location("lab_daily_digest_test", ROOT / "scripts/lab_daily_digest.py")
-    lab = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(lab)
-    check("Lab destination is scratch", pathlib.Path(lab.MEMORY).is_relative_to(td))
-    # first-light summarizes the previous day: rows dated `day` are reported into the
-    # morning-after file, marker keyed to the summarized day.
-    file_day = "2026-09-13"
-    wrote, path = lab.append(file_day)
-    again, _ = lab.append(file_day)
-    text = pathlib.Path(path).read_text()
-    check("Lab digest writes into the morning-after file", pathlib.Path(path).name == f"daily-inner-life-{file_day}.md")
-    check("Lab digest appends once", wrote is True and again is False and text.count("q1-lab-digest:" + day) == 1)
-    check("Lab digest reports events and assignments", "proposed 1" in text and "withheld_head 1" in text)
-    check("Lab digest does not surface sealed result arithmetic", "99" not in text)
-    check("Lab digest names consequence as unmeasured", "Functional consequence was not measured" in text)
-    check("Admission heading now carries the summarized day", f"## Admission Lab — {day}" in text)
-    check("Admission digest quotes the written claim, not the sealed result",
-          "withholding the spark block raises admitted-want quality" in text)
-    check("Admission digest surfaces a ruling with its reason", "held — needs more trials before a call" in text)
-
 # An unavailable prompt model must not produce a blank-scene artifact.
 main=next(n for n in ast.parse(dream).body if isinstance(n,ast.FunctionDef) and n.name=='main')
 ns={'sys':types.SimpleNamespace(argv=['dream-art.py','--dream']), 'os':os,

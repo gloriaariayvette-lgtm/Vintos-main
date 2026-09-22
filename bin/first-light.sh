@@ -166,11 +166,6 @@ if [ -f "$INNER_FILE" ]; then
   python3 -c "import sys; sys.path.insert(0,'/home/gloria/.vintos/workspace/scripts'); import pleasure_substrate as p; r=p.sweep_pending(); print('[first-light] pleasure sweep:', 'named' if r else 'nothing pending'); w=p.promote_recurring_namings(); print('[first-light] recurring namings promoted:', w or 'none')" 2>/dev/null || true
 fi
 
-# A mechanical Lab receipt, never a verdict: events and shadow assignments only.
-# Errors are logged, not discarded: a silent 2>/dev/null hid a digest failure for a
-# week, and first-light only runs once a day (the .firstlight marker), so one silent
-# failure each morning meant no receipt with no trace.
-python3 /home/gloria/.vintos/workspace/scripts/lab_daily_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] lab_daily_digest failed: see $MEMORY/.digest-run.log"
 # A separate mechanical Chemistry Lab receipt: what ran, how it graded, and what reading is owed.
 python3 /home/gloria/.vintos/workspace/scripts/chemistry_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] chemistry_digest failed: see $MEMORY/.digest-run.log"
 # A separate evidence-honest Forge receipt: what he revealed (his words) and which undertakings

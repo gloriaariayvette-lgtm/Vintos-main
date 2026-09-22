@@ -3,7 +3,7 @@
 
 first-light runs before dawn and summarizes the PREVIOUS day, so this writes yesterday's
 finished Forge activity into today's carry-forward file, with the marker keyed to the
-summarized day (idempotent), exactly like lab_daily_digest.py and chemistry_digest.py.
+summarized day (idempotent), exactly like chemistry_digest.py.
 
 The Forge is NOT the Atelier. The Forge builds capabilities Gloria pays for, so this receipt
 NAMES what the Forge is building — its intent, state and spend — read from the Forge's own owner

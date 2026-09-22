@@ -489,7 +489,8 @@ is roughly one local-model call every 30 seconds and one complete Lab cycle per 
 every phase still yields through compute admission. `status()` exposes both cadence values
 plus the completed-turn count and last turn receipt. First light appends a separately marked,
 idempotent Chemistry receipt to
-daily inner life after the Admission Lab digest. It mechanically counts notebook kinds,
+daily inner life (the Admission Lab digest was removed 2026-09-22 — a hallucinated
+self-experiment ledger that was never intended). It mechanically counts notebook kinds,
 records execution and grade as separate fields, names owed/settled readings, and carries the
 latest next question; it makes no scientific or personal inference.
 

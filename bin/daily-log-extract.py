@@ -164,7 +164,7 @@ def build_inner():
     path = os.path.join(MEMORY, f"daily-inner-life-{TODAY}.md")
     # We rebuild our own content and overwrite the file, so we MUST carry forward the sections
     # other authors appended after us — First Light (first-light.sh) and the lab digest blocks
-    # (chemistry_digest / lab_daily_digest, marker AND body). They always land after our
+    # (chemistry_digest / forge_digest, marker AND body). They always land after our
     # content, so everything from "## First Light" (or the first lab marker) to EOF is theirs.
     # The old code kept only First Light and truncated at the next heading — which was the lab
     # digest's own heading — so it ate the body and left the orphan marker. That is exactly why
@@ -182,7 +182,7 @@ def build_inner():
                     tail = existing[existing.index("## First Light"):]
                 else:
                     import re as _labre
-                    _m = _labre.search(r'<!-- (?:chemistry-lab|q1-lab|forge)-digest:', existing)
+                    _m = _labre.search(r'<!-- (?:chemistry-lab|forge)-digest:', existing)
                     if _m:
                         tail = existing[_m.start():]
                 if tail.strip():
