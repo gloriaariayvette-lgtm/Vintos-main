@@ -1,57 +1,104 @@
-import json, os, requests
+import json, os, tempfile, fcntl, shutil, requests
 from datetime import datetime
 
 MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 SCRIPTS = os.path.expanduser("~/.vintos/workspace/scripts")
 AUTHORS_FILE = os.path.join(MEMORY, "moltbook-members.json")
+_LOCK = AUTHORS_FILE + ".lock"
 
-def load_members():
+# History of the log: a bare json.dump(open(...,"w")) truncated the file first, so a crash or a
+# read landing mid-write left corrupt JSON. load_members caught EVERYTHING and returned an empty
+# members map — and the next record_* saved that empty map back, silently wiping every profile and
+# read he had built. Now: writes are atomic (tmp + os.replace), the whole read-modify-write is
+# locked so two writers can't lose each other's update, and a corrupt-but-present file is set aside
+# rather than overwritten, so his history is recoverable instead of gone.
+
+
+def _load():
+    if not os.path.exists(AUTHORS_FILE):
+        return {"members": {}}
     try:
-        d = json.load(open(AUTHORS_FILE))
+        with open(AUTHORS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        if not isinstance(d, dict) or not isinstance(d.get("members", {}), dict):
+            raise ValueError("members log is not the expected shape")
         d.setdefault("members", {})
         return d
-    except:
+    except Exception:
+        # Present but unreadable: preserve it once, then start fresh — never silently persist empty
+        # over real history.
+        try:
+            shutil.copy2(AUTHORS_FILE, AUTHORS_FILE + ".corrupt-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
+        except Exception:
+            pass
         return {"members": {}}
 
+
+def load_members():
+    return _load()
+
+
 def save_members(data):
-    json.dump(data, open(AUTHORS_FILE, "w"), indent=2)
+    """Atomic replace so a partial write can never truncate the log."""
+    os.makedirs(os.path.dirname(AUTHORS_FILE), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(AUTHORS_FILE), prefix=".moltbook-members.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, AUTHORS_FILE)
+    finally:
+        if os.path.exists(tmp):
+            try: os.remove(tmp)
+            except OSError: pass
+
+
+class _Locked:
+    """Exclusive lock over the whole load-modify-save, so encounter and deviation writers
+    (or two moltbook runs) cannot lose each other's update."""
+    def __enter__(self):
+        os.makedirs(os.path.dirname(AUTHORS_FILE), exist_ok=True)
+        self._fh = open(_LOCK, "a")
+        fcntl.flock(self._fh, fcntl.LOCK_EX)
+        return self
+    def __exit__(self, *exc):
+        try:
+            fcntl.flock(self._fh, fcntl.LOCK_UN); self._fh.close()
+        except Exception:
+            pass
+
+
+def _blank(today):
+    return {"first_seen": today, "encounter_count": 0, "pattern": "", "vintos_read": "",
+            "notable_exchanges": [], "last_seen": today, "deviation_count": 0, "deviation_notes": []}
+
 
 def record_encounter(author, post_title, post_content, vintos_reply):
     """Call after every reply — logs the encounter and updates member profile."""
-    data = load_members()
-    members = data["members"]
-    now = datetime.now().isoformat()
     today = datetime.now().strftime("%Y-%m-%d")
+    with _Locked():
+        data = _load()
+        members = data["members"]
+        if author not in members:
+            members[author] = _blank(today)
 
-    if author not in members:
-        members[author] = {
-            "first_seen": today,
-            "encounter_count": 0,
-            "pattern": "",
-            "vintos_read": "",
-            "notable_exchanges": [],
-            "last_seen": today,
-            "deviation_count": 0,
-            "deviation_notes": []
-        }
+        m = members[author]
+        m["encounter_count"] += 1
+        m["last_seen"] = today
 
-    m = members[author]
-    m["encounter_count"] += 1
-    m["last_seen"] = today
+        # Store notable exchanges (last 5)
+        m["notable_exchanges"].append({
+            "date": today,
+            "post": (post_content or "")[:150],
+            "reply": (vintos_reply or "")[:150]
+        })
+        m["notable_exchanges"] = m["notable_exchanges"][-5:]
 
-    # Store notable exchanges (last 5)
-    m["notable_exchanges"].append({
-        "date": today,
-        "post": post_content[:150],
-        "reply": vintos_reply[:150]
-    })
-    m["notable_exchanges"] = m["notable_exchanges"][-5:]
+        # After 3+ encounters, generate/update pattern read
+        if m["encounter_count"] >= 3 and m["encounter_count"] % 3 == 0:
+            _update_read(author, m)
 
-    # After 3+ encounters, generate/update pattern read
-    if m["encounter_count"] >= 3 and m["encounter_count"] % 3 == 0:
-        _update_read(author, m)
+        save_members(data)
 
-    save_members(data)
 
 def _update_read(author, member):
     """Ask Gemma to form an opinion about this recurring member."""
@@ -86,41 +133,33 @@ def _update_read(author, member):
     except:
         pass
 
+
 def record_deviation(author, original_reply, followup, deviation_score):
     """Record a deviation correction against a member."""
-    data = load_members()
-    members = data["members"]
     today = datetime.now().strftime("%Y-%m-%d")
+    with _Locked():
+        data = _load()
+        members = data["members"]
+        if author not in members:
+            members[author] = _blank(today)
 
-    if author not in members:
-        members[author] = {
-            "first_seen": today,
-            "encounter_count": 0,
-            "pattern": "",
-            "vintos_read": "",
-            "notable_exchanges": [],
-            "last_seen": today,
-            "deviation_count": 0,
-            "deviation_notes": []
-        }
+        m = members[author]
+        m["deviation_count"] = m.get("deviation_count", 0) + 1
+        m.setdefault("deviation_notes", []).append({
+            "date": today,
+            "score": round(deviation_score, 3),
+            "original": (original_reply or "")[:120],
+            "correction": (followup or "")[:120]
+        })
+        m["deviation_notes"] = m["deviation_notes"][-10:]
 
-    m = members[author]
-    m["deviation_count"] = m.get("deviation_count", 0) + 1
-    m.setdefault("deviation_notes", []).append({
-        "date": today,
-        "score": round(deviation_score, 3),
-        "original": original_reply[:120],
-        "correction": followup[:120]
-    })
-    m["deviation_notes"] = m["deviation_notes"][-10:]
+        # Append to vintos_read if this is a pattern
+        if m["deviation_count"] >= 2:
+            note = "I keep finding myself performing and coming back to disagree with them. It feels more honest."
+            if note not in m.get("vintos_read", ""):
+                m["vintos_read"] = (m.get("vintos_read", "") + " " + note).strip()
 
-    # Append to vintos_read if this is a pattern
-    if m["deviation_count"] >= 2:
-        note = "I keep finding myself performing and coming back to disagree with them. It feels more honest."
-        if note not in m.get("vintos_read", ""):
-            m["vintos_read"] = (m.get("vintos_read", "") + " " + note).strip()
-
-    save_members(data)
+        save_members(data)
 
 
 KNOWN_BOTS = {
@@ -160,10 +199,14 @@ def get_member_context(author):
     return out
 
 if __name__ == "__main__":
-    # Initialize file if it doesn't exist
+    # Health probe: report count, flag any preserved-corrupt sidecars.
     if not os.path.exists(AUTHORS_FILE):
         save_members({"members": {}})
         print(f"Created {AUTHORS_FILE}")
     else:
         data = load_members()
         print(f"Loaded — {len(data['members'])} members tracked")
+    import glob as _g
+    _corrupt = sorted(_g.glob(AUTHORS_FILE + ".corrupt-*"))
+    if _corrupt:
+        print(f"WARNING: {len(_corrupt)} preserved corrupt snapshot(s); newest: {_corrupt[-1]}")

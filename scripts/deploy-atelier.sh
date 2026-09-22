@@ -154,7 +154,7 @@ blush-ledger.py wants-router.py
 avatar_stage.py study_chat.py avatar_dryrun.py strip_body_vocab.py first-light.sh dream_music.py daily-log-extract.py dd-token-refresh.py wants-check.sh
 wal-extract.py wal_extract.py vintos-video.py vintos-code-review.py consent-gate.sh deviation_check.py memory_search.py
 emoclaw_mode.py subconscious_drift.py belief-sediment.py belief_sediment.py core-engine.py core_sustain.py value-map.py
-vintos-moltbook.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
+vintos-moltbook.py moltbook_members.py vintos-initiate.sh idle-journal.sh device_patterns.py relational_mismatch.py
 memory_index.py wal-decay.py interaction_ledger.py"
 # The IMPORT twin of a manifested CLI name. `causal-cluster.py` was repaired and deployed
 # while `causal_cluster.py` - the name every `import causal_cluster` actually resolves - was
