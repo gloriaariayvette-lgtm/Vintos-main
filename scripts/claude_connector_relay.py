@@ -74,12 +74,20 @@ def _tool_result_from(message, wanted):
     return None
 
 
-async def _run(server, tool, arguments):
-    """One restricted model turn: call exactly mcp__<server>__<tool> and return its raw result."""
+async def _run(server, tool, arguments, url):
+    """One restricted model turn: call exactly mcp__<server>__<tool> and return its raw result.
+
+    The connector is configured explicitly as a remote MCP server here — headless Claude Code does
+    NOT inherit the claude.ai account's UI connectors, so we point it at the connector's own MCP URL
+    (auth rides the account OAuth token in the environment). No dependence on `claude mcp add`.
+    """
     from claude_agent_sdk import query, ClaudeAgentOptions   # imported lazily so CI can parse this file
     fq = f"mcp__{server}__{tool}"
+    if not url:
+        raise RuntimeError(f"no MCP url configured for connector '{server}' — cannot reach it headless")
     options = ClaudeAgentOptions(
         model=RELAY_MODEL,
+        mcp_servers={server: {"type": "http", "url": url}},
         allowed_tools=[fq],
         permission_mode="dontAsk",
         system_prompt=("You are a deterministic connector relay, not a conversation. Call the tool "
@@ -112,7 +120,7 @@ def connector(request):
         raise ValueError("arguments too large")
     _guard(entry, tool, arguments, request)
     server = str(entry.get("server") or plugin)                   # MCP server segment for mcp__<server>__<tool>
-    out = asyncio.run(_run_with_timeout(server, tool, arguments))
+    out = asyncio.run(_run_with_timeout(server, tool, arguments, entry.get("url")))
     encoded = json.dumps(out, allow_nan=False).encode()
     if len(encoded) > MAX_RESPONSE:
         raise ValueError("connected tool response too large")
@@ -120,8 +128,8 @@ def connector(request):
             "visibility": entry["visibility"], **out}
 
 
-async def _run_with_timeout(server, tool, arguments):
-    return await asyncio.wait_for(_run(server, tool, arguments), TURN_TIMEOUT)
+async def _run_with_timeout(server, tool, arguments, url):
+    return await asyncio.wait_for(_run(server, tool, arguments, url), TURN_TIMEOUT)
 
 
 def main():

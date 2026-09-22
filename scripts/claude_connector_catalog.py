@@ -15,6 +15,7 @@ SURFACES = frozenset(("wants", "forge", "lab", "atelier"))
 PLUGINS = {
     "pubmed": {
         "server": "PubMed", "visibility": "project",
+        "url": "https://pubmed.mcp.claude.com/mcp",
         "purpose": "Literature grounding — search and read biomedical papers.",
         "when": "Use in Lab/Forge when a claim needs a real paper behind it.",
         "surfaces": ("lab", "forge", "atelier", "wants"),
@@ -77,7 +78,7 @@ def policy(plugin, surface, tool):
         raise PermissionError("tool is outside this connector's policy")
     # Shape the relay expects: visibility + an outbound_policy hook (unused for these connectors,
     # since none send to a person; Gloria's approval/two-reply rules live on Vintos's side).
-    return {"visibility": entry["visibility"], "server": entry["server"],
+    return {"visibility": entry["visibility"], "server": entry["server"], "url": entry.get("url"),
             "tools": entry["read"] | entry["action"],
             "is_action": tool in entry["action"], "outbound_policy": {}}
 
