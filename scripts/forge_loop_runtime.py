@@ -290,10 +290,22 @@ class Runtime:
         output=[]
         live_keys=set()
         with self.mutex:
+            inv=set(inventory)
             for row in rows:
                 if not isinstance(row,dict) or not all(isinstance(row.get(k),str) and row[k] for k in ('id','want','source','fingerprint')):
                     raise Refused('want identity, source and fingerprint required')
-                key='want:'+row['id']+':'+row['fingerprint']; live_keys.add(key)
+                key='want:'+row['id']+':'+row['fingerprint']
+                # A want whose plan is already fully executable with installed capabilities has no
+                # capability GAP — it is something to say or do in conversation, not a thing to build.
+                # Spawning a capability_assessment for it flooded the Forge with relational "tell her
+                # X" wants. Skip it; leaving its key out of live_keys also cancels any project a prior
+                # sync created for it. A want with no plan, or one naming a capability he lacks, is
+                # still assessed — that is a real gap.
+                steps=row.get('steps') if isinstance(row.get('steps'),list) else []
+                step_caps=[s.get('capability') for s in steps if isinstance(s,dict) and s.get('capability')]
+                if step_caps and all(c in inv for c in step_caps):
+                    continue
+                live_keys.add(key)
                 origin={'source':row['source'],'want_id':row['id'],'fingerprint':row['fingerprint'],
                         'snapshot_key':key,'inventory':inventory}
                 created=self.create(token,{'kind':'capability_assessment','intent':row['want'][:4000]+'\nExisting plan: '+json.dumps(row.get('steps',[]))[:6000],

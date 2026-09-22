@@ -153,6 +153,22 @@ class Tests(unittest.TestCase):
         out=API(self.r)({'PATH_INFO':path,'REQUEST_METHOD':method,'HTTP_AUTHORIZATION':'Bearer '+(token or self.owner),
                         'CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)},lambda s,h:status.append(s))
         return int(status[0].split()[0]),b''.join(out)
+    def test_sync_wants_skips_fully_owned_plans(self):
+        # A relational want whose plan uses only installed capabilities is conversation, not Forge
+        # work — it must NOT spawn a capability_assessment project. A want naming a missing capability
+        # still gets assessed.
+        inv=['introspect','gloria','creative_write']
+        owned={'id':'w1','want':'tell her the coffee scene','source':'thread','fingerprint':'f1',
+               'steps':[{'capability':'introspect'},{'capability':'gloria'}]}
+        gap={'id':'w2','want':'press my weight into her','source':'thread','fingerprint':'f2',
+             'steps':[{'capability':'physical_interaction'}]}
+        unplanned={'id':'w3','want':'some unplanned want','source':'thread','fingerprint':'f3','steps':[]}
+        self.r.sync_wants(self.owner,[owned,gap,unplanned],inv)
+        intents=[p.get('intent','') or '' for p in self.c.projects(self.owner)]
+        self.assertFalse(any('coffee scene' in i for i in intents),'a fully-owned plan is not a Forge project')
+        self.assertTrue(any('press my weight into her' in i for i in intents),'a missing-capability want is still assessed')
+        self.assertTrue(any('some unplanned want' in i for i in intents),'an unplanned want is still assessed')
+
     def test_projects_surface_intent_and_seal_private(self):
         # The owner UI could not show WHAT he is making because status/projects dropped `intent`.
         p=self.create();pid=p['id']

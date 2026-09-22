@@ -153,7 +153,7 @@ async function refresh(){
     else{card.append(el('p','intent',p.intent||'(no intention recorded)'))}
     const meta=el('div','meta');
     meta.append(el('span','tag state',STATE_LABEL[p.state]||p.state));
-    if(p.active)meta.append(el('span','tag live','● working now'));
+    if(p.active&&!['cancelled','abandoned','complete'].includes(p.state))meta.append(el('span','tag live','● working now'));
     meta.append(el('span','tag',(p.cycles||0)+' cycle'+(p.cycles===1?'':'s')));
     const spent=money(p.spent),ceil=money(p.ceiling);
     if(spent!=null)meta.append(el('span','tag','spent '+spent+(ceil&&p.ceiling?(' / '+ceil):'')));
