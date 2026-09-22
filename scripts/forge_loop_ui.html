@@ -32,8 +32,16 @@
   .kv .v ul{margin:.2rem 0 .2rem 1rem;padding:0}
   details{margin-top:.4rem}
   summary{cursor:pointer;color:var(--dim);font-size:.85rem}
-  pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#12171a;padding:.6rem;border-radius:8px;font-size:.82rem;color:var(--dim)}
   .empty{color:var(--dim);font-style:italic}
+  .sec{margin:.55rem 0}
+  .sec-h{color:var(--accent);font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;margin:0 0 .15rem}
+  .sec ul{margin:.15rem 0 .15rem 1.1rem;padding:0}
+  .sec li{margin:.12rem 0}
+  table.parts{width:100%;border-collapse:collapse;font-size:.9rem;margin:.2rem 0}
+  table.parts th{text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--line);padding:.25rem .3rem}
+  table.parts td{padding:.28rem .3rem;border-bottom:1px solid var(--panel2);vertical-align:top}
+  .total{font-weight:600;color:var(--good);margin:.35rem 0 0}
+  .note{color:var(--dim);font-size:.85rem;font-style:italic;margin:.5rem 0 0}
 </style>
 <h1>Forge in the Atelier</h1>
 <p class="lede">At most three steps a day across all projects, then it resumes the next day until complete or cancelled. Private work stays covered until reveal, expiry, or an explicit audit.</p>
@@ -60,24 +68,75 @@ async function run(fn){$('error').textContent='';try{await fn()}catch(e){$('erro
 const money=c=>(typeof c==='number')?'$'+(c/100).toFixed(2):null;
 const STATE_LABEL={ready:'Ready',running:'Working now',needs_authorization:'Needs your authorization',reconciliation_required:'Needs reconciliation',complete:'Complete',cancelled:'Cancelled',abandoned:'Abandoned',uncertain:'Uncertain — awaiting reconcile'};
 
-// Render an arbitrary artifact object as labeled, readable sections instead of a JSON wall.
-function renderValue(v){
-  if(v==null)return el('span','empty','—');
-  if(Array.isArray(v)){const ul=el('ul');for(const item of v){const li=el('li');li.append(renderValue(item));ul.append(li)}return ul}
-  if(typeof v==='object'){const wrap=el('div');for(const [k,val] of Object.entries(v)){const kv=el('div','kv');kv.append(el('div','k',k));const vd=el('div','v');vd.append(renderValue(val));kv.append(vd);wrap.append(kv)}return wrap}
-  return el('span','v',String(v));
+// Human rendering only — never JSON. A cycle's artifact is one of: capability_assessment (with an
+// optional hardware_proposal), capability_brief, or research report. Each is shown as intent-relevant
+// steps and, for anything with parts or software, an estimated cost.
+const asText=v=>Array.isArray(v)?v.join('\n'):(v==null?'':String(v));
+const asList=v=>Array.isArray(v)?v:(v==null||v===''?[]:[v]);
+function sec(parent,label){const s=el('div','sec');s.append(el('div','sec-h',label));parent.append(s);return s}
+function lines(parent,label,arr){arr=asList(arr);if(!arr.length)return;const s=sec(parent,label);const ul=el('ul');for(const x of arr)ul.append(el('li',null,String(x)));s.append(ul)}
+function para(parent,label,txt){txt=asText(txt);if(!txt.trim())return;sec(parent,label).append(el('p','v',txt))}
+function partsTable(parent,parts,total){
+  const s=sec(parent,'Components & estimated cost');const t=el('table','parts'),head=el('tr');
+  ['Component','Qty','~ Cost','Purpose'].forEach(h=>head.append(el('th',null,h)));t.append(head);
+  for(const p of parts){const tr=el('tr');
+    tr.append(el('td',null,p.name||''));tr.append(el('td',null,String(p.quantity??'')));
+    tr.append(el('td',null,p.rough_cost_usd!=null?'$'+Number(p.rough_cost_usd).toFixed(2):'—'));
+    tr.append(el('td',null,p.purpose||''));t.append(tr)}
+  s.append(t);
+  if(total!=null)s.append(el('p','total','Estimated total ≈ $'+Number(total).toFixed(2)+' — rough, nothing purchased'));
+}
+function renderOne(box,art){
+  if(art.capability_assessment||art.hardware_proposal){
+    const a=art.capability_assessment||{},hw=art.hardware_proposal;
+    if(a.note||a.capability)para(box,'What he needs',(a.capability?'['+a.capability+'] ':'')+asText(a.note));
+    para(box,'Expected output',a.expected_output);
+    para(box,'Done when',a.acceptance);
+    para(box,'Why',a.reason);
+    if(hw){
+      para(box,'Objective',hw.objective);
+      if(Array.isArray(hw.parts)&&hw.parts.length)partsTable(box,hw.parts,hw.rough_total_cost_usd);
+      lines(box,'Build — wiring',hw.wiring);
+      para(box,'Firmware',hw.firmware_sketch);
+      lines(box,'Acceptance tests',hw.acceptance_tests);
+      lines(box,'Safety limits',hw.safety_limits);
+      lines(box,'Open questions',hw.unknowns);
+      if(hw.house_reporting&&hw.house_reporting.channel)para(box,'Reports back via',hw.house_reporting.channel);
+      box.append(el('p','note','Proposal only — you accept or deny before anything is bought or built.'));
+    }
+    return true;
+  }
+  if(art.capability_brief){
+    const b=art.capability_brief;
+    para(box,'Capability',b.title);
+    lines(box,'Required components / software',b.required_components);
+    lines(box,'External requirements — accounts, credentials, cost',b.external_requirements);
+    lines(box,'Done when',b.acceptance_tests);
+    para(box,'Limits',b.limitations);
+    box.append(el('p','note','A brief — nothing is built or purchased yet.'));
+    return true;
+  }
+  if(art.report){
+    const r=art.report;
+    para(box,'Report',r.title);
+    para(box,'Observations',r.sourced_observations);
+    para(box,'Hypotheses',r.hypotheses);
+    para(box,'Conflicting evidence',r.conflicting_evidence);
+    para(box,'Limits',r.limitations);
+    lines(box,'Next tests',r.next_tests);
+    if(art.evaluation&&art.evaluation.reasons)para(box,(art.evaluation.complete?'Assessed complete — his review':'Still in progress — his review'),art.evaluation.reasons);
+    return true;
+  }
+  return false;
 }
 function renderArtifact(container,rows){
   container.replaceChildren();
   if(!rows||!rows.length){container.append(el('p','empty','No retained work yet.'));return}
   for(const row of rows){
     const cyc=el('div','cyc');
-    cyc.append(el('h4',null,'cycle '+(row.id||'')+' · '+(row.state||'')));
+    cyc.append(el('h4',null,'Step '+(row.id||'')+' · '+(row.state||'')));
     let art=row.artifact;try{if(typeof art==='string')art=JSON.parse(art)}catch(e){}
-    if(art&&typeof art==='object'){cyc.append(renderValue(art))}
-    else if(art!=null){cyc.append(el('div','v',String(art)))}
-    else{cyc.append(el('span','empty','(no artifact on this cycle)'))}
-    const d=el('details');d.append(el('summary',null,'raw'));const pre=el('pre',null,JSON.stringify(row,null,2));d.append(pre);cyc.append(d);
+    if(!(art&&typeof art==='object'&&renderOne(cyc,art)))cyc.append(el('p','empty','(nothing legible retained on this step)'));
     container.append(cyc);
   }
 }
