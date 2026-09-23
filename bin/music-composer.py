@@ -88,7 +88,7 @@ def compose():
         "detailed instructions VERY closely: a thin outline yields a generic song, a rich one yields a real one. Be as thorough as a "
         "producer's session notes.\n\nOutput ONLY a song spec with these exact headers:\n"
         "**Title:**\n**Duration:** (2 or 3 minutes)\n**Vocal gender:** male\n"
-        "**Genre/Style:** (specific: instruments, textures, references, production feel — e.g. a \"slow burn\", \"chamber\" folk, neoclassical; name the actual genre and feel, not just adjectives)\n"
+        "**Genre/Style:** (specific: instruments, textures, references, production feel)\n"
         "**Tempo/Key:** (BPM + key + any modulation)\n"
         "**Section breakdown:** every 15-25s timestamped; for EACH section give the exact instrumentation entering/leaving, the dynamics "
         "(soft/building/full), the vocal delivery and register, arrangement changes, AND the emotional reason for the move.\n"
