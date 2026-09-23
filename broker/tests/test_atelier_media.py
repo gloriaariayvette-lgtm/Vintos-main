@@ -60,6 +60,21 @@ class AtelierMediaTests(unittest.TestCase):
         self.assertEqual(heard["encoding"], "base64", "a valid-UTF8 WAV is still binary by its medium")
         self.assertTrue(heard["content"].startswith("data:audio/wav;base64,"))
 
+    def test_media_requests_parse_in_any_attribute_order_and_quote(self):
+        # 2026-09-23: his music requests matched nothing and vanished without a make, refusal or log.
+        for text in ('<music style="low strings" title="return" duration="90">hum</music>',
+                     "<music title='return' style='low strings'>hum</music>",
+                     '<music duration="90s" title="return" style="low strings">hum</music>'):
+            got = VISIT._media_request(text)
+            self.assertEqual((got["kind"], got["title"], got["style"]), ("music", "return", "low strings"), text)
+        self.assertEqual(VISIT._media_request('<music title="bare">hum</music>')["style"], "open")
+        self.assertEqual(VISIT._media_request("<image>a blue room</image>")["prompt"], "a blue room")
+        self.assertEqual(VISIT._media_request('<image prompt="blue pressure">night</image>')["title"], "night")
+        self.assertIsNone(VISIT._media_request("no request here"))
+    def test_status_reports_no_image_model_when_none_is_cached(self):
+        art = types.SimpleNamespace(_find_local_model=lambda: ("", ""))
+        with mock.patch.object(MEDIA, "_load", side_effect=lambda _n, f: art if f == "dream-art.py" else None):
+            self.assertFalse(MEDIA.status()["image"]["ok"])
     def test_visit_elects_image_and_broker_receives_only_encoded_bytes(self):
         renderer = types.SimpleNamespace(render_image=lambda _p: {"ok": True, "kind": "image",
             "ext": "png", "mime_type": "image/png", "bytes": b"pngbytes", "size": 8})

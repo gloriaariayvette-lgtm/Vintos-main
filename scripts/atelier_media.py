@@ -29,7 +29,9 @@ def _port_open(host, port):
 def status():
     art = _load("atelier_dream_art", "dream-art.py")
     music = _load("atelier_dream_music", "dream-music.py")
-    try: image_model = art._find_local_model() if art else ""
+    try:
+        image_model = art._find_local_model() if art else ""
+        if isinstance(image_model, tuple): image_model = image_model[0]   # (path, pipeline class)
     except Exception: image_model = ""
     ace = bool(music and _port_open("127.0.0.1", 8001))
     return {

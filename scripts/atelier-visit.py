@@ -563,14 +563,27 @@ def media_block():
             "A result returns inside this visit and is kept only by the broker.\n" + "\n".join(lines))
 
 
+def _tag_attrs(raw):
+    """A tag's attributes in any order, single- or double-quoted. He writes these by hand; a strict
+    attribute order silently dropped his music requests (no make, no refusal, no log — 2026-09-23)."""
+    return {k.lower(): (dq if dq or not sq else sq)
+            for k, dq, sq in re.findall(r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', raw or "")}
+
+
 def _media_request(text):
-    image = re.search(r'<image\s+prompt="([^"]+)"\s*>(.*?)</image>', text or "", re.S)
+    image = re.search(r'<image\b([^>]*)>(.*?)</image>', text or "", re.S)
     if image:
-        return {"kind": "image", "prompt": image.group(1).strip(), "title": image.group(2).strip()[:120]}
-    music = re.search(r'<music\s+title="([^"]+)"\s+style="([^"]+)"(?:\s+duration="(\d+)")?\s*>(.*?)</music>', text or "", re.S)
+        attrs, inner = _tag_attrs(image.group(1)), image.group(2).strip()
+        prompt = (attrs.get("prompt") or "").strip() or inner
+        if prompt:
+            return {"kind": "image", "prompt": prompt, "title": (inner if attrs.get("prompt") else "")[:120]}
+    music = re.search(r'<music\b([^>]*)>(.*?)</music>', text or "", re.S)
     if music:
-        return {"kind": "music", "title": music.group(1).strip(), "style": music.group(2).strip(),
-                "duration": int(music.group(3) or 120), "description": music.group(4).strip()}
+        attrs = _tag_attrs(music.group(1))
+        duration = re.sub(r"\D", "", attrs.get("duration", ""))
+        return {"kind": "music", "title": (attrs.get("title") or "").strip() or "untitled",
+                "style": (attrs.get("style") or "").strip() or "open",
+                "duration": int(duration or 120), "description": music.group(2).strip()}
     return None
 
 
@@ -856,6 +869,7 @@ def visit(pid):
                "Or, when a piece is FINISHED and stays yours: <kept>your closing note — 'it is finished "
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
+    _asked_media = _media_request(work)
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
     work = media_loop(pid, ctx, work, cap)
@@ -882,17 +896,19 @@ def visit(pid):
             stratagem_step(pid, again, cap)
         else:
             _attempt_log("dropped", "after refusal")
-    m = re.search(r'<piece kind="(\w+)"(?:\s+continues="([^"]*)")?>(.*?)</piece>', work, re.S)
+    m = re.search(r'<piece\b([^>]*)>(.*?)</piece>', work, re.S)
     if m:
+        _pa = _tag_attrs(m.group(1))
+        _kind = re.sub(r"\W", "", _pa.get("kind", "")) or "write"
         # Every sealed-content route requires the visit capability now. Without
         # it the broker refuses and his work is silently lost — which is what
         # happened on the first real visit. Carry it, and if the make is
         # refused, keep what he wrote where it will not vanish.
-        _mk = {"id": pid, "kind": m.group(1), "content": m.group(3).strip(), "capability": cap}
+        _mk = {"id": pid, "kind": _kind, "content": m.group(2).strip(), "capability": cap}
         # selection by id: he continues one of his manifest's artifacts, or starts fresh.
         # an id that is not his is dropped here (the piece is made fresh) rather than lost
         # to a broker refusal.
-        _cont = (m.group(2) or "").strip()
+        _cont = (_pa.get("continues") or "").strip()
         if _cont:
             if _cont in {r_.get("id") for r_ in (pk.get("manifest") or [])}:
                 _mk["previous"] = _cont
@@ -907,10 +923,10 @@ def visit(pid):
             # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
             # outside the wall. The path never fired, and it is gone: a piece is kept inside the wall
             # or nowhere (Astra found it; the room agreed). The refusal reason is content-free.
-            _seal_refused(pid,m.group(1),_mk.get("content", ""),str(r["error"])[:160])
+            _seal_refused(pid,_kind,_mk.get("content", ""),str(r["error"])[:160])
         else:
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
-            requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
+            requests.post(f"{B}/inspect", json={"id": pid, "kind": _kind,
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
     # He decided a piece is ready and chose to show her. The ONE act that lets
@@ -980,6 +996,11 @@ def visit(pid):
         print("reported outward:", _msg[:80])
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
+    # Content-free: what the visit produced. Days of "visit closed with handoff" and nothing made
+    # were invisible until this line existed.
+    print("visit produced: piece=%s media_request=%s handoff=%s next_return=%s"
+          % ("yes" if m else "no", (_asked_media or {}).get("kind", "none"), "yes" if ho else "no",
+             (nr.group(1).strip()[:40] if nr else "(default tomorrow)")))
     nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
