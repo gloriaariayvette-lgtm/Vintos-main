@@ -1249,11 +1249,25 @@ been observed; the worker chooses between it and existing protein work.
 KEGG remains closed pending confirmation of academic eligibility or a license:
 its published API terms do not equate noncommercial personal use with academic use.
 BioNeMo's Chat plugin supplies agent skills, not a callable MCP connector for
-these seven workloads. A separate, bounded hosted-NIM route is being added
-for Boltz-2, DiffDock, ProteinMPNN, and RFdiffusion. It will remain disabled
+these seven workloads. A separate, bounded hosted-NIM route for Boltz-2,
+DiffDock, ProteinMPNN, and RFdiffusion was deployed in Aegis release
+`20260923-013258-dff000f`. Its full preflight and deploy each passed 171
+isolated suites; installed code hashes match Git, and the Lab and plugin
+gateway user units are active. The menu correctly reports `enabled=false`
 until Gloria installs her NVIDIA key on Aegis. The agreed cap is three
 attempted hosted jobs per America/Chicago day, shared across organs. No hosted
-job has been submitted. Parabricks, KERMT, and nvMolKit remain separate local
-GPU setup tasks: Aegis exposes an RTX 5080 with 16 GiB but currently has no
-NVIDIA container runtime or those packages installed. Their readiness and
-actual workloads have not been validated.
+job has been submitted or validated live.
+
+Parabricks and KERMT remain separate local GPU setup tasks. Aegis exposes an
+RTX 5080 with 16 GiB and PyTorch sees CUDA. nvMolKit 0.6.0 was installed in
+an isolated Aegis venv with PyTorch 2.11.0+cu128 and RDKit 2026.03.5; a
+three-molecule GPU fingerprint smoke test produced the expected 3x32 packed
+result. The bounded Wants/Forge/Lab/Atelier adapter for fingerprints,
+similarity, clustering, and conformers is being tested for deployment.
+Aegis has no NVIDIA container runtime and only 23 GiB system RAM;
+NVIDIA's [Parabricks installation requirements](https://docs.nvidia.com/clara/parabricks/get-started/installation-requirements)
+call for at least 100 GB RAM even on a
+single-GPU machine, so Parabricks should use another suitable host rather
+than be advertised as ready here. It also needs task-specific input data and
+a reference build. KERMT needs a finetuned checkpoint for inference.
+Parabricks and KERMT workloads have not been validated.

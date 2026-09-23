@@ -154,6 +154,9 @@ def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     if plugin == "nvidia_nim":
         from bionemo_gateway import call as hosted_call
         return hosted_call(surface, plugin, tool, arguments, purpose, transport=transport)
+    if plugin == "nvmolkit":
+        from nvmolkit_gateway import call as local_call
+        return local_call(surface, plugin, tool, arguments, purpose, transport=transport)
     entry = policy(plugin, surface, tool)
     if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 1000: raise ValueError("bounded purpose required")
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")

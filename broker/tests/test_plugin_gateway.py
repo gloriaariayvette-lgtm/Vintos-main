@@ -20,6 +20,7 @@ from plugin_send_guard import PolicyHold
 import forge_loop_runtime
 import plugin_gateway_service
 import bionemo_gateway
+import nvmolkit_gateway
 
 
 class PluginGatewayTests(unittest.TestCase):
@@ -341,6 +342,33 @@ class PluginGatewayTests(unittest.TestCase):
         self.assertEqual(setup.TARGET.parent.stat().st_mode & 0o077,0)
         self.assertNotIn("fixture-only",str(printed.call_args_list))
         self.assertTrue(str(setup.TARGET).startswith(self.tmp.name))
+
+    def test_local_nvmolkit_gateway_uses_only_bounded_fixed_operations(self):
+        from pathlib import Path
+        old_python=nvmolkit_gateway.PYTHON
+        nvmolkit_gateway.PYTHON=Path(self.tmp.name)/"fake-python"
+        nvmolkit_gateway.PYTHON.touch()
+        calls=[]
+        try:
+            def fake(payload):
+                calls.append(payload)
+                return {"operation":payload["operation"],"matrix":[[1.0]]}
+            out=gateway.call("lab","nvmolkit","nvmolkit.similarity",
+                             {"smiles":["CCO"]},"compare sourced molecules",transport=fake)
+            self.assertEqual(calls[0]["operation"],"similarity")
+            self.assertEqual(gateway.load_receipt(out["receipt"]["receipt_id"],"lab")["result"]["matrix"],[[1.0]])
+            self.assertTrue(out["receipt"]["artifact"].startswith(self.tmp.name))
+            self.assertEqual(os.stat(out["receipt"]["artifact"]).st_mode & 0o077,0)
+            with self.assertRaises(ValueError):
+                gateway.call("lab","nvmolkit","nvmolkit.similarity",
+                             {"smiles":["CCO"],"command":"rm"},"test",
+                             transport=lambda _:self.fail("worker reached"))
+            with self.assertRaises(PermissionError):
+                gateway.call("lab","nvmolkit","nvmolkit.shell",
+                             {"smiles":["CCO"]},"test",
+                             transport=lambda _:self.fail("worker reached"))
+        finally:
+            nvmolkit_gateway.PYTHON=old_python
 
     def test_skill_artifacts_are_integrity_checked_and_stored(self):
         import base64,hashlib

@@ -88,6 +88,14 @@ PLUGINS = {
                             "nvidia_nim.proteinmpnn", "nvidia_nim.rfdiffusion")),
         "limits": "Hosted inference, at most three attempted jobs per America/Chicago day across all surfaces. Requires a private Aegis NVIDIA key file. No automatic retry after timeout; predictions are not experimental validation. Parabricks, KERMT, and nvMolKit are separate local GPU tools, not hosted NIM operations.",
     },
+    "nvmolkit": {
+        "purpose": "Compute molecular fingerprints, Tanimoto similarity, GPU clustering, or conformers in Aegis's isolated nvMolKit environment.",
+        "when": "Use with exact sourced SMILES for molecular comparison. GPU batching helps libraries; a one-off may be cheaper with RDKit.",
+        "surfaces": ("wants", "lab", "forge", "atelier"), "visibility": "project",
+        "tools": frozenset(("nvmolkit.fingerprints", "nvmolkit.similarity",
+                            "nvmolkit.cluster", "nvmolkit.conformers")),
+        "limits": "Local GPU only. Up to 128 molecules for fingerprints/similarity/clustering or 16 for conformers; 1..3 conformers each. Computation is a prediction, not measured chemistry.",
+    },
 }
 
 SKILLS = {
@@ -142,6 +150,11 @@ def instructions(surface=None):
             from pathlib import Path
             key = Path(os.environ.get("VINTOS_NVIDIA_KEY_FILE", "~/.config/vintos/nvidia-nim.key")).expanduser()
             connectors[name]["enabled"] = key.is_file() and not (key.stat().st_mode & 0o077)
+        if name == "nvmolkit":
+            import os
+            from pathlib import Path
+            python = Path(os.environ.get("VINTOS_NVMOLKIT_PYTHON", "~/.vintos/tools/nvmolkit-venv/bin/python")).expanduser()
+            connectors[name]["enabled"] = python.is_file()
         if row.get("outbound_policy"):
             connectors[name]["outbound_policy"] = row["outbound_policy"]
     skills = {}
