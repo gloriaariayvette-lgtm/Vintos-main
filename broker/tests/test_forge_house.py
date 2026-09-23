@@ -54,6 +54,13 @@ class Tests(unittest.TestCase):
         house.sync(inventory=['web_search'])
         self.assertEqual(len(sf._load()),1)
         self.assertEqual(len(json.loads(self.path.read_text())[0]['steps']),2)
+    def test_ask_gloria_want_is_not_a_forge_project(self):
+        # 2026-09-23: "ask Gloria which hour she remembers" reached the Forge as a capability gap.
+        self.want['steps']=[{'capability':'gloria','note':'Ask her directly','status':'pending'}]
+        self.want['current_step_index']=0
+        self.path.write_text(json.dumps([self.want]))
+        house.sync(inventory=['web_search'])
+        self.assertEqual(self.c.ready_queue('w'*40),[])
     def test_changed_want_invalidates_assessment(self):
         house.sync(inventory=['web_search'])
         pid=self.c.ready_queue('w'*40)[0];self.r.step(pid)

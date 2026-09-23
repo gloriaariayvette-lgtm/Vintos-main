@@ -83,7 +83,13 @@ def fingerprint(want):
         'index':want.get('current_step_index',0)},sort_keys=True).encode()).hexdigest()
 
 
+# Plan steps that are a conversation, not a missing organ. "gloria" means ask or tell her
+# directly; a want whose remaining steps are all like that has no capability gap to build.
+RELATIONAL_CAPABILITIES = frozenset({'gloria'})
+
+
 def sync_assessments(wants, inventory, sf):
+    inventory = sorted(set(inventory) | RELATIONAL_CAPABILITIES)
     from store_guard import locked_update
     from want_spine import missing_hand
     path=Path(sf.MEMORY)/'current-wants.json'
