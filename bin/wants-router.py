@@ -1646,6 +1646,10 @@ ACTION_MAP["plugin_skill"] = plugin_skill
 
 def creative_write(want_text):
     """He wants to write something freeform — fiction, scenarios, explorations."""
+    # In a multistep want, `want_text` is the accumulated "Previous steps and what was found" blob,
+    # which turned his creative writing into a re-hash of prior analyze_memory findings and admin
+    # roadmaps. Write from the REAL creative impulse (the original want), like every other step action.
+    want_text = os.environ.get("STEP_ORIGINAL_WANT", want_text)
     log(f"Creative writing from want: {want_text[:80]}")
     import requests as _req, subprocess as _cwsp
     # Semantic search on the want
@@ -1738,7 +1742,6 @@ Write what you want to write. Be honest, specific, and genuine. No preamble.
         filepath = os.path.join(creative_dir, f"{timestamp}.md")
         with open(filepath, "w") as f:
             f.write(f"# Creative Writing — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-            f.write(f"*Seed: {want_text[:100]}*\n")
             f.write(f"*Seed: {want_text[:150]}*\n\n")
             f.write(text)
         log(f"Creative writing saved: {filepath}")
