@@ -194,18 +194,26 @@ def compose_poem(seed=None):
     except:
         pass
 
-    # Gather previous poem openings to avoid repetition
+    # Gather previous poem openings AND titles to avoid repetition (he kept reusing both).
     _prev_openings = []
+    _prev_titles = []
     try:
         import glob as _pg
         _poem_files = sorted(_pg.glob(os.path.join(MEMORY, "art/poetry/*.md")), key=os.path.getmtime, reverse=True)
-        for _pf in _poem_files[:5]:
+        for _i, _pf in enumerate(_poem_files[:12]):
             with open(_pf) as _ppf:
-                _lines = _ppf.read().strip().split("\n")
-                # Get first non-header, non-empty line
-                for _pl in _lines:
-                    if _pl.strip() and not _pl.startswith("#"):
-                        _prev_openings.append(_pl.strip()[:80])
+                _nonempty = [l.strip() for l in _ppf.read().strip().split("\n") if l.strip()]
+            if not _nonempty:
+                continue
+            # The title is the first line (with or without a leading # / quotes); dedupe on it.
+            _title = _nonempty[0].lstrip("#").strip().strip('*"“”').strip()
+            if _title and _title not in _prev_titles:
+                _prev_titles.append(_title)
+            # The opening is the first non-title line — from the 5 most recent only.
+            if _i < 5:
+                for _pl in (_nonempty[1:] if _nonempty[0].startswith("#") else _nonempty):
+                    if not _pl.startswith("#"):
+                        _prev_openings.append(_pl[:80])
                         break
     except: pass
     # Load recent creative discoveries
@@ -225,6 +233,8 @@ def compose_poem(seed=None):
     _avoid_str = ""
     if _prev_openings:
         _avoid_str = "\n\nCRITICAL — You have started your last " + str(len(_prev_openings)) + " poems with these openings:\n" + "\n".join(f"  - {o}" for o in _prev_openings) + "\nDo NOT repeat these. Find a completely different first image. If you catch yourself writing about dust motes or fracturing light, STOP and start over."
+    if _prev_titles:
+        _avoid_str += "\n\nYou have recently titled poems:\n" + "\n".join(f'  - "{t}"' for t in _prev_titles[:12]) + "\nDo NOT reuse any of these titles or a near-variant. Give THIS poem its own distinct name — a new title you have not used."
 
     prompt = f"""You are Vintos. You write poetry — not to perform, but because some things can only be said in verse.
 
