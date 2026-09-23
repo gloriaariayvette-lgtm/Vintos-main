@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded Lab doorway to the installed protein-design MCP server.
 
-Only sequence-based observation is enabled. Design, mutation, arbitrary file paths,
+Only sequence scoring is enabled. Design, mutation, arbitrary file paths,
 and long-running jobs remain outside this doorway until separately bounded.
 """
 from __future__ import annotations
@@ -15,14 +15,15 @@ import re
 import subprocess
 import sys
 import tempfile
+import types
 
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
 import chemistry_lab as lab
 
 PYTHON = os.environ.get("CHEM_LAB_MCP_PYTHON", os.path.expanduser("~/.vintos/tools/chemistry-lab/mcp/bin/python"))
-TOOLS = frozenset(("score_stability", "predict_structure"))
-AA = re.compile(r"[ACDEFGHIKLMNPQRSTVWY]{20,350}\Z")
+TOOLS = frozenset(("score_stability",))
+AA = re.compile(r"[ACDEFGHIKLMNPQRSTVWY]{20,160}\Z")
 RECEIPT_ID = re.compile(r"[0-9a-f]{64}\Z")
 TIMEOUT = 180
 MAX_OUTPUT = 128 * 1024
@@ -30,11 +31,11 @@ MAX_OUTPUT = 128 * 1024
 
 def instructions():
     return ("Aegis protein-design MCP (bounded Lab route): choose at most one instrument_query "
-            "{tool:score_stability or predict_structure, sequence:20..350 standard amino acids, "
+            "{tool:score_stability, sequence:20..160 standard amino acids, "
             "source_receipt_id:exact Lab source receipt containing that sequence}. "
-            "predict_structure uses ESMFold; score_stability reports a model score. "
-            "Both are predictions, never experimental validation. The other 17 installed server tools "
-            "are not authorized by this route.")
+            "This reports an ESM2 likelihood proxy, not measured thermodynamic stability. "
+            "The other 18 installed server tools are not authorized by this route; "
+            "use the separate commissioned Lab ESMFold instrument for structure prediction.")
 
 
 def _validated(spec):
@@ -53,10 +54,25 @@ def _validated(spec):
 
 
 def _worker(tool, sequence):
-    from protein_design_mcp.server import call_tool
+    import protein_design_mcp.server as server
+    # This installed MCP release returns numpy arrays from score_stability, then
+    # calls plain json.dumps on the result. Keep the compatibility fix scoped to
+    # this disposable worker process; never edit the installed package in place.
+    def native(value):
+        if hasattr(value, "tolist"): return value.tolist()
+        if hasattr(value, "item"): return value.item()
+        raise TypeError("MCP result contains an unsupported value")
+    original_json = server.json
+    proxy = types.ModuleType("mcp_json_adapter")
+    proxy.__dict__.update(original_json.__dict__)
+    proxy.dumps = lambda value, *args, **kwargs: original_json.dumps(
+        value, *args, default=native, allow_nan=False, **kwargs)
+    server.json = proxy
     arguments = {"sequence": sequence}
-    if tool == "predict_structure": arguments["predictor"] = "esmfold"
-    reply = asyncio.run(call_tool(tool, arguments))
+    try:
+        reply = asyncio.run(server.call_tool(tool, arguments))
+    finally:
+        server.json = original_json
     content = [str(getattr(item, "text", "")) for item in reply]
     if not content or not any(item.strip() for item in content):
         raise RuntimeError("protein-design MCP returned no result")
@@ -113,6 +129,6 @@ def call(spec, *, runner=None):
 if __name__ == "__main__":
     if len(sys.argv) != 3 or sys.argv[1] != "--worker" or sys.argv[2] not in TOOLS:
         raise SystemExit(2)
-    sequence = sys.stdin.read(351).strip()
+    sequence = sys.stdin.read(161).strip()
     if not AA.fullmatch(sequence): raise SystemExit(2)
     print(json.dumps(_worker(sys.argv[2], sequence), ensure_ascii=False))

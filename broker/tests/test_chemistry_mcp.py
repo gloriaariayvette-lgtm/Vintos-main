@@ -48,7 +48,9 @@ assert "-2.4" in result["summary"] and "not_experimental_validation" in result["
 
 for bad in (
     dict(spec, tool="design_binder"),
+    dict(spec, tool="predict_structure"),
     dict(spec, sequence="BAD"),
+    dict(spec, sequence="A" * 161),
     dict(spec, source_receipt_id="0" * 64),
     dict(spec, sequence="A" * len(sequence)),
     dict(spec, predictor="alphafold2"),
@@ -57,6 +59,23 @@ for bad in (
     except ValueError: pass
     else: raise AssertionError("unsafe or unsourced query accepted")
 assert len(calls) == 1, "invalid queries must never reach the worker"
+
+# Reproduce the installed server's ndarray serialization fault without importing
+# its real GPU package or reaching any real provider during a deploy suite.
+class FakeArray:
+    def tolist(self): return [0.1, 0.2]
+fake_server = types.ModuleType("protein_design_mcp.server")
+fake_server.json = json
+async def fake_call_tool(name, args):
+    assert name == "score_stability" and args["sequence"] == sequence
+    return [types.SimpleNamespace(text=fake_server.json.dumps({"per_residue_scores": FakeArray()}))]
+fake_server.call_tool = fake_call_tool
+fake_package = types.ModuleType("protein_design_mcp")
+fake_package.server = fake_server
+sys.modules["protein_design_mcp"] = fake_package
+sys.modules["protein_design_mcp.server"] = fake_server
+assert json.loads(mcp._worker("score_stability", sequence)["content"][0])["per_residue_scores"] == [0.1, 0.2]
+assert fake_server.json is json, "worker must restore the server module's original serializer"
 
 original = mcp.call
 mcp.call = lambda value: original(value, runner=fake_runner)

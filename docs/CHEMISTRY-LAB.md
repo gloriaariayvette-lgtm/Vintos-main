@@ -245,10 +245,11 @@ model call or Mac contact. When on, it:
 
 When a dated protein-design MCP probe is available, the lens may choose one
 additional local instrument call before the named Mac experiment. The bounded
-orchestrator accepts `score_stability` or ESMFold `predict_structure` only for a
-20–350-residue standard-amino-acid sequence present in a retained source receipt.
+orchestrator accepts `score_stability` only for a
+20–160-residue standard-amino-acid sequence present in a retained source receipt.
 It keeps the full prediction as a mode-0600 artifact, appends a Lab provenance
-receipt, and gives the reading a bounded excerpt. Other MCP tools are not in the
+receipt, and gives the reading a bounded excerpt. This is an ESM2 likelihood
+proxy, not measured protein stability. Other MCP tools are not in the
 autonomous menu; a server tool listing by itself does not authorize a call.
 
 ### Local-to-frontier bridge

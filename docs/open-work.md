@@ -426,11 +426,14 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   pyChemiQ, and Foundry still need explicit named-experiment routes before the autonomous
   session can select them.
 - The protein-design MCP server lists 19 tools. The scheduled Lab session now has a
-  bounded, receipt-backed route for two sequence-only observations: `score_stability`
-  and ESMFold `predict_structure`. It requires the exact sequence in an existing Lab
+  bounded, receipt-backed route for one sequence observation: `score_stability`,
+  an ESM2 likelihood proxy rather than measured stability. It requires the sequence in an existing Lab
   source receipt, runs under local compute admission, and brings the result into the
-  same session's reading. The other 17 tools, including design pipelines and path-based
-  operations, remain outside this route pending individual bounds and evidence.
+  same session's reading. The adapter converts the installed server's NumPy result to
+  JSON in a disposable worker. Its ESMFold tool currently fails for lack of `fair-esm`;
+  the Lab's separate ESMFold instrument already runs. The other 18 MCP tools, including
+  design pipelines and path-based operations, remain outside this route pending individual
+  bounds and evidence.
 
 The Lab has a route to the Forge now, and one step of it is hers to take. `chemistry_spark.py`
 writes the eligible, attributed feed; `from_lab()` reads structured rows; `gather()` and
