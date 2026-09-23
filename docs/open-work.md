@@ -1263,11 +1263,15 @@ RTX 5080 with 16 GiB and PyTorch sees CUDA. nvMolKit 0.6.0 was installed in
 an isolated Aegis venv with PyTorch 2.11.0+cu128 and RDKit 2026.03.5; a
 three-molecule GPU fingerprint smoke test produced the expected 3x32 packed
 result. The bounded Wants/Forge/Lab/Atelier adapter for fingerprints,
-similarity, clustering, and conformers is being tested for deployment.
-Aegis has no NVIDIA container runtime and only 23 GiB system RAM;
+similarity, clustering, and conformers was deployed in release
+`20260923-014816-41b02ce`. Its full preflight and deploy passed all 171
+isolated suites; a real Aegis GPU gateway call preserved a temporary receipt.
+Aegis has no NVIDIA container runtime: NVIDIA's CUDA container smoke test
+failed with `could not select device driver ... [[gpu]]`. It has only 23 GiB system RAM;
 NVIDIA's [Parabricks installation requirements](https://docs.nvidia.com/clara/parabricks/get-started/installation-requirements)
 call for at least 100 GB RAM even on a
 single-GPU machine, so Parabricks should use another suitable host rather
 than be advertised as ready here. It also needs task-specific input data and
-a reference build. KERMT needs a finetuned checkpoint for inference.
+a reference build. KERMT needs a finetuned checkpoint for inference, and
+its currently published v2 checkpoint is pretrained only.
 Parabricks and KERMT workloads have not been validated.
