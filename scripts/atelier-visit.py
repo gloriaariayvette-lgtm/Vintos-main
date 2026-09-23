@@ -619,8 +619,13 @@ def _media_request(text):
     return None
 
 
-def media_loop(pid, ctx, first_work, capability):
-    """Make one elected image or music artifact, then return it for his reading."""
+def media_loop(pid, ctx, first_work, capability, creation=None):
+    """Make one elected image or music artifact, then return it for his reading.
+
+    ``creation`` is an optional content-free result sink. A successfully sealed
+    image or music artifact is a piece made during the visit even when the
+    follow-up does not wrap another prose artifact in a ``<piece>`` tag.
+    """
     wanted = _media_request(first_work)
     if not wanted: return first_work
     media = _media_module()
@@ -641,6 +646,8 @@ def media_loop(pid, ctx, first_work, capability):
         else:
             artifact = saved.get("file", "")
             result["artifact"] = artifact
+            if creation is not None:
+                creation.update({"made": True, "kind": wanted["kind"], "artifact": artifact})
             print("sealed %s kept: %s" % (wanted["kind"], artifact))
     follow = ask(ctx + "\n\n=== TOOL DATA: YOUR SEALED MEDIA TABLE RETURNED THIS ===\n"
         + json.dumps(result, ensure_ascii=False)[:4000] + "\n=== END TOOL DATA ===",
@@ -938,7 +945,8 @@ def visit(pid):
     work = materials_loop(pid, ctx, work)
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
-    work = media_loop(pid, ctx, work, cap)
+    media_creation = {}
+    work = media_loop(pid, ctx, work, cap, creation=media_creation)
     leaned = record_lab_lean(pid, pk, work)
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     forged = record_forge_choice(pid, pk, work)
@@ -1067,8 +1075,10 @@ def visit(pid):
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
     nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
+    produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
+                          or media_creation.get("made"))
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
-          ("yes" if piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")) else "no", media_choice,
+          ("yes" if produced_piece else "no", media_choice,
            "yes" if ho else "no", nr.group(1).strip() if nr else "tomorrow"))
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
