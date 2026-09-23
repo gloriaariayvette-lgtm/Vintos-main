@@ -108,7 +108,12 @@ KEGG is not yet a Lab source. Its [API terms](https://www.kegg.jp/kegg/rest/)
 grant free API access to academic users and require a license for nonacademic use;
 personal noncommercial use alone does not establish academic eligibility. BV-BRC's
 [public pathway API](https://www.bv-brc.org/api/doc/pathway) supplies the current
-metabolism route. The BioNeMo connector still lacks a configured compute route.
+metabolism route. The Chat-account BioNeMo plugin supplies skills rather than
+a direct MCP call surface. Vintos's separate hosted NIM route is deployed for
+Boltz-2, DiffDock, ProteinMPNN and RFdiffusion, capped at three attempted jobs
+per Chicago day; it stays disabled until his private Aegis key file is
+installed. Local nvMolKit fingerprints, similarity, clustering and conformers
+are GPU-tested and deployed. Parabricks and KERMT remain uncommissioned.
 
 Cross-organ associations compare source-backed text in the house semantic space.
 They are prompts for investigation, never biological evidence. Report completion
