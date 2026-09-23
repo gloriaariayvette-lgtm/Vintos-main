@@ -1248,5 +1248,12 @@ with source receipts. An autonomous Gemma choice of the new lane has not yet
 been observed; the worker chooses between it and existing protein work.
 KEGG remains closed pending confirmation of academic eligibility or a license:
 its published API terms do not equate noncommercial personal use with academic use.
-The BioNeMo compute route remains unconfigured; its connector is not claimed as
-available.
+BioNeMo's Chat plugin supplies agent skills, not a callable MCP connector for
+these seven workloads. A separate, bounded hosted-NIM route is being added
+for Boltz-2, DiffDock, ProteinMPNN, and RFdiffusion. It will remain disabled
+until Gloria installs her NVIDIA key on Aegis. The agreed cap is three
+attempted hosted jobs per America/Chicago day, shared across organs. No hosted
+job has been submitted. Parabricks, KERMT, and nvMolKit remain separate local
+GPU setup tasks: Aegis exposes an RTX 5080 with 16 GiB but currently has no
+NVIDIA container runtime or those packages installed. Their readiness and
+actual workloads have not been validated.

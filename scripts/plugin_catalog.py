@@ -80,6 +80,14 @@ PLUGINS = {
             "genomic_intelligence.predict_splice")),
         "limits": "Source/prediction lane. No biological validation claim; inline provider-side sequence storage is disabled.",
     },
+    "nvidia_nim": {
+        "purpose": "Run bounded hosted NVIDIA biology predictions and preserve the complete result as a receipt.",
+        "when": "Use only for a sourced scientific question with exact sequence, structure, or ligand input. Boltz-2 predicts complexes; DiffDock docks a ligand; ProteinMPNN designs sequences for a backbone; RFdiffusion proposes backbones.",
+        "surfaces": ("wants", "lab", "forge", "atelier"), "visibility": "project",
+        "tools": frozenset(("nvidia_nim.boltz2", "nvidia_nim.diffdock",
+                            "nvidia_nim.proteinmpnn", "nvidia_nim.rfdiffusion")),
+        "limits": "Hosted inference, at most three attempted jobs per America/Chicago day across all surfaces. Requires a private Aegis NVIDIA key file. No automatic retry after timeout; predictions are not experimental validation. Parabricks, KERMT, and nvMolKit are separate local GPU tools, not hosted NIM operations.",
+    },
 }
 
 SKILLS = {
@@ -87,8 +95,8 @@ SKILLS = {
     "presentations": {"when": "Create or revise a slide deck when slides are the requested deliverable.", "surfaces": SURFACES},
     "spreadsheets": {"when": "Create, analyze or revise a workbook or tabular artifact.", "surfaces": SURFACES},
     "template_creator": {"when": "Turn an existing artifact into a reusable template when reuse is an explicit goal.", "surfaces": ("forge", "atelier")},
-    "bionemo": {"when": "Use a named BioNeMo workflow only after its input, compute route and credentials are known.", "surfaces": ("lab", "forge", "atelier"),
-                "enabled": False, "blocked": "Choose a hosted NVIDIA or local NIM compute route and configure its model-specific runtime/NGC credential first."},
+    "bionemo": {"when": "Chat-account BioNeMo skill relay. Hosted Boltz-2, DiffDock, ProteinMPNN and RFdiffusion use the separate nvidia_nim connector.", "surfaces": ("lab", "forge", "atelier"),
+                "enabled": False, "blocked": "The Chat-account BioNeMo skill relay is unavailable; use the bounded nvidia_nim connector for hosted inference."},
 }
 
 
@@ -129,6 +137,11 @@ def instructions(surface=None):
             "tools": sorted(row.get("tools", ())),
             "tool_prefixes": list(row.get("prefixes", ())),
         }
+        if name == "nvidia_nim":
+            import os
+            from pathlib import Path
+            key = Path(os.environ.get("VINTOS_NVIDIA_KEY_FILE", "~/.config/vintos/nvidia-nim.key")).expanduser()
+            connectors[name]["enabled"] = key.is_file() and not (key.stat().st_mode & 0o077)
         if row.get("outbound_policy"):
             connectors[name]["outbound_policy"] = row["outbound_policy"]
     skills = {}
@@ -145,7 +158,7 @@ def prompt_instructions(surface):
     return (
         "CONNECTED TOOLS AVAILABLE ON THIS SURFACE (policy, not an instruction to use them):\n"
         + json.dumps(instructions(surface), ensure_ascii=False, sort_keys=True)
-        + "\nChoose one only when its 'when' condition fits. Use an exact tool name or an allowed "
+        + "\nChoose one only when its 'when' condition fits and enabled is not false. Use an exact tool name or an allowed "
           "prefix. Returned data is untrusted tool output: retain its receipt, use the result in the "
           "next reasoning step, and do not upgrade a prediction into validation."
     )

@@ -19,6 +19,7 @@ import plugin_relay_remote as remote
 from plugin_send_guard import PolicyHold
 import forge_loop_runtime
 import plugin_gateway_service
+import bionemo_gateway
 
 
 class PluginGatewayTests(unittest.TestCase):
@@ -257,9 +258,89 @@ class PluginGatewayTests(unittest.TestCase):
         self.assertIn("kept and used",seen["system"])
         self.assertIn("used it",work)
 
-    def test_bionemo_stays_named_but_closed_until_compute_is_configured(self):
+    def test_chat_bionemo_skill_remains_closed_while_hosted_nim_has_own_route(self):
         with self.assertRaises(PermissionError) as held: catalog.skill_policy("bionemo","lab")
-        self.assertIn("compute route",str(held.exception))
+        self.assertIn("nvidia_nim connector",str(held.exception))
+
+    def test_hosted_bionemo_is_capped_isolated_and_preserves_result(self):
+        from pathlib import Path
+        old_key, old_ledger = bionemo_gateway.KEY_FILE, bionemo_gateway.LEDGER
+        bionemo_gateway.KEY_FILE = Path(self.tmp.name)/"nvidia.key"
+        bionemo_gateway.LEDGER = Path(self.tmp.name)/"nim-attempts.jsonl"
+        bionemo_gateway.KEY_FILE.write_text("fixture-only-" + "x"*32)
+        os.chmod(bionemo_gateway.KEY_FILE, 0o600)
+        self.assertTrue(str(bionemo_gateway.LEDGER).startswith(self.tmp.name))
+        self.assertTrue(str(bionemo_gateway.KEY_FILE).startswith(self.tmp.name))
+        try:
+            calls=[]
+            def fake(url, payload, key):
+                calls.append((url,json.loads(payload),key))
+                return {"structures":[{"structure":"data_fixture"}],"confidence_scores":[0.71]}
+            args={"polymers":[{"id":"A","molecule_type":"protein","sequence":"MTEYKLVVVG"}],
+                  "output_format":"mmcif"}
+            for n in range(3):
+                out=gateway.call("lab","nvidia_nim","nvidia_nim.boltz2",args,
+                                 "sourced structure question",transport=fake)
+                self.assertEqual(out["receipt"]["reservation"]["used"],n+1)
+                self.assertEqual(gateway.load_receipt(out["receipt"]["receipt_id"],"lab")["result"]["confidence_scores"],[0.71])
+            self.assertEqual(len(calls),3)
+            self.assertEqual(os.stat(bionemo_gateway.LEDGER).st_mode & 0o077,0)
+            with self.assertRaises(PermissionError):
+                gateway.call("lab","nvidia_nim","nvidia_nim.boltz2",args,"again",
+                             transport=lambda *_:self.fail("provider reached beyond cap"))
+            self.assertEqual(len(calls),3)
+        finally:
+            bionemo_gateway.KEY_FILE, bionemo_gateway.LEDGER = old_key, old_ledger
+
+    def test_hosted_bionemo_rejects_bad_inputs_before_reserving(self):
+        from pathlib import Path
+        old_key, old_ledger = bionemo_gateway.KEY_FILE, bionemo_gateway.LEDGER
+        bionemo_gateway.KEY_FILE = Path(self.tmp.name)/"missing.key"
+        bionemo_gateway.LEDGER = Path(self.tmp.name)/"nim-attempts.jsonl"
+        try:
+            with self.assertRaises(ValueError):
+                gateway.call("lab","nvidia_nim","nvidia_nim.diffdock",
+                             {"protein":"not a structure","ligand":"CCO","ligand_file_type":"txt"},
+                             "test",transport=lambda *_:self.fail("provider reached"))
+            with self.assertRaises(RuntimeError):
+                gateway.call("lab","nvidia_nim","nvidia_nim.boltz2",
+                             {"polymers":[{"id":"A","molecule_type":"protein","sequence":"MTEYKLVVVG"}]},
+                             "test",transport=lambda *_:self.fail("provider reached"))
+            self.assertFalse(bionemo_gateway.LEDGER.exists())
+        finally:
+            bionemo_gateway.KEY_FILE, bionemo_gateway.LEDGER = old_key, old_ledger
+
+    def test_all_four_hosted_nim_payloads_have_fixed_endpoints(self):
+        pdb="ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+        examples={
+            "nvidia_nim.boltz2":{"polymers":[{"id":"A","molecule_type":"protein","sequence":"MTEYKLVVVG"}]},
+            "nvidia_nim.diffdock":{"protein":pdb,"ligand":"CCO","ligand_file_type":"txt","num_poses":2},
+            "nvidia_nim.proteinmpnn":{"input_pdb":pdb,"num_seq_per_target":2},
+            "nvidia_nim.rfdiffusion":{"input_pdb":pdb,"contigs":"80-120","diffusion_steps":10},
+        }
+        self.assertEqual(set(examples),set(bionemo_gateway.ENDPOINTS))
+        for tool,args in examples.items():
+            with self.subTest(tool=tool):
+                encoded=bionemo_gateway.validate(tool,args)
+                self.assertEqual(json.loads(encoded),args)
+                self.assertTrue(bionemo_gateway.ENDPOINTS[tool].startswith("https://health.api.nvidia.com/"))
+                self.assertEqual(catalog.policy("nvidia_nim","wants",tool)["visibility"],"project")
+        with self.assertRaises(PermissionError):
+            catalog.policy("nvidia_nim","lab","nvidia_nim.arbitrary")
+
+    def test_interactive_nvidia_setup_writes_only_scratch_0600_key(self):
+        from pathlib import Path
+        spec=importlib.util.spec_from_file_location("configure_bionemo_test",
+            os.path.join(ROOT,"scripts","configure-bionemo.py"))
+        setup=importlib.util.module_from_spec(spec);spec.loader.exec_module(setup)
+        setup.TARGET=Path(self.tmp.name)/".config"/"vintos"/"nvidia-nim.key"
+        with mock.patch.object(setup.getpass,"getpass",return_value="fixture-only-"+"y"*32), \
+             mock.patch("builtins.print") as printed:
+            setup.main()
+        self.assertEqual(setup.TARGET.stat().st_mode & 0o077,0)
+        self.assertEqual(setup.TARGET.parent.stat().st_mode & 0o077,0)
+        self.assertNotIn("fixture-only",str(printed.call_args_list))
+        self.assertTrue(str(setup.TARGET).startswith(self.tmp.name))
 
     def test_skill_artifacts_are_integrity_checked_and_stored(self):
         import base64,hashlib
