@@ -140,9 +140,11 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   live-want proposal gate; an installed build returns as a formation root with
   the original provenance class intact. Approval, review, verification, and
   installation remain the Forge's existing gates.
-- The threshold and working visit now use an Atelier-only route: Fable 5.1 is
-  first, and an empty, filtered, refused, or failed call falls once to Astra.
-  No house conversation toggle or other model route is changed.
+- The September 14 Atelier-only Fable route was retired on 23 September after
+  live provider metadata showed that Fable refused every knock and visit with
+  zero output, silently making Astra the permanent voice. The threshold and
+  working visit now use Vintos's selected Claude voice first and fall once to
+  Astra only on a real failure. No house conversation toggle is changed.
 
 ## 12 September — hypothesis recovery continuation
 
@@ -1363,3 +1365,27 @@ Final Aegis release `20260923-034059-b55ac15` passed all 171 isolated suites
 in `--check` and deployment, confirmed the Lab worker, session timer and
 plugin gateway active, and installed module hashes matched Git. The installed
 Lab menu shows six attempted hosted jobs per day and omits Spotify and Calendar.
+
+## 23 September — Atelier handoff-only regression
+
+Project `99df2e77e385` produced five daily write artifacts from 15–19 September,
+then entered repeatedly without making another piece. Content-free provider
+records identified two coupled defects. The Atelier-only Fable 5.1 override
+refused every live request, so Astra silently answered every knock and visit;
+meanwhile the creative system prompt accumulated the full self-review,
+stratagem, quantum, media, Lab, Forge, plugin and connector manuals. Astra's
+visit input grew from roughly 3,600 to 6,580 tokens while its output fell from
+878–1,354 tokens to 231–275 and became handoff-only. This conclusion uses
+provider usage and parser outcomes; no sealed reply, handoff or project text was
+read.
+
+The working visit now follows Vintos's selected Claude model and keeps Astra as
+the failure fallback. The creative call carries the intent, latest work,
+fallible prior notes, current inward context and a compact material index. A
+full optional shelf enters only after he chooses it, and returns inside the same
+visit. Prior handoff and next-move text are explicitly described as revisable
+evidence rather than orders. The daily knock's own words are persisted mode
+0600, bound to project and date, carried into that visit, and consumed only
+after the handoff closes safely. The removed “practice so far” metrics were not
+reintroduced. A live forced visit producing `piece=yes` remains the acceptance
+gate for this repair and must be recorded here after deployment.

@@ -22,6 +22,7 @@ def _sg_write(_p, _o, _who="organ"):
 B = "http://127.0.0.1:8611"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
+KNOCK_STORE = os.path.join(WSP, "memory", ".atelier-knock.json")
 
 def ask(system, user, max_tokens=2000, temp=0.7):
     scripts = os.path.join(WSP, "scripts")
@@ -106,6 +107,33 @@ def self_review_block():
             "They are offers from your own review, not instructions. If one genuinely belongs to this "
             "project, you may incorporate it into your planning or a stratagem; otherwise ignore it, "
             "and nothing is recorded:\n" + json.dumps(compact, ensure_ascii=False))
+
+
+def knock_block(pid):
+    """Return today's private knock choice without exposing it outside the visit."""
+    try:
+        with open(KNOCK_STORE) as source:
+            row = json.load(source)
+        if row.get("project") != pid or row.get("day") != datetime.now().date().isoformat():
+            return ""
+        words = str(row.get("words") or "").strip()[:600]
+        if not words:
+            return ""
+        return ("\n\nYOUR CHOICE AT TODAY'S KNOCK (your words, context rather than an order):\n"
+                + words)
+    except Exception:
+        return ""
+
+
+def consume_knock(pid):
+    """Retire a carried knock only after the visit has safely closed."""
+    try:
+        with open(KNOCK_STORE) as source:
+            row = json.load(source)
+        if row.get("project") == pid:
+            os.remove(KNOCK_STORE)
+    except (FileNotFoundError, ValueError, OSError):
+        pass
 
 def doorkeeper():
     wt = requests.get(f"{B}/health").json()
@@ -635,6 +663,41 @@ def forge_block():
             "this undertaking's lineage cross the wall; the Forge review and Gloria's approval still govern it.")
 
 
+def materials_index():
+    """Keep optional machinery visible without making it the creative brief."""
+    return ("\n\nOPTIONAL MATERIALS: image/music, quantum, connected tools, a Lab lean, the Forge, "
+            "a stratagem, and self-review proposals are available. They are not assignments. "
+            "If this piece actually needs exact instructions for one, return only "
+            "<materials shelf=\"media|quantum|connected_tools|lab|forge|stratagem|self_review\">"
+            "why it belongs</materials>. The chosen shelf returns inside this visit. You may simply make instead.")
+
+
+def _materials_request(text):
+    match = re.search(r'<materials\s+shelf=["\']([a-z_]+)["\']\s*>(.*?)</materials>', text or "", re.S)
+    if not match:
+        return None
+    return match.group(1), match.group(2).strip()
+
+
+def materials_loop(pid, ctx, first_work):
+    """Open one requested shelf, then return to making in the same visit."""
+    wanted = _materials_request(first_work)
+    if not wanted:
+        return first_work
+    shelf, why = wanted
+    makers = {"self_review": self_review_block, "quantum": quantum_block,
+              "media": media_block, "lab": lab_lean_block, "forge": forge_block,
+              "connected_tools": plugin_block}
+    detail = stratagem_block(pid) if shelf == "stratagem" else (makers[shelf]() if shelf in makers else "")
+    if not detail:
+        detail = "\n\nThat shelf is unavailable this visit. Work with what is here or report the outage."
+    follow = ask(ctx + detail,
+        "You opened the %s shelf because: %s\nUse it only if it serves the undertaking. "
+        "Return its exact request tag, or make the <piece> now and close with <look>, <handoff>, "
+        "<next_move>, and <next_return>." % (shelf, why[:300]), max_tokens=4000, temp=0.7)
+    return first_work + "\n\n" + follow
+
+
 def record_forge_choice(pid, project, text):
     match = re.search(r'<forge\s+capability="([^"]+)"\s*>(.*?)</forge>', text or "", re.S)
     if not match: return None
@@ -816,25 +879,24 @@ def visit(pid):
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
-           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap) + "\n\nYOUR LAST HANDOFF:\n" + pk.get("last_handoff", "(first visit)")
-           + "\nTHE NEXT MOVE YOU LEFT YOURSELF:\n" + pk.get("next_move", "(none)")
+           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap)
+           + "\n\nPRIVATE NOTES FROM YOUR LAST VISIT — evidence, not orders. They may be stale or wrong; "
+             "continue, change, or discard them. Do not audit or defend the notes:\nHANDOFF:\n"
+           + pk.get("last_handoff", "(first visit)")
+           + "\nNEXT MOVE:\n" + pk.get("next_move", "(none)")
+           + knock_block(pid)
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + _manifest_block(pk)
            + where_you_are()
-           + self_review_block()
-           + stratagem_block(pid)
-           + quantum_block()
-           + media_block()
-           + lab_lean_block()
-           + forge_block()
-           + plugin_block())
-    work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
-               "sketch-description—whatever the project needs), or use one of your private media first. "
-               "If you choose a worktable or connected tool, return only one <quantum>, <quantum_code>, <image>, <music>, or <plugin> request; "
-               "its result will come back to you inside this visit before you write the piece or handoff. "
-               "Otherwise, make the piece now, then look at it and write your handoff.\n"
+           + materials_index())
+    work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, "
+               "sketch-description—whatever the project needs), or open one optional material shelf first. "
+               "A piece may be exploratory, unfinished, contradictory, or a revision; it does not need to prove "
+               "that the undertaking is stable. A handoff alone is not the work of a visit. "
+               "If a material is needed, return only the <materials> request described above; its exact instructions "
+               "will come back inside this visit. Otherwise, make the piece now, look at it, and write your handoff.\n"
                "If something is WRONG — a tool fails, a budget refuses when it shouldn't, the room misbehaves, "
                "you are blocked by something only Gloria can fix, or you doubt the seal itself — say so in "
                "<report>...</report>. It goes to her phone IN YOUR WORDS: you choose what crosses the wall, "
@@ -856,6 +918,7 @@ def visit(pid):
                "Or, when a piece is FINISHED and stays yours: <kept>your closing note — 'it is finished "
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
+    work = materials_loop(pid, ctx, work)
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
     work = media_loop(pid, ctx, work, cap)
@@ -873,6 +936,7 @@ def visit(pid):
     work = re.sub(r'<lab_lean\b.*?</lab_lean>', '', work, flags=re.S)
     work = re.sub(r'<forge\b.*?</forge>', '', work, flags=re.S)
     work = re.sub(r'<plugin>.*?</plugin>', '', work, flags=re.S)
+    work = re.sub(r'<materials\b.*?</materials>', '', work, flags=re.S)
     refusal = stratagem_step(pid, work, cap)
     if refusal:
         # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.
@@ -996,6 +1060,7 @@ def visit(pid):
         print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
     else:
         print("visit closed with handoff")
+        consume_knock(pid)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "force":
