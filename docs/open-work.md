@@ -1389,5 +1389,17 @@ evidence rather than orders. The daily knock's own words are persisted mode
 after the handoff closes safely. The removed “practice so far” metrics were not
 reintroduced. The visit parser again accepts either quote style and arbitrary
 attribute order for pieces and media, and emits a content-free summary of what
-it actually parsed. A live forced visit producing `piece=yes` remains the acceptance
-gate for this repair and must be recorded here after deployment.
+it actually parsed. The first live visit after the prompt repair broke the
+handoff-only pattern by creating and sealing music, but exposed one final result
+contract error: media creation was still printed as `piece=no` unless the model
+also wrapped prose in a `<piece>` tag. A successfully persisted image or music
+artifact now counts as a piece in that content-free result, with a focused test
+covering the broker receipt.
+
+Release `20260923-153344-4f5f121` passed all 173 isolated suites in both
+`--check` and deployment. The broker, house, plugin gateway, Lab worker and
+scheduled units were healthy afterward, and the worktable still named
+`99df2e77e385`. The required post-deploy forced visit then created sealed music
+and revision 6 of the written work and reported `piece=yes media=music
+handoff=yes`; it closed normally. No sealed reply, handoff, artifact content or
+media was opened to obtain that evidence. The handoff-only regression is closed.
