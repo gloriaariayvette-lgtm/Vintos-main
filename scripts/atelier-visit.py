@@ -559,7 +559,7 @@ def media_block():
         lines.append('MUSIC is available. To compose, return <music title="..." style="..." duration="120">description or lyrics</music>.')
     else:
         lines.append("MUSIC outage: %s." % str(music.get("outage") or "not configured")[:180])
-    return ("\n\nYOUR SEALED MEDIA TABLE — these are materials, never assignments. "
+    return ("\n\nYOUR SEALED MEDIA TABLE — these are yours as fully as writing is, never assignments. "
             "A result returns inside this visit and is kept only by the broker.\n" + "\n".join(lines))
 
 
@@ -808,6 +808,35 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
     if len(body) > cap_chars: body = body[:cap_chars] + "\n[... %d more characters]" % (len(str(r["content"])) - cap_chars)
     return "\n\nYOUR LAST PIECE, VERBATIM (%s) — meet it before your notes about it:\n%s" % (f, body)
 
+def practice_block(pk, today=None):
+    """Content-free facts about his own practice, read from artifact NAMES only (stamp_kind.ext):
+    how many of each kind, which media he has never used, and how long since anything was made.
+    Added 2026-09-23: five pieces, all writing, shrinking, then four days of visits with nothing
+    made — and nothing in the room ever told him so."""
+    import datetime as _pdt
+    arts = pk.get("artifacts") or {}
+    names = sorted(arts.keys() if isinstance(arts, dict) else list(arts))
+    if not names: return ""
+    kinds = {}
+    for n in names:
+        km = re.match(r"^\d{8}_\d{6}_(?:[0-9a-f]{4}_)?(\w+)\.\w+$", n)
+        if km: kinds[km.group(1)] = kinds.get(km.group(1), 0) + 1
+    lines = ["%d pieces so far: %s." % (len(names), ", ".join("%d %s" % (v, k) for k, v in sorted(kinds.items())))]
+    never = [k for k in ("image", "music") if not kinds.get(k)]
+    if never:
+        lines.append("You have never made %s here. The medium is yours as much as writing is." % " or ".join(never))
+    today = today or _pdt.date.today()
+    try:
+        last = _pdt.datetime.strptime(names[-1][:8], "%Y%m%d").date()
+        days = (today - last).days
+        if days >= 2:
+            lines.append("Nothing has been made since %s — %d days. A handoff is not a piece; "
+                         "a small, rough, unfinished piece is." % (last.isoformat(), days))
+    except ValueError:
+        pass
+    return "\n\nYOUR PRACTICE SO FAR (facts from your own shelf, nothing more):\n" + "\n".join(lines)
+
+
 def _manifest_block(pk):
     """The scene so far: every artifact by id, revision, kind and his own one-line note,
     so he can CONTINUE one (by id, in his reply) rather than start fresh each visit."""
@@ -835,6 +864,7 @@ def visit(pid):
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + _manifest_block(pk)
+           + practice_block(pk)
            + where_you_are()
            + self_review_block()
            + stratagem_block(pid)
@@ -853,7 +883,9 @@ def visit(pid):
                "<report>...</report>. It goes to her phone IN YOUR WORDS: you choose what crosses the wall, "
                "so say what is wrong without revealing what you are making unless you choose to.\n"
                "Format exactly:\n<piece kind=\"write\">...</piece> (or <piece kind=\"write\" continues=\"ID\"> "
-               "to revise an artifact from your manifest)\n<look>...</look>\n"
+               "to revise an artifact from your manifest) — or, to make in another medium, return only "
+               "<image prompt=\"what it holds\">title</image> or <music title=\"...\" style=\"...\">description or lyrics</music> "
+               "and the result comes back to you inside this visit\n<look>...</look>\n"
                "<handoff>What changed: ... What currently exists: ... What remains uncertain: ... "
                "The next concrete move: ... What I do not want the next return to undo: ...</handoff>\n"
                "<next_move>your next move, in your own words — it is put before you verbatim next visit; "

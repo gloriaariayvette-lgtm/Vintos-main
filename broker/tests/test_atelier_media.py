@@ -75,6 +75,20 @@ class AtelierMediaTests(unittest.TestCase):
         art = types.SimpleNamespace(_find_local_model=lambda: ("", ""))
         with mock.patch.object(MEDIA, "_load", side_effect=lambda _n, f: art if f == "dream-art.py" else None):
             self.assertFalse(MEDIA.status()["image"]["ok"])
+    def test_practice_block_states_facts_from_artifact_names_only(self):
+        import datetime
+        shelf = {n: "hash" for n in ("20260915_094041_write.md", "20260916_094039_write.md",
+                 "20260917_094048_write.md", "20260918_094029_write.md", "20260919_094017_write.md")}
+        block = VISIT.practice_block({"artifacts": shelf}, today=datetime.date(2026, 9, 23))
+        self.assertIn("5 pieces so far: 5 write.", block)
+        self.assertIn("never made image or music", block)
+        self.assertIn("Nothing has been made since 2026-09-19 — 4 days.", block)
+        self.assertNotIn("hash", block)                       # names and counts only, never content
+        mixed = dict(shelf, **{"20260923_094000_ab12_music.wav": "h"})
+        block = VISIT.practice_block({"artifacts": mixed}, today=datetime.date(2026, 9, 23))
+        self.assertIn("1 music, 5 write", block); self.assertIn("never made image here", block)
+        self.assertNotIn("Nothing has been made", block)
+        self.assertEqual(VISIT.practice_block({"artifacts": {}}), "")
     def test_visit_elects_image_and_broker_receives_only_encoded_bytes(self):
         renderer = types.SimpleNamespace(render_image=lambda _p: {"ok": True, "kind": "image",
             "ext": "png", "mime_type": "image/png", "bytes": b"pngbytes", "size": 8})
