@@ -45,6 +45,15 @@ class AtelierFocusTests(unittest.TestCase):
         self.assertIn("FULL EXACT TOOL MENU", seen["system"])
         self.assertIn("a provisional form", out)
 
+    def test_piece_and_media_attributes_accept_either_quote_and_any_order(self):
+        piece = VISIT._tag("<piece continues='old.md' kind='write'>new</piece>", "piece")
+        self.assertEqual(piece["attrs"], {"continues": "old.md", "kind": "write"})
+        image = VISIT._media_request("<image title='x' prompt='blue pressure'>night</image>")
+        self.assertEqual(image["prompt"], "blue pressure")
+        music = VISIT._media_request("<music duration='90' style='low strings' title='Return'>air</music>")
+        self.assertEqual((music["title"], music["style"], music["duration"]),
+                         ("Return", "low strings", 90))
+
     def test_knock_is_project_and_day_bound_then_consumed(self):
         row = {"day": datetime.now().date().isoformat(), "project": "0123456789ab",
                "words": "RETURN because the shape can move."}

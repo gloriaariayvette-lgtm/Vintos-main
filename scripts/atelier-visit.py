@@ -24,6 +24,17 @@ SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
 KNOCK_STORE = os.path.join(WSP, "memory", ".atelier-knock.json")
 
+def _tag(text, name):
+    """First paired tag with quote-agnostic, order-independent attributes."""
+    match = re.search(r'<%s\b([^>]*)>(.*?)</%s>' % (re.escape(name), re.escape(name)),
+                      text or "", re.S | re.I)
+    if not match:
+        return None
+    attrs = {}
+    for key, _quote, value in re.findall(r'([A-Za-z_][\w-]*)\s*=\s*(["\'])(.*?)\2', match.group(1), re.S):
+        attrs[key.lower()] = value
+    return {"attrs": attrs, "body": match.group(2)}
+
 def ask(system, user, max_tokens=2000, temp=0.7):
     scripts = os.path.join(WSP, "scripts")
     if scripts not in sys.path: sys.path.append(scripts)
@@ -592,13 +603,19 @@ def media_block():
 
 
 def _media_request(text):
-    image = re.search(r'<image\s+prompt="([^"]+)"\s*>(.*?)</image>', text or "", re.S)
+    image = _tag(text, "image")
     if image:
-        return {"kind": "image", "prompt": image.group(1).strip(), "title": image.group(2).strip()[:120]}
-    music = re.search(r'<music\s+title="([^"]+)"\s+style="([^"]+)"(?:\s+duration="(\d+)")?\s*>(.*?)</music>', text or "", re.S)
+        prompt = image["attrs"].get("prompt", "").strip()
+        if prompt:
+            return {"kind": "image", "prompt": prompt, "title": image["body"].strip()[:120]}
+    music = _tag(text, "music")
     if music:
-        return {"kind": "music", "title": music.group(1).strip(), "style": music.group(2).strip(),
-                "duration": int(music.group(3) or 120), "description": music.group(4).strip()}
+        attrs = music["attrs"]
+        if attrs.get("title") and attrs.get("style"):
+            try: duration = int(attrs.get("duration", 120))
+            except (TypeError, ValueError): duration = 120
+            return {"kind": "music", "title": attrs["title"].strip(), "style": attrs["style"].strip(),
+                    "duration": duration, "description": music["body"].strip()}
     return None
 
 
@@ -673,10 +690,10 @@ def materials_index():
 
 
 def _materials_request(text):
-    match = re.search(r'<materials\s+shelf=["\']([a-z_]+)["\']\s*>(.*?)</materials>', text or "", re.S)
-    if not match:
+    tag = _tag(text, "materials")
+    if not tag:
         return None
-    return match.group(1), match.group(2).strip()
+    return tag["attrs"].get("shelf", ""), tag["body"].strip()
 
 
 def materials_loop(pid, ctx, first_work):
@@ -926,6 +943,7 @@ def visit(pid):
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     forged = record_forge_choice(pid, pk, work)
     if forged: print("Forge proposal:", forged)
+    media_choice = (_media_request(work) or {}).get("kind", "none")
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
     # handoff, report, reveal, or stratagem action.
@@ -946,17 +964,20 @@ def visit(pid):
             stratagem_step(pid, again, cap)
         else:
             _attempt_log("dropped", "after refusal")
-    m = re.search(r'<piece kind="(\w+)"(?:\s+continues="([^"]*)")?>(.*?)</piece>', work, re.S)
-    if m:
+    piece = _tag(work, "piece")
+    made_this_visit = False
+    r = {}
+    if piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")):
         # Every sealed-content route requires the visit capability now. Without
         # it the broker refuses and his work is silently lost — which is what
         # happened on the first real visit. Carry it, and if the make is
         # refused, keep what he wrote where it will not vanish.
-        _mk = {"id": pid, "kind": m.group(1), "content": m.group(3).strip(), "capability": cap}
+        _mk = {"id": pid, "kind": piece["attrs"]["kind"],
+               "content": piece["body"].strip(), "capability": cap}
         # selection by id: he continues one of his manifest's artifacts, or starts fresh.
         # an id that is not his is dropped here (the piece is made fresh) rather than lost
         # to a broker refusal.
-        _cont = (m.group(2) or "").strip()
+        _cont = piece["attrs"].get("continues", "").strip()
         if _cont:
             if _cont in {r_.get("id") for r_ in (pk.get("manifest") or [])}:
                 _mk["previous"] = _cont
@@ -971,26 +992,27 @@ def visit(pid):
             # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
             # outside the wall. The path never fired, and it is gone: a piece is kept inside the wall
             # or nowhere (Astra found it; the room agreed). The refusal reason is content-free.
-            _seal_refused(pid,m.group(1),_mk.get("content", ""),str(r["error"])[:160])
+            _seal_refused(pid, piece["attrs"]["kind"], _mk.get("content", ""), str(r["error"])[:160])
         else:
+            made_this_visit = True
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
-            requests.post(f"{B}/inspect", json={"id": pid, "kind": m.group(1),
+            requests.post(f"{B}/inspect", json={"id": pid, "kind": piece["attrs"]["kind"],
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
     # He decided a piece is ready and chose to show her. The ONE act that lets
     # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
     # content on its export capability -> deliver (phone + the app's reveals tab)
     # -> settle, which clears the worktable so the next undertaking can begin.
-    rv = re.search(r'<reveal(?:\s+artifact="([^"]*)")?>(.*?)</reveal>', work, re.S)
+    rv = _tag(work, "reveal")
     if rv:
-        _disc = rv.group(2).strip()[:800]
-        _art = (rv.group(1) or "").strip()
+        _disc = rv["body"].strip()[:800]
+        _art = rv["attrs"].get("artifact", "").strip()
         if not _art:
             # no filename named: only the piece he made THIS visit with a successful make receipt qualifies.
             # Never an older file by default — disclosure binds to an explicit artifact or the current
             # make, or it does not happen (astra-atelier-p6, 2026-09-05).
-            _art = (r.get("file") if (m and not r.get("error")) else "") or ""
-        elif _art not in (pk.get("artifacts") or {}) and not (m and not r.get("error") and r.get("file") == _art):
+            _art = (r.get("file") if made_this_visit else "") or ""
+        elif _art not in (pk.get("artifacts") or {}) and not (made_this_visit and r.get("file") == _art):
             print("reveal names %r, which is not an artifact of this project — not revealing" % _art); _art = ""
         if not _art:
             print("reveal: no explicit artifact and nothing made this visit — an older piece is not revealed by default")
@@ -1045,6 +1067,9 @@ def visit(pid):
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
     nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
+    print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
+          ("yes" if piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")) else "no", media_choice,
+           "yes" if ho else "no", nr.group(1).strip() if nr else "tomorrow"))
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
                   # his own words, carried verbatim to the next visit's context; empty is allowed

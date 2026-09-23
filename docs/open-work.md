@@ -1387,5 +1387,7 @@ visit. Prior handoff and next-move text are explicitly described as revisable
 evidence rather than orders. The daily knock's own words are persisted mode
 0600, bound to project and date, carried into that visit, and consumed only
 after the handoff closes safely. The removed “practice so far” metrics were not
-reintroduced. A live forced visit producing `piece=yes` remains the acceptance
+reintroduced. The visit parser again accepts either quote style and arbitrary
+attribute order for pieces and media, and emits a content-free summary of what
+it actually parsed. A live forced visit producing `piece=yes` remains the acceptance
 gate for this repair and must be recorded here after deployment.
