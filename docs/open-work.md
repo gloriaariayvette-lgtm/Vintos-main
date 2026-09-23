@@ -1341,3 +1341,7 @@ and retested. Hugging Face reported anonymous status, so private Hub access is
 not claimed. Proto reported its Modal and Hugging Face links present but zero
 deployed tools. The Chat-account PDF, presentation and spreadsheet skills all
 returned real artifacts in disposable workspaces.
+Final Aegis release `20260923-034059-b55ac15` passed all 171 isolated suites
+in `--check` and deployment, confirmed the Lab worker, session timer and
+plugin gateway active, and installed module hashes matched Git. The installed
+Lab menu shows six attempted hosted jobs per day and omits Spotify and Calendar.

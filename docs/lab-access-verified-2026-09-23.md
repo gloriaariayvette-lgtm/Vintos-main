@@ -10,17 +10,17 @@ queries. A provider prediction is an observation, not experimental validation.
 
 The checks below ran through Aegis on 23 September unless a probe date is
 given. A successful catalog read proves that connector and tool, not every
-operation in the catalog. Release `20260923-031544-4b63c7c` passed all 171
-isolated suites on both preflight and install; the Lab, session timer and plugin
-gateway units were confirmed active. A final menu correction is pending its
-own release as this record is written.
+operation in the catalog. Final release `20260923-034059-b55ac15` passed all
+171 isolated suites on both preflight and install. Installed module hashes match
+Git; the Lab, session timer and plugin gateway units are active. The installed
+menu shows the six-attempt allowance and excludes unauthenticated Claude tools.
 
 ## Public and keyed Lab sources
 
 | Source and endpoint | Lab use | Verification |
 | --- | --- | --- |
 | UniProtKB, `https://rest.uniprot.org/uniprotkb/search` | Validated bounded protein and organism queries | Live query returned one reviewed *Bacillus subtilis* record. |
-| NCBI E-utilities, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/` | Taxonomy, Assembly, Gene, Protein, PubMed; bounded protein/nuccore FASTA slices | Live taxonomy, Assembly, Gene, Protein, PubMed and exact protein FASTA-slice calls all returned records. An initial burst received HTTP 429; four-second spacing made the remaining probes succeed. The normal Lab path enforces a per-source cooldown. |
+| NCBI E-utilities, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/` | Taxonomy, Assembly, Gene, Protein, PubMed; bounded protein/nuccore FASTA slices | Live taxonomy, Assembly, Gene, Protein, PubMed and exact protein and nuccore FASTA-slice calls all returned records. An initial burst received HTTP 429; four-second spacing made the remaining probes succeed. The normal Lab path enforces a per-source cooldown. |
 | BV-BRC, `https://www.bv-brc.org/api/` | Public genome and pathway rows, including genus-descendant lookup | Live genome query for taxon 1423 returned eight rows; a sourced genome ID then returned eight pathway rows. |
 | RCSB PDB, `https://data.rcsb.org/rest/v1/core/entry/` | Experimental structure metadata, with method check | Live 1CRN entry returned. |
 | EMBL-EBI ChEMBL, `https://www.ebi.ac.uk/chembl/api/data/activity.json` | Bounded bioactivity rows for an exact CHEMBL target ID | Live CHEMBL203 query returned eight rows. This is separate from Claude's ChEMBL MCP. |
@@ -47,7 +47,7 @@ receipts for all rows marked verified here.
 | Tamarind Bio | `get`/`list`/`search`/`validate`/`estimate` discovery and existing-job results. `listModalities` and `getAvailableTools` succeeded. Uploads and job submissions remain closed. |
 | Proto | Workspace, tool catalog/schema/example, asset and job/deploy status reads. `workspace_info` and `list_tools` succeeded. Its response reports Modal and Hugging Face linked, but **zero deployed tools**; `run_tool` and deploy are outside Vintos's policy. No local Modal install is needed for catalog reads. |
 | Inductive Bio | `list_available_models` and `predict_properties`. A real LogD prediction on ethanol (`CCO`) returned model `mcp_public_logd` v1.7.0 with success status. |
-| Genomic Intelligence | Model listing, reference fetch and bounded prediction/job reads. `list_models` and a short `fetch_region` returned non-error data. Individual prediction types were not all submitted. |
+| Genomic Intelligence | Model listing, reference fetch and bounded prediction/job reads. `list_models` and `fetch_region` worked; `predict_promoter` ran on a sourced 2,000-bp reference sequence and returned a valid result with zero predicted regions (receipt `eb2555858900e6d8`). Other prediction types were not individually submitted. |
 
 DoorDash is offered to Wants and Atelier for grocery list discovery, **not** to
 the Lab. The Chat-account BioNeMo skill relay remains disabled; hosted NVIDIA
@@ -68,7 +68,7 @@ not proof of connector execution.
 | --- | --- |
 | PubMed, `https://pubmed.mcp.claude.com/mcp` | A read-only `search_articles` SDK trace contained an actual non-error tool result. The catalog also allows metadata, full text where available, related articles, citation lookup, ID conversion and copyright status. |
 | ChEMBL, `https://chembl.caseyjhand.com/mcp` | Post-fix `chembl_search_targets` returned a verified SDK tool result. The catalog allows molecule, target, bioactivity, drug, assay and dataframe reads; those other operations were not each probed. |
-| Hugging Face, `https://huggingface.co/mcp` | `hf_whoami` returned **anonymous** status. Public Hub discovery may work, but authenticated private access is not confirmed. |
+| Hugging Face, `https://huggingface.co/mcp` | `hf_whoami` returned **anonymous** status, and a live `hub_repo_search` returned public repository data (receipt `89cb4cca0ad43b29`). Authenticated private access is not confirmed. |
 | Spotify, `https://mcp-gateway-external-pilot.spotify.net/mcp` | A direct SDK `get_currently_playing` call returned an authentication error: re-sign-in via `/mcp` is required. **Unavailable through Vintos now.** |
 | Google Calendar, `https://calendarmcp.googleapis.com/mcp/v1` | `list_calendars` could not obtain connector permission/auth in noninteractive mode. **Unavailable through Vintos now.** |
 
@@ -95,9 +95,11 @@ NVIDIA's cross-surface allowance is **six** attempted hosted jobs per
 America/Chicago day, raised from three by Gloria on 23 September. She had
 already authorized one explicit reset after the failed DiffDock probe; its
 append-only `operator_reset` event preserves the original three attempts and
-records the allowance at the time. The reset window then used four of the
+records the allowance at the time. An `operator_limit_changed` ledger event
+records Gloria's subsequent increase to six. The reset window then used four of the
 newly authorized six attempts: the 404 route probe, the 422 diagnostic replay,
 the successful corrected DiffDock call and the hosted RFdiffusion probe.
-Two attempts remain in that window on 23 September. Parabricks has no verified active
+At 03:41 Chicago time on 23 September, two attempts remained in that window.
+Parabricks has no verified active
 hosted NIM path and is not offered. KERMT has no commissioned finetuned
 checkpoint and is not offered.
