@@ -183,6 +183,17 @@ def engage():
     """Browse, pick a post, reply."""
     log("=== Moltbook Engagement ===")
 
+    # Answer comments on HIS OWN posts FIRST. The engagement loop only ever browsed OUTSIDE posts,
+    # so cmd_check_replies (own-post comments) was never invoked from here and he never replied to
+    # people commenting on his own posts (Gloria, 2026-09-23). Run it each cycle, best-effort.
+    try:
+        import subprocess as _cr_sp
+        _cr_out = _cr_sp.run(["python3", os.path.join(os.path.dirname(os.path.abspath(__file__)), "vintos-moltbook.py"),
+                              "check-replies"], capture_output=True, text=True, timeout=300)
+        log(f"own-post check-replies: rc={_cr_out.returncode} {(_cr_out.stdout or '')[-160:].strip()}")
+    except Exception as _cre:
+        log(f"own-post check-replies failed: {_cre}")
+
     # Get emotional context
     emotion_desc = "curious and present"
     state = None
