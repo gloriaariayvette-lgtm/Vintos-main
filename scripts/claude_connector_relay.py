@@ -84,26 +84,41 @@ def _guard(entry, tool, arguments, request):
                                   "request_sha256": findings["request_sha256"], "links": findings["links"]})
 
 
-def _tool_result_from(message, wanted):
-    """Pull the raw connector result out of an Agent SDK message, defensively across shapes.
+def _tool_result_from(message, wanted, tool_uses):
+    """Return a result only when the SDK ties it to the requested connector call.
 
-    We want the tool's OWN returned content, not the model's prose summary. Tool results surface as
-    blocks with a type like 'tool_result'; capture the first one for our tool. Access is defensive so
-    a shape change degrades to 'not found' instead of crashing.
+    Claude Agent SDK blocks are typed objects without a ``type`` attribute. A model's final text
+    can describe a denied tool as if it succeeded, so it must never stand in for a tool result.
     """
     content = getattr(message, "content", None)
     if content is None and isinstance(message, dict):
         content = message.get("content")
     for block in (content or []):
-        btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
-        if btype not in ("tool_result", "mcp_tool_result"):
+        btype = (getattr(block, "type", None) or
+                 (block.get("type") if isinstance(block, dict) else None) or
+                 type(block).__name__)
+        if btype in ("tool_use", "ToolUseBlock"):
+            call_id = getattr(block, "id", None) or (block.get("id") if isinstance(block, dict) else None)
+            name = getattr(block, "name", None) or (block.get("name") if isinstance(block, dict) else None)
+            if call_id and name:
+                tool_uses[call_id] = name
             continue
-        name = (getattr(block, "tool_name", None) or getattr(block, "name", None)
-                or (block.get("tool_name") or block.get("name") if isinstance(block, dict) else None))
-        if wanted and name and wanted not in str(name):
+        if btype not in ("tool_result", "mcp_tool_result", "ToolResultBlock"):
             continue
-        payload = (getattr(block, "content", None)
-                   or (block.get("content") if isinstance(block, dict) else None))
+        use_id = getattr(block, "tool_use_id", None) or (block.get("tool_use_id") if isinstance(block, dict) else None)
+        name = tool_uses.get(use_id)
+        if not name or not str(name).endswith("__" + wanted):
+            continue
+        errored = getattr(block, "is_error", None)
+        if errored is None and isinstance(block, dict):
+            errored = block.get("is_error")
+        if errored:
+            raise RuntimeError("requested connector tool returned an error")
+        payload = (block.get("content") if isinstance(block, dict)
+                   else getattr(block, "content", None))
+        if isinstance(payload, str):
+            parsed, valid_json = _coerce_result(payload)
+            return parsed if valid_json else {"text": payload}
         return payload
     return None
 
@@ -122,31 +137,21 @@ async def _run(server, tool, arguments, url):
     options = ClaudeAgentOptions(
         model=RELAY_MODEL,
         mcp_servers={server: {"type": "http", "url": url}},
-        allowed_tools=[fq],
+        allowed_tools=[fq, f"mcp__claude_ai_{server}__{tool}"],
         permission_mode="dontAsk",
         system_prompt=("You are a deterministic connector relay, not a conversation. Call the tool "
                        f"{fq} exactly once with the arguments given, then stop. Do not call any other "
                        "tool, do not add commentary. The tool's own result is the only output that matters."),
     )
     prompt = f"Call {fq} once with these arguments (JSON): {json.dumps(arguments, ensure_ascii=False)}"
-    captured, final_text = None, ""
+    captured, tool_uses = None, {}
     async for message in query(prompt=prompt, options=options):
-        got = _tool_result_from(message, tool)
+        got = _tool_result_from(message, tool, tool_uses)
         if got is not None:
             captured = got
-        result_attr = getattr(message, "result", None)
-        if result_attr:
-            final_text = result_attr
     if captured is not None:
         return {"result": captured, "source": "tool_result"}
-    # No raw tool_result block — the SDK often folds the connector's data into the model turn as a
-    # (possibly fenced) JSON body. Parse it so the caller gets structured output, not prose.
-    coerced, parsed = _coerce_result(final_text)
-    if parsed:
-        return {"result": coerced, "source": "model_json"}
-    # Truly nothing usable: surface the text and warn, so a real failure is never reported as ok.
-    return {"result": coerced, "source": "model_text",
-            "warning": "connector returned no structured result; verify the call ran"}
+    raise RuntimeError("requested connector produced no verified tool result")
 
 
 def connector(request):

@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -110,6 +111,21 @@ class GatewayTests(unittest.TestCase):
 
 
 class RelayKeepOutputTests(unittest.TestCase):
+    def test_typed_sdk_tool_result_is_kept(self):
+        uses = {}
+        # SDK blocks do not expose a .type property.
+        call = type("ToolUseBlock", (), {"id": "call-1", "name": "mcp__PubMed__search_articles"})()
+        result = type("ToolResultBlock", (), {"tool_use_id": "call-1", "content": '{"pmids":["123"]}', "is_error": False})()
+        self.assertIsNone(relay._tool_result_from(SimpleNamespace(content=[call]), "search_articles", uses))
+        self.assertEqual(relay._tool_result_from(SimpleNamespace(content=[result]), "search_articles", uses),
+                         {"pmids": ["123"]})
+
+    def test_denied_sdk_tool_result_fails_closed(self):
+        uses = {"call-2": "mcp__Spotify__get_currently_playing"}
+        result = type("ToolResultBlock", (), {"tool_use_id": "call-2", "content": "sign in again", "is_error": True})()
+        with self.assertRaises(RuntimeError):
+            relay._tool_result_from(SimpleNamespace(content=[result]), "get_currently_playing", uses)
+
     def test_fenced_json_is_parsed(self):
         value, parsed = relay._coerce_result('```json\n{"a": 1}\n```')
         self.assertTrue(parsed)

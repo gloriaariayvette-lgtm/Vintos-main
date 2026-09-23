@@ -311,6 +311,27 @@ class PluginGatewayTests(unittest.TestCase):
         finally:
             bionemo_gateway.KEY_FILE, bionemo_gateway.LEDGER = old_key, old_ledger
 
+    def test_operator_reset_grants_one_new_window_and_keeps_old_attempts(self):
+        from pathlib import Path
+        old_ledger = bionemo_gateway.LEDGER
+        bionemo_gateway.LEDGER = Path(self.tmp.name)/"nim-attempts.jsonl"
+        args = {"polymers": [{"id":"A","molecule_type":"protein","sequence":"MTEYKLVVVG"}]}
+        try:
+            for _ in range(3): bionemo_gateway.reserve("nvidia_nim.boltz2", args)
+            with self.assertRaises(PermissionError): bionemo_gateway.reserve("nvidia_nim.boltz2", args)
+            reset = bionemo_gateway.reset_today("Gloria authorized one new three-attempt window")
+            self.assertEqual(reset["prior_attempts"], 3)
+            with self.assertRaises(PermissionError): bionemo_gateway.reset_today("duplicate")
+            for used in range(1,4):
+                self.assertEqual(bionemo_gateway.reserve("nvidia_nim.boltz2", args)["used"], used)
+            with self.assertRaises(PermissionError): bionemo_gateway.reserve("nvidia_nim.boltz2", args)
+            rows = [json.loads(x) for x in bionemo_gateway.LEDGER.read_text().splitlines()]
+            self.assertEqual([r["event"] for r in rows].count("reserved"), 6)
+            self.assertEqual([r["event"] for r in rows].count("operator_reset"), 1)
+            self.assertEqual(os.stat(bionemo_gateway.LEDGER).st_mode & 0o077, 0)
+        finally:
+            bionemo_gateway.LEDGER = old_ledger
+
     def test_all_four_hosted_nim_payloads_have_fixed_endpoints(self):
         pdb="ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00  0.00           C\n"
         examples={
@@ -320,6 +341,8 @@ class PluginGatewayTests(unittest.TestCase):
             "nvidia_nim.rfdiffusion":{"input_pdb":pdb,"contigs":"80-120","diffusion_steps":10},
         }
         self.assertEqual(set(examples),set(bionemo_gateway.ENDPOINTS))
+        self.assertEqual(bionemo_gateway.ENDPOINTS["nvidia_nim.diffdock"],
+                         "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate")
         for tool,args in examples.items():
             with self.subTest(tool=tool):
                 encoded=bionemo_gateway.validate(tool,args)

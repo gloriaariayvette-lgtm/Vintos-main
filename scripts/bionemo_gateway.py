@@ -27,7 +27,7 @@ MAX_REQUEST = 112 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 ENDPOINTS = {
     "nvidia_nim.boltz2": "https://health.api.nvidia.com/v1/biology/mit/boltz2/predict",
-    "nvidia_nim.diffdock": "https://health.api.nvidia.com/v1/biology/mit/diffdock",
+    "nvidia_nim.diffdock": "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate",
     "nvidia_nim.proteinmpnn": "https://health.api.nvidia.com/v1/biology/ipd/proteinmpnn/predict",
     "nvidia_nim.rfdiffusion": "https://health.api.nvidia.com/v1/biology/ipd/rfdiffusion/generate",
 }
@@ -142,7 +142,10 @@ def reserve(tool, arguments, *, moment=None):
         os.chmod(lock_path, 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX)
         rows = [json.loads(x) for x in LEDGER.read_text().splitlines() if x.strip()] if LEDGER.exists() else []
-        used = sum(x.get("event") == "reserved" and x.get("day") == day for x in rows)
+        reset_at = max((i for i, x in enumerate(rows) if x.get("event") == "operator_reset" and
+                        x.get("day") == day), default=-1)
+        used = sum(x.get("event") == "reserved" and x.get("day") == day
+                   for x in rows[reset_at + 1:])
         if used >= DAILY_LIMIT: raise PermissionError("NVIDIA NIM daily attempt limit reached (3)")
         row = {"event":"reserved","day":day,"at":now.isoformat(),"tool":tool,
                "request_sha256":hashlib.sha256(json.dumps(arguments,sort_keys=True).encode()).hexdigest(),
@@ -150,6 +153,35 @@ def reserve(tool, arguments, *, moment=None):
         with LEDGER.open("a") as stream:
             os.chmod(LEDGER, 0o600)
             stream.write(json.dumps(row,sort_keys=True)+"\n")
+            stream.flush(); os.fsync(stream.fileno())
+        return row
+
+
+def reset_today(reason, *, moment=None):
+    """Record one explicit operator-authorized new three-attempt window today.
+
+    Prior attempts remain in the append-only ledger. This is an administrative action and is not
+    exposed by the plugin gateway or any Lab planner.
+    """
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > 300:
+        raise ValueError("bounded reset reason required")
+    now = moment or datetime.now(DAY_ZONE)
+    day = now.astimezone(DAY_ZONE).date().isoformat()
+    LEDGER.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(LEDGER.parent, 0o700)
+    lock_path = Path(str(LEDGER) + ".lock")
+    with lock_path.open("a+") as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        rows = [json.loads(x) for x in LEDGER.read_text().splitlines() if x.strip()] if LEDGER.exists() else []
+        if any(x.get("event") == "operator_reset" and x.get("day") == day for x in rows):
+            raise PermissionError("NVIDIA NIM allowance already reset today")
+        row = {"event": "operator_reset", "day": day, "at": now.isoformat(),
+               "prior_attempts": sum(x.get("event") == "reserved" and x.get("day") == day for x in rows),
+               "new_allowance": DAILY_LIMIT, "reason": reason.strip()}
+        with LEDGER.open("a") as stream:
+            os.chmod(LEDGER, 0o600)
+            stream.write(json.dumps(row, sort_keys=True) + "\n")
             stream.flush(); os.fsync(stream.fileno())
         return row
 
