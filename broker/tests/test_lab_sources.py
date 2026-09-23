@@ -58,6 +58,13 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.calls, [])
         result=self.client().query({'source':'uniprot','query':'protein_name:actin AND organism_id:9606'})
         self.assertEqual(result['metadata']['release'],'test-release')
+    def test_group_taxon_queries_are_not_silently_empty(self):
+        # The two queries that returned zero records on 2026-09-23 (1224 = Proteobacteria, a phylum).
+        self.assertEqual(sources.validate_uniprot('organism_id:1224 AND reviewed:true'),
+                         'taxonomy_id:1224 AND reviewed:true')
+        self.assertEqual(sources.validate_uniprot('(organism_id : 1224 reviewed : True)'),
+                         '(taxonomy_id:1224 reviewed:true)')
+        with self.assertRaises(ValueError): sources.validate_uniprot('organism : human')
     def test_bounded_queries(self):
         for q in ('length:[40 TO 350', 'protein_name:"abc', '\nreviewed:true'):
             with self.assertRaises(ValueError): sources.validate_uniprot(q)

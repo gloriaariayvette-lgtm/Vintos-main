@@ -154,7 +154,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "{source:ncbi_sequence,database:protein or nuccore,accession:exact sourced accession.version,start:one-based integer,end:one-based inclusive integer}, "
               "{source:bvbrc,operation:genomes,taxon_id:sourced numeric ID}, "
               "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
-              "{source:uniprot,query:organism_id:SOURCED_ID AND reviewed:true}. "
+              "{source:uniprot,query:taxonomy_id:SOURCED_ID AND reviewed:true} (taxonomy_id covers a whole group such as a phylum; organism_id matches one exact organism only and returns nothing for a group ID). "
               "Environmental microbiology is an option, not a priority; use IDs from receipts. "
               "Atlas uses 0-based half-open intervals up to 32bp. Optional ontology_terms and gene_ids arrays may "
               "filter to 1..4 sourced IDs. Use sourced coordinates/IDs only, never invent them. "

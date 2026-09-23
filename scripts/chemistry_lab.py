@@ -454,7 +454,7 @@ def _orient(context, lean=None):
         "{source:ncbi_sequence,database:protein or nuccore,accession:exact sourced accession.version,start:one-based integer,end:one-based inclusive integer}, "
         "{source:bvbrc,operation:genomes,taxon_id:sourced numeric ID}, "
         "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
-        "{source:uniprot,query:organism_id:SOURCED_ID AND reviewed:true}. "
+        "{source:uniprot,query:taxonomy_id:SOURCED_ID AND reviewed:true} (taxonomy_id covers a whole group such as a phylum; organism_id matches one exact organism only and returns nothing for a group ID). "
         "Use IDs returned by earlier receipts; do not invent them. Sequence slices are capped at 350 amino acids or 512 bases. BV-BRC pathway rows are annotations, not proof of expression or phenotype. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
@@ -495,7 +495,7 @@ def _browse(query, limit):
             if len(raw) > 2*1024*1024: raise ValueError("UniProt response exceeds limit")
             return json.loads(raw)
     try:
-        validate_uniprot(executed_query)
+        executed_query = validate_uniprot(executed_query)
     except ValueError:
         fallback_reason = "invalid_query_rejected_locally"
         executed_query = BASELINE_QUERY

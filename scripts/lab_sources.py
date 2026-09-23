@@ -44,13 +44,20 @@ def _genome_id(value):
 
 
 def validate_uniprot(query):
+    """Validate a UniProt query and return it normalized. Callers must use the returned query."""
     if not isinstance(query, str) or not query.strip() or len(query) > 600:
         raise ValueError('bounded UniProt query required')
+    if any(ord(c) < 32 for c in query) or query.count('(') != query.count(')') or query.count('[') != query.count(']') or query.count('"') % 2:
+        raise ValueError('malformed UniProt query')
+    # "organism_id : 1224" is not a field to UniProt; it is three free-text words, and matches nothing.
+    query = re.sub(r'\b([A-Za-z_][A-Za-z_0-9]*)\s*:\s*', r'\1:', query)
     fields = re.findall(r'\b([A-Za-z_][A-Za-z_0-9]*):', query)
     unknown = set(fields) - FIELDS
     if unknown: raise ValueError('unsupported UniProt fields: ' + ', '.join(sorted(unknown)))
-    if any(ord(c) < 32 for c in query) or query.count('(') != query.count(')') or query.count('[') != query.count(']') or query.count('"') % 2:
-        raise ValueError('malformed UniProt query')
+    # organism_id matches only the one exact taxon, so a group ID (1224 = Proteobacteria) returns zero
+    # records. taxonomy_id matches that taxon and everything under it, so it is never narrower.
+    query = re.sub(r'\borganism_id:', 'taxonomy_id:', query)
+    query = re.sub(r'\breviewed:(true|false)\b', lambda m: 'reviewed:' + m.group(1).lower(), query, flags=re.I)
     return query
 
 
