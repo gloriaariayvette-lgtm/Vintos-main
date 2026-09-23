@@ -290,23 +290,23 @@ def journal_source_saturated(accessions):
     return False
 
 
-def journal_context(cap=900):
+def journal_context(cap=1050):
     threads = journal_threads()
-    findings = [{"thread_id": t["thread_id"], "question": t["question"][:160],
-                 "finding": (t["finding"] or "")[:220],
-                 "next_question": (t["next_question"] or "")[:160],
-                 "source_accessions": t["source_accessions"][:3]}
+    findings = [{"thread_id": t["thread_id"], "question": t["question"][:120],
+                 "finding": (t["finding"] or "")[:150],
+                 "next_question": (t["next_question"] or "")[:100],
+                 "source_accessions": t["source_accessions"][:2]}
                 for t in threads if t["state"] == "finding"][:2]
     redirect_threads = [t for t in threads if t["state"] != "finding"]
     saturated = [t for t in redirect_threads if t["question"].startswith("Repeated source set:")]
-    redirects = [{"thread_id": t["thread_id"], "question": t["question"][:120],
-                  "lesson": (t["lesson"] or "")[:140],
-                  "next_question": (t["next_question"] or "")[:120]}
+    redirects = [{"thread_id": t["thread_id"], "question": t["question"][:80],
+                  "lesson": (t["lesson"] or "")[:110],
+                  "next_question": (t["next_question"] or "")[:90]}
                  for t in (sorted(saturated, key=lambda x: x["entries"], reverse=True) or redirect_threads)[:1]]
     if not findings and not redirects:
         return ""
     prefix = "[LAB JOURNAL THREADS — source-backed findings first; errors are redirects, not prompts to repeat]\n"
-    for count, include_redirect in ((2, True), (1, True), (1, False), (0, True)):
+    for count, include_redirect in ((2, True), (1, True), (0, True), (1, False)):
         body = json.dumps({"findings": findings[:count], "redirects": redirects[:1 if include_redirect else 0]},
                           ensure_ascii=False)
         if len(prefix) + len(body) <= cap and (findings[:count] or redirects[:1 if include_redirect else 0]):
@@ -331,7 +331,7 @@ def lab_context():
                         "sha256": hashlib.sha256(text.encode()).hexdigest()})
         if used >= budget: break
     recent = _jsonl(NOTEBOOK)[-3:]
-    journal = journal_context(min(900, max(0, budget - used))) if used < budget else ""
+    journal = journal_context(min(1050, max(0, budget - used))) if used < budget else ""
     if journal:
         parts.append(journal); used += len(journal)
         sources.append({"name": "lab_journal_threads", "path": "memory/chemistry-lab/notebook.jsonl",
