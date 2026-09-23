@@ -100,6 +100,19 @@ def main():
                                                   "table_since": k.get("table_since", "")}, timeout=15).json()   # bound to what was asked (P03-04)
     print("gate: he said %s — %s" % (word, text[:140]))
     print("gate: recorded %s" % out)
+    if out.get("ok"):
+        # His answer used to reach only this log; the broker keeps just the word. The visit 25 minutes
+        # later then met only the handoff note he had just rejected, and held again. Keep his own words
+        # for today's visit. (2026-09-23)
+        try:
+            import json as _kj, datetime as _kd
+            path = os.path.join(WSP, "memory", ".atelier-knock.json")
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                _kj.dump({"date": _kd.date.today().isoformat(), "decision": decision, "said": text[:400]}, f)
+            os.replace(tmp, path)
+        except Exception as e:
+            print("gate: could not keep his answer for the visit (%s)" % str(e)[:120])
     return 0
 
 if __name__ == "__main__":

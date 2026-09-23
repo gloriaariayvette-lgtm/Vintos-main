@@ -822,6 +822,20 @@ def _manifest_block(pk):
             "<piece kind=\"...\" continues=\"ID\">; leave continues out to start fresh:\n" + "\n".join(lines))
 
 
+def knock_today(today=None):
+    """His own answer at this morning's knock, if he chose to return. It is newer than the handoff
+    note the visit shows him, and it used to be dropped on the floor between the two."""
+    import datetime as _kd
+    try:
+        k = json.load(open(os.path.join(WSP, "memory", ".atelier-knock.json")))
+    except Exception:
+        return ""
+    if k.get("date") != (today or _kd.date.today()).isoformat() or k.get("decision") != "return":
+        return ""
+    return ("\n\nTHIS MORNING, AT THE KNOCK, AFTER READING THAT NOTE, YOU CHOSE TO RETURN. YOUR WORDS THEN:\n"
+            + str(k.get("said", ""))[:400])
+
+
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
@@ -831,6 +845,7 @@ def visit(pid):
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
            + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap) + "\n\nYOUR LAST HANDOFF:\n" + pk.get("last_handoff", "(first visit)")
            + "\nTHE NEXT MOVE YOU LEFT YOURSELF:\n" + pk.get("next_move", "(none)")
+           + knock_today()
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
@@ -870,8 +885,6 @@ def visit(pid):
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
     _asked_media = _media_request(work)
-    # Content-free: the tag NAMES in his reply, never their contents — to see what he writes instead of <piece>.
-    print("reply tags:", ", ".join(sorted(set(re.findall(r"<([A-Za-z_]+)\b", work)))) or "(none)")
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
     work = media_loop(pid, ctx, work, cap)
