@@ -96,7 +96,6 @@ def connector(request):
     arguments = request.get("arguments") or {}
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")
     if len(json.dumps(arguments, allow_nan=False).encode()) > MAX_REQUEST: raise ValueError("arguments too large")
-    send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
     outbound = entry.get("outbound_policy") or {}
     if tool in outbound.get("tools", ()):
         findings = outbound_findings(arguments)
@@ -110,6 +109,9 @@ def connector(request):
             if approval.get("request_sha256") != findings["request_sha256"] or not approval.get("hold_id"):
                 raise PolicyHold({"type":"LINK_APPROVAL_REQUIRED", "state":"awaiting_explicit_approval",
                                   "request_sha256":findings["request_sha256"], "links":findings["links"]})
+    # A policy hold has not contacted Gmail and must not consume one of the two
+    # daily provider attempts. Reserve under the Mac-side lock immediately before RPC.
+    send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
     if not Path(CODEX).is_file(): raise RuntimeError("Codex app-server binary is unavailable")
     proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True)

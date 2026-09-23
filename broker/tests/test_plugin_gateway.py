@@ -88,7 +88,7 @@ class PluginGatewayTests(unittest.TestCase):
         with self.assertRaises(PolicyHold):
             gateway.call("wants","gmail","gmail.send_email",changed,"changed",transport=lambda _:self.fail("transport reached"))
 
-    def test_remote_secret_and_link_checks_run_after_budget_but_before_provider(self):
+    def test_remote_secret_and_link_holds_do_not_spend_a_send_attempt(self):
         old=remote.STATE_DIR;remote.STATE_DIR=__import__('pathlib').Path(self.tmp.name)/"relay-state"
         try:
             with self.assertRaises(PolicyHold):
@@ -97,8 +97,9 @@ class PluginGatewayTests(unittest.TestCase):
             with self.assertRaises(PolicyHold):
                 remote.connector({"surface":"forge","plugin":"gmail","tool":"gmail.send_email",
                     "arguments":{"to":"x@example.test","body":"https://example.test"},"purpose":"test"})
-            rows=(remote.STATE_DIR/"gmail-send-attempts.jsonl").read_text().splitlines()
-            self.assertEqual(len(rows),2)
+            self.assertFalse((remote.STATE_DIR/"gmail-send-attempts.jsonl").exists())
+            self.assertEqual(remote.reserve_email_send("gmail.send_email",
+                {"to":"x@example.test","body":"safe message"},"test")["used"],1)
         finally: remote.STATE_DIR=old
 
     def test_provider_held_draft_and_forward_are_fail_closed(self):
