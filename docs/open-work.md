@@ -1253,12 +1253,16 @@ these seven workloads. A separate, bounded hosted-NIM route for Boltz-2,
 DiffDock, ProteinMPNN, and RFdiffusion was deployed in Aegis release
 `20260923-013258-dff000f`. Its full preflight and deploy each passed 171
 isolated suites; installed code hashes match Git, and the Lab and plugin
-gateway user units are active. The menu correctly reports `enabled=false`
-until Gloria installs her NVIDIA key on Aegis. The agreed cap is three
-attempted hosted jobs per America/Chicago day, shared across organs. No hosted
-job has been submitted or validated live.
+gateway user units are active. Gloria installed her NVIDIA key on 23 September;
+the gateway read it successfully without printing it or making an API request.
+The key directory is mode 0700 and the file is mode 0600. The agreed cap is
+three attempted hosted jobs per America/Chicago day, shared across organs.
+No hosted job has been submitted or validated live.
 
-Parabricks and KERMT remain separate local GPU setup tasks. Aegis exposes an
+Parabricks is a hosted-NIM-only route by Gloria's direction, pending
+verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM
+pages currently mark those endpoints deprecated, so the Lab does not advertise
+or submit Parabricks jobs yet. KERMT remains a local GPU setup task. Aegis exposes an
 RTX 5080 with 16 GiB and PyTorch sees CUDA. nvMolKit 0.6.0 was installed in
 an isolated Aegis venv with PyTorch 2.11.0+cu128 and RDKit 2026.03.5; a
 three-molecule GPU fingerprint smoke test produced the expected 3x32 packed
@@ -1270,8 +1274,29 @@ Aegis has no NVIDIA container runtime: NVIDIA's CUDA container smoke test
 failed with `could not select device driver ... [[gpu]]`. It has only 23 GiB system RAM;
 NVIDIA's [Parabricks installation requirements](https://docs.nvidia.com/clara/parabricks/get-started/installation-requirements)
 call for at least 100 GB RAM even on a
-single-GPU machine, so Parabricks should use another suitable host rather
-than be advertised as ready here. It also needs task-specific input data and
+single-GPU machine, so Parabricks is not locally ready here. A hosted route still
+needs task-specific input data and
 a reference build. KERMT needs a finetuned checkpoint for inference, and
 its currently published v2 checkpoint is pretrained only.
 Parabricks and KERMT workloads have not been validated.
+
+## 23 September — Lab journal retrieval
+
+The Chemistry Lab now derives a read-only, deduplicated thread view from its
+append-only notebook. Source-backed observations retain their source IDs and
+next test in a compact planning block and in the Lab pane. Repeated wording
+with the same sources does not refresh a thread's salience. Unsupported
+reflections and poor or ungraded instrument runs remain in the notebook, but
+appear as lower-salience redirects instead of recurring raw prompt material.
+An Aegis aggregate check found 8,967 reflections over one identical source
+set; source sets used at least five times now collapse into one redirect that
+asks for new evidence or a different instrument. A routine browse that returns
+that saturated set now records `browse_stale` and goes back to orientation
+without embedding or reflecting on the same records again. A deliberate
+follow-up with an additional source or plugin remains possible. This avoids
+treating a new wording about the same records as progress.
+The frontier-interest bridge also suppresses an identical evidence fingerprint
+while allowing a genuinely new source to be surfaced. This is retrieval
+discipline, not independent verification of biological claims; a source-backed
+observation remains a hypothesis-generating record. A live autonomous choice
+showing reduced repetition has not yet been observed.

@@ -6757,6 +6757,24 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
         return {"ok": False, "reviews": [], "limit": 20, "error": str(exc)[:180]}
 
 
+@app.get("/api/lab/chemistry/threads")
+async def chemistry_lab_threads(request: Request, limit: int = 12):
+    """Deduplicated retrieval view with source IDs; raw notebook remains available."""
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        rows = module.journal_threads()
+        cap = max(1, min(30, int(limit)))
+        major_redirect = next((row for row in rows if row.get("question", "").startswith("Repeated source set:")), None)
+        selected = rows[:cap]
+        if major_redirect and major_redirect not in selected:
+            selected = selected[:cap - 1] + [major_redirect]
+        return {"ok": True, "threads": selected,
+                "total_threads": len(rows)}
+    except Exception as exc:
+        return {"ok": False, "threads": [], "error": str(exc)[:180]}
+
+
 @app.get("/api/lab/chemistry/sessions")
 async def chemistry_lab_sessions(request: Request, limit: int = 12):
     """Sessions without their full Mac payload: the page shows state, not the artifact."""

@@ -67,6 +67,52 @@ source_note = next(x for x in notes if x.get("kind") == "source_read")
 check("source note records requested and executed queries", source_note.get("requested_query") == source_note.get("executed_query") and source_note.get("fallback_reason") is None)
 check("dangerous generated query cannot widen the perimeter", "toxin" not in M._safe_query("toxin human target") and M._safe_query("toxin human target").startswith("reviewed:true"))
 
+M._append(M.NOTEBOOK, {"at":"2026-09-14T00:00:00Z", "kind":"reflection", "entry_id":"F-1",
+    "inquiry":{"question":"Why does this fold recur?"}, "source_accessions":["P00001"],
+    "factual_observation":"The sourced record has a repeat.", "next_question":"Compare a second sourced fold."})
+M._append(M.NOTEBOOK, {"at":"2026-09-15T00:00:00Z", "kind":"reflection", "entry_id":"F-2",
+    "inquiry":{"question":"Why does this fold recur?"}, "source_accessions":["P00001"],
+    "factual_observation":"The sourced record has a repeat.", "next_question":"Compare a second sourced fold."})
+M._append(M.NOTEBOOK, {"at":"2026-09-16T00:00:00Z", "kind":"reflection", "entry_id":"E-1",
+    "inquiry":{"question":"Can an unsupported guess explain it?"},
+    "speculative_reading":"It might.", "next_question":"Find an actual source first."})
+M._append(M.NOTEBOOK, {"at":"2026-09-17T00:00:00Z", "kind":"reflection", "entry_id":"E-2",
+    "inquiry":{"question":"Can an unsupported guess explain it?"},
+    "speculative_reading":"It might.", "next_question":"Find an actual source first."})
+threads = M.journal_threads()
+finding = next(t for t in threads if t["question"] == "Why does this fold recur?")
+redirect = next(t for t in threads if t["question"] == "Can an unsupported guess explain it?")
+check("repeated source-backed observations form one durable finding",
+      finding["state"] == "finding" and finding["entries"] == 2 and finding["salient_at"] == "2026-09-14T00:00:00Z"
+      and finding["entry_ids"] == ["F-1", "F-2"] and finding["source_accessions"] == ["P00001"])
+check("unsupported repeats remain a single low-salience redirect",
+      redirect["state"] == "redirect" and redirect["entries"] == 2 and redirect["salient_at"] == "2026-09-16T00:00:00Z"
+      and not redirect["finding"])
+for index in range(5):
+    M._append(M.NOTEBOOK, {"at":"2026-09-%02dT00:00:00Z" % (18+index), "kind":"reflection",
+        "entry_id":"SAT-%d" % index, "inquiry":{"question":"Variant angle %d?" % index},
+        "source_accessions":["P99999"], "factual_observation":"Same record, new wording %d." % index,
+        "next_question":"Could I read it again?"})
+saturated = next(t for t in M.journal_threads() if t["question"].startswith("Repeated source set:"))
+check("many rephrasings of one source set collapse into an auditable redirect",
+      saturated["entries"] == 5 and saturated["state"] == "redirect" and not saturated["finding"]
+      and "not new evidence" in saturated["lesson"] and saturated["source_accessions"] == ["P99999"])
+check("the repeated source set is recognized before another reflection",
+      M.journal_source_saturated(["P99999"]) and not M.journal_source_saturated(["NEW-ID"]))
+M._atomic(M.STATE, {"phase":"browse", "turns":4,
+                    "inquiry":{"browse_lane":"protein", "uniprot_query":"reviewed:true"}})
+M._browse = lambda query, limit: {"records":[{"accession":"P99999", "sequence":"A"*80}],
+                                   "requested_query":query, "executed_query":query,
+                                   "fallback_reason":None}
+stale_turn = M.tick()
+check("a stale routine browse returns to orientation without another model reflection",
+      stale_turn["kind"] == "browse_stale" and stale_turn["next_phase"] == "orient")
+ctx2, receipt2 = M.lab_context()
+check("planning sees findings and redirects, not repeated raw notebook prose",
+      "LAB JOURNAL THREADS" in ctx2 and "The sourced record has a repeat." in ctx2
+      and "errors are redirects" in ctx2 and "RECENT LAB NOTEBOOK" not in ctx2
+      and any(s["name"] == "lab_journal_threads" for s in receipt2["sources"]))
+
 before = open(M.NOTEBOOK).read()
 off = M.set_enabled(False)
 check("off requests a stop and preserves notebook", off["enabled"] is False and os.path.exists(M.STOP) and before in open(M.NOTEBOOK).read())

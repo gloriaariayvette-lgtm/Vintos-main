@@ -42,7 +42,7 @@ scope = {"os": os, "math": __import__("math"), "Request": object,
 exec(compile(ast.parse(block), "server-chemistry-block", "exec"), scope)
 check("the Lab endpoints are ordinary code that can be exercised",
       all(k in scope for k in ("chemistry_lab_notebook", "chemistry_lab_sessions",
-                               "chemistry_lab_reviews",
+                               "chemistry_lab_reviews", "chemistry_lab_threads",
                                "chemistry_lab_grades", "chemistry_lab_taste", "chemistry_lab_curve",
                                "chemistry_lab_structures", "chemistry_lab_structure")))
 
@@ -67,6 +67,11 @@ lab._append(os.path.join(lab.ROOT, "sessions.jsonl"), {
     "mac_result": {"enormous": "x" * 5000},
     "grade": GRADE, "reading": {"reading": "a shallow basin", "next_question": "deeper?"}})
 lab._append(lab.NOTEBOOK, {"at": "2026-09-13T03:21:00+00:00", "kind": "frontier_session", "session_id": "CHEM-1"})
+for entry_id in ("FIND-1", "FIND-2"):
+    lab._append(lab.NOTEBOOK, {"at": "2026-09-13T03:22:00+00:00", "kind": "reflection", "entry_id": entry_id,
+                               "inquiry": {"question": "What repeats in this fold?"},
+                               "source_accessions": ["P00001"], "factual_observation": "A sourced repeat is present.",
+                               "next_question": "Compare a second record."})
 for index in range(25):
     lab._append(lab.NOTEBOOK, {"at": "2026-09-13T04:%02d:00+00:00" % index,
                                "kind": "reflection", "entry_id": "REVIEW-%02d" % index,
@@ -86,6 +91,10 @@ open(os.path.join(artifact_root, "P00001.pdb"), "w").write(
     "ATOM      1  CA  ALA A   1       1.000   2.000   3.000  1.00 20.00           C  \n")
 
 req = object()
+thread_response = asyncio.run(scope["chemistry_lab_threads"](req))
+check("private thread endpoint folds repetitions and keeps source evidence",
+      thread_response["ok"] and any(t["entries"] == 2 and t["source_accessions"] == ["P00001"]
+      for t in thread_response["threads"]))
 sessions = asyncio.run(scope["chemistry_lab_sessions"](req, limit=5))
 row = sessions["sessions"][0]
 check("a session card carries instrument state and answer state as two fields",
@@ -133,7 +142,7 @@ structures = asyncio.run(scope["chemistry_lab_structures"](req, limit=10))
 view = asyncio.run(scope["chemistry_lab_structure"](req, structures["structures"][0]["artifact_id"]))
 check("the gallery lists and parses a real preserved structure", structures["ok"] and view["ok"] and view["atom_count"] == 1, (structures, view))
 check("the endpoint returns coordinates, not the artifact filesystem", not view["source"].startswith("/") and "text" not in view, view)
-check("every Lab read required the secret", len(secrets) == 10, len(secrets))
+check("every Lab read required the secret", len(secrets) == 11, len(secrets))
 
 # --- the page ------------------------------------------------------------------------------------
 PAGE = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
@@ -156,6 +165,8 @@ check("taste is labelled as taste, not as score", "grades are a separate ledger"
 check("what he wants to try next is shown", "what I want to try next" in PAGE)
 check("the phone pane renders a rolling twenty-review log",
       "LAB_REVIEW_LIMIT = 20" in PAGE and "reviews?limit=" in PAGE and "RECENT REVIEWS" in PAGE)
+check("the phone pane displays deduplicated journal threads",
+      "JOURNAL THREADS" in PAGE and "threads?limit=12" in PAGE)
 check("the open Lab pane refreshes without concurrent loads",
       "LAB_REFRESH_MS = 15000" in PAGE and "_labLoading" in PAGE and "_labSetRefresh" in PAGE)
 check("an unavailable structure gallery cannot hold the review refresh",

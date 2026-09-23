@@ -86,7 +86,7 @@ PLUGINS = {
         "surfaces": ("wants", "lab", "forge", "atelier"), "visibility": "project",
         "tools": frozenset(("nvidia_nim.boltz2", "nvidia_nim.diffdock",
                             "nvidia_nim.proteinmpnn", "nvidia_nim.rfdiffusion")),
-        "limits": "Hosted inference, at most three attempted jobs per America/Chicago day across all surfaces. Requires a private Aegis NVIDIA key file. No automatic retry after timeout; predictions are not experimental validation. Parabricks, KERMT, and nvMolKit are separate local GPU tools, not hosted NIM operations.",
+        "limits": "Hosted inference, at most three attempted jobs per America/Chicago day across all surfaces. Requires a private Aegis NVIDIA key file. No automatic retry after timeout; predictions are not experimental validation. Parabricks is reserved for a verified hosted NIM endpoint and is not in this tool allowlist; KERMT and nvMolKit are separate local GPU tools.",
     },
     "nvmolkit": {
         "purpose": "Compute molecular fingerprints, Tanimoto similarity, GPU clustering, or conformers in Aegis's isolated nvMolKit environment.",

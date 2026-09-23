@@ -49,6 +49,13 @@ assert bridge.status()["acknowledged"] == 1 and bridge.frontier_block() == ("", 
 # A duplicate question is penalized; recurrence is history, not evidence for itself.
 repeat = bridge.assess(dict(note, at="2026-09-14T00:00:00+00:00"), source_query_succeeded=True)
 assert repeat["score_components"]["repetition_penalty"] < 0
+assert repeat["flagged_for_next_lab_session"] is False and "duplicate_evidence_suppressed" in repeat["reason_for_score"]
+assert bridge._evidence_key(dict(row, evidence_sha256=None)) == row["evidence_sha256"]
+assert bridge.frontier_block() == ("", [])
+fresh = bridge.assess(dict(note, at="2026-09-15T00:00:00+00:00", source_accessions=["P67890"]),
+                      source_query_succeeded=True)
+assert fresh["flagged_for_next_lab_session"] is True and fresh["evidence_sha256"] != row["evidence_sha256"]
+assert bridge.frontier_block()[1] == [fresh["entry_id"]]
 
 source = open(os.path.join(REPO, "scripts", "chemistry_frontier_bridge.py")).read()
 assert "requests" not in source and "urllib" not in source and "atelier" not in source.lower()

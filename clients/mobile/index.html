@@ -1663,11 +1663,11 @@ async function loadLab() {
     if (!grid || _labLoading) return;
     _labLoading = true;
     if (!grid.children.length) grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
-    let status, reviews, sessions, taste;
+    let status, reviews, sessions, taste, threads;
     try {
-        [status, reviews, sessions, taste] = await Promise.all([
+        [status, reviews, sessions, taste, threads] = await Promise.all([
             _labGet('status'), _labGet('reviews?limit=' + LAB_REVIEW_LIMIT),
-            _labGet('sessions?limit=4'), _labGet('taste')
+            _labGet('sessions?limit=4'), _labGet('taste'), _labGet('threads?limit=12')
         ]);
     } catch (e) {
         grid.innerHTML = '<div class="gallery-empty">the Lab is unreachable</div>';
@@ -1691,6 +1691,20 @@ async function loadLab() {
     }
     const rows = (sessions && sessions.sessions) || [];
     const cards = [];
+    const journalThreads = (threads && threads.threads) || [];
+    const findings = journalThreads.filter(t => t.state === 'finding').slice(0, 3);
+    const redirects = journalThreads.filter(t => t.state !== 'finding').slice(0, 1);
+    if (findings.length || redirects.length) {
+        cards.push('<div style="grid-column:1/-1;font-size:0.58rem;letter-spacing:0.12em;color:var(--text-dim);">JOURNAL THREADS · FINDINGS AND REDIRECTS</div>');
+        [...findings, ...redirects].forEach(t => cards.push('<div class="gallery-item" style="padding:14px;">' +
+            '<div style="font-size:0.72rem;color:var(--text-bright);">' + _esc(t.question || 'Lab thread') + '</div>' +
+            '<div style="font-size:0.58rem;color:var(--text-dim);margin-top:4px;">' + _esc(t.thread_id || '') + ' · ' + _esc(t.entries || 0) + ' journal entries · ' + _esc(t.state || '') + '</div>' +
+            (t.finding ? '<div style="font-size:0.65rem;color:var(--text);margin-top:8px;">' + _esc(t.finding) + '</div>' : '') +
+            (t.lesson ? '<div style="font-size:0.60rem;color:var(--text-dim);margin-top:6px;">lesson: ' + _esc(t.lesson) + '</div>' : '') +
+            (t.next_question ? '<div style="font-size:0.61rem;color:var(--accent);margin-top:7px;">next test: ' + _esc(t.next_question) + '</div>' : '') +
+            (t.source_accessions && t.source_accessions.length ? '<div style="font-size:0.53rem;color:var(--text-dim);margin-top:6px;">sources: ' + t.source_accessions.map(_esc).join(', ') + '</div>' : '') +
+            '</div>'));
+    }
     const reviewRows = ((reviews && reviews.reviews) || []).slice(-LAB_REVIEW_LIMIT).reverse();
     if (reviewRows.length) {
         cards.push('<div style="grid-column:1/-1;font-size:0.58rem;letter-spacing:0.12em;color:var(--text-dim);">RECENT REVIEWS · ROLLING ' + LAB_REVIEW_LIMIT + '</div>');

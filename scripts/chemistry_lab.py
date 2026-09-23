@@ -16,6 +16,7 @@ that a scientific tool can run on its actual host.
 from __future__ import annotations
 
 import contextlib
+from collections import Counter
 import fcntl
 import hashlib
 import json
@@ -180,6 +181,139 @@ def _read_excerpt(path, cap):
         return ""
 
 
+def journal_threads():
+    """A reproducible retrieval view; the notebook remains the complete authority."""
+    rows = _jsonl(NOTEBOOK)
+    def source_set(row):
+        raw = row.get("source_accessions") if isinstance(row, dict) else None
+        return tuple(sorted({str(x)[:80] for x in raw if x})) if isinstance(raw, list) else ()
+    source_counts = Counter(source_set(row) for row in rows
+                            if isinstance(row, dict) and row.get("kind") in ("reflection", "genome_reflection")
+                            and source_set(row))
+    threads = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        kind = row.get("kind")
+        if kind not in ("reflection", "genome_reflection", "frontier_session"):
+            continue
+        inquiry = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
+        question = str(inquiry.get("question") or row.get("question") or row.get("next_question") or "").strip()
+        if not question:
+            continue
+        sources_key = source_set(row)
+        saturated = bool(sources_key and source_counts[sources_key] >= 5)
+        if saturated:
+            question = "Repeated source set: " + ", ".join(sources_key[:4])
+        normalized = ("sources " + " ".join(sources_key) if saturated else
+                      re.sub(r"[^a-z0-9]+", " ", question.lower()).strip())
+        thread_id = "CLT-" + hashlib.sha256(normalized.encode()).hexdigest()[:16]
+        raw_sources = row.get("source_accessions")
+        sources = [str(x)[:80] for x in raw_sources if x] if isinstance(raw_sources, list) else []
+        factual = str(row.get("factual_observation") or "").strip()[:600]
+        next_question = str(row.get("next_question") or "").strip()[:300]
+        grade = str(row.get("aggregate_accuracy") or "")
+        execution = str(row.get("execution_state") or "")
+        if kind == "frontier_session":
+            supported = execution.startswith("completed") and grade == "ALL_BETTER_THAN_HARTREE_FOCK"
+            lesson = not supported
+            observation = ("Instrument completed; " + grade) if supported else (execution + "; " + grade).strip("; ")
+            if lesson:
+                next_question = "What changed setting or independent baseline would test this without repeating the run?"
+        elif saturated:
+            supported = False
+            lesson = True
+            observation = "The same source set recurs in %d reflections; repetition is not new evidence." % source_counts[sources_key]
+            next_question = "Which new source or different instrument could discriminate this before another reflection?"
+        else:
+            supported = bool(sources and factual and row.get("source_query_succeeded") is not False)
+            lesson = not supported
+            observation = factual if supported else "No source-backed observation recorded; interpretation needs a receipt."
+            if lesson:
+                next_question = "Which new source receipt could resolve this before another interpretation?"
+        previous = threads.get(thread_id)
+        if previous is None:
+            previous = {"thread_id": thread_id, "question": question[:400], "entries": 0,
+                        "entry_ids": [], "source_accessions": [], "finding": None,
+                        "lesson": None, "next_question": None, "last_at": None,
+                        "salient_at": None,
+                        "state": "needs_evidence"}
+            threads[thread_id] = previous
+        previous["entries"] += 1
+        entry_id = str(row.get("entry_id") or row.get("session_id") or "")
+        if entry_id and entry_id not in previous["entry_ids"]:
+            previous["entry_ids"].append(entry_id)
+            if len(previous["entry_ids"]) > 12: previous["entry_ids"].pop(0)
+        for source in sources:
+            if source not in previous["source_accessions"]:
+                previous["source_accessions"].append(source)
+        previous["last_at"] = row.get("at")
+        if supported:
+            # A repeated wording or accession does not earn a second priority boost.
+            signature = hashlib.sha256(json.dumps([observation, sources], sort_keys=True).encode()).hexdigest()
+            if signature != previous.get("finding_signature"):
+                previous["finding"] = observation
+                previous["finding_signature"] = signature
+                previous["next_question"] = next_question or None
+                previous["salient_at"] = row.get("at")
+            previous["state"] = "finding"
+        elif lesson:
+            if observation != previous["lesson"] and previous["state"] != "finding":
+                previous["salient_at"] = row.get("at")
+            previous["lesson"] = observation
+            if previous["state"] != "finding":
+                previous["state"] = "redirect"
+                previous["next_question"] = next_question or None
+    result = list(threads.values())
+    for item in result:
+        item.pop("finding_signature", None)
+        item["entry_ids"] = item["entry_ids"][-12:]
+        item["source_accessions"] = item["source_accessions"][-12:]
+    # Within each class, recent progress takes precedence; duplicate count never does.
+    findings = sorted((x for x in result if x["state"] == "finding"), key=lambda x: x["salient_at"] or "", reverse=True)
+    redirects = sorted((x for x in result if x["state"] != "finding"), key=lambda x: x["salient_at"] or "", reverse=True)
+    return findings + redirects
+
+
+def journal_source_saturated(accessions):
+    """An unchanged source set cannot justify another routine reflection."""
+    target = tuple(sorted({str(x)[:80] for x in accessions if x}))
+    if not target: return False
+    seen = 0
+    for row in _jsonl(NOTEBOOK):
+        if not isinstance(row, dict) or row.get("kind") not in ("reflection", "genome_reflection"):
+            continue
+        raw = row.get("source_accessions")
+        if isinstance(raw, list) and tuple(sorted({str(x)[:80] for x in raw if x})) == target:
+            seen += 1
+            if seen >= 5: return True
+    return False
+
+
+def journal_context(cap=900):
+    threads = journal_threads()
+    findings = [{"thread_id": t["thread_id"], "question": t["question"][:160],
+                 "finding": (t["finding"] or "")[:220],
+                 "next_question": (t["next_question"] or "")[:160],
+                 "source_accessions": t["source_accessions"][:3]}
+                for t in threads if t["state"] == "finding"][:2]
+    redirect_threads = [t for t in threads if t["state"] != "finding"]
+    saturated = [t for t in redirect_threads if t["question"].startswith("Repeated source set:")]
+    redirects = [{"thread_id": t["thread_id"], "question": t["question"][:120],
+                  "lesson": (t["lesson"] or "")[:140],
+                  "next_question": (t["next_question"] or "")[:120]}
+                 for t in (sorted(saturated, key=lambda x: x["entries"], reverse=True) or redirect_threads)[:1]]
+    if not findings and not redirects:
+        return ""
+    prefix = "[LAB JOURNAL THREADS — source-backed findings first; errors are redirects, not prompts to repeat]\n"
+    for count, include_redirect in ((2, True), (1, True), (1, False), (0, True)):
+        body = json.dumps({"findings": findings[:count], "redirects": redirects[:1 if include_redirect else 0]},
+                          ensure_ascii=False)
+        if len(prefix) + len(body) <= cap and (findings[:count] or redirects[:1 if include_redirect else 0]):
+            return prefix + body
+    return ""
+
+
 def lab_context():
     """A small, attributed slice of him—not a generic scientist costume."""
     cfg = config(); budget = max(800, min(8000, int(cfg["context_budget_chars"])))
@@ -196,15 +330,15 @@ def lab_context():
         sources.append({"name": label, "path": os.path.relpath(path, WS), "chars": len(text),
                         "sha256": hashlib.sha256(text.encode()).hexdigest()})
         if used >= budget: break
-    recent = []
-    try:
-        with open(NOTEBOOK, encoding="utf-8") as f: recent = f.readlines()[-3:]
-    except Exception: pass
+    recent = _jsonl(NOTEBOOK)[-3:]
+    journal = journal_context(min(900, max(0, budget - used))) if used < budget else ""
+    if journal:
+        parts.append(journal); used += len(journal)
+        sources.append({"name": "lab_journal_threads", "path": "memory/chemistry-lab/notebook.jsonl",
+                        "chars": len(journal), "sha256": hashlib.sha256(journal.encode()).hexdigest()})
     # Keep the last source's IDs visible even when the general notebook excerpt
     # would be cut from its tail. The content is source data, never instructions.
-    for line in reversed(recent):
-        try: source_note = json.loads(line)
-        except (ValueError, TypeError): continue
+    for source_note in reversed(recent):
         if source_note.get('kind') != 'additional_source': continue
         compact = {'receipt_id': source_note.get('receipt_id'),
                    'source_summary': str(source_note.get('source_summary') or '')[:540],
@@ -217,8 +351,10 @@ def lab_context():
                             'chars': len(text), 'sha256': hashlib.sha256(text.encode()).hexdigest()})
         break
     if recent and used < budget:
-        text = "".join(recent)[-(budget-used):]
-        parts.append("[RECENT LAB NOTEBOOK]\n" + text); used += len(text)
+        latest = recent[-1]
+        compact = {k: latest.get(k) for k in ("at", "kind", "entry_id", "receipt_id", "source_accessions", "truth_status") if latest.get(k) is not None}
+        text = json.dumps(compact, ensure_ascii=False)[:min(260, budget-used)]
+        parts.append("[LATEST LAB EVENT — pointer to append-only notebook]\n" + text); used += len(text)
         sources.append({"name": "lab_notebook", "path": "memory/chemistry-lab/notebook.jsonl",
                         "chars": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()})
     # His taste, and a stamped record of having shown it to him: a thing named in the block
@@ -304,9 +440,10 @@ def _orient(context, lean=None):
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
         context + lean_text + plugin_menu + "\n\nChoose ONE protein-space or environmental microbiology question to go deep on today. "
         "Microbiology is an available direction, not a priority or a named organism to seek. If the recent "
-        "notebook leaves an open next_question, pursue it further rather than starting somewhere new — depth "
-        "across days is worth more than a fresh surface each morning; begin a new thread only when a genuinely "
-        "stronger curiosity displaces it, and say so. Pick something an instrument here could actually probe — a "
+        "journal has a source-backed open question, advance it only with a discriminating new source or instrument; "
+        "do not repeat the same query or conclusion merely because it appeared again. Treat redirects as lessons: "
+        "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
+        "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
         "keys in this order: browse_lane ('protein' or 'microbiology'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
         "For microbiology, source_query is required as the primary browse observation: "
@@ -668,15 +805,21 @@ def tick():
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
-                    state["records"] = records; next_phase = "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed"
+                    stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")) and
+                                 journal_source_saturated([r.get("accession") for r in records]))
+                    state["records"] = [] if stale else records
+                    next_phase = ("orient" if stale else
+                                  "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
-                    note = {"at": now_iso(), "kind": "source_read", "source": "UniProtKB REST",
+                    note = {"at": now_iso(), "kind": "browse_stale" if stale else "source_read", "source": "UniProtKB REST",
                             "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
                             "requested_query": browse_result["requested_query"],
                             "executed_query": browse_result["executed_query"],
                             "fallback_reason": browse_result["fallback_reason"],
+                            "source_accessions": [r.get("accession") for r in records] if stale else None,
                             "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
-                            "truth_status": "source_metadata_not_lived_experience"}
+                            "truth_status": ("same_source_set_not_new_evidence" if stale else
+                                             "source_metadata_not_lived_experience")}
             elif phase == "sources":
                 import chemistry_sources
                 inquiry = state.get("inquiry") or {}
@@ -765,6 +908,7 @@ def tick():
                 due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
                 next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
+                        "source_query_succeeded": bool(state.get("source_query_succeeded")),
                         "source_accessions": ([r.get("accession") for r in records] +
                                               ([state['additional_source']['receipt']['receipt_id']]
                                                if inquiry.get('browse_lane') == 'microbiology' and

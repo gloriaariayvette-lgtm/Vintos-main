@@ -64,6 +64,12 @@ def _latest_interest():
     return latest
 
 
+def _evidence_key(row):
+    return row.get("evidence_sha256") or _digest(
+        sorted(set(str(x) for x in row.get("source_accessions", []) if x)),
+        str(row.get("finding") or "").lower().strip())
+
+
 def assess(reflection, *, source_query_succeeded=False):
     """Append one grounded routing assessment for a completed reflection."""
     accessions = [str(x)[:40] for x in reflection.get("source_accessions", []) if x]
@@ -77,6 +83,8 @@ def assess(reflection, *, source_query_succeeded=False):
     novel = [a for a in accessions if a not in seen_accessions]
     repeated_question = any(_digest(question.lower().strip()) == row.get("question_sha256")
                             for row in prior if question)
+    evidence_sha256 = _digest(sorted(set(accessions)), finding.lower().strip())
+    repeated_evidence = any(_evidence_key(row) == evidence_sha256 for row in prior)
     overlap = _trajectory_overlap(" ".join((finding, reading, question)))
     collision_id = _collision_witness(accessions)
     components = {
@@ -90,14 +98,16 @@ def assess(reflection, *, source_query_succeeded=False):
     score = round(max(0.0, min(1.0, sum(components.values()))), 4)
     reasons = [name for name, value in components.items() if value > 0]
     if repeated_question: reasons.append("repeated_question_penalty")
+    if repeated_evidence: reasons.append("duplicate_evidence_suppressed")
     row = {
         "entry_id": entry_id, "at": reflection.get("at") or lab.now_iso(),
         "finding": finding, "reflection": reading, "next_question": question,
         "source_accessions": accessions, "interest_score": score,
         "reason_for_score": reasons, "score_components": components,
-        "flagged_for_next_lab_session": score >= FLAG_THRESHOLD,
+        "flagged_for_next_lab_session": score >= FLAG_THRESHOLD and not repeated_evidence,
         "source_query_succeeded": bool(source_query_succeeded),
         "collision_id": collision_id, "question_sha256": _digest(question.lower().strip()) if question else None,
+        "evidence_sha256": evidence_sha256,
         "truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance",
     }
     lab._append(INTEREST, row)
@@ -118,12 +128,17 @@ def frontier_block(limit=MAX_FLAGGED, budget=BLOCK_CHARS):
                   if row.get("flagged_for_next_lab_session") and row.get("entry_id") not in acknowledged]
     candidates.sort(key=lambda row: (float(row.get("interest_score") or 0), str(row.get("at") or "")), reverse=True)
     chosen, used = [], 0
-    for row in candidates[:max(1, int(limit))]:
+    seen_evidence = set()
+    for row in candidates:
+        evidence = _evidence_key(row)
+        if evidence and evidence in seen_evidence: continue
         compact = {key: row.get(key) for key in
                    ("entry_id", "at", "finding", "next_question", "source_accessions", "interest_score")}
         encoded = json.dumps(compact, ensure_ascii=False, sort_keys=True)
         if chosen and used + len(encoded) > int(budget): break
         chosen.append(compact); used += len(encoded)
+        if evidence: seen_evidence.add(evidence)
+        if len(chosen) >= max(1, int(limit)): break
     if not chosen: return "", []
     return ("[FLAGGED LOCAL LAB FINDINGS — routing priority, not biological truth]\n" +
             json.dumps(chosen, ensure_ascii=False, sort_keys=True)[:int(budget)]), [x["entry_id"] for x in chosen]
