@@ -870,6 +870,8 @@ def visit(pid):
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
     _asked_media = _media_request(work)
+    # Content-free: the tag NAMES in his reply, never their contents — to see what he writes instead of <piece>.
+    print("reply tags:", ", ".join(sorted(set(re.findall(r"<([A-Za-z_]+)\b", work)))) or "(none)")
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
     work = media_loop(pid, ctx, work, cap)
