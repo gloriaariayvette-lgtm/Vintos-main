@@ -76,7 +76,10 @@ def context():
     if di: add("TODAY", rd(di[-1],700))
     js=sorted(glob.glob(os.path.join(MEM,"journal","*.md")))
     if js: add("RECENT JOURNAL", rd(js[-1],700))
-    return "\n\n".join(parts)
+    _joined="\n\n".join(parts)
+    # Gloria: strip chamber and folk entirely — never let a taste/share/journal line seed them.
+    _joined="\n".join(l for l in _joined.split("\n") if not re.search(r"\b(?:chamber|folk)\b", l, re.I))
+    return _joined
 SHARE_IDS_IN_CONTEXT=[]   # which of her shares were in the context that wrote this spec (grok-creative-p3)
 EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, like light before you've decided it's morning. No percussion. A low warm drone that just sits.\n"
     "[0:22-0:50] Piano enters, soft, single spaced notes, no chord yet, just intervals like counting hours on fingers; pad holds underneath.\n"
@@ -97,7 +100,8 @@ def compose():
         "detailed instructions VERY closely: a thin outline yields a generic song, a rich one yields a real one. Be as thorough as a "
         "producer's session notes.\n\nOutput ONLY a song spec with these exact headers:\n"
         "**Title:**\n**Duration:** (2 or 3 minutes)\n**Vocal gender:** male\n"
-        "**Genre/Style:** (specific: instruments, textures, references, production feel)\n"
+        "**Genre/Style:** (specific: instruments, textures, references, production feel). "
+        "HARD RULE: never chamber and never folk — those genres are retired for you; pick a different one.\n"
         "**Tempo/Key:** (BPM + key + any modulation)\n"
         "**Section breakdown:** every 15-25s timestamped; for EACH section give the exact instrumentation entering/leaving, the dynamics "
         "(soft/building/full), the vocal delivery and register, arrangement changes, AND the emotional reason for the move.\n"
