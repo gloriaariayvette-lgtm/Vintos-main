@@ -90,6 +90,26 @@ retrieval time and explicit release uncertainty. Atlas raw scores and calibrated
 quantiles are kept distinct. Its optional Evo 2 phase validates GRCh38 coordinates
 and reference allele before local scoring. No raw-score ranking across scorers.
 
+Environmental microbiology is an optional Gemma browse direction. A selected
+microbiology question uses one bounded public source read per cycle: NCBI Taxonomy,
+Assembly, Gene, Protein or PubMed through E-utilities; exact, short NCBI protein
+or nucleotide sequence slices through EFetch; organism-filtered UniProt;
+or BV-BRC public genome and pathway metadata. NCBI taxonomy IDs can lead to exact
+BV-BRC genomes or descendant species when the ID is a genus. BV-BRC genome IDs
+can lead to pathway annotations. The next cycle sees the source summary and its
+receipt in the notebook, so he can ask a narrower follow-up. Microbiology reads
+skip protein embedding when no sourced sequence exists. A foreground Lab session
+can request the same sources. No organism is preselected by the implementation.
+The first eight rows are a sample, not a complete pathway inventory; annotations
+do not prove that a pathway is expressed or that a phenotype occurs. Source
+receipts continue into the collision adapter and Forge report packet.
+
+KEGG is not yet a Lab source. Its [API terms](https://www.kegg.jp/kegg/rest/)
+grant free API access to academic users and require a license for nonacademic use;
+personal noncommercial use alone does not establish academic eligibility. BV-BRC's
+[public pathway API](https://www.bv-brc.org/api/doc/pathway) supplies the current
+metabolism route. The BioNeMo connector still lacks a configured compute route.
+
 Cross-organ associations compare source-backed text in the house semantic space.
 They are prompts for investigation, never biological evidence. Report completion
 means adequate documentation, not a novel or validated scientific discovery.

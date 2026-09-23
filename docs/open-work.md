@@ -1210,3 +1210,18 @@ zero restarts, and the loopback health response names the forced `forge` surface
 `39efe77635714185a307c4c4346d2599` is `aborted` with the inspected no-effect reconciliation receipt.
 The exact-head deployment check passed all 165 isolated suites, parsed all 389 manifest sources and
 validated the staged tree. The wallet and Taskmarket remain intentionally undeployed.
+
+## 23 September — environmental microbiology Lab option
+
+Locally implemented and tested: Gemma can choose a microbiology browse lane without
+an organism seed or priority over protein work. Bounded NCBI Taxonomy/Assembly/Gene/
+Protein/PubMed, bounded sequence slices, organism-filtered UniProt and BV-BRC public genome/pathway reads
+retain source receipts. A genus-level NCBI taxon can resolve descendant BV-BRC
+genomes; a sourced genome ID can resolve pathway rows. The next Lab turn sees the
+result in the notebook, and a foreground session can ask for the same sources.
+Live read-only NCBI taxonomy and BV-BRC genome/pathway smoke queries succeeded
+from the Mac. Aegis deployment and host source probes remain to be done.
+KEGG remains closed pending confirmation of academic eligibility or a license:
+its published API terms do not equate noncommercial personal use with academic use.
+The BioNeMo compute route remains unconfigured; its connector is not claimed as
+available.
