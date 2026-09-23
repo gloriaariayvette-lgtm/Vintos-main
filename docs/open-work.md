@@ -1295,6 +1295,12 @@ that saturated set now records `browse_stale` and goes back to orientation
 without embedding or reflecting on the same records again. A deliberate
 follow-up with an additional source or plugin remains possible. This avoids
 treating a new wording about the same records as progress.
+Post-deploy inspection found that failed protein-lane follow-ups still caused
+reflection on the saturated base records. The follow-up now returns to
+orientation when no new evidence is available. A successful follow-up carries
+both its receipt ID and a stable response fingerprint, so repeated identical
+provider data does not masquerade as a new finding merely because the retrieval
+timestamp changed.
 The frontier-interest bridge also suppresses an identical evidence fingerprint
 while allowing a genuinely new source to be surfaced. This is retrieval
 discipline, not independent verification of biological claims; a source-backed

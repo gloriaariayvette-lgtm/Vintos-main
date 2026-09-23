@@ -107,11 +107,35 @@ M._browse = lambda query, limit: {"records":[{"accession":"P99999", "sequence":"
 stale_turn = M.tick()
 check("a stale routine browse returns to orientation without another model reflection",
       stale_turn["kind"] == "browse_stale" and stale_turn["next_phase"] == "orient")
+def unavailable(*a, **k): raise PermissionError("fixture source unavailable")
+sys.modules["chemistry_sources"] = types.SimpleNamespace(query=unavailable)
+M._atomic(M.STATE, {"phase":"sources", "turns":5, "records":[{"accession":"P99999", "sequence":"A"*80}],
+                    "source_query_succeeded":True,
+                    "inquiry":{"browse_lane":"protein", "source_query":{"source":"pdb","entry_id":"TEST"}}})
+failed_followup = M.tick()
+check("a failed follow-up on saturated records redirects before embedding or reflecting",
+      failed_followup["kind"] == "source_unavailable" and failed_followup["next_phase"] == "orient"
+      and M._jsonl(M.NOTEBOOK)[-1]["saturation_redirect"] is True)
+sys.modules["chemistry_sources"] = types.SimpleNamespace(query=lambda *a, **k: {
+    "receipt":{"receipt_id":"REC-NEW", "response_sha256":"a"*64, "records":[{"value":"new"}]}})
+M._atomic(M.STATE, {"phase":"sources", "turns":6, "records":[{"accession":"P99999", "sequence":"A"*80}],
+                    "source_query_succeeded":False,
+                    "inquiry":{"browse_lane":"protein", "question":"What is different?",
+                               "source_query":{"source":"pdb","entry_id":"TEST"}}})
+good_followup = M.tick()
+M.tick(); reflected = M.tick()
+latest_reflection = next(x for x in reversed(M._jsonl(M.NOTEBOOK)) if x.get("kind") == "reflection")
+check("a genuinely new follow-up keeps its receipt and stable response fingerprint",
+      good_followup["next_phase"] == "embed" and reflected["kind"] == "reflection"
+      and latest_reflection["followup_receipt_id"] == "REC-NEW"
+      and "RESPONSE-" + "a"*32 in latest_reflection["source_accessions"]
+      and latest_reflection["source_query_succeeded"] is True)
 ctx2, receipt2 = M.lab_context()
 check("planning sees findings and redirects, not repeated raw notebook prose",
-      "LAB JOURNAL THREADS" in ctx2 and "The sourced record has a repeat." in ctx2
-      and "errors are redirects" in ctx2 and "RECENT LAB NOTEBOOK" not in ctx2
-      and any(s["name"] == "lab_journal_threads" for s in receipt2["sources"]))
+      "LAB JOURNAL THREADS" in ctx2 and '"finding":' in ctx2
+      and "errors are redirects" in ctx2 and "Repeated source set" in ctx2
+      and "RECENT LAB NOTEBOOK" not in ctx2
+      and any(s["name"] == "lab_journal_threads" for s in receipt2["sources"]), ctx2[:1100])
 
 before = open(M.NOTEBOOK).read()
 off = M.set_enabled(False)

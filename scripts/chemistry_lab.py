@@ -831,9 +831,9 @@ def tick():
                     else:
                         sourced = chemistry_sources.query(inquiry["source_query"], question=inquiry.get("question", ""))
                     state["additional_source"] = sourced
-                    if inquiry.get('browse_lane') == 'microbiology':
-                        state['source_query_succeeded'] = True
                     receipt_row = sourced.get("receipt") or sourced.get("source_receipt") or {}
+                    if receipt_row.get("records"):
+                        state['source_query_succeeded'] = True
                     note = {"at": now_iso(), "kind": "additional_source", "receipt_id": receipt_row.get("receipt_id"),
                             "source_summary": json.dumps(receipt_row.get("records", []))[:1800],
                             "source_metadata": receipt_row.get("metadata", {}),
@@ -845,14 +845,23 @@ def tick():
                     # RuntimeError), is recorded as an unavailable source and the Lab moves on. It must
                     # NEVER escape to the tick handler and hold the whole Lab in held_fault — that halted
                     # the Lab when a connector call raised PermissionError (2026-09-22).
-                    if inquiry.get('browse_lane') == 'microbiology':
-                        state['source_query_succeeded'] = False
-                        state.pop('additional_source', None)
+                    state['source_query_succeeded'] = False
+                    state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}
                 next_phase = (("reflect" if state.get('additional_source', {}).get('receipt') else "orient")
                               if inquiry.get('browse_lane') == 'microbiology' else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
+                if inquiry.get('browse_lane') != 'microbiology':
+                    base = [r.get('accession') for r in state.get('records', [])]
+                    followup = (state.get('additional_source', {}).get('receipt') or
+                                state.get('additional_source', {}).get('source_receipt') or {})
+                    fingerprint = followup.get('response_sha256') if followup.get('records') else None
+                    evidence = base + (["RESPONSE-" + fingerprint[:32]] if fingerprint else [])
+                    if journal_source_saturated(evidence) or (journal_source_saturated(base) and not fingerprint):
+                        next_phase = 'orient'
+                        note['saturation_redirect'] = True
+                        note['truth_status'] = 'unchanged_source_set_not_new_evidence'
                 if next_phase == 'orient':
                     state.pop('inquiry', None)
                     state.pop('records', None)
@@ -907,12 +916,14 @@ def tick():
                 due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
                 due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
                 next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
+                followup = (state.get('additional_source', {}).get('receipt') or
+                            state.get('additional_source', {}).get('source_receipt') or {})
+                fingerprint = followup.get('response_sha256') if followup.get('records') else None
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
                         "source_query_succeeded": bool(state.get("source_query_succeeded")),
+                        "followup_receipt_id": followup.get('receipt_id'),
                         "source_accessions": ([r.get("accession") for r in records] +
-                                              ([state['additional_source']['receipt']['receipt_id']]
-                                               if inquiry.get('browse_lane') == 'microbiology' and
-                                               state.get('additional_source', {}).get('receipt') else [])), **reflection,
+                                              (["RESPONSE-" + fingerprint[:32]] if fingerprint else [])), **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
                 try:
                     import chemistry_frontier_bridge
