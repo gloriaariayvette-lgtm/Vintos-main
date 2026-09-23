@@ -1234,14 +1234,18 @@ until one stable checkpoint has enough fresh outcomes to measure.
 
 ## 23 September — environmental microbiology Lab option
 
-Locally implemented and tested: Gemma can choose a microbiology browse lane without
+Implemented and deployed: Gemma can choose a microbiology browse lane without
 an organism seed or priority over protein work. Bounded NCBI Taxonomy/Assembly/Gene/
 Protein/PubMed, bounded sequence slices, organism-filtered UniProt and BV-BRC public genome/pathway reads
 retain source receipts. A genus-level NCBI taxon can resolve descendant BV-BRC
 genomes; a sourced genome ID can resolve pathway rows. The next Lab turn sees the
 result in the notebook, and a foreground session can ask for the same sources.
-Live read-only NCBI taxonomy and BV-BRC genome/pathway smoke queries succeeded
-from the Mac. Aegis deployment and host source probes remain to be done.
+The 23 September Aegis release `20260923-003912-03656fc` passed 171 isolated
+test suites and installed the Lab source, worker, and session modules with
+matching hashes. The Lab worker and session timer are active user units. Live,
+read-only NCBI taxonomy and BV-BRC genome/pathway probes succeeded on Aegis
+with source receipts. An autonomous Gemma choice of the new lane has not yet
+been observed; the worker chooses between it and existing protein work.
 KEGG remains closed pending confirmation of academic eligibility or a license:
 its published API terms do not equate noncommercial personal use with academic use.
 The BioNeMo compute route remains unconfigured; its connector is not claimed as
