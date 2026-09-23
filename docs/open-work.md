@@ -1373,3 +1373,33 @@ every ring). A patch for both was handed to Gloria to run on Aegis; this stays o
 until she confirms it ran. 6 canned entries were removed from 2026-09-22 and 1
 from 2026-09-23 (backups `*.bak-door`), and the First Light they caused was
 deleted (backup `*.bak-firstlight`).
+
+## Atelier: he enters and makes nothing — handed to Chat (open, 2026-09-23)
+Handed off by Claude Code at Gloria's request. Cause NOT found. Do not repeat what is ruled out.
+
+**Facts.** Project `99df2e77e385`, on the table since 2026-09-15. Five artifacts, all `write`,
+one per day 9/15–9/19 at 09:40, shrinking (2149, 3199, 3713, 698, 757 bytes). Nothing since.
+He has never used image, music or quantum. Every day: the knock (atelier-gate, 09:15) says
+RETURN with a reason rejecting his own handoff note ("the note is too much of an audit; it's
+trying to prove a stability that isn't there"); the visit (09:40) then closes with a handoff,
+no `<piece>`, no media request, and `next_return=held`. Reproduced twice on 2026-09-23 with
+forced visits (`atelier-visit.py force <pid>`).
+
+**Ruled out (tested on Aegis):**
+- Materials: `atelier_media.status()` → image ok, music ok; ACE-Step listening on 8001.
+- Budgets: reset per visit (`BUDGETS` in broker.py); no project cap.
+- Tag parsing: tags now parse in any attribute order/quote (2db95d4); visit logs
+  `visit produced: piece=... media_request=... handoff=... next_return=...` — still piece=no, media=none.
+- The knock's RETURN being lost: now carried into that day's visit in his words (b233d5a,
+  `memory/.atelier-knock.json`); ran live 2026-09-23 — he still held.
+- Broker: not reinstalled since 9/15 (deploy reports "unchanged").
+
+**Reverted at Gloria's instruction — do not reintroduce:** a "practice so far" block of facts
+(piece counts, unused media, days since last piece) in the visit prompt (0086482, reverted e8756ba).
+
+**Not yet examined:** what the visit's context actually contains end to end now (it has grown:
+self-review, stratagem, quantum, media, lab lean, forge, plugin/connector menus — plugin menu
+added 13755a5 on 9/21, connectors 6109f09 on 9/22); the `ask()`/`_model()` path and whether the
+model or its routing changed around 9/19–9/20; the self_review_block content; whether his own
+handoff/next_move text instructs holding. His reply and handoff are sealed — reading them is
+Gloria's decision, not an agent's.
