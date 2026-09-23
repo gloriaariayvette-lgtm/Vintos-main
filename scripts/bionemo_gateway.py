@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 from datetime import datetime
 from urllib.request import Request
+from urllib.error import HTTPError
 from zoneinfo import ZoneInfo
 
 from lab_http import open_request
@@ -27,7 +28,7 @@ MAX_REQUEST = 112 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 ENDPOINTS = {
     "nvidia_nim.boltz2": "https://health.api.nvidia.com/v1/biology/mit/boltz2/predict",
-    "nvidia_nim.diffdock": "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate",
+    "nvidia_nim.diffdock": "https://health.api.nvidia.com/v1/biology/mit/diffdock",
     "nvidia_nim.proteinmpnn": "https://health.api.nvidia.com/v1/biology/ipd/proteinmpnn/predict",
     "nvidia_nim.rfdiffusion": "https://health.api.nvidia.com/v1/biology/ipd/rfdiffusion/generate",
 }
@@ -92,7 +93,7 @@ def validate(tool, arguments):
             raise ValueError("inline ligand required")
         if arguments.get("ligand_file_type") not in ("txt", "sdf", "mol2"):
             raise ValueError("ligand_file_type must be txt, sdf, or mol2")
-        for name, bounds in (("num_poses",(1,10)),("time_divisions",(1,20)),("steps",(1,18))):
+        for name, bounds in (("num_poses",(1,10)),("time_divisions",(3,20)),("steps",(1,18))):
             if name in arguments: _bounded_int(arguments[name], *bounds, name)
         if arguments.get("save_trajectory", False) is not False:
             raise ValueError("trajectory output is disabled")
@@ -189,8 +190,25 @@ def reset_today(reason, *, moment=None):
 def _post(url, encoded, key):
     request = Request(url, data=encoded, method="POST",
                       headers={"Content-Type":"application/json","Authorization":"Bearer "+key})
-    with open_request(request, timeout=300) as response:
-        body = response.read(MAX_RESPONSE + 1)
+    try:
+        with open_request(request, timeout=300) as response:
+            body = response.read(MAX_RESPONSE + 1)
+    except HTTPError as exc:
+        # Provider validation locations/types are useful for correcting a request; its raw body
+        # may echo biological inputs or credentials and must not enter logs or planner context.
+        fields = []
+        try:
+            detail = json.loads(exc.read(4096)).get("detail", [])
+            for row in detail[:5] if isinstance(detail, list) else []:
+                loc = row.get("loc", []) if isinstance(row, dict) else []
+                kind = row.get("type", "invalid") if isinstance(row, dict) else "invalid"
+                if isinstance(loc, list) and all(re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", str(x)) for x in loc):
+                    fields.append(".".join(str(x) for x in loc[-3:]) + ":" +
+                                  re.sub(r"[^A-Za-z_0-9-]", "", str(kind))[:40])
+        except Exception:
+            pass
+        raise RuntimeError("NVIDIA NIM HTTP " + str(exc.code) +
+                           (" (" + ", ".join(fields) + ")" if fields else "")) from exc
     if len(body) > MAX_RESPONSE: raise ValueError("NIM result exceeds gateway limit")
     return json.loads(body)
 

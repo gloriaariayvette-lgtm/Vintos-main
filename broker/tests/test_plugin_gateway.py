@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Plugin relay policy, receipts and organ adapters; no network or real account."""
 import importlib.util
+import io
 import json
 import os
 import sys
@@ -8,6 +9,7 @@ import tempfile
 import types
 import unittest
 from unittest import mock
+from urllib.error import HTTPError
 
 ROOT=os.path.abspath(os.path.join(os.path.dirname(__file__),"../.."));sys.path.insert(0,os.path.join(ROOT,"scripts"))
 import plugin_catalog as catalog
@@ -332,6 +334,14 @@ class PluginGatewayTests(unittest.TestCase):
         finally:
             bionemo_gateway.LEDGER = old_ledger
 
+    def test_nim_validation_error_names_field_without_echoing_input(self):
+        body = b'{"detail":[{"loc":["body","time_divisions"],"msg":"secret input", "type":"greater_than"}]}'
+        error = HTTPError("https://example.invalid", 422, "invalid", {}, io.BytesIO(body))
+        with mock.patch.object(bionemo_gateway, "open_request", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "NVIDIA NIM HTTP 422 \\(body.time_divisions:greater_than\\)") as held:
+                bionemo_gateway._post("https://example.invalid", b"{}", "fixture-key")
+        self.assertNotIn("secret input", str(held.exception))
+
     def test_all_four_hosted_nim_payloads_have_fixed_endpoints(self):
         pdb="ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00  0.00           C\n"
         examples={
@@ -342,7 +352,10 @@ class PluginGatewayTests(unittest.TestCase):
         }
         self.assertEqual(set(examples),set(bionemo_gateway.ENDPOINTS))
         self.assertEqual(bionemo_gateway.ENDPOINTS["nvidia_nim.diffdock"],
-                         "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate")
+                         "https://health.api.nvidia.com/v1/biology/mit/diffdock")
+        with self.assertRaises(ValueError):
+            bionemo_gateway.validate("nvidia_nim.diffdock",
+                {"protein":pdb,"ligand":"CCO","ligand_file_type":"txt","time_divisions":1})
         for tool,args in examples.items():
             with self.subTest(tool=tool):
                 encoded=bionemo_gateway.validate(tool,args)
