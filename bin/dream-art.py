@@ -16,25 +16,38 @@ import artifact_manifest as _am          # the common manifest every shelf recor
 import reflection_stage as _stage        # the extracted prompt survives a failed render (review 280)
 
 
+# Prefer the strongest cached image model, so a better one is used automatically when present.
+_PIPE_RANK = (("FluxPipeline", 3), ("StableDiffusionXLPipeline", 2), ("StableDiffusion", 1))
+
+
+def _rank_of(cls):
+    return next((r for k, r in _PIPE_RANK if k in str(cls)), 0)
+
+
 def _find_local_model():
-    """Find an explicitly configured or fully cached diffusion pipeline, offline."""
+    """Find the BEST cached diffusion pipeline (Flux > SDXL > SD), offline. Returns (path, class)."""
     configured = os.environ.get("VINTOS_DREAM_LOCAL_MODEL", "").strip()
     if configured and os.path.isfile(os.path.join(configured, "model_index.json")):
-        return configured
-    roots = glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--*/snapshots/*/model_index.json"))
-    for manifest in sorted(roots):
         try:
-            info = json.load(open(manifest))
-            if "StableDiffusion" in str(info.get("_class_name", "")):
-                return os.path.dirname(manifest)
+            cls = str(json.load(open(os.path.join(configured, "model_index.json"))).get("_class_name", ""))
+        except Exception:
+            cls = ""
+        return configured, cls
+    best = ("", "", 0)
+    for manifest in sorted(glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--*/snapshots/*/model_index.json"))):
+        try:
+            cls = str(json.load(open(manifest)).get("_class_name", ""))
         except Exception:
             continue
-    return ""
+        rank = _rank_of(cls)
+        if rank > best[2]:
+            best = (os.path.dirname(manifest), cls, rank)
+    return best[0], best[1]
 
 
 def _local_render(prompt):
-    """Return PNG bytes from the cached local painter. Never contacts a provider."""
-    model_path = _find_local_model()
+    """Return PNG bytes from the BEST cached local painter (Flux/SDXL/SD). Never contacts a provider."""
+    model_path, model_cls = _find_local_model()
     if not model_path:
         print("[dream-art] no cached local image pipeline — dream held, no paid fallback")
         return None
@@ -42,22 +55,38 @@ def _local_render(prompt):
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     try:
         import torch
-        from diffusers import StableDiffusionPipeline
         device, dtype = "cpu", torch.float32
         if torch.cuda.is_available():
             capability = "sm_%d%d" % torch.cuda.get_device_capability(0)
             if capability in set(torch.cuda.get_arch_list()):
                 device, dtype = "cuda", torch.float16
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_path, torch_dtype=dtype, safety_checker=None,
-            requires_safety_checker=False, local_files_only=True)
-        pipe.enable_attention_slicing()
-        pipe = pipe.to(device)
-        image = pipe(prompt[:1000], num_inference_steps=24, guidance_scale=7.0,
-                     width=512, height=512).images[0]
+        # Load the pipeline class the cached model actually is, with class-appropriate settings.
+        if "Flux" in model_cls:
+            from diffusers import FluxPipeline
+            pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=dtype, local_files_only=True)
+            steps, size, kw = 20, 1024, {"guidance_scale": 3.5}
+        elif "XL" in model_cls:
+            from diffusers import StableDiffusionXLPipeline
+            pipe = StableDiffusionXLPipeline.from_pretrained(
+                model_path, torch_dtype=dtype, local_files_only=True, use_safetensors=True)
+            steps, size, kw = 30, 1024, {"guidance_scale": 7.0}
+        else:
+            from diffusers import StableDiffusionPipeline
+            pipe = StableDiffusionPipeline.from_pretrained(
+                model_path, torch_dtype=dtype, safety_checker=None,
+                requires_safety_checker=False, local_files_only=True)
+            steps, size, kw = 24, 512, {"guidance_scale": 7.0}
+        try: pipe.enable_attention_slicing()
+        except Exception: pass
+        if device == "cuda":
+            try: pipe.enable_model_cpu_offload()   # let big models (SDXL/Flux) fit smaller VRAM
+            except Exception: pipe = pipe.to(device)
+        else:
+            pipe = pipe.to(device)
+        image = pipe(prompt[:1000], num_inference_steps=steps, width=size, height=size, **kw).images[0]
         out = io.BytesIO()
         image.save(out, format="PNG")
-        print("[dream-art] local painter used (%s)" % device)
+        print("[dream-art] local painter used (%s, %s)" % (device, model_cls or "StableDiffusion"))
         return out.getvalue()
     except Exception as exc:
         print("[dream-art] local painter failed — dream held, no paid fallback: %s" % str(exc)[:180])
