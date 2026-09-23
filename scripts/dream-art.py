@@ -106,6 +106,32 @@ def _local_render(prompt):
         print("[dream-art] local painter failed — dream held, no paid fallback: %s" % str(exc)[:180])
         return None
 
+def _openai_render(prompt):
+    """PNG bytes from OpenAI's image model, or None. The model is OPENAI_IMAGE_MODEL in vintos.env."""
+    try:
+        from env_file import value as _ev      # the one reader of ~/.vintos/vintos.env
+        key, model = _ev("OPENAI_API_KEY"), _ev("OPENAI_IMAGE_MODEL", "gpt-image-1")
+    except Exception:
+        key, model = os.environ.get("OPENAI_API_KEY", ""), os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1")
+    if not key:
+        print("[dream-art] no OPENAI_API_KEY — OpenAI painter unavailable")
+        return None
+    try:
+        r = requests.post("https://api.openai.com/v1/images/generations",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": model, "prompt": prompt[:4000], "n": 1, "size": "1024x1024"},
+            timeout=240)
+        if r.status_code != 200:
+            print(f"[dream-art] OpenAI image error {r.status_code}: {r.text[:300]}")
+            return None
+        png = base64.b64decode(r.json()["data"][0]["b64_json"])
+        print(f"[dream-art] OpenAI painter used ({model})")
+        return png
+    except Exception as exc:
+        print("[dream-art] OpenAI painter failed: %s" % str(exc)[:180])
+        return None
+
+
 def _latest_dream():
     import json, os
     try:
@@ -172,22 +198,27 @@ def main():
                      if "unclothed" not in prompt.lower() and "spicy" not in prompt.lower()
                      else prompt[:1000])
     if src == "dream":
-        _png = _local_render(render_prompt)
+        # Dreams paint through OpenAI's image model (Gloria, 2026-09-23); the free local painter is
+        # the only fallback, and a dream never reaches grok-imagine.
+        _png = _openai_render(render_prompt) or _local_render(render_prompt)
         revised_prompt = prompt
         if not _png:
             return
     else:
-        # Want-born art keeps the paid renderer. The two paths cannot silently substitute for one another.
-        r = requests.post("https://api.x.ai/v1/images/generations",
-            headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-            json={"model": "grok-imagine-image", "prompt": render_prompt,
-                  "n": 1, "response_format": "b64_json"},
-            timeout=180)
-        if r.status_code != 200:
-            print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
-        data = r.json()["data"][0]
-        _png = base64.b64decode(data["b64_json"])
-        revised_prompt = data.get("revised_prompt", prompt)
+        _png = _openai_render(render_prompt)
+        revised_prompt = prompt
+        if not _png:
+            # Want-born art keeps the paid renderer: OpenAI first, grok-imagine only when OpenAI refuses or fails.
+            r = requests.post("https://api.x.ai/v1/images/generations",
+                headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+                json={"model": "grok-imagine-image", "prompt": render_prompt,
+                      "n": 1, "response_format": "b64_json"},
+                timeout=180)
+            if r.status_code != 200:
+                print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
+            data = r.json()["data"][0]
+            _png = base64.b64decode(data["b64_json"])
+            revised_prompt = data.get("revised_prompt", prompt)
     # name carries the content hash + a revision suffix: two paintings in one second, or one re-rendered,
     # never overwrite each other (review 279)
     _fpath, _rev = _am.unique_path(ART_DIR, "painting-" + datetime.now().strftime("%Y%m%d-%H%M%S"), ".png", _png)

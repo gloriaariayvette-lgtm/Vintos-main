@@ -1366,6 +1366,10 @@ Lab menu shows six attempted hosted jobs per day and omits Spotify and Calendar.
 
 ## Doorbell visits flood daily-inner (open, 2026-09-23)
 Gloria: a doorbell visit should reach daily-inner only when he said something other
-than the canned line. The doorbell handler is not in this repository (only its
-prompt, `docs/DOOR-CONTEXT.md`); the writer must be located on Aegis before it can be
-gated. Not done.
+than the canned line. The writers are outside this repository, on Aegis:
+`~/doorbell-voice/velaris_talk.py` (`ledger(...)` after every encounter, even one
+where he said nothing) and `~/meari-capture/meari_doorbell.py` (a ledger entry on
+every ring). A patch for both was handed to Gloria to run on Aegis; this stays open
+until she confirms it ran. 6 canned entries were removed from 2026-09-22 and 1
+from 2026-09-23 (backups `*.bak-door`), and the First Light they caused was
+deleted (backup `*.bak-firstlight`).
