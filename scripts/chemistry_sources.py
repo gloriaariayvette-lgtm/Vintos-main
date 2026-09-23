@@ -38,10 +38,12 @@ def query_protein_design_mcp(spec):
     import chemistry_mcp
     outcome = chemistry_mcp.call(spec)
     result = receipt('protein_design_mcp',
-                     {'tool': outcome['tool'], 'sequence_sha256': outcome['sequence_sha256'],
-                      'source_receipt_id': outcome['source_receipt_id']},
+                     {'tool': outcome['tool'], 'arguments_sha256': outcome.get('arguments_sha256'),
+                      'source_receipt_ids': outcome['source_receipt_ids']},
                      {'summary': outcome['summary'], 'result_sha256': outcome['result_sha256']},
                      metadata={'artifact': outcome['artifact'],
+                               **({'backend_receipt_id': outcome['backend_receipt_id']}
+                                  if outcome.get('backend_receipt_id') else {}),
                                'evidence': 'local_model_prediction_not_experimental_validation'})
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))

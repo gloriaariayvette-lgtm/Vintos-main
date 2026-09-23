@@ -244,13 +244,20 @@ model call or Mac contact. When on, it:
 5. appends the session to the visible Lab notebook and session ledger.
 
 When a dated protein-design MCP probe is available, the lens may choose one
-additional local instrument call before the named Mac experiment. The bounded
-orchestrator accepts `score_stability` only for a
-20–160-residue standard-amino-acid sequence present in a retained source receipt.
-It keeps the full prediction as a mode-0600 artifact, appends a Lab provenance
-receipt, and gives the reading a bounded excerpt. This is an ESM2 likelihood
-proxy, not measured protein stability. Other MCP tools are not in the
-autonomous menu; a server tool listing by itself does not authorize a call.
+additional orchestrated instrument call before the named Mac experiment. Native
+MCP routes are `score_stability` for a sourced 20–160-residue sequence and
+`suggest_hotspots` for an exact PDB ID already present in a source receipt.
+`predict_structure_boltz` and `predict_complex` map the MCP intent to the already
+commissioned NVIDIA Boltz-2 gateway and share its six-attempt daily cap. Every
+route keeps the full result as a mode-0600 artifact, appends Lab provenance, and
+gives the reading a bounded excerpt. These are predictions or structural
+suggestions, not measured stability or experimental validation.
+
+The orchestrator also records the status of all nineteen advertised MCP names.
+Broken package wrappers do not enter the planner menu merely because the server
+lists them. Existing commissioned ESMFold, ProteinMPNN, RFD3 and OpenMM paths
+remain the house route for their corresponding work; composite and path-based
+tools await bounded artifact handoffs, and PyRosetta operations remain unavailable.
 
 ### Local-to-frontier bridge
 

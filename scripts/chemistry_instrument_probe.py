@@ -130,21 +130,24 @@ def protein_design_mcp():
     entry = "protein_design_mcp.server.call_tool(get_design_status)"
     async def invoke():
         from protein_design_mcp.server import call_tool, list_tools
+        from chemistry_mcp import capabilities
         tools = await list_tools()
         reply = await call_tool("get_design_status", {"job_id": "vintos-probe-does-not-exist"})
-        return tools, reply
+        return tools, reply, capabilities()
     try:
-        tools, reply = asyncio.run(invoke())
+        tools, reply, routes = asyncio.run(invoke())
         names = [tool.name for tool in tools]
         text = " ".join(str(getattr(item, "text", "")) for item in reply)
-        if "get_design_status" not in names or "Job not found" not in text:
+        if ("get_design_status" not in names or "Job not found" not in text or
+                set(names) != set(routes) or len(routes) != 19):
             return _failure("protein_design_mcp", entry, failure_type="dispatch_unproved",
-                            detail="server did not return the expected typed reply")
+                            detail="server dispatch or house capability registry did not match")
+        offered = sorted(name for name, row in routes.items() if row.get("state") == "available")
         _emit({"ok": True, "instrument": "protein_design_mcp", "entry_point": entry,
-               "verification": "server listed tools and dispatched one status call",
+               "verification": "server list matches the house registry and dispatched one status call",
                "output": {"tool_count": len(names), "reply": "typed_job_not_found",
                           "house_route": "chemistry_session.instrument_query via chemistry_mcp",
-                          "house_call_proved_by_this_probe": False}})
+                          "planner_offered": offered}})
         return 0
     except Exception as exc: return _failure("protein_design_mcp", entry, exc)
 

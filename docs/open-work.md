@@ -425,19 +425,27 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   A measured receipt proves only that instrument and entry point; VQNet, Mac ESMC,
   pyChemiQ, and Foundry still need explicit named-experiment routes before the autonomous
   session can select them.
-- The protein-design MCP server lists 19 tools. The scheduled Lab session now has a
-  bounded, receipt-backed route for one sequence observation: `score_stability`,
-  an ESM2 likelihood proxy rather than measured stability. It requires the sequence in an existing Lab
-  source receipt, runs under local compute admission, and brings the result into the
-  same session's reading. The adapter converts the installed server's NumPy result to
-  JSON in a disposable worker. Its ESMFold tool currently fails for lack of `fair-esm`;
-  the Lab's separate ESMFold instrument already runs. The other 18 MCP tools, including
-  design pipelines and path-based operations, remain outside this route pending individual
-  bounds and evidence.
+- The protein-design server advertises 19 names; `chemistry_mcp.capabilities()` now owns
+  their house status instead of treating the listing as availability. The scheduled Lab
+  may call native `score_stability` and sourced-PDB `suggest_hotspots`, or map
+  `predict_structure_boltz` and `predict_complex` to the commissioned, six-per-day NVIDIA
+  Boltz-2 gateway. It requires exact input in existing Lab source receipts, runs under
+  compute admission, retains full results, and brings a bounded result into the same
+  session's reading. The adapter converts the installed server's NumPy result to JSON in
+  a disposable worker. Separate commissioned ESMFold, ProteinMPNN, RFD3 and OpenMM paths
+  cover four more advertised intentions. Composite and path-based operations remain
+  inactive pending bounded artifact handoffs; four Rosetta operations remain unavailable
+  because PyRosetta is absent.
   Aegis release `20260923-042618-24af7bc` installed the route after 172 isolated suites
   passed in both `--check` and deployment. A sourced Q50429 scoring call through the
   installed route wrote mode-0600 result and Lab receipt
   `586a654e82b4e941ff737ee1e8bdb8c38e17c312b9abc3a4400aae9042fa716f`.
+  Before the expanded orchestrator was deployed, candidate calls also proved sourced-PDB
+  hotspot analysis (`6Y7F`, result `5cc0ba4f43de45c3f02175927f3e72c1bf11838763510b32d0615d7b1a02bf17`),
+  single-chain Boltz-2 (backend receipt `7c2e6e02ac410e43b2fad5a8f4eae929af4d1bff6b2ceece36d21205a3796c83`),
+  and two-chain Boltz-2 (backend receipt `446020265c8c27d4c1bbef4cc4255acab82b781e13ef9b887a39897bde223cb1`).
+  Those two hosted commissioning calls consumed the last two attempts in the current
+  23 September NVIDIA allowance window; the daily cap remains six and was not reset.
 
 The Lab has a route to the Forge now, and one step of it is hers to take. `chemistry_spark.py`
 writes the eligible, attributed feed; `from_lab()` reads structured rows; `gather()` and

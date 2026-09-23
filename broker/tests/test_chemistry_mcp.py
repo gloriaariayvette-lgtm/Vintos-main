@@ -39,11 +39,11 @@ def fake_runner(argv, input_text):
         "tool": "score_stability", "content": ['{"score": -2.4}']}))
 
 result = mcp.call(spec, runner=fake_runner)
-assert len(calls) == 1 and calls[0][1] == sequence
+assert len(calls) == 1 and json.loads(calls[0][1]) == {"sequence": sequence}
 assert calls[0][0][0].startswith(HOME) and calls[0][0][1].endswith("chemistry_mcp.py")
 assert Path(result["artifact"]).is_file()
 assert os.stat(result["artifact"]).st_mode & 0o077 == 0
-assert result["source_receipt_id"] == source["receipt_id"]
+assert result["source_receipt_ids"] == [source["receipt_id"]]
 assert "-2.4" in result["summary"] and "not_experimental_validation" in result["truth_status"]
 
 for bad in (
@@ -74,8 +74,46 @@ fake_package = types.ModuleType("protein_design_mcp")
 fake_package.server = fake_server
 sys.modules["protein_design_mcp"] = fake_package
 sys.modules["protein_design_mcp.server"] = fake_server
-assert json.loads(mcp._worker("score_stability", sequence)["content"][0])["per_residue_scores"] == [0.1, 0.2]
+assert json.loads(mcp._worker("score_stability", {"sequence": sequence})["content"][0])["per_residue_scores"] == [0.1, 0.2]
 assert fake_server.json is json, "worker must restore the server module's original serializer"
+
+# The second native route is provenance-bound to an exact PDB identifier and
+# cannot turn literature expansion on behind the planner's back.
+pdb_source = receipt("uniprot", {"accession": "P00002"},
+                     {"crossrefs": [{"database": "PDB", "id": "1CRN"}]})
+lab._append(str(Path(lab.ROOT) / "source-receipts.jsonl"), pdb_source)
+hotspot = {"tool": "suggest_hotspots", "target": "1CRN", "criteria": "exposed",
+           "source_receipt_id": pdb_source["receipt_id"]}
+hot = mcp.call(hotspot, runner=lambda argv, body: types.SimpleNamespace(returncode=0, stdout=json.dumps({
+    "tool": "suggest_hotspots", "content": ['{"suggested_hotspots":[{"residues":["A7"]}]}']})))
+assert hot["source_receipt_ids"] == [pdb_source["receipt_id"]]
+for bad_hotspot in (dict(hotspot, target="2BAD"), dict(hotspot, criteria="anything"),
+                    dict(hotspot, include_literature=True)):
+    try: mcp.call(bad_hotspot, runner=fake_runner)
+    except ValueError: pass
+    else: raise AssertionError("unsourced or widened hotspot query accepted")
+
+# Hosted mappings retain the same source rule but delegate to the already capped
+# NVIDIA gateway. No provider, key, network or real ledger is reached in this test.
+hosted_calls=[]
+fake_bionemo=types.ModuleType("bionemo_gateway")
+def hosted_call(*args, **kwargs):
+    hosted_calls.append((args,kwargs))
+    return {"receipt":{"receipt_id":"b"*64,"result_sha256":"c"*64,
+                       "artifact":str(Path(HOME)/"hosted.json")},"summary":"mmCIF kept"}
+fake_bionemo.call=hosted_call
+sys.modules["bionemo_gateway"]=fake_bionemo
+fold=mcp.call({"tool":"predict_structure_boltz","sequence":sequence,
+               "source_receipt_id":source["receipt_id"]})
+assert fold["backend_receipt_id"] == "b"*64 and len(hosted_calls)==1
+assert hosted_calls[0][0][2] == "nvidia_nim.boltz2"
+assert hosted_calls[0][0][3]["polymers"][0]["sequence"] == sequence
+complex_result=mcp.call({"tool":"predict_complex","sequences":[sequence,sequence],
+                         "source_receipt_ids":[source["receipt_id"]]})
+assert complex_result["backend_receipt_id"] == "b"*64 and len(hosted_calls)==2
+assert len(hosted_calls[1][0][3]["polymers"]) == 2
+assert len(mcp.capabilities()) == 19
+assert mcp.capabilities()["rosetta_score"]["state"] == "unavailable"
 
 original = mcp.call
 mcp.call = lambda value: original(value, runner=fake_runner)
@@ -83,7 +121,7 @@ linked = sources.query_protein_design_mcp(spec)
 assert linked["instrument_receipt"]["source"] == "protein_design_mcp"
 assert linked["instrument_receipt"]["metadata"]["artifact"].startswith(HOME)
 assert linked["instrument_result"]["result_sha256"] == result["result_sha256"]
-assert len(lab._jsonl(str(Path(lab.ROOT) / "source-receipts.jsonl"))) == 2
+assert len(lab._jsonl(str(Path(lab.ROOT) / "source-receipts.jsonl"))) == 3
 
 import chemistry_probe as probe
 probe.AEGIS_PROBES = {}
@@ -96,7 +134,8 @@ import asyncio
 async def fake_frontier(*args, **kwargs):
     prompt = args[2]
     assert "AVAILABLE NAMED EXPERIMENTS" in prompt
-    if "Aegis protein-design MCP" in prompt: assert "score_stability" in prompt
+    if "Protein-design orchestrator" in prompt:
+        assert "score_stability" in prompt and "suggest_hotspots" in prompt and "predict_complex" in prompt
     return json.dumps({"experiment": "fold", "parameters": {}, "shots": 512,
                        "question": "What does this score suggest?", "why_this": "sourced sequence",
                        "instrument_query": spec})

@@ -31,7 +31,9 @@ check("ProteinMPNN requires a FASTA artifact", "artifact_absent" in source and "
 check("RFD3 requires metadata and structure artifacts", "json_artifacts" in source and "structure_artifacts" in source)
 check("ESMFold must return an actual PDB", "EsmForProteinFolding" in source
       and '"ATOM" not in pdb' in source and "pdb_lines" in source)
-check("MCP probe dispatches a tool", 'call_tool("get_design_status"' in source)
+check("MCP probe dispatches and reconciles every advertised name with the house registry",
+      'call_tool("get_design_status"' in source and "set(names) != set(routes)" in source
+      and 'row.get("state") == "available"' in source)
 
 captured = []
 P._emit = lambda value: captured.append(value)
