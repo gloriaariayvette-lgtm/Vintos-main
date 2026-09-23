@@ -373,6 +373,9 @@ def main():
 
     filepath = save_poem(poem)
     print(f"[Poetry] ✓ Poem saved: {filepath}")
+    # A poem is not a real event. Anchor it as symbolic so no downstream surface
+    # can later read the poem's images back as things that actually happened.
+    record_poem_reality(poem)
     # Fire resonance pulse
     try:
         import sys as _rpsys; _rpsys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
