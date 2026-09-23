@@ -2447,7 +2447,9 @@ async def get_system_status(request: Request):
                                and "verify error" not in l.lower()
                                and "combination not found" not in l.lower()
                                and "verification attempts failed" not in l.lower()
-                               and "verification_required" not in l.lower()]
+                               and "verification_required" not in l.lower()
+                               # the deploy's own passing check that the sealed door refuses without a key
+                               and "sealed route:" not in l.lower()]
                     if errors:
                         status_data["errors"].append({
                             "file": os.path.basename(log_path),
