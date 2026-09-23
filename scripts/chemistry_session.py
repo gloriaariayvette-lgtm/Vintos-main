@@ -134,7 +134,12 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
             pass
     except Exception:
         plugin_menu = ""
-    prompt = (context + lean_text + plugin_menu + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+    try:
+        from chemistry_mcp import instructions as mcp_instructions
+        mcp_menu = "\n\n" + mcp_instructions() if (instruments or {}).get("protein_design_mcp", {}).get("available") else ""
+    except Exception:
+        mcp_menu = ""
+    prompt = (context + lean_text + plugin_menu + mcp_menu + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
@@ -156,6 +161,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "Alternatively return plugin_query as ONE object {plugin,tool,arguments,purpose} using the exact "
               "menu above. Choose at most one of source_query and plugin_query. Its receipt and result will be "
               "returned before the experiment and retained as Lab provenance. "
+              "If the protein-design MCP menu is present, instrument_query may replace source_query or "
+              "plugin_query; choose at most one extra call total. Its result reaches your reading. "
               "Source predictions and model disagreements are hypotheses, not validation or proof of novelty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
     if not raw: raise RuntimeError("frontier lens returned no plan")
@@ -169,6 +176,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
     addressed = [str(x) for x in addressed if str(x) in allowed][:4]
     return {"source_query": value.get("source_query") if isinstance(value.get("source_query"), dict) else None,
             "plugin_query": value.get("plugin_query") if isinstance(value.get("plugin_query"), dict) else None,
+            "instrument_query": value.get("instrument_query") if mcp_menu and isinstance(value.get("instrument_query"), dict) else None,
             "addressed_entry_ids": addressed,
             "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
@@ -413,7 +421,9 @@ def run():
                        provider="frontier", stage="plan"):
                 plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
                         if lean else _plan(context, experiments, lens, instruments, offered_interest))
-                if plan.get("source_query") or plan.get("plugin_query"):
+                selected = [key for key in ("source_query", "plugin_query", "instrument_query") if plan.get(key)]
+                if len(selected) > 1: raise ValueError("Lab plan selected more than one extra call")
+                if selected and selected[0] != "instrument_query":
                     import chemistry_sources
                     if plan.get("plugin_query"):
                         pq = plan["plugin_query"]
@@ -425,6 +435,15 @@ def run():
                         source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
                         plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]
                     context += "\nADDITIONAL SOURCE (not validation):\n" + json.dumps(source_result)[:12000]
+            if plan.get("instrument_query"):
+                import chemistry_sources
+                with admit("background", organ="chemistry-protein-design-mcp",
+                           wait_s=float(lab.config()["turn_wait_seconds"]),
+                           provider="local", model="protein_design_mcp", stage="instrument"):
+                    source_result = chemistry_sources.query_protein_design_mcp(plan["instrument_query"])
+                plan["source_receipt_id"] = source_result["instrument_receipt"]["receipt_id"]
+                plan["instrument_result_sha256"] = source_result["instrument_result"]["result_sha256"]
+                context += "\nLOCAL INSTRUMENT (prediction, not validation):\n" + json.dumps(source_result)[:12000]
             if offered_interest:
                 bridge.record_delivery(session_id, lens, offered_interest,
                                        plan.get("addressed_entry_ids", []), state="responded")

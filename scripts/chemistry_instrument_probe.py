@@ -143,8 +143,8 @@ def protein_design_mcp():
         _emit({"ok": True, "instrument": "protein_design_mcp", "entry_point": entry,
                "verification": "server listed tools and dispatched one status call",
                "output": {"tool_count": len(names), "reply": "typed_job_not_found",
-                          "house_connected": False,
-                          "connection_needed": "register the stdio server with a bounded Lab orchestrator"}})
+                          "house_route": "chemistry_session.instrument_query via chemistry_mcp",
+                          "house_call_proved_by_this_probe": False}})
         return 0
     except Exception as exc: return _failure("protein_design_mcp", entry, exc)
 

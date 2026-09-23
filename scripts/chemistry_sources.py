@@ -33,6 +33,21 @@ def query_plugin(plugin, tool, arguments, purpose):
     return {'plugin_receipt': outcome['receipt'], 'source_receipt': result}
 
 
+def query_protein_design_mcp(spec):
+    """One bounded local instrument call, returned as Lab provenance."""
+    import chemistry_mcp
+    outcome = chemistry_mcp.call(spec)
+    result = receipt('protein_design_mcp',
+                     {'tool': outcome['tool'], 'sequence_sha256': outcome['sequence_sha256'],
+                      'source_receipt_id': outcome['source_receipt_id']},
+                     {'summary': outcome['summary'], 'result_sha256': outcome['result_sha256']},
+                     metadata={'artifact': outcome['artifact'],
+                               'evidence': 'local_model_prediction_not_experimental_validation'})
+    lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
+    lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))
+    return {'instrument_receipt': result, 'instrument_result': outcome}
+
+
 def query(spec, *, client=None, question=''):
     if not lab.config().get('allow_public_database_reads'):
         raise RuntimeError('public database reads disabled')

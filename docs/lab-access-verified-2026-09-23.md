@@ -82,7 +82,7 @@ by policy until their account authorization is repaired and retested.
 | Instrument | Verification and boundary |
 | --- | --- |
 | Aegis ESMC 600M, ESMFold, ProteinMPNN, RFdiffusion/Foundry RFD3, OpenMM | Fresh Aegis `chemistry_probe.py --refresh --all` completed actual smoke runs on 23 September: embedding, short fold, one fixed-backbone design, two-step diffusion, and an OpenMM step. |
-| Aegis protein-design MCP | Fresh probe listed 19 tools and dispatched a status request. The receipt explicitly says `house_connected: false`: the stdio server still needs a bounded Lab orchestrator before Vintos can use it in a turn. |
+| Aegis protein-design MCP | The 23 September probe listed 19 tools and dispatched a status request. A later Lab change routes only `score_stability` and ESMFold `predict_structure` through a sourced-sequence, receipt-backed session call. The remaining 17 tools are not offered. See current deployment evidence in `docs/open-work.md`; the original probe alone did not prove a house call. |
 | Aegis Evo 2 7B base | Lab status carries a same-day read-only comparative-likelihood probe. Its background lane is enabled on a fixed nonhuman/nonpathogen reference allowlist, at a configured interval. |
 | Mac QPanda, VQNet, pyChemiQ, Mac ESMC and Foundry | Existing completed Mac-run receipts dated 13 September remain within their 30-day validity window. They were not rerun in this audit. |
 | Aegis nvMolKit | All four Lab operations ran live on the GPU: `fingerprints`, `similarity`, `cluster`, `conformers`, each with a 0600 result receipt. |
