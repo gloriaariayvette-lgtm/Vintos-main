@@ -1622,7 +1622,7 @@ function _labReviewCard(row) {
     return '<div class="gallery-item" style="padding:14px;">' +
         '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">' +
           '<div style="font-size:0.74rem;color:var(--text-bright);">' + _esc(row.kind === 'genome_reflection' ? 'genome review' : 'protein review') + '</div>' +
-          '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(0, 16)) + '</time></div>' +
+          '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(_atelierDate(row.at)) + '</time></div>' +
         (observation ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(observation) + '</div>' : '') +
         (speculation ? '<div style="font-size:0.63rem;color:var(--text-dim);line-height:1.55;margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere;">speculative — ' + _esc(speculation) + '</div>' : '') +
         (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next — ' + _esc(row.next_question) + '</div>' : '') +
@@ -1723,7 +1723,7 @@ async function loadLab() {
         cards.push('<div class="gallery-item" style="padding:14px;">' +
             '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">' +
               '<div style="font-size:0.74rem;color:var(--text-bright);">' + _esc(row.experiment || 'session') + '</div>' +
-              '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(0, 16)) + '</time></div>' +
+              '<time style="font-size:0.56rem;color:var(--text-dim);">' + _esc(_atelierDate(row.at)) + '</time></div>' +
             '<div style="margin:8px 0;">' +
               _labChip('instrument: ' + (row.execution_state || row.state || 'unknown'), 'var(--text-dim)') +
               _labChip('answer: ' + verdict, colour) +
