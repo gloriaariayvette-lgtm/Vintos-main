@@ -434,6 +434,10 @@ unavailable-with-a-reason until a receipt exists. Two limits are worth writing d
   the Lab's separate ESMFold instrument already runs. The other 18 MCP tools, including
   design pipelines and path-based operations, remain outside this route pending individual
   bounds and evidence.
+  Aegis release `20260923-042618-24af7bc` installed the route after 172 isolated suites
+  passed in both `--check` and deployment. A sourced Q50429 scoring call through the
+  installed route wrote mode-0600 result and Lab receipt
+  `586a654e82b4e941ff737ee1e8bdb8c38e17c312b9abc3a4400aae9042fa716f`.
 
 The Lab has a route to the Forge now, and one step of it is hers to take. `chemistry_spark.py`
 writes the eligible, attributed feed; `from_lab()` reads structured rows; `gather()` and
