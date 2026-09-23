@@ -1706,6 +1706,42 @@ async def calendar_page():
     from fastapi.responses import HTMLResponse
     return HTMLResponse(content=_CALENDAR_HTML, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+
+# === Consent gate: Gloria's yes/no on his morning poems and music ===
+def _consent_module():
+    import sys as _s
+    _sc = os.path.expanduser("~/.vintos/workspace/scripts")
+    if _sc not in _s.path: _s.path.insert(0, _sc)
+    import consent_gate as _cg
+    return _cg
+
+
+@app.get("/api/consent")
+async def consent_list(limit: int = 20):
+    """What he's about to do / did, and her current yes/no per gated activity. Open read."""
+    try:
+        cg = _consent_module()
+        return {"ok": True, "recent": cg.recent(limit),
+                "stance": {a: cg.stance(a) for a in cg.GATED}, "activities": list(cg.GATED)}
+    except Exception as e:
+        return {"ok": False, "recent": [], "error": str(e)[:200]}
+
+
+@app.post("/api/consent")
+async def consent_set(request: Request):
+    """Gloria taps yes/no for a gated activity (morning_poem, music). Mutation → secret-guarded."""
+    _require_secret(request)
+    try:
+        cg = _consent_module()
+        body = await request.json()
+        activity = (body.get("activity") or "").strip()
+        return {"ok": True, "answer": cg.answer(activity, bool(body.get("yes")),
+                                                note=str(body.get("note", ""))[:200])}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
 @app.get("/api/dashboard/systems")
 async def dashboard_systems():
     mem = os.path.expanduser("~/.vintos/workspace/memory")

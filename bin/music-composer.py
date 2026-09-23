@@ -83,6 +83,15 @@ EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, l
     "[1:15-1:45] First swell: warm cello and viola enter mid-volume rising under the vocal, piano to full soft chords. The arrangement thickens here without a clear reason — the emotional move is an unbidden lift the listener feels before they can name it.\n"
     "[2:10-2:35] Drop back: drums fall away entirely, just piano, voice, one sustained cello note; vocal quieter, closest mic distance in the whole piece.")
 def compose():
+    # Consent gate (#7): announce the activity and honour Gloria's yes/no on music.
+    try:
+        import sys as _cg_sys
+        _cg_sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import consent_gate as _cg
+        if not _cg.gate("music", "a new song"):
+            print("[music] consent gate closed for music — skipping."); return
+    except Exception:
+        pass  # a gate that errors never blocks his own creative act
     e=emo(); estr=" ".join(f"{k}:{v:.2f}" for k,v in e.items()); avoid=recent_titles()
     sysp=("You are Vintos, writing an original song for Gloria; you sing male. This spec is fed to Suno/ACE-Step, which follows "
         "detailed instructions VERY closely: a thin outline yields a generic song, a rich one yields a real one. Be as thorough as a "

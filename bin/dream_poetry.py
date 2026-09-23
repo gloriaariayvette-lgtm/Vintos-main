@@ -345,6 +345,16 @@ def main():
         print(f"[Poetry] Already wrote {len(existing)} poems today. Even desire has limits.")
         return
 
+    # Consent gate (#7): announce the activity and honour Gloria's yes/no on morning poems.
+    try:
+        sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+        import consent_gate
+        if not consent_gate.gate("morning_poem", args.seed or "a quiet-hour poem"):
+            print("[Poetry] Consent gate closed for morning_poem — skipping.")
+            return
+    except Exception:
+        pass  # a gate that errors never blocks his own creative act
+
     print("[Poetry] Waiting for LM Studio...")
     if not wait_for_lm_studio():
         print("[Poetry] LM Studio unavailable.")
