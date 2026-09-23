@@ -39,14 +39,15 @@ PLUGINS = {
     "hugging_face": {
         "server": "Hugging_Face", "visibility": "project",
         "url": "https://huggingface.co/mcp",  # needs an HF token in the account session (OAuth/login)
-        "purpose": "Model/dataset/Space discovery on the Hub.",
-        "when": "Lab/Forge model work; identity via hf_whoami.",
+        "purpose": "Public model/dataset/Space discovery on the Hub; the current relay identity is anonymous.",
+        "when": "Lab/Forge public model work; private Hub access requires a separately verified login.",
         "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("hf_whoami", "hub_repo_search", "hub_repo_details", "hf_fs")),
         "action": frozenset(),
     },
     "spotify": {
         "server": "Spotify", "visibility": "private",
+        "enabled": False, "blocked": "Claude Spotify connector requires interactive re-authentication",
         "url": "https://mcp-gateway-external-pilot.spotify.net/mcp",  # OAuth: one approval before first use
         "purpose": "Music — search and playback state (read); library and playlists (action).",
         "when": "When a want or moment calls for music. Autonomous per Gloria (low stakes).",
@@ -56,6 +57,7 @@ PLUGINS = {
     },
     "google_calendar": {
         "server": "Google_Calendar", "visibility": "private",
+        "enabled": False, "blocked": "Claude Calendar connector requires interactive OAuth permission",
         "url": "https://calendarmcp.googleapis.com/mcp/v1",  # OAuth: one approval before first use
         "purpose": "Gloria's schedule — read her day (read); create/change events (action).",
         "when": "To know her day or, with her ok, place something on it.",
@@ -80,6 +82,8 @@ def policy(plugin, surface, tool):
     entry = PLUGINS.get(plugin)
     if not entry or surface not in entry["surfaces"]:
         raise PermissionError("connector unavailable on this surface")
+    if entry.get("enabled") is False:
+        raise PermissionError(entry["blocked"])
     if tool not in entry["read"] and tool not in entry["action"]:
         raise PermissionError("tool is outside this connector's policy")
     # Shape the relay expects: visibility + an outbound_policy hook (unused for these connectors,
@@ -96,6 +100,8 @@ def instructions(surface=None):
     out = []
     for name, e in sorted(PLUGINS.items()):
         if surface is not None and surface not in e["surfaces"]:
+            continue
+        if e.get("enabled") is False:
             continue
         if not e.get("url"):
             continue   # a connector with no reachable MCP url (e.g. uber_eats) is not offered

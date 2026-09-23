@@ -28,22 +28,26 @@ class CatalogTests(unittest.TestCase):
         for surface in ("wants", "atelier"):
             self.assertNotIn("uber_eats", ccc.instructions(surface))
         block = ccc.prompt_instructions("wants")
-        self.assertIn("spotify", block)
+        self.assertIn("pubmed", block)
         self.assertNotIn("uber_eats", block)
 
     def test_wired_connectors_carry_a_url(self):
         for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
             self.assertTrue(ccc.PLUGINS[name].get("url"), name)
 
-    def test_wired_connectors_are_available_on_all_four_surfaces(self):
-        # Gloria: available for wants, Lab, Forge and the Atelier.
-        for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
+    def test_verified_connectors_are_offered_and_auth_blocked_ones_are_not(self):
+        for name in ("pubmed", "chembl", "hugging_face"):
             self.assertEqual(set(ccc.PLUGINS[name]["surfaces"]), set(ccc.SURFACES), name)
         for surface in ccc.SURFACES:
             block = ccc.prompt_instructions(surface)
-            for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
+            for name in ("pubmed", "chembl", "hugging_face"):
                 self.assertIn(name, block, "%s missing on %s" % (name, surface))
+            self.assertNotIn("spotify", block)
+            self.assertNotIn("google_calendar", block)
             self.assertNotIn("uber_eats", block)
+        for name, tool in (("spotify", "get_currently_playing"),
+                           ("google_calendar", "list_calendars")):
+            with self.assertRaises(PermissionError): ccc.policy(name, "lab", tool)
 
     def test_policy_shape_matches_chat_gateway(self):
         p = ccc.policy("pubmed", "lab", "search_articles")
@@ -54,7 +58,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(ccc.policy("chembl", "lab", "chembl_search_molecules")["server"], "ChEMBL")
         with self.assertRaises(PermissionError):
             ccc.policy("chembl", "lab", "compound_search")   # the old guessed name is gone
-        self.assertTrue(ccc.policy("spotify", "wants", "save_to_library")["is_action"])
+        self.assertIn("save_to_library", ccc.PLUGINS["spotify"]["action"])
         with self.assertRaises(PermissionError):
             ccc.policy("pubmed", "wants", "delete_everything")
 
@@ -107,7 +111,7 @@ class GatewayTests(unittest.TestCase):
         def held(_request):
             return {"ok": False, "receipt": {"type": "LINK_APPROVAL_REQUIRED", "state": "awaiting"}}
         with self.assertRaises(PolicyHold):
-            ccg.call("wants", "spotify", "search", {"q": "folk"}, "music", transport=held)
+            ccg.call("lab", "pubmed", "search_articles", {"query": "folding"}, "literature", transport=held)
 
 
 class RelayKeepOutputTests(unittest.TestCase):

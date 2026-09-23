@@ -27,7 +27,7 @@ DoorDash outputs remain readable only by the surface that requested them.
 | Genomic Intelligence | Lab, Forge or Atelier, with sourced coordinates or sequence | Fetch/predict/read jobs. No provider-side sequence storage and no validation claim. |
 | PDF, Presentations, Spreadsheets | Any surface when that artifact is the requested output | Contextless, disposable skill workspace; returned files are hash checked and retained. |
 | Template Creator | Forge or Atelier when reuse is explicitly intended | Contextless artifact generation only. |
-| BioNeMo | Lab, Forge or Atelier after selecting a named workflow | Present in the catalogue but disabled until a hosted NVIDIA or local NIM compute route and its model-specific credentials are configured. |
+| BioNeMo | Lab, Forge or Atelier after selecting a named workflow | The Chat-account BioNeMo skill relay is disabled. The separate Aegis `nvidia_nim` gateway has a configured key and a three-attempt daily cap; Boltz-2, DiffDock and ProteinMPNN returned live results on 23 September, while hosted RFdiffusion remains unverified. |
 | Plugin Management | Configuration visibility only | Vintos cannot install, remove, connect or change Eve's plugin permissions. |
 
 Connector policy lives in `scripts/plugin_catalog.py`, rather than in prompts. Tool names outside

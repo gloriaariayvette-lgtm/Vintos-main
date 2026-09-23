@@ -111,9 +111,11 @@ personal noncommercial use alone does not establish academic eligibility. BV-BRC
 metabolism route. The Chat-account BioNeMo plugin supplies skills rather than
 a direct MCP call surface. Vintos's separate hosted NIM route is deployed for
 Boltz-2, DiffDock, ProteinMPNN and RFdiffusion, capped at three attempted jobs
-per Chicago day; it stays disabled until his private Aegis key file is
-installed. Local nvMolKit fingerprints, similarity, clustering and conformers
-are GPU-tested and deployed. Parabricks and KERMT remain uncommissioned.
+per Chicago day. Gloria installed its private Aegis key on 23 September;
+Boltz-2, DiffDock and ProteinMPNN have returned live results, while hosted
+RFdiffusion has not yet been tested. Local nvMolKit fingerprints, similarity,
+clustering and conformers are GPU-tested and deployed. Parabricks and KERMT
+remain uncommissioned. See the [verified access map](lab-access-verified-2026-09-23.md).
 
 Cross-organ associations compare source-backed text in the house semantic space.
 They are prompts for investigation, never biological evidence. Report completion

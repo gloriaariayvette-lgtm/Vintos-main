@@ -1306,3 +1306,35 @@ while allowing a genuinely new source to be surfaced. This is retrieval
 discipline, not independent verification of biological claims; a source-backed
 observation remains a hypothesis-generating record. A live autonomous choice
 showing reduced repetition has not yet been observed.
+
+## 23 September — Lab access audit and hosted DiffDock correction
+
+The [Lab access map](lab-access-verified-2026-09-23.md) records the actual
+sources, account connectors, local instruments and hosted endpoints with their
+23 September probe outcomes. The earlier statement above that no hosted NIM
+job had run is superseded: Boltz-2 and ProteinMPNN returned results, and
+DiffDock returned a pose after its first test failed. NVIDIA's 422 response
+identified `time_divisions: 1` as invalid (`greater_than` 2); the live working
+route is `/v1/biology/mit/diffdock`. A documentation-listed alternative route
+returned 404. The gateway now validates the lower bound and reports only the
+provider's field/type error, without echoing submitted data.
+
+Gloria authorized one explicit three-attempt reset for 23 September. The
+append-only NVIDIA attempt ledger records that reset and preserves all three
+earlier attempts. The new window was spent on the route check, 422 diagnosis
+and successful corrected DiffDock call. **Hosted RFdiffusion is still
+unverified**; its local RFD3 counterpart passed a fresh Aegis smoke run. No
+fourth hosted attempt is allowed under today's cap. The other fresh Aegis
+instrument probes passed, and the Mac instruments retain completed 13
+September run receipts within their validity window.
+
+The Claude-account connector relay previously turned model prose after a
+denied tool into a success receipt. It now requires the SDK's actual result
+block tied to the requested tool. PubMed, ChEMBL and public Hugging Face reads
+then succeeded; Spotify and Google Calendar failed without writing a receipt.
+Spotify needs account re-authentication and Calendar needs interactive OAuth
+permission. They are excluded from Vintos's offered menu until reauthorized
+and retested. Hugging Face reported anonymous status, so private Hub access is
+not claimed. Proto reported its Modal and Hugging Face links present but zero
+deployed tools. The Chat-account PDF, presentation and spreadsheet skills all
+returned real artifacts in disposable workspaces.
