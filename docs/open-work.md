@@ -1363,3 +1363,9 @@ Final Aegis release `20260923-034059-b55ac15` passed all 171 isolated suites
 in `--check` and deployment, confirmed the Lab worker, session timer and
 plugin gateway active, and installed module hashes matched Git. The installed
 Lab menu shows six attempted hosted jobs per day and omits Spotify and Calendar.
+
+## Doorbell visits flood daily-inner (open, 2026-09-23)
+Gloria: a doorbell visit should reach daily-inner only when he said something other
+than the canned line. The doorbell handler is not in this repository (only its
+prompt, `docs/DOOR-CONTEXT.md`); the writer must be located on Aegis before it can be
+gated. Not done.

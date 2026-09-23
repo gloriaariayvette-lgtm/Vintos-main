@@ -24,8 +24,19 @@ def _rank_of(cls):
     return next((r for k, r in _PIPE_RANK if k in str(cls)), 0)
 
 
+def _has_cuda():
+    try:
+        import torch
+        if not torch.cuda.is_available(): return False
+        return ("sm_%d%d" % torch.cuda.get_device_capability(0)) in set(torch.cuda.get_arch_list())
+    except Exception:
+        return False
+
+
 def _find_local_model():
-    """Find the BEST cached diffusion pipeline (Flux > SDXL > SD), offline. Returns (path, class)."""
+    """Find the BEST cached diffusion pipeline (Flux > SDXL > SD), offline. Returns (path, class).
+    Without a usable GPU, Flux (8B) is too slow to finish, so the best CPU-practical model wins,
+    and a turbo SDXL is preferred over a full one."""
     configured = os.environ.get("VINTOS_DREAM_LOCAL_MODEL", "").strip()
     if configured and os.path.isfile(os.path.join(configured, "model_index.json")):
         try:
@@ -33,6 +44,7 @@ def _find_local_model():
         except Exception:
             cls = ""
         return configured, cls
+    gpu = _has_cuda()
     best = ("", "", 0)
     for manifest in sorted(glob.glob(os.path.expanduser("~/.cache/huggingface/hub/models--*/snapshots/*/model_index.json"))):
         try:
@@ -40,6 +52,10 @@ def _find_local_model():
         except Exception:
             continue
         rank = _rank_of(cls)
+        if not gpu and "Flux" in cls:
+            continue
+        if "turbo" in manifest.lower():
+            rank += 0.5 if not gpu else 0
         if rank > best[2]:
             best = (os.path.dirname(manifest), cls, rank)
     return best[0], best[1]
@@ -55,11 +71,7 @@ def _local_render(prompt):
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
     try:
         import torch
-        device, dtype = "cpu", torch.float32
-        if torch.cuda.is_available():
-            capability = "sm_%d%d" % torch.cuda.get_device_capability(0)
-            if capability in set(torch.cuda.get_arch_list()):
-                device, dtype = "cuda", torch.float16
+        device, dtype = ("cuda", torch.float16) if _has_cuda() else ("cpu", torch.float32)
         # Load the pipeline class the cached model actually is, with class-appropriate settings.
         if "Flux" in model_cls:
             from diffusers import FluxPipeline
@@ -70,6 +82,8 @@ def _local_render(prompt):
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 model_path, torch_dtype=dtype, local_files_only=True, use_safetensors=True)
             steps, size, kw = 30, 1024, {"guidance_scale": 7.0}
+            if "turbo" in model_path.lower():   # distilled: 1-4 steps, no CFG, trained at 512
+                steps, size, kw = 2, 512, {"guidance_scale": 0.0}
         else:
             from diffusers import StableDiffusionPipeline
             pipe = StableDiffusionPipeline.from_pretrained(
