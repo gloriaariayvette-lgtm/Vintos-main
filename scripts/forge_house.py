@@ -95,6 +95,7 @@ def sync_assessments(wants, inventory, sf):
     path=Path(sf.MEMORY)/'current-wants.json'
     selected=[w for w in wants if isinstance(w,dict) and w.get('id') and w.get('want')
               and not w.get('fulfilled') and not w.get('dismissed') and not w.get('blocked')
+              and not w.get('gloria_routed')   # routed to her is a want option, never Forge work
               and sf.spark_of(w.get('source')) is not None]
     rows=[{'id':w['id'],'want':w['want'],'source':sf.spark_of(w['source']),
            'steps':w.get('steps',[]),'fingerprint':fingerprint(w)} for w in selected]

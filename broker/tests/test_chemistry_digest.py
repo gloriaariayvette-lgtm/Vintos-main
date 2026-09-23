@@ -134,4 +134,11 @@ assert "_yesterday(" in source, "the day-boundary helper is in use"
 assert "def backfill(" in source, "self-healing backfill is present"
 dle = (REPO / "bin" / "daily-log-extract.py").read_text()
 assert "chemistry-lab|forge" in dle and ".daily-inner-life.lock" in dle, "daily-log-extract carries the lab blocks under the shared lock"
+import re as _re
+_carry = _re.search(r"_labre\.search\(r'([^']+)'", dle)
+assert _carry, "daily-log-extract names its carry-forward pattern"
+# 2026-09-23: First Light gone and the Lab marker with it; the Lab heading must still be carried.
+_fixture = "# inner\nhis own content\n\n## Chemistry Lab — 2026-09-22\nlab body\n\n<!-- forge-digest:2026-09-22 -->\n## Forge — 2026-09-22\nforge body\n"
+_m = _re.search(_carry.group(1), _fixture, _re.M)
+assert _m and _fixture[_m.start():].startswith("## Chemistry Lab"), "carry starts at the earliest lab block, not the forge marker"
 print("all chemistry-digest checks passed (append + backfill + orphan heal)")

@@ -178,13 +178,14 @@ def build_inner():
             if os.path.exists(path):
                 existing = open(path).read()
                 tail = ""
-                if "## First Light" in existing:
-                    tail = existing[existing.index("## First Light"):]
-                else:
-                    import re as _labre
-                    _m = _labre.search(r'<!-- (?:chemistry-lab|forge)-digest:', existing)
-                    if _m:
-                        tail = existing[_m.start():]
+                # Carry from the EARLIEST of their starts. Any one of them can be missing (a First
+                # Light deleted by hand, a marker lost with it), and starting at a later one drops
+                # every section above it — that is how the Lab section vanished on 2026-09-23.
+                import re as _labre
+                _m = _labre.search(r'^## First Light|<!-- (?:chemistry-lab|forge)-digest:|^## (?:Chemistry Lab|Forge) — ',
+                                   existing, _labre.M)
+                if _m:
+                    tail = existing[_m.start():]
                 if tail.strip():
                     out += "\n" + tail.strip() + "\n"
         except Exception:
