@@ -1255,8 +1255,9 @@ DiffDock, ProteinMPNN, and RFdiffusion was deployed in Aegis release
 isolated suites; installed code hashes match Git, and the Lab and plugin
 gateway user units are active. Gloria installed her NVIDIA key on 23 September;
 the gateway read it successfully without printing it or making an API request.
-The key directory is mode 0700 and the file is mode 0600. The agreed cap is
-three attempted hosted jobs per America/Chicago day, shared across organs.
+The key directory is mode 0700 and the file is mode 0600. The initial cap was
+three attempted hosted jobs per America/Chicago day, shared across organs;
+Gloria raised it to six later on 23 September, as recorded below.
 No hosted job has been submitted or validated live.
 
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
@@ -1319,12 +1320,14 @@ route is `/v1/biology/mit/diffdock`. A documentation-listed alternative route
 returned 404. The gateway now validates the lower bound and reports only the
 provider's field/type error, without echoing submitted data.
 
-Gloria authorized one explicit three-attempt reset for 23 September. The
-append-only NVIDIA attempt ledger records that reset and preserves all three
-earlier attempts. The new window was spent on the route check, 422 diagnosis
-and successful corrected DiffDock call. **Hosted RFdiffusion is still
-unverified**; its local RFD3 counterpart passed a fresh Aegis smoke run. No
-fourth hosted attempt is allowed under today's cap. The other fresh Aegis
+Gloria authorized one explicit three-attempt reset for 23 September, then
+raised the normal cross-surface hosted-NIM limit to **six attempts per Chicago
+day**. The append-only NVIDIA attempt ledger records the reset and preserves
+all three earlier attempts. Four of the now-six attempts in the reset window
+were used for the route check, 422 diagnosis, successful corrected DiffDock
+call, and a successful hosted RFdiffusion run that returned a backbone PDB.
+Two attempts remain in that window today. Its local RFD3 counterpart also
+passed a fresh Aegis smoke run. The other fresh Aegis
 instrument probes passed, and the Mac instruments retain completed 13
 September run receipts within their validity window.
 

@@ -23,7 +23,7 @@ from plugin_catalog import policy
 KEY_FILE = Path(os.environ.get("VINTOS_NVIDIA_KEY_FILE", "~/.config/vintos/nvidia-nim.key")).expanduser()
 LEDGER = Path(os.environ.get("VINTOS_NVIDIA_LEDGER", "~/.vintos/workspace/memory/nvidia-nim-attempts.jsonl")).expanduser()
 DAY_ZONE = ZoneInfo("America/Chicago")
-DAILY_LIMIT = 3
+DAILY_LIMIT = 6
 MAX_REQUEST = 112 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 ENDPOINTS = {
@@ -147,7 +147,7 @@ def reserve(tool, arguments, *, moment=None):
                         x.get("day") == day), default=-1)
         used = sum(x.get("event") == "reserved" and x.get("day") == day
                    for x in rows[reset_at + 1:])
-        if used >= DAILY_LIMIT: raise PermissionError("NVIDIA NIM daily attempt limit reached (3)")
+        if used >= DAILY_LIMIT: raise PermissionError("NVIDIA NIM daily attempt limit reached (" + str(DAILY_LIMIT) + ")")
         row = {"event":"reserved","day":day,"at":now.isoformat(),"tool":tool,
                "request_sha256":hashlib.sha256(json.dumps(arguments,sort_keys=True).encode()).hexdigest(),
                "used":used+1,"limit":DAILY_LIMIT}
@@ -159,7 +159,7 @@ def reserve(tool, arguments, *, moment=None):
 
 
 def reset_today(reason, *, moment=None):
-    """Record one explicit operator-authorized new three-attempt window today.
+    """Record one explicit operator-authorized new daily-limit window today.
 
     Prior attempts remain in the append-only ledger. This is an administrative action and is not
     exposed by the plugin gateway or any Lab planner.

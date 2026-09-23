@@ -20,8 +20,8 @@ own release as this record is written.
 | Source and endpoint | Lab use | Verification |
 | --- | --- | --- |
 | UniProtKB, `https://rest.uniprot.org/uniprotkb/search` | Validated bounded protein and organism queries | Live query returned one reviewed *Bacillus subtilis* record. |
-| NCBI E-utilities, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/` | Taxonomy, Assembly, Gene, Protein, PubMed; bounded protein/nuccore FASTA slices | Live taxonomy query returned a *B. subtilis* record. Other operations are implemented and tested with fixtures; not each was live-probed today. |
-| BV-BRC, `https://www.bv-brc.org/api/` | Public genome and pathway rows, including genus-descendant lookup | Live genome query for taxon 1423 returned eight rows; prior Aegis pathway probe passed. |
+| NCBI E-utilities, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/` | Taxonomy, Assembly, Gene, Protein, PubMed; bounded protein/nuccore FASTA slices | Live taxonomy, Assembly, Gene, Protein, PubMed and exact protein FASTA-slice calls all returned records. An initial burst received HTTP 429; four-second spacing made the remaining probes succeed. The normal Lab path enforces a per-source cooldown. |
+| BV-BRC, `https://www.bv-brc.org/api/` | Public genome and pathway rows, including genus-descendant lookup | Live genome query for taxon 1423 returned eight rows; a sourced genome ID then returned eight pathway rows. |
 | RCSB PDB, `https://data.rcsb.org/rest/v1/core/entry/` | Experimental structure metadata, with method check | Live 1CRN entry returned. |
 | EMBL-EBI ChEMBL, `https://www.ebi.ac.uk/chembl/api/data/activity.json` | Bounded bioactivity rows for an exact CHEMBL target ID | Live CHEMBL203 query returned eight rows. This is separate from Claude's ChEMBL MCP. |
 | AlphaGenome Atlas, official Python SDK in the Aegis `alphagenome` venv | GRCh38 precomputed variant predictions, sourced scorer names and short intervals | Key and SDK worked: metadata named `AVI_SCORE`; a one-base `chr1` AVI query returned three variant scores. No raw REST URL is invented. |
@@ -89,13 +89,15 @@ by policy until their account authorization is repaired and retested.
 | NVIDIA hosted Boltz-2 | `https://health.api.nvidia.com/v1/biology/mit/boltz2/predict` returned structure/confidence fields through the Lab gateway. |
 | NVIDIA hosted ProteinMPNN | `https://health.api.nvidia.com/v1/biology/ipd/proteinmpnn/predict` returned designed FASTA and scores. |
 | NVIDIA hosted DiffDock | `https://health.api.nvidia.com/v1/biology/mit/diffdock` returned ligand positions/confidence after setting `time_divisions: 3`. The first 422 was caused by `time_divisions: 1`; the provider requires a value greater than 2. A documentation-listed alternative URL returned 404, so the functioning route was retained. |
-| NVIDIA hosted RFdiffusion | `https://health.api.nvidia.com/v1/biology/ipd/rfdiffusion/generate` is configured, but **no hosted result has been obtained**. Local RFD3 passed a fresh smoke run. |
+| NVIDIA hosted RFdiffusion | `https://health.api.nvidia.com/v1/biology/ipd/rfdiffusion/generate` returned a backbone PDB from a bounded de novo request. Receipt prefix `795861d1165927e0`. Local RFD3 also passed a fresh smoke run. |
 
-NVIDIA's normal cross-surface allowance is three attempted hosted jobs per
-America/Chicago day. Gloria explicitly authorized one new three-attempt window
-after the failed DiffDock probe; an append-only `operator_reset` event preserves
-the original three attempts. The new window was spent on the 404 route probe,
-the 422 diagnostic replay and the successful corrected call. No more hosted
-attempts are authorized for 23 September. Parabricks has no verified active
+NVIDIA's cross-surface allowance is **six** attempted hosted jobs per
+America/Chicago day, raised from three by Gloria on 23 September. She had
+already authorized one explicit reset after the failed DiffDock probe; its
+append-only `operator_reset` event preserves the original three attempts and
+records the allowance at the time. The reset window then used four of the
+newly authorized six attempts: the 404 route probe, the 422 diagnostic replay,
+the successful corrected DiffDock call and the hosted RFdiffusion probe.
+Two attempts remain in that window on 23 September. Parabricks has no verified active
 hosted NIM path and is not offered. KERMT has no commissioned finetuned
 checkpoint and is not offered.

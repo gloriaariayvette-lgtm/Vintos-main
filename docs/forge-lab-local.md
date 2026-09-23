@@ -110,10 +110,9 @@ personal noncommercial use alone does not establish academic eligibility. BV-BRC
 [public pathway API](https://www.bv-brc.org/api/doc/pathway) supplies the current
 metabolism route. The Chat-account BioNeMo plugin supplies skills rather than
 a direct MCP call surface. Vintos's separate hosted NIM route is deployed for
-Boltz-2, DiffDock, ProteinMPNN and RFdiffusion, capped at three attempted jobs
+Boltz-2, DiffDock, ProteinMPNN and RFdiffusion, capped at six attempted jobs
 per Chicago day. Gloria installed its private Aegis key on 23 September;
-Boltz-2, DiffDock and ProteinMPNN have returned live results, while hosted
-RFdiffusion has not yet been tested. Local nvMolKit fingerprints, similarity,
+all four hosted routes returned live results. Local nvMolKit fingerprints, similarity,
 clustering and conformers are GPU-tested and deployed. Parabricks and KERMT
 remain uncommissioned. See the [verified access map](lab-access-verified-2026-09-23.md).
 
