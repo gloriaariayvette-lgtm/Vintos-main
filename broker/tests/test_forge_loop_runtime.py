@@ -2,7 +2,7 @@
 """End-to-end local loop with actual SQLite, Atelier projection, WSGI and fake effects."""
 import importlib.util
 import io
-import json
+import json, time
 import os
 from pathlib import Path
 import sys
@@ -280,7 +280,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['artifact']['capability_assessment']['hardware_proposal'],proposal)
     def test_unknown_request_cannot_expand_authority(self):
         with self.assertRaises(Refused):self.create(capabilities=['shell'])
-    def test_lab_intake_is_scoped_private_and_idempotent(self):
+    def test_lab_intake_is_scoped_open_and_idempotent(self):
         from lab_sources import receipt
         self.r.intake_token='i'*40
         for _ in range(4): self.create(kind='capability_brief',origin={'source':'latent_thread'})
@@ -291,10 +291,35 @@ class Tests(unittest.TestCase):
         status, raw=self.call('/api/lab-intake','POST',body,token='i'*40)
         self.assertTrue(json.loads(raw)['replayed'])
         self.assertEqual(len(self.c.projects(self.owner)),5)
-        self.assertTrue(self.c.status(self.owner,pid)['private'])
+        self.assertFalse(self.c.status(self.owner,pid)['private'],'only the Atelier is private; a Lab report is hers to see')
         self.assertEqual(self.call('/api/projects',token='i'*40)[0],403)
         record['records'][0]['exptl'][0]['method']='tampered'
         self.assertEqual(self.call('/api/lab-intake','POST',body,token='i'*40)[0],403)
+    def keyless(self,path,method='GET',body=None):
+        raw=json.dumps(body or {}).encode();status=[]
+        out=API(self.r)({'PATH_INFO':path,'REQUEST_METHOD':method,'HTTP_AUTHORIZATION':'',
+                        'CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)},lambda s,h:status.append(s))
+        return int(status[0].split()[0]),b''.join(out)
+    def test_her_page_needs_no_key_but_machine_routes_do(self):
+        # Gloria, 2026-09-24: the Forge is not private; her page should not ask for a key.
+        p=self.create()
+        self.assertEqual(self.keyless('/api/projects')[0],200)
+        self.assertEqual(self.keyless('/api/budget')[0],200)
+        status,raw=self.keyless('/api/projects','POST',{'intent':'a new Lab tool','private':True,'private_until':time.time()+3600})
+        self.assertEqual(status,200)
+        self.assertFalse(self.c.status(self.owner,json.loads(raw)['id'])['private'],'a keyless start is never private')
+        self.assertEqual(self.keyless('/api/projects/'+p['id']+'/cancel','POST')[0],200)
+        for path,method in (('/api/wants-sync','POST'),('/api/gaps-sync','POST'),('/api/build-reservation','POST'),
+                            ('/api/projects/'+p['id']+'/audit','POST')):
+            self.assertEqual(self.keyless(path,method,{'rows':[],'inventory':[]})[0],403,path)
+        self.assertEqual(self.call('/api/projects',token='x'*40)[0],403,'a wrong key is still refused')
+    def test_sealed_lab_reports_open_but_atelier_work_stays_sealed(self):
+        from forge_loop_runtime import open_lab_privacy
+        lab=self.create(origin={'source':'lab'},private=True,private_until=time.time()+86400)
+        atelier=self.create(origin={'source':'atelier'},private=True,private_until=time.time()+86400)
+        self.assertEqual(open_lab_privacy(self.c),1)
+        self.assertFalse(self.c.status(self.owner,lab['id'])['private'])
+        self.assertTrue(self.c.status(self.owner,atelier['id'])['private'])
     def test_projection_is_visible_to_existing_broker_and_has_no_write_bypass(self):
         p=self.create();self.r.step(p['id'])
         spec=importlib.util.spec_from_file_location('test_broker_visibility',REPO/'broker/broker.py')

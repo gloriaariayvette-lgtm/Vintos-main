@@ -43,17 +43,13 @@
   .total{font-weight:600;color:var(--good);margin:.35rem 0 0}
   .note{color:var(--dim);font-size:.85rem;font-style:italic;margin:.5rem 0 0}
 </style>
-<h1>Forge in the Atelier</h1>
-<p class="lede">At most three steps a day across all projects, then it resumes the next day until complete or cancelled. Private work stays covered until reveal, expiry, or an explicit audit.</p>
-<label>Owner key <input id="key" type="password" autocomplete="off"></label>
-<button id="connect" class="primary">Open controls</button>
+<h1>Forge</h1>
+<p class="lede">Where he builds what he cannot yet do. At most three steps a day across all projects, then it resumes the next day until complete or cancelled. Nothing here is private except work that came from his Atelier.</p>
 <p id="error" role="status"></p>
-<section id="controls" hidden>
+<section id="controls">
   <p id="budget" class="budget"></p>
   <h2>Begin a project</h2>
   <textarea id="intent" placeholder="What should this report explore or make?"></textarea>
-  <div><label><input id="private" type="checkbox"> Private creation interval</label>
-  <label>Until <input id="until" type="datetime-local"></label></div>
   <p><small style="color:var(--dim)">This form creates a report. Capability gaps from standing wants arrive automatically and stay open until the capability is verified and installed. Account setup and external sending require their own authorization.</small></p>
   <button id="create" class="primary">Begin</button>
   <button id="refresh" class="ghost">Refresh</button>
@@ -62,7 +58,7 @@
 <script>
 const $=id=>document.getElementById(id);let token='';
 const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
-async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data}
+async function api(path,method='GET',body,key){const headers={'Content-Type':'application/json'};if(key||token)headers['Authorization']='Bearer '+(key||token);const r=await fetch(path,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data}
 function button(label,cls,fn){const b=el('button',cls,label);b.onclick=()=>run(fn);return b}
 async function run(fn){$('error').textContent='';try{await fn()}catch(e){$('error').textContent=e.message}}
 const money=c=>(typeof c==='number')?'$'+(c/100).toFixed(2):null;
@@ -148,8 +144,8 @@ async function refresh(){
   if(!rows.length){box.append(el('p','empty','No projects yet.'));return}
   for(const p of rows){
     const card=el('div','card');
-    card.append(el('p','making',p.private?'Private interval':'What he is making'));
-    if(p.private){card.append(el('p','intent sealed',p.private_until?('Sealed until '+new Date(p.private_until*1000).toLocaleString()+' — audit to open it.'):'Sealed — audit to open it.'))}
+    card.append(el('p','making',p.private?'From his Atelier (sealed)':'What he is making'));
+    if(p.private){card.append(el('p','intent sealed',p.private_until?('Atelier work, sealed until '+new Date(p.private_until*1000).toLocaleString()+'.'):'Atelier work, sealed.'))}
     else{card.append(el('p','intent',p.intent||'(no intention recorded)'))}
     const meta=el('div','meta');
     meta.append(el('span','tag state',STATE_LABEL[p.state]||p.state));
@@ -157,19 +153,19 @@ async function refresh(){
     meta.append(el('span','tag',(p.cycles||0)+' cycle'+(p.cycles===1?'':'s')));
     const spent=money(p.spent),ceil=money(p.ceiling);
     if(spent!=null)meta.append(el('span','tag','spent '+spent+(ceil&&p.ceiling?(' / '+ceil):'')));
-    if(p.private)meta.append(el('span','tag priv','private'));
+    if(p.private)meta.append(el('span','tag priv','Atelier'));
     meta.append(el('span','tag',p.id));
     card.append(meta);
     const work=el('div','work');
     const actions=el('div','actions');
     actions.append(button('Cancel next cycle','ghost',async()=>{await api('/api/projects/'+p.id+'/cancel','POST',{});await refresh()}));
-    if(p.private)actions.append(button('Audit & open this work','',async()=>{if(confirm('End this private interval and open its retained work?')){const r=await api('/api/projects/'+p.id+'/audit','POST',{});renderArtifact(work,r);await refresh()}}));
+    if(p.private)actions.append(button('Open this Atelier work','',async()=>{const k=prompt('This came from his Atelier and is sealed. Owner key to open it:');if(k){const r=await api('/api/projects/'+p.id+'/audit','POST',{},k);renderArtifact(work,r);await refresh()}}));
     else actions.append(button('Show retained work','',async()=>{const r=await api('/api/projects/'+p.id+'/artifacts');renderArtifact(work,r)}));
     card.append(actions);card.append(work);
     box.append(card);
   }
 }
-$('connect').onclick=()=>run(async()=>{token=$('key').value;$('key').value='';await refresh();$('controls').hidden=false});
+run(refresh);
 $('refresh').onclick=()=>run(refresh);
-$('create').onclick=()=>run(async()=>{const priv=$('private').checked;const until=$('until').value;await api('/api/projects','POST',{intent:$('intent').value,private:priv,private_until:priv&&until?Date.parse(until)/1000:null});$('intent').value='';await refresh()});
+$('create').onclick=()=>run(async()=>{await api('/api/projects','POST',{intent:$('intent').value});$('intent').value='';await refresh()});
 </script></html>

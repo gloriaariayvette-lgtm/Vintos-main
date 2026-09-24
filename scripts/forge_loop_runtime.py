@@ -285,9 +285,9 @@ class Runtime:
             active = [p for p in self.c.projects(self.c.owner_token) if p['state'] not in ('complete','cancelled','abandoned')
                       and self.c.context(self.c.worker_token, p['id'])['capabilities'] == ['research_report']]
             if len(active) >= 4: raise Refused('four unfinished reports; retain Lab receipts until capacity returns')
-            # Creation stays private; the worker may reveal, the owner may audit/cancel, or seven days expires it.
+            # Not private (Gloria, 2026-09-24): only the Atelier is private; the Forge is hers to see.
             created = self.create(self.c.owner_token, {'intent': str(data.get('intent', 'Source dossier'))[:2000],
-                                  'source_packet': packet, 'origin': {'source': 'lab'}, 'private': True, 'private_until': time.time()+7*86400}, dedupe_key=digest)
+                                  'source_packet': packet, 'origin': {'source': 'lab'}}, dedupe_key=digest)
             return {'id': created['id'], 'replayed': False}
 
     def sync_wants(self, token, rows, inventory):
@@ -423,6 +423,27 @@ class Runtime:
                 self.stopping.wait(1)
 
 
+def _keyless(path, method):
+    """The routes her Forge page uses: see projects and budget, read revealed work, start, cancel."""
+    if path in ('/api/budget', '/api/projects') and method == 'GET': return True
+    if path == '/api/projects' and method == 'POST': return True
+    parts = path.split('/')
+    return (path.startswith('/api/projects/') and len(parts) == 5 and
+            ((method == 'GET' and parts[4] == 'artifacts') or (method == 'POST' and parts[4] == 'cancel')))
+
+
+def open_lab_privacy(controller):
+    """Lab reports were created private for seven days; the Forge is not private, so they open now."""
+    opened = 0
+    with controller.db() as db:
+        for (raw,) in db.execute('SELECT body FROM projects').fetchall():
+            p = json.loads(raw)
+            if p.get('private') and (p.get('origin') or {}).get('source') == 'lab':
+                p.update(private=False, privacy_end='forge_is_not_private'); controller._save(db, p); opened += 1
+                controller._event(db, p['id'], 'privacy_ended', {'reason': 'forge_is_not_private'})
+    return opened
+
+
 class API:
     def __init__(self, runtime): self.r = runtime
     def __call__(self, env, start):
@@ -441,6 +462,14 @@ class API:
                 if not 0 < size <= 200000: raise Refused('intake too large')
                 body = self.r.intake(token, json.loads(env['wsgi.input'].read(size)))
             else:
+                # Her page needs no key (Gloria, 2026-09-24): the service listens only on 127.0.0.1 and is
+                # reached through her tailnet. Viewing, starting and cancelling are hers; machine syncs,
+                # build reservations and opening a sealed Atelier interval still require the owner token.
+                if not token and _keyless(path, method):
+                    token = self.r.c.owner_token
+                    keyless = True
+                else:
+                    keyless = False
                 self.r.c.auth(token, owner=True)
                 size = int(env.get('CONTENT_LENGTH') or 0)
                 if not 0 <= size <= MAX_BODY: raise Refused('request too large')
@@ -451,7 +480,9 @@ class API:
                     elif path == '/api/gaps-sync' and method == 'POST': body = self.r.sync_gaps(token, data['rows'])
                     elif path == '/api/build-reservation' and method == 'POST': body = self.r.c.reserve_build(token, data['attempt'], data['proposal'])
                     elif path == '/api/projects' and method == 'GET': body = self.r.c.projects(token)
-                    elif path == '/api/projects' and method == 'POST': body = self.r.create(token, data)
+                    elif path == '/api/projects' and method == 'POST':
+                        if keyless: data = {k: v for k, v in data.items() if k not in ('private', 'private_until')}
+                        body = self.r.create(token, data)
                     elif path.startswith('/api/projects/'):
                         parts = path.split('/'); pid = parts[3]; action = parts[4] if len(parts)==5 else ''
                         if method == 'GET' and action == 'artifacts': body = self.r.c.artifacts(token, pid)
@@ -501,6 +532,7 @@ def load(config_file, *, check_only=False):
     if check_only:
         return {'configuration':'valid','paid_execution':'disabled','ntfy_configured':True,'live_access':'not_tested'}
     c = Controller(root/'forge-loop.sqlite', owner, worker, config['public_base'])
+    open_lab_privacy(c)
     return Runtime(c, AtelierProjection(root), ReportBuilder(model), publisher, ntfy['topic'], intake), config
 
 
