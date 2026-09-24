@@ -434,18 +434,23 @@ def _orient(context, lean=None):
             pass
     except Exception:
         plugin_menu = ""
+    try:
+        from lab_genome_mining import campaign_instructions
+        genome_mining = "\n\n" + campaign_instructions()
+    except Exception:
+        genome_mining = ""
     raw = _ask(
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
-        context + lean_text + plugin_menu + "\n\nChoose ONE protein-space or environmental microbiology question to go deep on today. "
+        context + lean_text + plugin_menu + genome_mining + "\n\nChoose ONE protein-space, environmental microbiology, or genome-mining question to go deep on today. "
         "Microbiology is an available direction, not a priority or a named organism to seek. If the recent "
         "journal has a source-backed open question, advance it only with a discriminating new source or instrument; "
         "do not repeat the same query or conclusion merely because it appeared again. Treat redirects as lessons: "
         "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: browse_lane ('protein' or 'microbiology'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
+        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
         "For microbiology, source_query is required as the primary browse observation: "
         "{source:ncbi,operation:literature,term:plain research phrase}, "
         "{source:ncbi,operation:taxonomy,term:organism name}, "
@@ -456,6 +461,11 @@ def _orient(context, lean=None):
         "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
         "{source:uniprot,query:organism_id:SOURCED_ID AND reviewed:true}. "
         "Use IDs returned by earlier receipts; do not invent them. Sequence slices are capped at 350 amino acids or 512 bases. BV-BRC pathway rows are annotations, not proof of expression or phenotype. "
+        "For genome_mining, source_query is required and is ONE step of a multi-return campaign: "
+        "{source:ncbi_protein_context,accession:exact sourced protein accession.version}, "
+        "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
+        "{source:interpro,accession:exact sourced UniProt accession}, or an NCBI literature query above. "
+        "Use coded_by coordinates returned by ncbi_protein_context; never invent a neighborhood. The repeat screen reports candidates, not boundaries, significance, novelty, or function. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
         "start:integer,end:integer,scorers:[documented scorer names]}. Atlas coordinates are zero-based half-open, "
@@ -469,7 +479,8 @@ def _orient(context, lean=None):
     )
     value = _json_object(raw)
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
-    lane = 'microbiology' if value.get('browse_lane') == 'microbiology' and source_query else 'protein'
+    requested_lane = value.get('browse_lane')
+    lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
     return {"browse_lane": lane, "source_query": source_query,
             "plugin_query": (value.get("plugin_query") if isinstance(value.get("plugin_query"), dict)
                              and not source_query else None),
@@ -794,11 +805,11 @@ def tick():
             elif phase == "browse":
                 inquiry = state.get("inquiry") or {"uniprot_query": _safe_query("")}
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
-                if inquiry.get('browse_lane') == 'microbiology' and inquiry.get('source_query'):
+                if inquiry.get('browse_lane') in ('microbiology','genome_mining') and inquiry.get('source_query'):
                     state['records'] = []
                     state['source_query_succeeded'] = False
                     next_phase = 'sources'
-                    note = {'at': now_iso(), 'kind': 'browse_route', 'source': 'environmental_microbiology',
+                    note = {'at': now_iso(), 'kind': 'browse_route', 'source': inquiry.get('browse_lane'),
                             'question': inquiry.get('question'), 'truth_status': 'question_not_observation'}
                 else:
                     browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
@@ -850,9 +861,9 @@ def tick():
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}
                 next_phase = (("reflect" if state.get('additional_source', {}).get('receipt') else "orient")
-                              if inquiry.get('browse_lane') == 'microbiology' else
+                              if inquiry.get('browse_lane') in ('microbiology','genome_mining') else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
-                if inquiry.get('browse_lane') != 'microbiology':
+                if inquiry.get('browse_lane') not in ('microbiology','genome_mining'):
                     base = [r.get('accession') for r in state.get('records', [])]
                     followup = (state.get('additional_source', {}).get('receipt') or
                                 state.get('additional_source', {}).get('source_receipt') or {})
@@ -937,13 +948,21 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
-                if state.get("additional_source", {}).get("receipt", {}).get("records") and cfg.get("forge_report_intake"):
+                # A single neighborhood or classification read is not a
+                # genome-mining survivor. Keep those receipts in the journal
+                # until later returns have tried to eliminate the candidate;
+                # never auto-file the first anomaly as a Forge report.
+                if (inquiry.get('browse_lane') != 'genome_mining'
+                        and state.get("additional_source", {}).get("receipt", {}).get("records")
+                        and cfg.get("forge_report_intake")):
                     try:
                         import chemistry_sources
                         note["forge_report"] = chemistry_sources.offer_report(
                             [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
                             "Document this sourced Lab question; do not claim discovery: " + str(inquiry.get("question", "")))
                     except Exception as exc: _fault("forge_report_intake", exc)
+                elif inquiry.get('browse_lane') == 'genome_mining':
+                    note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
                 state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":

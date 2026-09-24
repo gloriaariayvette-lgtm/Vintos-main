@@ -1280,6 +1280,34 @@ three attempted hosted jobs per America/Chicago day, shared across organs;
 Gloria raised it to six later on 23 September, as recorded below.
 No hosted job has been submitted or validated live.
 
+### Genome-mining option prepared locally
+
+The Lab now has a target-free `genome_mining` choice modeled on the staged
+discipline in Anthropic's public ART technical report rather than on its
+950-session scale. The planner is told to reproduce a known result, inspect
+primary protein context and bounded gene neighborhoods, pursue anomalies, and
+then try to eliminate them with classification, related loci, literature and
+counterevidence. Most candidates are expected to be set aside. A first anomaly
+is held out of the automatic Forge-report path; only a later multi-source
+survivor review may form a report for human review. It is never a discovery
+claim or wet-lab plan.
+
+Exact NCBI GenPept context can supply a provider `coded_by` nucleotide mapping.
+Only those sourced coordinates may open the bounded GenBank neighborhood door.
+That door retains provider features and primary sequence and runs a local,
+mismatch-tolerant, regular-spacing repeat screen. InterPro provides bounded
+known-domain classification. Scratch suites cover validation, routing,
+isolation, receipt truth labels and the repeat screen. Read-only commissioning
+against the public MarsHill records resolved the published protein-to-genome
+mapping, returned a 7,506-base/24-feature neighborhood, and recovered a
+five-copy regularly spaced candidate array. A separate InterPro probe returned
+six entries. These probes were not entered in Vintos's journal and do not seed
+his choices. Deployment and an autonomous Vintos-selected campaign remain open.
+
+IMG/VR remains an honest gap. The public site offers browsing and bulk data, but
+no bounded anonymous API was verified and no indexed local subset is installed.
+The Lab does not claim access until one of those routes is proved.
+
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM
 pages currently mark those endpoints deprecated, so the Lab does not advertise

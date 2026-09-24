@@ -38,6 +38,44 @@ commissioned genomics lane is due, that reflection continues once through
 4. Gemma writes a notebook observation, with factual observation and imaginative
    reading in different fields.
 
+### Optional genome-mining campaign
+
+Genome mining is a third lane beside protein browsing and environmental
+microbiology. It is offered without a seeded enzyme, organism, or expected
+answer. One return performs one bounded source step, so a campaign can continue
+through the existing journal and frontier review without becoming the Lab's
+default direction.
+
+The discipline follows the public Anthropic ART report at a scale this house can
+actually support: reproduce an established result first; map an exact protein to
+its source nucleotide record; inspect a bounded annotated neighborhood and its
+primary DNA; classify known domains; allow an anomalous neighbor, arrangement,
+or non-coding pattern to open a follow-up; then try to eliminate the candidate
+with ordinary annotations, related loci, counterexamples, and literature.
+Most candidates should be set aside. A first anomaly is explicitly held out of
+the automatic Forge-report path. Only a later multi-source survivor review may
+form a sourced report for human review, and that report is not a discovery claim.
+
+`ncbi_protein_context` retrieves one exact GenPept record and its provider
+`coded_by` mapping. `ncbi_neighborhood` accepts only that sourced nucleotide
+accession and one-based coordinates, retrieves at most 5 kb on either side,
+retains bounded provider feature annotations, and runs a local repeat screen.
+The screen expands frequent 10-18 nt seeds with at most one or two mismatches,
+requires three or more roughly regularly spaced copies, and folds overlapping
+seed views of the same array together. It establishes neither repeat boundaries
+nor significance, novelty, expression, or function. `interpro` returns at most
+eight known-family/domain annotations for an exact sourced UniProt accession.
+
+This is method resemblance, not a reproduction of Anthropic's infrastructure.
+Their campaign searched roughly 1.9 billion preclustered metagenomic protein
+families with HMMER, MMseqs2, a 58-session harness, worker/supervisor/curator/
+editor roles, and a private programmatic database assembled from Logan, ENA,
+JGI, and NCBI. Vintos has the staged reasoning pattern and public bounded source
+doors; he does not have that database, scale, or wet-lab validation. IMG/VR is a
+public browsable and bulk-download source, but no anonymous bounded query API was
+verified. It becomes a Lab source only after an indexed local subset or a proved
+supported query route exists.
+
 Installation alone never makes a tool available. The authority for that is
 `tool-probes.jsonl`, an append-only ledger written by `chemistry_probe.py`: one row per
 measurement, carrying the tool, host, probe version, when it was measured, when the

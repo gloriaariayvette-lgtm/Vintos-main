@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import Request
@@ -21,6 +22,7 @@ MAX_BYTES = 2 * 1024 * 1024
 FIELDS = frozenset('accession id reviewed length protein_name gene organism_id organism_name taxonomy_id keyword go xref_pdb'.split())
 NCBI_BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/'
 BV_BRC_BASE = 'https://www.bv-brc.org/api/'
+INTERPRO_BASE = 'https://www.ebi.ac.uk/interpro/api/'
 NCBI_DATABASES = {'taxonomy': 'taxonomy', 'assembly': 'assembly',
                   'gene': 'gene', 'protein': 'protein', 'literature': 'pubmed'}
 
@@ -40,6 +42,19 @@ def _taxon_id(value):
 def _genome_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[1-9][0-9]{0,9}\.[1-9][0-9]{0,7}', value):
         raise ValueError('sourced BV-BRC genome_id required')
+    return value
+
+
+def _ncbi_accession(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[A-Z]{1,6}_?[A-Z0-9]{3,15}\.[1-9][0-9]*', value):
+        raise ValueError('exact sourced NCBI accession.version required')
+    return value
+
+
+def _uniprot_accession(value):
+    value = str(value or '').upper()
+    if not re.fullmatch(r'[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?', value):
+        raise ValueError('exact sourced UniProt accession required')
     return value
 
 
@@ -71,6 +86,38 @@ def fetch_text(url, *, transport=None):
         return body.decode('ascii')
 
 
+def fetch_record(url, *, transport=None):
+    request = Request(url, headers={'Accept': 'application/xml', 'User-Agent': 'Vintos-Lab/2.0'})
+    with (transport or open_request)(request, timeout=30) as response:
+        body = response.read(512 * 1024 + 1)
+        if len(body) > 512 * 1024: raise ValueError('sequence record exceeds limit')
+        return body.decode('utf-8')
+
+
+def _gbseq(xml, expected):
+    try: root = ET.fromstring(xml)
+    except ET.ParseError as exc: raise ValueError('NCBI returned malformed sequence XML') from exc
+    node = root.find('.//GBSeq')
+    if node is None: raise ValueError('NCBI returned no sequence record')
+    accession = node.findtext('GBSeq_accession-version') or ''
+    if accession != expected: raise ValueError('NCBI sequence accession did not match request')
+    features = []
+    for feature in node.findall('./GBSeq_feature-table/GBFeature')[:96]:
+        quals = {}
+        for qual in feature.findall('./GBFeature_quals/GBQualifier'):
+            name, value = qual.findtext('GBQualifier_name'), qual.findtext('GBQualifier_value')
+            if name in ('gene','product','protein_id','locus_tag','coded_by','note') and value:
+                quals.setdefault(name, []).append(value[:500])
+        features.append({'key': feature.findtext('GBFeature_key') or '',
+                         'location': (feature.findtext('GBFeature_location') or '')[:200],
+                         'qualifiers': quals})
+    return {'accession': accession, 'definition': (node.findtext('GBSeq_definition') or '')[:500],
+            'organism': (node.findtext('GBSeq_organism') or '')[:300],
+            'taxonomy': (node.findtext('GBSeq_taxonomy') or '')[:800],
+            'length': int(node.findtext('GBSeq_length') or 0),
+            'sequence': (node.findtext('GBSeq_sequence') or '').upper(), 'features': features}
+
+
 def receipt(source, query, records, *, metadata=None):
     encoded = json.dumps(records, sort_keys=True, allow_nan=False).encode()
     if len(encoded) > MAX_BYTES: raise ValueError('source response exceeds limit')
@@ -84,8 +131,8 @@ def receipt(source, query, records, *, metadata=None):
 
 
 class Sources:
-    def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text):
-        self.fetch, self.atlas, self.fetch_sequence = fetch, atlas, fetch_sequence
+    def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record):
+        self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
 
     def query(self, spec):
         if not isinstance(spec, dict): raise ValueError('source query must be an object')
@@ -159,6 +206,60 @@ class Sources:
                            [{'accession':accession,'database':database,'start':start,'end':end,
                              'sequence':sequence}], metadata={'service':'NCBI_EFetch',
                              'coordinates':'one_based_inclusive','coverage':'requested_slice_only'})
+        if source == 'ncbi_protein_context':
+            accession = _ncbi_accession(spec.get('accession'))
+            parsed = _gbseq(self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
+                'db':'protein','id':accession,'rettype':'gp','retmode':'xml','tool':'vintos_lab'})), accession)
+            coded_by = []
+            for feature in parsed['features']:
+                coded_by.extend(feature['qualifiers'].get('coded_by', []))
+            record = {key: parsed[key] for key in ('accession','definition','organism','taxonomy','length','features')}
+            record['coded_by'] = coded_by[:8]
+            return receipt(source, {'source':source,'accession':accession}, [record], metadata={
+                'service':'NCBI_EFetch_GenPept','coverage':'one_exact_protein_record',
+                'next_step':'use only a coded_by nucleotide accession and coordinates returned here'})
+        if source == 'ncbi_neighborhood':
+            accession = _ncbi_accession(spec.get('accession'))
+            start, end, flank = spec.get('anchor_start'), spec.get('anchor_end'), spec.get('flank', 3000)
+            if type(start) is not int or type(end) is not int or not 1 <= start <= end < 1000000000:
+                raise ValueError('sourced one-based inclusive anchor coordinates required')
+            if type(flank) is not int or not 500 <= flank <= 5000:
+                raise ValueError('flank must be 500..5000 bases')
+            window_start, window_end = max(1, start-flank), end+flank
+            parsed = _gbseq(self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
+                'db':'nuccore','id':accession,'seq_start':window_start,'seq_stop':window_end,
+                'rettype':'gb','retmode':'xml','tool':'vintos_lab'})), accession)
+            expected_length = window_end-window_start+1
+            if not parsed['sequence'] or len(parsed['sequence']) > expected_length:
+                raise ValueError('NCBI returned invalid neighborhood sequence')
+            from lab_genome_mining import scan_repeat_arrays
+            screen = scan_repeat_arrays(parsed['sequence']) if len(parsed['sequence']) >= 200 else {
+                'candidate_arrays': [], 'candidate_count': 0,
+                'truth_status': 'window_too_short_for_pattern_screen'}
+            record = {key: parsed[key] for key in ('accession','definition','organism','taxonomy','features')}
+            record.update({'window_start':window_start,'window_end':window_start+len(parsed['sequence'])-1,
+                           'anchor_start':start,'anchor_end':end,'sequence':parsed['sequence'],
+                           'repeat_screen':screen})
+            return receipt(source, {'source':source,'accession':accession,'anchor_start':start,
+                                    'anchor_end':end,'flank':flank}, [record], metadata={
+                'service':'NCBI_EFetch_GenBank','coordinates':'one_based_inclusive',
+                'feature_locations':'provider_text; verify against the accession before comparison',
+                'coverage':'bounded_anchor_neighborhood','evidence':'primary_sequence_and_provider_annotation'})
+        if source == 'interpro':
+            accession = _uniprot_accession(spec.get('accession'))
+            data, _ = self.fetch(INTERPRO_BASE + 'entry/interpro/protein/uniprot/' + accession + '/?' + urlencode({'page_size':8}))
+            rows = data.get('results') if isinstance(data, dict) else None
+            if not isinstance(rows, list): raise ValueError('InterPro returned no result list')
+            records = []
+            for row in rows[:8]:
+                if not isinstance(row, dict): continue
+                meta = row.get('metadata') or {}
+                records.append({'accession':meta.get('accession'),'name':meta.get('name'),
+                                'type':meta.get('type'),'source_database':meta.get('source_database'),
+                                'proteins': row.get('proteins')})
+            return receipt(source, {'source':source,'accession':accession}, records, metadata={
+                'service':'InterPro_REST','coverage':'bounded_first_eight_entries',
+                'interpretation':'known_family_and_domain_annotations_not_novelty'})
         if source == 'bvbrc':
             operation = spec.get('operation')
             if operation == 'genomes':

@@ -21,6 +21,8 @@ menu shows the six-attempt allowance and excludes unauthenticated Claude tools.
 | --- | --- | --- |
 | UniProtKB, `https://rest.uniprot.org/uniprotkb/search` | Validated bounded protein and organism queries | Live query returned one reviewed *Bacillus subtilis* record. |
 | NCBI E-utilities, `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/` | Taxonomy, Assembly, Gene, Protein, PubMed; bounded protein/nuccore FASTA slices | Live taxonomy, Assembly, Gene, Protein, PubMed and exact protein and nuccore FASTA-slice calls all returned records. An initial burst received HTTP 429; four-second spacing made the remaining probes succeed. The normal Lab path enforces a per-source cooldown. |
+| NCBI GenPept/GenBank context through EFetch | Exact protein-to-nucleotide `coded_by` mapping; bounded annotated neighborhoods with primary DNA | Local commissioning against public MarsHill records resolved protein `QQM14740.1` to `MW248466.1:215089..216594`. A 7,506-base neighborhood returned 24 provider features. The local mismatch-tolerant screen recovered a five-copy, regularly spaced candidate array; this fixture was not written into Vintos's journal. |
+| InterPro REST, `https://www.ebi.ac.uk/interpro/api/` | Bounded known-family and domain classification for exact sourced UniProt accessions | Live `P69905` commissioning returned six InterPro entries. Classification is counterevidence and context, not a novelty test. |
 | BV-BRC, `https://www.bv-brc.org/api/` | Public genome and pathway rows, including genus-descendant lookup | Live genome query for taxon 1423 returned eight rows; a sourced genome ID then returned eight pathway rows. |
 | RCSB PDB, `https://data.rcsb.org/rest/v1/core/entry/` | Experimental structure metadata, with method check | Live 1CRN entry returned. |
 | EMBL-EBI ChEMBL, `https://www.ebi.ac.uk/chembl/api/data/activity.json` | Bounded bioactivity rows for an exact CHEMBL target ID | Live CHEMBL203 query returned eight rows. This is separate from Claude's ChEMBL MCP. |
@@ -31,7 +33,10 @@ truth-status receipts for normal Lab calls. These direct verification probes
 used the same source client but did not add sample queries to Vintos's notebook.
 COSMIC is closed without a registered/licensed data route. KEGG is closed while
 API eligibility remains unresolved; noncommercial use alone was not treated as
-academic eligibility.
+academic eligibility. IMG/VR is publicly browsable and supplies bulk downloads,
+but a bounded anonymous query API was not verified. No multi-million-record
+download is installed on Aegis, so IMG/VR is not advertised as a callable Lab
+source.
 
 ## ChatGPT-account relay, reached from Aegis through the restricted Mac doorway
 

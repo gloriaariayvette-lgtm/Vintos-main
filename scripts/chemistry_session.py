@@ -139,7 +139,12 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
         mcp_menu = "\n\n" + mcp_instructions() if (instruments or {}).get("protein_design_mcp", {}).get("available") else ""
     except Exception:
         mcp_menu = ""
-    prompt = (context + lean_text + plugin_menu + mcp_menu + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
+    try:
+        from lab_genome_mining import campaign_instructions
+        genome_mining = "\n\n" + campaign_instructions()
+    except Exception:
+        genome_mining = ""
+    prompt = (context + lean_text + plugin_menu + mcp_menu + genome_mining + "\n\nAVAILABLE NAMED EXPERIMENTS:\n" + json.dumps(experiments) +
               "\n\nINSTRUMENT STATES (measured receipts, not installations):\n" + measured +
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
@@ -152,6 +157,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "{source:ncbi,operation:assembly,taxon_id:sourced numeric ID}, "
               "{source:ncbi,operation:gene or protein,taxon_id:sourced numeric ID,term:plain name}, "
               "{source:ncbi_sequence,database:protein or nuccore,accession:exact sourced accession.version,start:one-based integer,end:one-based inclusive integer}, "
+              "{source:ncbi_protein_context,accession:exact sourced protein accession.version}, "
+              "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
+              "{source:interpro,accession:exact sourced UniProt accession}, "
               "{source:bvbrc,operation:genomes,taxon_id:sourced numeric ID}, "
               "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
               "{source:uniprot,query:organism_id:SOURCED_ID AND reviewed:true}. "
