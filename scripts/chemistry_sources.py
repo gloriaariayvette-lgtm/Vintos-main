@@ -111,6 +111,10 @@ def report_packet(receipt_ids):
             'completion_means': 'documented_report_not_validated_discovery'}
 
 
+REPORT_MAX_ATTEMPTS = 12            # a report that has failed this often is abandoned, not retried forever
+REPORT_BACKOFF_CAP_S = 6 * 3600     # 1 min, 2, 4 ... never more than 6 hours between tries
+
+
 def offer_report(receipt_ids, question, *, send=None):
     """Explicit Lab configuration grants source-dossier creation, not a novelty claim."""
     cfg = lab.config().get('forge_report_intake')
@@ -131,12 +135,28 @@ def offer_report(receipt_ids, question, *, send=None):
         outbox = lab._load(outbox_path, {})
         prior = outbox.get(key)
         if prior and prior.get('state') == 'accepted': return {'id': prior['project_id'], 'replayed': True}
-        outbox[key] = {'receipt_ids': receipt_ids, 'question': question, 'state': 'pending', 'next_attempt': time.time()+60}
+        if prior and prior.get('state') in ('refused', 'abandoned'): return {'state': prior['state'], 'replayed': True}
+        attempts = int((prior or {}).get('attempts', 0)) + 1
+        outbox[key] = {'receipt_ids': receipt_ids, 'question': question, 'state': 'pending', 'attempts': attempts,
+                       'next_attempt': time.time() + min(REPORT_BACKOFF_CAP_S, 60 * 2 ** (attempts - 1))}
         lab._atomic(outbox_path, outbox)
     req = Request(endpoint, data=json.dumps(body).encode(), method='POST', headers={
         'Content-Type': 'application/json', 'Authorization': 'Bearer '+secret(cfg['token_file'])})
-    with (send or open_request)(req, timeout=15) as response:
-        result = json.loads(response.read(65536))
+    try:
+        with (send or open_request)(req, timeout=15) as response:
+            result = json.loads(response.read(65536))
+    except Exception as exc:
+        # It used to retry every 60 s forever: 18,821 faults in one week (gap scan, 2026-09-24).
+        # A refusal (4xx) is final and kept with its code; anything else backs off and gives up.
+        code = getattr(exc, 'code', None)
+        final = ('refused' if isinstance(code, int) and 400 <= code < 500 else
+                 'abandoned' if attempts >= REPORT_MAX_ATTEMPTS else None)
+        if final:
+            with lab._locked():
+                outbox = lab._load(outbox_path, {})
+                outbox[key].update(state=final, http_status=code, reason=str(exc)[:240], ended_at=lab.now_iso())
+                lab._atomic(outbox_path, outbox)
+        raise
     if not result.get('id'): raise RuntimeError('report intake not acknowledged')
     with lab._locked():
         outbox = lab._load(outbox_path, {})

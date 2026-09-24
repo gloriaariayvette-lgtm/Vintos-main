@@ -23,8 +23,7 @@ REACH = ("code_change", "device", "access", "not_a_gap")
 # Which organ writes each source, so the review can name files without reading the codebase.
 WRITERS = {"action_blocked": ["bin/wants-router.py"], "device_refused": ["bin/device_patterns.py"],
            "connector_held": ["scripts/plugin_gateway.py", "scripts/plugin_catalog.py"],
-           "lab_fault": ["scripts/chemistry_lab.py"], "lab_spark_refused": ["scripts/chemistry_spark.py"],
-           "self_review_fault": ["scripts/self_review.py"], "barrier_error": ["scripts/constitutional_barrier.py"],
+           "lab_fault": ["scripts/chemistry_lab.py"], "self_review_fault": ["scripts/self_review.py"], "barrier_error": ["scripts/constitutional_barrier.py"],
            "voice_refused": ["bin/server.py"], "atelier_reveal_refused": ["scripts/atelier-visit.py"],
            "nim_attempt": ["scripts/bionemo_gateway.py"], "want_step_unreachable": ["bin/wants-router.py", "scripts/forge_house.py"],
            "his_words": [], "service_failed": ["broker/*.service"], "error_log": []}

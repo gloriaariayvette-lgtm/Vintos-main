@@ -24,7 +24,6 @@ SOURCES = (
     ("device_refused", ".device-refusals.json", "a device that refused him"),
     ("connector_held", "plugin-policy-holds.jsonl", "a connector call that was held"),
     ("lab_fault", "chemistry-lab/faults.jsonl", "a Lab turn that faulted"),
-    ("lab_spark_refused", "chemistry-lab/spark-refusals.jsonl", "a Lab idea refused entry"),
     ("self_review_fault", "self-review-faults.jsonl", "a self-review step that faulted"),
     ("barrier_error", "barrier-errors.jsonl", "the constitutional barrier erroring"),
     ("voice_refused", "voice-refused-turns.jsonl", "a voice turn refused"),
