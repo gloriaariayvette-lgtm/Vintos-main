@@ -48,6 +48,7 @@ COLLISION_ADAPTER = os.path.join(ROOT, "collision-adapter.jsonl")
 SESSION_STATE = os.path.join(ROOT, "session-state.json")
 LOCK = os.path.join(ROOT, ".lock")
 STOP = os.path.join(ROOT, ".stop-requested")
+FAULT_LIMIT = 3   # consecutive faults in one phase before the Lab drops that inquiry and re-orients
 ESMC_PYTHON = os.environ.get(
     "CHEM_LAB_ESMC_PYTHON",
     os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"),
@@ -990,7 +991,8 @@ def tick():
                 except Exception as exc:
                     _fault("taste_reflection", exc)
             state.update({"phase": next_phase, "last_turn_at": now_iso(), "last_outcome": note["kind"],
-                          "effective_state": "waiting", "turns": int(state.get("turns", 0)) + 1})
+                          "effective_state": "waiting", "turns": int(state.get("turns", 0)) + 1,
+                          "fault_streak": 0, "fault_phase": None})
             _atomic(STATE, state)
             return {"ok": True, "state": "completed", "kind": note["kind"], "next_phase": next_phase}
     except TimeoutError:
@@ -999,7 +1001,20 @@ def tick():
     except Exception as exc:
         _fault("tick", exc, phase=state.get("phase"))
         state["effective_state"] = "held_fault"; state["last_outcome"] = "fault:" + exc.__class__.__name__
-        state["last_turn_at"] = now_iso(); _atomic(STATE, state)
+        state["last_turn_at"] = now_iso()
+        # A fault used to leave the phase where it was, so the daemon retried the same failing turn every
+        # poll, forever — the Lab looked alive and stood still. After FAULT_LIMIT consecutive faults in one
+        # phase, the inquiry is dropped and the Lab returns to orientation, and the notebook says so.
+        phase = state.get("phase", "orient")
+        streak = int(state.get("fault_streak", 0)) + 1 if state.get("fault_phase") == phase else 1
+        state["fault_phase"], state["fault_streak"] = phase, streak
+        if streak >= FAULT_LIMIT and phase != "orient":
+            for key in ("inquiry", "records", "additional_source", "evo2_result"):
+                state.pop(key, None)
+            state.update({"phase": "orient", "fault_streak": 0, "fault_phase": None, "effective_state": "waiting"})
+            _append(NOTEBOOK, {"at": now_iso(), "kind": "fault_redirect", "phase": phase, "faults": streak,
+                               "error": str(exc)[:240], "truth_status": "no_observation_no_inference"})
+        _atomic(STATE, state)
         return {"ok": False, "state": "held_fault", "error": str(exc)[:180]}
 
 

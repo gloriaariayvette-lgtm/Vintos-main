@@ -137,6 +137,19 @@ check("planning sees findings and redirects, not repeated raw notebook prose",
       and "RECENT LAB NOTEBOOK" not in ctx2
       and any(s["name"] == "lab_journal_threads" for s in receipt2["sources"]), ctx2[:1100])
 
+def broken(*a, **k): raise RuntimeError("fixture embedder down")
+M._embed_records, _keep_embed = broken, M._embed_records
+M._atomic(M.STATE, {"phase":"embed", "turns":9, "records":[{"accession":"NEW-X", "sequence":"A"*80}],
+                    "inquiry":{"browse_lane":"protein", "question":"stuck?"}})
+faults = [M.tick() for _ in range(M.FAULT_LIMIT)]
+stuck_state = M._load(M.STATE, {})
+check("a phase that keeps faulting is dropped after the limit and the Lab re-orients",
+      all(f["state"] == "held_fault" for f in faults) and stuck_state["phase"] == "orient"
+      and "inquiry" not in stuck_state and M._jsonl(M.NOTEBOOK)[-1]["kind"] == "fault_redirect", stuck_state)
+M._atomic(M.STATE, {"phase":"embed", "turns":9, "records":[{"accession":"NEW-X", "sequence":"A"*80}],
+                    "inquiry":{"browse_lane":"protein"}})
+M.tick(); M._embed_records = _keep_embed; M.tick()
+check("a success clears the fault streak", M._load(M.STATE, {}).get("fault_streak") == 0, M._load(M.STATE, {}))
 before = open(M.NOTEBOOK).read()
 off = M.set_enabled(False)
 check("off requests a stop and preserves notebook", off["enabled"] is False and os.path.exists(M.STOP) and before in open(M.NOTEBOOK).read())

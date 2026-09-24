@@ -296,13 +296,9 @@ def save_poem(poem):
     with open(filepath, 'w') as f:
         f.write(poem)
 
-    # Append to journal
-    journal_dir = os.path.join(MEMORY, "journal")
-    os.makedirs(journal_dir, exist_ok=True)
-    journal_file = os.path.join(journal_dir, f"{today}.md")
+    # Not written into the journal: daily-inner copies the whole journal, and a poem there reads as a
+    # real event (Gloria, 2026-09-24). The poem lives in art/poetry and daily-creative only.
     first_line = poem.strip().split("\n")[0]
-    with open(journal_file, 'a') as f:
-        f.write(f"\n\n**{datetime.now().strftime('%H:%M')}** — I wrote a poem. \"{first_line}\"\n")
 
     # Log to gallery
     gallery_log = os.path.join(MEMORY, "art", "poetry-log.json")
