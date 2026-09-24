@@ -70,7 +70,23 @@ def current_mode():
     m = read_mode().get("mode", "claude")
     return LEGACY_MODES.get(m, m)
 def current_claude_model():
+    """The CHAT toggle's model. Only chat surfaces follow it; every other place uses location_model()."""
     return CLAUDE_MODELS.get(current_mode(), CLAUDE_MODEL)
+# Each place he acts has its own model (Gloria, 2026-09-24). Flipping the chat toggle used to change
+# his model everywhere at once; now it changes only the chat. A place not listed follows the chat toggle.
+LOCATION_MODELS = {"atelier": "claude-opus-4-8",       # visit, knock, threshold, opening
+                   "self_review": "claude-opus-4-8",
+                   "humor": "claude-opus-4-8",
+                   "lab": "claude-opus-4-8"}           # the Lab's Claude planning/reading lens
+_LOCATIONS_FILE = os.path.join(_HOME, ".vintos", "model-locations.json")
+def location_model(location):
+    """This place's model: an override in ~/.vintos/model-locations.json, else its default, else the chat toggle."""
+    try:
+        chosen = json.load(open(_LOCATIONS_FILE)).get(location)
+        if isinstance(chosen, str) and chosen.strip(): return chosen.strip()
+    except Exception:
+        pass
+    return LOCATION_MODELS.get(location) or current_claude_model()
 def _sol_model():
     """The Sol lens's model. Environment first, then SOL_MODEL= in ~/.vintos/vintos.env
     (the same file that holds his OpenAI key), so switching Sol is one line in that

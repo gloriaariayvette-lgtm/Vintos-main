@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(WSP, "scripts")); sys.path.insert(0, os.path.exp
 def _model():
     try:
         import model_router
-        return model_router.current_claude_model()
+        return model_router.location_model("atelier")
     except Exception:
         return "claude-opus-4-8"
 

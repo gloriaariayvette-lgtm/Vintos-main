@@ -38,7 +38,7 @@ def _model():
     try:
         sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/bin"))
         import model_router
-        return model_router.current_claude_model()
+        return model_router.location_model("atelier")
     except Exception:
         return "claude-opus-4-8"
 

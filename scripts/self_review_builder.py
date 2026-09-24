@@ -106,7 +106,7 @@ def _model():
     try:
         sys.path.insert(0, os.path.join(WS, "bin"))
         import model_router
-        return model_router.current_claude_model()
+        return model_router.location_model("self_review")
     except Exception:
         return "claude-fable-5"
 

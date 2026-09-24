@@ -70,7 +70,8 @@ async def _frontier(lens, system, user, paid_reservation=None):
     convo = [{"role": "user", "content": user}]
     if lens == "claude":
         text, _ = await model_router.claude_draft(system, convo, max_tokens=700,
-                                                   paid_reservation=paid_reservation)
+                                                   paid_reservation=paid_reservation,
+                                                   model=model_router.location_model("lab"))
         return text
     if lens == "sol":
         text, _ = await model_router.sol_draft(system, convo, max_tokens=700,

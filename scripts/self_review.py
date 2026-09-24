@@ -706,7 +706,7 @@ def vintos_json(system, user, max_tokens=900, temperature=0.6):
     try:
         sys.path.append(os.path.join(WS, "bin"))
         import model_router
-        model = model_router.current_claude_model()
+        model = model_router.location_model("self_review")
     except Exception:
         model = "claude-fable-5"
     url = os.environ.get("SELF_REVIEW_VINTOS_URL", "http://127.0.0.1:8599/v1/chat/completions")

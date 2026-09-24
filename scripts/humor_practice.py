@@ -61,7 +61,7 @@ def _routed_llm(system, user, temperature=0.9):
         if _mp:
             _sp = _mu.spec_from_file_location("vintos_model_router", _mp)
             _mr = _mu.module_from_spec(_sp); _sp.loader.exec_module(_mr)
-            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": user}], max_tokens=700))
+            _text, _reason = _aio.run(_mr.claude_draft(system, [{"role": "user", "content": user}], max_tokens=700, model=_mr.location_model("humor")))
             if _text and str(_text).strip():
                 log(f"drafted via model_router ({_reason})")
                 return str(_text).strip()
