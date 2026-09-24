@@ -47,6 +47,13 @@ passed from the installed tree. Planner instructions are now present. MMseqs2
 SHA-256 passed. NERSC does not publish independent digests in that mirror
 directory, so provider identity/size and the local transfer hashes remain
 distinct evidence.
+The installed production wrapper accepted GenBank accession `QQM14740.1`,
+fetched a sourced 300-residue slice through NCBI, and searched the 109,325,732
+protein targets in 209.9 seconds. IMG/VR receipt
+`54edf5f9ad574277a192200b51ec68ecb92cad325f033f754defc1b345b5dc7f`
+contains three bounded hits and labels them as similarity evidence rather than
+novelty or function. Release `20260924-023401-d72f423` passed both complete
+deployment gates and left the Lab worker and scheduled frontier timer active.
 
 ## ChatGPT-account relay, reached from Aegis through the restricted Mac doorway
 

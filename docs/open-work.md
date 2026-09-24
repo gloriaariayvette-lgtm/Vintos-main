@@ -1333,7 +1333,13 @@ protein-similarity operations only after all indexes report ready. Installed
 metadata, a 12-segment GVMAG listing, and an exact 120-base segment slice passed.
 The first cold 112-million-protein search measured 275 seconds with eight
 threads and about 12.5 GB peak RSS; the query deadline is therefore 600 seconds.
-The final wrapped protein receipt and updated deployment remain open.
+Release `20260924-023401-d72f423` passed the complete `--check` and installing
+gates and left every checked unit active. The installed production wrapper then
+searched a sourced 300-residue slice of GenBank protein `QQM14740.1` in 209.9
+seconds. Receipt `54edf5f9ad574277a192200b51ec68ecb92cad325f033f754defc1b345b5dc7f`
+returned three bounded hits and retained the truth boundary that similarity and
+annotation do not establish novelty or function. IMG/VR installation and
+commissioning are complete; an autonomous Vintos-selected campaign remains open.
 
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM

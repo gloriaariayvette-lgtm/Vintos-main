@@ -84,6 +84,10 @@ MMseqs2 index. NERSC does not publish independent digests on this directory, so
 the receipt distinguishes the pinned provider metadata from the locally computed
 hashes. The JGI session-token/provider-MD5 route remains optional. The planner
 sees no IMG/VR query forms until all three local indexes report ready.
+The Aegis installation completed on 2026-09-24. The deployed production wrapper
+commissioned metadata, exact multi-contig segment selection, a 120-base slice,
+and a sourced GenBank-to-IMG/VR protein search. The latter returned three bounded
+hits in 209.9 seconds and retained the non-novelty/non-function truth label.
 
 Once ready, the bounded doors are: metadata terms across the provider's ecology,
 taxonomy, host and origin fields; exact sourced UViG nucleotide slices of at most
