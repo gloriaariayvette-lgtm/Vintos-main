@@ -29,7 +29,7 @@ V.SCENE_DIR = os.path.join(HERO_DIR, "scenes")
 PATIO = os.path.join(HERO_DIR, "patio.jpg")
 for p in (V.HER_PHOTO, V.HERO, PATIO): open(p, "wb").write(b"jpg")
 V.data_uri = lambda p: "uri:" + os.path.basename(p)
-for name in ("his_context", "conversation_ledger", "living_trajectory"): setattr(V, name, lambda: "")
+V.his_context = lambda: ""   # the ledger and trajectory read the scratch HOME, which is empty
 V.silence_hours = lambda: 3
 V.scene_options = lambda: [{"id": "room:patio", "path": PATIO, "at": "home", "caption": "the patio of the house"}]
 
