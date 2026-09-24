@@ -195,6 +195,14 @@ MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
 [ -d "$SRC/broker" ] && [ -d "$SRC/scripts" ] || die "not a Vintos checkout: $SRC"
 say "source: $SRC"
 say "commit: $(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || echo '(no git)')"
+# The checkout must be exactly what was pushed. On 2026-09-24 older copies of three files (and mode flips
+# on others) sat uncommitted in ~/Vintos-main; git pull let them through, and the suite tested the old
+# code. Refuse up front and name them, rather than failing later on tests that were never the problem.
+_dirty="$(git -C "$SRC" status --porcelain --untracked-files=no 2>/dev/null || true)"
+if [ -n "$_dirty" ] && [ "${VINTOS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
+    printf '%s\n' "$_dirty" | sed 's/^/  uncommitted: /'
+    die "the checkout has uncommitted edits (above), so this is not the code that was pushed. Save and set them aside first: git diff > ~/aegis-local-\$(date +%F-%H%M).diff && git stash push -m aegis-local  (or rerun with VINTOS_DEPLOY_ALLOW_DIRTY=1 to deploy them anyway)"
+fi
 [ "$DRY_RUN" -eq 1 ] && say "mode:   --dry-run (nothing copied, nothing restarted)"
 say
 missing=""
