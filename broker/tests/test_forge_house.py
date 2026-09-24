@@ -27,7 +27,8 @@ class Tests(unittest.TestCase):
         self.assertTrue(Path(sf.PROPOSALS).is_relative_to(self.root))
         self.assertTrue(self.c.path.is_relative_to(self.root))
         self.want={'id':'w1','source':'latent_thread','want':'I want to email a collaborator',
-                   'steps':[{'capability':'web_search','note':'find public contact details','status':'completed'}],
+                   'steps':[{'capability':'web_search','note':'find public contact details','status':'completed'},
+                            {'capability':'send_email','note':'send the message','status':'pending'}],
                    'current_step_index':1}
         self.path=self.root/'current-wants.json';self.path.write_text(json.dumps([self.want]))
     def request(self,path,body):
@@ -72,9 +73,23 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.c.status(self.owner,pid)['state'],'cancelled')
     def test_installed_action_is_not_a_missing_capability(self):
         house.sync(inventory=['web_search','send_email'])
-        pid=self.c.ready_queue('w'*40)[0]
-        with self.assertRaises(ValueError):self.r.step(pid)
+        self.assertEqual(self.c.ready_queue('w'*40),[])
         self.assertEqual(sf._load(),[])
+    def test_only_an_unreachable_pending_step_opens_the_forge(self):
+        # 2026-09-24: 'ask Gloria the word a painter would use' (web_search + ask her) sat in the Forge.
+        for steps in ([],                                                               # no plan: a want
+                      [{'capability':'web_search','status':'completed'}],              # finished plan: a want
+                      [{'capability':'web_search','status':'pending'},
+                       {'capability':'gloria','status':'pending'}],                    # the painter want
+                      [{'capability':'you','note':'Tell her','status':'pending'}]):    # asking her directly
+            self.want['steps']=steps; self.want['current_step_index']=0
+            self.path.write_text(json.dumps([self.want]))
+            house.sync(inventory=['web_search'])
+            self.assertEqual(self.c.ready_queue('w'*40),[],steps)
+        self.want['steps']=[{'capability':'physical_interaction','note':'press weight','status':'pending'}]
+        self.path.write_text(json.dumps([self.want]))
+        house.sync(inventory=['web_search'])
+        self.assertEqual(len(self.c.ready_queue('w'*40)),1)
     def test_no_gap_completes_assessment_only(self):
         self.r.builder=ReportBuilder(lambda *a:{**self.model(*a),'missing':False,'capability':''})
         house.sync(inventory=['web_search']);pid=self.c.ready_queue('w'*40)[0];self.r.step(pid)
@@ -88,7 +103,8 @@ class Tests(unittest.TestCase):
             'house_reporting':{'channel':'MQTT','payload':'sample','acknowledgement':'receipt'},
             'safety_limits':['low voltage'],'acceptance_tests':['known load'],'unknowns':[],
             'decision':'gloria_accept_or_deny','truth_status':'proposal_only_nothing_purchased_or_built'}
-        self.want.update(want='I want to sense pressure',steps=[],current_step_index=0)
+        self.want.update(want='I want to sense pressure',current_step_index=0,
+                         steps=[{'capability':'physical_interaction','note':'press weight','status':'pending'}])
         self.path.write_text(json.dumps([self.want]))
         self.r.builder=ReportBuilder(lambda *a:{'missing':True,'capability':'physical_interaction',
             'note':'sense pressure','execution':'external','expected_output':'samples','acceptance':'known load',

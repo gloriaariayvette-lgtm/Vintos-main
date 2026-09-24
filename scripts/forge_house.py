@@ -83,9 +83,18 @@ def fingerprint(want):
         'index':want.get('current_step_index',0)},sort_keys=True).encode()).hexdigest()
 
 
-# Plan steps that are a conversation, not a missing organ. "gloria" means ask or tell her
+# Plan steps that are a conversation, not a missing organ. "gloria"/"you" mean ask or tell her
 # directly; a want whose remaining steps are all like that has no capability gap to build.
-RELATIONAL_CAPABILITIES = frozenset({'gloria'})
+RELATIONAL_CAPABILITIES = frozenset({'gloria', 'you'})
+
+
+def unreachable_steps(want, inventory):
+    """The still-pending steps that name something he cannot do: not one of his actions, not asking her.
+    This is the Forge's only door (Gloria, 2026-09-24): the Forge maps a path to what is unreachable.
+    A want with no plan, a finished plan, or a plan he can already carry out is a want, not Forge work."""
+    owned = set(inventory) | RELATIONAL_CAPABILITIES
+    return [s for s in (want.get('steps') or []) if isinstance(s, dict) and s.get('status') != 'completed'
+            and s.get('capability') and s['capability'] not in owned]
 
 
 def sync_assessments(wants, inventory, sf):
@@ -96,7 +105,8 @@ def sync_assessments(wants, inventory, sf):
     selected=[w for w in wants if isinstance(w,dict) and w.get('id') and w.get('want')
               and not w.get('fulfilled') and not w.get('dismissed') and not w.get('blocked')
               and not w.get('gloria_routed')   # routed to her is a want option, never Forge work
-              and sf.spark_of(w.get('source')) is not None]
+              and sf.spark_of(w.get('source')) is not None
+              and unreachable_steps(w, inventory)]   # only a planned step he cannot perform
     rows=[{'id':w['id'],'want':w['want'],'source':sf.spark_of(w['source']),
            'steps':w.get('steps',[]),'fingerprint':fingerprint(w)} for w in selected]
     results=request('/api/wants-sync',{'rows':rows,'inventory':sorted(set(inventory))})
@@ -120,7 +130,11 @@ def sync_assessments(wants, inventory, sf):
                 if isinstance(assessment.get('hardware_proposal'), dict):
                     step['hardware_proposal'] = assessment['hardware_proposal']
                 step.update(status='pending',forge_assessment=result['project'])
-                steps.insert(index,step)
+                # The unreachable step is usually already in his plan: annotate it rather than add a twin.
+                existing=next((s for s in steps[index:] if isinstance(s,dict) and s.get('capability')==cap
+                               and s.get('status')!='completed'), None)
+                if existing is not None: existing.update(step)
+                else: steps.insert(index,step)
                 w.update(multistep=True,capability='multistep',plan_state='READY')
                 w['blocked']={'block_type':'CAPABILITY_ABSENT','blocked_step':cap,
                     'evidence':'Forge assessment against installed inventory: '+str(assessment.get('reason',''))[:300],

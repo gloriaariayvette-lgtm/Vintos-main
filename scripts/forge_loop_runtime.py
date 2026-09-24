@@ -314,7 +314,9 @@ class Runtime:
                 steps=row.get('steps') if isinstance(row.get('steps'),list) else []
                 pending_caps=[s.get('capability') for s in steps
                               if isinstance(s,dict) and s.get('status')!='completed' and s.get('capability')]
-                if pending_caps and all(c in inv for c in pending_caps):
+                # Only a pending step he cannot perform opens an assessment (Gloria, 2026-09-24). No plan,
+                # a finished plan, or a plan he can carry out is a want, not Forge work.
+                if not pending_caps or all(c in inv for c in pending_caps):
                     continue
                 live_keys.add(key)
                 origin={'source':row['source'],'want_id':row['id'],'fingerprint':row['fingerprint'],

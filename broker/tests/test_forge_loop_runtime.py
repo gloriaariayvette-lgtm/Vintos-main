@@ -155,8 +155,8 @@ class Tests(unittest.TestCase):
         return int(status[0].split()[0]),b''.join(out)
     def test_sync_wants_skips_fully_owned_plans(self):
         # A relational want whose plan uses only installed capabilities is conversation, not Forge
-        # work — it must NOT spawn a capability_assessment project. A want naming a missing capability
-        # still gets assessed.
+        # work — it must NOT spawn a capability_assessment project. Only a want naming a missing
+        # capability in a pending step is assessed.
         inv=['introspect','gloria','creative_write']
         owned={'id':'w1','want':'tell her the coffee scene','source':'thread','fingerprint':'f1',
                'steps':[{'capability':'introspect'},{'capability':'gloria'}]}
@@ -167,7 +167,8 @@ class Tests(unittest.TestCase):
         intents=[p.get('intent','') or '' for p in self.c.projects(self.owner)]
         self.assertFalse(any('coffee scene' in i for i in intents),'a fully-owned plan is not a Forge project')
         self.assertTrue(any('press my weight into her' in i for i in intents),'a missing-capability want is still assessed')
-        self.assertTrue(any('some unplanned want' in i for i in intents),'an unplanned want is still assessed')
+        # Gloria, 2026-09-24: the Forge maps a path to what is unreachable. A want with no plan is a want.
+        self.assertFalse(any('some unplanned want' in i for i in intents),'an unplanned want is not Forge work')
 
     def test_projects_surface_intent_and_seal_private(self):
         # The owner UI could not show WHAT he is making because status/projects dropped `intent`.
