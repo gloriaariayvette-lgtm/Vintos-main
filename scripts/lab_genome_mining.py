@@ -128,6 +128,20 @@ def scan_repeat_arrays(sequence, *, minimum_word=10, maximum_word=18,
 
 def campaign_instructions():
     """Planner-facing discipline, target-free so it does not seed a pet result."""
+    local_imgvr = ""
+    try:
+        from imgvr_store import status
+        if status().get('ready'):
+            local_imgvr = (
+                " The local IMG/VR high-confidence v4.1 release is available through ONE of: "
+                "{source:imgvr,operation:metadata,term:plain ecological/taxonomic phrase,limit:1..8}; "
+                "{source:imgvr,operation:uvig,uvig:exact sourced IMGVR_UViG identifier,start:one-based integer,end:one-based inclusive integer up to 12000 bases}; "
+                "{source:imgvr,operation:protein_similarity,sequence:sourced 20..2000-residue protein,limit:1..8}. "
+                "Use exact UViG identifiers and sourced protein sequences from receipts. Similarity hits and "
+                "database annotations do not establish novelty or function."
+            )
+    except Exception:
+        pass
     return (
         "GENOME-MINING is an optional multi-return research lane, not a priority. Start from a "
         "protein family or question you chose. First reproduce one established result from literature and "
@@ -138,4 +152,5 @@ def campaign_instructions():
         "survivor becomes a sourced report for human review, with counterevidence and a computational next "
         "test. Never call a missing hit novelty, never infer function from a repeat, and never provide wet-lab "
         "or synthesis instructions. Use one bounded source query per return and build from receipt IDs."
+        + local_imgvr
     )

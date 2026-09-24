@@ -40,6 +40,12 @@ with five provider checksums. Aegis is the selected primary store and had 558 GB
 available when measured. No bundle or index is installed yet, so IMG/VR is not
 advertised as a callable Lab source until the account-backed JGI transfer,
 checksum verification, indexing and bounded query commissioning pass.
+The local acquisition code checks the exact five-file provider manifest and a
+250-GiB free-space floor, preserves provider sizes and MD5s, and builds SQLite
+metadata/nucleotide indexes plus an MMseqs2 protein-family index. Planner
+instructions remain absent until all indexes report ready. MMseqs2 18-8cc5c is
+installed on Aegis from its official AVX2 archive after its published SHA-256
+passed; this proves the search engine binary, not the still-absent IMG/VR data.
 
 ## ChatGPT-account relay, reached from Aegis through the restricted Mac doorway
 

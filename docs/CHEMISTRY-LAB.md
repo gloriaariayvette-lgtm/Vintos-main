@@ -76,6 +76,18 @@ public browsable and bulk-download source rather than an anonymous bounded API.
 Aegis is the selected local store for the 40.16-GiB compressed high-confidence
 v4.1 bundle. It becomes a Lab source only after the JGI account-backed transfer,
 provider-checksum verification, indexing and bounded query commissioning pass.
+`configure-imgvr.py` stores the short-lived JGI session token mode 0600 without
+printing it. `imgvr_store.py` re-reads the official manifest, requires 250 GiB
+free before transfer, stages the five-file release, verifies every provider size
+and MD5, builds a local metadata/full-text and nucleotide-offset SQLite index,
+and builds a protein-family MMseqs2 index. The planner sees no IMG/VR query forms
+until all three local indexes report ready.
+
+Once ready, the bounded doors are: metadata terms across the provider's ecology,
+taxonomy, host and origin fields; exact sourced UViG nucleotide slices of at most
+12 kb; and a sourced 20–2,000-residue protein similarity query returning at most
+eight hits. Results retain the release and coverage in their receipt. A match,
+annotation or missing match establishes neither novelty nor function.
 
 Installation alone never makes a tool available. The authority for that is
 `tool-probes.jsonl`, an append-only ledger written by `chemistry_probe.py`: one row per

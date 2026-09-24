@@ -1318,6 +1318,17 @@ recommends Globus for large transfers; those account-backed download and index
 steps remain open. Until their checksums and local query path pass, the Lab does
 not claim IMG/VR access.
 
+The acquisition and query path is now implemented but remains fail-closed while
+that account step is open. `configure-imgvr.py` accepts the JGI session token
+without echoing it and writes mode 0600. `imgvr_store.py` refreshes the exact
+provider manifest, requires 250 GiB free, restores/downloads the five selected
+files, verifies their sizes and MD5s, and builds a SQLite metadata/nucleotide
+index plus an MMseqs2 protein-family index. The official MMseqs2 18-8cc5c AVX2
+binary is installed under Gloria's Aegis user directory and its published
+SHA-256 passed. The Lab exposes bounded metadata, exact UViG slice and sourced
+protein-similarity operations only after all indexes report ready. Token setup,
+the 40.16-GiB transfer, indexing and installed-query acceptance remain open.
+
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM
 pages currently mark those endpoints deprecated, so the Lab does not advertise

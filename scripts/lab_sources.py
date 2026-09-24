@@ -131,8 +131,10 @@ def receipt(source, query, records, *, metadata=None):
 
 
 class Sources:
-    def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record):
+    def __init__(self, fetch=fetch_json, atlas=None, fetch_sequence=fetch_text, fetch_record=fetch_record,
+                 imgvr=None):
         self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
+        self.imgvr = imgvr
 
     def query(self, spec):
         if not isinstance(spec, dict): raise ValueError('source query must be an object')
@@ -260,6 +262,22 @@ class Sources:
             return receipt(source, {'source':source,'accession':accession}, records, metadata={
                 'service':'InterPro_REST','coverage':'bounded_first_eight_entries',
                 'interpretation':'known_family_and_domain_annotations_not_novelty'})
+        if source == 'imgvr':
+            operation = spec.get('operation')
+            if operation not in ('metadata','uvig','protein_similarity'):
+                raise ValueError('unknown IMG/VR operation')
+            if self.imgvr is None:
+                from imgvr_store import query as local_imgvr
+                local = local_imgvr(spec)
+            else:
+                local = self.imgvr(spec)
+            records = local.get('records') if isinstance(local, dict) else None
+            if not isinstance(records, list): raise ValueError('IMG/VR returned no record list')
+            return receipt(source, spec, records[:8], metadata={
+                'service':'local_IMG_VR_v4.1_high_confidence',
+                'release':'IMG_VR_2022-12-19_7.1',
+                'coverage':local.get('coverage','bounded_local_query'),
+                'interpretation':'sequence_similarity_and_annotations_not_novelty_or_function'})
         if source == 'bvbrc':
             operation = spec.get('operation')
             if operation == 'genomes':
