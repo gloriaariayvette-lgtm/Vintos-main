@@ -33,6 +33,7 @@ async def get_music(limit: int = 20):
                     "cover": cover if os.path.exists(cover_path) else None,
                 })
             compositions.append({
+                "task_id": gen.get("task_id"),
                 "title": gen.get("title"),
                 "style": gen.get("style"),
                 "description": gen.get("description"),
@@ -60,5 +61,4 @@ async def stream_music(filename: str):
         elif filename.endswith(".jpeg") or filename.endswith(".jpg"):
             return FileResponse(music_path, media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Music file not found")
-
 
