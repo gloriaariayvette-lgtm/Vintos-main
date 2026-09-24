@@ -71,7 +71,9 @@ def _policy_hold(kind, surface, plugin, tool, findings):
         "surface":surface, "plugin":plugin, "tool":tool,
         "request_sha256":findings["request_sha256"], "rules":findings.get("rules", []),
         "links":findings.get("links", []), "state":"awaiting_explicit_approval" if kind == "LINK_APPROVAL_REQUIRED" else "blocked"}
-    ledger = _hold_path(); ledger.parent.mkdir(parents=True, exist_ok=True); os.chmod(ledger.parent, 0o700)
+    # Never chmod the folder: it is the shared memory directory, and chmod 700 there cancelled the Atelier
+    # user's granted access, so the Forge could not start (2026-09-24). The ledger file itself is 0600.
+    ledger = _hold_path(); ledger.parent.mkdir(parents=True, exist_ok=True)
     with open(str(ledger)+".lock", "a+") as lock:
         os.chmod(str(ledger)+".lock", 0o600); fcntl.flock(lock, fcntl.LOCK_EX)
         prior = [] if not ledger.exists() else [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
