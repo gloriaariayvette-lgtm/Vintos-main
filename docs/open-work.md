@@ -1312,15 +1312,16 @@ metadata endpoint reports the current high-confidence v4.1 bundle
 (`IMG_VR_2022-12-19_7.1`) as 43,118,863,386 bytes (40.16 GiB compressed) across
 five files, with provider MD5 checksums. Aegis is the selected primary store:
 at commissioning it had 558 GB available on its 1,007 GB root volume, compared
-with 545 GiB available on the Mac data volume. No bundle or index is installed
-yet. JGI's account route now requires its new SSO linked to an ORCID account with
+with 545 GiB available on the Mac data volume. JGI's account route now requires
+its new SSO linked to an ORCID account with
 MFA. It is not required for this work: DOE's public NERSC mirror serves the three
 unrestricted-only high-confidence files needed by the Lab, totaling
-42,362,218,187 bytes compressed. Until their local receipts and query path pass,
-the Lab does not claim IMG/VR access.
+42,362,218,187 bytes compressed.
 
-The acquisition and query path is now implemented and remains fail-closed until
-the public transfer and indexes complete. `imgvr_store.py` pins the official
+The public transfer and indexes completed on Aegis on 2026-09-24. All three
+files match their pinned byte sizes and locally recorded SHA-256 receipts. The
+76.09-GiB nucleotide FASTA, 3.51-GiB SQLite metadata/offset index, and 80-split
+MMseqs protein index report ready. `imgvr_store.py` pins the official
 NERSC mirror names and sizes, resumes interrupted downloads, records local
 SHA-256 receipts, requires 250 GiB free, and builds a SQLite metadata/nucleotide
 index plus an MMseqs2 protein-family index. NERSC does not publish independent
@@ -1328,8 +1329,11 @@ digests in that directory; the receipt labels this boundary. The optional JGI
 route retains provider MD5 validation. The official MMseqs2 18-8cc5c AVX2
 binary is installed under Gloria's Aegis user directory and its published
 SHA-256 passed. The Lab exposes bounded metadata, exact UViG slice and sourced
-protein-similarity operations only after all indexes report ready. The 39.45-GiB
-public transfer, indexing and installed-query acceptance remain open.
+protein-similarity operations only after all indexes report ready. Installed
+metadata, a 12-segment GVMAG listing, and an exact 120-base segment slice passed.
+The first cold 112-million-protein search measured 275 seconds with eight
+threads and about 12.5 GB peak RSS; the query deadline is therefore 600 seconds.
+The final wrapped protein receipt and updated deployment remain open.
 
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM

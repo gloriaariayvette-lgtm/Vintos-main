@@ -116,6 +116,10 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['records'][0]['sequence'],'ACDEFGHIKL')
         self.assertEqual(result['metadata']['coverage'],'requested_slice_only')
         self.assertTrue(self.calls[0].startswith(sources.NCBI_BASE+'efetch.fcgi?'))
+        genbank=sources.Sources(fetch_sequence=lambda url:'>QQM14740.1:1-10 example protein\nACDEFGHIKL\n')
+        self.assertEqual(genbank.query({'source':'ncbi_sequence','database':'protein',
+                                        'accession':'QQM14740.1','start':1,'end':10})['records'][0]['sequence'],
+                         'ACDEFGHIKL')
         self.calls.clear()
         for changed in ({'accession':'WP_123456789'}, {'accession':'../../secret'},
                         {'end':351}, {'start':0}, {'database':'assembly'}):

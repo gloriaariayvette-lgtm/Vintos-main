@@ -110,6 +110,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['records'][0]['uvig'],'IMGVR_UViG_1_000001')
         self.assertIn('not_novelty',result['metadata']['interpretation'])
         self.assertEqual(calls[0][0],str(mmseqs)); self.assertEqual(calls[0][1],'easy-search')
+        self.assertIn('--threads',calls[0]); self.assertTrue(1 <= int(calls[0][calls[0].index('--threads')+1]) <= 8)
         self.assertNotIn(str(Path.home()/'.vintos/workspace'),str(store.ROOT))
 
     def test_token_permissions_fail_closed(self):

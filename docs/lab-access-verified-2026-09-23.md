@@ -36,16 +36,17 @@ API eligibility remains unresolved; noncommercial use alone was not treated as
 academic eligibility. IMG/VR is publicly browsable and supplies bulk downloads,
 not a bounded anonymous query API. Its official file metadata endpoint reports
 the high-confidence v4.1 bundle as 43,118,863,386 bytes (40.16 GiB compressed)
-with five provider checksums. Aegis is the selected primary store and had 558 GB
-available when measured. No bundle or index is installed yet, so IMG/VR is not
-advertised as a callable Lab source until the account-backed JGI transfer,
-checksum verification, indexing and bounded query commissioning pass.
-The local acquisition code checks the exact five-file provider manifest and a
-250-GiB free-space floor, preserves provider sizes and MD5s, and builds SQLite
-metadata/nucleotide indexes plus an MMseqs2 protein-family index. Planner
-instructions remain absent until all indexes report ready. MMseqs2 18-8cc5c is
-installed on Aegis from its official AVX2 archive after its published SHA-256
-passed; this proves the search engine binary, not the still-absent IMG/VR data.
+with five provider checksums. Aegis is the selected primary store. The three
+files needed by the Lab were instead installed from DOE's public NERSC
+unrestricted-only mirror on 2026-09-24: 42,362,218,187 compressed bytes with
+pinned sizes and locally recorded SHA-256 receipts. The SQLite metadata and
+nucleotide-offset index and the MMseqs2 protein-family index report ready.
+Bounded metadata, a multi-segment GVMAG listing, and an exact segment slice
+passed from the installed tree. Planner instructions are now present. MMseqs2
+18-8cc5c was installed from its official AVX2 archive after its published
+SHA-256 passed. NERSC does not publish independent digests in that mirror
+directory, so provider identity/size and the local transfer hashes remain
+distinct evidence.
 
 ## ChatGPT-account relay, reached from Aegis through the restricted Mac doorway
 

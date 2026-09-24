@@ -398,8 +398,8 @@ def query(spec, *, db=DB, nucleotide=NUCLEOTIDES, mmseqs=MMSEQS, mmseqs_db=MMSEQ
                 query_fasta.write_text('>sourced_query\n'+sequence+'\n')
                 command=[str(mmseqs),'easy-search',str(query_fasta),str(mmseqs_db),str(output),str(work),
                          '--format-output','target,pident,alnlen,evalue,bits,qlen,tlen','--max-seqs',str(limit),
-                         '--split-memory-limit','12G','--threads','1']
-                runner(command,check=True,capture_output=True,text=True,timeout=180)
+                         '--split-memory-limit','12G','--threads',str(max(1,min(8,os.cpu_count() or 1)))]
+                runner(command,check=True,capture_output=True,text=True,timeout=600)
                 rows=[]
                 if output.is_file():
                     for line in output.read_text().splitlines()[:limit]:

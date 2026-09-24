@@ -185,9 +185,7 @@ class Sources:
         if source == 'ncbi_sequence':
             database = spec.get('database')
             if database not in ('protein', 'nuccore'): raise ValueError('protein or nuccore sequence required')
-            accession = spec.get('accession')
-            if not isinstance(accession, str) or not re.fullmatch(r'[A-Z]{1,6}_[A-Z0-9]{3,15}\.[1-9][0-9]*', accession):
-                raise ValueError('exact sourced accession.version required')
+            accession = _ncbi_accession(spec.get('accession'))
             start, end = spec.get('start'), spec.get('end')
             max_span = 350 if database == 'protein' else 512
             if type(start) is not int or type(end) is not int or not 1 <= start <= end < 1000000000 or end-start+1 > max_span:
