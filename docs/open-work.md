@@ -11,11 +11,12 @@ hours of conversation before it. Only what he sent her (delivered videos, messag
 listed; nothing counts what she has not rated.
 
 Not built yet:
-- The app side: the mark on each piece and the LANDINGS tab.
+- The app side (Chat's): the mark on each piece, the LANDINGS tab, and a JOURNAL tab reading
+  `/api/journal/days` and `/api/journal/{day}` (routes built 2026-09-24).
 - The weekly pass that turns her notes into understanding in GLORIA-MODEL.md — never a rating, never
   her words, weighing what landed as much as what missed; she approves each change.
 - Receipts are missing at the source for most surfaces: images and songs record no send, outreach
-  messages lose their `delivered_at` when the app acknowledges them, and the journal has no tab.
+  messages lose their `delivered_at` when the app acknowledges them.
 - Jokes already have their own rating (MISCHIEF, `humor-profile.json`), which he DOES learn from
   (jokes rated 4+ return to chat). A landing note on a joke is separate from that and stays out of him.
 
