@@ -74,14 +74,16 @@ JGI, and NCBI. Vintos has the staged reasoning pattern and public bounded source
 doors; he does not have that database, scale, or wet-lab validation. IMG/VR is a
 public browsable and bulk-download source rather than an anonymous bounded API.
 Aegis is the selected local store for the 40.16-GiB compressed high-confidence
-v4.1 bundle. It becomes a Lab source only after the JGI account-backed transfer,
-provider-checksum verification, indexing and bounded query commissioning pass.
-`configure-imgvr.py` stores the short-lived JGI session token mode 0600 without
-printing it. `imgvr_store.py` re-reads the official manifest, requires 250 GiB
-free before transfer, stages the five-file release, verifies every provider size
-and MD5, builds a local metadata/full-text and nucleotide-offset SQLite index,
-and builds a protein-family MMseqs2 index. The planner sees no IMG/VR query forms
-until all three local indexes report ready.
+v4.1 bundle. Its primary installation route is the official public DOE NERSC
+unrestricted-only mirror: metadata, nucleotide sequences and proteins, totaling
+42,362,218,187 bytes compressed. It requires no account. `imgvr_store.py` pins
+the mirror filenames and byte sizes, downloads with resume support over TLS,
+records local SHA-256 receipts, requires 250 GiB free, builds a local
+metadata/full-text and nucleotide-offset SQLite index, and builds a protein-family
+MMseqs2 index. NERSC does not publish independent digests on this directory, so
+the receipt distinguishes the pinned provider metadata from the locally computed
+hashes. The JGI session-token/provider-MD5 route remains optional. The planner
+sees no IMG/VR query forms until all three local indexes report ready.
 
 Once ready, the bounded doors are: metadata terms across the provider's ecology,
 taxonomy, host and origin fields; exact sourced UViG nucleotide slices of at most

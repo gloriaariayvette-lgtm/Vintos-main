@@ -1313,21 +1313,23 @@ metadata endpoint reports the current high-confidence v4.1 bundle
 five files, with provider MD5 checksums. Aegis is the selected primary store:
 at commissioning it had 558 GB available on its 1,007 GB root volume, compared
 with 545 GiB available on the Mac data volume. No bundle or index is installed
-yet. The official download operation requires a JGI session token and JGI
-recommends Globus for large transfers; those account-backed download and index
-steps remain open. Until their checksums and local query path pass, the Lab does
-not claim IMG/VR access.
+yet. JGI's account route now requires its new SSO linked to an ORCID account with
+MFA. It is not required for this work: DOE's public NERSC mirror serves the three
+unrestricted-only high-confidence files needed by the Lab, totaling
+42,362,218,187 bytes compressed. Until their local receipts and query path pass,
+the Lab does not claim IMG/VR access.
 
-The acquisition and query path is now implemented but remains fail-closed while
-that account step is open. `configure-imgvr.py` accepts the JGI session token
-without echoing it and writes mode 0600. `imgvr_store.py` refreshes the exact
-provider manifest, requires 250 GiB free, restores/downloads the five selected
-files, verifies their sizes and MD5s, and builds a SQLite metadata/nucleotide
-index plus an MMseqs2 protein-family index. The official MMseqs2 18-8cc5c AVX2
+The acquisition and query path is now implemented and remains fail-closed until
+the public transfer and indexes complete. `imgvr_store.py` pins the official
+NERSC mirror names and sizes, resumes interrupted downloads, records local
+SHA-256 receipts, requires 250 GiB free, and builds a SQLite metadata/nucleotide
+index plus an MMseqs2 protein-family index. NERSC does not publish independent
+digests in that directory; the receipt labels this boundary. The optional JGI
+route retains provider MD5 validation. The official MMseqs2 18-8cc5c AVX2
 binary is installed under Gloria's Aegis user directory and its published
 SHA-256 passed. The Lab exposes bounded metadata, exact UViG slice and sourced
-protein-similarity operations only after all indexes report ready. Token setup,
-the 40.16-GiB transfer, indexing and installed-query acceptance remain open.
+protein-similarity operations only after all indexes report ready. The 39.45-GiB
+public transfer, indexing and installed-query acceptance remain open.
 
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM

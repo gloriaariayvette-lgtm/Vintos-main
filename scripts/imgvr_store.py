@@ -24,6 +24,7 @@ DATASET = 'Custom_MPI-IMG_VR'
 MANIFEST_URL = 'https://files.jgi.doe.gov/search/?datasets=Custom_MPI-IMG_VR&include_private_data=1&x=50'
 RESTORE_URL = 'https://files.jgi.doe.gov/request_archived_files/'
 DOWNLOAD_URL = 'https://files-download.jgi.doe.gov/download_files/'
+NERSC_BASE = 'https://portal.nersc.gov/dna/microbial/prokpubs/for-Asier-Sana/'
 TOKEN_FILE = Path.home()/'.config/vintos/jgi-token'
 ROOT = Path(os.environ.get('VINTOS_IMGVR_ROOT', Path.home()/'.vintos/data/imgvr-v4.1-hc')).expanduser()
 DB = ROOT/'imgvr.sqlite3'
@@ -41,6 +42,14 @@ EXPECTED = frozenset({
     'IMGVR_all_nucleotides-high_confidence.fna.gz',
     'IMGVR_all_proteins-high_confidence.faa.gz',
 })
+PUBLIC_FILES = (
+    ('IMGVR_all_Sequence_information-high_confidence.tsv',
+     'IMGVR_all_Sequence_information-high_confidence-unrestricted_only.tsv', 1841330222),
+    ('IMGVR_all_nucleotides-high_confidence.fna.gz',
+     'IMGVR_all_nucleotides-high_confidence-ur.fna.gz', 24832073240),
+    ('IMGVR_all_proteins-high_confidence.faa.gz',
+     'IMGVR_all_proteins-high_confidence-ur.faa.gz', 15688814725),
+)
 NUCLEOTIDES_GZ = ROOT/'IMGVR_all_nucleotides-high_confidence.fna.gz'
 NUCLEOTIDES = ROOT/'IMGVR_all_nucleotides-high_confidence.fna'
 PROTEINS_GZ = ROOT/'IMGVR_all_proteins-high_confidence.faa.gz'
@@ -120,6 +129,48 @@ def save_manifest(*, opener=urlopen):
     return manifest
 
 
+def public_manifest():
+    """Pinned metadata for the public DOE NERSC unrestricted-only mirror."""
+    return {
+        'dataset': DATASET,
+        'release': RELEASE,
+        'source': 'doe_nersc_public_unrestricted_only_snapshot_2024-01-13',
+        'files': [
+            {'file_name': local, 'source_name': remote,
+             'url': NERSC_BASE + remote, 'file_size': size}
+            for local, remote, size in PUBLIC_FILES
+        ],
+        'compressed_bytes': sum(row[2] for row in PUBLIC_FILES),
+        'truth_status': ('official_public_mirror_transport_pinned_by_name_and_size;'
+                         'local_sha256_recorded_after_tls_transfer;not_provider_digest'),
+    }
+
+
+def download_public(*, runner=subprocess.run):
+    disk = _disk_status()
+    if not disk['enough_for_download_and_index']:
+        raise RuntimeError('imgvr_requires_250_gib_free_before_transfer')
+    ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+    manifest = public_manifest()
+    for row in manifest['files']:
+        target = ROOT/row['file_name']
+        partial = target.with_suffix(target.suffix + '.part')
+        runner(['curl','--fail','--location','--retry','8','--retry-delay','10',
+                '--continue-at','-','--output',str(partial),row['url']], check=True)
+        if partial.stat().st_size != row['file_size']:
+            raise RuntimeError('public mirror size mismatch for ' + row['file_name'])
+        digest = hashlib.sha256()
+        with partial.open('rb') as handle:
+            for block in iter(lambda:handle.read(8*1024*1024), b''): digest.update(block)
+        row['sha256'] = digest.hexdigest()
+        os.replace(partial, target)
+    temporary = MANIFEST.with_suffix('.tmp')
+    temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
+    os.chmod(temporary, 0o600); os.replace(temporary, MANIFEST)
+    return {'source':manifest['source'], 'files':len(manifest['files']),
+            'bytes':manifest['compressed_bytes'], 'manifest':str(MANIFEST)}
+
+
 def _restore_payload(manifest, *, send_mail=False):
     dataset = {'file_ids':[x['_id'] for x in manifest['files']]}
     return {'ids':{DATASET:dataset}, 'send_mail':bool(send_mail), 'api_version':'2'}
@@ -188,10 +239,11 @@ def verify_files():
         path = ROOT/row['file_name']
         if not path.is_file() or path.stat().st_size != row['file_size']:
             raise RuntimeError('missing or wrong-sized IMG/VR file: '+row['file_name'])
-        digest = hashlib.md5(usedforsecurity=False)
+        algorithm = 'sha256' if row.get('sha256') else 'md5sum'
+        digest = hashlib.sha256() if algorithm == 'sha256' else hashlib.md5(usedforsecurity=False)
         with path.open('rb') as handle:
             for block in iter(lambda:handle.read(8*1024*1024), b''): digest.update(block)
-        if digest.hexdigest() != row['md5sum']: raise RuntimeError('checksum mismatch: '+row['file_name'])
+        if digest.hexdigest() != row[algorithm]: raise RuntimeError('checksum mismatch: '+row['file_name'])
         checked.append(row['file_name'])
     return {'verified':checked, 'release':manifest['release']}
 
@@ -275,7 +327,12 @@ def build_indexes():
 
 
 def install():
-    _safe_extract(); verified=verify_files(); indexed=build_indexes()
+    manifest = json.loads(MANIFEST.read_text())
+    if manifest.get('source') == 'doe_nersc_public_unrestricted_only_snapshot_2024-01-13':
+        verified=verify_files()
+    else:
+        _safe_extract(); verified=verify_files()
+    indexed=build_indexes()
     return {'verified':verified,'status':indexed}
 
 
@@ -346,13 +403,14 @@ def query(spec, *, db=DB, nucleotide=NUCLEOTIDES, mmseqs=MMSEQS, mmseqs_db=MMSEQ
 
 def main():
     parser=argparse.ArgumentParser(); sub=parser.add_subparsers(dest='command',required=True)
-    for name in ('status','manifest','restore','download','install','verify'): sub.add_parser(name)
+    for name in ('status','manifest','restore','download','download-public','install','verify'): sub.add_parser(name)
     query_parser=sub.add_parser('query'); query_parser.add_argument('json')
     args=parser.parse_args()
     if args.command=='status': result=status()
     elif args.command=='manifest': result=save_manifest()
     elif args.command=='restore': result=restore()
     elif args.command=='download': result=download()
+    elif args.command=='download-public': result=download_public()
     elif args.command=='install': result=install()
     elif args.command=='verify': result=verify_files()
     else: result=query(json.loads(args.json))

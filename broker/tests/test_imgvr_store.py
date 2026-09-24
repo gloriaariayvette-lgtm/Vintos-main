@@ -100,6 +100,24 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'0600'):store._token()
         store.TOKEN_FILE.chmod(0o600); self.assertEqual(store._token(),'x'*40)
 
+    def test_public_download_is_pinned_resumable_and_locally_receipted(self):
+        calls=[]
+        def runner(command,**kwargs):
+            calls.append(command)
+            target=Path(command[command.index('--output')+1])
+            url=command[-1]
+            row=next(x for x in store.public_manifest()['files'] if x['url']==url)
+            target.write_bytes(b'x'*row['file_size'])
+        tiny=tuple((local,remote,index+3) for index,(local,remote,_) in enumerate(store.PUBLIC_FILES))
+        with patch.object(store,'PUBLIC_FILES',tiny), patch.object(store,'MIN_FREE_BYTES',1):
+            result=store.download_public(runner=runner)
+        manifest=json.loads(store.MANIFEST.read_text())
+        self.assertEqual(result['source'],'doe_nersc_public_unrestricted_only_snapshot_2024-01-13')
+        self.assertEqual(len(manifest['files']),3)
+        self.assertTrue(all(len(x['sha256'])==64 for x in manifest['files']))
+        self.assertTrue(all('--continue-at' in x for x in calls))
+        self.assertNotIn('Authorization',json.dumps(calls))
+
     def test_planner_sees_imgvr_only_after_the_index_is_ready(self):
         with patch.object(store,'status',return_value={'ready':False}):
             self.assertNotIn('operation:protein_similarity',lab_genome_mining.campaign_instructions())
