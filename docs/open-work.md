@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 24 September — how his pieces landed (landings)
+
+Built: the store (`scripts/landings.py`, kept at `~/.vintos/landings/`, outside his workspace) and
+her routes (`/api/landings*`). A note needs a why; it freezes what he meant by the piece and the six
+hours of conversation before it. Only what he sent her (delivered videos, messages he started) is
+listed; nothing counts what she has not rated.
+
+Not built yet:
+- The app side: the mark on each piece and the LANDINGS tab.
+- The weekly pass that turns her notes into understanding in GLORIA-MODEL.md — never a rating, never
+  her words, weighing what landed as much as what missed; she approves each change.
+- Receipts are missing at the source for most surfaces: images and songs record no send, outreach
+  messages lose their `delivered_at` when the app acknowledges them, and the journal has no tab.
+- Jokes already have their own rating (MISCHIEF, `humor-profile.json`), which he DOES learn from
+  (jokes rated 4+ return to chat). A landing note on a joke is separate from that and stays out of him.
+
 ## 19 September — causality, wants, and unresolved threads
 
 The realtime JEPA causality writer used a per-invocation cap rather than the nightly writer's

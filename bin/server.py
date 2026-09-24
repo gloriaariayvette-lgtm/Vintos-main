@@ -6224,6 +6224,7 @@ def _mount_domain(name, attr="router"):
         return False
 _mount_domain("galleries")
 _mount_domain("music")
+_mount_domain("landings")   # her notes on how his pieces landed; her side only (2026-09-24)
 
 
 # === Voice ===

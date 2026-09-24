@@ -177,9 +177,10 @@ atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh
 # plus the broker's two files and the units). This is what gets staged.
 # the dreaming skill's two shell entry points live under skills/, not scripts/ or bin/
 SKILLFILES="skills/dreaming/scripts/dream-trigger.sh skills/dreaming/scripts/should-dream.sh"   # thread lifecycle, 2026-09-10
-DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py"
+DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/server_domains/humor_wants.py bin/server_domains/landings.py"
 SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
 SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Monday gap review into the Forge (2026-09-24)
+SCRIPTS="$SCRIPTS landings.py"   # her notes on how his pieces landed, kept outside his workspace (2026-09-24)
 BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 
