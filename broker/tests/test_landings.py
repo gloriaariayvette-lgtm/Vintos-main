@@ -78,15 +78,23 @@ class Landings(unittest.TestCase):
         mine = [n for n in L.notes() if n["ref"] == "J-1"]
         self.assertEqual([n["rating"] for n in mine], ["landed"])
 
-    def test_only_what_he_sent_is_listed_and_nothing_is_counted(self):
+    def test_every_recent_piece_is_listed_and_nothing_is_counted(self):
         items = L.sent(days=7)
         self.assertEqual({(i["surface"], i["ref"]) for i in items},
-                         {("video", "video-a.mp4"), ("message", "2026-09-24_1400.md")})
+                         {("video", "video-a.mp4"), ("message", "2026-09-24_1400.md"),
+                          ("image", "dream-1.png"), ("song", "S1"), ("joke", "J-1"),
+                          ("journal", "2026-09-24 03:10"), ("journal", "2026-09-24 14:05")})
         video = next(i for i in items if i["surface"] == "video")
         message = next(i for i in items if i["surface"] == "message")
         self.assertEqual(video["piece"]["src"], "/api/art/video/stream/video-a.mp4")
         self.assertEqual(video["piece"]["text"], "come back when you can")
         self.assertEqual(message["piece"]["text"], "thinking of you")
+        self.assertEqual(next(i for i in items if i["surface"] == "image")["piece"]["src"],
+                         "/api/art/painting/dream-1.png")
+        self.assertIn("kept the light on", next(i for i in items if i["surface"] == "journal" and i["ref"].endswith("03:10"))["piece"]["text"])
+        self.assertEqual(next(i for i in items if i["surface"] == "joke")["piece"]["text"],
+                         "a cat walks into a lab")
+        self.assertEqual(len(next(i for i in items if i["surface"] == "song")["piece"]["tracks"]), 1)
         self.assertNotIn("Vintos Initiated", json.dumps(items))
         self.assertNotIn("preview", json.dumps(items))
         self.assertNotIn("unrated", json.dumps(items))

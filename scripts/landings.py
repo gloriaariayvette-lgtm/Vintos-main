@@ -13,7 +13,7 @@ of her, never a rating and never her words (her rule: a quoted rating would skew
 
 Unrated means nothing. There is no queue and no count of what she has not rated.
 """
-import json, os, time, uuid
+import json, os, re, time, uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -26,6 +26,7 @@ SURFACES = ("image", "song", "message", "journal", "video", "joke")
 RATINGS = ("landed", "partly", "missed")
 LEAD_UP_HOURS = 6
 LEAD_UP_ROWS = 12
+_JOURNAL_HEAD = re.compile(r"^(?:\[(\d{2}:\d{2})\]|## (\d{2}:\d{2})(?:\s*[—-]\s*(.*))?)\s*$", re.M)
 
 
 def _load(path, default):
@@ -117,23 +118,31 @@ def _message(ref):
             "made": {"message": message}}
 
 
+def _journal_entries(day, text):
+    heads = list(_JOURNAL_HEAD.finditer(text))
+    out = []
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        hm = m.group(1) or m.group(2)
+        body = text[m.end():end].strip()
+        if body:
+            out.append({"ref": "%s %s" % (day, hm), "time": hm,
+                        "title": (m.group(3) or "").strip(), "text": body})
+    if not heads and text.strip():
+        out.append({"ref": day, "time": "", "title": "", "text": text.strip()})
+    return out
+
+
 def _journal(ref):
-    """ref is 'YYYY-MM-DD HH:MM' — the day's file and the entry's header: '[HH:MM]' from the nightly
-    journal, '## HH:MM — Idle thoughts' from the idle one."""
-    day, _, hm = str(ref).partition(" ")
+    """Resolve the same full journal entry returned by /api/journal/{day}."""
+    day = str(ref).split(" ", 1)[0]
     try: text = open(os.path.join(MEMORY, "journal", day + ".md"), encoding="utf-8", errors="replace").read()
     except OSError: return None
-    i = 0
-    if hm:
-        i = text.find("[%s]" % hm)
-        if i < 0: i = text.find("## %s" % hm)
-    if i < 0: return None
-    j = text.find("\n[", i + 1)
-    k = text.find("\n## ", i + 1)
-    end = min(x for x in (j, k, len(text)) if x > 0)
-    entry = text[i:end].strip()
-    return {"at": _when("%sT%s" % (day, hm or "00:00")),
-            "piece": {"type": "journal", "text": entry}, "made": {"entry": entry}}
+    entry = next((e for e in _journal_entries(day, text) if e["ref"] == str(ref)), None)
+    if not entry: return None
+    at = _when("%sT%s" % (day, entry["time"] or "00:00"))
+    return {"at": at, "piece": {"type": "journal", "text": entry["text"]},
+            "made": {"entry": entry["text"]}}
 
 
 def _joke(ref):
@@ -218,9 +227,10 @@ def notes(days=None, now=None):
 
 
 def sent(days=7, now=None):
-    """What he actually sent her (videos delivered, messages he started) in the last days — the only
-    things listed for her; images, songs, the journal and jokes are noted where she already sees them.
-    Nothing here counts or flags what she has not rated."""
+    """Every recent piece she can respond to, with the complete piece attached.
+
+    Nothing here counts or flags what she has not rated.
+    """
     cut = datetime.fromtimestamp((now or time.time()) - days * 86400)
     noted = {(r["surface"], r["ref"]) for r in notes()}
     out = []
@@ -242,5 +252,40 @@ def sent(days=7, now=None):
         message = _outreach_body(text)
         out.append({"surface": "message", "ref": name, "at": t.isoformat(timespec="minutes"),
                     "piece": {"type": "message", "text": message}})
+    for r in _load(os.path.join(MEMORY, "art", "gallery.json"), []) or []:
+        if not isinstance(r, dict): continue
+        t = _when(r.get("timestamp")); ref = _base(r.get("image") or r.get("path"))
+        if t and t >= cut and ref:
+            found = _image(ref)
+            if found:
+                out.append({"surface": "image", "ref": ref, "at": t.isoformat(timespec="minutes"),
+                            "piece": found["piece"]})
+    music = _load(os.path.join(MEMORY, "art", "music", "music.json"), {})
+    for r in music.get("generated", []) if isinstance(music, dict) else []:
+        if not isinstance(r, dict): continue
+        t = _when(r.get("generated_at")); ref = r.get("task_id") or r.get("title")
+        if t and t >= cut and ref:
+            found = _song(ref)
+            if found:
+                out.append({"surface": "song", "ref": ref, "at": t.isoformat(timespec="minutes"),
+                            "piece": found["piece"]})
+    jd = os.path.join(MEMORY, "journal")
+    for name in sorted(os.listdir(jd)) if os.path.isdir(jd) else []:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}\.md$", name): continue
+        day = name[:-3]
+        try: text = open(os.path.join(jd, name), encoding="utf-8", errors="replace").read()
+        except OSError: continue
+        for entry in _journal_entries(day, text):
+            t = _when("%sT%s" % (day, entry["time"] or "00:00"))
+            if t and t >= cut:
+                out.append({"surface": "journal", "ref": entry["ref"], "at": t.isoformat(timespec="minutes"),
+                            "piece": {"type": "journal", "text": entry["text"]}})
+    drafts = _load(os.path.join(MEMORY, "humor-drafts.json"), {})
+    for r in drafts.get("drafts", []) if isinstance(drafts, dict) else []:
+        if not isinstance(r, dict) or not r.get("joke_id") or not r.get("joke"): continue
+        t = _when(r.get("date"))
+        if t and t >= cut:
+            out.append({"surface": "joke", "ref": r["joke_id"], "at": t.isoformat(timespec="minutes"),
+                        "piece": {"type": "joke", "text": r["joke"]}})
     for o in out: o["noted"] = (o["surface"], o["ref"]) in noted
     return sorted(out, key=lambda o: o["at"], reverse=True)
