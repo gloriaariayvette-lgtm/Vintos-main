@@ -113,6 +113,8 @@ def report_packet(receipt_ids):
 
 REPORT_MAX_ATTEMPTS = 12            # a report that has failed this often is abandoned, not retried forever
 REPORT_BACKOFF_CAP_S = 6 * 3600     # 1 min, 2, 4 ... never more than 6 hours between tries
+REPORT_PAUSE_S = 30 * 60            # after the Forge says no, no report is offered for this long
+REPORT_PAUSE = os.path.join(lab.ROOT, 'forge-report-pause.json')
 
 
 def offer_report(receipt_ids, question, *, send=None):
@@ -135,7 +137,7 @@ def offer_report(receipt_ids, question, *, send=None):
         outbox = lab._load(outbox_path, {})
         prior = outbox.get(key)
         if prior and prior.get('state') == 'accepted': return {'id': prior['project_id'], 'replayed': True}
-        if prior and prior.get('state') in ('refused', 'abandoned'): return {'state': prior['state'], 'replayed': True}
+        if prior and prior.get('state') == 'abandoned': return {'state': 'abandoned', 'replayed': True}
         attempts = int((prior or {}).get('attempts', 0)) + 1
         outbox[key] = {'receipt_ids': receipt_ids, 'question': question, 'state': 'pending', 'attempts': attempts,
                        'next_attempt': time.time() + min(REPORT_BACKOFF_CAP_S, 60 * 2 ** (attempts - 1))}
@@ -147,15 +149,19 @@ def offer_report(receipt_ids, question, *, send=None):
             result = json.loads(response.read(65536))
     except Exception as exc:
         # It used to retry every 60 s forever: 18,821 faults in one week (gap scan, 2026-09-24).
-        # A refusal (4xx) is final and kept with its code; anything else backs off and gives up.
+        # The Forge answers 403 both for a real refusal and for "four unfinished reports; retain Lab
+        # receipts until capacity returns", and cannot say which. So nothing is final on a status code:
+        # a refusal pauses ALL reports for a while (the Forge is full or closed, not this report), each
+        # report backs off on its own, and only a report tried REPORT_MAX_ATTEMPTS times is abandoned.
         code = getattr(exc, 'code', None)
-        final = ('refused' if isinstance(code, int) and 400 <= code < 500 else
-                 'abandoned' if attempts >= REPORT_MAX_ATTEMPTS else None)
-        if final:
-            with lab._locked():
-                outbox = lab._load(outbox_path, {})
-                outbox[key].update(state=final, http_status=code, reason=str(exc)[:240], ended_at=lab.now_iso())
-                lab._atomic(outbox_path, outbox)
+        if isinstance(code, int) and 400 <= code < 500:
+            lab._atomic(REPORT_PAUSE, {'until': time.time() + REPORT_PAUSE_S, 'http_status': code, 'at': lab.now_iso()})
+        with lab._locked():
+            outbox = lab._load(outbox_path, {})
+            outbox[key].update(http_status=code, reason=str(exc)[:240])
+            if attempts >= REPORT_MAX_ATTEMPTS:
+                outbox[key].update(state='abandoned', ended_at=lab.now_iso())
+            lab._atomic(outbox_path, outbox)
         raise
     if not result.get('id'): raise RuntimeError('report intake not acknowledged')
     with lab._locked():
@@ -170,9 +176,11 @@ def offer_report(receipt_ids, question, *, send=None):
 
 def flush_reports():
     if not lab.config().get('forge_report_intake'): return
+    if (lab._load(REPORT_PAUSE, {}) or {}).get('until', 0) > time.time(): return   # the Forge said no; wait
     outbox = lab._load(os.path.join(lab.ROOT, 'forge-report-outbox.json'), {})
     for row in outbox.values():
-        if row.get('state') == 'pending' and row.get('next_attempt', 0) <= time.time():
+        # 'refused' is only left by the 2026-09-24 build that took a capacity 403 as final; it is retried.
+        if row.get('state') in ('pending', 'refused') and row.get('next_attempt', 0) <= time.time():
             offer_report(row['receipt_ids'], row['question'])
             break
 

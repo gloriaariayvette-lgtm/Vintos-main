@@ -44,17 +44,37 @@ class ReportRetry(unittest.TestCase):
         lab._ensure()
         cfg = lab.config(); cfg["forge_report_intake"] = {"url": "http://127.0.0.1:9/api/lab-intake", "token_file": "x"}
         lab._atomic(lab.CONFIG, cfg)
-        if os.path.exists(OUTBOX): os.unlink(OUTBOX)
+        for f in (OUTBOX, src.REPORT_PAUSE):
+            if os.path.exists(f): os.unlink(f)
         self.assertTrue(lab.ROOT.startswith(HOME), lab.ROOT)
 
-    def test_a_refusal_is_final_and_not_resent(self):
-        refused = Sender(urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"")))
-        with self.assertRaises(urllib.error.HTTPError): src.offer_report(["R1"], "q", send=refused)
+    def test_a_forge_refusal_pauses_every_report_and_is_not_final(self):
+        # The Forge answers 403 for "four unfinished reports; retain Lab receipts until capacity returns"
+        # as well as for a real refusal. A capacity hold must never discard his findings.
+        full = Sender(urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"")))
+        with self.assertRaises(urllib.error.HTTPError): src.offer_report(["R1"], "q", send=full)
         row = next(iter(lab._load(OUTBOX, {}).values()))
-        self.assertEqual((row["state"], row["http_status"]), ("refused", 403))
-        again = Sender()
-        self.assertEqual(src.offer_report(["R1"], "q", send=again)["state"], "refused")
-        self.assertEqual(again.calls, 0, "a refused report is never sent again")
+        self.assertEqual((row["state"], row["http_status"]), ("pending", 403))
+        self.assertGreater(lab._load(src.REPORT_PAUSE, {})["until"], time.time() + 60 * 25)
+        tried = []
+        src.offer_report, real = (lambda ids, q, send=None: tried.append(ids)), src.offer_report
+        try:
+            src.flush_reports()
+        finally:
+            src.offer_report = real
+        self.assertEqual(tried, [], "while the Forge is full, no report is offered")
+        os.unlink(src.REPORT_PAUSE)
+        self.assertEqual(src.offer_report(["R1"], "q", send=Sender())["id"], "P-1", "after the pause it lands")
+
+    def test_a_report_left_refused_by_the_earlier_build_is_retried(self):
+        lab._atomic(OUTBOX, {"k": {"receipt_ids": ["R9"], "question": "q", "state": "refused", "next_attempt": 0}})
+        tried = []
+        src.offer_report, real = (lambda ids, q, send=None: tried.append(ids)), src.offer_report
+        try:
+            src.flush_reports()
+        finally:
+            src.offer_report = real
+        self.assertEqual(tried, [["R9"]])
 
     def test_a_transient_failure_backs_off_then_is_abandoned(self):
         down = Sender(urllib.error.URLError("connection refused"))
