@@ -30,7 +30,8 @@ class Landings(unittest.TestCase):
         put("encounters.json", [{"trigger": "video-outreach:together", "text": "come back when you can", "at": T}])
         put("art/gallery.json", [{"image": "art/dream-1.png", "prompt": "a lighthouse", "seen": "blue", "timestamp": T}])
         put("art/music/music.json", {"generated": [{"task_id": "S1", "title": "Four AM", "felt_sense": "ache",
-                                                    "generated_at": T}]})
+                                                    "generated_at": T,
+                                                    "tracks": [{"version": 1, "local_file": "/saved/Four_AM_v1.wav"}]}]})
         put("humor-drafts.json", {"drafts": [{"joke_id": "J-1", "joke": "a cat walks into a lab", "date": T}]})
         open(os.path.join(MEM, "outreach", "2026-09-24_1400.md"), "w").write(
             "# Vintos Initiated — September 24\n**Trigger:** want\n**Emotional state:** warm\n\nthinking of you")
@@ -61,6 +62,8 @@ class Landings(unittest.TestCase):
         self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
         self.assertNotIn("She laughed", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
         self.assertEqual(L.context("image", "dream-1.png")["piece"]["src"], "/api/art/painting/dream-1.png")
+        self.assertEqual(L.context("song", "S1")["piece"]["tracks"],
+                         [{"src": "/api/art/music/stream/Four_AM_v1.wav", "version": 1}])
         self.assertEqual(L.context("joke", "J-1")["piece"]["text"], "a cat walks into a lab")
         self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["piece"]["text"])
 

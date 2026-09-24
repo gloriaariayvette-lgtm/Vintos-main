@@ -96,8 +96,10 @@ def _song(ref):
     log = _load(os.path.join(MEMORY, "art", "music", "music.json"), {})
     for r in reversed(log.get("generated", []) if isinstance(log, dict) else []):
         if isinstance(r, dict) and ref in (r.get("task_id"), r.get("title")):
-            tracks = [{"src": "/api/art/music/stream/" + quote(_base(t.get("file"))), "version": t.get("version")}
-                      for t in (r.get("tracks") or []) if isinstance(t, dict) and t.get("file")]
+            tracks = [{"src": "/api/art/music/stream/" + quote(_base(t.get("local_file") or t.get("file"))),
+                       "version": t.get("version")}
+                      for t in (r.get("tracks") or [])
+                      if isinstance(t, dict) and (t.get("local_file") or t.get("file"))]
             return {"at": _when(r.get("generated_at")),
                     "piece": {"type": "song", "title": r.get("title", ""), "tracks": tracks},
                     "made": {k: r.get(k, "") for k in ("title", "felt_sense", "want_text", "style")}}
