@@ -77,7 +77,8 @@ def current_claude_model():
 LOCATION_MODELS = {"atelier": "claude-opus-4-8",       # visit, knock, threshold, opening
                    "self_review": "claude-opus-4-8",
                    "humor": "claude-opus-4-8",
-                   "lab": "claude-opus-4-8"}           # the Lab's Claude planning/reading lens
+                   "lab": "claude-opus-4-8",           # the Lab's Claude planning/reading lens
+                   "gap_review": "claude-opus-4-8"}    # the weekly review of where he hits walls
 _LOCATIONS_FILE = os.path.join(_HOME, ".vintos", "model-locations.json")
 def location_model(location):
     """This place's model: an override in ~/.vintos/model-locations.json, else its default, else the chat toggle."""

@@ -50,6 +50,7 @@ import json
 import os
 import sys
 import time
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -244,6 +245,31 @@ def propose_from_atelier(capability, why, project_id, root, root_type, intent,
                      "invocation": invocation if invocation in INVOCATION else DEFAULT_INVOCATION},
            "granted": None, "risks": str(risks or "")[:600], "touches": list(touches or []),
            "tests": str(tests or "")[:600], "history": [{"at": _now(), "event": "proposed_from_atelier"}],
+           "created": _now()}
+    rows.append(row); _save(rows); return row, ""
+
+
+def propose_from_gap_review(capability, why, evidence, path="", touches=None, tests="",
+                            reachable_by="code_change", review_id=""):
+    """A wall the weekly gap review found, proposed as a card for her to approve or deny.
+    Its parent is recorded evidence of him failing to act, not a want; nothing is built or
+    granted by proposing it. (Gloria, 2026-09-24)"""
+    cap = str(capability or "").strip()
+    if not re.fullmatch(r"[a-z][a-z0-9_]{1,79}", cap):
+        return None, "a gap proposal needs a snake_case capability"
+    if not str(why or "").strip() or not evidence:
+        return None, "a gap proposal needs a reason and the recorded evidence behind it"
+    rows = _load()
+    if any(r.get("capability") == cap and r.get("state") in OPEN_STATES for r in rows):
+        return None, "already open"
+    row = {"id": "SK-" + uuid.uuid4().hex[:8], "state": "proposed", "capability": cap,
+           "why": str(why)[:600],
+           "origin": {"source": "gap_review", "spark": "gap_review", "review_id": str(review_id)[:40],
+                      "reachable_by": str(reachable_by)[:40], "evidence": [str(e)[:240] for e in evidence][:6],
+                      "provenance_class": "self_originated", "at": _now()},
+           "asked": {"scope": {"path": str(path or "")[:1200]}, "permissions": [], "invocation": DEFAULT_INVOCATION},
+           "granted": None, "risks": "", "touches": [str(t)[:120] for t in (touches or [])][:12],
+           "tests": str(tests or "")[:600], "history": [{"at": _now(), "event": "proposed_from_gap_review"}],
            "created": _now()}
     rows.append(row); _save(rows); return row, ""
 

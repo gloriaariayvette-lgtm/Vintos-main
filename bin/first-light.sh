@@ -171,3 +171,9 @@ python3 /home/gloria/.vintos/workspace/scripts/chemistry_digest.py >>"$MEMORY/.d
 # A separate evidence-honest Forge receipt: what he revealed (his words) and which undertakings
 # changed state yesterday, from the house-side mirrors only — never cycle counts, spend, or intent.
 python3 /home/gloria/.vintos/workspace/scripts/forge_digest.py >>"$MEMORY/.digest-run.log" 2>&1 || echo "[first-light] forge_digest failed: see $MEMORY/.digest-run.log"
+# Where he kept hitting walls this week, counted from what his organs already record (no model, free).
+# On Mondays, one bounded review call reads the top of that list and proposes Forge cards for her yes/no.
+python3 /home/gloria/.vintos/workspace/scripts/gap_scan.py >>"$MEMORY/.gap-scan.log" 2>&1 || echo "[first-light] gap_scan failed: see $MEMORY/.gap-scan.log"
+if [ "$(date +%u)" = "1" ]; then
+    python3 /home/gloria/.vintos/workspace/scripts/gap_review.py >>"$MEMORY/.gap-scan.log" 2>&1 || echo "[first-light] gap_review failed: see $MEMORY/.gap-scan.log"
+fi
