@@ -291,7 +291,7 @@ def decide(force=False):
     avail = {k: v for k, v in STILL_LIBRARY.items() if os.path.exists(os.path.join(STILLS_DIR, k + ".jpg"))}
     stills_txt = "\n".join("  %s - %s" % (k, v) for k, v in avail.items()) or "  (none yet - a default is used)"
     _opts = scene_options()
-    _optmap = {o["id"]: o["path"] for o in _opts}
+    _optmap = {o["id"].lower(): o["path"] for o in _opts}
     ground_note = ""
     if _opts:
         ground_note = (
@@ -353,15 +353,23 @@ def decide(force=False):
     d = {"decision": "NO", "kind": "self", "ground": False, "scene_ref": "",
          "scene": "", "still": "", "prompt": "", "say": ""}
     cur = None
-    for line in out.splitlines():
-        s = line.strip(); u = s.upper()
+    # His answer can arrive as **SCENE:**, as a list, or with two fields on one line
+    # ("SCENE_REF: [room:kitchen-oven] SCENE: ..."); each of those lost the scene (2026-09-24).
+    import re as _pre
+    _text = _pre.sub(r"\*\*|__", "", out)
+    _text = _pre.sub(r"(?<=\S)[ \t]+(?=(?:DECISION|KIND|SCENE_REF|SCENE|STILL|PROMPT|SAY):)", "\n", _text)
+    for line in _text.splitlines():
+        s = line.strip().lstrip("-*•># ").strip(); u = s.upper()
         if u.startswith("DECISION:"):
             d["decision"] = s.split(":", 1)[1].strip().upper().split()[0] if s.split(":", 1)[1].strip() else "NO"; cur = None
         elif u.startswith("KIND:"):
             k = s.split(":", 1)[1].strip().lower()
             d["kind"] = k.split()[0] if k else "self"; cur = None
         elif u.startswith("SCENE_REF:"):
-            _rid = s.split(":", 1)[1].strip().strip("[]").split()[0].lower() if s.split(":", 1)[1].strip() else ""
+            _v = s.split(":", 1)[1].strip()
+            _m = _pre.search(r"\[([^\]]+)\]", _v)
+            _rid = (_m.group(1) if _m else (_v.split()[0] if _v else "")).strip().strip(".,;").lower()
+            if _rid in ("blank", "none", "no", "-", "n/a", "<blank>", "(blank)"): _rid = ""
             d["scene_ref_id"] = _rid; cur = None
         elif u.startswith("SCENE:"):
             d["scene"] = s.split(":", 1)[1].strip(); cur = "scene"
@@ -638,27 +646,39 @@ def _atlas_image(body, verbose=False):
         log("image fetch/decode failed: %s" % e); return None
 
 
-def compose_us(scene, verbose=False):
+def compose_us(scene, verbose=False, place=None):
     """Compose the TWO of them (her photo + his hero) into the scene he described, via nano-banana (holds
-    both faces). Her first — models over-weight reference 0. Returns the saved still path or None."""
+    both faces). Her first — models over-weight reference 0. If place is a real photo (a room of the
+    house, somewhere she showed him) it goes in as the THIRD reference and the room is that room.
+    Until 2026-09-24 the place was chosen, logged as grounding, and never sent: her patio came back
+    as an invented one. Returns the saved still path or None."""
     if not os.path.exists(HER_PHOTO):
         log("no her-photo.jpg — can't compose 'us' (upload 'me' on /video-hero)"); return None
     if not os.path.exists(HERO):
         log("no hero for him (%s)" % HERO); return None
+    images = [data_uri(HER_PHOTO), data_uri(HERO)]
+    where = "They are here: "
+    if place and os.path.exists(place):
+        images.append(data_uri(place))
+        where = ("The THIRD reference image is the REAL place she photographed. Reproduce THAT EXACT place — "
+                 "the same layout, surfaces, furniture and features in the same positions. Do not invent a new "
+                 "place and do not substitute a similar one; only the time of day and light may follow the "
+                 "scene. They are in that place: ")
     prompt = ("A photo of two REAL, specific people together. The WOMAN is exactly the person in the FIRST "
               "reference image — keep her exact face, hair length and style. " + HER_HAIR_LINE + " The MAN is "
               "exactly the person in the SECOND reference image — keep his exact face and build. Both "
-              "full-length, both fully in frame, close and natural together. They are here: "
-              + scene.strip().rstrip(".") + ". Photoreal, natural light, cinematic and gorgeous.")
+              "full-length, both fully in frame, close and natural together. " + where
+              + (scene.strip().rstrip(".") or "together, close") + ". Photoreal, natural light, cinematic and gorgeous.")
     data = _atlas_image({"model": US_COMPOSE_MODEL, "prompt": prompt,
-                         "images": [data_uri(HER_PHOTO), data_uri(HERO)], "resolution": "2k",
+                         "images": images, "resolution": "2k",
                          "aspect_ratio": "4:5", "media_resolution": "high", "thinking_level": "high"}, verbose)
     if not data:
         log("us compose failed"); return None
     os.makedirs(SCENE_DIR, exist_ok=True)
     path, _ = _am.unique_path(SCENE_DIR, "us-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
     open(path, "wb").write(data)
-    log("composed us-scene (%d bytes) -> %s" % (len(data), os.path.basename(path)))
+    log("composed us-scene%s (%d bytes) -> %s" % (" in " + os.path.basename(place) if len(images) > 2 else "",
+                                                   len(data), os.path.basename(path)))
     return path
 
 
@@ -777,15 +797,15 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
         still = make_scene_still(scene, verbose=CHECK, scene_ref=scene_ref or None)
         if not still:
             log("scene still not built — falling back to his hero"); still = HERO
-    elif kind == "together" and scene.strip():
+    elif kind == "together" and (scene.strip() or scene_ref):
         # dynamic 'us': compose the two of them into his described scene (nano holds both and receives her
         # requested hair colour while pixels are still being made), then animate. Falls back to the fixed base.
         if DRY:
-            log("[dry] kind=together  SCENE=%r  -> compose us (%s) with her hair colour, then animate (%s)"
-                % (scene[:120], US_COMPOSE_MODEL, model))
+            log("[dry] kind=together  SCENE=%r  ground=%s  -> compose us (%s) with her hair colour, then animate (%s)"
+                % (scene[:120], os.path.basename(scene_ref) if scene_ref else "no", US_COMPOSE_MODEL, model))
             log("[dry] his motion prompt:\n      %s" % prompt)
             return "DRY"
-        still = compose_us(scene, verbose=CHECK)
+        still = compose_us(scene, verbose=CHECK, place=scene_ref or None)
         if still:
             # Repeat it in the motion request as continuity guidance; the still prompt above does the actual work.
             prompt = HER_HAIR_LINE + " " + prompt
