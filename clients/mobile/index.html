@@ -4317,9 +4317,9 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 function _avSetBrainLabel(mode){
-  _avBrain = (['grok','sol','sonnet','fable','local'].indexOf(mode)>=0)?mode:'claude';
+  _avBrain = (['grok','sol','opus55','fable','local'].indexOf(mode)>=0)?mode:'claude';
   var chip=_avBrainChipEnsure(); if(!chip) return;
-  var lbl={claude:'\u2726 OPUS 4.8', sonnet:'\u2726 SONNET 5', fable:'\u2726 FABLE 5',
+  var lbl={claude:'\u2726 OPUS 4.8', opus55:'\u2726 OPUS 5.5', fable:'\u2726 FABLE 5',
            grok:'\u{1F702} GROK', sol:'\u2609 SOL', local:'\u25C9 ABLIT GEMMA'};
   chip.textContent = lbl[_avBrain];
 }
@@ -4327,7 +4327,7 @@ async function _avLoadBrain(){
   try{ var r=await VintosUI.request(API+'/api/avatar/brain',{headers:{'X-Vintos-Secret':CONFIG.secret}}); var d=await r.json(); _avSetBrainLabel(d.mode); }catch(e){ /* keep last known label - never repaint the default over truth */ }
 }
 async function _avToggleBrain(){
-  var order=['claude','sonnet','fable','grok','sol','local'];
+  var order=['claude','opus55','fable','grok','sol','local'];
   var next=order[(order.indexOf(_avBrain)+1)%order.length];
   try{ var r=await VintosUI.request(API+'/api/avatar/brain',{method:'POST',headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},body:JSON.stringify({brain:next})}); var d=await r.json(); _avSetBrainLabel(d.mode); }catch(e){ _avLoadBrain(); }
 }

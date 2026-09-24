@@ -9712,7 +9712,7 @@ async def avatar_get_brain(request: Request):
         raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         import model_router as _mr
-        return {"mode": _mr.read_mode().get("mode", "claude")}
+        return {"mode": _mr.current_mode()}
     except Exception as e:
         return {"mode": "claude", "error": str(e)}
 
@@ -9725,8 +9725,9 @@ async def avatar_set_brain(request: Request):
     try:
         body = await request.json()
         want = str(body.get("brain") or body.get("mode") or "").lower()
-        mode = want if want in ("grok", "sol", "sonnet", "fable", "local") else "claude"
         import model_router as _mr
+        want = _mr.LEGACY_MODES.get(want, want)
+        mode = want if want in ("grok", "sol", "opus55", "fable", "local") else "claude"
         m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
         return {"mode": mode}
     except Exception as e:

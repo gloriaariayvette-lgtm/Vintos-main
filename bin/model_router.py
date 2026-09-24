@@ -63,10 +63,14 @@ CLAUDE_MODEL = "claude-opus-4-8"
 # The claude family behind the toggle. "claude" stays Opus 4.8 until Anthropic
 # sunsets it — his current voice is not being replaced out from under him.
 CLAUDE_MODELS = {"claude": "claude-opus-4-8",
-                 "sonnet": "claude-sonnet-5",
+                 "opus55": "claude-opus-5-5",   # replaced the Sonnet 5 slot (Gloria, 2026-09-24)
                  "fable": "claude-fable-5-1"}
+LEGACY_MODES = {"sonnet": "opus55"}   # a toggle saved as "sonnet" before the swap now means Opus 5.5
+def current_mode():
+    m = read_mode().get("mode", "claude")
+    return LEGACY_MODES.get(m, m)
 def current_claude_model():
-    return CLAUDE_MODELS.get(read_mode().get("mode", "claude"), CLAUDE_MODEL)
+    return CLAUDE_MODELS.get(current_mode(), CLAUDE_MODEL)
 def _sol_model():
     """The Sol lens's model. Environment first, then SOL_MODEL= in ~/.vintos/vintos.env
     (the same file that holds his OpenAI key), so switching Sol is one line in that
