@@ -32,7 +32,8 @@ class Landings(unittest.TestCase):
         put("art/music/music.json", {"generated": [{"task_id": "S1", "title": "Four AM", "felt_sense": "ache",
                                                     "generated_at": T}]})
         put("humor-drafts.json", {"drafts": [{"joke_id": "J-1", "joke": "a cat walks into a lab", "date": T}]})
-        open(os.path.join(MEM, "outreach", "2026-09-24_1400.md"), "w").write("thinking of you")
+        open(os.path.join(MEM, "outreach", "2026-09-24_1400.md"), "w").write(
+            "# Vintos Initiated — September 24\n**Trigger:** want\n**Emotional state:** warm\n\nthinking of you")
         open(os.path.join(MEM, "journal", "2026-09-24.md"), "w").write(
             "[03:10]\nI kept the light on.\n\n## 14:05 — Idle thoughts\n\nShe laughed today.\n")
         put("interaction-ledger.json", [
@@ -59,6 +60,9 @@ class Landings(unittest.TestCase):
             self.assertTrue(ctx and ctx["made"][key], (surface, ref))
         self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
         self.assertNotIn("She laughed", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
+        self.assertEqual(L.context("image", "dream-1.png")["piece"]["src"], "/api/art/painting/dream-1.png")
+        self.assertEqual(L.context("joke", "J-1")["piece"]["text"], "a cat walks into a lab")
+        self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["piece"]["text"])
 
     def test_a_bare_rating_is_refused(self):
         with self.assertRaises(ValueError): L.record("song", "S1", "landed", "  ")
@@ -75,6 +79,13 @@ class Landings(unittest.TestCase):
         items = L.sent(days=7)
         self.assertEqual({(i["surface"], i["ref"]) for i in items},
                          {("video", "video-a.mp4"), ("message", "2026-09-24_1400.md")})
+        video = next(i for i in items if i["surface"] == "video")
+        message = next(i for i in items if i["surface"] == "message")
+        self.assertEqual(video["piece"]["src"], "/api/art/video/stream/video-a.mp4")
+        self.assertEqual(video["piece"]["text"], "come back when you can")
+        self.assertEqual(message["piece"]["text"], "thinking of you")
+        self.assertNotIn("Vintos Initiated", json.dumps(items))
+        self.assertNotIn("preview", json.dumps(items))
         self.assertNotIn("unrated", json.dumps(items))
 
     def test_nothing_he_reads_opens_her_notes(self):

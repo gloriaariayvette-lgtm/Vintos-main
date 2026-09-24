@@ -1,8 +1,8 @@
 {
   "repository": "vintos-app",
-  "commit": "a0d5e3e",
+  "commit": "fe65b6a",
   "sha256": {
-    "index.html": "1de52a66f426f154650185c2579ca7276d1c73144ebebe8f51fdd599cceb5d32",
+    "index.html": "0f5bc7e4b192354bb029e168ba6a68a0bce49b58fcf0d2542f388ae12cca6a16",
     "client_lifecycle.js": "8d26e2b4ca644eb966d96d474ec87ef22a8d461cc4b6014044ce3b52812b1742",
     "avatar-bundle.js": "9869b6a3db5f4df5fff24d4fe3213461b645dfa978cd6bc07e301909f29ffc7c"
   },

@@ -15,6 +15,7 @@ Unrated means nothing. There is no queue and no count of what she has not rated.
 """
 import json, os, time, uuid
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -49,6 +50,18 @@ def _base(p):
     return os.path.basename(str(p or ""))
 
 
+def _outreach_body(text):
+    """Return the words she received, without the private initiation header."""
+    text = str(text or "").strip()
+    lines = text.splitlines()
+    if not lines or not lines[0].lstrip().startswith("# Vintos Initiated"):
+        return text
+    i = 1
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith(("**Trigger:**", "**Emotional state:**"))):
+        i += 1
+    return "\n".join(lines[i:]).strip()
+
+
 # ---- what he made, and what he meant by it -------------------------------------------------
 
 def _video(ref):
@@ -62,8 +75,10 @@ def _video(ref):
         t = _when(e.get("at"))
         if at and t and abs((t - at).total_seconds()) < 1800:
             said = e.get("text", ""); break
-    return {"at": at, "made": {"kind": rec.get("kind"), "prompt": rec.get("prompt", ""), "said": said,
-                               "delivery": (rec.get("delivery") or {}).get("state")}}
+    return {"at": at,
+            "piece": {"type": "video", "src": "/api/art/video/stream/" + quote(_base(ref)), "text": said},
+            "made": {"kind": rec.get("kind"), "prompt": rec.get("prompt", ""), "said": said,
+                     "delivery": (rec.get("delivery") or {}).get("state")}}
 
 
 def _image(ref):
@@ -71,14 +86,20 @@ def _image(ref):
     rec = next((r for r in reversed(g) if isinstance(r, dict)
                 and ref in (r.get("image"), r.get("path"), _base(r.get("image")), _base(r.get("path")), r.get("sha256"))), None)
     if not rec: return None
-    return {"at": _when(rec.get("timestamp")), "made": {"prompt": rec.get("prompt", ""), "seen": rec.get("seen", "")}}
+    image = _base(rec.get("image") or rec.get("path") or ref)
+    return {"at": _when(rec.get("timestamp")),
+            "piece": {"type": "image", "src": "/api/art/painting/" + quote(image), "text": rec.get("seen", "")},
+            "made": {"prompt": rec.get("prompt", ""), "seen": rec.get("seen", "")}}
 
 
 def _song(ref):
     log = _load(os.path.join(MEMORY, "art", "music", "music.json"), {})
     for r in reversed(log.get("generated", []) if isinstance(log, dict) else []):
         if isinstance(r, dict) and ref in (r.get("task_id"), r.get("title")):
+            tracks = [{"src": "/api/art/music/stream/" + quote(_base(t.get("file"))), "version": t.get("version")}
+                      for t in (r.get("tracks") or []) if isinstance(t, dict) and t.get("file")]
             return {"at": _when(r.get("generated_at")),
+                    "piece": {"type": "song", "title": r.get("title", ""), "tracks": tracks},
                     "made": {k: r.get(k, "") for k in ("title", "felt_sense", "want_text", "style")}}
     return None
 
@@ -88,7 +109,10 @@ def _message(ref):
     path = os.path.join(MEMORY, "outreach", name if name.endswith(".md") else name + ".md")
     try: text = open(path, encoding="utf-8", errors="replace").read()
     except OSError: return None
-    return {"at": datetime.fromtimestamp(os.path.getmtime(path)), "made": {"message": text.strip()[:2000]}}
+    message = _outreach_body(text)
+    return {"at": datetime.fromtimestamp(os.path.getmtime(path)),
+            "piece": {"type": "message", "text": message},
+            "made": {"message": message}}
 
 
 def _journal(ref):
@@ -105,14 +129,18 @@ def _journal(ref):
     j = text.find("\n[", i + 1)
     k = text.find("\n## ", i + 1)
     end = min(x for x in (j, k, len(text)) if x > 0)
-    return {"at": _when("%sT%s" % (day, hm or "00:00")), "made": {"entry": text[i:end].strip()[:3000]}}
+    entry = text[i:end].strip()
+    return {"at": _when("%sT%s" % (day, hm or "00:00")),
+            "piece": {"type": "journal", "text": entry}, "made": {"entry": entry}}
 
 
 def _joke(ref):
     d = _load(os.path.join(MEMORY, "humor-drafts.json"), {})
     for r in d.get("drafts", []) if isinstance(d, dict) else []:
         if isinstance(r, dict) and r.get("joke_id") == ref:
-            return {"at": _when(r.get("date")), "made": {"joke": r.get("joke", "")}}
+            return {"at": _when(r.get("date")),
+                    "piece": {"type": "joke", "text": r.get("joke", "")},
+                    "made": {"joke": r.get("joke", "")}}
     return None
 
 
@@ -138,7 +166,7 @@ def context(surface, ref):
     found = FINDERS[surface](ref)
     if not found: return None
     return {"item_at": found["at"].isoformat(timespec="minutes") if found["at"] else None,
-            "made": found["made"], "lead_up": lead_up(found["at"])}
+            "piece": found.get("piece", {}), "made": found["made"], "lead_up": lead_up(found["at"])}
 
 
 # ---- her notes -----------------------------------------------------------------------------
@@ -177,7 +205,14 @@ def notes(days=None, now=None):
     if days:
         cut = datetime.fromtimestamp((now or time.time()) - days * 86400).isoformat()
         out = [r for r in out if r.get("at", "") >= cut]
-    return out
+    enriched = []
+    for r in out:
+        row = dict(r)
+        if not row.get("piece") and row.get("surface") in FINDERS:
+            found = FINDERS[row["surface"]](row.get("ref"))
+            if found: row["piece"] = found.get("piece", {})
+        enriched.append(row)
+    return enriched
 
 
 def sent(days=7, now=None):
@@ -191,8 +226,9 @@ def sent(days=7, now=None):
         if not isinstance(r, dict) or (r.get("delivery") or {}).get("state") not in ("sent", "acknowledged"): continue
         t = _when(r.get("timestamp"))
         if t and t >= cut and r.get("file"):
+            found = _video(r["file"]) or {}
             out.append({"surface": "video", "ref": r["file"], "at": t.isoformat(timespec="minutes"),
-                        "preview": str(r.get("prompt", ""))[:160]})
+                        "piece": found.get("piece", {"type": "video", "src": "/api/art/video/stream/" + quote(_base(r["file"]))})})
     od = os.path.join(MEMORY, "outreach")
     for name in sorted(os.listdir(od)) if os.path.isdir(od) else []:
         p = os.path.join(od, name)
@@ -201,6 +237,8 @@ def sent(days=7, now=None):
         if t < cut: continue
         try: text = open(p, encoding="utf-8", errors="replace").read().strip()
         except OSError: continue
-        out.append({"surface": "message", "ref": name, "at": t.isoformat(timespec="minutes"), "preview": text[:160]})
+        message = _outreach_body(text)
+        out.append({"surface": "message", "ref": name, "at": t.isoformat(timespec="minutes"),
+                    "piece": {"type": "message", "text": message}})
     for o in out: o["noted"] = (o["surface"], o["ref"]) in noted
     return sorted(out, key=lambda o: o["at"], reverse=True)
