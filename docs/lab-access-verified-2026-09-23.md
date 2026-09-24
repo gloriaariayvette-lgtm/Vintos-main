@@ -34,9 +34,12 @@ used the same source client but did not add sample queries to Vintos's notebook.
 COSMIC is closed without a registered/licensed data route. KEGG is closed while
 API eligibility remains unresolved; noncommercial use alone was not treated as
 academic eligibility. IMG/VR is publicly browsable and supplies bulk downloads,
-but a bounded anonymous query API was not verified. No multi-million-record
-download is installed on Aegis, so IMG/VR is not advertised as a callable Lab
-source.
+not a bounded anonymous query API. Its official file metadata endpoint reports
+the high-confidence v4.1 bundle as 43,118,863,386 bytes (40.16 GiB compressed)
+with five provider checksums. Aegis is the selected primary store and had 558 GB
+available when measured. No bundle or index is installed yet, so IMG/VR is not
+advertised as a callable Lab source until the account-backed JGI transfer,
+checksum verification, indexing and bounded query commissioning pass.
 
 ## ChatGPT-account relay, reached from Aegis through the restricted Mac doorway
 

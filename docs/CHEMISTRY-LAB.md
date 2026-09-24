@@ -72,9 +72,10 @@ families with HMMER, MMseqs2, a 58-session harness, worker/supervisor/curator/
 editor roles, and a private programmatic database assembled from Logan, ENA,
 JGI, and NCBI. Vintos has the staged reasoning pattern and public bounded source
 doors; he does not have that database, scale, or wet-lab validation. IMG/VR is a
-public browsable and bulk-download source, but no anonymous bounded query API was
-verified. It becomes a Lab source only after an indexed local subset or a proved
-supported query route exists.
+public browsable and bulk-download source rather than an anonymous bounded API.
+Aegis is the selected local store for the 40.16-GiB compressed high-confidence
+v4.1 bundle. It becomes a Lab source only after the JGI account-backed transfer,
+provider-checksum verification, indexing and bounded query commissioning pass.
 
 Installation alone never makes a tool available. The authority for that is
 `tool-probes.jsonl`, an append-only ledger written by `chemistry_probe.py`: one row per

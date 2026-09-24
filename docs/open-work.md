@@ -1299,14 +1299,24 @@ mismatch-tolerant, regular-spacing repeat screen. InterPro provides bounded
 known-domain classification. Scratch suites cover validation, routing,
 isolation, receipt truth labels and the repeat screen. Read-only commissioning
 against the public MarsHill records resolved the published protein-to-genome
-mapping, returned a 7,506-base/24-feature neighborhood, and recovered a
-five-copy regularly spaced candidate array. A separate InterPro probe returned
-six entries. These probes were not entered in Vintos's journal and do not seed
-his choices. Deployment and an autonomous Vintos-selected campaign remain open.
+mapping, returned a 7,506-base/24-feature neighborhood, and recovered bounded
+repeat candidates. A separate InterPro probe returned six entries. These probes
+were not entered in Vintos's journal and do not seed his choices. Aegis release
+`20260924-000603-59d90a9` passed every suite in both `--check` and deployment,
+parsed and staged all 400 manifest files, and left the Lab worker and scheduled
+frontier timer active. The same bounded source probes then passed from the
+installed tree. An autonomous Vintos-selected campaign remains open.
 
-IMG/VR remains an honest gap. The public site offers browsing and bulk data, but
-no bounded anonymous API was verified and no indexed local subset is installed.
-The Lab does not claim access until one of those routes is proved.
+IMG/VR is a storage-backed source, not an anonymous API. The official JGI file
+metadata endpoint reports the current high-confidence v4.1 bundle
+(`IMG_VR_2022-12-19_7.1`) as 43,118,863,386 bytes (40.16 GiB compressed) across
+five files, with provider MD5 checksums. Aegis is the selected primary store:
+at commissioning it had 558 GB available on its 1,007 GB root volume, compared
+with 545 GiB available on the Mac data volume. No bundle or index is installed
+yet. The official download operation requires a JGI session token and JGI
+recommends Globus for large transfers; those account-backed download and index
+steps remain open. Until their checksums and local query path pass, the Lab does
+not claim IMG/VR access.
 
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM
