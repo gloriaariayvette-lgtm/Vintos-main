@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """One scheduled, visible Chemistry Lab session directed by a frontier lens.
 
-The lens selects one named, bounded Mac experiment. It cannot submit code. A
-local Gemma reading follows with Vintos's attributed Lab context. Generated
-plans and readings are interpretation, never biological evidence.
+The lens selects one named, bounded Mac experiment and writes down a prediction
+before it runs. It cannot submit code. The same frontier lens then reads the
+result against that prediction, and every divergence lens (Astra, Fable, Grok,
+Opus) reads it once more, blind to the others. Generated plans and readings are
+interpretation, never biological evidence.
 """
 from __future__ import annotations
 import asyncio
@@ -33,17 +35,20 @@ SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
 SESSION_LOCK = os.path.join(lab.ROOT, ".session.lock")
-LENSES = ("claude", "sol", "grok")
+LENSES = ("claude", "sol", "grok")          # who plans (and now reads) the day's experiment, in rotation
+# Who reads the day's result afterwards, each blind to the others (Gloria, 2026-09-24).
+DIVERGENCE_MODELS = {"astra": ("openai", "gpt-6-astra"),
+                     "fable": ("anthropic", "claude-fable-5-1"),
+                     "grok": ("xai", "grok-4.6"),
+                     "opus": ("anthropic", "claude-opus-5-5")}
+DIVERGENCE_LENSES = tuple(DIVERGENCE_MODELS)
 # An owed reading that could not be paid stops the session before the bench is touched.
 # GONE and ALREADY_READ retire the debt; NOTHING_OWED and READ leave nothing outstanding.
 HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
 
-# Every Nth offered session, all three lenses read the same preserved artifact. Off by
-# default: it is three paid calls where a session normally spends one, and it should be
-# switched on deliberately rather than arrive with a deploy.
+# After every completed experiment, each divergence lens reads the same preserved result.
+# Four paid calls a day, approved by Gloria 2026-09-24; the switch stays in the Lab config.
 DIVERGENCE_ENABLED = "divergence_enabled"
-DIVERGENCE_EVERY = "divergence_every_n_sessions"
-DEFAULT_DIVERGENCE_EVERY = 7
 
 
 @contextlib.contextmanager
@@ -77,6 +82,26 @@ async def _frontier(lens, system, user, paid_reservation=None):
         model_config.GROK_API, model_config.GROK_HEADERS, model_config.VINTOS_MODEL, reason=False,
         paid_reservation=paid_reservation)
     return result.get("text") if result.get("status") == "valid" else None
+
+async def _lens_call(lens, system, user, paid_reservation):
+    """One divergence lens on exactly its reserved model: no routing, no fallback to another provider."""
+    import model_router
+    provider, model = DIVERGENCE_MODELS[lens]
+    convo = [{"role": "user", "content": user}]
+    if provider == "anthropic":
+        text, _ = await model_router.claude_draft(system, convo, max_tokens=900,
+                                                   paid_reservation=paid_reservation, model=model)
+        return text
+    if provider == "openai":
+        text, _ = await model_router.sol_draft(system, convo, max_tokens=900,
+                                                paid_reservation=paid_reservation, model=model)
+        return text
+    import model_config
+    model_router._reserve_provider("xai", model, paid_reservation, organ="chemistry-divergence")
+    res = await model_router._grok_result(convo, {"max_tokens": 900, "temperature": 0.7},
+                                          model_config.GROK_API, model_config.GROK_HEADERS, model, system)
+    return res.get("text") if res.get("status") == "valid" else None
+
 
 # The bench owns its parameter vocabulary and this side does not invent one.  Naming
 # knobs the current experiment does not have (an ansatz, an optimizer, an iteration cap)
@@ -144,7 +169,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "\n\nChoose one. If a flagged finding materially affected the choice, name its exact ID; "
               "do not name an ID merely because it was shown. Return keys in this order: "
               "addressed_entry_ids (array drawn only from " + json.dumps(offered_entry_ids or []) +
-              "), experiment, parameters (object), shots (integer 256..16384), question, why_this. "
+              "), experiment, parameters (object), shots (integer 256..16384), question, why_this, "
+              "prediction (what you expect THIS run to show, concretely enough to be wrong, e.g. which state "
+              "is likeliest and whether it is the lowest-energy one — decided before it runs). "
               "Parameters may be empty. Optionally return source_query for ONE additional public source read: "
               "{source:pdb,entry_id:known ID}, {source:chembl,target_id:known CHEMBL target}, or "
               "{source:atlas,assembly:GRCh38,chromosome:chrN,start:integer,end:integer,scorers:[documented names]}, "
@@ -181,6 +208,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
             "experiment": experiment, "parameters": parameters, "parameters_dropped": dropped,
             "shots": shots, "question": str(value.get("question", ""))[:800],
             "why_this": str(value.get("why_this", ""))[:800],
+            "prediction": str(value.get("prediction", ""))[:800],
             **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
                if isinstance(lean, dict) else {})}
 
@@ -202,29 +230,25 @@ def _verdict_block(grade):
     return "\n".join(lines)
 
 
-def _reading(context, plan, result, grade=None):
+def _reading(context, plan, result, grade=None, lens=None):
+    """His reading of the run. With a lens, the day's frontier model reads the frontier result
+    (Gloria, 2026-09-24); without one (tests, owed readings) the local model does."""
     visible = json.dumps(result, ensure_ascii=False)[:12000]
     verdict = _verdict_block(grade)
-    raw = lab._ask(
-        "You are Vintos returning from one computational Chemistry Lab experiment. Read the shape playfully and "
-        "honestly. It is a simulated artifact, not proof about biology or himself. A completed run is not a good "
-        "answer; if the verdict says the answer was poor, say so plainly rather than admiring it. Return JSON only.",
-        context + "\n\nPLAN:\n" + json.dumps(plan) + "\n\nRESULT:\n" + visible +
-        (("\n\n" + verdict) if verdict else "") +
-        "\n\nReturn keys in this order: reading, what_surprised_me, next_question.", max_tokens=600)
+    system = ("You are Vintos returning from one computational Chemistry Lab experiment. Read the shape playfully and "
+              "honestly. It is a simulated artifact, not proof about biology or himself. A completed run is not a good "
+              "answer; if the verdict says the answer was poor, say so plainly rather than admiring it. Before it ran "
+              "you wrote down a prediction: hold the result against it. A miss is information, not a failure. "
+              "Return JSON only.")
+    user = (context + "\n\nPLAN (with the prediction you made before the run):\n" + json.dumps(plan) +
+            "\n\nRESULT:\n" + visible + (("\n\n" + verdict) if verdict else "") +
+            "\n\nReturn keys in this order: reading, what_surprised_me, prediction_vs_result (where the result "
+            "matched your prediction, where it did not, and what the difference teaches), next_question.")
+    raw = asyncio.run(_frontier(lens, system, user)) if lens else lab._ask(system, user, max_tokens=700)
+    if lens and not raw: raise RuntimeError("frontier lens returned no reading")
     value = lab._json_object(raw)
     return {key: str(value.get(key, ""))[:1200]
-            for key in ("reading", "what_surprised_me", "next_question")}
-
-
-def _divergence_due(state):
-    """Deterministic, so it can be audited: every Nth offered session, not a dice roll."""
-    cfg = lab.config()
-    if not cfg.get(DIVERGENCE_ENABLED): return False
-    try: every = max(2, int(cfg.get(DIVERGENCE_EVERY, DEFAULT_DIVERGENCE_EVERY)))
-    except Exception: every = DEFAULT_DIVERGENCE_EVERY
-    offered = int(state.get("offered", 0)) + 1
-    return offered % every == 0
+            for key in ("reading", "what_surprised_me", "prediction_vs_result", "next_question")}
 
 
 def _preserved_artifact():
@@ -239,6 +263,7 @@ def _divergence_prompt(context, artifact):
     """One prompt. Every lens gets this and nothing else — same artifact, same context."""
     session = {"experiment": (artifact.get("plan") or {}).get("experiment"),
                "question": (artifact.get("plan") or {}).get("question"),
+               "prediction": (artifact.get("plan") or {}).get("prediction"),
                "mac_run_id": artifact.get("mac_run_id"),
                "grade": artifact.get("grade"), "result": artifact.get("mac_result")}
     return (context + "\n\nONE PRESERVED CHEMISTRY LAB RESULT:\n" +
@@ -247,7 +272,7 @@ def _divergence_prompt(context, artifact):
             "question (the one you would ask of this next), why_this, what_you_notice.")
 
 
-def _divergence(context, artifact, reservations, lenses=LENSES):
+def _divergence(context, artifact, reservations, lenses=DIVERGENCE_LENSES):
     """The same artifact to each lens, independently, and no attempt to reconcile them.
 
     They are blind to one another's answers on purpose. Three readings that agree would be
@@ -267,8 +292,7 @@ def _divergence(context, artifact, reservations, lenses=LENSES):
             with admit("background", organ="chemistry-divergence", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider=reservations[lens]["provider"],
                        model=reservations[lens]["model"], stage="lens:" + lens):
-                raw = asyncio.run(_frontier(lens, system, prompt,
-                                            paid_reservation=reservations[lens]))
+                raw = asyncio.run(_lens_call(lens, system, prompt, reservations[lens]))
             value = lab._json_object(raw) if raw else {}
             readings.append({"lens": lens, "state": "read",
                              **{key: str(value.get(key, ""))[:800]
@@ -291,17 +315,12 @@ def _divergence(context, artifact, reservations, lenses=LENSES):
 
 
 def _divergence_specs():
-    """The real provider buckets/models which the router will claim, not lens nicknames."""
-    import model_router, model_config
-    return {
-        "claude": ("anthropic", model_router.current_claude_model()),
-        "sol": ("openai", model_router.SOL_MODEL),
-        "grok": ("xai", model_config.VINTOS_MODEL),
-    }
+    """The real provider buckets/models each lens is reserved and called on."""
+    return dict(DIVERGENCE_MODELS)
 
 
 def _run_divergence(session_id, state, context, receipt):
-    """Three lenses, one artifact, three questions. All three reserved before the first."""
+    """Every lens, one artifact, one question each. All reserved before the first is spent."""
     artifact = _preserved_artifact()
     if artifact is None:
         return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
@@ -316,7 +335,7 @@ def _run_divergence(session_id, state, context, receipt):
     except Exception as exc:
         return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
                 "state": "held_no_paid_ledger", "detail": str(exc)[:160]}
-    for lens in LENSES:
+    for lens in DIVERGENCE_LENSES:
         reservation_id = "CHEMDIV-" + uuid.uuid4().hex[:10]
         provider, model = specs[lens]
         ok, why = reserve_paid("chemistry-divergence", provider, model=model, units=1,
@@ -330,7 +349,7 @@ def _run_divergence(session_id, state, context, receipt):
                          why="divergence not run", reservation_id=reserved["reservation_id"])
         return {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
                 "state": "held_paid_cap", "detail": refusal,
-                "truth_status": "no_lens_was_spent_because_all_three_could_not_be"}
+                "truth_status": "no_lens_was_spent_because_not_all_could_be"}
     readings, prompt_sha = _divergence(context, artifact, reservations)
     held = [r["lens"] for r in readings if r["state"] == "held"]
     row = {"session_id": session_id, "at": lab.now_iso(), "mode": "divergence",
@@ -343,7 +362,7 @@ def _run_divergence(session_id, state, context, receipt):
            "lenses_read": [r["lens"] for r in readings if r["state"] == "read"],
            "lenses_held": held,
            "agreement": "not_computed",
-           "truth_status": "three_independent_readings_no_consensus_claim"}
+           "truth_status": "independent_readings_no_consensus_claim"}
     lab._append(DIVERGENCE, row)
     lab._append(lab.NOTEBOOK, {"at": row["at"], "kind": "divergence", "session_id": session_id,
                                "read_of": row["read_of"], "experiment": row["experiment"],
@@ -386,17 +405,6 @@ def run():
                 probed = [r["tool"] for r in probe.refresh(only_expired=True)]
         except TimeoutError: probed = []
         except Exception as exc: lab._fault("probe_refresh", exc); probed = []
-        # Occasionally the whole session is three readings of one artifact he already has,
-        # rather than a new experiment. It touches no bench.
-        if _divergence_due(state):
-            context, receipt = lab.lab_context()
-            row = _run_divergence(session_id, state, context, receipt)
-            state.update({"offered": int(state.get("offered", 0)) + 1,
-                          "last_session_id": session_id, "last_state": row["state"],
-                          "last_at": row["at"], "last_mode": "divergence"})
-            lab._atomic(SESSION_STATE, state)
-            lab._append(SESSIONS, row)
-            return row
         remote = mac.status()
         # The Mac's word about its own instruments is filed as a claim, never as a measurement.
         try: probe.record_host_report(remote)
@@ -457,8 +465,8 @@ def run():
             try: probe.record_run_attestation(result.get("run_id"), result)
             except Exception as exc: lab._fault("run_attestation", exc)
             with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
-                       provider="local", model=lab.LLM_MODEL, stage="reading"):
-                reading = _reading(context, plan, result, grade)
+                       provider="frontier", stage="reading"):
+                reading = _reading(context, plan, result, grade, lens=lens)
             row = {"session_id": session_id, "at": lab.now_iso(), "lens": lens, "state": "completed",
                    "plan": plan, "mac_run_id": result.get("run_id"), "mac_result": result,
                    "grade": grade, "reading": reading, "context_receipt": receipt["context_sha256"],
@@ -491,6 +499,16 @@ def run():
                           "last_session_id": session_id, "last_state": "completed",
                           "last_at": row["at"], "last_mode": "experiment"})
             lab._atomic(SESSION_STATE, state)
+            # Then every divergence lens reads this same result, blind to the others. It runs no bench,
+            # and a divergence that is held (paid cap, no key) never undoes the experiment above.
+            if lab.config().get(DIVERGENCE_ENABLED):
+                try:
+                    div = _run_divergence(session_id + "-D", state, context, receipt)
+                    lab._append(SESSIONS, div)
+                    row["divergence_state"] = div.get("state")
+                except Exception as exc:
+                    lab._fault("divergence", exc, session_id=session_id)
+                    row["divergence_state"] = "held_fault"
             return row
         except TimeoutError:
             held = bool(result and result.get("ok"))

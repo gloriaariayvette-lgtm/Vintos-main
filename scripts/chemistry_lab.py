@@ -83,8 +83,9 @@ DEFAULTS = {
     "evo2_every_n_cycles": 120,
     # Three lenses on one preserved artifact, every Nth offered session. Off until she
     # turns it on: it spends three paid calls where a session normally spends one.
-    "divergence_enabled": False,
-    "divergence_every_n_sessions": 7,
+    # Gloria, 2026-09-24: four frontier lenses read every day's result, after the experiment.
+    "divergence_enabled": True,
+    "divergence_version": 2,
 }
 PHASES = ("orient", "browse", "sources", "atlas_genome", "embed", "reflect", "genome", "genome_reflect")
 DENIED_QUERY = re.compile(
@@ -148,6 +149,10 @@ def config():
     value = dict(DEFAULTS)
     loaded = _load(CONFIG, {})
     if isinstance(loaded, dict): value.update({k: loaded[k] for k in DEFAULTS if k in loaded})
+    if isinstance(loaded, dict) and int(loaded.get("divergence_version", 1) or 1) < 2:
+        # A config saved before she approved daily divergence carries the old "off"; her yes replaces it once.
+        value["divergence_enabled"] = True
+        value["divergence_version"] = DEFAULTS["divergence_version"]
     if isinstance(loaded, dict) and int(loaded.get("cadence_version", 1) or 1) < 3:
         value["poll_seconds"] = DEFAULTS["poll_seconds"]
         value["turn_wait_seconds"] = DEFAULTS["turn_wait_seconds"]

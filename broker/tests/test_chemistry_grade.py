@@ -181,7 +181,7 @@ check("the grader never writes the Atelier", "atelier" not in open(os.path.join(
 source = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 check("the session grades before it asks for reading compute",
       source.index("grading.grade(") < source.index('stage="reading"'))
-check("the reading is given the verdict", "_reading(context, plan, result, grade)" in source and "_verdict_block" in source)
+check("the reading is given the verdict", "_reading(context, plan, result, grade, lens=lens)" in source and "_verdict_block" in source)
 check("the session still cannot submit code", '"action": "code"' not in source)
 
 mac_source = open(os.path.join(REPO, "scripts", "chemistry_mac.py")).read()

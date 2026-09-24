@@ -26,7 +26,7 @@ sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 session = load("chemistry_session_test", os.path.join(REPO, "scripts", "chemistry_session.py"))
 session._plan = lambda context, experiments, lens, instruments=None, offered_entry_ids=None: {"addressed_entry_ids": list(offered_entry_ids or []), "experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
 seen = {}
-def _reading(context, plan, result, grade=None):
+def _reading(context, plan, result, grade=None, lens=None):
     seen["grade"] = grade; seen["verdict"] = session._verdict_block(grade)
     return {"reading": "a basin", "what_surprised_me": "its depth",
             "next_question": "what changes the shape of this basin next?"}
