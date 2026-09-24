@@ -3,7 +3,14 @@
 2026-09-24: every non-chat place (Atelier, self-review, humor, the Lab's Claude lens) read the
 chat toggle, so flipping the chat changed who he was everywhere. Scratch HOME; no network.
 """
-import importlib.util, json, os, tempfile, unittest
+import importlib.util, json, os, sys, tempfile, types, unittest
+
+# The router imports httpx at module level for its chat calls; this suite makes none, and the
+# deploy's test Python has no httpx. A stand-in keeps the suite about model choice only.
+try:
+    import httpx  # noqa: F401
+except ImportError:
+    sys.modules["httpx"] = types.SimpleNamespace(AsyncClient=None)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
