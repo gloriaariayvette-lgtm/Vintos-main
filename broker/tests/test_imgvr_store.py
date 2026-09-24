@@ -79,6 +79,24 @@ class Tests(unittest.TestCase):
                     {'operation':'uvig','uvig':'IMGVR_UViG_1_000001','start':0,'end':20}):
             with self.assertRaises(ValueError):store.query(bad,db=store.DB,nucleotide=fasta)
 
+    def test_multisegment_uvig_requires_an_exact_segment_before_sequence(self):
+        store.ROOT.mkdir(parents=True,exist_ok=True)
+        metadata=store.ROOT/'multi.tsv'
+        headers=['UVIG','Taxon_oid','Scaffold_oid','Coordinates','Ecosystem','vOTU','Length','Topology',
+                 'Score','Confidence','Completeness','Contamination','Quality','Genes','Taxonomy',
+                 'Taxonomy method','Host taxonomy','Host method','Origin']
+        uvig='IMGVR_UViG_GVMAG-M-2140918012-1_000001'
+        metadata.write_text('\t'.join(headers)+'\n'+'\t'.join([uvig]+['x']*18)+'\n')
+        fasta=store.ROOT/'multi.fna'; fasta.write_text('>'+uvig+'|1|contig1\nACGTACGT\n>'+uvig+'|1|contig2\nTTTTGGGG\n')
+        connection=sqlite3.connect(store.DB)
+        store._build_metadata(connection,metadata); store._build_fasta_index(connection,fasta); connection.commit(); connection.close()
+        result=store.query({'operation':'uvig','uvig':uvig},db=store.DB,nucleotide=fasta)
+        self.assertEqual(result['records'][0]['segment_count'],2)
+        self.assertNotIn('sequence',result['records'][0])
+        header=result['records'][0]['segments'][1]['header']
+        exact=store.query({'operation':'uvig','uvig':uvig,'segment':header,'start':2,'end':5},db=store.DB,nucleotide=fasta)
+        self.assertEqual(exact['records'][0]['sequence'],'TTTG')
+
     def test_similarity_runs_only_pinned_local_command_and_wraps_receipt(self):
         fasta,_=self.fixture_index(); mmseqs=store.ROOT/'mmseqs'; mmseqs.write_text('fixture'); mmseqs.chmod(0o700)
         mmdb=store.ROOT/'protein-db'; Path(str(mmdb)+'.dbtype').write_text('fixture')

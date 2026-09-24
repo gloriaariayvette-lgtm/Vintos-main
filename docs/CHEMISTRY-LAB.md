@@ -87,7 +87,8 @@ sees no IMG/VR query forms until all three local indexes report ready.
 
 Once ready, the bounded doors are: metadata terms across the provider's ecology,
 taxonomy, host and origin fields; exact sourced UViG nucleotide slices of at most
-12 kb; and a sourced 20–2,000-residue protein similarity query returning at most
+12 kb (with an exact returned segment header for multi-contig records); and a
+sourced 20–2,000-residue protein similarity query returning at most
 eight hits. Results retain the release and coverage in their receipt. A match,
 annotation or missing match establishes neither novelty nor function.
 

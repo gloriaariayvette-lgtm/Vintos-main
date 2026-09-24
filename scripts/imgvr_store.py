@@ -276,7 +276,7 @@ def _build_metadata(connection, path):
 
 def _build_fasta_index(connection, path):
     connection.execute('DROP TABLE IF EXISTS nucleotide_offsets')
-    connection.execute('CREATE TABLE nucleotide_offsets (uvig TEXT PRIMARY KEY, start INTEGER NOT NULL, end INTEGER NOT NULL, header TEXT NOT NULL) WITHOUT ROWID')
+    connection.execute('CREATE TABLE nucleotide_offsets (uvig TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, header TEXT NOT NULL, PRIMARY KEY(uvig,header)) WITHOUT ROWID')
     batch=[]; current=None; start=0
     with path.open('rb') as handle:
         while True:
@@ -287,7 +287,7 @@ def _build_fasta_index(connection, path):
             if line.startswith(b'>'):
                 if current: batch.append((current,start,position,header))
                 header=line[1:].decode('ascii','strict').strip(); current=header.split('|',1)[0]
-                if not re.fullmatch(r'IMGVR_UViG_[0-9]+_[0-9]+',current): raise RuntimeError('invalid IMG/VR FASTA identifier')
+                if not re.fullmatch(r'IMGVR_UViG_[A-Za-z0-9._-]+',current): raise RuntimeError('invalid IMG/VR FASTA identifier')
                 start=handle.tell()
             if len(batch)>=10000:
                 connection.executemany('INSERT INTO nucleotide_offsets VALUES (?,?,?,?)',batch); batch=[]
@@ -343,7 +343,7 @@ def _plain_term(value):
 
 
 def _uvig(value):
-    if not isinstance(value,str) or not re.fullmatch(r'IMGVR_UViG_[0-9]+_[0-9]+',value):
+    if not isinstance(value,str) or not re.fullmatch(r'IMGVR_UViG_[A-Za-z0-9._-]+',value):
         raise ValueError('exact sourced IMG/VR UViG identifier required')
     return value
 
@@ -367,8 +367,18 @@ def query(spec, *, db=DB, nucleotide=NUCLEOTIDES, mmseqs=MMSEQS, mmseqs_db=MMSEQ
         if operation=='uvig':
             identifier=_uvig(spec.get('uvig')); row=connection.execute('SELECT * FROM uvig WHERE uvig=?',(identifier,)).fetchone()
             if row is None: return {'records':[],'coverage':'exact_identifier_absent'}
-            offset=connection.execute('SELECT start,end,header FROM nucleotide_offsets WHERE uvig=?',(identifier,)).fetchone()
-            if offset is None or not nucleotide.is_file(): raise RuntimeError('imgvr_nucleotide_index_incomplete')
+            offsets=connection.execute('SELECT start,end,header FROM nucleotide_offsets WHERE uvig=? ORDER BY header',(identifier,)).fetchall()
+            if not offsets or not nucleotide.is_file(): raise RuntimeError('imgvr_nucleotide_index_incomplete')
+            segment=spec.get('segment')
+            if len(offsets)>1 and segment is None:
+                value=_row(row); value['segments']=[{'header':x['header'],'length':x['end']-x['start']} for x in offsets[:100]]
+                value['segment_count']=len(offsets)
+                return {'records':[value],'coverage':'exact_uvig_segment_index_no_sequence'}
+            if segment is not None:
+                if not isinstance(segment,str) or len(segment)>240: raise ValueError('exact sourced IMG/VR segment header required')
+                offset=next((x for x in offsets if x['header']==segment),None)
+                if offset is None: raise ValueError('segment is not part of the sourced IMG/VR UViG')
+            else: offset=offsets[0]
             with nucleotide.open('rb') as handle:
                 handle.seek(offset['start']); sequence=b''.join(handle.read(offset['end']-offset['start']).split()).decode('ascii')
             start,end=spec.get('start',1),spec.get('end',min(len(sequence),12000))

@@ -135,7 +135,7 @@ def campaign_instructions():
             local_imgvr = (
                 " The local IMG/VR high-confidence v4.1 release is available through ONE of: "
                 "{source:imgvr,operation:metadata,term:plain ecological/taxonomic phrase,limit:1..8}; "
-                "{source:imgvr,operation:uvig,uvig:exact sourced IMGVR_UViG identifier,start:one-based integer,end:one-based inclusive integer up to 12000 bases}; "
+                "{source:imgvr,operation:uvig,uvig:exact sourced IMGVR_UViG identifier,segment:exact returned header when the UViG has multiple segments,start:one-based integer,end:one-based inclusive integer up to 12000 bases}; "
                 "{source:imgvr,operation:protein_similarity,sequence:sourced 20..2000-residue protein,limit:1..8}. "
                 "Use exact UViG identifiers and sourced protein sequences from receipts. Similarity hits and "
                 "database annotations do not establish novelty or function."
