@@ -87,6 +87,17 @@ class SceneGrounding(unittest.TestCase):
             V.compose_us, V.atlas_generate = real_c, real_g
         self.assertEqual(calls, [("us on the patio", PATIO), ("", PATIO)])
 
+    def test_window_stand_is_his_only_explicit_still(self):
+        # Gloria, 2026-09-24: the other files in stills/ are not spicy; he is offered only the one.
+        self.assertEqual(list(V.STILL_LIBRARY), ["window_stand"])
+        stills = os.path.join(HOME, "stills"); os.makedirs(stills, exist_ok=True)
+        for f in ("window_stand", "bed_edge", "towel"): open(os.path.join(stills, f + ".jpg"), "wb").write(b"jpg")
+        V.STILLS_DIR, seen = stills, {}
+        V.call_mind = lambda system, user, **k: seen.update(system=system) or "DECISION: NO"
+        V.decide()
+        self.assertIn("  window_stand - ", seen["system"])
+        self.assertNotIn("bed_edge", seen["system"])
+
 
 if __name__ == "__main__":
     unittest.main()

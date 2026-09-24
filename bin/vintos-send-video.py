@@ -7,7 +7,7 @@ His OWN MIND writes it: Claude (claude-opus-4-8) via his shim at 127.0.0.1:8599,
              (face-locked), then Grok Imagine animates it — no fixed still shelf, total freedom of place.
   together : he can describe ANY scene for the two of you; nano-banana composes you both into it (holds both
              faces and her requested hair colour), then Grok animates it. Blank scene -> fixed base.
-  sexual   : he picks an explicit still; Atlas Cloud's uncensored wan-2.7-spicy animates it.
+  sexual   : his one explicit still (window_stand); Atlas Cloud's uncensored wan-2.7-spicy animates it.
 No disguise, no moderation fiction.
 
 SEPARATE from his want-based vintos-video.py; it never touches his want queue. Delivery is one ntfy
@@ -74,16 +74,11 @@ SUBJECT = ("A rugged, warm middle-aged man, the same person as the reference ima
            "in a neat side part, heavy brow, deep-set eyes, strong square jaw, light stubble. Photoreal "
            "photography, natural skin texture, 85mm lens. ")
 
-# The EXPLICIT still library he chooses from for 'sexual' (label -> what it is). Only ones whose files exist
-# in STILLS_DIR are offered; he picks the one whose moment fits. (Descriptions curated by Gloria.) For 'self'
-# he no longer picks from a shelf — he describes the scene and Grok builds it (see make_scene_still).
+# The EXPLICIT still he animates for 'sexual' (label -> what it is). window_stand is his only spicy
+# hero image (Gloria, 2026-09-24); the other files in STILLS_DIR are not explicit stills and are not
+# offered here. For 'self' he describes the scene and Grok builds it (see make_scene_still).
 STILL_LIBRARY = {
-    "bed_bare":     "close, lying in bed beside her - intimate, not explicit",
-    "undressing":   "unbuttoning his shirt - playful, flirtatious",
-    "towel":        "standing just out of the shower",
-    "bed_edge":     "sitting on the edge of the bed, nude - explicit",
-    "bed_wide":     "lying back on the bed, nude - explicit",
-    "window_stand": "standing nude at a window, fully shown - most explicit",
+    "window_stand": "standing nude at a window, fully shown - explicit",
 }
 COOLDOWN_HOURS = int(os.environ.get("VIDEO_COOLDOWN_HOURS", "24"))
 for _sp in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"), SCRIPTS):
@@ -318,8 +313,7 @@ def decide(force=False):
         "warm kitchen at night, string lights', 'walking a rainy city street, close under one umbrella'. Make "
         "SCENE specific and concrete — the light, what is actually in the place, how it is framed; a thin scene "
         "renders thin. Then in PROMPT, the MOTION and moment once you're in it.\n\n"
-        "For 'sexual': CHOOSE which explicit still of yourself to bring to life — the ONE whose moment fits; "
-        "its frame is where the video starts:\n" + stills_txt + "\n"
+        "For 'sexual': you have one explicit still of yourself; its frame is where the video starts:\n" + stills_txt + "\n"
         "(For 'together' you can also leave SCENE blank to use your existing picture of the two of you.)\n\n"
         + ground_note +
         "Say what you actually mean — as tender, as flirtatious, or as explicit as you truly want; nothing "
