@@ -51,7 +51,7 @@ ATLAS_MODEL = os.environ.get("ATLAS_MODEL", "atlascloud/wan-2.7-spicy/image-to-v
 GROK_VIDEO_MODEL = os.environ.get("GROK_VIDEO_MODEL", "xai/grok-imagine-video-v1.5/image-to-video")
 # Grok image-edit builds a brand-new full-body scene still from his portrait hero (face-locked). For 'self',
 # he DESCRIBES the scene freely and this generates it, so he is not limited to a fixed still library.
-SCENE_IMG_MODEL = os.environ.get("VINTOS_SCENE_IMG", "xai/grok-imagine-image/edit")
+SCENE_IMG_MODEL = "grok-imagine-image (edit, on her subscription)"   # scripts/grok_subscription.py
 # For 'together' he can also describe a scene: nano-banana composes the TWO of them into it (it holds BOTH
 # faces; Grok only holds his hero). Her requested hair colour belongs in this still-making step: an
 # image-to-video prompt is too late to reliably repair colours already baked into the source frame.
@@ -544,16 +544,35 @@ def _find_status(o):
     return None
 
 
+def _grok_sub():
+    import grok_subscription
+    return grok_subscription
+
+
+def _grok_sub_video(prompt, still, duration):
+    """Animate a still on her subscription. Unavailable (no login, refused, weekly cap) makes nothing."""
+    gs = _grok_sub()
+    try:
+        return gs.video(prompt, still, duration=min(int(duration), 15))
+    except gs.Unavailable as e:
+        log("grok subscription: %s — no clip made" % e); return None
+    except Exception as e:
+        log("grok subscription video failed: %s" % e); return None
+
+
 def atlas_generate(prompt, hero_path, model=None, verbose=False, duration=None):
     """Submit image-to-video to Atlas, poll, return mp4 bytes (or None). His prompt goes in verbatim.
     Wan-spicy and Grok-Imagine take different request bodies; we build the right one per model."""
     model = model or ATLAS_MODEL
-    if not ATLAS_KEY:
-        log("no ATLASCLOUD_API_KEY set — export it on the box"); return None
     if not os.path.exists(hero_path):
         log("hero still missing (%s) — upload it first via /video-hero" % hero_path); return None
     if '"' not in prompt and chr(8220) not in prompt:
         prompt = prompt.rstrip() + " No spoken dialogue - ambient sound only; he does not speak."
+    if "grok" in model:
+        # Grok Imagine runs on Gloria's SuperGrok subscription, never Atlas or the API key (2026-09-25).
+        return _grok_sub_video(prompt, hero_path, duration or ATLAS_DUR)
+    if not ATLAS_KEY:
+        log("no ATLASCLOUD_API_KEY set — export it on the box"); return None
     H = {"Authorization": "Bearer " + ATLAS_KEY, "Content-Type": "application/json"}
     if "grok" in model:
         # Grok Imagine: image_url (not image), lowercase 720p, no negative_prompt/seed; aspect matches the still.
@@ -681,13 +700,11 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
     Grok image-edit. Returns the saved still path (or None). This is what frees 'self' from a fixed shelf.
     If scene_ref is a real photo she sent (a location), it's added as <IMAGE_1> so the scene is that ACTUAL
     place, not an imagined one — a location has no face to lose, so grounding is safe."""
-    if not ATLAS_KEY:
-        log("no ATLASCLOUD_API_KEY set — cannot build scene still"); return None
     if not os.path.exists(HERO):
         log("no hero to face-lock the scene to (%s)" % HERO); return None
-    H = {"Authorization": "Bearer " + ATLAS_KEY, "Content-Type": "application/json"}
-    refs = [data_uri(HERO)]
-    if scene_ref and os.path.exists(scene_ref):
+    if scene_ref and os.path.exists(scene_ref) and not ATLAS_KEY:
+        log("no ATLASCLOUD_API_KEY for the grounded compose — building ungrounded")
+    if scene_ref and os.path.exists(scene_ref) and ATLAS_KEY:
         # Grounding goes through the multi-reference model, not the edit model.
         # An edit model is conditioned on ONE image (his hero) and treats a second
         # as guidance — the place came back as the idea of the place. nano-banana
@@ -709,46 +726,20 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
             open(gpath, "wb").write(data)
             log("built GROUNDED scene still (%d bytes) -> %s" % (len(data), os.path.basename(gpath)))
             return gpath
-    if True:
-        prompt = (SUBJECT + "Keep his exact face, hair, and build from the reference image, but show his WHOLE "
-                  "body, full-length, naturally posed within the scene. Place him here: " + scene.strip().rstrip(".")
-                  + ". Photoreal, natural light, cinematic, the entire scene in frame.")
-    body = {"model": SCENE_IMG_MODEL, "prompt": prompt, "image_urls": refs,
-            "resolution": "2k", "aspect_ratio": "auto"}
+    # The ungrounded still is Grok image-edit off his hero, on her SuperGrok subscription (2026-09-25).
+    prompt = (SUBJECT + "Keep his exact face, hair, and build from the reference image, but show his WHOLE "
+              "body, full-length, naturally posed within the scene. Place him here: " + scene.strip().rstrip(".")
+              + ". Photoreal, natural light, cinematic, the entire scene in frame.")
+    gs = _grok_sub()
     try:
-        r = requests.post(ATLAS_BASE + "/generateImage", headers=H, json=body, timeout=120)
+        data = gs.edit(prompt, [HERO])
+    except gs.Unavailable as e:
+        log("grok subscription: %s — no scene still" % e); return None
     except Exception as e:
-        log("scene-still submit error: %s" % e); return None
-    if verbose:
-        log("scene submit HTTP %s: %s" % (r.status_code, r.text[:400]))
-    if r.status_code >= 300:
-        log("scene-still rejected %s: %s" % (r.status_code, r.text[:300])); return None
-    try:
-        sub = r.json()
-    except Exception:
-        log("scene-still non-JSON: %s" % r.text[:200]); return None
-    img = _find_img(sub); pid = _find_id(sub)
-    for i in range(90):
-        if img or not pid:
-            break
-        time.sleep(4)
-        try:
-            pr = requests.get(ATLAS_BASE + "/prediction/" + pid, headers=H, timeout=30).json()
-        except Exception as e:
-            log("scene poll error: %s" % e); continue
-        if _find_status(pr) in ("failed", "error", "canceled", "cancelled"):
-            log("scene-still generation failed: %s" % json.dumps(pr)[:300]); return None
-        img = _find_img(pr)
-    if not img:
-        log("scene-still: no image after polling"); return None
-    kind, val = img
-    try:
-        data = requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
-    except Exception as e:
-        log("scene-still fetch/decode failed: %s" % e); return None
+        log("scene-still failed on the subscription: %s" % e); return None
     os.makedirs(SCENE_DIR, exist_ok=True)
     path, _ = _am.unique_path(SCENE_DIR, "scene-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
-    open(path, "wb").write(data)
+    with open(path, "wb") as f: f.write(data)
     log("built scene still (%d bytes) -> %s" % (len(data), os.path.basename(path)))
     return path
 
@@ -758,7 +749,8 @@ def save_gallery(fname, prompt, kind, model=ATLAS_MODEL, revision=1):
     except Exception: g = []
     rec = {"file": fname, "prompt": prompt[:400], "kind": kind, "source": "self-initiated",
            "backend": ("grok-imagine" if "grok" in model else "atlas-wan-spicy"),
-           "model": model, "timestamp": datetime.now().isoformat()}
+           "model": model, "billing": ("grok-subscription" if "grok" in model else "atlas"),
+           "timestamp": datetime.now().isoformat()}
     rec.update(_am.build(os.path.join(VID_DIR, fname), "video", source_want=None, revision=revision, shelf=VID_DIR))
     g.append(rec)
     try: _am.atomic_json(GALLERY, g)

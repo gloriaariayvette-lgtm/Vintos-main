@@ -56,8 +56,9 @@ dream = (ROOT / "scripts/dream-art.py").read_text()
 check("dream rendering paints through OpenAI, the local painter its only fallback",
       '_png = _openai_render(render_prompt) or _local_render(render_prompt)' in dream)
 check("a dream never reaches grok-imagine",
-      dream.index('if src == "dream":') < dream.index("api.x.ai/v1/images") and
-      "api.x.ai" not in dream[dream.index('if src == "dream":'):dream.index("    else:\n        _png = _openai_render")])
+      dream.index('if src == "dream":') < dream.index("_gs.image(") and
+      not any(t in dream[dream.index('if src == "dream":'):dream.index("    else:\n        _png = _openai_render")]
+              for t in ("api.x.ai", "grok_subscription", "_gs.")))
 check("dream prompt extraction also stays local", 'base + "/chat/completions"' in dream and "api.x.ai/v1/chat/completions" not in dream)
 check("want rendering retains paid path", "Want-born art keeps the paid renderer" in dream)
 check("dream failure cannot fall through to paid rendering", "dream held, no paid fallback" in dream)

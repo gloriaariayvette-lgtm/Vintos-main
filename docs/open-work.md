@@ -3,6 +3,24 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 25 September — his Grok renders on her SuperGrok login
+
+Built: `scripts/grok_subscription.py`. It uses `grok login` (Grok Build, `~/.grok/auth.json`)
+against api.x.ai. Image generation was verified on Aegis (one render). The Grok steps now use it:
+his video animation (send-video, the avatar stage, vintos-video), the ungrounded scene still, the
+keyframe, and dream-art's Grok fallback. Only her subscription is used. With no login, a refusal,
+or a spent weekly cap (40 images / 7 videos by default, `~/.vintos/grok-subscription.json`),
+nothing is made; it never falls back to Atlas or the API key.
+
+Not moved, still Atlas:
+- The two-of-us compose and the grounded self still (nano-banana): it holds both faces; Grok
+  edit did not. xAI's multi-image edit (up to 5 refs) is untested for her face.
+- The explicit videos (Wan spicy): xAI's content rules would likely refuse them.
+
+Not verified live yet: image edit and video on the subscription (`grok_subscription.py probe
+edit|video <img>`), and token refresh (the login lasts 7 days; the first refresh is the test).
+The avatar stage still tells him a live scene costs "about 55 cents".
+
 ## 24 September — how his pieces landed (landings)
 
 Built: the store (`scripts/landings.py`, kept at `~/.vintos/landings/`, outside his workspace) and

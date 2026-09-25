@@ -209,16 +209,15 @@ def main():
         revised_prompt = prompt
         if not _png:
             # Want-born art keeps the paid renderer: OpenAI first, grok-imagine only when OpenAI refuses or fails.
-            r = requests.post("https://api.x.ai/v1/images/generations",
-                headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-                json={"model": "grok-imagine-image", "prompt": render_prompt,
-                      "n": 1, "response_format": "b64_json"},
-                timeout=180)
-            if r.status_code != 200:
-                print(f"[dream-art] API error {r.status_code}: {r.text[:300]}"); return
-            data = r.json()["data"][0]
-            _png = base64.b64decode(data["b64_json"])
-            revised_prompt = data.get("revised_prompt", prompt)
+            # ... on her SuperGrok subscription, never the API key (Gloria, 2026-09-25).
+            import grok_subscription as _gs
+            try:
+                _png, _rev_p = _gs.image(render_prompt)
+            except _gs.Unavailable as e:
+                print(f"[dream-art] grok subscription: {e} — nothing painted"); return
+            except Exception as e:
+                print(f"[dream-art] grok error: {e}"); return
+            revised_prompt = _rev_p or prompt
     # name carries the content hash + a revision suffix: two paintings in one second, or one re-rendered,
     # never overwrite each other (review 279)
     _fpath, _rev = _am.unique_path(ART_DIR, "painting-" + datetime.now().strftime("%Y%m%d-%H%M%S"), ".png", _png)

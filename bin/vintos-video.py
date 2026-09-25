@@ -26,14 +26,16 @@ def data_uri(path):
     mime = "image/jpeg" if raw[:3] == b"\xff\xd8\xff" else "image/png"
     return f"data:{mime};base64," + base64.b64encode(raw).decode()
 
+import grok_subscription as _gs   # Grok Imagine on her SuperGrok subscription, never the API key (2026-09-25)
+
 def paint_keyframe(text):
-    r = requests.post("https://api.x.ai/v1/images/generations", headers=H,
-        json={"model": "grok-imagine-image", "prompt": text[:1000],
-              "n": 1, "response_format": "b64_json"}, timeout=180)
-    if r.status_code != 200:
-        print(f"[video] keyframe error {r.status_code}: {r.text[:200]}"); return None
+    try:
+        _png, _ = _gs.image(text[:1000])
+    except _gs.Unavailable as e:
+        print(f"[video] grok subscription: {e} — no keyframe"); return None
+    except Exception as e:
+        print(f"[video] keyframe error: {e}"); return None
     os.makedirs(ART_DIR, exist_ok=True)
-    _png = base64.b64decode(r.json()["data"][0]["b64_json"])
     path, _ = _am.unique_path(ART_DIR, f"keyframe-{datetime.now().strftime('%Y%m%d-%H%M%S')}", ".png", _png)
     fname = os.path.basename(path)
     open(path, "wb").write(_png)
@@ -96,27 +98,12 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
         print(f"[video] saved: {fname}")
         return True
 
-    r = requests.post("https://api.x.ai/v1/videos/generations", headers=H,
-        json={"model": "grok-imagine-video-1.5", "prompt": text[:600],
-              "image": {"url": data_uri(img_path)},
-              "duration": min(duration, 15), "resolution": "720p"}, timeout=180)
-    print(f"[video] submit {r.status_code}: {r.text[:300]}")
-    if r.status_code != 200:
-        return False
-    resp = r.json()
-    req_id = resp.get("id") or resp.get("request_id")
-    vid_url = resp.get("video_url") or resp.get("url")
-    for _ in range(60):
-        if vid_url or not req_id:
-            break
-        time.sleep(10)
-        d = requests.get(f"https://api.x.ai/v1/videos/{req_id}", headers=H, timeout=30).json()
-        vid_url = d.get("video_url") or d.get("url") or (d.get("video") or {}).get("url")
-        if d.get("status") in ("failed", "error"):
-            print(f"[video] failed: {json.dumps(d)[:300]}"); return False
-    if not vid_url:
-        print("[video] no url after polling"); return False
-    _blob = requests.get(vid_url, timeout=300).content
+    try:
+        _blob = _gs.video(text[:600], img_path, duration=min(duration, 15))
+    except _gs.Unavailable as e:
+        print(f"[video] grok subscription: {e} — no video"); return False
+    except Exception as e:
+        print(f"[video] {e}"); return False
     _vpath, _rev = _am.unique_path(VID_DIR, f"video-{datetime.now().strftime('%Y%m%d-%H%M%S')}", ".mp4", _blob)
     fname = os.path.basename(_vpath)
     open(_vpath, "wb").write(_blob)
@@ -126,7 +113,7 @@ def make_one(text, img_path="", duration=6, backend="grok", want_id=""):
         gallery = []
     gallery.append({"file": fname, "prompt": text[:300],
                     "source_image": os.path.basename(img_path),
-                    "backend": "grok-imagine", "duration": duration,
+                    "backend": "grok-imagine", "billing": "grok-subscription", "duration": duration,
                     "want_id": want_id, "for_wall": want_id == "projector",
                     "timestamp": datetime.now().isoformat(),
                     **_am.build(_vpath, "video", source_want=want_id, revision=_rev, shelf=VID_DIR)})
