@@ -75,7 +75,7 @@ without_nulls = M._safe_query("protein_name : CysB AND gene : MetC AND organism_
 check("unset optional UniProt fields are omitted instead of sent as literal None",
       "None" not in without_nulls and "organism_id:" not in without_nulls
       and "taxonomy_id:" not in without_nulls and "protein_name:CysB" in without_nulls
-      and "gene:MetC" in without_nulls, without_nulls)
+      and "gene:MetC" in without_nulls and "AND AND" not in without_nulls, without_nulls)
 original_urlopen = M.urllib.request.urlopen; rejected_calls = []
 def reject_specific(request, timeout=0):
     rejected_calls.append(request.full_url)

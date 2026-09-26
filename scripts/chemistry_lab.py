@@ -436,7 +436,7 @@ def _safe_query(query):
     query = re.sub(r"(?<=\()\s*AND\b|\bAND\s*$", "", query)
     query = re.sub(r"\(\s*\)", "", query)
     query = re.sub(r"\s+", " ", query).strip()
-    query = re.sub(r"(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
+    query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
     # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
     return BASELINE_QUERY + " AND (" + query + ")"
 
