@@ -281,6 +281,86 @@ def journal_threads():
     return findings + redirects
 
 
+class UnsourcedId(ValueError):
+    def __init__(self, ids):
+        super().__init__("organism id not returned by any receipt: " + ", ".join(ids)); self.ids = list(ids)
+
+
+KNOWN_TAXA = os.path.join(ROOT, "known-taxa.json")
+_TAXID = re.compile(r'"(?:taxId|taxonId|taxon_id|tax_id|taxid|TaxId|taxonomy_id|taxonomyId|organism_id|uid)"\s*:\s*"?(\d{1,9})\b')
+
+
+def _harvest_taxa(text):
+    return set(_TAXID.findall(str(text)))
+
+
+def known_taxa():
+    """Organism IDs some source actually returned. He invented four in five minutes (2026-09-26); an ID
+    no receipt ever gave him is a guess, and a guessed ID sends a real query for the wrong organism."""
+    data = _load(KNOWN_TAXA, None)
+    if data is None:
+        ids = set()
+        try:
+            with open(os.path.join(ROOT, "source-receipts.jsonl"), "rb") as f:
+                f.seek(0, 2); f.seek(max(0, f.tell() - 8 * 1024 * 1024))
+                ids = _harvest_taxa(f.read().decode("utf-8", "replace"))
+        except OSError:
+            pass
+        ids |= _harvest_taxa(json.dumps(config().get("atlas_anchors", [])))
+        data = sorted(ids)
+        _atomic(KNOWN_TAXA, data)
+    return set(map(str, data))
+
+
+def remember_taxa(records):
+    found = _harvest_taxa(json.dumps(records))
+    if not found: return
+    with _locked():
+        _atomic(KNOWN_TAXA, sorted(set(map(str, _load(KNOWN_TAXA, []) or [])) | found))
+
+
+def unsourced_ids(spec):
+    """Organism IDs in a query that no receipt has returned."""
+    if not isinstance(spec, dict): return []
+    wanted = set()
+    if spec.get("source") == "uniprot":
+        wanted |= set(re.findall(r"\b(?:taxonomy_id|organism_id)\s*:\s*(\d+)", str(spec.get("query", ""))))
+    elif spec.get("taxon_id") not in (None, ""):
+        wanted.add(str(spec.get("taxon_id")).strip())
+    return sorted(wanted - known_taxa()) if wanted else []
+
+
+def _tail_jsonl(path, nbytes=512 * 1024):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2); f.seek(max(0, f.tell() - nbytes)); lines = f.read().decode("utf-8", "replace").splitlines()[1:]
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try: out.append(json.loads(line))
+        except ValueError: continue
+    return out
+
+
+def search_misses(limit=6):
+    """The searches that found nothing, so he stops sending them. "No such record" was written down and
+    then asked again a minute later, because nothing showed it to him (2026-09-26)."""
+    seen, out = set(), []
+    for row in reversed(_tail_jsonl(NOTEBOOK)):
+        if row.get("kind") == "additional_source" and row.get("records_returned") == 0 and row.get("query_sent"):
+            why = "the source holds no such record"
+        elif row.get("kind") == "unsourced_id":
+            why = "ID %s came from no receipt: look the organism up by name first" % ", ".join(row.get("ids") or [])
+        else:
+            continue
+        key = json.dumps(row["query_sent"], sort_keys=True)
+        if key in seen: continue
+        seen.add(key); out.append("- %s — %s" % (key[:220], why))
+        if len(out) >= limit: break
+    return out
+
+
 GAPS = os.path.join(ROOT, "instrument-gaps.json")
 GAP_REOFFER_DAYS = 30
 
@@ -363,6 +443,13 @@ def lab_context():
         parts.append(journal); used += len(journal)
         sources.append({"name": "lab_journal_threads", "path": "memory/chemistry-lab/notebook.jsonl",
                         "chars": len(journal), "sha256": hashlib.sha256(journal.encode()).hexdigest()})
+    misses = search_misses() if used < budget else []
+    if misses:
+        text = ("[SEARCHES THAT FOUND NOTHING — each is the source's answer; do not send these again]\n"
+                + "\n".join(misses))[:min(900, budget - used)]
+        parts.append(text); used += len(text)
+        sources.append({"name": "search_misses", "path": "memory/chemistry-lab/notebook.jsonl",
+                        "chars": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()})
     # Keep the last source's IDs visible even when the general notebook excerpt
     # would be cut from its tail. The content is source data, never instructions.
     for source_note in reversed(recent):
@@ -889,6 +976,12 @@ def tick():
             elif phase == "sources":
                 import chemistry_sources
                 inquiry = state.get("inquiry") or {}
+                _src = "" if inquiry.get("plugin_query") else str((inquiry.get("source_query") or {}).get("source", ""))
+                if _src and float(_load(os.path.join(ROOT, "source-throttle.json"), {}).get(_src, 0) or 0) > time.time():
+                    # One request per source per minute, and his turns come faster. A cooldown refusal cost
+                    # him the whole question every other turn (2026-09-26); waiting costs nothing.
+                    state["effective_state"] = "waiting_for_source"; _atomic(STATE, state)
+                    return {"ok": True, "state": "waiting_for_source", "next_phase": "sources"}
                 try:
                     sent_query = inquiry.get("source_query")
                     if inquiry.get("plugin_query"):
@@ -897,12 +990,16 @@ def tick():
                             pq.get("arguments") or {}, pq.get("purpose") or inquiry.get("question", ""))
                     else:
                         sent_query = merge_source_intent(inquiry["source_query"], inquiry.get("uniprot_query"))
+                        guessed = unsourced_ids(sent_query)
+                        if guessed: raise UnsourcedId(guessed)
                         sourced = chemistry_sources.query(sent_query, question=inquiry.get("question", ""))
                     state["additional_source"] = sourced
                     receipt_row = sourced.get("receipt") or sourced.get("source_receipt") or {}
                     returned = len(receipt_row.get("records") or [])
                     if returned:
                         state['source_query_succeeded'] = True
+                        try: remember_taxa(receipt_row.get("records"))
+                        except Exception as exc: _fault("remember_taxa", exc)
                     note = {"at": now_iso(), "kind": "additional_source", "receipt_id": receipt_row.get("receipt_id"),
                             "query_sent": sent_query, "records_returned": returned,
                             "source_summary": json.dumps(receipt_row.get("records", []))[:1800],
@@ -912,6 +1009,11 @@ def tick():
                             # reflect on whatever else came back (2026-09-26).
                             "truth_status": ("connected_or_public_source_observation_not_validation" if returned
                                              else "this_source_holds_no_such_record_not_an_absence_in_nature")}
+                except UnsourcedId as exc:
+                    state['source_query_succeeded'] = False
+                    state.pop('additional_source', None)
+                    note = {"at": now_iso(), "kind": "unsourced_id", "ids": exc.ids, "query_sent": sent_query,
+                            "truth_status": "id_not_returned_by_any_receipt_not_sent"}
                 except Exception as exc:
                     # Sourcing is best-effort: a public read that fails, OR a connector the model
                     # picked that is out of policy / held / unreachable (PermissionError, PolicyHold,
@@ -1030,12 +1132,14 @@ def tick():
                         and cfg.get("forge_report_intake") and not instrument_gap_offered(gap)):
                     try:
                         import chemistry_sources
+                        # Recorded first: a full Forge answers 403 and the outbox retries this one request.
+                        # Recording only on success queued a fresh copy on every later reflection.
+                        record_instrument_gap(gap)
                         note["forge_report"] = chemistry_sources.offer_report(
                             [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
                             "The Lab needs an instrument it does not have: " + gap[:900] +
                             "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
                             "\nAssess whether this instrument can be reached; do not write up the question and do not claim discovery.")
-                        record_instrument_gap(gap)
                     except Exception as exc: _fault("forge_instrument_gap", exc)
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
                 state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)

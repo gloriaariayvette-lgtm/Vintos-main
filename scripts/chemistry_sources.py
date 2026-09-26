@@ -177,7 +177,15 @@ def offer_report(receipt_ids, question, *, send=None):
 def flush_reports():
     if not lab.config().get('forge_report_intake'): return
     if (lab._load(REPORT_PAUSE, {}) or {}).get('until', 0) > time.time(): return   # the Forge said no; wait
-    outbox = lab._load(os.path.join(lab.ROOT, 'forge-report-outbox.json'), {})
+    outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
+    with lab._locked():
+        outbox = lab._load(outbox_path, {})
+        # The Lab no longer asks the Forge to write up its questions (2026-09-26). The write-ups still
+        # queued from before kept a full Forge refusing him, so they are withdrawn, not retried.
+        stale = [row for row in outbox.values() if row.get('state') in ('pending', 'refused')
+                 and str(row.get('question', '')).startswith('Document this sourced Lab question')]
+        for row in stale: row['state'] = 'withdrawn'
+        if stale: lab._atomic(outbox_path, outbox)
     for row in outbox.values():
         # 'refused' is only left by the 2026-09-24 build that took a capacity 403 as final; it is retried.
         if row.get('state') in ('pending', 'refused') and row.get('next_attempt', 0) <= time.time():

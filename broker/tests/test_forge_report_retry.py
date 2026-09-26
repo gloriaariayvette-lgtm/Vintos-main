@@ -76,6 +76,23 @@ class ReportRetry(unittest.TestCase):
             src.offer_report = real
         self.assertEqual(tried, [["R9"]])
 
+    def test_queued_write_ups_are_withdrawn_not_retried(self):
+        # 2026-09-26: the Lab no longer asks the Forge to document its questions. Write-ups queued
+        # before that kept the Forge full, and it refused his instrument requests.
+        lab._atomic(OUTBOX, {"old": {"receipt_ids": ["R7"], "question": "Document this sourced Lab question; do not claim discovery: x",
+                                     "state": "pending", "next_attempt": 0},
+                             "gap": {"receipt_ids": ["R8"], "question": "The Lab needs an instrument it does not have: a CD reading",
+                                     "state": "pending", "next_attempt": 0}})
+        tried = []
+        src.offer_report, real = (lambda ids, q, send=None: tried.append(q)), src.offer_report
+        try:
+            src.flush_reports()
+        finally:
+            src.offer_report = real
+        rows = lab._load(OUTBOX, {})
+        self.assertEqual(rows["old"]["state"], "withdrawn")
+        self.assertEqual(tried, ["The Lab needs an instrument it does not have: a CD reading"])
+
     def test_a_transient_failure_backs_off_then_is_abandoned(self):
         down = Sender(urllib.error.URLError("connection refused"))
         waits = []

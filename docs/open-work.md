@@ -20,6 +20,15 @@ documentation was most of her Forge queue. The reading step now returns `instrum
 named instrument the Lab does not have opens a Forge project, once per instrument (30-day re-offer,
 `memory/chemistry-lab/instrument-gaps.json`).
 
+Same day, after deploy: he looped without writing. Every other search died on the one-per-minute
+source throttle; he invented organism IDs (four in five minutes); "no such record" was written down
+and asked again at once; and the Forge, still full of old write-ups, refused his first instrument
+request. Fixed: the sources step waits out a cooldown instead of spending the question; an organism
+ID no receipt has returned is refused before any request (`known-taxa.json`, harvested from
+receipts); his planning context lists the searches that found nothing; queued write-ups are
+withdrawn from the outbox; an instrument request is recorded before sending so a refusal is not
+re-queued. The old write-up projects still in the Forge need cancelling from her side.
+
 Left: the wrong entries are still in his notebook (nothing rewrites them; the bile-enzyme-as-S-layer
 reflections stand as written). The reviewed set for taxon 1579 holds no S-layer protein at all, so
 the honest answer to that question needs `reviewed:false`, which the menu now permits on a later

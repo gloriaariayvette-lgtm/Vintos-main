@@ -34,6 +34,7 @@ sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 M.set_enabled(True)
 cfg = M.config(); cfg["forge_report_intake"] = {"url": "http://127.0.0.1:9/api/lab-intake", "token_file": "x"}
 M._atomic(M.CONFIG, cfg)
+M._atomic(M.KNOWN_TAXA, ["1579"])   # an organism a receipt has returned; guessed IDs are tested below
 
 # --- the query he wrote is the query that is sent -------------------------------------------------
 HIS_UNIPROT = 'reviewed:true AND length:[40 TO 350] AND (protein_name : S-layer protein organism_id : 1579 reviewed : True)'
@@ -100,6 +101,40 @@ check("the saturation guard still allows the protein lane its five looks",
       M.journal_source_saturated(["RESPONSE-" + "d" * 32], limit=1)
       and not M.journal_source_saturated(["RESPONSE-" + "d" * 32]), "limit is honoured")
 
+# --- a source still cooling down is waited for, not spent -----------------------------------------
+M._atomic(M.STATE, {"phase": "sources", "turns": 50, "inquiry": {
+    "browse_lane": "microbiology", "source_query": dict(BROAD), "uniprot_query": HIS_UNIPROT, "question": "q"}})
+M._atomic(os.path.join(M.ROOT, "source-throttle.json"), {"uniprot": __import__("time").time() + 45})
+rows_before, sent_before = len(M._jsonl(M.NOTEBOOK)), len(sent)
+waited = M.tick()
+check("a source in its cooldown is waited out without spending the question",
+      waited["state"] == "waiting_for_source" and M._load(M.STATE, {})["phase"] == "sources"
+      and len(M._jsonl(M.NOTEBOOK)) == rows_before and len(sent) == sent_before, waited)
+os.unlink(os.path.join(M.ROOT, "source-throttle.json"))
+
+# --- an organism ID no receipt ever returned is not sent ------------------------------------------
+M._atomic(M.STATE, {"phase": "sources", "turns": 51, "inquiry": {
+    "browse_lane": "microbiology", "source_query": {"source": "uniprot", "query": "taxonomy_id:512419 AND reviewed:true"},
+    "uniprot_query": HIS_UNIPROT, "question": "q"}})
+guessed = M.tick()
+note = M._jsonl(M.NOTEBOOK)[-1]
+check("a guessed organism ID is refused before any request",
+      guessed["next_phase"] == "orient" and note["kind"] == "unsourced_id" and note["ids"] == ["512419"]
+      and len(sent) == sent_before, note)
+check("an NCBI taxon_id is held to the same rule",
+      M.unsourced_ids({"source": "ncbi", "operation": "gene", "taxon_id": 424242}) == ["424242"]
+      and M.unsourced_ids({"source": "ncbi", "operation": "taxonomy", "term": "L. acidophilus"}) == [])
+M.remember_taxa([{"organism": {"taxonId": 272621}}, {"uid": "33958"}])
+check("an ID a receipt returns becomes one he may use",
+      M.unsourced_ids({"source": "uniprot", "query": "taxonomy_id:272621"}) == []
+      and "33958" in M.known_taxa())
+
+# --- the searches that found nothing are shown to him ---------------------------------------------
+ctx, _ = M.lab_context()
+check("his planning context lists the searches that found nothing, and why",
+      "SEARCHES THAT FOUND NOTHING" in ctx and "the source holds no such record" in ctx
+      and "512419" in ctx and "look the organism up by name first" in ctx, ctx[-900:])
+
 # --- the Forge is asked for an instrument, never for documentation --------------------------------
 offers = []
 sys.modules["chemistry_sources"] = types.SimpleNamespace(
@@ -121,6 +156,16 @@ M.tick(); M.tick(); M.tick(); M.tick()
 check("the same instrument is not asked for twice", len(offers) == 1, offers)
 check("the notebook shows what he asked the Forge for",
       any(x.get("forge_report") for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection"))
+
+def refusing(ids, intent, **k):
+    offers.append((ids, intent)); raise OSError("403 four unfinished reports")
+sys.modules["chemistry_sources"].offer_report = refusing
+M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a mass spectrometer for the glycan")
+for n, h in (("REC-6", "1"), ("REC-7", "2")):
+    reply = {"receipt": {"receipt_id": n, "response_sha256": h * 64, "records": [{"primaryAccession": n}]}}
+    M.tick(); M.tick(); M.tick(); M.tick()
+check("a request the full Forge refused is not queued again on every later reflection",
+      sum("mass spectrometer" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
 
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
