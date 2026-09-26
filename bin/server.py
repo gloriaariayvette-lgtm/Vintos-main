@@ -10318,10 +10318,12 @@ def _aq_mod():
     return _m
 
 @app.get("/aq", response_class=_AQHTML)
-async def _aq_page():
+async def _aq_page(qid: str = ""):
     import html as _h
     try:
         qs = [x for x in _aq_mod()._load() if not x.get("answer")]
+        if qid:
+            qs = [x for x in qs if str(x.get("id")) == str(qid)]
     except Exception as e:
         return _AQHTML("<p>could not read questions: %s</p>" % _h.escape(str(e)))
     if not qs:
@@ -10336,7 +10338,7 @@ async def _aq_page():
             "<div style='font-size:12px;color:#888'>asked %s</div>"
             "<p style='margin:8px 0 14px'>%s</p>"
             "<input type='hidden' name='qid' value='%s'>"
-            "<textarea name='text' rows='5' style='width:100%%;font:inherit;padding:8px;"
+            "<textarea name='text' rows='5' autofocus style='width:100%%;font:inherit;padding:8px;"
             "box-sizing:border-box' placeholder='however it comes out'></textarea>"
             "<button style='margin-top:10px;padding:10px 18px;font:inherit'>send</button>"
             "</form>" % (_h.escape(str(x.get("asked_iso",""))[:16]),

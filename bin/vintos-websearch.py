@@ -371,10 +371,10 @@ def pick_question():
                     _atomic_json(_AQ, _store)
                     # She gets his question as he asked it. No second model.
                     _body = _q[:600] + "\n\nid: " + str(_qid)
+                    from architecture_answers import ntfy_headers as _answer_headers
                     _req = _nu.Request("https://ntfy.sh/vintos-gloria-9kx",
                                        data=_body.encode("utf-8"),
-                                       headers={"Title": "Vintos has a question about himself",
-                                                "Tags": "question", "Priority": "default"})
+                                       headers=_answer_headers(_qid))
                     _nu.urlopen(_req, timeout=15)
                     _rec["delivered"] = True; _rec["delivered_at"] = _nt.time()      # transport accepted; her receipt is a different fact (astra-curiosity-p3)
                     _atomic_json(_AQ, _store)
