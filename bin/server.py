@@ -6785,7 +6785,7 @@ async def chemistry_lab_activity(request: Request, limit: int = 12):
             elif kind in ("source_read", "additional_source"):
                 detail = str(row.get("source") or row.get("database") or row.get("connector") or "")
             elif kind == "protein_representation":
-                detail = "%s records" % (row.get("count") or len(row.get("representations") or []))
+                detail = "%s records" % (row.get("count") or len(row.get("embeddings") or row.get("representations") or []))
             elif kind in ("reflection", "genome_reflection"):
                 detail = str(row.get("attention") or row.get("factual_observation") or "")
             elif kind in ("source_unavailable", "browse_stale", "unsourced_id"):

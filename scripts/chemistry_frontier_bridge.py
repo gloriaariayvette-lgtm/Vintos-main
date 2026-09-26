@@ -121,11 +121,23 @@ def _acknowledged_ids():
     return found
 
 
+def _redirect_entry_ids():
+    """Notebook corrections outrank an earlier routing score."""
+    rejected = set()
+    for thread in lab.journal_threads():
+        if thread.get("state") == "finding":
+            continue
+        rejected.update(str(x) for x in thread.get("entry_ids", []) if x)
+    return rejected
+
+
 def frontier_block(limit=MAX_FLAGGED, budget=BLOCK_CHARS):
     """Return a bounded priority block plus the exact IDs placed in it."""
     acknowledged = _acknowledged_ids()
+    redirected = _redirect_entry_ids()
     candidates = [row for row in _latest_interest().values()
-                  if row.get("flagged_for_next_lab_session") and row.get("entry_id") not in acknowledged]
+                  if row.get("flagged_for_next_lab_session") and row.get("entry_id") not in acknowledged
+                  and row.get("entry_id") not in redirected]
     candidates.sort(key=lambda row: (float(row.get("interest_score") or 0), str(row.get("at") or "")), reverse=True)
     chosen, used = [], 0
     seen_evidence = set()
@@ -181,8 +193,11 @@ def record_delivery(session_id, lens, offered_ids, acknowledged_ids, *, state="r
 
 def status():
     latest = _latest_interest(); acknowledged = _acknowledged_ids()
-    flagged = [row for row in latest.values() if row.get("flagged_for_next_lab_session")]
+    redirected = _redirect_entry_ids()
+    all_flagged = [row for row in latest.values() if row.get("flagged_for_next_lab_session")]
+    flagged = [row for row in all_flagged if row.get("entry_id") not in redirected]
     pending = [row for row in flagged if row.get("entry_id") not in acknowledged]
     return {"assessed": len(latest), "flagged": len(flagged), "acknowledged": len(flagged) - len(pending),
             "pending": len(pending), "oldest_pending_at": min((x.get("at") for x in pending), default=None),
+            "redirected_after_assessment": len(all_flagged) - len(flagged),
             "backlog_bug": any(row.get("backlog_bug") for row in lab._jsonl(SURFACES)[-50:])}

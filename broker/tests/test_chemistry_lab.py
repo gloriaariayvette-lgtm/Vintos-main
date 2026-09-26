@@ -45,6 +45,7 @@ check("context provenance is written", receipt["total_chars"] > 0 and all(x.get(
 def admitted(*a, **k): yield types.SimpleNamespace()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 M._orient = lambda context: {"uniprot_query": "reviewed:true AND length:[40 TO 350]", "question": "Which compact fold catches me?", "why_now": "shape"}
+real_browse = M._browse
 M._browse = lambda query, limit: {"records": [{"accession": "P00001", "protein_name": "small test protein", "organism": "Example", "length": 80, "sequence": "A" * 80}],
                                   "requested_query": query, "executed_query": query,
                                   "fallback_reason": None}
@@ -66,6 +67,31 @@ check("source and speculation stay distinguishable", any(x.get("truth_status") =
 source_note = next(x for x in notes if x.get("kind") == "source_read")
 check("source note records requested and executed queries", source_note.get("requested_query") == source_note.get("executed_query") and source_note.get("fallback_reason") is None)
 check("dangerous generated query cannot widen the perimeter", "toxin" not in M._safe_query("toxin human target") and M._safe_query("toxin human target").startswith("reviewed:true"))
+normalized = M._safe_query("protein_name : Clarin-2 organism_id : 9606 reviewed : True")
+check("generated UniProt syntax is canonical before the request",
+      "protein_name:Clarin-2 AND organism_id:9606 AND reviewed:true" in normalized
+      and " : " not in normalized and "True" not in normalized, normalized)
+original_urlopen = M.urllib.request.urlopen; rejected_calls = []
+def reject_specific(request, timeout=0):
+    rejected_calls.append(request.full_url)
+    raise M.urllib.error.HTTPError(request.full_url, 400, "fixture rejection", {}, None)
+try:
+    M.urllib.request.urlopen = reject_specific
+    rejected_browse = real_browse(normalized, 4)
+finally:
+    M.urllib.request.urlopen = original_urlopen
+check("a rejected specific UniProt query never widens to the generic baseline",
+      len(rejected_calls) == 1 and rejected_browse["records"] == []
+      and rejected_browse["source_receipt"] is None
+      and rejected_browse["executed_query"] == normalized
+      and rejected_browse["fallback_reason"] == "source_rejected_generated_query")
+bad_lineage, bad_reason = M._sourced_followup({"source":"pdb", "entry_id":"1O96"},
+                                               [{"accession":"A0PK11", "pdb_ids":[]}])
+good_lineage, good_reason = M._sourced_followup({"source":"pdb", "entry_id":"6H86"},
+                                                 [{"accession":"A1L190", "pdb_ids":["6H86"]}])
+check("a structure follow-up must be named by the current protein records",
+      bad_lineage is None and "absent" in bad_reason
+      and good_lineage["id"] == "6H86" and good_reason is None)
 
 M._append(M.NOTEBOOK, {"at":"2026-09-14T00:00:00Z", "kind":"reflection", "entry_id":"F-1",
     "inquiry":{"question":"Why does this fold recur?"}, "source_accessions":["P00001"],
@@ -88,6 +114,14 @@ check("repeated source-backed observations form one durable finding",
 check("unsupported repeats remain a single low-salience redirect",
       redirect["state"] == "redirect" and redirect["entries"] == 2 and redirect["salient_at"] == "2026-09-16T00:00:00Z"
       and not redirect["finding"])
+M._append(M.NOTEBOOK, {"at":"2026-09-17T01:00:00Z", "kind":"reflection", "entry_id":"BAD-PDB",
+    "inquiry":{"question":"Does this protein use unrelated structure 1O96?",
+               "source_query":{"source":"pdb", "entry_id":"1O96"}},
+    "source_accessions":["A0PK11", "RESPONSE-fixture"], "source_query_succeeded":True,
+    "factual_observation":"The unrelated structure says something interesting."})
+bad_structure = next(t for t in M.journal_threads() if t["question"] == "Does this protein use unrelated structure 1O96?")
+check("an old unlinked structure association is retained only as a redirect",
+      bad_structure["state"] == "redirect" and "association is rejected" in bad_structure["lesson"])
 for index in range(5):
     M._append(M.NOTEBOOK, {"at":"2026-09-%02dT00:00:00Z" % (18+index), "kind":"reflection",
         "entry_id":"SAT-%d" % index, "inquiry":{"question":"Variant angle %d?" % index},
@@ -107,6 +141,19 @@ M._browse = lambda query, limit: {"records":[{"accession":"P99999", "sequence":"
 stale_turn = M.tick()
 check("a stale routine browse returns to orientation without another model reflection",
       stale_turn["kind"] == "browse_stale" and stale_turn["next_phase"] == "orient")
+M._atomic(M.STATE, {"phase":"browse", "turns":5,
+                    "inquiry":{"browse_lane":"protein", "question":"Wrong structure?",
+                               "uniprot_query":"reviewed:true",
+                               "source_query":{"source":"pdb", "entry_id":"1O96"}}})
+M._browse = lambda query, limit: {"records":[{"accession":"A0PK11", "sequence":"A"*80,
+                                                "pdb_ids":[], "chembl_ids":[]}],
+                                   "requested_query":query, "executed_query":query,
+                                   "fallback_reason":None, "source_receipt":None}
+unsourced_turn = M.tick()
+check("an invented PDB id is refused before the source call while valid protein work continues",
+      unsourced_turn["kind"] == "source_read" and unsourced_turn["next_phase"] == "embed"
+      and M._load(M.STATE,{})["inquiry"].get("source_query") is None
+      and M._jsonl(M.NOTEBOOK)[-2]["kind"] == "unsourced_id")
 def unavailable(*a, **k): raise PermissionError("fixture source unavailable")
 sys.modules["chemistry_sources"] = types.SimpleNamespace(query=unavailable)
 M._atomic(M.STATE, {"phase":"sources", "turns":5, "records":[{"accession":"P99999", "sequence":"A"*80}],
@@ -145,6 +192,8 @@ check("Atelier is architecturally absent", "atelier" not in M.ROOT.lower() and M
 
 server = open(os.path.join(REPO, "bin", "server.py")).read()
 ui = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
+check("the Lab activity page counts the recorded embedding field",
+      'len(row.get("embeddings") or row.get("representations") or [])' in server)
 check("status and toggle routes are private", '@app.get("/api/lab/chemistry/status")' in server and '@app.post("/api/lab/chemistry/toggle")' in server and server[server.index('async def chemistry_lab_status'):server.index('async def chemistry_lab_toggle')].count("_require_secret") == 1)
 check("Tune exposes and reloads the control", "chemistry-lab-toggle" in ui and "loadChemistryLabStatus()" in ui and "toggleChemistryLab()" in ui)
 check("service and deploy manifest name background and scheduled workers", os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-lab.service")) and os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")) and all(x in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read() for x in ("chemistry_lab.py", "chemistry_esmc.py", "chemistry_mac.py", "chemistry_session.py")))

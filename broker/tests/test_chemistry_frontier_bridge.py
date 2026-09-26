@@ -57,6 +57,16 @@ fresh = bridge.assess(dict(note, at="2026-09-15T00:00:00+00:00", source_accessio
 assert fresh["flagged_for_next_lab_session"] is True and fresh["evidence_sha256"] != row["evidence_sha256"]
 assert bridge.frontier_block()[1] == [fresh["entry_id"]]
 
+# A later notebook correction defeats the earlier score before it reaches a frontier model.
+lab._append(lab.NOTEBOOK, {"at":"2026-09-15T00:01:00+00:00", "kind":"reflection",
+    "entry_id":fresh["entry_id"], "source_query_succeeded":True,
+    "inquiry":{"question":"Is unrelated PDB 1O96 part of this protein?",
+               "source_query":{"source":"pdb", "entry_id":"1O96"}},
+    "source_accessions":["P67890", "RESPONSE-fixture"],
+    "factual_observation":"An unrelated structure was returned."})
+assert bridge.frontier_block() == ("", [])
+assert bridge.status()["redirected_after_assessment"] == 1
+
 source = open(os.path.join(REPO, "scripts", "chemistry_frontier_bridge.py")).read()
 assert "requests" not in source and "urllib" not in source and "atelier" not in source.lower()
 print("18/18 passed")

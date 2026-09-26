@@ -226,9 +226,17 @@ def journal_threads():
             observation = "The same source set recurs in %d reflections; repetition is not new evidence." % source_counts[sources_key]
             next_question = "Which new source or different instrument could discriminate this before another reflection?"
         else:
-            supported = bool(sources and factual and row.get("source_query_succeeded") is not False)
+            source_query = inquiry.get("source_query") if isinstance(inquiry.get("source_query"), dict) else {}
+            identifier_followup = source_query.get("source") in ("pdb", "chembl")
+            lineage = row.get("followup_lineage") if isinstance(row.get("followup_lineage"), dict) else {}
+            identifier_linked = (not identifier_followup or
+                                 (lineage.get("source") == source_query.get("source") and lineage.get("id")))
+            supported = bool(sources and factual and row.get("source_query_succeeded") is not False
+                             and identifier_linked)
             lesson = not supported
-            observation = factual if supported else "No source-backed observation recorded; interpretation needs a receipt."
+            observation = factual if supported else ("The follow-up identifier was not tied to the source protein; its association is rejected."
+                if identifier_followup and not identifier_linked else
+                "No source-backed observation recorded; interpretation needs a receipt.")
             if lesson:
                 next_question = "Which new source receipt could resolve this before another interpretation?"
         previous = threads.get(thread_id)
@@ -415,8 +423,34 @@ def _safe_query(query):
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if not query or DENIED_QUERY.search(query):
         return BASELINE_QUERY
+    # Gemma commonly writes JSON/Python-looking field syntax (``field : True``).
+    # UniProt rejects that spacing/casing even though the intended fields are valid.
+    # Canonicalize the bounded query here; never recover a rejected specific query by
+    # silently widening it to the generic baseline.
+    query = re.sub(r"\s*:\s*", ":", query)
+    query = re.sub(r"\btrue\b", "true", query, flags=re.I)
+    query = re.sub(r"\bfalse\b", "false", query, flags=re.I)
+    fields = r"(?:accession|id|reviewed|length|protein_name|gene|organism_id|organism_name|taxonomy_id|keyword|go|xref_pdb)"
+    query = re.sub(r"(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
     # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
     return BASELINE_QUERY + " AND (" + query + ")"
+
+
+def _sourced_followup(spec, records):
+    """Return lineage for a follow-up identifier, or why it must be refused."""
+    if not isinstance(spec, dict):
+        return None, None
+    source = str(spec.get("source") or "")
+    if source == "pdb":
+        value, field = str(spec.get("entry_id") or "").upper(), "pdb_ids"
+    elif source == "chembl":
+        value, field = str(spec.get("target_id") or "").upper(), "chembl_ids"
+    else:
+        return {"source": source, "kind": "non_identifier_followup"}, None
+    available = {str(item).upper() for row in records for item in (row.get(field) or [])}
+    if value and value in available:
+        return {"source": source, "id": value, "sourced_from": "current_uniprot_records"}, None
+    return None, "%s identifier %s was absent from the current UniProt records" % (source, value or "(empty)")
 
 
 def _orient(context, lean=None):
@@ -508,18 +542,16 @@ def _browse(query, limit):
     try:
         validate_uniprot(executed_query)
     except ValueError:
-        fallback_reason = "invalid_query_rejected_locally"
-        executed_query = BASELINE_QUERY
+        return {"source_receipt": None, "records": [], "requested_query": requested_query,
+                "executed_query": None, "fallback_reason": "invalid_query_rejected_locally"}
     try:
         raw = fetch(executed_query)
     except urllib.error.HTTPError as exc:
-        # A model may invent a plausible-looking UniProt field. A rejected
-        # query is history, not a verdict and not permission to widen scope.
-        if exc.code != 400 or executed_query == BASELINE_QUERY:
+        # A rejected specific query is history, not permission to widen scope.
+        if exc.code != 400:
             raise
         fallback_reason = "source_rejected_generated_query"
-        executed_query = BASELINE_QUERY
-        raw = fetch(executed_query)
+        raw = {"results": []}
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
@@ -537,8 +569,9 @@ def _browse(query, limit):
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
     from lab_sources import receipt
-    source_receipt = receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
-                             raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'})
+    source_receipt = (None if fallback_reason else
+        receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
+                raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'}))
     return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
             "executed_query": executed_query, "fallback_reason": fallback_reason}
 
@@ -859,14 +892,25 @@ def tick():
                     stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")) and
                                  journal_source_saturated([r.get("accession") for r in records]))
                     state["records"] = [] if stale else records
-                    next_phase = ("orient" if stale else
+                    followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), records)
+                    if unsourced_reason and records:
+                        _append(NOTEBOOK, {"at": now_iso(), "kind": "unsourced_id",
+                            "reason": unsourced_reason, "question": inquiry.get("question"),
+                            "truth_status": "identifier_refused_before_source_call"})
+                        inquiry = dict(inquiry); inquiry["source_query"] = None
+                        state["inquiry"] = inquiry
+                    state["followup_lineage"] = followup_lineage
+                    empty = not records
+                    next_phase = ("orient" if stale or empty else
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
-                    note = {"at": now_iso(), "kind": "browse_stale" if stale else "source_read", "source": "UniProtKB REST",
+                    note = {"at": now_iso(), "kind": ("browse_stale" if stale else
+                            "source_unavailable" if empty else "source_read"), "source": "UniProtKB REST",
                             "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
                             "requested_query": browse_result["requested_query"],
                             "executed_query": browse_result["executed_query"],
                             "fallback_reason": browse_result["fallback_reason"],
+                            **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,
                             "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
                             "truth_status": ("same_source_set_not_new_evidence" if stale else
@@ -973,6 +1017,7 @@ def tick():
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
                         "source_query_succeeded": bool(state.get("source_query_succeeded")),
                         "followup_receipt_id": followup.get('receipt_id'),
+                        "followup_lineage": state.get("followup_lineage"),
                         "source_accessions": ([r.get("accession") for r in records] +
                                               (["RESPONSE-" + fingerprint[:32]] if fingerprint else [])), **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
@@ -1004,7 +1049,7 @@ def tick():
                 elif inquiry.get('browse_lane') == 'genome_mining':
                     note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
-                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
+                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()
