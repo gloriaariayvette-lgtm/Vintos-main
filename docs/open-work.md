@@ -1508,13 +1508,17 @@ plugin gateway, robot bridge, self-review, somatic, EmoClaw and skill-surf units
 healthy. Commissioning registered three structural absences from the live want
 store, including the `physical_interaction` capability gap. The two zero-cycle
 automatic Lab projects still in `ready` were cancelled; the remaining ordinary
-active project is the physical capability proposal. Two older private projects
-remain sealed in `reconciliation_required`; they were not opened or cancelled.
+active structural project is the physical capability proposal. One later Lab
+project entered `ready` through the new exact frontier-acknowledgment gate; it
+was not an automatic handoff of an unreviewed source reflection. Two older
+private projects remain sealed in `reconciliation_required`; they were not
+opened or cancelled.
 
 The causality store was backed up at
 `causality-hypotheses.json.bak-commission-20260926-112809` and compacted through
 the current deployed module. The legacy bare `confirmed` row is now `supported`;
 the live distribution is 21 held, six untested and one supported, with zero
 ungraduated confirmed rows and zero settled self-knowledge rows. The Forge
-system service is active. A follow-up release is still required for the alias
-discovery repair described above.
+system service is active. Follow-up release
+`20260926-114916-0495c74` installed the alias discovery repair; the dashed and
+underscored live causality entries and Git source have the same SHA-256.
