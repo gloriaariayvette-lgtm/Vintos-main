@@ -270,9 +270,14 @@ say
 
 # --------------------------------------------------------- where things live
 locate() {
-    find "$HOME" -maxdepth "$DEPTH" -type f -name "$1" 2>/dev/null \
+    # Keep the lexical installed path through discovery.  Several live entries
+    # are deliberate import aliases; resolving them here makes the alias beside
+    # ANCHOR_DIR disappear, so dest() selects a denser stale tree instead.  The
+    # chosen path is resolved exactly once by the canonical destination resolver
+    # before promotion.
+    find "$HOME" -maxdepth "$DEPTH" \( -type f -o -type l \) -name "$1" 2>/dev/null \
       | while read -r hit; do
-            h="$(abspath "$hit")"; [ -n "$h" ] || continue
+            h="$hit"; [ -n "$h" ] || continue
             case "$h" in
                 "$_SELF"/*) ;;                    # the checkout we deploy FROM
                 "$HOME"/.vintos/deploy/*) ;;      # any other deploy clone

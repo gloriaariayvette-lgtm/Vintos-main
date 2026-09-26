@@ -1467,8 +1467,7 @@ media was opened to obtain that evidence. The handoff-only regression is closed.
 
 ## 26 September — Forge source breadth, thread view, and causality lifecycle
 
-Prepared locally; Aegis deployment and live commissioning are still pending at
-this commit. The Lab no longer files every sourced reflection directly into the
+Deployed to Aegis on 26 September. The Lab no longer files every sourced reflection directly into the
 Forge. A Lab finding must first pass its existing interest gate and then be
 named by exact entry ID in a later frontier acknowledgment. The structural
 absence builder now reads the live `current-wants.json` schema, admits an exact
@@ -1481,8 +1480,11 @@ The thread API now returns the live active count with `Cache-Control: no-store`;
 the app separately cache-busts both thread and weave-group reads. Resolver
 archive snapshots merge with concurrent appends instead of replacing them. The
 unrequested private Journal app tab was removed while Landings remains. The iOS
-web bundle was resynchronized locally; installing a new phone build remains a
-separate device step.
+web bundle was resynchronized locally and pushed on the app branch; installing
+that new phone build remains a separate device step. The live thread store has
+121 retained rows and three unresolved rows. The stale one-card display was a
+cached app response; the API now returns the live active count with no-store
+headers and the app cache-busts both reads.
 
 Causality evaluation now requests structured JSON, retries a missing batch row
 individually, and accepts a short model gloss only when it cites a real catalog
@@ -1495,5 +1497,24 @@ future promotion and retirement behavior without rewriting historical marks.
 The same sweep fixed branch-wide Python 3.9 failures in the avatar and creative
 prompts, Atlas variant pairing, and JEPA checkpoint hashing. Generated ownership
 and untested reports are current. All 174 suites pass directly and all 174 pass
-through the hardened OS-isolated runner on the Mac. Existing queued Lab-origin
-Forge projects have not yet been retired; that is part of live commissioning.
+through the hardened OS-isolated runner on the Mac. A deployment-path defect
+found during commissioning is also repaired: discovery had ignored lexical
+symlinks beside the live scripts anchor and could update a denser stale checkout
+instead. The regression test now exercises that exact cross-tree alias shape.
+
+Release `20260926-112503-f9f3987` passed all 174 isolated suites in `--check`
+and deployment, installed 404 files, and confirmed the house, Atelier, Lab,
+plugin gateway, robot bridge, self-review, somatic, EmoClaw and skill-surf units
+healthy. Commissioning registered three structural absences from the live want
+store, including the `physical_interaction` capability gap. The two zero-cycle
+automatic Lab projects still in `ready` were cancelled; the remaining ordinary
+active project is the physical capability proposal. Two older private projects
+remain sealed in `reconciliation_required`; they were not opened or cancelled.
+
+The causality store was backed up at
+`causality-hypotheses.json.bak-commission-20260926-112809` and compacted through
+the current deployed module. The legacy bare `confirmed` row is now `supported`;
+the live distribution is 21 held, six untested and one supported, with zero
+ungraduated confirmed rows and zero settled self-knowledge rows. The Forge
+system service is active. A follow-up release is still required for the alias
+discovery repair described above.
