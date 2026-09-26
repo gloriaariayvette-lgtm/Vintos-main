@@ -431,6 +431,11 @@ def _safe_query(query):
     query = re.sub(r"\btrue\b", "true", query, flags=re.I)
     query = re.sub(r"\bfalse\b", "false", query, flags=re.I)
     fields = r"(?:accession|id|reviewed|length|protein_name|gene|organism_id|organism_name|taxonomy_id|keyword|go|xref_pdb)"
+    query = re.sub(r"\b" + fields + r":(?:none|null)\b", "", query, flags=re.I)
+    query = re.sub(r"\bAND\s+(?=AND\b|\))", "", query)
+    query = re.sub(r"(?<=\()\s*AND\b|\bAND\s*$", "", query)
+    query = re.sub(r"\(\s*\)", "", query)
+    query = re.sub(r"\s+", " ", query).strip()
     query = re.sub(r"(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
     # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
     return BASELINE_QUERY + " AND (" + query + ")"

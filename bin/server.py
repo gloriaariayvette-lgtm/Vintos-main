@@ -6788,8 +6788,12 @@ async def chemistry_lab_activity(request: Request, limit: int = 12):
                 detail = "%s records" % (row.get("count") or len(row.get("embeddings") or row.get("representations") or []))
             elif kind in ("reflection", "genome_reflection"):
                 detail = str(row.get("attention") or row.get("factual_observation") or "")
-            elif kind in ("source_unavailable", "browse_stale", "unsourced_id"):
-                detail = "moved on without promoting it as a finding"
+            elif kind == "source_unavailable":
+                detail = str(row.get("reason") or "source returned no usable observation")
+            elif kind == "unsourced_id":
+                detail = str(row.get("reason") or "identifier was not present in the source record")
+            elif kind == "browse_stale":
+                detail = "moved on without promoting repeated evidence as a finding"
             elif kind == "genome_prediction": detail = str(row.get("source_accession") or row.get("model") or "")
             activity.append({"at": row.get("at"), "kind": kind, "label": labels.get(kind, kind.replace("_", " ")),
                              "detail": detail[:300], "redirect": kind in ("source_unavailable", "browse_stale", "unsourced_id")})

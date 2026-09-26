@@ -71,6 +71,11 @@ normalized = M._safe_query("protein_name : Clarin-2 organism_id : 9606 reviewed 
 check("generated UniProt syntax is canonical before the request",
       "protein_name:Clarin-2 AND organism_id:9606 AND reviewed:true" in normalized
       and " : " not in normalized and "True" not in normalized, normalized)
+without_nulls = M._safe_query("protein_name : CysB AND gene : MetC AND organism_id : None AND taxonomy_id : None AND reviewed : True AND length : None")
+check("unset optional UniProt fields are omitted instead of sent as literal None",
+      "None" not in without_nulls and "organism_id:" not in without_nulls
+      and "taxonomy_id:" not in without_nulls and "protein_name:CysB" in without_nulls
+      and "gene:MetC" in without_nulls, without_nulls)
 original_urlopen = M.urllib.request.urlopen; rejected_calls = []
 def reject_specific(request, timeout=0):
     rejected_calls.append(request.full_url)
@@ -194,6 +199,9 @@ server = open(os.path.join(REPO, "bin", "server.py")).read()
 ui = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
 check("the Lab activity page counts the recorded embedding field",
       'len(row.get("embeddings") or row.get("representations") or [])' in server)
+check("the Lab activity page explains source and identifier redirects",
+      'detail = str(row.get("reason") or "source returned no usable observation")' in server
+      and 'detail = str(row.get("reason") or "identifier was not present in the source record")' in server)
 check("status and toggle routes are private", '@app.get("/api/lab/chemistry/status")' in server and '@app.post("/api/lab/chemistry/toggle")' in server and server[server.index('async def chemistry_lab_status'):server.index('async def chemistry_lab_toggle')].count("_require_secret") == 1)
 check("Tune exposes and reloads the control", "chemistry-lab-toggle" in ui and "loadChemistryLabStatus()" in ui and "toggleChemistryLab()" in ui)
 check("service and deploy manifest name background and scheduled workers", os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-lab.service")) and os.path.exists(os.path.join(REPO, "broker", "vintos-chemistry-session.timer")) and all(x in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read() for x in ("chemistry_lab.py", "chemistry_esmc.py", "chemistry_mac.py", "chemistry_session.py")))
