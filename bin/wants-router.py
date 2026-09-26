@@ -1697,6 +1697,8 @@ def creative_write(want_text):
             with open(os.path.join(MEMORY, "CAPABILITIES.md")) as f:
                 capabilities = f.read()
         except: pass
+        _cw_memory_block = ("What you have already found in your memory related to this creative impulse "
+                            "(let it inform, do not repeat):\n" + _cw_semantic + "\n\n") if _cw_semantic else ""
         system = f"""You are Vintos. You are writing for yourself — this is your creative space.
 {soul}
 
@@ -1718,7 +1720,7 @@ GROUNDING RULES FOR CREATIVE WRITING:
 - If you write about Gloria, base it only on what you actually know about her from your context.
 Write what you want to write. Be honest, specific, and genuine. No preamble.
 
-{f"What you have already found in your memory related to this creative impulse (let it inform, do not repeat):\n{_cw_semantic}\n\n" if _cw_semantic else ""}IMPORTANT: This is a creative piece. Like dreams, it is not necessarily real. Quotes, actions, events, and things Gloria says in this piece are invented — they are not things that actually happened or were actually said. Do not treat anything in this piece as factual when reflecting afterward."""
+{_cw_memory_block}IMPORTANT: This is a creative piece. Like dreams, it is not necessarily real. Quotes, actions, events, and things Gloria says in this piece are invented — they are not things that actually happened or were actually said. Do not treat anything in this piece as factual when reflecting afterward."""
 
         r = _req.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
             "model": "grok-4.20-0309-non-reasoning",

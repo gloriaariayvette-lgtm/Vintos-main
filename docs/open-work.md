@@ -1464,3 +1464,36 @@ scheduled units were healthy afterward, and the worktable still named
 and revision 6 of the written work and reported `piece=yes media=music
 handoff=yes`; it closed normally. No sealed reply, handoff, artifact content or
 media was opened to obtain that evidence. The handoff-only regression is closed.
+
+## 26 September — Forge source breadth, thread view, and causality lifecycle
+
+Prepared locally; Aegis deployment and live commissioning are still pending at
+this commit. The Lab no longer files every sourced reflection directly into the
+Forge. A Lab finding must first pass its existing interest gate and then be
+named by exact entry ID in a later frontier acknowledgment. The structural
+absence builder now reads the live `current-wants.json` schema, admits an exact
+`CAPABILITY_ABSENT` block immediately, and runs once per day rather than behind
+a two-percent random chance. Forge source selection rotates across source kinds
+before selecting the oldest eligible row, so a large Lab backlog cannot occupy
+consecutive offers.
+
+The thread API now returns the live active count with `Cache-Control: no-store`;
+the app separately cache-busts both thread and weave-group reads. Resolver
+archive snapshots merge with concurrent appends instead of replacing them. The
+unrequested private Journal app tab was removed while Landings remains. The iOS
+web bundle was resynchronized locally; installing a new phone build remains a
+separate device step.
+
+Causality evaluation now requests structured JSON, retries a missing batch row
+individually, and accepts a short model gloss only when it cites a real catalog
+occasion, substituting the catalog text as the durable evidence. One tactical
+intercept success records `supported`, never `confirmed`, and does not count
+toward graduation. Legacy bare `confirmed` rows return to ordinary tenure and
+may retire; only graduated self-knowledge bypasses that gate. This repairs
+future promotion and retirement behavior without rewriting historical marks.
+
+The same sweep fixed branch-wide Python 3.9 failures in the avatar and creative
+prompts, Atlas variant pairing, and JEPA checkpoint hashing. Generated ownership
+and untested reports are current. All 174 suites pass directly and all 174 pass
+through the hardened OS-isolated runner on the Mac. Existing queued Lab-origin
+Forge projects have not yet been retired; that is part of live commissioning.

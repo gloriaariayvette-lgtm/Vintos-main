@@ -948,19 +948,19 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
-                # A single neighborhood or classification read is not a
-                # genome-mining survivor. Keep those receipts in the journal
-                # until later returns have tried to eliminate the candidate;
-                # never auto-file the first anomaly as a Forge report.
+                # Lab observations remain in the Lab.  A frontier session must
+                # explicitly acknowledge the exact assessed entry before its
+                # receipts may become a Forge report.  flush_reports() performs
+                # that later handoff; this turn only records the candidate.
                 if (inquiry.get('browse_lane') != 'genome_mining'
                         and state.get("additional_source", {}).get("receipt", {}).get("records")
                         and cfg.get("forge_report_intake")):
-                    try:
-                        import chemistry_sources
-                        note["forge_report"] = chemistry_sources.offer_report(
-                            [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
-                            "Document this sourced Lab question; do not claim discovery: " + str(inquiry.get("question", "")))
-                    except Exception as exc: _fault("forge_report_intake", exc)
+                    note["forge_report"] = {
+                        "state": "held_for_frontier_acknowledgment",
+                        "receipt_ids": [state["additional_source"]["receipt"]["receipt_id"]]
+                                       + ([state["atlas_analysis_receipt"]]
+                                          if state.get("atlas_analysis_receipt") else []),
+                    }
                 elif inquiry.get('browse_lane') == 'genome_mining':
                     note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)

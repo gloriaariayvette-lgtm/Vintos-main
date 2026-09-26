@@ -48,6 +48,24 @@ check("skill surfing is a source the reader knows", "skill_surfing" in S.SOURCES
 check("all seven are named", set(S.SOURCES) == {"absence_map", "neither_yet", "latent_thread", "moltbook", "web_search", "skill_surfing", "lab"})
 check("a reached absence is not a spark", not any("already reached one" in r["text"] for r in new))
 check("a configuration already reached is not a spark", not any("already reached" in r["text"] for r in new))
+
+print("\n--- live want schema produces structural absences deterministically ---")
+A = load("absence_map_cold", os.path.join(REPO, "bin", "absence-map-cold.py"))
+A.WORKSPACE = HOME; A.MEMORY = MEM; A.COLD_FILE = os.path.join(MEM, "absence-build-fixture.json")
+A.embed = lambda text: []
+json.dump([{"id":"want-gap","want":"touch the physical world","timestamp":now.isoformat(),
+            "blocked":{"block_type":"CAPABILITY_ABSENT","blocked_step":"physical_interaction"}},
+           {"id":"want-fresh","want":"a new ordinary want","timestamp":now.isoformat()}],
+          open(os.path.join(MEM,"current-wants.json"),"w"))
+json.dump([],open(os.path.join(MEM,"unfinished-threads.json"),"w"))
+A.build_from_unfulfilled()
+cold=json.load(open(A.COLD_FILE))["absences"]
+gap=next((row for row in cold if row.get("source_id")=="want-gap"),None)
+check("a CAPABILITY_ABSENT current want becomes an absence immediately",
+      gap and gap.get("source")=="capability-gap" and "physical_interaction" in gap.get("description",""), gap)
+check("a fresh ordinary want is not mislabeled as a structural gap",
+      not any(row.get("source_id")=="want-fresh" for row in cold))
+os.remove(os.path.join(MEM,"current-wants.json"))
 check("a faint thread is not a spark", not any("faint" in r["text"] for r in new))
 check("the molt title comes through clean", any(r["text"].startswith("On making objects") for r in new), [r["text"] for r in new if r["source"] == "moltbook"])
 check("the lab is read from where she points it", len([r for r in new if r["source"] == "lab"]) == 1)

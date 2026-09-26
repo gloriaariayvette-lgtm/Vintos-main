@@ -47,8 +47,11 @@ def checkpoint_fingerprint():
     its old audit, so a stale RELEASED cannot carry over to different weights."""
     import hashlib
     try:
-        with open(MODEL,"rb") as handle: return hashlib.file_digest(handle,"sha256").hexdigest()
-
+        digest = hashlib.sha256()
+        with open(MODEL,"rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
     except Exception:
         return None
 

@@ -60,13 +60,13 @@ result = CE.compact_store(today=today)
 after = json.load(open(CE.HYPOTHESIS_DB))
 by_id = {h["hypothesis_id"]: h for h in after["hypotheses"]}
 check("suite writes only beneath scratch HOME", os.path.commonpath([os.path.realpath(CE.HYPOTHESIS_DB), os.path.realpath(HOME)]) == os.path.realpath(HOME))
-check("ordinary and 32-day Ghost evidence-poor rows retire", "CH-ordinary-stale" not in by_id and "CH-ghost-stale" not in by_id and result["retired"] == 2, result)
+check("ordinary, legacy-confirmed, and 32-day Ghost evidence-poor rows retire", "CH-ordinary-stale" not in by_id and "CH-ghost-stale" not in by_id and "CH-confirmed" not in by_id and result["retired"] == 3, result)
 check("Ghost Branch keeps its 32-day tenure", "CH-ghost-young" in by_id)
-check("confirmed and self-knowledge rows are never dropped", "CH-confirmed" in by_id and "CH-self-known" in by_id)
+check("only graduated self-knowledge bypasses ordinary tenure", "CH-self-known" in by_id)
 check("all configured histories are capped", all(len(by_id["CH-active"][k]) <= CE.HISTORY_CAP for k in ("marks", "evidence", "nightly_evaluations", "history")))
 check("readable roots cap but anti-self-confirmation lineage stays complete", len(by_id["CH-active"]["formation"]["root_snippets"]) == CE.FORMATION_SNIPPET_CAP and len(by_id["CH-active"]["formation"]["root_fingerprints"]) == 30 and len(by_id["CH-active"]["formation"]["root_evidence_ids"]) == 30)
 check("cause distributions are bounded", len(by_id["CH-active"]["distribution"]) == CE.DISTRIBUTION_CAP)
-check("delivered outbox rows purge while pending failures survive", "old-receipt" not in after["deliveries"] and after["deliveries"].get("pending-receipt", {}).get("state") == "pending" and len(delivered) == 2, {"deliveries": after["deliveries"], "sent": delivered})
+check("delivered outbox rows purge while pending failures survive", "old-receipt" not in after["deliveries"] and after["deliveries"].get("pending-receipt", {}).get("state") == "pending" and len(delivered) == 3, {"deliveries": after["deliveries"], "sent": delivered})
 check("compact writer actually shrinks the fixture", result["after_bytes"] < result["before_bytes"], result)
 
 # Realtime formation once lacked the nightly engine's shared daily budget. Historical repair keeps

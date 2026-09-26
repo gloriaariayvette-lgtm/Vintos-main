@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import threading, json, time, os, socket
+import site
 from isolated_exec import run
 
 
@@ -36,6 +37,8 @@ def main():
         # macOS cannot stack sandbox profiles. A trusted parent launches nested
         # generated-code tests with a stricter sandbox through a scratch-only queue.
         queue=root/"sandbox-requests";queue.mkdir()
+        user_site = Path(site.getusersitepackages()).resolve()
+        dependency_roots = [user_site] if user_site.is_dir() else []
         stop=threading.Event()
         def serve():
             seen=set()
@@ -53,7 +56,10 @@ def main():
                         argv=payload["argv"]
                         if not argv or Path(argv[0]).resolve()!=Path(sys.executable).resolve():
                             raise ValueError("only the configured interpreter is accepted")
-                        child=run(argv,scratch,timeout=min(float(payload["timeout"]),180))
+                        # The parent chooses dependency roots.  Never accept read
+                        # roots from an untrusted generated-code request.
+                        child=run(argv,scratch,timeout=min(float(payload["timeout"]),180),
+                                  read_roots=dependency_roots, python_paths=dependency_roots)
                         data={"returncode":child.returncode,"stdout":child.stdout,"stderr":child.stderr}
                     except Exception as exc:data={"error":str(exc)}
                     response.write_text(json.dumps(data))
@@ -63,6 +69,7 @@ def main():
             listener=socket.socket();listener.bind(("127.0.0.1",0))
         try:
             result = run([sys.executable, "-c", bootstrap, str(copied / "scripts"), str(copied / relative)], root,
+                         read_roots=dependency_roots, python_paths=dependency_roots,
                          timeout=180, loopback=True, broker=queue if sys.platform=="darwin" else None, listener=listener)
         finally:
             stop.set();worker.join(timeout=190)

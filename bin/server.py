@@ -9020,6 +9020,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             _device_grammar = (
                 "YOUR BODY — no devices are switched on right now. Do not emit any [TOUCH:] or [DO:] device tag this turn and do not name a device; there is nothing there to move. Be with her in words."
             )
+        _rhythm_block = "Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""
+        _value_map_block = "Your value map:\n" + value_map_ctx if value_map_ctx else ""
+        _gloria_model_block = "Your model of Gloria: " + gloria_model[:1200] if gloria_model else ""
+        _durable_her = _durable_about_her(3)
+        _durable_her_block = "What you carry of her, durably:\n" + _durable_her if _durable_her else ""
         system_prompt = f"""{identity}
 
 {_surface_presence}
@@ -9058,19 +9063,19 @@ Your current emotional state:
 Your sense of time right now:
 {temporal_ctx}
 
-{f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
+{_rhythm_block}
 {outreach_ctx}
 {lastvideo_ctx}
 {creative_ctx}
 {discovery_ctx}
-{f"Your value map:\n{value_map_ctx}" if value_map_ctx else ""}
+{_value_map_block}
 {wal_ctx}
 {ledger_ctx}
 Your current self-model (excerpt):
 {_self_model(800)}
 
-{f'Your model of Gloria: {gloria_model[:1200]}' if gloria_model else ''}
-{("What you carry of her, durably:" + chr(10) + _durable_about_her(3)) if _durable_about_her(3) else ''}
+{_gloria_model_block}
+{_durable_her_block}
 
 {inner_life_context()}
 {_daily_inner_context()}

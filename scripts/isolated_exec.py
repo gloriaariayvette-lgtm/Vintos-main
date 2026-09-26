@@ -8,7 +8,7 @@ import signal, tempfile
 import sys
 
 
-def run(argv, scratch, *, read_roots=(), timeout=60, loopback=False, broker=None, listener=None):
+def run(argv, scratch, *, read_roots=(), python_paths=(), timeout=60, loopback=False, broker=None, listener=None):
     if os.environ.get("VINTOS_TEST_SANDBOX_BROKER"):
         import time, uuid
         queue=Path(os.environ["VINTOS_TEST_SANDBOX_BROKER"])
@@ -32,6 +32,8 @@ def run(argv, scratch, *, read_roots=(), timeout=60, loopback=False, broker=None
     env = {"HOME": scratch, "TMPDIR": scratch, "TMP": scratch, "TEMP": scratch,
            "PATH": os.path.dirname(sys.executable) + os.pathsep + os.defpath, "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
            "SPARK_WORKSPACE": os.path.join(scratch, "workspace")}
+    if python_paths:
+        env["PYTHONPATH"] = os.pathsep.join(str(Path(p).resolve()) for p in python_paths)
     if listener is not None:
         env["VINTOS_TEST_LISTENER_FD"]=str(listener.fileno())
         env["VINTOS_TEST_PORT"]=str(listener.getsockname()[1])

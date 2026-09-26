@@ -280,6 +280,31 @@ class Tests(unittest.TestCase):
         self.assertEqual(lab._jsonl(lab.NOTEBOOK)[-1]['report_gate'],
                          'held_until_multi_source_candidate_survives_counterevidence_review')
 
+    def test_lab_report_waits_for_exact_frontier_acknowledgment(self):
+        lab._ensure()
+        entry_id='CLF-fixture-ack'
+        receipt_id='f'*64
+        lab._append(lab.NOTEBOOK, {
+            'at':lab.now_iso(),'kind':'reflection','entry_id':entry_id,
+            'flagged_for_next_lab_session':True,
+            'inquiry':{'question':'Does this sourced pattern survive another look?'},
+            'forge_report':{'state':'held_for_frontier_acknowledgment',
+                            'receipt_ids':[receipt_id]}})
+        cfg={**lab.DEFAULTS,'forge_report_intake':{
+            'url':'http://127.0.0.1:8612/api/lab-intake','token_file':'fixture'}}
+        handed=[]
+        with patch.object(lab,'config',return_value=cfg), \
+             patch.object(bridge,'offer_report',side_effect=lambda ids,q: handed.append((ids,q)) or {'id':'P-1'}):
+            bridge.flush_reports()
+            self.assertEqual(handed,[])
+            frontier.record_delivery('fixture-session','lab',[entry_id],[entry_id])
+            bridge.flush_reports()
+            bridge.flush_reports()
+        self.assertEqual(len(handed),1)
+        self.assertEqual(handed[0][0],[receipt_id])
+        rows=lab._jsonl(os.path.join(lab.ROOT,'forge-report-handoffs.jsonl'))
+        self.assertEqual(rows[-1]['entry_id'],entry_id)
+
     def test_failed_microbiology_source_does_not_become_a_reflection(self):
         lab._ensure()
         lab._atomic(lab.STATE, {'phase':'sources','turns':0,'inquiry':{

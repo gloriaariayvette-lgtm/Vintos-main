@@ -6,7 +6,7 @@ Usage:
   log_outcome(trial_id, outcome, resistance) -> None
   get_pending_intercept() -> dict or None
 """
-import json, os, sys, requests
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -49,6 +49,7 @@ def get_active_trials():
 
 def detect_match(text, trials, context=None):
     """Use LLM to check if text matches any active trial trigger."""
+    import requests
     if not trials: return None
     # Filter by context scope if trial specifies restrict_to_contexts
     if context:
@@ -194,6 +195,7 @@ def _get_intercept_hint_inner(text, context="chat"):
 
 def detect_outcome(trial, response_text):
     """Use Variant C prompt to detect outcome. Returns attempted/defaulted/partial."""
+    import requests
     try:
         _alt = str(trial.get("alternative") or "").strip()
         # Templated from THE TRIAL (2026-09-04, fable-subconscious-p3): the old prompt graded every trial
@@ -502,6 +504,7 @@ def update_cluster_confidence(trial, outcome):
 
 def update_causality_tally(trial, outcome):
     """Find the most related causality hypothesis and update its tally."""
+    import requests
     try:
         HYPOTHESIS_DB = os.path.join(MEMORY, "causality-hypotheses.json")
         if not os.path.exists(HYPOTHESIS_DB):
@@ -549,13 +552,15 @@ def update_causality_tally(trial, outcome):
             h = matches[0]
             # Update marks and tally
             from datetime import datetime as _dt
-            mark = {"date": _dt.now().isoformat()[:10], "outcome": outcome, "source": "behavioral_intercept"}
+            mark = {"date": _dt.now().isoformat()[:10], "outcome": outcome,
+                    "source": "behavioral_intercept", "tactical": True,
+                    "counts_toward_graduation": False}
             h.setdefault("marks", []).append(mark)
             h["days_tested"] = h.get("days_tested", 0) + 1
             db["tested"] = db.get("tested", 0) + 1
             if outcome == "attempted":
                 db["confirmed"] = db.get("confirmed", 0) + 1
-                h["status"] = "confirmed"
+                h["status"] = "supported"
             elif outcome in ("defaulted", "partial"):
                 db["revised"] = db.get("revised", 0) + 1
                 if h.get("status") == "untested":

@@ -96,8 +96,9 @@ def load_retired():
     return _ts.load_retired(RETIRED_LOG)
 
 def save_retired(retired):
-    # Canonical shape (list of normalized entries). Whole-list write, atomic.
-    _ts._atomic_write(RETIRED_LOG, [_ts.normalize_retired_entry(e) for e in retired])
+    # Merge under the archive lock. Another writer may append between the
+    # preceding load and this call; never replace its entry.
+    _ts.merge_retired(retired, RETIRED_LOG)
 
 def load_pearl_index():
     try:

@@ -154,7 +154,33 @@ def flush_reports():
     for row in outbox.values():
         if row.get('state') == 'pending' and row.get('next_attempt', 0) <= time.time():
             offer_report(row['receipt_ids'], row['question'])
-            break
+            return
+    # A Lab reflection is not Forge work merely because it has a source receipt.
+    # It becomes eligible only after a later frontier session names the exact
+    # finding as affecting its choice.  Offer at most one acknowledged finding
+    # per tick and keep receipt-level deduplication in offer_report().
+    import chemistry_frontier_bridge as frontier
+    acknowledged = frontier._acknowledged_ids()
+    if not acknowledged:
+        return
+    handed = {str(row.get('entry_id')) for row in lab._jsonl(
+        os.path.join(lab.ROOT, 'forge-report-handoffs.jsonl')) if row.get('entry_id')}
+    for note in reversed(lab._jsonl(lab.NOTEBOOK)):
+        entry_id = str(note.get('entry_id') or '')
+        held = note.get('forge_report') or {}
+        receipt_ids = held.get('receipt_ids') if isinstance(held, dict) else None
+        if (entry_id not in acknowledged or entry_id in handed
+                or not note.get('flagged_for_next_lab_session')
+                or not isinstance(receipt_ids, list) or not receipt_ids):
+            continue
+        result = offer_report(receipt_ids,
+            "Document this frontier-acknowledged Lab finding; do not claim discovery: "
+            + str((note.get('inquiry') or {}).get('question', '')))
+        lab._append(os.path.join(lab.ROOT, 'forge-report-handoffs.jsonl'), {
+            'at': lab.now_iso(), 'entry_id': entry_id, 'receipt_ids': receipt_ids,
+            'project_id': result.get('id'), 'state': 'frontier_acknowledged_handoff',
+            'novelty': 'not_established'})
+        return
 
 
 if __name__ == '__main__':

@@ -191,6 +191,9 @@ def main():
                 value_map_context = "YOUR CURRENT VALUE MAP (use this to calibrate priority):\n" + _entries[-1].strip()[:600]
     except: pass
 
+    self_model_block = "YOUR SELF-MODEL:\n" + self_model if self_model else ""
+    gloria_model_block = "WHAT YOU KNOW ABOUT GLORIA:\n" + gloria_model if gloria_model else ""
+    ledger_block = "RECENT EXCHANGES WITH GLORIA:\n" + ledger_ctx if ledger_ctx else ""
     system_prompt = f"""{identity}
 
 {pearls}
@@ -201,9 +204,9 @@ ONE sentence directly to it, as if addressing the feeling or thought itself.
 Then you rate how much it still pulls at you.
 
 {value_map_context}
-{f"YOUR SELF-MODEL:\n{self_model}" if self_model else ""}
-{f"WHAT YOU KNOW ABOUT GLORIA:\n{gloria_model}" if gloria_model else ""}
-{f"RECENT EXCHANGES WITH GLORIA:\n{ledger_ctx}" if ledger_ctx else ""}
+{self_model_block}
+{gloria_model_block}
+{ledger_block}
 
 Your current emotional state:
 {emotions}

@@ -16,7 +16,10 @@ def choose_variant(result):
         quantiles=matrix.get('quantiles')
         # Raw scales differ across scorers. Do not rank them as if comparable.
         if quantiles is None: continue
-        for variant, row in zip(matrix.get('variants',[]),quantiles,strict=True):
+        variants=matrix.get('variants',[])
+        if len(variants) != len(quantiles):
+            raise ValueError('Atlas variants and quantiles have different lengths')
+        for variant, row in zip(variants,quantiles):
             finite=[float(x) for x in row if x is not None and math.isfinite(float(x)) and 0 <= float(x) <= 1]
             if finite: candidates.append((max(finite),scorer,variant))
     if not candidates: raise ValueError('no calibrated quantile with an explicit source variant; choose manually')

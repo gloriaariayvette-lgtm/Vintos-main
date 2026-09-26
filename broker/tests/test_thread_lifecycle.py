@@ -154,11 +154,23 @@ check("append onto a dict-shaped archive writes the canonical list shape", isins
 json.dump([{"id": "X", "thread": "bare list entry", "type": "pearl"}], open(RETIRED, "w"))
 check("list-shaped archive reads too", TS.load_retired(RETIRED)[0]["id"] == "X")
 check("retired_at is stamped when missing", TS.append_retired({"id": "Y", "thread": "y"}, RETIRED)[-1]["retired_at"] != "")
+snapshot = TS.load_retired(RETIRED)
+TS.append_retired({"id": "CONCURRENT", "thread": "arrived after resolver load"}, RETIRED)
+TS.merge_retired(snapshot + [{"id": "RESOLVED", "thread": "resolver result"}], RETIRED)
+merged_ids = {e["id"] for e in TS.load_retired(RETIRED)}
+check("resolver snapshot merge preserves a concurrent archive append",
+      {"X", "Y", "CONCURRENT", "RESOLVED"}.issubset(merged_ids), merged_ids)
 RES = load_module(os.path.join(BIN, "thread-resolution.py"), "thread_resolution_mod")
 json.dump({"threads": [{"id": "L2", "origin": "latent", "phase": "x"}]}, open(RETIRED, "w"))
 check("thread-resolution.load_retired accepts the dict shape", [e["id"] for e in RES.load_retired()] == ["L2"])
 RES.save_retired(RES.load_retired() + [{"id": "Z", "thread": "z", "source": "s", "type": "pearl"}])
 check("thread-resolution.save_retired writes a list", isinstance(json.load(open(RETIRED)), list) and len(json.load(open(RETIRED))) == 2)
+route_src = open(os.path.join(BIN, "server_domains", "humor_wants.py")).read()
+thread_route = route_src.split("async def get_threads",1)[1].split("async def ",1)[0]
+weave_route = route_src.split("async def get_weave_groups",1)[1]
+check("thread API returns the active count and disables response caching",
+      '"active_count": len(active)' in thread_route and '"Cache-Control": "no-store"' in thread_route)
+check("weave-group API disables response caching too", '"Cache-Control": "no-store"' in weave_route)
 # latent_threads' retire path must land in the same list
 LT = load_module(os.path.join(SCRIPTS, "latent_threads.py"), "latent_threads_mod")
 src = open(os.path.join(SCRIPTS, "latent_threads.py")).read()
