@@ -29,10 +29,12 @@ check("the notification also has an explicit Answer action", headers.get("Action
 server = open(os.path.join(REPO, "bin", "server.py"), encoding="utf-8").read()
 web = open(os.path.join(REPO, "bin", "vintos-websearch.py"), encoding="utf-8").read()
 twin = open(os.path.join(REPO, "scripts", "vintos-websearch.py"), encoding="utf-8").read()
+deploy = open(os.path.join(REPO, "scripts", "deploy-atelier.sh"), encoding="utf-8").read()
 check("the answer page filters an opaque question id", 'async def _aq_page(qid: str = "")' in server and 'str(x.get("id")) == str(qid)' in server)
 check("the one-question form puts the cursor in the answer box", "rows='5' autofocus" in server)
 check("the curiosity sender uses the shared actionable headers", "_answer_headers(_qid)" in web)
 check("installed web-search twins stay identical", web == twin)
+check("the answer helper is part of every deployed release", "unsaid_questions.py architecture_answers.py" in deploy)
 check("the test never touches the live workspace", answers.STORE.startswith(HOME))
 
 print("\n%d/%d" % (sum(checks), len(checks)))
