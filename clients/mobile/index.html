@@ -1631,6 +1631,13 @@ function _labReviewCard(row) {
           (row.flagged_for_next_lab_session ? ' · flagged for frontier' : '') +
           (row.surfaced_to_frontier ? ' · surfaced' : '') + '</div></div>';
 }
+function _labActivityRow(row) {
+    const muted = row.redirect ? 'var(--text-dim)' : 'var(--text)';
+    return '<div style="grid-column:1/-1;display:flex;gap:9px;align-items:baseline;padding:7px 2px;border-bottom:0.5px solid var(--border);">' +
+        '<time style="flex:0 0 auto;font-size:0.53rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(11, 16)) + '</time>' +
+        '<div style="font-size:0.62rem;color:' + muted + ';line-height:1.45;"><span style="color:var(--text-bright);">' +
+        _esc(row.label || 'Lab turn') + '</span>' + (row.detail ? ' · ' + _esc(row.detail) : '') + '</div></div>';
+}
 async function _labGet(path) {
     const res = await VintosUI.request(`${API}/api/lab/chemistry/${path}`, { headers: { 'X-Vintos-Secret': CONFIG.secret } });
     return await res.json();
@@ -1663,10 +1670,11 @@ async function loadLab() {
     if (!grid || _labLoading) return;
     _labLoading = true;
     if (!grid.children.length) grid.innerHTML = '<div class="gallery-empty">reading the Lab...</div>';
-    let status, reviews, sessions, taste, threads;
+    let status, reviews, activity, sessions, taste, threads;
     try {
-        [status, reviews, sessions, taste, threads] = await Promise.all([
+        [status, reviews, activity, sessions, taste, threads] = await Promise.all([
             _labGet('status'), _labGet('reviews?limit=' + LAB_REVIEW_LIMIT),
+            _labGet('activity?limit=12'),
             _labGet('sessions?limit=4'), _labGet('taste'), _labGet('threads?limit=12')
         ]);
     } catch (e) {
@@ -1691,6 +1699,11 @@ async function loadLab() {
     }
     const rows = (sessions && sessions.sessions) || [];
     const cards = [];
+    const activityRows = ((activity && activity.activity) || []).slice().reverse();
+    if (activityRows.length) {
+        cards.push('<div style="grid-column:1/-1;font-size:0.58rem;letter-spacing:0.12em;color:var(--text-dim);">LIVE ACTIVITY · REFRESHES EVERY 15 SECONDS</div>');
+        activityRows.forEach(row => cards.push(_labActivityRow(row)));
+    }
     const journalThreads = (threads && threads.threads) || [];
     const findings = journalThreads.filter(t => t.state === 'finding').slice(0, 3);
     const redirects = journalThreads.filter(t => t.state !== 'finding').slice(0, 1);

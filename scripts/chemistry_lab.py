@@ -613,6 +613,46 @@ def _jsonl(path):
     return rows
 
 
+def _jsonl_tail(path, limit, kinds=None):
+    """Read the newest matching JSONL rows without rescanning a large ledger.
+
+    Lab ledgers are append-only.  Walking backwards matters once the notebook is
+    tens of megabytes: the phone asks for a small live window every 15 seconds.
+    Returned rows keep chronological order, matching ``_jsonl(path)[-limit:]``.
+    """
+    try: limit = max(0, int(limit))
+    except (TypeError, ValueError): limit = 0
+    if not limit: return []
+    accepted = set(kinds or ())
+    rows, remainder = [], b""
+    try:
+        with open(path, "rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            position = stream.tell()
+            while position > 0 and len(rows) < limit:
+                size = min(65536, position)
+                position -= size
+                stream.seek(position)
+                block = stream.read(size) + remainder
+                lines = block.split(b"\n")
+                remainder = lines[0]
+                for raw in reversed(lines[1:]):
+                    if not raw.strip(): continue
+                    try: row = json.loads(raw.decode("utf-8", "replace"))
+                    except Exception: continue
+                    if accepted and row.get("kind") not in accepted: continue
+                    rows.append(row)
+                    if len(rows) >= limit: break
+            if position == 0 and len(rows) < limit and remainder.strip():
+                try: row = json.loads(remainder.decode("utf-8", "replace"))
+                except Exception: row = None
+                if row is not None and (not accepted or row.get("kind") in accepted): rows.append(row)
+    except (FileNotFoundError, OSError):
+        return []
+    rows.reverse()
+    return rows
+
+
 def _reflect(context, inquiry, records):
     raw = _ask(
         "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "

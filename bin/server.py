@@ -6717,7 +6717,7 @@ def _chemistry_tail(name, limit, cap=60):
     """Tail one Lab ledger. Read-only, bounded, and it recomputes nothing."""
     module = _chemistry_lab_module()
     limit = max(1, min(int(cap), int(limit)))
-    return module._jsonl(os.path.join(module.ROOT, name))[-limit:]
+    return module._jsonl_tail(os.path.join(module.ROOT, name), limit)
 
 
 def _chemistry_finite(value):
@@ -6745,16 +6745,57 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
         module = _chemistry_lab_module()
         limit = max(1, min(20, int(limit)))
         rows = []
-        for row in module._jsonl(os.path.join(module.ROOT, "notebook.jsonl")):
-            if row.get("kind") not in ("reflection", "genome_reflection"):
-                continue
+        for row in module._jsonl_tail(os.path.join(module.ROOT, "notebook.jsonl"), limit,
+                                      kinds=("reflection", "genome_reflection")):
             rows.append({key: row.get(key) for key in
                          ("at", "kind", "entry_id", "factual_observation", "speculative_reading",
                           "attention", "next_question", "interest_score", "reason_for_score",
                           "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")})
-        return {"ok": True, "reviews": rows[-limit:], "limit": 20}
+        return {"ok": True, "reviews": rows, "limit": 20}
     except Exception as exc:
         return {"ok": False, "reviews": [], "limit": 20, "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/activity")
+async def chemistry_lab_activity(request: Request, limit: int = 12):
+    """Small, current progress receipts between substantive Lab reviews."""
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        limit = max(1, min(30, int(limit)))
+        kinds = ("inquiry", "browse_route", "source_read", "additional_source",
+                 "source_unavailable", "browse_stale", "unsourced_id",
+                 "protein_representation", "genome_prediction", "reflection",
+                 "genome_reflection")
+        raw = module._jsonl_tail(os.path.join(module.ROOT, "notebook.jsonl"), limit, kinds=kinds)
+        labels = {
+            "inquiry": "formed a question", "browse_route": "chose a source lane",
+            "source_read": "read a public source", "additional_source": "added source evidence",
+            "source_unavailable": "redirected after an empty source",
+            "browse_stale": "avoided a repeated source set", "unsourced_id": "rejected an unsourced identifier",
+            "protein_representation": "made protein representations", "genome_prediction": "ran a genome comparison",
+            "reflection": "completed a protein review", "genome_reflection": "completed a genome review",
+        }
+        activity = []
+        for row in raw:
+            kind = str(row.get("kind") or "")
+            detail = ""
+            if kind == "inquiry": detail = str((row.get("inquiry") or {}).get("question") or "")
+            elif kind == "browse_route": detail = str(row.get("route") or row.get("source") or row.get("question") or "")
+            elif kind in ("source_read", "additional_source"):
+                detail = str(row.get("source") or row.get("database") or row.get("connector") or "")
+            elif kind == "protein_representation":
+                detail = "%s records" % (row.get("count") or len(row.get("representations") or []))
+            elif kind in ("reflection", "genome_reflection"):
+                detail = str(row.get("attention") or row.get("factual_observation") or "")
+            elif kind in ("source_unavailable", "browse_stale", "unsourced_id"):
+                detail = "moved on without promoting it as a finding"
+            elif kind == "genome_prediction": detail = str(row.get("source_accession") or row.get("model") or "")
+            activity.append({"at": row.get("at"), "kind": kind, "label": labels.get(kind, kind.replace("_", " ")),
+                             "detail": detail[:300], "redirect": kind in ("source_unavailable", "browse_stale", "unsourced_id")})
+        return {"ok": True, "activity": activity, "limit": limit}
+    except Exception as exc:
+        return {"ok": False, "activity": [], "error": str(exc)[:180]}
 
 
 @app.get("/api/lab/chemistry/threads")
