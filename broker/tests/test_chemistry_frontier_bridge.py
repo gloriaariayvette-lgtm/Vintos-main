@@ -66,6 +66,14 @@ lab._append(lab.NOTEBOOK, {"at":"2026-09-15T00:01:00+00:00", "kind":"reflection"
     "factual_observation":"An unrelated structure was returned."})
 assert bridge.frontier_block() == ("", [])
 assert bridge.status()["redirected_after_assessment"] == 1
+# The raw authority retains the rejection even if a display projection later
+# drops an old entry ID from its bounded per-thread list.
+original_threads = lab.journal_threads
+lab.journal_threads = lambda: []
+try:
+    assert fresh["entry_id"] in bridge._redirect_entry_ids()
+finally:
+    lab.journal_threads = original_threads
 
 source = open(os.path.join(REPO, "scripts", "chemistry_frontier_bridge.py")).read()
 assert "requests" not in source and "urllib" not in source and "atelier" not in source.lower()

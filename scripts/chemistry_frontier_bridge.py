@@ -128,6 +128,20 @@ def _redirect_entry_ids():
         if thread.get("state") == "finding":
             continue
         rejected.update(str(x) for x in thread.get("entry_ids", []) if x)
+    # journal_threads deliberately bounds each thread's visible entry IDs.  The
+    # authority here cannot share that display cap: an older unlinked PDB/ChEMBL
+    # association must remain refused even after many later entries join its thread.
+    for row in lab._jsonl(lab.NOTEBOOK):
+        if not isinstance(row, dict) or row.get("kind") != "reflection":
+            continue
+        inquiry = row.get("inquiry") if isinstance(row.get("inquiry"), dict) else {}
+        source_query = inquiry.get("source_query") if isinstance(inquiry.get("source_query"), dict) else {}
+        if source_query.get("source") not in ("pdb", "chembl"):
+            continue
+        lineage = row.get("followup_lineage") if isinstance(row.get("followup_lineage"), dict) else {}
+        if not (lineage.get("source") == source_query.get("source") and lineage.get("id")):
+            if row.get("entry_id"):
+                rejected.add(str(row["entry_id"]))
     return rejected
 
 
