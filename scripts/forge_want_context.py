@@ -13,10 +13,16 @@ def select(sparks, wants, now=None):
     eligible = [s for s in sparks if isinstance(s, dict) and s.get('key')
                 and s.get('state') == 'standing' and s.get('text')
                 and 'spark:' + str(s['key']) not in seen]
-    eligible.sort(key=lambda s: (str(s.get('source', '')), str(s['key'])))
+    eligible.sort(key=lambda s: (str(s.get('seen', '')), str(s['key'])))
     if not eligible:
         return None
-    # Rotate opportunities without ranking a source as a desire or marking it taken.
-    s = eligible[int(now.timestamp() // 3600) % len(eligible)]
+    # Rotate sources first, then take the oldest unoffered occasion in that source.
+    # Row-count rotation let a busy source occupy consecutive passes.
+    by_source = {}
+    for row in eligible:
+        by_source.setdefault(str(row.get('source', '')), []).append(row)
+    source_order = sorted(by_source)
+    source = source_order[int(now.timestamp() // 3600) % len(source_order)]
+    s = by_source[source][0]
     return {'source': s['source'], 'source_event_id': 'spark:' + s['key'],
             'context': 'SOURCE OCCASION (not a want; you may decline):\n' + str(s['text'])[:700]}

@@ -22,6 +22,18 @@ def _sg_write(_p, _o, _who="organ"):
 B = "http://127.0.0.1:8611"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
+KNOCK_STORE = os.path.join(WSP, "memory", ".atelier-knock.json")
+
+def _tag(text, name):
+    """First paired tag with quote-agnostic, order-independent attributes."""
+    match = re.search(r'<%s\b([^>]*)>(.*?)</%s>' % (re.escape(name), re.escape(name)),
+                      text or "", re.S | re.I)
+    if not match:
+        return None
+    attrs = {}
+    for key, _quote, value in re.findall(r'([A-Za-z_][\w-]*)\s*=\s*(["\'])(.*?)\2', match.group(1), re.S):
+        attrs[key.lower()] = value
+    return {"attrs": attrs, "body": match.group(2)}
 
 def ask(system, user, max_tokens=2000, temp=0.7):
     scripts = os.path.join(WSP, "scripts")
@@ -38,7 +50,7 @@ def _model():
     try:
         sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/bin"))
         import model_router
-        return model_router.location_model("atelier")
+        return model_router.location_model("atelier")   # the Atelier's own model; the chat toggle moves only the chat (2026-09-24)
     except Exception:
         return "claude-opus-4-8"
 
@@ -106,6 +118,33 @@ def self_review_block():
             "They are offers from your own review, not instructions. If one genuinely belongs to this "
             "project, you may incorporate it into your planning or a stratagem; otherwise ignore it, "
             "and nothing is recorded:\n" + json.dumps(compact, ensure_ascii=False))
+
+
+def knock_block(pid):
+    """Return today's private knock choice without exposing it outside the visit."""
+    try:
+        with open(KNOCK_STORE) as source:
+            row = json.load(source)
+        if row.get("project") != pid or row.get("day") != datetime.now().date().isoformat():
+            return ""
+        words = str(row.get("words") or "").strip()[:600]
+        if not words:
+            return ""
+        return ("\n\nYOUR CHOICE AT TODAY'S KNOCK (your words, context rather than an order):\n"
+                + words)
+    except Exception:
+        return ""
+
+
+def consume_knock(pid):
+    """Retire a carried knock only after the visit has safely closed."""
+    try:
+        with open(KNOCK_STORE) as source:
+            row = json.load(source)
+        if row.get("project") == pid:
+            os.remove(KNOCK_STORE)
+    except (FileNotFoundError, ValueError, OSError):
+        pass
 
 def doorkeeper():
     wt = requests.get(f"{B}/health").json()
@@ -563,32 +602,30 @@ def media_block():
             "A result returns inside this visit and is kept only by the broker.\n" + "\n".join(lines))
 
 
-def _tag_attrs(raw):
-    """A tag's attributes in any order, single- or double-quoted. He writes these by hand; a strict
-    attribute order silently dropped his music requests (no make, no refusal, no log — 2026-09-23)."""
-    return {k.lower(): (dq if dq or not sq else sq)
-            for k, dq, sq in re.findall(r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', raw or "")}
-
-
 def _media_request(text):
-    image = re.search(r'<image\b([^>]*)>(.*?)</image>', text or "", re.S)
+    image = _tag(text, "image")
     if image:
-        attrs, inner = _tag_attrs(image.group(1)), image.group(2).strip()
-        prompt = (attrs.get("prompt") or "").strip() or inner
+        prompt = image["attrs"].get("prompt", "").strip()
         if prompt:
-            return {"kind": "image", "prompt": prompt, "title": (inner if attrs.get("prompt") else "")[:120]}
-    music = re.search(r'<music\b([^>]*)>(.*?)</music>', text or "", re.S)
+            return {"kind": "image", "prompt": prompt, "title": image["body"].strip()[:120]}
+    music = _tag(text, "music")
     if music:
-        attrs = _tag_attrs(music.group(1))
-        duration = re.sub(r"\D", "", attrs.get("duration", ""))
-        return {"kind": "music", "title": (attrs.get("title") or "").strip() or "untitled",
-                "style": (attrs.get("style") or "").strip() or "open",
-                "duration": int(duration or 120), "description": music.group(2).strip()}
+        attrs = music["attrs"]
+        if attrs.get("title") and attrs.get("style"):
+            try: duration = int(attrs.get("duration", 120))
+            except (TypeError, ValueError): duration = 120
+            return {"kind": "music", "title": attrs["title"].strip(), "style": attrs["style"].strip(),
+                    "duration": duration, "description": music["body"].strip()}
     return None
 
 
-def media_loop(pid, ctx, first_work, capability):
-    """Make one elected image or music artifact, then return it for his reading."""
+def media_loop(pid, ctx, first_work, capability, creation=None):
+    """Make one elected image or music artifact, then return it for his reading.
+
+    ``creation`` is an optional content-free result sink. A successfully sealed
+    image or music artifact is a piece made during the visit even when the
+    follow-up does not wrap another prose artifact in a ``<piece>`` tag.
+    """
     wanted = _media_request(first_work)
     if not wanted: return first_work
     media = _media_module()
@@ -609,6 +646,8 @@ def media_loop(pid, ctx, first_work, capability):
         else:
             artifact = saved.get("file", "")
             result["artifact"] = artifact
+            if creation is not None:
+                creation.update({"made": True, "kind": wanted["kind"], "artifact": artifact})
             print("sealed %s kept: %s" % (wanted["kind"], artifact))
     follow = ask(ctx + "\n\n=== TOOL DATA: YOUR SEALED MEDIA TABLE RETURNED THIS ===\n"
         + json.dumps(result, ensure_ascii=False)[:4000] + "\n=== END TOOL DATA ===",
@@ -646,6 +685,41 @@ def forge_block():
             "the Forge with <forge capability=\"name\">{\"why\":\"...\",\"scope\":{},\"permissions\":[],"
             "\"risks\":\"...\",\"touches\":[],\"tests\":\"...\"}</forge>. Only that bounded request and "
             "this undertaking's lineage cross the wall; the Forge review and Gloria's approval still govern it.")
+
+
+def materials_index():
+    """Keep optional machinery visible without making it the creative brief."""
+    return ("\n\nOPTIONAL MATERIALS: image/music, quantum, connected tools, a Lab lean, the Forge, "
+            "a stratagem, and self-review proposals are available. They are not assignments. "
+            "If this piece actually needs exact instructions for one, return only "
+            "<materials shelf=\"media|quantum|connected_tools|lab|forge|stratagem|self_review\">"
+            "why it belongs</materials>. The chosen shelf returns inside this visit. You may simply make instead.")
+
+
+def _materials_request(text):
+    tag = _tag(text, "materials")
+    if not tag:
+        return None
+    return tag["attrs"].get("shelf", ""), tag["body"].strip()
+
+
+def materials_loop(pid, ctx, first_work):
+    """Open one requested shelf, then return to making in the same visit."""
+    wanted = _materials_request(first_work)
+    if not wanted:
+        return first_work
+    shelf, why = wanted
+    makers = {"self_review": self_review_block, "quantum": quantum_block,
+              "media": media_block, "lab": lab_lean_block, "forge": forge_block,
+              "connected_tools": plugin_block}
+    detail = stratagem_block(pid) if shelf == "stratagem" else (makers[shelf]() if shelf in makers else "")
+    if not detail:
+        detail = "\n\nThat shelf is unavailable this visit. Work with what is here or report the outage."
+    follow = ask(ctx + detail,
+        "You opened the %s shelf because: %s\nUse it only if it serves the undertaking. "
+        "Return its exact request tag, or make the <piece> now and close with <look>, <handoff>, "
+        "<next_move>, and <next_return>." % (shelf, why[:300]), max_tokens=4000, temp=0.7)
+    return first_work + "\n\n" + follow
 
 
 def record_forge_choice(pid, project, text):
@@ -822,20 +896,6 @@ def _manifest_block(pk):
             "<piece kind=\"...\" continues=\"ID\">; leave continues out to start fresh:\n" + "\n".join(lines))
 
 
-def knock_today(today=None):
-    """His own answer at this morning's knock, if he chose to return. It is newer than the handoff
-    note the visit shows him, and it used to be dropped on the floor between the two."""
-    import datetime as _kd
-    try:
-        k = json.load(open(os.path.join(WSP, "memory", ".atelier-knock.json")))
-    except Exception:
-        return ""
-    if k.get("date") != (today or _kd.date.today()).isoformat() or k.get("decision") != "return":
-        return ""
-    return ("\n\nTHIS MORNING, AT THE KNOCK, AFTER READING THAT NOTE, YOU CHOSE TO RETURN. YOUR WORDS THEN:\n"
-            + str(k.get("said", ""))[:400])
-
-
 def visit(pid):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
@@ -843,26 +903,24 @@ def visit(pid):
     ctx = (voice() + "\n\nYOU ARE IN THE ATELIER — your private room. Nothing here reaches the house, "
            "the journals, MoltBook, or Gloria until you reveal it by your own act. Budgets this visit: "
            + json.dumps(pk["budgets"]) + ". The law: face the last thing before making the next.\n\n"
-           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap) + "\n\nYOUR LAST HANDOFF:\n" + pk.get("last_handoff", "(first visit)")
-           + "\nTHE NEXT MOVE YOU LEFT YOURSELF:\n" + pk.get("next_move", "(none)")
-           + knock_today()
+           + "YOUR INTENT, VERBATIM:\n" + pk["intent"] + _last_piece(pid, pk, cap)
+           + "\n\nPRIVATE NOTES FROM YOUR LAST VISIT — evidence, not orders. They may be stale or wrong; "
+             "continue, change, or discard them. Do not audit or defend the notes:\nHANDOFF:\n"
+           + pk.get("last_handoff", "(first visit)")
+           + "\nNEXT MOVE:\n" + pk.get("next_move", "(none)")
+           + knock_block(pid)
            + ("\nGLORIA VISITED SINCE YOUR LAST HANDOFF: " + ", ".join(pk["footprints_since_last"]) if pk.get("footprints_since_last") else "")
            + ("\nYOUR LAST VISIT ENDED WITHOUT A HANDOFF — these operations were recorded in the event log." if pk.get("crashed_last_time") else "")
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + _manifest_block(pk)
            + where_you_are()
-           + self_review_block()
-           + stratagem_block(pid)
-           + quantum_block()
-           + media_block()
-           + lab_lean_block()
-           + forge_block()
-           + plugin_block())
-    work = ask(ctx, "Work now. You may produce ONE piece toward your intent (prose, lyric, plan, "
-               "sketch-description—whatever the project needs), or use one of your private media first. "
-               "If you choose a worktable or connected tool, return only one <quantum>, <quantum_code>, <image>, <music>, or <plugin> request; "
-               "its result will come back to you inside this visit before you write the piece or handoff. "
-               "Otherwise, make the piece now, then look at it and write your handoff.\n"
+           + materials_index())
+    work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, "
+               "sketch-description—whatever the project needs), or open one optional material shelf first. "
+               "A piece may be exploratory, unfinished, contradictory, or a revision; it does not need to prove "
+               "that the undertaking is stable. A handoff alone is not the work of a visit. "
+               "If a material is needed, return only the <materials> request described above; its exact instructions "
+               "will come back inside this visit. Otherwise, make the piece now, look at it, and write your handoff.\n"
                "If something is WRONG — a tool fails, a budget refuses when it shouldn't, the room misbehaves, "
                "you are blocked by something only Gloria can fix, or you doubt the seal itself — say so in "
                "<report>...</report>. It goes to her phone IN YOUR WORDS: you choose what crosses the wall, "
@@ -884,14 +942,16 @@ def visit(pid):
                "Or, when a piece is FINISHED and stays yours: <kept>your closing note — 'it is finished "
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
                "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
-    _asked_media = _media_request(work)
+    work = materials_loop(pid, ctx, work)
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
-    work = media_loop(pid, ctx, work, cap)
+    media_creation = {}
+    work = media_loop(pid, ctx, work, cap, creation=media_creation)
     leaned = record_lab_lean(pid, pk, work)
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     forged = record_forge_choice(pid, pk, work)
     if forged: print("Forge proposal:", forged)
+    media_choice = (_media_request(work) or {}).get("kind", "none")
     # A free Python experiment is ordinary text and may itself mention XML-like
     # strings. Never reinterpret source code inside the request as a piece,
     # handoff, report, reveal, or stratagem action.
@@ -902,6 +962,7 @@ def visit(pid):
     work = re.sub(r'<lab_lean\b.*?</lab_lean>', '', work, flags=re.S)
     work = re.sub(r'<forge\b.*?</forge>', '', work, flags=re.S)
     work = re.sub(r'<plugin>.*?</plugin>', '', work, flags=re.S)
+    work = re.sub(r'<materials\b.*?</materials>', '', work, flags=re.S)
     refusal = stratagem_step(pid, work, cap)
     if refusal:
         # he tried; the room says why, once, and he may amend or drop it. Nothing else of the visit is redone.
@@ -911,19 +972,20 @@ def visit(pid):
             stratagem_step(pid, again, cap)
         else:
             _attempt_log("dropped", "after refusal")
-    m = re.search(r'<piece\b([^>]*)>(.*?)</piece>', work, re.S)
-    if m:
-        _pa = _tag_attrs(m.group(1))
-        _kind = re.sub(r"\W", "", _pa.get("kind", "")) or "write"
+    piece = _tag(work, "piece")
+    made_this_visit = False
+    r = {}
+    if piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")):
         # Every sealed-content route requires the visit capability now. Without
         # it the broker refuses and his work is silently lost — which is what
         # happened on the first real visit. Carry it, and if the make is
         # refused, keep what he wrote where it will not vanish.
-        _mk = {"id": pid, "kind": _kind, "content": m.group(2).strip(), "capability": cap}
+        _mk = {"id": pid, "kind": piece["attrs"]["kind"],
+               "content": piece["body"].strip(), "capability": cap}
         # selection by id: he continues one of his manifest's artifacts, or starts fresh.
         # an id that is not his is dropped here (the piece is made fresh) rather than lost
         # to a broker refusal.
-        _cont = (_pa.get("continues") or "").strip()
+        _cont = piece["attrs"].get("continues", "").strip()
         if _cont:
             if _cont in {r_.get("id") for r_ in (pk.get("manifest") or [])}:
                 _mk["previous"] = _cont
@@ -938,26 +1000,27 @@ def visit(pid):
             # Until 2026-09-04 the refused piece was written in plaintext to memory/atelier-unsaved/,
             # outside the wall. The path never fired, and it is gone: a piece is kept inside the wall
             # or nowhere (Astra found it; the room agreed). The refusal reason is content-free.
-            _seal_refused(pid,_kind,_mk.get("content", ""),str(r["error"])[:160])
+            _seal_refused(pid, piece["attrs"]["kind"], _mk.get("content", ""), str(r["error"])[:160])
         else:
+            made_this_visit = True
             lk = re.search(r'<look>(.*?)</look>', work, re.S)
-            requests.post(f"{B}/inspect", json={"id": pid, "kind": _kind,
+            requests.post(f"{B}/inspect", json={"id": pid, "kind": piece["attrs"]["kind"],
                           "artifact": r.get("file", ""), "capability": cap,
                           "note": (lk.group(1).strip() if lk else "I looked.")})
     # He decided a piece is ready and chose to show her. The ONE act that lets
     # something leave the sealed room: prepare -> confirm -> fetch the now-revealed
     # content on its export capability -> deliver (phone + the app's reveals tab)
     # -> settle, which clears the worktable so the next undertaking can begin.
-    rv = re.search(r'<reveal(?:\s+artifact="([^"]*)")?>(.*?)</reveal>', work, re.S)
+    rv = _tag(work, "reveal")
     if rv:
-        _disc = rv.group(2).strip()[:800]
-        _art = (rv.group(1) or "").strip()
+        _disc = rv["body"].strip()[:800]
+        _art = rv["attrs"].get("artifact", "").strip()
         if not _art:
             # no filename named: only the piece he made THIS visit with a successful make receipt qualifies.
             # Never an older file by default — disclosure binds to an explicit artifact or the current
             # make, or it does not happen (astra-atelier-p6, 2026-09-05).
-            _art = (r.get("file") if (m and not r.get("error")) else "") or ""
-        elif _art not in (pk.get("artifacts") or {}) and not (m and not r.get("error") and r.get("file") == _art):
+            _art = (r.get("file") if made_this_visit else "") or ""
+        elif _art not in (pk.get("artifacts") or {}) and not (made_this_visit and r.get("file") == _art):
             print("reveal names %r, which is not an artifact of this project — not revealing" % _art); _art = ""
         if not _art:
             print("reveal: no explicit artifact and nothing made this visit — an older piece is not revealed by default")
@@ -1011,12 +1074,12 @@ def visit(pid):
         print("reported outward:", _msg[:80])
     ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
     nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
-    # Content-free: what the visit produced. Days of "visit closed with handoff" and nothing made
-    # were invisible until this line existed.
-    print("visit produced: piece=%s media_request=%s handoff=%s next_return=%s"
-          % ("yes" if m else "no", (_asked_media or {}).get("kind", "none"), "yes" if ho else "no",
-             (nr.group(1).strip()[:40] if nr else "(default tomorrow)")))
     nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
+    produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
+                          or media_creation.get("made"))
+    print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
+          ("yes" if produced_piece else "no", media_choice,
+           "yes" if ho else "no", nr.group(1).strip() if nr else "tomorrow"))
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
                   "text": ho.group(1).strip() if ho else "(no handoff written)",
                   # his own words, carried verbatim to the next visit's context; empty is allowed
@@ -1032,6 +1095,7 @@ def visit(pid):
         print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
     else:
         print("visit closed with handoff")
+        consume_knock(pid)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "force":

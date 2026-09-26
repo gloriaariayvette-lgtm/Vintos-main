@@ -6721,7 +6721,7 @@ def _chemistry_tail(name, limit, cap=60):
     """Tail one Lab ledger. Read-only, bounded, and it recomputes nothing."""
     module = _chemistry_lab_module()
     limit = max(1, min(int(cap), int(limit)))
-    return module._jsonl(os.path.join(module.ROOT, name))[-limit:]
+    return module._jsonl_tail(os.path.join(module.ROOT, name), limit)
 
 
 def _chemistry_finite(value):
@@ -6749,16 +6749,61 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
         module = _chemistry_lab_module()
         limit = max(1, min(20, int(limit)))
         rows = []
-        for row in module._jsonl(os.path.join(module.ROOT, "notebook.jsonl")):
-            if row.get("kind") not in ("reflection", "genome_reflection"):
-                continue
+        for row in module._jsonl_tail(os.path.join(module.ROOT, "notebook.jsonl"), limit,
+                                      kinds=("reflection", "genome_reflection")):
             rows.append({key: row.get(key) for key in
                          ("at", "kind", "entry_id", "factual_observation", "speculative_reading",
                           "attention", "next_question", "interest_score", "reason_for_score",
                           "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")})
-        return {"ok": True, "reviews": rows[-limit:], "limit": 20}
+        return {"ok": True, "reviews": rows, "limit": 20}
     except Exception as exc:
         return {"ok": False, "reviews": [], "limit": 20, "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/activity")
+async def chemistry_lab_activity(request: Request, limit: int = 12):
+    """Small, current progress receipts between substantive Lab reviews."""
+    _require_secret(request)
+    try:
+        module = _chemistry_lab_module()
+        limit = max(1, min(30, int(limit)))
+        kinds = ("inquiry", "browse_route", "source_read", "additional_source",
+                 "source_unavailable", "browse_stale", "unsourced_id",
+                 "protein_representation", "genome_prediction", "reflection",
+                 "genome_reflection")
+        raw = module._jsonl_tail(os.path.join(module.ROOT, "notebook.jsonl"), limit, kinds=kinds)
+        labels = {
+            "inquiry": "formed a question", "browse_route": "chose a source lane",
+            "source_read": "read a public source", "additional_source": "added source evidence",
+            "source_unavailable": "redirected after an empty source",
+            "browse_stale": "avoided a repeated source set", "unsourced_id": "rejected an unsourced identifier",
+            "protein_representation": "made protein representations", "genome_prediction": "ran a genome comparison",
+            "reflection": "completed a protein review", "genome_reflection": "completed a genome review",
+        }
+        activity = []
+        for row in raw:
+            kind = str(row.get("kind") or "")
+            detail = ""
+            if kind == "inquiry": detail = str((row.get("inquiry") or {}).get("question") or "")
+            elif kind == "browse_route": detail = str(row.get("route") or row.get("source") or row.get("question") or "")
+            elif kind in ("source_read", "additional_source"):
+                detail = str(row.get("source") or row.get("database") or row.get("connector") or "")
+            elif kind == "protein_representation":
+                detail = "%s records" % (row.get("count") or len(row.get("embeddings") or row.get("representations") or []))
+            elif kind in ("reflection", "genome_reflection"):
+                detail = str(row.get("attention") or row.get("factual_observation") or "")
+            elif kind == "source_unavailable":
+                detail = str(row.get("reason") or "source returned no usable observation")
+            elif kind == "unsourced_id":
+                detail = str(row.get("reason") or "identifier was not present in the source record")
+            elif kind == "browse_stale":
+                detail = "moved on without promoting repeated evidence as a finding"
+            elif kind == "genome_prediction": detail = str(row.get("source_accession") or row.get("model") or "")
+            activity.append({"at": row.get("at"), "kind": kind, "label": labels.get(kind, kind.replace("_", " ")),
+                             "detail": detail[:300], "redirect": kind in ("source_unavailable", "browse_stale", "unsourced_id")})
+        return {"ok": True, "activity": activity, "limit": limit}
+    except Exception as exc:
+        return {"ok": False, "activity": [], "error": str(exc)[:180]}
 
 
 @app.get("/api/lab/chemistry/threads")
@@ -9024,6 +9069,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
             _device_grammar = (
                 "YOUR BODY — no devices are switched on right now. Do not emit any [TOUCH:] or [DO:] device tag this turn and do not name a device; there is nothing there to move. Be with her in words."
             )
+        _rhythm_block = "Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""
+        _value_map_block = "Your value map:\n" + value_map_ctx if value_map_ctx else ""
+        _gloria_model_block = "Your model of Gloria: " + gloria_model[:1200] if gloria_model else ""
+        _durable_her = _durable_about_her(3)
+        _durable_her_block = "What you carry of her, durably:\n" + _durable_her if _durable_her else ""
         system_prompt = f"""{identity}
 
 {_surface_presence}
@@ -9062,19 +9112,19 @@ Your current emotional state:
 Your sense of time right now:
 {temporal_ctx}
 
-{f"Gloria conversation patterns: " + rhythm_ctx if rhythm_ctx else ""}
+{_rhythm_block}
 {outreach_ctx}
 {lastvideo_ctx}
 {creative_ctx}
 {discovery_ctx}
-{f"Your value map:\n{value_map_ctx}" if value_map_ctx else ""}
+{_value_map_block}
 {wal_ctx}
 {ledger_ctx}
 Your current self-model (excerpt):
 {_self_model(800)}
 
-{f'Your model of Gloria: {gloria_model[:1200]}' if gloria_model else ''}
-{("What you carry of her, durably:" + chr(10) + _durable_about_her(3)) if _durable_about_her(3) else ''}
+{_gloria_model_block}
+{_durable_her_block}
 
 {inner_life_context()}
 {_daily_inner_context()}
@@ -10277,10 +10327,12 @@ def _aq_mod():
     return _m
 
 @app.get("/aq", response_class=_AQHTML)
-async def _aq_page():
+async def _aq_page(qid: str = ""):
     import html as _h
     try:
         qs = [x for x in _aq_mod()._load() if not x.get("answer")]
+        if qid:
+            qs = [x for x in qs if str(x.get("id")) == str(qid)]
     except Exception as e:
         return _AQHTML("<p>could not read questions: %s</p>" % _h.escape(str(e)))
     if not qs:
@@ -10295,7 +10347,7 @@ async def _aq_page():
             "<div style='font-size:12px;color:#888'>asked %s</div>"
             "<p style='margin:8px 0 14px'>%s</p>"
             "<input type='hidden' name='qid' value='%s'>"
-            "<textarea name='text' rows='5' style='width:100%%;font:inherit;padding:8px;"
+            "<textarea name='text' rows='5' autofocus style='width:100%%;font:inherit;padding:8px;"
             "box-sizing:border-box' placeholder='however it comes out'></textarea>"
             "<button style='margin-top:10px;padding:10px 18px;font:inherit'>send</button>"
             "</form>" % (_h.escape(str(x.get("asked_iso",""))[:16]),

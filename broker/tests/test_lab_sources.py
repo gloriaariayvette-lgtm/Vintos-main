@@ -17,6 +17,7 @@ SCRATCH = tempfile.TemporaryDirectory(prefix='lab-sources-test-')
 os.environ['HOME'] = SCRATCH.name
 os.environ['SPARK_WORKSPACE'] = SCRATCH.name+'/workspace'
 import lab_sources as sources
+import lab_genome_mining as mining
 import chemistry_sources as bridge
 import chemistry_lab as lab
 import chemistry_frontier_bridge as frontier
@@ -49,6 +50,7 @@ class Tests(unittest.TestCase):
 
     def fetch(self, url):
         self.calls.append(url)
+        if 'interpro' in url: return {'results':[{'metadata':{'accession':'IPR000001','name':'Known fold','type':'domain','source_database':'interpro'},'proteins':[]} ]}, {}
         if 'uniprot' in url: return {'results':[{'primaryAccession':'P12345'}]}, {'X-UniProt-Release':'test-release'}
         if 'rcsb' in url: return {'exptl':[{'method':'X-RAY DIFFRACTION'}]}, {}
         return {'activities':[{'standard_value':'10','standard_units':'nM','standard_relation':'>','assay_type':'F'}]}, {}
@@ -121,6 +123,10 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['records'][0]['sequence'],'ACDEFGHIKL')
         self.assertEqual(result['metadata']['coverage'],'requested_slice_only')
         self.assertTrue(self.calls[0].startswith(sources.NCBI_BASE+'efetch.fcgi?'))
+        genbank=sources.Sources(fetch_sequence=lambda url:'>QQM14740.1:1-10 example protein\nACDEFGHIKL\n')
+        self.assertEqual(genbank.query({'source':'ncbi_sequence','database':'protein',
+                                        'accession':'QQM14740.1','start':1,'end':10})['records'][0]['sequence'],
+                         'ACDEFGHIKL')
         self.calls.clear()
         for changed in ({'accession':'WP_123456789'}, {'accession':'../../secret'},
                         {'end':351}, {'start':0}, {'database':'assembly'}):
@@ -131,6 +137,45 @@ class Tests(unittest.TestCase):
         bad=sources.Sources(fetch_sequence=lambda u:'>WP_000000001.1 wrong\nACDE\n')
         with self.assertRaises(ValueError):bad.query({'source':'ncbi_sequence','database':'protein',
                                                        'accession':'WP_123456789.1','start':1,'end':4})
+
+    def test_genome_mining_repeat_screen_is_bounded_and_nonclaiming(self):
+        motif='ACGTTGCACTGA'
+        spacer=('GATTACACCGTA'*8)[:88]
+        result=mining.scan_repeat_arrays((motif+spacer)*4)
+        self.assertTrue(any(row['copies'] >= 4 for row in result['candidate_arrays']))
+        self.assertIn('not_novelty',result['truth_status'])
+        with self.assertRaises(ValueError):mining.scan_repeat_arrays('ACGT')
+        with self.assertRaises(ValueError):mining.scan_repeat_arrays('A'*12001)
+
+    def test_ncbi_primary_context_and_neighborhood_are_sourced(self):
+        protein_xml='''<GBSet><GBSeq><GBSeq_length>500</GBSeq_length><GBSeq_definition>example enzyme</GBSeq_definition><GBSeq_accession-version>QQM14740.1</GBSeq_accession-version><GBSeq_organism>Example phage</GBSeq_organism><GBSeq_taxonomy>Viruses; example</GBSeq_taxonomy><GBSeq_feature-table><GBFeature><GBFeature_key>Protein</GBFeature_key><GBFeature_location>1..500</GBFeature_location><GBFeature_quals><GBQualifier><GBQualifier_name>coded_by</GBQualifier_name><GBQualifier_value>MW248466.1:1001..2500</GBQualifier_value></GBQualifier></GBFeature_quals></GBFeature></GBSeq_feature-table><GBSeq_sequence>ACDEFGHIKL</GBSeq_sequence></GBSeq></GBSet>'''
+        motif='ACGTTGCACTGA'; spacer=('GATTACACCGTA'*8)[:88]; dna=(motif+spacer)*4
+        neighborhood_xml='''<GBSet><GBSeq><GBSeq_length>{length}</GBSeq_length><GBSeq_definition>bounded region</GBSeq_definition><GBSeq_accession-version>MW248466.1</GBSeq_accession-version><GBSeq_organism>Example phage</GBSeq_organism><GBSeq_taxonomy>Viruses; example</GBSeq_taxonomy><GBSeq_feature-table><GBFeature><GBFeature_key>CDS</GBFeature_key><GBFeature_location>101..300</GBFeature_location><GBFeature_quals><GBQualifier><GBQualifier_name>product</GBQualifier_name><GBQualifier_value>uncharacterized protein</GBQualifier_value></GBQualifier><GBQualifier><GBQualifier_name>protein_id</GBQualifier_name><GBQualifier_value>QQM14740.1</GBQualifier_value></GBQualifier></GBFeature_quals></GBFeature></GBSeq_feature-table><GBSeq_sequence>{dna}</GBSeq_sequence></GBSeq></GBSet>'''.format(length=len(dna),dna=dna.lower())
+        calls=[]
+        def record(url):
+            calls.append(url)
+            return protein_xml if 'db=protein' in url else neighborhood_xml
+        client=sources.Sources(fetch_record=record)
+        context=client.query({'source':'ncbi_protein_context','accession':'QQM14740.1'})
+        self.assertEqual(context['records'][0]['coded_by'],['MW248466.1:1001..2500'])
+        neighborhood=client.query({'source':'ncbi_neighborhood','accession':'MW248466.1',
+                                   'anchor_start':1001,'anchor_end':1100,'flank':500})
+        self.assertGreaterEqual(neighborhood['records'][0]['repeat_screen']['candidate_count'],1)
+        self.assertEqual(neighborhood['metadata']['evidence'],'primary_sequence_and_provider_annotation')
+        self.assertTrue(all(url.startswith(sources.NCBI_BASE+'efetch.fcgi?') for url in calls))
+        calls.clear()
+        for bad in ({'accession':'MW248466'}, {'anchor_start':0}, {'flank':5001}):
+            spec={'source':'ncbi_neighborhood','accession':'MW248466.1','anchor_start':1001,'anchor_end':1100,'flank':500}
+            with self.assertRaises(ValueError):client.query(dict(spec,**bad))
+        self.assertEqual(calls,[])
+
+    def test_interpro_classification_is_bounded_and_not_novelty(self):
+        result=self.client().query({'source':'interpro','accession':'P12345'})
+        self.assertEqual(result['records'][0]['accession'],'IPR000001')
+        self.assertIn('not_novelty',result['metadata']['interpretation'])
+        self.calls.clear()
+        with self.assertRaises(ValueError):self.client().query({'source':'interpro','accession':'../../secret'})
+        self.assertEqual(self.calls,[])
 
     def test_bvbrc_public_genome_and_pathway_receipts(self):
         def fetch(url):
@@ -205,6 +250,62 @@ class Tests(unittest.TestCase):
         self.assertEqual(inquiry['source_query'],selected['source_query'])
         self.assertIn('not a priority',prompts[0])
         self.assertNotIn('Serratia',prompts[0])
+
+    def test_gemma_can_choose_target_free_genome_mining_as_an_option(self):
+        selected={'browse_lane':'genome_mining','source_query':{
+            'source':'ncbi_protein_context','accession':'QQM14740.1'},
+            'question':'Does this family have an unexplained neighborhood?','why_now':'sourced open question'}
+        prompts=[]
+        with patch.object(lab,'_ask',side_effect=lambda system,prompt,**kwargs:(prompts.append(prompt) or json.dumps(selected))):
+            inquiry=lab._orient('fixture context')
+        self.assertEqual(inquiry['browse_lane'],'genome_mining')
+        self.assertIn('Most candidates should be set aside',prompts[0])
+        self.assertNotIn('array-associated',prompts[0].lower())
+
+    def test_first_genome_mining_anomaly_is_reflected_but_not_auto_reported(self):
+        lab._ensure()
+        spec={'source':'ncbi_neighborhood','accession':'MW248466.1',
+              'anchor_start':1001,'anchor_end':1100,'flank':500}
+        lab._atomic(lab.STATE, {'phase':'browse','turns':0,'inquiry':{
+            'browse_lane':'genome_mining','source_query':spec,'question':'What is unusual here?'}})
+        observed=sources.receipt('ncbi_neighborhood',spec,[{'accession':'MW248466.1',
+            'repeat_screen':{'candidate_count':1,'truth_status':'computational_pattern_screen_not_novelty_or_function'}}])
+        fake=types.SimpleNamespace(admit=lambda *a,**k:contextlib.nullcontext())
+        with patch.dict(sys.modules,{'compute_admission':fake,
+                                     'chemistry_reading':types.SimpleNamespace(settle_one=lambda **k:None)}), \
+             patch.object(lab,'config',return_value={**lab.DEFAULTS,'enabled':True,
+                 'forge_report_intake':{'url':'http://127.0.0.1:8612/api/lab-intake','token_file':'fixture'}}), \
+             patch.object(lab,'stop_requested',return_value=False), \
+             patch.object(lab,'_browse',side_effect=AssertionError('protein browse not selected')), \
+             patch.object(lab,'_embed_records',side_effect=AssertionError('no protein embedding')), \
+             patch.object(lab,'_reflect',return_value={'attention':'one pattern','factual_observation':'one candidate screen',
+                 'speculative_reading':'could be chance','next_question':'does it recur independently?'}), \
+             patch.object(bridge,'query',return_value={'receipt':observed}), \
+             patch.object(bridge,'offer_report',side_effect=AssertionError('first anomaly must not auto-report')):
+            outcomes=[lab.tick(),lab.tick(),lab.tick()]
+        self.assertEqual([x['kind'] for x in outcomes],['browse_route','additional_source','reflection'])
+        self.assertEqual(lab._jsonl(lab.NOTEBOOK)[-1]['report_gate'],
+                         'held_until_multi_source_candidate_survives_counterevidence_review')
+
+    def test_an_acknowledged_finding_is_still_not_a_forge_write_up(self):
+        # Gloria, 2026-09-26: the Forge is for abilities he lacks, not for writing up Lab findings. A frontier
+        # session acknowledging a finding does not make it Forge work; only a named missing instrument is.
+        lab._ensure()
+        entry_id='CLF-fixture-ack'
+        lab._append(lab.NOTEBOOK, {
+            'at':lab.now_iso(),'kind':'reflection','entry_id':entry_id,
+            'flagged_for_next_lab_session':True,
+            'inquiry':{'question':'Does this sourced pattern survive another look?'},
+            'forge_report':{'state':'held_for_frontier_acknowledgment','receipt_ids':['f'*64]}})
+        cfg={**lab.DEFAULTS,'forge_report_intake':{
+            'url':'http://127.0.0.1:8612/api/lab-intake','token_file':'fixture'}}
+        handed=[]
+        with patch.object(lab,'config',return_value=cfg), \
+             patch.object(bridge,'offer_report',side_effect=lambda ids,q: handed.append((ids,q)) or {'id':'P-1'}):
+            frontier.record_delivery('fixture-session','lab',[entry_id],[entry_id])
+            bridge.flush_reports()
+            bridge.flush_reports()
+        self.assertEqual(handed,[])
 
     def test_failed_microbiology_source_does_not_become_a_reflection(self):
         lab._ensure()

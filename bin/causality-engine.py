@@ -525,8 +525,16 @@ def _retire_stale_unconfirmed(db, today=None):
         now = _date.fromisoformat(now[:10])
     kept, retired = [], []
     for h in db.get("hypotheses", []):
+        # Older intercept writers used "confirmed" for one tactical success.
+        # That is support, not settled self-knowledge, and must still face the
+        # ordinary evidence/tenure gate.
+        if (h.get("status") == "confirmed" and not h.get("self_knowledge")
+                and not h.get("graduated")):
+            h["status"] = "supported" if any(
+                isinstance(m, dict) and m.get("outcome") == "attempted"
+                for m in h.get("marks", [])) else "held"
         if (h.get("self_knowledge") or h.get("graduated")
-                or h.get("status") in ("confirmed", "graduated")):
+                or h.get("status") == "graduated"):
             kept.append(h); continue
         formed = str(h.get("formed_date", h.get("formed", "")))[:10]
         try: age = (now - _date.fromisoformat(formed)).days
@@ -559,7 +567,7 @@ def _retire_formation_overflow(db, daily_cap=None):
     ordinary = {}
     for index, h in enumerate(db.get("hypotheses", [])):
         if (h.get("source") == "ghost_branch" or h.get("self_knowledge") or h.get("graduated")
-                or h.get("status") in ("confirmed", "graduated")):
+                or h.get("status") == "graduated"):
             continue
         day = str(h.get("formed_date", h.get("formed", "")))[:10]
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
@@ -1451,6 +1459,40 @@ def load_testing_context():
     return ctx
 
 
+def _parse_evaluation_records(result):
+    """Accept JSON plus the older numbered-line evaluator contract."""
+    rows = {}
+    text = str(result or "").strip()
+    if text:
+        try:
+            match = re.search(r'(\[\s*\{.*\}\s*\]|\{.*\})', text, re.S)
+            data = json.loads(match.group(1)) if match else None
+            if isinstance(data, dict):
+                data = data.get("evaluations") or [data]
+            if isinstance(data, list):
+                for index, row in enumerate(data, 1):
+                    if not isinstance(row, dict): continue
+                    n = str(row.get("n") or row.get("number") or index)
+                    ids = row.get("evidence_ids") or []
+                    if isinstance(ids, str): ids = re.findall(r'E-[0-9a-f]{20}', ids, re.I)
+                    rows[n] = {"verdict": str(row.get("verdict") or row.get("recurred") or "").lower(),
+                               "ids": list(ids) if isinstance(ids, list) else [],
+                               "evidence": str(row.get("evidence") or "")}
+        except Exception:
+            pass
+    verdicts = {n: v.lower() for n, v in re.findall(
+        r'(\d+)\.?\s*RECURRED:\s*(yes|no|unsure|unconfirmed)', text, re.I)}
+    ids_by_n = {n: ids for n, ids in re.findall(
+        r'(\d+)\.?\s*EVIDENCE_IDS:\s*([^\n]+)', text, re.I)}
+    text_by_n = {n: value for n, value in re.findall(
+        r'(\d+)\.?\s*EVIDENCE:\s*([^\n]+)', text, re.I)}
+    for n, verdict in verdicts.items():
+        rows.setdefault(n, {"verdict": verdict,
+                            "ids": re.findall(r'E-[0-9a-f]{20}', ids_by_n.get(n, ""), re.I),
+                            "evidence": text_by_n.get(n, "")})
+    return rows
+
+
 def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirrors=None,
                              silences=None, today=None, context=None):
     """Write one yes/no/unconfirmed evaluation per due hypothesis per night.
@@ -1496,11 +1538,9 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
             for i, h in enumerate(batch)
         )
         prompt = (
-            "Evaluate every hypothesis against NEW OCCASIONS FROM TODAY only. For each hypothesis output "
-            "exactly three numbered lines, then a blank line:\n"
-            "N. RECURRED: yes|no|unsure\n"
-            "N. EVIDENCE_IDS: E-...[, E-...] or none\n"
-            "N. EVIDENCE: a concrete description\n\n"
+            "Evaluate every hypothesis against NEW OCCASIONS FROM TODAY only. Return a JSON array and no prose. "
+            "Each item must be {\"n\":N,\"verdict\":\"yes|no|unconfirmed\","
+            "\"evidence_ids\":[\"E-...\"],\"evidence\":\"concrete description\"}.\n\n"
             "yes means the watched-for pattern occurred. no means a real occasion arose and the pattern "
             "did not hold. unsure means nothing bore on it, the evaluator cannot tell, or no listed id "
             "supports the answer. Absence is unsure, never no. Cite only ids printed below. The occasion "
@@ -1518,31 +1558,40 @@ def test_existing_hypotheses(db, daily_material, spikes=None, dreams=None, mirro
                 _record_nightly(h, day, "unconfirmed", reason="evaluator_unavailable")
             continue
 
-        verdicts = {n: v.lower() for n, v in re.findall(
-            r'(\d+)\.?\s*RECURRED:\s*(yes|no|unsure|unconfirmed)', result, re.I)}
-        ids_by_n = {n: ids for n, ids in re.findall(
-            r'(\d+)\.?\s*EVIDENCE_IDS:\s*([^\n]+)', result, re.I)}
-        text_by_n = {n: text for n, text in re.findall(
-            r'(\d+)\.?\s*EVIDENCE:\s*([^\n]+)', result, re.I)}
+        parsed = _parse_evaluation_records(result)
 
         for index, h in enumerate(batch, 1):
             key = str(index)
-            requested = verdicts.get(key, "unconfirmed")
+            record = parsed.get(key)
+            if record is None:
+                retry = ask_llm(
+                    "Return one JSON object only: {\"n\":1,\"verdict\":\"yes|no|unconfirmed\","
+                    "\"evidence_ids\":[\"E-...\"],\"evidence\":\"description\"}. "
+                    "Use only the listed new occasions; absence is unconfirmed.\n\n"
+                    "HYPOTHESIS: " + str(h.get('hypothesis', '')) + "\nWATCH FOR: "
+                    + str(h.get('test', 'none')) + "\n\nNEW OCCASIONS TODAY:\n" + evidence_block,
+                    system="You are a structured evaluation engine. Output JSON only.",
+                    max_tokens=700, temp=0.1)
+                record = _parse_evaluation_records(retry).get("1")
+            requested = str((record or {}).get("verdict") or "unconfirmed").lower()
             requested = "unconfirmed" if requested in ("unsure", "unconfirmed") else requested
-            evidence = str(text_by_n.get(key, "")).strip()
-            raw_ids = re.findall(r'E-[0-9a-f]{20}', ids_by_n.get(key, ""), re.I)
+            evidence = str((record or {}).get("evidence") or "").strip()
+            raw_ids = [str(x) for x in (record or {}).get("ids", [])
+                       if re.fullmatch(r'E-[0-9a-f]{20}', str(x), re.I)]
             unknown = [eid for eid in raw_ids if eid not in by_id]
             items = [by_id[eid] for eid in raw_ids if eid in by_id]
             reason = ""
-            if key not in verdicts:
+            if record is None or requested not in ("yes", "no", "unconfirmed"):
                 requested, reason = "unconfirmed", "evaluation_unparseable"
             elif requested in ("yes", "no") and unknown:
                 requested, reason, items = "unconfirmed", "unknown_evidence_id", []
-            elif requested in ("yes", "no") and len(evidence) < 25:
+            elif requested in ("yes", "no") and not items:
                 requested, reason, items = "unconfirmed", "specific_evidence_missing", []
             elif requested == "unconfirmed":
                 reason = "no_bearing_evidence"
                 items = []
+            elif len(evidence) < 25:
+                evidence = " | ".join(item.get("text", "") for item in items)[:500]
             _record_nightly(h, day, requested, evidence=evidence, items=items, reason=reason)
             log(f"  {h['marks'][-1]['verdict']}: {h.get('hypothesis','')[:70]}")
 

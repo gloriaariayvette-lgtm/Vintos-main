@@ -167,6 +167,33 @@ for n, h in (("REC-6", "1"), ("REC-7", "2")):
 check("a request the full Forge refused is not queued again on every later reflection",
       sum("mass spectrometer" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
 
+# --- a gene symbol written as a protein name is read as the gene it is -----------------------------
+import urllib.error as _ue
+asked = []
+class _R:
+    def __init__(self, body): self.body = json.dumps(body).encode()
+    def read(self, n=-1): return self.body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def fake_urlopen(req, timeout=0):
+    q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
+    asked.append(q)
+    if "gene:RPS16" in q:
+        return _R({"results": [{"primaryAccession": "P62249", "uniProtkbId": "RS16_HUMAN",
+                                "sequence": {"length": 146, "value": "M" * 146}}]})
+    return _R({"results": []})
+_real = M.urllib.request.urlopen
+M.urllib.request.urlopen = fake_urlopen
+try:
+    got = M._browse("reviewed:true AND (protein_name:RPS16 AND organism_id:9606)", 4)
+    none = M._browse("reviewed:true AND (protein_name:Clarin AND organism_id:9606)", 4)
+finally:
+    M.urllib.request.urlopen = _real
+check("protein_name:RPS16 that finds nothing is tried once as gene:RPS16",
+      [r["accession"] for r in got["records"]] == ["P62249"] and "gene:RPS16" in got["executed_query"]
+      and len(asked) == 3, (asked, got["executed_query"]))
+check("a real protein name is not reread as a gene", none["records"] == [] and "gene:" not in asked[-1], asked)
+
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("the reading step is told to say so when the records are not what was asked",

@@ -3,6 +3,25 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 26 September — one branch again: Chat's microbiology branch merged in
+
+Aegis was running `codex/microbiology-integration` (22 commits) while the day's Lab, Forge,
+Grok-subscription and landings work sat on `claude/vintos-avatar-ui-redesign-br5lt4` (41 commits);
+each deploy dropped the other's work. Merged into the Claude branch. Resolution choices:
+- Lab: both sets of guards kept; microbiology and genome_mining lanes both need records to reflect
+  and both have the repeat guard. The frontier-acknowledged Forge write-up hand-off from the Codex
+  branch is removed — only a named missing instrument reaches the Forge (Gloria's rule).
+- Atelier is Chat's: Chat's `atelier-visit.py` taken whole, with `location_model("atelier")`
+  restored (it had reverted to the chat toggle). The gate's second knock writer (old format the
+  visit cannot read) removed; Chat's `knock_block` is the one carry.
+- Two merge bugs caught by the suite: the searches-that-found-nothing list crashed on the Codex
+  branch's `unsourced_id` rows (would have held the Lab in a fault), and the double knock writer.
+- Also: `protein_name:SYMBOL` that finds nothing is retried once as `gene:SYMBOL` (RPS16 asked
+  seven times, empty each time).
+
+Deploy from this branch only. The PubMed plugin fails with an expired Claude login on Aegis
+(`claude /login` as the relay's user) — every plugin turn is wasted until then.
+
 ## 26 September — the Lab asked one question and answered another
 
 Her review of 30 notebook entries, 2026-09-26: he asked eight times in nine minutes for the S-layer
@@ -208,9 +227,11 @@ Confirmed working after deploy + un-arm: devices fire in **avatar chat**. Still 
   live-want proposal gate; an installed build returns as a formation root with
   the original provenance class intact. Approval, review, verification, and
   installation remain the Forge's existing gates.
-- The threshold and working visit now use an Atelier-only route: Fable 5.1 is
-  first, and an empty, filtered, refused, or failed call falls once to Astra.
-  No house conversation toggle or other model route is changed.
+- The September 14 Atelier-only Fable route was retired on 23 September after
+  live provider metadata showed that Fable refused every knock and visit with
+  zero output, silently making Astra the permanent voice. The threshold and
+  working visit now use Vintos's selected Claude voice first and fall once to
+  Astra only on a real failure. No house conversation toggle is changed.
 
 ## 12 September — hypothesis recovery continuation
 
@@ -1346,6 +1367,67 @@ three attempted hosted jobs per America/Chicago day, shared across organs;
 Gloria raised it to six later on 23 September, as recorded below.
 No hosted job has been submitted or validated live.
 
+### Genome-mining option prepared locally
+
+The Lab now has a target-free `genome_mining` choice modeled on the staged
+discipline in Anthropic's public ART technical report rather than on its
+950-session scale. The planner is told to reproduce a known result, inspect
+primary protein context and bounded gene neighborhoods, pursue anomalies, and
+then try to eliminate them with classification, related loci, literature and
+counterevidence. Most candidates are expected to be set aside. A first anomaly
+is held out of the automatic Forge-report path; only a later multi-source
+survivor review may form a report for human review. It is never a discovery
+claim or wet-lab plan.
+
+Exact NCBI GenPept context can supply a provider `coded_by` nucleotide mapping.
+Only those sourced coordinates may open the bounded GenBank neighborhood door.
+That door retains provider features and primary sequence and runs a local,
+mismatch-tolerant, regular-spacing repeat screen. InterPro provides bounded
+known-domain classification. Scratch suites cover validation, routing,
+isolation, receipt truth labels and the repeat screen. Read-only commissioning
+against the public MarsHill records resolved the published protein-to-genome
+mapping, returned a 7,506-base/24-feature neighborhood, and recovered bounded
+repeat candidates. A separate InterPro probe returned six entries. These probes
+were not entered in Vintos's journal and do not seed his choices. Aegis release
+`20260924-000603-59d90a9` passed every suite in both `--check` and deployment,
+parsed and staged all 400 manifest files, and left the Lab worker and scheduled
+frontier timer active. The same bounded source probes then passed from the
+installed tree. An autonomous Vintos-selected campaign remains open.
+
+IMG/VR is a storage-backed source, not an anonymous API. The official JGI file
+metadata endpoint reports the current high-confidence v4.1 bundle
+(`IMG_VR_2022-12-19_7.1`) as 43,118,863,386 bytes (40.16 GiB compressed) across
+five files, with provider MD5 checksums. Aegis is the selected primary store:
+at commissioning it had 558 GB available on its 1,007 GB root volume, compared
+with 545 GiB available on the Mac data volume. JGI's account route now requires
+its new SSO linked to an ORCID account with
+MFA. It is not required for this work: DOE's public NERSC mirror serves the three
+unrestricted-only high-confidence files needed by the Lab, totaling
+42,362,218,187 bytes compressed.
+
+The public transfer and indexes completed on Aegis on 2026-09-24. All three
+files match their pinned byte sizes and locally recorded SHA-256 receipts. The
+76.09-GiB nucleotide FASTA, 3.51-GiB SQLite metadata/offset index, and 80-split
+MMseqs protein index report ready. `imgvr_store.py` pins the official
+NERSC mirror names and sizes, resumes interrupted downloads, records local
+SHA-256 receipts, requires 250 GiB free, and builds a SQLite metadata/nucleotide
+index plus an MMseqs2 protein-family index. NERSC does not publish independent
+digests in that directory; the receipt labels this boundary. The optional JGI
+route retains provider MD5 validation. The official MMseqs2 18-8cc5c AVX2
+binary is installed under Gloria's Aegis user directory and its published
+SHA-256 passed. The Lab exposes bounded metadata, exact UViG slice and sourced
+protein-similarity operations only after all indexes report ready. Installed
+metadata, a 12-segment GVMAG listing, and an exact 120-base segment slice passed.
+The first cold 112-million-protein search measured 275 seconds with eight
+threads and about 12.5 GB peak RSS; the query deadline is therefore 600 seconds.
+Release `20260924-023401-d72f423` passed the complete `--check` and installing
+gates and left every checked unit active. The installed production wrapper then
+searched a sourced 300-residue slice of GenBank protein `QQM14740.1` in 209.9
+seconds. Receipt `54edf5f9ad574277a192200b51ec68ecb92cad325f033f754defc1b345b5dc7f`
+returned three bounded hits and retained the truth boundary that similarity and
+annotation do not establish novelty or function. IMG/VR installation and
+commissioning are complete; an autonomous Vintos-selected campaign remains open.
+
 Parabricks is a hosted-NIM-only route by Gloria's direction, pending
 verification of an active endpoint. NVIDIA's public fq2bam and DeepVariant NIM
 pages currently mark those endpoints deprecated, so the Lab does not advertise
@@ -1471,3 +1553,98 @@ added 13755a5 on 9/21, connectors 6109f09 on 9/22); the `ask()`/`_model()` path 
 model or its routing changed around 9/19–9/20; the self_review_block content; whether his own
 handoff/next_move text instructs holding. His reply and handoff are sealed — reading them is
 Gloria's decision, not an agent's.
+## 23 September — Atelier handoff-only regression
+
+Project `99df2e77e385` produced five daily write artifacts from 15–19 September,
+then entered repeatedly without making another piece. Content-free provider
+records identified two coupled defects. The Atelier-only Fable 5.1 override
+refused every live request, so Astra silently answered every knock and visit;
+meanwhile the creative system prompt accumulated the full self-review,
+stratagem, quantum, media, Lab, Forge, plugin and connector manuals. Astra's
+visit input grew from roughly 3,600 to 6,580 tokens while its output fell from
+878–1,354 tokens to 231–275 and became handoff-only. This conclusion uses
+provider usage and parser outcomes; no sealed reply, handoff or project text was
+read.
+
+The working visit now follows Vintos's selected Claude model and keeps Astra as
+the failure fallback. The creative call carries the intent, latest work,
+fallible prior notes, current inward context and a compact material index. A
+full optional shelf enters only after he chooses it, and returns inside the same
+visit. Prior handoff and next-move text are explicitly described as revisable
+evidence rather than orders. The daily knock's own words are persisted mode
+0600, bound to project and date, carried into that visit, and consumed only
+after the handoff closes safely. The removed “practice so far” metrics were not
+reintroduced. The visit parser again accepts either quote style and arbitrary
+attribute order for pieces and media, and emits a content-free summary of what
+it actually parsed. The first live visit after the prompt repair broke the
+handoff-only pattern by creating and sealing music, but exposed one final result
+contract error: media creation was still printed as `piece=no` unless the model
+also wrapped prose in a `<piece>` tag. A successfully persisted image or music
+artifact now counts as a piece in that content-free result, with a focused test
+covering the broker receipt.
+
+Release `20260923-153344-4f5f121` passed all 173 isolated suites in both
+`--check` and deployment. The broker, house, plugin gateway, Lab worker and
+scheduled units were healthy afterward, and the worktable still named
+`99df2e77e385`. The required post-deploy forced visit then created sealed music
+and revision 6 of the written work and reported `piece=yes media=music
+handoff=yes`; it closed normally. No sealed reply, handoff, artifact content or
+media was opened to obtain that evidence. The handoff-only regression is closed.
+
+## 26 September — Forge source breadth, thread view, and causality lifecycle
+
+Deployed to Aegis on 26 September. The Lab no longer files every sourced reflection directly into the
+Forge. A Lab finding must first pass its existing interest gate and then be
+named by exact entry ID in a later frontier acknowledgment. The structural
+absence builder now reads the live `current-wants.json` schema, admits an exact
+`CAPABILITY_ABSENT` block immediately, and runs once per day rather than behind
+a two-percent random chance. Forge source selection rotates across source kinds
+before selecting the oldest eligible row, so a large Lab backlog cannot occupy
+consecutive offers.
+
+The thread API now returns the live active count with `Cache-Control: no-store`;
+the app separately cache-busts both thread and weave-group reads. Resolver
+archive snapshots merge with concurrent appends instead of replacing them. The
+unrequested private Journal app tab was removed while Landings remains. The iOS
+web bundle was resynchronized locally and pushed on the app branch; installing
+that new phone build remains a separate device step. The live thread store has
+121 retained rows and three unresolved rows. The stale one-card display was a
+cached app response; the API now returns the live active count with no-store
+headers and the app cache-busts both reads.
+
+Causality evaluation now requests structured JSON, retries a missing batch row
+individually, and accepts a short model gloss only when it cites a real catalog
+occasion, substituting the catalog text as the durable evidence. One tactical
+intercept success records `supported`, never `confirmed`, and does not count
+toward graduation. Legacy bare `confirmed` rows return to ordinary tenure and
+may retire; only graduated self-knowledge bypasses that gate. This repairs
+future promotion and retirement behavior without rewriting historical marks.
+
+The same sweep fixed branch-wide Python 3.9 failures in the avatar and creative
+prompts, Atlas variant pairing, and JEPA checkpoint hashing. Generated ownership
+and untested reports are current. All 174 suites pass directly and all 174 pass
+through the hardened OS-isolated runner on the Mac. A deployment-path defect
+found during commissioning is also repaired: discovery had ignored lexical
+symlinks beside the live scripts anchor and could update a denser stale checkout
+instead. The regression test now exercises that exact cross-tree alias shape.
+
+Release `20260926-112503-f9f3987` passed all 174 isolated suites in `--check`
+and deployment, installed 404 files, and confirmed the house, Atelier, Lab,
+plugin gateway, robot bridge, self-review, somatic, EmoClaw and skill-surf units
+healthy. Commissioning registered three structural absences from the live want
+store, including the `physical_interaction` capability gap. The two zero-cycle
+automatic Lab projects still in `ready` were cancelled; the remaining ordinary
+active structural project is the physical capability proposal. One later Lab
+project entered `ready` through the new exact frontier-acknowledgment gate; it
+was not an automatic handoff of an unreviewed source reflection. Two older
+private projects remain sealed in `reconciliation_required`; they were not
+opened or cancelled.
+
+The causality store was backed up at
+`causality-hypotheses.json.bak-commission-20260926-112809` and compacted through
+the current deployed module. The legacy bare `confirmed` row is now `supported`;
+the live distribution is 21 held, six untested and one supported, with zero
+ungraduated confirmed rows and zero settled self-knowledge rows. The Forge
+system service is active. Follow-up release
+`20260926-114916-0495c74` installed the alias discovery repair; the dashed and
+underscored live causality entries and Git source have the same SHA-256.

@@ -12,9 +12,23 @@ marked delivered — an answer he has already received is not news.
 """
 import json, os, sys, time
 from datetime import datetime
+from urllib.parse import quote
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 STORE = os.path.join(WS, "memory", "architecture-questions.json")
+PUBLIC_BASE = os.environ.get("VINTOS_PUBLIC_BASE", "http://100.72.225.119:8500").rstrip("/")
+
+
+def answer_url(qid):
+    """Phone-safe link to the one question carried by an ntfy receipt."""
+    return "%s/aq?qid=%s" % (PUBLIC_BASE, quote(str(qid or ""), safe=""))
+
+
+def ntfy_headers(qid):
+    """A notification tap and its explicit button open the same answer form."""
+    url = answer_url(qid)
+    return {"Title": "Vintos has a question about himself", "Tags": "question",
+            "Priority": "default", "Click": url, "Actions": "view, Answer, %s" % url}
 
 def _load():
     try: return json.load(open(STORE))

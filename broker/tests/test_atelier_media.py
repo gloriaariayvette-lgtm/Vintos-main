@@ -67,8 +67,9 @@ class AtelierMediaTests(unittest.TestCase):
                      '<music duration="90s" title="return" style="low strings">hum</music>'):
             got = VISIT._media_request(text)
             self.assertEqual((got["kind"], got["title"], got["style"]), ("music", "return", "low strings"), text)
-        self.assertEqual(VISIT._media_request('<music title="bare">hum</music>')["style"], "open")
-        self.assertEqual(VISIT._media_request("<image>a blue room</image>")["prompt"], "a blue room")
+        # The Atelier is Chat's (2026-09-26 merge): a music request needs a title and a style, and an image
+        # needs a prompt attribute. Order and quote style stay free, above.
+        self.assertIsNone(VISIT._media_request('<music title="bare">hum</music>'))
         self.assertEqual(VISIT._media_request('<image prompt="blue pressure">night</image>')["title"], "night")
         self.assertIsNone(VISIT._media_request("no request here"))
     def test_status_reports_no_image_model_when_none_is_cached(self):
@@ -82,15 +83,18 @@ class AtelierMediaTests(unittest.TestCase):
         def post(url, json=None, timeout=None):
             calls.append((url, json)); return types.SimpleNamespace(json=lambda: {"ok": True, "file": "made_image.png"})
         follow = "<media_reading>The color holds.</media_reading><handoff>keep looking</handoff>"
+        creation = {}
         with mock.patch.object(VISIT, "_media_module", return_value=renderer), \
              mock.patch.object(VISIT, "ask", return_value=follow), \
              mock.patch.object(VISIT.requests, "post", side_effect=post):
-            out = VISIT.media_loop("project", "sealed context", '<image prompt="blue pressure">night</image>', "cap")
+            out = VISIT.media_loop("project", "sealed context", '<image prompt="blue pressure">night</image>', "cap",
+                                   creation=creation)
         made = next(body for url, body in calls if url.endswith("/make"))
         self.assertEqual(base64.b64decode(made["content_b64"]), b"pngbytes")
         self.assertEqual(made["kind"], "image")
         self.assertNotIn("content", made)
         self.assertIn("The color holds", out)
+        self.assertEqual(creation, {"made": True, "kind": "image", "artifact": "made_image.png"})
 
     def test_prompt_names_outages_instead_of_erasing_media(self):
         state = {"image": {"configured": False, "ok": False, "outage": "no painter"},

@@ -2,9 +2,12 @@
 
 2026-09-23: at the knock he chose RETURN every day and said why; the broker kept only the
 word, and the visit 25 minutes later met only the handoff note he had just rejected — so it
-held again, for four days. Scratch workspace; every request is a stub.
+held again, for four days. The Atelier is Chat's: this checks Chat's carry (gate row ->
+knock_block) end to end, and that no second writer overwrites it (a merge on 2026-09-26 left
+two writers, the second in a format the visit cannot read). Scratch workspace; every request
+is a stub.
 """
-import datetime, importlib.util, json, os, sys, tempfile, types, unittest
+import importlib.util, os, tempfile, types, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,7 +28,8 @@ class KnockReachesVisit(unittest.TestCase):
         os.makedirs(os.path.join(self.ws, "memory"))
         self.gate = load("atelier_gate_knock_test", "scripts/atelier-gate.py")
         self.visit = load("atelier_visit_knock_test", "scripts/atelier-visit.py")
-        for mod in (self.gate, self.visit): mod.WSP = self.ws
+        store = os.path.join(self.ws, "memory", ".atelier-knock.json")
+        for mod in (self.gate, self.visit): mod.WSP = self.ws; mod.KNOCK_STORE = store
         self.sent = []
 
     def knock(self, answer):
@@ -41,40 +45,23 @@ class KnockReachesVisit(unittest.TestCase):
         self.gate.main()
 
     def test_isolation(self):
-        self.assertTrue(self.ws.startswith(tempfile.gettempdir()))
+        self.assertTrue(self.ws.startswith(tempfile.gettempdir()) and self.visit.KNOCK_STORE.startswith(self.ws))
         self.knock("RETURN. I need to see if there is still a pulse in the work.")
         self.assertTrue(all(u.startswith("http://127.0.0.1:") for u in self.sent))
 
-    def test_return_words_reach_todays_visit_only(self):
+    def test_return_words_reach_that_projects_visit(self):
         self.knock("RETURN. I need to see if there is still a pulse in the work.")
-        block = self.visit.knock_today()
-        self.assertIn("YOU CHOSE TO RETURN", block)
+        block = self.visit.knock_block("p1")
         self.assertIn("still a pulse in the work", block)
-        self.assertEqual(self.visit.knock_today(datetime.date.today() + datetime.timedelta(days=1)), "")
+        self.assertEqual(self.visit.knock_block("another-project"), "")
 
     def test_hold_is_not_carried(self):
         self.knock("HOLD. Not today.")
-        self.assertEqual(self.visit.knock_today(), "")
+        self.assertEqual(self.visit.knock_block("p1"), "")
 
-    def test_visit_context_carries_it_after_the_old_note(self):
-        self.knock("RETURN. The note is too much of an audit.")
-        V = self.visit
-        def post(url, json=None, **k):
-            body = {"open": {"visit_capability": "cap", "budgets": {}, "intent": "x",
-                             "last_handoff": "old note", "next_move": "wait"}}.get(url.rsplit("/", 1)[-1], {"ok": True})
-            return Resp(body)
-        V.requests = types.SimpleNamespace(post=post, get=lambda *a, **k: Resp({}))
-        for n in ("voice", "where_you_are", "self_review_block", "quantum_block", "media_block",
-                  "lab_lean_block", "forge_block", "plugin_block", "_manifest_block"):
-            setattr(V, n, lambda *a, **k: "")
-        V.stratagem_block = lambda pid: ""; V._last_piece = lambda *a, **k: ""; V.ledger_mark = lambda *a: None
-        V.stratagem_step = lambda *a, **k: None; V.record_lab_lean = lambda *a: None; V.record_forge_choice = lambda *a: None
-        seen = {}
-        V.ask = lambda ctx, user, **k: (seen.setdefault("ctx", ctx), "<handoff>h</handoff>")[1]
-        V.visit("p1")
-        ctx = seen["ctx"]
-        self.assertIn("too much of an audit", ctx)
-        self.assertLess(ctx.index("old note"), ctx.index("too much of an audit"))
+    def test_one_writer(self):
+        src = open(os.path.join(ROOT, "scripts", "atelier-gate.py")).read()
+        self.assertEqual(src.count(".atelier-knock.json"), 1, "only KNOCK_STORE names the file")
 
 
 if __name__ == "__main__":

@@ -190,7 +190,10 @@ def flush_reports():
         # 'refused' is only left by the 2026-09-24 build that took a capacity 403 as final; it is retried.
         if row.get('state') in ('pending', 'refused') and row.get('next_attempt', 0) <= time.time():
             offer_report(row['receipt_ids'], row['question'])
-            break
+            return
+    # Nothing else goes from the Lab to the Forge. Chat's frontier-acknowledged hand-off (2026-09-26) still
+    # sent write-ups of findings; Gloria's rule is that the Forge is for abilities he lacks, so only a named
+    # missing instrument (chemistry_lab, instrument_gap) is offered, through the outbox above.
 
 
 if __name__ == '__main__':

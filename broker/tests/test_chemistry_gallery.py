@@ -42,7 +42,7 @@ scope = {"os": os, "math": __import__("math"), "Request": object,
 exec(compile(ast.parse(block), "server-chemistry-block", "exec"), scope)
 check("the Lab endpoints are ordinary code that can be exercised",
       all(k in scope for k in ("chemistry_lab_notebook", "chemistry_lab_sessions",
-                               "chemistry_lab_reviews", "chemistry_lab_threads",
+                               "chemistry_lab_reviews", "chemistry_lab_activity", "chemistry_lab_threads",
                                "chemistry_lab_grades", "chemistry_lab_taste", "chemistry_lab_curve",
                                "chemistry_lab_structures", "chemistry_lab_structure")))
 
@@ -138,11 +138,16 @@ check("the visible review ledger is a rolling maximum of twenty",
 check("the review endpoint omits mechanical turns and heavy payloads",
       all(row["kind"] in ("reflection", "genome_reflection") for row in reviews["reviews"])
       and all("embeddings" not in row and "records" not in row for row in reviews["reviews"]), reviews)
+activity = asyncio.run(scope["chemistry_lab_activity"](req, limit=12))
+check("the live activity endpoint fills the space between reviews without promoting redirects",
+      activity["ok"] and len(activity["activity"]) <= 12
+      and all(set(row) == {"at", "kind", "label", "detail", "redirect"} for row in activity["activity"])
+      and all(row["redirect"] is False for row in activity["activity"]), activity)
 structures = asyncio.run(scope["chemistry_lab_structures"](req, limit=10))
 view = asyncio.run(scope["chemistry_lab_structure"](req, structures["structures"][0]["artifact_id"]))
 check("the gallery lists and parses a real preserved structure", structures["ok"] and view["ok"] and view["atom_count"] == 1, (structures, view))
 check("the endpoint returns coordinates, not the artifact filesystem", not view["source"].startswith("/") and "text" not in view, view)
-check("every Lab read required the secret", len(secrets) == 11, len(secrets))
+check("every Lab read required the secret", len(secrets) == 12, len(secrets))
 
 # --- the page ------------------------------------------------------------------------------------
 PAGE = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
@@ -165,6 +170,9 @@ check("taste is labelled as taste, not as score", "grades are a separate ledger"
 check("what he wants to try next is shown", "what I want to try next" in PAGE)
 check("the phone pane renders a rolling twenty-review log",
       "LAB_REVIEW_LIMIT = 20" in PAGE and "reviews?limit=" in PAGE and "RECENT REVIEWS" in PAGE)
+check("the phone pane renders live Lab turns on the existing refresh",
+      "activity?limit=12" in PAGE and "LIVE ACTIVITY · REFRESHES EVERY 15 SECONDS" in PAGE
+      and "_labActivityRow" in PAGE)
 check("the phone pane displays deduplicated journal threads",
       "JOURNAL THREADS" in PAGE and "threads?limit=12" in PAGE)
 check("the open Lab pane refreshes without concurrent loads",
@@ -176,7 +184,7 @@ check("an unavailable structure gallery cannot hold the review refresh",
 check("the routes are all behind the secret",
       SERVER.count("_require_secret(request)") >= 7 and
       all(('@app.get("/api/lab/chemistry/%s' % name) in SERVER
-          for name in ("notebook", "reviews", "sessions", "grades", "taste", "curve/{run_id}", "structures", "structure/{artifact_id}")))
+          for name in ("notebook", "reviews", "activity", "sessions", "grades", "taste", "curve/{run_id}", "structures", "structure/{artifact_id}")))
 check("no Lab endpoint writes anything",
       not any(w in block for w in ("_append(", "_atomic(", "set_enabled(", "open(")), 
       [w for w in ("_append(", "_atomic(", "set_enabled(", "open(") if w in block])

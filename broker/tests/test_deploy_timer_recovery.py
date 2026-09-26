@@ -48,6 +48,18 @@ payload=root/'payload.py';payload.write_text('new')
 command=canonical+'\nresolved="$(canonical_dest "$ALIAS")"; install -m 644 "$PAYLOAD" "$resolved"'
 p=subprocess.run(['bash','-c',command],env=dict(env,ALIAS=str(alias),PAYLOAD=str(payload)),capture_output=True)
 check('promotion preserves the import alias and updates its target',p.returncode==0 and alias.is_symlink() and target.read_text()=='new')
+
+# Discovery must preserve the lexical alias beside the live anchor.  Resolving
+# it inside locate() caused deploy to ignore the live entry and update a denser
+# stale checkout with the same basename.
+anchor=home/'workspace/scripts';anchor.mkdir(parents=True)
+live_target=home/'legacy/causality-engine.py';live_target.parent.mkdir();live_target.write_text('old')
+live_alias=anchor/'causality-engine.py';live_alias.symlink_to(live_target)
+a=src.index('locate()');b=src.index('\n}',a)+2
+locate=src[a:b]
+command=locate+'\nlocate causality-engine.py'
+p=subprocess.run(['bash','-c',command],env=dict(env,DEPTH='6',_SELF=str(home/'deploy/source')),capture_output=True,text=True)
+check('discovery keeps the live lexical symlink',str(live_alias) in p.stdout.splitlines())
 check('the importable causal model is explicitly manifested','causal-self-model.py causal_self_model.py' in src)
 
 print('%d/%d'%(sum(R),len(R)));sys.exit(0 if all(R) else 1)

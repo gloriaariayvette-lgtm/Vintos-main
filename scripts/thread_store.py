@@ -53,7 +53,7 @@ def _locked_write(path, obj):
 
 
 def _atomic_write(path, obj):
-    tmp = path + ".tmp"
+    tmp = path + ".tmp.%d" % os.getpid()
     with open(tmp, "w") as f:
         json.dump(obj, f, indent=2, ensure_ascii=False)
     os.replace(tmp, path)
@@ -203,3 +203,21 @@ def append_retired(entries, path=None):
             existing.append(n)
         if not _locked_write(path, existing): raise OSError("thread archive write refused")
         return existing
+
+
+def merge_retired(entries, path=None):
+    """Merge a resolver snapshot without overwriting concurrent appends."""
+    from store_guard import transactions
+    with transactions([path or RETIRED_FILE]):
+        path = path or RETIRED_FILE
+        current = load_retired(path)
+        seen = {(str(e.get("id") or ""), str(e.get("retired_at") or ""),
+                 str(e.get("consumed_by") or "")) for e in current}
+        for entry in entries if isinstance(entries, list) else [entries]:
+            normalized = normalize_retired_entry(entry)
+            key = (str(normalized.get("id") or ""), str(normalized.get("retired_at") or ""),
+                   str(normalized.get("consumed_by") or ""))
+            if key not in seen:
+                current.append(normalized); seen.add(key)
+        if not _locked_write(path, current): raise OSError("thread archive merge refused")
+        return current

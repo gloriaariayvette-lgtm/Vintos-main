@@ -59,6 +59,23 @@ class CausalityLifecycleTests(unittest.TestCase):
         self.assertTrue(all(h["last_tested"] == "2026-08-21" for h in hs))
         self.assertEqual(db["tested"], 3)
 
+    def test_json_evaluation_retries_a_missing_record_and_keeps_cited_short_evidence(self):
+        hs = [self.hypothesis(), self.hypothesis()]
+        db = {"hypotheses": hs, "tested": 0}
+        ctx = {"interactions": "[09:12] Gloria asked for plain speech and Vintos answered without evasion."}
+        eid = self.c._build_evidence_catalog(ctx, "2026-08-21")[0]["id"]
+        calls=[]
+        def answer(prompt,*args,**kwargs):
+            calls.append(prompt)
+            if len(calls)==1:
+                return '[{"n":1,"verdict":"yes","evidence_ids":["%s"],"evidence":"plain answer"}]' % eid
+            return '{"n":1,"verdict":"no","evidence_ids":["%s"],"evidence":"bracing remained"}' % eid
+        self.c.ask_llm=answer
+        self.c.test_existing_hypotheses(db,{},today="2026-08-21",context=ctx)
+        self.assertEqual([h["marks"][-1]["verdict"] for h in hs],["yes","no"])
+        self.assertEqual(len(calls),2)
+        self.assertTrue(all(h["marks"][-1]["evidence"] for h in hs))
+
     def test_formation_day_is_never_a_test_day(self):
         h = self.hypothesis(formed="2026-08-21")
         db = {"hypotheses": [h], "tested": 0}

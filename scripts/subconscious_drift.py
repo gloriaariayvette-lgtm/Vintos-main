@@ -444,12 +444,18 @@ def _check_rare_events():
             log(f"Rare: Nifrathir shift {delta:+.3f} → {get_value():.4f}")
     except: pass
 
-    # Rare: rebuild absence cold layer from unfulfilled
+    # Once daily: rebuild the structural-absence layer.  This is idempotent by
+    # source id; a random 2% chance left the Forge with no absence source at all.
     try:
-        if random.random() < 0.02:
+        _absence_marker = os.path.join(MEMORY, ".last-absence-cold-build")
+        _absence_today = datetime.now().date().isoformat()
+        _absence_last = open(_absence_marker).read().strip() if os.path.exists(_absence_marker) else ""
+        if _absence_last != _absence_today:
             from absence_map_cold import build_from_unfulfilled
             build_from_unfulfilled()
-            log("Rare: absence cold layer rebuilt")
+            with open(_absence_marker, "w") as _absence_handle:
+                _absence_handle.write(_absence_today)
+            log("Daily: absence cold layer rebuilt")
     except: pass
 
     # Rare: feed causal self-model into narrative identity

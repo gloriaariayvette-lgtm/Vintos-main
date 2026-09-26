@@ -232,9 +232,17 @@ def journal_threads():
             observation = "The same source set recurs in %d reflections; repetition is not new evidence." % source_counts[sources_key]
             next_question = "Which new source or different instrument could discriminate this before another reflection?"
         else:
-            supported = bool(sources and factual and row.get("source_query_succeeded") is not False)
+            source_query = inquiry.get("source_query") if isinstance(inquiry.get("source_query"), dict) else {}
+            identifier_followup = source_query.get("source") in ("pdb", "chembl")
+            lineage = row.get("followup_lineage") if isinstance(row.get("followup_lineage"), dict) else {}
+            identifier_linked = (not identifier_followup or
+                                 (lineage.get("source") == source_query.get("source") and lineage.get("id")))
+            supported = bool(sources and factual and row.get("source_query_succeeded") is not False
+                             and identifier_linked)
             lesson = not supported
-            observation = factual if supported else "No source-backed observation recorded; interpretation needs a receipt."
+            observation = factual if supported else ("The follow-up identifier was not tied to the source protein; its association is rejected."
+                if identifier_followup and not identifier_linked else
+                "No source-backed observation recorded; interpretation needs a receipt.")
             if lesson:
                 next_question = "Which new source receipt could resolve this before another interpretation?"
         previous = threads.get(thread_id)
@@ -349,12 +357,19 @@ def search_misses(limit=6):
     seen, out = set(), []
     for row in reversed(_tail_jsonl(NOTEBOOK)):
         if row.get("kind") == "additional_source" and row.get("records_returned") == 0 and row.get("query_sent"):
-            why = "the source holds no such record"
-        elif row.get("kind") == "unsourced_id":
-            why = "ID %s came from no receipt: look the organism up by name first" % ", ".join(row.get("ids") or [])
+            why, sent = "the source holds no such record", row["query_sent"]
+        elif row.get("kind") == "unsourced_id" and row.get("ids"):
+            why, sent = ("ID %s came from no receipt: look the organism up by name first" % ", ".join(row["ids"]),
+                         row.get("query_sent") or {"ids": row["ids"]})
+        elif row.get("kind") == "unsourced_id" and row.get("reason"):
+            # The follow-up guard from the microbiology branch writes its refusal as a reason, not a query.
+            why, sent = str(row["reason"])[:160], {"refused": str(row["reason"])[:120]}
+        elif (row.get("kind") == "source_unavailable" and row.get("reason") == "uniprot_returned_no_records"
+              and row.get("executed_query")):
+            why, sent = "the source holds no such record", {"uniprot": row["executed_query"]}
         else:
             continue
-        key = json.dumps(row["query_sent"], sort_keys=True)
+        key = json.dumps(sent, sort_keys=True)
         if key in seen: continue
         seen.add(key); out.append("- %s — %s" % (key[:220], why))
         if len(out) >= limit: break
@@ -529,6 +544,20 @@ def _safe_query(query):
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if not query or DENIED_QUERY.search(query):
         return BASELINE_QUERY
+    # Gemma commonly writes JSON/Python-looking field syntax (``field : True``).
+    # UniProt rejects that spacing/casing even though the intended fields are valid.
+    # Canonicalize the bounded query here; never recover a rejected specific query by
+    # silently widening it to the generic baseline.
+    query = re.sub(r"\s*:\s*", ":", query)
+    query = re.sub(r"\btrue\b", "true", query, flags=re.I)
+    query = re.sub(r"\bfalse\b", "false", query, flags=re.I)
+    fields = r"(?:accession|id|reviewed|length|protein_name|gene|organism_id|organism_name|taxonomy_id|keyword|go|xref_pdb)"
+    query = re.sub(r"\b" + fields + r":(?:none|null)\b", "", query, flags=re.I)
+    query = re.sub(r"\bAND\s+(?=AND\b|\))", "", query)
+    query = re.sub(r"(?<=\()\s*AND\b|\bAND\s*$", "", query)
+    query = re.sub(r"\(\s*\)", "", query)
+    query = re.sub(r"\s+", " ", query).strip()
+    query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
     # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
     return BASELINE_QUERY + " AND (" + query + ")"
 
@@ -562,6 +591,23 @@ def merge_source_intent(source_query, uniprot_query):
     return dict(source_query, query=" AND ".join([query] + terms) if query else " AND ".join(terms))
 
 
+def _sourced_followup(spec, records):
+    """Return lineage for a follow-up identifier, or why it must be refused."""
+    if not isinstance(spec, dict):
+        return None, None
+    source = str(spec.get("source") or "")
+    if source == "pdb":
+        value, field = str(spec.get("entry_id") or "").upper(), "pdb_ids"
+    elif source == "chembl":
+        value, field = str(spec.get("target_id") or "").upper(), "chembl_ids"
+    else:
+        return {"source": source, "kind": "non_identifier_followup"}, None
+    available = {str(item).upper() for row in records for item in (row.get(field) or [])}
+    if value and value in available:
+        return {"source": source, "id": value, "sourced_from": "current_uniprot_records"}, None
+    return None, "%s identifier %s was absent from the current UniProt records" % (source, value or "(empty)")
+
+
 def _orient(context, lean=None):
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
@@ -577,18 +623,23 @@ def _orient(context, lean=None):
             pass
     except Exception:
         plugin_menu = ""
+    try:
+        from lab_genome_mining import campaign_instructions
+        genome_mining = "\n\n" + campaign_instructions()
+    except Exception:
+        genome_mining = ""
     raw = _ask(
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
-        context + lean_text + plugin_menu + "\n\nChoose ONE protein-space or environmental microbiology question to go deep on today. "
+        context + lean_text + plugin_menu + genome_mining + "\n\nChoose ONE protein-space, environmental microbiology, or genome-mining question to go deep on today. "
         "Microbiology is an available direction, not a priority or a named organism to seek. If the recent "
         "journal has a source-backed open question, advance it only with a discriminating new source or instrument; "
         "do not repeat the same query or conclusion merely because it appeared again. Treat redirects as lessons: "
         "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: browse_lane ('protein' or 'microbiology'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
+        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
         "For microbiology, source_query is required as the primary browse observation: "
         "{source:ncbi,operation:literature,term:plain research phrase}, "
         "{source:ncbi,operation:taxonomy,term:organism name}, "
@@ -604,6 +655,11 @@ def _orient(context, lean=None):
         "the curated set, and if it holds nothing of what you asked for then that is the answer — reviewed:false may be "
         "asked on a later question, and its records are automatic annotation, never curated fact). "
         "Use IDs returned by earlier receipts; do not invent them. Sequence slices are capped at 350 amino acids or 512 bases. BV-BRC pathway rows are annotations, not proof of expression or phenotype. "
+        "For genome_mining, source_query is required and is ONE step of a multi-return campaign: "
+        "{source:ncbi_protein_context,accession:exact sourced protein accession.version}, "
+        "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
+        "{source:interpro,accession:exact sourced UniProt accession}, or an NCBI literature query above. "
+        "Use coded_by coordinates returned by ncbi_protein_context; never invent a neighborhood. The repeat screen reports candidates, not boundaries, significance, novelty, or function. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
         "start:integer,end:integer,scorers:[documented scorer names]}. Atlas coordinates are zero-based half-open, "
@@ -617,7 +673,8 @@ def _orient(context, lean=None):
     )
     value = _json_object(raw)
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
-    lane = 'microbiology' if value.get('browse_lane') == 'microbiology' and source_query else 'protein'
+    requested_lane = value.get('browse_lane')
+    lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
     return {"browse_lane": lane, "source_query": source_query,
             "plugin_query": (value.get("plugin_query") if isinstance(value.get("plugin_query"), dict)
                              and not source_query else None),
@@ -645,18 +702,29 @@ def _browse(query, limit):
     try:
         executed_query = validate_uniprot(executed_query)
     except ValueError:
-        fallback_reason = "invalid_query_rejected_locally"
-        executed_query = BASELINE_QUERY
+        return {"source_receipt": None, "records": [], "requested_query": requested_query,
+                "executed_query": None, "fallback_reason": "invalid_query_rejected_locally"}
     try:
         raw = fetch(executed_query)
     except urllib.error.HTTPError as exc:
-        # A model may invent a plausible-looking UniProt field. A rejected
-        # query is history, not a verdict and not permission to widen scope.
-        if exc.code != 400 or executed_query == BASELINE_QUERY:
+        # A rejected specific query is history, not permission to widen scope.
+        if exc.code != 400:
             raise
         fallback_reason = "source_rejected_generated_query"
-        executed_query = BASELINE_QUERY
-        raw = fetch(executed_query)
+        raw = {"results": []}
+    # He writes gene symbols as protein names: protein_name:RPS16 matches nothing human, so every
+    # question about it came back empty and he asked it again (2026-09-26). The same symbol, read as
+    # the gene it is, is not a wider search; it is the one he meant. Tried once, and recorded.
+    symbol = re.search(r"\bprotein_name:([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$)", executed_query or "")
+    if (not fallback_reason and not raw.get("results") and symbol
+            and re.search(r"\d", symbol.group(1)) and symbol.group(1).upper() == symbol.group(1)):
+        as_gene = executed_query[:symbol.start()] + "gene:" + symbol.group(1) + executed_query[symbol.end():]
+        try:
+            retried = fetch(as_gene)
+            if retried.get("results"):
+                raw, executed_query = retried, as_gene
+        except urllib.error.HTTPError:
+            pass
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
@@ -674,8 +742,9 @@ def _browse(query, limit):
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
     from lab_sources import receipt
-    source_receipt = receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
-                             raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'})
+    source_receipt = (None if fallback_reason else
+        receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
+                raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'}))
     return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
             "executed_query": executed_query, "fallback_reason": fallback_reason}
 
@@ -747,6 +816,46 @@ def _jsonl(path):
                 except Exception: pass
     except FileNotFoundError:
         pass
+    return rows
+
+
+def _jsonl_tail(path, limit, kinds=None):
+    """Read the newest matching JSONL rows without rescanning a large ledger.
+
+    Lab ledgers are append-only.  Walking backwards matters once the notebook is
+    tens of megabytes: the phone asks for a small live window every 15 seconds.
+    Returned rows keep chronological order, matching ``_jsonl(path)[-limit:]``.
+    """
+    try: limit = max(0, int(limit))
+    except (TypeError, ValueError): limit = 0
+    if not limit: return []
+    accepted = set(kinds or ())
+    rows, remainder = [], b""
+    try:
+        with open(path, "rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            position = stream.tell()
+            while position > 0 and len(rows) < limit:
+                size = min(65536, position)
+                position -= size
+                stream.seek(position)
+                block = stream.read(size) + remainder
+                lines = block.split(b"\n")
+                remainder = lines[0]
+                for raw in reversed(lines[1:]):
+                    if not raw.strip(): continue
+                    try: row = json.loads(raw.decode("utf-8", "replace"))
+                    except Exception: continue
+                    if accepted and row.get("kind") not in accepted: continue
+                    rows.append(row)
+                    if len(rows) >= limit: break
+            if position == 0 and len(rows) < limit and remainder.strip():
+                try: row = json.loads(remainder.decode("utf-8", "replace"))
+                except Exception: row = None
+                if row is not None and (not accepted or row.get("kind") in accepted): rows.append(row)
+    except (FileNotFoundError, OSError):
+        return []
+    rows.reverse()
     return rows
 
 
@@ -947,11 +1056,11 @@ def tick():
             elif phase == "browse":
                 inquiry = state.get("inquiry") or {"uniprot_query": _safe_query("")}
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
-                if inquiry.get('browse_lane') == 'microbiology' and inquiry.get('source_query'):
+                if inquiry.get('browse_lane') in ('microbiology','genome_mining') and inquiry.get('source_query'):
                     state['records'] = []
                     state['source_query_succeeded'] = False
                     next_phase = 'sources'
-                    note = {'at': now_iso(), 'kind': 'browse_route', 'source': 'environmental_microbiology',
+                    note = {'at': now_iso(), 'kind': 'browse_route', 'source': inquiry.get('browse_lane'),
                             'question': inquiry.get('question'), 'truth_status': 'question_not_observation'}
                 else:
                     browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
@@ -961,14 +1070,25 @@ def tick():
                     stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")) and
                                  journal_source_saturated([r.get("accession") for r in records]))
                     state["records"] = [] if stale else records
-                    next_phase = ("orient" if stale else
+                    followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), records)
+                    if unsourced_reason and records:
+                        _append(NOTEBOOK, {"at": now_iso(), "kind": "unsourced_id",
+                            "reason": unsourced_reason, "question": inquiry.get("question"),
+                            "truth_status": "identifier_refused_before_source_call"})
+                        inquiry = dict(inquiry); inquiry["source_query"] = None
+                        state["inquiry"] = inquiry
+                    state["followup_lineage"] = followup_lineage
+                    empty = not records
+                    next_phase = ("orient" if stale or empty else
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
-                    note = {"at": now_iso(), "kind": "browse_stale" if stale else "source_read", "source": "UniProtKB REST",
+                    note = {"at": now_iso(), "kind": ("browse_stale" if stale else
+                            "source_unavailable" if empty else "source_read"), "source": "UniProtKB REST",
                             "source_receipt_id": (browse_result.get("source_receipt") or {}).get("receipt_id"),
                             "requested_query": browse_result["requested_query"],
                             "executed_query": browse_result["executed_query"],
                             "fallback_reason": browse_result["fallback_reason"],
+                            **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,
                             "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
                             "truth_status": ("same_source_set_not_new_evidence" if stale else
@@ -1024,11 +1144,12 @@ def tick():
                     state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}
+                _lanes = ('microbiology', 'genome_mining')
                 next_phase = (("reflect" if (state.get('additional_source', {}).get('receipt') or {}).get('records')
                                else "orient")
-                              if inquiry.get('browse_lane') == 'microbiology' else
+                              if inquiry.get('browse_lane') in _lanes else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
-                if inquiry.get('browse_lane') == 'microbiology' and next_phase == 'reflect':
+                if inquiry.get('browse_lane') in _lanes and next_phase == 'reflect':
                     # The saturation guard ran in the protein lane only, so the microbiology lane
                     # reflected on one identical UniProt response eight times in nine minutes
                     # (2026-09-26). The same response twice is not new evidence.
@@ -1037,7 +1158,7 @@ def tick():
                         next_phase = 'orient'
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
-                if inquiry.get('browse_lane') != 'microbiology':
+                if inquiry.get('browse_lane') not in _lanes:
                     base = [r.get('accession') for r in state.get('records', [])]
                     followup = (state.get('additional_source', {}).get('receipt') or
                                 state.get('additional_source', {}).get('source_receipt') or {})
@@ -1107,6 +1228,7 @@ def tick():
                 note = {"at": now_iso(), "kind": "reflection", "inquiry": inquiry,
                         "source_query_succeeded": bool(state.get("source_query_succeeded")),
                         "followup_receipt_id": followup.get('receipt_id'),
+                        "followup_lineage": state.get("followup_lineage"),
                         "source_accessions": ([r.get("accession") for r in records] +
                                               (["RESPONSE-" + fingerprint[:32]] if fingerprint else [])), **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
@@ -1127,7 +1249,8 @@ def tick():
                 # documentation filled her Forge (Gloria, 2026-09-26). The Lab reaches the Forge only when it
                 # names an instrument it does not have — the one Lab-to-Forge errand she asked for.
                 gap = str(reflection.get("instrument_gap", "")).strip()
-                if (gap and gap.lower() not in ("", "none", "no", "n/a", "null")
+                if (inquiry.get('browse_lane') != 'genome_mining'
+                        and gap and gap.lower() not in ("", "none", "no", "n/a", "null")
                         and state.get("additional_source", {}).get("receipt", {}).get("records")
                         and cfg.get("forge_report_intake") and not instrument_gap_offered(gap)):
                     try:
@@ -1141,8 +1264,10 @@ def tick():
                             "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
                             "\nAssess whether this instrument can be reached; do not write up the question and do not claim discovery.")
                     except Exception as exc: _fault("forge_instrument_gap", exc)
+                if inquiry.get('browse_lane') == 'genome_mining':
+                    note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
-                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
+                state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
                 import chemistry_evo2
                 result = chemistry_evo2.analyze()

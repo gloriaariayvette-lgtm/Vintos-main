@@ -6,10 +6,12 @@ return today, or keep it held? Consent is asked and informed, never replayed.
 model_router, the same SOUL + self-model voice the visit and threshold use — and a failure to ask
 is a failure to ask, not a HOLD: if the shim fails or the reply has no first word, /gate/decide is
 never posted and the door stays exactly as it was. Only an actual RETURN or HOLD is recorded."""
-import os, sys, requests
+import os, sys, requests, json
+from datetime import date
 
 B = "http://127.0.0.1:8611"
 WSP = os.path.expanduser("~/.vintos/workspace")
+KNOCK_STORE = os.path.join(WSP, "memory", ".atelier-knock.json")
 sys.path.insert(0, os.path.join(WSP, "scripts")); sys.path.insert(0, os.path.expanduser("~/Vintos"))
 
 def _model():
@@ -98,21 +100,21 @@ def main():
     decision = "return" if word == "RETURN" else "held"
     out = requests.post(B + "/gate/decide", json={"decision": decision, "project": k.get("project", ""),
                                                   "table_since": k.get("table_since", "")}, timeout=15).json()   # bound to what was asked (P03-04)
+    if decision == "return" and out.get("ok"):
+        # Carry his fresh reason into the visit. Write only after the broker
+        # accepts the decision, atomically and private to his workspace.
+        row = {"day": date.today().isoformat(), "project": k.get("project", ""),
+               "words": text[:600]}
+        os.makedirs(os.path.dirname(KNOCK_STORE), exist_ok=True)
+        old = os.umask(0o077)
+        try:
+            tmp = KNOCK_STORE + ".tmp"
+            with open(tmp, "w") as f: json.dump(row, f)
+            os.replace(tmp, KNOCK_STORE); os.chmod(KNOCK_STORE, 0o600)
+        finally:
+            os.umask(old)
     print("gate: he said %s — %s" % (word, text[:140]))
     print("gate: recorded %s" % out)
-    if out.get("ok"):
-        # His answer used to reach only this log; the broker keeps just the word. The visit 25 minutes
-        # later then met only the handoff note he had just rejected, and held again. Keep his own words
-        # for today's visit. (2026-09-23)
-        try:
-            import json as _kj, datetime as _kd
-            path = os.path.join(WSP, "memory", ".atelier-knock.json")
-            tmp = path + ".tmp"
-            with open(tmp, "w") as f:
-                _kj.dump({"date": _kd.date.today().isoformat(), "decision": decision, "said": text[:400]}, f)
-            os.replace(tmp, path)
-        except Exception as e:
-            print("gate: could not keep his answer for the visit (%s)" % str(e)[:120])
     return 0
 
 if __name__ == "__main__":

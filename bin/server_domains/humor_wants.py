@@ -1,7 +1,7 @@
 """Humor, mischief, wants API, scene upload, presence - moved verbatim from server.py (Q2 Phase 3, cut 3)."""
 import os, json, re
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -792,7 +792,9 @@ async def get_threads(request: Request):
             threads = json.load(f)
         active = [t for t in threads if not t.get("consumed") and not t.get("retired")]
         active.sort(key=lambda t: (-(t.get("priority") or 0), -(t.get("dream_passes", 0))))
-        return {"success": True, "threads": active}
+        return JSONResponse({"success": True, "threads": active,
+                             "active_count": len(active)},
+                            headers={"Cache-Control": "no-store"})
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -909,7 +911,7 @@ async def get_weave_groups(request: Request):
             return {"success": True, "groups": []}
         with open(groups_path) as f:
             data = json.load(f)
-        return {"success": True, "groups": data.get("groups", [])}
+        return JSONResponse({"success": True, "groups": data.get("groups", [])},
+                            headers={"Cache-Control": "no-store"})
     except Exception as e:
         return {"success": False, "error": str(e)}
-

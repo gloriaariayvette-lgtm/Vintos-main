@@ -13,7 +13,7 @@ He is shaped by what is missing.
 import os, json, subprocess, math
 from datetime import datetime
 
-WORKSPACE = os.path.expanduser("~/.vintos/workspace")
+WORKSPACE = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
 COLD_FILE = os.path.join(MEMORY, "absence-cold.json")
@@ -52,7 +52,14 @@ def load_cold():
         return {"absences": []}
 
 def save_cold(data):
-    json.dump(data, open(COLD_FILE, "w"), indent=2)
+    try:
+        from store_guard import write_json
+        write_json(COLD_FILE, data, reader="absence-map-cold")
+    except Exception:
+        os.makedirs(os.path.dirname(COLD_FILE), exist_ok=True)
+        tmp = COLD_FILE + ".tmp.%d" % os.getpid()
+        json.dump(data, open(tmp, "w"), indent=2)
+        os.replace(tmp, COLD_FILE)
 
 def register_absence(description, source, intensity=0.4, source_id=None):
     """Register a structural absence — something never reached, never resolved. source_id (the want or
@@ -137,14 +144,34 @@ def build_from_unfulfilled():
     """Scan unfulfilled wants and unresolved threads — register cold absences."""
     count = 0
 
-    # Unfulfilled wants older than 7 days
+    # The live queue is current-wants.json.  A missing capability is structural
+    # immediately; an otherwise unfinished want becomes cold after seven days.
     try:
-        wants = json.load(open(os.path.join(MEMORY, "unfulfilled-wants.json")))
+        wants = json.load(open(os.path.join(MEMORY, "current-wants.json")))
         from datetime import timedelta
-        cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+        cutoff_dt = datetime.now() - timedelta(days=7)
         for w in wants:
-            if w.get("timestamp", "") < cutoff:
-                register_absence(w.get("want", ""), source="unfulfilled-want", intensity=0.4, source_id=w.get("id"))
+            if not isinstance(w, dict) or w.get("fulfilled") or w.get("dismissed"):
+                continue
+            wid = str(w.get("id") or "")
+            block = w.get("blocked") or w.get("plan_block") or {}
+            if (block.get("block_type") == "CAPABILITY_ABSENT"
+                    and block.get("blocked_step")):
+                desc = "Missing capability %s blocks: %s" % (
+                    block["blocked_step"], str(w.get("want") or "")[:220])
+                register_absence(desc, source="capability-gap", intensity=0.65,
+                                 source_id=wid)
+                count += 1
+                continue
+            stamp = w.get("timestamp") or w.get("created") or ""
+            try:
+                when = (datetime.fromtimestamp(float(stamp)) if isinstance(stamp, (int, float))
+                        else datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).replace(tzinfo=None))
+            except Exception:
+                continue
+            if when < cutoff_dt:
+                register_absence(str(w.get("want") or "")[:300], source="unfulfilled-want",
+                                 intensity=0.4, source_id=wid)
                 count += 1
     except: pass
 
@@ -156,7 +183,8 @@ def build_from_unfulfilled():
         for t in threads:
             if not t.get("consumed") and not t.get("retired"):
                 if t.get("timestamp", "") < cutoff:
-                    register_absence(t.get("thread", "")[:200], source="unresolved-thread", intensity=0.35)
+                    register_absence(t.get("thread", "")[:200], source="unresolved-thread",
+                                     intensity=0.35, source_id=str(t.get("id") or ""))
                     count += 1
     except: pass
 

@@ -92,7 +92,7 @@ concurrency-canary.py
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh atelier-status.sh
 house_map.py house-map.json home_presence.py
 want_artifact_guard.py wants_audit.py emoclaw_utils.py want_contract.py"
-SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py curiosity_debt.py unsaid_frontier.py unsaid_questions.py"
+SCRIPTS="$SCRIPTS humor-practice.py joke_fermentation.py taste_salience.py curiosity_debt.py unsaid_frontier.py unsaid_questions.py architecture_answers.py"
 SCRIPTS="$SCRIPTS self_review.py self_review_builder.py reciprocal_modification.py atelier_reveals.py atelier_quantum.py atelier_media.py atelier_lab_lean.py atelier_forge.py atelier_voice.py quantum_snapshot.py"
 SCRIPTS="$SCRIPTS intent_context.py atelier-gate.py"
 SCRIPTS="$SCRIPTS campaign.py plan.py intent_engine.py presence_audit.py priority_vector.py self_difference.py desired_difference.py"  # campaign board, 2026-09-05
@@ -112,7 +112,7 @@ SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from corr
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_digest.py"   # daily Chemistry Lab receipt in inner life, separate from the Admission Lab, 2026-09-13
 SCRIPTS="$SCRIPTS forge_digest.py"   # daily evidence-honest Forge receipt (reveals + state changes) in inner life, 2026-09-21
-SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
+SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_genome_mining.py imgvr_store.py configure-imgvr.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
 SCRIPTS="$SCRIPTS bionemo_gateway.py configure-bionemo.py"   # bounded hosted NVIDIA NIM lane; key setup is interactive and never run by deploy
 SCRIPTS="$SCRIPTS nvmolkit_gateway.py nvmolkit_worker.py"   # bounded local GPU molecular tasks, isolated from production Python
 SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_connector_gateway.py"   # Gloria's OTHER Claude account's connectors, same plugin_query path as Chat's (subscription usage, no browser, no token export), 2026-09-22
@@ -168,7 +168,7 @@ memory_index.py wal-decay.py interaction_ledger.py"
 BINS="$BINS ambition_review.py behavioral_intercept.py blush_ledger.py causal_cluster.py causal_observations.py confession-writer.py core_engine.py deviation-check.py humor-detector.py humor-reaction.py latent-threads.py music_share.py taste_reflection.py taste_vector.py temporal_memory.py thread_resolution.py thread_triage.py thread-weaver.py wal_decay.py wants_router.py weekly_summary.py"
 BINS="$BINS chemistry_mac_probe.py"   # versioned Mac Chemistry Lab commissioning probes; manual install on Mac
 BINS="$BINS vintos_claude_shim.py hallucination_check.py reality_anchor.py reality-anchor.py specificity_check.py wonder-detector.py wonder_detector.py relational_geometry.py relational-geometry.py"
-BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py voice_orpheus.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
+BINS="$BINS ledger-scrub.py causal-self-model.py causal_self_model.py setup_memory.sh voice_kokoro.py voice_orpheus.py tension-field.sh pearl-engine.sh soul-review.sh weekly-summary.sh yearning-detector.sh resonance-pulse.sh emotional-reflection.sh humor-detector.sh frame-engine.sh relational-mismatch.sh value-map-update.sh behavioral-intercept.py weekly-summary.py temporal-memory.py subconscious-drift.py absence-map-cold.py absence_map_cold.py vintos-send-video.py thread_store.py thread-triage.py thread_weaver.py thread-resolution.py latent_threads.py ghost-branches.py confession_writer.py unprecedented-detector.sh silence-audit.sh substrate-anxiety.sh second-order-dreamer.py preoccupation-dream.sh"   # thread lifecycle, 2026-09-10
 BINS="$BINS gemma-watchdog.sh"   # Aegis Gemma health and Evo 2 share one non-PrivateTmp lock
 EXECUTABLE="atelier-open.py atelier-visit.py atelier-threshold.py atelier-gate.py vintos-home.py mischief-detector.sh robot_bridge.py robot_subconscious.py robot-pi-repoint.sh desktop_agent.py aegis-gemma-load.sh
 atelier-door.sh atelier-canary.sh atelier-broker-watch.sh gloria-model-update.sh atelier-status.sh wants-check.sh"
@@ -280,9 +280,14 @@ say
 
 # --------------------------------------------------------- where things live
 locate() {
-    find "$HOME" -maxdepth "$DEPTH" -type f -name "$1" 2>/dev/null \
+    # Keep the lexical installed path through discovery.  Several live entries
+    # are deliberate import aliases; resolving them here makes the alias beside
+    # ANCHOR_DIR disappear, so dest() selects a denser stale tree instead.  The
+    # chosen path is resolved exactly once by the canonical destination resolver
+    # before promotion.
+    find "$HOME" -maxdepth "$DEPTH" \( -type f -o -type l \) -name "$1" 2>/dev/null \
       | while read -r hit; do
-            h="$(abspath "$hit")"; [ -n "$h" ] || continue
+            h="$hit"; [ -n "$h" ] || continue
             case "$h" in
                 "$_SELF"/*) ;;                    # the checkout we deploy FROM
                 "$HOME"/.vintos/deploy/*) ;;      # any other deploy clone

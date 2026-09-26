@@ -38,6 +38,64 @@ commissioned genomics lane is due, that reflection continues once through
 4. Gemma writes a notebook observation, with factual observation and imaginative
    reading in different fields.
 
+### Optional genome-mining campaign
+
+Genome mining is a third lane beside protein browsing and environmental
+microbiology. It is offered without a seeded enzyme, organism, or expected
+answer. One return performs one bounded source step, so a campaign can continue
+through the existing journal and frontier review without becoming the Lab's
+default direction.
+
+The discipline follows the public Anthropic ART report at a scale this house can
+actually support: reproduce an established result first; map an exact protein to
+its source nucleotide record; inspect a bounded annotated neighborhood and its
+primary DNA; classify known domains; allow an anomalous neighbor, arrangement,
+or non-coding pattern to open a follow-up; then try to eliminate the candidate
+with ordinary annotations, related loci, counterexamples, and literature.
+Most candidates should be set aside. A first anomaly is explicitly held out of
+the automatic Forge-report path. Only a later multi-source survivor review may
+form a sourced report for human review, and that report is not a discovery claim.
+
+`ncbi_protein_context` retrieves one exact GenPept record and its provider
+`coded_by` mapping. `ncbi_neighborhood` accepts only that sourced nucleotide
+accession and one-based coordinates, retrieves at most 5 kb on either side,
+retains bounded provider feature annotations, and runs a local repeat screen.
+The screen expands frequent 10-18 nt seeds with at most one or two mismatches,
+requires three or more roughly regularly spaced copies, and folds overlapping
+seed views of the same array together. It establishes neither repeat boundaries
+nor significance, novelty, expression, or function. `interpro` returns at most
+eight known-family/domain annotations for an exact sourced UniProt accession.
+
+This is method resemblance, not a reproduction of Anthropic's infrastructure.
+Their campaign searched roughly 1.9 billion preclustered metagenomic protein
+families with HMMER, MMseqs2, a 58-session harness, worker/supervisor/curator/
+editor roles, and a private programmatic database assembled from Logan, ENA,
+JGI, and NCBI. Vintos has the staged reasoning pattern and public bounded source
+doors; he does not have that database, scale, or wet-lab validation. IMG/VR is a
+public browsable and bulk-download source rather than an anonymous bounded API.
+Aegis is the selected local store for the 40.16-GiB compressed high-confidence
+v4.1 bundle. Its primary installation route is the official public DOE NERSC
+unrestricted-only mirror: metadata, nucleotide sequences and proteins, totaling
+42,362,218,187 bytes compressed. It requires no account. `imgvr_store.py` pins
+the mirror filenames and byte sizes, downloads with resume support over TLS,
+records local SHA-256 receipts, requires 250 GiB free, builds a local
+metadata/full-text and nucleotide-offset SQLite index, and builds a protein-family
+MMseqs2 index. NERSC does not publish independent digests on this directory, so
+the receipt distinguishes the pinned provider metadata from the locally computed
+hashes. The JGI session-token/provider-MD5 route remains optional. The planner
+sees no IMG/VR query forms until all three local indexes report ready.
+The Aegis installation completed on 2026-09-24. The deployed production wrapper
+commissioned metadata, exact multi-contig segment selection, a 120-base slice,
+and a sourced GenBank-to-IMG/VR protein search. The latter returned three bounded
+hits in 209.9 seconds and retained the non-novelty/non-function truth label.
+
+Once ready, the bounded doors are: metadata terms across the provider's ecology,
+taxonomy, host and origin fields; exact sourced UViG nucleotide slices of at most
+12 kb (with an exact returned segment header for multi-contig records); and a
+sourced 20–2,000-residue protein similarity query returning at most
+eight hits. Results retain the release and coverage in their receipt. A match,
+annotation or missing match establishes neither novelty nor function.
+
 Installation alone never makes a tool available. The authority for that is
 `tool-probes.jsonl`, an append-only ledger written by `chemistry_probe.py`: one row per
 measurement, carrying the tool, host, probe version, when it was measured, when the
