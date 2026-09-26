@@ -3,6 +3,30 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 26 September — the Lab asked one question and answered another
+
+Her review of 30 notebook entries, 2026-09-26: he asked eight times in nine minutes for the S-layer
+protein of *L. acidophilus*. The Lab sent "every reviewed protein of this organism" instead of the
+query he wrote, so the same first record came back each time — a bile-salt enzyme — and he recorded
+it as the S-layer protein. Fixed: the protein_name/gene he names is carried into the query that is
+sent and logged as `query_sent`; an empty result is recorded as this source holding no such record
+and returns him to orientation instead of reflecting; the saturation guard now runs in the
+microbiology lane, where an identical response redirects on the first repeat; the reading step is
+told to say when the records are not what was asked and returns `answers_question`; and the orient
+menu tells him to name the protein in the query he sends.
+
+Also fixed: the Lab no longer opens a Forge project per reflection to document its question — that
+documentation was most of her Forge queue. The reading step now returns `instrument_gap`, and only a
+named instrument the Lab does not have opens a Forge project, once per instrument (30-day re-offer,
+`memory/chemistry-lab/instrument-gaps.json`).
+
+Left: the wrong entries are still in his notebook (nothing rewrites them; the bile-enzyme-as-S-layer
+reflections stand as written). The reviewed set for taxon 1579 holds no S-layer protein at all, so
+the honest answer to that question needs `reviewed:false`, which the menu now permits on a later
+question. The protein lane still caps length at 350 (`BASELINE_QUERY`), which excludes S-layer
+proteins from the embedding lane by design — worth revisiting if he keeps reaching for them. Two
+Forge projects sit in `reconciliation_required`.
+
 ## 25 September — his Grok renders on her SuperGrok login
 
 Built: `scripts/grok_subscription.py`. It uses `grok login` (Grok Build, `~/.grok/auth.json`)

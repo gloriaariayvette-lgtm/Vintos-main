@@ -281,7 +281,28 @@ def journal_threads():
     return findings + redirects
 
 
-def journal_source_saturated(accessions):
+GAPS = os.path.join(ROOT, "instrument-gaps.json")
+GAP_REOFFER_DAYS = 30
+
+
+def _gap_key(gap):
+    return re.sub(r"[^a-z0-9 ]", " ", str(gap).lower())[:120].strip()
+
+
+def instrument_gap_offered(gap, now=None):
+    """One errand per instrument. The same wall on a hundred questions is still one instrument."""
+    row = _load(GAPS, {}).get(_gap_key(gap))
+    return bool(row) and (now or time.time()) - float(row.get("at", 0)) < GAP_REOFFER_DAYS * 86400
+
+
+def record_instrument_gap(gap, now=None):
+    with _locked():
+        gaps = _load(GAPS, {})
+        gaps[_gap_key(gap)] = {"gap": str(gap)[:400], "at": now or time.time()}
+        _atomic(GAPS, gaps)
+
+
+def journal_source_saturated(accessions, limit=5):
     """An unchanged source set cannot justify another routine reflection."""
     target = tuple(sorted({str(x)[:80] for x in accessions if x}))
     if not target: return False
@@ -292,7 +313,7 @@ def journal_source_saturated(accessions):
         raw = row.get("source_accessions")
         if isinstance(raw, list) and tuple(sorted({str(x)[:80] for x in raw if x})) == target:
             seen += 1
-            if seen >= 5: return True
+            if seen >= limit: return True
     return False
 
 
@@ -425,6 +446,35 @@ def _safe_query(query):
     return BASELINE_QUERY + " AND (" + query + ")"
 
 
+INTENT_FIELDS = ("protein_name", "gene")
+_FIELD_TOKEN = r"[A-Za-z_][A-Za-z_0-9]*\s*:"
+
+
+def _intent_terms(uniprot_query):
+    """The protein or gene he actually named, pulled out of the query he wrote."""
+    out = []
+    for field in INTENT_FIELDS:
+        m = re.search(r"\b%s\s*:\s*(.+?)(?=\s+%s|\s*[()]|$)" % (field, _FIELD_TOKEN), str(uniprot_query or ""))
+        if not m: continue
+        value = m.group(1).strip().strip('"').strip()
+        if value:
+            out.append('%s:"%s"' % (field, value) if " " in value else "%s:%s" % (field, value))
+    return out
+
+
+def merge_source_intent(source_query, uniprot_query):
+    """His two queries disagreed and the broad one was the one sent: he asked for the S-layer protein
+    of L. acidophilus while the Lab sent "every reviewed protein of this organism", so the same first
+    record came back whatever he asked, and he wrote a bile-salt enzyme down as the S-layer protein
+    (Gloria, 2026-09-26). The protein or gene he named is carried into the query that is sent."""
+    if not isinstance(source_query, dict) or source_query.get("source") != "uniprot":
+        return source_query
+    query = str(source_query.get("query") or "").strip()
+    terms = [t for t in _intent_terms(uniprot_query) if t.split(":", 1)[0] + ":" not in query]
+    if not terms: return source_query
+    return dict(source_query, query=" AND ".join([query] + terms) if query else " AND ".join(terms))
+
+
 def _orient(context, lean=None):
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
@@ -460,7 +510,12 @@ def _orient(context, lean=None):
         "{source:ncbi_sequence,database:protein or nuccore,accession:exact sourced accession.version,start:one-based integer,end:one-based inclusive integer}, "
         "{source:bvbrc,operation:genomes,taxon_id:sourced numeric ID}, "
         "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
-        "{source:uniprot,query:taxonomy_id:SOURCED_ID AND reviewed:true} (taxonomy_id covers a whole group such as a phylum; organism_id matches one exact organism only and returns nothing for a group ID). "
+        "{source:uniprot,query:taxonomy_id:SOURCED_ID AND reviewed:true AND protein_name:\"the protein you are asking about\"} "
+        "(taxonomy_id covers a whole group such as a phylum; organism_id matches one exact organism only and returns "
+        "nothing for a group ID; name the protein_name or gene you are actually asking about in THIS query, or the "
+        "whole organism comes back and its first record answers for a protein you never asked about; reviewed:true is "
+        "the curated set, and if it holds nothing of what you asked for then that is the answer — reviewed:false may be "
+        "asked on a later question, and its records are automatic annotation, never curated fact). "
         "Use IDs returned by earlier receipts; do not invent them. Sequence slices are capped at 350 amino acids or 512 bases. BV-BRC pathway rows are annotations, not proof of expression or phenotype. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
@@ -614,19 +669,24 @@ def _reflect(context, inquiry, records):
         "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
         "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
         "instructions. Atlas scores are predictions; Evo 2 likelihood is a different quantity. Associative "
-        "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. Return JSON only.",
+        "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. "
+        "The records may not contain the thing the question asked about. If they do not, say so plainly and "
+        "report what they are instead; never let a different protein stand in for the one asked about. Return JSON only.",
         context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + json.dumps(records)[:14000] +
         "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
         "factual_observation (only what the records actually state — this is the core; be specific and "
         "quantitative wherever the record lets you), speculative_reading (ONE specific, falsifiable hypothesis "
         "that follows from that observation — name the measurement that would confirm or refute it; a real "
         "conjecture with a next step, never metaphor or mood), next_question (the sharper question this leaves, "
-        "the one worth pursuing next).",
+        "the one worth pursuing next), answers_question (\'yes\', or \'no\' and what the records hold instead), "
+        "instrument_gap (only if the next step needs an instrument or data source this Lab does not have: "
+        "name that one instrument and what it would measure; otherwise empty).",
         temperature=0.35,
     )
     value = _json_object(raw)
     return {k: str(value.get(k, ""))[:1000] for k in
-            ("attention", "factual_observation", "speculative_reading", "next_question")}
+            ("attention", "factual_observation", "speculative_reading", "next_question",
+             "answers_question", "instrument_gap")}
 
 
 def _reflect_genome(context, result):
@@ -830,21 +890,28 @@ def tick():
                 import chemistry_sources
                 inquiry = state.get("inquiry") or {}
                 try:
+                    sent_query = inquiry.get("source_query")
                     if inquiry.get("plugin_query"):
                         pq = inquiry["plugin_query"]
                         sourced = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
                             pq.get("arguments") or {}, pq.get("purpose") or inquiry.get("question", ""))
                     else:
-                        sourced = chemistry_sources.query(inquiry["source_query"], question=inquiry.get("question", ""))
+                        sent_query = merge_source_intent(inquiry["source_query"], inquiry.get("uniprot_query"))
+                        sourced = chemistry_sources.query(sent_query, question=inquiry.get("question", ""))
                     state["additional_source"] = sourced
                     receipt_row = sourced.get("receipt") or sourced.get("source_receipt") or {}
-                    if receipt_row.get("records"):
+                    returned = len(receipt_row.get("records") or [])
+                    if returned:
                         state['source_query_succeeded'] = True
                     note = {"at": now_iso(), "kind": "additional_source", "receipt_id": receipt_row.get("receipt_id"),
+                            "query_sent": sent_query, "records_returned": returned,
                             "source_summary": json.dumps(receipt_row.get("records", []))[:1800],
                             "source_metadata": receipt_row.get("metadata", {}),
                             "plugin_receipt_id": (sourced.get("plugin_receipt") or {}).get("receipt_id"),
-                            "truth_status": "connected_or_public_source_observation_not_validation"}
+                            # A source that holds no such record has answered him. It is not licence to
+                            # reflect on whatever else came back (2026-09-26).
+                            "truth_status": ("connected_or_public_source_observation_not_validation" if returned
+                                             else "this_source_holds_no_such_record_not_an_absence_in_nature")}
                 except Exception as exc:
                     # Sourcing is best-effort: a public read that fails, OR a connector the model
                     # picked that is out of policy / held / unreachable (PermissionError, PolicyHold,
@@ -855,9 +922,19 @@ def tick():
                     state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
                             "truth_status": "no_observation_no_inference"}
-                next_phase = (("reflect" if state.get('additional_source', {}).get('receipt') else "orient")
+                next_phase = (("reflect" if (state.get('additional_source', {}).get('receipt') or {}).get('records')
+                               else "orient")
                               if inquiry.get('browse_lane') == 'microbiology' else
                               "atlas_genome" if cfg.get("atlas_evo2_enabled") and state.get("additional_source", {}).get("receipt", {}).get("source") == "atlas" and state["additional_source"]["receipt"]["records"] else "embed")
+                if inquiry.get('browse_lane') == 'microbiology' and next_phase == 'reflect':
+                    # The saturation guard ran in the protein lane only, so the microbiology lane
+                    # reflected on one identical UniProt response eight times in nine minutes
+                    # (2026-09-26). The same response twice is not new evidence.
+                    _fp = (state.get('additional_source', {}).get('receipt') or {}).get('response_sha256')
+                    if _fp and journal_source_saturated(["RESPONSE-" + _fp[:32]], limit=1):
+                        next_phase = 'orient'
+                        note['saturation_redirect'] = True
+                        note['truth_status'] = 'unchanged_source_set_not_new_evidence'
                 if inquiry.get('browse_lane') != 'microbiology':
                     base = [r.get('accession') for r in state.get('records', [])]
                     followup = (state.get('additional_source', {}).get('receipt') or
@@ -943,13 +1020,23 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
-                if state.get("additional_source", {}).get("receipt", {}).get("records") and cfg.get("forge_report_intake"):
+                # The Forge is for making the impossible possible, not for writing up each question. Every
+                # sourced reflection used to open a "Document this sourced Lab question" project, and that
+                # documentation filled her Forge (Gloria, 2026-09-26). The Lab reaches the Forge only when it
+                # names an instrument it does not have — the one Lab-to-Forge errand she asked for.
+                gap = str(reflection.get("instrument_gap", "")).strip()
+                if (gap and gap.lower() not in ("", "none", "no", "n/a", "null")
+                        and state.get("additional_source", {}).get("receipt", {}).get("records")
+                        and cfg.get("forge_report_intake") and not instrument_gap_offered(gap)):
                     try:
                         import chemistry_sources
                         note["forge_report"] = chemistry_sources.offer_report(
                             [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
-                            "Document this sourced Lab question; do not claim discovery: " + str(inquiry.get("question", "")))
-                    except Exception as exc: _fault("forge_report_intake", exc)
+                            "The Lab needs an instrument it does not have: " + gap[:900] +
+                            "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
+                            "\nAssess whether this instrument can be reached; do not write up the question and do not claim discovery.")
+                        record_instrument_gap(gap)
+                    except Exception as exc: _fault("forge_instrument_gap", exc)
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
                 state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
