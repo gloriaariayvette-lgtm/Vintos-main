@@ -2,8 +2,9 @@
 """Frontier alignment of the Chemistry Lab: four calls a day, one from each frontier model.
 
 Gemma (local) does the Lab's work all day. Four times a day one frontier model — Astra, Fable, Grok and
-Opus in turn, each once a day — reads what she did since the last alignment, checks it against the
-sources it cites, and gives her guidance for the next hours (Gloria, 2026-09-20: "another frontier call,
+Opus in turn, each once a day — takes its segment (what she did since the last alignment), checks it
+against the sources it cites, realigns her, and writes a summary the next model reads with the rest of
+the shared log (Gloria, 2026-09-20: "another frontier call,
 1 from each model per day, for alignment"; 2026-09-28: 3-4 a day, one shared frontier log).
 
 The frontier models share ONE log: every alignment review and every daily experiment session, in time
@@ -73,6 +74,7 @@ def shared_log(limit=LOG_ENTRIES):
         if not (isinstance(row, dict) and row.get("state") == "completed"): continue
         rows.append({"kind": "alignment", "at": row.get("at"), "alignment_id": row.get("alignment_id"),
                      "by": row.get("lens"), "reviewed": len(row.get("reviewed_entry_ids") or []),
+                     "summary": str(row.get("summary", ""))[:700],
                      "accuracy": [{k: a.get(k) for k in ("entry_id", "verdict", "why")} for a in row.get("accuracy", [])][:8],
                      "pattern": str(row.get("pattern", ""))[:400], "guidance": str(row.get("guidance", ""))[:500],
                      "drop": str(row.get("drop", ""))[:240], "next_focus": str(row.get("next_focus", ""))[:240]})
@@ -151,7 +153,11 @@ def _prompt(work, log):
             + json.dumps(log, ensure_ascii=False)[:9000] +
             "\n\nGEMMA'S LAB WORK SINCE THE LAST ALIGNMENT (each review with the evidence it was written from; "
             "turn_counts show how many turns ended empty or redirected):\n" + json.dumps(work, ensure_ascii=False)[:16000] +
-            "\n\nCheck each review against its own evidence and literature. Return keys in this order: "
+            "\n\nThis is your segment: the work Gemma did since the last frontier model's turn. Check each review "
+            "against its own evidence and literature, realign her, and summarise the segment for the next model. "
+            "Return keys in this order: "
+            "summary (what she worked on in this segment, what came of it, and how it follows from the last summary "
+            "in the log — the next frontier model reads this), "
             "accuracy (a list, one per review: {entry_id, verdict: 'accurate', 'overstated', 'unsupported' or "
             "'off_question', why}), pattern (what is going right or wrong across this work), guidance (concrete "
             "direction for her next hours: which thread deserves depth, how to ask so the sources can answer), "
@@ -231,7 +237,7 @@ def run(call=None, now=None):
                reviewed_entry_ids=[r.get("entry_id") for r in work["reviews"]],
                accuracy=[{"entry_id": str(a.get("entry_id", ""))[:40], "verdict": str(a.get("verdict", ""))[:20],
                           "why": str(a.get("why", ""))[:400]} for a in accuracy if isinstance(a, dict)][:REVIEW_ENTRIES],
-               **{k: str(value.get(k, ""))[:1200] for k in ("pattern", "guidance", "drop", "next_focus")},
+               **{k: str(value.get(k, ""))[:1200] for k in ("summary", "pattern", "guidance", "drop", "next_focus")},
                turn_counts=work["turn_counts"],
                truth_status="frontier_review_of_lab_work_advice_not_evidence")
     lab._append(LOG, row)

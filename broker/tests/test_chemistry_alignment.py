@@ -58,7 +58,7 @@ def gemma_turn(n):
 prompts = []
 def frontier(lens, provider, model, system, user, reservation):
     prompts.append({"lens": lens, "model": model, "user": user, "reservation": reservation})
-    return json.dumps({"accuracy": [{"entry_id": "E1", "verdict": "overstated", "why": "the abstract says less"}],
+    return json.dumps({"summary": "SUMMARY-" + lens, "accuracy": [{"entry_id": "E1", "verdict": "overstated", "why": "the abstract says less"}],
                        "pattern": "PATTERN-" + lens, "guidance": "GUIDANCE-" + lens, "drop": "DROP-" + lens,
                        "next_focus": "FOCUS-" + lens})
 
@@ -79,9 +79,11 @@ check("with no new Lab work since, nothing is spent",
 
 gemma_turn(2)
 second = align.run(call=frontier)
-check("the next alignment is another model's, and it builds on the shared log",
+check("each call writes a summary of its segment",
+      first["summary"] == "SUMMARY-astra" and "summary (what she worked on in this segment" in prompts[0]["user"])
+check("the next alignment is another model's, and reads the last one's summary and guidance",
       second["lens"] == "fable" and prompts[1]["model"] == "claude-fable-5-1"
-      and "GUIDANCE-astra" in prompts[1]["user"], second)
+      and "SUMMARY-astra" in prompts[1]["user"] and "GUIDANCE-astra" in prompts[1]["user"], second)
 check("it reviews only what Gemma did since the last alignment",
       "CLAIM-2" in prompts[1]["user"] and "CLAIM-1" not in prompts[1]["user"].split("GEMMA'S LAB WORK")[1])
 
