@@ -441,5 +441,41 @@ check("the review reads the abstracts and records which papers it read",
       and last["kind"] == "reflection" and last["literature"][0]["pmid"] == "31000001"
       and "PMID-31000001" in last["source_accessions"], last)
 
+# --- an organism ID written from memory is replaced by the one for the organism he named (2026-09-28) ---
+looked = []
+def taxonomy(name):
+    looked.append(name); return "28228" if name == "Colwellia" else None
+q, how = M.resolve_taxa('reviewed:true AND (protein_name:"cold shock protein" AND organism_id:99999)',
+                        "Does the Tyr51 substitution in Colwellia psychre CSP create a pocket?", lookup=taxonomy)
+check("a guessed organism ID is replaced by the genus he named when the species is cut short",
+      "taxonomy_id:28228" in q and "99999" not in q and looked == ["Colwellia psychre", "Colwellia"]
+      and how == {"guessed": ["99999"], "resolved": "28228", "from_name": "Colwellia"}, (q, looked, how))
+check("and the resolved ID is remembered as sourced", "28228" in M.known_taxa())
+looked[:] = []
+kept, how2 = M.resolve_taxa("reviewed:true AND (gene:kaiC AND taxonomy_id:28228)", "KaiC in Colwellia psychre", lookup=taxonomy)
+check("an ID a receipt already returned is trusted and not looked up", kept.endswith("taxonomy_id:28228)") and looked == [] and how2 is None)
+unnamed, how3 = M.resolve_taxa("reviewed:true AND (gene:x AND taxonomy_id:424242)", "What does the fold do?", lookup=taxonomy)
+check("with no organism named, his ID is left as it was", "424242" in unnamed and how3 is None)
+
+# --- the same papers are not reviewed again and again (three Tyr51 reviews in two minutes) ---------
+real_browse = M._browse
+M._browse = lambda q, n: {"source_receipt": None, "records": [], "requested_query": q, "executed_query": q,
+                          "fallback_reason": None, "relaxed": None}
+def protein_turn():
+    M._atomic(M.STATE, {"phase": "browse", "turns": 120, "inquiry": {"browse_lane": "protein", "source_query": None,
+              "uniprot_query": M.BASELINE_QUERY, "question": "Tyr51 in the cold-shock protein?"}})
+    went = M.tick()
+    if went.get("next_phase") == "reflect": M.tick()
+    return went
+try:
+    before = sum(1 for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection" and "PMID-31000001" in (x.get("source_accessions") or []))
+    turns = [protein_turn() for _ in range(3)]
+finally:
+    M._browse = real_browse
+reviews = sum(1 for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection" and "PMID-31000001" in (x.get("source_accessions") or []))
+check("the same abstracts are reviewed at most twice, then he is sent to another question",
+      before == 1 and reviews == 2 and turns[-1].get("next_phase") == "orient"
+      and M._jsonl(M.NOTEBOOK)[-1].get("papers_already_reviewed") is True, (before, reviews, [t.get("next_phase") for t in turns]))
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -1019,17 +1019,65 @@ def _jsonl_tail(path, limit, kinds=None):
     return rows
 
 
-def _gather_material(state, inquiry):
-    """Fetch published abstracts for the question into state. True when there is something to read."""
-    if state.get("material") is not None:
-        return bool((state["material"] or {}).get("records"))
-    try:
-        import chemistry_sources
-        found = chemistry_sources.material(inquiry)
-    except Exception as exc:
-        _fault("material", exc); found = None
-    state["material"] = found or {}
-    return bool((found or {}).get("records"))
+_NOT_GENUS = frozenset("""What Which How Does Do Did Is Are Was Were Can Could Would Should Why When Where Given In On
+The A An And Or If Under Within Between Across For From With This That These Those Recent Since After Before""".split())
+
+
+def _organism_names(question):
+    """Organism names in his question, most specific first: the binomial, then its genus."""
+    out = []
+    for genus, species in re.findall(r"\b([A-Z][a-z]{3,})\s+([a-z]{3,})\b", str(question or "")):
+        if genus in _NOT_GENUS: continue
+        for name in (genus + " " + species, genus):
+            if name not in out: out.append(name)
+    return out[:4]
+
+
+def resolve_taxa(query, question, lookup=None):
+    """An organism ID he wrote from memory is replaced by the one NCBI Taxonomy returns for the organism he
+    named. One wrong number emptied every search on Colwellia's cold-shock protein, looser forms and all
+    (2026-09-28). IDs a receipt has already returned are trusted; a name that cannot be looked up leaves
+    his ID as it was. Returns (query, what_changed)."""
+    ids = re.findall(r"\b(?:taxonomy_id|organism_id):(\d+)", str(query or ""))
+    guessed = [i for i in dict.fromkeys(ids) if i not in known_taxa()]
+    if not guessed: return query, None
+    if lookup is None:
+        from lab_sources import Sources
+        lookup = lambda name: Sources()._taxon({"organism": name})
+    for name in _organism_names(question):
+        try: found = lookup(name)
+        except Exception as exc:
+            _fault("resolve_taxa", exc); return query, None
+        if found:
+            for old in guessed:
+                query = re.sub(r"\b(?:taxonomy_id|organism_id):" + old + r"\b", "taxonomy_id:" + str(found), query)
+            with _locked():
+                _atomic(KNOWN_TAXA, sorted(set(map(str, _load(KNOWN_TAXA, []) or [])) | {str(found)}))
+            return query, {"guessed": guessed, "resolved": str(found), "from_name": name}
+    return query, None
+
+
+MATERIAL_REVIEWS = 2
+
+
+def _gather_material(state, inquiry, fresh_only=False):
+    """Fetch published abstracts for the question into state. True when there is something to read.
+
+    fresh_only: when the abstracts are all there is to read, the same papers reviewed MATERIAL_REVIEWS
+    times already are not reviewed again (three near-identical Tyr51 reviews in two minutes, 2026-09-28)."""
+    if state.get("material") is None:
+        try:
+            import chemistry_sources
+            found = chemistry_sources.material(inquiry)
+        except Exception as exc:
+            _fault("material", exc); found = None
+        state["material"] = found or {}
+    records = (state["material"] or {}).get("records") or []
+    if fresh_only and records and journal_source_saturated(
+            ["PMID-" + str(r.get("pmid")) for r in records if r.get("pmid")], limit=MATERIAL_REVIEWS):
+        state["material_repeated"] = True
+        return False
+    return bool(records)
 
 
 def _reflect(context, inquiry, records):
@@ -1227,7 +1275,7 @@ def tick():
                     lean = atelier_lab_lean.today()
                 except Exception: lean = None
                 inquiry = _orient(context, lean) if lean else _orient(context)
-                state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None)
+                state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
                 note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
                         "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
             elif phase == "browse":
@@ -1240,7 +1288,8 @@ def tick():
                     note = {'at': now_iso(), 'kind': 'browse_route', 'source': inquiry.get('browse_lane'),
                             'question': inquiry.get('question'), 'truth_status': 'question_not_observation'}
                 else:
-                    browse_result = _browse(inquiry["uniprot_query"], cfg["max_records_per_browse"])
+                    sent, resolved = resolve_taxa(inquiry["uniprot_query"], inquiry.get("question"))
+                    browse_result = _browse(sent, cfg["max_records_per_browse"])
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
@@ -1260,7 +1309,7 @@ def tick():
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
                     # No protein record is not no material: the published abstracts on his question are read
                     # instead of the question being dropped (2026-09-28).
-                    if empty and not stale and _gather_material(state, inquiry):
+                    if empty and not stale and _gather_material(state, inquiry, fresh_only=True):
                         next_phase = "reflect"
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                     note = {"at": now_iso(), "kind": ("browse_stale" if stale else
@@ -1270,6 +1319,8 @@ def tick():
                             "executed_query": browse_result["executed_query"],
                             "fallback_reason": browse_result["fallback_reason"],
                             **({"relaxed": browse_result["relaxed"]} if browse_result.get("relaxed") else {}),
+                            **({"organism_resolved": resolved} if resolved else {}),
+                            **({"papers_already_reviewed": True} if state.get("material_repeated") else {}),
                             **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,
                             "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],
@@ -1358,7 +1409,7 @@ def tick():
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
                 if (next_phase == 'orient' and inquiry.get('browse_lane') in _lanes and not note.get('saturation_redirect')
-                        and _gather_material(state, inquiry)):
+                        and _gather_material(state, inquiry, fresh_only=True)):
                     # The source held nothing on it, the literature does: he reads that instead (2026-09-28).
                     next_phase = 'reflect'
                     note['literature_instead'] = len(state['material'].get('records') or [])
