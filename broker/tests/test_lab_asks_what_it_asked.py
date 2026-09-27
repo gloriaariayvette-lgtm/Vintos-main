@@ -371,7 +371,7 @@ check("KaiC chosen twice more is not sent: the Lab wanders the curated set inste
 
 # the journal's KaiC finding stops pulling him back while KaiC is spent
 real_threads = M.journal_threads
-M.journal_threads = lambda: [
+M.journal_threads = lambda include_frontier=True: [
     {"thread_id": "CLT-1", "state": "finding", "question": "KaiC coupling", "finding": "coupled domains",
      "next_question": "Which KaiC residues?", "source_accessions": ["Q79PF4"], "entries": 3, "lesson": ""},
     {"thread_id": "CLT-2", "state": "finding", "question": "S-layer length", "finding": "444 residues",

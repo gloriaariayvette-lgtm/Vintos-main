@@ -191,9 +191,15 @@ def _read_excerpt(path, cap):
         return ""
 
 
-def journal_threads():
-    """A reproducible retrieval view; the notebook remains the complete authority."""
+FRONTIER_KINDS = ("frontier_session", "divergence")
+
+
+def journal_threads(include_frontier=True):
+    """A reproducible retrieval view; the notebook remains the complete authority. Without the frontier
+    rows it is Gemma's own journal: her log and the frontier's are kept apart (Gloria, 2026-09-28)."""
     rows = _jsonl(NOTEBOOK)
+    if not include_frontier:
+        rows = [row for row in rows if not (isinstance(row, dict) and row.get("kind") in FRONTIER_KINDS)]
     def source_set(row):
         raw = row.get("source_accessions") if isinstance(row, dict) else None
         return tuple(sorted({str(x)[:80] for x in raw if x})) if isinstance(raw, list) else ()
@@ -508,7 +514,7 @@ def journal_source_saturated(accessions, limit=5):
 
 def journal_context(cap=1050):
     spent = spent_subjects()
-    threads = [t for t in journal_threads()
+    threads = [t for t in journal_threads(include_frontier=False)
                if not mentions_spent(" ".join(str(t.get(k) or "") for k in ("question", "finding", "next_question")), spent)]
     findings = [{"thread_id": t["thread_id"], "question": t["question"][:120],
                  "finding": (t["finding"] or "")[:150],
@@ -532,8 +538,12 @@ def journal_context(cap=1050):
     return ""
 
 
-def lab_context():
-    """A small, attributed slice of him—not a generic scientist costume."""
+def lab_context(gemma_journal=True):
+    """A small, attributed slice of him—not a generic scientist costume.
+
+    gemma_journal=False leaves out everything drawn from Gemma's notebook (her journal threads, searches
+    that found nothing, her latest source and event), for the frontier sessions, which build on their own
+    log instead (chemistry_session.frontier_context; Gloria, 2026-09-28)."""
     cfg = config(); budget = max(800, min(8000, int(cfg["context_budget_chars"])))
     candidates = (
         ("soul", os.path.join(WS, "SOUL.md"), 1200),
@@ -548,13 +558,13 @@ def lab_context():
         sources.append({"name": label, "path": os.path.relpath(path, WS), "chars": len(text),
                         "sha256": hashlib.sha256(text.encode()).hexdigest()})
         if used >= budget: break
-    recent = _jsonl(NOTEBOOK)[-3:]
-    journal = journal_context(min(1050, max(0, budget - used))) if used < budget else ""
+    recent = [row for row in _jsonl(NOTEBOOK) if row.get("kind") not in FRONTIER_KINDS][-3:] if gemma_journal else []
+    journal = journal_context(min(1050, max(0, budget - used))) if used < budget and gemma_journal else ""
     if journal:
         parts.append(journal); used += len(journal)
         sources.append({"name": "lab_journal_threads", "path": "memory/chemistry-lab/notebook.jsonl",
                         "chars": len(journal), "sha256": hashlib.sha256(journal.encode()).hexdigest()})
-    misses = search_misses() if used < budget else []
+    misses = search_misses() if used < budget and gemma_journal else []
     if misses:
         text = ("[SEARCHES THAT FOUND NOTHING — each is the source's answer; do not send these again]\n"
                 + "\n".join(misses))[:min(900, budget - used)]

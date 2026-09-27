@@ -51,6 +51,51 @@ HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
 DIVERGENCE_ENABLED = "divergence_enabled"
 
 
+FRONTIER_LOG_SESSIONS = 5
+
+
+def frontier_log(limit=FRONTIER_LOG_SESSIONS):
+    """The frontier's own previous sessions, oldest first: what was asked, predicted, found and left open,
+    and what the blind readers asked of it. Gemma's notebook is not in it."""
+    done = [r for r in lab._jsonl(SESSIONS) if isinstance(r, dict) and r.get("state") == "completed"
+            and r.get("mode") != "divergence" and r.get("plan")][-limit:]
+    readers = {r.get("source_session_id"): r for r in lab._jsonl(DIVERGENCE) if isinstance(r, dict)}
+    out = []
+    for row in done:
+        plan, reading, grade = row.get("plan") or {}, row.get("reading") or {}, row.get("grade") or {}
+        entry = {"date": str(row.get("at", ""))[:10], "session_id": row.get("session_id"), "lens": row.get("lens"),
+                 "experiment": plan.get("experiment"), "parameters": plan.get("parameters"),
+                 "question": str(plan.get("question", ""))[:300], "prediction": str(plan.get("prediction", ""))[:300],
+                 "instrument": grade.get("execution_state"), "answer_quality": grade.get("aggregate_accuracy"),
+                 "reading": str(reading.get("reading", ""))[:400],
+                 "prediction_vs_result": str(reading.get("prediction_vs_result", ""))[:300],
+                 "next_question": str(reading.get("next_question", ""))[:240]}
+        div = readers.get(row.get("session_id"))
+        if div:
+            entry["blind_readers_asked"] = [{"lens": r.get("lens"), "question": str(r.get("question", ""))[:200]}
+                                            for r in div.get("readings", []) if r.get("state") == "read"]
+        out.append(entry)
+    return out
+
+
+def frontier_context():
+    """His identity, taste and grades, and the frontier's own log — never Gemma's journal. The frontier's
+    reviews build on themselves (Gloria, 2026-09-28)."""
+    context, receipt = lab.lab_context(gemma_journal=False)
+    log = frontier_log()
+    if not log: return context, receipt
+    block = ("[YOUR FRONTIER LOG — your own previous sessions, oldest first. Build on them: take up a next_question, "
+             "test where a prediction missed, and do not repeat a run without saying why]\n"
+             + json.dumps(log, ensure_ascii=False)[:7000])
+    merged = context + "\n\n" + block
+    out = dict(receipt)
+    out["sources"] = list(receipt.get("sources", [])) + [{
+        "name": "frontier_log", "path": "memory/chemistry-lab/sessions.jsonl", "chars": len(block),
+        "sha256": hashlib.sha256(block.encode()).hexdigest(), "session_ids": [e["session_id"] for e in log]}]
+    out["total_chars"] = len(merged)
+    out["context_sha256"] = hashlib.sha256(merged.encode()).hexdigest()
+    return merged, out
+
 @contextlib.contextmanager
 def _exclusive():
     lab._ensure()
@@ -424,7 +469,7 @@ def run():
                    "owed_reading": settled.get("outcome"),
                    "detail": str(remote.get("error", "no experiments offered"))[:300]}
             lab._append(SESSIONS, row); return row
-        context, receipt = lab.lab_context()
+        context, receipt = frontier_context()
         context, receipt, offered_interest = bridge.add_to_context(context, receipt)
         try:
             import atelier_lab_lean
