@@ -588,7 +588,9 @@ def lab_context(gemma_journal=True):
                         "chars": len(journal), "sha256": hashlib.sha256(journal.encode()).hexdigest()})
     misses = search_misses() if used < budget and gemma_journal else []
     if misses:
-        text = ("[SEARCHES THAT FOUND NOTHING — each is the source's answer; do not send these again]\n"
+        # Not "each is the source's answer": he took that as a finding and began studying why his own searches
+        # came back empty ("a naming convention divergence that prevents standard retrieval?", 2026-09-28).
+        text = ("[SEARCHES THAT FOUND NOTHING — do not send these again; an empty search says nothing about biology]\n"
                 + "\n".join(misses))[:min(900, budget - used)]
         parts.append(text); used += len(text)
         sources.append({"name": "search_misses", "path": "memory/chemistry-lab/notebook.jsonl",

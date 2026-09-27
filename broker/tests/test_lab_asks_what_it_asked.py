@@ -136,6 +136,7 @@ check("an NCBI record number is not taken for an organism (1152240 for Colwellia
 ctx, _ = M.lab_context()
 check("his planning context lists the searches that found nothing, and why",
       "SEARCHES THAT FOUND NOTHING" in ctx and "the source holds no such record" in ctx
+      and "says nothing about biology" in ctx and "the source's answer" not in ctx
       and "512419" in ctx and "look the organism up by name first" in ctx, ctx[-900:])
 
 # --- the Forge is asked for an instrument, never for documentation --------------------------------
