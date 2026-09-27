@@ -204,6 +204,20 @@ if [ -n "$_dirty" ] && [ "${VINTOS_DEPLOY_ALLOW_DIRTY:-0}" != "1" ]; then
     printf '%s\n' "$_dirty" | sed 's/^/  uncommitted: /'
     die "the checkout has uncommitted edits (above), so this is not the code that was pushed. Save and set them aside first: git diff > ~/aegis-local-\$(date +%F-%H%M).diff && git stash push -m aegis-local  (or rerun with VINTOS_DEPLOY_ALLOW_DIRTY=1 to deploy them anyway)"
 fi
+# One branch reaches Aegis. On 2026-09-26 three deploys from another agent's branch replaced a day of
+# fixes on the main branch without anyone noticing. Deploy only the shared branch, and only as pushed.
+_want="${VINTOS_DEPLOY_BRANCH:-$(cat "$HOME/.vintos/deploy-branch" 2>/dev/null || echo claude/vintos-avatar-ui-redesign-br5lt4)}"
+_have="$(git -C "$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+if [ "$_have" != "$_want" ] && [ "${VINTOS_DEPLOY_ANY_BRANCH:-0}" != "1" ]; then
+    die "this checkout is on '$_have'; only '$_want' is deployed to Aegis. Merge the work into '$_want' and deploy that (or rerun with VINTOS_DEPLOY_ANY_BRANCH=1 if Gloria said so)"
+fi
+if git -C "$SRC" fetch -q origin "$_want" 2>/dev/null; then
+    if [ "$(git -C "$SRC" rev-parse HEAD)" != "$(git -C "$SRC" rev-parse "origin/$_want")" ] && [ "${VINTOS_DEPLOY_ANY_BRANCH:-0}" != "1" ]; then
+        die "the checkout is not exactly the pushed '$_want' (run: git pull), so it is not what was reviewed and tested"
+    fi
+else
+    say "branch: could not reach origin to compare; deploying '$_have' as it stands"
+fi
 [ "$DRY_RUN" -eq 1 ] && say "mode:   --dry-run (nothing copied, nothing restarted)"
 say
 missing=""
