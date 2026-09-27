@@ -1645,10 +1645,16 @@ function _labReviewCard(row) {
           (row.flagged_for_next_lab_session ? ' · flagged for frontier' : '') +
           (row.surfaced_to_frontier ? ' · surfaced' : '') + '</div></div>';
 }
+function _labLocalTime(value) {
+    // Her clock, not UTC: "02:18" read as the Lab stopping hours ago when it was 9:18 PM (2026-09-26).
+    const d = new Date(value || '');
+    return Number.isNaN(d.getTime()) ? String(value || '').slice(11, 16)
+        : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 function _labActivityRow(row) {
     const muted = row.redirect ? 'var(--text-dim)' : 'var(--text)';
     return '<div style="grid-column:1/-1;display:flex;gap:9px;align-items:baseline;padding:7px 2px;border-bottom:0.5px solid var(--border);">' +
-        '<time style="flex:0 0 auto;font-size:0.53rem;color:var(--text-dim);">' + _esc(String(row.at || '').slice(11, 16)) + '</time>' +
+        '<time style="flex:0 0 auto;font-size:0.53rem;color:var(--text-dim);">' + _esc(_labLocalTime(row.at)) + '</time>' +
         '<div style="font-size:0.62rem;color:' + muted + ';line-height:1.45;"><span style="color:var(--text-bright);">' +
         _esc(row.label || 'Lab turn') + '</span>' + (row.detail ? ' · ' + _esc(row.detail) : '') + '</div></div>';
 }
