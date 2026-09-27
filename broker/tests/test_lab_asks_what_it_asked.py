@@ -9,7 +9,7 @@ document the question.
 
 Scratch HOME; the source client and both model calls are stubs; nothing here reaches the network.
 """
-import re, contextlib, importlib.util, json, os, sys, tempfile, types
+import re, contextlib, importlib.util, json, os, sys, tempfile, time, types
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-lab-intent-")
@@ -258,7 +258,7 @@ try:
 finally:
     M._ask, M.NOTEBOOK = real_ask, real_nb
 check("the orient prompt names the spent run", "LAST 3 QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE" in prompts[0]
-      and "(KaiC)" in prompts[0], prompts[0][-400:])
+      and "SPENT FOR TODAY" in prompts[0] and "KaiC." in prompts[0], prompts[0][-400:])
 check("choosing KaiC again is asked once more, and the new subject is kept",
       len(prompts) == 2 and moved["question"] == "How long is slpA?", (len(prompts), moved.get("question")))
 open(nb, "w").write(json.dumps(review) + "\n")
@@ -267,8 +267,41 @@ M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or answers[0]
 M.NOTEBOOK = nb
 try: REAL_ORIENT("context")
 finally: M._ask, M.NOTEBOOK = real_ask, real_nb
-check("with a fresh review behind him there is no warning and one call",
+check("with a fresh review behind him the run warning is gone and one call is made",
       len(prompts) == 1 and "WITHOUT NEW EVIDENCE" not in prompts[0])
+check("but KaiC stays spent for the day, so a review on another protein does not reopen it",
+      "SPENT FOR TODAY" in prompts[0] and "KaiC" in M.spent_subjects() and M.spent_subjects(time.time() + 25 * 3600) == [])
+
+# the subject named only in the question text, as he actually writes it
+only_text = [{"kind": "inquiry", "inquiry": {"question": q, "uniprot_query": M._safe_query("organism_id:1140")}}
+             for q in ("What mediates coupling between the ATPase domains in Synechococcus elongatus KaiC?",
+                       "Does KaiC change between its states?", "Which residues in KaiC couple its ATPase domains?")]
+check("a protein named only in his questions is found, and a molecule class is not",
+      M.dead_ends([review] + only_text)["subjects"] == ["KaiC"], M.dead_ends([review] + only_text))
+
+# asked twice and still KaiC: the third time is not sent
+prompts[:] = []
+M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or json.dumps(
+    {"browse_lane": "protein", "uniprot_query": "organism_id:1140", "question": "KaiC, surely, once more?"})
+M.NOTEBOOK = nb
+try: stubborn = REAL_ORIENT("context")
+finally: M._ask, M.NOTEBOOK = real_ask, real_nb
+check("KaiC chosen twice more is not sent: the Lab wanders the curated set instead",
+      len(prompts) == 2 and stubborn.get("dead_end_fallback") and "KaiC" not in stubborn["uniprot_query"]
+      and re.fullmatch(re.escape(M.BASELINE_QUERY) + r" AND \(length:\[\d+ TO \d+\]\)", stubborn["uniprot_query"]),
+      stubborn)
+
+# the journal's KaiC finding stops pulling him back while KaiC is spent
+real_threads = M.journal_threads
+M.journal_threads = lambda: [
+    {"thread_id": "CLT-1", "state": "finding", "question": "KaiC coupling", "finding": "coupled domains",
+     "next_question": "Which KaiC residues?", "source_accessions": ["Q79PF4"], "entries": 3, "lesson": ""},
+    {"thread_id": "CLT-2", "state": "finding", "question": "S-layer length", "finding": "444 residues",
+     "next_question": "Is slpA glycosylated?", "source_accessions": ["P35829"], "entries": 1, "lesson": ""}]
+try: journal = M.journal_context()
+finally: M.journal_threads = real_threads
+check("a journal finding on a spent subject is left out of his planning context",
+      "KaiC" not in journal and "S-layer" in journal, journal)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

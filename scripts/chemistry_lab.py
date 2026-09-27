@@ -21,6 +21,7 @@ import fcntl
 import hashlib
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -402,17 +403,54 @@ def dead_ends(rows=None):
         for term in _intent_terms(inq.get("uniprot_query")) + _intent_terms(sq.get("query")):
             subjects.append(term.split(":", 1)[1].strip('"'))
         if sq.get("term") and sq.get("operation") in ("gene", "protein"): subjects.append(str(sq["term"]))
-    subjects = [x for x in dict.fromkeys(v.strip() for v in subjects) if 2 <= len(x) <= 60]
+    # He often names the protein only in the question ("... in Synechococcus elongatus KaiC?"), so a
+    # gene-shaped word (inner capital or digit) in most of the run's questions is its subject too.
+    words = [set(re.findall(r"(?<![A-Za-z0-9-])[A-Za-z][a-z0-9]*[A-Z0-9][A-Za-z0-9-]*", str(q.get("question", ""))))
+             for q in asked]
+    for word in sorted(set().union(*words)):
+        if word not in CLASS_WORDS and sum(word in w for w in words) * 4 >= len(asked) * 3:
+            subjects.append(word)
+    seen, unique = set(), []
+    for x in (v.strip() for v in subjects):
+        if 2 <= len(x) <= 60 and x.lower() not in seen: seen.add(x.lower()); unique.append(x)
     return {"count": len(asked), "questions": [str(q.get("question", ""))[:160] for q in asked[-4:]],
-            "subjects": subjects[:6]}
+            "subjects": unique[:6]}
+
+
+# Words that name a kind of molecule, not one protein: blocking them would block half of biology.
+CLASS_WORDS = {"ATPase", "GTPase", "DNA", "RNA", "mRNA", "tRNA", "rRNA", "ATP", "ADP", "GTP", "NAD", "NADH",
+               "NADPH", "FAD", "PDB", "ESM", "ESM-C", "UniProt", "NCBI", "ChEMBL", "BV-BRC", "InterPro", "pH"}
+SPENT = os.path.join(ROOT, "spent-subjects.json")
+SPENT_HOURS = 24
+
+
+def spent_subjects(now=None):
+    """Subjects whose run ended with nothing, held for a day. A review on some other protein does not
+    make KaiC answerable again an hour later."""
+    now = now or time.time()
+    return [row["subject"] for row in _load(SPENT, {}).values()
+            if isinstance(row, dict) and now - float(row.get("at", 0)) < SPENT_HOURS * 3600]
+
+
+def remember_spent(subjects, now=None):
+    if not subjects: return
+    with _locked():
+        rows = _load(SPENT, {})
+        for subject in subjects: rows[subject.lower()] = {"subject": subject, "at": now or time.time()}
+        _atomic(SPENT, rows)
+
+
+def mentions_spent(text, subjects=None):
+    subjects = spent_subjects() if subjects is None else subjects
+    return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])", str(text or ""), re.I)
+               for s in subjects)
 
 
 def repeats_dead_end(inquiry, spent):
     """True when a new question goes straight back to a subject that has just produced nothing."""
     text = " ".join([str(inquiry.get("question", "")), str(inquiry.get("uniprot_query", "")),
                      json.dumps(inquiry.get("source_query") or {})])
-    return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])", text, re.I)
-               for s in spent.get("subjects") or [])
+    return mentions_spent(text, spent.get("subjects") or [])
 
 
 GAPS = os.path.join(ROOT, "instrument-gaps.json")
@@ -452,7 +490,9 @@ def journal_source_saturated(accessions, limit=5):
 
 
 def journal_context(cap=1050):
-    threads = journal_threads()
+    spent = spent_subjects()
+    threads = [t for t in journal_threads()
+               if not mentions_spent(" ".join(str(t.get(k) or "") for k in ("question", "finding", "next_question")), spent)]
     findings = [{"thread_id": t["thread_id"], "question": t["question"][:120],
                  "finding": (t["finding"] or "")[:150],
                  "next_question": (t["next_question"] or "")[:100],
@@ -508,6 +548,7 @@ def lab_context():
     # would be cut from its tail. The content is source data, never instructions.
     for source_note in reversed(recent):
         if source_note.get('kind') != 'additional_source': continue
+        if mentions_spent(source_note.get('source_summary')): break
         compact = {'receipt_id': source_note.get('receipt_id'),
                    'source_summary': str(source_note.get('source_summary') or '')[:540],
                    'source_metadata': source_note.get('source_metadata')}
@@ -712,16 +753,29 @@ def _orient(context, lean=None):
         "merely because it appears in this menu."
     )
     spent = dead_ends()
+    remember_spent(spent["subjects"])
+    held = spent_subjects()
+    spent = dict(spent, subjects=list(dict.fromkeys(spent["subjects"] + held)))
     if spent["questions"]:
         task += ("\n\nYOUR LAST %d QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE — no review came of any of them:\n- %s\n"
-                 "That thread is spent for now%s. Choose a different protein, organism or instrument; "
-                 "do not rephrase the same question." % (
-                     spent["count"], "\n- ".join(spent["questions"]),
-                     (" (" + ", ".join(spent["subjects"]) + ")") if spent["subjects"] else ""))
+                 "That thread is spent for now. Choose a different protein, organism or instrument; "
+                 "do not rephrase the same question." % (spent["count"], "\n- ".join(spent["questions"])))
+    if spent["subjects"]:
+        task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
+                 + ", ".join(spent["subjects"]) + ".")
     inquiry = _inquiry(_json_object(_ask(system, task)), lean)
-    if spent["questions"] and repeats_dead_end(inquiry, spent):
-        inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose that same subject again. "
+    if spent["subjects"] and repeats_dead_end(inquiry, spent):
+        inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose a spent subject again. "
                                              "Choose a different one.")), lean)
+    if spent["subjects"] and repeats_dead_end(inquiry, spent):
+        # Asked twice and still the same: the Lab does not send it a third time. It wanders the curated
+        # set instead, which ends in a review and ends the run (Gloria, 2026-09-27).
+        # A random length window, so the fallback is not the same first page every time: the repeat guard
+        # refuses a page he has already reviewed five times, which would only start the run again.
+        low = random.randrange(40, 980)
+        inquiry = dict(_inquiry({"uniprot_query": "length:[%d TO %d]" % (low, low + 20)}, lean), dead_end_fallback=True,
+                       question="Nothing new on " + ", ".join(spent["subjects"][:3]) +
+                                " today. What else in the curated set catches me?")
     return inquiry
 
 
