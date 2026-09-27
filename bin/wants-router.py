@@ -613,16 +613,43 @@ def make_music(want_text):
     )
     if result.returncode == 0:
         log("Music prompt generated")
-        # Now run dream-music.py to process any new prompt files
-        _stance_popen(
+        # The composer is given this want's id and waited for. It used to start in the background without the
+        # id, and the step read its result at once: the song, minutes away and untagged, was never there, and he
+        # wrote "no new musical composition was recorded for this goal" (Gloria, 2026-09-28).
+        proc = _stance_popen(
             [VENV_PYTHON, os.path.join(SCRIPTS, "dream-music.py")],
             stdout=open("/tmp/wants-music.log", "a"),
-            stderr=open("/tmp/wants-music.log", "a")
+            stderr=open("/tmp/wants-music.log", "a"),
+            env=_env,
         )
-        log("Music generation started")
-        return True
+        log("Music generation started; waiting for it")
+        try:
+            proc.wait(timeout=MUSIC_WAIT_S)
+        except subprocess.TimeoutExpired:
+            log(f"Music still composing after {MUSIC_WAIT_S}s; it will be credited when it lands")
+            return False
+        if _music_for_want(_env["MUSIC_WANT_ID"]):
+            log("Music composed and recorded for this want")
+            return True
+        log(f"Music generation ended (rc={proc.returncode}) with nothing recorded for this want")
+        return False
     log(f"Music failed: {result.stderr[:200]}")
     return False
+
+
+MUSIC_WAIT_S = 1800
+
+
+def _music_for_want(want_id):
+    """The music ledger's entry for this want, if the composer recorded one."""
+    try:
+        music_log = json.load(open(os.path.join(MEMORY, "art/music/music.json")))
+    except Exception:
+        return None
+    generated = music_log.get("generated", []) if isinstance(music_log, dict) else music_log
+    if not want_id:
+        return generated[-1] if generated else None
+    return next((m for m in reversed(generated or []) if m.get("want_id") == want_id), None)
 
 
 def voidex_explore(want_text):
