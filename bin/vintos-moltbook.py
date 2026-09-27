@@ -1843,10 +1843,11 @@ def cmd_check_replies():
     her_posts = []
     for _npid in _notif_post_ids[:15]:
         _p = _post_by_id.get(_npid)
-        if not _p:
-            # Fallback to direct fetch only if not embedded in notifications
+        if not _p or not (_p.get("author") or _p.get("authorId") or _p.get("author_id")):
+            # The copy embedded in a notification carries no author, so every one of his posts failed the
+            # ownership check below and no comment on them was ever answered (2026-09-28). Fetch the post.
             _npr = api_call("GET", f"/posts/{_npid}")
-            _p = _npr.get("post")
+            _p = _npr.get("post") or _p
         if _p and _post_is_his(_p):
             her_posts.append(_p)
         elif _p:
