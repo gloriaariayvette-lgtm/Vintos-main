@@ -10603,6 +10603,39 @@ async def start_reelroom_idle_closer():
         _reelroom_idle_task = _rr_asyncio.create_task(_reelroom_idle_closer())
 
 
+_door_guard_task = None
+
+
+async def _daily_inner_door_guard():
+    """Door and house entries reach daily-inner only when someone actually spoke (Gloria, 2026-09-28).
+    The doorbell services append to the file directly, so it is cleaned here, every minute."""
+    import asyncio as _dg_asyncio
+    import importlib.util as _dg_util
+    await _dg_asyncio.sleep(15)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "daily_inner_guard.py")
+    if not os.path.isfile(path):
+        path = os.path.expanduser("~/.vintos/workspace/scripts/daily_inner_guard.py")
+    spec = _dg_util.spec_from_file_location("daily_inner_guard", path)
+    guard = _dg_util.module_from_spec(spec); spec.loader.exec_module(guard)
+    days = 3
+    while True:
+        try:
+            for cleaned in await _dg_asyncio.to_thread(guard.sweep, days):
+                print("[door-guard] cleaned", cleaned, flush=True)
+        except Exception as exc:
+            print("[door-guard]", str(exc)[:180], flush=True)
+        days = 2
+        await _dg_asyncio.sleep(60)
+
+
+@app.on_event("startup")
+async def start_daily_inner_door_guard():
+    global _door_guard_task
+    import asyncio as _dg_asyncio
+    if _door_guard_task is None or _door_guard_task.done():
+        _door_guard_task = _dg_asyncio.create_task(_daily_inner_door_guard())
+
+
 @app.post("/api/game/reelroom/film")
 async def reelroom_film(request: Request):
     """The film, read by Gemma on the server: the page no longer needs LM Studio on the LAN."""
