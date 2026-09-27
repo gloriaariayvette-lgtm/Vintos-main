@@ -66,25 +66,37 @@ class ReportRetry(unittest.TestCase):
         os.unlink(src.REPORT_PAUSE)
         self.assertEqual(src.offer_report(["R1"], "q", send=Sender())["id"], "P-1", "after the pause it lands")
 
-    def test_everything_queued_for_the_forge_is_withdrawn_and_nothing_is_sent(self):
-        # 2026-09-28: nothing goes from the Lab to the Forge. Write-ups filled it first; then his missing
-        # instruments became midnight "Feasibility Assessment: Cryo-Electron Microscopy..." projects.
+    def test_a_report_left_refused_by_the_earlier_build_is_retried(self):
+        lab._atomic(OUTBOX, {"k": {"receipt_ids": ["R9"], "state": "refused", "next_attempt": 0,
+                                   "question": "The Lab needs an instrument it does not have: a docking program"}})
+        tried = []
+        src.offer_report, real = (lambda ids, q, send=None: tried.append(ids)), src.offer_report
+        try:
+            src.flush_reports()
+        finally:
+            src.offer_report = real
+        self.assertEqual(tried, [["R9"]])
+
+    def test_only_a_missing_limb_is_retried(self):
+        # 2026-09-26: write-ups of his questions filled the Forge. 2026-09-28: so did lab equipment he could
+        # never operate ("Feasibility Assessment: Cryo-Electron Microscopy..."). Only a missing limb is sent.
+        gap = "The Lab needs an instrument it does not have: "
         lab._atomic(OUTBOX, {"old": {"receipt_ids": ["R7"], "question": "Document this sourced Lab question; do not claim discovery: x",
                                      "state": "pending", "next_attempt": 0},
-                             "gap": {"receipt_ids": ["R8"], "question": "The Lab needs an instrument it does not have: a CD reading",
-                                     "state": "pending", "next_attempt": 0},
-                             "k": {"receipt_ids": ["R9"], "question": "q", "state": "refused", "next_attempt": 0},
-                             "done": {"receipt_ids": ["R1"], "question": "q", "state": "accepted", "project_id": "P"}})
+                             "em": {"receipt_ids": ["R6"], "question": gap + "cryo-EM of the S-layer\nIt came up on this question: q",
+                                    "state": "pending", "next_attempt": 0},
+                             "md": {"receipt_ids": ["R8"], "question": gap + "a molecular dynamics simulator\nIt came up on this question: q",
+                                    "state": "pending", "next_attempt": 0}})
         tried = []
         src.offer_report, real = (lambda ids, q, send=None: tried.append(q)), src.offer_report
         try:
-            self.assertEqual(src.flush_reports(), 3)
+            src.flush_reports()
         finally:
             src.offer_report = real
         rows = lab._load(OUTBOX, {})
-        self.assertEqual(tried, [])
-        self.assertEqual({k: r["state"] for k, r in rows.items()},
-                         {"old": "withdrawn", "gap": "withdrawn", "k": "withdrawn", "done": "accepted"})
+        self.assertEqual((rows["old"]["state"], rows["em"]["state"]), ("withdrawn", "withdrawn"))
+        self.assertEqual(len(tried), 1)
+        self.assertIn("molecular dynamics", tried[0])
 
     def test_a_transient_failure_backs_off_then_is_abandoned(self):
         down = Sender(urllib.error.URLError("connection refused"))

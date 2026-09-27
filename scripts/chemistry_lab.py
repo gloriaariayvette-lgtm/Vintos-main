@@ -458,6 +458,22 @@ GAPS = os.path.join(ROOT, "instrument-gaps.json")
 GAP_REOFFER_DAYS = 30
 
 
+# Laboratory equipment and wet-lab work he could never operate: naming one is not a missing limb.
+LAB_EQUIPMENT = re.compile(
+    r"\b(?:cryo[- ]?(?:em|electron|et)\w*|electron (?:microscop|tomograph)\w*|x[- ]?ray (?:crystallograph|diffract)\w*|"
+    r"crystallograph\w*|nmr|nuclear magnetic|mass spectromet\w*|mass spec|circular dichroism|\bcd spectr\w*|"
+    r"spectrophotomet\w*|fluorescence microscop\w*|confocal|microscop\w*|centrifug\w*|chromatograph\w*|hplc|"
+    r"calorimet\w*|itc\b|surface plasmon|spr\b|western blot\w*|pcr\b|sequencer|sequencing run|mutagenesis|"
+    r"knock[- ]?out|wet[- ]?lab|bench assay|in vitro assay|culture|incubator|fermenter|bioreactor|"
+    r"atomic force|afm\b|patch clamp)", re.I)
+
+
+def missing_limb(gap):
+    """True for a capability that could be built or connected for him — a simulator, a model, a database or
+    tool he cannot reach, a sensor the house could add. False for laboratory equipment (Gloria, 2026-09-28:
+    "bring only what is genuinely missing a limb")."""
+    return bool(str(gap or "").strip()) and not LAB_EQUIPMENT.search(str(gap))
+
 def _gap_key(gap):
     return re.sub(r"[^a-z0-9 ]", " ", str(gap).lower())[:120].strip()
 
@@ -1022,8 +1038,10 @@ def _reflect(context, inquiry, records):
         "that follows from that observation — name the measurement that would confirm or refute it; a real "
         "conjecture with a next step, never metaphor or mood), next_question (the sharper question this leaves, "
         "the one worth pursuing next), answers_question (\'yes\', or \'no\' and what the records hold instead), "
-        "instrument_gap (only if the next step needs an instrument or data source this Lab does not have: "
-        "name that one instrument and what it would measure; otherwise empty).",
+        "instrument_gap (only if the next step needs a capability this Lab does not have that could be built or "
+        "connected for you — a simulator, a model, a database or tool you cannot reach: name it and what it would "
+        "measure. Laboratory equipment you could never operate — cryo-EM, crystallography, NMR, mass spectrometry, "
+        "wet-lab assays — is not a gap; say what it would show in speculative_reading instead. Otherwise empty).",
         temperature=0.35,
     )
     value = _json_object(raw)
@@ -1415,15 +1433,30 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
-                # Nothing goes from the Lab to the Forge (Gloria, 2026-09-28). A named missing instrument
-                # used to be sent as "assess whether this instrument can be reached", and the Forge spent its
-                # nights writing feasibility assessments for cryo-EM it can never build. The gap is kept here,
-                # in the Lab, where she can read it; the Forge finds its own work.
+                # The Lab reaches the Forge only with a genuinely missing limb: something that could be built
+                # or connected for him (Gloria, 2026-09-28). Lab equipment he could never operate is not one;
+                # a cryo-EM gap became a midnight "Feasibility Assessment" the Forge could only write about.
+                # Those are kept here, in the Lab, where she can read them.
                 gap = str(reflection.get("instrument_gap", "")).strip()
                 if gap and gap.lower() not in ("none", "no", "n/a", "null") and not instrument_gap_offered(gap):
-                    try: record_instrument_gap(gap)
-                    except Exception as exc: _fault("instrument_gap", exc)
-                    note["instrument_gap_recorded"] = gap[:400]
+                    receipts = [r for r in ((state.get("additional_source", {}).get("receipt") or {}).get("receipt_id"),
+                                            (state.get("material") or {}).get("receipt_id"),
+                                            state.get("atlas_analysis_receipt")) if r]
+                    limb = missing_limb(gap)
+                    try:
+                        # Recorded first: a full Forge answers 403 and the outbox retries this one request.
+                        record_instrument_gap(gap)
+                        note["instrument_gap_recorded"] = gap[:400]
+                        if (limb and receipts and inquiry.get('browse_lane') != 'genome_mining'
+                                and cfg.get("forge_report_intake")):
+                            import chemistry_sources
+                            note["forge_report"] = chemistry_sources.offer_report(receipts,
+                                "The Lab needs an instrument it does not have: " + gap[:900] +
+                                "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
+                                "\nBuild or connect this capability for him; do not write up the question and do not claim discovery.")
+                        elif not limb:
+                            note["instrument_gap_kept_in_lab"] = "lab_equipment_not_a_buildable_limb"
+                    except Exception as exc: _fault("forge_instrument_gap", exc)
                 if inquiry.get('browse_lane') == 'genome_mining':
                     note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
                 state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)

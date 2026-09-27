@@ -269,7 +269,10 @@ class Controller:
         return {'reserved': True, 'attempt': attempt}
 
     def ready_queue(self, token):
-        """Least-served source, then least-recently attempted project. No Lab priority."""
+        """Every other seed before the Lab, then least-served source, then least-recently attempted project.
+
+        The Lab brings only a missing limb, and still waits behind wants, gaps and the Forge's own finds
+        (Gloria, 2026-09-28: "prioritize every other seeding mechanism")."""
         self.auth(token)
         with self.db() as db:
             projects = [json.loads(row[0]) for row in db.execute('SELECT body FROM projects ORDER BY rowid')]
@@ -282,7 +285,8 @@ class Controller:
                 counts[source] = counts.get(source, 0) + 1
                 last[row['project']] = row['rowid']
             ready = [p for p in projects if p['state'] == 'ready']
-            return [p['id'] for p in sorted(ready, key=lambda p: (counts.get(origins[p['id']], 0), last.get(p['id'], 0)))]
+            return [p['id'] for p in sorted(ready, key=lambda p: (origins[p['id']] == 'lab',
+                                                                   counts.get(origins[p['id']], 0), last.get(p['id'], 0)))]
 
     def step_budget(self, token):
         self.auth(token, owner=True)

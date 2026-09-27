@@ -127,13 +127,15 @@ class Tests(unittest.TestCase):
         self.r.sync_gaps(self.owner,[row])
         self.assertEqual(self.c.status(self.owner,pid2)['state'],'cancelled')
 
-    def test_source_fairness_selects_nonlab_before_another_lab_cycle(self):
+    def test_every_other_seed_is_served_before_the_lab(self):
+        # 2026-09-28: the Lab brings only a missing limb, and waits behind every other seed.
         lab = self.create(origin={'source':'lab'})
-        self.r.step(lab['id'])
         other = self.create(origin={'source':'absence_map'})
         self.assertEqual(self.c.ready_queue(self.worker)[0],other['id'])
         self.r.step(other['id'])
-        self.assertEqual(self.c.ready_queue(self.worker)[0],lab['id'])
+        self.assertEqual(self.c.ready_queue(self.worker)[0],other['id'],'even after its turn, before the Lab')
+        self.call('/api/projects/'+other['id']+'/cancel','POST',{})
+        self.assertEqual(self.c.ready_queue(self.worker)[0],lab['id'],'the Lab is served when nothing else waits')
 
     def test_ended_parent_stops_gap_before_model_use(self):
         row={'proposal':'SK-12345678','want_id':'gone','intent':'Ended intention',

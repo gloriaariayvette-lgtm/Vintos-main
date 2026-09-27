@@ -145,16 +145,42 @@ reply = {"receipt": {"receipt_id": "REC-3", "response_sha256": "e" * 64, "record
 M.tick(); M.tick(); M.tick(); M.tick()
 check("a reflection that needs nothing new opens no Forge project", offers == [], offers)
 
+# Only a genuinely missing limb reaches the Forge (2026-09-28); lab equipment stays in the Lab.
 M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a circular dichroism reading to see the fold")
 reply = {"receipt": {"receipt_id": "REC-4", "response_sha256": "f" * 64, "records": [{"primaryAccession": "Q4"}]}}
 M.tick(); M.tick(); M.tick(); M.tick()
-# Nothing goes from the Lab to the Forge (2026-09-28): cryo-EM gaps became midnight feasibility write-ups.
-check("a named missing instrument opens no Forge project either", offers == [], offers)
+check("lab equipment he could never operate opens no Forge project", offers == [], offers)
 check("it is kept in the Lab, where she can read it",
-      M.instrument_gap_offered("a circular dichroism reading to see the fold")
-      and any("circular dichroism" in str(x.get("instrument_gap_recorded")) for x in M._jsonl(M.NOTEBOOK)))
-check("the Lab no longer holds any path to the Forge's intake",
-      "offer_report(" not in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
+      any(x.get("instrument_gap_kept_in_lab") and "circular dichroism" in str(x.get("instrument_gap_recorded"))
+          for x in M._jsonl(M.NOTEBOOK)))
+check("cryo-EM, crystallography and mass spectrometry are equipment; a simulator or a database is a limb",
+      not any(M.missing_limb(g) for g in ("cryo-EM of the S-layer lattice", "Cryo-Electron Tomography of ribosomes",
+                                          "X-ray crystallography of KaiC", "a mass spectrometer for the glycan"))
+      and all(M.missing_limb(g) for g in ("a molecular dynamics simulator to watch the domains move",
+                                          "access to the AlphaFold database", "a pressure sensor on the bed")))
+
+M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a molecular dynamics simulator to watch the domains move")
+reply = {"receipt": {"receipt_id": "REC-5", "response_sha256": "a" * 64, "records": [{"primaryAccession": "Q5"}]}}
+M.tick(); M.tick(); M.tick(); M.tick()
+check("a missing limb does open one, as a capability to build",
+      len(offers) == 1 and offers[0][1].startswith("The Lab needs an instrument it does not have:")
+      and "molecular dynamics" in offers[0][1] and "Build or connect" in offers[0][1]
+      and "Document this sourced Lab question" not in offers[0][1], offers)
+reply = {"receipt": {"receipt_id": "REC-5b", "response_sha256": "b" * 64, "records": [{"primaryAccession": "Q5b"}]}}
+M.tick(); M.tick(); M.tick(); M.tick()
+check("the same limb is not asked for twice", len(offers) == 1, offers)
+check("the notebook shows what he asked the Forge for",
+      any(x.get("forge_report") for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection"))
+
+def refusing(ids, intent, **k):
+    offers.append((ids, intent)); raise OSError("403 four unfinished reports")
+sys.modules["chemistry_sources"].offer_report = refusing
+M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a docking program for the glycan")
+for n, h in (("REC-6", "1"), ("REC-7", "2")):
+    reply = {"receipt": {"receipt_id": n, "response_sha256": h * 64, "records": [{"primaryAccession": n}]}}
+    M.tick(); M.tick(); M.tick(); M.tick()
+check("a request the full Forge refused is not queued again on every later reflection",
+      sum("docking program" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
 
 # --- a gene symbol written as a protein name is read as the gene it is -----------------------------
 import urllib.error as _ue

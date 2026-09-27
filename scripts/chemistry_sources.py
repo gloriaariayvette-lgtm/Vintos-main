@@ -224,18 +224,25 @@ def offer_report(receipt_ids, question, *, send=None):
 
 
 def flush_reports():
-    """Withdraws every report still queued for the Forge; sends none.
-
-    Nothing goes from the Lab to the Forge (Gloria, 2026-09-28). First the Lab's write-ups filled it, then
-    its missing instruments did: a cryo-EM gap became "Feasibility Assessment: Cryo-Electron Microscopy
-    for Lactobacillus acidophilus S-layer Analysis" at midnight. The Forge is for abilities it can build."""
+    if not lab.config().get('forge_report_intake'): return
     outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
     with lab._locked():
         outbox = lab._load(outbox_path, {})
-        queued = [row for row in outbox.values() if row.get('state') in ('pending', 'refused')]
-        for row in queued: row.update(state='withdrawn', withdrawn_at=lab.now_iso())
-        if queued: lab._atomic(outbox_path, outbox)
-    return len(queued)
+        # Only a genuinely missing limb goes to the Forge (Gloria, 2026-09-28). Write-ups of his questions
+        # (2026-09-26) and laboratory equipment he could never operate — the cryo-EM "Feasibility Assessment"
+        # projects — are withdrawn, not retried.
+        prefix = 'The Lab needs an instrument it does not have: '
+        stale = [row for row in outbox.values() if row.get('state') in ('pending', 'refused') and not (
+                 str(row.get('question', '')).startswith(prefix)
+                 and lab.missing_limb(str(row['question'])[len(prefix):].split('\nIt came up on this question:')[0]))]
+        for row in stale: row.update(state='withdrawn', withdrawn_at=lab.now_iso())
+        if stale: lab._atomic(outbox_path, outbox)
+    if (lab._load(REPORT_PAUSE, {}) or {}).get('until', 0) > time.time(): return   # the Forge said no; wait
+    for row in outbox.values():
+        # 'refused' is only left by the 2026-09-24 build that took a capacity 403 as final; it is retried.
+        if row.get('state') in ('pending', 'refused') and row.get('next_attempt', 0) <= time.time():
+            offer_report(row['receipt_ids'], row['question'])
+            return
 
 if __name__ == '__main__':
     import argparse
