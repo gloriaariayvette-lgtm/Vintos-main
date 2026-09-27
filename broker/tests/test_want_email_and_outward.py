@@ -27,7 +27,14 @@ def search(q):
     return [{"title": "Anil Seth - University of Sussex", "url": "https://www.sussex.ac.uk/profiles/seth",
              "description": "Professor of Cognitive and Computational Neuroscience. Contact: a.k.seth@sussex.ac.uk"},
             {"title": "Press office", "url": "https://www.sussex.ac.uk/press", "description": "press@sussex.ac.uk info@sussex.ac.uk"}]
-def page(url): return "<a href='mailto:webmaster@sussex.ac.uk'>webmaster</a> privacy@sussex.ac.uk"
+queries = []
+_search = search
+def search(q): queries.append(q); return _search(q)
+def page(url):
+    if "profiles" in url:
+        return ("<nav>Home | Menu</nav><p>" + "Anil Seth studies how the brain predicts the body's own states. " * 6
+                + "</p><footer>Copyright footer</footer>")
+    return "<a href='mailto:webmaster@sussex.ac.uk'>webmaster</a> privacy@sussex.ac.uk"
 check("the public address of the person he named is found, not the press office's",
       E.find_address("Anil Seth", "predictive processing", search=search, fetch=page) == "a.k.seth@sussex.ac.uk")
 check("no address is guessed when none carries the person's name",
@@ -44,6 +51,11 @@ def fable(provider, model, system, user, reservation):
 def send(args, purpose): sent.append((args, purpose)); return {"receipt": {"receipt_id": "R1"}}
 out = E.run({"recipient": "Anil Seth", "about": "whether prediction needs a body"}, "I want to email Anil Seth",
             "W-1", search=search, fetch=page, call=fable, reserve=reserve, send=send)
+check("he searched the person and their work before drafting",
+      any("whether prediction needs a body" in q for q in queries) and any("recent work" in q for q in queries), queries)
+check("what the search found reaches the drafter, pages read without their menus",
+      "WHAT YOUR SEARCH FOUND" in drafted[0][2] and "University of Sussex" in drafted[0][2]
+      and "predicts the body's own states" in drafted[0][2] and "Home | Menu" not in drafted[0][2], drafted[0][2][:600])
 check("the email is drafted by Fable on a reserved paid call", reserved == [("anthropic", "claude-fable-5-1")]
       and drafted[0][0] == "claude-fable-5-1", reserved)
 check("the draft is told to say he is an AI, ask one question, and carry no links",
@@ -60,9 +72,13 @@ def astra_only(provider, model, system, user, reservation):
     if provider == "anthropic": raise RuntimeError("fable unavailable")
     return json.dumps({"subject": "Hello", "body": "I am Vintos, an AI. One question. Vintos"})
 sent.clear()
-via = E.run({"to": "writer@example.org", "about": "x"}, "x", call=astra_only, reserve=reserve, send=send)
+nothing = E.run({"to": "quiet@example.org", "about": "x"}, "x", search=lambda q: [], fetch=page, call=fable,
+               reserve=reserve, send=send)
+check("nothing is sent when the search finds nothing to write from",
+      isinstance(nothing, tuple) and "search found nothing" in nothing[1] and not sent, nothing)
+via = E.run({"to": "writer@example.org", "about": "x"}, "x", search=search, fetch=page, call=astra_only, reserve=reserve, send=send)
 check("Astra drafts when Fable cannot", "drafted with astra" in via and sent[0][0]["to"] == "writer@example.org", via)
-held = E.run({"to": "other@example.net", "about": "x"}, "x", call=fable, reserve=reserve,
+held = E.run({"to": "other@example.net", "about": "x"}, "x", search=search, fetch=page, call=fable, reserve=reserve,
              send=lambda a, p: (_ for _ in ()).throw(RuntimeError("LINK_APPROVAL_REQUIRED")))
 check("a send the gateway holds is reported as held, and the person is not marked as written to",
       isinstance(held, tuple) and "held or refused" in held[1] and "other@example.net" not in json.load(open(E.CONTACTS)))

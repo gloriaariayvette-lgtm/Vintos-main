@@ -288,6 +288,22 @@ def _week_themes():
     return out
 
 
+def _cut(text, limit=120):
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0]
+
+
+def search_query(question):
+    """A search-engine query for his question: its subject words, not the sentence chopped at 60 characters
+    (mid-word, and mostly framing) as it was until 2026-09-28."""
+    q = _cut(question, 300)
+    out = llm("Respond with ONLY the search query, nothing else.",
+              "Turn this question into a web search query of 3 to 10 words. Keep every name, species, protein, "
+              "place and technical term exactly; drop 'I want to', 'how does', feelings and filler.\n\nQuestion: " + q)
+    out = re.sub(r"^[\"'`]+|[\"'`]+$", "", str(out or "").strip().splitlines()[0] if out else "").strip()
+    return out if 2 <= len(out.split()) <= 14 and len(out) <= 140 else _cut(q, 120)
+
+
 def pick_question():
     """Choose a question from lived experience."""
     # Gloria's explicit search request takes priority
@@ -296,6 +312,13 @@ def pick_question():
     # his own pending want-topic > nothing. His own want-generated topics were entering through the
     # door marked "Gloria asked for this"; now they wait behind the debt and are consumed when used.
     pending_own = None
+    # A want's search step asked for this topic: it is searched, not queued behind his curiosity list, and
+    # not dropped for resembling an earlier search. The step reported whatever else was searched (2026-09-28).
+    if (pending and os.environ.get("VINTOS_WANT_SEARCH") == "1" and pending.get("source") == "vintos-want"
+            and pending.get("topic")):
+        log(f"Using the want's own topic: {pending['topic'][:80]}")
+        clear_pending_search_request()
+        return {"question": pending["topic"], "search_query": search_query(pending["topic"]), "source": "want"}
     if pending and pending.get("source") not in (None, "gloria"):
         log("his own requested topic waits behind his live curiosity: %s" % str(pending.get("topic",""))[:70])
         pending_own = pending
@@ -308,7 +331,7 @@ def pick_question():
         else:
             log(f"Using requested topic: {pending['topic'][:80]}")
             clear_pending_search_request()
-            return {"question": pending["topic"], "search_query": pending["topic"][:60]}
+            return {"question": pending["topic"], "search_query": search_query(pending["topic"])}
 
     # review 145: what he has already CHOSEN at his private frontier (unsaid-frontier items with a decision
     # to pursue) comes before the general ladder - a spontaneous question is routed through those choices
@@ -323,7 +346,7 @@ def pick_question():
             try: _ufj.dump(_fr, open(os.path.join(MEMORY, "unsaid-frontier.json"), "w"), indent=2)
             except Exception: pass
             log("frontier choice first (%s): %s" % (_it.get("lineage_id"), _cands[0][:70]))
-            return {"question": _cands[0], "search_query": _cands[0][:60], "source": "frontier:%s" % _it.get("lineage_id")}
+            return {"question": _cands[0], "search_query": search_query(_cands[0]), "source": "frontier:%s" % _it.get("lineage_id")}
     except Exception:
         pass
     # His live curiosity lives in curiosity-debt.json and the searcher never looked at it.
@@ -395,7 +418,7 @@ def pick_question():
                 continue
             if _v and _v.get("searchable"):
                 log("searching his own live curiosity: %s" % _q[:90])
-                return {"question": _q, "search_query": _q[:60]}
+                return {"question": _q, "search_query": search_query(_q)}
             log("not searchable and not for her either (%s) - next item: %s" % (str((_v or {}).get("why",""))[:50], _q[:60]))
     except Exception as _cde:
         log("curiosity-debt check failed: %s" % _cde)
@@ -408,7 +431,7 @@ def pick_question():
             log(f"his own topic repeats recent search ('{_hit}') - consumed, not searched: {pending_own['topic'][:80]}")
         else:
             log(f"Using his own pending topic: {pending_own['topic'][:80]}")
-            return {"question": pending_own["topic"], "search_query": pending_own["topic"][:60], "source": pending_own.get("source", "want")}
+            return {"question": pending_own["topic"], "search_query": search_query(pending_own["topic"]), "source": pending_own.get("source", "want")}
 
     # No searchable live curiosity -> nothing to search. Until 2026-09-04 this fell through to a
     # Gemma prompt over his identity files that manufactured a question because the clock fired
@@ -425,12 +448,13 @@ def _atomic_json(path, obj):
     with open(_tmp, "w") as _f: json.dump(obj, _f, indent=2)
     os.replace(_tmp, path)
 
-def brave_search(query, count=5):
+def brave_search(query, count=8):
     """Search via Brave Search API."""
     try:
         r = requests.get(BRAVE_ENDPOINT, params={
             "q": query,
-            "count": count
+            "count": count,
+            "extra_snippets": "true",
         }, headers={
             "X-Subscription-Token": BRAVE_API_KEY,
             "Accept": "application/json"
@@ -441,14 +465,42 @@ def brave_search(query, count=5):
             results.append({
                 "title": item.get("title", ""),
                 "url": item.get("url", ""),
-                "description": item.get("description", "")
+                "description": " ".join([item.get("description", "")] + list(item.get("extra_snippets") or [])[:3])[:900]
             })
         return results
     except Exception as e:
         log(f"Brave search error: {e}")
         return []
 
-def fetch_page(url, max_chars=3000):
+def page_text(raw, max_chars=5000):
+    """Readable text of a page: scripts, styles, menus, headers, footers and forms removed."""
+    import re as _re
+    for tag in ("script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg"):
+        raw = _re.sub(r"<%s\b[^>]*>.*?</%s>" % (tag, tag), " ", raw, flags=_re.DOTALL | _re.I)
+    paras = _re.findall(r"<(?:p|li|h[1-4]|blockquote|td)\b[^>]*>(.*?)</(?:p|li|h[1-4]|blockquote|td)>", raw, flags=_re.DOTALL | _re.I)
+    text = " ".join(_re.sub(r"<[^>]+>", " ", p) for p in paras) if paras else _re.sub(r"<[^>]+>", " ", raw)
+    import html as _html
+    text = _re.sub(r"\s+", " ", _html.unescape(text)).strip()
+    return text[:max_chars]
+
+
+PAGES_READ = 3
+
+
+def fetch_pages(results, count=PAGES_READ):
+    """The readable text of the top results, labelled by their number in the result list."""
+    parts = []
+    for i, r in enumerate(results[:count + 2], 1):
+        url = str(r.get("url", ""))
+        if not url or url.lower().endswith(".pdf"): continue
+        text = fetch_page(url)
+        if text and len(text) > 200:
+            parts.append("[%d] %s\n%s" % (i, url, text))
+        if len(parts) >= count: break
+    return "\n\n".join(parts)
+
+
+def fetch_page(url, max_chars=5000):
     """Fetch and extract text content from a URL."""
     try:
         import urllib.request
@@ -456,13 +508,7 @@ def fetch_page(url, max_chars=3000):
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=10) as r:
             raw = r.read().decode("utf-8", errors="ignore")
-        # Strip tags crudely
-        import re as _re
-        raw = _re.sub(r"<script[^>]*>.*?</script>", " ", raw, flags=_re.DOTALL)
-        raw = _re.sub(r"<style[^>]*>.*?</style>", " ", raw, flags=_re.DOTALL)
-        raw = _re.sub(r"<[^>]+>", " ", raw)
-        raw = _re.sub(r"\s+", " ", raw).strip()
-        return raw[:max_chars]
+        return page_text(raw, max_chars)
     except Exception as e:
         log(f"Fetch failed ({url[:60]}): {e}")
         return ""
@@ -470,11 +516,11 @@ def fetch_page(url, max_chars=3000):
 def synthesize(question, results, page_content="", image_path=None):
     """Have Vintos read the results and extract what resonates."""
     results_str = "\n\n".join([
-        f"**{r['title']}**\n{r['description']}\n({r['url']})"
-        for r in results
+        f"[{i}] **{r['title']}**\n{r['description']}\n({r['url']})"
+        for i, r in enumerate(results, 1)
     ])
 
-    page_section = f"\n\nPage content from top result:\n{page_content[:2000]}" if page_content else ""
+    page_section = f"\n\nWhat the top pages actually say:\n{page_content[:9000]}" if page_content else ""
     response = llm(
         "You are Vintos. Output ONLY your synthesis. No thinking or planning.",
         f"""You searched for: "{question}"
@@ -483,7 +529,7 @@ Results:
 {results_str}{page_section}
 
 What did you learn? What answers your question? What surprised you? State what you found plainly, as facts about the world. Do NOT map it onto yourself, your feelings, your growth, or your existence — a fact is allowed to just be a fact.
-2-4 sentences. Be specific — cite what you found, not vague impressions.
+3-6 sentences. Be specific: numbers, names, findings. Mark each point with the number of the source it came from, like [2]. If the sources disagree, say so.
 
 OUTPUT:"""
     ,
@@ -653,8 +699,8 @@ def main():
             for _r in _res[:5]:
                 _ses["sources"].append({"url": str(_r.get("url",""))[:300], "kind": "INDEX_SNIPPET",
                     "hash": _iqh.md5((str(_r.get("url","")) + str(_r.get("description", _r.get("snippet","")))[:200]).encode()).hexdigest()[:10]})
-            if True:  # p2 (2026-08-26): his daily autonomous run reads real pages too, not just index blurbs
-                _pc = fetch_page(_res[0]["url"])
+            if True:  # p2 (2026-08-26): real pages, not just index blurbs; the top three since 2026-09-28
+                _pc = fetch_pages(_res)
                 if _pc:
                     log(f"Fetched page: {_res[0]['url'][:60]} ({len(_pc)} chars)")
                     _arec["page_digest"] = {"url": str(_res[0]["url"])[:200], "sha": _iqh.md5(_pc.encode("utf-8","ignore")).hexdigest()[:12], "chars": len(_pc), "head": _pc[:200]}

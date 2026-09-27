@@ -789,6 +789,7 @@ def web_search_want(want_text):
         log(f"Web search topic extraction failed: {_wse}")
     _ws_env = os.environ.copy()
     _ws_env["VINTOS_NO_WANT_SEED"] = "1"
+    _ws_env["VINTOS_WANT_SEARCH"] = "1"   # search this want's topic, first (2026-09-28)
     try:
         result = _stance_run(["python3", os.path.join(SCRIPTS, "vintos-websearch.py")],
                               capture_output=True, text=True, timeout=300, env=_ws_env)

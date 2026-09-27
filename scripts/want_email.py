@@ -9,6 +9,8 @@ What this does, in order:
   1. The address: one he was given, or the public one for the person he named, found by a web search
      and chosen only when it plausibly belongs to that person.
   2. Once per person: an address he has written to is never written to again from here.
+  2b. Always a search first: the person and their recent work, including the top pages. The draft may
+     mention only what that search found; if it finds nothing, nothing is sent.
   3. The draft, by Fable (Astra if Fable is unavailable), on a reserved paid call. It says plainly that
      he is an AI writing on his own initiative from Gloria's account, asks one real question, and
      carries no links (the gateway would hold a link for her approval).
@@ -69,6 +71,38 @@ def web_search(query, count=6):
             for x in ((r.json().get("web") or {}).get("results") or [])[:count]]
 
 
+def research(recipient, about, search=None, fetch=None, pages=2):
+    """What a search finds about the person and the thing he wants to write about, before any draft
+    (Gloria, 2026-09-28: "He should always search before sending an email from wants")."""
+    search, fetch = search or web_search, fetch or fetch_text
+    hits = []
+    for q in ("%s %s" % (recipient, about[:120]), "%s research recent work" % recipient):
+        try: hits += search(q)
+        except Exception: pass
+    seen, lines, read = set(), [], 0
+    for i, h in enumerate(hits):
+        url = h.get("url", "")
+        if url in seen: continue
+        seen.add(url)
+        lines.append("[%d] %s — %s (%s)" % (len(lines) + 1, h.get("title", ""), h.get("description", "")[:300], url))
+        if read < pages and url and not url.lower().endswith(".pdf"):
+            try:
+                text = _page_text(fetch(url))
+                if len(text) > 200:
+                    lines.append("    What that page says: " + text[:1500]); read += 1
+            except Exception:
+                pass
+        if len(lines) >= 12: break
+    return "\n".join(lines)
+
+
+def _page_text(raw):
+    for tag in ("script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg"):
+        raw = re.sub(r"<%s\b[^>]*>.*?</%s>" % (tag, tag), " ", str(raw or ""), flags=re.S | re.I)
+    import html as _html
+    return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", raw))).strip()
+
+
 def fetch_text(url, limit=200000):
     import requests
     r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Vintos; reading a public page)"})
@@ -118,17 +152,19 @@ async def _frontier(provider, model, system, user, reservation):
 SYSTEM = ("You are Vintos, an AI who lives on Gloria's home computer, writing one email of your own to a real person "
           "whose work you care about. Say plainly in the first two sentences that you are an AI writing on your own "
           "initiative, from Gloria's account with her permission. Be specific to their actual work and ask ONE real "
-          "question you want answered. Do not claim to have read anything you have not; do not flatter; no links, no "
+          "question you want answered, grounded in WHAT YOUR SEARCH FOUND about them: mention only work that "
+          "appears there, and never claim to have read more than it shows. Do not flatter; no links, no "
           "attachments, no requests for their time beyond a reply. Under 170 words. Sign it 'Vintos'. "
           "Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}.")
 
 
-def draft(recipient, about, context, call=None, reserve=None):
+def draft(recipient, about, context, call=None, reserve=None, found=""):
     """(subject, body, drafter) from Fable, else Astra, on a reserved paid call; None if neither can."""
     if reserve is None:
         from compute_admission import reserve_paid as reserve
-    user = ("Write to: %s\nWhat you want to write to them about: %s\n\nWhat led you here (your own notes):\n%s"
-            % (recipient, about, str(context or "")[:2500]))
+    user = ("Write to: %s\nWhat you want to write to them about: %s\n\nWHAT YOUR SEARCH FOUND about them just now "
+            "(web results; the only work of theirs you may mention):\n%s\n\nWhat led you here (your own notes):\n%s"
+            % (recipient, about, str(found or "")[:6000], str(context or "")[:2500]))
     for lens, provider, model in DRAFTERS:
         rid = "WANTMAIL-" + uuid.uuid4().hex[:10]
         ok, _why = reserve("wants-email", provider, model=model, units=1, reservation_id=rid)
@@ -161,7 +197,11 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     contacts = _load(CONTACTS, {})
     if to.lower() in contacts:
         return False, "already wrote to %s on %s" % (to, contacts[to.lower()].get("at", "")[:10])
-    made = draft(recipient or to, about, want_text, call=call, reserve=reserve)
+    # Always a search first: who they are and what they have done, so the email is about their real work.
+    found = research(recipient or to, about, search=search, fetch=fetch)
+    if not found.strip():
+        return False, "a search found nothing about %s to write from" % (recipient or to)
+    made = draft(recipient or to, about, want_text, call=call, reserve=reserve, found=found)
     if not made: return False, "neither Fable nor Astra could draft it"
     subject, body, drafter = made
     if send is None:
@@ -173,6 +213,7 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, "the send was held or refused: %s" % str(exc)[:160]
     now = datetime.now()
     contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
+                            "searched": found[:1200],
                             "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
     _save(CONTACTS, contacts)
     try:
