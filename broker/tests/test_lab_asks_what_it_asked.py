@@ -58,6 +58,7 @@ def fake_query(spec_, question="", **k):
     sent.append(spec_); return reply
 sys.modules["chemistry_sources"] = types.SimpleNamespace(query=fake_query, flush_reports=lambda: None)
 
+REAL_ORIENT = M._orient   # the dead-end section below calls the real one
 M._orient = lambda context, lean=None: {"browse_lane": "microbiology", "source_query": dict(BROAD),
                                         "uniprot_query": HIS_UNIPROT, "plugin_query": None,
                                         "question": "What is the S-layer protein sequence?", "why_now": "to probe it"}
@@ -223,6 +224,51 @@ check("the reading step is told to say so when the records are not what was aske
       "never let a different protein stand in for the one asked about" in src and '"answers_question"' in src)
 check("the orient menu tells him to name the protein in the query he sends",
       "name the protein_name or gene you are actually asking about in THIS query" in src)
+
+# --- a run of questions with no review is a spent thread, and he is told so (KaiC, 2026-09-27) ------
+def kaic(n): return {"kind": "inquiry", "inquiry": {"question": "KaiC coupling, take %d?" % n, "browse_lane": "protein",
+                     "uniprot_query": M._safe_query('protein_name:"KaiC" AND organism_id:1140'), "source_query": None}}
+review = {"kind": "reflection", "source_accessions": ["Q79PF4"]}
+empty = {"kind": "source_unavailable", "reason": "uniprot_returned_no_records"}
+check("two questions since the last review are not yet a dead end",
+      M.dead_ends([review, kaic(1), empty, kaic(2), empty])["questions"] == [])
+spent = M.dead_ends([kaic(0), review, kaic(1), empty, kaic(2), empty, kaic(3), empty])
+check("three are, and the subject he kept asking about is named",
+      spent["count"] == 3 and spent["subjects"] == ["KaiC"] and len(spent["questions"]) == 3, spent)
+check("a question back on KaiC repeats it; another protein does not",
+      M.repeats_dead_end({"question": "What about kaiC phosphorylation?"}, spent)
+      and not M.repeats_dead_end({"question": "S-layer protein of L. acidophilus"}, spent))
+check("a named protein followed by AND is carried without the AND",
+      M.merge_source_intent(BROAD, 'reviewed:true AND (protein_name:"KaiC" AND organism_id:1140)')["query"]
+      .endswith("protein_name:KaiC"))
+check("UniProt refusing his query is shown to him as a miss too", "refused this query" in open(
+      os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
+
+nb = os.path.join(HOME, "dead-end-notebook.jsonl")
+with open(nb, "w") as f:
+    for row in (review, kaic(1), empty, kaic(2), empty, kaic(3), empty): f.write(json.dumps(row) + "\n")
+prompts, answers = [], [
+    json.dumps({"browse_lane": "protein", "uniprot_query": "gene:kaiC", "question": "KaiC once more?"}),
+    json.dumps({"browse_lane": "protein", "uniprot_query": "gene:slpA", "question": "How long is slpA?"})]
+real_ask, real_nb = M._ask, M.NOTEBOOK
+M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or answers[len(prompts) - 1]
+M.NOTEBOOK = nb
+try:
+    moved = REAL_ORIENT("context")
+finally:
+    M._ask, M.NOTEBOOK = real_ask, real_nb
+check("the orient prompt names the spent run", "LAST 3 QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE" in prompts[0]
+      and "(KaiC)" in prompts[0], prompts[0][-400:])
+check("choosing KaiC again is asked once more, and the new subject is kept",
+      len(prompts) == 2 and moved["question"] == "How long is slpA?", (len(prompts), moved.get("question")))
+open(nb, "w").write(json.dumps(review) + "\n")
+prompts[:] = []; answers[0] = answers[1]
+M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or answers[0]
+M.NOTEBOOK = nb
+try: REAL_ORIENT("context")
+finally: M._ask, M.NOTEBOOK = real_ask, real_nb
+check("with a fresh review behind him there is no warning and one call",
+      len(prompts) == 1 and "WITHOUT NEW EVIDENCE" not in prompts[0])
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

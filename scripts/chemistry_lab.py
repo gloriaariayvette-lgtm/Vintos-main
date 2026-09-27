@@ -369,6 +369,9 @@ def search_misses(limit=6):
         elif (row.get("kind") == "source_unavailable" and row.get("reason") == "uniprot_returned_no_records"
               and row.get("executed_query")):
             why, sent = "the source holds no such record", {"uniprot": row["executed_query"]}
+        elif (row.get("kind") == "source_unavailable" and row.get("reason") == "source_rejected_generated_query"
+              and row.get("requested_query")):
+            why, sent = "UniProt refused this query as written", {"uniprot": row["requested_query"]}
         else:
             continue
         key = json.dumps(sent, sort_keys=True)
@@ -376,6 +379,40 @@ def search_misses(limit=6):
         seen.add(key); out.append("- %s — %s" % (key[:220], why))
         if len(out) >= limit: break
     return out
+
+
+DEAD_END_RUN = 3
+
+
+def dead_ends(rows=None):
+    """Every question he has asked since his last completed review. A run of them means the thread is
+    spent: KaiC was asked for a day, each route ended empty or unchanged, and the journal's KaiC finding
+    kept pulling him back, because nothing told him the run itself had failed (Gloria, 2026-09-27)."""
+    rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
+    asked = []
+    for row in reversed(rows):
+        if row.get("kind") in ("reflection", "genome_reflection"): break
+        if row.get("kind") == "inquiry" and isinstance(row.get("inquiry"), dict):
+            asked.append(row["inquiry"])
+    asked.reverse()
+    if len(asked) < DEAD_END_RUN: return {"count": len(asked), "questions": [], "subjects": []}
+    subjects = []
+    for inq in asked:
+        sq = inq.get("source_query") if isinstance(inq.get("source_query"), dict) else {}
+        for term in _intent_terms(inq.get("uniprot_query")) + _intent_terms(sq.get("query")):
+            subjects.append(term.split(":", 1)[1].strip('"'))
+        if sq.get("term") and sq.get("operation") in ("gene", "protein"): subjects.append(str(sq["term"]))
+    subjects = [x for x in dict.fromkeys(v.strip() for v in subjects) if 2 <= len(x) <= 60]
+    return {"count": len(asked), "questions": [str(q.get("question", ""))[:160] for q in asked[-4:]],
+            "subjects": subjects[:6]}
+
+
+def repeats_dead_end(inquiry, spent):
+    """True when a new question goes straight back to a subject that has just produced nothing."""
+    text = " ".join([str(inquiry.get("question", "")), str(inquiry.get("uniprot_query", "")),
+                     json.dumps(inquiry.get("source_query") or {})])
+    return any(re.search(r"(?<![A-Za-z0-9])" + re.escape(s) + r"(?![A-Za-z0-9])", text, re.I)
+               for s in spent.get("subjects") or [])
 
 
 GAPS = os.path.join(ROOT, "instrument-gaps.json")
@@ -574,7 +611,8 @@ def _intent_terms(uniprot_query):
     for field in INTENT_FIELDS:
         m = re.search(r"\b%s\s*:\s*(.+?)(?=\s+%s|\s*[()]|$)" % (field, _FIELD_TOKEN), str(uniprot_query or ""))
         if not m: continue
-        value = m.group(1).strip().strip('"').strip()
+        # "protein_name:"KaiC" AND organism_id:1140" ends at the joiner, not after it (2026-09-27).
+        value = re.sub(r"\s+(?:AND|OR|NOT)$", "", m.group(1).strip()).strip().strip('"').strip()
         if value:
             out.append('%s:"%s"' % (field, value) if " " in value else "%s:%s" % (field, value))
     return out
@@ -630,7 +668,7 @@ def _orient(context, lean=None):
         genome_mining = "\n\n" + campaign_instructions()
     except Exception:
         genome_mining = ""
-    raw = _ask(
+    system, task = (
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
         "human targeting, pathogens, toxins, or a claim that a generated object is safe. Return JSON only.",
@@ -673,7 +711,21 @@ def _orient(context, lean=None):
         "Choose a sourced, non-pathogenic question an available instrument can probe; do not favor either lane "
         "merely because it appears in this menu."
     )
-    value = _json_object(raw)
+    spent = dead_ends()
+    if spent["questions"]:
+        task += ("\n\nYOUR LAST %d QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE — no review came of any of them:\n- %s\n"
+                 "That thread is spent for now%s. Choose a different protein, organism or instrument; "
+                 "do not rephrase the same question." % (
+                     spent["count"], "\n- ".join(spent["questions"]),
+                     (" (" + ", ".join(spent["subjects"]) + ")") if spent["subjects"] else ""))
+    inquiry = _inquiry(_json_object(_ask(system, task)), lean)
+    if spent["questions"] and repeats_dead_end(inquiry, spent):
+        inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose that same subject again. "
+                                             "Choose a different one.")), lean)
+    return inquiry
+
+
+def _inquiry(value, lean=None):
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
     requested_lane = value.get('browse_lane')
     lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
