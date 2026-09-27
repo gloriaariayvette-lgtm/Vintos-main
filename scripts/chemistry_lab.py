@@ -715,10 +715,12 @@ def _browse(query, limit):
     # He writes gene symbols as protein names: protein_name:RPS16 matches nothing human, so every
     # question about it came back empty and he asked it again (2026-09-26). The same symbol, read as
     # the gene it is, is not a wider search; it is the one he meant. Tried once, and recorded.
-    symbol = re.search(r"\bprotein_name:([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$)", executed_query or "")
-    if (not fallback_reason and not raw.get("results") and symbol
-            and re.search(r"\d", symbol.group(1)) and symbol.group(1).upper() == symbol.group(1)):
-        as_gene = executed_query[:symbol.start()] + "gene:" + symbol.group(1) + executed_query[symbol.end():]
+    # Any single short word counts: KaiC and slpA are gene names too, not only RPS16 (2026-09-27).
+    symbol = re.search(r'\bprotein_name:(?:"([A-Za-z][A-Za-z0-9-]{1,11})"|([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$))',
+                       executed_query or "")
+    if not fallback_reason and not raw.get("results") and symbol:
+        name = symbol.group(1) or symbol.group(2)
+        as_gene = executed_query[:symbol.start()] + "gene:" + name + executed_query[symbol.end():]
         try:
             retried = fetch(as_gene)
             if retried.get("results"):

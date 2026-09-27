@@ -178,7 +178,7 @@ class _R:
 def fake_urlopen(req, timeout=0):
     q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
     asked.append(q)
-    if "gene:RPS16" in q:
+    if "gene:RPS16" in q or "gene:KaiC" in q:
         return _R({"results": [{"primaryAccession": "P62249", "uniProtkbId": "RS16_HUMAN",
                                 "sequence": {"length": 146, "value": "M" * 146}}]})
     return _R({"results": []})
@@ -186,13 +186,16 @@ _real = M.urllib.request.urlopen
 M.urllib.request.urlopen = fake_urlopen
 try:
     got = M._browse("reviewed:true AND (protein_name:RPS16 AND organism_id:9606)", 4)
-    none = M._browse("reviewed:true AND (protein_name:Clarin AND organism_id:9606)", 4)
+    kaic = M._browse('reviewed:true AND (protein_name:"KaiC" AND organism_id:1140)', 4)
+    none = M._browse('reviewed:true AND (protein_name:"Clarin 2" AND organism_id:9606)', 4)
 finally:
     M.urllib.request.urlopen = _real
 check("protein_name:RPS16 that finds nothing is tried once as gene:RPS16",
       [r["accession"] for r in got["records"]] == ["P62249"] and "gene:RPS16" in got["executed_query"]
-      and len(asked) == 3, (asked, got["executed_query"]))
-check("a real protein name is not reread as a gene", none["records"] == [] and "gene:" not in asked[-1], asked)
+      and "gene:RPS16" in asked[1], (asked, got["executed_query"]))
+check("a mixed-case gene name like KaiC, even quoted, is tried as the gene too",
+      kaic["records"] and "gene:KaiC" in kaic["executed_query"], (asked, kaic["executed_query"]))
+check("a multi-word protein name is not reread as a gene", none["records"] == [] and "gene:" not in asked[-1], asked)
 
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
