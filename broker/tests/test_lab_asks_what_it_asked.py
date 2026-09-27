@@ -34,7 +34,7 @@ sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 M.set_enabled(True)
 cfg = M.config(); cfg["forge_report_intake"] = {"url": "http://127.0.0.1:9/api/lab-intake", "token_file": "x"}
 M._atomic(M.CONFIG, cfg)
-M._atomic(M.KNOWN_TAXA, ["1579"])   # an organism a receipt has returned; guessed IDs are tested below
+M._atomic(M.KNOWN_TAXA, {"version": M.KNOWN_TAXA_VERSION, "ids": ["1579"]})   # an organism a receipt has returned; guessed IDs are tested below
 
 # --- the query he wrote is the query that is sent -------------------------------------------------
 HIS_UNIPROT = 'reviewed:true AND length:[40 TO 350] AND (protein_name : S-layer protein organism_id : 1579 reviewed : True)'
@@ -125,10 +125,12 @@ check("a guessed organism ID is refused before any request",
 check("an NCBI taxon_id is held to the same rule",
       M.unsourced_ids({"source": "ncbi", "operation": "gene", "taxon_id": 424242}) == ["424242"]
       and M.unsourced_ids({"source": "ncbi", "operation": "taxonomy", "term": "L. acidophilus"}) == [])
-M.remember_taxa([{"organism": {"taxonId": 272621}}, {"uid": "33958"}])
+M.remember_taxa([{"organism": {"taxonId": 272621}}, {"uid": "33958", "summary": {"taxid": 1584}}])
 check("an ID a receipt returns becomes one he may use",
       M.unsourced_ids({"source": "uniprot", "query": "taxonomy_id:272621"}) == []
-      and "33958" in M.known_taxa())
+      and "1584" in M.known_taxa())
+check("an NCBI record number is not taken for an organism (1152240 for Colwellia, 2026-09-28)",
+      "33958" not in M.known_taxa())
 
 # --- the searches that found nothing are shown to him ---------------------------------------------
 ctx, _ = M.lab_context()
@@ -456,6 +458,38 @@ kept, how2 = M.resolve_taxa("reviewed:true AND (gene:kaiC AND taxonomy_id:28228)
 check("an ID a receipt already returned is trusted and not looked up", kept.endswith("taxonomy_id:28228)") and looked == [] and how2 is None)
 unnamed, how3 = M.resolve_taxa("reviewed:true AND (gene:x AND taxonomy_id:424242)", "What does the fold do?", lookup=taxonomy)
 check("with no organism named, his ID is left as it was", "424242" in unnamed and how3 is None)
+
+M._atomic(M.KNOWN_TAXA, ["1152240", "1584"])   # the first version of the file, with a record number in it
+check("the first version of the known-organism file is rebuilt once, without record numbers",
+      "1152240" not in M.known_taxa() and M._load(M.KNOWN_TAXA, {}).get("version") == M.KNOWN_TAXA_VERSION)
+M._add_known_taxa({"1152240"})   # as if a source had once returned it
+looked[:] = []
+forced, how4 = M.resolve_taxa('reviewed:true AND (protein_name:"cold shock protein" AND taxonomy_id:1152240)',
+                              "Tyr51 in Colwellia psychre CSP", lookup=taxonomy, force=True)
+check("after an empty search even a 'known' ID is checked against the organism he named",
+      "taxonomy_id:28228" in forced and how4["resolved"] == "28228", (forced, how4))
+same, how5 = M.resolve_taxa("reviewed:true AND (gene:cspA AND taxonomy_id:28228)", "cspA in Colwellia psychre",
+                            lookup=taxonomy, force=True)
+check("and when his ID was right it is left alone", how5 is None and same.endswith("taxonomy_id:28228)"))
+
+# the whole turn: an empty search on a 'known' wrong ID is retried once on the organism he named
+browsed = []
+def by_taxon(q, n):
+    browsed.append(q)
+    rows = [{"accession": "Q47XU5", "protein_name": "Cold shock protein"}] if "taxonomy_id:28228" in q else []
+    return {"source_receipt": None, "records": rows, "requested_query": q, "executed_query": q,
+            "fallback_reason": None, "relaxed": None}
+real_browse, real_taxon = M._browse, LS2.Sources._taxon
+M._browse, LS2.Sources._taxon = by_taxon, lambda self, spec: "28228" if spec.get("organism") == "Colwellia" else None
+M._atomic(M.STATE, {"phase": "browse", "turns": 110, "inquiry": {"browse_lane": "protein", "source_query": None,
+          "uniprot_query": "reviewed:true AND (protein_name:cold shock protein AND taxonomy_id:1152240 AND reviewed:true)",
+          "question": "Does the Tyr51 substitution in Colwellia psychre CSP matter?"}})
+try: M.tick()
+finally: M._browse, LS2.Sources._taxon = real_browse, real_taxon
+row = M._jsonl(M.NOTEBOOK)[-1]
+check("an empty search on a wrong organism ID is retried on the organism he named, and finds it",
+      len(browsed) == 2 and "1152240" in browsed[0] and "taxonomy_id:28228" in browsed[1]
+      and row["kind"] == "source_read" and row["organism_resolved"]["resolved"] == "28228", (browsed, row.get("kind")))
 
 # --- the same papers are not reviewed again and again (three Tyr51 reviews in two minutes) ---------
 real_browse = M._browse

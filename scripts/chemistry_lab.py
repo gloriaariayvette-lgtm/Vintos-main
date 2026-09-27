@@ -305,7 +305,11 @@ class UnsourcedId(ValueError):
 
 
 KNOWN_TAXA = os.path.join(ROOT, "known-taxa.json")
-_TAXID = re.compile(r'"(?:taxId|taxonId|taxon_id|tax_id|taxid|TaxId|taxonomy_id|taxonomyId|organism_id|uid)"\s*:\s*"?(\d{1,9})\b')
+# Not "uid": that is the record number in whatever NCBI database answered — a protein, a gene, a paper —
+# so every protein uid counted as an organism he had been given, and a wrong ID (1152240 for Colwellia)
+# was trusted and emptied every search (2026-09-28). NCBI Taxonomy's own summaries carry "taxid".
+_TAXID = re.compile(r'"(?:taxId|taxonId|taxon_id|tax_id|taxid|TaxId|taxonomy_id|taxonomyId|organism_id)"\s*:\s*"?(\d{1,9})\b')
+KNOWN_TAXA_VERSION = 2
 
 
 def _harvest_taxa(text):
@@ -316,6 +320,10 @@ def known_taxa():
     """Organism IDs some source actually returned. He invented four in five minutes (2026-09-26); an ID
     no receipt ever gave him is a guess, and a guessed ID sends a real query for the wrong organism."""
     data = _load(KNOWN_TAXA, None)
+    if isinstance(data, dict) and data.get("version") == KNOWN_TAXA_VERSION:
+        data = data.get("ids") or []
+    else:   # none yet, or the first version, which had taken record numbers for organisms: rebuilt once
+        data = None
     if data is None:
         ids = set()
         try:
@@ -326,15 +334,18 @@ def known_taxa():
             pass
         ids |= _harvest_taxa(json.dumps(config().get("atlas_anchors", [])))
         data = sorted(ids)
-        _atomic(KNOWN_TAXA, data)
+        _atomic(KNOWN_TAXA, {"version": KNOWN_TAXA_VERSION, "ids": data})
     return set(map(str, data))
 
 
-def remember_taxa(records):
-    found = _harvest_taxa(json.dumps(records))
+def _add_known_taxa(found):
     if not found: return
     with _locked():
-        _atomic(KNOWN_TAXA, sorted(set(map(str, _load(KNOWN_TAXA, []) or [])) | found))
+        _atomic(KNOWN_TAXA, {"version": KNOWN_TAXA_VERSION, "ids": sorted(known_taxa() | set(map(str, found)))})
+
+
+def remember_taxa(records):
+    _add_known_taxa(_harvest_taxa(json.dumps(records)))
 
 
 def unsourced_ids(spec):
@@ -1033,13 +1044,13 @@ def _organism_names(question):
     return out[:4]
 
 
-def resolve_taxa(query, question, lookup=None):
+def resolve_taxa(query, question, lookup=None, force=False):
     """An organism ID he wrote from memory is replaced by the one NCBI Taxonomy returns for the organism he
     named. One wrong number emptied every search on Colwellia's cold-shock protein, looser forms and all
     (2026-09-28). IDs a receipt has already returned are trusted; a name that cannot be looked up leaves
     his ID as it was. Returns (query, what_changed)."""
     ids = re.findall(r"\b(?:taxonomy_id|organism_id):(\d+)", str(query or ""))
-    guessed = [i for i in dict.fromkeys(ids) if i not in known_taxa()]
+    guessed = [i for i in dict.fromkeys(ids) if force or i not in known_taxa()]
     if not guessed: return query, None
     if lookup is None:
         from lab_sources import Sources
@@ -1049,10 +1060,10 @@ def resolve_taxa(query, question, lookup=None):
         except Exception as exc:
             _fault("resolve_taxa", exc); return query, None
         if found:
+            if force and set(guessed) == {str(found)}: return query, None   # his ID was right
             for old in guessed:
                 query = re.sub(r"\b(?:taxonomy_id|organism_id):" + old + r"\b", "taxonomy_id:" + str(found), query)
-            with _locked():
-                _atomic(KNOWN_TAXA, sorted(set(map(str, _load(KNOWN_TAXA, []) or [])) | {str(found)}))
+            _add_known_taxa({str(found)})
             return query, {"guessed": guessed, "resolved": str(found), "from_name": name}
     return query, None
 
@@ -1290,6 +1301,11 @@ def tick():
                 else:
                     sent, resolved = resolve_taxa(inquiry["uniprot_query"], inquiry.get("question"))
                     browse_result = _browse(sent, cfg["max_records_per_browse"])
+                    if not browse_result["records"] and not resolved:
+                        # Nothing in any looser form either: the organism ID itself is the likeliest thing wrong,
+                        # even one a source once returned. Look up the organism he named, once.
+                        retry, resolved = resolve_taxa(sent, inquiry.get("question"), force=True)
+                        if resolved: browse_result = _browse(retry, cfg["max_records_per_browse"])
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
