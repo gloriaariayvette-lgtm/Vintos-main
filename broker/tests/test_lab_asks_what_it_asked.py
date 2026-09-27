@@ -148,25 +148,13 @@ check("a reflection that needs nothing new opens no Forge project", offers == []
 M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a circular dichroism reading to see the fold")
 reply = {"receipt": {"receipt_id": "REC-4", "response_sha256": "f" * 64, "records": [{"primaryAccession": "Q4"}]}}
 M.tick(); M.tick(); M.tick(); M.tick()
-check("a named missing instrument does open one, as a capability request",
-      len(offers) == 1 and offers[0][1].startswith("The Lab needs an instrument it does not have:")
-      and "circular dichroism" in offers[0][1] and "Document this sourced Lab question" not in offers[0][1], offers)
-
-reply = {"receipt": {"receipt_id": "REC-5", "response_sha256": "a" * 64, "records": [{"primaryAccession": "Q5"}]}}
-M.tick(); M.tick(); M.tick(); M.tick()
-check("the same instrument is not asked for twice", len(offers) == 1, offers)
-check("the notebook shows what he asked the Forge for",
-      any(x.get("forge_report") for x in M._jsonl(M.NOTEBOOK) if x.get("kind") == "reflection"))
-
-def refusing(ids, intent, **k):
-    offers.append((ids, intent)); raise OSError("403 four unfinished reports")
-sys.modules["chemistry_sources"].offer_report = refusing
-M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a mass spectrometer for the glycan")
-for n, h in (("REC-6", "1"), ("REC-7", "2")):
-    reply = {"receipt": {"receipt_id": n, "response_sha256": h * 64, "records": [{"primaryAccession": n}]}}
-    M.tick(); M.tick(); M.tick(); M.tick()
-check("a request the full Forge refused is not queued again on every later reflection",
-      sum("mass spectrometer" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
+# Nothing goes from the Lab to the Forge (2026-09-28): cryo-EM gaps became midnight feasibility write-ups.
+check("a named missing instrument opens no Forge project either", offers == [], offers)
+check("it is kept in the Lab, where she can read it",
+      M.instrument_gap_offered("a circular dichroism reading to see the fold")
+      and any("circular dichroism" in str(x.get("instrument_gap_recorded")) for x in M._jsonl(M.NOTEBOOK)))
+check("the Lab no longer holds any path to the Forge's intake",
+      "offer_report(" not in open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read())
 
 # --- a gene symbol written as a protein name is read as the gene it is -----------------------------
 import urllib.error as _ue
@@ -366,6 +354,65 @@ try: journal = M.journal_context()
 finally: M.journal_threads = real_threads
 check("a journal finding on a spent subject is left out of his planning context",
       "KaiC" not in journal and "S-layer" in journal, journal)
+
+# --- he is given the material: published abstracts, fetched by the Lab (2026-09-28) ---------------
+import lab_sources as LS2
+PUBMED_XML = """<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>31000001</PMID><Article>
+<Journal><Title>J Bacteriol</Title><JournalIssue><PubDate><Year>2019</Year></PubDate></JournalIssue></Journal>
+<ArticleTitle>Modular polyketide synthases of <i>Streptomyces</i></ArticleTitle><Abstract>
+<AbstractText Label="BACKGROUND">Type I PKS modules carry KS, AT and ACP domains.</AbstractText>
+<AbstractText>Optional KR, DH and ER domains set the reduction state.</AbstractText></Abstract></Article>
+</MedlineCitation></PubmedArticle></PubmedArticleSet>"""
+urls = []
+def pm_fetch(url):
+    urls.append(url); q = __import__("urllib.parse").parse.parse_qs(url.split("?", 1)[1])
+    if q["db"][0] == "taxonomy": return {"esearchresult": {"idlist": ["1883"]}}, {}
+    if "esummary" in url: return {"result": {}}, {}
+    hit = "marine" not in q["term"][0]                      # four terms find nothing; three do
+    return {"esearchresult": {"idlist": ["31000001"] if hit else []}}, {}
+client = LS2.Sources(fetch=pm_fetch, fetch_record=lambda url: urls.append(url) or PUBMED_XML)
+got = client.query({"source": "pubmed_abstracts", "terms": ["polyketide synthase", "Streptomyces", "module (KS)", "marine"]})
+rec = got["records"][0] if got["records"] else {}
+check("PubMed abstracts come back whole, with PMID, title, journal and year",
+      rec.get("pmid") == "31000001" and "KS, AT and ACP" in rec.get("abstract", "") and "KR, DH and ER" in rec["abstract"]
+      and rec.get("title") == "Modular polyketide synthases of Streptomyces" and rec.get("year") == "2019", got)
+check("when all his terms find nothing, the last is dropped until something does",
+      got["query"]["terms_matched"] == ["polyketide synthase", "Streptomyces", "module KS"], got["query"])
+urls[:] = []
+named = client.query({"source": "ncbi", "operation": "protein", "organism": "Streptomyces", "term": "polyketide synthase"})
+check("an organism named instead of an ID is looked up by the Lab, not refused",
+      "db=taxonomy" in urls[0] and "txid1883" in __import__("urllib.parse").parse.unquote(urls[1])
+      and named["query"]["resolved_taxon_id"] == "1883", urls)
+
+_cs = importlib.util.spec_from_file_location("chemistry_sources_real", os.path.join(REPO, "scripts", "chemistry_sources.py"))
+CS_real = importlib.util.module_from_spec(_cs); _cs.loader.exec_module(CS_real)
+pks = {"question": "What are the specific modular architectures of polyketide synthases (PKS) in marine "
+                   "actinobacteria, and how do these modules dictate the biosynthetic diversity?",
+       "uniprot_query": M._safe_query('protein_name:"polyketide synthase"'), "source_query": None}
+terms = CS_real.material_terms(pks)
+check("without chosen terms, the protein he named and the words that carry the question are used",
+      terms[0] == "polyketide synthase" and "PKS" in terms and "the" not in terms and len(terms) <= 5, terms)
+check("terms he chose himself are used as he wrote them",
+      CS_real.material_terms(dict(pks, material_terms=["KaiC", "phosphorylation"])) == ["KaiC", "phosphorylation"])
+
+# the lane: a source that holds nothing, then the literature is read instead of the question dropped
+seen_by_reflect = []
+M._reflect = lambda context, inquiry, records: seen_by_reflect.append(records) or dict(REFLECTION)
+sys.modules["chemistry_sources"] = types.SimpleNamespace(
+    query=lambda spec_, question="", **k: {"receipt": {"receipt_id": "REC-E", "response_sha256": "0" * 64, "records": []}},
+    flush_reports=lambda: 0, material=lambda inquiry: got)
+M._atomic(M.STATE, {"phase": "sources", "turns": 90, "inquiry": {
+    "browse_lane": "microbiology", "source_query": {"source": "ncbi", "operation": "literature", "term": "PKS marine"},
+    "uniprot_query": M.BASELINE_QUERY, "question": "PKS modules in marine actinobacteria?"}})
+went = M.tick()
+check("an empty source goes on to the literature, not back to a new question",
+      went.get("next_phase") == "reflect" and M._jsonl(M.NOTEBOOK)[-1].get("literature_instead") == 1, went)
+M.tick()
+last = M._jsonl(M.NOTEBOOK)[-1]
+check("the review reads the abstracts and records which papers it read",
+      seen_by_reflect and seen_by_reflect[-1]["LITERATURE"][0]["pmid"] == "31000001"
+      and last["kind"] == "reflection" and last["literature"][0]["pmid"] == "31000001"
+      and "PMID-31000001" in last["source_accessions"], last)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

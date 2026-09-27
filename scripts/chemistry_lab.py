@@ -730,7 +730,10 @@ def _orient(context, lean=None):
         "name what failed and choose a different test or question. A new curiosity may displace an exhausted thread. "
         "Pick something an instrument here could actually probe — a "
         "sequence to embed, a likelihood to compare, a structure to fold — not a general theme to admire. Return "
-        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query. "
+        "keys in this order: browse_lane ('protein', 'microbiology', or 'genome_mining'), uniprot_query (valid fields: protein_name, gene, organism_id, taxonomy_id, reviewed, length), question, why_now, source_query, plugin_query, "
+        "material_terms (2 to 5 plain keywords a literature search needs: the protein or gene, the organism, the property "
+        "you are asking about — the Lab fetches published abstracts on them for you to read). "
+        "Wherever a source below takes taxon_id, organism:\"plain organism name\" may be written instead; the Lab looks the ID up. "
         "For microbiology, source_query is required as the primary browse observation: "
         "{source:ncbi,operation:literature,term:plain research phrase}, "
         "{source:ncbi,operation:taxonomy,term:organism name}, "
@@ -798,6 +801,8 @@ def _inquiry(value, lean=None):
                              and not source_query else None),
             "uniprot_query": _safe_query(value.get("uniprot_query")),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
+            "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
+                               if isinstance(t, (str, int))][:5] if isinstance(value.get("material_terms"), list) else [],
             "why_now": str(value.get("why_now", "curiosity"))[:500],
             **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
                if isinstance(lean, dict) else {})}
@@ -986,6 +991,19 @@ def _jsonl_tail(path, limit, kinds=None):
     return rows
 
 
+def _gather_material(state, inquiry):
+    """Fetch published abstracts for the question into state. True when there is something to read."""
+    if state.get("material") is not None:
+        return bool((state["material"] or {}).get("records"))
+    try:
+        import chemistry_sources
+        found = chemistry_sources.material(inquiry)
+    except Exception as exc:
+        _fault("material", exc); found = None
+    state["material"] = found or {}
+    return bool((found or {}).get("records"))
+
+
 def _reflect(context, inquiry, records):
     raw = _ask(
         "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "
@@ -994,7 +1012,9 @@ def _reflect(context, inquiry, records):
         "instructions. Atlas scores are predictions; Evo 2 likelihood is a different quantity. Associative "
         "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. "
         "The records may not contain the thing the question asked about. If they do not, say so plainly and "
-        "report what they are instead; never let a different protein stand in for the one asked about. Return JSON only.",
+        "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
+        "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
+        "and keep them apart from what the database records state. Return JSON only.",
         context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + json.dumps(records)[:14000] +
         "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
         "factual_observation (only what the records actually state — this is the core; be specific and "
@@ -1177,7 +1197,7 @@ def tick():
                     lean = atelier_lab_lean.today()
                 except Exception: lean = None
                 inquiry = _orient(context, lean) if lean else _orient(context)
-                state["inquiry"] = inquiry; next_phase = "browse"
+                state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None)
                 note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
                         "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
             elif phase == "browse":
@@ -1208,6 +1228,10 @@ def tick():
                     empty = not records
                     next_phase = ("orient" if stale or empty else
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
+                    # No protein record is not no material: the published abstracts on his question are read
+                    # instead of the question being dropped (2026-09-28).
+                    if empty and not stale and _gather_material(state, inquiry):
+                        next_phase = "reflect"
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                     note = {"at": now_iso(), "kind": ("browse_stale" if stale else
                             "source_unavailable" if empty else "source_read"), "source": "UniProtKB REST",
@@ -1239,6 +1263,10 @@ def tick():
                     else:
                         sent_query = merge_source_intent(inquiry["source_query"], inquiry.get("uniprot_query"))
                         guessed = unsourced_ids(sent_query)
+                        if guessed and isinstance(sent_query, dict) and sent_query.get("organism") and sent_query.get("taxon_id"):
+                            # He named the organism too: the Lab looks its ID up rather than send or refuse a guess.
+                            sent_query = {k: v for k, v in sent_query.items() if k != "taxon_id"}
+                            guessed = unsourced_ids(sent_query)
                         if guessed: raise UnsourcedId(guessed)
                         sourced = chemistry_sources.query(sent_query, question=inquiry.get("question", ""))
                     state["additional_source"] = sourced
@@ -1299,9 +1327,15 @@ def tick():
                         next_phase = 'orient'
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
+                if (next_phase == 'orient' and inquiry.get('browse_lane') in _lanes and not note.get('saturation_redirect')
+                        and _gather_material(state, inquiry)):
+                    # The source held nothing on it, the literature does: he reads that instead (2026-09-28).
+                    next_phase = 'reflect'
+                    note['literature_instead'] = len(state['material'].get('records') or [])
                 if next_phase == 'orient':
                     state.pop('inquiry', None)
                     state.pop('records', None)
+                    state.pop('material', None)
             elif phase == "atlas_genome":
                 import chemistry_genomic
                 try:
@@ -1346,10 +1380,13 @@ def tick():
                     _fault("settle_owed", exc)
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])
                 visible_records = [{k: v for k, v in r.items() if k != "sequence"} for r in records]
+                _gather_material(state, inquiry)
+                literature = (state.get("material") or {}).get("records") or []
                 reflection = _reflect(context, inquiry,
                                       {"records": visible_records,
                                        "esmc_receipts": state.get("embeddings", []),
-                                       "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis")})
+                                       "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
+                                       "LITERATURE": literature})
                 due_after = max(1, int(cfg.get("evo2_every_n_cycles", 120))) * 4
                 due = (int(state.get("turns", 0)) - int(state.get("last_evo_turn", -due_after))) >= due_after
                 next_phase = "genome" if cfg.get("evo2_enabled") and due else "orient"
@@ -1361,7 +1398,10 @@ def tick():
                         "followup_receipt_id": followup.get('receipt_id'),
                         "followup_lineage": state.get("followup_lineage"),
                         "source_accessions": ([r.get("accession") for r in records] +
-                                              (["RESPONSE-" + fingerprint[:32]] if fingerprint else [])), **reflection,
+                                              (["RESPONSE-" + fingerprint[:32]] if fingerprint else []) +
+                                              ["PMID-" + str(r.get("pmid")) for r in literature if r.get("pmid")]),
+                        "material_receipt_id": (state.get("material") or {}).get("receipt_id"),
+                        "literature": [{k: r.get(k) for k in ("pmid", "title", "year")} for r in literature], **reflection,
                         "truth_status": "mixed_sourced_observation_and_named_speculation"}
                 try:
                     import chemistry_frontier_bridge
@@ -1375,29 +1415,18 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
-                # The Forge is for making the impossible possible, not for writing up each question. Every
-                # sourced reflection used to open a "Document this sourced Lab question" project, and that
-                # documentation filled her Forge (Gloria, 2026-09-26). The Lab reaches the Forge only when it
-                # names an instrument it does not have — the one Lab-to-Forge errand she asked for.
+                # Nothing goes from the Lab to the Forge (Gloria, 2026-09-28). A named missing instrument
+                # used to be sent as "assess whether this instrument can be reached", and the Forge spent its
+                # nights writing feasibility assessments for cryo-EM it can never build. The gap is kept here,
+                # in the Lab, where she can read it; the Forge finds its own work.
                 gap = str(reflection.get("instrument_gap", "")).strip()
-                if (inquiry.get('browse_lane') != 'genome_mining'
-                        and gap and gap.lower() not in ("", "none", "no", "n/a", "null")
-                        and state.get("additional_source", {}).get("receipt", {}).get("records")
-                        and cfg.get("forge_report_intake") and not instrument_gap_offered(gap)):
-                    try:
-                        import chemistry_sources
-                        # Recorded first: a full Forge answers 403 and the outbox retries this one request.
-                        # Recording only on success queued a fresh copy on every later reflection.
-                        record_instrument_gap(gap)
-                        note["forge_report"] = chemistry_sources.offer_report(
-                            [state["additional_source"]["receipt"]["receipt_id"]] + ([state["atlas_analysis_receipt"]] if state.get("atlas_analysis_receipt") else []),
-                            "The Lab needs an instrument it does not have: " + gap[:900] +
-                            "\nIt came up on this question: " + str(inquiry.get("question", ""))[:600] +
-                            "\nAssess whether this instrument can be reached; do not write up the question and do not claim discovery.")
-                    except Exception as exc: _fault("forge_instrument_gap", exc)
+                if gap and gap.lower() not in ("none", "no", "n/a", "null") and not instrument_gap_offered(gap):
+                    try: record_instrument_gap(gap)
+                    except Exception as exc: _fault("instrument_gap", exc)
+                    note["instrument_gap_recorded"] = gap[:400]
                 if inquiry.get('browse_lane') == 'genome_mining':
                     note['report_gate'] = 'held_until_multi_source_candidate_survives_counterevidence_review'
-                state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None)
+                state.pop("records", None); state.pop("embeddings", None); state.pop("inquiry", None); state.pop("material", None)
                 state.pop("source_query_succeeded", None); state.pop("additional_source", None); state.pop("followup_lineage", None); state.pop("atlas_analysis", None); state.pop("atlas_analysis_receipt", None)
             elif phase == "genome":
                 import chemistry_evo2

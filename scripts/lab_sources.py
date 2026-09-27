@@ -29,9 +29,17 @@ NCBI_DATABASES = {'taxonomy': 'taxonomy', 'assembly': 'assembly',
 
 
 def _plain_term(value):
-    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 .,'_-]{2,119}", value):
+    """A plain search phrase. He writes "polyketide synthase (PKS) in marine actinobacteria"; the brackets,
+    colons and Entrez words are taken out rather than the whole question refused (2026-09-28), so no field
+    tag or operator of his can reach Entrez, and what he asked about still does."""
+    if not isinstance(value, str):
         raise ValueError('use 3..120 plain search characters, without Entrez operators')
-    return value.strip()
+    value = re.sub(r"[^A-Za-z0-9 .,'_-]", ' ', value)
+    value = re.sub(r"\b(?:AND|OR|NOT)\b", ' ', value)
+    value = re.sub(r"\s+", ' ', value).strip(" .,'_-")[:120].strip()
+    if len(value) < 3 or not value[0].isalnum():
+        raise ValueError('use 3..120 plain search characters, without Entrez operators')
+    return value
 
 
 def _taxon_id(value):
@@ -206,6 +214,58 @@ class Sources:
         self.fetch, self.atlas, self.fetch_sequence, self.fetch_record = fetch, atlas, fetch_sequence, fetch_record
         self.imgvr = imgvr
 
+    def _taxon(self, spec):
+        """A taxon ID he was given, or the one NCBI Taxonomy returns for the organism he named. Guessed IDs
+        were refused and the question lost; a name is looked up instead of guessed (2026-09-28)."""
+        if spec.get('taxon_id') not in (None, ''):
+            return _taxon_id(spec.get('taxon_id'))
+        if not spec.get('organism'): return None
+        found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+            'db': 'taxonomy', 'term': _plain_term(spec.get('organism')), 'retmode': 'json', 'retmax': 1,
+            'tool': 'vintos_lab'}))
+        ids = (found.get('esearchresult') or {}).get('idlist') or []
+        return str(ids[0]) if ids and re.fullmatch(r'[1-9][0-9]{0,9}', str(ids[0])) else None
+
+    def _abstracts(self, spec):
+        """Published abstracts for what he is asking: the reading itself, not a list of titles. All his
+        terms first; if nothing matches, the last term is dropped, down to two."""
+        raw = spec.get('terms')
+        terms = []
+        for value in (raw if isinstance(raw, list) else [])[:6]:
+            try: terms.append(_plain_term(str(value)))
+            except ValueError: continue
+        if not terms: raise ValueError('one or more plain search terms required')
+        limit = spec.get('limit', 4)
+        if type(limit) is not int or not 1 <= limit <= 6: raise ValueError('limit must be 1..6')
+        ids, used = [], terms
+        for n in range(len(terms), min(2, len(terms)) - 1, -1):
+            used = terms[:n]
+            search, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+                'db': 'pubmed', 'term': ' AND '.join('(%s)' % t for t in used), 'retmode': 'json',
+                'retmax': limit, 'sort': 'relevance', 'tool': 'vintos_lab'}))
+            ids = (search.get('esearchresult') or {}).get('idlist') or []
+            if any(not re.fullmatch(r'[0-9]{1,20}', str(x)) for x in ids):
+                raise ValueError('NCBI returned invalid identifiers')
+            if ids: break
+        records = []
+        if ids:
+            xml = self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
+                'db': 'pubmed', 'id': ','.join(map(str, ids[:limit])), 'rettype': 'abstract', 'retmode': 'xml',
+                'tool': 'vintos_lab'}))
+            try: root = ET.fromstring(xml)
+            except ET.ParseError as exc: raise ValueError('PubMed returned malformed XML') from exc
+            for article in root.findall('.//PubmedArticle')[:limit]:
+                abstract = ' '.join(''.join(node.itertext()).strip() for node in article.findall('.//Abstract/AbstractText'))
+                records.append({'pmid': article.findtext('.//PMID') or '',
+                                'title': ''.join((article.find('.//ArticleTitle') or ET.Element('x')).itertext())[:300],
+                                'journal': (article.findtext('.//Journal/Title') or '')[:160],
+                                'year': article.findtext('.//JournalIssue/PubDate/Year') or '',
+                                'abstract': abstract[:1800]})
+        return receipt('pubmed_abstracts', {'source': 'pubmed_abstracts', 'terms': terms, 'terms_matched': used,
+                                            'limit': limit}, records,
+                       metadata={'service': 'NCBI_PubMed', 'coverage': 'first_%d_by_relevance' % limit,
+                                 'interpretation': "published abstracts: the authors' claims, not verified here"})
+
     def query(self, spec):
         if not isinstance(spec, dict): raise ValueError('source query must be an object')
         source = spec.get('source')
@@ -249,15 +309,22 @@ class Sources:
             if operation not in NCBI_DATABASES: raise ValueError('unknown NCBI operation')
             limit = spec.get('limit', 4)
             if type(limit) is not int or not 1 <= limit <= 8: raise ValueError('limit must be 1..8')
+            resolved = None
             if operation == 'taxonomy':
-                term = _plain_term(spec.get('term'))
+                term = _plain_term(spec.get('term') or spec.get('organism'))
             elif operation == 'literature':
                 term = _plain_term(spec.get('term'))
             else:
-                taxon = _taxon_id(spec.get('taxon_id'))
-                term = 'txid' + taxon + '[Organism:exp]'
-                if operation in ('gene', 'protein'):
-                    term += ' AND ' + _plain_term(spec.get('term'))
+                taxon = self._taxon(spec)
+                resolved = taxon if spec.get('taxon_id') in (None, '') else None
+                if taxon:
+                    term = 'txid' + taxon + '[Organism:exp]'
+                    if operation in ('gene', 'protein'):
+                        term += ' AND ' + _plain_term(spec.get('term'))
+                elif operation in ('gene', 'protein') and spec.get('term'):
+                    term = _plain_term(spec.get('term'))   # no organism named: the gene or protein alone
+                else:
+                    raise ValueError('sourced numeric NCBI taxon_id or an organism name required')
             database = NCBI_DATABASES[operation]
             search, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
                 'db': database, 'term': term, 'retmode': 'json', 'retmax': limit,
@@ -274,9 +341,13 @@ class Sources:
                 payload = summary.get('result') or {}
                 records = [{'uid': uid, 'summary': payload[uid]} for uid in ids if isinstance(payload.get(uid), dict)]
             return receipt(source, {'source': source, 'operation': operation, 'term': spec.get('term'),
-                                    'taxon_id': spec.get('taxon_id'), 'limit': limit}, records,
+                                    'taxon_id': spec.get('taxon_id'), 'limit': limit,
+                                    **({'organism': spec.get('organism'), 'resolved_taxon_id': resolved}
+                                       if resolved else {})}, records,
                            metadata={'database': database, 'total_count': result.get('count'),
                                      'coverage': 'bounded_first_page', 'service': 'NCBI_EUtilities'})
+        if source == 'pubmed_abstracts':
+            return self._abstracts(spec)
         if source == 'ncbi_sequence':
             database = spec.get('database')
             if database not in ('protein', 'nuccore'): raise ValueError('protein or nuccore sequence required')
@@ -374,7 +445,8 @@ class Sources:
         if source == 'bvbrc':
             operation = spec.get('operation')
             if operation == 'genomes':
-                key, value = 'taxon_id', _taxon_id(spec.get('taxon_id'))
+                key, value = 'taxon_id', self._taxon(spec)
+                if not value: raise ValueError('sourced numeric NCBI taxon_id or an organism name required')
                 fields = ('genome_id', 'genome_name', 'taxon_id', 'assembly_accession',
                           'sequencing_status', 'genome_length', 'phenotype', 'other_environmental',
                           'optimal_temperature', 'reference_genome', 'public')

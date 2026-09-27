@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Scratch-only source contracts and handoff. No real network, model, or notification."""
-import io
+import urllib.parse, io
 import contextlib
 import json
 import os
@@ -109,12 +109,17 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['novelty'],'not_established')
         self.assertTrue(all(url.startswith(sources.NCBI_BASE) for url in self.calls))
         self.calls.clear()
-        for spec in ({'source':'ncbi','operation':'taxonomy','term':'x[All Fields]'},
+        for spec in ({'source':'ncbi','operation':'taxonomy','term':'[]'},
                      {'source':'ncbi','operation':'assembly','taxon_id':'1);evil'},
                      {'source':'ncbi','operation':'protein','taxon_id':True,'term':'pigment'},
                      {'source':'ncbi','operation':'literature','term':'biofilm','limit':100}):
             with self.assertRaises(ValueError): client.query(spec)
         self.assertEqual(self.calls,[])
+        # 2026-09-28: a field tag or operator is taken out, not the whole question refused.
+        client.query({'source':'ncbi','operation':'taxonomy','term':'polyketide synthase (PKS) AND x[All Fields]'})
+        sent=urllib.parse.parse_qs(self.calls[0].split('?',1)[1])['term'][0]
+        self.assertEqual(sent,'polyketide synthase PKS x All Fields')
+        self.assertNotIn('[',self.calls[0])
 
     def test_ncbi_sequence_requires_exact_accession_and_bounded_slice(self):
         def fasta(url):

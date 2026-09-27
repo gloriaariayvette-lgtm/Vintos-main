@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import time
 import hashlib
+import re
 
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
@@ -87,6 +88,53 @@ def query(spec, *, client=None, question=''):
     lab._append(os.path.join(lab.ROOT, 'source-candidates.jsonl'), candidate)
     return {'receipt': result, 'candidate': candidate}
 
+
+_COMMON = frozenset("""what which how does do did are is was were the of in on to for and or with from by that this these those
+their its into across under over between within specific specifically structural structure structures motif motifs
+role roles mechanism mechanisms particular different various possible potential might could would there their
+exhibit facilitate facilitates allow allows explain relate related relation environment environments
+protein proteins architecture architectures diversity dictate dictates conserved across modular affect affects influence""".split())
+
+
+def material_terms(inquiry):
+    """The words a literature search needs: the protein he named, the organism, what he asks about."""
+    inquiry = inquiry if isinstance(inquiry, dict) else {}
+    chosen = [str(t).strip() for t in (inquiry.get('material_terms') or []) if isinstance(t, str) and t.strip()]
+    if chosen: return chosen[:5]
+    terms = [t.split(':', 1)[1].strip('"') for t in lab._intent_terms(inquiry.get('uniprot_query'))]
+    sq = inquiry.get('source_query') if isinstance(inquiry.get('source_query'), dict) else {}
+    terms += [str(sq[k]) for k in ('term', 'organism') if isinstance(sq.get(k), str) and sq.get(k)]
+    question = str(inquiry.get('question') or '')
+    terms += re.findall(r'\b[A-Z][a-z]+ [a-z]{4,}\b', question)[:1]          # a binomial: Saccharolobus solfataricus
+    words = [w for w in re.findall(r'\b(?:[A-Z][A-Z0-9]{2,}[a-z]?|[A-Za-z][A-Za-z0-9-]{3,})\b', question)   # PKS, KaiC, MCR
+             if w.lower() not in _COMMON]
+    taken = ' '.join(terms).lower()
+    words = [w for w in dict.fromkeys(words) if w.lower() not in taken]
+    # Names first (KaiC, PFOR, S-layer), then the longest words, which carry the most meaning.
+    terms += sorted(words, key=lambda w: (not re.search(r'[A-Z0-9-]', w[1:]), -len(w)))[:3]
+    seen, out = set(), []
+    for term in terms:
+        if term.lower() not in seen and not any(term.lower() in o.lower() for o in out):
+            seen.add(term.lower()); out.append(term)
+    return out[:5]
+
+
+def material(inquiry, *, client=None):
+    """Published abstracts for his question, fetched by the Lab itself (Gloria, 2026-09-28: "Give him the
+    material"). His own queries only ever returned identifiers and taxonomy lines; this is the reading."""
+    if not lab.config().get('allow_public_database_reads'): return None
+    terms = material_terms(inquiry)
+    if not terms: return None
+    throttle_path = os.path.join(lab.ROOT, 'source-throttle.json')
+    with lab._locked():
+        throttle = lab._load(throttle_path, {})
+        if time.time() < throttle.get('pubmed_abstracts', 0): return None
+        throttle['pubmed_abstracts'] = time.time() + 20
+        lab._atomic(throttle_path, throttle)
+    result = (client or configured_sources()).query({'source': 'pubmed_abstracts', 'terms': terms})
+    lab._ensure()
+    lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
+    return result
 
 def report_packet(receipt_ids):
     """Exact, sourced input for a Forge report. Does not declare publication novelty."""
@@ -176,26 +224,18 @@ def offer_report(receipt_ids, question, *, send=None):
 
 
 def flush_reports():
-    if not lab.config().get('forge_report_intake'): return
-    if (lab._load(REPORT_PAUSE, {}) or {}).get('until', 0) > time.time(): return   # the Forge said no; wait
+    """Withdraws every report still queued for the Forge; sends none.
+
+    Nothing goes from the Lab to the Forge (Gloria, 2026-09-28). First the Lab's write-ups filled it, then
+    its missing instruments did: a cryo-EM gap became "Feasibility Assessment: Cryo-Electron Microscopy
+    for Lactobacillus acidophilus S-layer Analysis" at midnight. The Forge is for abilities it can build."""
     outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
     with lab._locked():
         outbox = lab._load(outbox_path, {})
-        # The Lab no longer asks the Forge to write up its questions (2026-09-26). The write-ups still
-        # queued from before kept a full Forge refusing him, so they are withdrawn, not retried.
-        stale = [row for row in outbox.values() if row.get('state') in ('pending', 'refused')
-                 and str(row.get('question', '')).startswith('Document this sourced Lab question')]
-        for row in stale: row['state'] = 'withdrawn'
-        if stale: lab._atomic(outbox_path, outbox)
-    for row in outbox.values():
-        # 'refused' is only left by the 2026-09-24 build that took a capacity 403 as final; it is retried.
-        if row.get('state') in ('pending', 'refused') and row.get('next_attempt', 0) <= time.time():
-            offer_report(row['receipt_ids'], row['question'])
-            return
-    # Nothing else goes from the Lab to the Forge. Chat's frontier-acknowledged hand-off (2026-09-26) still
-    # sent write-ups of findings; Gloria's rule is that the Forge is for abilities he lacks, so only a named
-    # missing instrument (chemistry_lab, instrument_gap) is offered, through the outbox above.
-
+        queued = [row for row in outbox.values() if row.get('state') in ('pending', 'refused')]
+        for row in queued: row.update(state='withdrawn', withdrawn_at=lab.now_iso())
+        if queued: lab._atomic(outbox_path, outbox)
+    return len(queued)
 
 if __name__ == '__main__':
     import argparse

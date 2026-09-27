@@ -66,32 +66,25 @@ class ReportRetry(unittest.TestCase):
         os.unlink(src.REPORT_PAUSE)
         self.assertEqual(src.offer_report(["R1"], "q", send=Sender())["id"], "P-1", "after the pause it lands")
 
-    def test_a_report_left_refused_by_the_earlier_build_is_retried(self):
-        lab._atomic(OUTBOX, {"k": {"receipt_ids": ["R9"], "question": "q", "state": "refused", "next_attempt": 0}})
-        tried = []
-        src.offer_report, real = (lambda ids, q, send=None: tried.append(ids)), src.offer_report
-        try:
-            src.flush_reports()
-        finally:
-            src.offer_report = real
-        self.assertEqual(tried, [["R9"]])
-
-    def test_queued_write_ups_are_withdrawn_not_retried(self):
-        # 2026-09-26: the Lab no longer asks the Forge to document its questions. Write-ups queued
-        # before that kept the Forge full, and it refused his instrument requests.
+    def test_everything_queued_for_the_forge_is_withdrawn_and_nothing_is_sent(self):
+        # 2026-09-28: nothing goes from the Lab to the Forge. Write-ups filled it first; then his missing
+        # instruments became midnight "Feasibility Assessment: Cryo-Electron Microscopy..." projects.
         lab._atomic(OUTBOX, {"old": {"receipt_ids": ["R7"], "question": "Document this sourced Lab question; do not claim discovery: x",
                                      "state": "pending", "next_attempt": 0},
                              "gap": {"receipt_ids": ["R8"], "question": "The Lab needs an instrument it does not have: a CD reading",
-                                     "state": "pending", "next_attempt": 0}})
+                                     "state": "pending", "next_attempt": 0},
+                             "k": {"receipt_ids": ["R9"], "question": "q", "state": "refused", "next_attempt": 0},
+                             "done": {"receipt_ids": ["R1"], "question": "q", "state": "accepted", "project_id": "P"}})
         tried = []
         src.offer_report, real = (lambda ids, q, send=None: tried.append(q)), src.offer_report
         try:
-            src.flush_reports()
+            self.assertEqual(src.flush_reports(), 3)
         finally:
             src.offer_report = real
         rows = lab._load(OUTBOX, {})
-        self.assertEqual(rows["old"]["state"], "withdrawn")
-        self.assertEqual(tried, ["The Lab needs an instrument it does not have: a CD reading"])
+        self.assertEqual(tried, [])
+        self.assertEqual({k: r["state"] for k, r in rows.items()},
+                         {"old": "withdrawn", "gap": "withdrawn", "k": "withdrawn", "done": "accepted"})
 
     def test_a_transient_failure_backs_off_then_is_abandoned(self):
         down = Sender(urllib.error.URLError("connection refused"))
