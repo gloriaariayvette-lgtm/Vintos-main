@@ -11,6 +11,7 @@ os.makedirs(os.path.join(HOME, ".vintos", "workspace", "memory"), exist_ok=True)
 sent = []
 def no_network(*a, **k): raise AssertionError("a test must never reach the network")
 sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
+import urllib.request; urllib.request.urlopen = no_network           # ntfy and page fetches go through urllib
 sys.modules["emoclaw_utils"] = types.ModuleType("emoclaw_utils")   # no live emotion writes
 
 spec = importlib.util.spec_from_file_location("vintos_websearch", os.path.join(REPO, "bin", "vintos-websearch.py"))
@@ -20,7 +21,8 @@ R = []
 def check(name, ok, detail=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + name + ((" -> " + str(detail)[:400]) if detail and not ok else ""))
 check("every store is in the scratch workspace", W.MEMORY.startswith(HOME) and W.SEARCH_LOG.startswith(HOME), W.MEMORY)
-check("the network is a stub", sys.modules["requests"].get is no_network and W.requests.get is no_network)
+check("the network is a stub", sys.modules["requests"].get is no_network and W.requests.get is no_network
+      and urllib.request.urlopen is no_network)
 
 # --- the query ---
 question = ("I want to find out how the cyanobacterial KaiABC clock keeps a 24-hour rhythm in a test tube "
@@ -86,6 +88,21 @@ check("a want's search step searches that want's topic first",
       picked.get("question", "").startswith("how octopus arms learn") and picked.get("source") == "want"
       and picked.get("search_query") == "octopus arm learning peripheral nervous system", picked)
 check("the topic is used once", json.load(open(req)).get("used") is True)
+
+# --- his daily search, not from a want ---
+os.environ.pop("VINTOS_WANT_SEARCH", None)
+asked = []
+W.llm_json = lambda system, prompt, **k: asked.append(prompt) or {
+    "question": "How do bar-tailed godwits navigate an 11-day nonstop flight?", "search_query": "bar-tailed godwit navigation"}
+daily = W.pick_question()
+check("with nothing on his list, his daily run still searches something he picks",
+      daily and daily.get("question", "").startswith("How do bar-tailed godwits") and daily.get("source") == "open"
+      and daily.get("search_query") == "bar-tailed godwit navigation", daily)
+check("the daily prompt leaves the subject to him (no preferred subjects, nothing off limits)",
+      asked and "Anything at all" in asked[-1] and "Avoid" not in asked[-1] and "AI/technology" not in asked[-1]
+      and "must pertain" not in asked[-1], asked[-1][:400] if asked else "")
+W.llm_json = lambda system, prompt, **k: None
+check("if the model gives nothing, nothing is searched and nothing is made up", W.pick_question() is None)
 
 router = open(os.path.join(REPO, "bin", "wants-router.py")).read()
 check("the wants router marks its search as the want's own", '_ws_env["VINTOS_WANT_SEARCH"] = "1"' in router)

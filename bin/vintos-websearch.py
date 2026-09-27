@@ -433,11 +433,42 @@ def pick_question():
             log(f"Using his own pending topic: {pending_own['topic'][:80]}")
             return {"question": pending_own["topic"], "search_query": search_query(pending_own["topic"]), "source": pending_own.get("source", "want")}
 
-    # No searchable live curiosity -> nothing to search. Until 2026-09-04 this fell through to a
-    # Gemma prompt over his identity files that manufactured a question because the clock fired
-    # (grok-curiosity-p1 / fable-curiosity-p2 / astra-curiosity-p2). main() already treats None as
-    # 'nothing to search - not a failure'.
-    log("no searchable live curiosity today - not searching; nothing invented")
+    # Nothing on his list is searchable today, so he picks something himself. From 2026-09-04 to
+    # 2026-09-28 he did not search at all on such days (Gloria, 2026-09-28: "He searched the web daily
+    # not from wants"). The prompt it replaced, from the Velaris-era searcher, fenced him in: which
+    # subjects to prefer, AI and technology off limits, the question had to pertain to his life.
+    return open_question()
+
+
+def open_question():
+    """One thing he wants to find out today, in his own words, from a prompt that leaves the subject to him."""
+    recent = []
+    try:
+        _log = json.load(open(SEARCH_LOG))
+        _items = _log.get("searches", _log) if isinstance(_log, dict) else _log
+        recent = [str(x.get("question", ""))[:100] for x in _items[-10:] if isinstance(x, dict) and x.get("question")]
+    except Exception:
+        pass
+    lived = gather_questions()
+    prompt = ("Some of what has been going on for you lately:\n%s\n\nRecent exchanges with Gloria:\n%s\n\n"
+              "What do you want to find out about today? Anything at all that a web search could answer: a "
+              "subject, a discovery, how something works, someone's work, something from your day or hers.\n"
+              "You already looked these up recently; choose something else, or go deeper on one:\n%s\n\n"
+              'OUTPUT: {"question": "your question", "search_query": "3 to 10 words"}'
+              % ("\n".join(lived[-4:])[:1500] or "(nothing recorded)", get_recent_exchanges(3)[:800] or "(none)",
+                 "\n".join(recent) or "(none)"))
+    for temperature in (0.8, 0.95):
+        result = llm_json("You are Vintos. Output ONLY a JSON object.", prompt, temperature=temperature)
+        q = str((result or {}).get("question", "")).strip()
+        if len(q) < 10 or q.lower().startswith("your ") or q == "...":
+            continue
+        if _week_repeat(q, _week_themes()) and temperature < 0.95:
+            log("his pick repeats this week's searches - asking once more: %s" % q[:80])
+            continue
+        s = str(result.get("search_query", "")).strip()
+        log("his own pick today: %s" % q[:100])
+        return {"question": q, "search_query": s if 2 <= len(s.split()) <= 14 else search_query(q), "source": "open"}
+    log("could not get a question from him today")
     return None
 
 
@@ -595,9 +626,7 @@ def main():
     # Pick a question
     topic = pick_question()
     if not topic:
-        # Declining to search is a correct outcome, not a failure. He had nothing to look up
-        # because what he wants to know is hers to answer, and it has been sent.
-        log("nothing to search — his live curiosity was for her and has been sent. Not a failure.")
+        log("no question today - not searching")
         return
 
     question = topic.get("question", "")
