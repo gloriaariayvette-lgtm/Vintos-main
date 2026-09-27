@@ -186,6 +186,7 @@ SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Mo
 SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-09-24); his Grok renders on her SuperGrok login (2026-09-25)
 BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
+BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
