@@ -76,6 +76,9 @@ def query(spec, *, client=None, question=''):
     lab._ensure()
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))
+    names = (result.get('metadata') or {}).get('available_scorers') if result.get('source') == 'atlas' else None
+    if names:   # Atlas's real scorer names, kept so the next question can name them
+        lab._atomic(os.path.join(lab.ROOT, 'atlas-scorers.json'), list(names)[:40])
     import chemistry_frontier_bridge as bridge
     assessment = bridge.assess({'at': result['retrieved_at'], 'entry_id': 'SRC-'+result['receipt_id'][:16],
         'source_accessions': [result['receipt_id'][:32]],

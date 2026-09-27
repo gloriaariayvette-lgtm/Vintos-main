@@ -230,6 +230,28 @@ class Sources:
         ids = (found.get('esearchresult') or {}).get('idlist') or []
         return str(ids[0]) if ids and re.fullmatch(r'[1-9][0-9]{0,9}', str(ids[0])) else None
 
+    def _gene_window(self, symbol):
+        """Where a human gene starts on GRCh38, from NCBI Gene: a 32-base window over its first base, which
+        is what Atlas can read. He knows genes, not coordinates (2026-09-28)."""
+        symbol = str(symbol or '').strip()
+        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]{0,14}', symbol): raise ValueError('a human gene symbol is required')
+        found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+            'db': 'gene', 'term': '%s[sym] AND 9606[taxid]' % symbol, 'retmode': 'json', 'retmax': 1, 'tool': 'vintos_lab'}))
+        ids = (found.get('esearchresult') or {}).get('idlist') or []
+        if not ids or not re.fullmatch(r'[0-9]{1,12}', str(ids[0])): raise ValueError('no human gene named ' + symbol)
+        summary, _ = self.fetch(NCBI_BASE + 'esummary.fcgi?' + urlencode({
+            'db': 'gene', 'id': ids[0], 'retmode': 'json', 'tool': 'vintos_lab'}))
+        info = (((summary.get('result') or {}).get(str(ids[0])) or {}).get('genomicinfo') or [{}])[0]
+        chrom = str(info.get('chrloc') or '')
+        start, stop = info.get('chrstart'), info.get('chrstop')
+        if not re.fullmatch(r'(?:[1-9]|1[0-9]|2[0-2]|X|Y)', chrom) or not isinstance(start, int) or not isinstance(stop, int):
+            raise ValueError('NCBI gave no GRCh38 position for ' + symbol)
+        first = start          # chrstart is the gene's first base in its own direction (0-based): its start site
+        begin = max(0, first - 16)
+        return {'assembly': 'GRCh38', 'chromosome': 'chr' + chrom, 'start': begin, 'end': begin + 32,
+                'gene_window': {'gene': symbol, 'ncbi_gene_id': str(ids[0]), 'gene_first_base': first,
+                                'strand': '-' if start > stop else '+', 'window': 'start_site_32bp'}}
+
     def _abstracts(self, spec):
         """Published abstracts for what he is asking: the reading itself, not a list of titles. All his
         terms first; if nothing matches, the last term is dropped, down to two."""
@@ -511,11 +533,15 @@ class Sources:
                 'coverage': 'bounded_first_page', 'total_count': (data.get('page_meta') or {}).get('total_count'),
                 'comparison': 'bioactivity_is_not_automatically_direct_binding'})
         if source == 'atlas':
+            if spec.get('gene') and not spec.get('chromosome') and spec.get('operation') != 'metadata':
+                spec = {**spec, **self._gene_window(spec['gene'])}
             query = validate_atlas(spec)
             if self.atlas is None: raise RuntimeError('alphagenome_access_not_configured')
             data = self.atlas(query)
             return receipt(source, query, data['scores'], metadata={
                 'assembly': 'GRCh38', 'coordinates': 'zero_based_half_open',
+                'available_scorers': data.get('available_scorers', []),
+                'scorers_chosen_by_lab': bool(data.get('scorers_chosen_by_lab')),
                 'sdk_version': data['sdk_version'], 'scorer_metadata': data['scorer_metadata'],
                 'atlas_release': data.get('atlas_release', 'not_reported_by_sdk'),
                 'evidence': 'precomputed_model_prediction', 'usage': 'non_commercial'})
@@ -526,16 +552,21 @@ class Sources:
 
 def validate_atlas(spec):
     if spec.get('operation') == 'metadata': return {'source':'atlas', 'operation':'metadata'}
+    if spec.get('assembly') in (None, '', 'hg38'): spec = dict(spec, assembly='GRCh38')
     if spec.get('assembly') != 'GRCh38': raise ValueError('Atlas requires explicit GRCh38 coordinates')
     chrom, start, end = spec.get('chromosome'), spec.get('start'), spec.get('end')
     if not isinstance(chrom, str) or not re.fullmatch(r'chr(?:[1-9]|1[0-9]|2[0-2]|X|Y)', chrom):
         raise ValueError('canonical human chromosome required')
     if type(start) is not int or type(end) is not int or not 0 <= start < end <= 250000000 or end-start > 32:
         raise ValueError('Atlas interval must be zero-based, half-open, 1..32 bp')
-    scorers = spec.get('scorers')
-    if not isinstance(scorers, list) or not 1 <= len(scorers) <= 3 or not all(isinstance(s, str) and 0 < len(s) < 120 for s in scorers):
-        raise ValueError('choose 1..3 scorer names returned by scorer_metadata')
-    result = {k: spec[k] for k in ('source', 'assembly', 'chromosome', 'start', 'end', 'scorers')}
+    # Scorer names are optional: without real ones the worker chooses from Atlas's own list and says so.
+    # Every one of his 891 Atlas asks failed on coordinates or names he could not have (2026-09-28).
+    scorers = spec.get('scorers') or []
+    if not isinstance(scorers, list) or len(scorers) > 3 or not all(isinstance(s, str) and 0 < len(s) < 120 for s in scorers):
+        raise ValueError('choose up to 3 scorer names returned by scorer_metadata')
+    result = {k: spec[k] for k in ('source', 'assembly', 'chromosome', 'start', 'end')}
+    result['scorers'] = scorers
+    if spec.get('gene_window'): result['gene_window'] = spec['gene_window']
     for field, pattern in (('ontology_terms', r'[A-Z]+:[0-9]+'), ('gene_ids', r'ENSG[0-9]+(?:\.[0-9]+)?')):
         if field in spec:
             values = spec[field]

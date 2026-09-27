@@ -749,6 +749,45 @@ def _sourced_followup(spec, records):
     return None, "%s identifier %s was absent from the current UniProt records" % (source, value or "(empty)")
 
 
+ATLAS_EVERY = 3
+ATLAS_SCORERS = os.path.join(ROOT, "atlas-scorers.json")
+
+
+def _atlas_scorer_hint():
+    names = _load(ATLAS_SCORERS, []) or []
+    return ("; optional scorers, up to 3 of Atlas's own: " + ", ".join(map(str, names[:12]))) if names else \
+           "; scorers are optional, and Atlas's own are chosen if you name none"
+
+
+def atlas_turn_due(rows=None):
+    """Every third question is a human-genome turn for Atlas, when Atlas is configured. Left to choose,
+    he asked Atlas 891 times with coordinates he could not have and took microbes the rest of the time
+    (Gloria, 2026-09-28: "make atlas work! Make it chosen more frequently")."""
+    if not config().get("alphagenome_key_file"): return False
+    rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
+    since = 0
+    for row in reversed(rows):
+        if row.get("kind") != "inquiry": continue
+        sq = (row.get("inquiry") or {}).get("source_query") or {}
+        if isinstance(sq, dict) and sq.get("source") == "atlas": return since >= ATLAS_EVERY - 1
+        since += 1
+    return since >= ATLAS_EVERY - 1
+
+
+def _as_atlas_turn(inquiry):
+    """On a human-genome turn the Atlas read is made whatever form he wrote it in: a gene he named in the
+    UniProt query becomes the Atlas request."""
+    sq = inquiry.get("source_query") if isinstance(inquiry.get("source_query"), dict) else {}
+    gene = sq.get("gene") if sq.get("source") == "atlas" else None
+    if not gene:
+        m = re.search(r"\bgene:\"?([A-Za-z][A-Za-z0-9-]{0,14})", str(inquiry.get("uniprot_query") or ""))
+        gene = m.group(1) if m else None
+    if not gene: return inquiry
+    return dict(inquiry, browse_lane="protein", plugin_query=None, atlas_turn=True,
+                source_query={"source": "atlas", "gene": gene, **({"scorers": sq["scorers"]}
+                                                                    if isinstance(sq.get("scorers"), list) else {})})
+
+
 def _orient(context, lean=None):
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
@@ -804,17 +843,21 @@ def _orient(context, lean=None):
         "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
         "{source:interpro,accession:exact sourced UniProt accession}, or an NCBI literature query above. "
         "Use coded_by coordinates returned by ncbi_protein_context; never invent a neighborhood. The repeat screen reports candidates, not boundaries, significance, novelty, or function. "
-        "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,operation:metadata} to discover actual scorer names, or {source:pdb,entry_id:known PDB ID}, "
-        "{source:chembl,target_id:known CHEMBL target ID}, or {source:atlas,assembly:GRCh38,chromosome:chrN,"
-        "start:integer,end:integer,scorers:[documented scorer names]}. Atlas coordinates are zero-based half-open, "
-        "at most 32 bases. Optional ontology_terms and gene_ids arrays (1..4 sourced IDs) narrow the returned tracks/genes. "
-        "Use only coordinates, IDs and scorer names present in sourced context; never invent them. "
+        "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,gene:HUMAN GENE SYMBOL} "
+        "(Atlas reads the human genome; the Lab finds where that gene starts on GRCh38 and reads Atlas's predicted "
+        "variant effects there" + _atlas_scorer_hint() + "), {source:pdb,entry_id:known PDB ID}, or "
+        "{source:chembl,target_id:known CHEMBL target ID}. "
+        "Use only IDs present in sourced context; never invent them. "
         "plugin_query is null or ONE object {plugin,tool,arguments,purpose} using the exact menu above. "
         "Choose at most one of source_query and plugin_query. The returned receipt becomes Lab provenance. "
         "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
         "Choose a sourced, non-pathogenic question an available instrument can probe; do not favor either lane "
         "merely because it appears in this menu."
     )
+    atlas_turn = atlas_turn_due()
+    if atlas_turn:
+        task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
+                 "uniprot_query 'gene:SYMBOL AND organism_id:9606', source_query {source:atlas, gene:SYMBOL}.")
     spent = dead_ends()
     remember_spent(spent["subjects"])
     held = spent_subjects()
@@ -827,6 +870,7 @@ def _orient(context, lean=None):
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
     inquiry = _inquiry(_json_object(_ask(system, task)), lean)
+    if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     if spent["subjects"] and repeats_dead_end(inquiry, spent):
         inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose a spent subject again. "
                                              "Choose a different one.")), lean)
@@ -1327,7 +1371,9 @@ def tick():
                                   "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
                     # No protein record is not no material: the published abstracts on his question are read
                     # instead of the question being dropped (2026-09-28).
-                    if empty and not stale and _gather_material(state, inquiry, fresh_only=True):
+                    if empty and not stale and (inquiry.get("source_query") or {}).get("source") == "atlas":
+                        next_phase = "sources"      # Atlas reads the genome whether or not UniProt had the protein
+                    elif empty and not stale and _gather_material(state, inquiry, fresh_only=True):
                         next_phase = "reflect"
                     state["source_query_succeeded"] = not bool(browse_result["fallback_reason"])
                     note = {"at": now_iso(), "kind": ("browse_stale" if stale else

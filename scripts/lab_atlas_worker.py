@@ -24,8 +24,14 @@ def run(query, key):
                                         'track_count':len(m.track_metadata),
                                         'track_metadata_excerpt':json.loads(m.track_metadata.head(8).to_json(orient='split',default_handler=str))}
                                     for s,m in metadata.items()}}
-    if any(s not in metadata for s in query['scorers']):
-        raise ValueError('unknown Atlas scorer; obtain actual names from scorer_metadata')
+    # Names he gave that Atlas does not have are replaced by real ones, and the receipt says so.
+    wanted = [s for s in query['scorers'] if s in metadata]
+    chosen_by_lab = len(wanted) != len(query['scorers']) or not wanted
+    if not wanted:
+        names = sorted(metadata)
+        preferred = [n for n in names if any(k in n.upper() for k in ('RNA', 'ATAC', 'DNASE', 'CAGE'))]
+        wanted = (preferred or names)[:2]
+    query = dict(query, scorers=wanted)
     values = client.query_interval(genome.Interval(query['chromosome'], query['start'], query['end']),
                                    requested_scorers=query['scorers'], ontology_terms=query.get('ontology_terms'),
                                    gene_ids=query.get('gene_ids'), max_workers=1, progress_bar=False)
@@ -41,7 +47,8 @@ def run(query, key):
                         'quantiles': finite_values(matrix.layers['quantiles'].tolist()) if 'quantiles' in matrix.layers else None}
     return {'scores': scores, 'sdk_version': importlib.metadata.version('alphagenome'),
             'scorer_metadata': {s: {'name': metadata[s].name, 'is_signed': metadata[s].is_signed}
-                                for s in query['scorers']}}
+                                for s in query['scorers']},
+            'available_scorers': sorted(metadata)[:40], 'scorers_chosen_by_lab': chosen_by_lab}
 
 
 if __name__ == '__main__':
