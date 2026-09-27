@@ -218,6 +218,50 @@ check("its full length is recorded but only 350 residues go on to ESM-C",
       long_one["records"] and long_one["records"][0]["length"] == 519
       and len(long_one["records"][0]["sequence"]) == 350)
 
+# --- he gets the records he asked for even when his wording is not UniProt's (2026-09-28) ---------
+# A stand-in for UniProt: a protein_name phrase must match a name exactly; bare words match anywhere.
+ENTRY = {"primaryAccession": "Q97W60", "uniProtkbId": "PROT_SACS2", "entryType": "UniProtKB reviewed (Swiss-Prot)",
+         "text": "Thermosome-associated protease Saccharolobus 2287", "sequence": {"length": 420, "value": "A" * 420}}
+def uniprot_like(q):
+    if "protein_name:" in q or "gene:" in q or "taxonomy_id:2287" not in q: return []
+    inner = q.split("taxonomy_id:2287 AND ", 1)[1]
+    # "thermophilic AND protease" needs a word the entry lacks; "thermophilic OR protease" does not.
+    return [] if "thermophilic AND" in inner or "protease" not in inner else [ENTRY]
+def loose_urlopen(req, timeout=0):
+    q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
+    asked.append(q)
+    if "xref_pdb:" in q: raise _ue.HTTPError(req.full_url, 400, "bad query", {}, None)
+    return _R({"results": uniprot_like(q)})
+M.urllib.request.urlopen = loose_urlopen
+asked[:] = []
+try:
+    loose = M._browse(M._safe_query('protein_name:"thermophilic proteases" AND organism_id:2287'), 4)
+    refused = M._browse(M._safe_query('protein_name:"thermophilic proteases" AND organism_id:2287 AND xref_pdb:9ZZZ'), 4)
+finally:
+    M.urllib.request.urlopen = _real
+check("thermophilic proteases of S. solfataricus: the exact name finds nothing, his words do",
+      [r["accession"] for r in loose["records"]] == ["Q97W60"] and loose["relaxed"] == "any_of_his_words", (asked, loose))
+check("the looser search kept his organism and his filters, and says how it found the record",
+      "taxonomy_id:2287" in loose["executed_query"] and "reviewed:true" in loose["executed_query"]
+      and loose["records"][0]["found_by"] == "any_of_his_words" and loose["records"][0]["curated"] is True
+      and loose["source_receipt"]["metadata"]["relaxed"] == "any_of_his_words")
+check("no form he was sent drops his subject or his organism",
+      all("taxonomy_id:2287" in q and "protease" in q for q in asked), asked)
+check("a query UniProt refused as written is asked again in a form it accepts, with a receipt",
+      [r["accession"] for r in refused["records"]] == ["Q97W60"] and refused["fallback_reason"] is None
+      and refused["source_receipt"] and "xref_pdb" not in refused["executed_query"], refused.get("executed_query"))
+
+import lab_sources as LS
+calls = []
+def fake_fetch(url):
+    q = __import__("urllib.parse").parse.parse_qs(url.split("?", 1)[1])["query"][0]; calls.append(q)
+    return {"results": uniprot_like(q)}, {}
+got = LS.Sources(fetch=fake_fetch).query({"source": "uniprot",
+      "query": 'taxonomy_id:2287 AND reviewed:true AND protein_name:"thermophilic proteases"'})
+check("the microbiology lane's UniProt source gets the same looser forms",
+      got["records"] and got["metadata"].get("relaxed") == "any_of_his_words"
+      and got["query"]["executed_query"].startswith("taxonomy_id:2287 AND reviewed:true"), (calls, got.get("metadata")))
+
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("the reading step is told to say so when the records are not what was asked",

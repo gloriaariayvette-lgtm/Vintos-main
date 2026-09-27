@@ -6788,6 +6788,10 @@ async def chemistry_lab_activity(request: Request, limit: int = 12):
             elif kind == "browse_route": detail = str(row.get("route") or row.get("source") or row.get("question") or "")
             elif kind in ("source_read", "additional_source"):
                 detail = str(row.get("source") or row.get("database") or row.get("connector") or "")
+                count = row.get("records_returned") if kind == "additional_source" else len(row.get("records") or [])
+                relaxed = row.get("relaxed") or (row.get("source_metadata") or {}).get("relaxed")
+                detail = " · ".join(x for x in (detail, "%s records" % count if count is not None else "",
+                                                 "found by looser search" if relaxed else "") if x)
             elif kind == "protein_representation":
                 detail = "%s records" % (row.get("count") or len(row.get("embeddings") or row.get("representations") or []))
             elif kind in ("reflection", "genome_reflection"):

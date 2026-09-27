@@ -86,7 +86,9 @@ try:
 finally:
     M.urllib.request.urlopen = original_urlopen
 check("a rejected specific UniProt query never widens to the generic baseline",
-      len(rejected_calls) == 1 and rejected_browse["records"] == []
+      rejected_calls and len(rejected_calls) <= 5 and rejected_browse["records"] == []
+      # Looser forms may be tried (2026-09-28), but every one keeps his protein and his organism.
+      and all("Clarin" in __import__("urllib.parse").parse.unquote_plus(u) and "9606" in u for u in rejected_calls)
       and rejected_browse["source_receipt"] is None
       and rejected_browse["executed_query"] == __import__("lab_sources").validate_uniprot(normalized)
       and rejected_browse["fallback_reason"] == "source_rejected_generated_query")

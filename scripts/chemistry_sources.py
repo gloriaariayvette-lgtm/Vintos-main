@@ -70,7 +70,8 @@ def query(spec, *, client=None, question=''):
                 throttle = lab._load(throttle_path, {})
                 throttle[source] = time.time()+300
                 lab._atomic(throttle_path, throttle)
-        raise RuntimeError('source_query_unavailable:'+type(exc).__name__) from exc
+        raise RuntimeError('source_query_unavailable:'+type(exc).__name__
+                           + (' %s' % exc.code if isinstance(exc, HTTPError) else '')) from exc
     lab._ensure()
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))

@@ -820,21 +820,22 @@ def _browse(query, limit):
             raise
         fallback_reason = "source_rejected_generated_query"
         raw = {"results": []}
-    # He writes gene symbols as protein names: protein_name:RPS16 matches nothing human, so every
-    # question about it came back empty and he asked it again (2026-09-26). The same symbol, read as
-    # the gene it is, is not a wider search; it is the one he meant. Tried once, and recorded.
-    # Any single short word counts: KaiC and slpA are gene names too, not only RPS16 (2026-09-27).
-    symbol = re.search(r'\bprotein_name:(?:"([A-Za-z][A-Za-z0-9-]{1,11})"|([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$))',
-                       executed_query or "")
-    if not fallback_reason and not raw.get("results") and symbol:
-        name = symbol.group(1) or symbol.group(2)
-        as_gene = executed_query[:symbol.start()] + "gene:" + name + executed_query[symbol.end():]
-        try:
-            retried = fetch(as_gene)
+    # An exact query that finds nothing is tried in looser forms that keep his organism, filters and
+    # words: the gene symbol he wrote as a protein name (RPS16, KaiC), then his words anywhere in the
+    # entry, then any of them, then unreviewed entries too. A query UniProt refused as written gets the
+    # same forms. Whichever answered is recorded, so the reading knows how the records were found.
+    from lab_sources import uniprot_relaxations
+    relaxed = None
+    if not raw.get("results"):
+        for label, alt in uniprot_relaxations(executed_query):
+            try:
+                retried = fetch(alt)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 400: continue
+                raise
             if retried.get("results"):
-                raw, executed_query = retried, as_gene
-        except urllib.error.HTTPError:
-            pass
+                raw, executed_query, relaxed, fallback_reason = retried, alt, label, None
+                break
     rows = []
     for item in raw.get("results", [])[:limit]:
         desc = (((item.get("proteinDescription") or {}).get("recommendedName") or {})
@@ -850,13 +851,16 @@ def _browse(query, limit):
                      "function": " ".join(functions)[:1200],
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
-                     "sequence": (item.get("sequence") or {}).get("value", "")[:350]})
+                     "sequence": (item.get("sequence") or {}).get("value", "")[:350],
+                     **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed")}
+                        if relaxed else {})})
     from lab_sources import receipt
     source_receipt = (None if fallback_reason else
         receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
-                raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page'}))
+                raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page',
+                                                          **({'relaxed': relaxed} if relaxed else {})}))
     return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
-            "executed_query": executed_query, "fallback_reason": fallback_reason}
+            "executed_query": executed_query, "fallback_reason": fallback_reason, "relaxed": relaxed}
 
 
 def _embed_records(records):
@@ -1198,6 +1202,7 @@ def tick():
                             "requested_query": browse_result["requested_query"],
                             "executed_query": browse_result["executed_query"],
                             "fallback_reason": browse_result["fallback_reason"],
+                            **({"relaxed": browse_result["relaxed"]} if browse_result.get("relaxed") else {}),
                             **({"reason": browse_result["fallback_reason"] or "uniprot_returned_no_records"} if empty else {}),
                             "source_accessions": [r.get("accession") for r in records] if stale else None,
                             "records": [{k: v for k, v in r.items() if k != "sequence"} for r in records],

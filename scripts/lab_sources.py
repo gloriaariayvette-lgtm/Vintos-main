@@ -14,6 +14,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request
 from lab_http import open_request
@@ -75,6 +76,58 @@ def validate_uniprot(query):
     query = re.sub(r'\breviewed:(true|false)\b', lambda m: 'reviewed:' + m.group(1).lower(), query, flags=re.I)
     return query
 
+
+
+_TERM = re.compile(r'\b([A-Za-z_][A-Za-z_0-9]*):("[^"]*"|\[[^\]]*\]|[^\s()]+)')
+_KEEP = ('reviewed', 'length', 'taxonomy_id', 'organism_id', 'organism_name')
+_FILLER = frozenset('the of in and or not for with from to a an its their this that specific structural protein proteins'
+                    ' putative family'.split())
+
+
+def uniprot_relaxations(query):
+    """Looser forms of one UniProt query, most faithful first. He asks for "thermophilic proteases" of
+    Saccharolobus solfataricus and no protein is named exactly that, so the exact query finds nothing
+    and he asks again (Gloria, 2026-09-28: "just give him the ability to get the info he needs").
+    Every form keeps his organism, length and review filters and the words he asked about; only the
+    field they must sit in is loosened. The caller records which form answered."""
+    query = str(query or '')
+    out = []
+    symbol = re.search(r'\bprotein_name:(?:"([A-Za-z][A-Za-z0-9-]{1,11})"|([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$))', query)
+    if symbol:   # KaiC, slpA, RPS16: a gene symbol written as a protein name
+        out.append(('as_gene', query[:symbol.start()] + 'gene:' + (symbol.group(1) or symbol.group(2)) + query[symbol.end():]))
+    keep, words = [], []
+    for field, value in _TERM.findall(query):
+        if field in _KEEP:
+            term = field + ':' + value
+            if term not in keep: keep.append(term)
+        elif field in ('protein_name', 'gene', 'keyword', 'go'):
+            words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', value.strip('"'))
+    words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', _TERM.sub(' ', query))
+    seen, subject = set(), []
+    for word in words:
+        low = word.lower()
+        if low in _FILLER or low in ('and', 'or', 'not', 'true', 'false') or len(word) < 3 or low in seen: continue
+        seen.add(low); subject.append(word)
+    subject = subject[:5]
+    if not subject: return out
+    def group(word):
+        if '-' in word: return '"%s"' % word   # S-layer is one word to him, "S NOT layer" to a bare parser
+        low = word.lower()
+        single = (word[:-1] if low.endswith('ses') else
+                  word[:-1] if low.endswith('s') and len(word) > 4 and not low.endswith(('ss', 'is', 'us')) else None)
+        return '(%s OR %s)' % (word, single) if single else word
+    words_all = ' AND '.join(group(w) for w in subject)
+    words_any = ' OR '.join(group(w) for w in subject)
+    def join(filters, text):
+        return ' AND '.join(filters + ['(' + text + ')'])
+    out.append(('his_words_anywhere', join(keep, words_all)))
+    if len(subject) > 1: out.append(('any_of_his_words', join(keep, words_any)))
+    unreviewed = [k for k in keep if not k.startswith('reviewed:')]
+    out.append(('unreviewed_included', join(unreviewed, words_any if len(subject) > 1 else words_all)))
+    faithful, seen_q = [], {query}
+    for label, alt in out:
+        if alt not in seen_q: seen_q.add(alt); faithful.append((label, alt))
+    return faithful
 
 def fetch_json(url, *, transport=None):
     # URLs are constructed by the clients, never accepted from a model.
@@ -150,12 +203,30 @@ class Sources:
             query = validate_uniprot(spec.get('query'))
             limit = spec.get('limit', 4)
             if type(limit) is not int or not 1 <= limit <= 8: raise ValueError('limit must be 1..8')
-            data, headers = self.fetch('https://rest.uniprot.org/uniprotkb/search?' + urlencode(
-                {'query': query, 'format': 'json', 'size': limit,
-                 'fields': 'accession,id,protein_name,organism_name,length,sequence,cc_function'}))
-            return receipt(source, spec, data['results'][:limit], metadata={
+            def search(value):
+                return self.fetch('https://rest.uniprot.org/uniprotkb/search?' + urlencode(
+                    {'query': value, 'format': 'json', 'size': limit,
+                     'fields': 'accession,id,protein_name,organism_name,length,sequence,cc_function'}))
+            relaxed, rejected = None, None
+            try:
+                data, headers = search(query)
+            except HTTPError as exc:
+                if exc.code != 400: raise
+                rejected, data, headers = exc, {'results': []}, {}
+            if not data.get('results'):
+                for label, alt in uniprot_relaxations(query):
+                    try: found, found_headers = search(alt)
+                    except HTTPError as exc:
+                        if exc.code == 400: continue
+                        raise
+                    if found.get('results'):
+                        data, headers, relaxed, query = found, found_headers, label, alt
+                        break
+            if rejected is not None and not relaxed: raise rejected
+            return receipt(source, dict(spec, executed_query=query) if relaxed else spec, data['results'][:limit], metadata={
                 'release': headers.get('X-UniProt-Release') or headers.get('x-uniprot-release'),
-                'coverage': 'bounded_first_page'})
+                'coverage': 'bounded_first_page',
+                **({'relaxed': relaxed, 'executed_query': query} if relaxed else {})})
         if source == 'ncbi':
             operation = spec.get('operation')
             if operation not in NCBI_DATABASES: raise ValueError('unknown NCBI operation')
