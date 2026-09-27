@@ -1,9 +1,12 @@
 [Unit]
-Description=Daily visible Chemistry Lab frontier session
+Description=Chemistry Lab frontier: four alignments a day, one daily experiment
 
 [Timer]
 OnCalendar=*-*-* 03:17:00
-RandomizedDelaySec=20m
+OnCalendar=*-*-* 09:17:00
+OnCalendar=*-*-* 15:17:00
+OnCalendar=*-*-* 21:17:00
+RandomizedDelaySec=10m
 Persistent=true
 
 [Install]

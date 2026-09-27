@@ -357,16 +357,17 @@ only_text = [{"kind": "inquiry", "inquiry": {"question": q, "uniprot_query": M._
 check("a protein named only in his questions is found, and a molecule class is not",
       M.dead_ends([review] + only_text)["subjects"] == ["KaiC"], M.dead_ends([review] + only_text))
 
-# asked twice and still KaiC: the third time is not sent
+# asked twice and still KaiC
 prompts[:] = []
 M._ask = lambda system, prompt, *a, **k: prompts.append(prompt) or json.dumps(
     {"browse_lane": "protein", "uniprot_query": "organism_id:1140", "question": "KaiC, surely, once more?"})
 M.NOTEBOOK = nb
 try: stubborn = REAL_ORIENT("context")
 finally: M._ask, M.NOTEBOOK = real_ask, real_nb
-check("KaiC chosen twice more is not sent: the Lab wanders the curated set instead",
-      len(prompts) == 2 and stubborn.get("dead_end_fallback") and "KaiC" not in stubborn["uniprot_query"]
-      and re.fullmatch(re.escape(M.RANDOM_QUERY) + r" AND \(length:\[\d+ TO \d+\]\)", stubborn["uniprot_query"]),
+# No random wander after that (2026-09-28): it filled the Lab with reviews of unrelated human proteins.
+# He is asked once more; if he still chooses it, his question stands and the literature is read on it.
+check("KaiC chosen twice is asked once more, then his question stands, never swapped for a random one",
+      len(prompts) == 2 and not stubborn.get("dead_end_fallback") and stubborn["question"] == "KaiC, surely, once more?",
       stubborn)
 
 # the journal's KaiC finding stops pulling him back while KaiC is spent

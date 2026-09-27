@@ -51,50 +51,39 @@ HOLDS_THE_SESSION = ("STILL_HELD", "REFUSED")
 DIVERGENCE_ENABLED = "divergence_enabled"
 
 
-FRONTIER_LOG_SESSIONS = 5
-
-
-def frontier_log(limit=FRONTIER_LOG_SESSIONS):
-    """The frontier's own previous sessions, oldest first: what was asked, predicted, found and left open,
-    and what the blind readers asked of it. Gemma's notebook is not in it."""
-    done = [r for r in lab._jsonl(SESSIONS) if isinstance(r, dict) and r.get("state") == "completed"
-            and r.get("mode") != "divergence" and r.get("plan")][-limit:]
-    readers = {r.get("source_session_id"): r for r in lab._jsonl(DIVERGENCE) if isinstance(r, dict)}
-    out = []
-    for row in done:
-        plan, reading, grade = row.get("plan") or {}, row.get("reading") or {}, row.get("grade") or {}
-        entry = {"date": str(row.get("at", ""))[:10], "session_id": row.get("session_id"), "lens": row.get("lens"),
-                 "experiment": plan.get("experiment"), "parameters": plan.get("parameters"),
-                 "question": str(plan.get("question", ""))[:300], "prediction": str(plan.get("prediction", ""))[:300],
-                 "instrument": grade.get("execution_state"), "answer_quality": grade.get("aggregate_accuracy"),
-                 "reading": str(reading.get("reading", ""))[:400],
-                 "prediction_vs_result": str(reading.get("prediction_vs_result", ""))[:300],
-                 "next_question": str(reading.get("next_question", ""))[:240]}
-        div = readers.get(row.get("session_id"))
-        if div:
-            entry["blind_readers_asked"] = [{"lens": r.get("lens"), "question": str(r.get("question", ""))[:200]}
-                                            for r in div.get("readings", []) if r.get("state") == "read"]
-        out.append(entry)
-    return out
+def frontier_log(limit=8):
+    """The one log every frontier model shares: the four daily alignment reviews and the daily experiment
+    sessions, oldest first (chemistry_alignment.shared_log). Gemma's notebook is not in it."""
+    import chemistry_alignment
+    return chemistry_alignment.shared_log(limit)
 
 
 def frontier_context():
-    """His identity, taste and grades, and the frontier's own log — never Gemma's journal. The frontier's
-    reviews build on themselves (Gloria, 2026-09-28)."""
+    """His identity, taste and grades, and the shared frontier log — never Gemma's journal
+    (Gloria, 2026-09-28)."""
     context, receipt = lab.lab_context(gemma_journal=False)
     log = frontier_log()
     if not log: return context, receipt
-    block = ("[YOUR FRONTIER LOG — your own previous sessions, oldest first. Build on them: take up a next_question, "
-             "test where a prediction missed, and do not repeat a run without saying why]\n"
+    block = ("[THE SHARED FRONTIER LOG — every frontier model's alignment reviews of the Lab and the daily "
+             "experiment sessions, oldest first. Build on it: take up a next_question or next_focus, test where a "
+             "prediction missed, and do not repeat a run without saying why]\n"
              + json.dumps(log, ensure_ascii=False)[:7000])
     merged = context + "\n\n" + block
     out = dict(receipt)
     out["sources"] = list(receipt.get("sources", [])) + [{
-        "name": "frontier_log", "path": "memory/chemistry-lab/sessions.jsonl", "chars": len(block),
-        "sha256": hashlib.sha256(block.encode()).hexdigest(), "session_ids": [e["session_id"] for e in log]}]
+        "name": "frontier_log", "path": "memory/chemistry-lab/sessions.jsonl+alignment.jsonl", "chars": len(block),
+        "sha256": hashlib.sha256(block.encode()).hexdigest(),
+        "entries": [e.get("session_id") or e.get("alignment_id") for e in log]}]
     out["total_chars"] = len(merged)
     out["context_sha256"] = hashlib.sha256(merged.encode()).hexdigest()
     return merged, out
+
+
+def experiment_done_today(now=None):
+    today = time.strftime("%Y-%m-%d", time.localtime(now or time.time()))
+    import chemistry_alignment
+    return any(isinstance(r, dict) and r.get("state") == "completed" and r.get("mode") != "divergence"
+               and chemistry_alignment._local_day(r.get("at")) == today for r in lab._jsonl(SESSIONS))
 
 @contextlib.contextmanager
 def _exclusive():
@@ -553,16 +542,9 @@ def run():
                           "last_session_id": session_id, "last_state": "completed",
                           "last_at": row["at"], "last_mode": "experiment"})
             lab._atomic(SESSION_STATE, state)
-            # Then every divergence lens reads this same result, blind to the others. It runs no bench,
-            # and a divergence that is held (paid cap, no key) never undoes the experiment above.
-            if lab.config().get(DIVERGENCE_ENABLED):
-                try:
-                    div = _run_divergence(session_id + "-D", state, context, receipt)
-                    lab._append(SESSIONS, div)
-                    row["divergence_state"] = div.get("state")
-                except Exception as exc:
-                    lab._fault("divergence", exc, session_id=session_id)
-                    row["divergence_state"] = "held_fault"
+            # The four blind readings of this one result are no longer run: those four paid calls are the
+            # day's alignment instead, one from each frontier model through the day, reviewing the Lab's
+            # work (chemistry_alignment; Gloria, 2026-09-28: "not one session with each planning one thing").
             return row
         except TimeoutError:
             held = bool(result and result.get("ok"))
@@ -599,4 +581,9 @@ def run():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] != "run": raise SystemExit("usage: chemistry_session.py [run]")
-    print(json.dumps(run(), ensure_ascii=False, indent=2))
+    # The timer fires four times a day. Each fire is one frontier alignment of the Lab; the experiment
+    # session runs once a day, on the first fire that finds none completed today.
+    if not experiment_done_today():
+        print(json.dumps(run(), ensure_ascii=False, indent=2))
+    import chemistry_alignment
+    print(json.dumps(chemistry_alignment.run(), ensure_ascii=False, indent=2))

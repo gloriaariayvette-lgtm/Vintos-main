@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The frontier's log builds on itself; Gemma's journal stays Gemma's (Gloria, 2026-09-28).
+"""The frontier models share one log that builds on itself; Gemma's journal stays hers (Gloria, 2026-09-28).
 
 Scratch HOME and workspace; no model, Mac or network is called — only the context builders run.
 """
@@ -51,17 +51,21 @@ for n, (lens, pred) in enumerate((("claude", "PRED-ONE"), ("grok", "PRED-TWO")),
     lab._append(lab.NOTEBOOK, {"at": "2026-09-2%dT03:20:00+00:00" % (5 + n), "kind": "frontier_session",
                                "session_id": sid, "question": "FRONTIER-Q%d" % n, "next_question": "NEXT-%d" % n})
 lab._append(session.SESSIONS, {"session_id": "CHEM-X", "state": "held_mac_unavailable", "lens": "sol"})
+import chemistry_alignment as align
+lab._append(align.LOG, {"alignment_id": "ALIGN-1", "at": "2026-09-27T09:20:00+00:00", "state": "completed",
+                        "lens": "fable", "guidance": "FABLE-GUIDANCE", "accuracy": [], "pattern": "p"})
 
 log = session.frontier_log()
-check("the frontier log holds its own completed sessions, oldest first",
-      [e["session_id"] for e in log] == ["CHEM-1", "CHEM-2"] and log[1]["prediction"] == "PRED-TWO"
+check("one shared log: every model's sessions and alignment reviews, oldest first",
+      [e.get("session_id") or e.get("alignment_id") for e in log] == ["CHEM-1", "CHEM-2", "ALIGN-1"]
+      and [e["by"] for e in log] == ["claude", "grok", "fable"] and log[1]["prediction"] == "PRED-TWO"
       and log[0]["prediction_vs_result"] == "MISS-1" and log[1]["next_question"] == "NEXT-2", log)
 check("each session carries what the blind readers asked of it",
       log[0]["blind_readers_asked"] == [{"lens": "fable", "question": "FABLE-ASKS-1"}], log[0])
 
 fctx, freceipt = session.frontier_context()
 check("the frontier's context builds on its own log",
-      "YOUR FRONTIER LOG" in fctx and "NEXT-2" in fctx and "PRED-ONE" in fctx
+      "THE SHARED FRONTIER LOG" in fctx and "NEXT-2" in fctx and "PRED-ONE" in fctx and "FABLE-GUIDANCE" in fctx
       and any(s["name"] == "frontier_log" for s in freceipt["sources"]), fctx[-600:])
 check("and carries nothing of Gemma's journal",
       "GEMMA-FINDING" not in fctx and "GEMMA-QUESTION" not in fctx and "GEMMA-NEXT" not in fctx

@@ -21,7 +21,7 @@ import fcntl
 import hashlib
 import json
 import os
-import random
+
 import re
 import subprocess
 import sys
@@ -558,6 +558,17 @@ def lab_context(gemma_journal=True):
         sources.append({"name": label, "path": os.path.relpath(path, WS), "chars": len(text),
                         "sha256": hashlib.sha256(text.encode()).hexdigest()})
         if used >= budget: break
+    if gemma_journal and used < budget:
+        # The latest frontier alignment's guidance: advice from the model that read her recent work.
+        try:
+            import chemistry_alignment
+            guide = chemistry_alignment.guidance_block()[:min(900, max(0, budget - used))]
+        except Exception:
+            guide = ""
+        if guide:
+            parts.append(guide); used += len(guide)
+            sources.append({"name": "frontier_guidance", "path": "memory/chemistry-lab/alignment.jsonl",
+                            "chars": len(guide), "sha256": hashlib.sha256(guide.encode()).hexdigest()})
     recent = [row for row in _jsonl(NOTEBOOK) if row.get("kind") not in FRONTIER_KINDS][-3:] if gemma_journal else []
     journal = journal_context(min(1050, max(0, budget - used))) if used < budget and gemma_journal else ""
     if journal:
@@ -806,15 +817,6 @@ def _orient(context, lean=None):
     if spent["subjects"] and repeats_dead_end(inquiry, spent):
         inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose a spent subject again. "
                                              "Choose a different one.")), lean)
-    if spent["subjects"] and repeats_dead_end(inquiry, spent):
-        # Asked twice and still the same: the Lab does not send it a third time. It wanders the curated
-        # set instead, which ends in a review and ends the run (Gloria, 2026-09-27).
-        # A random length window, so the fallback is not the same first page every time: the repeat guard
-        # refuses a page he has already reviewed five times, which would only start the run again.
-        low = random.randrange(40, 980)
-        inquiry = dict(_inquiry({"uniprot_query": "length:[%d TO %d]" % (low, low + 20)}, lean), dead_end_fallback=True,
-                       question="Nothing new on " + ", ".join(spent["subjects"][:3]) +
-                                " today. What else in the curated set catches me?")
     return inquiry
 
 

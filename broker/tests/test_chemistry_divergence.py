@@ -174,11 +174,13 @@ lab._atomic(session.SESSION_STATE, {"offered": 6, "lens_index": 0})
 turn = session.run()
 check("the day's experiment runs and completes", turn.get("state") == "completed" and turn.get("mac_run_id") == "RUN-DAY", turn)
 check("the frontier lens that planned it also reads it", read_by == [session.LENSES[0]], read_by)
-check("then every divergence lens reads that same day's result",
-      turn.get("divergence_state") == "completed" and [s["lens"] for s in seen] == list(session.DIVERGENCE_LENSES)
-      and lab._jsonl(session.DIVERGENCE)[-1]["read_of"] == "RUN-DAY", (turn.get("divergence_state"), seen[:1]))
-check("the divergence prompt carries the prediction made before the run",
-      "the likeliest state is the lowest-energy one" in seen[0]["user"])
+# 2026-09-28: those four paid calls are the day's alignment of the Lab now (chemistry_alignment),
+# one from each frontier model through the day, not four readings of this one result.
+check("the day's experiment no longer spends four blind readings of itself",
+      "divergence_state" not in turn and seen == [], (turn.get("divergence_state"), seen[:1]))
+check("the divergence prompt, if it is ever run by hand, still carries the prediction made before the run",
+      "the likeliest state is the lowest-energy one" in session._divergence_prompt(
+          "ctx", {"plan": {"prediction": "the likeliest state is the lowest-energy one"}}))
 check("the plan lens still advances; divergence does not spend it",
       json.load(open(session.SESSION_STATE))["lens_index"] == 1)
 
