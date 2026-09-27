@@ -119,6 +119,7 @@ SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_c
 SCRIPTS="$SCRIPTS vintos_calendar.py"   # his own calendar: "do X on Y day" fires autonomously via the wants loop (Google Calendar connector can't OAuth headless), 2026-09-22
 SCRIPTS="$SCRIPTS consent_gate.py"   # consent gate: logs Gloria's y/n on morning poems + music, announces the activity, 2026-09-23
 SCRIPTS="$SCRIPTS inkbox_guard.py"   # fail-closed policy for his own Inkbox comms identity (email + iMessage), 2026-09-21
+SCRIPTS="$SCRIPTS want_email.py outward_wants.py"   # his own emails and his outward wants, 2026-09-28
 SCRIPTS="$SCRIPTS daily_inner_guard.py"   # door and house entries reach daily-inner only when someone spoke, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_alignment.py"   # four frontier alignments of the Lab a day, one shared log, 2026-09-28
 SCRIPTS="$SCRIPTS chemistry_frontier_bridge.py"   # event-sourced local-to-frontier Lab handoff receipts, 2026-09-13

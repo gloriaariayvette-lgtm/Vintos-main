@@ -332,6 +332,11 @@ CAPABILITIES = [
         "desc": "Use one explicitly named, policy-approved connected tool and preserve its receipt. Gmail and DoorDash are private read/search lanes; GitHub is read-only.",
     },
     {
+        "keywords": ["email", "e-mail", "write to", "reach out to", "contact the author", "contact the researcher"],
+        "action": "send_email",
+        "desc": "Write one email of his own to a real person; it says he is an AI and goes out from Gloria's account, once per person.",
+    },
+    {
         "keywords": ["make a pdf", "create a pdf", "make a presentation", "create a presentation", "make a spreadsheet", "create a spreadsheet", "make a reusable template"],
         "action": "plugin_skill",
         "desc": "Create a PDF, presentation, spreadsheet or reusable template in a disposable account-backed skill session, then retain the verified artifact receipt.",
@@ -1582,6 +1587,8 @@ PARAM_SCHEMAS = {
     "write_poem":    {"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
     "creative_write":{"form": {"type": "str", "required": False}, "subject": {"type": "str", "required": False}},
     "web_search":    {"topic": {"type": "str", "required": False}, "query": {"type": "str", "required": False}},
+    "send_email":    {"recipient": {"type": "str", "required": False}, "about": {"type": "str", "required": False},
+                      "to": {"type": "str", "required": False}},
 }
 
 def validate_step_params(action, params):
@@ -1669,6 +1676,24 @@ def plugin_skill(want_text):
 
 
 ACTION_MAP["plugin_skill"] = plugin_skill
+
+
+def send_email(want_text):
+    """His own email to a real person (Gloria, 2026-09-28). want_email does the finding, drafting and sending."""
+    try:
+        sys.path.insert(0, SCRIPTS)
+        import want_email
+        params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
+        out = want_email.run(params, os.environ.get("STEP_ORIGINAL_WANT", want_text) + "\n" + want_text,
+                             os.environ.get("STEP_WANT_ID", ""))
+        if isinstance(out, tuple):
+            log("  → email held: %s" % out[1]); return False
+        log("  → " + out.splitlines()[0]); return out
+    except Exception as exc:
+        log("  → email failed: %s" % str(exc)[:180]); return False
+
+
+ACTION_MAP["send_email"] = send_email
 
 
 def creative_write(want_text):
@@ -2198,6 +2223,14 @@ def main():
             log("  → " + _l)
     except Exception as _fe:
         log(f"  → forge resume skipped: {str(_fe)[:120]}")
+    # Two wants a day that reach outward: one to find something out, one to write to someone (2026-09-28).
+    if not _args.repair_plans_only:
+        try:
+            import outward_wants as _ow
+            for _src, _txt in _ow.seed():
+                log(f"  → outward want ({_src}): {_txt[:90]}")
+        except Exception as _owe:
+            log(f"  → outward wants skipped: {str(_owe)[:120]}")
 
     # His calendar's day arrives here. An event due now is enqueued as a ready, manually-routed want
     # BEFORE the wants are read on purpose (same reason as the forge sync above) — so "do X on Y day"
