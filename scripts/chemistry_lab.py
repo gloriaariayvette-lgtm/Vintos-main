@@ -59,9 +59,10 @@ ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistr
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
-# 1000, not 350: KaiC is 519 residues, so every KaiC search came back empty whatever he wrote
-# (2026-09-27). ESM-C still reads only the first 350; the sequence slice below keeps that cap.
-BASELINE_QUERY = "reviewed:true AND length:[40 TO 1000]"
+# Named searches have no length ceiling; the bounded range is only for random wandering.
+# ESM-C still reads only the first 350 residues; the sequence slice below keeps that cap.
+BASELINE_QUERY = "reviewed:true"
+RANDOM_QUERY = "reviewed:true AND length:[40 TO 1000]"
 DEFAULTS = {
     # Version 3 makes the background Lab near-continuous. Only orient and reflect
     # are Gemma phases, so a 120s phase poll meant an average four-minute gap
@@ -623,7 +624,7 @@ def _safe_query(query):
     query = re.sub(r"[^A-Za-z0-9_()\[\]:*?+\-\s\"]", " ", str(query or ""))
     query = re.sub(r"\s+", " ", query).strip()[:240]
     if not query or DENIED_QUERY.search(query):
-        return BASELINE_QUERY
+        return RANDOM_QUERY
     # Gemma commonly writes JSON/Python-looking field syntax (``field : True``).
     # UniProt rejects that spacing/casing even though the intended fields are valid.
     # Canonicalize the bounded query here; never recover a rejected specific query by
@@ -638,8 +639,17 @@ def _safe_query(query):
     query = re.sub(r"\(\s*\)", "", query)
     query = re.sub(r"\s+", " ", query).strip()
     query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
-    # Keep wandering bounded to reviewed, modest proteins; generated prose cannot widen this perimeter.
-    return BASELINE_QUERY + " AND (" + query + ")"
+    # A named protein must not disappear merely because it is longer than the wandering
+    # window (S-layer protein A is 1,231 aa). The random browse fallback remains bounded;
+    # ESM-C independently receives only the first 350 residues in _browse.
+    names_subject = bool(re.search(r"\b(?:protein_name|gene|keyword):", query, re.I))
+    if names_subject:
+        query = re.sub(r"(?:^|\s+AND\s+)length:\[[^\]]+\](?=\s+AND\s+|$)", " ", query,
+                       flags=re.I)
+        query = re.sub(r"\s+AND\s+(?=AND\b|$)", " ", query)
+        query = re.sub(r"\s+", " ", query).strip()
+        return BASELINE_QUERY + " AND (" + query + ")"
+    return RANDOM_QUERY + " AND (" + query + ")"
 
 
 INTENT_FIELDS = ("protein_name", "gene")
@@ -852,13 +862,16 @@ def _browse(query, limit):
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:350],
-                     **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed")}
+                     **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
+                         "partial_match": relaxed == "partial_any_word"}
                         if relaxed else {})})
     from lab_sources import receipt
     source_receipt = (None if fallback_reason else
         receipt('uniprot', {'requested_query': requested_query, 'executed_query': executed_query},
                 raw.get('results', [])[:limit], metadata={'coverage':'bounded_first_page',
-                                                          **({'relaxed': relaxed} if relaxed else {})}))
+                                                          **({'relaxed': relaxed,
+                                                              'partial_match': relaxed == 'partial_any_word'}
+                                                             if relaxed else {})}))
     return {"source_receipt": source_receipt, "records": rows, "requested_query": requested_query,
             "executed_query": executed_query, "fallback_reason": fallback_reason, "relaxed": relaxed}
 
@@ -1258,6 +1271,9 @@ def tick():
                     state['source_query_succeeded'] = False
                     state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "source_unavailable", "reason": str(exc)[:240],
+                            "source": str((sent_query or {}).get("source") or "plugin")[:80]
+                                      if isinstance(sent_query, dict) else "unknown",
+                            "query_sent": sent_query,
                             "truth_status": "no_observation_no_inference"}
                 _lanes = ('microbiology', 'genome_mining')
                 next_phase = (("reflect" if (state.get('additional_source', {}).get('receipt') or {}).get('records')

@@ -202,18 +202,24 @@ check("a multi-word protein name is not reread as a gene", none["records"] == []
 def length_aware_urlopen(req, timeout=0):
     q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
     asked.append(q)
-    lo, hi = map(int, re.search(r"length:\[(\d+) TO (\d+)\]", q).groups())
-    if "KaiC" in q and lo <= 519 <= hi:   # what UniProt does: the length range filters first
+    if "KaiC" in q and "length:[" not in q:
         return _R({"results": [{"primaryAccession": "Q79PF4", "uniProtkbId": "KAIC_SYNE7",
                                 "sequence": {"length": 519, "value": "A" * 519}}]})
+    if "PFOR" in q and "length:[" not in q:
+        return _R({"results": [{"primaryAccession": "P0PFOR", "uniProtkbId": "PFOR_TEST",
+                                "sequence": {"length": 1170, "value": "A" * 1170}}]})
     return _R({"results": []})
 M.urllib.request.urlopen = length_aware_urlopen
 try:
     long_one = M._browse(M._safe_query('gene:kaiC AND protein_name:"KaiC"'), 4)
+    pfor = M._browse(M._safe_query('keyword:PFOR AND protein_name:"pyruvate ferredoxin oxidoreductase"'), 4)
 finally:
     M.urllib.request.urlopen = _real
-check("the Lab's own length perimeter admits KaiC (519 residues)",
-      [r["accession"] for r in long_one["records"]] == ["Q79PF4"], (asked[-2:], long_one["executed_query"]))
+check("a named protein search has no length ceiling",
+      [r["accession"] for r in long_one["records"]] == ["Q79PF4"]
+      and [r["accession"] for r in pfor["records"]] == ["P0PFOR"]
+      and "length:[" not in long_one["executed_query"] and "length:[" not in pfor["executed_query"],
+      (asked[-3:], long_one["executed_query"], pfor["executed_query"]))
 check("its full length is recorded but only 350 residues go on to ESM-C",
       long_one["records"] and long_one["records"][0]["length"] == 519
       and len(long_one["records"][0]["sequence"]) == 350)
@@ -225,7 +231,7 @@ ENTRY = {"primaryAccession": "Q97W60", "uniProtkbId": "PROT_SACS2", "entryType":
 def uniprot_like(q):
     if "protein_name:" in q or "gene:" in q or "taxonomy_id:2287" not in q: return []
     inner = q.split("taxonomy_id:2287 AND ", 1)[1]
-    # "thermophilic AND protease" needs a word the entry lacks; "thermophilic OR protease" does not.
+    # Exact reviewed and exact unreviewed searches fail; only the final partial search answers.
     return [] if "thermophilic AND" in inner or "protease" not in inner else [ENTRY]
 def loose_urlopen(req, timeout=0):
     q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
@@ -240,11 +246,12 @@ try:
 finally:
     M.urllib.request.urlopen = _real
 check("thermophilic proteases of S. solfataricus: the exact name finds nothing, his words do",
-      [r["accession"] for r in loose["records"]] == ["Q97W60"] and loose["relaxed"] == "any_of_his_words", (asked, loose))
+      [r["accession"] for r in loose["records"]] == ["Q97W60"] and loose["relaxed"] == "partial_any_word", (asked, loose))
 check("the looser search kept his organism and his filters, and says how it found the record",
-      "taxonomy_id:2287" in loose["executed_query"] and "reviewed:true" in loose["executed_query"]
-      and loose["records"][0]["found_by"] == "any_of_his_words" and loose["records"][0]["curated"] is True
-      and loose["source_receipt"]["metadata"]["relaxed"] == "any_of_his_words")
+      "taxonomy_id:2287" in loose["executed_query"]
+      and loose["records"][0]["found_by"] == "partial_any_word" and loose["records"][0]["partial_match"] is True
+      and loose["source_receipt"]["metadata"]["relaxed"] == "partial_any_word"
+      and loose["source_receipt"]["metadata"]["partial_match"] is True)
 check("no form he was sent drops his subject or his organism",
       all("taxonomy_id:2287" in q and "protease" in q for q in asked), asked)
 check("a query UniProt refused as written is asked again in a form it accepts, with a receipt",
@@ -259,8 +266,21 @@ def fake_fetch(url):
 got = LS.Sources(fetch=fake_fetch).query({"source": "uniprot",
       "query": 'taxonomy_id:2287 AND reviewed:true AND protein_name:"thermophilic proteases"'})
 check("the microbiology lane's UniProt source gets the same looser forms",
-      got["records"] and got["metadata"].get("relaxed") == "any_of_his_words"
-      and got["query"]["executed_query"].startswith("taxonomy_id:2287 AND reviewed:true"), (calls, got.get("metadata")))
+      got["records"] and got["metadata"].get("relaxed") == "partial_any_word"
+      and got["metadata"].get("partial_match") is True
+      and got["records"][0]["found_by"] == "partial_any_word"
+      and got["records"][0]["partial_match"] is True
+      and got["query"]["executed_query"].startswith("taxonomy_id:2287 AND "), (calls, got.get("metadata")))
+relaxations = LS.uniprot_relaxations(
+    'taxonomy_id:2287 AND reviewed:true AND protein_name:"thermophilic proteases" AND go:GO:0000001')
+check("relaxation order tries all requested subject words before any partial match",
+      [label for label, _ in relaxations] == ["all_words_reviewed", "all_words_unreviewed_included", "partial_any_word"]
+      and "thermophilic" in relaxations[0][1] and "proteases" in relaxations[0][1]
+      and "reviewed:true" in relaxations[0][1] and "reviewed:true" not in relaxations[1][1]
+      and "GO" not in relaxations[0][1], relaxations)
+free_text = LS.uniprot_relaxations('taxonomy_id:2287 AND reviewed:true AND membrane protease')
+check("free text becomes the subject only when no typed subject field was supplied",
+      free_text and "membrane" in free_text[0][1] and "protease" in free_text[0][1], free_text)
 
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
@@ -332,7 +352,7 @@ try: stubborn = REAL_ORIENT("context")
 finally: M._ask, M.NOTEBOOK = real_ask, real_nb
 check("KaiC chosen twice more is not sent: the Lab wanders the curated set instead",
       len(prompts) == 2 and stubborn.get("dead_end_fallback") and "KaiC" not in stubborn["uniprot_query"]
-      and re.fullmatch(re.escape(M.BASELINE_QUERY) + r" AND \(length:\[\d+ TO \d+\]\)", stubborn["uniprot_query"]),
+      and re.fullmatch(re.escape(M.RANDOM_QUERY) + r" AND \(length:\[\d+ TO \d+\]\)", stubborn["uniprot_query"]),
       stubborn)
 
 # the journal's KaiC finding stops pulling him back while KaiC is spent

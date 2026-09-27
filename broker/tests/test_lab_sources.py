@@ -67,6 +67,9 @@ class Tests(unittest.TestCase):
         self.assertEqual(sources.validate_uniprot('(organism_id : 1224 reviewed : True)'),
                          '(taxonomy_id:1224 reviewed:true)')
         with self.assertRaises(ValueError): sources.validate_uniprot('organism : human')
+        self.assertEqual(sources.validate_uniprot(
+            'reviewed:true AND length:[40 TO 1000] AND protein_name:PFOR'),
+            'reviewed:true AND protein_name:PFOR')
     def test_bounded_queries(self):
         for q in ('length:[40 TO 350', 'protein_name:"abc', '\nreviewed:true'):
             with self.assertRaises(ValueError): sources.validate_uniprot(q)
@@ -321,6 +324,9 @@ class Tests(unittest.TestCase):
              patch.object(bridge,'query',side_effect=RuntimeError('source unavailable')):
             outcome=lab.tick()
         self.assertEqual(outcome['kind'],'source_unavailable')
+        note=lab._jsonl(lab.NOTEBOOK)[-1]
+        self.assertEqual(note['source'],'ncbi')
+        self.assertEqual(note['query_sent']['term'],'example genus')
         self.assertEqual(lab._load(lab.STATE,{})['phase'],'orient')
     def test_cosmic_explicit_access_gap(self):
         with self.assertRaisesRegex(RuntimeError,'licensed'):self.client().query({'source':'cosmic'})

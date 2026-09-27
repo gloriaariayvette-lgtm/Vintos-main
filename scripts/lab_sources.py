@@ -74,12 +74,17 @@ def validate_uniprot(query):
     # records. taxonomy_id matches that taxon and everything under it, so it is never narrower.
     query = re.sub(r'\borganism_id:', 'taxonomy_id:', query)
     query = re.sub(r'\breviewed:(true|false)\b', lambda m: 'reviewed:' + m.group(1).lower(), query, flags=re.I)
+    if re.search(r'\b(?:protein_name|gene|keyword):', query, re.I):
+        query = re.sub(r'(?:^|\s+AND\s+)length:\[[^\]]+\](?=\s+AND\s+|$)', ' ', query,
+                       flags=re.I)
+        query = re.sub(r'\s+', ' ', query).strip()
     return query
 
 
 
 _TERM = re.compile(r'\b([A-Za-z_][A-Za-z_0-9]*):("[^"]*"|\[[^\]]*\]|[^\s()]+)')
 _KEEP = ('reviewed', 'length', 'taxonomy_id', 'organism_id', 'organism_name')
+_SUBJECT_FIELDS = ('protein_name', 'gene', 'keyword')
 _FILLER = frozenset('the of in and or not for with from to a an its their this that specific structural protein proteins'
                     ' putative family'.split())
 
@@ -95,14 +100,18 @@ def uniprot_relaxations(query):
     symbol = re.search(r'\bprotein_name:(?:"([A-Za-z][A-Za-z0-9-]{1,11})"|([A-Za-z][A-Za-z0-9-]{1,11})(?=\s|\)|$))', query)
     if symbol:   # KaiC, slpA, RPS16: a gene symbol written as a protein name
         out.append(('as_gene', query[:symbol.start()] + 'gene:' + (symbol.group(1) or symbol.group(2)) + query[symbol.end():]))
-    keep, words = [], []
+    keep, field_words, free_words = [], [], []
     for field, value in _TERM.findall(query):
         if field in _KEEP:
             term = field + ':' + value
             if term not in keep: keep.append(term)
-        elif field in ('protein_name', 'gene', 'keyword', 'go'):
-            words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', value.strip('"'))
-    words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', _TERM.sub(' ', query))
+        elif field in _SUBJECT_FIELDS:
+            field_words += re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', value.strip('"'))
+    # Free text can be a subject only when he did not name one in a typed field. Otherwise
+    # boolean/filter residue such as an organism word must not broaden the protein search.
+    if not field_words:
+        free_words = re.findall(r'[A-Za-z0-9][A-Za-z0-9-]*', _TERM.sub(' ', query))
+    words = field_words or free_words
     seen, subject = set(), []
     for word in words:
         low = word.lower()
@@ -120,10 +129,11 @@ def uniprot_relaxations(query):
     words_any = ' OR '.join(group(w) for w in subject)
     def join(filters, text):
         return ' AND '.join(filters + ['(' + text + ')'])
-    out.append(('his_words_anywhere', join(keep, words_all)))
-    if len(subject) > 1: out.append(('any_of_his_words', join(keep, words_any)))
+    out.append(('all_words_reviewed', join(keep, words_all)))
     unreviewed = [k for k in keep if not k.startswith('reviewed:')]
-    out.append(('unreviewed_included', join(unreviewed, words_any if len(subject) > 1 else words_all)))
+    out.append(('all_words_unreviewed_included', join(unreviewed, words_all)))
+    if len(subject) > 1:
+        out.append(('partial_any_word', join(unreviewed, words_any)))
     faithful, seen_q = [], {query}
     for label, alt in out:
         if alt not in seen_q: seen_q.add(alt); faithful.append((label, alt))
@@ -223,10 +233,17 @@ class Sources:
                         data, headers, relaxed, query = found, found_headers, label, alt
                         break
             if rejected is not None and not relaxed: raise rejected
-            return receipt(source, dict(spec, executed_query=query) if relaxed else spec, data['results'][:limit], metadata={
+            records = data['results'][:limit]
+            if relaxed:
+                records = [dict(row, found_by=relaxed,
+                                partial_match=relaxed == 'partial_any_word',
+                                curated=str(row.get('entryType', '')).startswith('UniProtKB reviewed'))
+                           for row in records]
+            return receipt(source, dict(spec, executed_query=query) if relaxed else spec, records, metadata={
                 'release': headers.get('X-UniProt-Release') or headers.get('x-uniprot-release'),
                 'coverage': 'bounded_first_page',
-                **({'relaxed': relaxed, 'executed_query': query} if relaxed else {})})
+                **({'relaxed': relaxed, 'executed_query': query,
+                    'partial_match': relaxed == 'partial_any_word'} if relaxed else {})})
         if source == 'ncbi':
             operation = spec.get('operation')
             if operation not in NCBI_DATABASES: raise ValueError('unknown NCBI operation')
