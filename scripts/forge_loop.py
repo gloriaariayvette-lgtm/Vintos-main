@@ -19,6 +19,60 @@ from zoneinfo import ZoneInfo
 DAILY_STEP_LIMIT = 3
 STEP_TIMEZONE = ZoneInfo("America/Chicago")
 
+# Plain words for the owner. The page showed ids, "Needs reconciliation" and, for Lab projects, the whole
+# source-data dump, and every notification said "Atelier project <id> has an update" (Gloria, 2026-09-28:
+# "How am I supposed to approve what I don't understand?").
+PLAIN_REASONS = {
+    'uncertain_external_outcome': "A step was cut off before it finished, and the Forge cannot tell whether it did "
+                                  "anything, so the project is paused. It must be cleared on Aegis before it can go on.",
+    'scope_or_recurring_authority': "Its next step needs an ability you have not allowed for this project.",
+    'project_spending_ceiling': "Its next step would go over this project's spending limit.",
+    'paid_adapter_not_commissioned': "Its next step costs money, and paid steps are not switched on.",
+    'dedicated_usd_wallet_unconnected': "Its next step costs money, and no payment account is connected.",
+    'wallet_snapshot_invalid_or_stale': "Its next step costs money, and the payment balance could not be read.",
+    'wallet_insufficient_funds': "Its next step costs more than the payment account holds.",
+}
+PLAIN_STATES = {
+    'ready': "Waiting for its next step (the Forge takes at most three steps a day).",
+    'running': "Taking a step right now.",
+    'complete': "Finished.",
+    'cancelled': "Stopped.",
+    'abandoned': "Abandoned.",
+}
+_PACKET = '\nSource packet (untrusted observations):'
+
+
+def plain_card(p, reason=None):
+    """Title, where it came from, and what it is waiting for, in plain words."""
+    intent = str(p.get('intent') or '')
+    source = (p.get('origin') or {}).get('source') or ('lab' if _PACKET.strip() in intent else 'owner')
+    first = intent.split(_PACKET)[0].strip().split('\n')[0].strip()
+    if p.get('private'):
+        title, what = 'Sealed work from his Atelier', 'Work from his Atelier. It stays sealed until its date passes.'
+    elif first.startswith('Document this sourced Lab question'):
+        title = 'Old Lab write-up: ' + first.split(':', 1)[-1].strip()
+        what = ("An old Lab write-up. The Lab stopped sending these on 26 September and nothing more will come of "
+                "it. Safe to stop.")
+    elif first.startswith('The Lab needs an instrument it does not have:'):
+        title = 'Missing Lab instrument: ' + first.split(':', 1)[-1].strip()
+        what = 'The Lab named an ability it lacks; the Forge would build or connect it.'
+    elif source == 'lab':
+        title, what = first, 'Sent by the Lab.'
+    elif source == 'owner':
+        title, what = first, 'A project you started.'
+    elif source == 'atelier':
+        title, what = first, 'Work from his Atelier.'
+    else:
+        title, what = first, "An ability one of his wants needs (from: %s)." % source.replace('_', ' ')
+    title = (title[:137] + '...') if len(title) > 140 else (title or '(no description recorded)')
+    state = p.get('state')
+    if state in ('needs_authorization', 'reconciliation_required', 'uncertain'):
+        waiting = PLAIN_REASONS.get(reason or '', "It is paused and needs your decision.")
+    else:
+        waiting = PLAIN_STATES.get(state, str(state))
+    return {'title': title, 'what': what, 'waiting': waiting, 'origin_source': source,
+            'needs_you': state in ('needs_authorization', 'reconciliation_required', 'uncertain')}
+
 def step_day():
     return datetime.fromtimestamp(time.time(), STEP_TIMEZONE).date().isoformat()
 
@@ -144,6 +198,9 @@ class Controller:
             # projection dropped it. Surface it for the owner, but keep a private interval sealed
             # (its intent is revealed only by the explicit audit, like its artifacts).
             out['intent'] = None if p['private'] else p.get('intent')
+            last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
+                              (pid,)).fetchone()
+            out.update(plain_card(p, (json.loads(last[0]) if last else {}).get('reason')))
             return out
 
     def cancel(self, pid, cancel_token):
@@ -403,8 +460,16 @@ class Controller:
             if p['private']:
                 return []
             events = db.execute("SELECT * FROM events WHERE project=? AND sent=0 AND kind IN ('cycle','revealed','authorization')", (pid,)).fetchall()
-            return [{'event_id': e['id'], 'topic': topic, 'title': 'Forge: '+str(json.loads(e['body']).get('summary') or e['kind'])[:100],
-                     'message': 'Atelier project '+pid+' has an update.',
+            def _note(e):
+                body = json.loads(e['body'])
+                card = plain_card(p, body.get('reason'))
+                if e['kind'] == 'authorization':
+                    return 'Forge needs you: ' + card['title'][:80], card['waiting'] + ' ' + card['what']
+                if e['kind'] == 'revealed':
+                    return 'Forge: Atelier work unsealed', card['title'][:160]
+                return 'Forge step: ' + str(body.get('summary') or card['title'])[:80], card['title'][:160]
+            return [{'event_id': e['id'], 'topic': topic, 'title': _note(e)[0],
+                     'message': _note(e)[1],
                      'priority': 4 if e['kind']=='authorization' else 3,
                      'actions': [
                          {'action': 'view', 'label': 'View', 'url': self.base+'/projects/'+pid},
