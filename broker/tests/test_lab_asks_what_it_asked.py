@@ -9,7 +9,7 @@ document the question.
 
 Scratch HOME; the source client and both model calls are stubs; nothing here reaches the network.
 """
-import contextlib, importlib.util, json, os, sys, tempfile, types
+import re, contextlib, importlib.util, json, os, sys, tempfile, types
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 HOME = tempfile.mkdtemp(prefix="vintos-lab-intent-")
@@ -196,6 +196,26 @@ check("protein_name:RPS16 that finds nothing is tried once as gene:RPS16",
 check("a mixed-case gene name like KaiC, even quoted, is tried as the gene too",
       kaic["records"] and "gene:KaiC" in kaic["executed_query"], (asked, kaic["executed_query"]))
 check("a multi-word protein name is not reread as a gene", none["records"] == [] and "gene:" not in asked[-1], asked)
+
+# --- a protein longer than 350 residues can be found at all (KaiC is 519) --------------------------
+def length_aware_urlopen(req, timeout=0):
+    q = __import__("urllib.parse").parse.parse_qs(req.full_url.split("?", 1)[1])["query"][0]
+    asked.append(q)
+    lo, hi = map(int, re.search(r"length:\[(\d+) TO (\d+)\]", q).groups())
+    if "KaiC" in q and lo <= 519 <= hi:   # what UniProt does: the length range filters first
+        return _R({"results": [{"primaryAccession": "Q79PF4", "uniProtkbId": "KAIC_SYNE7",
+                                "sequence": {"length": 519, "value": "A" * 519}}]})
+    return _R({"results": []})
+M.urllib.request.urlopen = length_aware_urlopen
+try:
+    long_one = M._browse(M._safe_query('gene:kaiC AND protein_name:"KaiC"'), 4)
+finally:
+    M.urllib.request.urlopen = _real
+check("the Lab's own length perimeter admits KaiC (519 residues)",
+      [r["accession"] for r in long_one["records"]] == ["Q79PF4"], (asked[-2:], long_one["executed_query"]))
+check("its full length is recorded but only 350 residues go on to ESM-C",
+      long_one["records"] and long_one["records"][0]["length"] == 519
+      and len(long_one["records"][0]["sequence"]) == 350)
 
 # --- he may not substitute a different protein for the one asked about ----------------------------
 src = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()

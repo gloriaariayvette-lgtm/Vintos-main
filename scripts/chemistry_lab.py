@@ -58,7 +58,9 @@ ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistr
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
-BASELINE_QUERY = "reviewed:true AND length:[40 TO 350]"
+# 1000, not 350: KaiC is 519 residues, so every KaiC search came back empty whatever he wrote
+# (2026-09-27). ESM-C still reads only the first 350; the sequence slice below keeps that cap.
+BASELINE_QUERY = "reviewed:true AND length:[40 TO 1000]"
 DEFAULTS = {
     # Version 3 makes the background Lab near-continuous. Only orient and reflect
     # are Gemma phases, so a 120s phase poll meant an average four-minute gap
