@@ -511,5 +511,22 @@ check("the same abstracts are reviewed at most twice, then he is sent to another
       before == 1 and reviews == 2 and turns[-1].get("next_phase") == "orient"
       and M._jsonl(M.NOTEBOOK)[-1].get("papers_already_reviewed") is True, (before, reviews, [t.get("next_phase") for t in turns]))
 
+# --- PubMed asked for the way the connector names it, and a cut-off word does not empty it (2026-09-28) --
+pm_urls = []
+def pm2(url):
+    pm_urls.append(url); q = __import__("urllib.parse").parse.parse_qs(url.split("?", 1)[1])
+    term = q.get("term", [""])[0]
+    if q.get("retmax") == ["0"]: return {"esearchresult": {"count": "0" if "psychre" in term else "57"}}, {}
+    return {"esearchresult": {"idlist": ["31000001"] if "psychre" not in term else []}}, {}
+pm_client = LS2.Sources(fetch=pm2, fetch_record=lambda url: PUBMED_XML)
+asked_pm = pm_client.query({"operation": "search_articles", "source": "pubmed",
+                            "term": "Colwellia psychre cold shock protein Tyr51 thermostability"})
+check("source pubmed, as he writes it, is the PubMed search, not an unknown source",
+      asked_pm["source"] == "pubmed_abstracts" and asked_pm["records"][0]["pmid"] == "31000001", asked_pm.get("query"))
+check("a word no paper contains is dropped before the search, and his other words are kept",
+      "psychre" not in asked_pm["query"]["terms_matched"]
+      and asked_pm["query"]["terms_matched"][:2] == ["Colwellia", "cold"]
+      and "protein" not in asked_pm["query"]["terms"], asked_pm["query"])
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

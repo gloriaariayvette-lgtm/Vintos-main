@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.error import HTTPError
@@ -147,6 +148,9 @@ def uniprot_relaxations(query):
         if alt not in seen_q: seen_q.add(alt); faithful.append((label, alt))
     return faithful
 
+_PUBMED_FILLER = frozenset('the of in and or not for with from to a an by on at as its their this that vs versus '
+                           'specific specifically role roles protein proteins'.split())
+
 def fetch_json(url, *, transport=None):
     # URLs are constructed by the clients, never accepted from a model.
     request = Request(url, headers={'Accept': 'application/json', 'User-Agent': 'Vintos-Lab/2.0'})
@@ -237,9 +241,21 @@ class Sources:
         if not terms: raise ValueError('one or more plain search terms required')
         limit = spec.get('limit', 4)
         if type(limit) is not int or not 1 <= limit <= 6: raise ValueError('limit must be 1..6')
+        pause = (lambda: time.sleep(0.4)) if self.fetch is fetch_json else (lambda: None)   # NCBI: 3 a second
+        if len(terms) > 1:
+            # A word no paper contains ("psychre", his Colwellia psychrerythraea cut short) empties every
+            # search it is in; it is dropped first (2026-09-28). If every word is like that, all are kept.
+            counted = []
+            for term in terms:
+                pause()
+                found, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
+                    'db': 'pubmed', 'term': '(%s)' % term, 'retmode': 'json', 'retmax': 0, 'tool': 'vintos_lab'}))
+                if str((found.get('esearchresult') or {}).get('count', '0')) != '0': counted.append(term)
+            terms = counted or terms
         ids, used = [], terms
         for n in range(len(terms), min(2, len(terms)) - 1, -1):
             used = terms[:n]
+            pause()
             search, _ = self.fetch(NCBI_BASE + 'esearch.fcgi?' + urlencode({
                 'db': 'pubmed', 'term': ' AND '.join('(%s)' % t for t in used), 'retmode': 'json',
                 'retmax': limit, 'sort': 'relevance', 'tool': 'vintos_lab'}))
@@ -348,6 +364,14 @@ class Sources:
                                      'coverage': 'bounded_first_page', 'service': 'NCBI_EUtilities'})
         if source == 'pubmed_abstracts':
             return self._abstracts(spec)
+        if source == 'pubmed':
+            # He asks for PubMed the way the connector names it ({source: pubmed, operation: search_articles,
+            # term: ...}); every such request was refused as an unknown source (2026-09-28). It is the same
+            # search: his phrase, word by word.
+            raw = spec.get('terms') if isinstance(spec.get('terms'), list) else re.findall(
+                r"[A-Za-z0-9][A-Za-z0-9'-]*", str(spec.get('term') or spec.get('query') or ''))
+            words = [w for w in raw if str(w).lower() not in _PUBMED_FILLER][:6]
+            return self._abstracts({'terms': words, 'limit': 4})
         if source == 'ncbi_sequence':
             database = spec.get('database')
             if database not in ('protein', 'nuccore'): raise ValueError('protein or nuccore sequence required')
