@@ -55,6 +55,7 @@ class PlainCards(unittest.TestCase):
         self.assertIn("p.title||p.intent", ui); self.assertIn("'Waiting on you: '", ui)
         self.assertIn("'Stop this project'", ui); self.assertNotIn("'Cancel next cycle'", ui)
         self.assertIn("'Full text'", ui)
+        self.assertIn("all.filter(p=>!done(p))", ui)   # stopped projects are hidden unless asked for
 
 
 if __name__ == '__main__':

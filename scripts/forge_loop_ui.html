@@ -58,7 +58,7 @@
   <div id="projects"></div>
 </section>
 <script>
-const $=id=>document.getElementById(id);let token='';
+const $=id=>document.getElementById(id);let token='';let showDone=false;
 const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
 async function api(path,method='GET',body,key){const headers={'Content-Type':'application/json'};if(key||token)headers['Authorization']='Bearer '+(key||token);const r=await fetch(path,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data}
 function button(label,cls,fn){const b=el('button',cls,label);b.onclick=()=>run(fn);return b}
@@ -141,9 +141,14 @@ function renderArtifact(container,rows){
 async function refresh(){
   const budget=await api('/api/budget');
   $('budget').textContent=budget.used+' of '+budget.limit+' steps used today ('+budget.timezone+'). Failed attempts count.';
-  const rows=await api('/api/projects');
+  const all=await api('/api/projects');
   const box=$('projects');box.replaceChildren();
-  if(!rows.length){box.append(el('p','empty','No projects yet.'));return}
+  // Stopped and finished projects are hidden unless asked for: the list was mostly cancelled cards (2026-09-28).
+  const done=p=>['cancelled','abandoned','complete'].includes(p.state);
+  const rows=showDone?all:all.filter(p=>!done(p));
+  const hidden=all.length-rows.length;
+  if(!rows.length)box.append(el('p','empty',all.length?'Nothing open right now.':'No projects yet.'));
+  if(hidden||showDone){const t=el('button','ghost',showDone?'Hide stopped and finished':'Show '+hidden+' stopped or finished');t.onclick=()=>{showDone=!showDone;run(refresh)};box.append(t)}
   for(const p of rows){
     const card=el('div','card');
     // Plain words first: what it is, where it came from, what it is waiting for (Gloria, 2026-09-28).
