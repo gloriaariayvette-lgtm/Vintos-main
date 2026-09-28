@@ -4113,6 +4113,25 @@ var _avStage = {
   }
 };
 
+// Follow one turn's live scene until it lands, then show it. The server started it (scene gate or
+// [RENDER:] kick, both admitted by the effect gate), so the app never starts a second, paid render.
+// Nothing in flight for this turn (idle, refused, error) -> nothing to wait for.
+async function _avFollowLive(slot){
+  try{
+    const q = slot ? ('?slot='+encodeURIComponent(slot)) : '';
+    const t0=Date.now();
+    while(Date.now()-t0 < 12*60*1000){
+      const sr = await VintosUI.request(API+'/api/avatar/live/status'+q,{headers:{'X-Vintos-Secret':CONFIG.secret}});
+      if(sr.ok){
+        const st = await sr.json();
+        if(st.status==='done'){ console.log('[live] ready in '+st.seconds+'s'); _avStage.man=null; await _avStage.load(); await _avStage.setRoom('live'); return; }
+        if(st.status!=='rendering'){ if(st.status==='error') console.log('[live] failed: '+st.error); return; }
+      }
+      await new Promise(r=>setTimeout(r,4000));
+    }
+  }catch(e){}
+}
+
 function _avStartReplyMedia(display, scenes){
   // Auxiliary media owns no conversational turn. A slow or failed stage keeps
   // the already-rendered words and cannot hold the controls.
@@ -4423,28 +4442,9 @@ async function avSendChat() {
     // any scene or voice I/O; media is bounded auxiliary work below.
     VintosUI.finish(turn); turnOpen=false;
     _avStartReplyMedia(display,scenes);
-    // Live path: [RENDER: description] — he chose to render a fresh scene.
-    // Runs in the background (~2 min), then crossfades into it.
-    if(renders && renders[0]){
-      (async () => {
-        try{
-          // The server already started this render the moment his reply
-          // existed; this call is idempotent. Then poll until it lands.
-          await VintosUI.request(API+'/api/avatar/live', {method:'POST',
-            headers:{'Content-Type':'application/json','X-Vintos-Secret':CONFIG.secret},
-            body:JSON.stringify({prompt:renders[0]})});
-          const t0=Date.now();
-          while(Date.now()-t0 < 12*60*1000){
-            await new Promise(r=>setTimeout(r,4000));
-            const sr = await VintosUI.request(API+'/api/avatar/live/status',{headers:{'X-Vintos-Secret':CONFIG.secret}});
-            if(!sr.ok) continue;
-            const st = await sr.json();
-            if(st.status==='done'){ console.log('[live] ready in '+st.seconds+'s'); _avStage.man=null; await _avStage.load(); await _avStage.setRoom('live'); break; }
-            if(st.status==='error'){ console.log('[live] failed: '+st.error); break; }
-          }
-        }catch(e){}
-      })();
-    }
+    // Live path: a scene he chose to render for this turn (the gate or his [RENDER:] tag). The server
+    // already started it; the app only follows it and crossfades in when it lands.
+    if(d.live_slot || (renders && renders[0])) _avFollowLive(d.live_slot);
     // Fire gestures sequentially, then holds
     (async () => {
       for(const g of gestures) {
@@ -5077,6 +5077,11 @@ async function avSendPhoto(file, caption) {
     if(!VintosUI.current(turn))return;
     const parsed = _avParseReply(raw);
     _avLogMsg('assistant', parsed.text || raw);
+    // A photo reply is shown, spoken and staged like any other reply; until 2026-09-28 a scene he
+    // rendered for her photo finished and never appeared, because this path ignored it.
+    _avShowBubble(parsed.text || raw);
+    _avStartReplyMedia(parsed.text || raw, parsed.scenes);
+    if(d.live_slot || (parsed.renders && parsed.renders[0])) _avFollowLive(d.live_slot);
     try { for (const g of (parsed.gestures||[])) { await _avPlayAnim(_avGestureMap[g] || g, false); }
           for (const h of (parsed.holds||[])) { _avPlayAnim(_avGestureMap[h] || h, true); }
           for (const s of (parsed.spawns||[])) { _avSpawn(s); }

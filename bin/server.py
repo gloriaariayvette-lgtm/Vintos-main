@@ -9703,7 +9703,10 @@ Your current self-model (excerpt):
                 _avst_k.kick_from_reply(reply, slot=(_turn.turn_id if _turn is not None else None),
                                         admit=_avatar_scene_admit(_turn, _tc))
             except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
-        return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or "")}
+        # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
+        # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
+        return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or ""),
+                "live_slot": (_turn.turn_id if _turn is not None else "")}
     except Exception as e:
         return {"reply": "", "error": str(e)}
     finally:

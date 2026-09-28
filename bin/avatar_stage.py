@@ -587,7 +587,10 @@ def kick_from_reply(reply, slot=None, admit=None):
     try:
         import re as _re
         m = _re.search(r"\[RENDER:\s*([^\]]+)\]", reply or "", _re.I)
-        if not m or not _mac_url():
+        if not m:
+            return False
+        if not _mac_url():
+            log("[RENDER:] in his reply, but no Mac stage is configured - nothing rendered")
             return False
         st = start_live(m.group(1).strip(), slot=slot, admit=admit)
         if st.get("status") == "refused":
