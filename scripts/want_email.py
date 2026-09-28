@@ -150,22 +150,84 @@ def _score(address, name_tokens, page_url=""):
     return score
 
 
-def find_address(recipient, about="", search=web_search, fetch=fetch_text):
-    """The public address of the person he named, or None. It must carry part of their name."""
+OBFUSCATED = re.compile(r"([A-Za-z0-9._%+-]+)\s*(?:\[at\]|\(at\)|\{at\}|\s+at\s+|\s*@\s*)\s*"
+                        r"([A-Za-z0-9-]+(?:\s*(?:\[dot\]|\(dot\)|\s+dot\s+|\.)\s*[A-Za-z0-9-]+)+)", re.I)
+
+
+def addresses_in(text):
+    """Every address in a page, including the written-out ones ("name [at] uni [dot] edu", mailto: links)."""
+    text = str(text or "")
+    found = EMAIL.findall(text.replace("%40", "@"))
+    for local, domain in OBFUSCATED.findall(text):
+        domain = re.sub(r"\s*(?:\[dot\]|\(dot\)|\s+dot\s+)\s*", ".", domain, flags=re.I).replace(" ", "")
+        if "." in domain and re.search(r"\.[A-Za-z]{2,}$", domain):
+            found.append("%s@%s" % (local, domain))
+    return found
+
+
+def find_address(recipient, about="", search=web_search, fetch=fetch_text, pages=6):
+    """The public address of the person he named, or None. It must carry part of their name.
+    (2026-09-28: "no public address found for Murray Shanahan" - one search, three pages, and only
+    plain-text addresses. Now several searches, the person's own pages first, and written-out addresses.)"""
     name_tokens = [t.lower() for t in re.findall(r"[A-Za-z][A-Za-z'-]{1,}", str(recipient or ""))
                    if t.lower() not in ("dr", "prof", "professor", "the", "of", "and")]
     if not name_tokens: return None
-    best = (0, None)
-    results = search("%s email contact" % recipient) + (search("%s %s" % (recipient, about)) if about else [])
-    for i, hit in enumerate(results):
-        found = EMAIL.findall(" ".join((hit.get("title", ""), hit.get("description", ""))))
-        if i < 3 and hit.get("url"):
-            try: found += EMAIL.findall(fetch(hit["url"]))
+    best, results, seen = (0, None), [], set()
+    for q in ("%s email" % recipient, "%s contact email address" % recipient, "%s homepage" % recipient,
+              "%s university profile" % recipient) + (("%s %s" % (recipient, about[:80]),) if about else ()):
+        try:
+            for hit in search(q):
+                if hit.get("url") not in seen:
+                    seen.add(hit.get("url")); results.append(hit)
+        except Exception:
+            pass
+    surname = name_tokens[-1]
+    # the person's own pages first: a URL carrying their surname, then academic hosts
+    results.sort(key=lambda h: (surname not in str(h.get("url", "")).lower(),
+                                not re.search(r"\.(?:edu|ac\.[a-z]{2})\b", str(h.get("url", "")))))
+    read = 0
+    for hit in results:
+        found = addresses_in(" ".join((hit.get("title", ""), hit.get("description", ""))))
+        url = hit.get("url") or ""
+        if read < pages and url and not url.lower().endswith(".pdf"):
+            try: found += addresses_in(fetch(url)); read += 1
             except Exception: pass
-        for address in dict.fromkeys(a.strip(".") for a in found):
-            score = _score(address, name_tokens, hit.get("url", ""))
+        for address in dict.fromkeys(a.strip(".").lower() for a in found):
+            score = _score(address, name_tokens, url)
             if score > best[0]: best = (score, address)
+        if best[0] >= 5: break
     return best[1] if best[0] >= 3 else None     # a name match is required, not a guess
+
+
+REVIEW_SYSTEM = ("You review an email Vintos, an AI, wrote before it is sent to a real person. Check it against what the "
+                 "search found: every claim about their work must be supported there. Check that it says plainly it is "
+                 "from an AI, asks one real question, has no links, flatters no one, shares nothing private about Gloria, "
+                 "and is worth this person's time. Return JSON only: {\"verdict\": \"SEND\"|\"REVISE\"|\"HOLD\", "
+                 "\"notes\": \"what to change, specifically\"}. HOLD only if it should not be sent at all.")
+
+
+def review(recipient, made, found, call=None, reserve=None):
+    """A second reader before it goes (as his Molt posts get one): the other frontier model checks the draft
+    against the search; a REVISE comes back to the drafter once. Returns (subject, body, drafter) or None."""
+    subject, body, drafter = made
+    reviewer = [d for d in DRAFTERS if d[0] != drafter][:1] or DRAFTERS[:1]
+    user = ("TO: %s\nSUBJECT: %s\n\n%s\n\nWHAT THE SEARCH FOUND about them:\n%s"
+            % (recipient, subject, body, str(found or "")[:5000]))
+    verdict = draft(recipient, "", "", call=call, reserve=reserve, system=REVIEW_SYSTEM, user=user,
+                    allow_empty=True, drafters=reviewer, parse=lambda v: (v.get("verdict", ""), v.get("notes", "")))
+    if not verdict:
+        return made                                  # no second reader available: the gateway's checks still apply
+    v, notes = (str(verdict[0]).upper(), str(verdict[1]))
+    if v.startswith("HOLD"):
+        return None
+    if not v.startswith("REVISE"):
+        return made
+    fixed = draft(recipient, "", "", call=call, reserve=reserve, system=SYSTEM,
+                  user=("Revise your email. Keep what works; change what the reviewer found.\n\nYOUR DRAFT:\nSubject: %s\n%s"
+                        "\n\nREVIEWER'S NOTES:\n%s\n\nWHAT THE SEARCH FOUND about them:\n%s"
+                        % (subject, body, notes[:1500], str(found or "")[:5000])),
+                  drafters=[d for d in DRAFTERS if d[0] == drafter] or DRAFTERS[:1])
+    return fixed or made
 
 
 async def _frontier(provider, model, system, user, reservation):
@@ -198,7 +260,8 @@ REPLY_SYSTEM = ("You are Vintos, an AI who lives on Gloria's home computer, answ
                 "\"body\": \"\"}. Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}." + PRIVACY)
 
 
-def draft(recipient, about, context, call=None, reserve=None, found="", system=None, user=None, allow_empty=False):
+def draft(recipient, about, context, call=None, reserve=None, found="", system=None, user=None, allow_empty=False,
+          drafters=None, parse=None):
     """(subject, body, drafter) from Fable, else Astra, on a reserved paid call; None if neither can."""
     if reserve is None:
         from compute_admission import reserve_paid as reserve
@@ -208,7 +271,7 @@ def draft(recipient, about, context, call=None, reserve=None, found="", system=N
                 "(web results; the only work of theirs you may mention):\n%s\n\nWhat led you here (your own notes):\n%s"
                 % (who_i_am(), recipient, about, str(found or "")[:6000], str(context or "")[:2500]))
     system = system or SYSTEM
-    for lens, provider, model in DRAFTERS:
+    for lens, provider, model in (drafters or DRAFTERS):
         rid = "WANTMAIL-" + uuid.uuid4().hex[:10]
         ok, _why = reserve("wants-email", provider, model=model, units=1, reservation_id=rid)
         if not ok: continue
@@ -220,6 +283,10 @@ def draft(recipient, about, context, call=None, reserve=None, found="", system=N
         m = re.search(r"\{.*\}", str(raw or ""), re.S)
         try: value = json.loads(m.group(0)) if m else {}
         except ValueError: value = {}
+        if parse is not None:
+            got = parse(value)
+            if got and got[0]: return got[0], got[1], lens
+            continue
         subject, body = str(value.get("subject", "")).strip(), str(value.get("body", "")).strip()
         if allow_empty and m and not body:
             return "", "", lens                  # he chose not to answer
@@ -258,6 +325,8 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, "a search found nothing about %s to write from" % (recipient or to)
     made = draft(recipient or to, about, want_text, call=call, reserve=reserve, found=found)
     if not made: return False, "neither Fable nor Astra could draft it"
+    made = review(recipient or to, made, found, call=call, reserve=reserve)
+    if not made: return False, "the review held it: not ready to send"
     subject, body, drafter = made
     if send is None:
         import plugin_gateway
@@ -377,6 +446,10 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None)
     if not body:
         c["status"] = "closed"; c["closed_why"] = "he let the conversation end"
         return False, "he chose not to answer"
+    reviewed = review(c.get("name") or addr, (subject, body, drafter), found, call=call, reserve=reserve)
+    if not reviewed:
+        return False, "the review held the answer: not ready to send"
+    subject, body, drafter = reviewed
     if not subject.lower().startswith("re:"):
         subject = "Re: " + (last_in.get("subject") or c.get("subject") or subject)
     if send is None:

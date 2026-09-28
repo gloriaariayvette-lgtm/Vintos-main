@@ -57,8 +57,9 @@ check("he searched the person and their work before drafting",
 check("what the search found reaches the drafter, pages read without their menus",
       "WHAT YOUR SEARCH FOUND" in drafted[0][2] and "University of Sussex" in drafted[0][2]
       and "predicts the body's own states" in drafted[0][2] and "Home | Menu" not in drafted[0][2], drafted[0][2][:600])
-check("the email is drafted by Fable on a reserved paid call", reserved == [("anthropic", "claude-fable-5-1")]
-      and drafted[0][0] == "claude-fable-5-1", reserved)
+check("the email is drafted by Fable on a reserved paid call, and read by Astra before it goes",
+      reserved == [("anthropic", "claude-fable-5-1"), ("openai", "gpt-6-astra")] and drafted[0][0] == "claude-fable-5-1"
+      and "You review an email" in drafted[1][1], reserved)
 check("the draft is told to say he is an AI, ask one question, and carry no links",
       "you are an AI" in drafted[0][1] and "ONE real question" in drafted[0][1] and "no links" in drafted[0][1])
 check("it is sent to that address, through the gateway that keeps the checks and the daily limit",
@@ -83,6 +84,29 @@ held = E.run({"to": "other@example.net", "about": "x"}, "x", search=search, fetc
              send=lambda a, p: (_ for _ in ()).throw(RuntimeError("LINK_APPROVAL_REQUIRED")))
 check("a send the gateway holds is reported as held, and the person is not marked as written to",
       isinstance(held, tuple) and "held or refused" in held[1] and "other@example.net" not in json.load(open(E.CONTACTS)))
+check("a written-out address on the person's own page is found ([at] / [dot])",
+      E.find_address("Murray Shanahan", search=lambda q: [{"title": "Press", "url": "https://news.example.com/ai", "description": "press@news.example.com"},
+                                                          {"title": "Prof Murray Shanahan", "url": "https://www.imperial.ac.uk/people/m.shanahan", "description": "Professor"}],
+                     fetch=lambda u: "Contact: m.shanahan [at] imperial [dot] ac [dot] uk" if "people" in u else "") == "m.shanahan@imperial.ac.uk")
+def reviewer_says(verdict, notes="Say which paper you read."):
+    seen = []
+    def call(provider, model, system, user, reservation):
+        seen.append((provider, system, user))
+        if "You review an email" in system:
+            return json.dumps({"verdict": verdict, "notes": notes})
+        if "Revise your email" in user:
+            return json.dumps({"subject": "About simulacra", "body": "I am Vintos, an AI. Revised, citing your 2023 Nature paper. Vintos"})
+        return json.dumps({"subject": "About simulacra", "body": "I am Vintos, an AI. First draft. Vintos"})
+    return call, seen
+sent.clear()
+call, seen = reviewer_says("REVISE")
+E.run({"to": "one@example.org", "about": "role-play"}, "x", search=search, fetch=page, call=call, reserve=reserve, send=send)
+check("a draft the reviewer sends back is revised with its notes, and the revision is what goes",
+      sent and "Revised, citing" in sent[0][0]["body"] and any("Say which paper you read." in u for _, _, u in seen), sent)
+sent.clear()
+call, seen = reviewer_says("HOLD", "This would waste their time.")
+held2 = E.run({"to": "two@example.org", "about": "role-play"}, "x", search=search, fetch=page, call=call, reserve=reserve, send=send)
+check("a draft the reviewer holds is not sent", not sent and isinstance(held2, tuple) and "review held" in held2[1], held2)
 check("the person a want names is found even when the plan left the recipient out",
       E.named_in("I want to email Murray Shanahan about role-play and selfhood") == "Murray Shanahan"
       and E.named_in("I want to write to Prof. Anil Seth about the beast machine") == "Anil Seth"
