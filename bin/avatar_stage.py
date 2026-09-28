@@ -454,6 +454,7 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
             import shutil as _shc
             os.makedirs(CLIPS, exist_ok=True)
             _shc.copy(os.path.join(m.VID_DIR, fname), os.path.join(CLIPS, "live.mp4"))
+            fit_to_rooms(os.path.join(CLIPS, "live.mp4"))
             data = load_rooms()
             data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"
             save_rooms(data); write_manifest()
@@ -507,16 +508,20 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         if os.path.exists(_cpath) and os.path.getsize(_cpath) > 10000:
             os.makedirs(CLIPS, exist_ok=True)
             import shutil as _shr; _shr.copy(_cpath, os.path.join(CLIPS, "live.mp4"))
+            fit_to_rooms(os.path.join(CLIPS, "live.mp4"))
             data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"; save_rooms(data); write_manifest()
             st = _slot_update(sid, status="done", finished=time.time(), reused=True, seconds=round(time.time() - live_status(sid)["started"], 1))
             log("live scene reused from content key %s [%s]" % (_ckey, sid)); return
+        _aspect = room_aspect()
         r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images, "motion": motion,
-                                          "together": kind == "together"}, timeout=900)
+                                          "together": kind == "together", "aspect": _aspect}, timeout=900)
         if r.status_code != 200:
             raise RuntimeError("mac live render %s: %s" % (r.status_code, r.text[:200]))
         os.makedirs(CLIPS, exist_ok=True)
         with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
             f.write(r.content)
+        if fit_to_rooms(os.path.join(CLIPS, "live.mp4"), _aspect):
+            _sync_live_to_mac()          # the Mac speaks over the fitted copy too
         try:
             os.makedirs(os.path.dirname(_cpath), exist_ok=True)
             with open(_cpath, "wb") as f: f.write(r.content)
@@ -532,6 +537,53 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         st = _slot_update(sid, status="error", finished=time.time(), error=str(e)[:300],
                           seconds=round(time.time() - live_status(sid)["started"], 1))
         log("live scene FAILED after %.1fs [%s]: %s" % (st["seconds"], sid, e))
+
+def _clip_size(path):
+    """(width, height) of a clip's video, or None."""
+    try:
+        import shutil as _sh
+        r = subprocess.run([_sh.which("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "v:0",
+                            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path],
+                           capture_output=True, text=True, timeout=30)
+        w, h = (int(x) for x in r.stdout.strip().split("x")[:2])
+        return (w, h) if w > 0 and h > 0 else None
+    except Exception:
+        return None
+
+
+def room_aspect():
+    """Width/height of his filmed rooms (the default room first), so a live scene is made in their shape."""
+    data = load_rooms()
+    rooms = data.get("rooms", {})
+    order = [data.get("default")] + sorted(rooms)
+    for name in order:
+        if not name or name == "live": continue
+        for c in (rooms.get(name) or {}).get("clips", []):
+            size = _clip_size(os.path.join(CLIPS, c))
+            if size: return size[0] / float(size[1])
+    return None
+
+
+def fit_to_rooms(path, aspect=None):
+    """Centre-crop a live clip to the rooms' shape when it is off by more than 2% (2026-09-28: a
+    16:9 render sat small at the top of her screen while the rooms fill it). True when changed."""
+    aspect = aspect or room_aspect()
+    size = _clip_size(path)
+    if not aspect or not size or abs(size[0] / float(size[1]) - aspect) / aspect < 0.02:
+        return False
+    import shutil as _sh
+    tmp = path + ".fit.mp4"
+    r = subprocess.run([_sh.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf",
+                        "crop='if(gt(iw/ih,%.5f),ih*%.5f,iw)':'if(gt(iw/ih,%.5f),ih,iw/%.5f)',"
+                        "scale=trunc(iw/2)*2:trunc(ih/2)*2" % (aspect, aspect, aspect, aspect),
+                        "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", tmp], capture_output=True, timeout=300)
+    if r.returncode != 0 or not os.path.exists(tmp):
+        log("live clip not fitted to the rooms: %s" % (r.stderr or b"")[-200:])
+        return False
+    os.replace(tmp, path)
+    log("live clip fitted to the rooms' shape (%dx%d was %.2f, rooms %.2f)" % (size[0], size[1], size[0] / float(size[1]), aspect))
+    return True
+
 
 def _sync_live_to_mac():
     """The Mac renders speech over the live clip too, so it needs a copy when
@@ -915,6 +967,9 @@ def main():
         data = load_rooms()
         if not os.path.exists(os.path.join(CLIPS, "live.mp4")) or "live" not in data.get("rooms", {}):
             print("no live scene on disk"); sys.exit(1)
+        if fit_to_rooms(os.path.join(CLIPS, "live.mp4")):
+            _sync_live_to_mac()
+            print("fitted to the rooms' shape")
         data["default"] = "live"; save_rooms(data); write_manifest()
         print("live scene is up: %s" % data["rooms"]["live"].get("pose", "")[:120]); sys.exit(0)
     if a.cmd == "build":    sys.exit(build(a.room, a.force))

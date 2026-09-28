@@ -387,7 +387,39 @@ def _find_media_url(o, ext):
     return None
 
 
-def live_render(prompt, images=None, motion="", together=False):
+# The shapes the still composer accepts; a live scene is composed in the one nearest his filmed rooms,
+# so it fills her screen the way the rooms do (2026-09-28: a 16:9 render sat small at the top).
+RATIOS = ("21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16")
+
+
+def nearest_ratio(aspect):
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return None
+    if a <= 0: return None
+    return min(RATIOS, key=lambda r: abs(a - int(r.split(":")[0]) / int(r.split(":")[1])))
+
+
+def fit_aspect(path, aspect):
+    """Centre-crop a clip to width/height = aspect (a no-op crop when it already is), even dimensions."""
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return False
+    if a <= 0: return False
+    tmp = path + ".fit.mp4"
+    r = subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", path, "-vf",
+                        "crop='if(gt(iw/ih,%.5f),ih*%.5f,iw)':'if(gt(iw/ih,%.5f),ih,iw/%.5f)',"
+                        "scale=trunc(iw/2)*2:trunc(ih/2)*2" % (a, a, a, a),
+                        "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", tmp], env=ENV, capture_output=True)
+    if r.returncode != 0 or not os.path.exists(tmp):
+        return False
+    os.replace(tmp, path)
+    return True
+
+
+def live_render(prompt, images=None, motion="", together=False, aspect=None):
     """His chosen live scene: nano-banana composes a full-body still of him in
     the described scene (~4c), H3 animates it at 768P (~50c). Aegis sends his
     references along: Gloria's recent photos first (setting/context), his hero
@@ -411,8 +443,9 @@ def live_render(prompt, images=None, motion="", together=False):
                     "entire body clearly in frame - head, torso, legs, and feet all "
                     "visible, nothing cropped. Photoreal, natural light.")
     try:
-        resp = _fal("fal-ai/nano-banana-2/edit",
-                    {"prompt": still_prompt, "image_urls": image_urls, "num_images": 1})
+        body = {"prompt": still_prompt, "image_urls": image_urls, "num_images": 1}
+        if nearest_ratio(aspect): body["aspect_ratio"] = nearest_ratio(aspect)
+        resp = _fal("fal-ai/nano-banana-2/edit", body)
     except Exception as e:
         return None, "still compose failed: %s" % e
     still_url = _find_media_url(resp, "*")
@@ -435,6 +468,7 @@ def live_render(prompt, images=None, motion="", together=False):
         return None, "no video url from animation"
     out = os.path.join(STAGE, "live-latest.mp4")
     urllib.request.urlretrieve(vid_url, out)
+    if aspect: fit_aspect(out, aspect)       # exactly the rooms' shape, before it is installed or returned
     # Install locally too: speech renders on THIS box, and it needs the clip
     # plus a close-up crop for the mouth. Stale tracking caches are cleared.
     os.makedirs(CLIPS, exist_ok=True)
@@ -535,11 +569,12 @@ class Handler(BaseHTTPRequestHandler):
                 prompt = str(body.get("prompt", "")).strip()
                 images = body.get("images") or []
                 motion = str(body.get("motion", "") or ""); together = bool(body.get("together"))
+                aspect = body.get("aspect")
             except Exception:
                 self._send(400, b'{"error":"bad json"}'); return
             if not prompt:
                 self._send(400, b'{"error":"no prompt"}'); return
-            data, err = live_render(prompt, images, motion, together)
+            data, err = live_render(prompt, images, motion, together, aspect)
             if err:
                 log(err); self._send(500, json.dumps({"error": err}).encode()); return
             self._send(200, data, "video/mp4"); return
