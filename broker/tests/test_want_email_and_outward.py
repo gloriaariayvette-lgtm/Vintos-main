@@ -80,6 +80,13 @@ check("the email is drafted by Fable on a reserved paid call, and read by Astra 
       and "You review an email" in drafted[1][1], reserved)
 check("the draft is told to say he is an AI, ask one question, and carry no links",
       "you are an AI" in drafted[0][1] and "ONE real question" in drafted[0][1] and "no links" in drafted[0][1])
+check("it is sent in the shape Gmail's connector declares: body as a text/plain part inside payload",
+      sent and sent[0][0]["payload"]["mime_type"] == "text/plain" and E.text_of(sent[0][0]).startswith("Hello Professor Seth")
+      and "body" not in sent[0][0], sent[:1])
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import plugin_send_guard as _guard
+_f = _guard.outbound_findings(E.mail("x@example.org", "Hi", "see https://example.com/x"), secrets_root=os.path.join(HOME, "none"))
+check("the gateway's link and private-data checks still read the body inside payload", _f["links"] == ["https://example.com/x"], _f)
 check("it is sent to that address, through the gateway that keeps the checks and the daily limit",
       sent and sent[0][0]["to"] == "a.k.seth@sussex.ac.uk" and sent[0][0]["subject"].startswith("A question"), sent)
 check("the step reports who it went to and what was said", isinstance(out, str) and "Emailed Anil Seth" in out, out)
@@ -120,7 +127,7 @@ sent.clear()
 call, seen = reviewer_says("REVISE")
 E.run({"to": "one@example.org", "about": "role-play"}, "x", search=search, fetch=page, call=call, reserve=reserve, send=send)
 check("a draft the reviewer sends back is revised with its notes, and the revision is what goes",
-      sent and "Revised, citing" in sent[0][0]["body"] and any("Say which paper you read." in u for _, _, u in seen), sent)
+      sent and "Revised, citing" in E.text_of(sent[0][0]) and any("Say which paper you read." in u for _, _, u in seen), sent)
 sent.clear()
 call, seen = reviewer_says("HOLD", "This would waste their time.")
 held2 = E.run({"to": "two@example.org", "about": "role-play"}, "x", search=search, fetch=page, call=call, reserve=reserve, send=send)
@@ -184,6 +191,8 @@ check("between messages he searches again, on what they said", any("allostasis" 
 check("his answer is drafted with the whole thread, why he first wrote, and who he is",
       drafted and "have you read about allostasis" in drafted[0][2] and "WHY YOU FIRST WROTE" in drafted[0][2]
       and "I want to email Anil Seth" in drafted[0][2] and "chemistry lab on KaiC" in drafted[0][2], drafted[:1])
+check("the answer names the message it answers, so it lands in the same Gmail conversation",
+      sent and sent[0][0].get("reply_message_id") == "M1", sent[:1])
 check("the answer goes to them through the same gateway, and joins the thread",
       sent and sent[0][0]["to"] == "a.k.seth@sussex.ac.uk" and sent[0][0]["subject"].startswith("Re:")
       and c["replies_sent"] == 1 and c["thread"][-1]["dir"] == "out" and c["status"] == "open", (sent, c.get("status")))

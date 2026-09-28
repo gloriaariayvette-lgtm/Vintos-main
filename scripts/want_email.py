@@ -45,6 +45,23 @@ SEND_HEALTH = os.path.join(MEMORY, "email-send-health.json")
 REJECTED_WAIT_S = 20 * 3600
 
 
+def mail(to, subject, body, reply_message_id=""):
+    """gmail.send_email arguments, as the connector declares them (read with plugin_gateway.py schema,
+    2026-09-28): to, subject, and the body inside `payload` as a text/plain part. A flat "body" was
+    rejected with "payload: Missing required property". An answer names the message it answers, so it
+    lands in the same Gmail conversation."""
+    args = {"to": to, "subject": subject,
+            "payload": {"mime_type": "text/plain", "charset": "UTF-8", "body": {"content": body}}}
+    if reply_message_id:
+        args["reply_message_id"] = str(reply_message_id)
+    return args
+
+
+def text_of(args):
+    """The plain-text body of a mail() argument set."""
+    return str((((args or {}).get("payload") or {}).get("body") or {}).get("content") or (args or {}).get("body") or "")
+
+
 def _send_blocked():
     """Why sending is paused, or ''. After Gmail itself rejected a send, nothing is drafted (no paid calls)
     and no send attempt is spent until the wait is over (2026-09-28: a rejected send was retried every two
@@ -402,7 +419,7 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
     try:
-        out = send({"to": to, "subject": subject, "body": body}, ("His own email, from a want: " + about)[:900])
+        out = send(mail(to, subject, body), ("His own email, from a want: " + about)[:900])
     except Exception as exc:
         if "PolicyHold" not in type(exc).__name__:
             _note_send(False, str(exc))
@@ -546,7 +563,8 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
     try:
-        send({"to": addr, "subject": subject[:160], "body": body}, ("His answer to %s, who wrote back" % addr)[:900])
+        send(mail(addr, subject[:160], body, reply_message_id=last_in.get("id", "")),
+             ("His answer to %s, who wrote back" % addr)[:900])
     except Exception as exc:
         if "PolicyHold" not in type(exc).__name__:
             _note_send(False, str(exc))
@@ -599,7 +617,7 @@ def send_test():
         return "could not read his own address from the profile: %s" % json.dumps(prof)[:300]
     try:
         out = plugin_gateway.call("wants", "gmail", "gmail.send_email",
-                                  {"to": me, "subject": "Vintos send test", "body": "A test of the send path. Nothing to do."},
+                                  mail(me, "Vintos send test", "A test of the send path. Nothing to do."),
                                   "Send-path test to his own mailbox")
         _note_send(True)
         return "SENT to %s: %s" % (me, str((out or {}).get("summary", ""))[:300])
