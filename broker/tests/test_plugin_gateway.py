@@ -125,6 +125,27 @@ class PluginGatewayTests(unittest.TestCase):
         self.assertEqual(out["link_gate"]["action"],"open_or_follow")
         self.assertIn("https://example.test/message",out["link_gate"]["links"])
 
+    def test_schema_reads_what_the_connector_declares_and_calls_nothing(self):
+        fake_proc=mock.Mock();fake_proc.stdin=mock.Mock();fake_proc.stdout=mock.Mock()
+        seen=[]
+        def rpc(proc, ident, method, params, timeout=60):
+            seen.append(method)
+            if method=="initialize": return {"result":{}}
+            if method=="mcpServerStatus/list":
+                return {"result":{"data":[{"name":"codex_apps","tools":{
+                    "gmail.send_email":{"name":"gmail.send_email","inputSchema":{"type":"object","required":["payload"],
+                        "properties":{"payload":{"type":"object","required":["to","subject","body"]}}}},
+                    "github.get_profile":{"name":"github.get_profile","inputSchema":{"type":"object"}}}}]}}
+            return {"error":{"message":"unknown method"}}
+        with mock.patch.object(remote.Path,"is_file",return_value=True), \
+             mock.patch.object(remote.subprocess,"Popen",return_value=fake_proc), \
+             mock.patch.object(remote,"_rpc",side_effect=rpc):
+            out=remote.handle({"action":"schema","plugin":"gmail"})
+        self.assertEqual(out["schemas"]["gmail.send_email"]["required"],["payload"])
+        self.assertNotIn("github.get_profile",out["schemas"])
+        self.assertNotIn("mcpServer/tool/call",seen)
+        with self.assertRaises(ValueError): remote.handle({"action":"schema","plugin":"nope"})
+
     def test_a_rejected_tool_call_says_what_the_tool_said(self):
         fake_proc=mock.Mock();fake_proc.stdin=mock.Mock();fake_proc.stdout=mock.Mock()
         replies=iter([{"result":{}},{"result":{"thread":{"id":"T"}}},

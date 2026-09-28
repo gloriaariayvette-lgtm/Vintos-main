@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 
-from plugin_catalog import policy, instructions
+from plugin_catalog import policy, instructions, PLUGINS
 from plugin_send_guard import PolicyHold, outbound_findings
 
 MEMORY = os.environ.get("VINTOS_MEMORY", os.path.expanduser("~/.vintos/workspace/memory"))
@@ -222,15 +222,23 @@ def load_receipt(receipt_id, surface):
     return {"receipt":row, "result":data}
 
 
+def tool_schemas(plugin, transport=None):
+    """What each of a plugin's tools expects, as the connector declares it. Calls and sends nothing."""
+    if plugin not in PLUGINS: raise ValueError("unknown plugin")
+    return _send({"action":"schema", "plugin":plugin}, transport=transport)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__); sub=parser.add_subparsers(dest="action",required=True)
     sub.add_parser("instructions")
+    sch=sub.add_parser("schema"); sch.add_argument("--plugin",required=True)
     approve=sub.add_parser("approve-link"); approve.add_argument("hold_id")
     invoke=sub.add_parser("call"); invoke.add_argument("--surface",required=True);invoke.add_argument("--plugin",required=True)
     invoke.add_argument("--tool",required=True);invoke.add_argument("--arguments",default="{}");invoke.add_argument("--purpose",required=True)
     args=parser.parse_args()
     if args.action == "instructions": print(json.dumps(instructions(),indent=2)); return
     if args.action == "approve-link": print(json.dumps(approve_link(args.hold_id),indent=2)); return
+    if args.action == "schema": print(json.dumps(tool_schemas(args.plugin),indent=2)); return
     print(json.dumps(call(args.surface,args.plugin,args.tool,json.loads(args.arguments),args.purpose),indent=2))
 
 

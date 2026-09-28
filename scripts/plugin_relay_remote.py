@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 HERE = str(Path(__file__).resolve().parent)
 if HERE not in sys.path: sys.path.insert(0, HERE)
-from plugin_catalog import policy, skill_policy, instructions
+from plugin_catalog import policy, skill_policy, instructions, PLUGINS
 from plugin_send_guard import PolicyHold, outbound_findings, result_links
 
 CODEX = os.environ.get("VINTOS_CODEX_BIN", "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex")
@@ -179,11 +179,50 @@ def skill_job(request):
                 "summary":last.read_text()[:4000] if last.exists() else "", "files":files}
 
 
+def tool_schemas(request):
+    """The input schema of each of a plugin's tools, as the connector declares it. Reads only: nothing is
+    called, nothing is sent (2026-09-28: send_email rejected for a missing 'payload' nobody knew the shape of)."""
+    plugin = str(request.get("plugin") or "")
+    if plugin not in PLUGINS: raise ValueError("unknown plugin")
+    if not Path(CODEX).is_file(): raise RuntimeError("Codex app-server binary is unavailable")
+    proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True)
+    tried = []
+    try:
+        _rpc(proc, 1, "initialize", {"clientInfo":{"name":"vintos-plugin-relay","version":"1"},
+                                      "capabilities":{"experimentalApi":True}}, 20)
+        for n, method in enumerate(("mcpServerStatus/list", "mcpServer/list", "mcpServer/tool/list"), 2):
+            got = _rpc(proc, n, method, {}, 60)
+            if got.get("error"):
+                tried.append("%s: %s" % (method, str(got["error"])[:120])); continue
+            found = {}
+            def walk(o):
+                if isinstance(o, dict):
+                    name = o.get("name")
+                    schema = o.get("inputSchema") or o.get("input_schema")
+                    if isinstance(name, str) and schema is not None and name.startswith(plugin):
+                        found[name] = schema
+                    for k, v in o.items():
+                        if isinstance(v, dict) and k.startswith(plugin) and (v.get("inputSchema") or v.get("input_schema")):
+                            found[k] = v.get("inputSchema") or v.get("input_schema")
+                        walk(v)
+                elif isinstance(o, list):
+                    for v in o: walk(v)
+            walk(got.get("result"))
+            if found:
+                return {"ok":True, "plugin":plugin, "method":method, "schemas":found}
+            tried.append("%s: no %s tools in the answer" % (method, plugin))
+        return {"ok":True, "plugin":plugin, "schemas":{}, "tried":tried}
+    finally:
+        proc.terminate()
+
+
 def handle(request):
     action = request.get("action", "call")
     if action == "status": return {"ok":True, "codex":Path(CODEX).is_file(), "instructions":instructions()}
     if action == "call": return connector(request)
     if action == "skill": return skill_job(request)
+    if action == "schema": return tool_schemas(request)
     raise ValueError("unsupported relay action")
 
 
