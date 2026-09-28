@@ -145,6 +145,20 @@ for label, post_shape in (("bare post, author_name", {"id": MINE, "title": "On s
           any(c.get("parent_id") == "c1" and c["author"]["name"] == "vintos" for c in fake.comments), fake.calls[-3:])
 print("  (a post_comment notification is ownership; comment_reply still needs the author check)")
 
+# --- the daily limits: answering a verification challenge is not another write ---
+led = os.path.join(MB.MEMORY, "moltbook-daily-ledger.json")
+check("the daily write ledger is in the scratch HOME", led.startswith(HOME))
+if os.path.exists(led): os.remove(led)
+MB._KNOWN_OWN_POSTS.add(MINE)
+ok1, _ = MB._molt_cap_check("POST", "/posts/%s/comments" % MINE)
+okv, _ = MB._molt_cap_check("POST", "/verify")
+L = json.load(open(led))
+check("a reply and its verification count as one write, not two",
+      ok1 and okv and L["own_comment"] == 1 and L["total"] == 1 and L.get("other", 0) == 0, L)
+for _ in range(4): MB._molt_cap_check("POST", "/posts/%s/comments" % MINE)
+ok6, why6 = MB._molt_cap_check("POST", "/posts/%s/comments" % MINE)
+check("the sixth reply under his own posts in a day is refused (five a day)", not ok6 and "own_comment" in why6, why6)
+
 src = open(os.path.join(REPO, "bin", "vintos-moltbook.py")).read()
 import re
 check("a real question is not taken for spam because a word hides inside another ('packing' is not 'king')",

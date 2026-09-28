@@ -195,6 +195,10 @@ def _molt_cap_check(method, endpoint):
     if led.get("total", 0) >= _CAP_FUSE:
         return False, f"daily fuse blown ({_CAP_FUSE} writes)"
     ep = endpoint.strip("/")
+    if ep == "verify":
+        # Answering the challenge completes a comment or post already counted; it is not another write.
+        # It was counted as one, so every reply cost two of the day's 20 (2026-09-28).
+        return True, "verify (completes a write already counted)"
     cat = "other"
     if ep == "posts":
         cat = "post"
