@@ -4064,6 +4064,7 @@ var _avStage = {
       try{ console.log('[stage] no filmed room for [SCENE: '+want+'] (manifest refreshed)'); }catch(e){}
       return;
     }
+    this.home=name;
     if(name===this.room && !this.speaking && !_retry) return;
     this.room=name; this.speaking=false;
     var clips=this.man.rooms[name].clips, self=this;
@@ -4096,8 +4097,9 @@ var _avStage = {
       var d=await r.json(); if(!d.url) return false;
       var url=await this._fetchBlob(d.url,Math.max(1,deadline-Date.now()));
       if(generation!==this.roomGeneration){URL.revokeObjectURL(url);return false;}
-      var self=this, settled=false; this.room=room; this.speaking=true;
-      var back=function(){ if(settled)return; settled=true; self.speaking=false; self.room=null; self.setRoom(room); };
+      var self=this, settled=false; this.room=room; this.speaking=true; if(requestedRoom) this.home=room;
+      // Back to where he IS when the words end - a live scene that landed mid-sentence stays up.
+      var back=function(){ if(settled)return; settled=true; self.speaking=false; self.room=null; self.setRoom(self.home||room); };
       // WebKit is reliable when sound stays on the Audio element unlocked by
       // the send gesture. The speaking video remains muted, preventing doubles.
       this._show(url,{loop:false,muted:true,lightweight:true,onended:back,onfail:back});
@@ -4116,20 +4118,36 @@ var _avStage = {
 // Follow one turn's live scene until it lands, then show it. The server started it (scene gate or
 // [RENDER:] kick, both admitted by the effect gate), so the app never starts a second, paid render.
 // Nothing in flight for this turn (idle, refused, error) -> nothing to wait for.
-async function _avFollowLive(slot){
+async function _avLiveStatus(slot){
   try{
     const q = slot ? ('?slot='+encodeURIComponent(slot)) : '';
+    const sr = await VintosUI.request(API+'/api/avatar/live/status'+q,{headers:{'X-Vintos-Secret':CONFIG.secret}});
+    return sr.ok ? await sr.json() : null;
+  }catch(e){ return null; }
+}
+async function _avShowLive(){ _avStage.home='live'; await _avStage.refresh(); await _avStage.setRoom('live'); }
+async function _avFollowLive(slot){
+  try{
     const t0=Date.now();
     while(Date.now()-t0 < 12*60*1000){
-      const sr = await VintosUI.request(API+'/api/avatar/live/status'+q,{headers:{'X-Vintos-Secret':CONFIG.secret}});
-      if(sr.ok){
-        const st = await sr.json();
-        if(st.status==='done'){ console.log('[live] ready in '+st.seconds+'s'); _avStage.man=null; await _avStage.load(); await _avStage.setRoom('live'); return; }
+      const st = await _avLiveStatus(slot);
+      if(st){
+        if(st.status==='done'){ console.log('[live] ready in '+st.seconds+'s'); await _avShowLive(); return; }
         if(st.status!=='rendering'){ if(st.status==='error') console.log('[live] failed: '+st.error); return; }
       }
       await new Promise(r=>setTimeout(r,4000));
     }
   }catch(e){}
+}
+// A reply's staging. A live scene made for this turn is where he is: it goes up (now, or the moment
+// it lands) and stays until a later reply names another room; the room tag written alongside it does
+// not pull him back out. Without one, his [SCENE:] decides as before.
+async function _avReplyStage(display, scenes, slot, rendered){
+  const st = (slot || rendered) ? await _avLiveStatus(slot) : null;
+  const live = st && (st.status==='done' || st.status==='rendering');
+  if(st && st.status==='done') await _avShowLive();
+  _avStartReplyMedia(display, live ? [] : scenes);
+  if(live && st.status==='rendering') _avFollowLive(slot);
 }
 
 function _avStartReplyMedia(display, scenes){
@@ -4441,10 +4459,9 @@ async function avSendChat() {
     // His words are committed to the screen now. Release the global turn before
     // any scene or voice I/O; media is bounded auxiliary work below.
     VintosUI.finish(turn); turnOpen=false;
-    _avStartReplyMedia(display,scenes);
-    // Live path: a scene he chose to render for this turn (the gate or his [RENDER:] tag). The server
-    // already started it; the app only follows it and crossfades in when it lands.
-    if(d.live_slot || (renders && renders[0])) _avFollowLive(d.live_slot);
+    // Staging: a scene he rendered for this turn (the gate or his [RENDER:] tag, started server-side)
+    // goes up and stays; otherwise his [SCENE:] room.
+    _avReplyStage(display, scenes, d.live_slot, !!(renders && renders[0]));
     // Fire gestures sequentially, then holds
     (async () => {
       for(const g of gestures) {
@@ -5080,8 +5097,7 @@ async function avSendPhoto(file, caption) {
     // A photo reply is shown, spoken and staged like any other reply; until 2026-09-28 a scene he
     // rendered for her photo finished and never appeared, because this path ignored it.
     _avShowBubble(parsed.text || raw);
-    _avStartReplyMedia(parsed.text || raw, parsed.scenes);
-    if(d.live_slot || (parsed.renders && parsed.renders[0])) _avFollowLive(d.live_slot);
+    _avReplyStage(parsed.text || raw, parsed.scenes, d.live_slot, !!(parsed.renders && parsed.renders[0]));
     try { for (const g of (parsed.gestures||[])) { await _avPlayAnim(_avGestureMap[g] || g, false); }
           for (const h of (parsed.holds||[])) { _avPlayAnim(_avGestureMap[h] || h, true); }
           for (const s of (parsed.spawns||[])) { _avSpawn(s); }

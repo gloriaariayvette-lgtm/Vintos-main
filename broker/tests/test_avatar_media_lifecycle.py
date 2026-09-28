@@ -21,7 +21,8 @@ assert send.index("_avChatHistory.push({role:'user',content:text})") > requested
 assert "history:historyForRequest" in send
 visible = send.index("_avShowBubble(display)")
 released = send.index("VintosUI.finish(turn); turnOpen=false")
-media = send.index("_avStartReplyMedia(display,scenes)")
+media = send.index("_avReplyStage(display, scenes, d.live_slot")   # detached: not awaited (2026-09-28)
+assert "await _avReplyStage" not in send
 assert visible < released < media, "words first, release second, detached media last"
 assert "if(scenes && scenes[0]) await _avStage.setRoom" not in send
 assert "await _avStage.speak" not in send

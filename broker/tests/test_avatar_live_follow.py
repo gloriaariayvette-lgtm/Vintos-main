@@ -24,20 +24,53 @@ A._slot_update("t-other", status="rendering", prompt="elsewhere", started=2.0)
 check("this turn's finished scene reads done", A.live_status("t-photo")["status"] == "done")
 check("a turn with no scene reads idle, so the app stops waiting", A.live_status("t-none")["status"] == "idle")
 
+# A finished live scene is where he is, and stays until he names another room.
+import json
+os.makedirs(A.CLIPS, exist_ok=True)
+for c in ("bed.mp4", "live.mp4"): open(os.path.join(A.CLIPS, c), "wb").write(b"x" * 20000)
+A.save_rooms({"default": "bedroom", "rooms": {"bedroom": {"photo": "", "pose": "on the bed", "clips": ["bed.mp4"]}}})
+BY = os.path.join(A.CLIPS, "by-content"); os.makedirs(BY, exist_ok=True)
+import hashlib
+prompt = "night waterfront promenade at the blue lamppost"
+# the reuse lane installs without any render or network: prime its content-addressed copy
+key = hashlib.sha256((prompt + "|" + "" + "|" + "self" + "|").encode()).hexdigest()[:16]
+open(os.path.join(BY, key + ".mp4"), "wb").write(b"y" * 20000)
+A._slot_update("t-render", status="rendering", started=1.0)
+A._live_worker(prompt, "self", slot="t-render")
+man = json.load(open(A.MANIFEST))
+check("a finished live scene is the room the app opens on", man.get("default") == "live"
+      and man["rooms"]["live"]["clips"] == ["live.mp4"], man)
+check("he is told he is in it, so his required room tag keeps him there",
+      "You are in your live scene right now" in A.scene_line() and "[SCENE: live] keeps you there" in A.scene_line())
+check("[SCENE: live] keeps it up", A.remember_room("live") == "live" and json.load(open(A.MANIFEST))["default"] == "live")
+check("naming another room is a scene change", A.remember_room("bedroom") == "bedroom"
+      and json.load(open(A.MANIFEST))["default"] == "bedroom")
+
 server = open(os.path.join(REPO, "bin", "server.py")).read()
 app = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
 check("every avatar reply names the turn its scene renders in",
       '"live_slot": (_turn.turn_id if _turn is not None else "")' in server)
 photo = app[app.index("async function avSendPhoto"):app.index("function avGCS")]
-check("a photo reply follows its scene", "_avFollowLive(d.live_slot)" in photo)
-check("a photo reply is shown and spoken like any reply", "_avShowBubble(parsed.text || raw)" in photo
-      and "_avStartReplyMedia(parsed.text || raw, parsed.scenes)" in photo)
-follow = app[app.index("async function _avFollowLive"):app.index("function _avStartReplyMedia")]
+check("a photo reply follows its scene", "_avReplyStage(parsed.text || raw, parsed.scenes, d.live_slot" in photo)
+check("a photo reply is shown and staged like any reply", "_avShowBubble(parsed.text || raw)" in photo)
+follow = app[app.index("async function _avLiveStatus"):app.index("function _avStartReplyMedia")]
 check("the app follows by this turn's slot and crossfades to the live room when it lands",
-      "?slot='+encodeURIComponent(slot)" in follow and "setRoom('live')" in follow)
+      "?slot='+encodeURIComponent(slot)" in follow and "setRoom('live')" in follow and "_avFollowLive(slot)" in follow)
+check("the room tag written with a render does not pull him out of it",
+      "_avStartReplyMedia(display, live ? [] : scenes)" in follow)
+check("when his words end he goes back to where he IS, not the room the words started in",
+      "self.setRoom(self.home||room)" in app and "this.home=name;" in app)
+check("the server does not let that room tag replace the live scene as her opening room",
+      '_own_live = (_turn is not None and _avst_rm.live_status(_turn.turn_id).get("status")' in server)
 check("the app never starts a second render of its own (the server's is admitted by the effect gate)",
       "/api/avatar/live'" not in app and not re.search(r"/api/avatar/live['\"],\s*\{method:'POST'", app))
-check("a text reply follows its scene the same way", app.count("_avFollowLive(d.live_slot)") == 2)
+check("a text reply follows its scene the same way", "_avReplyStage(display, scenes, d.live_slot" in app)
+twin = open(os.path.join(REPO, "..", "vintos-app", "vintos-app", "src", "index.html")).read() \
+    if os.path.exists(os.path.join(REPO, "..", "vintos-app", "vintos-app", "src", "index.html")) else None
+if twin is not None:
+    check("the iPhone app carries the same staging", all(x in twin for x in (
+        "_avReplyStage(parsed.text || raw, parsed.scenes, d.live_slot", "self.setRoom(self.home||room)",
+        "_avStartReplyMedia(display, live ? [] : scenes)")))
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

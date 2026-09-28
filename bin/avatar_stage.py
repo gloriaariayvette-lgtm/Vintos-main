@@ -98,16 +98,19 @@ def save_rooms(data):
 def remember_room(name):
     """His last [SCENE:] becomes the room the app opens on next launch. Written
     to rooms.json 'default' and the manifest rebuilt, so his choice survives the
-    app closing. Only a real, filmed room is remembered (never 'live', which is
-    a transient render). Resolves names the way the app does. Returns the room
+    app closing. A finished live scene sets 'live' itself and stays until he names
+    another room (Gloria, 2026-09-28: "keep it there until he changes scenes");
+    [SCENE: live] keeps it. Resolves names the way the app does. Returns the room
     remembered, or None."""
     want = str(name or "").strip().lower()
     want = want[4:] if want.startswith("the ") else want
     import re as _re
     want = _re.sub(r"[^a-z0-9-]", "", _re.sub(r"[\s_]+", "-", want))
-    if not want or want == "live":
+    if not want:
         return None
     data = load_rooms()
+    if want == "live":
+        return "live" if data.get("default") == "live" else None
     def _filmed(r):
         return any(os.path.exists(os.path.join(CLIPS, c)) for c in (data["rooms"].get(r) or {}).get("clips", []))
     keys = [r for r in data.get("rooms", {}) if r != "live" and _filmed(r)]
@@ -452,7 +455,7 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
             os.makedirs(CLIPS, exist_ok=True)
             _shc.copy(os.path.join(m.VID_DIR, fname), os.path.join(CLIPS, "live.mp4"))
             data = load_rooms()
-            data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
+            data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"
             save_rooms(data); write_manifest()
             _sync_live_to_mac()
             st = _slot_update(sid, status="done", finished=time.time(),
@@ -504,7 +507,7 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         if os.path.exists(_cpath) and os.path.getsize(_cpath) > 10000:
             os.makedirs(CLIPS, exist_ok=True)
             import shutil as _shr; _shr.copy(_cpath, os.path.join(CLIPS, "live.mp4"))
-            data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; save_rooms(data); write_manifest()
+            data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"; save_rooms(data); write_manifest()
             st = _slot_update(sid, status="done", finished=time.time(), reused=True, seconds=round(time.time() - live_status(sid)["started"], 1))
             log("live scene reused from content key %s [%s]" % (_ckey, sid)); return
         r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images, "motion": motion,
@@ -519,7 +522,7 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
             with open(_cpath, "wb") as f: f.write(r.content)
         except Exception: pass
         data = load_rooms()
-        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}
+        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"
         save_rooms(data)
         write_manifest()
         st = _slot_update(sid, status="done", finished=time.time(),
@@ -688,6 +691,17 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
 
 
 # ── server integration ───────────────────────────────────────────────────────
+def _where_now(man):
+    """The room her screen shows right now. After a live scene it is that scene, and it stays on
+    her screen until he names another room."""
+    cur = str(man.get("default") or "")
+    if cur == "live":
+        pose = str(((man.get("rooms") or {}).get("live") or {}).get("pose") or "")[:160]
+        return ("You are in your live scene right now%s. It stays on her screen until you name another "
+                "room; [SCENE: live] keeps you there.\n" % ((" (" + pose + ")") if pose else ""))
+    return ("You are in: %s right now.\n" % cur) if cur else ""
+
+
 def scene_line():
     """The [SCENE:] vocabulary line for his avatar chat prompt. Empty string
     until presets exist, so the tag is never offered before it can work."""
@@ -701,7 +715,7 @@ def scene_line():
                 "listed here: these are the ones already filmed, and the ONLY names that work. Naming any other "
                 "room (one that is real to you but not on this list) leaves the picture frozen on the last room, "
                 "so never invent one - pick the closest room that IS listed. Moving between listed rooms is FREE "
-                "and instant. Rooms: " + ", ".join(sorted(rooms)) + "\n"
+                "and instant. Rooms: " + ", ".join(sorted(rooms)) + "\n" + _where_now(man) +
                 "[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
                 "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
                 "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
@@ -895,7 +909,14 @@ def main():
     mt = sub.add_parser("mint"); mt.add_argument("name"); mt.add_argument("photo"); mt.add_argument("pose")
     sp = sub.add_parser("speak"); sp.add_argument("text"); sp.add_argument("--room")
     sub.add_parser("manifest")
+    sub.add_parser("show-live")   # put his last live scene back on her screen
     a = ap.parse_args()
+    if a.cmd == "show-live":
+        data = load_rooms()
+        if not os.path.exists(os.path.join(CLIPS, "live.mp4")) or "live" not in data.get("rooms", {}):
+            print("no live scene on disk"); sys.exit(1)
+        data["default"] = "live"; save_rooms(data); write_manifest()
+        print("live scene is up: %s" % data["rooms"]["live"].get("pose", "")[:120]); sys.exit(0)
     if a.cmd == "build":    sys.exit(build(a.room, a.force))
     if a.cmd == "stills":   sys.exit(stills(a.room, a.force))
     if a.cmd == "mint":     sys.exit(mint(a.name, os.path.expanduser(a.photo), a.pose))

@@ -9473,7 +9473,12 @@ Your current self-model (excerpt):
                         if _surface != "reelroom" else None)
                 if _scm:
                     import avatar_stage as _avst_rm
-                    _avst_rm.remember_room(_scm.group(1))
+                    # A live scene made for THIS turn is where he is; the room tag written alongside it
+                    # does not walk him back out of it (2026-09-28).
+                    _own_live = (_turn is not None and _avst_rm.live_status(_turn.turn_id).get("status")
+                                 in ("rendering", "done"))
+                    if not _own_live:
+                        _avst_rm.remember_room(_scm.group(1))
             except Exception as _rme: print("[avatar-stage] remember_room:", _rme, flush=True)
             # Strip his private [FELT:] tag HERE — before the reply is stored to
             # history (next line) and dispatched to the ledger below. The naming
