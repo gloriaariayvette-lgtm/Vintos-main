@@ -152,12 +152,27 @@ class PluginGatewayTests(unittest.TestCase):
                       {"result":{"isError":True,"content":[{"type":"text","text":"Invalid arguments: 'to' must be an array"}]}}])
         with mock.patch.object(remote.Path,"is_file",return_value=True), \
              mock.patch.object(remote.subprocess,"Popen",return_value=fake_proc), \
-             mock.patch.object(remote,"reserve_email_send",return_value={"used":1,"limit":2}), \
+             mock.patch.object(remote,"reserve_email_send",return_value={"used":1,"limit":2,"day":"2026-09-28"}), \
+             mock.patch.object(remote,"release_email_send",return_value=True) as released, \
              mock.patch.object(remote,"_rpc",side_effect=lambda *a,**k: next(replies)):
             with self.assertRaises(RuntimeError) as got:
                 remote.connector({"surface":"wants","plugin":"gmail","tool":"gmail.send_email",
                                   "arguments":{"to":"a@example.test","subject":"s","body":"plain"},"purpose":"test"})
         self.assertIn("'to' must be an array", str(got.exception))
+        self.assertTrue(released.called, "an argument rejection gives the attempt back")
+
+    def test_a_send_the_connector_rejects_before_sending_does_not_spend_the_day(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        root=os.path.join(self.tmp.name,"relay-state-release")
+        now=datetime(2026,9,28,18,2,tzinfo=ZoneInfo("America/Chicago"))
+        one=remote.reserve_email_send("gmail.send_email",{"to":"a@example.test"},"one",now,root)
+        remote.release_email_send(one,"schema",state_dir=root)
+        two=remote.reserve_email_send("gmail.send_email",{"to":"b@example.test"},"two",now,root)
+        three=remote.reserve_email_send("gmail.send_email",{"to":"c@example.test"},"three",now,root)
+        self.assertEqual((two["used"],three["used"]),(1,2))
+        with self.assertRaises(PermissionError):
+            remote.reserve_email_send("gmail.send_email",{"to":"d@example.test"},"four",now,root)
 
     def test_remote_side_reserves_only_two_send_attempts_per_chicago_day(self):
         from datetime import datetime

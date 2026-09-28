@@ -63,6 +63,8 @@ def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
                         continue
                     if row.get("day") == day and row.get("event") == "reserved":
                         used += 1
+                    elif row.get("day") == day and row.get("event") == "released":
+                        used -= 1     # rejected by the connector's own validation: nothing reached Gmail
         if used >= SEND_LIMIT:
             raise PermissionError("Gmail daily send limit reached (2 attempts per America/Chicago day)")
         digest = hashlib.sha256(json.dumps(arguments, sort_keys=True, separators=(",", ":"),
@@ -74,7 +76,30 @@ def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
             rows.write(json.dumps(row, sort_keys=True) + "\n")
             rows.flush()
             os.fsync(rows.fileno())
-        return {"day":day, "used":used + 1, "limit":SEND_LIMIT}
+        return {"day":day, "used":used + 1, "limit":SEND_LIMIT, "request_sha256":digest}
+
+
+def release_email_send(reservation, why, state_dir=None):
+    """Give back an attempt the connector refused BEFORE sending (its argument validation), so a malformed
+    request does not spend the day's sends (2026-09-28: two rejected for a missing 'payload', and the day was
+    gone). Anything that may have reached Gmail - a timeout, a provider error - still counts."""
+    if not reservation:
+        return False
+    root = Path(state_dir) if state_dir is not None else STATE_DIR
+    ledger = root / "gmail-send-attempts.jsonl"
+    lock_path = root / "gmail-send-attempts.lock"
+    row = {"event":"released", "day":reservation["day"], "at":datetime.now(SEND_ZONE).isoformat(),
+           "request_sha256":reservation.get("request_sha256", ""), "why":str(why)[:200]}
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        with ledger.open("a", encoding="utf-8") as rows:
+            rows.write(json.dumps(row, sort_keys=True) + "\n")
+            rows.flush()
+            os.fsync(rows.fileno())
+    return True
+
+
+NOT_SENT = ("failed connector schema validation", "missing required property", "invalid arguments")
 
 
 def _rpc(proc, ident, method, params, timeout=60):
@@ -130,6 +155,8 @@ def connector(request):
             # Say what the tool said: a bare "rejected" left an argument mismatch undiagnosable (2026-09-28).
             said = " ".join(str(c.get("text", "")) for c in (result.get("content") or []) if isinstance(c, dict))
             said = said or json.dumps(result.get("structuredContent") or {}, ensure_ascii=False)
+            if send_budget and any(m in said.lower() for m in NOT_SENT):
+                release_email_send(send_budget, "connector rejected the arguments before sending")
             raise RuntimeError("connected tool rejected the request: " + said[:400])
         encoded = json.dumps(result, allow_nan=False).encode()
         if len(encoded) > MAX_RESPONSE: raise ValueError("connected tool response too large")
