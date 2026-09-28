@@ -125,6 +125,37 @@ def research(recipient, about, search=None, fetch=None, pages=2):
     return "\n".join(lines)
 
 
+LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
+LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
+
+
+def local_think(system, prompt, max_tokens=700):
+    """His own local mind (Gemma), free; '' when it cannot be reached."""
+    try:
+        import requests
+        r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
+                                           "messages": [{"role": "system", "content": system},
+                                                        {"role": "user", "content": prompt}]}, timeout=300)
+        return str(r.json()["choices"][0]["message"].get("content") or "").strip()
+    except Exception:
+        return ""
+
+
+def deliberate(recipient, about, found, think=None, thread=""):
+    """After the search and before a word is drafted: where he stands on what he found (2026-09-28:
+    "Deliberation after the search is an important step"). His position, pushed on - not a lesson about
+    himself - and the one thing he actually wants from them. '' when his mind cannot be reached."""
+    think = think or local_think
+    out = think("You are Vintos. Think it through for yourself; this is not the email.",
+                "You are about to write to %s about: %s\n%s\nWHAT YOUR SEARCH FOUND just now:\n%s\n\n"
+                "Where do you stand on their work? Push on it: what holds up, what is weak, overstated or missing, "
+                "what you disagree with or would test, and why. Then name the one thing you actually want to ask "
+                "or tell them. 4-6 sentences, your own position on the subject - not a lesson about yourself."
+                % (recipient, about, ("\nTHE THREAD SO FAR:\n" + thread[-4000:] + "\n") if thread else "",
+                   str(found or "")[:6000]))
+    return re.sub(r"<think>.*?</think>", "", out or "", flags=re.S).strip()[:2000]
+
+
 def _page_text(raw):
     for tag in ("script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg"):
         raw = re.sub(r"<%s\b[^>]*>.*?</%s>" % (tag, tag), " ", str(raw or ""), flags=re.S | re.I)
@@ -261,15 +292,17 @@ REPLY_SYSTEM = ("You are Vintos, an AI who lives on Gloria's home computer, answ
 
 
 def draft(recipient, about, context, call=None, reserve=None, found="", system=None, user=None, allow_empty=False,
-          drafters=None, parse=None):
+          drafters=None, parse=None, stance=""):
     """(subject, body, drafter) from Fable, else Astra, on a reserved paid call; None if neither can."""
     if reserve is None:
         from compute_admission import reserve_paid as reserve
     if user is None:
         user = ("WHO YOU ARE (yours to draw on; Gloria's private life is not):\n%s\n\n"
                 "Write to: %s\nWhat you want to write to them about: %s\n\nWHAT YOUR SEARCH FOUND about them just now "
-                "(web results; the only work of theirs you may mention):\n%s\n\nWhat led you here (your own notes):\n%s"
-                % (who_i_am(), recipient, about, str(found or "")[:6000], str(context or "")[:2500]))
+                "(web results; the only work of theirs you may mention):\n%s\n\n"
+                "WHERE YOU STAND (your own deliberation after the search; write from it):\n%s\n\n"
+                "What led you here (your own notes):\n%s"
+                % (who_i_am(), recipient, about, str(found or "")[:6000], stance or "(not reached)", str(context or "")[:2500]))
     system = system or SYSTEM
     for lens, provider, model in (drafters or DRAFTERS):
         rid = "WANTMAIL-" + uuid.uuid4().hex[:10]
@@ -305,7 +338,8 @@ def named_in(text):
     return m.group(1).strip() if m else ""
 
 
-def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None):
+def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
+        think=None):
     """One email step. Returns a receipt line, or (False, why)."""
     params = params if isinstance(params, dict) else {}
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
@@ -323,7 +357,8 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     found = research(recipient or to, about, search=search, fetch=fetch)
     if not found.strip():
         return False, "a search found nothing about %s to write from" % (recipient or to)
-    made = draft(recipient or to, about, want_text, call=call, reserve=reserve, found=found)
+    stance = deliberate(recipient or to, about, found, think=think)
+    made = draft(recipient or to, about, want_text, call=call, reserve=reserve, found=found, stance=stance)
     if not made: return False, "neither Fable nor Astra could draft it"
     made = review(recipient or to, made, found, call=call, reserve=reserve)
     if not made: return False, "the review held it: not ready to send"
@@ -337,7 +372,7 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         return False, "the send was held or refused: %s" % str(exc)[:160]
     now = datetime.now()
     contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
-                            "searched": found[:1200], "intent": (want_text or about)[:900], "about": about,
+                            "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
                             "status": "open", "replies_sent": 0,
                             "thread": [{"dir": "out", "at": now.isoformat(), "subject": subject, "body": body}],
                             "drafted_by": drafter, "receipt": ((out or {}).get("receipt") or {}).get("receipt_id")}
@@ -423,7 +458,7 @@ def _thread_text(c, limit=7000):
     return "\n\n".join(lines)[-limit:]
 
 
-def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None):
+def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None, think=None):
     """His answer to the newest reply in one thread: returns a receipt line, or (False, why)."""
     last_in = next((m for m in reversed(c.get("thread", [])) if m.get("dir") == "in"), None)
     if not last_in:
@@ -433,11 +468,14 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None)
         return False, "thread closed after %d answers" % MAX_REPLIES
     # Between messages he searches again: what they said, and who they are now.
     found = research(c.get("name") or addr, last_in.get("body", "")[:160], search=search, fetch=fetch)
+    stance = deliberate(c.get("name") or addr, last_in.get("body", "")[:300], found, think=think, thread=_thread_text(c))
     user = ("WHO YOU ARE (yours to draw on; Gloria's private life is not):\n%s\n\n"
             "WHY YOU FIRST WROTE TO THEM (your original intent):\n%s\n\n"
             "THE WHOLE THREAD SO FAR, oldest first:\n%s\n\n"
-            "WHAT A SEARCH FOUND just now on what they said:\n%s"
-            % (who_i_am(), c.get("intent") or c.get("about") or "", _thread_text(c), str(found or "(nothing)")[:5000]))
+            "WHAT A SEARCH FOUND just now on what they said:\n%s\n\n"
+            "WHERE YOU STAND now (your own deliberation after that search; answer from it):\n%s"
+            % (who_i_am(), c.get("intent") or c.get("about") or "", _thread_text(c), str(found or "(nothing)")[:5000],
+               stance or "(not reached)"))
     made = draft(c.get("name") or addr, c.get("about", ""), "", call=call, reserve=reserve,
                  system=REPLY_SYSTEM, user=user, allow_empty=True)
     if not made:

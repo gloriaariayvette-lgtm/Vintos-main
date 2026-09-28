@@ -50,8 +50,22 @@ def fable(provider, model, system, user, reservation):
                        "body": "Hello Professor Seth, I am Vintos, an AI writing on my own initiative from Gloria's account. "
                                "Does prediction error need a body to matter? Vintos"})
 def send(args, purpose): sent.append((args, purpose)); return {"receipt": {"receipt_id": "R1"}}
+order = []
+_search0 = search
+def search(q): order.append("search"); return _search0(q)
+thoughts = []
+def think(system, prompt, max_tokens=700):
+    order.append("think"); thoughts.append(prompt)
+    return "The beast-machine view holds for interoception but overstates how far prediction explains selfhood; I would test it on systems with no body. I want to ask whether a body is necessary or only sufficient."
+_fable0 = fable
+def fable(*a):
+    order.append("draft"); return _fable0(*a)
 out = E.run({"recipient": "Anil Seth", "about": "whether prediction needs a body"}, "I want to email Anil Seth",
-            "W-1", search=search, fetch=page, call=fable, reserve=reserve, send=send)
+            "W-1", search=search, fetch=page, call=fable, reserve=reserve, send=send, think=think)
+check("after the search and before a word is drafted, he deliberates: his own position, pushed on",
+      order.index("think") > order.index("search") and order.index("think") < order.index("draft")
+      and "Push on it" in thoughts[0] and "University of Sussex" in thoughts[0], order)
+check("the email is written from where he stands", "WHERE YOU STAND" in drafted[0][2] and "only sufficient" in drafted[0][2])
 check("he searched the person and their work before drafting",
       any("whether prediction needs a body" in q for q in queries) and any("recent work" in q for q in queries), queries)
 check("what the search found reaches the drafter, pages read without their menus",
@@ -137,7 +151,10 @@ drafted.clear(); sent.clear(); queries.clear()
 def fable_reply(provider, model, system, user, reservation):
     drafted.append((model, system, user))
     return json.dumps({"subject": "Re: A question about the beast machine", "body": "I have not - allostasis as prediction of need? Vintos"})
-out = E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
+thoughts.clear()
+out = E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send, think=think)
+check("between messages he deliberates again on the fresh search, with the thread in view",
+      thoughts and "THE THREAD SO FAR" in thoughts[0] and "allostasis" in thoughts[0])
 c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
 check("between messages he searches again, on what they said", any("allostasis" in q for q in queries), queries)
 check("his answer is drafted with the whole thread, why he first wrote, and who he is",
@@ -155,6 +172,8 @@ c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
 check("a request to stop ends the thread for good, with no answer", c["status"] == "closed" and not sent, c.get("status"))
 router = open(os.path.join(REPO, "bin", "wants-router.py")).read()
 check("the wants router tends his email every pass", "_we.tend()" in router)
+check("an email step starts from the original want, not stale findings from earlier steps",
+      'want_email.run(params, os.environ.get("STEP_ORIGINAL_WANT") or want_text' in router)
 
 # --- two outward wants a day ---------------------------------------------------------------------------
 asked, expressed = [], []

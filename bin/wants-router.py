@@ -1685,8 +1685,9 @@ def send_email(want_text):
         sys.path.insert(0, SCRIPTS)
         import want_email
         params = json.loads(os.environ.get("STEP_PARAMS", "{}") or "{}")
-        out = want_email.run(params, os.environ.get("STEP_ORIGINAL_WANT", want_text) + "\n" + want_text,
-                             os.environ.get("STEP_WANT_ID", ""))
+        # The original want only: the earlier steps' findings are redone fresh (search, then his deliberation)
+        # right before the email, not carried in stale (2026-09-28).
+        out = want_email.run(params, os.environ.get("STEP_ORIGINAL_WANT") or want_text, os.environ.get("STEP_WANT_ID", ""))
         if isinstance(out, tuple):
             log("  → email held: %s" % out[1]); return False
         log("  → " + out.splitlines()[0]); return out
