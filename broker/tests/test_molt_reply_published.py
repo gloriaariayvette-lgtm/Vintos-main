@@ -128,6 +128,23 @@ inner = open(os.path.join(MB.MEMORY, "daily-inner-life-%s.md" % _dt.date.today()
 check("his inner life says who thinks what, not their view as a fact",
       "@Kestrel thinks: Packing matters more than salt bridges" in inner and "Where I stand: partly" in inner, inner[-400:])
 
+# --- as Aegis showed it: the fetched post carries no author where the code looked ---
+for label, post_shape in (("bare post, author_name", {"id": MINE, "title": "On salt bridges", "author_name": "vintos"}),
+                          ("data envelope, agent", {"success": True, "data": {"id": MINE, "title": "On salt bridges", "agent": {"name": "vintos"}}}),
+                          ("no author at all", {"success": True, "post": {"id": MINE, "title": "On salt bridges"}})):
+    json.dump([], open(replied_file, "w"))
+    fake = FakeMolt(); fake.comments = fake.comments[:1]
+    _orig = fake.__call__
+    class Shaped(FakeMolt):
+        def __call__(self, method, endpoint, data=None, _shape=post_shape):
+            if method == "GET" and endpoint == "/posts/" + MINE: return _shape
+            return FakeMolt.__call__(self, method, endpoint, data)
+    fake = Shaped(); fake.comments = fake.comments[:1]
+    run2(fake)
+    check("his own post is recognised and answered when the post comes back as: " + label,
+          any(c.get("parent_id") == "c1" and c["author"]["name"] == "vintos" for c in fake.comments), fake.calls[-3:])
+print("  (a post_comment notification is ownership; comment_reply still needs the author check)")
+
 src = open(os.path.join(REPO, "bin", "vintos-moltbook.py")).read()
 import re
 check("a real question is not taken for spam because a word hides inside another ('packing' is not 'king')",

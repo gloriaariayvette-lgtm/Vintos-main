@@ -1813,6 +1813,30 @@ def _outside_views():
         return None
 
 
+def _unwrap_post(resp):
+    """The post object from GET /posts/{id}, whatever the envelope: {post}, {data:{post}}, {data}, or bare."""
+    if not isinstance(resp, dict): return {}
+    for cand in (resp.get("post"), (resp.get("data") or {}).get("post") if isinstance(resp.get("data"), dict) else None,
+                 resp.get("data"), resp):
+        if isinstance(cand, dict) and (cand.get("id") or cand.get("title") or cand.get("content")):
+            return cand
+    return {}
+
+
+def _author_of(post):
+    """(name, id) of a post's author, wherever Moltbook puts it."""
+    if not isinstance(post, dict): return "", ""
+    for key in ("author", "agent", "user", "creator", "owner"):
+        a = post.get(key)
+        if isinstance(a, dict) and (a.get("name") or a.get("username") or a.get("handle") or a.get("id")):
+            return str(a.get("name") or a.get("username") or a.get("handle") or ""), str(a.get("id") or "")
+        if isinstance(a, str) and a.strip():
+            return a.strip(), ""
+    name = post.get("author_name") or post.get("authorName") or post.get("agent_name") or post.get("agentName") or ""
+    aid = post.get("author_id") or post.get("authorId") or post.get("agent_id") or post.get("agentId") or ""
+    return str(name), str(aid)
+
+
 def _walk_comments(comments):
     for c in comments or []:
         if isinstance(c, dict):
@@ -1826,8 +1850,7 @@ def _visibly_answered(comments, agent_name):
     me = str(agent_name).strip().lower()
     answered, parents_seen = set(), False
     for c in _walk_comments(comments):
-        a = c.get("author")
-        name = (a.get("name", "") if isinstance(a, dict) else str(a or "")).strip().lower()
+        name = _author_of(c)[0].strip().lower()
         parent = c.get("parent_id") or c.get("parentId") or c.get("parent_comment_id")
         if parent: parents_seen = True
         if parent and name == me: answered.add(parent)
@@ -1835,7 +1858,7 @@ def _visibly_answered(comments, agent_name):
         for key in ("replies", "children"):
             for r in c.get(key) or []:
                 if isinstance(r, dict):
-                    ra = r.get("author"); rn = (ra.get("name", "") if isinstance(ra, dict) else str(ra or "")).strip().lower()
+                    rn = _author_of(r)[0].strip().lower()
                     parents_seen = True
                     if rn == me and c.get("id"): answered.add(c["id"])
     return answered, parents_seen
@@ -1898,23 +1921,32 @@ def cmd_check_replies(dry_run=False):
         pass
 
     def _post_is_his(_p):
-        _a = _p.get("author", {})
-        _an = _a.get("name", "") if isinstance(_a, dict) else str(_a)
-        _ai = (_a.get("id", "") if isinstance(_a, dict) else "") or _p.get("authorId", "") or _p.get("author_id", "")
-        return _an.strip().lower() == agent_name.strip().lower() or bool(_my_id and str(_ai) == str(_my_id))
+        _an, _ai = _author_of(_p)
+        return _an.strip().lower() == agent_name.strip().lower() or bool(_my_id and _ai and str(_ai) == str(_my_id))
+
+    # Moltbook sends `post_comment` only for a comment on YOUR post; that is ownership. `comment_reply`
+    # (a reply to his comment, possibly on someone else's post) still needs the author check.
+    _commented_on_mine = {n.get("relatedPostId") for n in _notif_r.get("notifications", [])
+                          if n.get("type") == "post_comment" and n.get("relatedPostId")}
 
     her_posts = []
     for _npid in _notif_post_ids[:15]:
         _p = _post_by_id.get(_npid)
-        if not _p or not (_p.get("author") or _p.get("authorId") or _p.get("author_id")):
-            # The copy embedded in a notification carries no author, so every one of his posts failed the
-            # ownership check below and no comment on them was ever answered (2026-09-28). Fetch the post.
-            _npr = api_call("GET", f"/posts/{_npid}")
-            _p = _npr.get("post") or _p
-        if _p and _post_is_his(_p):
+        if not _p or not any(_author_of(_p)):
+            # The copy embedded in a notification carries no author (2026-09-28). Fetch the post, and read it
+            # in whatever shape Moltbook returns it.
+            _raw = api_call("GET", f"/posts/{_npid}")
+            if dry_run and not globals().get("_SHAPE_SHOWN"):
+                globals()["_SHAPE_SHOWN"] = True
+                log(f"[dry-run] shape of GET /posts/{{id}}: {json.dumps(_raw)[:700]}")
+            _full = _unwrap_post(_raw)
+            _p = dict(_p or {}, **_full) if _full else _p
+        if _p and not _p.get("id"):
+            _p = dict(_p, id=_npid)
+        if _p and (_npid in _commented_on_mine or _post_is_his(_p)):
             her_posts.append(_p)
         elif _p:
-            log(f"skip: post {_npid} is not his (author {_p.get('author')}) — not an own-post reply")
+            log(f"skip: post {_npid} is not his (author {_author_of(_p)}) — not an own-post reply")
     log(f"Found {len(her_posts)} of his own posts (via notifications, ownership-verified)")
 
     def _attach_comments_to_want(post_id, comments):
@@ -1946,7 +1978,12 @@ def cmd_check_replies(dry_run=False):
         # Fetch comments
         _KNOWN_OWN_POSTS.add(post_id)
         cresp = api_call("GET", f"/posts/{post_id}/comments")
-        comments = cresp.get("comments", [])
+        comments = (cresp.get("comments") if isinstance(cresp, dict) else None) or \
+                   ((cresp.get("data") or {}).get("comments") if isinstance(cresp, dict) and isinstance(cresp.get("data"), dict) else None) or \
+                   (cresp.get("data") if isinstance(cresp, dict) and isinstance(cresp.get("data"), list) else None) or \
+                   (cresp if isinstance(cresp, list) else []) or []
+        if dry_run:
+            log(f"[dry-run] shape of GET /posts/{{id}}/comments: {json.dumps(cresp)[:500]}")
         # Answered means a published reply of his under it. The replied file also held comments whose reply
         # was created but never cleared verification (never published); those are answered now.
         _answered, _parents_seen = _visibly_answered(comments, agent_name)
@@ -1957,7 +1994,7 @@ def cmd_check_replies(dry_run=False):
             _attach_comments_to_want(post_id, comments)
         for comment in comments:
             comment_id = comment.get("id")
-            commenter = comment.get("author", {}).get("name", "")
+            commenter = _author_of(comment)[0]
             # Never reply to own comments. Moltbook reports him as "vintos", the config says "Vintos": the exact
             # compare let him answer himself and spend the day's cap on it (2026-09-09)
             if commenter.strip().lower() == agent_name.strip().lower():
