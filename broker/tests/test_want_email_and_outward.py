@@ -83,6 +83,10 @@ held = E.run({"to": "other@example.net", "about": "x"}, "x", search=search, fetc
              send=lambda a, p: (_ for _ in ()).throw(RuntimeError("LINK_APPROVAL_REQUIRED")))
 check("a send the gateway holds is reported as held, and the person is not marked as written to",
       isinstance(held, tuple) and "held or refused" in held[1] and "other@example.net" not in json.load(open(E.CONTACTS)))
+check("the person a want names is found even when the plan left the recipient out",
+      E.named_in("I want to email Murray Shanahan about role-play and selfhood") == "Murray Shanahan"
+      and E.named_in("I want to write to Prof. Anil Seth about the beast machine") == "Anil Seth"
+      and E.named_in("I want to find out how octopus arms learn") == "")
 check("no email is invented when he names nobody", E.run({}, "", call=fable, reserve=reserve, send=send)[1] == "name the person to write to")
 
 check("his first email is drafted knowing who he is, and told to keep Gloria's private life private",

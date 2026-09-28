@@ -172,9 +172,9 @@ async def _frontier(provider, model, system, user, reservation):
     import model_router
     convo = [{"role": "user", "content": user}]
     if provider == "anthropic":
-        text, _ = await model_router.claude_draft(system, convo, max_tokens=900, paid_reservation=reservation, model=model)
+        text, _ = await model_router.claude_draft(system, convo, max_tokens=3000, paid_reservation=reservation, model=model)
     else:
-        text, _ = await model_router.sol_draft(system, convo, max_tokens=900, paid_reservation=reservation, model=model)
+        text, _ = await model_router.sol_draft(system, convo, max_tokens=3000, paid_reservation=reservation, model=model)
     return text
 
 
@@ -228,10 +228,20 @@ def draft(recipient, about, context, call=None, reserve=None, found="", system=N
     return None
 
 
+NAMED = re.compile(r"\b(?:e-?mail|write to|message|reach out to|contact)\s+(?:(?:Dr|Prof|Professor)\.?\s+)?"
+                   r"([A-Z][\w'\u00C0-\u017F-]+(?:\s+(?:[A-Z]\.|[A-Z][\w'\u00C0-\u017F-]+)){1,3})")
+
+
+def named_in(text):
+    """The person a want names ("I want to email Murray Shanahan about ..."), when the plan left it out."""
+    m = NAMED.search(str(text or ""))
+    return m.group(1).strip() if m else ""
+
+
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None):
     """One email step. Returns a receipt line, or (False, why)."""
     params = params if isinstance(params, dict) else {}
-    recipient = str(params.get("recipient") or "").strip()
+    recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
     to = str(params.get("to") or "").strip()
     if to and not EMAIL.fullmatch(to): to = ""

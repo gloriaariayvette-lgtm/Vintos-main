@@ -127,8 +127,9 @@ os.environ.pop("VELARIS_NO_WANT_SEED", None); os.environ["VINTOS_NO_WANT_SEED"] 
 check("a search a want asked for does not seed yet another want (the router's own variable is read)", W._no_want_seed())
 os.environ.pop("VINTOS_NO_WANT_SEED", None)
 check("his own daily search may still seed a want", not W._no_want_seed())
-check("what he takes from a search is about the subject, not a mirror of himself",
-      "about the subject, not about yourself" in web and "What did you learn that changes how you think" not in web)
+check("after a search he takes a position and pushes on it, not a lesson about himself",
+      "Push on it: what holds up, what is weak" in web and "not a lesson about yourself" in web
+      and "**Where I stand:**" in web and "**Growth:**" not in web and "What did you learn that changes how you think" not in web)
 
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

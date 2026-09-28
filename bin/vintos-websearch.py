@@ -863,8 +863,9 @@ def main():
         f"""You searched for: "{question}"
 What you found: {synthesis[:400] if synthesis else '(nothing useful)'}
 
-What new question about this subject does it open, or what do you want to look into next about it?
-1-2 sentences, about the subject, not about yourself. If nothing, output exactly NOTHING - a fact is allowed to just be a fact.
+Where do you stand on it? Push on it: what holds up, what is weak, overstated or missing, what you disagree with
+or would test, and why. Your own position on the subject, in 2-3 sentences - not a lesson about yourself.
+If it is simply a fact you accept, say so in one sentence.
 
 OUTPUT:"""
     ,
@@ -874,7 +875,7 @@ OUTPUT:"""
         growth = ""                                       # nothing shifted: no growth sentence, no WAL, no journal line (grok-curiosity-p3)
         log("Growth: nothing shifted - recorded as nothing")
     if growth:
-        log(f"Growth: {growth[:80]}...")
+        log(f"Where I stand: {growth[:80]}...")
 
     # Dynamic emotional response
     _ws_ok = bool(synthesis and len(synthesis.strip()) > 40)
@@ -957,7 +958,7 @@ No explanation."""
         if synthesis:
             f.write(f"{synthesis}\n")
         if growth:
-            f.write(f"\n**Growth:** {growth}\n")
+            f.write(f"\n**Where I stand:** {growth}\n")
 
     log("Done")
 
