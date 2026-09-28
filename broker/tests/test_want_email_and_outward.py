@@ -125,6 +125,23 @@ sent.clear()
 call, seen = reviewer_says("HOLD", "This would waste their time.")
 held2 = E.run({"to": "two@example.org", "about": "role-play"}, "x", search=search, fetch=page, call=call, reserve=reserve, send=send)
 check("a draft the reviewer holds is not sent", not sent and isinstance(held2, tuple) and "review held" in held2[1], held2)
+# --- Gmail itself rejecting a send pauses sending: no paid drafts, no spent attempts, until the wait is over
+if os.path.exists(E.SEND_HEALTH): os.remove(E.SEND_HEALTH)
+reserved.clear()
+def gmail_rejects(args, purpose):
+    raise RuntimeError("plugin relay refused or failed: connected tool rejected the request: 'to' must be an array")
+r1 = E.run({"to": "three@example.org", "about": "x"}, "x", search=search, fetch=page, call=fable, reserve=reserve, send=gmail_rejects, think=think)
+paid_first = len(reserved)
+r2 = E.run({"to": "four@example.org", "about": "x"}, "x", search=search, fetch=page, call=fable, reserve=reserve, send=send, think=think)
+check("after Gmail rejects a send, the tool's own words are kept and nothing more is drafted or spent until the wait is over",
+      "'to' must be an array" in r1[1] and isinstance(r2, tuple) and "Gmail rejected the last send" in r2[1]
+      and len(reserved) == paid_first and "must be an array" in r2[1], (r1, r2))
+os.remove(E.SEND_HEALTH)
+class PolicyHold(Exception): pass
+def held_by_policy(args, purpose): raise PolicyHold("LINK_APPROVAL_REQUIRED")
+E.run({"to": "five@example.org", "about": "x"}, "x", search=search, fetch=page, call=fable, reserve=reserve, send=held_by_policy, think=think)
+check("a policy hold (a link, private data) does not pause sending", E._send_blocked() == "")
+check("once the wait is over (or cleared), sending resumes", E._send_blocked() == "")
 check("the person a want names is found even when the plan left the recipient out",
       E.named_in("I want to email Murray Shanahan about role-play and selfhood") == "Murray Shanahan"
       and E.named_in("I want to write to Prof. Anil Seth about the beast machine") == "Anil Seth"

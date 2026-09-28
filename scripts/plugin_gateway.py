@@ -57,7 +57,7 @@ def _send(request, timeout=210, transport=None):
     if not isinstance(result, dict) or not result.get("ok"):
         if isinstance(result, dict) and isinstance(result.get("receipt"), dict):
             raise PolicyHold(result["receipt"])
-        raise RuntimeError("plugin relay refused or failed: " + str((result or {}).get("detail", "unknown"))[:160])
+        raise RuntimeError("plugin relay refused or failed: " + str((result or {}).get("detail", "unknown"))[:500])
     return result
 
 

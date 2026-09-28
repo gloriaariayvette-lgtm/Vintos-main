@@ -125,6 +125,19 @@ class PluginGatewayTests(unittest.TestCase):
         self.assertEqual(out["link_gate"]["action"],"open_or_follow")
         self.assertIn("https://example.test/message",out["link_gate"]["links"])
 
+    def test_a_rejected_tool_call_says_what_the_tool_said(self):
+        fake_proc=mock.Mock();fake_proc.stdin=mock.Mock();fake_proc.stdout=mock.Mock()
+        replies=iter([{"result":{}},{"result":{"thread":{"id":"T"}}},
+                      {"result":{"isError":True,"content":[{"type":"text","text":"Invalid arguments: 'to' must be an array"}]}}])
+        with mock.patch.object(remote.Path,"is_file",return_value=True), \
+             mock.patch.object(remote.subprocess,"Popen",return_value=fake_proc), \
+             mock.patch.object(remote,"reserve_email_send",return_value={"used":1,"limit":2}), \
+             mock.patch.object(remote,"_rpc",side_effect=lambda *a,**k: next(replies)):
+            with self.assertRaises(RuntimeError) as got:
+                remote.connector({"surface":"wants","plugin":"gmail","tool":"gmail.send_email",
+                                  "arguments":{"to":"a@example.test","subject":"s","body":"plain"},"purpose":"test"})
+        self.assertIn("'to' must be an array", str(got.exception))
+
     def test_remote_side_reserves_only_two_send_attempts_per_chicago_day(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo

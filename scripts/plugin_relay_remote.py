@@ -126,7 +126,11 @@ def connector(request):
             "tool":tool, "arguments":arguments}, 180)
         if called.get("error"): raise RuntimeError("connected tool call failed")
         result = called.get("result") or {}
-        if result.get("isError"): raise RuntimeError("connected tool rejected the request")
+        if result.get("isError"):
+            # Say what the tool said: a bare "rejected" left an argument mismatch undiagnosable (2026-09-28).
+            said = " ".join(str(c.get("text", "")) for c in (result.get("content") or []) if isinstance(c, dict))
+            said = said or json.dumps(result.get("structuredContent") or {}, ensure_ascii=False)
+            raise RuntimeError("connected tool rejected the request: " + said[:400])
         encoded = json.dumps(result, allow_nan=False).encode()
         if len(encoded) > MAX_RESPONSE: raise ValueError("connected tool response too large")
         links = result_links(result) if plugin == "gmail" else []
@@ -189,7 +193,7 @@ def main():
     try: response = handle(json.loads(raw))
     except PolicyHold as exc:
         response = {"ok":False, "error":type(exc).__name__, "detail":str(exc)[:240], "receipt":exc.receipt}
-    except Exception as exc: response = {"ok":False, "error":type(exc).__name__, "detail":str(exc)[:240]}
+    except Exception as exc: response = {"ok":False, "error":type(exc).__name__, "detail":str(exc)[:500]}
     print(json.dumps(response, ensure_ascii=False, allow_nan=False))
 
 

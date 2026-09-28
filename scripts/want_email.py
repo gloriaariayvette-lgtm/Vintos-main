@@ -41,6 +41,26 @@ CONTACTS = os.path.join(MEMORY, "email-contacts.json")
 ENV_FILE = os.path.expanduser("~/.vintos/vintos.env")
 DRAFTERS = (("fable", "anthropic", "claude-fable-5-1"), ("astra", "openai", "gpt-6-astra"))
 TEND_STATE = os.path.join(MEMORY, "email-tend.json")
+SEND_HEALTH = os.path.join(MEMORY, "email-send-health.json")
+REJECTED_WAIT_S = 20 * 3600
+
+
+def _send_blocked():
+    """Why sending is paused, or ''. After Gmail itself rejected a send, nothing is drafted (no paid calls)
+    and no send attempt is spent until the wait is over (2026-09-28: a rejected send was retried every two
+    hours, each time with a fresh paid draft and review, each time spending one of the two daily sends)."""
+    h = _load(SEND_HEALTH, {})
+    if h.get("rejected_at") and time.time() - float(h["rejected_at"]) < REJECTED_WAIT_S:
+        return "Gmail rejected the last send (%s); waiting until %s" % (
+            str(h.get("why", ""))[:200], datetime.fromtimestamp(float(h["rejected_at"]) + REJECTED_WAIT_S).strftime("%a %H:%M"))
+    return ""
+
+
+def _note_send(ok, why=""):
+    if ok:
+        _save(SEND_HEALTH, {"ok_at": time.time()})
+    elif "rejected" in str(why) or "failed" in str(why):
+        _save(SEND_HEALTH, {"rejected_at": time.time(), "why": str(why)[:500]})
 TEND_EVERY_S = 2 * 3600
 MAX_REPLIES = 8                       # his answers per person; a thread is a conversation, not a campaign
 STOP_WORDS = re.compile(r"\b(?:unsubscribe|stop (?:emailing|writing|contacting)|do not (?:email|contact|write)|"
@@ -354,6 +374,9 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         think=None):
     """One email step. Returns a receipt line, or (False, why)."""
     params = params if isinstance(params, dict) else {}
+    blocked = _send_blocked()
+    if blocked:
+        return False, blocked
     recipient = str(params.get("recipient") or "").strip() or named_in(want_text)
     about = str(params.get("about") or want_text or "").strip()[:400]
     to = str(params.get("to") or "").strip()
@@ -381,7 +404,10 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
     try:
         out = send({"to": to, "subject": subject, "body": body}, ("His own email, from a want: " + about)[:900])
     except Exception as exc:
-        return False, "the send was held or refused: %s" % str(exc)[:160]
+        if "PolicyHold" not in type(exc).__name__:
+            _note_send(False, str(exc))
+        return False, "the send was held or refused: %s" % str(exc)[:400]
+    _note_send(True)
     now = datetime.now()
     contacts[to.lower()] = {"at": now.isoformat(), "name": recipient, "subject": subject, "want_id": want_id,
                             "searched": found[:1200], "stance": stance, "intent": (want_text or about)[:900], "about": about,
@@ -475,6 +501,9 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
     last_in = next((m for m in reversed(c.get("thread", [])) if m.get("dir") == "in"), None)
     if not last_in:
         return False, "nothing to answer"
+    blocked = _send_blocked()
+    if blocked:
+        return False, blocked
     if c.get("replies_sent", 0) >= MAX_REPLIES:
         c["status"] = "closed"; c["closed_why"] = "reached %d answers" % MAX_REPLIES
         return False, "thread closed after %d answers" % MAX_REPLIES
@@ -519,7 +548,10 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
     try:
         send({"to": addr, "subject": subject[:160], "body": body}, ("His answer to %s, who wrote back" % addr)[:900])
     except Exception as exc:
-        return False, "the send was held or refused: %s" % str(exc)[:160]
+        if "PolicyHold" not in type(exc).__name__:
+            _note_send(False, str(exc))
+        return False, "the send was held or refused: %s" % str(exc)[:400]
+    _note_send(True)
     now = datetime.now()
     c.setdefault("thread", []).append({"dir": "out", "at": now.isoformat(), "subject": subject, "body": body})
     c["replies_sent"] = c.get("replies_sent", 0) + 1
@@ -558,8 +590,27 @@ def tend(force=False, gmail=None, **kw):
     return lines
 
 
+def send_test():
+    """One plain email to his own mailbox through the real gateway: shows exactly what Gmail says."""
+    import plugin_gateway
+    prof = _gmail("gmail.get_profile", {}, "Which mailbox a send test goes to")
+    me = next((a for a in addresses_in(json.dumps(prof)) if not NOT_A_PERSON.match(a)), "")
+    if not me:
+        return "could not read his own address from the profile: %s" % json.dumps(prof)[:300]
+    try:
+        out = plugin_gateway.call("wants", "gmail", "gmail.send_email",
+                                  {"to": me, "subject": "Vintos send test", "body": "A test of the send path. Nothing to do."},
+                                  "Send-path test to his own mailbox")
+        _note_send(True)
+        return "SENT to %s: %s" % (me, str((out or {}).get("summary", ""))[:300])
+    except Exception as exc:
+        return "REJECTED (to %s): %s" % (me, str(exc)[:600])
+
+
 if __name__ == "__main__":
     import sys as _sys
+    if "--send-test" in _sys.argv:
+        print(send_test()); _sys.exit(0)
     if "--check" in _sys.argv:          # look only: who he wrote to, and any replies; answers nothing
         contacts = _load(CONTACTS, {})
         new = check_inbox(contacts)
