@@ -32,6 +32,20 @@ check("the Mac composes his scene in the rooms' shape", asked and asked[0][1].ge
 asked.clear(); M.live_render("night waterfront", images=["data:image/jpeg;base64,AAAA"])
 check("without a shape from Aegis it composes as before", asked and "aspect_ratio" not in asked[0][1], asked)
 src = open(os.path.join(REPO, "bin", "avatar_stage.py")).read()
+sent = []
+class _Resp:
+    status_code = 500; text = "stub"; content = b""
+A._mac_url = lambda: "http://mac.test"
+A._vsv = lambda: types.SimpleNamespace(HER_HAIR_LINE="The woman's hair is a rich dark red, and stays dark red throughout.")
+sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=lambda url, json=None, **k: sent.append(json) or _Resp())
+A._slot_update("t-us", status="rendering", started=1.0)
+A._live_worker("the two of us at the lakeshore railing", "together", slot="t-us")
+A._slot_update("t-me", status="rendering", started=1.0)
+A._live_worker("me at the lakeshore railing", "self", slot="t-me")
+sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
+check("a scene with her in it says her hair is red, in the still and the motion",
+      len(sent) == 2 and "hair is a rich dark red" in sent[0]["prompt"] and "hair is a rich dark red" in sent[0]["motion"], sent[:1])
+check("a scene of him alone is not told about her hair", len(sent) == 2 and "hair" not in sent[1]["prompt"], sent[1:])
 check("Aegis sends the rooms' shape with every live render", '"aspect": _aspect}' in src and "_aspect = room_aspect()" in src)
 
 if shutil.which("ffmpeg") and shutil.which("ffprobe"):

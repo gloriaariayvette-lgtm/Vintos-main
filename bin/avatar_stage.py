@@ -513,6 +513,13 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
             st = _slot_update(sid, status="done", finished=time.time(), reused=True, seconds=round(time.time() - live_status(sid)["started"], 1))
             log("live scene reused from content key %s [%s]" % (_ckey, sid)); return
         _aspect = room_aspect()
+        # Her hair is red. Her photo alone let the composer make her blonde (2026-09-28); his video sends
+        # already carry this line, the live scene did not. Said in the still AND the motion prompt.
+        if kind == "together":
+            try: _hair = _vsv().HER_HAIR_LINE
+            except Exception: _hair = "The woman's hair is a rich dark red, and stays dark red throughout."
+            prompt = prompt.rstrip() + " " + _hair
+            motion = ((motion or "").rstrip() + " " + _hair).strip()
         r = _rq.post(mac + "/live", json={"prompt": prompt, "images": images, "motion": motion,
                                           "together": kind == "together", "aspect": _aspect}, timeout=900)
         if r.status_code != 200:
