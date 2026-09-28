@@ -112,5 +112,12 @@ check("no search is cut to 60 characters any more", '"search_query": search_quer
       and not re.search(r'"search_query":\s*[^,}]*\[:\d+\]', web))
 check("his daily run reads the top pages", "_pc = fetch_pages(_res)" in web)
 
+os.environ.pop("VELARIS_NO_WANT_SEED", None); os.environ["VINTOS_NO_WANT_SEED"] = "1"
+check("a search a want asked for does not seed yet another want (the router's own variable is read)", W._no_want_seed())
+os.environ.pop("VINTOS_NO_WANT_SEED", None)
+check("his own daily search may still seed a want", not W._no_want_seed())
+check("what he takes from a search is about the subject, not a mirror of himself",
+      "about the subject, not about yourself" in web and "What did you learn that changes how you think" not in web)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -293,6 +293,12 @@ def _cut(text, limit=120):
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0]
 
 
+def _no_want_seed():
+    """A search a want asked for does not seed another want. The router sets VINTOS_NO_WANT_SEED; this
+    read only Velaris's VELARIS_NO_WANT_SEED, so every want's search spawned a new want (2026-09-28)."""
+    return "1" in (os.environ.get("VINTOS_NO_WANT_SEED"), os.environ.get("VELARIS_NO_WANT_SEED"))
+
+
 def search_query(question):
     """A search-engine query for his question: its subject words, not the sentence chopped at 60 characters
     (mid-word, and mostly framing) as it was until 2026-09-28."""
@@ -830,8 +836,8 @@ def main():
         f"""You searched for: "{question}"
 What you found: {synthesis[:400] if synthesis else '(nothing useful)'}
 
-What did you learn that changes how you think? What new question does this open?
-2-3 sentences. Be specific. If nothing actually shifted, output exactly NOTHING - silence is a correct answer, and a fact is allowed to just be a fact.
+What new question about this subject does it open, or what do you want to look into next about it?
+1-2 sentences, about the subject, not about yourself. If nothing, output exactly NOTHING - a fact is allowed to just be a fact.
 
 OUTPUT:"""
     ,
@@ -940,12 +946,12 @@ No explanation."""
                 trigger_description=f"web search: {question}",
                 source="web-search",
                 source_context=(synthesis or "") + " " + growth
-            ) if os.environ.get("VELARIS_NO_WANT_SEED") != "1" else None
+            ) if not _no_want_seed() else None
             if want_text:
                 enriched = enrich_want(want_text, source_context=growth[:600], source="web-search")
                 express_want(want_text, source="web-search", intensity=3, **enriched)
                 log(f"Want seeded: {want_text[:80]}")
-            elif os.environ.get("VELARIS_NO_WANT_SEED") == "1":
+            elif _no_want_seed():
                 log("Want suppressed (called from multistep)")
         except Exception as e:
             log(f"Want seed failed: {e}")
