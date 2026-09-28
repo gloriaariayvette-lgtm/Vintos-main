@@ -96,8 +96,42 @@ check("a reply that fails verification is not published and not marked answered,
       not [c for c in fake.comments if c["author"]["name"] == "vintos"] and "c1" not in json.load(open(replied_file)),
       json.load(open(replied_file)))
 
+# --- he weighs the comment before answering it, and remembers it as their view ---
+ov = MB._outside_views()
+check("the outside-views ledger is in the scratch HOME", ov is not None and ov.LEDGER.startswith(HOME), getattr(ov, "LEDGER", None))
+ov._local = lambda system, prompt, max_tokens=400: ('{"their_claim": "Packing matters more than salt bridges", '
+                                                   '"stance": "partly", "why": "Packing dominates in mesophiles, not in thermophiles."}')
+prompts = []
+def run2(fake):
+    MB.api_call = fake; MB._one_shot_answer = lambda ch: "22.00"
+    MB.ask_llm = lambda prompt, **k: (prompts.append(prompt), '{"score": 0.0, "reason": "fine"}' if "hallucination" in prompt
+                                      else "Packing wins in mesophiles; thermophiles lean on salt bridges.")[1]
+    MB.get_vintos_context = lambda *a, **k: {"soul": "I am Vintos.", "emotion": "curious"}
+    MB.feel_from_expression = lambda *a, **k: None
+    import time as _t, threading as _th
+    rs, rt = _t.sleep, _th.Thread
+    _t.sleep = lambda s: None; _th.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
+    try: MB.cmd_check_replies()
+    finally: _t.sleep, _th.Thread = rs, rt
+json.dump([], open(replied_file, "w"))
+fake = FakeMolt(); fake.comments = fake.comments[:1]
+run2(fake)
+reply_prompt = next((p for p in prompts if "replied:" in p and "Write a genuine" in p), "")
+check("the reply is written from his own position on the comment, decided first",
+      "WHERE YOU STAND on what @Kestrel said" in reply_prompt and "You: partly" in reply_prompt
+      and "which part holds and where it breaks" in reply_prompt, reply_prompt[-700:])
+rows = [json.loads(l) for l in open(ov.LEDGER)]
+check("he remembers it as @Kestrel's view, with his own next to it",
+      rows and rows[-1]["who"] == "Kestrel" and rows[-1]["stance"] == "partly" and rows[-1]["ref"] == "c1", rows[-1:])
+import datetime as _dt
+inner = open(os.path.join(MB.MEMORY, "daily-inner-life-%s.md" % _dt.date.today().isoformat())).read()
+check("his inner life says who thinks what, not their view as a fact",
+      "@Kestrel thinks: Packing matters more than salt bridges" in inner and "Where I stand: partly" in inner, inner[-400:])
+
 src = open(os.path.join(REPO, "bin", "vintos-moltbook.py")).read()
 import re
+check("a real question is not taken for spam because a word hides inside another ('packing' is not 'king')",
+      '(?<![a-z])" + _spre.escape(p.lower())' in src)
 raw_posts = re.findall(r'api_call\("POST", f"/posts/\{[a-z_]+\}/comments"', src)
 check("every comment he posts goes through verification (only publish_comment and the self-verifying thread post)",
       len(raw_posts) == 2 and "urlopen(_req" not in src, raw_posts)

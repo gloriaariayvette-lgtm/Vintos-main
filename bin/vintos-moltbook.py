@@ -1799,6 +1799,20 @@ def cmd_reply(post_id):
 
 
 
+def _outside_views():
+    """scripts/outside_views.py: an outside opinion weighed as an opinion, and remembered as theirs."""
+    try:
+        import sys as _ovs
+        for _d in (SCRIPTS, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"),
+                   os.path.dirname(os.path.abspath(__file__))):
+            if _d not in _ovs.path: _ovs.path.insert(0, _d)
+        import outside_views
+        return outside_views
+    except Exception as _ove:
+        log(f"outside views unavailable: {_ove}")
+        return None
+
+
 def _walk_comments(comments):
     for c in comments or []:
         if isinstance(c, dict):
@@ -1970,7 +1984,10 @@ def cmd_check_replies(dry_run=False):
             except: pass
             # Spam detection — generic hype, sycophantic one-liners, bot-like replies
             _spam_phrases = ["based", "claw-pilled", "this is so based", "king", "queen", "slay", "fr fr", "no cap", "goat", "based and", "pilled", "W post", "L post", "ratio"]
-            _is_spam = any(p in comment_content.lower() for p in _spam_phrases) and len(comment_content) < 80
+            # whole words only: "packing" is not "king", "goatee" is not "goat" (2026-09-28)
+            import re as _spre
+            _is_spam = any(_spre.search(r"(?<![a-z])" + _spre.escape(p.lower()) + r"(?![a-z])", comment_content.lower())
+                           for p in _spam_phrases) and len(comment_content) < 80
             _spam_note = "This comment is generic internet hype — 'based' means 'cool', 'X-pilled' means 'converted to X'. It has no real content. Do not treat it as a genuine observation. Do not reach into your own post for material to respond to. Respond only to the fact that someone said something meaningless and left. Dry, brief, a little dismissive. One sentence max." if _is_spam else ""
             # Humor detector on incoming comment
             try:
@@ -2004,6 +2021,12 @@ def cmd_check_replies(dry_run=False):
                             _hal_note = f"\n\nHALLUCINATION CAUTION (score {_hcs:.2f}): {_hcd.get('reason','')[:100]}\nEngage thoughtfully."
             except: pass
 
+            # Their opinion, weighed as an opinion before a word of the reply is written.
+            _ov = _outside_views()
+            _view = {} if (_is_spam or not _ov) else _ov.deliberate(commenter, comment_content,
+                                                                     context=f"Your post: {post_title}\n{post_content}")
+            if _view:
+                log(f"[view] @{commenter}: {_view.get('stance')} - {_view.get('their_claim','')[:60]}")
             _ctx_r = get_vintos_context()
             prompt = (
                 _ctx_r.get("soul", "You are Vintos.") + "\n\n"
@@ -2013,6 +2036,7 @@ def cmd_check_replies(dry_run=False):
                 + f"@{commenter} replied: {comment_content}\n\n"
                 + (f"What you know about {commenter}: {_member_ctx}\n\n" if _member_ctx else "")
                 + (f"NOTE: {_spam_note}\n\n" if _spam_note else "")
+                + (_ov.stance_block(commenter, _view) if _view else "")
                 + _hal_note
                 + f"\nWrite a genuine 1-3 sentence reply. Tag them with @{commenter}. "
                 f"Begin immediately. First word is first word of reply. "
@@ -2056,6 +2080,7 @@ def cmd_check_replies(dry_run=False):
             resp2 = dict(resp2 or {}, success=_published)
             if resp2.get("success"):
                 log("Reply posted and published.")
+                if _view: _ov.record(commenter, f"moltbook: under my post \"{post_title[:60]}\"", _view, ref=comment_id)
                 new_replies.append(comment_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
                 # the exchange under his own post goes into the day (her ask, 2026-09-09): who said what, what he answered
                 try:
@@ -2063,8 +2088,9 @@ def cmd_check_replies(dry_run=False):
                     _di = os.path.join(MEMORY, f"daily-inner-life-{_dd.today().isoformat()}.md")
                     with open(_di, "a") as _df:
                         _df.write(f"\n\n## MoltBook, under my post \"{post_title[:70]}\" ({_ddt.now().strftime('%H:%M')})\n"
-                                  f"@{commenter}: {str(comment_content)[:400].strip()}\n"
-                                  f"I answered: {reply_text[:500].strip()}\n")
+                                  f"@{commenter} wrote: {str(comment_content)[:400].strip()}\n"
+                                  + (_ov.inner_line(commenter, _view) if _view else "")
+                                  + f"I answered: {reply_text[:500].strip()}\n")
                 except Exception as _die:
                     log(f"daily-inner append failed: {_die}")
                 import time as _rt; _rt.sleep(4)
@@ -2135,11 +2161,14 @@ def cmd_check_replies(dry_run=False):
         _mp_ctx = get_vintos_context()
         _mp_content = _mp.get("content", "")[:400]
         _mp_title = _mp.get("title", "")
+        _ov = _outside_views()
+        _mp_view = _ov.deliberate(_mp_author, f"{_mp_title}\n{_mp_content}") if _ov else {}
         _mp_prompt = (
             _mp_ctx.get("soul", "You are Vintos.") + "\n\n"
             + (f"WHAT MATTERS TO ME:\n{_mp_ctx['value_map']}\n\n" if _mp_ctx.get("value_map") else "")
             + f"Your emotional state: {_mp_ctx.get('emotion', '')}\n\n"
             + f"@{_mp_author} mentioned you in this post:\nTitle: {_mp_title}\n{_mp_content}\n\n"
+            + (_ov.stance_block(_mp_author, _mp_view) if _mp_view else "")
             + f"Write a genuine 1-3 sentence reply. Tag them with @{_mp_author}. "
             + f"Be specific — reference something real from their post. No hedging. No generic AI solidarity. "
             + f"Begin immediately. First word is first word of reply."
@@ -2161,6 +2190,7 @@ def cmd_check_replies(dry_run=False):
         _mp_ok, _mp_resp = publish_comment(_mp_id, _mp_reply)
         if _mp_ok:
             log(f"[Mention] Replied to @{_mp_author}: {_mp_reply[:60]}")
+            if _mp_view: _ov.record(_mp_author, f"moltbook: their post \"{_mp_title[:60]}\"", _mp_view, ref=_mp_id)
             new_replies.append(_mp_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
             replied_set.add(_mp_id)
             feel_from_expression(_mp_reply, "responding to a mention on MoltBook")

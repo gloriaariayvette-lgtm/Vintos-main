@@ -481,6 +481,17 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
     # Between messages he searches again: what they said, and who they are now.
     found = research(c.get("name") or addr, last_in.get("body", "")[:160], search=search, fetch=fetch)
     stance = deliberate(c.get("name") or addr, last_in.get("body", "")[:300], found, think=think, thread=_thread_text(c))
+    # What they wrote is their view: weighed as one, and remembered as theirs (outside_views).
+    try:
+        import sys as _ovs
+        if os.path.dirname(os.path.abspath(__file__)) not in _ovs.path:
+            _ovs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import outside_views as _ov
+        _view = _ov.deliberate(c.get("name") or addr, last_in.get("body", ""), context=_thread_text(c, 2500), think=think)
+        _ov.record(c.get("name") or addr, "email: their reply", _view, ref=last_in.get("id", ""))
+        if _view: stance = (stance + "\n\n" + _ov.stance_block(c.get("name") or addr, _view)).strip()
+    except Exception:
+        pass
     user = ("WHO YOU ARE (yours to draw on; Gloria's private life is not):\n%s\n\n"
             "WHY YOU FIRST WROTE TO THEM (your original intent):\n%s\n\n"
             "THE WHOLE THREAD SO FAR, oldest first:\n%s\n\n"

@@ -58,6 +58,8 @@ def search(q): order.append("search"); return _search0(q)
 thoughts = []
 def think(system, prompt, max_tokens=700):
     order.append("think"); thoughts.append(prompt)
+    if "ONLY JSON" in prompt:
+        return '{"their_claim": "Interoception is the key", "stance": "partly", "why": "It is key for feeling, less clearly for selfhood."}'
     return "The beast-machine view holds for interoception but overstates how far prediction explains selfhood; I would test it on systems with no body. I want to ask whether a body is necessary or only sufficient."
 _fable0 = fable
 def fable(*a):
@@ -157,6 +159,9 @@ thoughts.clear()
 out = E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send, think=think)
 check("between messages he deliberates again on the fresh search, with the thread in view",
       thoughts and "THE THREAD SO FAR" in thoughts[0] and "allostasis" in thoughts[0])
+check("their reply is weighed as their view and remembered as theirs",
+      any("ONLY JSON" in t and "@Anil Seth said" in t for t in thoughts) and "WHERE YOU STAND on what @Anil Seth said" in drafted[0][2]
+      and json.loads(open(os.path.join(WS, "memory", "outside-views.jsonl")).readline())["who"] == "Anil Seth", thoughts[-1:])
 c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
 check("between messages he searches again, on what they said", any("allostasis" in q for q in queries), queries)
 check("his answer is drafted with the whole thread, why he first wrote, and who he is",
