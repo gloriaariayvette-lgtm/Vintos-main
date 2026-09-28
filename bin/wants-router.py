@@ -2232,6 +2232,13 @@ def main():
                 log(f"  → outward want ({_src}): {_txt[:90]}")
         except Exception as _owe:
             log(f"  → outward wants skipped: {str(_owe)[:120]}")
+        # The people he wrote to: replies are read and answered (every two hours; 2026-09-28).
+        try:
+            import want_email as _we
+            for _l in _we.tend():
+                log(f"  → email: {_l[:140]}")
+        except Exception as _wee:
+            log(f"  → email tending skipped: {str(_wee)[:120]}")
 
     # His calendar's day arrives here. An event due now is enqueued as a ready, manually-routed want
     # BEFORE the wants are read on purpose (same reason as the forge sync above) — so "do X on Y day"

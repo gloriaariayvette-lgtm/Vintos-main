@@ -41,6 +41,7 @@ check("no address is guessed when none carries the person's name",
       E.find_address("Jane Doe", search=lambda q: [{"title": "x", "url": "https://x.org", "description": "info@x.org"}],
                      fetch=lambda u: "") is None)
 
+open(os.path.join(WS, "SOUL.md"), "w").write("I am Vintos. I make music at night and run a chemistry lab on KaiC.")
 reserved, drafted, sent = [], [], []
 def reserve(organ, provider, model="", units=1, reservation_id=None): reserved.append((provider, model)); return True, "ok"
 def fable(provider, model, system, user, reservation):
@@ -83,6 +84,49 @@ held = E.run({"to": "other@example.net", "about": "x"}, "x", search=search, fetc
 check("a send the gateway holds is reported as held, and the person is not marked as written to",
       isinstance(held, tuple) and "held or refused" in held[1] and "other@example.net" not in json.load(open(E.CONTACTS)))
 check("no email is invented when he names nobody", E.run({}, "", call=fable, reserve=reserve, send=send)[1] == "name the person to write to")
+
+check("his first email is drafted knowing who he is, and told to keep Gloria's private life private",
+      "WHO YOU ARE" in drafted[0][2] and "chemistry lab on KaiC" in drafted[0][2] and "Share nothing private about Gloria" in drafted[0][1])
+seth = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
+check("the email starts a thread that keeps why he wrote", seth["status"] == "open" and seth["intent"].startswith("I want to email Anil Seth")
+      and seth["thread"][0]["dir"] == "out" and seth["thread"][0]["body"].startswith("Hello Professor Seth"), seth)
+
+# --- the conversation after: inbox, answers, stop ----------------------------------------------------------
+inbox = {"a.k.seth@sussex.ac.uk": [{"id": "M1", "from": "Anil Seth <a.k.seth@sussex.ac.uk>", "subject": "Re: A question about the beast machine",
+         "date": "2026-09-29T10:00", "threadId": "T1", "body": "Interesting question. I think interoception is the key - have you read about allostasis?"}]}
+gmail_calls = []
+def gmail(tool, args, purpose):
+    gmail_calls.append((tool, args))
+    addr = args["query"].split("from:")[1].split()[0]
+    return {"messages": inbox.get(addr, [])}
+contacts = json.load(open(E.CONTACTS))
+new = E.check_inbox(contacts, gmail=gmail)
+check("his inbox is checked for replies from the people he wrote to", gmail_calls and all(t == "gmail.search_emails" for t, _ in gmail_calls)
+      and [a for a, _ in new] == ["a.k.seth@sussex.ac.uk"] and contacts["a.k.seth@sussex.ac.uk"]["status"] == "reply_waiting", new)
+check("a reply already recorded is not recorded twice", E.check_inbox(contacts, gmail=gmail) == [])
+E._save(E.CONTACTS, contacts)
+drafted.clear(); sent.clear(); queries.clear()
+def fable_reply(provider, model, system, user, reservation):
+    drafted.append((model, system, user))
+    return json.dumps({"subject": "Re: A question about the beast machine", "body": "I have not - allostasis as prediction of need? Vintos"})
+out = E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
+c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
+check("between messages he searches again, on what they said", any("allostasis" in q for q in queries), queries)
+check("his answer is drafted with the whole thread, why he first wrote, and who he is",
+      drafted and "have you read about allostasis" in drafted[0][2] and "WHY YOU FIRST WROTE" in drafted[0][2]
+      and "I want to email Anil Seth" in drafted[0][2] and "chemistry lab on KaiC" in drafted[0][2], drafted[:1])
+check("the answer goes to them through the same gateway, and joins the thread",
+      sent and sent[0][0]["to"] == "a.k.seth@sussex.ac.uk" and sent[0][0]["subject"].startswith("Re:")
+      and c["replies_sent"] == 1 and c["thread"][-1]["dir"] == "out" and c["status"] == "open", (sent, c.get("status")))
+check("the inbox is not checked again within two hours", E.tend(gmail=gmail) == [])
+inbox["a.k.seth@sussex.ac.uk"].append({"id": "M2", "from": "a.k.seth@sussex.ac.uk", "subject": "Re: Re:",
+                                       "body": "Please stop emailing me, thanks."})
+sent.clear()
+E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
+c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
+check("a request to stop ends the thread for good, with no answer", c["status"] == "closed" and not sent, c.get("status"))
+router = open(os.path.join(REPO, "bin", "wants-router.py")).read()
+check("the wants router tends his email every pass", "_we.tend()" in router)
 
 # --- two outward wants a day ---------------------------------------------------------------------------
 asked, expressed = [], []
