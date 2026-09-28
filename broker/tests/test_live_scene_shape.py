@@ -60,10 +60,10 @@ if shutil.which("ffmpeg") and shutil.which("ffprobe"):
                                                    "live": {"photo": "", "pose": "x", "clips": ["live.mp4"]}}})
     check("the rooms' shape is read from a filmed room", abs(A.room_aspect() - 0.8) < 0.01, A.room_aspect())
     live = os.path.join(A.CLIPS, "live.mp4"); clip(live, 1280, 720)
-    check("a 16:9 render is fitted to the rooms' shape", A.fit_to_rooms(live) and
-          abs(A._clip_size(live)[0] / float(A._clip_size(live)[1]) - 0.8) < 0.02, A._clip_size(live))
-    check("a wide render is zoomed out, not cut to a sliver: its whole height, full width, blurred fill",
-          A._clip_size(live) == (900, 1124), A._clip_size(live))
+    check("a 16:9 render is fitted near the rooms' shape", A.fit_to_rooms(live) and
+          abs(A._clip_size(live)[0] / float(A._clip_size(live)[1]) - 0.8 * A.ZOOM_OUT) < 0.02, A._clip_size(live))
+    check("a wide render is cut to the rooms' shape with a little more width (zoomed out a bit), whole height",
+          A._clip_size(live) == (662, 720), A._clip_size(live))
     check("a clip already in shape is left alone", A.fit_to_rooms(live) is False)
     spoken = os.path.join(HOME, "speech.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=10",
@@ -72,7 +72,7 @@ if shutil.which("ffmpeg") and shutil.which("ffprobe"):
     streams = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", spoken],
                              capture_output=True, text=True).stdout.split()
     check("his speech over the live scene keeps its voice and takes the same shape",
-          "audio" in streams and A._clip_size(spoken) == (900, 1124), (streams, A._clip_size(spoken)))
+          "audio" in streams and A._clip_size(spoken) == (662, 720), (streams, A._clip_size(spoken)))
     clip(os.path.join(A.CLIPS, "patio.mp4"), 540, 960); clip(os.path.join(A.CLIPS, "kitchen.mp4"), 540, 960)
     A.save_rooms({"default": "live", "rooms": {"bedroom": {"clips": ["bed.mp4"]}, "patio": {"clips": ["patio.mp4"]},
                                                "kitchen": {"clips": ["kitchen.mp4"]}, "live": {"clips": ["live.mp4"]}}})
