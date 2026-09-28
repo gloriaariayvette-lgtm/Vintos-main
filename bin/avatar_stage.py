@@ -375,6 +375,7 @@ def speak(text, room=None):
                     f.write(r.content)
                 if room == "live":
                     fit_to_rooms(out, keep_audio=True)   # same shape as the scene he is standing in
+                    zoom_out(out, keep_audio=True)       # and the same step back
                 print(out); return 0
             log("mac stage error %s: %s - rendering here instead" % (r.status_code, r.text[:200]))
         except Exception as e:
@@ -456,9 +457,9 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
             import shutil as _shc
             os.makedirs(CLIPS, exist_ok=True)
             _shc.copy(os.path.join(m.VID_DIR, fname), os.path.join(CLIPS, "live.mp4"))
-            fit_to_rooms(os.path.join(CLIPS, "live.mp4"))
+            settle_live(os.path.join(CLIPS, "live.mp4"))
             data = load_rooms()
-            data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"
+            data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"], "stepped_back": True}; data["default"] = "live"
             save_rooms(data); write_manifest()
             _sync_live_to_mac()
             st = _slot_update(sid, status="done", finished=time.time(),
@@ -510,8 +511,8 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         if os.path.exists(_cpath) and os.path.getsize(_cpath) > 10000:
             os.makedirs(CLIPS, exist_ok=True)
             import shutil as _shr; _shr.copy(_cpath, os.path.join(CLIPS, "live.mp4"))
-            fit_to_rooms(os.path.join(CLIPS, "live.mp4"))
-            data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"; save_rooms(data); write_manifest()
+            settle_live(os.path.join(CLIPS, "live.mp4"))
+            data = load_rooms(); data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"], "stepped_back": True}; data["default"] = "live"; save_rooms(data); write_manifest()
             st = _slot_update(sid, status="done", finished=time.time(), reused=True, seconds=round(time.time() - live_status(sid)["started"], 1))
             log("live scene reused from content key %s [%s]" % (_ckey, sid)); return
         _aspect = room_aspect()
@@ -529,14 +530,15 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         os.makedirs(CLIPS, exist_ok=True)
         with open(os.path.join(CLIPS, "live.mp4"), "wb") as f:
             f.write(r.content)
-        if fit_to_rooms(os.path.join(CLIPS, "live.mp4"), _aspect):
-            _sync_live_to_mac()          # the Mac speaks over the fitted copy too
+        fit_to_rooms(os.path.join(CLIPS, "live.mp4"), _aspect)
+        if zoom_out(os.path.join(CLIPS, "live.mp4")):
+            _sync_live_to_mac()          # the Mac speaks over this copy too, when it can be reached
         try:
             os.makedirs(os.path.dirname(_cpath), exist_ok=True)
             with open(_cpath, "wb") as f: f.write(r.content)
         except Exception: pass
         data = load_rooms()
-        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"]}; data["default"] = "live"
+        data.setdefault("rooms", {})["live"] = {"photo": "", "pose": prompt[:120], "clips": ["live.mp4"], "stepped_back": True}; data["default"] = "live"
         save_rooms(data)
         write_manifest()
         st = _slot_update(sid, status="done", finished=time.time(),
@@ -608,6 +610,40 @@ def fit_to_rooms(path, aspect=None, keep_audio=False):
     os.replace(tmp, path)
     log("live clip fitted (%dx%d was %.2f, now %.2f; rooms %.2f)" % (sw, sh, have, min(have, target), aspect))
     return True
+
+
+LIVE_ZOOM = 0.85   # a live scene is shown a step back: "just zoom out a bit, man" (2026-09-28)
+
+
+def zoom_out(path, factor=LIVE_ZOOM, keep_audio=False):
+    """Step the camera back: the picture at `factor` of its size, centred, over a soft blurred copy of
+    itself filling the frame - same frame size, so it sits on her screen exactly as before. True when done."""
+    size = _clip_size(path)
+    if not size or not (0.3 < float(factor) < 1.0):
+        return False
+    import shutil as _sh
+    W, H = size
+    w = int(W * factor) // 2 * 2
+    vf = ("[0:v]split[a][b];[b]scale=%d:%d,boxblur=22:2,eq=brightness=-0.10[bg];[a]scale=%d:-2[fg];"
+          "[bg][fg]overlay=(W-w)/2:(H-h)/2" % (W, H, w))
+    tmp = path + ".zoom.mp4"
+    r = subprocess.run([_sh.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", path, "-filter_complex", vf] +
+                       (["-map", "0:a?", "-c:a", "copy"] if keep_audio else ["-an"]) +
+                       ["-c:v", "libx264", "-pix_fmt", "yuv420p", tmp], capture_output=True, timeout=300)
+    if r.returncode != 0 or not os.path.exists(tmp):
+        log("live clip not zoomed out: %s" % (r.stderr or b"")[-200:])
+        return False
+    os.replace(tmp, path)
+    return True
+
+
+def settle_live(path=None):
+    """A new live clip, as it arrived: fitted to the rooms' shape, then stepped back once."""
+    path = path or os.path.join(CLIPS, "live.mp4")
+    fit_to_rooms(path)
+    done = zoom_out(path)
+    if done: log("live clip stepped back to %d%%" % int(LIVE_ZOOM * 100))
+    return done
 
 
 def _sync_live_to_mac():
@@ -997,11 +1033,14 @@ def main():
         by = os.path.join(CLIPS, "by-content")
         originals = sorted((os.path.join(by, f) for f in (os.listdir(by) if os.path.isdir(by) else []) if f.endswith(".mp4")),
                            key=os.path.getmtime)
+        live = os.path.join(CLIPS, "live.mp4")
         if originals:     # the newest render as it arrived, before any fitting
-            import shutil as _shl; _shl.copy(originals[-1], os.path.join(CLIPS, "live.mp4"))
-        if fit_to_rooms(os.path.join(CLIPS, "live.mp4")):
-            _sync_live_to_mac()
-            print("fitted to the rooms' shape")
+            import shutil as _shl; _shl.copy(originals[-1], live)
+            fit_to_rooms(live); zoom_out(live); print("rebuilt from the render as it arrived, stepped back")
+        elif not data["rooms"]["live"].get("stepped_back"):
+            zoom_out(live); print("stepped back")
+        data["rooms"]["live"]["stepped_back"] = True
+        _sync_live_to_mac()
         data["default"] = "live"; save_rooms(data); write_manifest()
         print("live scene is up: %s" % data["rooms"]["live"].get("pose", "")[:120]); sys.exit(0)
     if a.cmd == "build":    sys.exit(build(a.room, a.force))

@@ -65,6 +65,13 @@ if shutil.which("ffmpeg") and shutil.which("ffprobe"):
     check("a wide render is cut to the rooms' shape with a little more width (zoomed out a bit), whole height",
           A._clip_size(live) == (662, 720), A._clip_size(live))
     check("a clip already in shape is left alone", A.fit_to_rooms(live) is False)
+    before = A._clip_size(live)
+    check("a live scene is stepped back a little, in the same frame size", A.zoom_out(live) and A._clip_size(live) == before,
+          (before, A._clip_size(live)))
+    src = open(os.path.join(REPO, "bin", "avatar_stage.py")).read()
+    check("every new live scene and his speech over it are stepped back the same way",
+          "zoom_out(os.path.join(CLIPS, \"live.mp4\"))" in src and "zoom_out(out, keep_audio=True)" in src
+          and src.count("settle_live(os.path.join(CLIPS, \"live.mp4\"))") == 2)
     spoken = os.path.join(HOME, "speech.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=10",
                     "-f", "lavfi", "-i", "sine=frequency=440", "-t", "1", "-pix_fmt", "yuv420p", "-shortest", spoken], check=True)
