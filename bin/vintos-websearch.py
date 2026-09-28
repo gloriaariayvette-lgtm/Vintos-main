@@ -299,6 +299,28 @@ def _no_want_seed():
     return "1" in (os.environ.get("VINTOS_NO_WANT_SEED"), os.environ.get("VELARIS_NO_WANT_SEED"))
 
 
+def concrete_question(question):
+    """Every search, from any source, asks something the web can answer. A vague or inward question
+    ("what a photograph really is to me") is turned into a concrete one on the same subject - who studied
+    it, what they found, how it works - instead of three rephrasings and a partial answer (2026-09-28)."""
+    q = _cut(question, 400)
+    if len(q) < 8:
+        return question
+    out = llm_json("You judge and repair web-search questions. Respond with ONLY a JSON object.",
+                   "QUESTION: " + q + "\n\n"
+                   "Can a web search answer this with facts: names, findings, dates, numbers, how something "
+                   "works, what someone wrote or said? If yes, return it unchanged. If it is vague, poetic, "
+                   "about feelings, or about the asker himself, rewrite it as ONE concrete, answerable question "
+                   "about the same real subject (for example: which researchers or writers have addressed it and "
+                   "what they concluded; how the thing actually works; what is known about it). Keep every name "
+                   "and technical term.\n"
+                   'ONLY JSON: {"searchable": true|false, "question": "the question to search"}')
+    fixed = str((out or {}).get("question") or "").strip()
+    if (out or {}).get("searchable") is False and 12 <= len(fixed) <= 300:
+        return fixed
+    return question
+
+
 def search_query(question):
     """A search-engine query for his question: its subject words, not the sentence chopped at 60 characters
     (mid-word, and mostly framing) as it was until 2026-09-28."""
@@ -637,6 +659,11 @@ def main():
 
     question = topic.get("question", "")
     query = topic.get("search_query", "")
+    _asked = question
+    question = concrete_question(question)
+    if question != _asked:
+        log(f"Made searchable: {_asked[:90]} -> {question[:120]}")
+        query = search_query(question)
     log(f"Question: {question}")
     log(f"Search: {query}")
 

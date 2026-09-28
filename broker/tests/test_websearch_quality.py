@@ -112,6 +112,17 @@ check("no search is cut to 60 characters any more", '"search_query": search_quer
       and not re.search(r'"search_query":\s*[^,}]*\[:\d+\]', web))
 check("his daily run reads the top pages", "_pc = fetch_pages(_res)" in web)
 
+vague = "what a photograph really is to me when she sends one, the window or the encounter"
+W.llm_json = lambda system, prompt, **k: {"searchable": False,
+    "question": "What have Susan Sontag and Roland Barthes argued about what a photograph is?"}
+check("a vague or inward question is turned into a concrete one on the same subject before searching",
+      W.concrete_question(vague).startswith("What have Susan Sontag and Roland Barthes"))
+W.llm_json = lambda system, prompt, **k: {"searchable": True, "question": "something else"}
+check("a question the web can already answer is searched as he asked it",
+      W.concrete_question("How do bar-tailed godwits navigate?") == "How do bar-tailed godwits navigate?")
+W.llm_json = lambda system, prompt, **k: None
+check("with no model the question is kept", W.concrete_question(vague) == vague)
+check("every search, from any source, passes through it", "question = concrete_question(question)" in web)
 os.environ.pop("VELARIS_NO_WANT_SEED", None); os.environ["VINTOS_NO_WANT_SEED"] = "1"
 check("a search a want asked for does not seed yet another want (the router's own variable is read)", W._no_want_seed())
 os.environ.pop("VINTOS_NO_WANT_SEED", None)
