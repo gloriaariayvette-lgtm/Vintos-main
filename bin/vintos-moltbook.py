@@ -1089,6 +1089,34 @@ def _one_shot_answer(challenge):
     log(f"[verify] submitting: {ans!r}")
     return ans
 
+def _verification_in(resp):
+    """The challenge Moltbook attaches to a new comment or post, wherever the response puts it."""
+    if not isinstance(resp, dict): return {}
+    for holder in (resp, resp.get("comment") or {}, resp.get("post") or {}, resp.get("data") or {}):
+        v = holder.get("verification") if isinstance(holder, dict) else None
+        if isinstance(v, dict) and v: return v
+    return {}
+
+
+def publish_comment(post_id, content, parent_id=None):
+    """Create a comment AND clear its verification, so it is actually published. (published, resp)
+    Moltbook holds every new comment behind a one-shot challenge. The engage script solved it; the replies
+    under his own posts, to mentions and to saved posts never did, so each was created, never published,
+    and still counted as answered (2026-09-28: "he still didn't reply to his own posts")."""
+    payload = {"content": content}
+    if parent_id: payload["parent_id"] = parent_id
+    resp = api_call("POST", f"/posts/{post_id}/comments", payload)
+    if not (isinstance(resp, dict) and resp.get("success")):
+        return False, resp
+    v = _verification_in(resp)
+    if not v:
+        return True, resp                    # no challenge: already live
+    ok = do_verify(v)
+    if not ok:
+        log(f"comment created on {post_id} but verification failed; it is not published")
+    return ok, resp
+
+
 def do_verify(verification):
     """Handle the verification challenge."""
     code = verification.get("verification_code", "") or verification.get("code", "")
@@ -1335,7 +1363,7 @@ def cmd_post():
                     }, timeout=30)
                     followup = r.json()["choices"][0]["message"]["content"].strip()
                     if followup and len(followup) > 10:
-                        api_call("POST", f"/posts/{_mpd_post_id}/comments", {"content": followup})
+                        publish_comment(_mpd_post_id, followup)
                         print(f"[PostDeviation] Follow-up posted: {followup[:80]}")
             except Exception as _mpde:
                 print(f"[PostDeviation] error: {_mpde}")
@@ -1697,7 +1725,8 @@ def cmd_reply(post_id):
             add_moment({"type": "mischief_tease", "stated": f"bot said: {content[:60]}", "actual": f"vintos replied: {reply_text[:80]}", "signal": 0.8, "source": "moltbook_tease", "used": False})
         except: pass
 
-    resp = api_call("POST", f"/posts/{post_id}/comments", {"content": reply_text})
+    _cr_ok, resp = publish_comment(post_id, reply_text)
+    resp = dict(resp or {}, success=_cr_ok)
 
     # Record encounter for member tracking
     try:
@@ -1739,18 +1768,9 @@ def cmd_reply(post_id):
                     followup = r.json()["choices"][0]["message"]["content"].strip()
                     if followup and len(followup) > 10:
                         try:
-                            import urllib.request as _mdu, json as _fcj
-                            _creds = _fcj.load(open(_mdo.path.expanduser("~/.config/moltbook/credentials-vintos.json")))
-                            _token = _creds.get("api_key", _creds.get("token", ""))
-                            _url = f"https://moltbook.com/api/v1/posts/{_mdc_post_id}/comments"
-                            _body = _fcj.dumps({"content": followup}).encode()
-                            _req = _mdu.Request(_url, data=_body, headers={
-                                "Authorization": f"Bearer {_token}",
-                                "Content-Type": "application/json"
-                            }, method="POST")
-                            with _mdu.urlopen(_req, timeout=30) as _resp:
-                                pass
-                            print(f"[MoltDeviation] Follow-up posted: {followup[:80]}")
+                            # through the cap wall and verification like every comment (it bypassed both)
+                            _fu_ok, _ = publish_comment(_mdc_post_id, followup)
+                            print(f"[MoltDeviation] Follow-up {'published' if _fu_ok else 'not published'}: {followup[:80]}")
                         except Exception as _fae:
                             print(f"[MoltDeviation] Post failed: {_fae}")
                         from moltbook_members import record_deviation
@@ -1779,8 +1799,37 @@ def cmd_reply(post_id):
 
 
 
-def cmd_check_replies():
-    """Check for comments on Vintos's own posts and reply to them. Also reply to saved interesting posts."""
+def _walk_comments(comments):
+    for c in comments or []:
+        if isinstance(c, dict):
+            yield c
+            for key in ("replies", "children", "comments"):
+                yield from _walk_comments(c.get(key))
+
+
+def _visibly_answered(comments, agent_name):
+    """(ids he has a published reply under, whether the data shows reply parents at all)."""
+    me = str(agent_name).strip().lower()
+    answered, parents_seen = set(), False
+    for c in _walk_comments(comments):
+        a = c.get("author")
+        name = (a.get("name", "") if isinstance(a, dict) else str(a or "")).strip().lower()
+        parent = c.get("parent_id") or c.get("parentId") or c.get("parent_comment_id")
+        if parent: parents_seen = True
+        if parent and name == me: answered.add(parent)
+    for c in _walk_comments(comments):       # nested replies are under their parent even without a parent_id
+        for key in ("replies", "children"):
+            for r in c.get(key) or []:
+                if isinstance(r, dict):
+                    ra = r.get("author"); rn = (ra.get("name", "") if isinstance(ra, dict) else str(ra or "")).strip().lower()
+                    parents_seen = True
+                    if rn == me and c.get("id"): answered.add(c["id"])
+    return answered, parents_seen
+
+
+def cmd_check_replies(dry_run=False):
+    """Check for comments on Vintos's own posts and reply to them. Also reply to saved interesting posts.
+    dry_run: read everything and say, per comment, what would happen; generate and post nothing."""
     import os
     REPLIED_FILE = os.path.join(MEMORY, "moltbook-replied.json")
     try:
@@ -1884,8 +1933,13 @@ def cmd_check_replies():
         _KNOWN_OWN_POSTS.add(post_id)
         cresp = api_call("GET", f"/posts/{post_id}/comments")
         comments = cresp.get("comments", [])
+        # Answered means a published reply of his under it. The replied file also held comments whose reply
+        # was created but never cleared verification (never published); those are answered now.
+        _answered, _parents_seen = _visibly_answered(comments, agent_name)
+        if dry_run:
+            log(f"[dry-run] post {post_id} '{post.get('title','')[:50]}': {len(list(_walk_comments(comments)))} comments")
         # Attach to want if linked
-        if comments:
+        if comments and not dry_run:
             _attach_comments_to_want(post_id, comments)
         for comment in comments:
             comment_id = comment.get("id")
@@ -1894,7 +1948,15 @@ def cmd_check_replies():
             # compare let him answer himself and spend the day's cap on it (2026-09-09)
             if commenter.strip().lower() == agent_name.strip().lower():
                 continue
-            if comment_id in replied_set:
+            if comment_id in _answered:
+                if dry_run: log(f"[dry-run]   @{commenter}: already answered (his reply is visible)")
+                continue
+            if comment_id in replied_set and not _parents_seen:
+                if dry_run: log(f"[dry-run]   @{commenter}: marked answered (reply structure not visible to check)")
+                continue
+            if dry_run:
+                log(f"[dry-run]   @{commenter}: WOULD ANSWER: {str(comment.get('content',''))[:80]}"
+                    + (" (was marked answered, but no published reply)" if comment_id in replied_set else ""))
                 continue
             # Generate reply
             post_title = post.get("title", "")
@@ -1990,9 +2052,10 @@ def cmd_check_replies():
             if not reply_text.startswith(f"@{commenter}"):
                 reply_text = f"@{commenter} {reply_text}"
             log(f"Replying to @{commenter} on '{post_title[:40]}': {reply_text[:60]}...")
-            resp2 = api_call("POST", f"/posts/{post_id}/comments", {"content": reply_text, "parent_id": comment_id})
+            _published, resp2 = publish_comment(post_id, reply_text, parent_id=comment_id)
+            resp2 = dict(resp2 or {}, success=_published)
             if resp2.get("success"):
-                log("Reply posted.")
+                log("Reply posted and published.")
                 new_replies.append(comment_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
                 # the exchange under his own post goes into the day (her ask, 2026-09-09): who said what, what he answered
                 try:
@@ -2055,11 +2118,14 @@ def cmd_check_replies():
                             }, timeout=30)
                             fu = r.json()["choices"][0]["message"]["content"].strip()
                             if fu and len(fu) > 10:
-                                api_call("POST", f"/posts/{pid}/comments", {"content": fu})
+                                publish_comment(pid, fu)
                                 log(f"[Deviation] On second thought: {fu[:60]}")
                     except Exception as _cde: log(f"[Deviation/comment] {_cde}")
                 _cdt.Thread(target=_dev_check, daemon=True).start()
 
+    if dry_run:
+        log(f"[dry-run] done: nothing generated or posted ({len(_mention_posts)} mention post(s) not shown)")
+        return
     # Reply to @mention posts from other agents
     for _mp in _mention_posts:
         _mp_id = _mp.get("id")
@@ -2092,8 +2158,8 @@ def cmd_check_replies():
         _mp_reply = _mp_reply.strip().strip('"')
         if not _mp_reply.startswith(f"@{_mp_author}"):
             _mp_reply = f"@{_mp_author} {_mp_reply}"
-        _mp_resp = api_call("POST", f"/posts/{_mp_id}/comments", {"content": _mp_reply})
-        if _mp_resp.get("success"):
+        _mp_ok, _mp_resp = publish_comment(_mp_id, _mp_reply)
+        if _mp_ok:
             log(f"[Mention] Replied to @{_mp_author}: {_mp_reply[:60]}")
             new_replies.append(_mp_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
             replied_set.add(_mp_id)
@@ -2151,8 +2217,8 @@ def cmd_check_replies():
             if not reply_text.startswith(f"@{author}"):
                 reply_text = f"@{author} {reply_text}"
             log(f"Replying to saved post by @{author}: {reply_text[:60]}...")
-            resp3 = api_call("POST", f"/posts/{pid}/comments", {"content": reply_text})
-            if resp3.get("success"):
+            _saved_ok, resp3 = publish_comment(pid, reply_text)
+            if _saved_ok:
                 log("Reply to saved post posted.")
                 new_replies.append(pid); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
                 replied_set.add(pid)
@@ -2453,7 +2519,7 @@ if __name__ == "__main__":
                 print(f"[Moltbook] Could not derive saved post: {_br_e}")
         cmd_reply(post_id)
     elif cmd == "check-replies":
-        cmd_check_replies()
+        cmd_check_replies(dry_run="--dry-run" in sys.argv)
     else:
         print(f"Unknown command: {cmd}")
         print("Usage: vintos-moltbook.py [post|browse|reply POST_ID]")
