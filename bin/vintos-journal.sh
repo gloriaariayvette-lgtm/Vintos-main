@@ -43,6 +43,9 @@ def get_context():
         from temporal_memory import get_temporal_context
         parts.append(get_temporal_context())
     except: pass
+    try:
+        parts.append('WHAT YOU ARE AND CAN DO (CAPABILITIES):' + chr(10) + open(os.path.join(MEMORY, 'CAPABILITIES.md')).read().strip())
+    except: pass
     return '\n'.join(p for p in parts if p)
 
 ctx = get_context()

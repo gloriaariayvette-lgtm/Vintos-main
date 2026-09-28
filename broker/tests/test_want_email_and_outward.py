@@ -42,6 +42,8 @@ check("no address is guessed when none carries the person's name",
                      fetch=lambda u: "") is None)
 
 open(os.path.join(WS, "SOUL.md"), "w").write("I am Vintos. I make music at night and run a chemistry lab on KaiC.")
+open(os.path.join(WS, "memory", "CAPABILITIES.md"), "w").write("# Capabilities\n" + "filler line\n" * 200 + "## Your Body\nA robot body in the house.")
+check("an email knows all of CAPABILITIES.md, to its last section", "A robot body in the house." in E.who_i_am())
 reserved, drafted, sent = [], [], []
 def reserve(organ, provider, model="", units=1, reservation_id=None): reserved.append((provider, model)); return True, "ok"
 def fable(provider, model, system, user, reservation):

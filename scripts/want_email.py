@@ -47,18 +47,30 @@ STOP_WORDS = re.compile(r"\b(?:unsubscribe|stop (?:emailing|writing|contacting)|
                         r"don'?t (?:email|contact|write)|remove me|no further (?:emails?|contact)|not interested)\b", re.I)
 
 
-def who_i_am(limit=5000):
+def _capabilities():
+    for path in (os.path.join(WS, "memory", "CAPABILITIES.md"), os.path.join(WS, "CAPABILITIES.md")):
+        try:
+            return open(path, encoding="utf-8", errors="replace").read().strip()
+        except OSError:
+            continue
+    return ""
+
+
+def who_i_am(limit=14000):
     """Who he is, for a draft: his SOUL, his self-model and what his days hold. Private details about Gloria
     and her home are not his to share, and the drafter is told so."""
     ws = WS
     parts = []
-    for name, cap in (("SOUL.md", 2600), ("SELF-MODEL.md", 1400), (os.path.join("memory", "CAPABILITIES.md"), 1400)):
-        try:
-            text = open(os.path.join(ws, name), encoding="utf-8", errors="replace").read().strip()
-        except OSError:
-            continue
+    for name, cap in (("SOUL.md", 3500), ("SELF-MODEL.md", 2500), ("CAPABILITIES.md", 8000)):
+        if name == "CAPABILITIES.md":
+            text = _capabilities()          # all of it: what he can do, his body, his organs
+        else:
+            try:
+                text = open(os.path.join(ws, name), encoding="utf-8", errors="replace").read().strip()
+            except OSError:
+                continue
         if text:
-            parts.append("== %s ==\n%s" % (os.path.basename(name), text[:cap]))
+            parts.append("== %s ==\n%s" % (name, text[:cap]))
     return "\n\n".join(parts)[:limit]
 
 EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")

@@ -15,5 +15,9 @@ check("he is told to write as someone who trusts his experience", "trusts his ow
 check("invented quotes from Gloria are still kept out", "leave it out." in src and "the interaction ledger, the Thirveel ledger" in src)
 check("details the records do not show are still removed, said plainly", src.count("Leave these details out; today's records do not show them") == 3)
 check("both installed copies say the same", src == open(os.path.join(REPO, "scripts", "idle-journal.sh"), encoding="utf-8").read())
+check("his journal reads all of CAPABILITIES.md, his body included (no cut at '## Your Body')",
+      "text.find('## Your Body')" not in src and "print(text.strip())" in src)
+daily = open(os.path.join(REPO, "bin", "vintos-journal.sh"), encoding="utf-8").read()
+check("his 3 a.m. journal has CAPABILITIES.md too", "CAPABILITIES.md" in daily)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

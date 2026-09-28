@@ -138,10 +138,9 @@ CAPABILITIES=$(python3 << 'CAPEOF'
 try:
     with open('/home/gloria/.vintos/workspace/memory/CAPABILITIES.md') as f:
         text = f.read()
-    cut = text.find('## Your Body')
-    if cut != -1:
-        text = text[:cut].strip()
-    print(text)
+    # The whole file, his body included. It was cut at '## Your Body' in the Velaris-era prompt that told
+    # him he had no body (2026-09-28).
+    print(text.strip())
 except:
     print('')
 CAPEOF
