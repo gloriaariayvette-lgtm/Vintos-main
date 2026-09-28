@@ -373,6 +373,8 @@ def speak(text, room=None):
             if r.status_code == 200:
                 with open(out, "wb") as f:
                     f.write(r.content)
+                if room == "live":
+                    fit_to_rooms(out, keep_audio=True)   # same shape as the scene he is standing in
                 print(out); return 0
             log("mac stage error %s: %s - rendering here instead" % (r.status_code, r.text[:200]))
         except Exception as e:
@@ -575,24 +577,35 @@ def room_aspect():
     return max(seen, key=lambda a: (seen[a], -a)) if seen else None
 
 
-def fit_to_rooms(path, aspect=None):
-    """Centre-crop a live clip to the rooms' shape when it is off by more than 2% (2026-09-28: a
-    16:9 render sat small at the top of her screen while the rooms fill it). True when changed."""
+ZOOM_OUT = 1.25    # a wide render keeps 5:4 of its middle, not a tall sliver: "zoom out, man" (2026-09-28)
+
+
+def fit_to_rooms(path, aspect=None, keep_audio=False):
+    """Put a live clip into the rooms' shape when it is off by more than 1%. A wide render is not cut
+    down to a tall sliver (that zoomed in on it): it keeps a square of its middle, full width, over a
+    blurred copy of itself that fills the rest of the frame. True when changed."""
     aspect = aspect or room_aspect()
     size = _clip_size(path)
     if not aspect or not size or abs(size[0] / float(size[1]) - aspect) / aspect < 0.01:
         return False
     import shutil as _sh
+    sw, sh = size
+    if sw / float(sh) > aspect:
+        cw = min(sw, int(sh * ZOOM_OUT))
+        W = cw - cw % 2; H = int(round(W / aspect)); H -= H % 2
+        vf = ("[0:v]crop=%d:%d,split[a][b];[b]crop=ih*%.5f:ih,scale=%d:%d,boxblur=24:2,eq=brightness=-0.12[bg];"
+              "[a]scale=%d:-2[fg];[bg][fg]overlay=0:(%d-h)/2" % (cw, sh, aspect, W, H, W, H))
+    else:
+        vf = "[0:v]crop=iw:iw/%.5f,scale=trunc(iw/2)*2:trunc(ih/2)*2" % aspect
     tmp = path + ".fit.mp4"
-    r = subprocess.run([_sh.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf",
-                        "crop='if(gt(iw/ih,%.5f),ih*%.5f,iw)':'if(gt(iw/ih,%.5f),ih,iw/%.5f)',"
-                        "scale=trunc(iw/2)*2:trunc(ih/2)*2" % (aspect, aspect, aspect, aspect),
-                        "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", tmp], capture_output=True, timeout=300)
+    r = subprocess.run([_sh.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", path,
+                        "-filter_complex", vf] + (["-map", "0:a?", "-c:a", "copy"] if keep_audio else ["-an"]) +
+                       ["-c:v", "libx264", "-pix_fmt", "yuv420p", tmp], capture_output=True, timeout=300)
     if r.returncode != 0 or not os.path.exists(tmp):
         log("live clip not fitted to the rooms: %s" % (r.stderr or b"")[-200:])
         return False
     os.replace(tmp, path)
-    log("live clip fitted to the rooms' shape (%dx%d was %.2f, rooms %.2f)" % (size[0], size[1], size[0] / float(size[1]), aspect))
+    log("live clip fitted to the rooms' shape (%dx%d was %.2f, rooms %.2f)" % (sw, sh, sw / float(sh), aspect))
     return True
 
 
@@ -980,6 +993,11 @@ def main():
         data = load_rooms()
         if not os.path.exists(os.path.join(CLIPS, "live.mp4")) or "live" not in data.get("rooms", {}):
             print("no live scene on disk"); sys.exit(1)
+        by = os.path.join(CLIPS, "by-content")
+        originals = sorted((os.path.join(by, f) for f in (os.listdir(by) if os.path.isdir(by) else []) if f.endswith(".mp4")),
+                           key=os.path.getmtime)
+        if originals:     # the newest render as it arrived, before any fitting
+            import shutil as _shl; _shl.copy(originals[-1], os.path.join(CLIPS, "live.mp4"))
         if fit_to_rooms(os.path.join(CLIPS, "live.mp4")):
             _sync_live_to_mac()
             print("fitted to the rooms' shape")
