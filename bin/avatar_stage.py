@@ -559,16 +559,20 @@ def _clip_size(path):
 
 
 def room_aspect():
-    """Width/height of his filmed rooms (the default room first), so a live scene is made in their shape."""
+    """Width/height of his filmed rooms - the shape most of them share - so a live scene is made in it.
+    (It read the first room it found, which after a live scene is not the room she was looking at; rooms
+    made at different times are not all one shape - 2026-09-28: "slightly smaller in width".)"""
     data = load_rooms()
-    rooms = data.get("rooms", {})
-    order = [data.get("default")] + sorted(rooms)
-    for name in order:
-        if not name or name == "live": continue
-        for c in (rooms.get(name) or {}).get("clips", []):
+    seen = {}
+    for name, cfg in (data.get("rooms") or {}).items():
+        if name == "live": continue
+        for c in (cfg or {}).get("clips", []):
             size = _clip_size(os.path.join(CLIPS, c))
-            if size: return size[0] / float(size[1])
-    return None
+            if size:
+                a = round(size[0] / float(size[1]), 2)
+                seen[a] = seen.get(a, 0) + 1
+                break
+    return max(seen, key=lambda a: (seen[a], -a)) if seen else None
 
 
 def fit_to_rooms(path, aspect=None):
@@ -576,7 +580,7 @@ def fit_to_rooms(path, aspect=None):
     16:9 render sat small at the top of her screen while the rooms fill it). True when changed."""
     aspect = aspect or room_aspect()
     size = _clip_size(path)
-    if not aspect or not size or abs(size[0] / float(size[1]) - aspect) / aspect < 0.02:
+    if not aspect or not size or abs(size[0] / float(size[1]) - aspect) / aspect < 0.01:
         return False
     import shutil as _sh
     tmp = path + ".fit.mp4"

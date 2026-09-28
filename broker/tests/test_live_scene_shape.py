@@ -61,6 +61,10 @@ if shutil.which("ffmpeg") and shutil.which("ffprobe"):
     check("a 16:9 render is fitted to the rooms' shape", A.fit_to_rooms(live) and
           abs(A._clip_size(live)[0] / float(A._clip_size(live)[1]) - 0.8) < 0.02, A._clip_size(live))
     check("a clip already in shape is left alone", A.fit_to_rooms(live) is False)
+    clip(os.path.join(A.CLIPS, "patio.mp4"), 540, 960); clip(os.path.join(A.CLIPS, "kitchen.mp4"), 540, 960)
+    A.save_rooms({"default": "live", "rooms": {"bedroom": {"clips": ["bed.mp4"]}, "patio": {"clips": ["patio.mp4"]},
+                                               "kitchen": {"clips": ["kitchen.mp4"]}, "live": {"clips": ["live.mp4"]}}})
+    check("the shape most rooms share wins, not whichever room is read first", A.room_aspect() == 0.56, A.room_aspect())
     mac_clip = os.path.join(HOME, "mac-live.mp4"); clip(mac_clip, 1280, 720)
     check("the Mac fits its own copy too (it speaks over it)", M.fit_aspect(mac_clip, 0.8)
           and abs(A._clip_size(mac_clip)[0] / float(A._clip_size(mac_clip)[1]) - 0.8) < 0.02, A._clip_size(mac_clip))
