@@ -910,7 +910,9 @@ def register(app, secret):
         path = os.path.realpath(os.path.join(CLIPS, name))
         if not path.startswith(os.path.realpath(CLIPS) + os.sep) or not os.path.exists(path):
             raise HTTPException(status_code=404, detail="no such clip")
-        return FileResponse(path, media_type="video/mp4")
+        # live.mp4 is replaced under the same name by every new scene; the phone must revalidate, never
+        # replay a cached older scene (2026-09-28). Unchanged clips still come back as a cheap 304.
+        return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "no-cache"})
 
     @app.post("/api/avatar/stage/speak")
     async def stage_speak(request: Request):

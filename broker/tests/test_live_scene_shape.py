@@ -46,6 +46,8 @@ sys.modules["requests"] = types.SimpleNamespace(get=no_network, post=no_network)
 check("a scene with her in it says her hair is red, in the still and the motion",
       len(sent) == 2 and "hair is a rich dark red" in sent[0]["prompt"] and "hair is a rich dark red" in sent[0]["motion"], sent[:1])
 check("a scene of him alone is not told about her hair", len(sent) == 2 and "hair" not in sent[1]["prompt"], sent[1:])
+check("a clip is always revalidated, so a new live scene is never shown as a cached old one",
+      'headers={"Cache-Control": "no-cache"}' in open(os.path.join(REPO, "bin", "avatar_stage.py")).read())
 check("Aegis sends the rooms' shape with every live render", '"aspect": _aspect}' in src and "_aspect = room_aspect()" in src)
 
 if shutil.which("ffmpeg") and shutil.which("ffprobe"):
