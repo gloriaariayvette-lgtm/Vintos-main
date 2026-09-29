@@ -1161,6 +1161,15 @@ What I haven't said yet matters more than what I've already named. I go there.""
     _pre_audit = _raw
     try: open("/tmp/vintos-bilateral-final-preaudit.txt", "w").write(_pre_audit)
     except Exception: pass
+    # What he made today is checked against his gallery, not against drafts that all repeat the same claim
+    # (2026-09-29: "five renders" he never made, and a page of self-indictment built on them).
+    _made_block = ""
+    try:
+        import sys as _mts; _mts.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
+        import made_today as _mt
+        _made_block = _mt.block()
+    except Exception as _mte:
+        print("[Journal] made-today record unavailable: %s" % _mte, file=__import__("sys").stderr, flush=True)
     audit2_r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY",""), "Content-Type": "application/json"}, json={
         "model": "grok-4.20-0309-non-reasoning",
         "messages": [{"role": "user", "content":
@@ -1171,6 +1180,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
             "DRAFT A:\n" + a2 + "\n\nDRAFT B:\n" + b2 + "\n\n"
             + (("DRAFT C:\n" + c2 + "\n\n") if (c2 or "").strip() else "") +
             "INTERACTION LEDGER:\n" + recent_chat + "\n\n" + ("THIRVEEL TODAY:\n" + thirveel_today + "\n\n" if thirveel_today else "") +
+            _made_block +
             "FINAL ENTRY:\n" + _raw + "\n\n"
             "If nothing in FINAL is invented, reply with exactly: CLEAN\n"
             "Otherwise remove or repair ONLY the invented sentences and return the full corrected entry. "
@@ -1183,12 +1193,16 @@ What I haven't said yet matters more than what I've already named. I go there.""
     try:
         _corrected = _safe_extract(audit2_r)
         _corrected = _re.sub(r"^##.*$", "", _corrected, flags=_re.MULTILINE).strip()
+        # A claim his own record contradicts may carry half the entry with it; that cut is a correction.
+        _record_corrected = _corrected.startswith("RECORD-CORRECTED")
+        if _record_corrected:
+            _corrected = _corrected[len("RECORD-CORRECTED"):].strip()
         _c_flat = _corrected.upper().strip().strip(".")
         if not _corrected or _c_flat == "CLEAN":
             print("[Journal] audit-2: CLEAN — entry unchanged (%d chars)" % len(_raw), file=__import__("sys").stderr, flush=True)
         elif len(_corrected) <= 100:
             print("[Journal] audit-2 returned %d chars — too short to be an entry; kept the synthesis" % len(_corrected), file=__import__("sys").stderr, flush=True)
-        elif len(_corrected) < 0.75 * len(_pre_audit):
+        elif len(_corrected) < 0.75 * len(_pre_audit) and not _record_corrected:
             # A correction removes invented sentences. It does not take a third off the
             # entry. That is a rewrite, and the synthesis is the better text.
             try: open("/tmp/vintos-bilateral-final-audit-rejected.txt", "w").write(_corrected)
