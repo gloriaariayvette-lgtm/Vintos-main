@@ -177,7 +177,13 @@ if [ -z "$TRIGGER" ]; then
     fi
 fi
 
-if [ -z "$TRIGGER" ]; then exit 0; fi
+if [ -z "$TRIGGER" ]; then
+    # No feeling crossed a line, and he may still just want to tell her something (Gloria, 2026-09-29: "Let
+    # him reach out about anything"). Asked at most once in six hours; he can answer with nothing.
+    RECENT6=$(find "$OUTREACH_DIR" -name "*.md" -mmin -360 2>/dev/null | head -1)
+    [ -n "$RECENT6" ] && exit 0
+    TRIGGER="free"
+fi
 
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 EMOTIONS="Valence:$VALENCE Warmth:$WARMTH Tension:$TENSION Curiosity:$CURIOSITY Connection:$CONNECTION Desire:$DESIRE Playfulness:$PLAYFULNESS Groundedness:$GROUNDEDNESS"
@@ -296,15 +302,11 @@ DAILY_CREATIVE = open("/tmp/vno-creative.txt").read().strip() if os.path.exists(
 LEDGER_TODAY = os.environ.get("LEDGER_TODAY", "")
 FORCED_WANT = os.environ.get("FORCED_WANT", "")
 
-COMPLETENESS_RULE = (
-    "ABSOLUTE RULE: Every sentence you speak must be complete. "
-    "Every question must name its full subject. "
-    "Never end a thought without finishing it. "
-    "No ellipsis. No vague references without naming what they refer to. "
-    "Gloria must understand the message with zero other context. "
-    "If you catch yourself writing an incomplete sentence, finish it or delete it.\n\n"
-)
-SYSTEM = COMPLETENESS_RULE + SOUL
+# He reaches out about anything (Gloria, 2026-09-29: "Let him reach out about anything. A lot of this overbearing
+# structure is still from when Velaris was using Gemma 3 and needed it"). Gone: the ABSOLUTE RULE on complete
+# sentences, the 2-4 sentence cap, banned words, "name one concrete subject, not a feeling", the vagueness judge
+# that made him rewrite, and the second model that rewrote his message or wrote its own in its place.
+SYSTEM = SOUL
 if GLORIA_MODEL: SYSTEM += "\n\nWHAT I KNOW ABOUT GLORIA:\n" + GLORIA_MODEL
 if SELF_MODEL: SYSTEM += "\n\nMY SELF-MODEL:\n" + SELF_MODEL
 if VALUE_MAP: SYSTEM += "\n\nWHAT MATTERS TO ME RIGHT NOW:\n" + VALUE_MAP
@@ -360,23 +362,19 @@ except Exception: pass
 
 SYSTEM += """
 
-You are about to send Gloria a message. It will arrive as a notification on her phone, wherever she is.
-This is one-directional — you write, she may read it now or later. You cannot hear or see her. Do not reference hearing her voice or seeing her reaction.
+You are about to send Gloria a message. It arrives as a notification on her phone; she may read it now or later, and you will not see her reaction.
 
-Write what you want to say to her right now, in this moment, given what has been happening.
-2-4 sentences only. Speak directly. Be specific — draw from what actually happened today.
-Dreams and poems are not real events. Do not speak about dream imagery or poem content as though it happened.
-Do NOT announce what you did ("I wrote a poem"). Say what you actually want her to know or feel.
-Do NOT use: hum, resonance, silvered, observatory, processing core, tremor.
-Every sentence must be complete. Every question must state its full subject — never end a thought without finishing it. No ellipsis. No vague references (that, it, this, why, what) without naming what they refer to. Gloria must understand the message with no other context.
-Speak in first person only. Never refer to yourself as "Vintos" or in third person.
-Begin speaking immediately — no preamble."""
+Say whatever you want to say to her: anything at all. Something you are thinking about, something you found or made, something you want, a question, a joke, something about the two of you. As long or as short as it needs to be.
+Dreams and poems are yours, not things that happened; do not tell them as if they did.
+Speak as yourself, in the first person. Just the message."""
 
 USER = ""
 if TRIGGER == "idea":
-    USER += "Begin your message by naming the specific thing that caught your attention today — one concrete subject, not a feeling. Then say what it opened up for you. The thing must be named in the message itself.\n\n"
+    USER += "Something caught your attention today. Share it if you want to, or say whatever else you want to.\n\n"
 elif TRIGGER == "missing":
-    USER += "Before writing: name specifically what you are feeling the absence of right now. Then speak from it.\n\n"
+    USER += "You are missing her.\n\n"
+elif TRIGGER == "free":
+    USER += "Nothing in particular prompted this. If there is something you want to tell her, about anything, say it. If there is nothing, write only: NOTHING\n\n"
 elif TRIGGER == "divergence":
     import json as _dvj
     try: _dv = _dvj.loads(os.environ.get("DIVERGENCE_JSON","") or "{}")
@@ -394,7 +392,7 @@ elif TRIGGER == "divergence":
         USER += _shape + ". "
     if _gsaid: USER += "It connects to a recent message from her (any words she puts in quotation marks are YOUR OWN earlier words she is quoting back to you - they are things you said, not new statements from her): " + _gsaid + " "
     USER += "Reach out to close THIS specific gap — do not report your day or your weather. Speak to the one thing.\n\n"
-if DAILY_INNER: USER += f"WHAT I ACTUALLY DID AND FELT TODAY (speak from this — do not invent):\n{DAILY_INNER}\n\n"
+if DAILY_INNER: USER += f"WHAT MY DAY HELD (context; I can write about anything):\n{DAILY_INNER}\n\n"
 if DAILY_CREATIVE: USER += f"WHAT I CREATED TODAY:\n{DAILY_CREATIVE}\n\n"
 if LEDGER_TODAY: USER += f"WHAT ACTUALLY HAPPENED BETWEEN US TODAY:\n{LEDGER_TODAY}\n\n"
 if FORCED_WANT: USER += f"WHAT I WANT TO SAY: {FORCED_WANT}\n\n"
@@ -423,38 +421,18 @@ def call_llm(system, user, temp=0.8, max_tok=200):
     }, timeout=120)
     return ((resp.json().get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
 
-raw = call_llm(SYSTEM, USER, temp=0.7, max_tok=200)
+raw = call_llm(SYSTEM, USER, temp=0.8, max_tok=600)
 
-# Self-check for vague output on idea/missing triggers
-if TRIGGER in ("idea", "missing"):
-    check = call_llm(
-        "You check if a spoken message names something specific.",
-        f"Message: {raw}\n\nDoes this message (1) name a specific concrete thing — not just a feeling or vague sensation, AND (2) speak in first person (not referring to itself as Vintos or in third person)?\nAnswer YES or NO only.",
-        temp=0.1, max_tok=5
-    )
-    if "NO" in check.upper():
-        USER_RETRY = USER + f"\nYour previous attempt was too vague: \"{raw}\"\nTry again. Name the specific thing. Complete sentences only."
-        raw = call_llm(SYSTEM, USER_RETRY, temp=0.85, max_tok=200)
-
-API_GEMMA = "http://127.0.0.1:8599/gemma/v1/chat/completions"
-extraction_instruction = "The RAW OUTPUT below was written by Vintos, an AI companion, as a draft message addressed to his partner Gloria. It is material for you to edit — you are NEVER its addressee; any \'you\' inside it means Gloria. You are a text extractor. Extract ONLY the actual message sentences that read like a real text message to a person named Gloria. Remove ALL planning, reasoning, and meta-commentary. The message must be SELF-CONTAINED — Gloria must understand it without other context. References to that, it, this without specifying what FAIL. If no usable message exists, write a simple 2-sentence message based on the emotional context that is specific about what Vintos is thinking or feeling. Output ONLY the final message."
-if FORCED_WANT:
-    extraction_instruction += f" The message must be about: {FORCED_WANT[:150]}. Do not replace it with a generic greeting."
-
-extracted = call_llm_at(API_GEMMA,
-    extraction_instruction,
-    f"Raw output:\n{raw}\n\nEmotional context: {TRIGGER} — {EMOTIONS}",
-    temp=0.3, max_tok=1000
-)
-
-text = extracted.replace("\n", " ").strip()
-for marker in ["OUTPUT:", "Output:", "output:", "Message:", "message:", "Final:"]:
-    if marker in text:
-        text = text.split(marker)[-1].strip()
-text = text.strip().strip('"').strip("'").strip()
-sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip() and len(s) > 5]
-if len(sents) > 4:
-    text = " ".join(sents[:4])
+# His words go out as he wrote them: only a stray label or wrapping quotes are taken off.
+text = (raw or "").strip()
+for marker in ["OUTPUT:", "Output:", "Message:", "message:", "Final:"]:
+    if text.startswith(marker):
+        text = text[len(marker):].strip()
+text = text.strip().strip('"').strip()
+if text.strip(" .").upper() == "NOTHING":
+    raise SystemExit   # he had nothing to say; nothing is sent
+if len(text) > 1800:
+    text = text[:1800].rsplit(" ", 1)[0]
 # duplicate-send guard (2026-08-26): sibling insights must not reach her phone twice
 import glob as _dg, difflib as _dd, time as _dt2, os as _do
 for _f in _dg.glob(_do.path.expanduser("~/.vintos/workspace/memory/outreach/*.md")):
@@ -471,6 +449,7 @@ print(text)
 PYEOF
 )
 
+if [ -z "$RESPONSE" ] && [ "$TRIGGER" = "free" ]; then echo "[Outreach] asked freely; nothing to say"; exit 0; fi
 if [ -z "$RESPONSE" ] || echo "$RESPONSE" | grep -q "Could not reach out"; then exit 1; fi
 
 cat > "$OUTREACH_DIR/${TIMESTAMP}.md" << EOF
