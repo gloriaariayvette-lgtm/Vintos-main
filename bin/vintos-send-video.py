@@ -726,13 +726,25 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
             open(gpath, "wb").write(data)
             log("built GROUNDED scene still (%d bytes) -> %s" % (len(data), os.path.basename(gpath)))
             return gpath
-    # The ungrounded still is Grok image-edit off his hero, on her SuperGrok subscription (2026-09-25).
-    prompt = (SUBJECT + "Keep his exact face, hair, and build from the reference image, but show his WHOLE "
-              "body, full-length, naturally posed within the scene. Place him here: " + scene.strip().rstrip(".")
-              + ". Photoreal, natural light, cinematic, the entire scene in frame.")
+    # Grok image-edit on her SuperGrok subscription (2026-09-25). The place photo goes with his hero: until
+    # 2026-09-29 this step sent the hero alone, so whenever the grounded compose above was unavailable the
+    # real place he chose was dropped and the video used his hero and the words only.
+    grounded = bool(scene_ref and os.path.exists(scene_ref))
+    if grounded:
+        prompt = (SUBJECT + "The FIRST reference image is the REAL place she photographed: reproduce THAT EXACT "
+                  "location, the same features in the same positions, the same light. Do not invent a new place. "
+                  "The SECOND reference image is the man: keep his exact face, hair, and build, and show his WHOLE "
+                  "body, full-length, naturally within that place. He is: " + scene.strip().rstrip(".")
+                  + ". Photoreal, natural light, cinematic, the entire scene in frame.")
+        refs = [scene_ref, HERO]
+    else:
+        prompt = (SUBJECT + "Keep his exact face, hair, and build from the reference image, but show his WHOLE "
+                  "body, full-length, naturally posed within the scene. Place him here: " + scene.strip().rstrip(".")
+                  + ". Photoreal, natural light, cinematic, the entire scene in frame.")
+        refs = [HERO]
     gs = _grok_sub()
     try:
-        data = gs.edit(prompt, [HERO])
+        data = gs.edit(prompt, refs)
     except gs.Unavailable as e:
         log("grok subscription: %s — no scene still" % e); return None
     except Exception as e:
@@ -740,7 +752,8 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
     os.makedirs(SCENE_DIR, exist_ok=True)
     path, _ = _am.unique_path(SCENE_DIR, "scene-%s" % datetime.now().strftime("%Y%m%d-%H%M%S"), ".jpg", data)
     with open(path, "wb") as f: f.write(data)
-    log("built scene still (%d bytes) -> %s" % (len(data), os.path.basename(path)))
+    log("built scene still%s (%d bytes) -> %s" % (" in " + os.path.basename(scene_ref) if grounded else "",
+                                                   len(data), os.path.basename(path)))
     return path
 
 

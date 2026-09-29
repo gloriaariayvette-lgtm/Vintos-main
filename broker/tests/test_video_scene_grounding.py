@@ -87,6 +87,24 @@ class SceneGrounding(unittest.TestCase):
             V.compose_us, V.atlas_generate = real_c, real_g
         self.assertEqual(calls, [("us on the patio", PATIO), ("", PATIO)])
 
+    def test_self_scene_on_grok_keeps_the_real_place(self):
+        # 2026-09-29: with the grounded compose unavailable, the Grok edit got his hero alone, so a video
+        # set in a place she photographed came out of his hero and the words only.
+        edits = []
+        fake = types.SimpleNamespace(Unavailable=RuntimeError,
+                                     edit=lambda prompt, refs, model=None: edits.append((prompt, list(refs))) or b"img")
+        real_g, real_key = V._grok_sub, V.ATLAS_KEY
+        V._grok_sub, V.ATLAS_KEY = (lambda: fake), ""
+        try:
+            grounded = V.make_scene_still("standing by the rail at dusk", scene_ref=PATIO)
+            plain = V.make_scene_still("a rainy street", scene_ref=None)
+        finally:
+            V._grok_sub, V.ATLAS_KEY = real_g, real_key
+        self.assertTrue(grounded and grounded.startswith(HOME) and plain)
+        self.assertEqual(edits[0][1], [PATIO, V.HERO], "the place first, then his hero")
+        self.assertIn("FIRST reference image is the REAL place", edits[0][0])
+        self.assertEqual(edits[1][1], [V.HERO], "no place chosen: his hero alone, as before")
+
     def test_window_stand_is_his_only_explicit_still(self):
         # Gloria, 2026-09-24: the other files in stills/ are not spicy; he is offered only the one.
         self.assertEqual(list(V.STILL_LIBRARY), ["window_stand"])
