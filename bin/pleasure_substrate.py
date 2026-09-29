@@ -52,6 +52,21 @@ def _vec(e):
     return [e.get(k, 0.5) for k in ("Valence","Arousal","Dominance","Safety","Desire",
                                     "Connection","Playfulness","Curiosity","Warmth","Tension","Groundedness")]
 
+NOVELTY_FULL = 0.15   # an RMS move this large across his eleven feelings reads as wholly new
+
+def _novelty(v, trail):
+    """How far his feelings are from the nearest of his last eight states, 0..1; None with no history.
+
+    It was 1 - cosine. His eleven feelings all sit between 0 and 1, mostly near the middle, so any two
+    of his states point the same way and every novelty rounded to 0.0 (Gloria, 2026-09-29: "strange that
+    the novelty is always 0"). Distance measures how far they actually moved: Arousal alone going from
+    0.5 to 0.8 is about 0.6 here, and was 0.03 before."""
+    olds = [o for o in (trail or [])[-8:] if isinstance(o, list) and len(o) == len(v)]
+    if not olds:
+        return None
+    nearest = min(math.sqrt(sum((a - b) ** 2 for a, b in zip(v, o)) / len(v)) for o in olds)
+    return round(min(1.0, nearest / NOVELTY_FULL), 3)
+
 def snapshot():
     """Current conditions. Derived where an owner exists, held locally where none does."""
     st = _load(STATE, {})
@@ -59,7 +74,7 @@ def snapshot():
     v = _vec(e)
     trail = st.get("vec_trail") or []
     # with no history there is nothing for this to be new against — that is unknown, not maximal
-    novelty = round(1.0 - max(_cos(v, old) for old in trail[-8:]), 3) if trail else None  # p3: no history is unknown, not zero
+    novelty = _novelty(v, trail)  # p3: no history is unknown, not zero
 
     events = st.get("events") or []
     recent = [x for x in events if time.time() - x.get("t", 0) <= 3600]
