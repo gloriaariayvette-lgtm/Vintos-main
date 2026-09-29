@@ -44,7 +44,7 @@ check("the Lab endpoints are ordinary code that can be exercised",
       all(k in scope for k in ("chemistry_lab_notebook", "chemistry_lab_sessions",
                                "chemistry_lab_reviews", "chemistry_lab_activity", "chemistry_lab_threads",
                                "chemistry_lab_grades", "chemistry_lab_taste", "chemistry_lab_curve",
-                               "chemistry_lab_structures", "chemistry_lab_structure")))
+                               "chemistry_lab_structures", "chemistry_lab_structure", "chemistry_lab_structure_render")))
 
 GRADE = {"run_id": "RUN-A", "at": "2026-09-13T03:20:00+00:00", "experiment": "molecule",
          "execution_state": "completed", "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK",
@@ -89,6 +89,7 @@ artifact_root = os.path.join(lab.ROOT, "artifacts", "esmfold")
 os.makedirs(artifact_root, exist_ok=True)
 open(os.path.join(artifact_root, "P00001.pdb"), "w").write(
     "ATOM      1  CA  ALA A   1       1.000   2.000   3.000  1.00 20.00           C  \n")
+open(os.path.join(artifact_root, "P00001-contacts.png"), "wb").write(b"\x89PNG\r\n\x1a\nfixture")
 
 req = object()
 thread_response = asyncio.run(scope["chemistry_lab_threads"](req))
@@ -147,6 +148,7 @@ structures = asyncio.run(scope["chemistry_lab_structures"](req, limit=10))
 view = asyncio.run(scope["chemistry_lab_structure"](req, structures["structures"][0]["artifact_id"]))
 check("the gallery lists and parses a real preserved structure", structures["ok"] and view["ok"] and view["atom_count"] == 1, (structures, view))
 check("the endpoint returns coordinates, not the artifact filesystem", not view["source"].startswith("/") and "text" not in view, view)
+check("viewer renders enter the same opaque gallery inventory", structures["renders"] and not structures["renders"][0]["source"].startswith("/"), structures)
 check("every Lab read required the secret", len(secrets) == 12, len(secrets))
 
 # --- the page ------------------------------------------------------------------------------------
@@ -164,6 +166,8 @@ check("no charting library was added",
 check("the curve is hand-rolled svg", "<svg viewBox=" in PAGE and "stroke-dasharray" in PAGE)
 check("the structure gallery reuses bundled three.js without a vendor dependency",
       "_labDrawStructure" in PAGE and "new THREE.WebGLRenderer" in PAGE and "data-lab-structure" in PAGE)
+check("viewer-produced renders are fetched through the secret-guarded gallery route",
+      "structure-render/" in PAGE and "payload.renders" in PAGE and "URL.createObjectURL(await res.blob())" in PAGE)
 check("the structure view says what it is epistemically",
       "computational artifact, not biological fact" in PAGE and "atoms plus backbone trace" in PAGE)
 check("taste is labelled as taste, not as score", "grades are a separate ledger" in PAGE)

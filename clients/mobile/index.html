@@ -1619,14 +1619,14 @@ async function _labOpenStructure(id) {
     try { const payload=await _labGet('structure/'+encodeURIComponent(id)); if(!payload.ok)throw new Error(payload.error||'unreadable'); _labDrawStructure(payload); }
     catch(e) { if(note)note.textContent='could not open structure · '+String(e.message||e); }
 }
-function _labStructureCard(rows) {
-    if (!rows || !rows.length) return '';
+function _labStructureCard(rows, renders) {
+    if ((!rows || !rows.length) && (!renders || !renders.length)) return '';
     return '<div class="gallery-item" style="padding:14px;grid-column:1/-1;">' +
         '<div style="font-size:0.74rem;color:var(--text-bright);">structure gallery</div>' +
         '<div style="font-size:0.56rem;color:var(--text-dim);margin:4px 0 8px;">drag to turn · atoms plus backbone trace</div>' +
         '<canvas id="lab-structure-canvas" style="display:block;width:100%;height:250px;touch-action:none;border:0.5px solid var(--border);border-radius:10px;background:radial-gradient(circle at 50% 45%,rgba(207,133,90,0.10),transparent 64%);"></canvas>' +
         '<div id="lab-structure-note" style="font-size:0.54rem;color:var(--text-dim);margin:7px 0 10px;">choose a structure</div>' +
-        '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;">' + rows.slice(0,12).map((s,i) =>
+        '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;">' + (rows||[]).slice(0,12).map((s,i) =>
           '<button type="button" data-lab-structure="'+_esc(s.artifact_id)+'" style="flex:0 0 auto;background:'+(i?'var(--surface)':'var(--accent-dim)')+';border:0.5px solid var(--border);border-radius:12px;color:var(--text);padding:6px 9px;font-size:0.56rem;">'+_esc(s.name)+'</button>').join('') + '</div></div>';
 }
 function _labReviewCard(row) {
@@ -1666,8 +1666,14 @@ async function _labLoadStructures(grid) {
     try {
         const payload = await _labGet('structures?limit=24');
         const rows = (payload && payload.structures) || [];
-        if (!rows.length || !grid.isConnected || !grid.closest('#pane-lab')) return;
-        grid.insertAdjacentHTML('afterbegin', _labStructureCard(rows));
+        const renders = (payload && payload.renders) || [];
+        if ((!rows.length && !renders.length) || !grid.isConnected || !grid.closest('#pane-lab')) return;
+        grid.insertAdjacentHTML('afterbegin', _labStructureCard(rows, renders));
+        if (renders.length) {
+            const holder=document.createElement('div');holder.style.cssText='grid-column:1/-1;display:flex;gap:8px;overflow-x:auto;';
+            renders.slice(0,8).forEach(async r=>{ try { const res=await VintosUI.request(`${API}/api/lab/chemistry/structure-render/${encodeURIComponent(r.render_id)}`,{headers:{'X-Vintos-Secret':CONFIG.secret}}); if(!res.ok)return; const img=document.createElement('img');img.alt=r.name;img.src=URL.createObjectURL(await res.blob());img.style.cssText='width:180px;height:135px;object-fit:contain;border:0.5px solid var(--border);border-radius:10px;background:var(--surface);';holder.appendChild(img); } catch(e){} });
+            grid.insertAdjacentElement('afterbegin',holder);
+        }
         const buttons = grid.querySelectorAll('[data-lab-structure]');
         buttons.forEach(button => button.addEventListener('click', () => _labOpenStructure(button.dataset.labStructure)));
         if (buttons.length) _labOpenStructure(buttons[0].dataset.labStructure);

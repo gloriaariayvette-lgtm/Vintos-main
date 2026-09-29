@@ -6918,7 +6918,8 @@ async def chemistry_lab_structures(request: Request, limit: int = 24):
     """Bounded metadata for PDB/mmCIF artifacts the Lab has actually produced."""
     _require_secret(request)
     try:
-        return {"ok": True, "structures": _chemistry_structure_module().inventory(limit)}
+        module=_chemistry_structure_module()
+        return {"ok": True, "structures": module.inventory(limit), "renders":module.render_inventory(min(limit,12))}
     except Exception as exc:
         return {"ok": False, "structures": [], "error": str(exc)[:180]}
 
@@ -6931,6 +6932,16 @@ async def chemistry_lab_structure(request: Request, artifact_id: str):
         return _chemistry_structure_module().structure(str(artifact_id)[:32])
     except Exception as exc:
         return {"ok": False, "artifact_id": str(artifact_id)[:32], "error": str(exc)[:180]}
+
+
+@app.get("/api/lab/chemistry/structure-render/{render_id}")
+async def chemistry_lab_structure_render(request: Request, render_id: str):
+    """A viewer-produced render resolved only by its opaque Lab inventory id."""
+    _require_secret(request)
+    path=_chemistry_structure_module().render_path(str(render_id)[:32])
+    if path is None: raise HTTPException(status_code=404,detail="structure render not found")
+    suffix=path.suffix.lower(); media="image/jpeg" if suffix in (".jpg",".jpeg") else "image/"+suffix[1:]
+    return FileResponse(path,media_type=media,headers={"Cache-Control":"private, max-age=60"})
 
 
 @app.get("/api/briefing/latest")

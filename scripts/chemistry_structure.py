@@ -27,6 +27,10 @@ def _allowed(path: Path) -> bool:
     return name.endswith(".pdb") or name.endswith(".cif") or name.endswith(".cif.gz")
 
 
+def _render_allowed(path: Path) -> bool:
+    return path.name.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+
+
 def _inside(path: Path) -> bool:
     try:
         return os.path.commonpath((str(ROOT.resolve()), str(path.resolve()))) == str(ROOT.resolve())
@@ -37,6 +41,14 @@ def _inside(path: Path) -> bool:
 def _files() -> list[Path]:
     if not ROOT.is_dir(): return []
     rows = [p for p in ROOT.rglob("*") if p.is_file() and not p.is_symlink() and _allowed(p) and _inside(p)]
+    rows.sort(key=lambda p: (p.stat().st_mtime, str(p)), reverse=True)
+    return rows[:MAX_FILES]
+
+
+def _render_files() -> list[Path]:
+    if not ROOT.is_dir(): return []
+    rows = [p for p in ROOT.rglob("*") if p.is_file() and not p.is_symlink()
+            and _render_allowed(p) and _inside(p) and p.stat().st_size <= MAX_COMPRESSED_BYTES]
     rows.sort(key=lambda p: (p.stat().st_mtime, str(p)), reverse=True)
     return rows[:MAX_FILES]
 
@@ -56,6 +68,22 @@ def inventory(limit: int = 24) -> list[dict]:
                     "kind": kind, "source": rel, "bytes": path.stat().st_size,
                     "truth_status": "computational_structure_artifact_not_biological_fact"})
     return out
+
+
+def render_inventory(limit: int = 12) -> list[dict]:
+    """Return opaque metadata for viewer-produced renders beneath the artifact root."""
+    limit=max(1,min(int(limit),24)); out=[]
+    for path in _render_files()[:limit]:
+        suffix=path.suffix.lower(); media="image/jpeg" if suffix in (".jpg",".jpeg") else "image/"+suffix[1:]
+        out.append({"render_id":_id(path),"name":path.name,"source":str(path.relative_to(ROOT)),
+                    "media_type":media,"bytes":path.stat().st_size,
+                    "truth_status":"render_of_computational_structure_artifact_not_biological_fact"})
+    return out
+
+
+def render_path(render_id: str) -> Path | None:
+    wanted=str(render_id)[:32]
+    return next((p for p in _render_files() if _id(p)==wanted),None)
 
 
 def _read(path: Path) -> str:
@@ -133,4 +161,3 @@ def structure(artifact_id: str) -> dict:
             "kind": "mmcif" if ".cif" in path.name.lower() else "pdb", "source": rel,
             "atoms": atoms, "atom_count": len(atoms), "truncated": len(atoms) == MAX_ATOMS,
             "truth_status": "parsed_from_computational_structure_artifact_not_biological_fact"}
-
