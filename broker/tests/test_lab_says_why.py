@@ -30,6 +30,12 @@ said = W.failure(PermissionError("denied for key sk-SECRET-123 on\nscorer RNA_SE
 check("the worker's failure line names the error and hides the key",
       said == "PermissionError: denied for key [key] on scorer RNA_SEQ", said)
 
+import numpy as np
+raw = np.zeros((30, 10)); raw[:, 7] = 5; raw[:, 2] = -9; raw[0, 4] = float("nan")
+check("an oversized Atlas matrix keeps its strongest tracks instead of failing the question",
+      W.strongest_tracks(raw, limit=60) == [2, 7], W.strongest_tracks(raw, limit=60))
+check("a matrix within the limit keeps every track", W.strongest_tracks(raw, limit=1000) == list(range(10)))
+
 import lab_sources as S
 key = Path(HOME) / "atlas.key"; key.write_text("sk-SECRET-123"); key.chmod(0o600)
 fake = Path(HOME) / "fake-python"

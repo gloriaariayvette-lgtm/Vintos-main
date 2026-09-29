@@ -11,6 +11,18 @@ def finite_values(value):
     return None if isinstance(value, float) and not math.isfinite(value) else value
 
 
+CELL_LIMIT = 100000
+
+
+def strongest_tracks(raw, limit=CELL_LIMIT):
+    """Column indexes of the tracks with the largest absolute score, as many as fit the limit, in track order."""
+    import numpy as np
+    raw = np.asarray(raw, dtype=float)
+    keep = max(1, limit // max(1, raw.shape[0]))
+    strength = np.nan_to_num(np.abs(raw), nan=0.0).max(axis=0)
+    return sorted(int(i) for i in np.argsort(-strength, kind='stable')[:keep])
+
+
 def run(query, key):
     from alphagenome.atlas import atlas
     from alphagenome.data import genome
@@ -37,14 +49,21 @@ def run(query, key):
                                    gene_ids=query.get('gene_ids'), max_workers=1, progress_bar=False)
     scores = {}
     for name, matrix in values.items():
-        if matrix.n_obs * matrix.n_vars > 100000: raise ValueError('score matrix exceeds Lab limit')
         raw = matrix.X.toarray() if hasattr(matrix.X, 'toarray') else matrix.X
+        total = matrix.n_vars
+        if matrix.n_obs * matrix.n_vars > CELL_LIMIT:
+            # A whole ATAC scorer over a 10 bp window is more tracks than the Lab keeps. It used to fail the
+            # question outright (2026-09-29); now the tracks with the strongest signal are kept, and it says so.
+            keep = strongest_tracks(raw, CELL_LIMIT)
+            matrix, raw = matrix[:, keep], raw[:, keep]
         scores[name] = {'scores': finite_values(raw.tolist()),
                         'variants': [{'chromosome': v.chromosome, 'position': v.position,
                                       'reference_bases': v.reference_bases, 'alternate_bases': v.alternate_bases}
                                      for v in matrix.obs['variant']] if 'variant' in matrix.obs else [], 'obs': json.loads(matrix.obs.to_json(orient='split', default_handler=str)),
                         'var': json.loads(matrix.var.to_json(orient='split', default_handler=str)),
-                        'quantiles': finite_values(matrix.layers['quantiles'].tolist()) if 'quantiles' in matrix.layers else None}
+                        'quantiles': finite_values(matrix.layers['quantiles'].tolist()) if 'quantiles' in matrix.layers else None,
+                        'tracks_kept': matrix.n_vars, 'tracks_total': total,
+                        **({'tracks_selection': 'strongest_absolute_signal'} if matrix.n_vars < total else {})}
     return {'scores': scores, 'sdk_version': importlib.metadata.version('alphagenome'),
             'scorer_metadata': {s: {'name': metadata[s].name, 'is_signed': metadata[s].is_signed}
                                 for s in query['scorers']},
