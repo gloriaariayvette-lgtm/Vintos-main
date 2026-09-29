@@ -26,7 +26,7 @@ LAB = WS / "memory" / "chemistry-lab"
 ARTIFACTS = LAB / "artifacts"
 SEQUENCES = ARTIFACTS / "sequences"
 LEDGER = LAB / "instrument-runs.json"
-DAILY_RUNS = 3
+DAILY_RUNS = 25
 OFFERED = {
     "structure_viewer": ("structure.analyze", "structure.measure", "structure.render_image"),
     "sequence_viewer": ("sequence.run_analysis", "sequence.align"),
