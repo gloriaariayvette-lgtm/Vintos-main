@@ -709,11 +709,17 @@ class AtlasProcess:
         # SDK timeout only bounds channel creation. The process deadline bounds the entire RPC.
         with tempfile.TemporaryDirectory(prefix='vintos-atlas-') as scratch:
             output = Path(scratch) / 'result.json'
-            run = subprocess.run([self.python, str(Path(__file__).with_name('lab_atlas_worker.py')),
-                                  self.key_file, str(output)], input=json.dumps(query), text=True,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90,
-                                 env={**{k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','TMPDIR','SSL_CERT_FILE','SSL_CERT_DIR')}, 'PYTHONNOUSERSITE':'1'})
-            if run.returncode: raise RuntimeError('Atlas query failed; check SDK/access/scorer configuration')
+            try:
+                run = subprocess.run([self.python, str(Path(__file__).with_name('lab_atlas_worker.py')),
+                                      self.key_file, str(output)], input=json.dumps(query), text=True,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90,
+                                     env={**{k:v for k,v in os.environ.items() if k in ('PATH','HOME','LANG','TMPDIR','SSL_CERT_FILE','SSL_CERT_DIR')}, 'PYTHONNOUSERSITE':'1'})
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('Atlas query timed out after 90s') from None
+            if run.returncode:
+                why = Path(scratch) / 'error.txt'
+                raise RuntimeError('Atlas query failed: ' + (why.read_text()[:300] if why.is_file()
+                                   else 'worker exited %d before saying why' % run.returncode))
             if output.stat().st_size > MAX_BYTES: raise ValueError('Atlas response exceeds limit')
             return json.loads(output.read_text())
 

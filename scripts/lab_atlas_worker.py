@@ -51,8 +51,21 @@ def run(query, key):
             'available_scorers': sorted(metadata)[:40], 'scorers_chosen_by_lab': chosen_by_lab}
 
 
+def failure(exc, key):
+    """Why the query failed, in one line the Lab can show; the key never appears in it."""
+    text = '%s: %s' % (type(exc).__name__, ' '.join(str(exc).split()))
+    if key: text = text.replace(key, '[key]')
+    return text[:300]
+
+
 if __name__ == '__main__':
-    result = run(json.loads(sys.stdin.read(8192)), Path(sys.argv[1]).read_text().strip())
-    encoded = json.dumps(result, allow_nan=False)
-    if len(encoded.encode()) > 2*1024*1024: raise ValueError('Atlas response too large')
+    key = Path(sys.argv[1]).read_text().strip()
+    try:
+        result = run(json.loads(sys.stdin.read(8192)), key)
+        encoded = json.dumps(result, allow_nan=False)
+        if len(encoded.encode()) > 2*1024*1024: raise ValueError('Atlas response too large')
+    except Exception as exc:
+        # The parent discards stderr, so a failure said nothing but "RuntimeError" in the Lab (2026-09-29).
+        Path(sys.argv[2]).with_name('error.txt').write_text(failure(exc, key))
+        sys.exit(1)
     Path(sys.argv[2]).write_text(encoded)

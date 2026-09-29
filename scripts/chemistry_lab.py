@@ -1491,7 +1491,16 @@ def tick():
                         next_phase = 'orient'
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
-                if inquiry.get('browse_lane') not in _lanes:
+                _asked = (inquiry.get("source_query") or {}) if isinstance(inquiry.get("source_query"), dict) else {}
+                if (inquiry.get('browse_lane') not in _lanes and not (inquiry.get("plugin_query") or inquiry.get("instrument_query"))
+                        and _asked.get("source") == "atlas"
+                        and not (state.get('additional_source', {}).get('receipt') or {}).get('records')):
+                    # A question about a stretch of DNA that Atlas did not answer is not answered by embedding
+                    # whatever protein UniProt matched: he reviewed F11R's protein and restated an old ATAC score
+                    # when Atlas failed (2026-09-29). The literature on it, or the next question.
+                    next_phase = 'orient'
+                    note['genome_question_unanswered'] = True
+                if inquiry.get('browse_lane') not in _lanes and next_phase != 'orient':
                     base = [r.get('accession') for r in state.get('records', [])]
                     followup = (state.get('additional_source', {}).get('receipt') or
                                 state.get('additional_source', {}).get('source_receipt') or {})
@@ -1501,7 +1510,8 @@ def tick():
                         next_phase = 'orient'
                         note['saturation_redirect'] = True
                         note['truth_status'] = 'unchanged_source_set_not_new_evidence'
-                if (next_phase == 'orient' and inquiry.get('browse_lane') in _lanes and not note.get('saturation_redirect')
+                if (next_phase == 'orient' and (inquiry.get('browse_lane') in _lanes or note.get('genome_question_unanswered'))
+                        and not note.get('saturation_redirect')
                         and _gather_material(state, inquiry, fresh_only=True)):
                     # The source held nothing on it, the literature does: he reads that instead (2026-09-28).
                     next_phase = 'reflect'

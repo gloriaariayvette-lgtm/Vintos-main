@@ -71,8 +71,10 @@ def query(spec, *, client=None, question=''):
                 throttle = lab._load(throttle_path, {})
                 throttle[source] = time.time()+300
                 lab._atomic(throttle_path, throttle)
+        # The reason, not only its type: "RuntimeError" alone told nobody what failed (2026-09-29).
         raise RuntimeError('source_query_unavailable:'+type(exc).__name__
-                           + (' %s' % exc.code if isinstance(exc, HTTPError) else '')) from exc
+                           + (' %s' % exc.code if isinstance(exc, HTTPError) else '')
+                           + (': ' + ' '.join(str(exc).split())[:200] if str(exc) and not isinstance(exc, HTTPError) else '')) from exc
     lab._ensure()
     lab._append(os.path.join(lab.ROOT, 'source-receipts.jsonl'), result)
     lab._append(lab.COLLISION_ADAPTER, collision_descriptor(result))
