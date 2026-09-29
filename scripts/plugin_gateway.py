@@ -183,22 +183,62 @@ def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     return output
 
 
-def run_skill(surface, skill, instruction, *, transport=None):
+MAX_SKILL_INPUT_FILES = 4
+MAX_SKILL_INPUT_BYTES = 8 * 1024 * 1024
+
+
+def _skill_inputs(paths):
+    root=(Path(MEMORY)/"chemistry-lab").resolve(); out=[]; total=0
+    for raw in paths or []:
+        offered=Path(raw).expanduser()
+        if offered.is_symlink(): raise ValueError("skill inputs must not be symlinks")
+        path=offered.resolve()
+        if len(out)>=MAX_SKILL_INPUT_FILES: raise ValueError("too many skill input files")
+        if path.is_symlink() or not path.is_file() or os.path.commonpath((str(root),str(path))) != str(root):
+            raise ValueError("skill inputs must be regular Chemistry Lab artifacts")
+        data=path.read_bytes(); total += len(data)
+        if total>MAX_SKILL_INPUT_BYTES: raise ValueError("skill inputs exceed relay limit")
+        out.append({"name":path.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),
+                    "data_b64":base64.b64encode(data).decode()})
+    return out
+
+
+def _journal_skill(skill, receipt, summary_text, files):
+    if receipt.get("surface") != "lab": return
+    path=Path(MEMORY)/"chemistry-lab"/"notebook.jsonl"; path.parent.mkdir(parents=True,exist_ok=True)
+    row={"at":datetime.now(timezone.utc).isoformat(),"kind":"plugin_instrument","skill":skill,
+         "receipt_id":receipt["receipt_id"],"summary":str(summary_text)[:1800],
+         "artifacts":[str(Path(f).relative_to(Path(MEMORY))) if Path(MEMORY) in Path(f).parents else str(Path(f).name) for f in files],
+         "truth_status":"plugin_analysis_not_independent_validation"}
+    with open(path,"a",encoding="utf-8") as stream:
+        stream.write(json.dumps(row,sort_keys=True)+"\n"); stream.flush(); os.fsync(stream.fileno())
+
+
+def run_skill(surface, skill, instruction, *, operation=None, input_files=None, transport=None):
     from plugin_catalog import skill_policy
-    skill_policy(skill, surface)
-    response = _send({"action":"skill", "surface":surface, "skill":skill,
-                      "instruction":instruction}, timeout=660, transport=transport)
-    root = Path(MEMORY)/"plugin-results"/"skills"
+    skill_policy(skill, surface, operation)
+    inputs=_skill_inputs(input_files)
+    response = _send({"action":"skill", "surface":surface, "skill":skill, "operation":operation,
+                      "instruction":instruction,"inputs":inputs}, timeout=660, transport=transport)
+    if surface == "lab" and skill in ("sequence_viewer", "structure_viewer"):
+        root = Path(MEMORY)/"chemistry-lab"/"artifacts"/skill.replace("_","-")
+    else:
+        root = Path(MEMORY)/"plugin-results"/"skills"
     root.mkdir(parents=True, exist_ok=True); os.chmod(root,0o700)
     files=[]
+    total_output=0
     for item in response.get("files",[]):
         rel=Path(item["path"])
         if rel.is_absolute() or ".." in rel.parts: raise ValueError("unsafe skill artifact path")
         data=base64.b64decode(item["data_b64"], validate=True)
+        total_output += len(data)
+        if total_output > 8 * 1024 * 1024: raise ValueError("skill artifacts exceed relay limit")
         if hashlib.sha256(data).hexdigest()!=item["sha256"]: raise RuntimeError("skill artifact integrity mismatch")
         target=root/(item["sha256"]+"-"+rel.name); target.write_bytes(data); os.chmod(target,0o600); files.append(str(target))
-    result={"skill":skill,"summary":response.get("summary",""),"files":files}
-    receipt=_store(surface,"skill:"+skill,"skill.run",{"instruction_sha256":hashlib.sha256(instruction.encode()).hexdigest()},result,"project")
+    result={"skill":skill,"operation":operation,"summary":response.get("summary",""),"input_receipts":response.get("input_receipts",[]),"files":files}
+    receipt=_store(surface,"skill:"+skill,"skill.run",{"instruction_sha256":hashlib.sha256(instruction.encode()).hexdigest(),
+        "input_sha256":[i["sha256"] for i in inputs]},result,"project")
+    _journal_skill(skill,receipt,response.get("summary",""),files)
     return {"ok":True,"receipt":receipt,"summary":response.get("summary",""),"files":files}
 
 
@@ -224,7 +264,8 @@ def load_receipt(receipt_id, surface):
 
 def tool_schemas(plugin, transport=None):
     """What each of a plugin's tools expects, as the connector declares it. Calls and sends nothing."""
-    if plugin not in PLUGINS: raise ValueError("unknown plugin")
+    from plugin_catalog import SKILLS
+    if plugin not in PLUGINS and plugin not in SKILLS: raise ValueError("unknown plugin")
     return _send({"action":"schema", "plugin":plugin}, transport=transport)
 
 
@@ -232,6 +273,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__); sub=parser.add_subparsers(dest="action",required=True)
     sub.add_parser("instructions")
     sch=sub.add_parser("schema"); sch.add_argument("--plugin",required=True)
+    skill=sub.add_parser("skill"); skill.add_argument("--surface",required=True); skill.add_argument("--skill",required=True)
+    skill.add_argument("--instruction",required=True); skill.add_argument("--operation"); skill.add_argument("--input",action="append",default=[])
     approve=sub.add_parser("approve-link"); approve.add_argument("hold_id")
     invoke=sub.add_parser("call"); invoke.add_argument("--surface",required=True);invoke.add_argument("--plugin",required=True)
     invoke.add_argument("--tool",required=True);invoke.add_argument("--arguments",default="{}");invoke.add_argument("--purpose",required=True)
@@ -239,6 +282,7 @@ def main():
     if args.action == "instructions": print(json.dumps(instructions(),indent=2)); return
     if args.action == "approve-link": print(json.dumps(approve_link(args.hold_id),indent=2)); return
     if args.action == "schema": print(json.dumps(tool_schemas(args.plugin),indent=2)); return
+    if args.action == "skill": print(json.dumps(run_skill(args.surface,args.skill,args.instruction,operation=args.operation,input_files=args.input),indent=2)); return
     print(json.dumps(call(args.surface,args.plugin,args.tool,json.loads(args.arguments),args.purpose),indent=2))
 
 

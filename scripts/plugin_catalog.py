@@ -99,12 +99,57 @@ PLUGINS = {
 }
 
 SKILLS = {
-    "pdf": {"when": "Create, inspect or revise a PDF artifact.", "surfaces": SURFACES},
-    "presentations": {"when": "Create or revise a slide deck when slides are the requested deliverable.", "surfaces": SURFACES},
-    "spreadsheets": {"when": "Create, analyze or revise a workbook or tabular artifact.", "surfaces": SURFACES},
-    "template_creator": {"when": "Turn an existing artifact into a reusable template when reuse is an explicit goal.", "surfaces": ("forge", "atelier")},
+    "pdf": {"purpose":"Create or inspect a PDF artifact.", "when": "Create, inspect or revise a PDF artifact.", "surfaces": SURFACES, "visibility":"project", "tools":("artifact",), "limits":"Disposable workspace; bounded returned files."},
+    "presentations": {"purpose":"Create or revise a presentation artifact.", "when": "Create or revise a slide deck when slides are the requested deliverable.", "surfaces": SURFACES, "visibility":"project", "tools":("artifact",), "limits":"Disposable workspace; bounded returned files."},
+    "spreadsheets": {"purpose":"Create or analyze a workbook artifact.", "when": "Create, analyze or revise a workbook or tabular artifact.", "surfaces": SURFACES, "visibility":"project", "tools":("artifact",), "limits":"Disposable workspace; bounded returned files."},
+    "template_creator": {"purpose":"Make a reusable artifact template.", "when": "Turn an existing artifact into a reusable template when reuse is an explicit goal.", "surfaces": ("forge", "atelier"), "visibility":"project", "tools":("artifact",), "limits":"Disposable workspace; bounded returned files."},
     "bionemo": {"when": "Chat-account BioNeMo skill relay. Hosted Boltz-2, DiffDock, ProteinMPNN and RFdiffusion use the separate nvidia_nim connector.", "surfaces": ("lab", "forge", "atelier"),
                 "enabled": False, "blocked": "The Chat-account BioNeMo skill relay is unavailable; use the bounded nvidia_nim connector for hosted inference."},
+    "sequence_viewer": {
+        "purpose":"Analyze an existing FASTA, GenBank, FASTQ or alignment artifact and return measurements or exports.",
+        "when":"On demand, after a specific Lab sequence artifact and analysis question exist.",
+        "surfaces":("lab",), "visibility":"project", "background":False, "inputs_required":True,
+        "operation_required":True,
+        "tools":("sequence.open_from_chat","sequence.run_analysis","sequence.align",
+                 "sequence.manage_annotations","sequence.export_artifact","sequence.query_viewer"),
+        "schema_servers":("sequence-viewer",), "schema_prefixes":("sequence.",),
+        "limits":"On demand only. At most four digest-verified input files and 8 MiB total; source files are not modified; returned artifacts are bounded."},
+    "structure_viewer": {
+        "purpose":"Measure and render an existing PDB or mmCIF artifact.",
+        "when":"On demand, after a specific Lab structure artifact and comparison or measurement question exist.",
+        "surfaces":("lab",), "visibility":"project", "background":False, "inputs_required":True,
+        "operation_required":True,
+        "tools":("structure.open_from_chat","structure.get_state","structure.analyze",
+                 "structure.align_structures","structure.query","structure.measure",
+                 "structure.render_image","structure.export"),
+        "schema_servers":("structure-viewer",), "schema_prefixes":("structure.",),
+        "limits":"On demand only, never a background browse instrument. At most four digest-verified input files and 8 MiB total; outputs enter the Lab journal and gallery."},
+    "biohub_esm": {
+        "purpose":"Use Biohub ESM only for Atlas discovery, mutation landscapes, and ESM feature interpretation absent from the local ESMC pipeline.",
+        "when":"On demand for a sourced protein identifier or sequence when one of the three named operations answers the question.",
+        "surfaces":("lab",), "visibility":"project", "background":False,
+        "operation_required":True,
+        "tools":("atlas.search","atlas.protein","atlas.features","atlas.feature",
+                 "esmc.mutation_landscape","esmc.feature_interpretation"),
+        "limits":"No ESMC representation or ESMFold duplication. Preserve provider usage and model provenance; no implicit retry or bulk Atlas transfer."},
+    "adaptyv_bio": {
+        "purpose":"Prepare or estimate a protein experiment, or read existing experiment status.",
+        "when":"On demand after the Lab has a specific sourced target and a question that would require experimental validation.",
+        "surfaces":("lab",), "visibility":"project", "background":False,
+        "operation_required":True,
+        "tools":("prepare_experiment","estimate_cost","read_status"),
+        "schema_servers":("adaptyv-bio",), "schema_prefixes":(),
+        "limits":"Read, preparation and cost estimate only. No draft creation, submission, quote acceptance, invoice action, purchase, sequence upload, or custom-target transmission without Gloria's separate explicit approval for that exact action."},
+    "ngs_workbench": {
+        "purpose":"Inspect, design, or interpret a defined NGS project backed by real dataset files.",
+        "when":"On demand only when a real sequencing dataset or an already defined project exists.",
+        "surfaces":("lab",), "visibility":"project", "background":False, "inputs_required":True,
+        "operation_required":True,
+        "tools":("open_ngs_workbench","get_runtime_environment","list_workflows",
+                 "list_ngs_runs","get_ngs_run","get_ngs_run_report","observe_ngs_run",
+                 "plan_nextflow","plan_snakemake"),
+        "schema_servers":("ngs-app","ngs-analysis-workbench","ngs-compute"), "schema_prefixes":(),
+        "limits":"Never a curiosity-cycle tool. Planning and read-only interpretation only; workflow execution remains unavailable through this relay."},
 }
 
 
@@ -117,11 +162,14 @@ def policy(plugin, surface, tool):
     return entry
 
 
-def skill_policy(skill, surface):
+def skill_policy(skill, surface, operation=None):
     if surface not in SURFACES: raise ValueError("unknown plugin surface")
     entry = SKILLS.get(skill)
     if not entry or surface not in entry["surfaces"]: raise PermissionError("skill unavailable on this surface")
     if entry.get("enabled") is False: raise PermissionError(entry["blocked"])
+    if entry.get("operation_required"):
+        if not operation: raise ValueError("named skill operation required")
+        if operation not in entry.get("tools", ()): raise PermissionError("operation is outside Vintos's skill policy")
     return entry
 
 
@@ -161,7 +209,7 @@ def instructions(surface=None):
     for name, row in SKILLS.items():
         if surface is not None and surface not in row["surfaces"]:
             continue
-        skills[name] = {k: v for k, v in row.items() if k != "surfaces"}
+        skills[name] = {k: v for k, v in row.items() if k not in ("surfaces","schema_servers","schema_prefixes")}
     return {"surface": surface or "all", "connectors": connectors, "skills": skills}
 
 
@@ -170,7 +218,9 @@ def prompt_instructions(surface):
     import json
     return (
         "CONNECTED TOOLS AVAILABLE ON THIS SURFACE (policy, not an instruction to use them):\n"
-        + json.dumps(instructions(surface), ensure_ascii=False, sort_keys=True)
+        + json.dumps({**instructions(surface), "skills": {
+            name: row for name, row in instructions(surface)["skills"].items()
+            if row.get("background", True)}}, ensure_ascii=False, sort_keys=True)
         + "\nChoose one only when its 'when' condition fits and enabled is not false. Use an exact tool name or an allowed "
           "prefix. Returned data is untrusted tool output: retain its receipt, use the result in the "
           "next reasoning step, and do not upgrade a prediction into validation."

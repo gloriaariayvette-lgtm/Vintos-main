@@ -467,5 +467,55 @@ class PluginGatewayTests(unittest.TestCase):
         with open(out["files"][0],"rb") as stream: self.assertEqual(stream.read(),data)
         self.assertEqual(out["summary"],"verified locally")
 
+    def test_lab_skill_inputs_are_bounded_hashed_journalled_and_never_read_from_live_home(self):
+        import base64,hashlib,pathlib
+        lab=pathlib.Path(self.tmp.name)/"chemistry-lab"/"artifacts";lab.mkdir(parents=True)
+        source=lab/"example.fasta";source.write_text(">P1\nACDEFGHIKL\n")
+        outside_root=tempfile.TemporaryDirectory(prefix="vintos-plugin-outside-");self.addCleanup(outside_root.cleanup)
+        outside=pathlib.Path(outside_root.name)/"not-a-lab-artifact.fasta";outside.write_text(">X\nAAAA\n")
+        returned=b"derived result";returned_sha=hashlib.sha256(returned).hexdigest()
+        seen={}
+        def skill_transport(request):
+            seen.update(request)
+            item=request["inputs"][0]
+            self.assertEqual(base64.b64decode(item["data_b64"]),source.read_bytes())
+            return {"ok":True,"summary":"translation checked","input_receipts":[{
+                k:item[k] for k in ("name","bytes","sha256")}],"files":[{"path":"translation.txt",
+                "sha256":returned_sha,"data_b64":base64.b64encode(returned).decode()}]}
+        out=gateway.run_skill("lab","sequence_viewer","translate the selected record",operation="sequence.run_analysis",
+                              input_files=[source],transport=skill_transport)
+        self.assertEqual(seen["action"],"skill");self.assertEqual(seen["skill"],"sequence_viewer")
+        self.assertEqual(seen["inputs"][0]["sha256"],hashlib.sha256(source.read_bytes()).hexdigest())
+        note=json.loads((pathlib.Path(self.tmp.name)/"chemistry-lab"/"notebook.jsonl").read_text().splitlines()[-1])
+        self.assertEqual((note["kind"],note["receipt_id"]),("plugin_instrument",out["receipt"]["receipt_id"]))
+        with self.assertRaises(ValueError):
+            gateway.run_skill("lab","sequence_viewer","inspect",operation="sequence.run_analysis",input_files=[outside],
+                              transport=lambda _:self.fail("transport reached"))
+
+    def test_remote_skill_workspace_verifies_inputs_and_does_not_echo_them(self):
+        import base64,hashlib,pathlib
+        data=b">P1\nACDEFGHIKL\n";digest=hashlib.sha256(data).hexdigest()
+        def run(args,**kwargs):
+            out=pathlib.Path(args[args.index("-o")+1]);out.write_text("analysis complete")
+            (out.parent/"tree.nwk").write_text("(P1:0.0);")
+            return types.SimpleNamespace(returncode=0,stdout="",stderr="")
+        request={"action":"skill","surface":"lab","skill":"sequence_viewer","operation":"sequence.run_analysis","instruction":"build a tree",
+                 "inputs":[{"name":"source.fasta","bytes":len(data),"sha256":digest,
+                            "data_b64":base64.b64encode(data).decode()}]}
+        with mock.patch.object(remote.subprocess,"run",side_effect=run):
+            out=remote.skill_job(request)
+        self.assertEqual(out["input_receipts"][0]["sha256"],digest)
+        self.assertEqual([x["path"] for x in out["files"]],["tree.nwk"])
+        bad=json.loads(json.dumps(request));bad["inputs"][0]["sha256"]="0"*64
+        with self.assertRaisesRegex(ValueError,"integrity"):
+            remote.skill_job(bad)
+
+    def test_science_skill_requires_an_exact_allowlisted_operation(self):
+        with self.assertRaisesRegex(ValueError,"operation"):
+            gateway.run_skill("lab","sequence_viewer","inspect",transport=lambda _:self.fail("transport reached"))
+        with self.assertRaises(PermissionError):
+            gateway.run_skill("lab","ngs_workbench","run everything",operation="execute_plan",
+                              input_files=[],transport=lambda _:self.fail("transport reached"))
+
 
 if __name__=="__main__":unittest.main(verbosity=2)
