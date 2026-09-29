@@ -2217,7 +2217,16 @@ def main():
     try:
         import forge_house as _fh
         try:
-            if not _args.repair_plans_only: _fh.sync(inventory=list(ACTION_MAP) + [p["capability"] for p in __import__("skill_forge")._load() if p.get("state") in ("installed", "resumed")])
+            _inventory = list(ACTION_MAP) + [p["capability"] for p in __import__("skill_forge")._load() if p.get("state") in ("installed", "resumed")]
+            if not _args.repair_plans_only:
+                # One spark a pass (two a day) is put to him as a question about a hand; a yes in his own
+                # words is a want whose missing step reaches the Forge below (Gloria, 2026-09-29).
+                try:
+                    import spark_hands as _sh
+                    for _l in _sh.tend(_inventory): log(f"  → spark hand: {_l[:160]}")
+                except Exception as _she:
+                    log(f"  → spark hand skipped: {type(_she).__name__}")
+                _fh.sync(inventory=_inventory)
         except Exception as exc:
             log(f"  → Forge queue sync retained for retry: {type(exc).__name__}")
         import forge_build as _fb

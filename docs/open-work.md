@@ -3,6 +3,15 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 29 September — the Forge had only Lab seeds
+
+Sparks were meant to seed the Forge, but each one became an "ask Gloria" want, which is never Forge
+work (her rule of 24 September), so only the Lab's missing instruments reached it. `spark_hands.py`
+now puts one standing non-Lab spark a pass, two a day, to him as a question: is there an ability here
+he would want built? A yes in his own words becomes his want with the named ability as its one step,
+which opens a skill proposal and reaches the Forge through the ordinary gap sync; building still needs
+her approval. **Not yet seen live:** whether his answers name real hands or mostly say no.
+
 ## 29 September — the Forge page was never updated after 21 September
 
 The Forge runs its own copy of `scripts/forge-loop-files.txt` from `/home/atelier/forge-loop`. It was
