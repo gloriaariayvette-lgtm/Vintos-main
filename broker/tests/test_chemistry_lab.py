@@ -18,6 +18,12 @@ open(os.path.join(WS, "SOUL.md"), "w").write("I am Vintos. I am curious in my ow
 open(os.path.join(WS, "SELF-MODEL.md"), "w").write("I have been returning to shapes and mechanisms.")
 json.dump({"heading": "learning by making"}, open(os.path.join(WS, "memory", "living-trajectory.json"), "w"))
 
+# The Lab's one door to the network. Its review step now reads published literature (2026-09-28), and this
+# suite reached NCBI for real until it was stubbed here (2026-09-29).
+NET_CALLS = []
+def _no_network(*a, **k):
+    NET_CALLS.append(a[:1]); raise AssertionError("this suite must never reach the network")
+sys.modules["lab_http"] = types.SimpleNamespace(open_request=_no_network)
 spec = importlib.util.spec_from_file_location("chemistry_lab_test", os.path.join(REPO, "scripts", "chemistry_lab.py"))
 M = importlib.util.module_from_spec(spec); spec.loader.exec_module(M)
 sys.modules["chemistry_lab"] = M
@@ -52,6 +58,7 @@ M._browse = lambda query, limit: {"records": [{"accession": "P00001", "protein_n
 M._embed_records = lambda records: {"ok": True, "model": "test-esmc", "device": "test",
                                     "embeddings": [{"accession": "P00001", "dimension": 4,
                                                     "embedding_sha256": "abc", "artifact": "memory/chemistry-lab/artifacts/esmc/test.npy"}]}
+M._gather_material = lambda state, inquiry, fresh_only=False: None   # no literature: the loop is under test here
 M._reflect = lambda context, inquiry, records: {"attention": "the compactness", "factual_observation": "the record says length 80", "speculative_reading": "it feels architectural", "next_question": "what recurs?"}
 one, two, three, four = M.tick(), M.tick(), M.tick(), M.tick()
 check("four checkpointed turns complete the loop", [one.get("kind"), two.get("kind"), three.get("kind"), four.get("kind")] == ["inquiry", "source_read", "protein_representation", "reflection"], (one, two, three, four))
@@ -225,5 +232,6 @@ check("release and rollback own the new service", '"vintos-chemistry-lab": unit(
 self_review = open(os.path.join(REPO, "scripts", "self_review.py")).read()
 check("self-review consumes only the Chemistry text adapter", '"chemistry_lab", "chemistry-lab/collision-adapter.jsonl"' in self_review and "artifacts/esmc" not in self_review)
 
+check("nothing reached the network", NET_CALLS == [], NET_CALLS)
 print("\n%d/%d passed" % (sum(R), len(R)))
 raise SystemExit(0 if all(R) else 1)
