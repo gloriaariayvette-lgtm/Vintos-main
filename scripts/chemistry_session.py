@@ -500,7 +500,13 @@ def run():
                                        plan.get("addressed_entry_ids", []), state="responded")
                 delivery_recorded = True
             result = mac.run(plan["experiment"], plan["parameters"], plan["shots"])
-            if not result.get("ok"): raise RuntimeError(result.get("error", "Mac experiment failed"))
+            if not result.get("ok"):
+                # A mismatched remote run has an identity verdict even though it must not
+                # proceed to interpretation. Preserve that named verdict beside the failed
+                # session; otherwise the useful diagnosis is collapsed into a generic fault.
+                if result.get("run_id") and (result.get("sequence_check") or {}).get("outcome") == "SEQUENCE_ACCESSION_MISMATCH":
+                    grade = grading.grade(result["run_id"], plan["experiment"], result, plan)
+                raise RuntimeError(result.get("error", "Mac experiment failed"))
             # Grading is arithmetic, not a model call: it happens before the reading asks for
             # compute, so a preempted reading never costs us the verdict.
             grade = grading.grade(result.get("run_id"), plan["experiment"], result, plan)

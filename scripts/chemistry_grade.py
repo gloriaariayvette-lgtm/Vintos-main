@@ -49,7 +49,7 @@ GRADES = os.path.join(lab.ROOT, "experiment-grades.jsonl")
 # Bumped whenever the arithmetic or the outcome vocabulary changes.  Idempotence is keyed
 # on (run_id, grader_version): a re-grade under a new grader is a new row, not a refusal,
 # so an improved grader can revisit old runs without erasing what the old one said.
-GRADER_VERSION = "chemistry_grade/2"   # +fold grading on ESMFold confidence (pLDDT), 2026-09-17
+GRADER_VERSION = "chemistry_grade/3"   # +named sequence/accession contract, 2026-09-29
 
 # Hartree.  Chemical accuracy is ~1.6e-3 Ha; this is far tighter, because the question
 # here is only "is it on the right side of the reference", not "is it chemically useful".
@@ -205,6 +205,47 @@ def _execution_state(mac_result, points, unreadable):
     return "completed"
 
 
+def _sequence_mismatch(mac_result, plan):
+    """Name identity failures before a missing numeric score can hide them."""
+    if not isinstance(mac_result, dict): return None
+    check = mac_result.get("sequence_check")
+    if isinstance(check, dict) and check.get("outcome") == "SEQUENCE_ACCESSION_MISMATCH":
+        return check
+    parameters = (plan or {}).get("parameters") if isinstance(plan, dict) else {}
+    requested = str((parameters or {}).get("requested_accession") or
+                    (parameters or {}).get("target_accession") or "").upper()
+    if not requested: return None
+    contract = mac_result.get("sequence_request") if isinstance(mac_result.get("sequence_request"), dict) else {}
+    expected = str(contract.get("sequence") or (parameters or {}).get("sequence") or "").upper()
+    result = _dig(mac_result, ("run", "result")) or mac_result.get("result") or {}
+    if not isinstance(result, dict): result = {}
+    actual_accession = str(result.get("requested_accession") or "").upper()
+    actual_sequence = str(result.get("modeled_sequence") or result.get("real_sequence") or "").upper()
+    source = result.get("sequence_source") if isinstance(result.get("sequence_source"), dict) else {}
+    problems = []
+    if actual_accession != requested: problems.append("requested accession %s, result accession %s" % (requested, actual_accession or "absent"))
+    if expected and actual_sequence != expected: problems.append("modeled sequence differs from sourced sequence")
+    if str(source.get("accession") or "").upper() != requested: problems.append("source accession does not match %s" % requested)
+    if not problems: return None
+    return {"outcome": "SEQUENCE_ACCESSION_MISMATCH", "requested_accession": requested,
+            "expected_sequence": expected, "actual_accession": actual_accession,
+            "actual_sequence": actual_sequence, "problems": problems}
+
+
+def _grade_sequence_mismatch(run_id, experiment, mac_result, plan, mismatch):
+    row = {"grade_id": "CG-" + uuid.uuid4().hex[:10], "at": lab.now_iso(),
+           "run_id": run_id, "experiment": str(experiment or "")[:80],
+           "grader_version": GRADER_VERSION, "modality": "sequence_identity",
+           "execution_state": "failed", "aggregate_accuracy": "SEQUENCE_ACCESSION_MISMATCH",
+           "graded_points": 0, "total_points": 0, "unreadable_points": 0,
+           "points_path": None, "field_map": {}, "points": [], "sequence_check": mismatch,
+           "plan": {k: plan.get(k) for k in ("experiment", "parameters", "shots", "question")}
+                   if isinstance(plan, dict) else None,
+           "truth_status": "aegis_detected_sequence_accession_mismatch",
+           "evidence_standing": "failed_instrument_identity_contract_not_biological_evidence"}
+    row.update(_isolation(mac_result)); lab._append(GRADES, row); return row
+
+
 # Where the bench actually puts its sandbox claim. ``run.execution`` is the one the Mac
 # writes at db99249; the others are kept so an older or differently-shaped reply still
 # reads. Searching only the names this side found natural is how a real receipt gets
@@ -324,6 +365,9 @@ def grade(run_id, experiment, mac_result, plan=None):
     if not run_id: return {"refused": "a run without a run_id cannot be graded idempotently"}
     if graded_already(run_id):
         return {"refused": "run %s is already graded by %s" % (run_id, GRADER_VERSION)}
+    mismatch = _sequence_mismatch(mac_result, plan)
+    if mismatch:
+        return _grade_sequence_mismatch(run_id, experiment, mac_result, plan, mismatch)
     if _is_fold(experiment, mac_result):
         return _grade_fold(run_id, experiment, mac_result, plan)
     tol = _tolerance()

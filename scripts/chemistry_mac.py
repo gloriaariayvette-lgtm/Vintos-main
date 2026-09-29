@@ -24,6 +24,10 @@ import re
 import shlex
 import subprocess
 
+MAX_HP_LATTICE_RESIDUES = 9
+AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
+HP_HYDROPHOBIC = frozenset("ACILMFV")  # Kyte-Doolittle >= 1.0, matching the Mac experiment
+
 CONFIG = os.environ.get("VINTOS_CHEMISTRY_MAC_CONFIG",
                         os.path.expanduser("~/.vintos/chemistry-mac.json"))
 DEFAULT_COMMAND = "/Users/kevin/qlab/bench_remote.py"
@@ -99,9 +103,132 @@ def request(body, timeout=600):
 
 def status(timeout=20): return request({"action": "status"}, timeout=timeout)
 def ledger(limit=12): return request({"action": "ledger", "limit": int(limit)}, timeout=30)
-def run(experiment, parameters=None, shots=4096):
-    return request({"action": "run", "experiment": experiment,
-                    "parameters": parameters or {}, "shots": int(shots)})
+def _accession(parameters):
+    """One exact requested accession, or none. Conflicting names are a refusal."""
+    values = {str(parameters.get(key) or "").strip().upper()
+              for key in ("requested_accession", "target_accession", "accession")
+              if str(parameters.get(key) or "").strip()}
+    if len(values) > 1:
+        raise ValueError("protein request names conflicting accessions")
+    if not values:
+        return ""
+    value = values.pop()
+    if not re.fullmatch(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?", value):
+        raise ValueError("protein request needs one exact UniProt accession")
+    return value
+
+
+def _record_sequence(record, accession):
+    if not isinstance(record, dict):
+        raise ValueError("UniProt returned no record for %s" % accession)
+    found = str(record.get("primaryAccession") or record.get("accession") or "").upper()
+    if found != accession:
+        raise ValueError("UniProt returned %s while %s was requested" % (found or "no accession", accession))
+    sequence_block = record.get("sequence")
+    sequence = (sequence_block.get("value") if isinstance(sequence_block, dict) else sequence_block)
+    sequence = re.sub(r"\s+", "", str(sequence or "").upper())
+    if not sequence or any(letter not in AMINO_ACIDS for letter in sequence):
+        raise ValueError("UniProt returned no usable sequence for %s" % accession)
+    reported = (sequence_block.get("length") if isinstance(sequence_block, dict) else record.get("length"))
+    if reported not in (None, "") and int(reported) != len(sequence):
+        raise ValueError("UniProt sequence length disagrees for %s" % accession)
+    return sequence
+
+
+def _resolve_uniprot(accession):
+    from lab_sources import Sources
+    result = Sources().query({"source": "uniprot", "query": "accession:%s" % accession, "limit": 1})
+    records = result.get("records") if isinstance(result, dict) else None
+    record = records[0] if isinstance(records, list) and records else None
+    return record, {"provider": "UniProtKB", "accession": accession,
+                    "receipt_id": str(result.get("receipt_id") or "")}
+
+
+def _hp_mapping(sequence):
+    return [{"position": index + 1, "residue": residue,
+             "hp": "H" if residue in HP_HYDROPHOBIC else "P"}
+            for index, residue in enumerate(sequence)]
+
+
+def prepare_protein(parameters, resolver=None):
+    """Bind a named protein request to its exact sourced sequence before SSH."""
+    parameters = dict(parameters or {})
+    accession = _accession(parameters)
+    if not accession:
+        return {"ok": True, "parameters": parameters, "sequence_request": None}
+    try:
+        record, provenance = (resolver or _resolve_uniprot)(accession)
+        sequence = _record_sequence(record, accession)
+    except Exception as exc:
+        return {"ok": False, "refused": "sequence_unavailable", "requested_accession": accession,
+                "error": "could not source %s from UniProt: %s" % (accession, str(exc)[:240])}
+    parameters.update({"requested_accession": accession, "target_accession": accession,
+                       "sequence": sequence, "sequence_source": provenance})
+    contract = {"requested_accession": accession, "sequence": sequence, "length": len(sequence),
+                "source": provenance, "hp_mapping": _hp_mapping(sequence)}
+    if len(sequence) > MAX_HP_LATTICE_RESIDUES:
+        return {"ok": False, "refused": "sequence_too_long", "requested_accession": accession,
+                "requested_sequence": sequence, "requested_sequence_length": len(sequence),
+                "sequence_source": provenance, "sequence_request": contract,
+                "modeled_sequence": None, "modeled_sequence_length": 0,
+                "hp_mapping": contract["hp_mapping"],
+                "error": ("protein HP lattice refused %s: sourced sequence has %d residues; limit is %d"
+                          % (accession, len(sequence), MAX_HP_LATTICE_RESIDUES))}
+    return {"ok": True, "parameters": parameters, "sequence_request": contract}
+
+
+def _protein_result(reply, contract):
+    """Fail a remote success whose title, sequence, or accession contradicts the request."""
+    if not contract or not isinstance(reply, dict) or not reply.get("ok"):
+        return reply
+    result = (((reply.get("run") or {}).get("result")) if isinstance(reply.get("run"), dict)
+              else reply.get("result"))
+    result = result if isinstance(result, dict) else {}
+    expected_accession, expected_sequence = contract["requested_accession"], contract["sequence"]
+    actual_accession = str(result.get("requested_accession") or "").upper()
+    actual_sequence = str(result.get("modeled_sequence") or result.get("real_sequence") or "").upper()
+    source = result.get("sequence_source") if isinstance(result.get("sequence_source"), dict) else {}
+    mapping = result.get("hp_mapping") if isinstance(result.get("hp_mapping"), list) else []
+    title = str(result.get("title") or "")
+    problems = []
+    if actual_accession != expected_accession: problems.append("result accession %r" % actual_accession)
+    if actual_sequence != expected_sequence: problems.append("modeled sequence differs from UniProt")
+    if result.get("modeled_sequence_length") != len(expected_sequence): problems.append("modeled length differs")
+    if str(source.get("accession") or "").upper() != expected_accession: problems.append("source accession differs")
+    if [(row.get("position"), row.get("residue"), row.get("hp")) for row in mapping
+        if isinstance(row, dict)] != [(row["position"], row["residue"], row["hp"])
+                                     for row in contract["hp_mapping"]]:
+        problems.append("HP mapping differs from sourced sequence")
+    if expected_accession not in title or expected_sequence not in title: problems.append("title disagrees")
+    reply["sequence_request"] = contract
+    if problems:
+        reply["ok"] = False
+        reply["refused"] = "sequence_accession_mismatch"
+        reply["sequence_check"] = {"outcome": "SEQUENCE_ACCESSION_MISMATCH",
+                                   "requested_accession": expected_accession,
+                                   "expected_sequence": expected_sequence,
+                                   "actual_accession": actual_accession,
+                                   "actual_sequence": actual_sequence,
+                                   "problems": problems}
+        reply["error"] = "sequence/accession mismatch: " + "; ".join(problems)
+    else:
+        reply["sequence_check"] = {"outcome": "SEQUENCE_ACCESSION_MATCH",
+                                   "requested_accession": expected_accession,
+                                   "modeled_sequence": actual_sequence,
+                                   "modeled_sequence_length": len(actual_sequence)}
+    return reply
+
+
+def run(experiment, parameters=None, shots=4096, resolver=None, transport=None):
+    parameters = dict(parameters or {})
+    contract = None
+    if str(experiment) == "protein" and _accession(parameters):
+        prepared = prepare_protein(parameters, resolver=resolver)
+        if not prepared.get("ok"): return prepared
+        parameters, contract = prepared["parameters"], prepared["sequence_request"]
+    reply = (transport or request)({"action": "run", "experiment": experiment,
+                                    "parameters": parameters, "shots": int(shots)})
+    return _protein_result(reply, contract)
 def reading(run_id, text):
     return request({"action": "reading", "run_id": str(run_id), "text": str(text)[:3000]}, timeout=30)
 
