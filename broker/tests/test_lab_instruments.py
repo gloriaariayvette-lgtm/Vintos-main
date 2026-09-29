@@ -24,6 +24,10 @@ check("a sequence the Lab fetched is kept as a FASTA artifact", rel.endswith(".f
 (L.ARTIFACTS / "structures" / "1abc.pdb").write_text("ATOM\n")
 menu = L.menu_block()
 check("the menu names only artifacts the Lab really holds", "artifacts/structures/1abc.pdb" in menu and rel in menu, menu)
+(L.ARTIFACTS / "rfd3" / "verification" / "output").mkdir(parents=True, exist_ok=True)
+(L.ARTIFACTS / "rfd3" / "verification" / "output" / "demo_model_7.cif.gz").write_text("x")
+check("a tool's commissioning demo is not offered as his work", "demo_model_7" not in L.menu_block()
+      and "artifacts/rfd3/verification/output/demo_model_7.cif.gz" not in L.artifacts("structure", 50))
 for bad, why in (({"skill": "adaptyv_bio", "operation": "estimate_cost", "files": [], "question": "how much would this cost"}, "Adaptyv is not offered"),
                  ({"skill": "structure_viewer", "operation": "structure.analyze", "files": ["../../etc/passwd"], "question": "what contacts are there"}, "an unlisted file"),
                  ({"skill": "structure_viewer", "operation": "structure.export", "files": ["artifacts/structures/1abc.pdb"], "question": "export this please"}, "an operation not offered"),

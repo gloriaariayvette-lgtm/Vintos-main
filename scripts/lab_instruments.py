@@ -47,8 +47,9 @@ def _runs_today():
 def artifacts(kind, limit=5):
     """Recent Lab artifacts of a kind, as paths relative to the Lab."""
     ends = STRUCTURE if kind == "structure" else SEQUENCE
-    found = [p for p in ARTIFACTS.rglob("*") if p.is_file() and not p.is_symlink() and p.name.lower().endswith(ends)] \
-        if ARTIFACTS.is_dir() else []
+    # Tools' commissioning demos (artifacts/<tool>/verification/) are not his work; only his own runs are offered.
+    found = [p for p in ARTIFACTS.rglob("*") if p.is_file() and not p.is_symlink() and p.name.lower().endswith(ends)
+             and "verification" not in p.relative_to(ARTIFACTS).parts] if ARTIFACTS.is_dir() else []
     found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     return [str(p.relative_to(LAB)) for p in found[:limit]]
 

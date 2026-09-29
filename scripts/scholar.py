@@ -176,8 +176,10 @@ def works_of(name, about="", get=None, n=8):
         except Exception:
             continue
         for w in rows:
-            if w.get("id") in seen: continue
-            seen.add(w.get("id"))
+            # The preprint and the journal version are one paper ("Role-Play with…" / "Role play with…").
+            same = re.sub(r"[^a-z]", "", str(w.get("display_name") or w.get("title") or "").lower())
+            if w.get("id") in seen or (same and same in seen): continue
+            seen.update({w.get("id"), same})
             oa = w.get("best_oa_location") or {}
             found.append({"id": w.get("id"), "title": w.get("display_name") or w.get("title") or "",
                           "year": w.get("publication_year"), "doi": w.get("doi") or "",

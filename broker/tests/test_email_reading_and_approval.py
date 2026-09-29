@@ -56,6 +56,15 @@ works = S.works_of("Murray Shanahan", "whether role-play separates the conclusio
 check("their papers are found, the author with the most works chosen, the arXiv copy recognised",
       works and works[0]["arxiv"] == "2305.16367" and works[0]["abstract"] == "Role play matters."
       and any("author.id:A5001" in g for g in gets), works[:1])
+def get_twice(url, want="text", timeout=30):
+    if "api.openalex.org/works" in url:
+        return {"results": [{"id": "W1", "display_name": "Role-Play with Large Language Models"},
+                            {"id": "W2", "display_name": "Role play with large language models"},
+                            {"id": "W3", "display_name": "Talking about Large Language Models"}]}
+    return get(url, want, timeout)
+twice = [w["title"] for w in S.works_of("Murray Shanahan", "role play large language models", get=get_twice)]
+check("the preprint and the journal copy of one paper are one paper, read once",
+      twice == ["Role-Play with Large Language Models", "Talking about Large Language Models"], twice)
 text, where = S.full_text(works[0], get=get)
 check("the full text is read (arXiv HTML), without its menus", "simulator of simulacra" in text and "menu" not in text
       and where == "https://arxiv.org/html/2305.16367", (where, text[:120]))
