@@ -59,16 +59,25 @@ def sync(inventory=None):
             missing_hand(cap, want.get('want',''), want, path=str(Path(sf.MEMORY)/'current-wants.json'))
     if inventory is not None:
         sync_assessments(wants, inventory, sf)
+    # The Study reads his code before the Forge builds: does he already have this, and where does it fail?
+    # (Gloria, 2026-09-29.) A request goes to the Forge once it has been studied, with the findings in it.
+    import forge_study
+    try:
+        forge_study.tend(sf)
+    except Exception as exc:
+        print('forge study held: %s' % type(exc).__name__, flush=True)
     rows = []
     for p in sf._load():
         origin = p.get('origin') or {}
         wid = origin.get('want_id')
         if not wid: continue  # Atelier undertaking proposals retain their existing bridge.
+        if not forge_study.ready_for_forge(p): continue   # studied first; it goes next pass
         want = by_id.get(wid)
         state = p['state']
         if not want or want.get('fulfilled') or want.get('dismissed'): state = 'origin_ended'
         rows.append({'proposal': p['id'], 'want_id': wid,
-                     'intent': (want or {}).get('want') or origin.get('want') or 'Ended intention',
+                     'intent': ((want or {}).get('want') or origin.get('want') or 'Ended intention')
+                               + forge_study.row_text(p.get('study')),
                      'source': origin.get('spark') or origin.get('source') or 'unclassified',
                      'capability': p['capability'], 'state': state,
                      'artifact_verified': state in ('installed', 'resumed') and artifact_valid(p, installed=True)})

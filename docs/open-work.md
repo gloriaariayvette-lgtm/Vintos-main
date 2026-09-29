@@ -3,6 +3,15 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 29 September — the Forge asks the Study before it builds
+
+A computer-use want would have reached the Forge as an ability he lacks, while his desktop-control code
+exists and fails. `forge_study.py` now studies every Forge request first: Fable orchestrates (Astra if Fable
+is unavailable), Grok reads and reports through the Study's own read/grep and permission boundary. It answers
+whether he already has the ability and where it fails; the findings go into the request the Forge receives,
+and Gloria gets an ntfy with them. One request a pass, at most 4 studies a day, at most 3 rounds of reading.
+**Not yet seen live:** the first real study and whether Fable's findings are good enough to act on.
+
 ## 29 September — the Forge had only Lab seeds
 
 Sparks were meant to seed the Forge, but each one became an "ask Gloria" want, which is never Forge

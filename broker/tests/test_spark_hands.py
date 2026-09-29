@@ -57,6 +57,9 @@ check("the missing hand opens a skill proposal from that want", len(proposals) =
 check("the want is held on the missing hand, not run as an ordinary step",
       (json.load(open(H.WANTS))[-1].get("blocked") or {}).get("block_type") == "CAPABILITY_ABSENT")
 
+import forge_study as FS   # the Study reads his code first; stubbed here, tested in test_forge_study
+FS.investigate = lambda p, **k: {"state": "done", "already_have": False, "summary": "no log reader exists", "models": ["fable", "grok"]}
+FS.notify = lambda findings, post=None: None
 sent = []
 FH.request = lambda path, body, transport=None: sent.append((path, body)) or ([] if path == "/api/wants-sync" else [])
 FH.sync(inventory=INVENTORY)
