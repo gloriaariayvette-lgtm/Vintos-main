@@ -1659,8 +1659,17 @@ accepts only files already inside the Chemistry Lab tree, and uses a disposable 
 workspace. Structure and sequence outputs return to the Lab artifact tree. Adaptyv write and
 purchase actions and NGS execution are absent from the policy.
 
-Commissioning evidence remains required before this section can say the instruments are
-live. In particular, the Mac reported Adaptyv's connector as not logged in while its schema
-was being read. That account connection must be repaired before preparation, estimate or
-status calls can be demonstrated; no wet-lab submission or purchase is authorized by that
-repair.
+Live Aegis commissioning returned real records from all five public sources. The relay
+produced journal receipts for a two-record FASTA analysis, a PDB contact/exposure analysis
+with a PNG render, a three-hit ESM Atlas similarity search, and read-only inspection of a
+real 967-read ENA FASTQ dataset. Sequence Viewer and Structure Viewer schemas were read from
+their installed MCP servers, but the headless Codex child did not receive their callable
+tools during those two runs; the named runners recorded that limitation and produced bounded
+local analyses instead. Biohub likewise used its documented public ESM Atlas endpoint after
+the skill was unavailable inside the child. These are working relay and journal paths, not
+proof that the three plugin-owned tools executed.
+
+Adaptyv remains unavailable: its Mac connector reports `authStatus:notLoggedIn` and exposes
+no schema. The account connection must be repaired before preparation, estimate or status
+calls can be demonstrated. No wet-lab submission or purchase is authorized by that repair;
+each such action still requires Gloria's explicit approval.

@@ -188,7 +188,7 @@ check("an unavailable structure gallery cannot hold the review refresh",
 check("the routes are all behind the secret",
       SERVER.count("_require_secret(request)") >= 7 and
       all(('@app.get("/api/lab/chemistry/%s' % name) in SERVER
-          for name in ("notebook", "reviews", "activity", "sessions", "grades", "taste", "curve/{run_id}", "structures", "structure/{artifact_id}")))
+          for name in ("notebook", "reviews", "activity", "sessions", "grades", "taste", "curve/{run_id}", "structures", "structure/{artifact_id}", "structure-render/{render_id}")))
 check("no Lab endpoint writes anything",
       not any(w in block for w in ("_append(", "_atomic(", "set_enabled(", "open(")), 
       [w for w in ("_append(", "_atomic(", "set_enabled(", "open(") if w in block])
