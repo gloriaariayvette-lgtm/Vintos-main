@@ -510,6 +510,20 @@ class PluginGatewayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"integrity"):
             remote.skill_job(bad)
 
+    def test_only_biohub_skill_child_receives_network_for_its_shipped_clients(self):
+        import pathlib
+        seen=[]
+        def run(args,**kwargs):
+            seen.append(args);pathlib.Path(args[args.index("-o")+1]).write_text("done")
+            return types.SimpleNamespace(returncode=0,stdout="",stderr="")
+        with mock.patch.object(remote.subprocess,"run",side_effect=run):
+            remote.skill_job({"action":"skill","surface":"lab","skill":"biohub_esm",
+                "operation":"atlas.search","instruction":"bounded public Atlas read","inputs":[]})
+            remote.skill_job({"action":"skill","surface":"atelier","skill":"pdf",
+                "instruction":"make a local PDF","inputs":[]})
+        self.assertIn("sandbox_workspace_write.network_access=true",seen[0])
+        self.assertNotIn("sandbox_workspace_write.network_access=true",seen[1])
+
     def test_science_skill_requires_an_exact_allowlisted_operation(self):
         with self.assertRaisesRegex(ValueError,"operation"):
             gateway.run_skill("lab","sequence_viewer","inspect",transport=lambda _:self.fail("transport reached"))
