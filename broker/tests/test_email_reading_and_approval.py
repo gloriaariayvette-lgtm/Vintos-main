@@ -85,6 +85,31 @@ check("when his position rests on a summary, he is not ready yet",
       S.enough("x", "y", "", think=lambda *a, **k: '{"ready": false, "read_next": "the full paper"}') == (False, "the full paper"))
 check("with his mind unreachable he is not stalled", S.enough("x", "y", "", think=lambda *a, **k: "") == (True, ""))
 
+# --- as it happened live on Aegis: "most cited" put an unrelated paper first ---
+def get_live(url, want="text", timeout=30):
+    if "api.openalex.org/authors" in url:
+        return {"results": [{"id": "https://openalex.org/A5001", "display_name": "Murray Shanahan", "works_count": 180}]}
+    if "api.openalex.org/works" in url and "search" in url:
+        return {"results": []}                    # the topic search came back empty, as it did live
+    if "api.openalex.org/works" in url:
+        return {"results": [
+            {"id": "W-entropic", "display_name": "The entropic brain: a theory of conscious states informed by neuroimaging research with psychedelic drugs",
+             "publication_year": 2014, "cited_by_count": 1500, "best_oa_location": {"pdf_url": "https://www.frontiersin.org/x.pdf"},
+             "abstract_inverted_index": {"psychedelic": [0], "entropy": [1]}},
+            {"id": "W-gmvae", "display_name": "Deep Unsupervised Clustering with Gaussian Mixture Variational Autoencoders",
+             "publication_year": 2016, "cited_by_count": 1000, "best_oa_location": {}, "abstract_inverted_index": {}},
+            {"id": "W-roleplay", "display_name": "Role play with large language models", "publication_year": 2023,
+             "cited_by_count": 900, "locations": [{"landing_page_url": "https://arxiv.org/abs/2305.16367"}],
+             "best_oa_location": {}, "abstract_inverted_index": {"dialogue": [0], "agents": [1]}}]}
+    if url.startswith("https://arxiv.org/html/2305.16367"): return PAPER
+    raise RuntimeError("HTTP 404")
+about_live = "role-play and whether it separates a conclusion from its justification in large language models"
+wl = S.works_of("Murray Shanahan", about_live, get=get_live)
+check("the paper nearest what he wants to ask comes first, not the most cited",
+      wl[0]["title"] == "Role play with large language models", [w["title"][:40] for w in wl])
+dl = S.load("live@example.org", "Murray Shanahan"); S.read_into(dl, about_live, get=get_live, think=think)
+check("a paper on something else is not read at all", [r["title"] for r in dl["read"]] == ["Role play with large language models"], dl["read"])
+
 # --- the first email: search, then reading, then his position, then the draft ---
 def search(q):
     return [{"title": "Murray Shanahan - Imperial College London", "url": "https://www.imperial.ac.uk/people/m.shanahan",

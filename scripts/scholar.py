@@ -131,6 +131,27 @@ def _arxiv_id(work):
     return m.group(1) if m else ""
 
 
+STOP = set("about with from that this what which their there these those into over under between whether does have been "
+           "your they them than then also only very more most such when where while would could should".split())
+
+
+def _keywords(text):
+    words = set()
+    for w in re.findall(r"[a-z][a-z-]{3,}", str(text or "").lower()):
+        words.add(w)
+        words.update(p for p in w.split("-") if len(p) >= 3)
+    return {w for w in words if w not in STOP}
+
+
+def relevance(work, about):
+    """How much of what he wants to ask this work is about: shared words in title (double) and abstract."""
+    keys = _keywords(about)
+    if not keys:
+        return 0
+    title, abstract = _keywords(work.get("title")), _keywords(work.get("abstract"))
+    return 2 * len(keys & title) + len(keys & abstract)
+
+
 def works_of(name, about="", get=None, n=8):
     """Their papers, the ones nearest `about` first. [] when OpenAlex does not know them."""
     get = get or _get
@@ -143,14 +164,15 @@ def works_of(name, about="", get=None, n=8):
     author = max(people, key=lambda a: a.get("works_count") or 0)
     aid = str(author.get("id", "")).rsplit("/", 1)[-1]
     found, seen = [], set()
-    queries = []
-    if about:
-        words = " ".join(w for w in re.findall(r"[A-Za-z][A-Za-z-]{3,}", about)[:8])
-        if words: queries.append("&search=" + quote(words))
-    queries.append("&sort=cited_by_count:desc")
-    for q in queries:
+    words = " ".join(sorted(_keywords(about))[:8])
+    urls = []
+    if words:
+        urls.append("https://api.openalex.org/works?filter=author.id:%s,title_and_abstract.search:%s&per-page=%d" % (aid, quote(words), n))
+        urls.append("https://api.openalex.org/works?filter=author.id:%s&search=%s&per-page=%d" % (aid, quote(words), n))
+    urls.append("https://api.openalex.org/works?filter=author.id:%s&sort=cited_by_count:desc&per-page=25" % aid)
+    for url in urls:
         try:
-            rows = get("https://api.openalex.org/works?filter=author.id:%s%s&per-page=%d" % (aid, q, n), "json").get("results") or []
+            rows = get(url, "json").get("results") or []
         except Exception:
             continue
         for w in rows:
@@ -163,7 +185,10 @@ def works_of(name, about="", get=None, n=8):
                           "pdf": oa.get("pdf_url") or "", "landing": oa.get("landing_page_url") or "",
                           "abstract": _abstract(w.get("abstract_inverted_index"))[:1500],
                           "cited": w.get("cited_by_count") or 0})
-    return found[:n]
+    # Nearest what he wants to ask first, then the most cited: "most cited" alone put a 2014 psychedelics
+    # paper he co-wrote ahead of "Role play with large language models" (2026-09-29, live on Aegis).
+    found.sort(key=lambda w: (-relevance(w, about), -(w.get("cited") or 0)))
+    return found[:max(n, 12)]
 
 
 def full_text(work, get=None):
@@ -264,8 +289,11 @@ def read_into(d, about, get=None, think=None, links=(), budget=READ_PER_ROUND):
                 n += 1
     if not d.get("works"):
         d["works"] = works_of(d.get("name") or d["address"], about, get=get)
-    for w in d.get("works", []):
+    # Read only what bears on what he wants to ask, nearest first; a paper on something else is not read.
+    ranked = sorted(d.get("works", []), key=lambda w: (-relevance(w, about), -(w.get("cited") or 0)))
+    for w in ranked:
         if n >= budget: break
+        if about and relevance(w, about) == 0: continue
         if w.get("id") in done or any(r.get("work_id") == w.get("id") for r in d.get("read", [])):
             continue
         text, where = full_text(w, get=get)

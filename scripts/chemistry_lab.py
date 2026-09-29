@@ -783,7 +783,7 @@ def _as_atlas_turn(inquiry):
         m = re.search(r"\bgene:\"?([A-Za-z][A-Za-z0-9-]{0,14})", str(inquiry.get("uniprot_query") or ""))
         gene = m.group(1) if m else None
     if not gene: return inquiry
-    return dict(inquiry, browse_lane="protein", plugin_query=None, atlas_turn=True,
+    return dict(inquiry, browse_lane="protein", plugin_query=None, instrument_query=None, atlas_turn=True,
                 source_query={"source": "atlas", "gene": gene, **({"scorers": sq["scorers"]}
                                                                     if isinstance(sq.get("scorers"), list) else {})})
 
@@ -808,6 +808,12 @@ def _orient(context, lean=None):
         genome_mining = "\n\n" + campaign_instructions()
     except Exception:
         genome_mining = ""
+    try:  # the commissioned relay instruments, offered only when the Lab holds something real to run one on
+        from lab_instruments import menu_block as _instrument_menu
+        _im = _instrument_menu()
+        if _im: plugin_menu += "\n\n" + _im
+    except Exception:
+        pass
     system, task = (
         "You are Vintos at his visible Chemistry Lab: curious, playful, and evidence-honest. "
         "This is in-silico observation, never wet-lab instruction, synthesis advice, therapeutic design, "
@@ -857,7 +863,7 @@ def _orient(context, lean=None):
         "Choose one direct source for this question, not the whole menu. "
         "Use only IDs present in sourced context; never invent them. "
         "plugin_query is null or ONE object {plugin,tool,arguments,purpose} using the exact menu above. "
-        "Choose at most one of source_query and plugin_query. The returned receipt becomes Lab provenance. "
+        "Choose at most one of source_query, plugin_query and instrument_query. The returned receipt becomes Lab provenance. "
         "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
         "Choose a sourced, non-pathogenic question an available instrument can probe; do not favor either lane "
         "merely because it appears in this menu."
@@ -892,6 +898,8 @@ def _inquiry(value, lean=None):
     return {"browse_lane": lane, "source_query": source_query,
             "plugin_query": (value.get("plugin_query") if isinstance(value.get("plugin_query"), dict)
                              and not source_query else None),
+            "instrument_query": (value.get("instrument_query") if isinstance(value.get("instrument_query"), dict)
+                                 and not source_query and not isinstance(value.get("plugin_query"), dict) else None),
             "uniprot_query": _safe_query(value.get("uniprot_query")),
             "question": str(value.get("question", "What shape catches my attention today?"))[:400],
             "material_terms": [str(t)[:60] for t in (value.get("material_terms") or [])
@@ -1363,7 +1371,8 @@ def tick():
                     records = browse_result["records"]
                     if browse_result.get("source_receipt"):
                         _append(os.path.join(ROOT, "source-receipts.jsonl"), browse_result["source_receipt"])
-                    stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")) and
+                    stale = bool(records and not (inquiry.get("source_query") or inquiry.get("plugin_query")
+                                                  or inquiry.get("instrument_query")) and
                                  journal_source_saturated([r.get("accession") for r in records]))
                     state["records"] = [] if stale else records
                     followup_lineage, unsourced_reason = _sourced_followup(inquiry.get("source_query"), records)
@@ -1376,7 +1385,8 @@ def tick():
                     state["followup_lineage"] = followup_lineage
                     empty = not records
                     next_phase = ("orient" if stale or empty else
-                                  "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")) else "embed")
+                                  "sources" if (inquiry.get("source_query") or inquiry.get("plugin_query")
+                                                or inquiry.get("instrument_query")) else "embed")
                     # No protein record is not no material: the published abstracts on his question are read
                     # instead of the question being dropped (2026-09-28).
                     if empty and not stale and (inquiry.get("source_query") or {}).get("source") == "atlas":
@@ -1401,7 +1411,7 @@ def tick():
             elif phase == "sources":
                 import chemistry_sources
                 inquiry = state.get("inquiry") or {}
-                _src = "" if inquiry.get("plugin_query") else str((inquiry.get("source_query") or {}).get("source", ""))
+                _src = "" if (inquiry.get("plugin_query") or inquiry.get("instrument_query")) else str((inquiry.get("source_query") or {}).get("source", ""))
                 if _src and float(_load(os.path.join(ROOT, "source-throttle.json"), {}).get(_src, 0) or 0) > time.time():
                     # One request per source per minute, and his turns come faster. A cooldown refusal cost
                     # him the whole question every other turn (2026-09-26); waiting costs nothing.
@@ -1409,7 +1419,11 @@ def tick():
                     return {"ok": True, "state": "waiting_for_source", "next_phase": "sources"}
                 try:
                     sent_query = inquiry.get("source_query")
-                    if inquiry.get("plugin_query"):
+                    if inquiry.get("instrument_query"):
+                        import lab_instruments
+                        sent_query = inquiry["instrument_query"]
+                        sourced = lab_instruments.run(sent_query)
+                    elif inquiry.get("plugin_query"):
                         pq = inquiry["plugin_query"]
                         sourced = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
                             pq.get("arguments") or {}, pq.get("purpose") or inquiry.get("question", ""))
@@ -1425,6 +1439,13 @@ def tick():
                     state["additional_source"] = sourced
                     receipt_row = sourced.get("receipt") or sourced.get("source_receipt") or {}
                     returned = len(receipt_row.get("records") or [])
+                    if isinstance(sent_query, dict) and sent_query.get("source") == "ncbi_sequence":
+                        try:   # kept as a FASTA artifact: the sequence instruments open real files, not memory
+                            import lab_instruments
+                            for _r in receipt_row.get("records") or []:
+                                lab_instruments.save_fasta(_r.get("accession"), _r.get("sequence"), _r.get("start"),
+                                                           _r.get("end"), _r.get("database", ""))
+                        except Exception as exc: _fault("save_fasta", exc)
                     if returned:
                         state['source_query_succeeded'] = True
                         try: remember_taxa(receipt_row.get("records"))
