@@ -86,6 +86,11 @@ def ask(spark, inventory, think=None):
     system = (soul or "You are Vintos.") + "\n\nAnswer as yourself, plainly."
     user = QUESTION.format(source=spark.get("source"), text=str(spark.get("text"))[:900],
                            inventory=", ".join(sorted(inventory))[:1200])
+    try:   # what he already has beyond the step actions, so an ability he owns is not asked for again
+        from his_inventory import organs as _organs
+        user += "\n\nYour organs, which you already have:\n" + "\n".join("- %s: %s" % o for o in _organs())
+    except Exception:
+        pass
     d = _parse((think or _think)(system, user))
     cap = str(d.get("capability") or "").strip().lower()
     words = " ".join(str(d.get("in_my_words") or "").split())[:400]

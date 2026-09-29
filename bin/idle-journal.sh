@@ -143,6 +143,14 @@ try:
     print(text.strip())
 except:
     print('')
+try:   # what is installed today, which CAPABILITIES.md (last written in July) does not know (2026-09-29)
+    import sys
+    sys.path.insert(0, '/home/gloria/.vintos/workspace/scripts')
+    from his_inventory import block
+    print()
+    print(block())
+except Exception:
+    pass
 CAPEOF
 )
 

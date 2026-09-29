@@ -46,6 +46,11 @@ def get_context():
     try:
         parts.append('WHAT YOU ARE AND CAN DO (CAPABILITIES):' + chr(10) + open(os.path.join(MEMORY, 'CAPABILITIES.md')).read().strip())
     except: pass
+    try:   # what is installed today, which CAPABILITIES.md (last written in July) does not know (2026-09-29)
+        sys.path.insert(0, os.path.join(os.path.dirname(MEMORY), 'scripts'))
+        from his_inventory import block as _have
+        parts.append(_have())
+    except: pass
     return '\n'.join(p for p in parts if p)
 
 ctx = get_context()

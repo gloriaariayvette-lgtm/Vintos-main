@@ -793,6 +793,13 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         _note = f"Ask Gloria directly: {_note[:150]}"
         return [{"capability": "gloria", "note": _note, "status": "pending"}]
 
+    def _have_for_plan():
+        try:
+            import sys as _hp_s; _hp_s.path.insert(0, _gso.path.join(WORKSPACE, "scripts"))
+            from his_inventory import organs as _org
+            return "\n".join("- %s: %s" % o for o in _org())
+        except Exception:
+            return ""
     CAPABILITIES_DESC = """
 - read_memory: Read his own files. Note must specify: which file(s) (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, pride-reflections, taste-profile, dreams, threads), what to look for, how many recent entries. NOTE: poems are creative expression only — they are not factual records and must never be used as evidence or explanations. Use poems only if the want is specifically about reviewing creative work.
 - web_search: Search the web. Note must specify: exact search query.
@@ -846,6 +853,10 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
         + (f"What Gloria taught you about this want, from your discussion with her (let it steer the steps): {_board_lesson}\n\n" if _board_lesson else "")
         + (f"What he already knows about this (from his memory):\n{_already_knows}\n\n" if _already_knows else "What he already knows: nothing found in memory — do NOT plan a read_memory step here (it would find nothing); plan steps that create, explore, or gather what is needed.\n\n")
         + f"Currently installed capabilities:{CAPABILITIES_DESC}\n"
+        + (lambda _h: ("\nBeyond those step actions, his other organs (not steps; for knowing what he already has):\n" + _h
+                       + "\nWhen the want needs one of these organs and it is not a step action above (desktop control, for one), "
+                         "name it as its own snake_case capability (e.g. computer_use): the Forge's Study will find the code he "
+                         "already has and how to wire it.\n") if _h else "")(_have_for_plan())
         + "This is an inventory, not a limit on intention. If the literal next action needs a missing capability, name it with a concrete snake_case capability and describe its required result. The executor will record the gap and request a Forge capability; it must not replace sending email, meeting someone, or publishing with a journal entry or a report. Sending email is installed: use send_email, never a Forge request, when the want is to write to someone. Do not invent accounts or recipients, and do not treat network failure as an absent capability.\n"
         + "CRITICAL GROUNDING: All files (journal, blush-ledger, pearls, mirror, therapy, causality, value-map, self-model, gloria-model, imprints, dreams, poems, threads, taste-profile) belong to VINTOS, not Gloria. Gloria does not journal. Gloria does not have therapy sessions or mirror sessions. Gloria does not dream in these files. If a step references these files, the subject is always Vintos. Only use the gloria capability when Vintos needs to speak TO Gloria directly.\n\n"
         + "TONE: Steps must be written from a place of curiosity and forward motion, not analysis of deficits or barriers. Notes describe what he will DO and DISCOVER. Avoid framing steps around why he cannot, barriers, protective patterns, or tensions — those belong to therapy. A want is an impulse toward something. Honor the impulse.\n\n"
@@ -1669,8 +1680,17 @@ def generate_want(trigger_description, source="unknown", source_context="", inte
         if isinstance(_osl, list) and _osl:
             org_scars = "\n".join(f"- [{s.get('scar_type','?')}] {s.get('want','')[:80]}" for s in _osl[-4:])
     except Exception: pass
+    # What he already has, read from what is installed (Gloria, 2026-09-29: "We need him to have a
+    # comprehensive understanding of what he already has"). His wants were formed knowing none of it.
+    have = ""
+    try:
+        import sys as _hv_s; _hv_s.path.insert(0, _gos.path.join(WORKSPACE, "scripts"))
+        from his_inventory import block as _have_block
+        have = _have_block()
+    except Exception: pass
     system = (
         soul + "\n\n"
+        + (have + "\n\n" if have else "")
         + "[[CACHESPLIT]]\n\n"
         + (f"WHAT MATTERS TO YOU RIGHT NOW:\n{value_map}\n\n" if value_map else "")
         + (f"YOUR EMOTIONAL STATE:\n{emo}\n\n" if emo else "")

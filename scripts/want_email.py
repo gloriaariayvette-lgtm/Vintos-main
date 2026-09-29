@@ -107,12 +107,19 @@ STOP_WORDS = re.compile(r"\b(?:unsubscribe|stop (?:emailing|writing|contacting)|
 
 
 def _capabilities():
+    text = ""
     for path in (os.path.join(WS, "memory", "CAPABILITIES.md"), os.path.join(WS, "CAPABILITIES.md")):
         try:
-            return open(path, encoding="utf-8", errors="replace").read().strip()
+            text = open(path, encoding="utf-8", errors="replace").read().strip()
+            break
         except OSError:
             continue
-    return ""
+    try:   # what is installed today, which CAPABILITIES.md (last written in July) does not know; Gloria's own left out
+        from his_inventory import block as _have
+        text = (text + "\n\n" + _have(private=False)).strip()
+    except Exception:
+        pass
+    return text
 
 
 def who_i_am(limit=14000):
