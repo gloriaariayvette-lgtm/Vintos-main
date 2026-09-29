@@ -982,12 +982,22 @@ else
     FORGE_STAGE="$STAGE/forge-bundle"; mkdir -p "$FORGE_STAGE"
     forge_files="$(grep -vE '^\s*(#|$)' "$SRC/scripts/forge-loop-files.txt")"
     forge_changed=""
+    # She cannot read /home/atelier as herself, so without passwordless sudo every file looked changed and
+    # every deploy asked for the Forge install again (2026-09-29). What the last install put there is kept
+    # in FORGE_MARK, one "sha256  file" line per file, and read when the installed file cannot be.
+    FORGE_MARK="$HOME/.vintos/deploy/.forge-installed"
+    forge_marked() { [ -f "$FORGE_MARK" ] && grep -qx "$(sha256sum "$FORGE_STAGE/$1" | cut -c1-64)  $1" "$FORGE_MARK"; }
     for f in $forge_files; do
         cp -p "$SRC/scripts/$f" "$FORGE_STAGE/$f" || { flag "forge: $f missing from the checkout"; forge_changed="__bad__"; break; }
         case "$f" in *.py) python3 -m py_compile "$FORGE_STAGE/$f" 2>/dev/null || { flag "forge: $f does not compile"; forge_changed="__bad__"; break; } ;; esac
-        cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null || sudo -n cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null \
-          || forge_changed="$forge_changed $f"
+        cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null; rc=$?
+        if [ "$rc" -eq 2 ]; then
+            if sudo -n true 2>/dev/null; then sudo -n cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null; rc=$?
+            elif forge_marked "$f"; then rc=0; fi
+        fi
+        [ "$rc" -eq 0 ] || forge_changed="$forge_changed $f"
     done
+    forge_mark_lines="$(for f in $forge_files; do [ -f "$FORGE_STAGE/$f" ] && printf '%s  %s\n' "$(sha256sum "$FORGE_STAGE/$f" | cut -c1-64)" "$f"; done)"
     if [ "$forge_changed" = "__bad__" ]; then
         say "  not touched; the running Forge keeps its current code"
     elif [ -z "$forge_changed" ]; then
@@ -1002,6 +1012,7 @@ else
         done
         if [ "$ok" -eq 1 ] && sudo systemctl restart "$FORGE_UNIT" && sleep 3 && confirm_unit --system "$FORGE_UNIT"; then
             say "  installed and restarted; the old bundle is kept at $FORGE_BACKUP"
+            mkdir -p "$(dirname "$FORGE_MARK")" && printf '%s\n' "$forge_mark_lines" > "$FORGE_MARK"
         else
             flag "forge: the new bundle did not come up; putting the old one back ($FORGE_BACKUP)"
             sudo cp -a "$FORGE_BACKUP/." "$FORGE_DIR/" && sudo systemctl restart "$FORGE_UNIT"
@@ -1021,6 +1032,7 @@ else
             done
             printf 'systemctl restart %s; sleep 3\n' "$FORGE_UNIT"
             printf 'if systemctl is-active --quiet %s; then echo "Forge updated and running."\n' "$FORGE_UNIT"
+            printf '  printf %%s %q > %q && chown %s %q\n' "$forge_mark_lines" "$FORGE_MARK" "$(id -u):$(id -g)" "$FORGE_MARK"
             printf 'else cp -a "$B/." "$D/"; systemctl restart %s; echo "Forge did not come up; old bundle put back."; fi\n' "$FORGE_UNIT"
         } > "$FORGE_SCRIPT"
         flag "forge not updated (sudo wants a password). Run: sudo bash $FORGE_SCRIPT"

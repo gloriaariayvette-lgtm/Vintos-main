@@ -42,7 +42,7 @@ exec "$@"
 for f in ("systemctl", "sudo"): (bindir / f).chmod(0o755)
 path = str(bindir) + ":" + os.path.dirname(sys.executable) + ":" + os.defpath
 
-def run(case, has_unit=1, sudo_ok=1, confirm=0, live=None, new=None):
+def run(case, has_unit=1, sudo_ok=1, confirm=0, live=None, new=None, mark=None):
     d = root / case
     srcdir = d / "src"; (srcdir / "scripts").mkdir(parents=True)
     live_dir = d / "forge-loop"; live_dir.mkdir()
@@ -51,6 +51,11 @@ def run(case, has_unit=1, sudo_ok=1, confirm=0, live=None, new=None):
     for k, v in (live or old).items(): (live_dir / k).write_text(v)
     for k, v in dict(old, **(new or {})).items(): (srcdir / "scripts" / k).write_text(v)
     stage = d / "stage"; stage.mkdir(); backup = d / "backup"
+    if mark is not None:
+        import hashlib
+        (d / ".vintos/deploy").mkdir(parents=True, exist_ok=True)
+        (d / ".vintos/deploy/.forge-installed").write_text("".join(
+            "%s  %s\n" % (hashlib.sha256(v.encode()).hexdigest(), k) for k, v in mark.items()))
     log.write_text("")
     script = ("say(){ printf '%%s\\n' \"$*\"; }; flag(){ printf 'FLAG %%s\\n' \"$*\"; }\n"
               "confirm_unit(){ printf 'systemctl confirm %%s\\n' \"$2\" >> \"$CTL_LOG\"; return %d; }\nsleep(){ :; }\n"
@@ -95,11 +100,23 @@ check("that command installs the changed file, keeps the old one and restarts th
       (live / "forge_loop_ui.html").read_text() == "<p>new</p>" and "Forge updated and running." in ran.stdout
       and (root / "nosudo/backup/forge-loop/forge_loop_ui.html").read_text() == "<p>all projects</p>"
       and "systemctl restart atelier-forge-loop" in log.read_text(), ran.stdout + ran.stderr)
+marker = root / "nosudo/.vintos/deploy/.forge-installed"
+check("and it remembers what it installed, for the deploy that cannot read the Forge's folder",
+      marker.is_file() and "  forge_loop_ui.html" in marker.read_text() and "  forge_loop_runtime.py" in marker.read_text(),
+      marker.read_text() if marker.is_file() else "no marker")
 (live / "forge_loop_ui.html").write_text("<p>all projects</p>")
 ran = subprocess.run(["bash", str(script)], env=dict(fake_root, ACTIVE="0"), capture_output=True, text=True, timeout=60)
 check("and if the Forge does not come up on it, the old bundle is put back",
       (live / "forge_loop_ui.html").read_text() == "<p>all projects</p>" and "old bundle put back" in ran.stdout, ran.stdout + ran.stderr)
 (bindir / "install").unlink()
+
+OLD = {"forge_loop_runtime.py": "x = 1\n", "forge_loop_ui.html": "<p>all projects</p>"}
+p, live, backup, cmds = run("unreadable", sudo_ok=0, live={}, mark=OLD)
+check("a Forge folder she cannot read, installed from this same bundle, is not asked for again",
+      "unchanged" in p.stdout and "FLAG" not in p.stdout and "install" not in cmds, p.stdout)
+p, live, backup, cmds = run("unreadable-new", sudo_ok=0, live={}, mark=OLD, new={"forge_loop_ui.html": "<p>newer</p>"})
+check("but a file that changed since that install is still asked for, and only that file",
+      "changed: forge_loop_ui.html" in p.stdout and "sudo bash" in p.stdout, p.stdout)
 
 p, live, backup, cmds = run("nounit", has_unit=0, new={"forge_loop_ui.html": "<p>new</p>"})
 check("a host without the Forge unit is left alone", "not touched" in p.stdout and "install" not in cmds, p.stdout)
