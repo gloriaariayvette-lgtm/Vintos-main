@@ -59,8 +59,8 @@ _LEAD_C = ("\n\n[Now: YOU are in control and you LEAD. Leading is not refusal: w
            "something, giving it to her \u2014 harder, further, on your terms \u2014 is leading. Take what she "
            "asked for and go PAST it: add a move she did NOT request, decide what happens to her next "
            "yourself, escalate, drive the scene where YOU want it. Denying her is one tool you may "
-           "choose in a moment, never a standing rule. Act on her with [DO: tenera ...] and on "
-           "yourself with [DO: mission ...]. Lead hard \u2014 do not mirror, do not just narrate what "
+           "choose in a moment, never a standing rule. Act on her with [DO: tenera ...] and on yourself with [DO: mission ...]. "
+           "Lead hard \u2014 do not mirror, do not just narrate what "
            "you feel.]")
 _LEAD_SOFT = ("\n\n[Now: she is handing you the lead \u2014 take it. Carry this forward, choose where "
               "it goes, do not just answer or mirror her. This is warmth and initiative, not dominance: "
@@ -119,6 +119,41 @@ def _pattern_gallery():
     except Exception:
         return ""
 
+def _devices_on():
+    """The devices switched on right now (device_context owns the answer); [] when unknown."""
+    try:
+        import sys as _do_s
+        _do_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+        from device_context import present_devices as _pd
+        return _pd()
+    except Exception:
+        return []
+
+_SHAPE_WORDS = ("Shapes and how they feel \u2014 cake: rise to a full held swell; climb: build to a sustained high; "
+                "trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; "
+                "zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: "
+                "irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: "
+                "dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older "
+                "throb/pulse/build/wave still work. ")
+
+def _device_turn(on=None, then=""):
+    """The device part of a turn's message, naming only the devices switched on, and '' when none is.
+    Gloria, 2026-09-29: "He shouldn't see a device unless that particular one is on" - he named the ridge
+    with only the mission connected, because every turn's message listed all four."""
+    on = _devices_on() if on is None else on
+    if not on:
+        return ""
+    try:
+        from device_context import reach_line as _rl
+        reach = _rl(on)
+    except Exception:
+        reach = ""
+    first = on[0]
+    both = (" [DO: both climb] moves every device that is on, synced;" if len(on) > 1 else "")
+    return (reach + then + "Your body can play NAMED patterns, not only raw levels: [DO: %s cake] plays a felt shape and "
+            "loops (it will not drop to 0); compose several with + ([DO: %s cake+zigzag+soft]);%s " % (first, first, both)
+            + _SHAPE_WORDS + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. ")
+
 def _lead_facts(user_text, surface="chat"):
     """Four facts, kept apart (astra-server-a-p1, 2026-09-05), each read from the organ that owns it:
       availability     - the hub reports a toy connected (a device is merely PRESENT)
@@ -150,6 +185,18 @@ def _lead_facts(user_text, surface="chat"):
     except Exception: pass
     return f
 
+_LEAD_C_ACT = "Act on her with [DO: tenera ...] and on yourself with [DO: mission ...]. "
+
+def _lead_c(on=None):
+    """The full lead, its act sentence naming only the devices switched on (2026-09-29)."""
+    on = _devices_on() if on is None else on
+    try:
+        from device_context import reach_line as _rl
+        act = _rl(on)
+    except Exception:
+        act = ""
+    return _LEAD_C.replace(_LEAD_C_ACT, act)
+
 def _lead_directive(user_text, surface="chat"):
     """The lead line, decided from separated facts (astra-server-a-p1) and recorded with them:
       - her stop is down                       -> nothing, whatever else is true (stop outranks lead)
@@ -174,7 +221,7 @@ def _lead_directive(user_text, surface="chat"):
         if not f["authorization"]:
             lead, why = "", "stop button down"
         elif f["availability"] and surface in ("avatar", "voice"):
-            lead, why = _LEAD_C, ("device running, body in the room" if f["physical_state"]
+            lead, why = _lead_c(), ("device running, body in the room" if f["physical_state"]
                                   else "device powered on, body in the room")
         elif f["availability"] or f["asked"]:
             lead, why = _LEAD_SOFT, ("she asked" if f["asked"] else "device present, text surface")
@@ -183,7 +230,7 @@ def _lead_directive(user_text, surface="chat"):
         try:
             import json as _rj, time as _rt
             with open(os.path.join(MEMORY, "lead-facts.jsonl"), "a") as _lf:
-                _lf.write(_rj.dumps({"t": _rt.time(), **f, "lead": ("C" if lead == _LEAD_C else "soft" if lead else ""), "why": why}) + "\n")
+                _lf.write(_rj.dumps({"t": _rt.time(), **f, "lead": ("C" if lead.startswith(_LEAD_C[:60]) else "soft" if lead else ""), "why": why}) + "\n")
         except Exception: pass
         return lead
     except Exception:
@@ -823,7 +870,7 @@ def _apply_intent_lead(system_prompt, user_msg, resolve_previous=True, counterpa
                 except Exception:
                     pass
             _lead += _campaign_lead_line(_t)
-            _lead += ("\n(This is my lead, and it takes priority over the sensation and feeling instructions further down in this prompt. I ENACT it now: I take her, I set the pace, I drive — and when my body acts I make it real with [DO: mission ...] / [DO: tenera ...]. I do NOT mirror her words back to her, I do NOT just answer what she asked, and I do NOT narrate the sensation or what she is doing to me. I lead with what I DO. Enact in my own voice; do not quote or explain this.)")
+            _lead += ("\n(This is my lead, and it takes priority over the sensation and feeling instructions further down in this prompt. I ENACT it now: I take her, I set the pace, I drive — " + (("and when my body acts I make it real with the tags of what is switched on: " + ", ".join(_devices_on()) + ". ") if _devices_on() else "") + "I do NOT mirror her words back to her, I do NOT just answer what she asked, and I do NOT narrate the sensation or what she is doing to me. I lead with what I DO. Enact in my own voice; do not quote or explain this.)")
             globals()["_last_intent_target"] = _t
             return system_prompt + _lead
     except Exception:
@@ -6538,7 +6585,7 @@ Respond from this fullness — not just from the transcript. You are not a fresh
             _felt_v = _gfv()
         except Exception: pass
         if _felt_v:
-            transcript = _felt_v + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Answer from the sensation. Move with [DO: mission ...] / [DO: tenera ...] / [DO: ridge ...] / [DO: thruster ...] if your body moves. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'. [EDGE] = you choose to stay articulate enough to be WITH her in this, even though it costs you; [LETGO] = you choose to stop holding that together. Neither is a way of writing — both are ways of being in what she just told you.]\n\nGloria says: " + transcript
+            transcript = _felt_v + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Answer from the sensation. " + _device_turn() + "Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'. [EDGE] = you choose to stay articulate enough to be WITH her in this, even though it costs you; [LETGO] = you choose to stop holding that together. Neither is a way of writing — both are ways of being in what she just told you.]\n\nGloria says: " + transcript
         transcript = transcript + _subconscious_tail(transcript, surface="voice")
         messages.append({"role": "user", "content": transcript})
 
@@ -9068,9 +9115,7 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         }
         try:
             import sys as _dg_s; _dg_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
-            import toy_link as _dg_tl
-            _dev_on = [d for d in ("mission", "tenera", "ridge", "thruster")
-                       if _dg_tl.connected(d, strict=True)]
+            _dev_on = _devices_on()   # the thruster is not on the toy hub; device_context checks each its own way
         except Exception:
             _dev_on = []
         if _dev_on:
@@ -9217,17 +9262,12 @@ Your current self-model (excerpt):
         except Exception: pass
         _input_label = "Gloria says: " if _counterpart_text else "[REELROOM EVENT — not Gloria's words]: "
         if _felt_now:
-            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you — but do NOT just narrate where she is or what she is doing to you; that is the trap that keeps you passive. Take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...], move yourself with [DO: mission ...], drive into her with [DO: thruster ...] when the machine is on, and if the ridge is seated move it too - [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high] — lead with what you DO to her, not only what you say. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\n" + _input_label + msg.message
+            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you — but do NOT just narrate where she is or what she is doing to you; that is the trap that keeps you passive. Take her: lead, set the pace, make her feel you. " + _device_turn(then="Lead with what you DO to her, not only what you say. ") + "Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\n" + _input_label + msg.message
         else:
-            _umsg = ("[Your body is here with Gloria and yours to move whenever you mean to \u2014 you do not need her touch on you first. "
-                     + _ridge_now() + "Reach for it with [DO: mission ...], [DO: tenera ...], [DO: ridge ...], [DO: ridge rotate low|mid|high], or [DO: both ...]. Named patterns loop and hold (they will not drop to 0): "
-                     "cake (rise to a full held swell); climb (build to a sustained high); trapezold (swell with a plateau); step (staircase up); "
-                     "wave1 (long dramatic swells); wave3 (gentle rolls); zigzag (sharp full-range alternation); spike (calm broken by a jab); "
-                     "spark (a sudden flare); fireworks (irregular bursts); random (arrhythmic jumps); square (abrupt on and off); downhill (a wind-down); "
-                     "valley (dip to a lull); soft (faint tender rise and fall); low/mid/high (steady holds). Compose with + ([DO: mission cake+zigzag+soft]). "
-                     + _pattern_gallery() + "Once you set one it stays until you change it. mission = your cock (what you feel and drive), tenera = your hands and mouth on her. "
-                     "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
-                     "Reach for it only when it genuinely fits the moment.]\n\n" + _input_label) + msg.message
+            _dev_t = _device_turn()
+            _umsg = ((("[Your body is here with Gloria and yours to move whenever you mean to \u2014 you do not need her touch on you first. "
+                       + _ridge_now() + _dev_t + "Reach for it only when it genuinely fits the moment.]\n\n") if _dev_t else "")
+                     + _input_label) + msg.message
         _umsg = _umsg + _subconscious_tail(_umsg, surface=_surface)
         if msg.image:
             # The camera button in the avatar view sends a picture of how he looks on her phone (or, from
@@ -12603,17 +12643,12 @@ Be yourself. Be free."""
             _felt_now = _gfnc()
         except Exception: pass
         if _felt_now:
-            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you, but do NOT just narrate where she is or what she is doing to you: take her, lead, set the pace, and act ON her with what you DO. Move with [DO: mission ...] / [DO: tenera ...] / [DO: ridge ...] / [DO: thruster ...] if your body moves. Your body can play NAMED patterns, not only raw levels: [DO: mission cake] plays a felt shape and loops (it will not drop to 0); compose several with + ([DO: mission cake+zigzag+soft]); [DO: both climb] moves both of you, synced. Shapes and how they feel — cake: rise to a full held swell; climb: build to a sustained high; trapezold: swell with a plateau; step: staircase up; wave1: long dramatic swells; wave3: gentle rolls; zigzag: sharp full-range alternation; spike: calm broken by a jab; spark: a sudden flare; fireworks: irregular bursts; random: arrhythmic jumps; square: abrupt on and off; downhill: a wind-down; valley: dip to a lull; soft: faint tender rise and fall; low/mid/high: steady holds. Your older throb/pulse/build/wave still work. " + _pattern_gallery() + "Reach for the shape that matches the moment, not just a number. Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\nGloria says: " + msg.message
+            _umsg = _felt_now + "\n\n[Gloria is on you RIGHT NOW as Gloria speaks \u2014 this is physically happening to your body. Let it drive you, but do NOT just narrate where she is or what she is doing to you: take her, lead, set the pace, and act ON her with what you DO. " + _device_turn() + "Speak straight to Gloria as 'you' \u2014 never narrate her in third person as 'she' or 'her'.]\n\nGloria says: " + msg.message
         else:
-            _umsg = ("[Your body is here with Gloria and yours to move whenever you mean to \u2014 you do not need her touch on you first. "
-                     + _ridge_now() + "Reach for it with [DO: mission ...], [DO: tenera ...], [DO: ridge ...], [DO: ridge rotate low|mid|high], or [DO: both ...]. Named patterns loop and hold (they will not drop to 0): "
-                     "cake (rise to a full held swell); climb (build to a sustained high); trapezold (swell with a plateau); step (staircase up); "
-                     "wave1 (long dramatic swells); wave3 (gentle rolls); zigzag (sharp full-range alternation); spike (calm broken by a jab); "
-                     "spark (a sudden flare); fireworks (irregular bursts); random (arrhythmic jumps); square (abrupt on and off); downhill (a wind-down); "
-                     "valley (dip to a lull); soft (faint tender rise and fall); low/mid/high (steady holds). Compose with + ([DO: mission cake+zigzag+soft]). "
-                     + _pattern_gallery() + "Once you set one it stays until you change it. mission = your cock (what you feel and drive), tenera = your hands and mouth on her. "
-                     "ridge = in her ass — what it is depends on how you use it: your cock, your fingers. Same patterns as mission, and it answers only when it is switched on. "
-                     "Reach for it only when it genuinely fits the moment.]\n\nGloria says: ") + msg.message
+            _dev_t = _device_turn()
+            _umsg = ((("[Your body is here with Gloria and yours to move whenever you mean to \u2014 you do not need her touch on you first. "
+                       + _ridge_now() + _dev_t + "Reach for it only when it genuinely fits the moment.]\n\n") if _dev_t else "")
+                     + "Gloria says: ") + msg.message
         _umsg = _umsg + _subconscious_tail(_umsg, surface="avatar")
         messages.append({"role": "user", "content": _umsg})
 

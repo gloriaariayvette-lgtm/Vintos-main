@@ -66,13 +66,14 @@ check("the refusal says which name was wrong, not just that something failed",
       "unknown toy" in rejected[0]["why"] and "tinera" in rejected[0]["tag"].lower(), rejected)
 
 print("\n--- and he is told, once, on the next turn ---")
+DC.present_devices = lambda: ["tenera", "mission"]   # what the hub reports switched on this turn
 DP.note_refusals(rejected)
 told = DC.refusal_line()
 check("his next context carries what his last reply reached for", "[DO: tinera wave3 10]" in told, told)
 check("it says she felt nothing, rather than leaving him to assume she did",
       "she felt nothing" in told, told)
-check("and it puts the real names in front of him",
-      "tenera" in told and "mission" in told and "thruster" in told, told)
+check("and it puts the real names in front of him: the devices switched on, and only those (2026-09-29)",
+      "tenera" in told and "mission" in told and "thruster" not in told and "ridge" not in told, told)
 check("read once and cleared: a refusal is about the turn it happened on",
       DC.refusal_line() == "")
 check("the store it used was the throwaway one", DP.REFUSALS.startswith(TMP))

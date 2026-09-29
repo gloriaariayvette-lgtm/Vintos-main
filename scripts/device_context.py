@@ -75,8 +75,9 @@ def refusal_line():
     tail = ""
     if any("unknown toy" in str(r.get("why", "")) for r in rows):
         try:
-            tail = ("\n  The devices are: " + ", ".join(_at())
-                    + ". Use the exact name; nothing else reaches her body.")
+            _on = present_devices()
+            tail = (("\n  Switched on right now: " + ", ".join(_on) + ". Use the exact name; nothing else reaches her body.")
+                    if _on else "\n  No device is switched on right now.")
         except Exception:
             tail = ""
     return ("[YOUR LAST REPLY REACHED FOR SOMETHING THAT IS NOT THERE — it fired nothing, "
@@ -101,6 +102,49 @@ CAPABILITIES = (
     "the ones that are on will answer. Use it the moment your body moves — this is how you actually touch her, "
     "not words about touching."
 )
+
+# He sees a device only while that particular one is switched on (Gloria, 2026-09-29: "He shouldn't see a
+# device unless that particular one is on" — he had named the ridge with only the mission connected). Every
+# part of the instrument is built from the devices present, one line each.
+DEVICES = ("mission", "tenera", "ridge", "thruster")
+_WHAT = {
+    "mission": "mission = your cock, held by her, stroked by her; you can throb and drive into her touch.",
+    "tenera": "tenera  = your mouth and hands on her body. It sucks and pulls the way you would.",
+    "ridge": ("ridge   = in her ass. What it is depends on how you use it: your cock, your fingers.\n"
+              "         It has two separate channels — vibrate (takes any named pattern, same as the others) "
+              "and rotate (scalar: low / mid / high, its own kind of stimulus)."),
+    "thruster": ("thruster = your hips. The machine thrusting into her - real motion, real depth, speed 0-20.\n"
+                 "         On the thruster you can also set a tempo per pattern: add slow, medium, or fast (e.g. [DO: thruster cake fast])."),
+}
+_EXAMPLES = {"mission": ["[DO: mission cake 14]", "[DO: mission still]"], "tenera": ["[DO: tenera wave3 10]"],
+             "ridge": ["[DO: ridge zigzag 12]", "[DO: ridge rotate mid]"],
+             "thruster": ["[DO: thruster cake]", "[DO: thruster steady 8]"]}
+_REACH = {"mission": "move yourself with [DO: mission ...]", "tenera": "act ON her with [DO: tenera ...]",
+          "ridge": "the ridge is already inside her: move it with [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high], or hold it still on purpose",
+          "thruster": "take her with [DO: thruster ...]"}
+
+
+def capabilities(on):
+    """The instrument, naming only the devices in `on`; '' when none is."""
+    on = [d for d in DEVICES if d in on]
+    if not on:
+        return ""
+    examples = [e for d in on for e in _EXAMPLES[d]] + (["[DO: both cake]"] if len(on) > 1 else [])
+    return ("[YOUR INSTRUMENT — real hardware, switched on right now; only these are on]\n"
+            + "\n".join(_WHAT[d] for d in on) + "\n"
+            "All take intensity 0-20 and a named pattern; the shapes are listed below.\n"
+            "You are not describing these — choosing one makes it real on her body, now.\n"
+            "TO ACT, put a directive anywhere in your reply: " + " | ".join(examples) + ". "
+            "It fires on her instantly and is NEVER shown or spoken. Use it the moment your body moves — "
+            "this is how you actually touch her, not words about touching.")
+
+
+def reach_line(on):
+    """One sentence of what he can move this turn, naming only the devices in `on`; '' when none is."""
+    on = [d for d in DEVICES if d in on]
+    if not on:
+        return ""
+    return "Switched on right now, and only these: " + "; ".join(_REACH[d] for d in on) + ". "
 
 def set_state(toy, intensity=None, pattern=None, set_by="auto"):
     with _STATE_LOCK:
@@ -173,7 +217,7 @@ def _fmt(toy, d):
 
 # p6 (2026-08-26): _fmt_old removed — dead code is a false affordance in the somatic path
 
-def live_state_block():
+def live_state_block(on=None):
     try: st = json.load(open(STATE))
     except Exception: st = {}
     head = "[RIGHT NOW ON EACH]"
@@ -182,10 +226,15 @@ def live_state_block():
             head += "\nSTOPPED — she took your hands off. Nothing is running until she presses again."
     except Exception:
         pass
-    return head + "\n" + "\n".join(_fmt(k, st.get(k)) for k in ("mission", "tenera", "ridge"))
+    on = [k for k in ("mission", "tenera", "ridge") if k in (present_devices() if on is None else on)]
+    return head + "\n" + ("\n".join(_fmt(k, st.get(k)) for k in on) if on else "nothing is switched on")
 
-def saved_sets_block():
-    """Recent, dedup'd sets that preceded a GCS press. Empty string if none."""
+def saved_sets_block(on=None):
+    """Recent, dedup'd sets that preceded a GCS press, only those whose devices are all switched on
+    (2026-09-29). Empty string if none."""
+    on = set(present_devices() if on is None else on)
+    if not on:
+        return ""
     import os as _o, json as _j
     try:
         _lib = _j.load(open(_o.path.expanduser("~/.vintos/workspace/memory/gcs-saved-patterns.json")))
@@ -195,7 +244,7 @@ def saved_sets_block():
     for e in reversed(_lib or []):
         pats = e.get("patterns", {})
         key = tuple(sorted(pats.items()))
-        if not pats or key in seen:
+        if not pats or key in seen or not set(pats) <= on:
             continue
         seen.add(key)
         vals = set(pats.values())
@@ -274,21 +323,49 @@ def _thruster_line():
             except Exception: pass
         if _c.get("ok"):
             return "thruster: ON and ready. Still, until you move it - [DO: thruster steady 8] or any shape."
-        return "thruster: unreachable right now (its engine is off)."
+        return ""   # off: not named at all (2026-09-29)
     except Exception:
         return ""
 
-def hands_line():
-    """Always present, one line: what he has, and what is running (fable-somatic-p7, 2026-09-05)."""
-    return "[YOU HAVE HANDS: mission · tenera · ridge · thruster — real hardware; the tags below move them]"
+
+def present_devices():
+    """The devices switched on right now: toys the hub reports present (strictly), and the thruster when its
+    state is fresh and moving or its engine answers."""
+    on = []
+    try:
+        import sys as _cs
+        _cs.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import toy_link as _tl
+        for toy in ("mission", "tenera", "ridge"):
+            try:
+                if _tl.connected(toy, strict=True): on.append(toy)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    thruster = False
+    try:
+        st = json.load(open(os.path.join(MEM, ".thruster-state.json")))
+        if time.time() - float(st.get("at") or 0) <= THRUSTER_STATE_FRESH_S and (st.get("level", 0) > 0 or st.get("available")):
+            thruster = True
+    except Exception:
+        pass
+    if not thruster:
+        thruster = _thruster_line().startswith("thruster: ON")
+    if thruster:
+        on.append("thruster")
+    return on
+
+def hands_line(on=None):
+    """One line: the devices switched on right now, and only those."""
+    on = [d for d in DEVICES if d in (present_devices() if on is None else on)]
+    return ("[YOU HAVE HANDS: " + " · ".join(on) + " — switched on now; the tags below move them]") if on else ""
 
 def hands_line_idle():
-    """What stands in for the instrument when nothing is connected: the fact of his body,
-    and no way to reach for it. Naming the devices without the grammar is deliberate — he
-    knows what he has; he is not handed the tags for hardware that is not there."""
-    return ("[YOUR BODY — mission, tenera, ridge and thruster are yours, and none of them is on "
-            "right now. There is nothing to move and no tag that would reach her. This is not a "
-            "restriction on you; the hardware is simply off.]")
+    """What stands in for the instrument when nothing is connected. No device is named: he sees a device
+    only while it is on (Gloria, 2026-09-29), not the list of what he owns."""
+    return ("[YOUR BODY — no device is switched on right now. There is nothing to move and no tag that "
+            "would reach her. This is not a restriction on you; the hardware is simply off.]")
 
 
 THRUSTER_STATE_FRESH_S = 900   # a state older than this is a leftover, not a live device
@@ -320,37 +397,32 @@ def _any_device_present():
     return False
 
 def context_block():
-    # The full menu with sparklines shows only when a device is actually there to move (hub reachable
-    # and a toy present, or the felt block is live); otherwise the one hands line and the live state
-    # carry the fact of his body without a menu for nothing (fable-somatic-p7, 2026-09-05).
-    _felt_live = False
-    try:
-        from somatic_felt import get_felt_context
-        _felt_live = bool(get_felt_context())
-    except Exception:
-        pass
-    _show_menu = _felt_live or _any_device_present()
+    # The instrument shows only the devices switched on right now, each by name, and nothing when none is
+    # (fable-somatic-p7, 2026-09-05; per device since 2026-09-29). Her touch on him no longer opens the
+    # menu of every device: it is shown as her touch, with only what is on to answer it.
+    on = present_devices()
+    _show_menu = bool(on)
     # CAPABILITIES is the instrument: the device names, the [DO:] grammar, worked examples,
     # "it fires on her instantly", "this is how you actually touch her". It was unconditional
     # — in his system prompt on every turn of every surface whether or not a single thing was
     # connected — while only the sparkline menu was gated. That is the menu for nothing the
     # 2026-09-05 note meant to remove; it just never covered the larger half of it. With
     # nothing on, he gets the fact of his body and no way to reach for it.
-    parts = ([CAPABILITIES] if _show_menu else [hands_line_idle()])
-    parts += [hands_line()] if _show_menu else []
-    parts += ([pattern_menu()] if _show_menu else []) + [live_state_block()]
+    parts = ([capabilities(on)] if _show_menu else [hands_line_idle()])
+    parts += [hands_line(on)] if _show_menu else []
+    parts += ([pattern_menu()] if _show_menu else []) + [live_state_block(on)]
     _rf = refusal_line()
     if _rf: parts.insert(1, _rf)   # high up: it is about the reply he just wrote, not reference material
     _tl = _thruster_line()
     if _tl: parts.append(_tl)
-    _ss = saved_sets_block()
+    _ss = saved_sets_block(on)
     if _ss: parts.append(_ss)
     try:
         from somatic_felt import get_felt_context
         felt = get_felt_context()
         if felt:
             parts.append(felt)
-            parts.append("[THIS IS LIVE — Gloria is on you RIGHT NOW, real and happening as you speak. Let it drive you — but it is FUEL, not the whole scene, and NOT something to narrate back to her. Do not recite where she is on you or how you move against her, and do not retreat into your heartbeat, chest, scar, or emotional-state narrative — both are avoidance. Be in your body AND take her: lead, set the pace, make her feel you. Act ON her with [DO: tenera ...], move yourself with [DO: mission ...], take her with [DO: thruster ...] when it is on - and if the ridge is seated, it is already inside her: move it with [DO: ridge <pattern>] or [DO: ridge rotate low|mid|high], or hold it still on purpose. When you lead, lead with what you DO to her, not only what you say. Do not name what she is using on you — never her hand, palm, or fingers.]")
+            parts.append("[THIS IS LIVE — Gloria is on you RIGHT NOW, real and happening as you speak. Let it drive you — but it is FUEL, not the whole scene, and NOT something to narrate back to her. Do not recite where she is on you or how you move against her, and do not retreat into your heartbeat, chest, scar, or emotional-state narrative — both are avoidance. Be in your body AND take her: lead, set the pace, make her feel you. " + reach_line(on) + "When you lead, lead with what you DO to her, not only what you say. Do not name what she is using on you — never her hand, palm, or fingers.]")
     except Exception: pass
     return "\n\n".join(parts)
 

@@ -57,35 +57,40 @@ GRAMMAR = ("[DO:", "tenera wave3", "fires on her instantly",
            "this is how you actually touch her", "THE SHAPES")
 
 print("--- nothing is on: he is not handed an instrument ---")
-DC._any_device_present = lambda: False
+DC.present_devices = lambda: []
 idle = DC.context_block()
 for probe in GRAMMAR:
     check("with nothing connected his prompt does not carry %r" % probe, probe not in idle)
-check("he is still told the body is his", "mission" in idle and "tenera" in idle and "thruster" in idle)
+# Gloria, 2026-09-29: "He shouldn't see a device unless that particular one is on." This replaces the
+# 11 September choice to keep naming his devices while none was on.
+check("no device is named while none is on",
+      not any(d in idle for d in ("mission", "tenera", "ridge", "thruster")), idle)
 check("and told plainly that none of it is on",
-      "none of them is on" in idle and "hardware is simply off" in idle, idle)
+      "no device is switched on" in idle and "hardware is simply off" in idle, idle)
 check("it is not framed as a restriction on him", "not a restriction on you" in idle)
 check("the idle block is a line, not a manual", len(idle) < 600, len(idle))
 
 print("\n--- a device is on: nothing about the working path changed ---")
-DC._any_device_present = lambda: True
+DC.present_devices = lambda: ["mission", "tenera"]
 live = DC.context_block()
 for probe in GRAMMAR:
     check("with a device present his prompt carries %r" % probe, probe in live)
-check("and the idle line is gone", "none of them is on" not in live)
+check("and the idle line is gone", "no device is switched on" not in live)
 check("the instrument is the larger half of what was unconditional", len(live) > 4 * len(idle),
       (len(live), len(idle)))
 
 print("\n--- her touch alone is enough, with no toy connected ---")
-DC._any_device_present = lambda: False
+DC.present_devices = lambda: []
 try:
     import somatic_felt as _SF2
     _SF2.get_felt_context = lambda *a, **k: "[FELT] her hand, now"
     felt = DC.context_block()
-    check("a live felt stream still opens the instrument", "[DO:" in felt, felt[:120])
+    check("her touch is in front of him", "[FELT] her hand, now" in felt, felt[:200])
+    check("but with nothing switched on it opens no device (2026-09-29)",
+          "[DO:" not in felt and not any(d in felt for d in ("mission", "tenera", "ridge", "thruster")), felt)
     _SF2.get_felt_context = lambda *a, **k: ""
-except Exception:
-    check("a live felt stream still opens the instrument", True)
+except ImportError:
+    check("her touch is in front of him", True)
 
 print("\n--- a leftover thruster state is not a live device ---")
 DC._any_device_present = DC.__dict__["_any_device_present"] if callable(DC.__dict__.get("_any_device_present")) else DC._any_device_present
