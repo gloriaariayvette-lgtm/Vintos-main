@@ -621,10 +621,13 @@ def make_music(want_text):
         # The composer is given this want's id and waited for. It used to start in the background without the
         # id, and the step read its result at once: the song, minutes away and untagged, was never there, and he
         # wrote "no new musical composition was recorded for this goal" (Gloria, 2026-09-28).
+        _music_log_path = os.path.join(MEMORY, "logs", "wants-music.log")
+        os.makedirs(os.path.dirname(_music_log_path), exist_ok=True)
+        _music_log = open(_music_log_path, "a")
         proc = _stance_popen(
             [VENV_PYTHON, os.path.join(SCRIPTS, "dream-music.py")],
-            stdout=open("/tmp/wants-music.log", "a"),
-            stderr=open("/tmp/wants-music.log", "a"),
+            stdout=_music_log,
+            stderr=_music_log,
             env=_env,
         )
         log("Music generation started; waiting for it")
@@ -633,6 +636,8 @@ def make_music(want_text):
         except subprocess.TimeoutExpired:
             log(f"Music still composing after {MUSIC_WAIT_S}s; it will be credited when it lands")
             return False
+        finally:
+            _music_log.close()
         if _music_for_want(_env["MUSIC_WANT_ID"]):
             log("Music composed and recorded for this want")
             return True
