@@ -967,6 +967,55 @@ else
 fi
 say
 
+# -------------------------------------------------------------------- forge
+# The Forge runs its own copy of scripts/forge-loop-files.txt from /home/atelier/forge-loop. Nothing
+# refreshed that copy after its one promotion (2026-09-21), so every Forge fix since — the page hiding
+# cancelled projects among them — sat in the repository while her page stayed overrun (2026-09-29).
+# Same rule as the broker: touched only when a file differs; the old bundle is kept and put back if the
+# new one does not come up.
+FORGE_DIR="${VINTOS_FORGE_DIR:-/home/atelier/forge-loop}"
+FORGE_UNIT="atelier-forge-loop"
+say "== forge (service $FORGE_UNIT, $FORGE_DIR) =="
+if ! systemctl cat "$FORGE_UNIT.service" >/dev/null 2>&1; then
+    say "  no $FORGE_UNIT unit on this host; not touched"
+else
+    FORGE_STAGE="$STAGE/forge-bundle"; mkdir -p "$FORGE_STAGE"
+    forge_files="$(grep -vE '^\s*(#|$)' "$SRC/scripts/forge-loop-files.txt")"
+    forge_changed=""
+    for f in $forge_files; do
+        cp -p "$SRC/scripts/$f" "$FORGE_STAGE/$f" || { flag "forge: $f missing from the checkout"; forge_changed="__bad__"; break; }
+        case "$f" in *.py) python3 -m py_compile "$FORGE_STAGE/$f" 2>/dev/null || { flag "forge: $f does not compile"; forge_changed="__bad__"; break; } ;; esac
+        cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null || sudo -n cmp -s "$FORGE_STAGE/$f" "$FORGE_DIR/$f" 2>/dev/null \
+          || forge_changed="$forge_changed $f"
+    done
+    if [ "$forge_changed" = "__bad__" ]; then
+        say "  not touched; the running Forge keeps its current code"
+    elif [ -z "$forge_changed" ]; then
+        say "  unchanged ($(printf '%s\n' $forge_files | wc -l | tr -d ' ') files read identical); not touched"
+    elif sudo -n true 2>/dev/null; then
+        say "  changed:$forge_changed"
+        FORGE_BACKUP="$BACKUP/forge-loop"
+        sudo mkdir -p "$FORGE_BACKUP" && sudo cp -a "$FORGE_DIR/." "$FORGE_BACKUP/"
+        ok=1
+        for f in $forge_changed; do
+            sudo install -o root -g root -m 644 "$FORGE_STAGE/$f" "$FORGE_DIR/$f" || { ok=0; break; }
+        done
+        if [ "$ok" -eq 1 ] && sudo systemctl restart "$FORGE_UNIT" && sleep 3 && confirm_unit --system "$FORGE_UNIT"; then
+            say "  installed and restarted; the old bundle is kept at $FORGE_BACKUP"
+        else
+            flag "forge: the new bundle did not come up; putting the old one back ($FORGE_BACKUP)"
+            sudo cp -a "$FORGE_BACKUP/." "$FORGE_DIR/" && sudo systemctl restart "$FORGE_UNIT"
+            say "  Diagnose with: sudo journalctl -u $FORGE_UNIT -n 40"
+        fi
+    else
+        flag "forge not updated: sudo wants a password. Changed:$forge_changed. These lines, in order:"
+        say "    sudo cp -a $FORGE_DIR $BACKUP/forge-loop"
+        for f in $forge_changed; do say "    sudo install -o root -g root -m 644 $SRC/scripts/$f $FORGE_DIR/$f"; done
+        say "    sudo systemctl restart $FORGE_UNIT && systemctl status $FORGE_UNIT --no-pager | head -5"
+    fi
+fi
+say
+
 # -------------------------------------------------------------------- house
 # server.py is the unit's own file, so installing it changes nothing until the
 # unit restarts. Leaving that to be remembered every time is how a deploy ends

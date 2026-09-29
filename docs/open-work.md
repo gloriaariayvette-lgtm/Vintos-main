@@ -3,6 +3,14 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 29 September — the Forge page was never updated after 21 September
+
+The Forge runs its own copy of `scripts/forge-loop-files.txt` from `/home/atelier/forge-loop`. It was
+promoted once (source `31dd5c3`, 21 September) and no deploy refreshed it, so 17 later Forge commits,
+among them the page that hides cancelled projects, never reached her page. `deploy-atelier.sh` now
+installs a changed bundle (backup kept, restored if the Forge does not come up) or, without passwordless
+sudo, prints the exact lines. **Not yet confirmed on Aegis:** the first deploy after this says which it did.
+
 ## 26 September — one branch again: Chat's microbiology branch merged in
 
 Aegis was running `codex/microbiology-integration` (22 commits) while the day's Lab, Forge,
