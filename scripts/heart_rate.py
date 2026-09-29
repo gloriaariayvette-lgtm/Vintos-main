@@ -209,17 +209,19 @@ def context_line(now=None):
 def temporal_block(now=None):
     """Bounded ring facts for temporal-context.txt, with explicit staleness."""
     now = time.time() if now is None else now; lines = []
-    # Prefer the ~30-min snapshot, but fall back to the freshest single reading so a live bpm still
-    # reaches temporal context even when the periodic snapshot has lagged behind delivered data.
+    # The freshest of the half-hourly snapshot and the latest single reading: the snapshot came first even
+    # when a reading seconds old was there, so a live 132 bpm read as "116, 13 minutes ago" (2026-09-29).
+    best = None
     for _src in (SNAPSHOT, LATEST):
         try:
             snap = json.load(open(_src)); age = max(0, now - float(snap.get("observed_ts") or snap.get("received_ts") or 0))
-            if age <= 7200 and snap.get("bpm") is not None:
-                lines.append("Ring periodic update: %s bpm observed %d minutes ago (delivered reading, not continuous monitoring)." %
-                             (snap.get("bpm"), int(age / 60)))
-                break
+            if age <= 7200 and snap.get("bpm") is not None and (best is None or age < best[0]):
+                best = (age, snap.get("bpm"))
         except Exception:
             continue
+    if best:
+        lines.append("Ring periodic update: %s bpm observed %d minutes ago (delivered reading, not continuous monitoring)." %
+                     (best[1], int(best[0] / 60)))
     try:
         sl = json.load(open(SLEEP)); age = max(0, now - float(sl.get("ended_ts") or 0))
         if age <= 172800:
