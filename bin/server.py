@@ -261,6 +261,7 @@ PUBLIC_MUTATIONS = {
     "/api/voice/call-log":     "the voice client's call log",
     "/api/music/share":        "the share form in the app; content is her offering, effect is a reflection",
     "/aq/answer":              "phone-friendly answer form for his architecture questions; answers only, question ids are opaque",
+    "/ea/decide":              "phone-friendly approve/decline of a second unanswered email; only a valid one-time link (hashed token) decides",
     "/api/video/hero":         "her phone browser's upload form; filenames are server-chosen, content must be PNG/JPEG under 15 MB",
     "/api/voice/token":        "the voice client fetches its own 300-second ephemeral realtime token; LAN-only door",
     "/api/hardware/button":    "her physical stop button; the device client carries no header",
@@ -10394,6 +10395,38 @@ async def _aq_answer(qid: str = _AQForm(...), text: str = _AQForm(...)):
     return _AQHTML("<body style='font:16px/1.5 system-ui;padding:24px'><p>%s</p>"
                    "<p><a href='/aq'>back</a></p></body>"
                    % ("Recorded. He'll get it once." if ok else "No question with that id."))
+
+
+# A second email before someone has replied goes out only with Gloria's yes (2026-09-29). The ntfy opens
+# /ea with a one-time link; the page shows the whole draft; the buttons post to /ea/decide.
+def _ea_mod():
+    import importlib.util, os as _o
+    _p = _o.path.expanduser("~/.vintos/workspace/scripts/email_approvals.py")
+    _s = importlib.util.spec_from_file_location("email_approvals", _p)
+    _m = importlib.util.module_from_spec(_s); _s.loader.exec_module(_m)
+    return _m
+
+@app.get("/ea", response_class=_AQHTML)
+async def _ea_page(id: str = "", t: str = ""):
+    try:
+        m = _ea_mod()
+        return _AQHTML(m.page(m.check(id, t), t))
+    except Exception as e:
+        import html as _h
+        return _AQHTML("<p>could not open the draft: %s</p>" % _h.escape(str(e)))
+
+@app.post("/ea/decide", response_class=_AQHTML)
+async def _ea_decide(id: str = _AQForm(...), t: str = _AQForm(...), d: str = _AQForm(...)):
+    import html as _h
+    try:
+        r = _ea_mod().decide(id, t, d)
+    except Exception as e:
+        return _AQHTML("<p>failed: %s</p>" % _h.escape(str(e)))
+    if not r:
+        return _AQHTML("<body style='font:16px/1.5 system-ui;padding:24px'><p>This link is not valid.</p></body>")
+    said = {"approved": "Approved. He sends exactly this on his next pass.", "declined": "Declined. It will not be sent.",
+            "sent": "Already sent.", "pending": "Still pending."}.get(r.get("status"), r.get("status"))
+    return _AQHTML("<body style='font:16px/1.5 system-ui;padding:24px'><p>%s</p></body>" % _h.escape(said))
 
 
 @app.post("/api/ring/live")
