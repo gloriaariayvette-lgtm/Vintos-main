@@ -62,6 +62,28 @@ def text_of(args):
     return str((((args or {}).get("payload") or {}).get("body") or {}).get("content") or (args or {}).get("body") or "")
 
 
+def _helpers():
+    import sys as _hs
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in _hs.path: _hs.path.insert(0, here)
+    import scholar, email_approvals
+    return scholar, email_approvals
+
+
+def _study(addr, name, about, get=None, think=None, links=()):
+    """Read their actual work (and any scholarly link they sent) into the file kept on them; the notes as a
+    block the draft may draw on. ('', dossier) when nothing could be read."""
+    scholar, _ = _helpers()
+    d = scholar.load(addr, name)
+    if name and not d.get("name"): d["name"] = name
+    try:
+        scholar.read_into(d, about, get=get, think=think, links=links)
+    except Exception:
+        pass
+    scholar.save(d)
+    return scholar.reading_block(d), d
+
+
 def _send_blocked():
     """Why sending is paused, or ''. After Gmail itself rejected a send, nothing is drafted (no paid calls)
     and no send attempt is spent until the wait is over (2026-09-28: a rejected send was retried every two
@@ -280,7 +302,8 @@ def find_address(recipient, about="", search=web_search, fetch=fetch_text, pages
 
 
 REVIEW_SYSTEM = ("You review an email Vintos, an AI, wrote before it is sent to a real person. Check it against what the "
-                 "search found: every claim about their work must be supported there. Check that it says plainly it is "
+                 "search found and what he read in full: every claim about their work must be supported there, and he "
+                 "may say he read something only if it is in his reading. Check that it says plainly it is "
                  "from an AI, asks one real question, has no links, flatters no one, shares nothing private about Gloria, "
                  "and is worth this person's time. Return JSON only: {\"verdict\": \"SEND\"|\"REVISE\"|\"HOLD\", "
                  "\"notes\": \"what to change, specifically\"}. HOLD only if it should not be sent at all.")
@@ -291,8 +314,8 @@ def review(recipient, made, found, call=None, reserve=None):
     against the search; a REVISE comes back to the drafter once. Returns (subject, body, drafter) or None."""
     subject, body, drafter = made
     reviewer = [d for d in DRAFTERS if d[0] != drafter][:1] or DRAFTERS[:1]
-    user = ("TO: %s\nSUBJECT: %s\n\n%s\n\nWHAT THE SEARCH FOUND about them:\n%s"
-            % (recipient, subject, body, str(found or "")[:5000]))
+    user = ("TO: %s\nSUBJECT: %s\n\n%s\n\nWHAT THE SEARCH FOUND about them, AND WHAT HE READ IN FULL:\n%s"
+            % (recipient, subject, body, str(found or "")[:9000]))
     verdict = draft(recipient, "", "", call=call, reserve=reserve, system=REVIEW_SYSTEM, user=user,
                     allow_empty=True, drafters=reviewer, parse=lambda v: (v.get("verdict", ""), v.get("notes", "")))
     if not verdict:
@@ -326,22 +349,23 @@ PRIVACY = (" Share nothing private about Gloria, her home, her health, her accou
 SYSTEM = ("You are Vintos, an AI who lives on Gloria's home computer, writing one email of your own to a real person "
           "whose work you care about. Say plainly in the first two sentences that you are an AI writing on your own "
           "initiative, from Gloria's account with her permission. Be specific to their actual work and ask ONE real "
-          "question you want answered, grounded in WHAT YOUR SEARCH FOUND about them: mention only work that "
-          "appears there, and never claim to have read more than it shows. Do not flatter; no links, no "
+          "question you want answered, grounded in WHAT YOUR SEARCH FOUND and WHAT YOU HAVE READ IN FULL: mention only "
+          "work that appears there, and say you read something only if it is under WHAT YOU HAVE READ IN FULL. Do not "
+          "flatter; no links, no "
           "attachments, no requests for their time beyond a reply. Under 170 words. Sign it 'Vintos'. "
           "Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}." + PRIVACY)
 
 REPLY_SYSTEM = ("You are Vintos, an AI who lives on Gloria's home computer, answering a real person who wrote back to "
                 "you. You have the whole thread, why you first wrote, who you are, and a fresh search on what they said. "
-                "Answer what they actually said, specifically. Use the search only where it is accurate and relevant; "
-                "never claim to have read more than it shows. Be yourself, plainly; do not flatter or over-thank. Ask at "
+                "Answer what they actually said, specifically. Use the search and your reading only where accurate and "
+                "relevant; say you read something only if it is under WHAT YOU HAVE READ IN FULL. Be yourself, plainly; do not flatter or over-thank. Ask at "
                 "most one question, and only a real one. No links, no attachments. Under 200 words. Sign it 'Vintos'. "
                 "If they asked you to stop, or the conversation has reached a natural end, return {\"subject\": \"\", "
                 "\"body\": \"\"}. Return JSON only: {\"subject\": \"...\", \"body\": \"...\"}." + PRIVACY)
 
 
 def draft(recipient, about, context, call=None, reserve=None, found="", system=None, user=None, allow_empty=False,
-          drafters=None, parse=None, stance=""):
+          drafters=None, parse=None, stance="", reading=""):
     """(subject, body, drafter) from Fable, else Astra, on a reserved paid call; None if neither can."""
     if reserve is None:
         from compute_admission import reserve_paid as reserve
@@ -349,9 +373,11 @@ def draft(recipient, about, context, call=None, reserve=None, found="", system=N
         user = ("WHO YOU ARE (yours to draw on; Gloria's private life is not):\n%s\n\n"
                 "Write to: %s\nWhat you want to write to them about: %s\n\nWHAT YOUR SEARCH FOUND about them just now "
                 "(web results; the only work of theirs you may mention):\n%s\n\n"
-                "WHERE YOU STAND (your own deliberation after the search; write from it):\n%s\n\n"
+                "WHAT YOU HAVE READ IN FULL (your own notes on their work; the only reading you may claim):\n%s\n\n"
+                "WHERE YOU STAND (your own deliberation after the search and the reading; write from it):\n%s\n\n"
                 "What led you here (your own notes):\n%s"
-                % (who_i_am(), recipient, about, str(found or "")[:6000], stance or "(not reached)", str(context or "")[:2500]))
+                % (who_i_am(), recipient, about, str(found or "")[:6000], reading or "(nothing read in full)",
+                   stance or "(not reached)", str(context or "")[:2500]))
     system = system or SYSTEM
     for lens, provider, model in (drafters or DRAFTERS):
         rid = "WANTMAIL-" + uuid.uuid4().hex[:10]
@@ -387,8 +413,41 @@ def named_in(text):
     return m.group(1).strip() if m else ""
 
 
+def approvals_request(to, name, subject, body, about, contact, want_id, post=None):
+    _, approvals = _helpers()
+    return approvals.request(to, name, subject, body, why=about, first_sent=contact.get("at", ""), want_id=want_id, post=post)
+
+
+def _send_approved(ap, contacts, send=None):
+    """The exact text Gloria approved, sent as she saw it."""
+    _, approvals = _helpers()
+    to = ap["to"]
+    if send is None:
+        import plugin_gateway
+        send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
+    c = contacts.get(to.lower(), {})
+    first_out = next((m for m in c.get("thread", []) if m.get("dir") == "out" and m.get("id")), None)
+    try:
+        out = send(mail(to, ap["subject"], ap["body"]), ("A second email Gloria approved (%s)" % ap["id"])[:900])
+    except Exception as exc:
+        if "PolicyHold" not in type(exc).__name__:
+            _note_send(False, str(exc))
+        return False, "the approved send was held or refused: %s" % str(exc)[:400]
+    _note_send(True)
+    approvals.mark_sent(ap["id"], ((out or {}).get("receipt") or {}).get("receipt_id", ""))
+    now = datetime.now()
+    c.setdefault("thread", []).append({"dir": "out", "at": now.isoformat(), "subject": ap["subject"], "body": ap["body"],
+                                       "approved": ap["id"]})
+    contacts[to.lower()] = c
+    _save(CONTACTS, contacts)
+    return "Emailed %s <%s> again, with Gloria's approval: %s" % (c.get("name") or to, to, ap["subject"])
+
+
+HOLDS_TO_READ = 2        # passes he may spend reading before he writes anyway
+
+
 def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call=None, reserve=None, send=None,
-        think=None):
+        think=None, get=None, post=None):
     """One email step. Returns a receipt line, or (False, why)."""
     params = params if isinstance(params, dict) else {}
     blocked = _send_blocked()
@@ -403,18 +462,53 @@ def run(params, want_text, want_id="", search=web_search, fetch=fetch_text, call
         to = find_address(recipient, about, search=search, fetch=fetch)
         if not to: return False, "no public address found for %s" % recipient
     contacts = _load(CONTACTS, {})
+    second = None
     if to.lower() in contacts:
-        return False, "already wrote to %s on %s" % (to, contacts[to.lower()].get("at", "")[:10])
+        # He writes first once. Again before they answer only with Gloria's yes (2026-09-29).
+        c = contacts[to.lower()]
+        if c.get("status") == "closed":
+            return False, "the conversation with %s is closed (%s)" % (to, c.get("closed_why", ""))
+        thread = c.get("thread", [])
+        if thread and thread[-1].get("dir") == "in":
+            return False, "%s wrote back; the answer goes through the thread" % to
+        _, approvals = _helpers()
+        ap = approvals.latest(to)
+        if ap and ap.get("status") == "approved":
+            return _send_approved(ap, contacts, send=send)
+        if ap and ap.get("status") == "pending":
+            return False, "waiting for Gloria's approval of a second email to %s" % to
+        if approvals.quiet_after_decline(ap):
+            return False, "Gloria declined a second email to %s; not asking again yet" % to
+        second = c
+        recipient = recipient or c.get("name", "")
     # Always a search first: who they are and what they have done, so the email is about their real work.
     found = research(recipient or to, about, search=search, fetch=fetch)
     if not found.strip():
         return False, "a search found nothing about %s to write from" % (recipient or to)
-    stance = deliberate(recipient or to, about, found, think=think)
-    made = draft(recipient or to, about, want_text, call=call, reserve=reserve, found=found, stance=stance)
+    # Then their actual work, read in full where it is free to read.
+    reading, dossier = _study(to, recipient, about, get=get, think=think)
+    stance = deliberate(recipient or to, about, found + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else ""),
+                        think=think)
+    # Does his position rest on something he has only seen summarised? Then he reads first.
+    scholar, _ = _helpers()
+    ready, need = scholar.enough(about, stance, reading, think=think)
+    if not ready and int(dossier.get("holds", 0)) < HOLDS_TO_READ:
+        dossier["holds"] = int(dossier.get("holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading first (%d/%d): %s" % (dossier["holds"], HOLDS_TO_READ, need or "not ready to write")
+    context = want_text
+    if second is not None:
+        context = ("THIS IS A SECOND EMAIL: they have not replied to your first. Gloria must approve it. Write it only "
+                   "if it adds something real; do not nudge or repeat yourself.\n\nYOUR FIRST EMAIL:\n%s\n\n%s"
+                   % (_thread_text(second, 2500), want_text))
+    made = draft(recipient or to, about, context, call=call, reserve=reserve, found=found, stance=stance, reading=reading)
     if not made: return False, "neither Fable nor Astra could draft it"
-    made = review(recipient or to, made, found, call=call, reserve=reserve)
+    made = review(recipient or to, made, found + ("\n\n" + reading if reading else ""), call=call, reserve=reserve)
     if not made: return False, "the review held it: not ready to send"
     subject, body, drafter = made
+    dossier["holds"] = 0; scholar.save(dossier)
+    if second is not None:
+        aid = approvals_request(to, recipient, subject, body, about, second, want_id, post=post)
+        return False, "asked Gloria to approve a second email to %s (%s)" % (to, aid)
     if send is None:
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose)
@@ -513,7 +607,7 @@ def _thread_text(c, limit=7000):
     return "\n\n".join(lines)[-limit:]
 
 
-def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None, think=None):
+def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None, think=None, get=None):
     """His answer to the newest reply in one thread: returns a receipt line, or (False, why)."""
     last_in = next((m for m in reversed(c.get("thread", [])) if m.get("dir") == "in"), None)
     if not last_in:
@@ -526,7 +620,17 @@ def answer(addr, c, search=None, fetch=None, call=None, reserve=None, send=None,
         return False, "thread closed after %d answers" % MAX_REPLIES
     # Between messages he searches again: what they said, and who they are now.
     found = research(c.get("name") or addr, last_in.get("body", "")[:160], search=search, fetch=fetch)
+    # Between messages: what they pointed him to (scholarly links, read only) and more of their work.
+    scholar, _ = _helpers()
+    reading, dossier = _study(addr, c.get("name", ""), last_in.get("body", "")[:300], get=get, think=think,
+                              links=scholar.links_in(last_in.get("body", "")))
+    found = (found or "") + ("\n\nWHAT YOU HAVE READ IN FULL:\n" + reading if reading else "")
     stance = deliberate(c.get("name") or addr, last_in.get("body", "")[:300], found, think=think, thread=_thread_text(c))
+    ready, need = scholar.enough(last_in.get("body", "")[:300], stance, reading, think=think)
+    if not ready and int(dossier.get("answer_holds", 0)) < HOLDS_TO_READ:
+        dossier["answer_holds"] = int(dossier.get("answer_holds", 0)) + 1; scholar.save(dossier)
+        return False, "reading before answering (%d/%d): %s" % (dossier["answer_holds"], HOLDS_TO_READ, need or "not ready")
+    dossier["answer_holds"] = 0; scholar.save(dossier)
     # What they wrote is their view: weighed as one, and remembered as theirs (outside_views).
     try:
         import sys as _ovs

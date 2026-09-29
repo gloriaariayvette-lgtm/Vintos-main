@@ -92,8 +92,9 @@ check("it is sent to that address, through the gateway that keeps the checks and
 check("the step reports who it went to and what was said", isinstance(out, str) and "Emailed Anil Seth" in out, out)
 inner = open(os.path.join(E.MEMORY, "daily-inner-life-%s.md" % __import__("datetime").date.today().isoformat())).read()
 check("it is in his daily inner life", "## An email I sent" in inner and "a.k.seth@sussex.ac.uk" in inner)
-again = E.run({"recipient": "Anil Seth", "about": "again"}, "x", search=search, fetch=page, call=fable, reserve=reserve, send=send)
-check("each person is written to once", isinstance(again, tuple) and "already wrote" in again[1] and len(sent) == 1, again)
+again = E.run({"recipient": "Anil Seth", "about": "again"}, "x", search=search, fetch=page, call=fable, reserve=reserve, send=send, post=lambda *a: None)
+check("each person is written to first only once; writing again before a reply waits for Gloria's approval",
+      isinstance(again, tuple) and "asked Gloria to approve a second email" in again[1] and len(sent) == 1, again)
 
 def astra_only(provider, model, system, user, reservation):
     if provider == "anthropic": raise RuntimeError("fable unavailable")
