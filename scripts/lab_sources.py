@@ -25,6 +25,11 @@ FIELDS = frozenset('accession id reviewed length protein_name gene organism_id o
 NCBI_BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/'
 BV_BRC_BASE = 'https://www.bv-brc.org/api/'
 INTERPRO_BASE = 'https://www.ebi.ac.uk/interpro/api/'
+PUBCHEM_BASE = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/'
+REACTOME_BASE = 'https://reactome.org/ContentService/'
+RHEA_BASE = 'https://www.rhea-db.org/rhea'
+QUICKGO_BASE = 'https://www.ebi.ac.uk/QuickGO/services/'
+MGNIFY_BASE = 'https://www.ebi.ac.uk/metagenomics/api/v1/'
 NCBI_DATABASES = {'taxonomy': 'taxonomy', 'assembly': 'assembly',
                   'gene': 'gene', 'protein': 'protein', 'literature': 'pubmed'}
 
@@ -66,6 +71,25 @@ def _uniprot_accession(value):
     if not re.fullmatch(r'[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?', value):
         raise ValueError('exact sourced UniProt accession required')
     return value
+
+
+def _bounded_limit(value, maximum=8):
+    value = 4 if value is None else value
+    if type(value) is not int or not 1 <= value <= maximum:
+        raise ValueError('limit must be 1..%d' % maximum)
+    return value
+
+
+def _provider(fetch, source, url):
+    """Name the public provider and its HTTP status without copying response bodies."""
+    try:
+        return fetch(url)
+    except HTTPError as exc:
+        raise RuntimeError('%s_http_status_%d' % (source, exc.code)) from exc
+
+
+def _strip_html(value, cap):
+    return re.sub(r'<[^>]+>', '', str(value or ''))[:cap]
 
 
 def validate_uniprot(query):
@@ -532,6 +556,104 @@ class Sources:
             return receipt(source, spec, data['activities'][:8], metadata={
                 'coverage': 'bounded_first_page', 'total_count': (data.get('page_meta') or {}).get('total_count'),
                 'comparison': 'bioactivity_is_not_automatically_direct_binding'})
+        if source == 'pubchem':
+            limit = _bounded_limit(spec.get('limit'), 4)
+            name, cid = spec.get('name'), spec.get('cid')
+            if name not in (None, '') and cid not in (None, ''):
+                raise ValueError('choose one PubChem name or CID')
+            if name not in (None, ''):
+                identifier = _plain_term(name)
+                from urllib.parse import quote
+                path = 'compound/name/' + quote(identifier, safe='')
+                query = {'source':source, 'name':identifier, 'limit':limit}
+            elif type(cid) is int and 1 <= cid <= 9999999999:
+                path = 'compound/cid/' + str(cid)
+                query = {'source':source, 'cid':cid, 'limit':limit}
+            else:
+                raise ValueError('plain PubChem name or positive numeric CID required')
+            fields = 'Title,MolecularFormula,CanonicalSMILES,IsomericSMILES,InChIKey,MolecularWeight'
+            data, _ = _provider(self.fetch, source, PUBCHEM_BASE + path + '/property/' + fields + '/JSON')
+            rows = ((data.get('PropertyTable') or {}).get('Properties') if isinstance(data, dict) else None)
+            if not isinstance(rows, list): raise ValueError('PubChem returned no property list')
+            keep = ('CID','Title','MolecularFormula','ConnectivitySMILES','SMILES','CanonicalSMILES',
+                    'IsomericSMILES','InChIKey','MolecularWeight')
+            records = [{k: row[k] for k in keep if k in row} for row in rows[:limit] if isinstance(row, dict)]
+            return receipt(source, query, records, metadata={'service':'PubChem_PUG_REST',
+                'coverage':'bounded_property_records', 'interpretation':'database_identity_and_computed_properties_not_experimental_validation'})
+        if source == 'reactome':
+            term = _plain_term(spec.get('term') or spec.get('query'))
+            limit = _bounded_limit(spec.get('limit'), 5)
+            species = str(spec.get('species') or '').strip()
+            if species and (len(species) > 80 or not re.fullmatch(r'[A-Za-z][A-Za-z ._-]+', species)):
+                raise ValueError('plain Reactome species name required')
+            params = {'query':term, 'types':'Pathway', 'cluster':'true'}
+            if species: params['species'] = species
+            data, _ = _provider(self.fetch, source, REACTOME_BASE + 'search/query?' + urlencode(params))
+            groups = data.get('results') if isinstance(data, dict) else None
+            if not isinstance(groups, list): raise ValueError('Reactome returned no result groups')
+            records = []
+            for group in groups:
+                for row in (group.get('entries') or []) if isinstance(group, dict) else []:
+                    if not isinstance(row, dict) or row.get('type') != 'Pathway': continue
+                    records.append({'stable_id':row.get('stId') or row.get('id'), 'name':_strip_html(row.get('name'),240),
+                        'species':(row.get('species') or [])[:4], 'summary':_strip_html(row.get('summation'),900),
+                        'compartments':(row.get('compartmentNames') or [])[:8]})
+                    if len(records) >= limit: break
+                if len(records) >= limit: break
+            return receipt(source, {'source':source,'term':term,'species':species or None,'limit':limit}, records,
+                metadata={'service':'Reactome_ContentService','total_matches':data.get('numberOfMatches'),
+                          'coverage':'bounded_pathway_search','interpretation':'curated_pathway_annotation_not_activity_in_this_sample'})
+        if source == 'rhea':
+            term = _plain_term(spec.get('term') or spec.get('query'))
+            limit = _bounded_limit(spec.get('limit'), 8)
+            data, _ = _provider(self.fetch, source, RHEA_BASE + '?' + urlencode({
+                'query':term, 'columns':'rhea-id,equation,ec', 'format':'json', 'limit':limit}))
+            rows = data.get('results') if isinstance(data, dict) else None
+            if not isinstance(rows, list): raise ValueError('Rhea returned no result list')
+            keep = ('id','equation','status','balanced','transport','ec')
+            records = [{k: row[k] for k in keep if k in row} for row in rows[:limit] if isinstance(row, dict)]
+            return receipt(source, {'source':source,'term':term,'limit':limit}, records,
+                metadata={'service':'Rhea_REST','total_count':data.get('count'),'coverage':'bounded_reaction_search',
+                          'interpretation':'expert_curated_reaction_definition_not_evidence_of_activity'})
+        if source == 'quickgo':
+            term = _plain_term(spec.get('term') or spec.get('query'))
+            limit = _bounded_limit(spec.get('limit'), 8)
+            data, _ = _provider(self.fetch, source, QUICKGO_BASE + 'ontology/go/search?' + urlencode({
+                'query':term, 'limit':limit, 'page':1}))
+            rows = data.get('results') if isinstance(data, dict) else None
+            if not isinstance(rows, list): raise ValueError('QuickGO returned no result list')
+            records = []
+            for row in rows[:limit]:
+                if not isinstance(row, dict): continue
+                definition = row.get('definition') or {}
+                records.append({'go_id':row.get('id'),'name':row.get('name'),'aspect':row.get('aspect'),
+                                'obsolete':bool(row.get('isObsolete')),
+                                'definition':str(definition.get('text') or '')[:600] if isinstance(definition, dict) else ''})
+            return receipt(source, {'source':source,'term':term,'limit':limit}, records,
+                metadata={'service':'QuickGO_REST','total_count':data.get('numberOfHits'),'coverage':'bounded_GO_term_search',
+                          'interpretation':'ontology_definition_not_protein_specific_evidence'})
+        if source == 'mgnify':
+            operation = spec.get('operation', 'studies')
+            if operation != 'studies': raise ValueError('unknown MGnify operation')
+            term = _plain_term(spec.get('term') or spec.get('query'))
+            limit = _bounded_limit(spec.get('limit'), 8)
+            data, _ = _provider(self.fetch, source, MGNIFY_BASE + 'studies?' + urlencode({
+                'search':term, 'page_size':limit}))
+            rows = data.get('data') if isinstance(data, dict) else None
+            if not isinstance(rows, list): raise ValueError('MGnify returned no study list')
+            records = []
+            for row in rows[:limit]:
+                if not isinstance(row, dict): continue
+                attrs = row.get('attributes') or {}; relationships = row.get('relationships') or {}
+                biomes = (((relationships.get('biomes') or {}).get('data')) or []) if isinstance(relationships, dict) else []
+                records.append({'accession':attrs.get('accession') or row.get('id'), 'study_name':attrs.get('study-name'),
+                    'abstract':str(attrs.get('study-abstract') or '')[:900], 'samples_count':attrs.get('samples-count'),
+                    'bioproject':attrs.get('bioproject'), 'public_release_date':attrs.get('public-release-date'),
+                    'biomes':[b.get('id') for b in biomes[:6] if isinstance(b, dict)]})
+            pagination = data.get('meta', {}).get('pagination', {}) if isinstance(data.get('meta'), dict) else {}
+            return receipt(source, {'source':source,'operation':operation,'term':term,'limit':limit}, records,
+                metadata={'service':'MGnify_REST','total_count':pagination.get('count'),'coverage':'bounded_study_search',
+                          'interpretation':'study_metadata_not_a_taxonomic_or_functional_result'})
         if source == 'atlas':
             if spec.get('gene') and not spec.get('chromosome') and spec.get('operation') != 'metadata':
                 spec = {**spec, **self._gene_window(spec['gene'])}

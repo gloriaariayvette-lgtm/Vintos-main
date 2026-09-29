@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Scratch-only source contracts and handoff. No real network, model, or notification."""
-import urllib.parse, io
+import urllib.parse, urllib.error, io
 import contextlib
 import json
 import os
@@ -87,6 +87,60 @@ class Tests(unittest.TestCase):
         self.assertEqual(result['records'][0]['standard_relation'],'>')
         self.assertEqual(result['records'][0]['assay_type'],'F')
         self.assertEqual(result['novelty'],'not_established')
+    def test_five_new_public_sources_use_real_envelopes_and_compact_records(self):
+        # Shapes captured from each public service on 2026-09-28; the client keeps only fields the Lab reads.
+        def fetch(url):
+            self.calls.append(url)
+            if url.startswith(sources.PUBCHEM_BASE):
+                return {'PropertyTable':{'Properties':[{'CID':2519,'MolecularFormula':'C8H10N4O2',
+                    'ConnectivitySMILES':'CN1C(=O)C2=C(N=CN2C)N(C1=O)C','InChIKey':'RYYVLZVUVIJVGH-UHFFFAOYSA-N',
+                    'MolecularWeight':'194.19','Title':'Caffeine'}]}}, {}
+            if url.startswith(sources.REACTOME_BASE):
+                return {'results':[{'entries':[{'dbId':'70171','stId':'R-HSA-70171','id':'R-HSA-70171',
+                    'name':'<span class="highlighting">Glycolysis</span>','type':'Pathway','species':['Homo sapiens'],
+                    'summation':'The reactions of <b>glycolysis</b> convert glucose 6-phosphate to pyruvate.',
+                    'compartmentNames':['cytosol']}]}], 'numberOfMatches':1}, {}
+            if url.startswith(sources.RHEA_BASE):
+                return {'count':3,'results':[{'id':'14293','equation':'D-glucose + NAD(+) = D-glucono-1,5-lactone + NADH + H(+)',
+                    'status':'approved','balanced':True,'transport':False}]}, {}
+            if url.startswith(sources.QUICKGO_BASE):
+                return {'numberOfHits':74,'results':[{'id':'GO:0019900','isObsolete':False,'name':'kinase binding',
+                    'definition':{'text':'Binding to a kinase.'},'aspect':'molecular_function'}],
+                    'pageInfo':{'resultsPerPage':3,'current':1,'total':25}}, {}
+            if url.startswith(sources.MGNIFY_BASE):
+                return {'links':{},'data':[{'type':'studies','id':'MGYS00006861','attributes':{
+                    'bioproject':'PRJEB88144','accession':'MGYS00006861','samples-count':25,'is-private':False,
+                    'study-abstract':'Marine metagenomic library of Baltic Sea.','study-name':'Marine metagenomic library',
+                    'public-release-date':None},'relationships':{'biomes':{'data':[{
+                    'type':'biomes','id':'root:Environmental:Aquatic:Marine'}]}}}],
+                    'meta':{'pagination':{'count':1}}}, {}
+            raise AssertionError(url)
+        client=sources.Sources(fetch=fetch)
+        pubchem=client.query({'source':'pubchem','name':'caffeine','limit':1})
+        reactome=client.query({'source':'reactome','term':'glycolysis','species':'Homo sapiens','limit':1})
+        rhea=client.query({'source':'rhea','term':'glucose','limit':1})
+        quickgo=client.query({'source':'quickgo','term':'kinase','limit':1})
+        mgnify=client.query({'source':'mgnify','operation':'studies','term':'marine','limit':1})
+        self.assertEqual(pubchem['records'][0]['CID'],2519)
+        self.assertEqual(reactome['records'][0]['name'],'Glycolysis')
+        self.assertEqual(rhea['records'][0]['id'],'14293')
+        self.assertEqual(quickgo['records'][0]['go_id'],'GO:0019900')
+        self.assertEqual(mgnify['records'][0]['biomes'],['root:Environmental:Aquatic:Marine'])
+        self.assertTrue(all(len(json.dumps(x['records'])) < 4096 for x in (pubchem,reactome,rhea,quickgo,mgnify)))
+        self.assertEqual({x['metadata']['service'] for x in (pubchem,reactome,rhea,quickgo,mgnify)},
+                         {'PubChem_PUG_REST','Reactome_ContentService','Rhea_REST','QuickGO_REST','MGnify_REST'})
+    def test_new_source_validation_precedes_network_and_http_status_is_named(self):
+        client=sources.Sources(fetch=lambda url: (_ for _ in ()).throw(AssertionError('network reached')))
+        for spec in ({'source':'pubchem','name':'x'},{'source':'pubchem','cid':True},
+                     {'source':'reactome','term':'[]'},{'source':'reactome','term':'glycolysis','species':'9606'},
+                     {'source':'rhea','term':'x'},{'source':'quickgo','term':'x','limit':99},
+                     {'source':'mgnify','operation':'analyses','term':'marine'}):
+            with self.assertRaises((ValueError,AssertionError)) as caught: client.query(spec)
+            self.assertNotIsInstance(caught.exception, AssertionError)
+        failing=sources.Sources(fetch=lambda url: (_ for _ in ()).throw(
+            urllib.error.HTTPError(url,429,'Too Many Requests',{},None)))
+        with self.assertRaisesRegex(RuntimeError,'quickgo_http_status_429'):
+            failing.query({'source':'quickgo','term':'kinase'})
     def test_atlas_typed_bounded_source(self):
         spec={'source':'atlas','assembly':'GRCh38','chromosome':'chr1','start':100,'end':102,'scorers':['fixture']}
         client=sources.Sources(atlas=lambda q:{'scores':{'fixture':{'scores':[[0.8]]}},'sdk_version':'fixture','scorer_metadata':{}})
