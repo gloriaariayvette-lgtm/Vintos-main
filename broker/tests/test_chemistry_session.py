@@ -143,7 +143,9 @@ lab._append(probe_mod.PROBES, {"receipt_id": "CP-aged", "tool": "openmm", "host"
                                "expires_at": (_now - timedelta(days=1)).isoformat()})
 before = len(lab._jsonl(probe_mod.PROBES))
 again = session.run()
-assert len(lab._jsonl(probe_mod.PROBES)) > before, "the session refreshes expired receipts"
+assert len(lab._jsonl(probe_mod.PROBES)) > before, (
+    "the session refreshes expired receipts", again.get("state"), again.get("owed_reading"),
+    [r for r in lab._jsonl(lab.FAULTS)][-3:], probe_mod.current_receipts().get("openmm"))
 assert "openmm" in again["instruments_refreshed"], again["instruments_refreshed"]
 third = session.run()
 assert third["instruments_refreshed"] == [], "a fresh receipt is not re-measured daily"
