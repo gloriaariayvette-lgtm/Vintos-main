@@ -1648,3 +1648,19 @@ ungraduated confirmed rows and zero settled self-knowledge rows. The Forge
 system service is active. Follow-up release
 `20260926-114916-0495c74` installed the alias discovery repair; the dashed and
 underscored live causality entries and Git source have the same SHA-256.
+
+## 28 September — next Lab instruments
+
+PubChem, Reactome, Rhea, QuickGO and MGnify are implemented as bounded, validated direct
+Aegis sources. Sequence Viewer, Structure Viewer, Biohub ESM, Adaptyv Bio and the NGS
+workbench have named on-demand relay runners, exact operation allowlists, receipts and Lab
+journal ingestion. Artifact transfer is capped at four files and 8 MiB, hashes every input,
+accepts only files already inside the Chemistry Lab tree, and uses a disposable Mac
+workspace. Structure and sequence outputs return to the Lab artifact tree. Adaptyv write and
+purchase actions and NGS execution are absent from the policy.
+
+Commissioning evidence remains required before this section can say the instruments are
+live. In particular, the Mac reported Adaptyv's connector as not logged in while its schema
+was being read. That account connection must be repaired before preparation, estimate or
+status calls can be demonstrated; no wet-lab submission or purchase is authorized by that
+repair.

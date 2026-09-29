@@ -174,6 +174,27 @@ Nothing is discarded: every observation lands in `taste-observations.jsonl` with
 eligibility, the refused ones included. A ledger that silently drops what it refused cannot
 be audited for what it refused.
 
+## Public-source and on-demand instrument routing
+
+The background Lab reads public databases directly from Aegis; it does not wait for the Mac
+relay. In addition to UniProt, NCBI, PubMed, InterPro, IMG/VR, BV-BRC, PDB, ChEMBL,
+AlphaGenome and COSMIC, the bounded source adapter supports PubChem compound properties,
+Reactome pathways, Rhea biochemical reactions, QuickGO ontology terms and MGnify microbiome
+studies. A browse question chooses one small relevant source set. These sources are not a
+menu to query in bulk, and human-genetics sources are not offered outside a human-genetics
+question.
+
+Large artifact work is explicit and on demand. Digest-verified Lab files may cross to the
+Mac's disposable skill workspace for Sequence Viewer or Structure Viewer; the workspace is
+deleted after the run, while returned artifacts, their hashes, the receipt and a compact
+journal row remain on Aegis. Structure outputs land beneath the existing structure-gallery
+artifact root. Biohub ESM is limited to ESM Atlas retrieval, mutation landscapes and feature
+interpretation, so it cannot duplicate the local ESMC/ESMFold pipeline. Adaptyv permits only
+experiment preparation, cost estimation and status reads; submission, purchase, quote or
+invoice actions are outside the relay policy. The NGS workbench requires an actual dataset
+or defined project and exposes planning/status operations but no workflow execution. None of
+these on-demand skills enters the automatic curiosity prompt.
+
 ## Evidence and collision law
 
 An ESM protein vector and a nomic text vector do not inhabit a shared coordinate
