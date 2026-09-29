@@ -25,6 +25,7 @@ printf 'systemctl %s\\n' "$*" >> "$CTL_LOG"
 case "$*" in
   cat*) [ "$HAS_UNIT" = 1 ] ;;
   restart*) exit 0 ;;
+  is-active*) [ "${ACTIVE:-1}" = 1 ] ;;
 esac
 ''')
 # sudo: -n succeeds only when SUDO_OK=1; install loses its -o/-g (no root in a test).
@@ -81,10 +82,24 @@ check("a bundle that does not compile is never installed",
       (live / "forge_loop_runtime.py").read_text() == "x = 1\n" and "does not compile" in p.stdout and "restart" not in cmds, p.stdout)
 
 p, live, backup, cmds = run("nosudo", sudo_ok=0, new={"forge_loop_ui.html": "<p>new</p>"})
-check("without passwordless sudo nothing is touched and she gets the exact lines",
-      (live / "forge_loop_ui.html").read_text() == "<p>all projects</p>" and "sudo wants a password" in p.stdout
-      and "install -o root -g root -m 644" in p.stdout and "systemctl restart atelier-forge-loop" in p.stdout
+script = root / "nosudo" / ".vintos/deploy/forge-install.sh"
+check("without passwordless sudo nothing is touched and she gets one command",
+      (live / "forge_loop_ui.html").read_text() == "<p>all projects</p>" and "Run: sudo bash " + str(script) in p.stdout
       and "restart" not in cmds, p.stdout)
+fake_root = dict(os.environ, PATH=path, CTL_LOG=str(log), HAS_UNIT="1")
+(bindir / "install").write_text('#!/bin/bash\nargs=(); while [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2 ;; *) args+=("$1"); shift ;; esac; done\nexec /usr/bin/install "${args[@]}"\n')
+(bindir / "install").chmod(0o755)
+log.write_text("")
+ran = subprocess.run(["bash", str(script)], env=fake_root, capture_output=True, text=True, timeout=60)
+check("that command installs the changed file, keeps the old one and restarts the Forge",
+      (live / "forge_loop_ui.html").read_text() == "<p>new</p>" and "Forge updated and running." in ran.stdout
+      and (root / "nosudo/backup/forge-loop/forge_loop_ui.html").read_text() == "<p>all projects</p>"
+      and "systemctl restart atelier-forge-loop" in log.read_text(), ran.stdout + ran.stderr)
+(live / "forge_loop_ui.html").write_text("<p>all projects</p>")
+ran = subprocess.run(["bash", str(script)], env=dict(fake_root, ACTIVE="0"), capture_output=True, text=True, timeout=60)
+check("and if the Forge does not come up on it, the old bundle is put back",
+      (live / "forge_loop_ui.html").read_text() == "<p>all projects</p>" and "old bundle put back" in ran.stdout, ran.stdout + ran.stderr)
+(bindir / "install").unlink()
 
 p, live, backup, cmds = run("nounit", has_unit=0, new={"forge_loop_ui.html": "<p>new</p>"})
 check("a host without the Forge unit is left alone", "not touched" in p.stdout and "install" not in cmds, p.stdout)

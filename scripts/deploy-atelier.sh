@@ -1008,10 +1008,23 @@ else
             say "  Diagnose with: sudo journalctl -u $FORGE_UNIT -n 40"
         fi
     else
-        flag "forge not updated: sudo wants a password. Changed:$forge_changed. These lines, in order:"
-        say "    sudo cp -a $FORGE_DIR $BACKUP/forge-loop"
-        for f in $forge_changed; do say "    sudo install -o root -g root -m 644 $SRC/scripts/$f $FORGE_DIR/$f"; done
-        say "    sudo systemctl restart $FORGE_UNIT && systemctl status $FORGE_UNIT --no-pager | head -5"
+        # One command for her, not eleven lines (2026-09-29): the same install, backup and put-back as above.
+        FORGE_SCRIPT="$HOME/.vintos/deploy/forge-install.sh"
+        mkdir -p "$(dirname "$FORGE_SCRIPT")"
+        {
+            printf '#!/bin/bash\n# Written by deploy-atelier.sh: installs the changed Forge files, restarts the Forge,\n'
+            printf '# and puts the old bundle back if it does not come up.\nset -u\n'
+            printf 'B=%q\nD=%q\n' "$BACKUP/forge-loop" "$FORGE_DIR"
+            printf 'mkdir -p "$B" && cp -a "$D/." "$B/" || { echo "backup failed; nothing changed"; exit 1; }\n'
+            for f in $forge_changed; do
+                printf 'install -o root -g root -m 644 %q "$D/%s" || exit 1\n' "$SRC/scripts/$f" "$f"
+            done
+            printf 'systemctl restart %s; sleep 3\n' "$FORGE_UNIT"
+            printf 'if systemctl is-active --quiet %s; then echo "Forge updated and running."\n' "$FORGE_UNIT"
+            printf 'else cp -a "$B/." "$D/"; systemctl restart %s; echo "Forge did not come up; old bundle put back."; fi\n' "$FORGE_UNIT"
+        } > "$FORGE_SCRIPT"
+        flag "forge not updated (sudo wants a password). Run: sudo bash $FORGE_SCRIPT"
+        say "  changed:$forge_changed"
     fi
 fi
 say
