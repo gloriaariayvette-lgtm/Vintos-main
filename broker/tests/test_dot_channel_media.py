@@ -23,6 +23,7 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+D.SCHEDULE = []           # no scheduled lens turn here: none may reach a real model
 D.atelier_line = lambda: ""
 D.recall_block = lambda: ""
 

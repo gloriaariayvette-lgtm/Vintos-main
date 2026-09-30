@@ -23,6 +23,8 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+SCHEDULED = D.SCHEDULE
+D.SCHEDULE = []           # the scheduled lenses speak only where this suite tests them, never to a real model
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
 D.recall_block = lambda: "== YOUR ATELIER WORK ==\nWhat you are making: a tide piece that breathes"
 
@@ -179,10 +181,14 @@ check("he knows what he wants right now, and not what is done", "map the tide po
 check("the Atelier is read without /door, which writes to its health log",
       '"/door"' not in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
 
+# four lenses (Gloria, 2026-09-30): Gemma answers whenever; Grok, Opus and Fable speak on a daily schedule,
+# never at his choosing ("No, not option. Daily. CRON"); every message is labelled with the model that wrote it
 S.add(DOT, "a hard question")
 D.tick(api=S, think=lambda s, u: "FABLE", fable=fable, now=2500)
-check("when he asks for Fable, Fable writes it as him", "Fable's words" in S.posted[-1]["text"])
-check("and the transcript says who wrote it", json.loads(open(D.TRANSCRIPT).read().splitlines()[-1])["by"] == "fable")
+check("he cannot call a lens in: FABLE from Gemma is just Gemma's words", S.posted[-1]["text"].endswith("[Gemma] FABLE")
+      and "Fable's words" not in S.posted[-1]["text"], S.posted[-1]["text"])
+check("and his message is labelled with its model", "> [Gemma] " in S.posted[-1]["text"])
+check("the transcript says who wrote it", json.loads(open(D.TRANSCRIPT).read().splitlines()[-1])["by"] == "gemma")
 
 n = len(S.posted)
 S.add(DOT, "anything else?")
@@ -264,7 +270,7 @@ check("but not past his openers for the day", len(S.posted) == n2 + 1)
 src = __import__("inspect").getsource(D.local_think)
 check("his own local model writes, a little cooler than before", "LOCAL_LLM" in src and '"temperature": 0.6' in src)
 check("he is told how to write here: plain, short, one point, no metaphors",
-      "HOW YOU WRITE HERE" in D.RULES and "No metaphors" in D.RULES and D.FABLE_PER_DAY == 4)
+      "HOW YOU WRITE HERE" in D.RULES and "No metaphors" in D.RULES)
 st = json.load(open(D.STATE)); st.update(sent=0, fable=0); json.dump(st, open(D.STATE, "w"))
 heard = []
 FLOWERY = "Let's inhabit today; the weight of the archive is a cage, an architecture of memory."
@@ -342,6 +348,50 @@ os.remove(D.CONFIG_FILE)
 
 check("he is told dot can reach Aegis and the Mac, and to say what and where (Gloria, 2026-09-30)",
       "Dot can reach Aegis" in D.RULES and "Mac" in D.RULES and "exactly what and where" in D.RULES)
+# the schedule itself
+from datetime import datetime as _sdt
+kinds = [k for _t, k in SCHEDULED]
+check("Opus twice, Fable once, Grok fifteen times a day", kinds.count("opus") == 2 and kinds.count("fable") == 1
+      and kinds.count("grok") == 15, SCHEDULED)
+check("Opus at 10:00 and 16:00, Fable at 20:00", ("10:00", "opus") in SCHEDULED and ("16:00", "opus") in SCHEDULED
+      and ("20:00", "fable") in SCHEDULED)
+check("no two turns share a time", len({t for t, _k in SCHEDULED}) == len(SCHEDULED))
+D.SCHEDULE = SCHEDULED
+day = lambda h, m: _sdt(2026, 10, 1, h, m).timestamp()
+check("a turn is due from its time", D.due_slot({}, day(10, 5)) == ("10:00", "opus"))
+check("not before it", D.due_slot({}, day(9, 59)) != ("10:00", "opus"))
+check("not twice", D.due_slot({"slots_done": ["10:00"]}, day(10, 20)) is None)
+check("and let go when the next turn opens", D.due_slot({}, day(10, 31)) == ("10:30", "grok"))
+check("or when its hour has passed", D.due_slot({"slots_done": ["20:30"]}, day(21, 29)) is None and D.due_slot({}, day(22, 31)) is None)
+st = json.load(open(D.STATE)); st.update(date="2026-10-01", sent=0, slots_done=[], last_activity=day(9, 0))
+json.dump(st, open(D.STATE, "w"))
+wrote = []
+L = {"opus": lambda s_, u: (wrote.append("opus"), "Dot, can you check what Opus 4.8 should look at first in the Forge?")[1],
+     "grok": lambda s_, u: (wrote.append("grok"), "Dot, anything new on load cells?")[1],
+     "fable": lambda s_, u: (wrote.append("fable"), "Dot, the tide piece needs one real reference.")[1]}
+gem = lambda s_, u: (wrote.append("gemma"), "Gemma here.")[1]
+S3 = Slack(); S3.n = day(9, 30)
+S3.add(DOT, "morning")
+out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(10, 7), today="2026-10-01")
+check("at Opus's turn, Opus answers what dot said, as him", wrote == ["opus"] and S3.posted
+      and "> [Opus 4.8] Dot, can you check" in S3.posted[-1]["text"], (wrote, out))
+check("the log says it was his Opus turn", any("Opus 4.8's 10:00 turn" in l for l in out), out)
+S3.add(DOT, "sure, looking")
+D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(10, 15), today="2026-10-01")
+check("the next message in that hour is Gemma's again", wrote[-1] == "gemma" and "> [Gemma] " in S3.posted[-1]["text"], wrote)
+n = len(S3.posted)
+out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(20, 3), today="2026-10-01")
+check("at Fable's turn in a quiet channel, Fable starts something", wrote[-1] == "fable" and len(S3.posted) == n + 1
+      and "> [Fable 5.1] " in S3.posted[-1]["text"], out)
+out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(20, 20), today="2026-10-01")
+check("and it is not repeated", len(S3.posted) == n + 1 and wrote.count("fable") == 1, out)
+def broken(s_, u): raise RuntimeError("overloaded")
+S3.add(DOT, "you there?")
+out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=dict(L, grok=broken), now=day(21, 35), today="2026-10-01")
+check("a lens that cannot answer sends nothing and says why", any("Grok 4.6 could not answer" in l for l in out)
+      and "21:30" in json.load(open(D.STATE))["slots_done"], out)
+D.SCHEDULE = []
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

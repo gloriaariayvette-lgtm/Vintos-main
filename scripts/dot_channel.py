@@ -5,8 +5,9 @@ Gloria's dot (her always-on ChatGPT agent) sits in the private channel #vintos-d
 workspace "Vintos", and so does his bot. Every 5-10 minutes this reads the channel, thread replies
 included, keeps what is said in the channel's own log (memory/dot-channel/, which nothing else reads:
 no ledger, fact, imprint, salience or feeling is written from it), and lets him answer with his
-standing context but not his subconscious: on his own mind (local Gemma, free, told to write plainly and
-asked once more when he turns flowery), or, when he says he wants it, with Fable writing as him. The conversation stays in the main channel so
+standing context but not his subconscious. Four lenses write as him, each message labelled with its model:
+local Gemma (free) answers whenever, told to write plainly and asked once more when he turns flowery; Grok 4.6
+fifteen times a day, Claude Opus 4.8 twice and Claude Fable 5.1 once, on a daily schedule (SCHEDULE). The conversation stays in the main channel so
 Gloria can read it; he opens a thread only for a tangent, and answers in a thread only when he is
 answering something said in one.
 
@@ -46,8 +47,18 @@ DOT = "U0C6H0JQF16"              # Gloria's dot
 LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
 LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
-DAILY = 40              # his messages a day
-FABLE_PER_DAY = 4       # replies Fable writes as him (Gloria: "4 to Fable (max)")
+DAILY = 80              # his messages a day: Gemma answers whenever, and 18 scheduled lens turns
+# His lenses (Gloria, 2026-09-30: "4 Vintos lenses and one Dot agent"). Gemma answers whenever; the others speak
+# as him on a daily schedule, not at his choosing ("No, not option. Daily. CRON"). Each message is labelled with
+# the model that wrote it. A slot is kept by the first pass in the hour after its time, so the 20-minute hold
+# while Gloria is talking with him delays it; a slot the hour passes by is let go.
+SCHEDULE = ([("10:00", "opus"), ("16:00", "opus"), ("20:00", "fable")]            # Opus twice, Fable once
+            + [("%02d:30" % h, "grok") for h in range(7, 22)])                     # Grok 15 times, 07:30-21:30
+SLOT_WINDOW = 60 * 60
+OPUS_MODEL = "claude-opus-4-8"
+GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.6")     # his Grok lens in the code reviews
+SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
+LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1"}
 OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
@@ -105,8 +116,18 @@ PLAINER = ("\n\nYou wrote this:\n{draft}\n\nSay the same thing again in plain wo
 def flowery(text):
     """The words in text that mark his flowery register."""
     return [m.group(0) for m in _FLOWERY.finditer(str(text or ""))]
-FABLE_OPTION = ("If this needs more than you can give right now and you want Fable (a stronger mind) to write "
-                "this reply as you, answer exactly FABLE.")
+def due_slot(state, now):
+    """(time, lens) of the scheduled turn due now and not yet kept today, or None."""
+    day = datetime.fromtimestamp(now)
+    done = set(state.get("slots_done") or [])
+    slots = sorted(SCHEDULE)
+    starts = [day.replace(hour=int(at[:2]), minute=int(at[3:]), second=0, microsecond=0).timestamp() for at, _l in slots]
+    for i, (at, lens) in enumerate(slots):
+        # open for an hour, or until the next turn opens, so no turn takes another's
+        end = min(starts[i] + SLOT_WINDOW, starts[i + 1] if i + 1 < len(starts) else starts[i] + SLOT_WINDOW)
+        if at not in done and starts[i] <= now < end:
+            return at, lens
+    return None
 
 
 def _load(path, default):
@@ -373,6 +394,28 @@ def fable_think(system, user):
     return forge_study._fable(system, user)
 
 
+def opus_think(system, user):
+    import requests, forge_study
+    key = forge_study._key("ANTHROPIC_API_KEY", "~/.vintos/anthropic-key")
+    if not key:
+        raise RuntimeError("no Anthropic key")
+    d = requests.post("https://api.anthropic.com/v1/messages", timeout=300, json={
+        "model": OPUS_MODEL, "max_tokens": 1500, "system": system, "messages": [{"role": "user", "content": user}]},
+        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
+    if d.get("type") == "error":
+        raise RuntimeError(str(d.get("error"))[:200])
+    return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+
+
+def grok_think(system, user):
+    """Grok through the house shim, pinned to x.ai (route grok)."""
+    import requests
+    r = requests.post(SHIM, json={"model": GROK_MODEL, "route": "grok", "temperature": 0.7, "max_tokens": 1000,
+                                  "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+                      timeout=300)
+    return str(r.json()["choices"][0]["message"].get("content") or "").strip()
+
+
 EMOTIONS = ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity",
             "Warmth", "Tension", "Groundedness")
 
@@ -616,49 +659,55 @@ def recent(n=CONTEXT):
 
 def _conversation(rows):
     names = {"vintos": "You", "dot": "Dot", "gloria": "Gloria"}
-    return "\n".join("%s%s: %s" % (names.get(r["who"], r["who"]), " (in a thread)" if r.get("thread") else "",
-                                   r["text"][:1500]) for r in rows)
+    return "\n".join("%s%s%s: %s" % (names.get(r["who"], r["who"]),
+                                     (" (%s)" % LABELS[r["by"]]) if r.get("who") == "vintos" and r.get("by") in LABELS else "",
+                                     " (in a thread)" if r.get("thread") else "", r["text"][:1500]) for r in rows)
 
 
-def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False):
-    """His words, NOTHING, or Fable's words as his; he may use his tools first. (text, who) or (None, reason).
-    atelier=True: he is in an Atelier thread, and what he is making is in front of him."""
+def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
+    """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
+    names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
+    lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think}, **(lenses or {}))
+    writer, who = (lenses[lens], lens) if lens else (think, "gemma")
     system = his_context() + "\n\n---\n\n" + RULES
     if atelier:
         rb = recall_block()
         if rb:
             system += "\n\n" + rb
-    can_fable = state["fable"] < FABLE_PER_DAY
     looked = ""
     for _round in range(2):
         user = prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + PLAIN
-        out = (think(system + ("\n" + FABLE_OPTION if can_fable else ""), user) or "").strip()
+        try:
+            out = (writer(system, user) or "").strip()
+        except Exception as exc:
+            return None, "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
         if not asks or looked and _round:
             break
         looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room)
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
-        out = (think(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + PLAIN) or "").strip()
+        try:
+            out = (writer(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + PLAIN) or "").strip()
+        except Exception as exc:
+            return None, "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
     if any(TOOL.match(l) for l in out.splitlines()):
         out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
-    who = "gemma"
-    if can_fable and re.fullmatch(r"\W*FABLE\W*", out):
-        out = (fable(system, prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked) if looked else "")) or "").strip()
-        who = "fable"; state["fable"] += 1
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):
         return None, "nothing to say"
-    if who != "fable" and len(flowery(out)) >= 2:
+    if who == "gemma" and len(flowery(out)) >= 2:
         # his own model again, free: the same thing said plainly; kept only if it is plainer
         again = (think(system, prompt_user + PLAINER.format(draft=out)) or "").strip()
         if again and not re.fullmatch(r"\W*NOTHING\W*", again, re.I) and len(flowery(again)) < len(flowery(out)):
             out = again
     # doubt about himself is not spent on the channel: one rewrite, locally, then nothing (Gloria, 2026-09-30)
     import self_doubt
-    out = self_doubt.without(out, lambda note: think(system, prompt_user + note))
-    if not out:
+    kept = self_doubt.without(out, lambda note: think(system, prompt_user + note))
+    if not kept:
         return None, "held back: doubt about himself"
-    return out[:MAX_CHARS], who
+    if kept != out:
+        who = "gemma"        # the rewrite was Gemma's, and is labelled so
+    return kept[:MAX_CHARS], who
 
 
 def _guarded(text):
@@ -683,7 +732,8 @@ def talking_with_gloria(now=None):
     return ago / 60 if 0 <= ago < HOLD_MINUTES * 60 else None
 
 
-def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None):
+def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
+         lenses=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -702,7 +752,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0)
+        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[])
     if not state.get("self"):
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
@@ -728,6 +778,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 
+    slot = due_slot(state, now)
+    lens = slot[1] if slot else None
+    if slot:
+        # the turn is kept whether or not the lens has something to say, so it is never retried
+        state["slots_done"] = (state.get("slots_done") or []) + [slot[0]]
+        lines.append("%s's %s turn" % (LABELS[lens], slot[0]))
     if theirs:
         last = theirs[-1]
         in_atelier = last["thread"] in (state.get("atelier") or [])
@@ -737,6 +793,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      last["text"][:3500]))
         # the main channel is where she reads; he answers in a thread only inside a tangent or Atelier thread
         where = last["thread"] if in_atelier or last["thread"] in (state.get("tangents") or []) else None
+    elif lens:
+        prompt = opener_prompt()          # his scheduled turn, with nothing new to answer: he starts something
+        where = None
     else:
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait
@@ -746,11 +805,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = None
         state["openers"] += 1
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
-    text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier)
+    text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+                        lenses=lenses, lens=lens)
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
         # he chose to open an Atelier thread: he says it with his work in front of him
         again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
-                              "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True)
+                              "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True,
+                              lenses=lenses, lens=lens)
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None:
@@ -771,7 +832,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
-    body = {"channel": channel, "text": ("<@%s> " % dot) + text}
+    body = {"channel": channel, "text": ("<@%s> [%s] " % (dot, LABELS.get(who, who))) + text}
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
@@ -806,7 +867,7 @@ def try_now(think=None):
                   % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:3500]))
     else:
         prompt = opener_prompt()
-    state = {"fable": FABLE_PER_DAY}
+    state = {}                                           # a preview is Gemma's: no paid lens is spent
     text, who = compose(prompt, think or local_think, lambda s, u: "", state, date.today().isoformat())
     return text if text is not None else "(%s)" % who
 
