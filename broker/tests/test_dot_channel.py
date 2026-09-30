@@ -222,7 +222,10 @@ check("his subconscious is not in it, nor the inner layer that carries it",
 def tree():
     return sorted(os.path.relpath(os.path.join(d, f), MEM) for d, _s, fs in os.walk(MEM) for f in fs)
 def stamp():
-    return {p: os.path.getmtime(os.path.join(MEM, p)) for p in tree()}
+    # by content, not mtime: WSL's kernel stamps files at ~10 ms granularity, so two quick passes can
+    # leave the same mtime on a file that did change (the check failed on Aegis for that reason)
+    import hashlib
+    return {p: hashlib.sha256(open(os.path.join(MEM, p), "rb").read()).hexdigest() for p in tree()}
 before = stamp()
 S.add(DOT, "one more thing")
 st = json.load(open(D.STATE)); st.update(sent=0); json.dump(st, open(D.STATE, "w"))
