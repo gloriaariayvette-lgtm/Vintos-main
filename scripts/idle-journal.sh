@@ -727,7 +727,13 @@ What I haven't said yet matters more than what I've already named. I go there.""
                  "max_completion_tokens": 6000, "reasoning_effort": "low"}
         _rq = _u.Request("https://api.openai.com/v1/chat/completions", data=_j.dumps(_body).encode(),
                          headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
-        _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+        try:
+            _d = _j.loads(_u.urlopen(_rq, timeout=600).read())
+        except _u.HTTPError as _he:
+            # OpenAI says why in the body; "HTTP Error 400: Bad Request" alone named nothing (2026-09-30)
+            try: _why = _he.read().decode("utf-8", "replace")[:400]
+            except Exception: _why = ""
+            raise RuntimeError("HTTP %s: %s" % (_he.code, _why or _he.reason))
         try:
             _us = _d.get("usage") or {}
             import time as _sut
