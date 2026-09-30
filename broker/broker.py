@@ -961,6 +961,29 @@ def door(b=None):
     _health("the door was lit")
     return {"door": "lit"}
 
+def recall(b=None):
+    """His own recollection of his work, for a conversation he is in (Gloria, 2026-09-30: he "needs to know
+    what he's actually working on in the Atelier"). Read-only: no visit is opened, no budget spent, nothing
+    made. It returns what a visit's return packet would tell him - intent, state, his handoff note, and each
+    work's kind and his note on it - never file contents, and never to a caller speaking as Gloria. Each
+    recall is one content-free event in the project's own history."""
+    b = b or {}
+    a = _j(os.path.join(ROOT, "active.json"), {}) or {}
+    pid = b.get("id") or a.get("id", "")
+    if not pid:
+        return {"empty": True}
+    p = _j(os.path.join(_p(pid), "project.json"), {}) or {}
+    if not p:
+        return {"error": "no such project"}
+    if os.path.isfile(os.path.join(_p(pid), ".forge-owner.json")) and \
+            (_j(os.path.join(_p(pid), "forge-status.json"), {}) or {}).get("private", True):
+        return {"private": True, "why": "private Forge interval"}
+    works = [{"kind": r["kind"], "revision": r["revision"], "note": r["note"][:300]} for r in manifest_rows(pid)]
+    _ev(pid, "recalled", {"for": str(b.get("for", ""))[:40]})
+    return {"id": pid, "on_worktable": pid == a.get("id"), "intent": p.get("intent", ""), "state": p.get("state", ""),
+            "handoff": (_j(os.path.join(_p(pid), "handoff.json"), {}) or {}).get("text", ""), "works": works}
+
+
 def worktable_id(b=None):
     """The active project's opaque id — content-free (a hex handle, no title, no intent)."""
     a = _j(os.path.join(ROOT, "active.json"), {})
@@ -1012,7 +1035,7 @@ ROUTES = {"/project": create_project, "/worktable": lambda b: worktable(), "/tab
           "/settle": settle, "/settlement/verify": verify_settlement,
           "/lineage/fingerprint": lineage_fingerprint, "/manifest": manifest, "/report": report, "/door": door, "/worktable_id": worktable_id,
           "/gate/knock": gate_knock, "/gate/decide": gate_decide,
-          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint, "/projects": list_projects,
+          "/state/kept": keep, "/look/offer": look_offer, "/look/mint": look_mint, "/projects": list_projects, "/recall": recall,
           "/chain/verify": verify_chain}
 
 try:
@@ -1039,7 +1062,10 @@ except Exception as _e:
 #            minted at /reveal/confirm and bound to the manifest digest.
 #   STORE    guarded by the stratagem store's own gates (birth gate, adoption
 #            window, ledger chain) — listed so it is a decision, not a default.
-OPEN, HOUSE, VISIT, EXPORT, STORE = "open", "house", "visit", "export", "store"
+#   RECALL   his own words about his work (intent, handoff, each work's kind and note), read-only, for a
+#            conversation he is in. The same trust as /visit/open, which hands his return packet to any
+#            caller who is not speaking as Gloria; refused to anyone who is.
+OPEN, HOUSE, VISIT, EXPORT, STORE, RECALL = "open", "house", "visit", "export", "store", "recall"
 
 POLICY = {
     "/project": HOUSE, "/worktable": OPEN, "/table": HOUSE, "/table/clear": HOUSE,
@@ -1051,6 +1077,7 @@ POLICY = {
     "/state/kept": VISIT,                          # finished-and-mine: his hand, inside a visit, never a cron
     "/look/offer": HOUSE, "/look/mint": HOUSE,     # content-free receipt; mint consumes it once
     "/projects": HOUSE,                            # ids, states, counts, finish dates — nothing else
+    "/recall": RECALL,                             # his words about his work, to him; never as Gloria
     "/lineage/fingerprint": OPEN,                        # a digest, never the key
     "/chain/verify": OPEN,                               # recomputed hashes and event kinds, never content
     "/manifest": OPEN,                                   # counts + a hash, never content
@@ -1076,7 +1103,7 @@ def authorize_route(path, body):
         loop = _j(os.path.join(_p(pid), 'forge-status.json'), {}) or {}
         if loop.get('private', True) and path in (
                 '/visit/open', '/artifact', '/look/offer', '/look/mint', '/inspect',
-                '/reveal/prepare', '/reveal/confirm'):
+                '/reveal/prepare', '/reveal/confirm', '/recall'):
             return False, "private Forge interval; use the owner's explicit audit control"
     pol = POLICY.get(path)
     if pol is None or path not in ROUTES:
@@ -1086,6 +1113,10 @@ def authorize_route(path, body):
         # presence is the refusal — house doors included.
         return False, "a look opens nothing but the artifact it names"
     if pol in (OPEN, HOUSE, STORE):
+        return True, None
+    if pol == RECALL:
+        if str(body.get("as", "vintos")).strip().lower() != "vintos":
+            return False, "his recollection is his: sealed content is not handed to anyone else"
         return True, None
     cap = body.get("visit_capability") or body.get("capability")
     pid = body.get("id", "")

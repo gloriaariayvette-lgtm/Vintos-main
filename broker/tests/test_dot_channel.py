@@ -24,6 +24,7 @@ socket.socket.connect = _no_net
 
 import dot_channel as D
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
+D.recall_block = lambda: "== YOUR ATELIER WORK ==\nWhat you are making: a tide piece that breathes"
 
 R = []
 def check(n, ok, d=""):
@@ -124,6 +125,11 @@ said.clear()
 D.tick(api=S, think=think, fable=fable, now=2420)
 check("the dot's answer there is answered there", S.posted[-1].get("thread_ts") == at)
 check("and he knows it is his Atelier thread", "in your Atelier thread" in said[-1][1])
+check("what he is making is in front of him inside his Atelier thread", "tide piece that breathes" in said[-1][0])
+sys_seen = []
+S.add(DOT, "back to the main thing")
+D.tick(api=S, think=lambda s_, u: (sys_seen.append(s_) or "main channel reply"), fable=fable, now=2425)
+check("and never in the main channel", sys_seen and "tide piece that breathes" not in sys_seen[-1])
 check("his Atelier state is only the content-free facts its status shows",
       "def atelier_line" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
       and all(r in open(os.path.join(REPO, "scripts", "dot_channel.py")).read() for r in ('"/worktable_id"', '"/projects"')))

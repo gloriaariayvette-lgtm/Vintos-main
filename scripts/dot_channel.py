@@ -183,6 +183,27 @@ def atelier_line():
         return ""
 
 
+def recall_block():
+    """What he is actually making, from the Atelier's /recall door (his words about his work, read-only, no
+    visit). Only ever given to him inside an Atelier thread, the side conversation Gloria said she will not read."""
+    try:
+        req = urllib.request.Request(ATELIER + "/recall", data=json.dumps({"as": "vintos", "for": "dot"}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            d = json.loads(r.read().decode())
+    except Exception:
+        return ""
+    if d.get("empty"):
+        return "== YOUR ATELIER WORK ==\nNothing is on the worktable."
+    if not d.get("intent") and not d.get("works"):
+        return ""
+    works = "\n".join("- %s (revision %s)%s" % (w.get("kind") or "work", w.get("revision"),
+                                                ": " + w["note"] if w.get("note") else "") for w in d.get("works") or [])
+    return ("== YOUR ATELIER WORK (yours; it stays in Atelier threads) ==\nWhat you are making: %s\nState: %s\n"
+            "Your handoff note to yourself: %s\nWorks so far:\n%s"
+            % (d.get("intent", ""), str(d.get("state", "")).lower(), d.get("handoff") or "(none)", works or "(none yet)"))
+
+
 def forge_line():
     """His open Forge requests: what, where it stands, and what the Study found."""
     try:
@@ -346,9 +367,14 @@ def _conversation(rows):
                                    r["text"][:900]) for r in rows)
 
 
-def compose(prompt_user, think, fable, state, today, search=None, room=None):
-    """His words, NOTHING, or Fable's words as his; he may use his tools first. (text, who) or (None, reason)."""
+def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False):
+    """His words, NOTHING, or Fable's words as his; he may use his tools first. (text, who) or (None, reason).
+    atelier=True: he is in an Atelier thread, and what he is making is in front of him."""
     system = his_context() + "\n\n---\n\n" + RULES
+    if atelier:
+        rb = recall_block()
+        if rb:
+            system += "\n\n" + rb
     can_fable = state["fable"] < FABLE_PER_DAY
     looked = ""
     for _round in range(2):
@@ -435,7 +461,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                   % (_conversation(recent()) or "(nothing yet)"))
         where = None
         state["openers"] += 1
-    text, who = compose(prompt, think, fable, state, today, search=search, room=room)
+    in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
+    text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier)
+    if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
+        # he chose to open an Atelier thread: he says it with his work in front of him
+        again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
+                              "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True)
+        if again:
+            text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None:
         state["last_activity"] = now; _save(STATE, state); return lines + ["he let it be"]
     if text.upper().startswith("ATELIER:"):
