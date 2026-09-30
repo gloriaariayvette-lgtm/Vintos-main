@@ -72,31 +72,30 @@ if twin is not None:
         "_avReplyStage(parsed.text || raw, parsed.scenes, d.live_slot", "self.setRoom(self.home||room)",
         "_avStartReplyMedia(display, live ? [] : scenes)")))
 
-# Not every turn: one new live scene at most every LIVE_SPACING minutes, whoever asks (2026-09-30).
-import asyncio, time as _t
-check("the spacing record lives in the scratch stage", A.LIVE_LAST.startswith(HOME))
-try: os.remove(A.LIVE_LAST)
+# Not every turn: at most LIVE_PER_DAY new live scenes a day, whoever asks (2026-09-30: "3 max NEW renders per day").
+import asyncio
+check("the day's count lives in the scratch stage", A.LIVE_COUNT.startswith(HOME))
+try: os.remove(A.LIVE_COUNT)
 except FileNotFoundError: pass
-check("with no scene made yet, one may start", A.live_next_at() == 0 and "[RENDER:" in A.scene_line())
+check("three a day", A.LIVE_PER_DAY == 3 and A.live_left() == 3 and "3 left today" in A.scene_line())
 STARTED = []
 _real_worker = A._live_worker
 A._live_worker = lambda *a, **k: STARTED.append(a)
 A._mac_url = lambda: "http://stub"
-st = A.start_live("the rooftop at dusk", slot="t-first")
-_t.sleep(0.2)
-check("the first scene starts", st["status"] == "rendering" and len(STARTED) == 1, st)
-st2 = A.start_live("the rooftop again", slot="t-second")
-check("a second scene a turn later does not start", st2["status"] == "refused" and len(STARTED) == 1, st2)
-check("and says when the next may", "every %d minutes" % A.LIVE_SPACING in (st2.get("error") or ""), st2)
-check("his own [RENDER:] a turn later starts nothing", A.kick_from_reply("[RENDER: the pier]", slot="t-third") is False
-      and len(STARTED) == 1)
+got = [A.start_live("scene %d" % i, slot="t-%d" % i)["status"] for i in range(3)]
+check("three new scenes start in a day, however close together", got == ["rendering"] * 3 and len(STARTED) == 3, got)
+st4 = A.start_live("a fourth", slot="t-4")
+check("a fourth the same day does not start", st4["status"] == "refused" and len(STARTED) == 3, st4)
+check("and says why", "for today are used" in (st4.get("error") or ""), st4)
+check("his own [RENDER:] after that starts nothing", A.kick_from_reply("[RENDER: the pier]", slot="t-5") is False
+      and len(STARTED) == 3)
 line = A.scene_line()
-check("he is told no new scene until the time, and not offered [RENDER:]",
-      "cannot be made until" in line and "[RENDER:" not in line, line[-200:])
-gate = asyncio.run(A.scene_gate("look at this", "http://stub", {}, slot="t-fourth"))
-check("the gate asks nothing while none can start", gate.get("spaced") is True and gate["decision"] == "NO")
-json.dump({"at": _t.time() - A.LIVE_SPACING * 60 - 1}, open(A.LIVE_LAST, "w"))
-check("after the spacing, one may start again", A.live_next_at() == 0 and "[RENDER:" in A.scene_line())
+check("he is told they are used for today, and not offered [RENDER:]",
+      "for today are used" in line and "[RENDER:" not in line, line[-200:])
+gate = asyncio.run(A.scene_gate("look at this", "http://stub", {}, slot="t-6"))
+check("the gate asks nothing once they are used", gate.get("spaced") is True and gate["decision"] == "NO")
+json.dump({"date": "2000-01-01", "count": 3}, open(A.LIVE_COUNT, "w"))
+check("a new day has three again", A.live_left() == 3 and "[RENDER:" in A.scene_line())
 A._live_worker = _real_worker
 
 print("\n%d/%d" % (sum(R), len(R)))

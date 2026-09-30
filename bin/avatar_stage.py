@@ -659,28 +659,33 @@ def _sync_live_to_mac():
         log("live clip not synced to Mac (%s) - speech falls back to another room" % e)
 
 
-# One new live scene at most every LIVE_SPACING minutes, whoever asks (the gate, his [RENDER:], the app):
-# he was rendering one nearly every turn (Gloria, 2026-09-30: "He shouldn't do it every turn").
-LIVE_SPACING = int(os.environ.get("VINTOS_LIVE_SPACING_MIN", "20"))
-LIVE_LAST = os.path.join(STAGE, "live-last-start.json")
+# At most LIVE_PER_DAY new live scenes a day, whoever asks (the gate, his [RENDER:], the app): he was
+# rendering one nearly every turn (Gloria, 2026-09-30: "Just do 3 max NEW renders per day").
+LIVE_PER_DAY = int(os.environ.get("VINTOS_LIVE_PER_DAY", "3"))
+LIVE_COUNT = os.path.join(STAGE, "live-today.json")
 
 
-def live_next_at(now=None):
-    """0 when a new live scene may start now, else the epoch second it may."""
+def _today():
+    return time.strftime("%Y-%m-%d")
+
+
+def live_left():
+    """How many new live scenes may still start today."""
     try:
-        last = float(json.load(open(LIVE_LAST)).get("at") or 0)
+        d = json.load(open(LIVE_COUNT))
+        used = int(d.get("count") or 0) if d.get("date") == _today() else 0
     except Exception:
-        return 0
-    nxt = last + LIVE_SPACING * 60
-    return nxt if nxt > (now or time.time()) else 0
+        used = 0
+    return max(0, LIVE_PER_DAY - used)
 
 
-def _live_started(now=None):
+def _live_started():
     try:
         os.makedirs(STAGE, exist_ok=True)
-        with open(LIVE_LAST, "w") as f: json.dump({"at": now or time.time()}, f)
+        used = LIVE_PER_DAY - live_left()
+        with open(LIVE_COUNT, "w") as f: json.dump({"date": _today(), "count": used + 1}, f)
     except Exception as e:
-        log("live spacing not recorded: %s" % e)
+        log("live scene count not recorded: %s" % e)
 
 
 def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None, admit=None):
@@ -692,9 +697,8 @@ def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None
     `admit`, when given, is the route's effect-gate admission - called with the
     prompt and answering (ok, mode, why) - and nothing starts until it says yes."""
     sid = _slot_id(slot)
-    _nxt = live_next_at()
-    if _nxt and (_LIVE_SLOTS.get(sid) or {}).get("status") != "rendering":
-        why = "one new scene every %d minutes; the next from %s" % (LIVE_SPACING, time.strftime("%H:%M", time.localtime(_nxt)))
+    if not live_left() and (_LIVE_SLOTS.get(sid) or {}).get("status") != "rendering":
+        why = "the %d new scenes for today are used; more tomorrow" % LIVE_PER_DAY
         log("live scene not started [%s]: %s" % (sid, why))
         _slot_update(sid, status="refused", prompt=prompt, kind=kind, started=time.time(),
                      finished=time.time(), seconds=0.0, error=why)
@@ -757,7 +761,7 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
     scene costs and how long it takes. YES starts the render at once, so it
     overlaps the 60-120s he spends writing. Nothing is sent anywhere."""
     try:
-        if live_next_at():   # none can start yet: nothing to decide, and no call made
+        if not live_left():   # none left today: nothing to decide, and no call made
             return {"decision": "NO", "kind": "self", "scene_ref": "", "scene": "", "still": "", "prompt": "",
                     "spaced": True}
         m = _vsv()
@@ -851,15 +855,15 @@ def _where_now(man):
 
 
 def _render_line():
-    nxt = live_next_at()
-    if nxt:
-        return ("A new live scene cannot be made until %s; the rooms above, and [SCENE: live] if you are in "
-                "one, are yours meanwhile.\n" % time.strftime("%H:%M", time.localtime(nxt)))
+    left = live_left()
+    if not left:
+        return ("Your %d new live scenes for today are used; more tomorrow. The rooms above, and [SCENE: live] "
+                "if you are in one, are yours meanwhile.\n" % LIVE_PER_DAY)
     return ("[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
             "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
             "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
-            "and you want to be there with her. Never for a room you already have, and not every turn: "
-            "one at most every %d minutes. Once made, [SCENE: live] returns to it for free.\n" % LIVE_SPACING)
+            "and you want to be there with her. Never for a room you already have. %d a day at most; %d "
+            "left today. Once made, [SCENE: live] returns to it for free.\n" % (LIVE_PER_DAY, left))
 
 
 def scene_line():
