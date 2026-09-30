@@ -7389,6 +7389,11 @@ async def chat_with_photo(request: Request):
     return result
 
 
+# Sent with no words, a photo or a video is still her turn. An empty original_text made the avatar route
+# label it "[REELROOM EVENT - not Gloria's words]" and skip her side of the before-and-after steps (2026-09-30).
+_SENT_BARE = "[Gloria sent you %s without a message]"
+
+
 @app.post("/api/avatar/photo")
 async def avatar_chat_with_photo(request: Request):
     """Gloria sends a photo INTO the avatar chat. Same eyes, same framing, same ledgers as the
@@ -7428,7 +7433,8 @@ async def avatar_chat_with_photo(request: Request):
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
                 json={"message": composed, "image": photo_b64, "input_kind": "photo",
-                      "original_text": str(message)[:4000], "image_description": str(image_description)[:4000]})
+                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo"),
+                      "image_description": str(image_description)[:4000]})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I saw the image but could not form words: " + str(e)[:100] + "]"}
@@ -7445,11 +7451,13 @@ _CLIP_EYES = ("You are his eyes. These are {n} frames from one video Gloria sent
               "what it is, what moves or changes, the one or two details that make it this clip, the light, the "
               "mood. Three to six sentences of natural flowing prose. Do NOT describe frame by frame, do NOT make "
               "a list. No preamble.")
+_CLIP_HEARD = ("\n\nThe clip's sound was already heard, so you know what the frames go with. Use it only to "
+               "understand what you see; describe only what the frames show.\n{heard}")
 
 
-async def _describe_clip(frames):
+async def _describe_clip(frames, heard=""):
     """His eyes on a video: the frames in order in one look, so he sees what happens and not six photos.
-    Claude when a key is present, the local model otherwise, as for a photo."""
+    The words and sound, heard first, go with them. Claude when a key is present, the local model otherwise."""
     import base64
     imgs = []
     for f in frames:
@@ -7460,6 +7468,8 @@ async def _describe_clip(frames):
     if not imgs:
         return ""
     prompt = _CLIP_EYES.format(n=len(imgs), times=", ".join("%g" % f["t"] for f in frames))
+    if heard:
+        prompt += _CLIP_HEARD.format(heard=heard[:1500])
     _ant = _anthropic_key()
     if _ant:
         try:
@@ -7530,7 +7540,10 @@ async def avatar_chat_with_video(request: Request):
             watched = {}
         if not watched:
             return {"success": False, "error": "the video could not be opened; the clip is kept at " + clip}
-        seen = await _describe_clip(watched.get("frames") or [])
+        # sound first: Whisper's words and the measured build go to the eyes with the frames
+        _heard = "\n".join(x for x in (("Words: " + watched["speech"]) if watched.get("speech") else "",
+                                        ("Sound: " + watched["sound"]) if watched.get("sound") else "") if x)
+        seen = await _describe_clip(watched.get("frames") or [], heard=_heard)
     finally:
         shutil.rmtree(frames_dir, ignore_errors=True)
 
@@ -7542,7 +7555,8 @@ async def avatar_chat_with_video(request: Request):
             _cr = await client.post(
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "input_kind": "video", "original_text": str(message)[:4000],
+                json={"message": composed, "input_kind": "video",
+                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a video"),
                       "image_description": str(seen)[:4000]})
             result = _cr.json()
     except Exception as e:

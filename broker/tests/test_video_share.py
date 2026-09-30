@@ -54,6 +54,76 @@ for client in ("clients/mobile/index.html", os.path.join("..", "vintos-app", "vi
     check("the picture button also picks videos (%s)" % ("vintos-app" if "vintos-app" in client else "mobile"),
           "inp.accept = 'image/*,video/*'" in c and "'/api/avatar/video'" in c and "fd.append(kind, file)" in c)
 
+# --- the route itself, run with every door out of the house stubbed ---
+import ast, asyncio, io, json as _json, types
+_tree = ast.parse(src)
+_want = {"_CLIP_EYES", "_CLIP_HEARD", "_SENT_BARE", "_describe_clip", "avatar_chat_with_video"}
+_nodes = [n for n in _tree.body if (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in _want for t in n.targets))
+          or (isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in _want)]
+check("the route's pieces are found in the server", len(_nodes) == len(_want), [getattr(n, "name", "") for n in _nodes])
+SEQ = []
+class _Resp:
+    def __init__(self, d): self._d = d
+    def json(self): return self._d
+class _Client:
+    def __init__(self, *a, **k): pass
+    async def __aenter__(self): return self
+    async def __aexit__(self, *a): return False
+    async def post(self, url, headers=None, json=None):
+        SEQ.append(("post", url, json))
+        if "anthropic" in url: return _Resp({"content": [{"text": "A kitchen at dusk; a kettle steams."}]})
+        return _Resp({"reply": "I hear the kettle."})
+class _App:
+    def post(self, *a, **k): return lambda f: f
+class _HTTPExc(Exception):
+    def __init__(self, status_code=0, detail=""): self.status_code = status_code
+from datetime import datetime as _dt
+WS = os.path.join(TMP, "ws"); os.makedirs(os.path.join(WS, "memory"))
+ns = {"app": _App(), "Request": object, "HTTPException": _HTTPExc, "httpx": types.SimpleNamespace(AsyncClient=_Client),
+      "os": os, "json": _json, "time": __import__("time"), "datetime": _dt, "WORKSPACE": WS,
+      "MEMORY": os.path.join(WS, "memory"), "APP_SECRET": "s", "LLM_AUTH_HEADERS": {}, "_anthropic_key": lambda: "k"}
+exec(compile(ast.Module(body=_nodes, type_ignores=[]), "server-route", "exec"), ns)
+fr = os.path.join(TMP, "route-frame.jpg"); open(fr, "wb").write(b"\xff\xd8" + b"0" * 600)
+WATCHED = {"duration": 9.0, "has_audio": True, "quiet": False, "speech": "the kettle is on",
+           "sound": "Tempo: no steady beat.", "frames": [{"t": 1.5, "path": fr}, {"t": 4.5, "path": fr}]}
+def _fake_run(cmd, **kw):
+    SEQ.append(("hear", cmd))
+    return types.SimpleNamespace(returncode=0, stdout="RESULT " + _json.dumps(WATCHED), stderr="")
+class _Req:
+    def __init__(self, message): self.headers = {"X-Vintos-Secret": "s"}; self._m = message
+    async def form(self):
+        return {"message": self._m, "video": types.SimpleNamespace(file=io.BytesIO(b"clip"), filename="c.MOV")}
+_real_run = subprocess.run
+subprocess.run = _fake_run
+try:
+    out = asyncio.run(ns["avatar_chat_with_video"](_Req("")))
+finally:
+    subprocess.run = _real_run
+kinds = [x[0] for x in SEQ]
+eyes = [x for x in SEQ if x[0] == "post" and "anthropic" in x[1]]
+chat = [x for x in SEQ if x[0] == "post" and "/api/avatar/chat" in x[1]]
+check("the sound is heard before the eyes look", kinds[:1] == ["hear"] and len(eyes) == 1 and kinds.index("post") > 0, kinds)
+_prompt = eyes[0][2]["messages"][0]["content"][-1]["text"] if eyes else ""
+check("the eyes get every frame, in order, with the words and sound heard",
+      len(eyes[0][2]["messages"][0]["content"]) == 3 and "Words: the kettle is on" in _prompt
+      and "Sound: Tempo: no steady beat." in _prompt and "1.5, 4.5" in _prompt, _prompt[-160:])
+body = chat[0][2] if chat else {}
+check("he gets what was seen, heard and measured in one turn", all(x in body.get("message", "") for x in
+      ("A kitchen at dusk", "the kettle is on", "Tempo: no steady beat.")))
+check("a video sent with no words is still her turn, not a room event",
+      body.get("original_text") == "[Gloria sent you a video without a message]" and body.get("input_kind") == "video")
+check("the clip is kept", any(f.endswith("_avatar.mov") for f in os.listdir(os.path.join(WS, "memory", "videos-from-gloria"))))
+check("her reply comes back", out.get("reply") == "I hear the kettle." and out["video"]["speech"] == "the kettle is on")
+SEQ.clear()
+subprocess.run = _fake_run
+try:
+    asyncio.run(ns["avatar_chat_with_video"](_Req("look at this")))
+finally:
+    subprocess.run = _real_run
+check("her caption stays her words", [x for x in SEQ if "/api/avatar/chat" in x[1]][0][2]["original_text"] == "look at this")
+check("a photo sent with no words is her turn too",
+      '"original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo")' in src)
+
 ms = open(os.path.join(REPO, "bin", "music-share.py")).read()
 check("the music share no longer halves a tempo", "raw_tempo / 2" not in ms and "from sound_read import measure" in ms)
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
