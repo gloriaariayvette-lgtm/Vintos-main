@@ -9,7 +9,8 @@ WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
 # The daily caps live in the code (dot_channel.DAILY, FABLE_PER_DAY, OPENERS_PER_DAY).
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/dot_channel.py
-TimeoutStartSec=900
+# a video in the channel is heard (Whisper, on the CPU) and seen before he answers: minutes
+TimeoutStartSec=1800
 NoNewPrivileges=true
 # no PrivateTmp: his EmoClaw reading comes from the daemon socket in /tmp, as the avatar chat reads it
 ProtectSystem=strict

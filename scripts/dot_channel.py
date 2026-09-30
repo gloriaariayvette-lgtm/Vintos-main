@@ -22,7 +22,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -135,6 +138,127 @@ def slack(method, params, token=None):
     if not d.get("ok"):
         raise RuntimeError("slack %s: %s" % (method, d.get("error")))
     return d
+
+
+# --- what is posted as a picture or a clip, seen on his own model (Gloria, 2026-09-30: "Images and videos should
+# go to the local ablit Gemma in this case"). A video is heard first (Whisper, the sound's build), as in the
+# avatar chat; then Gemma looks at its frames with that in mind. Downloads need the Slack app's files:read scope.
+MEDIA_MAX = 200 * 1024 * 1024
+MEDIA_PER_MESSAGE = 4
+SEE_IMAGE = ("You are his eyes. {who} posted this image in the Slack channel. Say plainly what it shows: what it is, "
+             "the main things in it, and any words written in it. Three to five sentences. No preamble.")
+SEE_CLIP = ("You are his eyes. These are {n} frames, in order, from one video {who} posted in the Slack channel, "
+            "taken at {times} seconds. Say plainly what the clip shows and what happens across it. Three to six "
+            "sentences, not frame by frame, no list, no preamble.")
+SEE_CLIP_HEARD = ("\n\nIts sound was already heard, so you know what the frames go with. Use it only to understand "
+                  "what you see; describe only what the frames show.\n{heard}")
+
+
+def _scratch():
+    """A working folder the service may write: it runs with the file system read-only but the workspace."""
+    d = os.path.join(HERE, "tmp")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _download(url, dest, token):
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(req, timeout=180) as r:
+        if "text/html" in (r.headers.get("Content-Type") or ""):
+            raise RuntimeError("Slack sent a sign-in page, not the file: the app needs the files:read scope")
+        with open(dest, "wb") as f:
+            shutil.copyfileobj(r, f)
+    return dest
+
+
+def _jpeg(src, dest):
+    """Any picture as a jpeg no wider than 1024, which the local model reads; None if ffmpeg cannot."""
+    try:
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-frames:v", "1",
+                            "-vf", "scale='min(1024,iw)':-2", dest], capture_output=True, timeout=120)
+        return dest if r.returncode == 0 and os.path.exists(dest) else None
+    except Exception:
+        return None
+
+
+def _b64(path):
+    import base64
+    return base64.b64encode(open(path, "rb").read()).decode()
+
+
+def gemma_look(images, prompt):
+    """Local Gemma's eyes: jpegs (base64) and a prompt, nothing else in the call."""
+    import requests
+    content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images]
+    r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.3, "max_tokens": 700,
+                                       "messages": [{"role": "user", "content": content + [{"type": "text", "text": prompt}]}]},
+                      timeout=300)
+    return str(r.json()["choices"][0]["message"].get("content") or "").strip()
+
+
+def _watch(clip, frames_dir):
+    """video_share.py apart from this process, as the avatar chat runs it: Whisper loads torch and takes minutes."""
+    tmp = _scratch()
+    env = dict(os.environ, TMPDIR=tmp, NUMBA_CACHE_DIR=tmp)
+    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_share.py"),
+                        clip, "--frames-dir", frames_dir], capture_output=True, text=True, timeout=900, env=env)
+    line = [l for l in (r.stdout or "").splitlines() if l.startswith("RESULT ")]
+    if not line:
+        raise RuntimeError("the video would not open: " + (r.stderr or "")[-200:].strip())
+    return json.loads(line[-1][7:])
+
+
+def look_at_files(m, who, token=None, look=None, watch=None, download=None):
+    """The images and videos in a Slack message, as words he can read: '' when it has none."""
+    files = [f for f in (m.get("files") or []) if str(f.get("mimetype") or "").split("/")[0] in ("image", "video")]
+    if not files:
+        return ""
+    look, watch, download = look or gemma_look, watch or _watch, download or _download
+    work = tempfile.mkdtemp(prefix="media-", dir=_scratch())
+    out = []
+    try:
+        for i, f in enumerate(files[:MEDIA_PER_MESSAGE]):
+            kind = str(f.get("mimetype")).split("/")[0]
+            name = (' "%s"' % f["name"]) if f.get("name") else ""
+            if (f.get("size") or 0) > MEDIA_MAX:
+                out.append("[%s posted a %s%s too large to look at.]" % (who, kind, name)); continue
+            try:
+                path = download(f.get("url_private_download") or f.get("url_private"),
+                                os.path.join(work, "file%d" % i), token or _token())
+                if kind == "image":
+                    jp = _jpeg(path, os.path.join(work, "file%d.jpg" % i)) or path
+                    seen = look([_b64(jp)], SEE_IMAGE.format(who=who))
+                    out.append("[%s posted an image%s. What your eyes saw:] %s" % (who, name, seen or "(nothing could be made out)"))
+                    continue
+                frames_dir = os.path.join(work, "frames%d" % i); os.makedirs(frames_dir)
+                w = watch(path, frames_dir)
+                frames = [fr for fr in (w.get("frames") or []) if os.path.exists(fr.get("path", ""))]
+                heard = "\n".join(x for x in (("Words: " + w["speech"]) if w.get("speech") else "",
+                                                ("Sound: " + w["sound"]) if w.get("sound") else "") if x)
+                prompt = SEE_CLIP.format(who=who, n=len(frames), times=", ".join("%g" % fr["t"] for fr in frames))
+                if heard:
+                    prompt += SEE_CLIP_HEARD.format(heard=heard[:1500])
+                seen = look([_b64(fr["path"]) for fr in frames], prompt) if frames else ""
+                parts = ["[%s posted a video%s, %.0f seconds long. What your eyes saw, across it:] %s"
+                         % (who, name, w.get("duration") or 0, seen or "(the frames could not be seen)")]
+                if not w.get("has_audio"):
+                    parts.append("[It has no sound.]")
+                elif w.get("quiet"):
+                    parts.append("[Its sound is near silent.]")
+                else:
+                    parts.append(("[Words heard in it (a transcription, may mishear):] " + w["speech"]) if w.get("speech")
+                                 else "[No words heard in it.]")
+                    if w.get("sound"):
+                        parts.append("[How its sound is built (measured):] " + w["sound"])
+                out.append("\n".join(parts))
+            except Exception as exc:
+                print("[dot-channel] could not look at a %s: %s" % (kind, exc), file=sys.stderr)
+                out.append("[%s posted a %s%s you could not open: %s]" % (who, kind, name, str(exc)[:160]))
+        if len(files) > MEDIA_PER_MESSAGE:
+            out.append("[and %d more you did not look at]" % (len(files) - MEDIA_PER_MESSAGE))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return "\n\n".join(out)
 
 
 def local_think(system, user, max_tokens=700):
@@ -391,7 +515,7 @@ def recent(n=CONTEXT):
 def _conversation(rows):
     names = {"vintos": "You", "dot": "Dot", "gloria": "Gloria"}
     return "\n".join("%s%s: %s" % (names.get(r["who"], r["who"]), " (in a thread)" if r.get("thread") else "",
-                                   r["text"][:900]) for r in rows)
+                                   r["text"][:1500]) for r in rows)
 
 
 def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False):
@@ -444,7 +568,7 @@ def _guarded(text):
         return ["guard unavailable: %s" % type(exc).__name__]
 
 
-def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False):
+def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -453,6 +577,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         api = lambda method, params: slack(method, params, tok)
     think = think or local_think
     fable = fable or fable_think
+    eyes = eyes or look_at_files
     now = now or time.time()
     today = today or date.today().isoformat()
     channel, dot = _config()
@@ -468,9 +593,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["since"] = now; _save(STATE, state)
         return ["listening from now"]
     names = {dot: "dot", state["self"]: "Vintos"}
-    rows = [{"ts": m["ts"], "who": _who(m, state["self"], dot), "text": _clean(m.get("text"), names),
-             "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
-             "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")} for m in new]
+    rows = []
+    for m in new:
+        who = _who(m, state["self"], dot)
+        seen = eyes(m, "Dot" if who == "dot" else "Gloria") if m.get("files") else ""
+        rows.append({"ts": m["ts"], "who": who, "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
+                     "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
+                     "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
     if rows:
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
@@ -486,7 +615,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said%s: %s\n\nYour reply, as yourself."
                   % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria",
                      " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
-                     last["text"][:1500]))
+                     last["text"][:3500]))
         # the main channel is where she reads; he answers in a thread only inside a tangent or Atelier thread
         where = last["thread"] if in_atelier or last["thread"] in (state.get("tangents") or []) else None
     else:
@@ -546,7 +675,7 @@ def try_now(think=None):
         return "(nothing in the channel to answer yet)"
     last = rows[-1]
     prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said: %s\n\nYour reply, as yourself."
-              % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:1500]))
+              % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:3500]))
     state = {"fable": FABLE_PER_DAY}
     text, who = compose(prompt, think or local_think, lambda s, u: "", state, date.today().isoformat())
     return text if text is not None else "(%s)" % who
