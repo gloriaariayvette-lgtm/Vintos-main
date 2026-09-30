@@ -11,7 +11,7 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/dot_channel.py
 TimeoutStartSec=900
 NoNewPrivileges=true
-PrivateTmp=true
+# no PrivateTmp: his EmoClaw reading comes from the daemon socket in /tmp, as the avatar chat reads it
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=%h/.vintos/workspace

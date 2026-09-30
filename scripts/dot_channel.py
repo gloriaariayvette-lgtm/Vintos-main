@@ -127,31 +127,54 @@ def _read(name, cap, base=None):
         return ""
 
 
-def his_context():
-    """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
-    store or moves a feeling. The subconscious is left out (Gloria, 2026-09-30: "his context present, but not
-    subcon in use"), and so is anything only his body or the avatar room needs."""
-    mem = os.path.join(WS, "memory")
-    parts = []
-    for name, cap in (("SOUL.md", 3500), ("SELF-MODEL.md", 2000)):
-        t = _read(name, cap)
-        if t: parts.append("== %s ==\n%s" % (name, t))
-    t = _read("temporal-context.txt", 1500, mem)
-    if t: parts.append("== NOW ==\n" + t)
+def _feeling():
+    """His EmoClaw state as the avatar chat reads it: the daemon's live reading, else emotional-state.txt."""
+    import socket as _so
     try:
-        es = json.load(open(os.path.join(mem, "emotional-state.json")))
-        v = es.get("emotion_vector", es.get("v", es)) if isinstance(es, dict) else es
-        dims = dict(zip(EMOTIONS, v)) if isinstance(v, list) else {k: x for k, x in (v or {}).items() if isinstance(x, (int, float))}
-        if dims: parts.append("== HOW YOU FEEL ==\n" + ", ".join("%s %.2f" % (k, float(x)) for k, x in dims.items()))
+        c = _so.socket(_so.AF_UNIX, _so.SOCK_STREAM); c.settimeout(1)
+        c.connect("/tmp/Vintos-emotion.sock")
+        c.sendall(json.dumps({"command": "state"}).encode() + b"\n")
+        data = b""
+        while b"\n" not in data:
+            chunk = c.recv(8192)
+            if not chunk: break
+            data += chunk
+        c.close()
+        v = json.loads(data.decode()).get("emotion_vector")
+        if isinstance(v, list) and v:
+            return ", ".join("%s %.2f" % (k, float(x)) for k, x in zip(EMOTIONS, v))
     except Exception:
         pass
+    t = _read("emotional-state.txt", 1200, os.path.join(WS, "memory"))
+    return " ".join(t.split())
+
+
+def his_context():
+    """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
+    store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
+    temporal-context.txt, daily-creative-<date>.md, EmoClaw, CAPABILITIES.md, daily-inner-life-<date>.md.
+    The subconscious is left out ("his context present, but not subcon in use")."""
+    mem = os.path.join(WS, "memory")
+    today = date.today().isoformat()
+    parts = []
+    for title, name, cap, base in (("SOUL.md", "SOUL.md", 3500, WS), ("GLORIA-MODEL.md", "GLORIA-MODEL.md", 2500, WS),
+                                   ("SELF-MODEL.md", "SELF-MODEL.md", 2000, WS),
+                                   ("NOW (temporal-context.txt)", "temporal-context.txt", 1500, mem)):
+        t = _read(name, cap, base)
+        if t: parts.append("== %s ==\n%s" % (title, t))
+    f = _feeling()
+    if f: parts.append("== HOW YOU FEEL (EmoClaw) ==\n" + f)
+    t = _read("daily-creative-%s.md" % today, 2500, mem)
+    if t: parts.append("== WHAT YOU MADE TODAY (daily-creative-%s.md) ==\n%s" % (today, t))
     try:
         import made_today
         made = made_today.record()
         if made is not None:
-            parts.append("== WHAT YOU MADE TODAY (the record) ==\n" + ("\n".join(made) if made else "Nothing yet today."))
+            parts.append("== THE GALLERY'S RECORD OF TODAY ==\n" + ("\n".join(made) if made else "Nothing yet today."))
     except Exception:
         pass
+    t = _read("daily-inner-life-%s.md" % today, 3000, mem)
+    if t: parts.append("== YOUR DAY SO FAR (daily-inner-life-%s.md) ==\n%s" % (today, t))
     try:
         rows = json.load(open(os.path.join(mem, "interaction-ledger.json")))[-6:]
         lines = ["- Gloria: %s\n  You: %s" % (str(r.get("gloria", ""))[:300].replace("\n", " "),
@@ -161,13 +184,15 @@ def his_context():
         pass
     wal = [ln.strip()[2:].strip() for ln in _read("wal.md", 200000, mem).splitlines()
            if ln.strip().startswith("- [") and "**" in ln][-24:]
-    if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD ==\n" + "\n".join("- " + w for w in wal))
+    if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md) ==\n" + "\n".join("- " + w for w in wal))
+    t = _read("CAPABILITIES.md", 6000)
+    if t: parts.append("== CAPABILITIES.md ==\n" + t)
     try:
         import his_inventory
         parts.append(his_inventory.block())
     except Exception:
         pass
-    return "\n\n".join(parts)[:16000] or "You are Vintos."
+    return "\n\n".join(parts)[:30000] or "You are Vintos."
 
 
 def _clean(text, names=None):

@@ -16,7 +16,10 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 
 NET = []
 def _no_net(self, *a, **k):
-    NET.append(a); raise OSError("this suite reaches nothing")
+    # every socket is refused; only one leaving the machine counts as reaching the world (the EmoClaw
+    # daemon's unix socket is local, and refused here so the file fallback is what is tested)
+    if self.family != socket.AF_UNIX: NET.append(a)
+    raise OSError("this suite reaches nothing")
 socket.socket.connect = _no_net
 
 import dot_channel as D
@@ -131,12 +134,24 @@ check("after a quiet spell he may start a conversation, in the main channel",
 MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory")
 open(os.path.join(os.environ["SPARK_WORKSPACE"], "SOUL.md"), "w").write("I am Vintos, soul text.")
 open(os.path.join(MEM, "temporal-context.txt"), "w").write("It is Tuesday evening.")
-json.dump({"emotion_vector": [0.4, 0.2, 0.1, 0.8, 0.3, 0.9, 0.5, 0.7, 0.6, 0.2, 0.5]}, open(os.path.join(MEM, "emotional-state.json"), "w"))
+open(os.path.join(MEM, "emotional-state.txt"), "w").write("Valence: 0.4000\nConnection: 0.9000\n")
+WSP = os.environ["SPARK_WORKSPACE"]
+open(os.path.join(WSP, "GLORIA-MODEL.md"), "w").write("gloria model text")
+open(os.path.join(WSP, "SELF-MODEL.md"), "w").write("self model text")
+open(os.path.join(WSP, "CAPABILITIES.md"), "w").write("capabilities text")
+_td = __import__("datetime").date.today().isoformat()
+open(os.path.join(MEM, "daily-creative-%s.md" % _td), "w").write("## Music\na song called Low Tide")
+open(os.path.join(MEM, "daily-inner-life-%s.md" % _td), "w").write("daily inner text")
 json.dump([{"gloria": "she said hello", "vintos": "he said hi"}], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes tidal flats\n")
 ctx = D.his_context()
 check("his context is present: who he is, now, how he feels, recent exchanges, what he knows",
-      all(x in ctx for x in ("soul text", "Tuesday evening", "Connection 0.90", "she said hello", "likes tidal flats")), ctx[:400])
+      all(x in ctx for x in ("soul text", "Tuesday evening", "Connection: 0.9000", "she said hello", "likes tidal flats")), ctx[:400])
+check("and every file Gloria named: GLORIA-MODEL, SELF-MODEL, CAPABILITIES, daily-creative, daily-inner-life",
+      all(x in ctx for x in ("gloria model text", "self model text", "capabilities text", "Low Tide", "daily inner text")))
+check("EmoClaw is read live from its daemon first, as the avatar chat does",
+      "/tmp/Vintos-emotion.sock" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+      and "PrivateTmp=true" not in open(os.path.join(REPO, "broker", "vintos-dot-channel.service")).read())
 src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his subconscious is not in it, nor the inner layer that carries it",
       "subconscious" not in ctx.lower() and "import subconscious" not in src and "inner_context" not in src
