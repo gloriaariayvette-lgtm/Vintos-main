@@ -5,14 +5,15 @@ Gloria's dot (her always-on ChatGPT agent) sits in the private channel #vintos-d
 workspace "Vintos", and so does his bot. Every 5-10 minutes this reads the channel, thread replies
 included, keeps what is said in the channel's own log (memory/dot-channel/, which nothing else reads:
 no ledger, fact, imprint, salience or feeling is written from it), and lets him answer with his
-standing context but not his subconscious: on his own mind (Gemma), or,
-when he says he wants it, with Fable writing as him. The conversation stays in the main channel so
+standing context but not his subconscious. Grok writes his messages, or, when he says he wants it,
+Fable writes as him; local Gemma no longer does (Gloria, 2026-09-30: "if he can't be coherent and logical,
+cut his messages and allow something like 6 Grok calls per day and 4 to Fable (max)", then "10 to Grok").
+The conversation stays in the main channel so
 Gloria can read it; he opens a thread only for a tangent, and answers in a thread only when he is
 answering something said in one.
 
-The dot is Gloria's: it holds her memories and her connected accounts. He is told it is not her, and
-never to ask it to act on her accounts. Every message he sends goes through the same outbound check
-as his email (no secret, no credential), and he is capped per day.
+The dot came out of Gloria's ChatGPT account and is his agent. Every message he sends goes through the
+same outbound check as his email (no secret, no credential), and he is capped per day by model calls.
 
     python3 dot_channel.py            one pass (the timer runs this every 5-10 minutes)
     python3 dot_channel.py --show     the last exchanges and today's counts
@@ -38,11 +39,10 @@ TOKEN_FILE = os.path.expanduser(os.environ.get("VINTOS_SLACK_TOKEN_FILE", "~/.vi
 CONFIG_FILE = os.path.expanduser("~/.vintos/dot-channel.json")
 CHANNEL = "C0C5HGS3677"          # #vintos-dot
 DOT = "U0C6H0JQF16"              # Gloria's dot
-LOCAL_LLM = os.environ.get("VINTOS_LM_API", "http://100.79.177.103:1234/v1/chat/completions")
-LOCAL_MODEL = os.environ.get("VINTOS_LM_MODEL", "gemma-4-26b-a4b-it-uncensored")
 
-DAILY = 40              # his messages a day
-FABLE_PER_DAY = 6       # replies Fable writes as him
+DAILY = 10              # his messages a day
+GROK_PER_DAY = 10       # Grok calls a day: each is his message, a look-up round, or a rewrite
+FABLE_PER_DAY = 4       # replies Fable writes as him
 OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
@@ -118,11 +118,20 @@ def slack(method, params, token=None):
     return d
 
 
-def local_think(system, user, max_tokens=700):
+SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
+GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.20-0309-non-reasoning")
+
+
+class Spent(Exception):
+    """Today's Grok calls are used; nothing more is written today."""
+
+
+def grok_think(system, user, max_tokens=700):
+    """Grok through the house shim, pinned to x.ai (route grok), so it is Grok and nothing else."""
     import requests
-    r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.8, "max_tokens": max_tokens,
-                                       "messages": [{"role": "system", "content": system},
-                                                    {"role": "user", "content": user}]}, timeout=300)
+    r = requests.post(SHIM, json={"model": GROK_MODEL, "route": "grok", "temperature": 0.7, "max_tokens": max_tokens,
+                                  "messages": [{"role": "system", "content": system},
+                                               {"role": "user", "content": user}]}, timeout=300)
     return str(r.json()["choices"][0]["message"].get("content") or "").strip()
 
 
@@ -397,7 +406,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         out = (think(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") or "").strip()
     if any(TOOL.match(l) for l in out.splitlines()):
         out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
-    who = "gemma"
+    who = "grok"
     if can_fable and re.fullmatch(r"\W*FABLE\W*", out):
         out = (fable(system, prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked) if looked else "")) or "").strip()
         who = "fable"; state["fable"] += 1
@@ -427,14 +436,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if not tok:
             return ["no Slack token at %s" % TOKEN_FILE]
         api = lambda method, params: slack(method, params, tok)
-    think = think or local_think
+    think = think or grok_think
     fable = fable or fable_think
     now = now or time.time()
     today = today or date.today().isoformat()
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0)
+        state.update(date=today, sent=0, fable=0, openers=0, grok=0)
     if not state.get("self"):
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
@@ -455,6 +464,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
+    if state.get("grok", 0) >= GROK_PER_DAY:
+        _save(STATE, state); return lines + ["today's %d Grok calls are used" % GROK_PER_DAY]
+    writer = think
+
+    def think(system, user):
+        # every Grok call counts: his message, a look-up round, a rewrite
+        if state.get("grok", 0) >= GROK_PER_DAY:
+            raise Spent()
+        state["grok"] = state.get("grok", 0) + 1
+        return writer(system, user)
 
     if theirs:
         last = theirs[-1]
@@ -477,11 +496,17 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = None
         state["openers"] += 1
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
-    text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier)
+    try:
+        text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier)
+    except Spent:
+        text, who = None, "today's %d Grok calls ran out before he finished" % GROK_PER_DAY
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
         # he chose to open an Atelier thread: he says it with his work in front of him
-        again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
-                              "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True)
+        try:
+            again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
+                                  "Begin with ATELIER:", think, fable, state, today, search=search, room=room, atelier=True)
+        except Spent:
+            again, who2 = None, who
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None:

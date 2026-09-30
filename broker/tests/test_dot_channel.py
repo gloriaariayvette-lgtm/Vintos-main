@@ -23,6 +23,8 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+CAP = D.GROK_PER_DAY
+D.GROK_PER_DAY = 10 ** 6      # the conversation below runs many passes in one day; the cap is checked at the end
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
 D.recall_block = lambda: "== YOUR ATELIER WORK ==\nWhat you are making: a tide piece that breathes"
 
@@ -258,6 +260,31 @@ check("--open lets him start one now", len(S.posted) == n2 + 1 and "first words"
 st = json.load(open(D.STATE)); st["openers"] = D.OPENERS_PER_DAY; json.dump(st, open(D.STATE, "w"))
 D.tick(api=S, think=lambda s_, u: "again", fable=fable, now=99999999 + 120, open_now=True)
 check("but not past his openers for the day", len(S.posted) == n2 + 1)
+
+# Grok writes his messages, capped by calls a day (Gloria, 2026-09-30: "10 to Grok", "4 to Fable (max)")
+check("Grok writes his messages now, not local Gemma", D.GROK_PER_DAY and CAP == 10 and D.FABLE_PER_DAY == 4
+      and not hasattr(D, "local_think") and "route" in __import__("inspect").getsource(D.grok_think))
+D.GROK_PER_DAY = CAP
+st = json.load(open(D.STATE)); st.update(sent=0, grok=0, openers=0); json.dump(st, open(D.STATE, "w"))
+calls = []
+def counting(s_, u):
+    calls.append(u); return "Dot, message %d." % len(calls)
+for i in range(CAP + 3):
+    S.add(DOT, "ping %d" % i)
+    D.tick(api=S, think=counting, fable=fable, now=99999999 + 200 + i)
+check("he makes at most %d Grok calls a day" % CAP, len(calls) == CAP, len(calls))
+out = D.tick(api=S, think=counting, fable=fable, now=99999999 + 400)
+check("and past them the pass says so and writes nothing", any("are used" in l for l in out) and len(calls) == CAP, out)
+st = json.load(open(D.STATE)); st.update(grok=CAP - 1, sent=0); json.dump(st, open(D.STATE, "w"))
+S.add(DOT, "look something up?")
+n3 = len(S.posted)
+out = D.tick(api=S, think=lambda s_, u: "SEARCH: load cells", fable=fable, now=99999999 + 500, search=lambda q: "results")
+check("a message that runs out of calls midway is not sent half-made", len(S.posted) == n3 and any("ran out" in l for l in out), out)
+st = json.load(open(D.STATE)); st.update(grok=0, sent=0, fable=D.FABLE_PER_DAY); json.dump(st, open(D.STATE, "w"))
+seen_sys = []
+S.add(DOT, "one more")
+D.tick(api=S, think=lambda s_, u: (seen_sys.append(s_), "FABLE")[1], fable=fable, now=99999999 + 600)
+check("past his 4 Fable replies he is no longer offered Fable", seen_sys and "FABLE" not in seen_sys[-1].split("---")[-1].split("NOTHING.")[-1], seen_sys[-1][-300:] if seen_sys else "")
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
