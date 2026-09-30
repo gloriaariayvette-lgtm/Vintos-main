@@ -33,6 +33,9 @@ HP_HYDROPHOBIC = frozenset("ACILMFV")  # Kyte-Doolittle >= 1.0, matching the Mac
 CONFIG = os.environ.get("VINTOS_CHEMISTRY_MAC_CONFIG",
                         os.path.expanduser("~/.vintos/chemistry-mac.json"))
 DEFAULT_COMMAND = "/Users/kevin/qlab/bench_remote.py"
+ESMFOLD_PYTHON = os.environ.get(
+    "VINTOS_ESMFOLD_PYTHON",
+    os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"))
 # The only actions the scheduled Lab may put through this door.  "code" is deliberately
 # absent and must stay absent: named experiments in, results out.
 ALLOWED_ACTIONS = ("status", "ledger", "run", "reading")
@@ -182,7 +185,7 @@ def _run_esmfold(parameters, contract, worker=None):
     if worker is None:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_esmfold.py")
         try:
-            done = subprocess.run([sys.executable, path], input=json.dumps(body), text=True,
+            done = subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body), text=True,
                                   capture_output=True, timeout=900, check=False)
         except subprocess.TimeoutExpired:
             return {"ok": False, "state": "unknown_after_timeout",

@@ -25,6 +25,9 @@ def load(name, path):
 
 
 mac = load("chemistry_mac_sequence_test", os.path.join(REPO, "scripts", "chemistry_mac.py"))
+mac_source = open(os.path.join(REPO, "scripts", "chemistry_mac.py"), encoding="utf-8").read()
+assert "VINTOS_ESMFOLD_PYTHON" in mac_source and "ESMFOLD_PYTHON, path" in mac_source, \
+       "full folds must use the commissioned Blackwell-capable Lab interpreter"
 assert mac.CONFIG.startswith(HOME), mac.CONFIG
 sent = []
 
@@ -135,8 +138,9 @@ esmfold = load("chemistry_esmfold_sequence_test", os.path.join(REPO, "scripts", 
 acc, seq, source, mapping = esmfold._validate(esm_seen[0])
 assert acc == "A1L190" and seq == long_sequence and len(mapping) == 88
 esm_source = open(os.path.join(REPO, "scripts", "chemistry_esmfold.py"), encoding="utf-8").read()
-assert "VINTOS_CHEMISTRY_MODEL_CACHE" in esm_source and "cache_dir=str(MODEL_CACHE)" in esm_source, \
+assert "VINTOS_CHEMISTRY_MODEL_CACHE" in esm_source and "cache_dir=str(MODEL_HUB)" in esm_source, \
        "the worker must use the commissioned offline checkpoint cache"
+assert "mean_plddt *= 100.0" in esm_source, "ESMFold confidence must use the grader's 0..100 scale"
 assert "local_files_only=True" in esm_source and "ARTIFACTS" in esm_source
 
 assert grade.GRADES.startswith(HOME) and mac.CONFIG.startswith(HOME)

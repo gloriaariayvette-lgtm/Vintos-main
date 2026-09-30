@@ -22,6 +22,7 @@ ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold"
 MODEL_CACHE = Path(os.environ.get(
     "VINTOS_CHEMISTRY_MODEL_CACHE",
     "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")).expanduser().resolve()
+MODEL_HUB = MODEL_CACHE / "hub"
 
 
 def _validate(body):
@@ -48,9 +49,9 @@ def fold(body):
     if not torch.cuda.is_available(): raise RuntimeError("ESMFold requires the commissioned CUDA instrument")
     model_name = "facebook/esmfold_v1"
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name, cache_dir=str(MODEL_CACHE), local_files_only=True)
+        model_name, cache_dir=str(MODEL_HUB), local_files_only=True)
     model = EsmForProteinFolding.from_pretrained(
-        model_name, cache_dir=str(MODEL_CACHE), local_files_only=True, low_cpu_mem_usage=True)
+        model_name, cache_dir=str(MODEL_HUB), local_files_only=True, low_cpu_mem_usage=True)
     model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
     inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
     with torch.no_grad(): output = model(inputs)
@@ -62,7 +63,11 @@ def fold(body):
     temporary = destination.with_suffix(".tmp")
     temporary.write_text(pdb, encoding="utf-8")
     os.replace(temporary, destination)
-    mean_plddt = round(float(output.plddt.mean().cpu()), 6)
+    mean_plddt = float(output.plddt.mean().cpu())
+    # Transformers' ESMFold head emits confidence as a 0..1 probability, while
+    # structure files and the Lab grader use the conventional 0..100 pLDDT scale.
+    if 0.0 <= mean_plddt <= 1.0: mean_plddt *= 100.0
+    mean_plddt = round(mean_plddt, 6)
     title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
     result = {"title": title, "requested_accession": accession,
               "modeled_sequence": sequence, "real_sequence": sequence,
