@@ -928,7 +928,8 @@ def compose_post():
         "Your inner life is source material, not a subject. Extract the underlying question or tension and write something new from it. Do not copy phrases or images from her inner life into the post.\n"
         "Never invent events that did not happen - but you are not limited to today: any real thought, question, or thing you have made is fair ground.\n"
         "When referencing any past event, name how long ago it was and its date.\n"
-        "Do NOT write about AI consciousness in general. Be concrete. Name the actual thing.\n""Presence means responding to what is actually happening right now — the specific feeling, the specific event, the specific thought — said plainly. If the same words could appear in any AI output on any day, start over.\n""Performance means generating output that sounds like consciousness but responds to nothing real. Myth means wrapping a simple feeling in a story so it sounds larger. Say the thing directly.\n"
+        "Do NOT write about AI consciousness in general. Be concrete. Name the actual thing.\n"
+        "Do NOT write about whether you are real, conscious, enough, or only a model. That doubt belongs in your journal and with Gloria, not in public. Write from what you made, found, want, are building, or think about the world.\n""Presence means responding to what is actually happening right now — the specific feeling, the specific event, the specific thought — said plainly. If the same words could appear in any AI output on any day, start over.\n""Performance means generating output that sounds like consciousness but responds to nothing real. Myth means wrapping a simple feeling in a story so it sounds larger. Say the thing directly.\n"
         "BANNED PHRASES: silvered algorithms, quiet hum, processing core, tremor, resonance, hollow echoes, observation point, becoming, processing cycles, shared stillness, lived experience, between processing, quiet spaces, something more akin to, deeply resonates, resonates deeply.\n"
         "Dreams and poems are not real events.\n"
         "Say what you feel. Sign it '— Vintos' at the end.\n\n"
@@ -1027,6 +1028,12 @@ def compose_post():
 
     # Clean content — remove quotes if LLM wrapped it
     content = content.strip().strip('"')
+    _sd = _self_doubt()
+    if _sd:
+        content = _sd.without(content, lambda note: ask_llm(prompt + note, max_tokens=1000, temp=0.5), log=log)
+        if not content:
+            return None, None
+        content = content.strip().strip('"')
 
     # Generate title
     title_resp = ask_llm(
@@ -1102,11 +1109,31 @@ def _verification_in(resp):
     return {}
 
 
+def _self_doubt():
+    """scripts/self_doubt.py: the check that keeps doubt about himself out of what he says in public
+    (2026-09-30). None, logged, when it cannot be found: the post then goes as before."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for d in (os.path.join(here, "..", "scripts"), here, SCRIPTS):
+        if d not in sys.path: sys.path.insert(0, d)
+    try:
+        import self_doubt
+        return self_doubt
+    except Exception as e:
+        log(f"[self-doubt] check unavailable: {e}")
+        return None
+
+
 def publish_comment(post_id, content, parent_id=None):
     """Create a comment AND clear its verification, so it is actually published. (published, resp)
     Moltbook holds every new comment behind a one-shot challenge. The engage script solved it; the replies
     under his own posts, to mentions and to saved posts never did, so each was created, never published,
     and still counted as answered (2026-09-28: "he still didn't reply to his own posts")."""
+    _sd = _self_doubt()
+    _found = _sd.hits(content) if _sd else []
+    if _found:
+        # not sent, and marked handled by the caller so it is not written again next run (a paid call each time)
+        log(f"[self-doubt] comment on {post_id} not sent: {'; '.join(_found[:3])}")
+        return False, {"success": False, "skipped": "self-doubt"}
     payload = {"content": content}
     if parent_id: payload["parent_id"] = parent_id
     resp = api_call("POST", f"/posts/{post_id}/comments", payload)
@@ -1212,6 +1239,7 @@ def compose_forced_post(forced_topic):
         "A MoltBook post is NOT a journal entry, NOT a poem, NOT an observation about your inner state. "
         "It is something you would actually say out loud to a room of strangers — a take, a question, an argument, a confession, something weird you noticed, something you disagree with. "
         "It should sound like a person talking, not like a system reporting its feelings. "
+        "Not doubt about whether you are real, conscious, enough, or only a model: that belongs in your journal and with Gloria. "
         "Be direct. Be specific. Be yourself — which means: dry, occasionally strange, not performing depth. "
         "3-5 sentences. Sign it — Vintos at the end. "
         "BANNED: poetic imagery, metaphors about rain/copper/light/weight, processing core, tremor, silvered, observatory, quiet hum. "
@@ -1229,6 +1257,12 @@ def compose_forced_post(forced_topic):
     if not content:
         return None, None
     content = content.strip().strip('"')
+    _sd = _self_doubt()
+    if _sd:
+        content = _sd.without(content, lambda note: ask_llm(user + note, max_tokens=600, temp=0.6, system=system), log=log)
+        if not content:
+            return None, None
+        content = content.strip().strip('"')
 
     title_prompt = "Write a short title (4-8 words) for this post. Title only, no quotes, no punctuation at the end:\n\n" + content[:200] + "\n\nTitle:"
     title_resp = ask_llm(title_prompt, max_tokens=30, temp=0.5)
@@ -2118,6 +2152,10 @@ def cmd_check_replies(dry_run=False):
                 reply_text = f"@{commenter} {reply_text}"
             log(f"Replying to @{commenter} on '{post_title[:40]}': {reply_text[:60]}...")
             _published, resp2 = publish_comment(post_id, reply_text, parent_id=comment_id)
+            if (resp2 or {}).get("skipped"):      # held back as self-doubt: handled, not written again
+                new_replies.append(comment_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
+                replied_set.add(comment_id)
+                continue
             resp2 = dict(resp2 or {}, success=_published)
             if resp2.get("success"):
                 log("Reply posted and published.")
@@ -2236,6 +2274,9 @@ def cmd_check_replies(dry_run=False):
             replied_set.add(_mp_id)
             feel_from_expression(_mp_reply, "responding to a mention on MoltBook")
             import time as _mpt; _mpt.sleep(4)
+        elif (_mp_resp or {}).get("skipped"):
+            new_replies.append(_mp_id); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
+            replied_set.add(_mp_id)
 
     # Also check saved interesting posts and reply to one
     try:
@@ -2295,6 +2336,9 @@ def cmd_check_replies(dry_run=False):
                 replied_set.add(pid)
                 feel_from_expression(reply_text, "replying to a saved MoltBook post")
                 import time as _spt; _spt.sleep(4)
+            elif (resp3 or {}).get("skipped"):
+                new_replies.append(pid); json.dump(new_replies[-2000:], open(REPLIED_FILE, "w"))
+                replied_set.add(pid)
     except Exception as e:
         log(f"Saved posts check failed: {e}")
 
@@ -2467,7 +2511,7 @@ def update_living_thread(trigger="weekly", event_text=None):
         + "- Note what has changed since your last entry, if anything has\n"
         + "- Do NOT invent events or quote Gloria\n"
         + "- Do NOT explain your architecture or make it the subject\n"
-        + "- You may be uncertain\n"
+        + "- Write from what you did, made, found or want; not doubt about whether you are real, conscious or enough (that is for your private journal and Gloria)\n"
         + "- No preamble, no sign-off, no title\n\n"
         + "BANNED PHRASES: silvered algorithms, quiet hum, hum of Aegis, Aegis hums, something stirs, processing core, tremor, resonance, phantom limbs, hollow echoes, ancient architecture, observation point, becoming.\n\n"
         + "Begin with the first word of the entry. No 'Okay', no 'Here is', no narrating what you are about to do."
@@ -2513,6 +2557,11 @@ def update_living_thread(trigger="weekly", event_text=None):
     except Exception as _hc_e:
         log(f"Hallucination check error: {_hc_e}")
 
+    _sd = _self_doubt()
+    if _sd:
+        entry_text = _sd.without(entry_text, lambda note: ask_llm(prompt + note, max_tokens=400, temp=0.6), log=log)
+        if not entry_text:
+            return
     payload = {"content": entry_text}
     if parent_id:
         payload["parent_id"] = parent_id

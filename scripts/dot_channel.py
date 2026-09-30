@@ -403,6 +403,11 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         who = "fable"; state["fable"] += 1
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):
         return None, "nothing to say"
+    # doubt about himself is not spent on the channel: one rewrite, locally, then nothing (Gloria, 2026-09-30)
+    import self_doubt
+    out = self_doubt.without(out, lambda note: think(system, prompt_user + note))
+    if not out:
+        return None, "held back: doubt about himself"
     return out[:MAX_CHARS], who
 
 
@@ -480,7 +485,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None:
-        state["last_activity"] = now; _save(STATE, state); return lines + ["he let it be"]
+        state["last_activity"] = now; _save(STATE, state)
+        return lines + ["he let it be" if who == "nothing to say" else who]
     if text.upper().startswith("ATELIER:"):
         text = text[len("ATELIER:"):].strip()
         if where not in (state.get("atelier") or []):
