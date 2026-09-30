@@ -539,7 +539,7 @@ confirm_unit() {   # $1 = "--user" or "--system", $2 = unit name
 # confirm_unit would call a perfectly healthy timer a failure. What proves a timer
 # is doing its job is that it is active AND has a next elapse to point at.
 confirm_timer() {   # $1 = "--user" or "--system", $2 = timer name (no .timer)
-    local scope="$1" u="$2" out id st next elapse mono
+    local scope="$1" u="$2" out id st next elapse mono svc
     out="$(systemctl "$scope" show -p Id,ActiveState,NextElapseUSecRealtime,NextElapseUSecMonotonic "$u.timer" 2>/dev/null)"
     id="$(printf '%s\n' "$out" | sed -n 's/^Id=//p')"
     st="$(printf '%s\n' "$out" | sed -n 's/^ActiveState=//p')"
@@ -551,6 +551,13 @@ confirm_timer() {   # $1 = "--user" or "--system", $2 = timer name (no .timer)
     next="$(systemctl "$scope" list-timers --all --no-legend "$u.timer" 2>/dev/null | head -1)"
     if [ "$id" = "$u.timer" ] && [ "$st" = "active" ] && [ -n "$elapse" ] && [ "$elapse" != "0" ] && [ "$elapse" != "n/a" ]; then
         say "  confirmed: Id=$id ActiveState=$st${next:+ next=$(printf '%s' "$next" | awk '{print $1, $2, $3}')}"
+        return 0
+    fi
+    # While its pass is running, an OnUnitInactiveSec timer has no next run yet: that is set when the pass
+    # ends. The dot channel's Gemma pass runs for minutes, and the deploy read it as broken (2026-09-30).
+    svc="$(systemctl "$scope" show -p ActiveState "$u.service" 2>/dev/null | sed -n 's/^ActiveState=//p')"
+    if [ "$id" = "$u.timer" ] && [ "$st" = "active" ] && { [ "$svc" = "activating" ] || [ "$svc" = "deactivating" ]; }; then
+        say "  confirmed: Id=$id ActiveState=$st (a pass is running now; its next run is set when it ends)"
         return 0
     fi
     flag "$u.timer not confirmed (Id=${id:-?} ActiveState=${st:-?}) — run: systemctl --user enable --now $u.timer"

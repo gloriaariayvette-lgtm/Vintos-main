@@ -12,6 +12,7 @@ printf '%s\\n' "$*" >> "$CTL_LOG"
 case "$*" in
  *is-enabled*) printf '%s\\n' "$OLD_ENABLED";;
  *is-active*) printf '%s\\n' "$OLD_ACTIVE";;
+ *show*.service*) printf 'ActiveState=%s\\n' "${SVC:-inactive}";;
  *show*) printf 'Id=vintos-skill-surf.timer\\nActiveState=active\\nNextElapseUSecRealtime=%s\\n' "$NEXT";;
 esac
 ''');ctl.chmod(0o755)
@@ -21,6 +22,10 @@ fn=src[a:b]
 for next_value,expected in [('',False),('0',False),('n/a',False),('Fri 2026-09-18 12:00:00 UTC',True)]:
  p=subprocess.run(['bash','-c','say(){ :; }; flag(){ :; };\n'+fn+'\nconfirm_timer --user vintos-skill-surf'],env=dict(env,NEXT=next_value),capture_output=True)
  check('timer elapse '+repr(next_value), (p.returncode==0)==expected)
+# a pass running right now has no next run yet; that is a working timer, not a broken one (2026-09-30)
+for svc,expected in [('activating',True),('deactivating',True),('inactive',False),('failed',False)]:
+ p=subprocess.run(['bash','-c','say(){ :; }; flag(){ :; };\n'+fn+'\nconfirm_timer --user vintos-skill-surf'],env=dict(env,NEXT='',SVC=svc),capture_output=True)
+ check('no next run while its service is '+svc, (p.returncode==0)==expected)
 a=src.index('_surf_enabled=');b=src.index('# Record the service/process state',a);block=src[a:b]
 for existing in (False,True):
  for unit in units.iterdir():unit.unlink()
