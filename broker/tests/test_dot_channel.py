@@ -116,6 +116,10 @@ D.tick(api=S, think=lambda s, u: "ATELIER: the piece about low tide is half buil
 root = S.posted[n0]
 check("an Atelier talk opens a side thread, marked for Gloria, in the main channel",
       "Atelier" in root["text"] and "will not read" in root["text"] and "thread_ts" not in root)
+check("and the dot is told there, by name, to keep it in that thread",
+      "<@%s>" % DOT in root["text"] and "stays in this thread" in root["text"] and "never bring any of it" in root["text"])
+tm = open(os.path.join(REPO, "broker", "vintos-dot-channel.timer")).read()
+check("he checks every 5-10 minutes", "OnUnitInactiveSec=5min" in tm and "RandomizedDelaySec=5min" in tm)
 check("and what he says about it goes inside that thread",
       S.posted[-1].get("thread_ts") == S.msgs[[m["text"] for m in S.msgs].index(root["text"])]["ts"]
       and "low tide" in S.posted[-1]["text"] and "ATELIER" not in S.posted[-1]["text"])

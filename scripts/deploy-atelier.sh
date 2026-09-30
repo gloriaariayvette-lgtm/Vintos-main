@@ -588,7 +588,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would install + enable (user)    $CHEM_SESSION_NAME.timer -> $CHEM_SESSION_TIMER_DST"
     say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
-    say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 2 min; idle without a Slack token)"
+    say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 5-10 min; idle without a Slack token)"
     if sudo -n true 2>/dev/null; then
         say "  would install (sudo)             $BROKER, $STORE, $UNIT_DST; restart $UNIT_NAME, confirm, wait for 127.0.0.1:8611/health"
     else
@@ -911,9 +911,9 @@ else
 fi
 say
 
-# He and Gloria's dot in Slack #vintos-dot. The timer only fires the oneshot every two minutes;
+# He and Gloria's dot in Slack #vintos-dot. The timer fires the oneshot every 5-10 minutes;
 # without ~/.vintos/slack-bot-token a pass does nothing, and the caps live in dot_channel.py.
-say "== #vintos-dot (every 2 minutes) =="
+say "== #vintos-dot (every 5-10 minutes) =="
 install -m 644 "$(staged "$DOTCH_SERVICE_SRC")" "$DOTCH_SERVICE_DST" \
     || die "failed to install $DOTCH_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
 install -m 644 "$(staged "$DOTCH_TIMER_SRC")" "$DOTCH_TIMER_DST" \

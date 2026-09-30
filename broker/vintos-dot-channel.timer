@@ -1,9 +1,11 @@
 [Unit]
-Description=Every two minutes: Vintos reads #vintos-dot
+Description=Every 5-10 minutes: Vintos reads #vintos-dot
 
 [Timer]
-OnBootSec=3min
-OnUnitInactiveSec=2min
+OnBootSec=5min
+# 5 minutes after the last pass ends, plus up to 5 more at random: every 5-10 minutes (Gloria, 2026-09-30)
+OnUnitInactiveSec=5min
+RandomizedDelaySec=5min
 
 [Install]
 WantedBy=timers.target
