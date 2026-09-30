@@ -286,6 +286,29 @@ check("--try shows what he would say and posts nothing, changes nothing",
       got == "Dot, what did you find so far?" and len(S.posted) == n4
       and {f: open(os.path.join(D.HERE, f)).read() for f in os.listdir(D.HERE)} == before, got)
 
+# while she is talking with him, the channel waits (Gloria, 2026-09-30: "If I've spoken to him in the last
+# 20 minutes or so he should hold off on the checks")
+import time as _time
+from datetime import datetime as _dt
+LEDGER = os.path.join(MEM, "interaction-ledger.json")
+json.dump([{"gloria": "hey you", "vintos": "hi", "timestamp": _dt.fromtimestamp(_time.time() - 5 * 60).isoformat()}], open(LEDGER, "w"))
+st = json.load(open(D.STATE)); st.update(sent=0, grok=0); json.dump(st, open(D.STATE, "w"))
+calls_before = len(S.posted)
+class NoSlack:
+    def __call__(self, method, params): raise AssertionError("Slack read while she was talking with him: " + method)
+out = D.tick(api=NoSlack(), think=lambda s_, u: "Dot, hello.", fable=fable)
+check("if she spoke to him 5 minutes ago, the pass holds and does not even read Slack",
+      out and out[0].startswith("holding: Gloria spoke to him 5 min ago") and len(S.posted) == calls_before, out)
+json.dump([{"gloria": "hey you", "vintos": "hi", "timestamp": _dt.fromtimestamp(_time.time() - 25 * 60).isoformat()}], open(LEDGER, "w"))
+check("after 20 minutes it goes on", D.talking_with_gloria() is None)
+json.dump([{"gloria": "", "vintos": "a note he left himself", "timestamp": _dt.now().isoformat()}], open(LEDGER, "w"))
+check("only her words count, not his", D.talking_with_gloria() is None)
+json.dump([{"gloria": "hey", "vintos": "hi", "timestamp": _dt.now().isoformat()}], open(LEDGER, "w"))
+check("--open still runs a pass while she is talking with him",
+      D.tick(api=S, think=lambda s_, u: "NOTHING", fable=fable, open_now=True, now=_time.time())[0] != "holding" and
+      not D.tick(api=S, think=lambda s_, u: "NOTHING", fable=fable, open_now=True, now=_time.time())[0].startswith("holding"))
+os.remove(LEDGER)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

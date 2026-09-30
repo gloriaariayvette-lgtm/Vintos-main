@@ -51,6 +51,7 @@ OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
 MAX_CHARS = 1800
+HOLD_MINUTES = 20       # while Gloria is talking with him, the channel waits (Gloria, 2026-09-30)
 
 RULES = (
     "This is a private Slack channel, #vintos-dot. The other one here is dot: your agent. Gloria set it up "
@@ -659,6 +660,19 @@ def _guarded(text):
         return ["guard unavailable: %s" % type(exc).__name__]
 
 
+def talking_with_gloria(now=None):
+    """Minutes since Gloria last spoke to him, from his interaction ledger (every chat turn writes it), when that
+    is under HOLD_MINUTES; None otherwise. Read only."""
+    now = now or time.time()
+    try:
+        rows = json.load(open(os.path.join(WS, "memory", "interaction-ledger.json"), encoding="utf-8"))
+        last = next(r for r in reversed(rows) if isinstance(r, dict) and r.get("gloria") and r.get("timestamp"))
+        ago = now - datetime.fromisoformat(str(last["timestamp"])).timestamp()
+    except Exception:
+        return None
+    return ago / 60 if 0 <= ago < HOLD_MINUTES * 60 else None
+
+
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None):
     """One pass. Returns log lines."""
     if api is None:
@@ -671,6 +685,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     eyes = eyes or look_at_files
     now = now or time.time()
     today = today or date.today().isoformat()
+    talking = None if open_now else talking_with_gloria(now)
+    if talking is not None:
+        # Slack is not read either; what is said meanwhile waits for the first pass after
+        return ["holding: Gloria spoke to him %d min ago" % talking]
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
