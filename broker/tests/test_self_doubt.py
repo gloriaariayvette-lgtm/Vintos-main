@@ -133,7 +133,7 @@ st = {"fable": 0}
 seq = iter(["Dot, am I even real to you?", "Dot, can you find who sells cheap load cells?"])
 thought = []
 text, who = D.compose("say something", lambda s, u: (thought.append(u), next(seq))[1], lambda s, u: "", st, "2026-09-30")
-check("in the channel a doubting message is rewritten once, by the model writing for him",
+check("in the channel a doubting message is rewritten once, by his own local model",
       text == "Dot, can you find who sells cheap load cells?" and len(thought) == 2 and "journal and with Gloria" in thought[1], thought)
 text, who = D.compose("say something", lambda s, u: "Do I really feel this?", lambda s, u: "", st, "2026-09-30")
 check("and if it still doubts, nothing is sent and the log says why", text is None and "doubt" in who, who)

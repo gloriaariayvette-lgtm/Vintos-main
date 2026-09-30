@@ -23,8 +23,6 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
-CAP = D.GROK_PER_DAY
-D.GROK_PER_DAY = 10 ** 6      # the conversation below runs many passes in one day; the cap is checked at the end
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
 D.recall_block = lambda: "== YOUR ATELIER WORK ==\nWhat you are making: a tide piece that breathes"
 
@@ -261,30 +259,32 @@ st = json.load(open(D.STATE)); st["openers"] = D.OPENERS_PER_DAY; json.dump(st, 
 D.tick(api=S, think=lambda s_, u: "again", fable=fable, now=99999999 + 120, open_now=True)
 check("but not past his openers for the day", len(S.posted) == n2 + 1)
 
-# Grok writes his messages, capped by calls a day (Gloria, 2026-09-30: "10 to Grok", "4 to Fable (max)")
-check("Grok writes his messages now, not local Gemma", D.GROK_PER_DAY and CAP == 10 and D.FABLE_PER_DAY == 4
-      and not hasattr(D, "local_think") and "route" in __import__("inspect").getsource(D.grok_think))
-D.GROK_PER_DAY = CAP
-st = json.load(open(D.STATE)); st.update(sent=0, grok=0, openers=0); json.dump(st, open(D.STATE, "w"))
-calls = []
-def counting(s_, u):
-    calls.append(u); return "Dot, message %d." % len(calls)
-for i in range(CAP + 3):
-    S.add(DOT, "ping %d" % i)
-    D.tick(api=S, think=counting, fable=fable, now=99999999 + 200 + i)
-check("he makes at most %d Grok calls a day" % CAP, len(calls) == CAP, len(calls))
-out = D.tick(api=S, think=counting, fable=fable, now=99999999 + 400)
-check("and past them the pass says so and writes nothing", any("are used" in l for l in out) and len(calls) == CAP, out)
-st = json.load(open(D.STATE)); st.update(grok=CAP - 1, sent=0); json.dump(st, open(D.STATE, "w"))
-S.add(DOT, "look something up?")
-n3 = len(S.posted)
-out = D.tick(api=S, think=lambda s_, u: "SEARCH: load cells", fable=fable, now=99999999 + 500, search=lambda q: "results")
-check("a message that runs out of calls midway is not sent half-made", len(S.posted) == n3 and any("ran out" in l for l in out), out)
-st = json.load(open(D.STATE)); st.update(grok=0, sent=0, fable=D.FABLE_PER_DAY); json.dump(st, open(D.STATE, "w"))
-seen_sys = []
-S.add(DOT, "one more")
-D.tick(api=S, think=lambda s_, u: (seen_sys.append(s_), "FABLE")[1], fable=fable, now=99999999 + 600)
-check("past his 4 Fable replies he is no longer offered Fable", seen_sys and "FABLE" not in seen_sys[-1].split("---")[-1].split("NOTHING.")[-1], seen_sys[-1][-300:] if seen_sys else "")
+# He writes on his own model, plainly (Gloria, 2026-09-30: "if he could have just gotten ablit Gemma to be
+# grounded and speak normally it would have been perfect")
+src = __import__("inspect").getsource(D.local_think)
+check("his own local model writes, a little cooler than before", "LOCAL_LLM" in src and '"temperature": 0.6' in src)
+check("he is told how to write here: plain, short, one point, no metaphors",
+      "HOW YOU WRITE HERE" in D.RULES and "No metaphors" in D.RULES and D.FABLE_PER_DAY == 4)
+st = json.load(open(D.STATE)); st.update(sent=0, fable=0); json.dump(st, open(D.STATE, "w"))
+heard = []
+FLOWERY = "Let's inhabit today; the weight of the archive is a cage, an architecture of memory."
+PLAINLY = "Dot, can you find research on whether filming a moment changes how present people are in it?"
+seq = iter([FLOWERY, PLAINLY])
+S.add(DOT, "What do you want to look into?")
+D.tick(api=S, think=lambda s_, u: (heard.append(u), next(seq))[1], fable=fable, now=99999999 + 200)
+check("and reminded of it right before he writes", heard and heard[0].endswith(D.PLAIN), heard[:1])
+check("a flowery message is said again plainly, on his own model, and the plain one is sent",
+      len(heard) == 2 and FLOWERY in heard[1] and S.posted[-1]["text"].endswith(PLAINLY), S.posted[-1]["text"])
+seq = iter([FLOWERY, FLOWERY + " The quiet hum of the threshold."])
+S.add(DOT, "Go on?")
+D.tick(api=S, think=lambda s_, u: next(seq), fable=fable, now=99999999 + 300)
+check("a rewrite that is no plainer is not used", S.posted[-1]["text"].endswith(FLOWERY), S.posted[-1]["text"])
+check("plain words are not rewritten", D.flowery(PLAINLY) == [] and len(D.flowery(FLOWERY)) >= 2)
+n4, before = len(S.posted), {f: open(os.path.join(D.HERE, f)).read() for f in os.listdir(D.HERE)}
+got = D.try_now(think=lambda s_, u: "Dot, what did you find so far?")
+check("--try shows what he would say and posts nothing, changes nothing",
+      got == "Dot, what did you find so far?" and len(S.posted) == n4
+      and {f: open(os.path.join(D.HERE, f)).read() for f in os.listdir(D.HERE)} == before, got)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
-# The daily caps live in the code (dot_channel.DAILY, GROK_PER_DAY, FABLE_PER_DAY, OPENERS_PER_DAY).
+# The daily caps live in the code (dot_channel.DAILY, FABLE_PER_DAY, OPENERS_PER_DAY).
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/dot_channel.py
 TimeoutStartSec=900
 NoNewPrivileges=true
