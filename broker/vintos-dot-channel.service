@@ -16,3 +16,5 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=%h/.vintos/workspace
+# his Grok lens runs on Gloria's SuperGrok login, which refreshes itself in ~/.grok
+ReadWritePaths=-%h/.grok

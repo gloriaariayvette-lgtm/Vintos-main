@@ -423,12 +423,18 @@ def opus_think(system, user):
 
 
 def grok_think(system, user):
-    """Grok through the house shim, pinned to x.ai (route grok)."""
-    import requests
-    r = requests.post(SHIM, json={"model": GROK_MODEL, "route": "grok", "temperature": 1.0, "max_tokens": 1000,
-                                  "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
-                      timeout=300)
-    return str(r.json()["choices"][0]["message"].get("content") or "").strip()
+    """Grok on Gloria's SuperGrok subscription, through her own login (grok_subscription), never the paid API key:
+    "I wanted to be using my subscription usage" (2026-09-30; tested on Aegis: the login is taken for chat). If
+    the login cannot answer, the turn is skipped; nothing falls back to the key."""
+    import grok_subscription as G
+    tok = G.token()
+    req = urllib.request.Request(G.API + "/chat/completions", headers={
+        "Authorization": "Bearer " + tok, "Content-Type": "application/json"}, data=json.dumps({
+        "model": GROK_MODEL, "temperature": 1.0, "max_tokens": 1000,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).encode())
+    with G._open(req, 300) as r:
+        d = json.loads(r.read())
+    return str(d["choices"][0]["message"].get("content") or "").strip()
 
 
 EMOTIONS = ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity",

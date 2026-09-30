@@ -410,7 +410,27 @@ check("what is not style stays: Atelier threads, his tools, the doubt line",
       "ATELIER:" in g_sys[0] and "SEARCH:" in g_sys[0] and "not the place to work through doubts" in g_sys[0])
 check("and his wild line goes out as written, labelled", S3.posted[-1]["text"].endswith("[Grok 4.6] Honestly? The moon is a bad idea."))
 check("Gemma keeps the house style", "HOW YOU WRITE HERE" in D.rules_for() and "HOW YOU WRITE HERE" in D.RULES)
-check("Grok runs hotter", '"temperature": 1.0' in __import__("inspect").getsource(D.grok_think))
+_gsrc = __import__("inspect").getsource(D.grok_think)
+check("Grok runs hotter", '"temperature": 1.0' in _gsrc)
+check("and on her SuperGrok login, never the paid key or the shim", "grok_subscription" in _gsrc and "G.token()" in _gsrc
+      and "SHIM" not in _gsrc and "xai-key" not in _gsrc)
+check("the service may refresh that login", "ReadWritePaths=-%h/.grok" in open(os.path.join(REPO, "broker", "vintos-dot-channel.service")).read())
+import types as _ty
+_fakeG = _ty.SimpleNamespace(API="https://api.x.ai/v1", token=lambda: "sub-token", _open=None)
+_seen = {}
+class _R:
+    def __init__(s, b): s.b = b
+    def __enter__(s): return s
+    def __exit__(s, *a): return False
+    def read(s): return s.b
+def _fo(req, timeout):
+    _seen.update(url=req.full_url, auth=req.get_header("Authorization"), body=json.loads(req.data))
+    return _R(json.dumps({"choices": [{"message": {"content": " wild line "}}]}).encode())
+_fakeG._open = _fo
+sys.modules["grok_subscription"] = _fakeG
+check("it asks x.ai with her login and gets his line", D.grok_think("sys", "u") == "wild line" and _seen["auth"] == "Bearer sub-token"
+      and _seen["url"].endswith("/chat/completions") and _seen["body"]["model"] == D.GROK_MODEL, _seen)
+del sys.modules["grok_subscription"]
 def broken(s_, u): raise RuntimeError("overloaded")
 S3.add(DOT, "you there?")
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=dict(L, grok=broken), now=day(21, 35), today="2026-10-01")
