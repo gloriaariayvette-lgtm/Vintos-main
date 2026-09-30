@@ -171,6 +171,19 @@ if have_ears:
     held = os.path.join(TMP, "held.wav"); sf.write(held, (0.2 * np.sin(2 * np.pi * 440.0 * np.arange(12 * sr) / sr)).astype(np.float32), sr)
     check("a held tone with no beat is not given an invented tempo", "Tempo: no steady beat." in S.measure(held)[0], S.measure(held)[0])
 
+    import json as _tj, tempo_check as TC
+    check("the tempo check names right, double and half", (TC.verdict(161.5, 80), TC.verdict(80.7, 80),
+          TC.verdict(40, 80), TC.verdict(100, 80)) == ("double", "right", "half", "off"))
+    _ml = os.path.join(TMP, "music.json")
+    _tj.dump({"generated": [{"title": "t128", "authored": {"tempo": "128 BPM, A minor"},
+                             "tracks": [{"local_file": os.path.join(TMP, "t128.wav")}]},
+                            {"title": "no file", "authored": {"tempo": "90"}, "tracks": [{"local_file": "/nope.wav"}]}]},
+             open(_ml, "w"))
+    _rows = TC.his_songs(_ml)
+    check("the tempo check reads his songs that have a written tempo and a file", [r[:2] for r in _rows] == [("t128", 128.0)])
+    _sc = TC.check(_rows)
+    check("and scores a song read at its written tempo as right", _sc["beat"]["right"] == 1, _sc)
+
     spec = importlib.util.spec_from_file_location("music_share_mod", os.path.join(REPO, "bin", "music-share.py"))
     M = importlib.util.module_from_spec(spec); spec.loader.exec_module(M)
     line = M.analyze_audio(os.path.join(TMP, "t128.wav"), transcribe=False)["acoustic"] or ""
