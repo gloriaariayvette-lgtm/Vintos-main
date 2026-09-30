@@ -61,13 +61,27 @@ missing = mac.run("protein", {"target_accession": "Q99999"}, resolver=lambda acc
 assert missing["ok"] is False and missing["refused"] == "sequence_unavailable", missing
 
 long_sequence = "A" * 88
-too_long = mac.run("protein", {"target_accession": "A1L190"},
-                   resolver=lambda accession: (record(accession, long_sequence),
-                                                {"provider": "UniProtKB", "accession": accession}),
-                   transport=lambda body: (_ for _ in ()).throw(AssertionError("real Mac reached")))
-assert too_long["ok"] is False and too_long["refused"] == "sequence_too_long", too_long
-assert too_long["requested_sequence"] == long_sequence and too_long["requested_sequence_length"] == 88
-assert too_long["modeled_sequence"] is None and len(too_long["hp_mapping"]) == 88
+esm_seen = []
+def esmfold_worker(body):
+    esm_seen.append(body)
+    sequence, accession = body["sequence"], body["accession"]
+    return {"ok": True, "result": {
+        "title": "Folding %s (%d aa): %s" % (accession, len(sequence), sequence),
+        "requested_accession": accession, "modeled_sequence": sequence,
+        "modeled_sequence_length": len(sequence), "sequence_source": body["sequence_source"],
+        "hp_mapping": body["hp_mapping"], "mean_plddt": 81.5,
+        "structure_artifact": "memory/chemistry-lab/artifacts/esmfold/test.pdb",
+        "backend": "facebook/esmfold_v1"}}
+
+full_fold = mac.run("protein", {"target_accession": "A1L190"},
+                    resolver=lambda accession: (record(accession, long_sequence),
+                                                 {"provider": "UniProtKB", "accession": accession}),
+                    transport=lambda body: (_ for _ in ()).throw(AssertionError("toy Mac reached")),
+                    esmfold_worker=esmfold_worker)
+assert full_fold["ok"] is True and full_fold["sequence_check"]["outcome"] == "SEQUENCE_ACCESSION_MATCH", full_fold
+assert full_fold["run"]["result"]["modeled_sequence"] == long_sequence
+assert full_fold["run"]["result"]["modeled_sequence_length"] == 88
+assert esm_seen[0]["accession"] == "A1L190" and len(esm_seen[0]["hp_mapping"]) == 88
 
 
 def wrong_transport(body):
@@ -117,6 +131,12 @@ assert graded["sequence_check"]["requested_accession"] == "P12345"
 session_source = open(os.path.join(REPO, "scripts", "chemistry_session.py"), encoding="utf-8").read()
 assert '"SEQUENCE_ACCESSION_MISMATCH"' in session_source and "grading.grade(result[\"run_id\"]" in session_source
 
+esmfold = load("chemistry_esmfold_sequence_test", os.path.join(REPO, "scripts", "chemistry_esmfold.py"))
+acc, seq, source, mapping = esmfold._validate(esm_seen[0])
+assert acc == "A1L190" and seq == long_sequence and len(mapping) == 88
+esm_source = open(os.path.join(REPO, "scripts", "chemistry_esmfold.py"), encoding="utf-8").read()
+assert "local_files_only=True" in esm_source and "ARTIFACTS" in esm_source
+
 assert grade.GRADES.startswith(HOME) and mac.CONFIG.startswith(HOME)
 assert not os.path.exists(os.path.expanduser("~/.vintos/chemistry-mac.json")) or HOME in os.path.expanduser("~/.vintos/chemistry-mac.json")
-print("PASS named protein sequence binding, refusal, Mac contract, and grader mismatch")
+print("PASS named protein sequence binding, full ESMFold route, Mac contract, and grader mismatch")

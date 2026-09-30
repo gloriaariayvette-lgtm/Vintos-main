@@ -23,6 +23,8 @@ import os
 import re
 import shlex
 import subprocess
+import sys
+import uuid
 
 MAX_HP_LATTICE_RESIDUES = 9
 AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
@@ -166,15 +168,41 @@ def prepare_protein(parameters, resolver=None):
                        "sequence": sequence, "sequence_source": provenance})
     contract = {"requested_accession": accession, "sequence": sequence, "length": len(sequence),
                 "source": provenance, "hp_mapping": _hp_mapping(sequence)}
-    if len(sequence) > MAX_HP_LATTICE_RESIDUES:
-        return {"ok": False, "refused": "sequence_too_long", "requested_accession": accession,
-                "requested_sequence": sequence, "requested_sequence_length": len(sequence),
-                "sequence_source": provenance, "sequence_request": contract,
-                "modeled_sequence": None, "modeled_sequence_length": 0,
-                "hp_mapping": contract["hp_mapping"],
-                "error": ("protein HP lattice refused %s: sourced sequence has %d residues; limit is %d"
-                          % (accession, len(sequence), MAX_HP_LATTICE_RESIDUES))}
+    # The HP lattice remains deliberately tiny. A complete sourced protein is routed to
+    # the commissioned local ESMFold instrument instead of being truncated or refused.
+    # The returned result still passes the same accession/sequence identity contract.
+    parameters["protein_backend"] = ("esmfold" if len(sequence) > MAX_HP_LATTICE_RESIDUES
+                                     else "hp_lattice")
     return {"ok": True, "parameters": parameters, "sequence_request": contract}
+
+
+def _run_esmfold(parameters, contract, worker=None):
+    body = {"accession": contract["requested_accession"], "sequence": contract["sequence"],
+            "sequence_source": contract["source"], "hp_mapping": contract["hp_mapping"]}
+    if worker is None:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_esmfold.py")
+        try:
+            done = subprocess.run([sys.executable, path], input=json.dumps(body), text=True,
+                                  capture_output=True, timeout=900, check=False)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "state": "unknown_after_timeout",
+                    "error": "local ESMFold timed out; outcome not retried"}
+        if done.returncode:
+            return {"ok": False, "error": "local ESMFold failed: " + done.stderr.strip()[-500:]}
+        try: result = json.loads(done.stdout)
+        except Exception:
+            return {"ok": False, "error": "local ESMFold returned unreadable output"}
+    else:
+        result = worker(body)
+    if not isinstance(result, dict) or not result.get("ok"):
+        return result if isinstance(result, dict) else {"ok": False, "error": "local ESMFold returned no result"}
+    run_id = "ESMFOLD-" + uuid.uuid4().hex[:12]
+    reply = {"ok": True, "configured": True, "run_id": run_id,
+             "run": {"run_id": run_id, "experiment": "protein", "parameters": parameters,
+                     "execution": {"instrument": "Aegis ESMFold", "network": "local_files_only",
+                                   "writes": "chemistry Lab artifact store"},
+                     "result": result["result"]}}
+    return _protein_result(reply, contract)
 
 
 def _protein_result(reply, contract):
@@ -219,13 +247,15 @@ def _protein_result(reply, contract):
     return reply
 
 
-def run(experiment, parameters=None, shots=4096, resolver=None, transport=None):
+def run(experiment, parameters=None, shots=4096, resolver=None, transport=None, esmfold_worker=None):
     parameters = dict(parameters or {})
     contract = None
     if str(experiment) == "protein" and _accession(parameters):
         prepared = prepare_protein(parameters, resolver=resolver)
         if not prepared.get("ok"): return prepared
         parameters, contract = prepared["parameters"], prepared["sequence_request"]
+        if parameters.get("protein_backend") == "esmfold":
+            return _run_esmfold(parameters, contract, worker=esmfold_worker)
     reply = (transport or request)({"action": "run", "experiment": experiment,
                                     "parameters": parameters, "shots": int(shots)})
     return _protein_result(reply, contract)

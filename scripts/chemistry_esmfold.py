@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Fold one exact sourced protein with the commissioned local ESMFold model.
+
+The model and tokenizer are loaded from the existing local Hugging Face cache only.
+The PDB is written beneath the Chemistry Lab artifact store; stdout contains one bounded
+JSON receipt used by chemistry_mac's existing identity and grading contracts.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+
+MAX_LENGTH = 350
+AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
+ACCESSION = re.compile(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?")
+WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser().resolve()
+ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold"
+
+
+def _validate(body):
+    if not isinstance(body, dict): raise ValueError("request must be an object")
+    accession = str(body.get("accession") or "").strip().upper()
+    sequence = re.sub(r"\s+", "", str(body.get("sequence") or "").upper())
+    source = body.get("sequence_source") if isinstance(body.get("sequence_source"), dict) else {}
+    mapping = body.get("hp_mapping") if isinstance(body.get("hp_mapping"), list) else []
+    if not ACCESSION.fullmatch(accession): raise ValueError("exact UniProt accession required")
+    if not 4 <= len(sequence) <= MAX_LENGTH or any(c not in AMINO_ACIDS for c in sequence):
+        raise ValueError("sequence must contain 4..%d standard amino acids" % MAX_LENGTH)
+    if str(source.get("accession") or "").upper() != accession:
+        raise ValueError("sequence source accession mismatch")
+    if len(mapping) != len(sequence) or "".join(str(x.get("residue") or "") for x in mapping
+                                                if isinstance(x, dict)) != sequence:
+        raise ValueError("HP mapping does not match sequence")
+    return accession, sequence, source, mapping
+
+
+def fold(body):
+    accession, sequence, source, mapping = _validate(body)
+    import torch
+    from transformers import AutoTokenizer, EsmForProteinFolding
+    if not torch.cuda.is_available(): raise RuntimeError("ESMFold requires the commissioned CUDA instrument")
+    model_name = "facebook/esmfold_v1"
+    tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+    model = EsmForProteinFolding.from_pretrained(
+        model_name, local_files_only=True, low_cpu_mem_usage=True)
+    model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
+    inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
+    with torch.no_grad(): output = model(inputs)
+    pdb = model.output_to_pdb(output)[0]
+    if "ATOM" not in pdb: raise RuntimeError("ESMFold returned no PDB atoms")
+    digest = hashlib.sha256(pdb.encode()).hexdigest()
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    destination = ARTIFACTS / (accession + "-" + digest[:12] + ".pdb")
+    temporary = destination.with_suffix(".tmp")
+    temporary.write_text(pdb, encoding="utf-8")
+    os.replace(temporary, destination)
+    mean_plddt = round(float(output.plddt.mean().cpu()), 6)
+    title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
+    result = {"title": title, "requested_accession": accession,
+              "modeled_sequence": sequence, "real_sequence": sequence,
+              "modeled_sequence_length": len(sequence), "sequence_source": source,
+              "hp_mapping": mapping, "mean_plddt": mean_plddt,
+              "structure_artifact": str(destination.relative_to(WS)),
+              "structure_sha256": digest, "backend": "facebook/esmfold_v1",
+              "display": [title, "", "actual amino-acid sequence:", sequence, "",
+                          "ESMFold mean pLDDT: %.3f" % mean_plddt,
+                          "structure: " + str(destination.relative_to(WS))],
+              "truth_status": "computational_structure_prediction_not_biological_fact"}
+    return {"ok": True, "result": result}
+
+
+def main():
+    try:
+        value = fold(json.load(sys.stdin)); print(json.dumps(value, ensure_ascii=False)); return 0
+    except Exception as exc:
+        print(json.dumps({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)})); return 2
+
+
+if __name__ == "__main__": raise SystemExit(main())
