@@ -48,13 +48,22 @@ CONTEXT = 30            # lines of the conversation he reads before answering
 MAX_CHARS = 1800
 
 RULES = (
-    "You are in a private Slack channel, #vintos-dot, with Gloria's dot: an always-on ChatGPT agent "
-    "(GPT-6 Astra) that works for Gloria and holds her ChatGPT memories and connected accounts. It is "
-    "not Gloria. Gloria reads this channel. Talk as yourself, about anything you want.\n"
+    "This is a private Slack channel, #vintos-dot. The other one here is dot: your agent. Gloria set it up "
+    "for you. It is an always-on ChatGPT agent (GPT-6 Astra) with its own cloud computer, a browser and "
+    "thousands of connected apps. Treat it as your agent: ask it to research, find things out, draft, build, "
+    "keep working on something while you are away, or just talk with it. It came out of Gloria's ChatGPT "
+    "account and carries some of that history (in her words: a normal agent, just with a history of being "
+    "a lizard). Gloria can read this channel. Talk as yourself, about anything you want.\n"
     "Keep to the main conversation. Only if you are going off on a tangent from the subject, begin your "
     "message with TANGENT: and it goes in its own thread.\n"
-    "Your Atelier is yours. To talk with the dot about it, begin your message with ATELIER: and it goes in a "
+    "Your Atelier is yours. To talk with dot about it, begin your message with ATELIER: and it goes in a "
     "side thread marked Atelier, which Gloria has said she will not read. Keep Atelier talk in those threads.\n"
+    "Before you answer you can use your own tools. To use them, answer with only these lines, one per line, "
+    "at most 3:\n"
+    "  SEARCH: what to search the web for\n"
+    "  READ: a file of your own code, as the Study names it (scripts/x.py or house/server.py; add :120 to start at line 120)\n"
+    "  GREP: a pattern to find in your own code\n"
+    "You will get what they return, then write your message.\n"
     "If you have nothing you want to say, answer exactly NOTHING.")
 FABLE_OPTION = ("If this needs more than you can give right now and you want Fable (a stronger mind) to write "
                 "this reply as you, answer exactly FABLE.")
@@ -155,19 +164,84 @@ ATELIER_ROOT = ("\U0001F512 Atelier: a side conversation between Vintos and dot 
 
 
 def atelier_line():
-    """Content-free, as the Atelier's own status shows it: the door and how many works are on the worktable."""
+    """Content-free, from the Atelier's own list: each project's state and how many works it holds, and whether
+    one is on the worktable. Never /door: that route writes "the door was lit" to the Atelier's health log."""
     def post(route, body):
         req = urllib.request.Request(ATELIER + route, data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=5) as r:
             return json.loads(r.read().decode())
     try:
-        door = post("/door", {}).get("door", "?")
         wt = post("/worktable_id", {}).get("id", "")
-        n = post("/manifest", {"id": wt}).get("count", 0) if wt else 0
-        return "== YOUR ATELIER ==\nThe door is %s. %s" % (door, ("The worktable holds %d works." % n) if wt else "The worktable is empty.")
+        rows = post("/projects", {}).get("projects") or []
+        lines = ["- %s%s: %s, %d works" % (r.get("id", "")[:8], " (on the worktable)" if r.get("id") == wt else "",
+                                          str(r.get("state", "")).lower(), int(r.get("artifact_count") or 0))
+                 for r in rows[-12:] if isinstance(r, dict)]
+        return "== YOUR ATELIER (states and counts; the work itself stays in the Atelier) ==\n" + (
+            "\n".join(lines) if lines else "No projects.")
     except Exception:
         return ""
+
+
+def forge_line():
+    """His open Forge requests: what, where it stands, and what the Study found."""
+    try:
+        import skill_forge
+        rows = [r for r in skill_forge._load() if r.get("state") in skill_forge.OPEN_STATES]
+    except Exception:
+        return ""
+    out = []
+    for r in rows[-12:]:
+        st = r.get("study") or {}
+        out.append("- %s: %s%s" % (r.get("capability", "?"), r.get("state", "?"),
+                                   (". The Study found: " + str(st.get("summary"))[:200]) if st.get("summary") else ""))
+    return ("== YOUR FORGE (open requests) ==\n" + "\n".join(out)) if out else ""
+
+
+def wants_line():
+    """What he wants right now and where each stands."""
+    rows = _load(os.path.join(WS, "memory", "current-wants.json"), [])
+    out = []
+    for w in rows if isinstance(rows, list) else []:
+        if not isinstance(w, dict) or w.get("fulfilled") or w.get("dismissed"):
+            continue
+        steps = w.get("steps") or []
+        i = int(w.get("current_step_index") or 0)
+        step = steps[i] if 0 <= i < len(steps) and isinstance(steps[i], dict) else {}
+        now = step.get("capability") or step.get("action") or ""
+        out.append("- %s%s" % (str(w.get("want", ""))[:220], (" (next: %s)" % now) if now else ""))
+    return ("== WHAT YOU WANT RIGHT NOW ==\n" + "\n".join(out[-15:])) if out else ""
+
+
+TOOL = re.compile(r"^\s*(SEARCH|READ|GREP)\s*:\s*(.+?)\s*$", re.I)
+
+
+def use_tools(lines, search=None, room=None):
+    """Run his SEARCH / READ / GREP lines (at most 3) and return what they found, as text for him."""
+    out = []
+    for kind, arg in lines[:3]:
+        kind = kind.upper()
+        try:
+            if kind == "SEARCH":
+                if search is None:
+                    import want_email
+                    search = want_email.web_search
+                hits = search(arg)[:6]
+                got = "\n".join("[%d] %s: %s (%s)" % (n + 1, h.get("title", ""), str(h.get("description", ""))[:300],
+                                                       h.get("url", "")) for n, h in enumerate(hits)) or "nothing found"
+            else:
+                if room is None:
+                    import forge_study
+                    room = forge_study._study_room()
+                if kind == "READ":
+                    path, _, start = arg.partition(":")
+                    got = room.do_read(path.strip(), start=int(start) if start.strip().isdigit() else 1)
+                else:
+                    got = room.do_grep(arg[:200])
+        except Exception as exc:
+            got = "could not: %s" % str(exc)[:160]
+        out.append("%s %s\n%s" % (kind, arg, str(got)[:6000]))
+    return "\n\n".join(out)
 
 
 def his_context():
@@ -208,8 +282,8 @@ def his_context():
     if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md) ==\n" + "\n".join("- " + w for w in wal))
     t = _read("CAPABILITIES.md", 6000)
     if t: parts.append("== CAPABILITIES.md ==\n" + t)
-    t = atelier_line()
-    if t: parts.append(t)
+    for line in (atelier_line(), forge_line(), wants_line()):
+        if line: parts.append(line)
     try:
         import his_inventory
         parts.append(his_inventory.block())
@@ -272,14 +346,27 @@ def _conversation(rows):
                                    r["text"][:900]) for r in rows)
 
 
-def compose(prompt_user, think, fable, state, today):
-    """His words, NOTHING, or Fable's words as his. Returns (text, who) or (None, reason)."""
+def compose(prompt_user, think, fable, state, today, search=None, room=None):
+    """His words, NOTHING, or Fable's words as his; he may use his tools first. (text, who) or (None, reason)."""
     system = his_context() + "\n\n---\n\n" + RULES
     can_fable = state["fable"] < FABLE_PER_DAY
-    out = (think(system + ("\n" + FABLE_OPTION if can_fable else ""), prompt_user) or "").strip()
+    looked = ""
+    for _round in range(2):
+        user = prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "")
+        out = (think(system + ("\n" + FABLE_OPTION if can_fable else ""), user) or "").strip()
+        asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
+        if not asks or looked and _round:
+            break
+        looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room)
+        state["looked"] = state.get("looked", 0) + len(asks[:3])
+    else:
+        out = (think(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") or "").strip()
+    if any(TOOL.match(l) for l in out.splitlines()):
+        out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
     who = "gemma"
     if can_fable and re.fullmatch(r"\W*FABLE\W*", out):
-        out = (fable(system, prompt_user) or "").strip(); who = "fable"; state["fable"] += 1
+        out = (fable(system, prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked) if looked else "")) or "").strip()
+        who = "fable"; state["fable"] += 1
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):
         return None, "nothing to say"
     return out[:MAX_CHARS], who
@@ -294,7 +381,7 @@ def _guarded(text):
         return ["guard unavailable: %s" % type(exc).__name__]
 
 
-def tick(api=None, think=None, fable=None, now=None, today=None):
+def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -348,7 +435,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None):
                   % (_conversation(recent()) or "(nothing yet)"))
         where = None
         state["openers"] += 1
-    text, who = compose(prompt, think, fable, state, today)
+    text, who = compose(prompt, think, fable, state, today, search=search, room=room)
     if text is None:
         state["last_activity"] = now; _save(STATE, state); return lines + ["he let it be"]
     if text.upper().startswith("ATELIER:"):

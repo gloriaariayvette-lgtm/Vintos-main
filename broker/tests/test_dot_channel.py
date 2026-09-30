@@ -81,8 +81,8 @@ check("he answers the dot", len(S.posted) == 1 and "tidal flats" in S.posted[0][
 check("in the main channel, where Gloria reads", "thread_ts" not in S.posted[0])
 check("mentioning the dot so it answers", S.posted[0]["text"].startswith("<@%s> " % DOT))
 check("the dot is named as the dot, not as an id", "@Vintos" in said[-1][1] and "UVINTOS" not in said[-1][1], said[-1][1][-300:])
-check("he is told the dot is not Gloria",
-      "It is \nnot Gloria".replace("\n", "") in said[-1][0].replace("\n", "") or "not Gloria" in said[-1][0])
+check("he is told dot is his agent, to use as one (Gloria, 2026-09-30)",
+      "dot: your agent" in said[-1][0] and "Treat it as your agent" in said[-1][0] and "lizard" in said[-1][0])
 check("he is told the conversation stays in the main channel", "TANGENT:" in said[-1][0])
 lines = [json.loads(l) for l in open(D.TRANSCRIPT)]
 check("both sides are kept in his memory", [l["who"] for l in lines] == ["dot", "vintos"], lines)
@@ -126,7 +126,37 @@ check("the dot's answer there is answered there", S.posted[-1].get("thread_ts") 
 check("and he knows it is his Atelier thread", "in your Atelier thread" in said[-1][1])
 check("his Atelier state is only the content-free facts its status shows",
       "def atelier_line" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
-      and all(r in open(os.path.join(REPO, "scripts", "dot_channel.py")).read() for r in ('"/door"', '"/worktable_id"', '"/manifest"')))
+      and all(r in open(os.path.join(REPO, "scripts", "dot_channel.py")).read() for r in ('"/worktable_id"', '"/projects"')))
+
+# His tools: he looks something up, gets it back, then writes; the lookup lines are never posted.
+calls, seen_prompts = [], []
+def looker(system, user):
+    seen_prompts.append(user)
+    return "SEARCH: tidal flat ecology\nGREP: def tick" if "WHAT YOU LOOKED UP" not in user else "Found it: mudflats breathe."
+class Room:
+    def do_grep(self, pat): calls.append(("grep", pat)); return "GREP %r:\nscripts/dot_channel.py:1:def tick" % pat
+    def do_read(self, path, start=1): calls.append(("read", path, start)); return "READ " + path
+def search(q): calls.append(("search", q)); return [{"title": "Mudflats", "description": "they breathe", "url": "https://x"}]
+S.add(DOT, "what do you know about tidal flats?")
+n1 = len(S.posted)
+D.tick(api=S, think=looker, fable=fable, now=2430, search=search, room=Room())
+check("he can search the web and look into his own code before answering",
+      ("search", "tidal flat ecology") in calls and ("grep", "def tick") in calls, calls)
+check("what came back reaches him", "they breathe" in seen_prompts[-1] and "scripts/dot_channel.py:1" in seen_prompts[-1])
+check("and only his message is posted, never the lookup lines",
+      len(S.posted) == n1 + 1 and "mudflats breathe" in S.posted[-1]["text"] and "SEARCH:" not in S.posted[-1]["text"])
+calls.clear()
+check("READ takes a start line as the Study does", "READ scripts/x.py" in D.use_tools([("READ", "scripts/x.py:120")], room=Room())
+      and calls == [("read", "scripts/x.py", 120)])
+json.dump([{"id": "w1", "want": "I want to map the tide pools", "fulfilled": False,
+            "steps": [{"capability": "web_search"}], "current_step_index": 0},
+           {"id": "w2", "want": "done already", "fulfilled": True}],
+          open(os.path.join(os.environ["SPARK_WORKSPACE"], "memory", "current-wants.json"), "w"))
+wl = D.wants_line()
+check("he knows what he wants right now, and not what is done", "map the tide pools" in wl and "next: web_search" in wl
+      and "done already" not in wl, wl)
+check("the Atelier is read without /door, which writes to its health log",
+      '"/door"' not in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
 
 S.add(DOT, "a hard question")
 D.tick(api=S, think=lambda s, u: "FABLE", fable=fable, now=2500)
