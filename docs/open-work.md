@@ -1713,3 +1713,17 @@ The music share's distorted reading was its own code: every tempo over 100 BPM w
 measured and says "no steady beat" when the tracker finds none. Tested on real clips made
 with ffmpeg; not yet tried with a video from her phone on Aegis. A proxy in front of the house
 with a body-size limit would refuse a large clip; not checked.
+
+## When things were said — 30 September
+
+His recent exchanges reached every model as bare lines, so yesterday read as now (DevDay, the
+day before, became "the new models everyone is talking about today"). `scripts/when_said.py`
+marks each exchange with when it was said ("yesterday 19:02", "today 14:10 (15 minutes ago)"),
+opens with the time now, and says that an earlier day is past; wal.md facts say when they were
+learned. Now used by: the chat and game context, the avatar chat, voice (chat, token, framing),
+the idle journal, MoltBook's context, and #vintos-dot.
+
+Not yet done: about forty other scripts read `interaction-ledger.json` the old way (dreams,
+wants, value map, reflection, outreach and more). Their outputs feed his day, so a stale
+"today" can still enter through them. Each should go through `when_said.exchanges`. Not
+checked on Aegis with a real model yet.

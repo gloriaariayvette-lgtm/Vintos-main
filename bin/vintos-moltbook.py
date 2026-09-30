@@ -732,7 +732,16 @@ def get_vintos_context():
         import json as _mj
         ledger = _mj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         recent = ledger[-5:] if len(ledger) >= 5 else ledger
-        ctx["recent_exchanges"] = "\n".join(f"Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]}" for e in recent)
+        try:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            for _d in (os.path.join(_here, "..", "scripts"), _here, SCRIPTS):
+                if _d not in sys.path: sys.path.insert(0, _d)
+            import when_said as _ws
+        except Exception:
+            _ws = None
+        # each exchange marked with when it was said: bare lines let the model read yesterday as now (2026-09-30)
+        ctx["recent_exchanges"] = (_ws.exchanges(recent, n=5, cap=100) if _ws else
+                                   "\n".join(f"Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]}" for e in recent))
         # Compute grounded timestamp for last Gloria contact
         if ledger:
             from datetime import datetime as _dtm

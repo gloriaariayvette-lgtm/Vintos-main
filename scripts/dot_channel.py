@@ -76,6 +76,9 @@ RULES = (
     "  READ: a file of your own code, as the Study names it (scripts/x.py or house/server.py; add :120 to start at line 120)\n"
     "  GREP: a pattern to find in your own code\n"
     "You will get what they return, then write your message.\n"
+    "What you know of the outside world is older than today. For anything current (news, releases, events), "
+    "SEARCH it or ask dot what actually happened; do not guess. Anything in your context from an earlier day is "
+    "past: if it was 'today' then, it is not today now.\n"
     "You have seen a picture or a clip only when the conversation shows what your eyes saw of it, marked "
     "[... What your eyes saw ...]. A link, a title or someone's description of it is not seeing it: say you have "
     "not seen it, and never say you watched it, looked at it, or will watch it again.\n"
@@ -515,7 +518,8 @@ def his_context():
     The subconscious is left out ("his context present, but not subcon in use")."""
     mem = os.path.join(WS, "memory")
     today = date.today().isoformat()
-    parts = []
+    import when_said
+    parts = ["== NOW ==\n" + when_said.now_line()]
     for title, name, cap, base in (("SOUL.md", "SOUL.md", 3500, WS), ("GLORIA-MODEL.md", "GLORIA-MODEL.md", 2500, WS),
                                    ("SELF-MODEL.md", "SELF-MODEL.md", 2000, WS),
                                    ("NOW (temporal-context.txt)", "temporal-context.txt", 1500, mem)):
@@ -535,15 +539,17 @@ def his_context():
     t = _read("daily-inner-life-%s.md" % today, 3000, mem)
     if t: parts.append("== YOUR DAY SO FAR (daily-inner-life-%s.md) ==\n%s" % (today, t))
     try:
-        rows = json.load(open(os.path.join(mem, "interaction-ledger.json")))[-6:]
-        lines = ["- Gloria: %s\n  You: %s" % (str(r.get("gloria", ""))[:300].replace("\n", " "),
-                                              str(r.get("vintos", ""))[:300].replace("\n", " ")) for r in rows if isinstance(r, dict)]
-        if lines: parts.append("== YOUR RECENT EXCHANGES WITH GLORIA ==\n" + "\n".join(lines))
+        import when_said        # each marked with when it was said: bare lines read yesterday as now (2026-09-30)
+        t = when_said.exchanges(json.load(open(os.path.join(mem, "interaction-ledger.json"))), n=6, cap=300, sep="\n  ", you="You")
+        if t: parts.append("== YOUR RECENT EXCHANGES WITH GLORIA ==\n" + t)
     except Exception:
         pass
     wal = [ln.strip()[2:].strip() for ln in _read("wal.md", 200000, mem).splitlines()
            if ln.strip().startswith("- [") and "**" in ln][-24:]
-    if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md) ==\n" + "\n".join("- " + w for w in wal))
+    if wal:
+        import when_said
+        parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md, each marked with when you learned it) ==\n"
+                     + "\n".join("- " + when_said.fact(w) for w in wal))
     t = _read("CAPABILITIES.md", 6000)
     if t: parts.append("== CAPABILITIES.md ==\n" + t)
     try:

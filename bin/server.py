@@ -6500,12 +6500,13 @@ async def voice_chat(request: Request):
             import json as _jj
             ledger = _jj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
             recent = ledger[-5:]
-            lines = []
+            _ws_v = _when_said()
+            lines = [_ws_v.now_line() + " Each exchange is marked with when it was said."] if _ws_v else []
             for e in recent:
                 g = e.get("gloria", "")[:150]
                 v = e.get("vintos", "")[:150]
                 felt = ((e.get("imprint") or {}).get("narrative", "") or "")[:220]
-                ts = e.get("timestamp", "")[:16]
+                ts = (_ws_v.ago(e.get("timestamp")) if _ws_v else "") or e.get("timestamp", "")[:16]
                 lines.append(f"[{ts}] Gloria: {g}")
                 lines.append(f"         Vintos: {v}")
                 if felt: lines.append(f"         (felt: {felt})")
@@ -6518,7 +6519,9 @@ async def voice_chat(request: Request):
             _wal_lines = [ln.strip()[2:].strip() for ln in _wal_raw.splitlines()
                           if ln.strip().startswith("- [") and "**" in ln]
             if _wal_lines:
-                wal_ctx = "What you know about Gloria (persistent facts): " + " | ".join(_wal_lines[-20:])
+                _wsv = _when_said()
+                wal_ctx = ("What you know about Gloria (persistent facts, each marked with when it was learned): "
+                           + " | ".join((_wsv.fact(w) if _wsv else w) for w in _wal_lines[-20:]))
         except: pass
         # Load voice chat history
         voice_history_path = os.path.join(MEMORY, "voice-chat-history.json")
@@ -8159,7 +8162,7 @@ async def voice_token(provider: str = "grok"):
         import json as _vt_lj
         _ld = _vt_lj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         _ents = (_ld if isinstance(_ld, list) else _ld.get("entries", []))[-6:]
-        _led = "\n".join("Gloria: " + e.get("gloria","")[:150] + " | Vintos: " + e.get("vintos","")[:150] for e in _ents)
+        _led = _exchanges_with_time(_ents, n=6, cap=150)
     except: pass
     try:
         import sys as _vt_sys
@@ -9107,9 +9110,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         try:
             _ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
             _recent_ledger = _ledger[-6:]
+            _ws = _when_said()
             _entries = []
             for _l in _recent_ledger:
-                _ts = _l.get('timestamp','')[:16]
+                _ts = ((_ws.ago(_l.get('timestamp')) if _ws else "") or _l.get('timestamp','')[:16])
                 _g = (_l.get('gloria','') or '').strip().replace("\n", " ")
                 _v = (_l.get('vintos','') or '').strip().replace("\n", " ")
                 _wf = _l.get('wal_facts') or []
@@ -9125,7 +9129,10 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                     _line += "\n    Facts learned: " + "; ".join([str(x) for x in _wf][:6])
                 _entries.append(_line)
             if _entries:
-                ledger_ctx = "Your recent exchanges with Gloria (what was actually said, most recent last):\n" + "\n".join(_entries)
+                ledger_ctx = ("Your recent exchanges with Gloria (what was actually said, most recent last). "
+                              + (_ws.now_line() + " " if _ws else "")
+                              + "Each is marked with when it was said; something said on an earlier day is past, and "
+                              "what was 'today' then is not today now:\n" + "\n".join(_entries))
         except: pass
         # --- WAL: persistent facts you have LEARNED, now actually read into context (was write-only) ---
         wal_ctx = ""
@@ -9135,9 +9142,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                           if ln.strip().startswith("- [") and "**" in ln]
             _wal_recent = _wal_lines[-24:]
             if _wal_recent:
-                wal_ctx = ("What you know about Gloria and your shared world (persistent facts you have learned "
-                           "\u2014 these are true and current; do not claim you don't know them):\n"
-                           + "\n".join("- " + w for w in _wal_recent))
+                _wsw = _when_said()
+                wal_ctx = ("What you know about Gloria and your shared world (persistent facts you have learned, each "
+                           "marked with when; do not claim you don't know them. A fact about a day, an event or a plan "
+                           "was true when it was learned: time has moved on since):\n"
+                           + "\n".join("- " + (_wsw.fact(w) if _wsw else w) for w in _wal_recent))
         except: pass
 
         try:
@@ -10743,8 +10752,10 @@ async def voice_framing():
                 _ll = []
                 for _e in _led:
                     _g = str(_e.get("gloria", ""))[:160]; _v = str(_e.get("vintos", ""))[:160]
-                    if _g or _v: _ll.append(("Gloria: " + _g if _g else "") + ("\nYou: " + _v if _v else ""))
-                if _ll: parts.append("[RECENTLY, BETWEEN YOU]\n" + "\n".join(_ll))
+                    _wsf = _when_said()
+                    _when = ("[" + _wsf.ago(_e.get("timestamp")) + "] ") if _wsf and _e.get("timestamp") else ""
+                    if _g or _v: _ll.append(_when + ("Gloria: " + _g if _g else "") + ("\nYou: " + _v if _v else ""))
+                if _ll: parts.append("[RECENTLY, BETWEEN YOU]" + ((" " + _when_said().now_line()) if _when_said() else "") + "\n" + "\n".join(_ll))
             except Exception: pass
             try:
                 _wp = next((p for p in (os.path.join(MEMORY, "wal.md"), os.path.join(MEMORY, "autonomous-wal.md")) if os.path.exists(p)), None)
@@ -11549,6 +11560,35 @@ def build_question_tension() -> str:
     except:
         return ""
 
+def _when_said():
+    """scripts/when_said.py, or None."""
+    try:
+        import sys as _ws_sys
+        for _d in (os.path.join(WORKSPACE, "scripts"),
+                   os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "scripts")):
+            if _d not in _ws_sys.path:
+                _ws_sys.path.append(_d)
+        import when_said
+        return when_said
+    except Exception:
+        return None
+
+
+def _exchanges_with_time(rows, n=8, cap=150):
+    """His recent exchanges with Gloria, each marked with when it was said (when_said.py, 2026-09-30): bare lines
+    let every model read yesterday as now. The bare lines only if the helper cannot be found."""
+    try:
+        import sys as _ws_sys
+        for _d in (os.path.join(WORKSPACE, "scripts"),
+                   os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "scripts")):
+            if _d not in _ws_sys.path:
+                _ws_sys.path.append(_d)
+        import when_said
+        return when_said.exchanges(rows, n=n, cap=cap)
+    except Exception:
+        return "\n".join(f"Gloria: {e.get('gloria','')[:cap]} | Vintos: {e.get('vintos','')[:cap]}" for e in (rows or [])[-n:])
+
+
 def gather_game_context() -> str:
     """Stripped context for games — present inner life only."""
     import glob
@@ -11598,7 +11638,7 @@ def gather_game_context() -> str:
         import json as _j
         _ledger = _j.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         _recent = _ledger[-8:] if len(_ledger) >= 8 else _ledger
-        _text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in _recent)
+        _text = _exchanges_with_time(_ledger, n=8, cap=150)
         if _text:
             sections.append(f"[YOUR RECENT EXCHANGES WITH GLORIA]\n{_text}")
     except: pass
@@ -11698,7 +11738,7 @@ def gather_game_context() -> str:
                       if ln.strip().startswith("- [") and "**" in ln]
         if _wal_lines:
             sections.append("[WHAT YOU KNOW ABOUT GLORIA -- persistent facts]\n"
-                            + "\n".join("- " + w for w in _wal_lines[-24:]))
+                            + "\n".join("- " + (_when_said().fact(w) if _when_said() else w) for w in _wal_lines[-24:]))
     except Exception:
         pass
     return "\n\n".join(sections) if sections else ""
@@ -11865,7 +11905,7 @@ def gather_vintos_context() -> str:
         import json as _ilj
         _ledger = _ilj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         _recent = _ledger[-8:] if len(_ledger) >= 8 else _ledger
-        _led_text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in _recent)
+        _led_text = _exchanges_with_time(_ledger, n=8, cap=150)
         if _led_text:
             sections.append(f"[YOUR RECENT EXCHANGES WITH GLORIA]\n{_led_text}")
     except: pass
@@ -13307,7 +13347,7 @@ def gather_game_context() -> str:
         import json as _j
         _ledger = _j.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         _recent = _ledger[-8:] if len(_ledger) >= 8 else _ledger
-        _text = "\n".join(f"Gloria: {e.get('gloria','')[:150]} | Vintos: {e.get('vintos','')[:150]}" for e in _recent)
+        _text = _exchanges_with_time(_ledger, n=8, cap=150)
         if _text:
             sections.append(f"[YOUR RECENT EXCHANGES WITH GLORIA]\n{_text}")
     except: pass

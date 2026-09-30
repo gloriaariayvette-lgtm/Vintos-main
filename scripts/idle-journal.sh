@@ -174,8 +174,15 @@ RECENT_CHAT=$(python3 << 'CHATEOF'
 import json
 try:
     ledger = json.load(open('/home/gloria/.vintos/workspace/memory/interaction-ledger.json'))
-    for e in ledger[-5:]:
-        print('Gloria: ' + e.get('gloria','')[:600] + ' | Vintos: ' + e.get('vintos','')[:600])
+    try:
+        # each exchange marked with when it was said: bare lines let the model read yesterday as now (2026-09-30)
+        import sys, os
+        sys.path.insert(0, os.path.expanduser('~/.vintos/workspace/scripts'))
+        import when_said
+        print(when_said.exchanges(ledger, n=5, cap=600))
+    except Exception:
+        for e in ledger[-5:]:
+            print('Gloria: ' + e.get('gloria','')[:600] + ' | Vintos: ' + e.get('vintos','')[:600])
 except: pass
 CHATEOF
 )
