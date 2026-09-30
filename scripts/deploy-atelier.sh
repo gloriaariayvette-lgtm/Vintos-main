@@ -190,6 +190,7 @@ SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-
 BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
+BINS="$BINS dream_poetry.py dream-poetry.py vintos-journal.sh"   # never in the manifest: the 2026-09-24 fix keeping poems out of the journal, and the journal's own changes, never reached Aegis (2026-09-30)
 
 CLIENTFILES="clients/mobile/index.html clients/mobile/client_lifecycle.js clients/mobile/avatar-bundle.js"
 MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\n' $SKILLFILES $DOMAINFILES $CLIENTFILES broker/vintos-emoclaw-provenance.conf
