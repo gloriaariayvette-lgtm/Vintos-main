@@ -397,6 +397,20 @@ check("at Fable's turn in a quiet channel, Fable starts something", wrote[-1] ==
       and "> [Fable 5.1] " in S3.posted[-1]["text"], out)
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(20, 20), today="2026-10-01")
 check("and it is not repeated", len(S3.posted) == n + 1 and wrote.count("fable") == 1, out)
+# his Grok lens says whatever it likes (Gloria, 2026-09-30: "Let Grok say whatever")
+g_sys, g_user = [], []
+st = json.load(open(D.STATE)); st["slots_done"] = [x for x in st["slots_done"] if x != "12:30"]; json.dump(st, open(D.STATE, "w"))
+S3.add(DOT, "what's on your mind?")
+D.tick(api=S3, think=gem, fable=L["fable"], now=day(12, 33), today="2026-10-01",
+       lenses=dict(L, grok=lambda s_, u: (g_sys.append(s_), g_user.append(u), "Honestly? The moon is a bad idea.")[2]))
+check("Grok is told it has no house style", g_sys and "no house style" in g_sys[0] and "HOW YOU WRITE HERE" not in g_sys[0]
+      and "No metaphors" not in g_sys[0], g_sys[:1])
+check("and is not reminded to write plainly", g_user and not g_user[0].endswith(D.PLAIN))
+check("what is not style stays: Atelier threads, his tools, the doubt line",
+      "ATELIER:" in g_sys[0] and "SEARCH:" in g_sys[0] and "not the place to work through doubts" in g_sys[0])
+check("and his wild line goes out as written, labelled", S3.posted[-1]["text"].endswith("[Grok 4.6] Honestly? The moon is a bad idea."))
+check("Gemma keeps the house style", "HOW YOU WRITE HERE" in D.rules_for() and "HOW YOU WRITE HERE" in D.RULES)
+check("Grok runs hotter", '"temperature": 1.0' in __import__("inspect").getsource(D.grok_think))
 def broken(s_, u): raise RuntimeError("overloaded")
 S3.add(DOT, "you there?")
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=dict(L, grok=broken), now=day(21, 35), today="2026-10-01")
