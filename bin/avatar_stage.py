@@ -659,6 +659,30 @@ def _sync_live_to_mac():
         log("live clip not synced to Mac (%s) - speech falls back to another room" % e)
 
 
+# One new live scene at most every LIVE_SPACING minutes, whoever asks (the gate, his [RENDER:], the app):
+# he was rendering one nearly every turn (Gloria, 2026-09-30: "He shouldn't do it every turn").
+LIVE_SPACING = int(os.environ.get("VINTOS_LIVE_SPACING_MIN", "20"))
+LIVE_LAST = os.path.join(STAGE, "live-last-start.json")
+
+
+def live_next_at(now=None):
+    """0 when a new live scene may start now, else the epoch second it may."""
+    try:
+        last = float(json.load(open(LIVE_LAST)).get("at") or 0)
+    except Exception:
+        return 0
+    nxt = last + LIVE_SPACING * 60
+    return nxt if nxt > (now or time.time()) else 0
+
+
+def _live_started(now=None):
+    try:
+        os.makedirs(STAGE, exist_ok=True)
+        with open(LIVE_LAST, "w") as f: json.dump({"at": now or time.time()}, f)
+    except Exception as e:
+        log("live spacing not recorded: %s" % e)
+
+
 def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None, admit=None):
     """Kick a live render now, in the background, in the named slot (the turn
     id from the avatar route; "app" for the app's own call). Returns the slot's
@@ -668,6 +692,13 @@ def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None
     `admit`, when given, is the route's effect-gate admission - called with the
     prompt and answering (ok, mode, why) - and nothing starts until it says yes."""
     sid = _slot_id(slot)
+    _nxt = live_next_at()
+    if _nxt and (_LIVE_SLOTS.get(sid) or {}).get("status") != "rendering":
+        why = "one new scene every %d minutes; the next from %s" % (LIVE_SPACING, time.strftime("%H:%M", time.localtime(_nxt)))
+        log("live scene not started [%s]: %s" % (sid, why))
+        _slot_update(sid, status="refused", prompt=prompt, kind=kind, started=time.time(),
+                     finished=time.time(), seconds=0.0, error=why)
+        return live_status(sid)
     if admit is not None:
         from effect_authority import dispatch
         ok, mode, why = dispatch("avatar", authority=lambda: admit(prompt[:80]))
@@ -692,6 +723,7 @@ def start_live(prompt, kind="self", scene_ref="", still="", motion="", slot=None
                 _LIVE_ORDER.remove(old); _LIVE_SLOTS.pop(old, None)
     if busy:
         return live_status(sid)
+    _live_started()
     _thr.Thread(target=_live_worker, args=(prompt, kind, scene_ref, still, motion, sid), daemon=True).start()
     log("live scene started [%s]: %s" % (sid, prompt[:80]))
     return live_status(sid)
@@ -725,6 +757,9 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
     scene costs and how long it takes. YES starts the render at once, so it
     overlaps the 60-120s he spends writing. Nothing is sent anywhere."""
     try:
+        if live_next_at():   # none can start yet: nothing to decide, and no call made
+            return {"decision": "NO", "kind": "self", "scene_ref": "", "scene": "", "still": "", "prompt": "",
+                    "spaced": True}
         m = _vsv()
         rooms = []
         try:
@@ -815,6 +850,18 @@ def _where_now(man):
     return ("You are in: %s right now.\n" % cur) if cur else ""
 
 
+def _render_line():
+    nxt = live_next_at()
+    if nxt:
+        return ("A new live scene cannot be made until %s; the rooms above, and [SCENE: live] if you are in "
+                "one, are yours meanwhile.\n" % time.strftime("%H:%M", time.localtime(nxt)))
+    return ("[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
+            "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
+            "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
+            "and you want to be there with her. Never for a room you already have, and not every turn: "
+            "one at most every %d minutes. Once made, [SCENE: live] returns to it for free.\n" % LIVE_SPACING)
+
+
 def scene_line():
     """The [SCENE:] vocabulary line for his avatar chat prompt. Empty string
     until presets exist, so the tag is never offered before it can work."""
@@ -828,12 +875,7 @@ def scene_line():
                 "listed here: these are the ones already filmed, and the ONLY names that work. Naming any other "
                 "room (one that is real to you but not on this list) leaves the picture frozen on the last room, "
                 "so never invent one - pick the closest room that IS listed. Moving between listed rooms is FREE "
-                "and instant. Rooms: " + ", ".join(sorted(rooms)) + "\n" + _where_now(man) +
-                "[RENDER: a scene you want to be in right now] — makes a brand-new scene of you from "
-                "scratch. This one COSTS REAL MONEY and takes about two minutes to arrive, so it is for "
-                "moments that earn it - the clearest example: Gloria has just sent you a photo of a place, "
-                "and you want to be there with her. Never for a room you already have. Once made, "
-                "[SCENE: live] returns to it for free.\n")
+                "and instant. Rooms: " + ", ".join(sorted(rooms)) + "\n" + _where_now(man) + _render_line())
     except Exception:
         return ""
 

@@ -121,6 +121,9 @@ try:
 finally:
     subprocess.run = _real_run
 check("her caption stays her words", [x for x in SEQ if "/api/avatar/chat" in x[1]][0][2]["original_text"] == "look at this")
+check("the ledger keeps what he saw and heard for a photo or video turn, not only her caption",
+      'ledger_text=(msg.message if getattr(msg, "input_kind", None) in ("photo", "video") else None)' in src
+      and '"interaction-ledger.py"), ledger_text or gloria_text, reply]' in src)
 check("a photo from the picture button is not described again as his screenshot",
       'if msg.image and getattr(msg, "input_kind", None) != "photo":' in src)
 check("a photo sent with no words is her turn too",

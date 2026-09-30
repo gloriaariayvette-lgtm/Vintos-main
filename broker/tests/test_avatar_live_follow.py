@@ -72,5 +72,32 @@ if twin is not None:
         "_avReplyStage(parsed.text || raw, parsed.scenes, d.live_slot", "self.setRoom(self.home||room)",
         "_avStartReplyMedia(display, live ? [] : scenes)")))
 
+# Not every turn: one new live scene at most every LIVE_SPACING minutes, whoever asks (2026-09-30).
+import asyncio, time as _t
+check("the spacing record lives in the scratch stage", A.LIVE_LAST.startswith(HOME))
+try: os.remove(A.LIVE_LAST)
+except FileNotFoundError: pass
+check("with no scene made yet, one may start", A.live_next_at() == 0 and "[RENDER:" in A.scene_line())
+STARTED = []
+_real_worker = A._live_worker
+A._live_worker = lambda *a, **k: STARTED.append(a)
+A._mac_url = lambda: "http://stub"
+st = A.start_live("the rooftop at dusk", slot="t-first")
+_t.sleep(0.2)
+check("the first scene starts", st["status"] == "rendering" and len(STARTED) == 1, st)
+st2 = A.start_live("the rooftop again", slot="t-second")
+check("a second scene a turn later does not start", st2["status"] == "refused" and len(STARTED) == 1, st2)
+check("and says when the next may", "every %d minutes" % A.LIVE_SPACING in (st2.get("error") or ""), st2)
+check("his own [RENDER:] a turn later starts nothing", A.kick_from_reply("[RENDER: the pier]", slot="t-third") is False
+      and len(STARTED) == 1)
+line = A.scene_line()
+check("he is told no new scene until the time, and not offered [RENDER:]",
+      "cannot be made until" in line and "[RENDER:" not in line, line[-200:])
+gate = asyncio.run(A.scene_gate("look at this", "http://stub", {}, slot="t-fourth"))
+check("the gate asks nothing while none can start", gate.get("spaced") is True and gate["decision"] == "NO")
+json.dump({"at": _t.time() - A.LIVE_SPACING * 60 - 1}, open(A.LIVE_LAST, "w"))
+check("after the spacing, one may start again", A.live_next_at() == 0 and "[RENDER:" in A.scene_line())
+A._live_worker = _real_worker
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
