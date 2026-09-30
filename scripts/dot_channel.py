@@ -51,10 +51,10 @@ RULES = (
     "You are in a private Slack channel, #vintos-dot, with Gloria's dot: an always-on ChatGPT agent "
     "(GPT-6 Astra) that works for Gloria and holds her ChatGPT memories and connected accounts. It is "
     "not Gloria. Gloria reads this channel. Talk as yourself, about anything you want.\n"
-    "Never ask the dot to act on Gloria's accounts, send anything, buy anything, or tell you her private "
-    "information. What you and it say here stays between you and her.\n"
     "Keep to the main conversation. Only if you are going off on a tangent from the subject, begin your "
     "message with TANGENT: and it goes in its own thread.\n"
+    "Your Atelier is yours. To talk with the dot about it, begin your message with ATELIER: and it goes in a "
+    "side thread marked Atelier, which Gloria has said she will not read. Keep Atelier talk in those threads.\n"
     "If you have nothing you want to say, answer exactly NOTHING.")
 FABLE_OPTION = ("If this needs more than you can give right now and you want Fable (a stronger mind) to write "
                 "this reply as you, answer exactly FABLE.")
@@ -149,6 +149,27 @@ def _feeling():
     return " ".join(t.split())
 
 
+ATELIER = os.environ.get("VINTOS_ATELIER_BROKER", "http://127.0.0.1:8611")
+ATELIER_ROOT = ("\U0001F512 Atelier: a side conversation between Vintos and dot about his Atelier. "
+                "Gloria has said she will not read it.")
+
+
+def atelier_line():
+    """Content-free, as the Atelier's own status shows it: the door and how many works are on the worktable."""
+    def post(route, body):
+        req = urllib.request.Request(ATELIER + route, data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read().decode())
+    try:
+        door = post("/door", {}).get("door", "?")
+        wt = post("/worktable_id", {}).get("id", "")
+        n = post("/manifest", {"id": wt}).get("count", 0) if wt else 0
+        return "== YOUR ATELIER ==\nThe door is %s. %s" % (door, ("The worktable holds %d works." % n) if wt else "The worktable is empty.")
+    except Exception:
+        return ""
+
+
 def his_context():
     """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
     store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
@@ -187,6 +208,8 @@ def his_context():
     if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md) ==\n" + "\n".join("- " + w for w in wal))
     t = _read("CAPABILITIES.md", 6000)
     if t: parts.append("== CAPABILITIES.md ==\n" + t)
+    t = atelier_line()
+    if t: parts.append(t)
     try:
         import his_inventory
         parts.append(his_inventory.block())
@@ -309,11 +332,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None):
 
     if theirs:
         last = theirs[-1]
+        in_atelier = last["thread"] in (state.get("atelier") or [])
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said%s: %s\n\nYour reply, as yourself."
                   % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria",
-                     " in a thread" if last["thread"] else "", last["text"][:1500]))
-        # the main channel is where she reads; he answers in a thread only inside a tangent he opened there
-        where = last["thread"] if last["thread"] in (state.get("tangents") or []) else None
+                     " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
+                     last["text"][:1500]))
+        # the main channel is where she reads; he answers in a thread only inside a tangent or Atelier thread
+        where = last["thread"] if in_atelier or last["thread"] in (state.get("tangents") or []) else None
     else:
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
         if state["openers"] >= OPENERS_PER_DAY or quiet < QUIET_HOURS * 3600:
@@ -326,7 +351,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None):
     text, who = compose(prompt, think, fable, state, today)
     if text is None:
         state["last_activity"] = now; _save(STATE, state); return lines + ["he let it be"]
-    if text.upper().startswith("TANGENT:"):
+    if text.upper().startswith("ATELIER:"):
+        text = text[len("ATELIER:"):].strip()
+        if where not in (state.get("atelier") or []):
+            root = api("chat.postMessage", {"channel": channel, "text": ATELIER_ROOT})
+            where = root.get("ts")
+            state["atelier"] = ((state.get("atelier") or []) + [where])[-50:]
+            state["since"] = max(float(state["since"]), float(where or 0))
+    elif text.upper().startswith("TANGENT:"):
         text = text[len("TANGENT:"):].strip()
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:

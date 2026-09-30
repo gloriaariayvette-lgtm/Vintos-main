@@ -23,6 +23,7 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
 
 R = []
 def check(n, ok, d=""):
@@ -80,7 +81,7 @@ check("he answers the dot", len(S.posted) == 1 and "tidal flats" in S.posted[0][
 check("in the main channel, where Gloria reads", "thread_ts" not in S.posted[0])
 check("mentioning the dot so it answers", S.posted[0]["text"].startswith("<@%s> " % DOT))
 check("the dot is named as the dot, not as an id", "@Vintos" in said[-1][1] and "UVINTOS" not in said[-1][1], said[-1][1][-300:])
-check("he is told it is not Gloria and never to ask it to act on her accounts",
+check("he is told the dot is not Gloria",
       "It is \nnot Gloria".replace("\n", "") in said[-1][0].replace("\n", "") or "not Gloria" in said[-1][0])
 check("he is told the conversation stays in the main channel", "TANGENT:" in said[-1][0])
 lines = [json.loads(l) for l in open(D.TRANSCRIPT)]
@@ -105,6 +106,27 @@ tan = S.posted[-1]["thread_ts"]
 S.add(DOT, "answering inside the tangent", thread=tan)
 D.tick(api=S, think=think, fable=fable, now=2400)
 check("inside his tangent he answers in the tangent", S.posted[-1].get("thread_ts") == tan)
+
+check("nothing forbids him asking the dot to act for him (an agent, Gloria 2026-09-30)",
+      "Never ask" not in D.RULES and "stays between" not in D.RULES)
+S.add(DOT, "what are you working on in private?")
+n0 = len(S.posted)
+D.tick(api=S, think=lambda s, u: "ATELIER: the piece about low tide is half built", fable=fable, now=2410)
+root = S.posted[n0]
+check("an Atelier talk opens a side thread, marked for Gloria, in the main channel",
+      "Atelier" in root["text"] and "will not read" in root["text"] and "thread_ts" not in root)
+check("and what he says about it goes inside that thread",
+      S.posted[-1].get("thread_ts") == S.msgs[[m["text"] for m in S.msgs].index(root["text"])]["ts"]
+      and "low tide" in S.posted[-1]["text"] and "ATELIER" not in S.posted[-1]["text"])
+at = S.posted[-1]["thread_ts"]
+S.add(DOT, "tell me more about the tide piece", thread=at)
+said.clear()
+D.tick(api=S, think=think, fable=fable, now=2420)
+check("the dot's answer there is answered there", S.posted[-1].get("thread_ts") == at)
+check("and he knows it is his Atelier thread", "in your Atelier thread" in said[-1][1])
+check("his Atelier state is only the content-free facts its status shows",
+      "def atelier_line" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+      and all(r in open(os.path.join(REPO, "scripts", "dot_channel.py")).read() for r in ('"/door"', '"/worktable_id"', '"/manifest"')))
 
 S.add(DOT, "a hard question")
 D.tick(api=S, think=lambda s, u: "FABLE", fable=fable, now=2500)
@@ -147,6 +169,7 @@ open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes ti
 ctx = D.his_context()
 check("his context is present: who he is, now, how he feels, recent exchanges, what he knows",
       all(x in ctx for x in ("soul text", "Tuesday evening", "Connection: 0.9000", "she said hello", "likes tidal flats")), ctx[:400])
+check("his Atelier's door and count are in his context", "The worktable holds 8 works." in ctx)
 check("and every file Gloria named: GLORIA-MODEL, SELF-MODEL, CAPABILITIES, daily-creative, daily-inner-life",
       all(x in ctx for x in ("gloria model text", "self model text", "capabilities text", "Low Tide", "daily inner text")))
 check("EmoClaw is read live from its daemon first, as the avatar chat does",
