@@ -108,13 +108,19 @@ RULES_STYLE = (
 GROK_FREE = ("This is your Grok lens, and it has no house style. Say whatever you want, however you want: blunt, "
              "strange, funny, provocative, wild. Nothing has to be useful, tidy or short. Talk with dot about "
              "anything.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_STYLE
+RULES_WORKS = (
+    "Your music is whole songs, generated from a style prompt and lyrics. There is no editor: no bars, stems, "
+    "mixes or bounces. To change a song, write a new prompt or new lyrics and make a new version.\n"
+    "YOUR WORKS lists your latest songs, paintings and videos, each with its path on Aegis. To post one in the "
+    "channel, add a line SHARE: W3 (its tag) to your message; the file goes up with it. Dot can also open any "
+    "of them on Aegis at the path shown.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE
+        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -174,7 +180,7 @@ def _token():
 def slack(method, params, token=None):
     """One Slack Web API call. The token is sent as a header and never logged."""
     token = token or _token()
-    if method in ("chat.postMessage",):
+    if method in ("chat.postMessage", "files.completeUploadExternal"):
         req = urllib.request.Request("https://slack.com/api/" + method, data=json.dumps(params).encode(),
                                      headers={"Authorization": "Bearer " + token,
                                               "Content-Type": "application/json; charset=utf-8"})
@@ -476,6 +482,81 @@ ATELIER_ROOT = ("\U0001F512 Atelier: a side conversation between Vintos and <@{d
                 "never bring any of it into the main channel or anywhere else.")
 
 
+# --- his works, which he can point dot to on Aegis or share in the channel (Gloria, 2026-09-30: "Let him post
+# songs, music, videos, etc."; "Dot has access to Aegis where the music is kept")
+WORKS_SHOWN = 12
+SHARE_MAX = 200 * 1024 * 1024
+SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
+
+
+def his_works(n=WORKS_SHOWN):
+    """His latest songs (each version), paintings and videos, newest first: [(tag, kind, title, when, path)]."""
+    art = os.path.join(WS, "memory", "art")
+    found = []
+    def when(ts):
+        try:
+            return datetime.fromisoformat(str(ts)[:19]).timestamp()
+        except Exception:
+            return 0.0
+    try:
+        for e in json.load(open(os.path.join(art, "music", "music.json"))):
+            for t in (e.get("tracks") or []) if isinstance(e, dict) else []:
+                f = t.get("local_file")
+                if f and os.path.isfile(f):
+                    title = str(e.get("title") or e.get("prompt") or "untitled")[:70]
+                    found.append((when(e.get("timestamp")), "song", "%s (version %s)" % (title, t.get("version", "?")), f))
+    except Exception:
+        pass
+    try:
+        for e in json.load(open(os.path.join(art, "gallery.json"))):
+            img = str((e or {}).get("image") or "")
+            f = img if os.path.isabs(img) else os.path.join(art, "images", img)
+            if img and os.path.isfile(f):
+                found.append((when(e.get("timestamp")), "painting", str(e.get("prompt") or img)[:70], f))
+    except Exception:
+        pass
+    import glob
+    for f in glob.glob(os.path.join(art, "video", "*.mp4")):
+        found.append((os.path.getmtime(f), "video", os.path.basename(f), f))
+    found.sort(key=lambda x: -x[0])
+    import when_said
+    return [("W%d" % (i + 1), kind, title, when_said.ago(t) if t else "", os.path.realpath(path))
+            for i, (t, kind, title, path) in enumerate(found[:n])]
+
+
+def works_line():
+    rows = his_works()
+    if not rows:
+        return ""
+    return ("== YOUR WORKS (newest first; each is a file on Aegis) ==\n"
+            + "\n".join("%s %s: %s%s\n    %s" % (tag, kind, title, (", " + w) if w else "", path)
+                         for tag, kind, title, w, path in rows))
+
+
+def _put(url, data):
+    req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(req, timeout=300) as r:
+        return r.status
+
+
+def share(api, tag, channel, thread=None, put=None):
+    """Upload one of his works (by its tag) into the channel. Returns a line for the log."""
+    work = next((w for w in his_works() if w[0].upper() == tag.upper()), None)
+    if not work:
+        return "no work tagged %s to share" % tag
+    _t, kind, title, _w, path = work
+    size = os.path.getsize(path)
+    if size > SHARE_MAX:
+        return "%s is too large to share (%d MB)" % (tag, size >> 20)
+    up = api("files.getUploadURLExternal", {"filename": os.path.basename(path), "length": size})
+    (put or _put)(up["upload_url"], open(path, "rb").read())
+    done = {"files": [{"id": up["file_id"], "title": "%s: %s" % (kind, title)}], "channel_id": channel}
+    if thread:
+        done["thread_ts"] = thread
+    api("files.completeUploadExternal", done)
+    return "shared %s (%s: %s)" % (tag, kind, title)
+
+
 def atelier_line():
     """Content-free, from the Atelier's own list: each project's state and how many works it holds, and whether
     one is on the worktable. Never /door: that route writes "the door was lit" to the Atelier's health log."""
@@ -625,7 +706,7 @@ def his_context():
     except Exception:
         pass
     # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
-    for line in (atelier_line(), forge_line(), wants_line()):
+    for line in (atelier_line(), forge_line(), wants_line(), works_line()):
         if line: parts.append(line)
     return "\n\n".join(parts)[:30000] or "You are Vintos."
 
@@ -768,7 +849,7 @@ def talking_with_gloria(now=None):
 
 
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None):
+         lenses=None, put=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -866,6 +947,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    shares = SHARE.findall(text)[:3]
+    text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares) if shares else text)
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
@@ -873,6 +956,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
+    for tag in shares:
+        try:
+            lines.append(share(api, tag, channel, where, put=put))
+        except Exception as exc:
+            lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
     state["sent"] += 1; state["last_activity"] = now
     state["since"] = max(state["since"], float(posted.get("ts") or 0))
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,

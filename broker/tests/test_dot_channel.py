@@ -360,6 +360,50 @@ check("a message from another bot is his agent's, by name, not Gloria's", row["w
 check("and he is told who said it", heard4 and "Grok Bot just said: I pulled the load cell prices." in heard4[0], heard4[:1])
 os.remove(D.CONFIG_FILE)
 
+# his works: listed with their paths on Aegis, and shared into the channel with SHARE: (Gloria, 2026-09-30)
+ART = os.path.join(os.environ["SPARK_WORKSPACE"], "memory", "art")
+for d in ("music", "images", "video"): os.makedirs(os.path.join(ART, d), exist_ok=True)
+SONG = os.path.join(ART, "music", "collapse-1.mp3"); open(SONG, "wb").write(b"ID3 song bytes")
+json.dump([{"title": "Structural Collapse", "timestamp": "2026-09-29T21:40:00",
+            "tracks": [{"version": 1, "local_file": SONG}, {"version": 2, "local_file": "/nowhere.mp3"}]}],
+          open(os.path.join(ART, "music", "music.json"), "w"))
+open(os.path.join(ART, "images", "tide.png"), "wb").write(b"PNG")
+json.dump([{"image": "tide.png", "prompt": "a tide painting", "timestamp": "2026-09-30T09:00:00"}], open(os.path.join(ART, "gallery.json"), "w"))
+open(os.path.join(ART, "video", "lake.mp4"), "wb").write(b"MP4")
+works = D.his_works()
+kinds = [(w[1], w[2]) for w in works]
+check("his works are listed newest first, each tagged, with its real path; a missing file is left out",
+      [w[0] for w in works] == ["W1", "W2", "W3"] and ("song", "Structural Collapse (version 1)") in kinds
+      and all(os.path.isabs(w[4]) for w in works) and not any("version 2" in w[2] for w in works), works)
+ctx_w = D.his_context()
+check("and they are in his context", "== YOUR WORKS" in ctx_w and SONG in ctx_w and "SHARE: W3" in D.RULES)
+check("he is told his music is whole generated songs, not bars and mixes",
+      "no bars, stems" in D.RULES and "no bars, stems" in D.rules_for("grok"))
+tag = next(w[0] for w in works if w[1] == "song")
+class SlackUp(Slack):
+    def __init__(self): super().__init__(); self.calls = []
+    def __call__(self, method, params):
+        if method.startswith("files."):
+            self.calls.append((method, params))
+            return {"ok": True, "upload_url": "https://files.slack.com/upload/v1/X", "file_id": "F1"} if "getUpload" in method else {"ok": True}
+        return super().__call__(method, params)
+S5 = SlackUp(); S5.n = 1767227000.0
+D.reset(api=NewSlack([SELF, DOT]), now=1767227000)
+S5.add(DOT, "can I hear it?")
+sent = []
+out = D.tick(api=S5, think=lambda s_, u: "Here it is.\nSHARE: %s" % tag, fable=fable, now=1767227100,
+             put=lambda url, data: sent.append((url, data)))
+os.remove(D.CONFIG_FILE)
+check("SHARE: uploads that file with his message", [c[0] for c in S5.calls] == ["files.getUploadURLExternal", "files.completeUploadExternal"]
+      and S5.calls[0][1]["length"] == os.path.getsize(SONG) and S5.calls[1][1]["channel_id"] == "CNEW"
+      and "Structural Collapse" in S5.calls[1][1]["files"][0]["title"], (S5.calls, out))
+check("and the SHARE line itself is not in what is said", S5.posted[-1]["text"].endswith("[Gemma] Here it is.")
+      and "SHARE" not in S5.posted[-1]["text"], S5.posted[-1]["text"])
+check("the log says what was shared", any(l.startswith("shared %s (song: Structural Collapse" % tag) for l in out), out)
+check("the file's own bytes go to the address Slack gave for it, and nowhere else",
+      sent == [("https://files.slack.com/upload/v1/X", b"ID3 song bytes")], sent)
+check("a tag he does not have is said, not guessed", D.share(S5, "W99", "C") == "no work tagged W99 to share")
+
 # the schedule itself
 from datetime import datetime as _sdt
 kinds = [k for _t, k in SCHEDULED]
