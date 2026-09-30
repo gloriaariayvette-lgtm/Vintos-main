@@ -17,6 +17,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --show     the last exchanges and today's counts
     python3 dot_channel.py --open     a pass in which he may start the conversation now, without the quiet wait
     python3 dot_channel.py --try      what he would say now to the last message, printed only: nothing is posted
+    python3 dot_channel.py --look URL what his eyes make of a linked picture or clip, printed only
 """
 from __future__ import annotations
 import json
@@ -73,6 +74,9 @@ RULES = (
     "  READ: a file of your own code, as the Study names it (scripts/x.py or house/server.py; add :120 to start at line 120)\n"
     "  GREP: a pattern to find in your own code\n"
     "You will get what they return, then write your message.\n"
+    "You have seen a picture or a clip only when the conversation shows what your eyes saw of it, marked "
+    "[... What your eyes saw ...]. A link, a title or someone's description of it is not seeing it: say you have "
+    "not seen it, and never say you watched it, looked at it, or will watch it again.\n"
     "If you have nothing you want to say, answer exactly NOTHING.\n"
     + "HOW YOU WRITE HERE: like a person texting a capable colleague. Plain words, short sentences, 2 to 5 of "
     "them. One point or one ask per message. Say exactly what you want dot to do and what you will do with "
@@ -208,29 +212,116 @@ def _watch(clip, frames_dir):
     return json.loads(line[-1][7:])
 
 
-def look_at_files(m, who, token=None, look=None, watch=None, download=None):
-    """The images and videos in a Slack message, as words he can read: '' when it has none."""
+# A link to a picture or a clip is looked at too: dot shares what it finds as links, and he answered as if he
+# had watched them (2026-09-30). Links named as a source, licence or credit are pages about the media, not it.
+LINK = re.compile(r"<(https?://[^|>\s]+)(?:\|([^>]*))?>")
+MEDIA_EXT = re.compile(r"\.(?:mp4|webm|mov|m4v|ogv|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
+PLAYABLE = re.compile(r"\b(?:play|watch|video|gif|image|clip|photo|picture|open|view)\b", re.I)
+NOT_MEDIA = re.compile(r"source|licen[cs]e|credit|attribution|author", re.I)
+UA = "VintosDotChannel/1.0 (a home companion reading links shared with him in Slack)"
+
+
+def media_links(raw):
+    """(url, label) for each link in a Slack message that points at a picture or a clip, in order."""
+    out, seen = [], set()
+    for url, label in LINK.findall(str(raw or "")):
+        if NOT_MEDIA.search(label or "") or url in seen:
+            continue
+        if MEDIA_EXT.search(url) or PLAYABLE.search(label or ""):
+            seen.add(url); out.append((url, label or ""))
+    return out
+
+
+def _page_media(page, base):
+    """The clip or picture a web page is about, from its own tags; None if it names none."""
+    import html
+    for pat in (r'<meta[^>]+(?:property|name)=["\'](?:og:video(?::secure_url|:url)?|twitter:player:stream)["\'][^>]+content=["\']([^"\']+)',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:video(?::secure_url|:url)?["\']',
+                r'<video[^>]+src=["\']([^"\']+)', r'<source[^>]+src=["\']([^"\']+)',
+                r'<meta[^>]+(?:property|name)=["\']og:image(?::secure_url|:url)?["\'][^>]+content=["\']([^"\']+)',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:image["\']'):
+        m = re.search(pat, page, re.I)
+        if m:
+            return urllib.parse.urljoin(base, html.unescape(m.group(1)))
+    return None
+
+
+def _get(url, dest):
+    """(path, content type) for a picture or clip at url; (None, the page's own media url) for a web page."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype.split("/")[0] in ("image", "video"):
+            n = 0
+            with open(dest, "wb") as f:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    n += len(chunk)
+                    if n > MEDIA_MAX:
+                        raise RuntimeError("too large to look at")
+                    f.write(chunk)
+            return dest, ctype
+        if ctype in ("text/html", "application/xhtml+xml"):
+            return None, _page_media(r.read(2000000).decode("utf-8", "replace"), r.geturl())
+    raise RuntimeError("the link is not a picture or a video (%s)" % (ctype or "unknown"))
+
+
+def fetch_link(url, dest):
+    """A linked picture or clip saved to dest: the link itself, or what the page it opens is about (one hop)."""
+    path, found = _get(url, dest)
+    if path:
+        return path, found
+    if found:
+        path, ctype = _get(found, dest)
+        if path:
+            return path, ctype
+    raise RuntimeError("no picture or video was found at the link")
+
+
+def _as_video(ctype):
+    """A clip, or a gif (which moves, so it is watched across its frames, not seen as one still)."""
+    return ctype.startswith("video/") or ctype == "image/gif"
+
+
+def look_at_files(m, who, token=None, look=None, watch=None, download=None, fetch=None):
+    """The images and videos in a Slack message, uploaded or linked, as words he can read: '' when it has none."""
     files = [f for f in (m.get("files") or []) if str(f.get("mimetype") or "").split("/")[0] in ("image", "video")]
-    if not files:
+    items = [("file", f) for f in files] + [("link", l) for l in media_links(m.get("text"))]
+    if not items:
         return ""
-    look, watch, download = look or gemma_look, watch or _watch, download or _download
+    look, watch = look or gemma_look, watch or _watch
+    download, fetch = download or _download, fetch or fetch_link
     work = tempfile.mkdtemp(prefix="media-", dir=_scratch())
     out = []
     try:
-        for i, f in enumerate(files[:MEDIA_PER_MESSAGE]):
-            kind = str(f.get("mimetype")).split("/")[0]
-            name = (' "%s"' % f["name"]) if f.get("name") else ""
-            if (f.get("size") or 0) > MEDIA_MAX:
-                out.append("[%s posted a %s%s too large to look at.]" % (who, kind, name)); continue
+        for i, (src, item) in enumerate(items[:MEDIA_PER_MESSAGE]):
+            dest = os.path.join(work, "file%d" % i)
+            if src == "file":
+                ctype = str(item.get("mimetype")).lower()
+                name = (' "%s"' % item["name"]) if item.get("name") else ""
+                verb = "posted"
+            else:
+                url, label = item
+                ctype, verb = "", "linked"
+                name = ' "%s" (%s)' % (label or os.path.basename(urllib.parse.urlparse(url).path),
+                                       urllib.parse.urlparse(url).netloc)
+            what = "a video" if _as_video(ctype) else "an image" if ctype else "a picture or video"
             try:
-                path = download(f.get("url_private_download") or f.get("url_private"),
-                                os.path.join(work, "file%d" % i), token or _token())
-                if kind == "image":
-                    jp = _jpeg(path, os.path.join(work, "file%d.jpg" % i)) or path
+                if src == "file":
+                    if (item.get("size") or 0) > MEDIA_MAX:
+                        raise RuntimeError("too large to look at")
+                    path = download(item.get("url_private_download") or item.get("url_private"), dest, token or _token())
+                else:
+                    path, ctype = fetch(url, dest)
+                    what = "a video" if _as_video(ctype) else "an image"
+                if not _as_video(ctype):
+                    jp = _jpeg(path, dest + ".jpg") or path
                     seen = look([_b64(jp)], SEE_IMAGE.format(who=who))
-                    out.append("[%s posted an image%s. What your eyes saw:] %s" % (who, name, seen or "(nothing could be made out)"))
+                    out.append("[%s %s an image%s. What your eyes saw:] %s" % (who, verb, name, seen or "(nothing could be made out)"))
                     continue
-                frames_dir = os.path.join(work, "frames%d" % i); os.makedirs(frames_dir)
+                frames_dir = dest + "-frames"; os.makedirs(frames_dir)
                 w = watch(path, frames_dir)
                 frames = [fr for fr in (w.get("frames") or []) if os.path.exists(fr.get("path", ""))]
                 heard = "\n".join(x for x in (("Words: " + w["speech"]) if w.get("speech") else "",
@@ -239,8 +330,8 @@ def look_at_files(m, who, token=None, look=None, watch=None, download=None):
                 if heard:
                     prompt += SEE_CLIP_HEARD.format(heard=heard[:1500])
                 seen = look([_b64(fr["path"]) for fr in frames], prompt) if frames else ""
-                parts = ["[%s posted a video%s, %.0f seconds long. What your eyes saw, across it:] %s"
-                         % (who, name, w.get("duration") or 0, seen or "(the frames could not be seen)")]
+                parts = ["[%s %s a video%s, %.0f seconds long. What your eyes saw, across it:] %s"
+                         % (who, verb, name, w.get("duration") or 0, seen or "(the frames could not be seen)")]
                 if not w.get("has_audio"):
                     parts.append("[It has no sound.]")
                 elif w.get("quiet"):
@@ -252,10 +343,10 @@ def look_at_files(m, who, token=None, look=None, watch=None, download=None):
                         parts.append("[How its sound is built (measured):] " + w["sound"])
                 out.append("\n".join(parts))
             except Exception as exc:
-                print("[dot-channel] could not look at a %s: %s" % (kind, exc), file=sys.stderr)
-                out.append("[%s posted a %s%s you could not open: %s]" % (who, kind, name, str(exc)[:160]))
-        if len(files) > MEDIA_PER_MESSAGE:
-            out.append("[and %d more you did not look at]" % (len(files) - MEDIA_PER_MESSAGE))
+                print("[dot-channel] could not look at %s: %s" % (what, exc), file=sys.stderr)
+                out.append("[%s %s %s%s you could not open, so you have not seen it: %s]" % (who, verb, what, name, str(exc)[:160]))
+        if len(items) > MEDIA_PER_MESSAGE:
+            out.append("[and %d more you did not look at, so you have not seen them]" % (len(items) - MEDIA_PER_MESSAGE))
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return "\n\n".join(out)
@@ -596,7 +687,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     rows = []
     for m in new:
         who = _who(m, state["self"], dot)
-        seen = eyes(m, "Dot" if who == "dot" else "Gloria") if m.get("files") else ""
+        seen = eyes(m, "Dot" if who == "dot" else "Gloria") if m.get("files") or media_links(m.get("text")) else ""
         rows.append({"ts": m["ts"], "who": who, "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
@@ -682,7 +773,10 @@ def try_now(think=None):
 
 
 if __name__ == "__main__":
-    if "--try" in sys.argv:
+    if "--look" in sys.argv:
+        _u = sys.argv[sys.argv.index("--look") + 1]
+        print(look_at_files({"text": "<%s|Play video>" % _u}, "Gloria") or "(not a picture or clip link)")
+    elif "--try" in sys.argv:
         print(try_now())
     elif "--show" in sys.argv:
         print(json.dumps(_load(STATE, {}), indent=1))

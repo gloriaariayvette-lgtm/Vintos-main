@@ -102,6 +102,57 @@ check("a sign-in page in place of the file is caught, and names the scope it nee
 check("a real file is saved, fetched with the token as a header", open(os.path.join(HOME, "y"), "rb").read() == b"\xff\xd8jpeg"
       and Resp._auth == "Bearer xoxb-t")
 
+# links: dot shares what it finds as links; he is shown what is behind them, not only their names
+DOT_MSG = ("1. Water surface <https://upload.wikimedia.org/w/water.webm|Play video> · "
+           "<https://commons.wikimedia.org/wiki/File:water.webm|Source and license>\n"
+           "2. Candle <https://example.org/candle.gif|Open GIF> · <https://example.org/candle|Source and license>\n"
+           "3. Water boatman <https://commons.wikimedia.org/wiki/File:boat.webm|Play video> · "
+           "<https://commons.wikimedia.org/wiki/File:boat.webm/credit|Credit>\n"
+           "see <https://en.wikipedia.org/wiki/Henri_Bergson|Bergson>")
+links = D.media_links(DOT_MSG)
+check("the links to the clips are picked out, not the source, licence or article links",
+      [u for u, _ in links] == ["https://upload.wikimedia.org/w/water.webm", "https://example.org/candle.gif",
+                                "https://commons.wikimedia.org/wiki/File:boat.webm"], links)
+got_links = []
+def fetch(url, dest):
+    got_links.append(url); open(dest, "wb").write(b"clip")
+    return dest, ("image/gif" if url.endswith(".gif") else "video/webm")
+looked.clear()
+seen = D.look_at_files({"text": DOT_MSG}, "Dot", token="xoxb-secret", look=look, watch=watch, fetch=fetch)
+check("each linked clip is fetched and watched, the gif too", len(got_links) == 3 and seen.count("What your eyes saw, across it") == 3, seen)
+check("he reads it as linked, named by its label and site",
+      '[Dot linked a video "Play video" (upload.wikimedia.org), 9 seconds long. What your eyes saw, across it:]' in seen, seen[:300])
+def gone(url, dest): raise RuntimeError("HTTP Error 404: Not Found")
+seen = D.look_at_files({"text": "<https://x.org/a.mp4|Play video>"}, "Dot", look=look, fetch=gone)
+check("a link that cannot be opened tells him he has not seen it", "you could not open, so you have not seen it" in seen, seen)
+check("he is told a link or a description is not seeing it",
+      "What your eyes saw" in D.RULES and "never say you watched it" in D.RULES)
+
+# fetching: a clip directly, or the clip a page is about; never with the Slack token
+PAGE = b'<html><head><meta property="og:video" content="/media/boat.webm"></head></html>'
+opened = []
+def fake_open(req, timeout=0):
+    opened.append((req.full_url, req.get_header("Authorization"), req.get_header("User-agent")))
+    if req.full_url.endswith(".webm"): return Resp(b"webm-bytes", "video/webm")
+    if "page" in req.full_url: return Resp(PAGE, "text/html; charset=utf-8")
+    return Resp(b"<html>nothing</html>", "text/html")
+Resp.geturl = lambda self: "https://commons.example.org/page"
+urllib.request.urlopen = fake_open
+try:
+    p1 = D.fetch_link("https://commons.example.org/clip.webm", os.path.join(HOME, "l1"))
+    p2 = D.fetch_link("https://commons.example.org/page", os.path.join(HOME, "l2"))
+    try:
+        D.fetch_link("https://example.org/blank", os.path.join(HOME, "l3")); none = False
+    except RuntimeError as e:
+        none = "no picture or video" in str(e)
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a direct link to a clip is saved as it is", p1[1] == "video/webm" and open(p1[0], "rb").read() == b"webm-bytes")
+check("a page is followed once to the clip it names", p2[1] == "video/webm" and opened[2][0] == "https://commons.example.org/media/boat.webm", opened)
+check("a page with no clip says so", none)
+check("links are fetched without the Slack token, and say who is asking",
+      all(a is None for _u, a, _ua in opened) and all(ua and "Vintos" in ua for _u, _a, ua in opened), opened)
+
 # in the channel: the pass puts what he saw into the conversation he answers
 SELF, DOT = "UVINTOS", D.DOT
 class Slack:
@@ -126,6 +177,12 @@ check("a pass looks at what dot posts", asked == ["Dot"], asked)
 check("and he answers it with what he saw in front of him", prompts and "Waves." in prompts[0], prompts[:1])
 row = [json.loads(l) for l in open(D.TRANSCRIPT)][-2]
 check("the channel's own log keeps what he saw with the message", row["who"] == "dot" and "Waves." in row["text"], row)
+n_asked = len(asked)
+S.add(DOT, "Found one: <https://x.org/a.webm|Play video>")
+D.tick(api=S, think=lambda s, u: "NOTHING", fable=lambda s, u: "", now=2500,
+       eyes=lambda m, who: (asked.append("link"), "[Dot linked a video. What your eyes saw:] Ripples.")[1])
+check("a message with only a link to a clip is looked at too", asked[n_asked:] == ["link"], asked)
+asked[:] = ["Dot"]
 check("a message with no files is not looked at", D.tick(api=S, think=lambda s, u: "NOTHING", fable=lambda s, u: "", now=3000,
                                                           eyes=lambda m, who: asked.append("again") or "") and asked == ["Dot"])
 unit = open(os.path.join(REPO, "broker", "vintos-dot-channel.service")).read()
