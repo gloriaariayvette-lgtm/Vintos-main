@@ -22,7 +22,9 @@ if [ -n "$LAST_MSG" ]; then
 else
     IDLE_HOURS=3
 fi
-[ "$IDLE_HOURS" -lt 2 ] && exit 0
+# JOURNAL_FORCE=1 (Gloria, testing by hand) skips only the timing gates: her recent messages and an
+# entry already this hour. His stance and his consent above still decide.
+[ "$IDLE_HOURS" -lt 2 ] && [ "${JOURNAL_FORCE:-0}" != "1" ] && exit 0
 
 WORKSPACE="$HOME/.vintos/workspace"
 MEMORY="$WORKSPACE/memory"
@@ -41,7 +43,7 @@ mkdir -p "$JOURNAL_DIR"
 TODAY=$(date +%Y-%m-%d)
 JOURNAL_FILE="$JOURNAL_DIR/$TODAY.md"
 CURRENT_HOUR=$(date +%H)
-[ -f "$JOURNAL_FILE" ] && grep -q "## $CURRENT_HOUR:" "$JOURNAL_FILE" && exit 0
+[ "${JOURNAL_FORCE:-0}" != "1" ] && [ -f "$JOURNAL_FILE" ] && grep -q "## $CURRENT_HOUR:" "$JOURNAL_FILE" && exit 0
 
 # Want journals and idle journals are separate streams — no gate between them
 
