@@ -340,6 +340,8 @@ check("--open then posts his first message to the new channel", S2.posted and S2
       and "load cells" in S2.posted[-1]["text"], S2.posted[-1:])
 os.remove(D.CONFIG_FILE)
 
+check("he is told dot can reach Aegis and the Mac, and to say what and where (Gloria, 2026-09-30)",
+      "Dot can reach Aegis" in D.RULES and "Mac" in D.RULES and "exactly what and where" in D.RULES)
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
