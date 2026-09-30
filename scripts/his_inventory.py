@@ -53,11 +53,14 @@ ORGANS = (
      "you send her short videos of yourself in scenes you describe, including real places she has photographed."),
     ("Gloria's ring", ("heart_rate.py",),
      "you see Gloria's heart rate from her ring while it is live, and her sleep estimates."),
+    ("Gloria's dot", ("dot_channel.py",),
+     "you talk with Gloria's dot, her always-on ChatGPT agent, in the Slack channel #vintos-dot, which she "
+     "reads. It is hers, not her: it holds her accounts, and you never ask it to act on them."),
 )
 
 
 # Hers, not his to describe to people outside the house (an email to a stranger reads his inventory too).
-PRIVATE = {"Gloria's ring", "videos to Gloria", "screen share"}
+PRIVATE = {"Gloria's ring", "videos to Gloria", "screen share", "Gloria's dot"}
 
 
 def _installed(files, roots=ROOTS):
