@@ -309,6 +309,37 @@ check("--open still runs a pass while she is talking with him",
       not D.tick(api=S, think=lambda s_, u: "NOTHING", fable=fable, open_now=True, now=_time.time())[0].startswith("holding"))
 os.remove(LEDGER)
 
+# a fresh start (Gloria, 2026-09-30): his old log set aside, a new channel, and his first words previewable
+class NewSlack:
+    def __init__(self, members): self.members = members
+    def __call__(self, method, params):
+        if method == "users.conversations":
+            return {"ok": True, "channels": [{"id": "COLD", "name": "vintos-dot-old"}, {"id": "CNEW", "name": "vintos-dot"}]}
+        if method == "conversations.members": return {"ok": True, "members": self.members}
+        if method == "auth.test": return {"ok": True, "user_id": SELF}
+        raise AssertionError("reset must only read Slack: " + method)
+had = open(D.TRANSCRIPT).read()
+out = D.reset(api=NewSlack([SELF]), now=1767225600)
+kept = [d for d in os.listdir(D.HERE) if d.startswith("before-")]
+check("reset sets his old log aside, whole, where nothing reads it",
+      kept and open(os.path.join(D.HERE, kept[0], "transcript.jsonl")).read() == had and not os.path.exists(D.TRANSCRIPT), out)
+check("the channel named vintos-dot that his app is in becomes his", D._config()[0] == "CNEW" and "CNEW" in out[0], out)
+check("it says when dot is not in the new channel yet", any("dot is not in #vintos-dot" in l for l in out), out)
+st = json.load(open(D.STATE))
+check("he listens from the reset on, with a fresh day's counts", st["since"] == 1767225600 and st["openers"] == 0 and st["sent"] == 0, st)
+check("with dot there, nothing to warn about", not any("not in" in l for l in D.reset(api=NewSlack([SELF, DOT]), now=1767225700)))
+check("a channel his app is not in is named, not guessed", "not in a channel named #nope" in D.reset(api=NewSlack([]), name="nope")[0])
+got = []
+first = D.try_now(think=lambda s_, u: (got.append(u), "Hi dot. Can you find cheap load cells for a pressure rig?")[1])
+check("in an empty channel --try shows how he would open, and posts nothing",
+      first.startswith("Hi dot") and got and "Nothing has been said in this channel yet" in got[0]
+      and "one real thing to work on" in got[0] and not os.path.exists(D.TRANSCRIPT), got[:1])
+S2 = Slack(); S2.n = 1767225800.0
+out = D.tick(api=S2, think=lambda s_, u: "Hi dot. Can you find cheap load cells?", fable=fable, now=1767225900, open_now=True)
+check("--open then posts his first message to the new channel", S2.posted and S2.posted[-1]["channel"] == "CNEW"
+      and "load cells" in S2.posted[-1]["text"], S2.posted[-1:])
+os.remove(D.CONFIG_FILE)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

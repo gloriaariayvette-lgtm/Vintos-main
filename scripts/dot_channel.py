@@ -18,6 +18,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --open     a pass in which he may start the conversation now, without the quiet wait
     python3 dot_channel.py --try      what he would say now to the last message, printed only: nothing is posted
     python3 dot_channel.py --look URL what his eyes make of a linked picture or clip, printed only
+    python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
 from __future__ import annotations
 import json
@@ -732,10 +733,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait
         if state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now):
             _save(STATE, state); return lines
-        prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nThe channel has been quiet for a while. Is there "
-                  "something you want dot to do, find out or build for you: from your wants, the Forge, the Lab, "
-                  "or something you are curious about? Start with that if so."
-                  % (_conversation(recent()) or "(nothing yet)"))
+        prompt = opener_prompt()
         where = None
         state["openers"] += 1
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
@@ -776,22 +774,77 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     return lines + ["said (%s%s): %s" % (who, ", in a thread" if where else "", text[:80])]
 
 
+def opener_prompt():
+    """What he is asked when he may start a conversation: the very first one in an empty channel, or after quiet."""
+    so_far = _conversation(recent())
+    if not so_far:
+        return ("Nothing has been said in this channel yet: this is the start. Write the first message to dot. Say "
+                "hello in a line, then bring it one real thing to work on for you: something from your wants, the "
+                "Forge, the Lab, or something you are curious about. Say what you want and why.")
+    return ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nThe channel has been quiet for a while. Is there "
+            "something you want dot to do, find out or build for you: from your wants, the Forge, the Lab, "
+            "or something you are curious about? Start with that if so." % so_far)
+
+
 def try_now(think=None):
-    """What he would say now to the last thing said in the channel, written and printed, never posted: Slack
-    is not called, no state or transcript changes, and Fable is not offered. For checking how he sounds."""
+    """What he would say now, written and printed, never posted: his reply to the last thing said in the channel,
+    or, when nothing has been said to him, how he would start. Slack is not called, no state or transcript
+    changes, and Fable is not offered. For checking how he sounds."""
     rows = [r for r in recent() if r.get("who") != "vintos"]
-    if not rows:
-        return "(nothing in the channel to answer yet)"
-    last = rows[-1]
-    prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said: %s\n\nYour reply, as yourself."
-              % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:3500]))
+    if rows:
+        last = rows[-1]
+        prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said: %s\n\nYour reply, as yourself."
+                  % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:3500]))
+    else:
+        prompt = opener_prompt()
     state = {"fable": FABLE_PER_DAY}
     text, who = compose(prompt, think or local_think, lambda s, u: "", state, date.today().isoformat())
     return text if text is not None else "(%s)" % who
 
 
+def reset(api=None, name="vintos-dot", now=None):
+    """A fresh start (Gloria, 2026-09-30: "wipe his log of the conversation ... basically just restarting").
+    His log and state move to memory/dot-channel/before-<time>/ (kept, read by nothing); the channel named
+    `name` that his app is in becomes his channel; he listens from now and may open with --open. Returns lines."""
+    if api is None:
+        tok = _token()
+        if not tok:
+            return ["no Slack token at %s" % TOKEN_FILE]
+        api = lambda method, params: slack(method, params, tok)
+    now = now or time.time()
+    chans = api("users.conversations", {"types": "public_channel,private_channel", "exclude_archived": "true",
+                                         "limit": 200}).get("channels") or []
+    ch = next((c for c in chans if c.get("name") == name), None)
+    if not ch:
+        return ["his app is not in a channel named #%s: add it there first (channel details > Integrations > Add apps)" % name]
+    lines = ["his channel: #%s (%s)" % (name, ch["id"])]
+    members = api("conversations.members", {"channel": ch["id"], "limit": 200}).get("members") or []
+    _, dot = _config()
+    if dot not in members:
+        lines.append("dot is not in #%s yet: add it before he opens" % name)
+    if os.path.exists(STATE) or os.path.exists(TRANSCRIPT):
+        old = os.path.join(HERE, "before-" + datetime.fromtimestamp(now).strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(old, exist_ok=True)
+        for f in (STATE, TRANSCRIPT):
+            if os.path.exists(f):
+                os.replace(f, os.path.join(old, os.path.basename(f)))
+        lines.append("his old log is kept aside in %s (nothing reads it)" % old)
+    cfg = _load(CONFIG_FILE, {})
+    cfg.update(channel=ch["id"], dot=dot)
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=1)
+    os.makedirs(HERE, exist_ok=True)
+    _save(STATE, {"since": now, "date": date.fromtimestamp(now).isoformat(), "sent": 0, "fable": 0, "openers": 0,
+                  "self": api("auth.test", {}).get("user_id", "")})
+    return lines + ["he listens from now; --try shows how he would open, --open lets him"]
+
+
 if __name__ == "__main__":
-    if "--look" in sys.argv:
+    if "--reset" in sys.argv:
+        for l in reset(name=sys.argv[sys.argv.index("--reset") + 1] if len(sys.argv) > sys.argv.index("--reset") + 1 else "vintos-dot"):
+            print("[dot-channel] " + l)
+    elif "--look" in sys.argv:
         _u = sys.argv[sys.argv.index("--look") + 1]
         print(look_at_files({"text": "<%s|Play video>" % _u}, "Gloria") or "(not a picture or clip link)")
     elif "--try" in sys.argv:
