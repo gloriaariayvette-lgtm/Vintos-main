@@ -9399,7 +9399,9 @@ Your current self-model (excerpt):
                        + _ridge_now() + _dev_t + "Reach for it only when it genuinely fits the moment.]\n\n") if _dev_t else "")
                      + _input_label) + msg.message
         _umsg = _umsg + _subconscious_tail(_umsg, surface=_surface)
-        if msg.image:
+        if msg.image and getattr(msg, "input_kind", None) != "photo":
+            # A photo from the picture button was already seen by /api/avatar/photo; described again here it
+            # reached him a second time as a screenshot of himself (2026-09-30). Only the screenshot comes here.
             # The camera button in the avatar view sends a picture of how he looks on her phone (or, from
             # 2026-09-06, nothing - desktop sharing rides the screen block instead). The avatar route never read
             # this field, so the camera "did not work". His eyes describe it; the words join her message.

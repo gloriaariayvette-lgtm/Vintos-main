@@ -121,6 +121,8 @@ try:
 finally:
     subprocess.run = _real_run
 check("her caption stays her words", [x for x in SEQ if "/api/avatar/chat" in x[1]][0][2]["original_text"] == "look at this")
+check("a photo from the picture button is not described again as his screenshot",
+      'if msg.image and getattr(msg, "input_kind", None) != "photo":' in src)
 check("a photo sent with no words is her turn too",
       '"original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo")' in src)
 
