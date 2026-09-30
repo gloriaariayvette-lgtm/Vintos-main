@@ -2,8 +2,12 @@
 Description=Every 5-10 minutes: Vintos reads #vintos-dot
 
 [Timer]
+# The first pass a minute after the timer starts: OnBootSec alone never fires when the timer is
+# (re)started long after boot, and OnUnitInactiveSec counts from a pass that has not happened yet,
+# so the timer sat active with no next run (the deploy could not confirm it, 2026-09-30).
+OnActiveSec=1min
 OnBootSec=5min
-# 5 minutes after the last pass ends, plus up to 5 more at random: every 5-10 minutes (Gloria, 2026-09-30)
+# then 5 minutes after the last pass ends, plus up to 5 more at random: every 5-10 minutes
 OnUnitInactiveSec=5min
 RandomizedDelaySec=5min
 

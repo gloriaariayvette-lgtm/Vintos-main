@@ -120,6 +120,7 @@ check("and the dot is told there, by name, to keep it in that thread",
       "<@%s>" % DOT in root["text"] and "stays in this thread" in root["text"] and "never bring any of it" in root["text"])
 tm = open(os.path.join(REPO, "broker", "vintos-dot-channel.timer")).read()
 check("he checks every 5-10 minutes", "OnUnitInactiveSec=5min" in tm and "RandomizedDelaySec=5min" in tm)
+check("and the timer has a first run once started, so it always has a next one", "OnActiveSec=1min" in tm)
 check("and what he says about it goes inside that thread",
       S.posted[-1].get("thread_ts") == S.msgs[[m["text"] for m in S.msgs].index(root["text"])]["ts"]
       and "low tide" in S.posted[-1]["text"] and "ATELIER" not in S.posted[-1]["text"])
