@@ -372,6 +372,29 @@ def handle_chat(j, path):
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+
+def _mend(o):
+    """Text with a broken half of an emoji (a lone surrogate, e.g. a string cut mid-pair somewhere upstream)
+    is invalid JSON to every provider: Gemma and x.ai both refused his whole journal prompt over one
+    (2026-09-30). Whole pairs are rejoined; a lone half becomes U+FFFD."""
+    if isinstance(o, str):
+        return o.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    if isinstance(o, list):
+        return [_mend(x) for x in o]
+    if isinstance(o, dict):
+        return {k: _mend(v) for k, v in o.items()}
+    return o
+
+
+def _mend_request(raw):
+    """The request body with any lone surrogate mended; bytes that are not a JSON object pass untouched."""
+    try:
+        j = json.loads(raw or b"{}")
+    except Exception:
+        return raw
+    fixed = _mend(j)
+    return raw if fixed == j else json.dumps(fixed).encode()
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def _send(self, status, body, headers=None):
@@ -383,6 +406,7 @@ class H(BaseHTTPRequestHandler):
         else: self._send(404, b'{"error":"not found"}')
     def do_POST(self):
         raw = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+        raw = _mend_request(raw)
         chat = self.path == "/v1/chat/completions" or self.path.startswith("/gemma")
         # anything that isn't a chat endpoint -> straight to x.ai on the same path
         if not chat:
