@@ -61,7 +61,12 @@ def _experiment_line(row):
     execution = str(row.get("execution_state") or grade.get("execution_state") or row.get("state") or "unknown")[:60]
     accuracy = str(row.get("aggregate_accuracy") or grade.get("aggregate_accuracy") or "ungraded")[:80]
     run_id = str(row.get("mac_run_id") or row.get("run_id") or "")[:80]
-    return f"- {experiment}: execution={execution}; accuracy={accuracy}" + (f"; run={run_id}" if run_id else "")
+    parameters = plan.get("parameters") if isinstance(plan.get("parameters"), dict) else {}
+    accession = next((str(parameters.get(key) or "").strip().upper()
+                      for key in ("target_accession", "requested_accession", "accession")
+                      if str(parameters.get(key) or "").strip()), "")[:24]
+    subject = experiment + ((" [" + accession + "]") if accession else "")
+    return f"- {subject}: execution={execution}; accuracy={accuracy}" + (f"; run={run_id}" if run_id else "")
 
 
 def _recent_questions(notebook, sessions, n=2):

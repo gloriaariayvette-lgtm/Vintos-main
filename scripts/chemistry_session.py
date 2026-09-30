@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 import time
 import uuid
@@ -146,6 +147,10 @@ async def _lens_call(lens, system, user, paid_reservation):
 PARAMETER_KEYS = 12
 PARAMETER_LIST = 24
 PARAMETER_TEXT = 120
+UNIPROT_ACCESSION_RE = re.compile(
+    r"(?<![A-Z0-9])(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}){1,2}[0-9])(?:-[1-9][0-9]*)?(?![A-Z0-9])",
+    re.I,
+)
 
 
 def _scalar(value):
@@ -170,6 +175,37 @@ def _bounded_parameters(value):
             dropped.append(name)
     dropped += [str(k)[:40] for k in list(value)[PARAMETER_KEYS:]]
     return kept, dropped
+
+
+def _named_protein_parameters(experiment, parameters, *plan_text):
+    """Keep a protein accession named in the plan from being dropped by an empty params object."""
+    parameters = dict(parameters or {})
+    if experiment != "protein" or any(parameters.get(key) for key in
+                                       ("target_accession", "requested_accession", "accession")):
+        return parameters
+    for text in plan_text:
+        match = UNIPROT_ACCESSION_RE.search(str(text or ""))
+        if match:
+            parameters["target_accession"] = match.group(0).upper()
+            break
+    return parameters
+
+
+def _operator_plan(experiments):
+    """One explicitly requested accession rerun, selected through the service environment."""
+    accession = str(os.environ.get("VINTOS_CHEMISTRY_TARGET_ACCESSION") or "").strip().upper()
+    if not accession:
+        return None
+    if "protein" not in experiments:
+        raise ValueError("operator requested a protein run but the protein experiment is unavailable")
+    if not UNIPROT_ACCESSION_RE.fullmatch(accession):
+        raise ValueError("operator protein target is not an exact UniProt accession")
+    return {"source_query": None, "plugin_query": None, "instrument_query": None,
+            "addressed_entry_ids": [], "experiment": "protein",
+            "parameters": {"target_accession": accession}, "parameters_dropped": [], "shots": 1024,
+            "question": "How does the full sourced sequence of %s fold?" % accession,
+            "why_this": "Operator-requested acceptance rerun of the exact sourced protein.",
+            "prediction": "The result will identify %s, model its complete sourced sequence, and report its length and provenance." % accession}
 
 
 def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, lean=None):
@@ -240,6 +276,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
     experiment = str(value.get("experiment", ""))
     if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
     parameters, dropped = _bounded_parameters(value.get("parameters"))
+    parameters = _named_protein_parameters(experiment, parameters, value.get("question"),
+                                           value.get("why_this"), value.get("prediction"))
     shots = max(256, min(16384, int(value.get("shots", 4096))))
     addressed = value.get("addressed_entry_ids") if isinstance(value.get("addressed_entry_ids"), list) else []
     allowed = set(offered_entry_ids or [])
@@ -470,8 +508,10 @@ def run():
             from compute_admission import admit
             with admit("background", organ="chemistry-frontier-session", wait_s=float(lab.config()["turn_wait_seconds"]),
                        provider="frontier", stage="plan"):
-                plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
-                        if lean else _plan(context, experiments, lens, instruments, offered_interest))
+                plan = _operator_plan(experiments)
+                if plan is None:
+                    plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
+                            if lean else _plan(context, experiments, lens, instruments, offered_interest))
                 selected = [key for key in ("source_query", "plugin_query", "instrument_query") if plan.get(key)]
                 if len(selected) > 1: raise ValueError("Lab plan selected more than one extra call")
                 if selected and selected[0] != "instrument_query":

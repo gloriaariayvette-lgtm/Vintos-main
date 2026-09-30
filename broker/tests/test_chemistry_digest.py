@@ -53,7 +53,7 @@ rows("taste-observations.jsonl", [
 ])
 rows("sessions.jsonl", [
     {"at": DATA_DAY + "T02:00:00Z", "state": "completed", "mac_run_id": "RUN-1",
-     "plan": {"experiment": "molecule"},
+     "plan": {"experiment": "molecule", "parameters": {"target_accession": "A1L190"}},
      "grade": {"execution_state": "completed", "aggregate_accuracy": "ALL_WORSE_THAN_HARTREE_FOCK"}},
     {"at": DATA_DAY + "T03:00:00Z", "state": "held_reading_owed", "owed_reading": "STILL_HELD"},
 ])
@@ -77,6 +77,7 @@ assert f"## Chemistry Lab — {DATA_DAY}" in text, "heading names the day summar
 # Yesterday's real rows are there; the unfinished day and older days are not.
 assert "inquiry 1" in text and "owed_reading 1" in text
 assert "execution=completed; accuracy=ALL_WORSE_THAN_HARTREE_FOCK; run=RUN-1" in text
+assert "molecule [A1L190]" in text, "the digest names the accession that actually controlled the run"
 assert "owed/held 1; settled 1" in text and "what changes at 0.8 A?" in text
 assert "atelier-secret" not in text and "Execution is not correctness" in text
 # His own words are surfaced verbatim, not just counted — a day is more than row totals.

@@ -87,6 +87,14 @@ assert "+0.638969" in seen["verdict"], seen["verdict"]
 kept, dropped = session._bounded_parameters({"bond_length": 0.735, "nested": {"a": 1}, "note": "x" * 500})
 assert kept["bond_length"] == 0.735 and dropped == ["nested"] and len(kept["note"]) == session.PARAMETER_TEXT
 assert session._bounded_parameters({"bad": float("nan")})[1] == ["bad"]
+assert session._named_protein_parameters("protein", {}, "How does A1L190 fold?") == {
+    "target_accession": "A1L190"}, "a named accession in prose must control the run"
+assert session._named_protein_parameters("protein", {"target_accession": "P12345"}, "A1L190") == {
+    "target_accession": "P12345"}, "an explicit parameter wins"
+os.environ["VINTOS_CHEMISTRY_TARGET_ACCESSION"] = "A1L190"
+forced = session._operator_plan(["fold", "protein"])
+assert forced["experiment"] == "protein" and forced["parameters"] == {"target_accession": "A1L190"}
+os.environ.pop("VINTOS_CHEMISTRY_TARGET_ACCESSION")
 
 lab.set_enabled(False)
 assert session.run()["state"] == "off"
@@ -150,4 +158,4 @@ assert "openmm" in again["instruments_refreshed"], again["instruments_refreshed"
 third = session.run()
 assert third["instruments_refreshed"] == [], "a fresh receipt is not re-measured daily"
 
-print("35/35 passed")
+print("39/39 passed")
