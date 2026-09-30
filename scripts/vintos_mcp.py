@@ -20,11 +20,13 @@ What makes it safe:
     python3 vintos_mcp.py --new-token     make (or replace) the token, print it once to paste into Grok Bot
     python3 vintos_mcp.py                 serve on 127.0.0.1:8625 (the vintos-mcp service runs this)
     python3 vintos_mcp.py --check         what a call to vintos_context returns now, printed, nothing served
+    python3 vintos_mcp.py --probe URL     the handshake and tools through the public address, as Grok Bot would
 """
 from __future__ import annotations
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -92,11 +94,25 @@ def new_token():
     return t
 
 
-def authorized(header, expected=None):
+def presented(value):
+    """The token in whatever shape a connector sends it: "Bearer x", "Bearer: x", "Bearer Bearer x" (a form that
+    adds the word to a value that already has it), or the bare token. The shape is forgiven; the token is not."""
+    v = str(value or "").strip()
+    while True:
+        m = re.match(r"(?i)bearer\s*:?\s*", v)
+        if not m:
+            return v.strip()
+        v = v[m.end():]
+
+
+def authorized(value, expected=None):
     expected = token() if expected is None else expected
-    if not expected or not header or not header.startswith("Bearer "):
-        return False
-    return hmac.compare_digest(header[7:].strip().encode(), expected.encode())
+    got = presented(value)
+    return bool(expected and got) and hmac.compare_digest(got.encode(), expected.encode())
+
+
+def _from_headers(h):
+    return h.get("Authorization") or h.get("X-API-Key") or h.get("Api-Key") or ""
 
 
 # ------------------------------------------------------------------ what it answers
@@ -248,31 +264,72 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        # a connector set up from a browser page checks from the browser; the token still decides
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "Mcp-Session-Id")
         self.end_headers()
-        if data:
+        if data and self.command != "HEAD":
             self.wfile.write(data)
         _log(code, what, len(data))
 
+    def _who(self):
+        return "ua=" + re.sub(r"\s+", "_", str(self.headers.get("User-Agent") or "-"))[:40]
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Mcp-Session-Id, "
+                                                         "Mcp-Protocol-Version, X-API-Key, Api-Key, Last-Event-ID")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        _log(204, "OPTIONS", 0)
+
     def do_GET(self):
-        self._send(405 if authorized(self.headers.get("Authorization")) else 401, None, "GET")
+        ok = authorized(_from_headers(self.headers))
+        self._send(405 if ok else 401, None, "GET" if ok else "GET-unauthorized " + self._who())
 
-    do_DELETE = do_PUT = do_PATCH = do_GET
+    do_HEAD = do_DELETE = do_PUT = do_PATCH = do_GET
 
-    def do_POST(self):
-        if self.path.split("?")[0].rstrip("/") not in ("/mcp", ""):
-            return self._send(404, None, "path")
-        if not authorized(self.headers.get("Authorization")):
-            return self._send(401, {"error": "unauthorized"}, "unauthorized")
-        if not _rate_ok():
-            return self._send(429, {"error": "too many requests"}, "rate")
+    def _body(self):
+        """The request body, Content-Length or chunked, never more than MAX_BODY; None when it is too big."""
+        if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+            out = b""
+            while True:
+                line = self.rfile.readline(64).strip().split(b";")[0]
+                n = int(line or b"0", 16)
+                if n == 0:
+                    self.rfile.readline(64)
+                    return out
+                if len(out) + n > MAX_BODY:
+                    return None
+                out += self.rfile.read(n)
+                self.rfile.readline(8)
         try:
             size = int(self.headers.get("Content-Length") or 0)
         except ValueError:
-            size = -1
-        if size <= 0 or size > MAX_BODY:
-            return self._send(413 if size > MAX_BODY else 400, {"error": "bad body size"}, "size")
+            return b""
+        if size > MAX_BODY:
+            return None
+        return self.rfile.read(size) if size > 0 else b""
+
+    def do_POST(self):
+        path = self.path.split("?")[0].rstrip("/")
+        if path not in ("/mcp", ""):
+            return self._send(404, None, "path=%s %s" % (path[:60], self._who()))
+        if not authorized(_from_headers(self.headers)):
+            return self._send(401, {"error": "unauthorized"}, "unauthorized " + self._who())
+        if not _rate_ok():
+            return self._send(429, {"error": "too many requests"}, "rate")
         try:
-            msg = json.loads(self.rfile.read(size))
+            body = self._body()
+        except Exception:
+            body = b""
+        if body is None or not body:
+            return self._send(413 if body is None else 400, {"error": "bad body size"}, "size")
+        try:
+            msg = json.loads(body)
         except Exception:
             return self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}, "parse")
         if isinstance(msg, list):
@@ -287,6 +344,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, answer, what)
 
 
+def probe(url, tok=None):
+    """The MCP handshake and tool list against url (the public address, through the funnel), as a Grok Bot would
+    do it. Lines saying what answered."""
+    import urllib.request, urllib.error
+    tok = tok or token()
+    out = []
+    def post(body, auth=True):
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
+            "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+            **({"Authorization": "Bearer " + tok} if auth else {})})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.status, json.loads(r.read() or b"null")
+        except urllib.error.HTTPError as e:
+            return e.code, None
+    code, _ = post({"jsonrpc": "2.0", "id": 1, "method": "ping"}, auth=False)
+    out.append("without the token: HTTP %s (%s)" % (code, "refused, as it should be" if code == 401 else "NOT REFUSED"))
+    code, body = post({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                       "params": {"protocolVersion": PROTOCOLS[0], "capabilities": {}, "clientInfo": {"name": "probe", "version": "1"}}})
+    out.append("handshake: HTTP %s %s" % (code, ((body or {}).get("result") or {}).get("serverInfo", {}).get("name", "")))
+    code, body = post({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    out.append("tools: HTTP %s %s" % (code, [t["name"] for t in ((body or {}).get("result") or {}).get("tools", [])]))
+    return out
+
+
 def serve(host=HOST, port=PORT):
     if not token():
         sys.exit("no token at %s: run  python3 vintos_mcp.py --new-token" % TOKEN_FILE)
@@ -297,8 +379,14 @@ def serve(host=HOST, port=PORT):
 
 if __name__ == "__main__":
     if "--new-token" in sys.argv:
-        print("Paste this into Grok Bot's custom connector as the auth header value:\n\n  Bearer %s\n\n"
-              "It is kept at %s. Running --new-token again replaces it (the old one stops working)." % (new_token(), TOKEN_FILE))
+        _t = new_token()
+        print("For Grok Bot's custom connector:\n\n  URL:           https://<your funnel address>/mcp\n"
+              "  header name:   Authorization\n  header value:  Bearer %s\n\n"
+              "If the form asks only for a token or an API key, paste just:\n\n  %s\n\n"
+              "It is kept at %s. Running --new-token again replaces it (the old one stops working)." % (_t, _t, TOKEN_FILE))
+    elif "--probe" in sys.argv:
+        for l in probe(sys.argv[sys.argv.index("--probe") + 1]):
+            print(l)
     elif "--check" in sys.argv:
         print(call_tool("vintos_context", {})[0])
     else:

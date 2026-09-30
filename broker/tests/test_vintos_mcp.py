@@ -46,8 +46,11 @@ t = M.new_token()
 check("the token is long and random", len(t) >= 43 and M.new_token() != t)
 t = open(M.TOKEN_FILE).read()
 check("and kept 0600", stat.S_IMODE(os.stat(M.TOKEN_FILE).st_mode) == 0o600)
-check("a wrong token, a missing one, or a non-bearer header is refused",
-      not M.authorized("Bearer nope") and not M.authorized(None) and not M.authorized(t) and M.authorized("Bearer " + t))
+check("a wrong token or a missing one is refused, in any shape",
+      not M.authorized("Bearer nope") and not M.authorized(None) and not M.authorized("") and not M.authorized("Bearer ")
+      and not M.authorized("Bearer " + t[:-1]) and not M.authorized("Bearer " + t + "x"))
+check("the right token is let in in whatever shape a connector form sends it",
+      all(M.authorized(v) for v in ("Bearer " + t, "Bearer: " + t, "bearer " + t, "Bearer Bearer " + t, t, "  Bearer  " + t + " ")))
 
 srv = M.ThreadingHTTPServer(("127.0.0.1", 0), M.Handler)
 PORT = srv.server_address[1]
@@ -122,6 +125,33 @@ ch = body["result"]["content"][0]["text"]
 check("his channel comes back, each line with who and which model", "Dot: found three clips" in ch and "Vintos (Grok 4.6): thanks" in ch, ch)
 code, body = rpc("tools/call", {"name": "vintos_channel", "arguments": {"n": 10000}})
 check("an out-of-range count is refused", body["result"]["isError"] is True)
+
+# connector forms differ: an API-key header, a browser's preflight, a chunked body
+req = urllib.request.Request(URL, data=json.dumps({"jsonrpc": "2.0", "id": 9, "method": "ping"}).encode(), method="POST",
+                             headers={"Content-Type": "application/json", "X-API-Key": t})
+with urllib.request.urlopen(req, timeout=5) as r: xk = r.status
+check("the token in an X-API-Key header is let in", xk == 200)
+req = urllib.request.Request(URL, method="OPTIONS", headers={"Origin": "https://grok.com", "Access-Control-Request-Method": "POST",
+                                                               "Access-Control-Request-Headers": "authorization, content-type"})
+with urllib.request.urlopen(req, timeout=5) as r:
+    pre = (r.status, r.headers.get("Access-Control-Allow-Origin"), r.headers.get("Access-Control-Allow-Headers") or "")
+check("a browser's preflight is answered, and nothing about him is in it", pre[0] == 204 and pre[1] == "*"
+      and "Authorization" in pre[2], pre)
+sk = socket.create_connection(("127.0.0.1", PORT), timeout=5)
+payload = json.dumps({"jsonrpc": "2.0", "id": 7, "method": "tools/list"}).encode()
+sk.sendall(b"POST /mcp HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + t.encode() + b"\r\nContent-Type: application/json\r\n"
+           b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n" + (b"%x\r\n" % len(payload)) + payload + b"\r\n0\r\n\r\n")
+got = b""
+while True:
+    c = sk.recv(65536)
+    if not c: break
+    got += c
+sk.close()
+check("a chunked body is read", (got.startswith(b"HTTP/1.0 200") or got.startswith(b"HTTP/1.1 200")) and b"vintos_context" in got, got[:120])
+M._calls[:] = []
+pr = M.probe(URL, t)
+check("--probe does the handshake and lists the tools, and shows the door refuses without the token",
+      "refused, as it should be" in pr[0] and "handshake: HTTP 200 vintos" in pr[1] and "vintos_context" in pr[2], pr)
 
 # the edges
 code, _ = post(None, raw=b"{" * 10)
