@@ -69,6 +69,24 @@ check("a Kie submit failure falls back to ACE-Step", tid2 == "ace:ACE9")
 check("the fallback still tried Kie first", any("api.kie.ai" in u for _m, u, _b in SEEN) and any("localhost:8001" in u for _m, u, _b in SEEN))
 check("legacy untagged task ids still poll ACE-Step", ("GET", 0, 0) not in SEEN)  # sanity noop; real check below
 
+# ── His written tempo reaches the song (2026-09-30: the composer writes "**Tempo/Key:**", which was never read) ──
+spec = os.path.join(scratch.name, "spec.md")
+open(spec, "w").write("**Title:** Structural Collapse\n**Genre/Style:** slow industrial ballad\n"
+                      "**Tempo/Key:** 78 BPM, D minor, lifting to F in the bridge\n**Duration:** 3 minutes\n")
+d = DM.parse_prompt(spec)
+check("his Tempo/Key line is read", d["tempo"] == "78 BPM, D minor, lifting to F in the bridge")
+style = DM.style_str(d)
+check("the style sent names his tempo and key", "78 BPM" in style and "D minor" in style)
+check("the tempo he wrote is a number", DM.written_bpm(style) == 78 and DM.written_bpm("slow, no number") is None
+      and DM.written_bpm("999 BPM") is None)
+SEEN.clear(); _FakeRequests.kie_ok = False
+DM.generate(d["title"], style, instrumental=True, duration=180)
+ace_body = next(b for m, u, b in SEEN if m == "POST" and "localhost:8001" in u)
+kie_body2 = next(b for m, u, b in SEEN if m == "POST" and "api.kie.ai" in u)
+check("ACE-Step is given his tempo", ace_body["bpm"] == 78)
+check("Kie's style carries it in words", "78 BPM" in kie_body2["style"])
+check("the song's record keeps the tempo he wrote", DM.LAST_SUBMISSION.get("bpm_written") == 78)
+
 # poll dispatch for both tags + legacy
 SEEN.clear()
 class _AceResp:

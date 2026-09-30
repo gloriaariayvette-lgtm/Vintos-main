@@ -121,9 +121,21 @@ try:
 finally:
     subprocess.run = _real_run
 check("her caption stays her words", [x for x in SEQ if "/api/avatar/chat" in x[1]][0][2]["original_text"] == "look at this")
-check("the ledger keeps what he saw and heard for a photo or video turn, not only her caption",
-      'ledger_text=(msg.message if getattr(msg, "input_kind", None) in ("photo", "video") else None)' in src
-      and '"interaction-ledger.py"), ledger_text or gloria_text, reply]' in src)
+check("the ledger entry keeps what she sent in its own field, beside her words",
+      'ledger_media=_sent_media(msg),' in src and '+ (["--media", ledger_media] if ledger_media else [])' in src)
+_ns2 = {}
+exec(compile(ast.Module(body=[n for n in _tree.body if isinstance(n, ast.FunctionDef) and n.name == "_sent_media"],
+                        type_ignores=[]), "sent-media", "exec"), _ns2)
+_m = types.SimpleNamespace(input_kind="video", message=V.compose(
+    {"duration": 9, "has_audio": True, "speech": "the kettle is on", "sound": "Tempo: 120.2 BPM."},
+    "A kitchen at dusk.", "look"))
+check("what she sent is the scene and sound, without her caption",
+      "A kitchen at dusk." in _ns2["_sent_media"](_m) and "Tempo: 120.2 BPM." in _ns2["_sent_media"](_m)
+      and "Gloria's message" not in _ns2["_sent_media"](_m)
+      and _ns2["_sent_media"](types.SimpleNamespace(input_kind="text", message="hi")) is None)
+_led = open(os.path.join(REPO, "bin", "interaction-ledger.py")).read()
+check("the ledger stores it, and he reads it back as what she sent",
+      '"media": sent_media,' in _led and 'She sent: " + _md[:700]' in src)
 check("a photo from the picture button is not described again as his screenshot",
       'if msg.image and getattr(msg, "input_kind", None) != "photo":' in src)
 check("a photo sent with no words is her turn too",
@@ -175,9 +187,9 @@ if have_ears:
     check("the tempo check names right, double and half", (TC.verdict(161.5, 80), TC.verdict(80.7, 80),
           TC.verdict(40, 80), TC.verdict(100, 80)) == ("double", "right", "half", "off"))
     _ml = os.path.join(TMP, "music.json")
-    _tj.dump({"generated": [{"title": "t128", "authored": {"tempo": "128 BPM, A minor"},
+    _tj.dump({"generated": [{"title": "t128", "submitted": {"bpm_written": 128},
                              "tracks": [{"local_file": os.path.join(TMP, "t128.wav")}]},
-                            {"title": "no file", "authored": {"tempo": "90"}, "tracks": [{"local_file": "/nope.wav"}]}]},
+                            {"title": "no file", "submitted": {"bpm_written": 90}, "tracks": [{"local_file": "/nope.wav"}]}]},
              open(_ml, "w"))
     _rows = TC.his_songs(_ml)
     check("the tempo check reads his songs that have a written tempo and a file", [r[:2] for r in _rows] == [("t128", 128.0)])

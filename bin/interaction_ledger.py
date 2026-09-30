@@ -401,6 +401,8 @@ def main():
 
     gloria_said = sys.argv[1]
     vintos_said = sys.argv[2]
+    # a photo or video she sent: the scene he saw and the sound he heard, kept beside her words (2026-09-30)
+    sent_media = sys.argv[sys.argv.index("--media") + 1][:3000] if "--media" in sys.argv[3:-1] else ""
     provenance = _prov()
     writer_event("interaction_ledger", "started", provenance)
 
@@ -494,13 +496,14 @@ def main():
                    if not _sre.match(r"\s*pos:?\s*\d+", l.strip(), _sre.I)
                    and not _sre.match(r"\s*(position|speed|spd|grip|reversals)\b", l.strip(), _sre.I))
     _g = _sre.sub(r"[ \t]{2,}", " ", _g).strip()
-    gloria_said = _g if _g else "[she spoke with her body, not words]"
+    gloria_said = _g if _g else ("(no words, only what she sent)" if sent_media else "[she spoke with her body, not words]")
 
     entry = {
         "timestamp": datetime.now().isoformat(),
         "surface": os.environ.get("VINTOS_SURFACE", ""),                 # which door this exchange came through (astra-memoryrec-p1)
         "turn_id": os.environ.get("VINTOS_TURN_ID", "") or (provenance.get("turn_id", "") if isinstance(provenance, dict) else ""),
         "gloria": gloria_said,
+        "media": sent_media,
         "vintos": vintos_said + _device_marks(),
         "consent": consent_note,
         "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(

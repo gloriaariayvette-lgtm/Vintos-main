@@ -105,15 +105,24 @@ def _compose(title, style, desc, instrumental, duration, gender):
                             if not _lg.match(r"\s*\*\*(?!\[)", l))   # spec headers out, [Verse] labels stay
         lyrics = lyrics.strip()[:3000]
     LAST_SUBMISSION = {"title": title, "style_sent": style[:400], "prompt_sent": prompt[:2000], "lyrics_sent": (lyrics or "")[:4000],
+                       "bpm_written": written_bpm(style),
                        "instrumental": bool(instrumental), "duration_requested": duration, "gender": gender,
                        "truncated": bool(len(prompt) > 2000 or len(lyrics or "") > 4000), "at": datetime.now().isoformat()}
     return prompt, (lyrics or "")
+
+def written_bpm(style):
+    """The tempo he wrote, as a number, when his style names one ("72 BPM, D minor")."""
+    m = re.search(r"(\d{2,3}(?:\.\d+)?)\s*(?:bpm|beats per minute)", str(style or ""), re.I)
+    v = float(m.group(1)) if m else None
+    return int(round(v)) if v and 30 <= v <= 250 else None
+
 
 def _ace_generate(title, style, desc="", instrumental=True, duration=120, gender=None):
     """Submit to the local ACE-Step server. Returns its raw task id or None."""
     import requests as _rq
     prompt, lyrics = _compose(title, style, desc, instrumental, duration, gender)
-    payload = {"prompt": prompt[:800], "duration": duration, "instrumental": instrumental, "thinking": True, "bpm": None}
+    payload = {"prompt": prompt[:800], "duration": duration, "instrumental": instrumental, "thinking": True,
+               "bpm": written_bpm(style)}
     if lyrics: payload["lyrics"] = lyrics
     try:
         with _admit_ctx("ace-step", "release_task"):
@@ -315,6 +324,8 @@ def parse_prompt(fp):
         if m: d["genre"]=m.group(1).strip(); continue
         m=re.match(r"\*\*Tempo\s*\(?BPM\)?:\*\*\s*(.+)",s)
         if not m: m=re.match(r"\*\*Tempo:\*\*\s*(.+)",s)
+        # the composer writes "**Tempo/Key:**"; unread, his tempo and key never reached a song (2026-09-30)
+        if not m: m=re.match(r"\*\*Tempo\s*/\s*Key:\*\*\s*(.+)",s)
         if m: d["tempo"]=m.group(1).strip(); continue
         m=re.match(r"\*\*Key\s*/?\s*Mode:\*\*\s*(.+)",s)
         if not m: m=re.match(r"\*\*Key:\*\*\s*(.+)",s)

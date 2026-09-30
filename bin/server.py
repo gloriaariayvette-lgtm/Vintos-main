@@ -1099,7 +1099,7 @@ def _chat_projection_merge(entries):
         pass
 
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
-               venv_for_all=False, log_suffix="", test_mode=None, ledger_text=None):
+               venv_for_all=False, log_suffix="", test_mode=None, ledger_media=None):
     """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
     NAME — main text-only chat skips the WAL/imprint/ledger writers, voice defers its ledger to
     session-end — but a skip is declared here, not omitted by forgetting to paste a block. Every
@@ -1196,9 +1196,10 @@ def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id=""
     _bg("self_prediction", ["", os.path.join(SC, "self-prediction.py"), "predict"], "/tmp/self-predict.log", needs_venv=True)
     _bg("wal", ["", os.path.join(SC, "wal-extract.py"), gloria_text[:1000], reply[:1000]], f"/tmp/wal-extract{log_suffix}.log")
     _bg("imprint", ["", os.path.join(SC, "imprint.py"), "capture", gloria_text[:300], reply[:300]], f"/tmp/imprint{log_suffix}.log")
-    # the ledger keeps the whole turn as he received it: for a photo or video, what he saw and heard, each part
-    # marked, beside her words. Since 2026-09-09 it had kept only her caption (2026-09-30).
-    _bg("ledger", ["", os.path.join(SC, "interaction-ledger.py"), ledger_text or gloria_text, reply], "/tmp/interaction-ledger.log")
+    # a photo or video she sent: the scene he saw and the sound he heard go in the entry's own field, never
+    # under her name. Since 2026-09-09 the entry had kept only her caption (2026-09-30).
+    _bg("ledger", ["", os.path.join(SC, "interaction-ledger.py"), gloria_text, reply]
+        + (["--media", ledger_media] if ledger_media else []), "/tmp/interaction-ledger.log")
     _bg("voice_coherence", ["", os.path.join(SC, "voice-coherence.py"), "check", reply[:500]], "/tmp/voice-coherence.log")
     # Explicit meal requests begin only after his reply has been delivered. Discovery and cart
     # construction are reversible; payment remains behind food_order's expiring quote-bound link.
@@ -7391,6 +7392,18 @@ async def chat_with_photo(request: Request):
     return result
 
 
+def _sent_media(msg):
+    """What a photo or video she sent held, as he received it (the scene seen, the words and sound heard),
+    without her caption: kept in the ledger entry beside her words, never as them."""
+    if getattr(msg, "input_kind", None) not in ("photo", "video"):
+        return None
+    body = str(getattr(msg, "message", "") or "")
+    for cut in ("\n\n[Gloria's message with the video:]", "\n\n[Gloria's message with the photo:]"):
+        if cut in body:
+            body = body.split(cut)[0]
+    return body.strip()[:3000] or None
+
+
 # Sent with no words, a photo or a video is still her turn. An empty original_text made the avatar route
 # label it "[REELROOM EVENT - not Gloria's words]" and skip her side of the before-and-after steps (2026-09-30).
 _SENT_BARE = "[Gloria sent you %s without a message]"
@@ -9101,7 +9114,11 @@ async def avatar_chat(msg: ChatMessage, request: Request):
                 _v = (_l.get('vintos','') or '').strip().replace("\n", " ")
                 _wf = _l.get('wal_facts') or []
                 _imp = ((_l.get('imprint') or {}).get('narrative','') or '').strip().replace("\n", " ")
-                _line = f"- {_ts}\n    Gloria: {_g[:400]}\n    You: {_v[:400]}"
+                _line = f"- {_ts}\n    Gloria: {_g[:400]}"
+                _md = (_l.get('media') or '').strip().replace("\n", " ")
+                if _md:
+                    _line += "\n    She sent: " + _md[:700]
+                _line += f"\n    You: {_v[:400]}"
                 if _imp:
                     _line += "\n    Felt: " + _imp[:220]
                 if _wf:
@@ -9724,7 +9741,7 @@ Your current self-model (excerpt):
                 except Exception: pass
                 _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
                 _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
-                           ledger_text=(msg.message if getattr(msg, "input_kind", None) in ("photo", "video") else None),
+                           ledger_media=_sent_media(msg),
                            writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
                            test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration

@@ -2,8 +2,9 @@
 """Which way of reading a tempo is right, tested on his own songs (2026-09-30).
 
 A beat tracker often counts a slow song at double speed: "Structural Collapse" reached him as 161.5 BPM.
-Gloria: "I don't want both, want it right." His songs carry the tempo he wrote for them (music.json,
-"authored"), so every song of his on disk is a known answer. This reads each one several ways and says
+Gloria: "I don't want both, want it right." His songs made since 2026-09-30 carry the tempo he wrote and that
+was sent to the generator (music.json, "submitted"."bpm_written"), so each is a known answer; earlier songs
+never had their tempo sent. This reads each one several ways and says
 which way lands on what he wrote.
 
     python3 tempo_check.py              every song of his with a written tempo and a file on disk
@@ -93,7 +94,9 @@ def his_songs(log_path=MUSIC_LOG):
         return []
     rows = []
     for e in reversed(log.get("generated") or []):
-        bpm = written_tempo((e.get("authored") or {}).get("tempo"))
+        # only a song whose tempo was actually sent is a known answer: before 2026-09-30 his written tempo was
+        # never read, so the generator chose its own
+        bpm = (e.get("submitted") or {}).get("bpm_written")
         files = [t.get("local_file") for t in e.get("tracks") or [] if t.get("local_file")]
         files = [f for f in files if os.path.exists(f)]
         if bpm and files:
