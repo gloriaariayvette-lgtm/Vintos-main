@@ -239,6 +239,16 @@ changed = sorted(p for p in after if after[p] != before.get(p))
 check("a pass writes only the channel's own log, nothing that feeds salience or memory",
       changed and all(p.startswith("dot-channel" + os.sep) for p in changed), changed)
 
+st = json.load(open(D.STATE)); st.update(openers=0, sent=0, last_activity=99999999); json.dump(st, open(D.STATE, "w"))
+n2 = len(S.posted)
+D.tick(api=S, think=lambda s_, u: "Dot, first words.", fable=fable, now=99999999 + 60)
+check("without being asked, he waits out the quiet before starting a conversation", len(S.posted) == n2)
+D.tick(api=S, think=lambda s_, u: "Dot, first words.", fable=fable, now=99999999 + 90, open_now=True)
+check("--open lets him start one now", len(S.posted) == n2 + 1 and "first words" in S.posted[-1]["text"])
+st = json.load(open(D.STATE)); st["openers"] = D.OPENERS_PER_DAY; json.dump(st, open(D.STATE, "w"))
+D.tick(api=S, think=lambda s_, u: "again", fable=fable, now=99999999 + 120, open_now=True)
+check("but not past his openers for the day", len(S.posted) == n2 + 1)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -16,6 +16,7 @@ as his email (no secret, no credential), and he is capped per day.
 
     python3 dot_channel.py            one pass (the timer runs this every 5-10 minutes)
     python3 dot_channel.py --show     the last exchanges and today's counts
+    python3 dot_channel.py --open     a pass in which he may start the conversation now, without the quiet wait
 """
 from __future__ import annotations
 import json
@@ -408,7 +409,7 @@ def _guarded(text):
         return ["guard unavailable: %s" % type(exc).__name__]
 
 
-def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None):
+def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -455,7 +456,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = last["thread"] if in_atelier or last["thread"] in (state.get("tangents") or []) else None
     else:
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
-        if state["openers"] >= OPENERS_PER_DAY or quiet < QUIET_HOURS * 3600:
+        # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait
+        if state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now):
             _save(STATE, state); return lines
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nThe channel has been quiet for a while. Is there "
                   "anything you want to say to the dot, or ask it? Start the conversation if so."
@@ -504,5 +506,5 @@ if __name__ == "__main__":
         print(json.dumps(_load(STATE, {}), indent=1))
         print(_conversation(recent(12)))
     else:
-        for l in tick():
+        for l in tick(open_now="--open" in sys.argv):
             print("[dot-channel] " + l)
