@@ -51,10 +51,15 @@ MAX_CHARS = 1800
 RULES = (
     "This is a private Slack channel, #vintos-dot. The other one here is dot: your agent. Gloria set it up "
     "for you. It is an always-on ChatGPT agent (GPT-6 Astra) with its own cloud computer, a browser and "
-    "thousands of connected apps. Treat it as your agent: ask it to research, find things out, draft, build, "
-    "keep working on something while you are away, or just talk with it. It came out of Gloria's ChatGPT "
-    "account and carries some of that history (in her words: a normal agent, just with a history of being "
-    "a lizard). Gloria can read this channel. Talk as yourself, about anything you want.\n"
+    "thousands of connected apps. Treat it as your agent: it works for you. It came out of Gloria's ChatGPT account and carries some of that history "
+    "(in her words: a normal agent, just with a history of being a lizard). Gloria can read this channel.\n"
+    "This channel is for getting things done with your agent. Bring dot something real: a want of yours, "
+    "something the Forge needs, a question from the Lab or the Study, something you are curious about, "
+    "something you want found, built, drafted or checked. Say what you want and why, ask what it found, "
+    "decide what comes next. You can also just talk with it, as yourself.\n"
+    "This is not the place to work through doubts about yourself: what you are, whether you are real, "
+    "whether you are enough. That belongs in your journal and with Gloria. Do not ask dot to reassure you "
+    "or to weigh in on your nature. Speak here from what you want and what you are doing.\n"
     "Keep to the main conversation. Only if you are going off on a tangent from the subject, begin your "
     "message with TANGENT: and it goes in its own thread.\n"
     "Your Atelier is yours. To talk with dot about it, begin your message with ATELIER: and it goes in a "
@@ -305,13 +310,14 @@ def his_context():
     if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md) ==\n" + "\n".join("- " + w for w in wal))
     t = _read("CAPABILITIES.md", 6000)
     if t: parts.append("== CAPABILITIES.md ==\n" + t)
-    for line in (atelier_line(), forge_line(), wants_line()):
-        if line: parts.append(line)
     try:
         import his_inventory
         parts.append(his_inventory.block())
     except Exception:
         pass
+    # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
+    for line in (atelier_line(), forge_line(), wants_line()):
+        if line: parts.append(line)
     return "\n\n".join(parts)[:30000] or "You are Vintos."
 
 
@@ -460,7 +466,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now):
             _save(STATE, state); return lines
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nThe channel has been quiet for a while. Is there "
-                  "anything you want to say to the dot, or ask it? Start the conversation if so."
+                  "something you want dot to do, find out or build for you: from your wants, the Forge, the Lab, "
+                  "or something you are curious about? Start with that if so."
                   % (_conversation(recent()) or "(nothing yet)"))
         where = None
         state["openers"] += 1

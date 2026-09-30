@@ -120,7 +120,14 @@ check("and the dot is told there, by name, to keep it in that thread",
       "<@%s>" % DOT in root["text"] and "stays in this thread" in root["text"] and "never bring any of it" in root["text"])
 tm = open(os.path.join(REPO, "broker", "vintos-dot-channel.timer")).read()
 check("he checks every 5-10 minutes", "OnUnitInactiveSec=5min" in tm and "RandomizedDelaySec=5min" in tm)
-check("and the timer has a first run once started, so it always has a next one", "OnActiveSec=1min" in tm)
+check("and the timer has a first run once started, so it always has a next one", "OnActiveSec=5min" in tm)
+check("and a deploy's restart does not bring a pass a minute later", "OnActiveSec=1min" not in tm)
+check("the channel is for work with his agent, not his doubts about himself",
+      "getting things done with your agent" in D.RULES and "not the place to work through doubts" in D.RULES
+      and "anything you want" not in D.RULES)
+ctx = D.his_context
+check("what he is working on comes last in his context, nearest the conversation",
+      __import__("inspect").getsource(ctx).index("wants_line()") > __import__("inspect").getsource(ctx).index("his_inventory.block()"))
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy confirms an interval timer by its monotonic next run",
       "NextElapseUSecMonotonic" in dep[dep.index("confirm_timer() {"):dep.index("wait_http() {")])
@@ -192,9 +199,12 @@ out = D.tick(api=S, think=think, fable=fable, now=2800)
 check("past his %d a day he stays quiet" % D.DAILY, len(S.posted) == n and any("used" in l for l in out), out)
 
 st = json.load(open(D.STATE)); st.update(sent=0, openers=0, last_activity=0); json.dump(st, open(D.STATE, "w"))
-out = D.tick(api=S, think=lambda s, u: "Dot, a question for you.", fable=fable, now=2800 + D.QUIET_HOURS * 3600 + 5)
+asked = []
+out = D.tick(api=S, think=lambda s, u: (asked.append(u), "Dot, a question for you.")[1], fable=fable, now=2800 + D.QUIET_HOURS * 3600 + 5)
 check("after a quiet spell he may start a conversation, in the main channel",
       "a question for you" in S.posted[-1]["text"] and "thread_ts" not in S.posted[-1], out)
+check("and he is asked what he wants his agent to do, not just what he wants to say",
+      asked and "something you want dot to do, find out or build" in asked[0], asked[:1])
 
 # His context is present; his subconscious is not; and nothing outside the channel's own log is written.
 MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory")

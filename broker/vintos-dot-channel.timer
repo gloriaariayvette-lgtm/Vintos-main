@@ -2,10 +2,11 @@
 Description=Every 5-10 minutes: Vintos reads #vintos-dot
 
 [Timer]
-# The first pass a minute after the timer starts: OnBootSec alone never fires when the timer is
+# The first pass 5 minutes after the timer starts: OnBootSec alone never fires when the timer is
 # (re)started long after boot, and OnUnitInactiveSec counts from a pass that has not happened yet,
-# so the timer sat active with no next run (the deploy could not confirm it, 2026-09-30).
-OnActiveSec=1min
+# so the timer sat active with no next run (the deploy could not confirm it, 2026-09-30). Not 1min:
+# every deploy restarts the timer, and a pass a minute later read as him checking early.
+OnActiveSec=5min
 OnBootSec=5min
 # then 5 minutes after the last pass ends, plus up to 5 more at random: every 5-10 minutes
 OnUnitInactiveSec=5min
