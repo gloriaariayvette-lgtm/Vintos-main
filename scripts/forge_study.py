@@ -172,7 +172,14 @@ def investigate(proposal, orchestrate=None, subagent=None, room=None):
     findings = {k: d.get(k) for k in ("already_have", "where", "fails_because", "fix", "needs_from_gloria", "summary")}
     findings.update(state="done" if d.get("done") else "unfinished", proposal=proposal.get("id"), capability=cap,
                     rounds=rounds, models=sorted(used), at=datetime.now().isoformat(timespec="seconds"))
+    if not has_findings(findings):
+        # the closing answer could not be read (an empty alert reached Gloria, 2026-09-30): kept, never sent
+        findings.update(state="unread", raw=str(text or "")[:1500])
     return findings
+
+
+def has_findings(f):
+    return bool(f) and any(f.get(k) not in (None, "", [], "-") for k in ("already_have", "summary", "fails_because", "fix"))
 
 
 def row_text(findings):
@@ -208,8 +215,9 @@ def tend(sf, investigate=None, notify=None, today=None):
     notify = notify or globals()["notify"]
     today = today or date.today().isoformat()
     ledger = _load(LEDGER, {})
-    if ledger.get("date") != today: ledger = {"date": today, "count": 0}
+    if ledger.get("date") != today: ledger = {"date": today, "count": 0, "tries": ledger.get("tries", {})}
     rows = sf._load()
+    tries = ledger.setdefault("tries", {})
     todo = [r for r in rows if r.get("state") == "proposed" and not r.get("study")]
     if not todo or ledger["count"] >= STUDIES_PER_DAY:
         return []
@@ -221,6 +229,10 @@ def tend(sf, investigate=None, notify=None, today=None):
         findings = {"state": "failed", "why": str(exc)[:300], "proposal": p.get("id"), "capability": p.get("capability"),
                     "at": datetime.now().isoformat(timespec="seconds")}
     _save(os.path.join(STUDIES, "%s.json" % p["id"]), findings)
+    if findings.get("state") == "unread":
+        tries[p["id"]] = tries.get(p["id"], 0) + 1; _save(LEDGER, ledger)
+        if tries[p["id"]] < 2:   # asked once more on a later pass before the Forge takes it unstudied
+            return ["studied %s (%s): the answer could not be read; asked again later" % (p["id"], p.get("capability"))]
     rows = sf._load()
     for r in rows:
         if r.get("id") == p["id"]:
@@ -228,7 +240,7 @@ def tend(sf, investigate=None, notify=None, today=None):
                                                         "needs_from_gloria", "where", "models", "at", "why")}
     sf._save(rows)
     line = "studied %s (%s): %s" % (p["id"], p.get("capability"), findings.get("state"))
-    if findings.get("state") in ("done", "unfinished"):
+    if findings.get("state") in ("done", "unfinished") and has_findings(findings):
         try: notify(findings)
         except Exception as exc: line += "; ntfy failed: %s" % type(exc).__name__
     return [line]

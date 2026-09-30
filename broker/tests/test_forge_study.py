@@ -67,6 +67,7 @@ def stubborn(system, user):
     if "No more reading" in user:
         return json.dumps({"done": True, "already_have": False, "summary": "not found"}), "astra"
     return json.dumps({"done": False, "tasks": [{"grep": "x", "why": "y"}]}), "astra"
+_INVESTIGATE = FS.investigate
 turns.clear()
 f2 = FS.investigate(proposal, orchestrate=stubborn, subagent=subagent, room=Room())
 check("reading is bounded: after %d rounds it must conclude" % FS.ROUNDS,
@@ -99,6 +100,24 @@ FS._save(FS.LEDGER, {"date": __import__("datetime").date.today().isoformat(), "c
 sent.clear(); FH.sync()
 check("past the day's studies, an unstudied request waits for tomorrow rather than going unread",
       not any(p == "/api/gaps-sync" and b["rows"] for p, b in sent) and not SF._load()[0].get("study"), sent)
+
+# An answer that cannot be read is never sent to her as an empty request (2026-09-30: "Already has it: None").
+def garbled(system, user):
+    return "I looked closely and here is what I think {not json", "fable"
+f3 = _INVESTIGATE(proposal, orchestrate=garbled, subagent=subagent, room=Room())
+check("an unreadable closing answer is marked unread and kept", f3["state"] == "unread" and "not json" in f3["raw"], f3)
+check("and has no findings", not FS.has_findings(f3) and FS.has_findings(f))
+json.dump([dict(proposal, id="SK-00000004", capability="x2")], open(SF.PROPOSALS, "w"))
+FS._save(FS.LEDGER, {"date": "2000-01-01", "count": 0})
+FS.investigate = lambda p, **k: dict(f3)
+told.clear(); sent.clear(); FH.sync()
+check("she is not told of an empty study", told == [])
+check("the request is asked again rather than sent on unstudied",
+      not SF._load()[0].get("study") and not any(p == "/api/gaps-sync" and b["rows"] for p, b in sent))
+sent.clear(); FH.sync()
+check("the second unreadable answer lets it go on, marked unread, still without telling her",
+      (SF._load()[0].get("study") or {}).get("state") == "unread" and told == []
+      and any(p == "/api/gaps-sync" and b["rows"] for p, b in sent))
 
 check("nothing reached the world: models, the Study room, ntfy and the Forge were stubs",
       sys.modules["requests"].post is _no_network and FH.request.__name__ == "<lambda>")

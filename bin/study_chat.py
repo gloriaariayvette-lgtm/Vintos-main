@@ -269,13 +269,22 @@ def do_grep(pattern, max_lines=60):
     .md only - never a root that contains another root, or scripts came back twice and memory came back
     at all (2026-09-04, grok-study-p2). Secrets filtered; TOUCH files are readable and so greppable."""
     out = []
+    # extended regex, so "a|b" means a or b: basic grep read it as the literal text "a|b" and every
+    # alternation came back empty, which the Forge's studies took for a broken grep (2026-09-30). A
+    # pattern that is not a valid regex ("observe(") is searched as plain text.
+    mode = "-E"
+    try:
+        __import__("re").compile(pattern.replace("\\|", "|"))
+        pattern = pattern.replace("\\|", "|")
+    except Exception:
+        mode = "-F"
     try:
         for label, root in ROOTS.items():
             if label == "docs":
-                cmd = ["grep", "-n", "-I", "-e", pattern] + sorted(glob.glob(os.path.join(root, "*.md")))
-                if len(cmd) == 5: continue
+                cmd = ["grep", "-n", "-I", mode, "-e", pattern] + sorted(glob.glob(os.path.join(root, "*.md")))
+                if len(cmd) == 6: continue
             else:
-                cmd = ["grep", "-rn", "-I", "--include=*.py", "--include=*.sh", "--include=*.md", "-e", pattern, root]
+                cmd = ["grep", "-rn", "-I", mode, "--include=*.py", "--include=*.sh", "--include=*.md", "-e", pattern, root]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
             for line in r.stdout.splitlines():
                 parts = line.split(":", 2)
