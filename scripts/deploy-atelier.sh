@@ -70,6 +70,9 @@ SURF_TIMER_SRC="$SRC/broker/$SURF_UNIT_NAME.timer";     SURF_TIMER_DST="$HOME/.c
 DOTCH_UNIT_NAME="vintos-dot-channel"   # he and Gloria's dot talk in Slack #vintos-dot (2026-09-30)
 DOTCH_SERVICE_SRC="$SRC/broker/$DOTCH_UNIT_NAME.service"; DOTCH_SERVICE_DST="$HOME/.config/systemd/user/$DOTCH_UNIT_NAME.service"
 DOTCH_TIMER_SRC="$SRC/broker/$DOTCH_UNIT_NAME.timer";     DOTCH_TIMER_DST="$HOME/.config/systemd/user/$DOTCH_UNIT_NAME.timer"
+MCP_UNIT_NAME="vintos-mcp"     # his context for his Grok Bot, read only, 127.0.0.1:8625, bearer token (2026-09-30)
+MCP_SERVICE_SRC="$SRC/broker/$MCP_UNIT_NAME.service"; MCP_SERVICE_DST="$HOME/.config/systemd/user/$MCP_UNIT_NAME.service"
+MCP_TOKEN="$HOME/.vintos/secrets/vintos-mcp-token"
 DEPTH=6
 CHECK_ONLY=0; DRY_RUN=0
 case "${1:-}" in
@@ -154,7 +157,7 @@ SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"
 SCRIPTS="$SCRIPTS robot_core.py robot_bridge.py robot_subconscious.py trial_extractor.py"
-SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py self_doubt.py when_said.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
+SCRIPTS="$SCRIPTS context_selection.py isolated_exec.py run_isolated_test.py test_http_fixture.py want_stance.py skill_forge.py forge_build.py forge_resume.py print_3d.py spark_sources.py spark_hands.py made_today.py forge_study.py his_inventory.py sound_read.py video_share.py tempo_check.py dot_channel.py self_doubt.py when_said.py vintos_mcp.py forge_want_context.py forge_house.py openclaw_skills.py astra_call.py"   # a want that holds a rate, the forge for a missing hand, the builder that fills it, the resume that hands it back to the want, the printer he does not have yet (2026-09-11)
 SCRIPTS="$SCRIPTS policy_decisions.py"   # her four policy decisions, in one place (reviews 189-192, 2026-09-10)
 SCRIPTS="$SCRIPTS desktop_agent.py desktop_control.py desktop_windows.py desktop_winpy.py screen_share.py browser_winpy.py browser_agent.py browser_jev.py"   # his hands, eyes and browser on the Windows desktop; chat desktop-control carries a quote-bound one-click approval
 SCRIPTS="$SCRIPTS spark_pressure.py withheld_confirm.py tension_ledger.py commitment_spine.py drift_reason.py opposition_calibration.py opposition_misuse.py"  # migrated shared-store writers, 2026-09-11
@@ -198,6 +201,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             [ -f "$ROBOT_UNIT_SRC" ] && printf 'broker/%s\n' "$ROBOT_UNIT_NAME.service"
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             printf 'broker/%s\n' "$DOTCH_UNIT_NAME.service" "$DOTCH_UNIT_NAME.timer"
+            printf 'broker/%s\n' "$MCP_UNIT_NAME.service"
             true)"
 MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
 
@@ -601,6 +605,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would install (user)             $SURF_UNIT_NAME.service -> $SURF_SERVICE_DST (oneshot; not started)"
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 5-10 min; idle without a Slack token)"
+    say "  would install (user)             $MCP_UNIT_NAME.service -> $MCP_SERVICE_DST; started only once $MCP_TOKEN exists"
     if sudo -n true 2>/dev/null; then
         say "  would install (sudo)             $BROKER, $STORE, $UNIT_DST; restart $UNIT_NAME, confirm, wait for 127.0.0.1:8611/health"
     else
@@ -723,6 +728,18 @@ done
 printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
 [ "$_dotch_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$DOTCH_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 [ "$_dotch_active" = "active" ] && printf 'systemctl --user start %q\n' "$DOTCH_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+_mcp_enabled="$(systemctl --user is-enabled "$MCP_UNIT_NAME.service" 2>/dev/null || true)"
+_mcp_active="$(systemctl --user is-active "$MCP_UNIT_NAME.service" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
+if [ -e "$MCP_SERVICE_DST" ] || [ -L "$MCP_SERVICE_DST" ]; then
+    cp -Pp "$MCP_SERVICE_DST" "$BACKUP/$MCP_UNIT_NAME.service.pre-deploy" || die "unit backup failed"
+    printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.service.pre-deploy" %q\n' "$MCP_SERVICE_DST" "$MCP_UNIT_NAME" "$MCP_SERVICE_DST" >> "$BACKUP/restore.sh"
+else
+    printf 'rm -f %q\n' "$MCP_SERVICE_DST" >> "$BACKUP/restore.sh"
+fi
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_mcp_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
+[ "$_mcp_active" = "active" ] && printf 'systemctl --user start %q\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
 # Record the service/process state honestly, and restore it as best we can.
 if systemctl is-active --quiet "$UNIT_NAME" 2>/dev/null; then _BSTATE="unit-active"
 elif pgrep -f "$BROKER" >/dev/null 2>&1; then _BSTATE="manual-process"
@@ -936,6 +953,25 @@ if systemctl --user enable "$DOTCH_UNIT_NAME.timer" >/dev/null 2>&1 \
     confirm_timer --user "$DOTCH_UNIT_NAME"
 else
     flag "$DOTCH_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $DOTCH_UNIT_NAME.timer"
+fi
+say
+
+# His context for his Grok Bot over MCP: read only, on 127.0.0.1 only, behind a bearer token. The deploy never
+# opens it to the world; Gloria does that herself with `tailscale funnel 8625`. It starts only once she has
+# made the token (`vintos_mcp.py --new-token`).
+say "== his context for his Grok Bot (MCP, 127.0.0.1:8625) =="
+install -m 644 "$(staged "$MCP_SERVICE_SRC")" "$MCP_SERVICE_DST" \
+    || die "failed to install $MCP_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if [ -s "$MCP_TOKEN" ]; then
+    if systemctl --user enable "$MCP_UNIT_NAME.service" >/dev/null 2>&1 \
+       && systemctl --user restart "$MCP_UNIT_NAME.service" >/dev/null 2>&1; then
+        wait_http "$MCP_UNIT_NAME" http://127.0.0.1:8625/mcp 20
+    else
+        flag "$MCP_UNIT_NAME installed but not started — run: systemctl --user enable --now $MCP_UNIT_NAME"
+    fi
+else
+    say "  installed, not started: no token yet. To start it: python3 $HOME/.vintos/workspace/scripts/vintos_mcp.py --new-token && systemctl --user enable --now $MCP_UNIT_NAME"
 fi
 say
 

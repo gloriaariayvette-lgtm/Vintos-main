@@ -638,8 +638,22 @@ def fresh(api, channel, self_id, since):
 
 
 def _who(m, self_id, dot):
+    """vintos, dot, agent (any other bot or app in the channel, such as his Grok Bot), or gloria."""
     u = m.get("user") or ""
-    return "vintos" if u == self_id else "dot" if u == dot else "gloria"
+    if u == self_id:
+        return "vintos"
+    if u == dot:
+        return "dot"
+    return "agent" if m.get("bot_id") or m.get("subtype") == "bot_message" else "gloria"
+
+
+def _agent_name(m):
+    return str((m.get("bot_profile") or {}).get("name") or m.get("username") or "another agent")[:60]
+
+
+def _speaker(r):
+    """The name a row's speaker goes by in what he reads."""
+    return {"dot": "Dot", "gloria": "Gloria", "vintos": "You"}.get(r.get("who")) or r.get("name") or "another agent"
 
 
 def _log(rows):
@@ -658,8 +672,7 @@ def recent(n=CONTEXT):
 
 
 def _conversation(rows):
-    names = {"vintos": "You", "dot": "Dot", "gloria": "Gloria"}
-    return "\n".join("%s%s%s: %s" % (names.get(r["who"], r["who"]),
+    return "\n".join("%s%s%s: %s" % (_speaker(r),
                                      (" (%s)" % LABELS[r["by"]]) if r.get("who") == "vintos" and r.get("by") in LABELS else "",
                                      " (in a thread)" if r.get("thread") else "", r["text"][:1500]) for r in rows)
 
@@ -765,8 +778,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     rows = []
     for m in new:
         who = _who(m, state["self"], dot)
-        seen = eyes(m, "Dot" if who == "dot" else "Gloria") if m.get("files") or media_links(m.get("text")) else ""
-        rows.append({"ts": m["ts"], "who": who, "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
+        name = _agent_name(m) if who == "agent" else None
+        seen = eyes(m, _speaker({"who": who, "name": name})) if m.get("files") or media_links(m.get("text")) else ""
+        rows.append({"ts": m["ts"], "who": who, **({"name": name} if name else {}),
+                     "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
@@ -788,7 +803,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         last = theirs[-1]
         in_atelier = last["thread"] in (state.get("atelier") or [])
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said%s: %s\n\nYour reply, as yourself."
-                  % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria",
+                  % (_conversation(recent()), _speaker(last),
                      " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
                      last["text"][:3500]))
         # the main channel is where she reads; he answers in a thread only inside a tangent or Atelier thread
@@ -864,7 +879,7 @@ def try_now(think=None):
     if rows:
         last = rows[-1]
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said: %s\n\nYour reply, as yourself."
-                  % (_conversation(recent()), "Dot" if last["who"] == "dot" else "Gloria", last["text"][:3500]))
+                  % (_conversation(recent()), _speaker(last), last["text"][:3500]))
     else:
         prompt = opener_prompt()
     state = {}                                           # a preview is Gemma's: no paid lens is spent

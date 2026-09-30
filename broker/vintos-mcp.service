@@ -1,0 +1,19 @@
+[Unit]
+Description=Vintos's context for his Grok Bot agent: MCP, read only, on 127.0.0.1:8625 with a bearer token
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/vintos_mcp.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+# read only everywhere but its own access log; no PrivateTmp: his EmoClaw reading comes from the socket in /tmp
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=-%h/.vintos/logs
+
+[Install]
+WantedBy=default.target

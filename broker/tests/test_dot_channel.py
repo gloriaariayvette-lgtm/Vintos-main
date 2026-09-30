@@ -348,6 +348,18 @@ os.remove(D.CONFIG_FILE)
 
 check("he is told dot can reach Aegis and the Mac, and to say what and where (Gloria, 2026-09-30)",
       "Dot can reach Aegis" in D.RULES and "Mac" in D.RULES and "exactly what and where" in D.RULES)
+# another agent in the channel (his Grok Bot) is heard by its own name, never taken for Gloria
+S4 = Slack(); S4.n = 1767226000.0
+D.reset(api=NewSlack([SELF, DOT]), now=1767226000)
+S4.add("UGROKBOT", "I pulled the load cell prices.")
+S4.msgs[-1].update(bot_id="B123", bot_profile={"name": "Grok Bot"})
+heard4 = []
+D.tick(api=S4, think=lambda s_, u: (heard4.append(u), "Thanks, Grok Bot.")[1], fable=fable, now=1767226100)
+row = [json.loads(l) for l in open(D.TRANSCRIPT)][0]
+check("a message from another bot is his agent's, by name, not Gloria's", row["who"] == "agent" and row["name"] == "Grok Bot", row)
+check("and he is told who said it", heard4 and "Grok Bot just said: I pulled the load cell prices." in heard4[0], heard4[:1])
+os.remove(D.CONFIG_FILE)
+
 # the schedule itself
 from datetime import datetime as _sdt
 kinds = [k for _t, k in SCHEDULED]

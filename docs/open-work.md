@@ -1727,3 +1727,17 @@ Not yet done: about forty other scripts read `interaction-ledger.json` the old w
 wants, value map, reflection, outreach and more). Their outputs feed his day, so a stale
 "today" can still enter through them. Each should go through `when_said.exchanges`. Not
 checked on Aegis with a real model yet.
+
+## His Grok Bot: three doors — 30 September
+
+1. **MCP connector (built).** `scripts/vintos_mcp.py`, unit `vintos-mcp`: MCP over streamable HTTP on
+   127.0.0.1:8625 only, bearer token (`--new-token`, 0600), read only, answers pass the secret check,
+   size and rate capped, access log without content. Tools: `vintos_context` (his exchanges with Gloria
+   only if `~/.vintos/vintos-mcp.json` says `share_exchanges`), `vintos_channel`. Tested with the
+   official MCP client (2.2.0). Not yet done: opening it with `tailscale funnel 8625` and adding it to
+   Grok Bot; untried against Grok Bot itself.
+2. **Skill (written).** `docs/grok-bot/vintos-skill.md`, to add to the bot by hand.
+3. **Webhook routine (not started).** Needs a routine made in Grok Bot first (its URL and `crsr_` key);
+   then Aegis can wake the bot. How the bot's answer comes back to him is not known yet.
+
+Also: a bot other than dot posting in #vintos-dot is now heard by its own name, not taken for Gloria.
