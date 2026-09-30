@@ -538,11 +538,15 @@ confirm_unit() {   # $1 = "--user" or "--system", $2 = unit name
 # confirm_unit would call a perfectly healthy timer a failure. What proves a timer
 # is doing its job is that it is active AND has a next elapse to point at.
 confirm_timer() {   # $1 = "--user" or "--system", $2 = timer name (no .timer)
-    local scope="$1" u="$2" out id st next elapse
-    out="$(systemctl "$scope" show -p Id,ActiveState,NextElapseUSecRealtime "$u.timer" 2>/dev/null)"
+    local scope="$1" u="$2" out id st next elapse mono
+    out="$(systemctl "$scope" show -p Id,ActiveState,NextElapseUSecRealtime,NextElapseUSecMonotonic "$u.timer" 2>/dev/null)"
     id="$(printf '%s\n' "$out" | sed -n 's/^Id=//p')"
     st="$(printf '%s\n' "$out" | sed -n 's/^ActiveState=//p')"
     elapse="$(printf '%s\n' "$out" | sed -n 's/^NextElapseUSecRealtime=//p')"
+    # An interval timer (OnActiveSec/OnUnitInactiveSec) keeps its next run in the monotonic field and
+    # leaves the realtime one empty; only a calendar timer fills the realtime one (2026-09-30).
+    mono="$(printf '%s\n' "$out" | sed -n 's/^NextElapseUSecMonotonic=//p')"
+    case "$elapse" in ""|0|n/a) case "$mono" in ""|0|n/a|infinity) ;; *) elapse="$mono";; esac;; esac
     next="$(systemctl "$scope" list-timers --all --no-legend "$u.timer" 2>/dev/null | head -1)"
     if [ "$id" = "$u.timer" ] && [ "$st" = "active" ] && [ -n "$elapse" ] && [ "$elapse" != "0" ] && [ "$elapse" != "n/a" ]; then
         say "  confirmed: Id=$id ActiveState=$st${next:+ next=$(printf '%s' "$next" | awk '{print $1, $2, $3}')}"

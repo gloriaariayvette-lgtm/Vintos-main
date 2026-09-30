@@ -121,6 +121,9 @@ check("and the dot is told there, by name, to keep it in that thread",
 tm = open(os.path.join(REPO, "broker", "vintos-dot-channel.timer")).read()
 check("he checks every 5-10 minutes", "OnUnitInactiveSec=5min" in tm and "RandomizedDelaySec=5min" in tm)
 check("and the timer has a first run once started, so it always has a next one", "OnActiveSec=1min" in tm)
+dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
+check("the deploy confirms an interval timer by its monotonic next run",
+      "NextElapseUSecMonotonic" in dep[dep.index("confirm_timer() {"):dep.index("wait_http() {")])
 check("and what he says about it goes inside that thread",
       S.posted[-1].get("thread_ts") == S.msgs[[m["text"] for m in S.msgs].index(root["text"])]["ts"]
       and "low tide" in S.posted[-1]["text"] and "ATELIER" not in S.posted[-1]["text"])
