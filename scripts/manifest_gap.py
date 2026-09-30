@@ -7,10 +7,15 @@ Read-only: this changes nothing. Run it on Aegis from the checkout:
 
     python3 scripts/manifest_gap.py            the summary and every script that differs or is missing
     python3 scripts/manifest_gap.py --all      every unlisted script, the same ones too
+
+For a script that differs it says which side is newer: if the host's copy is an older committed version,
+the checkout is ahead and installing it is safe; if the host's copy matches no commit, it was edited on
+the host and installing would overwrite that edit.
 """
 import filecmp
 import os
 import re
+import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +58,21 @@ def compare(rows, roots=INSTALLED):
     return res
 
 
+def history(repo_path, live):
+    """'checkout ahead (host has <commit> <date>)' when the host's copy is an older committed version of the
+    file, 'edited on the host' when it matches none."""
+    def git(*a):
+        return subprocess.run(["git", "-C", REPO] + list(a), capture_output=True, text=True).stdout.strip()
+    want = git("hash-object", live)
+    real = os.path.relpath(os.path.realpath(os.path.join(REPO, repo_path)), REPO)
+    for path in dict.fromkeys((repo_path, real)):
+        for line in git("log", "--format=%h %ad", "--date=short", "--", path).splitlines()[:400]:
+            h = line.split()[0]
+            if git("rev-parse", "%s:%s" % (h, path)) == want:
+                return "checkout ahead (host has %s)" % line
+    return "EDITED ON THE HOST (matches no commit)"
+
+
 if __name__ == "__main__":
     res = compare(unlisted())
     counts = {}
@@ -61,4 +81,4 @@ if __name__ == "__main__":
     print("scripts the deploy never installs: %d  (%s)" % (len(res), ", ".join("%s %d" % kv for kv in sorted(counts.items()))))
     for st, r, live in res:
         if "--all" in sys.argv or st != "same":
-            print("  %-13s %-45s %s" % (st, r, live))
+            print("  %-13s %-45s %s" % (st, r, history(r, live) if st == "differs" else live))
