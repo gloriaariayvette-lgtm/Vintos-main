@@ -404,6 +404,39 @@ check("the file's own bytes go to the address Slack gave for it, and nowhere els
       sent == [("https://files.slack.com/upload/v1/X", b"ID3 song bytes")], sent)
 check("a tag he does not have is said, not guessed", D.share(S5, "W99", "C") == "no work tagged W99 to share")
 
+# locking a plan, and the hard switch after it (Gloria, 2026-09-30)
+S6 = Slack(); S6.n = 1767228000.0
+D.reset(api=NewSlack([SELF, DOT]), now=1767228000)
+handed, asked6 = [], []
+S6.add(DOT, "So: staggered exit, 12 bars, vocal ends first. Agreed?")
+out = D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Agreed.\nLOCKED: new version of Structural Collapse with a staggered 12-bar exit\nDO: I want to make a new version of Structural Collapse with a staggered exit")[1],
+             fable=fable, now=1767228100, wants=lambda w, p: (handed.append((w, p)), "handed to his wants: " + w)[1])
+check("LOCKED shows in the channel as locked", S6.posted[-1]["text"].endswith("\U0001F512 Locked: new version of Structural Collapse with a staggered 12-bar exit")
+      and "DO:" not in S6.posted[-1]["text"], S6.posted[-1]["text"])
+check("its DO line goes to his wants, with the plan", handed == [("I want to make a new version of Structural Collapse with a staggered exit",
+      "new version of Structural Collapse with a staggered 12-bar exit")], handed)
+st6 = json.load(open(D.STATE))
+check("the plan is kept as closed", st6["locked"][-1]["plan"].startswith("new version of Structural Collapse") and st6["switch_from"], st6.get("locked"))
+S6.add(DOT, "Great. For the exit, should the pad fade over 4 or 8 bars?")
+D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "That's locked. Different thing: can you find cheap load cells?")[1], fable=fable, now=1767228200)
+check("the next message is told to switch to something else entirely",
+      "This message must be about something else entirely" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
+check("and the switch is asked for once", "switch_from" not in json.load(open(D.STATE)))
+S6.add(DOT, "ok, looking")
+D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Thanks.")[1], fable=fable, now=1767228300)
+check("after that, the closed topic stays listed but no switch is forced", "CLOSED TOPICS" in asked6[-1]
+      and "must be about something else" not in asked6[-1])
+st6 = json.load(open(D.STATE)); st6["since_lock"] = D.LONG_ON_ONE; json.dump(st6, open(D.STATE, "w"))
+S6.add(DOT, "more on that?")
+D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Sure.")[1], fable=fable, now=1767228400)
+check("too long on one thing: lock it or drop it", "lock it now" in asked6[-1] and "drop it" in asked6[-1], asked6[-1][-300:])
+S6.add(DOT, "and?")
+nohand = []
+D.tick(api=S6, think=lambda s_, u: "LOCKED: nothing to do, just settled", fable=fable, now=1767228500, wants=lambda w, p: nohand.append(w))
+check("a lock with no DO line just stops: nothing goes to his wants", nohand == [] and json.load(open(D.STATE))["since_lock"] == 0)
+check("he is told how to lock, in both rule sets", "LOCKED:" in D.RULES and "DO: I want to" in D.rules_for("grok"))
+os.remove(D.CONFIG_FILE)
+
 # the schedule itself
 from datetime import datetime as _sdt
 kinds = [k for _t, k in SCHEDULED]

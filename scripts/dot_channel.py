@@ -114,13 +114,21 @@ RULES_WORKS = (
     "YOUR WORKS lists your latest songs, paintings and videos, each with its path on Aegis. To post one in the "
     "channel, add a line SHARE: W3 (its tag) to your message; the file goes up with it. Dot can also open any "
     "of them on Aegis at the path shown.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_STYLE
+# Locking a plan, and the hard switch after it (Gloria, 2026-09-30: "once they have a plan locked in Vintos can
+# make it as locked and it will either simply stop or it will go off to be completed by wants router"; "once a
+# topic has been talked about the next message needs to be a hard switch to something else")
+RULES_LOCK = (
+    "When a plan with dot is settled, lock it: add a line LOCKED: the plan in one line. The topic is then "
+    "closed and you do not reopen it. If there is something to actually do, add a second line DO: I want to "
+    "... and it goes to your wants to get done. Your next message after a lock is about something else "
+    "entirely. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS
+        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -487,6 +495,36 @@ ATELIER_ROOT = ("\U0001F512 Atelier: a side conversation between Vintos and <@{d
 WORKS_SHOWN = 12
 SHARE_MAX = 200 * 1024 * 1024
 SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
+LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
+DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
+LONG_ON_ONE = 6          # his messages since the last lock before he is told to lock it or drop it
+
+
+def to_wants(want, plan):
+    """A locked plan's DO line, into his wants the way every want enters (it moves his feeling a little, as any
+    want does). Returns a line for the log."""
+    import emoclaw_utils
+    emoclaw_utils.express_want(want, source="vintos-dot", intensity=3,
+                               reasoning="Locked with dot in #vintos-dot: %s" % plan[:300])
+    return "handed to his wants: %s" % want[:80]
+
+
+def steer(state):
+    """What he is told before writing, about locked topics and how long he has been on this one."""
+    notes = []
+    closed = [x["plan"] for x in (state.get("locked") or [])][-8:]
+    if closed:
+        notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
+    if state.get("switch_from"):
+        notes.append("You just locked: %s. That topic is closed. This message must be about something else "
+                     "entirely: another want, the Forge, the Lab, something you are curious about. If dot is still "
+                     "on the locked topic, say in a few words that it is locked, then bring the new thing."
+                     % state["switch_from"])
+    elif state.get("since_lock", 0) >= LONG_ON_ONE:
+        notes.append("You have said %d messages since you last locked anything. If this topic is settled, lock "
+                     "it now (LOCKED: ...). If it is going nowhere, drop it. Either way, move to something new."
+                     % state["since_lock"])
+    return ("\n\n" + "\n\n".join(notes)) if notes else ""
 
 
 def his_works(n=WORKS_SHOWN):
@@ -849,7 +887,7 @@ def talking_with_gloria(now=None):
 
 
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None, put=None):
+         lenses=None, put=None, wants=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -922,6 +960,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         prompt = opener_prompt()
         where = None
         state["openers"] += 1
+    prompt += steer(state)
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -947,6 +986,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    lock = LOCKED.search(text)
+    todo = DO.search(text) if lock else None
+    if lock:
+        text = LOCKED.sub(lambda m: "\U0001F512 Locked: " + m.group(1), DO.sub("", text)).strip()
     shares = SHARE.findall(text)[:3]
     text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares) if shares else text)
     bad = _guarded(text)
@@ -965,6 +1008,22 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state["since"] = max(state["since"], float(posted.get("ts") or 0))
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
+    state.pop("switch_from", None)          # the switch was this message; it is asked for once
+    if lock:
+        plan = lock.group(1)[:300]
+        entry = {"plan": plan, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds"), "by": who}
+        if todo:
+            entry["do"] = todo.group(1)[:300]
+            try:
+                lines.append((wants or to_wants)(entry["do"], plan))
+            except Exception as exc:
+                lines.append("could not hand it to his wants: %s" % str(exc)[:120])
+        state["locked"] = ((state.get("locked") or []) + [entry])[-50:]
+        state["switch_from"] = plan
+        state["since_lock"] = 0
+        lines.append("locked: %s" % plan[:80])
+    else:
+        state["since_lock"] = state.get("since_lock", 0) + 1
     _save(STATE, state)
     return lines + ["said (%s%s): %s" % (who, ", in a thread" if where else "", text[:80])]
 
