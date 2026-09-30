@@ -19,6 +19,9 @@ AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 ACCESSION = re.compile(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?")
 WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser().resolve()
 ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold"
+MODEL_CACHE = Path(os.environ.get(
+    "VINTOS_CHEMISTRY_MODEL_CACHE",
+    "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")).expanduser().resolve()
 
 
 def _validate(body):
@@ -44,9 +47,10 @@ def fold(body):
     from transformers import AutoTokenizer, EsmForProteinFolding
     if not torch.cuda.is_available(): raise RuntimeError("ESMFold requires the commissioned CUDA instrument")
     model_name = "facebook/esmfold_v1"
-    tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, cache_dir=str(MODEL_CACHE), local_files_only=True)
     model = EsmForProteinFolding.from_pretrained(
-        model_name, local_files_only=True, low_cpu_mem_usage=True)
+        model_name, cache_dir=str(MODEL_CACHE), local_files_only=True, low_cpu_mem_usage=True)
     model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
     inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
     with torch.no_grad(): output = model(inputs)

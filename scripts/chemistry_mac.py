@@ -188,7 +188,14 @@ def _run_esmfold(parameters, contract, worker=None):
             return {"ok": False, "state": "unknown_after_timeout",
                     "error": "local ESMFold timed out; outcome not retried"}
         if done.returncode:
-            return {"ok": False, "error": "local ESMFold failed: " + done.stderr.strip()[-500:]}
+            detail = done.stderr.strip()
+            try:
+                reported = json.loads(done.stdout)
+                if isinstance(reported, dict) and reported.get("error"):
+                    detail = str(reported["error"])
+            except Exception:
+                pass
+            return {"ok": False, "error": "local ESMFold failed: " + detail[-500:]}
         try: result = json.loads(done.stdout)
         except Exception:
             return {"ok": False, "error": "local ESMFold returned unreadable output"}

@@ -135,6 +135,8 @@ esmfold = load("chemistry_esmfold_sequence_test", os.path.join(REPO, "scripts", 
 acc, seq, source, mapping = esmfold._validate(esm_seen[0])
 assert acc == "A1L190" and seq == long_sequence and len(mapping) == 88
 esm_source = open(os.path.join(REPO, "scripts", "chemistry_esmfold.py"), encoding="utf-8").read()
+assert "VINTOS_CHEMISTRY_MODEL_CACHE" in esm_source and "cache_dir=str(MODEL_CACHE)" in esm_source, \
+       "the worker must use the commissioned offline checkpoint cache"
 assert "local_files_only=True" in esm_source and "ARTIFACTS" in esm_source
 
 assert grade.GRADES.startswith(HOME) and mac.CONFIG.startswith(HOME)
