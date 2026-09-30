@@ -1699,3 +1699,17 @@ Adaptyv remains unavailable: its Mac connector reports `authStatus:notLoggedIn` 
 no schema. The account connection must be repaired before preparation, estimate or status
 calls can be demonstrated. No wet-lab submission or purchase is authorized by that repair;
 each such action still requires Gloria's explicit approval.
+
+## Videos to him in the avatar chat — 30 September
+
+The avatar chat's picture button now takes a video. `/api/avatar/video` keeps the clip in
+`memory/videos-from-gloria/`, runs `video_share.py` apart from the server (ffmpeg pulls the sound
+out mono at 22050 Hz; Whisper hears words, dropping segments it marks as not speech; `sound_read`
+measures the build; 3–8 frames are cut across the clip), his eyes look at the frames in one look,
+and the whole arrives as her turn. Its log is `~/.vintos/logs/video-share.log`.
+
+The music share's distorted reading was its own code: every tempo over 100 BPM was halved
+(120 read as 60, 174 as 86). Both doors now use `sound_read`, which reports the tempo as
+measured and says "no steady beat" when the tracker finds none. Tested on real clips made
+with ffmpeg; not yet tried with a video from her phone on Aegis. A proxy in front of the house
+with a body-size limit would refuse a large clip; not checked.

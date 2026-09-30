@@ -5035,7 +5035,7 @@ document.querySelector('[data-tab="pearls"]').addEventListener('click', function
     <div style="position:relative;display:flex;gap:8px;align-items:center;">
       <input id="av-chat-input" type="text" placeholder="say something…" autocomplete="off" style="flex:1;background:rgba(255,255,255,0.04);border:0.5px solid rgba(201,107,60,0.2);border-radius:20px;padding:8px 14px;color:rgba(200,196,191,0.9);font-size:16px;font-family:Cormorant Garamond,Georgia,serif;font-style:italic;outline:none;">
       <button id="av-screenshot-btn" onclick="_avCameraMenu()" title="Camera: a photo of him, or share your desktop" style="width:36px;height:36px;border-radius:50%;background:rgba(201,107,60,0.12);border:0.5px solid rgba(201,107,60,0.25);color:rgba(201,107,60,0.8);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">📷</button>
-      <button id="av-photo-btn" onclick="avPickPhoto()" title="Send him a picture" style="width:36px;height:36px;border-radius:50%;background:rgba(201,107,60,0.12);border:0.5px solid rgba(201,107,60,0.25);color:rgba(201,107,60,0.8);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">🖼</button>
+      <button id="av-photo-btn" onclick="avPickPhoto()" title="Send him a picture or a video" style="width:36px;height:36px;border-radius:50%;background:rgba(201,107,60,0.12);border:0.5px solid rgba(201,107,60,0.25);color:rgba(201,107,60,0.8);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">🖼</button>
       <button onclick="avSendChat()" style="width:36px;height:36px;border-radius:50%;background:rgba(201,107,60,0.12);border:0.5px solid rgba(201,107,60,0.25);color:rgba(201,107,60,0.8);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">→</button>
     </div>
   </div>
@@ -5057,14 +5057,15 @@ function avPickPhoto() {
   var inp = document.getElementById('av-photo-input');
   if (!inp) {
     inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'av-photo-input';
+    inp.type = 'file'; inp.accept = 'image/*,video/*'; inp.id = 'av-photo-input';
     inp.style.display = 'none';
     inp.onchange = function(){
       if (inp.files && inp.files[0]) {
         _avPendingPhoto = inp.files[0];
         var b = document.getElementById('av-photo-btn');
-        if (b) { b.style.background='rgba(80,200,120,0.35)'; b.textContent='🖼'; b.title='photo ready — type a message, then send'; }
-        _avLogMsg('system', 'photo attached — type your message, then →');
+        var what = _avIsVideo(inp.files[0]) ? 'video' : 'photo';
+        if (b) { b.style.background='rgba(80,200,120,0.35)'; b.textContent='🖼'; b.title=what+' ready — type a message, then send'; }
+        _avLogMsg('system', what+' attached — type your message, then →');
       }
       inp.value='';
     };
@@ -5074,27 +5075,31 @@ function avPickPhoto() {
 }
 
 let _avPendingPhoto = null;
+// A video rides the same button (2026-09-30): the house hears its sound and words and looks across its frames.
+function _avIsVideo(file) { return !!file && ((file.type||'').indexOf('video/')===0 || /\.(mp4|mov|m4v|webm|3gp)$/i.test(file.name||'')); }
 async function avSendPhoto(file, caption) {
+  const isVideo=_avIsVideo(file), kind=isVideo?'video':'photo';
   var capEl = document.getElementById('av-chat-input');
   if (caption === undefined) caption = capEl ? capEl.value.trim() : '';
   const turn=VintosUI.begin('avatar-photo');if(!turn)return;
   const sentDraft=capEl?capEl.value:'';
   var _pb = document.getElementById('av-photo-btn');
-  if (_pb) { _pb.style.background='rgba(201,107,60,0.12)'; _pb.title='Send him a picture'; }
+  if (_pb) { _pb.style.background='rgba(201,107,60,0.12)'; _pb.title='Send him a picture or a video'; }
 
   var fd = new FormData();
-  fd.append('photo', file);
+  fd.append(kind, file);
   fd.append('message', caption);
+  if (isVideo) _avLogMsg('system', 'sending the video — he watches it and listens to it; a long clip can take a few minutes');
   try {
-    const r = await VintosUI.request(API + '/api/avatar/photo', {
+    const r = await VintosUI.request(API + (isVideo ? '/api/avatar/video' : '/api/avatar/photo'), {
       method:'POST', headers:{'X-Vintos-Secret': CONFIG.secret}, body: fd
     });
     const d = await r.json();
     const raw = d.reply || d.message;
     if(typeof raw!=='string')throw new Error('Missing reply');
     VintosUI.ack(capEl,sentDraft);if(_avPendingPhoto===file)_avPendingPhoto=null;
-    _avLogMsg('user',caption ? ('[photo] '+caption) : '[photo]');
-    _avChatHistory.push({role:'user', content:'[Gloria sent a photo] ' + caption});
+    _avLogMsg('user',caption ? ('['+kind+'] '+caption) : '['+kind+']');
+    _avChatHistory.push({role:'user', content:'[Gloria sent a '+kind+'] ' + caption});
     _avChatHistory.push({role:'assistant', content:raw});
     _avSaveHistory();
     if(!VintosUI.current(turn))return;
@@ -5109,7 +5114,7 @@ async function avSendPhoto(file, caption) {
           for (const s of (parsed.spawns||[])) { _avSpawn(s); }
           if (parsed.color) { try { _avSetColor(parsed.color); } catch(e) {} } } catch(e) {}
   } catch(e) {
-    _avLogMsg('system', '[Photo send not confirmed. Attachment and draft kept.]');
+    _avLogMsg('system', '['+(isVideo?'Video':'Photo')+' send not confirmed. Attachment and draft kept.]');
   } finally { VintosUI.finish(turn); }
 }
 

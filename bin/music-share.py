@@ -238,22 +238,15 @@ def fetch_lyrics(song_desc):
         return None
 
 
+# sound_read sits beside this script once deployed (both land in workspace/scripts); in the checkout it is in scripts/
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)),
+                os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "scripts")]
+
+
 def _load_whisper(_whisper, size="small"):
-    """The GPU first; the CPU when the GPU cannot run it. Aegis's torch has no kernel for its card ("no kernel
-    image is available"), so every weight copy failed and Whisper died before hearing a note (2026-09-09)."""
-    import io, contextlib
-    try:
-        buf = io.StringIO()
-        with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
-            m = _whisper.load_model(size)
-        import torch
-        if torch.cuda.is_available():
-            # a load can "succeed" and still hold broken weights: one tiny forward proves the kernels exist
-            torch.zeros(1).cuda() + 1
-        return m
-    except Exception as e:
-        log("whisper on the GPU failed (%s); using the CPU" % str(e).splitlines()[0][:90])
-        return _whisper.load_model(size, device="cpu")
+    """The GPU first, the CPU when the GPU has no kernel for it: one loader, shared with the video door."""
+    from sound_read import load_whisper
+    return load_whisper(size, log=log)
 
 
 def clean_transcript(song_desc, text):
@@ -283,26 +276,9 @@ def analyze_audio(mp3_path, transcribe=True):
     except Exception as e:
         if str(e) != "not needed": log(f"Whisper failed: {e}")
     try:
-        import librosa, numpy as np
-        y, sr = librosa.load(mp3_path, sr=None, mono=True, duration=60)
-        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-        raw_tempo = float(np.atleast_1d(tempo)[0])
-        if raw_tempo > 100:
-            raw_tempo = raw_tempo / 2
-        brightness_hz = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
-        brightness = "dark" if brightness_hz < 1500 else "warm" if brightness_hz < 2500 else "present" if brightness_hz < 4000 else "bright"
-        energy = round(float(np.mean(librosa.feature.rms(y=y))), 4)
-        key_names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
-        key = key_names[int(np.argmax(np.mean(librosa.feature.chroma_cqt(y=y, sr=sr), axis=1)))]
-        zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
-        texture = "dense" if zcr > 0.05 else "sparse"
-        result["acoustic"] = (
-            f"Tempo: {round(raw_tempo, 1)} BPM. "
-            f"Tonal brightness: {brightness}. "
-            f"Energy: {energy}. "
-            f"Dominant pitch class: {key}. "
-            f"Texture: {texture}."
-        )
+        # one reading for every door that hears a sound; this one used to halve every tempo over 100 BPM
+        from sound_read import measure
+        result["acoustic"] = measure(mp3_path)[0]
         log(f"Acoustic: {result['acoustic']}")
     except Exception as e:
         log(f"Librosa failed: {e}")

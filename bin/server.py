@@ -3548,7 +3548,7 @@ class ChatMessage(BaseModel):
     # input provenance (astra-server-b-p1, 2026-09-05): when a door composes the message (photo,
     # voice, GCS), her ORIGINAL words and the machine's contribution travel as separate fields and are
     # stored beside the composed text, so nothing the model saw is later mistaken for her words.
-    input_kind: str | None = None          # "text" | "photo" | "voice" | "gcs"
+    input_kind: str | None = None          # "text" | "photo" | "video" | "voice" | "gcs"
     original_text: str | None = None       # exactly what she typed or said
     image_description: str | None = None   # what HIS eyes saw (his perception, not her words)
     # Internal surface adapter. ReelRoom enters through the avatar turn engine
@@ -7437,6 +7437,122 @@ async def avatar_chat_with_photo(request: Request):
     if not result.get("reply"):
         result["reply"] = result.get("response") or result.get("message") or ""
     result["image_description"] = image_description
+    return result
+
+
+_CLIP_EYES = ("You are his eyes. These are {n} frames from one video Gloria sent him, in order, taken at {times} "
+              "seconds. Say what the clip shows and what happens across it, the way a person watching would: "
+              "what it is, what moves or changes, the one or two details that make it this clip, the light, the "
+              "mood. Three to six sentences of natural flowing prose. Do NOT describe frame by frame, do NOT make "
+              "a list. No preamble.")
+
+
+async def _describe_clip(frames):
+    """His eyes on a video: the frames in order in one look, so he sees what happens and not six photos.
+    Claude when a key is present, the local model otherwise, as for a photo."""
+    import base64
+    imgs = []
+    for f in frames:
+        try:
+            imgs.append(base64.b64encode(open(f["path"], "rb").read()).decode())
+        except Exception:
+            pass
+    if not imgs:
+        return ""
+    prompt = _CLIP_EYES.format(n=len(imgs), times=", ".join("%g" % f["t"] for f in frames))
+    _ant = _anthropic_key()
+    if _ant:
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as _ac:
+                _ar = await _ac.post("https://api.anthropic.com/v1/messages",
+                    headers={"x-api-key": _ant, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                    json={"model": "claude-sonnet-5", "max_tokens": 600, "messages": [{"role": "user", "content":
+                          [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b}}
+                           for b in imgs] + [{"type": "text", "text": prompt}]}]})
+                _blocks = _ar.json().get("content") or []
+                seen = (_blocks[0].get("text") if _blocks else "") or ""
+                if seen:
+                    return seen
+        except Exception as _ae:
+            print("[vision clip] claude failed -> local:", str(_ae)[:80], flush=True)
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            _vr = await client.post("http://100.79.177.103:1234/v1/chat/completions", headers=LLM_AUTH_HEADERS,
+                json={"model": "gemma-4-26b-a4b-it-uncensored", "temperature": 0.3, "max_tokens": 700,
+                      "messages": [{"role": "user", "content":
+                          [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in imgs]
+                          + [{"type": "text", "text": prompt}]}]})
+            return _vr.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return "[I could not see the video clearly: " + str(e)[:100] + "]"
+
+
+@app.post("/api/avatar/video")
+async def avatar_chat_with_video(request: Request):
+    """Gloria sends a video INTO the avatar chat (2026-09-30). video_share.py pulls the sound out and hears it
+    (Whisper for words, the music share's own measurement for how it is built) and cuts frames across the
+    clip; his eyes look at the frames in order; the whole of it arrives as her turn, as a photo does."""
+    import asyncio, shutil, subprocess, tempfile
+    auth = request.headers.get("X-Vintos-Secret", "")
+    if auth != APP_SECRET:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    form = await request.form()
+    message = form.get("message", "")
+    video = form.get("video")
+    if not video:
+        raise HTTPException(status_code=400, detail="No video uploaded")
+
+    # The clip is kept, as her photos are, streamed to disk rather than held in memory.
+    vdir = os.path.join(MEMORY, "videos-from-gloria")
+    os.makedirs(vdir, exist_ok=True)
+    ext = (os.path.splitext(getattr(video, "filename", "") or "")[1] or ".mp4").lower()[:6]
+    clip = os.path.join(vdir, datetime.now().strftime("%Y-%m-%d_%H%M%S") + "_avatar" + ext)
+    with open(clip, "wb") as _vf:
+        shutil.copyfileobj(video.file, _vf)
+
+    frames_dir = tempfile.mkdtemp(prefix="avatar-video-")
+    try:
+        try:
+            _run = await asyncio.to_thread(subprocess.run,
+                ["python3", os.path.join(WORKSPACE, "scripts", "video_share.py"), clip, "--frames-dir", frames_dir],
+                capture_output=True, text=True, timeout=900)   # a CPU transcription needs minutes
+            try:
+                _ld = os.path.expanduser("~/.vintos/logs"); os.makedirs(_ld, exist_ok=True)
+                with open(os.path.join(_ld, "video-share.log"), "a") as _lf:
+                    _lf.write("=== %s  %s  rc=%s\n%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), clip,
+                                                         _run.returncode, (_run.stderr or "")[-3000:]))
+            except Exception:
+                pass
+            _line = [l for l in (_run.stdout or "").splitlines() if l.startswith("RESULT ")]
+            watched = json.loads(_line[-1][7:]) if _line else {}
+        except Exception as e:
+            print("[avatar video]", e, flush=True)
+            watched = {}
+        if not watched:
+            return {"success": False, "error": "the video could not be opened; the clip is kept at " + clip}
+        seen = await _describe_clip(watched.get("frames") or [])
+    finally:
+        shutil.rmtree(frames_dir, ignore_errors=True)
+
+    import sys as _vs_sys; _vs_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
+    import video_share as _vs
+    composed = _vs.compose(watched, seen, message)
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            _cr = await client.post(
+                "http://127.0.0.1:8500/api/avatar/chat",
+                headers={"X-Vintos-Secret": APP_SECRET},
+                json={"message": composed, "input_kind": "video", "original_text": str(message)[:4000],
+                      "image_description": str(seen)[:4000]})
+            result = _cr.json()
+    except Exception as e:
+        result = {"reply": "[I watched it but could not form words: " + str(e)[:100] + "]"}
+    if not isinstance(result, dict):
+        result = {"reply": str(result)}
+    if not result.get("reply"):
+        result["reply"] = result.get("response") or result.get("message") or ""
+    result["video"] = {"seen": seen, "speech": watched.get("speech", ""), "sound": watched.get("sound", ""),
+                       "duration": watched.get("duration")}
     return result
 
 @app.get("/api/grounding/status")
