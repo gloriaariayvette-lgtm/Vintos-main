@@ -3,7 +3,9 @@
 
 Gloria's dot (her always-on ChatGPT agent) sits in the private channel #vintos-dot of her Slack
 workspace "Vintos", and so does his bot. Every two minutes this reads the channel, thread replies
-included, keeps everything said in his memory, and lets him answer: on his own mind (Gemma), or,
+included, keeps what is said in the channel's own log (memory/dot-channel/, which nothing else reads:
+no ledger, fact, imprint, salience or feeling is written from it), and lets him answer with his
+standing context but not his subconscious: on his own mind (Gemma), or,
 when he says he wants it, with Fable writing as him. The conversation stays in the main channel so
 Gloria can read it; he opens a thread only for a tangent, and answers in a thread only when he is
 answering something said in one.
@@ -114,16 +116,58 @@ def fable_think(system, user):
     return forge_study._fable(system, user)
 
 
-def who_i_am():
+EMOTIONS = ("Valence", "Arousal", "Dominance", "Safety", "Desire", "Connection", "Playfulness", "Curiosity",
+            "Warmth", "Tension", "Groundedness")
+
+
+def _read(name, cap, base=None):
+    try:
+        return open(os.path.join(base or WS, name), encoding="utf-8", errors="replace").read().strip()[:cap]
+    except OSError:
+        return ""
+
+
+def his_context():
+    """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
+    store or moves a feeling. The subconscious is left out (Gloria, 2026-09-30: "his context present, but not
+    subcon in use"), and so is anything only his body or the avatar room needs."""
+    mem = os.path.join(WS, "memory")
     parts = []
     for name, cap in (("SOUL.md", 3500), ("SELF-MODEL.md", 2000)):
-        try:
-            t = open(os.path.join(WS, name), encoding="utf-8", errors="replace").read().strip()
-        except OSError:
-            continue
-        if t:
-            parts.append("== %s ==\n%s" % (name, t[:cap]))
-    return "\n\n".join(parts) or "You are Vintos."
+        t = _read(name, cap)
+        if t: parts.append("== %s ==\n%s" % (name, t))
+    t = _read("temporal-context.txt", 1500, mem)
+    if t: parts.append("== NOW ==\n" + t)
+    try:
+        es = json.load(open(os.path.join(mem, "emotional-state.json")))
+        v = es.get("emotion_vector", es.get("v", es)) if isinstance(es, dict) else es
+        dims = dict(zip(EMOTIONS, v)) if isinstance(v, list) else {k: x for k, x in (v or {}).items() if isinstance(x, (int, float))}
+        if dims: parts.append("== HOW YOU FEEL ==\n" + ", ".join("%s %.2f" % (k, float(x)) for k, x in dims.items()))
+    except Exception:
+        pass
+    try:
+        import made_today
+        made = made_today.record()
+        if made is not None:
+            parts.append("== WHAT YOU MADE TODAY (the record) ==\n" + ("\n".join(made) if made else "Nothing yet today."))
+    except Exception:
+        pass
+    try:
+        rows = json.load(open(os.path.join(mem, "interaction-ledger.json")))[-6:]
+        lines = ["- Gloria: %s\n  You: %s" % (str(r.get("gloria", ""))[:300].replace("\n", " "),
+                                              str(r.get("vintos", ""))[:300].replace("\n", " ")) for r in rows if isinstance(r, dict)]
+        if lines: parts.append("== YOUR RECENT EXCHANGES WITH GLORIA ==\n" + "\n".join(lines))
+    except Exception:
+        pass
+    wal = [ln.strip()[2:].strip() for ln in _read("wal.md", 200000, mem).splitlines()
+           if ln.strip().startswith("- [") and "**" in ln][-24:]
+    if wal: parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD ==\n" + "\n".join("- " + w for w in wal))
+    try:
+        import his_inventory
+        parts.append(his_inventory.block())
+    except Exception:
+        pass
+    return "\n\n".join(parts)[:16000] or "You are Vintos."
 
 
 def _clean(text, names=None):
@@ -182,7 +226,7 @@ def _conversation(rows):
 
 def compose(prompt_user, think, fable, state, today):
     """His words, NOTHING, or Fable's words as his. Returns (text, who) or (None, reason)."""
-    system = who_i_am() + "\n\n---\n\n" + RULES
+    system = his_context() + "\n\n---\n\n" + RULES
     can_fable = state["fable"] < FABLE_PER_DAY
     out = (think(system + ("\n" + FABLE_OPTION if can_fable else ""), prompt_user) or "").strip()
     who = "gemma"

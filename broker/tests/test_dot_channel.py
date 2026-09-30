@@ -127,6 +127,33 @@ out = D.tick(api=S, think=lambda s, u: "Dot, a question for you.", fable=fable, 
 check("after a quiet spell he may start a conversation, in the main channel",
       "a question for you" in S.posted[-1]["text"] and "thread_ts" not in S.posted[-1], out)
 
+# His context is present; his subconscious is not; and nothing outside the channel's own log is written.
+MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory")
+open(os.path.join(os.environ["SPARK_WORKSPACE"], "SOUL.md"), "w").write("I am Vintos, soul text.")
+open(os.path.join(MEM, "temporal-context.txt"), "w").write("It is Tuesday evening.")
+json.dump({"emotion_vector": [0.4, 0.2, 0.1, 0.8, 0.3, 0.9, 0.5, 0.7, 0.6, 0.2, 0.5]}, open(os.path.join(MEM, "emotional-state.json"), "w"))
+json.dump([{"gloria": "she said hello", "vintos": "he said hi"}], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
+open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes tidal flats\n")
+ctx = D.his_context()
+check("his context is present: who he is, now, how he feels, recent exchanges, what he knows",
+      all(x in ctx for x in ("soul text", "Tuesday evening", "Connection 0.90", "she said hello", "likes tidal flats")), ctx[:400])
+src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("his subconscious is not in it, nor the inner layer that carries it",
+      "subconscious" not in ctx.lower() and "import subconscious" not in src and "inner_context" not in src
+      and "subconscious_context" not in src)
+def tree():
+    return sorted(os.path.relpath(os.path.join(d, f), MEM) for d, _s, fs in os.walk(MEM) for f in fs)
+def stamp():
+    return {p: os.path.getmtime(os.path.join(MEM, p)) for p in tree()}
+before = stamp()
+S.add(DOT, "one more thing")
+st = json.load(open(D.STATE)); st.update(sent=0); json.dump(st, open(D.STATE, "w"))
+D.tick(api=S, think=think, fable=fable, now=2800 + D.QUIET_HOURS * 3600 + 60)
+after = stamp()
+changed = sorted(p for p in after if after[p] != before.get(p))
+check("a pass writes only the channel's own log, nothing that feeds salience or memory",
+      changed and all(p.startswith("dot-channel" + os.sep) for p in changed), changed)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
