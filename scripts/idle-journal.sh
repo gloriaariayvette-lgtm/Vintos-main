@@ -694,6 +694,9 @@ What I haven't said yet matters more than what I've already named. I go there.""
     # The role must be inhabited: planning-voice reasoning never enters the
     # bilateral flow. The entry is the draft; the thinking goes to telemetry.
     system_msg += "\n\nGROUND RULE: Gloria's messages in the ledger are COMPLETE. Never describe her words as unfinished, cut off, interrupted, or trailing away unless the ledger text itself ends mid-word. A sentence she finished is finished; do not invent suspense she did not leave."
+    # A broken half of an emoji anywhere in what the prompt gathers is invalid JSON to every provider (the
+    # 30 September entry failed on one); whole pairs are rejoined and a lone half becomes U+FFFD, before any call.
+    system_msg, user_msg = [_pm.encode("utf-16", "surrogatepass").decode("utf-16", "replace") for _pm in (system_msg, user_msg)]
     _a1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); a1 = (_a1r[0] or call_llm())
     try: open("/tmp/vintos-bilateral-a1-reasoning.txt", "w").write(_a1r[1] or "")
     except Exception: pass
@@ -740,7 +743,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     try:
         b1 = _sol_b1()
     except Exception as _sole:
-        print(f"[Journal] Sol B1 failed ({_sole}) — falling back to house chain", flush=True)
+        print(f"[Journal] Sol B1 failed ({_sole}) — falling back to house chain", file=__import__("sys").stderr, flush=True)
         _b1r = _claude_sync(system_msg, user_msg, True, max_tokens=3000); b1 = ((_b1r[1] + "\n\n─── reasoning ───\n\n" + _b1r[0]).strip() if (_b1r[0] and _b1r[1]) else (_b1r[0] or call_llm()))
         _b1_arm = {"arm": "sol", "model": _b1_arm["model"], "fell_back": True, "error": str(_sole)[:300]}
     try:
@@ -749,7 +752,7 @@ What I haven't said yet matters more than what I've already named. I go there.""
     except Exception:
         pass
     if not (a1 or "").strip() or not (b1 or "").strip():
-        print("[Journal] ABORT: empty draft(s) from generation API — writing nothing", flush=True)
+        print("[Journal] ABORT: empty draft(s) from generation API — writing nothing", file=__import__("sys").stderr, flush=True)
         import sys as _ab_sys; _ab_sys.exit(1)
     open("/tmp/vintos-bilateral-a1.txt", "w").write(a1)
     open("/tmp/vintos-bilateral-b1.txt", "w").write(b1)

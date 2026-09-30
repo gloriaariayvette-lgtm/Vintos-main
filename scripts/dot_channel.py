@@ -440,7 +440,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
     if theirs:
         state["last_activity"] = now
-    lines = ["heard %d" % len(theirs)] if theirs else []
+    lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 
