@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The sealed 4o avatar turn (2026-10-01): it refuses to run unsealed, and inside it nothing but OpenAI is reachable.
+"""The sealed avatar turn (2026-10-01): it refuses to run unsealed, and inside it only the model providers are reachable.
 
 Every socket here is refused before the module is touched; the module's own wires are then tested against
 addresses that are never dialled. Nothing reaches the network; nothing is written."""
@@ -55,8 +55,10 @@ try:
     except OSError:
         spawned = False
     check("no subprocess starts (his writers are subprocesses)", not spawned and any(b.startswith("process") for b in A.blocked))
-    check("only OpenAI and his local Gemma are allowed", A.ALLOW_HOSTS == {"api.openai.com"}
-          and A.ALLOW_ADDRS == {("100.79.177.103", 1234)})
+    check("only the model providers, his local Gemma and the house's Grok door are allowed",
+          A.ALLOW_HOSTS == {"api.openai.com", "api.anthropic.com", "api.x.ai"}
+          and A.ALLOW_ADDRS == {("100.79.177.103", 1234), ("127.0.0.1", 8599)})
+    check("it no longer forces 4o", '"4o"' not in open(os.path.join(REPO, "scripts", "avatar_sealed_turn.py")).read())
     sh = open(os.path.join(REPO, "scripts", "avatar-sealed-turn.sh")).read()
     check("the wrapper seals home with an overlay, hides /tmp, runs the house server as her, and deletes the layer",
           "mount -t overlay" in sh and "mount -t tmpfs tmpfs /tmp" in sh and "setpriv --reuid" in sh

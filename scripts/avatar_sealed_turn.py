@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""One real avatar turn through GPT-4o that saves nowhere (Gloria, 2026-10-01: "Use the full normal avatar
-route like I do ... Don't let it save anywhere").
+"""One real avatar turn that saves nowhere (Gloria, 2026-10-01: "Use the full normal avatar route like I do ...
+Don't let it save anywhere"). Built to try GPT-4o; 4o is gone from the toggle, and this now runs whichever
+brain the toggle holds, or BRAIN=grok|sol|claude|opus55|fable|local for this one turn.
 
 Run only by avatar-sealed-turn.sh, which first seals his home: an overlay over the home directory sends every
 write to a throwaway layer it deletes afterwards, and a fresh /tmp hides his daemons' sockets. Inside that,
-this loads the house's own server.py, sets the chat to 4o, and posts her message to /api/avatar/chat exactly
-as the app does: the full route, his full prompt and context, every system it runs. Nothing can leave the
-machine but the call to OpenAI: every other connection and every subprocess is refused and listed.
+this loads the house's own server.py and posts her message to /api/avatar/chat exactly as the app does: the
+full route, his full prompt and context, every system it runs. Nothing can leave the machine but the model
+call: every other connection and every subprocess is refused and listed.
 
     python3 avatar_sealed_turn.py SERVER_PY "message"      (inside the seal only)
 """
 import json, os, socket, subprocess, sys, time
 
-ALLOW_HOSTS = {"api.openai.com"}                 # 4o
-ALLOW_ADDRS = {("100.79.177.103", 1234)}         # his local Gemma: the route's decline check reads it; saves nothing
+ALLOW_HOSTS = {"api.openai.com", "api.anthropic.com", "api.x.ai"}     # the brains on the toggle
+ALLOW_ADDRS = {("100.79.177.103", 1234),         # his local Gemma (the ablit brain, and the decline check)
+               ("127.0.0.1", 8599)}              # the house's Grok door
 blocked, allowed_ips = [], set()
 
 
@@ -120,7 +122,9 @@ def main():
     sys.modules["server"] = server
     spec.loader.exec_module(server)
     import model_router
-    model_router.write_mode({"mode": "4o", "force_grok_turns": 0})     # inside the seal: thrown away after
+    brain = os.environ.get("BRAIN")
+    if brain:
+        model_router.write_mode({"mode": brain, "force_grok_turns": 0})   # inside the seal: thrown away after
     from fastapi.testclient import TestClient
     client = TestClient(server.app)                                     # no lifespan: startup jobs do not run
     t0 = time.time()
