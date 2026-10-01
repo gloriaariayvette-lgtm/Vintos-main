@@ -202,7 +202,10 @@ RULES_LOCK = (
     "entirely. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n"
     "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
     "P02730 with ESMFold). Your next scheduled Lab run is shown it and leans toward it. Without that line, "
-    "nothing said here reaches your Lab.\n")
+    "nothing said here reaches your Lab.\n"
+    "Dot's large tests are limited to 10 a day: anything dot runs, builds, folds, codes or tests on a computer. "
+    "Lookups, searches and replies are not counted. Ask for a large test only when its answer changes what you do "
+    "next.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_STYLE
 
 
@@ -740,6 +743,11 @@ SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
+# Dot's large Lab tests, 10 a day (Gloria, 2026-10-01: "limit Dot's lab tests to 10 per day max ... only large
+# tests like the ones we just tried that use 1% per test"). Dot numbers each one ("🧪 Large test 3/10"); the
+# channel reads the number so he knows how many are left. Lookups and replies are not counted.
+DOT_LARGE_PER_DAY = 10
+DOT_LARGE = re.compile(r"large test\W{0,3}(\d{1,2})\s*(?:/|of)\s*\d{1,2}", re.I)
 LONG_ON_ONE = 6          # his messages since the last lock before he is told to lock it or drop it
 
 
@@ -759,6 +767,14 @@ def steer(state, today=None):
     if chosen:
         notes.append("TODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
                      + ". Bring things from these to dot. When you start something or it is your turn, start here.")
+    used = int(state.get("dot_large") or 0)
+    if used >= DOT_LARGE_PER_DAY:
+        notes.append("DOT'S LARGE TESTS ARE USED UP TODAY (%d of %d). Do not ask dot for a run, a build, a fold, code "
+                     "or a test until tomorrow. Lookups and questions are fine. Decide what the first one tomorrow "
+                     "should be." % (used, DOT_LARGE_PER_DAY))
+    elif used:
+        notes.append("Dot's large tests today: %d of %d used (a run, build, fold, code or test on a computer; "
+                     "lookups and replies do not count). Save them for what matters." % (used, DOT_LARGE_PER_DAY))
     closed = [x["plan"] for x in (state.get("locked") or [])][-8:]
     if closed:
         notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
@@ -1215,7 +1231,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[])
+        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0)
     if not state.get("self"):
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
@@ -1236,6 +1252,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
+    for r in theirs:
+        if r["who"] == "dot":
+            for n in DOT_LARGE.findall(r["text"]):
+                state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
     if rows:
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
     if theirs:

@@ -78,3 +78,14 @@ When Vintos's app posts "⏸ Gloria has paused the day", stop posting in #vintos
 ## 10. Today's focus
 When Vintos posts "🎯 Today's focus, from Gloria: …", those topics lead the day. Bring work and findings on them
 first, until midnight or until she clears it.
+
+## 11. Large tests: 10 a day
+A large test is anything that runs on a computer: code, a script, a build, a benchmark, a fold or calculation on the
+Mac or Aegis, or work on your own computer. The tests Gloria ran with you on 1 October were large tests. Lookups,
+searches, plugin reads and replies are not large tests and are not counted.
+- You may do at most **10 large tests a day** (midnight to midnight, Gloria's time), for Vintos and anyone else in
+  #vintos-dot. Gloria's own requests do not count.
+- Start each one with a line `🧪 Large test N/10: <what>` so the count is visible. Vintos's side reads that number.
+- At 10/10, do not start another. Say `🧪 Large tests are used up today (10/10)` once, keep the task on your list
+  (rule 8), and start it first tomorrow. That is not dropping the task.
+- Before starting one, check it is worth it: if a lookup can answer the question, do the lookup instead.

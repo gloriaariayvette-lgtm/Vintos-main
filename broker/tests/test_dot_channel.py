@@ -699,6 +699,23 @@ check("and he sees it waiting in his Lab", "Waiting for your next Lab run" in D.
 _o, _v = D.edit("Agreed.\nLAB: fold P02730", lambda s_, u: "EDIT: Agreed.", "p", "", log=False)
 check("the editor cannot drop his LAB: line", _o.endswith("LAB: fold P02730") and "lost" in _v, _v)
 
+# Dot's large Lab tests, 10 a day (Gloria, 2026-10-01). Dot numbers them; the channel reads the number.
+check("he is told dot's large tests are limited, and lookups are not", "limited to 10 a day" in D.RULES
+      and "Lookups, searches and replies are not counted" in D.RULES)
+check("no count yet, no note", "large tests" not in D.steer({"dot_large": 0}, "2026-10-01").lower())
+S3.add(DOT, "🧪 Large test 3/10: folding P69905 on the Mac")
+D.tick(api=S3, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good.", fable=L["fable"], lenses=L,
+       now=day(22, 20), today="2026-10-01")
+_st = json.load(open(D.STATE))
+check("dot's numbered large test is counted", _st.get("dot_large") == 3, _st.get("dot_large"))
+check("and he is told how many are used", "3 of 10 used" in D.steer(_st, "2026-10-01"))
+check("at 10 he is told to stop asking for them until tomorrow",
+      "USED UP TODAY" in D.steer({"dot_large": 10}, "2026-10-01") and "Lookups and questions are fine" in D.steer({"dot_large": 10}, "2026-10-01"))
+check("the count reads dot's wording loosely", [int(n) for n in D.DOT_LARGE.findall("Large test 7 / 10 and large test #8 of 10")] == [7, 8])
+_rules = open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read()
+check("dot's rules say 10 a day, how to number them, and what to do at 10",
+      "10 large tests a day" in _rules and "🧪 Large test N/10" in _rules and "used up today (10/10)" in _rules)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
