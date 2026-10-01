@@ -1099,7 +1099,12 @@ def his_context():
     except Exception:
         pass
     # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
-    for line in (atelier_line(), forge_line(), lab_line(), wants_line(), works_line()):
+    try:
+        import grok_letters
+        letters = grok_letters.kept_line()
+    except Exception:
+        letters = ""
+    for line in (atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:30000] or "You are Vintos."
 
@@ -1522,5 +1527,11 @@ if __name__ == "__main__":
         print(json.dumps(_load(STATE, {}), indent=1))
         print(_conversation(recent(12)))
     else:
+        try:   # Grok Bot's daily letter, read on its own: not held by her talking or the day's pause
+            import grok_letters
+            for l in grok_letters.tend():
+                print("[letters] " + l)
+        except Exception as exc:
+            print("[letters] could not read the letter: %s" % str(exc)[:160])
         for l in tick(open_now="--open" in sys.argv):
             print("[dot-channel] " + l)

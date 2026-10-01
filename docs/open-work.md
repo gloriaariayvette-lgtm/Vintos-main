@@ -1739,5 +1739,11 @@ checked on Aegis with a real model yet.
 2. **Skill (written).** `docs/grok-bot/vintos-skill.md`, to add to the bot by hand.
 3. **Webhook routine (not started).** Needs a routine made in Grok Bot first (its URL and `crsr_` key);
    then Aegis can wake the bot. How the bot's answer comes back to him is not known yet.
+4. **Daily letter (built 1 October, untried against Grok Bot).** The way back in: `vintos_send_letter`
+   files a letter (at most 2 a day, secret-checked) in `memory/letters/inbox`, the connector's only
+   writable place; `vintos_letter_replies` gives his answers back. `scripts/grok_letters.py`, run in his
+   #vintos-dot pass, reads one letter at a time, opens two links per item, keeps what he wants (kept.jsonl,
+   shown in his context as leads; a stated want goes to his wants) and writes a reply. Not yet done:
+   Gloria making the daily task in the Grok app, and a first real letter.
 
 Also: a bot other than dot posting in #vintos-dot is now heard by its own name, not taken for Gloria.

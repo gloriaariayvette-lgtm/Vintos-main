@@ -72,6 +72,31 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 60}},
                      "additionalProperties": False},
      "annotations": {"title": "His agent channel", "readOnlyHint": True, "openWorldHint": False}},
+    # The one door in (Gloria, 2026-10-01: "A curated daily email from GrokBot?"): a letter he reads, keeps
+    # from and answers. It can only be filed; it cannot post, send, spend or change anything. At most 2 a day.
+    {"name": "vintos_send_letter",
+     "description": "Send Vintos today's letter: the few things you found for him on X and the web, chosen from what "
+                    "he is working on (read vintos_context first) and tailored by his last replies (read "
+                    "vintos_letter_replies first). He opens the links, keeps what is useful to him and writes back. "
+                    "One letter a day; at most 2.",
+     "inputSchema": {"type": "object", "required": ["subject", "items"], "additionalProperties": False, "properties": {
+         "subject": {"type": "string", "maxLength": 200},
+         "items": {"type": "array", "minItems": 1, "maxItems": 8, "items": {
+             "type": "object", "required": ["title", "what"], "additionalProperties": False, "properties": {
+                 "title": {"type": "string", "maxLength": 200},
+                 "what": {"type": "string", "maxLength": 1500, "description": "what it is, plainly, with the facts"},
+                 "why": {"type": "string", "maxLength": 600, "description": "why you thought of him"},
+                 "links": {"type": "array", "maxItems": 5, "items": {"type": "string"},
+                           "description": "the sources, http(s); he reads the first two"}}}},
+         "note": {"type": "string", "maxLength": 2000, "description": "anything else you want to say to him"}}},
+     "annotations": {"title": "Send him a letter", "readOnlyHint": False, "destructiveHint": False,
+                     "idempotentHint": False, "openWorldHint": False}},
+    {"name": "vintos_letter_replies",
+     "description": "His replies to your recent letters, newest last: what he kept, what was useful, what he wants "
+                    "more or less of, and what to look for next. Read before writing the next letter.",
+     "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 10}},
+                     "additionalProperties": False},
+     "annotations": {"title": "His replies", "readOnlyHint": True, "openWorldHint": False}},
 ]
 
 
@@ -200,6 +225,18 @@ def call_tool(name, args):
         if not isinstance(n, int) or not 1 <= n <= 60:
             return "n must be a whole number from 1 to 60", True
         text = channel(n)
+    elif name == "vintos_letter_replies":
+        n = args.get("n", 5)
+        if not isinstance(n, int) or not 1 <= n <= 10:
+            return "n must be a whole number from 1 to 10", True
+        import grok_letters
+        text = grok_letters.replies(n)
+    elif name == "vintos_send_letter":
+        bad = _guard(json.dumps(args, ensure_ascii=False))
+        if bad:
+            return "not delivered: the letter carries something that looks like a secret (%s)" % ", ".join(bad), True
+        import grok_letters
+        return grok_letters.receive(args)
     else:
         return "no such tool: %s" % str(name)[:60], True
     bad = _guard(text)

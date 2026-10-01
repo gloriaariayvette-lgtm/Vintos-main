@@ -1,19 +1,23 @@
 [Unit]
-Description=Vintos's context for his Grok Bot agent: MCP, read only, on 127.0.0.1:8625 with a bearer token
+Description=Vintos's context for his Grok Bot agent: MCP on 127.0.0.1:8625 with a bearer token; it writes only letters
 After=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/.vintos/workspace
 Environment=PYTHONUNBUFFERED=1
+# the letters folder must exist before the sandbox is drawn, or it would be read only like the rest
+ExecStartPre=+/bin/mkdir -p %h/.vintos/workspace/memory/letters/inbox
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/vintos_mcp.py
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
-# read only everywhere but its own access log; no PrivateTmp: his EmoClaw reading comes from the socket in /tmp
+# read only everywhere but its own access log and his letters inbox (Grok Bot's daily letter, 2026-10-01);
+# no PrivateTmp: his EmoClaw reading comes from the socket in /tmp
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=-%h/.vintos/logs
+ReadWritePaths=%h/.vintos/workspace/memory/letters/inbox
 
 [Install]
 WantedBy=default.target
