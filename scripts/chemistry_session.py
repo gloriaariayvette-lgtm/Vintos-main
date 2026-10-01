@@ -191,6 +191,12 @@ def _named_protein_parameters(experiment, parameters, *plan_text):
     return parameters
 
 
+def _protein_has_target(parameters):
+    """Something the protein experiment can fold: an exact accession, a built-in fragment or a sequence."""
+    return any(str((parameters or {}).get(key) or "").strip() for key in
+               ("target_accession", "requested_accession", "accession", "fragment", "sequence"))
+
+
 def _operator_plan(experiments):
     """One explicitly requested accession rerun, selected through the service environment."""
     accession = str(os.environ.get("VINTOS_CHEMISTRY_TARGET_ACCESSION") or "").strip().upper()
@@ -274,14 +280,25 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "If the protein-design MCP menu is present, instrument_query may replace source_query or "
               "plugin_query; choose at most one extra call total. Its result reaches your reading. "
               "Source predictions and model disagreements are hypotheses, not validation or proof of novelty.")
-    raw = asyncio.run(_frontier(lens, system, prompt))
-    if not raw: raise RuntimeError("frontier lens %s returned no plan" % lens)
-    value = lab._json_object(raw)
-    experiment = str(value.get("experiment", ""))
-    if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
-    parameters, dropped = _bounded_parameters(value.get("parameters"))
-    parameters = _named_protein_parameters(experiment, parameters, value.get("question"),
-                                           value.get("why_this"), value.get("prediction"))
+    for attempt in range(2):
+        raw = asyncio.run(_frontier(lens, system, prompt))
+        if not raw: raise RuntimeError("frontier lens %s returned no plan" % lens)
+        value = lab._json_object(raw)
+        experiment = str(value.get("experiment", ""))
+        if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
+        parameters, dropped = _bounded_parameters(value.get("parameters"))
+        parameters = _named_protein_parameters(experiment, parameters, value.get("question"),
+                                               value.get("why_this"), value.get("prediction"))
+        if experiment != "protein" or _protein_has_target(parameters):
+            break
+        # A protein plan with nothing to fold went to the Mac and failed there ("requires a sourced sequence or
+        # an explicit fragment", grok, 2026-10-01). Asked once, here, for the exact accession instead.
+        if attempt:
+            raise ValueError("protein plan names no UniProt accession, sequence or fragment, even when asked again")
+        prompt += ("\n\nYOUR PLAN COULD NOT RUN: a protein experiment needs parameters.target_accession, the exact "
+                   "UniProt accession of the protein (for example P02730), or parameters.fragment or "
+                   "parameters.sequence. A gene or protein name alone is not enough. Return the whole plan again "
+                   "with the exact accession, or choose another experiment.")
     shots = max(256, min(16384, int(value.get("shots", 4096))))
     addressed = value.get("addressed_entry_ids") if isinstance(value.get("addressed_entry_ids"), list) else []
     allowed = set(offered_entry_ids or [])

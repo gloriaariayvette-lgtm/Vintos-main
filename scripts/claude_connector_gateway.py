@@ -69,6 +69,10 @@ def _send(request, timeout=240, transport=None):
 
 def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     """One connector call + a durable receipt, identical contract to plugin_gateway.call()."""
+    # the menu names tools as plugin.tool, and planners copy it: "pubmed.get_full_text_article" was refused as
+    # outside policy (sol's titrate plan, 2026-10-01). The bare name is what the policy and the relay know.
+    if isinstance(tool, str) and tool.startswith(str(plugin) + "."):
+        tool = tool[len(str(plugin)) + 1:]
     entry = policy(plugin, surface, tool)                          # raises if tool is outside policy
     if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 1000:
         raise ValueError("bounded purpose required")

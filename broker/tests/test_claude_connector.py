@@ -107,6 +107,15 @@ class GatewayTests(unittest.TestCase):
             ccg.call("lab", "pubmed", "not_a_tool", {}, "x",
                      transport=lambda _: self.fail("transport reached on a rejected tool"))
 
+    def test_tool_named_as_the_menu_shows_it_is_accepted(self):
+        # the menu lists plugin.tool; sol's titrate plan copied it and was refused (2026-10-01)
+        ccg.call("lab", "pubmed", "pubmed.get_full_text_article", {"pmid": "12672112"}, "read the paper",
+                 transport=self.stub)
+        self.assertEqual(self.request["tool"], "get_full_text_article")
+        with self.assertRaises(PermissionError):
+            ccg.call("lab", "pubmed", "chembl.get_full_text_article", {}, "x",
+                     transport=lambda _: self.fail("transport reached on another connector's prefix"))
+
     def test_relay_hold_becomes_a_policy_hold(self):
         def held(_request):
             return {"ok": False, "receipt": {"type": "LINK_APPROVAL_REQUIRED", "state": "awaiting"}}

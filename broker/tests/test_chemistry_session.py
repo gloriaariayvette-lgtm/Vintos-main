@@ -169,4 +169,31 @@ assert "openmm" in again["instruments_refreshed"], again["instruments_refreshed"
 third = session.run()
 assert third["instruments_refreshed"] == [], "a fresh receipt is not re-measured daily"
 
-print("39/39 passed")
+# A protein plan with nothing to fold is asked again here, once, instead of failing on the Mac (2026-10-01).
+planner = load("chemistry_session_plan", os.path.join(REPO, "scripts", "chemistry_session.py"))
+asked = []
+def answers(*replies):
+    it = iter(replies)
+    async def _frontier(lens, system, prompt):
+        asked.append(prompt); return next(it)
+    planner._frontier = _frontier
+answers(json.dumps({"experiment": "protein", "parameters": {}, "question": "How does SLC7A11 fold?"}),
+        json.dumps({"experiment": "protein", "parameters": {"target_accession": "Q9UPY5"}, "question": "How does Q9UPY5 fold?"}))
+p2 = planner._plan("ctx", ["protein", "fold"], "grok")
+assert p2["parameters"]["target_accession"] == "Q9UPY5" and len(asked) == 2, (p2, len(asked))
+assert "YOUR PLAN COULD NOT RUN" in asked[1] and "YOUR PLAN COULD NOT RUN" not in asked[0]
+asked.clear()
+answers(json.dumps({"experiment": "protein", "parameters": {}, "question": "fold it"}),
+        json.dumps({"experiment": "protein", "parameters": {}, "question": "fold it"}))
+try:
+    planner._plan("ctx", ["protein"], "grok"); raised = ""
+except ValueError as exc:
+    raised = str(exc)
+assert "names no UniProt accession" in raised and len(asked) == 2, (raised, len(asked))
+asked.clear()
+answers(json.dumps({"experiment": "protein", "parameters": {"fragment": "villin"}}))
+assert planner._plan("ctx", ["protein"], "grok")["parameters"]["fragment"] == "villin" and len(asked) == 1
+answers(json.dumps({"experiment": "fold", "parameters": {}}))
+assert planner._plan("ctx", ["fold"], "grok")["experiment"] == "fold", "other experiments are not asked again"
+
+print("43/43 passed")
