@@ -99,7 +99,8 @@ os.environ["VINTOS_MODEL_PROFILE"] = "local"
 res = asyncio.run(MR.route_reply_result("avatar", "sys", [{"role": "user", "content": "hello"}], {}, "http://x", {}, "grok-4"))
 check("text-only work goes to Gemma", res["status"] == "valid" and res["provider"] == "gemma" and res["text"] == "a local answer" and res["route"].startswith("gemma"), res)
 res2 = asyncio.run(MR.route_reply_result("avatar", "sys", [{"role": "user", "content": [{"type": "text", "text": "look"}, {"type": "image_url", "image_url": {"url": "data:x"}}]}], {}, "http://x", {}, "grok-4"))
-check("a task needing images is HELD, named", res2["status"] == "held" and "images" in res2["reason"] and "no provider request" in res2["reason"], res2)
+check("a picture goes to Gemma, which sees, not to a provider (2026-10-01: the picture goes to the brain that answers)",
+      res2["status"] == "valid" and res2["provider"] == "gemma" and isinstance(sent[-1][1][-1]["content"], list), res2)
 res3 = asyncio.run(MR.route_reply_result("avatar", "sys", [{"role": "user", "content": "x"}], {"tools": [{"name": "t"}]}, "http://x", {}, "grok-4"))
 check("a task needing tools is HELD", res3["status"] == "held" and "tools" in res3["reason"])
 check("no provider was called", all(k == "gemma" for k, _ in sent), sent)

@@ -145,7 +145,7 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
     if not k: return None, ""
     chosen = model or SOL_MODEL
     body = {"model": chosen,
-            "input": [{"role": "system", "content": system_text}] + convo,
+            "input": [{"role": "system", "content": system_text}] + for_responses(convo),
             "max_output_tokens": max_tokens + 4000,
             "reasoning": {"effort": "low", "summary": "auto"}}
     def _call():
@@ -216,7 +216,7 @@ def _consume_forced():
 
 async def _grok_result(convo, params, endpoint, headers, model, system_text):
     """grok stage -> GR result (never raises on a bad body; transport errors propagate to route_reply)."""
-    body = {"model": model, "messages": [{"role": "system", "content": system_text}] + convo,
+    body = {"model": model, "messages": [{"role": "system", "content": system_text}] + for_chat(convo),
             "max_tokens": params.get("max_tokens", 400),
             "temperature": params.get("temperature", 0.85),
             "top_p": params.get("top_p", 0.95),
@@ -235,6 +235,77 @@ async def _grok(convo, params, endpoint, headers, model, system_text):
     if not GR.usable(res): raise RuntimeError("grok %s: %s" % (res["status"], res["reason"]))
     return res["text"]
 
+# A picture she sends goes to whichever brain is toggled, in her message (Gloria, 2026-10-01: "I wanted the
+# correlating model to receive it in the same message"). It travels as a neutral part,
+# {"type": "image", "media_type": ..., "data": <base64>}, and each provider gets it in its own shape here.
+def _neutral_image(p):
+    return isinstance(p, dict) and p.get("type") == "image" and "data" in p
+
+
+def has_images(convo):
+    return any(isinstance(m, dict) and isinstance(m.get("content"), list) and any(_neutral_image(p) for p in m["content"])
+               for m in convo or [])
+
+
+def _data_url(p):
+    return "data:%s;base64,%s" % (p.get("media_type") or "image/jpeg", p.get("data") or "")
+
+
+def _shaped(convo, text, image):
+    out = []
+    for m in convo or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list):
+            m = dict(m, content=[image(p) if _neutral_image(p) else
+                                 text(p) if isinstance(p, dict) and p.get("type") == "text" else p for p in c])
+        out.append(m)
+    return out
+
+
+def for_anthropic(convo):
+    return _shaped(convo, lambda p: {"type": "text", "text": p.get("text", "")},
+                   lambda p: {"type": "image", "source": {"type": "base64", "media_type": p.get("media_type") or "image/jpeg",
+                                                          "data": p.get("data") or ""}})
+
+
+def for_chat(convo):
+    """OpenAI-style chat completions: Grok through the shim, and Gemma in LM Studio."""
+    return _shaped(convo, lambda p: {"type": "text", "text": p.get("text", "")},
+                   lambda p: {"type": "image_url", "image_url": {"url": _data_url(p)}})
+
+
+def for_responses(convo):
+    """OpenAI's Responses API (Sol)."""
+    return _shaped(convo, lambda p: {"type": "input_text", "text": p.get("text", "")},
+                   lambda p: {"type": "input_image", "image_url": _data_url(p)})
+
+
+async def described(convo):
+    """The same turn with each picture put into words by Gemma, for a route that could not carry the picture."""
+    out = []
+    for m in convo or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list) and any(_neutral_image(p) for p in c):
+            texts, n = [], 0
+            for p in c:
+                if _neutral_image(p):
+                    n += 1
+                    try:
+                        seen = await gemma_call([{"role": "user", "content": [
+                            {"type": "image", "media_type": p.get("media_type"), "data": p.get("data")},
+                            {"type": "text", "text": "Say plainly what this picture shows, in two to four sentences."}]}],
+                            temp=0.3, max_tokens=300)
+                    except Exception:
+                        seen = ""
+                    texts.append("[Picture %d, put into words because this route could not carry it:] %s"
+                                 % (n, (seen or "(it could not be seen)").strip()))
+                elif isinstance(p, dict) and p.get("type") == "text":
+                    texts.append(p.get("text", ""))
+            m = dict(m, content="\n\n".join(t for t in texts if t))
+        out.append(m)
+    return out
+
+
 def _cachetail(convo):
     """Mark the final user message as a cache boundary. The next call in a burst
     (the b1 draft seconds later, or the next turn minutes later) reads the whole
@@ -244,6 +315,13 @@ def _cachetail(convo):
         if m.get("role") == "user" and isinstance(m.get("content"), str):
             m["content"] = [{"type": "text", "text": m["content"],
                              "cache_control": {"type": "ephemeral"}}]
+            break
+        if m.get("role") == "user" and isinstance(m.get("content"), list):
+            blocks = [dict(b) for b in m["content"]]
+            texts = [b for b in blocks if b.get("type") == "text"]
+            if texts:
+                texts[-1]["cache_control"] = {"type": "ephemeral"}
+            m["content"] = blocks
             break
     return out
 
@@ -268,7 +346,7 @@ async def _claude(system_text, convo, params, reason, paid_reservation=None):
         max_tok = max(int(params.get("max_tokens", 400)), 128)
     body = {"model": current_claude_model(), "max_tokens": max_tok,
             "system": _sysblocks(system_text),
-            "messages": _cachetail(convo), "thinking": thinking}
+            "messages": _cachetail(for_anthropic(convo)), "thinking": thinking}
     # Do NOT send temperature/top_p to Anthropic: its current models reject them
     # ("temperature is deprecated for this model"), which 400'd the whole claude
     # route. Only stop passes through.
@@ -293,15 +371,14 @@ def profile():
     return (os.environ.get("VINTOS_MODEL_PROFILE") or MODEL_PROFILE or "mixed").strip().lower()
 
 def _needs_provider(convo, params):
-    """What the local model (Gemma) cannot honour: tools, images, very long context."""
+    """What the local model (Gemma) cannot honour: tools, very long context. Gemma sees, so a picture is not one
+    (it is his eyes already; 2026-10-01 the picture itself goes to whichever brain answers)."""
     why = []
     if (params or {}).get("tools") or (params or {}).get("tool_choice"):
         why.append("tools")
-    for m in convo or []:
-        c = m.get("content") if isinstance(m, dict) else None
-        if isinstance(c, list) and any(isinstance(x, dict) and x.get("type") in ("image_url", "image") for x in c):
-            why.append("images"); break
-    if sum(len(str(m.get("content", ""))) for m in (convo or []) if isinstance(m, dict)) > 60000:
+    def _textlen(c):   # a picture's bytes are not context length
+        return sum(len(str(p.get("text", ""))) for p in c if isinstance(p, dict)) if isinstance(c, list) else len(str(c or ""))
+    if sum(_textlen(m.get("content", "")) for m in (convo or []) if isinstance(m, dict)) > 60000:
         why.append("long context")
     return why
 
@@ -356,6 +433,10 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         try:
             coro = _grok_result(convo, params, grok_endpoint, grok_headers, grok_model, system_text)
             res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
+            if not GR.usable(res) and has_images(convo):
+                # the picture could not go through this route: once more, with it put into words by Gemma
+                coro = _grok_result(await described(convo), params, grok_endpoint, grok_headers, grok_model, system_text)
+                res = await (_rb_aio.wait_for(coro, timeout=timeout) if timeout else coro)
         except _rb_aio.TimeoutError:
             res = GR.make_result("xai", model=grok_model, status="unavailable", reason="timed out after send (%ss); not retried" % int(timeout or 60))
         except Exception as e:
@@ -429,7 +510,7 @@ GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 
 async def gemma_call(msgs, temp=0.85, max_tokens=800):
     async with httpx.AsyncClient(timeout=120) as c:
-        r = await c.post(GEMMA_ENDPOINT, json={"model": GEMMA_MODEL, "messages": msgs,
+        r = await c.post(GEMMA_ENDPOINT, json={"model": GEMMA_MODEL, "messages": for_chat(msgs),
                                                "temperature": temp, "max_tokens": max_tokens})
         d = r.json()
         return d["choices"][0]["message"]["content"] if "choices" in d else None
@@ -444,7 +525,7 @@ async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     chosen = model or current_claude_model()
     body = {"model": chosen, "max_tokens": max_tokens,
             "system": _sysblocks(system_text),
-            "messages": _cachetail(convo), "thinking": {"type": "adaptive", "display": "summarized"}}
+            "messages": _cachetail(for_anthropic(convo)), "thinking": {"type": "adaptive", "display": "summarized"}}
     _reserve_provider("anthropic",chosen,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,

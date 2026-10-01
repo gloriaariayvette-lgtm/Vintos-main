@@ -3554,6 +3554,11 @@ class ChatMessage(BaseModel):
     input_kind: str | None = None          # "text" | "photo" | "video" | "voice" | "gcs"
     original_text: str | None = None       # exactly what she typed or said
     image_description: str | None = None   # what HIS eyes saw (his perception, not her words)
+    # what she sent, for the toggled brain to see itself in her message (2026-10-01)
+    image_type: str | None = None          # the photo's media type
+    images: list[str] | None = None        # a video's frames, base64 jpeg, in order
+    frame_times: list[float] | None = None # the seconds each frame was taken at
+    heard: str | None = None               # a video's words and sound, heard before the frames are seen
     # Internal surface adapter. ReelRoom enters through the avatar turn engine
     # so it receives the same pre/post lifecycle; only its transcript is held
     # for one session-level ledger entry at the end, like a live call.
@@ -7289,13 +7294,13 @@ def _scene_register(photo_bytes, description, origin="chat", message=""):
         print("[scene register failed]", e, flush=True)
 
 
-async def _describe_photo(photo_b64, content_type):
-    """His eyes. Claude when a key is present, the local model otherwise.
+async def _describe_photo(photo_b64, content_type, local_only=False):
+    """His eyes. Claude when a key is present, the local model otherwise; local_only: Gemma alone (the note kept
+    for his memory of a photo the toggled brain saw itself, 2026-10-01).
     One copy, used by every path that can receive a picture — a describer that
     exists twice will drift, and then two photos of the same thing are seen differently."""
     image_description = ""
-    image_description = ""
-    _ant = _anthropic_key()
+    _ant = None if local_only else _anthropic_key()
     if _ant:
         try:
             async with httpx.AsyncClient(timeout=60.0) as _ac:
@@ -7398,12 +7403,30 @@ async def chat_with_photo(request: Request):
     return result
 
 
-def _sent_media(msg):
+_PHOTO_HERE = "[Gloria sent you a photo. It is here in this message: look at it yourself.]"
+_HERE_RX = re.compile(r"\[[^\[\]]*(?:is|are) here in this message[^\[\]]*\]")
+
+
+def _seen_note(text):
+    """Gemma's note of what a picture showed, or '' when it could not see it."""
+    text = str(text or "").strip()
+    return "" if (not text or text.startswith("[I could not see")) else text
+
+
+def _with_note(text, note):
+    """Her turn as his memory keeps it: the picture he saw in the moment is not kept, so the line that said it is
+    here becomes what it showed, in Gemma's words (2026-10-01)."""
+    note = _seen_note(note)
+    return _HERE_RX.sub(lambda _m: ("[What it showed (a note kept afterwards):] " + note) if note
+                        else "[A picture he saw then; no note of what it showed could be made.]", str(text or ""), count=1)
+
+
+def _sent_media(msg, note=None):
     """What a photo or video she sent held, as he received it (the scene seen, the words and sound heard),
     without her caption: kept in the ledger entry beside her words, never as them."""
     if getattr(msg, "input_kind", None) not in ("photo", "video"):
         return None
-    body = str(getattr(msg, "message", "") or "")
+    body = _with_note(str(getattr(msg, "message", "") or ""), note)
     for cut in ("\n\n[Gloria's message with the video:]", "\n\n[Gloria's message with the photo:]"):
         if cut in body:
             body = body.split(cut)[0]
@@ -7443,19 +7466,18 @@ async def avatar_chat_with_photo(request: Request):
     except Exception as _pe:
         print("[avatar photo save]", _pe, flush=True)
 
-    image_description = await _describe_photo(photo_b64, content_type)
-    _scene_register(photo_bytes, image_description, message=message)
-
-    composed = ("[Gloria sent you a photo. What your eyes saw:]\n" + image_description
-                + "\n\n[Gloria's message with the photo:] " + str(message or ""))
+    # The photo goes to whichever brain is toggled, inside her message, and it sees it itself (Gloria,
+    # 2026-10-01: "I wanted the correlating model to receive it in the same message"). It used to be put into
+    # words by Sonnet first, whatever the toggle, and the brain only ever read those words. Gemma writes a note
+    # of what it showed afterwards, for his memory; the avatar turn returns it.
+    composed = _PHOTO_HERE + "\n\n[Gloria's message with the photo:] " + str(message or "")
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
             _cr = await client.post(
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "image": photo_b64, "input_kind": "photo",
-                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo"),
-                      "image_description": str(image_description)[:4000]})
+                json={"message": composed, "image": photo_b64, "image_type": content_type, "input_kind": "photo",
+                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo")})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I saw the image but could not form words: " + str(e)[:100] + "]"}
@@ -7463,6 +7485,8 @@ async def avatar_chat_with_photo(request: Request):
         result = {"reply": str(result)}
     if not result.get("reply"):
         result["reply"] = result.get("response") or result.get("message") or ""
+    image_description = _seen_note(result.get("image_description"))
+    _scene_register(photo_bytes, image_description, message=message)
     result["image_description"] = image_description
     return result
 
@@ -7476,14 +7500,15 @@ _CLIP_HEARD = ("\n\nThe clip's sound was already heard, so you know what the fra
                "understand what you see; describe only what the frames show.\n{heard}")
 
 
-async def _describe_clip(frames, heard=""):
+async def _describe_clip(frames, heard="", local_only=False):
     """His eyes on a video: the frames in order in one look, so he sees what happens and not six photos.
-    The words and sound, heard first, go with them. Claude when a key is present, the local model otherwise."""
+    The words and sound, heard first, go with them. Claude when a key is present, the local model otherwise;
+    local_only: Gemma alone. A frame is {"t", "path"} or {"t", "b64"}."""
     import base64
     imgs = []
     for f in frames:
         try:
-            imgs.append(base64.b64encode(open(f["path"], "rb").read()).decode())
+            imgs.append(f["b64"] if f.get("b64") else base64.b64encode(open(f["path"], "rb").read()).decode())
         except Exception:
             pass
     if not imgs:
@@ -7491,7 +7516,7 @@ async def _describe_clip(frames, heard=""):
     prompt = _CLIP_EYES.format(n=len(imgs), times=", ".join("%g" % f["t"] for f in frames))
     if heard:
         prompt += _CLIP_HEARD.format(heard=heard[:1500])
-    _ant = _anthropic_key()
+    _ant = None if local_only else _anthropic_key()
     if _ant:
         try:
             async with httpx.AsyncClient(timeout=120.0) as _ac:
@@ -7561,24 +7586,32 @@ async def avatar_chat_with_video(request: Request):
             watched = {}
         if not watched:
             return {"success": False, "error": "the video could not be opened; the clip is kept at " + clip}
-        # sound first: Whisper's words and the measured build go to the eyes with the frames
+        # sound first: Whisper's words and the measured build go with the frames
         _heard = "\n".join(x for x in (("Words: " + watched["speech"]) if watched.get("speech") else "",
                                         ("Sound: " + watched["sound"]) if watched.get("sound") else "") if x)
-        seen = await _describe_clip(watched.get("frames") or [], heard=_heard)
+        # the frames themselves go to whichever brain is toggled, in her message, in order (2026-10-01); read
+        # before the folder is cleared
+        import base64 as _vb64
+        _frames, _times = [], []
+        for _f in (watched.get("frames") or []):
+            try:
+                _frames.append(_vb64.b64encode(open(_f["path"], "rb").read()).decode()); _times.append(_f.get("t"))
+            except Exception:
+                pass
     finally:
         shutil.rmtree(frames_dir, ignore_errors=True)
 
     import sys as _vs_sys; _vs_sys.path.insert(0, os.path.join(WORKSPACE, "scripts"))
     import video_share as _vs
-    composed = _vs.compose(watched, seen, message)
+    composed = _vs.compose(watched, None, message, frame_times=_times)
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
             _cr = await client.post(
                 "http://127.0.0.1:8500/api/avatar/chat",
                 headers={"X-Vintos-Secret": APP_SECRET},
-                json={"message": composed, "input_kind": "video",
-                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a video"),
-                      "image_description": str(seen)[:4000]})
+                json={"message": composed, "input_kind": "video", "images": _frames, "frame_times": _times,
+                      "heard": _heard,
+                      "original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a video")})
             result = _cr.json()
     except Exception as e:
         result = {"reply": "[I watched it but could not form words: " + str(e)[:100] + "]"}
@@ -7586,7 +7619,8 @@ async def avatar_chat_with_video(request: Request):
         result = {"reply": str(result)}
     if not result.get("reply"):
         result["reply"] = result.get("response") or result.get("message") or ""
-    result["video"] = {"seen": seen, "speech": watched.get("speech", ""), "sound": watched.get("sound", ""),
+    result["video"] = {"seen": _seen_note(result.get("image_description")), "speech": watched.get("speech", ""),
+                       "sound": watched.get("sound", ""),
                        "duration": watched.get("duration")}
     return result
 
@@ -9037,6 +9071,7 @@ async def hardware_button(request: Request):
 @app.post("/api/avatar/chat")
 async def avatar_chat(msg: ChatMessage, request: Request):
     _surface = "reelroom" if getattr(msg, "surface", None) == "reelroom" else "avatar"
+    _note_task, _note = None, ""     # Gemma's note of a picture she sent, for his memory (2026-10-01)
     _defer_session_ledger = bool(_surface == "reelroom" and getattr(msg, "defer_session_ledger", False))
     # A room event may be part of the model input, but evidence writers receive
     # only Gloria's actual words. Never turn a scheduler instruction into her
@@ -9486,19 +9521,26 @@ Your current self-model (excerpt):
                        + _ridge_now() + _dev_t + "Reach for it only when it genuinely fits the moment.]\n\n") if _dev_t else "")
                      + _input_label) + msg.message
         _umsg = _umsg + _subconscious_tail(_umsg, surface=_surface)
-        if msg.image and getattr(msg, "input_kind", None) != "photo":
-            # A photo from the picture button was already seen by /api/avatar/photo; described again here it
-            # reached him a second time as a screenshot of himself (2026-09-30). Only the screenshot comes here.
-            # The camera button in the avatar view sends a picture of how he looks on her phone (or, from
-            # 2026-09-06, nothing - desktop sharing rides the screen block instead). The avatar route never read
-            # this field, so the camera "did not work". His eyes describe it; the words join her message.
-            try:
-                _cam_desc = await _describe_photo(msg.image, "image/jpeg")
-            except Exception:
-                _cam_desc = ""
-            if _cam_desc:
-                _umsg = _umsg + "\n\n[Gloria pressed the camera in the avatar view and sent you what she sees of you on her phone right now. Your eyes: " + _cam_desc.strip() + "]"
-        messages.append({"role": "user", "content": _umsg})
+        # What she sent goes to whichever brain is toggled, in her message, and it sees it itself (Gloria,
+        # 2026-10-01: "I wanted the correlating model to receive it in the same message"). Sonnet used to put
+        # every picture into words first. Gemma writes a note of what it showed alongside, for his memory only.
+        _attached, _note_task = [], None
+        _kind = getattr(msg, "input_kind", None)
+        if msg.image and _kind == "photo":
+            _attached = [{"type": "image", "media_type": msg.image_type or "image/jpeg", "data": msg.image}]
+            _note_task = asyncio.ensure_future(_describe_photo(msg.image, msg.image_type or "image/jpeg", local_only=True))
+        elif msg.images and _kind == "video":
+            _attached = [{"type": "image", "media_type": "image/jpeg", "data": b} for b in msg.images[:12]]
+            _note_task = asyncio.ensure_future(_describe_clip(
+                [{"t": t, "b64": b} for t, b in zip(list(msg.frame_times or []) + [0] * len(msg.images), msg.images[:12])],
+                heard=msg.heard or "", local_only=True))
+        elif msg.image:
+            # The camera button in the avatar view sends a picture of how he looks on her phone. A photo from the
+            # picture button comes as input_kind "photo" above and is not taken here as his screenshot (2026-09-30).
+            _attached = [{"type": "image", "media_type": msg.image_type or "image/jpeg", "data": msg.image}]
+            _umsg = _umsg + ("\n\n[Gloria pressed the camera in the avatar view: what she sees of you on her phone "
+                             "right now is here in this message.]")
+        messages.append({"role": "user", "content": ([{"type": "text", "text": _umsg}] + _attached) if _attached else _umsg})
 
         # Freeze the somatic buffer as her message lands. Read at ledger-write
         # time it describes the seconds after he answered, not the moment she
@@ -9681,8 +9723,15 @@ Your current self-model (excerpt):
         except Exception as _pe:
             print("[avatar provenance]", _pe, flush=True)
         # Save to avatar overlay history only — never touches main chat
+        _note = ""
+        if _note_task is not None:
+            try:   # started with the turn, so it is usually done by now; never held past a minute
+                _note = _seen_note(await asyncio.wait_for(asyncio.shield(_note_task), timeout=60))
+            except Exception:
+                _note = ""
         try:
-            av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})
+            av_history.append({"role": "user", "content": (_with_note(msg.message, _note) if _note_task is not None
+                                                           else msg.message), "ts": __import__("time").time()})
             if _counterpart_text:
                 nudge_emotions_from_text(
                     _counterpart_text, source="gloria", surface=_surface,
@@ -9809,7 +9858,7 @@ Your current self-model (excerpt):
                 except Exception: pass
                 _rr_skip = ("nudge_gloria", "imprint", "voice_coherence", "ledger") if _defer_session_ledger else ("nudge_gloria", "imprint", "voice_coherence")
                 _post_turn(_surface, _counterpart_text, reply, skip=_rr_skip,
-                           ledger_media=_sent_media(msg),
+                           ledger_media=_sent_media(msg, _note),
                            writer_env=_prov_writer_env, turn_id=(_turn.turn_id if _turn is not None else ""),
                            test_mode=(getattr(_turn, "test_mode", None) if _turn is not None else None),
                            on_writer=(lambda ok: _tc.note_writer(_turn, ok)))   # avatar: no imprint or voice-coherence by declaration
@@ -9983,7 +10032,8 @@ Your current self-model (excerpt):
         # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).
         return {"reply": reply, "model": _model_used, "reasoning": (_claude_reasoning or ""),
-                "live_slot": (_turn.turn_id if _turn is not None else "")}
+                "live_slot": (_turn.turn_id if _turn is not None else ""),
+                **({"image_description": _note} if _note_task is not None else {})}
     except Exception as e:
         return {"reply": "", "error": str(e)}
     finally:

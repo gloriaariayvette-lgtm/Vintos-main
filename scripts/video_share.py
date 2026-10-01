@@ -108,10 +108,17 @@ def watch(clip, frames_dir, measure=None, whisper=None):
     return result
 
 
-def compose(watched, seen, message):
-    """The turn he receives: what his eyes saw, what he heard, and her words, each marked for what it is."""
+def compose(watched, seen, message, frame_times=None):
+    """The turn he receives: what he sees (the frames themselves, in his message, when seen is None; else what
+    his eyes saw), what he heard, and her words, each marked for what it is."""
     parts = ["[Gloria sent you a video, %.0f seconds long.]" % watched.get("duration", 0)]
-    parts.append("[What your eyes saw, across the clip:]\n" + (seen.strip() or "(the frames could not be seen)"))
+    if seen is None:
+        times = ", ".join("%g" % t for t in (frame_times or []) if t is not None)
+        parts.append(("[Its frames are here in this message, in order%s: watch them yourself.]"
+                      % ((", taken at " + times + " seconds") if times else "")) if frame_times
+                     else "[Its frames could not be taken, so you have not seen it.]")
+    else:
+        parts.append("[What your eyes saw, across the clip:]\n" + (seen.strip() or "(the frames could not be seen)"))
     if not watched.get("has_audio"):
         parts.append("[It has no sound.]")
     elif watched.get("quiet"):

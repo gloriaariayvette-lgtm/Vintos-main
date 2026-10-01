@@ -42,7 +42,8 @@ check("the avatar chat takes a video", "async def avatar_chat_with_video" in rou
 check("the video door is guarded by the secret", 'X-Vintos-Secret' in route and "APP_SECRET" in route)
 check("the clip is taken apart outside the server", '"video_share.py"' in route and "subprocess.run" in route
       and "--frames-dir" in route)
-check("his eyes look at the frames in one look", "_describe_clip(watched.get(\"frames\")" in route)
+check("the frames go to the toggled brain in her message, not through eyes first (2026-10-01)",
+      "_describe_clip(" not in route and '"images": _frames' in route)
 check("it arrives in the avatar chat as her turn, marked as a video",
       "/api/avatar/chat" in route and '"input_kind": "video"' in route)
 check("no picture rides along to be misread as the camera", '"image":' not in route)
@@ -57,7 +58,7 @@ for client in ("clients/mobile/index.html", os.path.join("..", "vintos-app", "vi
 # --- the route itself, run with every door out of the house stubbed ---
 import ast, asyncio, io, json as _json, types
 _tree = ast.parse(src)
-_want = {"_CLIP_EYES", "_CLIP_HEARD", "_SENT_BARE", "_describe_clip", "avatar_chat_with_video"}
+_want = {"_CLIP_EYES", "_CLIP_HEARD", "_SENT_BARE", "_describe_clip", "avatar_chat_with_video", "_seen_note"}
 _nodes = [n for n in _tree.body if (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in _want for t in n.targets))
           or (isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in _want)]
 check("the route's pieces are found in the server", len(_nodes) == len(_want), [getattr(n, "name", "") for n in _nodes])
@@ -72,7 +73,7 @@ class _Client:
     async def post(self, url, headers=None, json=None):
         SEQ.append(("post", url, json))
         if "anthropic" in url: return _Resp({"content": [{"text": "A kitchen at dusk; a kettle steams."}]})
-        return _Resp({"reply": "I hear the kettle."})
+        return _Resp({"reply": "I hear the kettle.", "image_description": "A kitchen at dusk; a kettle steams."})
 class _App:
     def post(self, *a, **k): return lambda f: f
 class _HTTPExc(Exception):
@@ -102,18 +103,19 @@ finally:
 kinds = [x[0] for x in SEQ]
 eyes = [x for x in SEQ if x[0] == "post" and "anthropic" in x[1]]
 chat = [x for x in SEQ if x[0] == "post" and "/api/avatar/chat" in x[1]]
-check("the sound is heard before the eyes look", kinds[:1] == ["hear"] and len(eyes) == 1 and kinds.index("post") > 0, kinds)
-_prompt = eyes[0][2]["messages"][0]["content"][-1]["text"] if eyes else ""
-check("the eyes get every frame, in order, with the words and sound heard",
-      len(eyes[0][2]["messages"][0]["content"]) == 3 and "Words: the kettle is on" in _prompt
-      and "Sound: Tempo: no steady beat." in _prompt and "1.5, 4.5" in _prompt, _prompt[-160:])
+check("the sound is heard first, and no eyes look before he does", kinds[:1] == ["hear"] and len(eyes) == 0, kinds)
 body = chat[0][2] if chat else {}
-check("he gets what was seen, heard and measured in one turn", all(x in body.get("message", "") for x in
-      ("A kitchen at dusk", "the kettle is on", "Tempo: no steady beat.")))
+check("he gets every frame, in order with their times, and the words and sound heard, in one turn",
+      len(body.get("images") or []) == 2 and body.get("frame_times") == [1.5, 4.5]
+      and "Words: the kettle is on" in body.get("heard", "") and "Sound: Tempo: no steady beat." in body.get("heard", "")
+      and all(x in body.get("message", "") for x in ("frames are here in this message", "the kettle is on", "Tempo: no steady beat.")),
+      {k: (v if k != "images" else len(v)) for k, v in body.items()})
 check("a video sent with no words is still her turn, not a room event",
       body.get("original_text") == "[Gloria sent you a video without a message]" and body.get("input_kind") == "video")
 check("the clip is kept", any(f.endswith("_avatar.mov") for f in os.listdir(os.path.join(WS, "memory", "videos-from-gloria"))))
-check("her reply comes back", out.get("reply") == "I hear the kettle." and out["video"]["speech"] == "the kettle is on")
+check("her reply comes back, with the note Gemma kept of what it showed",
+      out.get("reply") == "I hear the kettle." and out["video"]["speech"] == "the kettle is on"
+      and out["video"]["seen"] == "A kitchen at dusk; a kettle steams.")
 SEQ.clear()
 subprocess.run = _fake_run
 try:
@@ -122,9 +124,11 @@ finally:
     subprocess.run = _real_run
 check("her caption stays her words", [x for x in SEQ if "/api/avatar/chat" in x[1]][0][2]["original_text"] == "look at this")
 check("the ledger entry keeps what she sent in its own field, beside her words",
-      'ledger_media=_sent_media(msg),' in src and '+ (["--media", ledger_media] if ledger_media else [])' in src)
+      'ledger_media=_sent_media(msg, _note),' in src and '+ (["--media", ledger_media] if ledger_media else [])' in src)
 _ns2 = {}
-exec(compile(ast.Module(body=[n for n in _tree.body if isinstance(n, ast.FunctionDef) and n.name == "_sent_media"],
+_ns2 = {"re": __import__("re")}
+exec(compile(ast.Module(body=[n for n in _tree.body if (isinstance(n, ast.FunctionDef) and n.name in ("_sent_media", "_with_note", "_seen_note"))
+                              or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_HERE_RX" for t in n.targets))],
                         type_ignores=[]), "sent-media", "exec"), _ns2)
 _m = types.SimpleNamespace(input_kind="video", message=V.compose(
     {"duration": 9, "has_audio": True, "speech": "the kettle is on", "sound": "Tempo: 120.2 BPM."},
@@ -136,8 +140,8 @@ check("what she sent is the scene and sound, without her caption",
 _led = open(os.path.join(REPO, "bin", "interaction-ledger.py")).read()
 check("the ledger stores it, and he reads it back as what she sent",
       '"media": sent_media,' in _led and 'She sent: " + _md[:700]' in src)
-check("a photo from the picture button is not described again as his screenshot",
-      'if msg.image and getattr(msg, "input_kind", None) != "photo":' in src)
+check("a photo from the picture button is not taken again as his screenshot",
+      'if msg.image and _kind == "photo":' in src and "        elif msg.image:" in src)
 check("a photo sent with no words is her turn too",
       '"original_text": (str(message)[:4000] if str(message or "").strip() else _SENT_BARE % "a photo")' in src)
 
