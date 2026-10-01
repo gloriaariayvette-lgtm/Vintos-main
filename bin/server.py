@@ -3608,6 +3608,12 @@ async def _bilateral_reply(_tag, messages, message, user_msg, params):
             _chat_mode = _mr.read_mode().get("mode", "claude")
             _chat_grok = _chat_mode == "grok"
             async def _draft():
+                if _chat_mode == "4o":
+                    try:
+                        _t, _rr = await _mr.fouro_draft(_marked_messages[0]["content"], _marked_messages[1:])
+                        if _t: return _t, _rr
+                    except Exception as _fe0:
+                        print("[chat/mode-4o]", _fe0, flush=True)
                 if _chat_mode == "sol":
                     try:
                         _t, _rr = await _mr.sol_draft(_marked_messages[0]["content"], _marked_messages[1:])
@@ -10062,7 +10068,7 @@ async def avatar_set_brain(request: Request):
         want = str(body.get("brain") or body.get("mode") or "").lower()
         import model_router as _mr
         want = _mr.LEGACY_MODES.get(want, want)
-        mode = want if want in ("grok", "sol", "opus55", "fable", "local") else "claude"
+        mode = want if want in ("grok", "sol", "opus55", "fable", "local", "4o") else "claude"
         m = _mr.read_mode(); m["mode"] = mode; _mr.write_mode(m)
         return {"mode": mode}
     except Exception as e:

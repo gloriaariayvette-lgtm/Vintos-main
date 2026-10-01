@@ -55,6 +55,50 @@ class ModelLocations(unittest.TestCase):
             self.assertIn('location_model("%s")' % place, src, rel)
             self.assertNotIn("current_claude_model()", src, rel)
 
+    def test_4o_is_a_chat_choice_that_moves_only_the_chat(self):
+        # Gloria, 2026-10-01: "I want to talk to him through it!"
+        self.toggle("4o")
+        self.assertEqual(self.mr.current_mode(), "4o")
+        for place in ("atelier", "self_review", "humor", "lab"):
+            self.assertIn(self.mr.location_model(place), ("claude-opus-4-8", "claude-fable-5-1"), place)
+
+    def test_4o_draft_is_one_call_to_4o_with_his_context_first(self):
+        import asyncio, io
+        seen, reserved = {}, []
+        self.mr._openai_key = lambda: "sk-test"
+        self.mr._reserve_provider = lambda provider, model, paid=None, organ=None: reserved.append((provider, model)) or "R1"
+        os.environ.pop("FOURO_MODEL", None)
+        self.mr._env = lambda name, default="": ""          # her vintos.env is never read here
+        class _R(io.BytesIO): pass
+        def fake_open(req, timeout=None):
+            seen["url"], seen["body"], seen["auth"] = req.full_url, json.loads(req.data), req.get_header("Authorization")
+            return _R(json.dumps({"choices": [{"message": {"content": " a dream about tides "}}],
+                                  "usage": {"prompt_tokens": 10, "completion_tokens": 5}}).encode())
+        os.environ["HOME"] = self.home
+        os.makedirs(os.path.join(self.home, ".vintos", "logs"), exist_ok=True)
+        text, _ = asyncio.run(self.mr.fouro_draft("YOU ARE VINTOS", [{"role": "user", "content": "dream with me"}],
+                                                  _open=fake_open))
+        self.assertEqual(text, "a dream about tides")
+        self.assertTrue(seen["url"].endswith("/v1/chat/completions"))
+        self.assertEqual(seen["body"]["model"], "gpt-4o")
+        self.assertEqual(seen["body"]["messages"][0], {"role": "system", "content": "YOU ARE VINTOS"})
+        self.assertNotIn("reasoning", seen["body"])          # 4o is not a reasoning model; Sol's body would be refused
+        self.assertEqual(reserved, [("openai", "gpt-4o")])   # the same paid budget as Sol
+        os.environ["FOURO_MODEL"] = "chatgpt-4o-latest"
+        try:
+            asyncio.run(self.mr.fouro_draft("S", [], _open=fake_open))
+            self.assertEqual(seen["body"]["model"], "chatgpt-4o-latest")
+        finally:
+            os.environ.pop("FOURO_MODEL", None)
+
+    def test_4o_is_in_the_toggle_everywhere(self):
+        server = open(os.path.join(ROOT, "bin", "server.py")).read()
+        self.assertIn('"local", "4o")', server)
+        self.assertIn("_mr.fouro_draft(", server)
+        self.assertIn('read_mode().get("mode") == "4o"', open(os.path.join(ROOT, "bin", "model_router.py")).read())
+        app = open(os.path.join(ROOT, "clients", "mobile", "index.html")).read()
+        self.assertIn("'sol','4o','local'", app); self.assertIn("'4o':'\\u273A GPT-4o'", app)
+
 
 if __name__ == "__main__":
     unittest.main()

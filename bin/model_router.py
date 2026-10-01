@@ -185,6 +185,54 @@ async def sol_draft(system_text, convo, max_tokens=1500, paid_reservation=None, 
     except Exception as e:
         print("[router/sol]", str(e)[:150], flush=True)
         return None, ""
+# GPT-4o, for talking with him (Gloria, 2026-10-01: "4o has been available through api this whole time?! ... I
+# want to talk to him through it! 4o hallucinates with every reply, but it's such a creative model. Great for
+# poetry, dreams, etc."). Chosen with the chat toggle only; nothing else runs on it. FOURO_MODEL= in vintos.env
+# switches it (gpt-4o, or chatgpt-4o-latest while OpenAI serves it). Same key, same paid budget, as Sol.
+FOURO_MODEL_DEFAULT = "gpt-4o"
+def _fouro_model():
+    m = os.environ.get("FOURO_MODEL", "")
+    if m: return m
+    try:
+        return _env("FOURO_MODEL") or FOURO_MODEL_DEFAULT
+    except Exception:
+        return FOURO_MODEL_DEFAULT
+
+async def fouro_draft(system_text, convo, max_tokens=1200, paid_reservation=None, temperature=1.0, _open=None):
+    """4o draft. Returns (text, '') like sol_draft, or (None, '') on any failure."""
+    import asyncio as _aio, urllib.request as _u
+    k = _openai_key()
+    if not k: return None, ""
+    chosen = _fouro_model()
+    body = {"model": chosen, "temperature": temperature, "max_tokens": max_tokens,
+            "messages": [{"role": "system", "content": system_text}] + [
+                {"role": m.get("role", "user"), "content": m.get("content") if isinstance(m.get("content"), str)
+                 else json.dumps(m.get("content"))} for m in (convo or []) if isinstance(m, dict)]}
+    def _call():
+        receipt = _reserve_provider("openai", chosen, paid_reservation)
+        rq = _u.Request("https://api.openai.com/v1/chat/completions", data=json.dumps(body).encode(),
+                        headers={"Content-Type": "application/json", "Authorization": "Bearer " + k})
+        try:
+            return json.loads((_open or _u.urlopen)(rq, timeout=120).read())
+        except _u.HTTPError as he:
+            if he.code in (401, 403):      # as Sol: a rejected key must not spend the day's budget
+                _release_provider("openai", chosen, "HTTP %d from the provider" % he.code, receipt, paid_reservation)
+            raise
+    try:
+        d = await _aio.to_thread(_call)
+        try:
+            _u2 = d.get("usage") or {}
+            import time as _ut
+            open(os.path.expanduser("~/.vintos/logs/openai-usage.jsonl"), "a").write(json.dumps({
+                "ts": _ut.time(), "src": "router-4o", "model": chosen, "provider_request_id": d.get("id"),
+                "in": _u2.get("prompt_tokens", 0), "out": _u2.get("completion_tokens", 0)}) + "\n")
+        except Exception: pass
+        txt = str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        return (txt or None), ""
+    except Exception as e:
+        print("[router/4o]", str(e)[:150], flush=True)
+        return None, ""
+
 CLAUDE_SURFACES = {"avatar", "study"}   # add "chat" in phase 2
 
 def _anthropic_key():
@@ -378,6 +426,17 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         except Exception as _se:
             print("[router/sol toggle]", str(_se)[:120], flush=True)
         # fall through: Claude next, grok as the unchanged safety net
+    if read_mode().get("mode") == "4o":
+        try:
+            _ft, _ = await fouro_draft(system_text, convo)
+            if _ft:
+                print("[router] 4o answered (%d chars)" % len(_ft), flush=True)
+                res = GR.make_result("openai", model=_fouro_model(), status="valid", text=_ft, finish_reason="stop")
+                res["route"] = "4o"; stages.append(res); res["stages"] = stages
+                return res
+        except Exception as _fe:
+            print("[router/4o toggle]", str(_fe)[:120], flush=True)
+        # fall through, as Sol does: Claude next, grok as the safety net
     if read_mode().get("mode") == "local":
         _t0l = _rb_t.time()
         try:
