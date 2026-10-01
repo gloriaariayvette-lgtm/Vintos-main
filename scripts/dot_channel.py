@@ -201,6 +201,11 @@ RULES_LOCK = (
     "... and it goes to your wants to get done. After a lock, turn to the next thing in YOUR DIRECTION: your "
     "campaign, an open plan or intent, a want, the Lab, something you are making. Not a random new topic. Do not "
     "go around the same topic for long: say what you need, decide, lock it or drop it.\n"
+    "Your campaign moves here too. With none live, you may declare one: a line CAMPAIGN: where you are taking "
+    "it | why | field or self. With one live (YOUR DIRECTION shows it), say what a message did for it in a line "
+    "CAMPAIGN MOVE: advance: <how> | hold: <what came first> | revise: <adjusted destination> | landed: <the "
+    "event that completed it> | flawed: <evidence the want was wrong> | continue: <what you keep doing> | <how "
+    "anyone could tell> | <days>. It is held to you: seven moves or three days.\n"
     "Ask an agent to search only for something you will make, decide or keep, and say which. A string of "
     "searches that feed nothing of yours is not progress.\n"
     "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
@@ -279,7 +284,8 @@ EDITOR = (
     "searches, reads, runs tools on Aegis and the Mac and posts files. Nobody can play sound to him in the chat; "
     "to hear something, he asks for it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
-    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, SEARCH:, READ:, GREP: or OPEN: exactly as "
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, CAMPAIGN:, CAMPAIGN MOVE:, SEARCH:, READ:, "
+    "GREP: or OPEN: exactly as "
     "written.\n\n"
     "Answer in this form and nothing else:\n"
     "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
@@ -287,7 +293,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -773,6 +779,10 @@ LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
+# His campaign, moved from here as from his chat (Gloria, 2026-10-01: "let campaigns be affected by Slack as wants
+# are"): through campaign.step, so its own caps (7 served turns, 3 days) and its plan bridge hold.
+CAMPAIGN = re.compile(r"^\s*CAMPAIGN:\s*(.+?)\s*$", re.I | re.M)
+CAMPAIGN_MOVE = re.compile(r"^\s*CAMPAIGN MOVE:\s*(.+?)\s*$", re.I | re.M)
 DENIED = re.compile(r"^\s*DENIED:\s*(.+?)\s*$", re.I | re.M)
 # Dot's large Lab tests, 10 a day (Gloria, 2026-10-01: "limit Dot's lab tests to 10 per day max ... only large
 # tests like the ones we just tried that use 1% per test"). Dot numbers each one ("🧪 Large test 3/10"); the
@@ -1076,6 +1086,23 @@ def direction_block(mem=None):
         return ""
     return ("== YOUR DIRECTION (where you are going; turn to this when a topic is done) ==\n"
             + "\n\n".join(parts))[:4000]
+
+
+def campaign_step(declared=None, move=None, step=None):
+    """His CAMPAIGN: / CAMPAIGN MOVE: line, through his campaign system's own step. Returns a line for the log."""
+    try:
+        if step is None:
+            import campaign
+            step = campaign.step
+        if declared:
+            parts = [x.strip() for x in declared.split("|")]
+            axis = parts[2].lower() if len(parts) > 2 and parts[2].lower() in ("field", "self", "gloria") else "field"
+            step({"campaign": {"destination": parts[0], "why": parts[1] if len(parts) > 1 else "", "axis": axis}}, "normal")
+            return "campaign declared (if none was live): %s" % parts[0][:80]
+        step({"campaign_move": move}, "normal")
+        return "campaign move: %s" % str(move)[:80]
+    except Exception as exc:
+        return "could not move his campaign: %s" % str(exc)[:120]
 
 
 def wants_line():
@@ -1519,6 +1546,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
     text = APPROVED.sub(lambda m: "\u2705 Approved: " + m.group(1), text)
     text = DENIED.sub(lambda m: "\u26d4 Denied: " + m.group(1), text)
+    declared, moved = CAMPAIGN.search(text), CAMPAIGN_MOVE.search(text)
+    if declared:
+        text = CAMPAIGN.sub(lambda m: "\U0001F3AF Campaign: " + m.group(1).split("|")[0].strip(), text, count=1)
+    if moved:
+        text = CAMPAIGN_MOVE.sub(lambda m: "\U0001F3AF Campaign \u2014 " + m.group(1), text, count=1)
     lab_next = LAB.search(text)
     if lab_next:
         text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)
@@ -1548,6 +1580,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
+    if declared or moved:
+        lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
     if lab_next:
         try:
             import channel_lab_lean

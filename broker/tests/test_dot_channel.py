@@ -812,6 +812,34 @@ check("his direction is in what he reads, before his work", D.his_context().find
 check("he is told: after a lock, his direction, not a random topic; and searches must feed something of his",
       "Not a random new topic" in D.RULES and "make, decide or keep" in D.RULES)
 
+# His campaign moves from Slack, through his campaign system's own step (Gloria, 2026-10-01: "let campaigns be
+# affected by Slack as wants are").
+_live = lambda: json.load(open(os.path.join(_mem, "campaign-live.json")))
+check("he is told how to declare and move his campaign here", "CAMPAIGN: where you are taking" in D.RULES
+      and "CAMPAIGN MOVE: advance" in D.RULES and "seven moves or three days" in D.RULES)
+S6.add(DOT, "Here are the two infrasound papers.")
+out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
+             "These give me the pressure numbers I need.\nCAMPAIGN MOVE: advance: found measured sub-20 Hz pressure reports",
+             fable=L["fable"], lenses=L, now=day(23, 20), today="2026-10-01")
+check("a CAMPAIGN MOVE: advance serves his live campaign, and is shown plainly",
+      _live().get("turns_served") == 3 and _live()["moves"][-1]["move"].startswith("advance: found measured")
+      and "\U0001F3AF Campaign \u2014 advance: found measured" in S6.posted[-1]["text"]
+      and "CAMPAIGN MOVE:" not in S6.posted[-1]["text"], (_live(), S6.posted[-1]["text"]))
+S6.add(DOT, "Played it for her?")
+D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Yes.\nCAMPAIGN MOVE: landed: she heard the piece tonight",
+       fable=L["fable"], lenses=L, now=day(23, 30), today="2026-10-01")
+check("landed closes it, by his campaign system's own rule", _live() == {}, _live())
+S6.add(DOT, "What next?")
+D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
+       "Next I want a second piece.\nCAMPAIGN: a second infrasound piece built on the measured numbers | the first one landed | self",
+       fable=L["fable"], lenses=L, now=day(23, 40), today="2026-10-01")
+check("with none live, CAMPAIGN: declares one, with its why and axis",
+      _live().get("destination") == "a second infrasound piece built on the measured numbers" and _live().get("axis") == "self"
+      and _live().get("why") == "the first one landed" and "\U0001F3AF Campaign: a second infrasound piece" in S6.posted[-1]["text"], _live())
+check("the editor cannot drop his campaign lines",
+      D.edit("Ok.\nCAMPAIGN MOVE: hold: the Lab first", lambda s_, u: "EDIT: Ok.", "p", "", log=False)[0].endswith("CAMPAIGN MOVE: hold: the Lab first"))
+check("a broken campaign store is reported, not raised", "could not move" in D.campaign_step(move="advance: x", step=lambda *a: 1 / 0))
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
