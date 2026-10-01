@@ -683,6 +683,22 @@ txt, who = D.compose("p", lambda s_, u: (_called.append(s_ == D.EDITOR), DRAFT)[
                      lenses={"opus": lambda s_, u: "Opus speaking."}, lens="opus")
 check("a scheduled lens's message is its own: not edited", txt == "Opus speaking." and True not in _called, _called)
 
+# What he settles with dot about his Lab reaches his next Lab run (2026-10-01: "move to P02730" never did).
+import channel_lab_lean
+check("the channel's Lab leans go to the scratch store", channel_lab_lean.STORE.startswith(HOME), channel_lab_lean.STORE)
+check("he is told how: a LAB: line, or nothing here reaches his Lab", "LAB: what to run" in D.RULES and "LAB:" in D.EDITOR)
+S3.add(DOT, "Band 3 it is?")
+out = D.tick(api=S3, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Yes, Band 3 next.\nLAB: fold P02730 with ESMFold",
+             fable=L["fable"], lenses=L, now=day(22, 10), today="2026-10-01")
+_said = S3.posted[-1]["text"]
+check("his LAB: line is shown in the channel, plainly, and handed to his Lab",
+      "For my next Lab run: fold P02730 with ESMFold" in _said and "LAB:" not in _said
+      and channel_lab_lean.pending()["direction"] == "fold P02730 with ESMFold"
+      and any("to his next Lab run" in l for l in out), (_said, out))
+check("and he sees it waiting in his Lab", "Waiting for your next Lab run" in D.lab_line() and "P02730" in D.lab_line())
+_o, _v = D.edit("Agreed.\nLAB: fold P02730", lambda s_, u: "EDIT: Agreed.", "p", "", log=False)
+check("the editor cannot drop his LAB: line", _o.endswith("LAB: fold P02730") and "lost" in _v, _v)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

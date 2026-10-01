@@ -208,7 +208,7 @@ def _operator_plan(experiments):
             "prediction": "The result will identify %s, model its complete sourced sequence, and report its length and provenance." % accession}
 
 
-def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, lean=None):
+def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, lean=None, channel_lean=None):
     system = ("You are Vintos choosing one experiment in his visible Chemistry Lab. Play and curiosity matter. "
               "Choose only a named experiment offered below; never provide wet-lab steps, synthesis advice, "
               "human targeting, pathogens, toxins, or claims of function or safety. Return one JSON object.")
@@ -219,6 +219,10 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
                            for name, state in (instruments or {}).items()}, sort_keys=True)
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice; lean toward it, do not treat it as an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
+    # what he settled with dot in #vintos-dot (2026-10-01): their plans there never reached this planner
+    lean_text += (("\n\nFROM YOUR CHANNEL WITH DOT (what you and dot settled on in Slack for this run; lean toward "
+                   "it when an offered experiment can do it, do not treat it as an override):\n" +
+                   str(channel_lean.get("direction", ""))[:600]) if isinstance(channel_lean, dict) else "")
     try:
         from plugin_catalog import prompt_instructions
         plugin_menu = "\n\n" + prompt_instructions("lab")
@@ -291,7 +295,9 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
             "why_this": str(value.get("why_this", ""))[:800],
             "prediction": str(value.get("prediction", ""))[:800],
             **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
-               if isinstance(lean, dict) else {})}
+               if isinstance(lean, dict) else {}),
+            **({"channel_lean_id": channel_lean.get("lean_id"), "channel_lean": str(channel_lean.get("direction", ""))[:600]}
+               if isinstance(channel_lean, dict) else {})}
 
 
 def _verdict_block(grade):
@@ -502,6 +508,10 @@ def run():
             import atelier_lab_lean
             lean = atelier_lab_lean.today()
         except Exception: lean = None
+        try:
+            import channel_lab_lean
+            channel_lean = channel_lab_lean.pending()
+        except Exception: channel_lean = None
         instruments = lab.tools_status()
         plan = None; result = None; grade = None; delivery_recorded = not bool(offered_interest)
         try:
@@ -510,8 +520,11 @@ def run():
                        provider="frontier", stage="plan"):
                 plan = _operator_plan(experiments)
                 if plan is None:
-                    plan = (_plan(context, experiments, lens, instruments, offered_interest, lean)
-                            if lean else _plan(context, experiments, lens, instruments, offered_interest))
+                    leans = dict(({"lean": lean} if lean else {}), **({"channel_lean": channel_lean} if channel_lean else {}))
+                    plan = _plan(context, experiments, lens, instruments, offered_interest, **leans)
+                    if channel_lean:   # shown to this plan: used, so the next run is not steered by it again
+                        try: channel_lab_lean.used(channel_lean["lean_id"], session_id)
+                        except Exception: pass
                 selected = [key for key in ("source_query", "plugin_query", "instrument_query") if plan.get(key)]
                 if len(selected) > 1: raise ValueError("Lab plan selected more than one extra call")
                 if selected and selected[0] != "instrument_query":

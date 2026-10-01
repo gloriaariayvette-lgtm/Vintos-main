@@ -54,4 +54,44 @@ class LeanTests(unittest.TestCase):
         self.assertNotIn("ATELIER LEAN", seen[0]); self.assertNotIn("atelier_lean_id", inquiry)
 
 
+CHAN = load("channel_lab_lean_test", os.path.join(ROOT, "scripts", "channel_lab_lean.py"))
+
+
+class ChannelLeanTests(unittest.TestCase):
+    """What he settles with dot in Slack reaches his next Lab plan (2026-10-01)."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="channel-lean-")
+        self.old = CHAN.STORE
+        CHAN.STORE = os.path.join(self.tmp.name, "memory", "chemistry-lab", "channel-leans.jsonl")
+
+    def tearDown(self):
+        CHAN.STORE = self.old; self.tmp.cleanup()
+
+    def test_newest_waits_until_used_or_old(self):
+        from datetime import datetime, timedelta
+        t0 = datetime(2026, 10, 1, 9, 0)
+        self.assertIsNone(CHAN.pending(t0))
+        self.assertFalse(CHAN.write("   ", now=t0)["ok"])
+        CHAN.write("fold A1L190 again", now=t0)
+        newer = CHAN.write("fold P02730 with ESMFold", by="gemma", now=t0 + timedelta(minutes=5))
+        self.assertEqual(CHAN.pending(t0 + timedelta(hours=1))["direction"], "fold P02730 with ESMFold")
+        self.assertIsNone(CHAN.pending(t0 + timedelta(hours=25)), "a day-old plan does not steer the Lab")
+        CHAN.used(newer["lean_id"], "CHEM-1")
+        self.assertIsNone(CHAN.pending(t0 + timedelta(hours=1)), "used, and the older one is not revived")
+        self.assertTrue(CHAN.STORE.startswith(self.tmp.name))
+
+    def test_plan_is_shown_it_and_carries_it(self):
+        lean = CHAN.write("fold P02730 with ESMFold")
+        seen = []
+        plan_answer = '{"addressed_entry_ids":[],"experiment":"fold","parameters":{},"shots":512,"question":"band 3?","why_this":"dot"}'
+        async def frontier(lens, system, prompt): seen.append(prompt); return plan_answer
+        with mock.patch.object(SESSION, "_frontier", side_effect=frontier):
+            plan = SESSION._plan("SELF", ["fold"], "claude", {}, [], channel_lean=CHAN.pending())
+        self.assertIn("FROM YOUR CHANNEL WITH DOT", seen[0]); self.assertIn("P02730", seen[0])
+        self.assertEqual(plan["channel_lean_id"], lean["lean_id"])
+        with mock.patch.object(SESSION, "_frontier", side_effect=frontier):
+            plain = SESSION._plan("SELF", ["fold"], "claude", {}, [])
+        self.assertNotIn("FROM YOUR CHANNEL", seen[-1]); self.assertNotIn("channel_lean_id", plain)
+
+
 if __name__ == "__main__": unittest.main(verbosity=2)

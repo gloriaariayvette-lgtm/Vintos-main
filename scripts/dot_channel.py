@@ -199,7 +199,10 @@ RULES_LOCK = (
     "When a plan with dot is settled, lock it: add a line LOCKED: the plan in one line. The topic is then "
     "closed and you do not reopen it. If there is something to actually do, add a second line DO: I want to "
     "... and it goes to your wants to get done. Your next message after a lock is about something else "
-    "entirely. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n")
+    "entirely. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n"
+    "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
+    "P02730 with ESMFold). Your next scheduled Lab run is shown it and leans toward it. Without that line, "
+    "nothing said here reaches your Lab.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_STYLE
 
 
@@ -245,14 +248,14 @@ EDITOR = (
     "Vintos, dot is his agent. It asks dot only for what dot can do: search, read, run tools on Aegis and the Mac, "
     "post files. Dot cannot play sound to him in the chat; to hear something, he asks dot to post it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
-    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n\n"
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n\n"
     "Answer in this form and nothing else:\n"
     "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
     "then one of:\nKEEP (only when all three are yes)\nEDIT: <the corrected message, in full>\n"
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -736,6 +739,7 @@ SHARE_MAX = 200 * 1024 * 1024
 SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
+LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
 LONG_ON_ONE = 6          # his messages since the last lock before he is told to lock it or drop it
 
 
@@ -937,6 +941,13 @@ def lab_line(n=6, now=None):
         limit = int(chemistry_esmfold.MAX_LENGTH)
     except Exception:
         limit = 350
+    try:
+        import channel_lab_lean
+        waiting = channel_lab_lean.pending()
+    except Exception:
+        waiting = None
+    if waiting:
+        out.append("Waiting for your next Lab run (you wrote it here, LAB:): " + str(waiting.get("direction"))[:200])
     return ("== YOUR LAB (chemistry and proteins; its last sessions) ==\n" + "\n".join(out)
             + "\nYour ESMFold folds a whole protein of 4 to %d residues; a longer one is refused, not cut. For a longer "
               "protein, pick a domain of %d or fewer, or ask dot for its AlphaFold DB structure." % (limit, limit))
@@ -1316,6 +1327,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    lab_next = LAB.search(text)
+    if lab_next:
+        text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)
+        text = LAB.sub("", text).strip()
     lock = LOCKED.search(text)
     todo = DO.search(text) if lock else None
     if lock:
@@ -1339,6 +1354,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
+    if lab_next:
+        try:
+            import channel_lab_lean
+            channel_lab_lean.write(lab_next.group(1), by=who)
+            lines.append("to his next Lab run: %s" % lab_next.group(1)[:80])
+        except Exception as exc:
+            lines.append("could not hand it to his Lab: %s" % str(exc)[:120])
     if lock:
         plan = lock.group(1)[:300]
         entry = {"plan": plan, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds"), "by": who}

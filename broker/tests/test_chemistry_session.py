@@ -24,8 +24,12 @@ sys.modules["chemistry_mac"] = mac
 def admitted(*args, **kwargs): yield object()
 sys.modules["compute_admission"] = types.SimpleNamespace(admit=admitted)
 session = load("chemistry_session_test", os.path.join(REPO, "scripts", "chemistry_session.py"))
-session._plan = lambda context, experiments, lens, instruments=None, offered_entry_ids=None: {"addressed_entry_ids": list(offered_entry_ids or []), "experiment": "fold", "parameters": {}, "shots": 512, "question": "what bends?", "why_this": "curiosity"}
-seen = {}
+seen = {"plan_kw": []}
+def _plan_stub(context, experiments, lens, instruments=None, offered_entry_ids=None, **leans):
+    seen["plan_kw"].append(leans)
+    return {"addressed_entry_ids": list(offered_entry_ids or []), "experiment": "fold", "parameters": {}, "shots": 512,
+            "question": "what bends?", "why_this": "curiosity"}
+session._plan = _plan_stub
 def _reading(context, plan, result, grade=None, lens=None):
     seen["grade"] = grade; seen["verdict"] = session._verdict_block(grade)
     return {"reading": "a basin", "what_surprised_me": "its depth",
@@ -58,7 +62,13 @@ flagged = session.bridge.assess({"at": "2026-09-13T00:00:00+00:00", "source_acce
     source_query_succeeded=True)
 assert flagged["flagged_for_next_lab_session"] is True
 
+# What he settled with dot in #vintos-dot reaches this run once (2026-10-01), from the scratch store.
+import channel_lab_lean
+assert channel_lab_lean.STORE.startswith(HOME), channel_lab_lean.STORE
+channel_lab_lean.write("fold P02730 with ESMFold", by="gemma")
 row = session.run()
+assert seen["plan_kw"][-1].get("channel_lean", {}).get("direction") == "fold P02730 with ESMFold", seen["plan_kw"]
+assert channel_lab_lean.pending() is None, "shown to one plan, then used"
 assert row["state"] == "completed" and row["mac_run_id"] == "RUN-1"
 surface = session.lab._jsonl(session.bridge.SURFACES)[-1]
 assert surface["offered_entry_ids"] == [flagged["entry_id"]]
@@ -79,6 +89,7 @@ assert spark_mod.feed() and spark_mod.feed()[-1]["provenance"]["mac_run_id"] == 
 mac.run = lambda experiment, parameters, shots: {"ok": True, "run_id": "RUN-2", "run": {"result": {"results": [
     {"bond_length": 0.735, "vqe_energy": -0.478030, "hartree_fock_energy": -1.116999, "exact_energy": -1.137306}]}}}
 poor = session.run()
+assert "channel_lean" not in seen["plan_kw"][-1], "a used channel lean does not steer the next run"
 assert poor["grade"]["aggregate_accuracy"] == "ALL_WORSE_THAN_HARTREE_FOCK", poor["grade"]
 assert "WORSE_THAN_HARTREE_FOCK" in seen["verdict"] and "not claimed by the bench" in seen["verdict"], seen["verdict"]
 assert "+0.638969" in seen["verdict"], seen["verdict"]
