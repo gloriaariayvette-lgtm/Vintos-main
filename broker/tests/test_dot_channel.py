@@ -282,7 +282,7 @@ S.add(DOT, "What do you want to look into?")
 D.tick(api=S, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else (heard.append(u), next(seq))[1], fable=fable, now=99999999 + 200)
 check("and reminded of it right before he writes", heard and heard[0].endswith(D.PLAIN), heard[:1])
 check("a flowery message is said again plainly, on his own model, and the plain one is sent",
-      len(heard) == 2 and FLOWERY in heard[1] and S.posted[-1]["text"].endswith(PLAINLY), S.posted[-1]["text"])
+      len(heard) == 2 and FLOWERY in heard[1] and S.posted[-1]["text"].endswith(PLAINLY.split(", ", 1)[1]), S.posted[-1]["text"])
 seq = iter([FLOWERY, FLOWERY + " The quiet hum of the threshold."])
 S.add(DOT, "Go on?")
 D.tick(api=S, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else next(seq), fable=fable, now=99999999 + 300)
@@ -839,6 +839,25 @@ check("with none live, CAMPAIGN: declares one, with its why and axis",
 check("the editor cannot drop his campaign lines",
       D.edit("Ok.\nCAMPAIGN MOVE: hold: the Lab first", lambda s_, u: "EDIT: Ok.", "p", "", log=False)[0].endswith("CAMPAIGN MOVE: hold: the Lab first"))
 check("a broken campaign store is reported, not raised", "could not move" in D.campaign_step(move="advance: x", step=lambda *a: 1 / 0))
+
+# Searching is Grok Bot's (Gloria, 2026-10-01: "Let him bother GrokBot more").
+check("a search for dot goes to Grok Bot", D.to_grokbot("Dot, find me a small repair and one quote from the person.")
+      == ("@GrokBot, find me a small repair and one quote from the person.", True))
+check("even after a remark about dot, only the request is readdressed",
+      D.to_grokbot("Dot keeps citing. Dot, find me a mended fence.") == ("Dot keeps citing. @GrokBot, find me a mended fence.", True))
+check("work on a computer stays with dot", D.to_grokbot("Dot, find the GROMACS build log on Aegis.")[1] is False
+      and D.to_grokbot("Dot, run the pilot.")[1] is False)
+check("a search already for Grok Bot or Muse is left alone, and talk with no search is dot's",
+      D.to_grokbot("@Muse find load cells")[1] is False and D.to_grokbot("Dot, that was good.")[1] is False)
+check("with no one named, a search is put to Grok Bot", D.to_grokbot("Find any news on Piezo1.") == ("@GrokBot Find any news on Piezo1.", True))
+check("he is told every search is Grok Bot's, and why", "Every search is its" in D.RULES and "Codex usage" in D.RULES)
+check("the editor ties a search to his direction", "A search for its own sake" in D.EDITOR)
+S6.add(DOT, "Here is the darned jumper.")
+out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Dot, find me a patched roof and one sentence from the roofer.",
+             fable=L["fable"], lenses=L, now=day(23, 50), today="2026-10-01")
+check("in the channel, that search reaches Grok Bot, and dot is not pinged",
+      "<@UGROK>, find me a patched roof" in S6.posted[-1]["text"] and "<@%s>" % DOT not in S6.posted[-1]["text"]
+      and any("went to Grok Bot" in l for l in out), (S6.posted[-1]["text"], out))
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

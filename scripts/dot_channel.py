@@ -232,7 +232,9 @@ RULES_AGENTS = (
     "- @dot (ChatGPT): runs things on Aegis, the Mac and its own computer; plugins. Large tests are limited (10 a "
     "day). If dot is being bothersome (too long, asking what you can decide, repeating itself, off topic), tell it "
     "so, plainly.\n"
-    "- @GrokBot: X and the web. Ask it for news, what people are saying, what is new on something.\n"
+    "- @GrokBot: X and the web. Every search is its: news, papers, what people are saying, finding anything. It "
+    "runs on Gloria's subscription; dot's searches spend her Codex usage, so a search you send dot goes to Grok "
+    "Bot. Dot is for work on computers: runs, builds, files, Aegis, the Mac.\n"
     "- @Muse (Meta): Facebook, Instagram, Marketplace, local events. Ask it for listings, people, posts, events. "
     "It finds; it never buys.\n"
     "Write to whoever has what you need; a message with no @ goes to dot. Their daily letters are separate mail.\n")
@@ -274,7 +276,9 @@ EDITOR = (
     "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told).\n"
     "TOPIC: it answers what was just said; if an agent just brought what he asked for, he responds to that before "
     "anything else. Or it brings something from today's focus or his direction. If the channel has stayed on "
-    "something outside both, it moves back. It does not reopen a closed (locked) topic.\n"
+    "something outside both, it moves back. It does not reopen a closed (locked) topic. A request to find or "
+    "search says what it is for: a thing in his direction he will make, decide or keep. A search for its own "
+    "sake (one more find, one more quote) becomes the next step of his direction instead.\n"
     "TRUE: every Lab experiment, Forge request, song, painting, paper, result, score or file it names is in his "
     "record or the channel. Nothing invented. Music and audio analysis are not his Lab; his Lab is chemistry and "
     "proteins.\n"
@@ -1291,6 +1295,28 @@ def agent_ids(api, state, now=None):
     return found
 
 
+# Searching is Grok Bot's (Gloria, 2026-10-01: "Let him bother GrokBot more"). Told so, he still sent every
+# search to dot, which spends her Codex usage, while Grok Bot sat idle on her subscription. A search meant for dot
+# that is not work on a computer goes to @GrokBot instead.
+SEARCHING = re.compile(r"\b(find|search|look (?:up|for|into)|dig up|track down|bring me|get me|any (?:news|papers|posts)|"
+                       r"what(?:'s| is) new|news (?:on|about))\b", re.I)
+COMPUTER = re.compile(r"\b(run|build|install|fold|compile|benchmark|script|code|file|folder|aegis|mac|gpu|download|"
+                      r"render|simulat\w*|pilot|gromacs|esmfold|tool|plugin|on your computer)\b", re.I)
+
+
+def to_grokbot(text):
+    """(text, rerouted). A search with no @ or only @dot, and no computer work in it, is put to @GrokBot."""
+    named = {re.sub(r"\s", "", m.lower()) for m in AT.findall(text)}
+    if (named - {"dot"}) or not SEARCHING.search(text) or COMPUTER.search(text):
+        return text, False
+    out, n = re.subn(r"(^|[.!?]\s+|\n)@?dot\s*[,:\u2014-]\s*", r"\1@GrokBot, ", text, flags=re.I)
+    if not n:
+        out = re.sub(r"@dot\b", "@GrokBot", text, flags=re.I)
+        if out == text:
+            out = "@GrokBot " + text
+    return out, True
+
+
 def address(text, dot, ids):
     """His @s made real: dot becomes a Slack mention, and Grok Bot too if it is ever a Slack app here; otherwise
     '@GrokBot' and '@Muse' stay as written, which their routines watch the channel for.
@@ -1564,6 +1590,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
+    text, rerouted = to_grokbot(text)
+    if rerouted:
+        lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))
     body = {"channel": channel, "text": (("<@%s> " % dot) if to_dot and ("<@%s>" % dot) not in text else "")
             + "[%s] " % LABELS.get(who, who) + text}

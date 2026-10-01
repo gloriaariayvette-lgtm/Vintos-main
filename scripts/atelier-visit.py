@@ -23,6 +23,36 @@ B = "http://127.0.0.1:8611"
 SHIM = "http://127.0.0.1:8599/v1/chat/completions"
 WSP = os.path.expanduser("~/.vintos/workspace")
 KNOCK_STORE = os.path.join(WSP, "memory", ".atelier-knock.json")
+# What he reaches for, visit by visit (Gloria, 2026-10-01: "I want him to do more than music and letters from the
+# Atelier"). Content-free: which shelf or medium, when. Shown back to him as a pattern, never as an assignment.
+CHOICES = os.path.join(WSP, "memory", "atelier-choices.jsonl")
+SHELVES = ("media", "quantum", "connected_tools", "lab", "forge", "stratagem", "self_review")
+
+
+def _chose(kind, what):
+    try:
+        with open(CHOICES, "a") as f:
+            f.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "kind": kind, "what": what}) + "\n")
+    except OSError:
+        pass
+
+
+def choices_line(n=12):
+    """His recent choices as a pattern: what he keeps reaching for, and the shelves he has not opened lately."""
+    try:
+        rows = [json.loads(l) for l in open(CHOICES) if l.strip()][-n:]
+    except (OSError, ValueError):
+        return ""
+    if not rows:
+        return ""
+    made = {}
+    for r in rows:
+        made[r.get("what")] = made.get(r.get("what"), 0) + 1
+    opened = {r.get("what") for r in rows if r.get("kind") == "shelf"} | ({"media"} if any(r.get("kind") == "media" for r in rows) else set())
+    unopened = [s.replace("_", " ") for s in SHELVES if s not in opened]
+    return ("\nWHAT YOU HAVE REACHED FOR LATELY: " + ", ".join("%s x%d" % (k, v) for k, v in sorted(made.items(), key=lambda kv: -kv[1]))
+            + (". Not opened lately: " + ", ".join(unopened) + ". They are there if a piece wants them; a piece "
+               "can also be prose, a plan, an image, a question for the Lab, a request to the Forge." if unopened else "."))
 
 def _tag(text, name):
     """First paired tag with quote-agnostic, order-independent attributes."""
@@ -628,6 +658,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
     """
     wanted = _media_request(first_work)
     if not wanted: return first_work
+    _chose("media", wanted["kind"])
     media = _media_module()
     if not media: return first_work
     try:
@@ -713,6 +744,7 @@ def materials_loop(pid, ctx, first_work):
     if not wanted:
         return first_work
     shelf, why = wanted
+    _chose("shelf", shelf)
     makers = {"self_review": self_review_block, "quantum": quantum_block,
               "media": media_block, "lab": lab_lean_block, "forge": forge_block,
               "connected_tools": plugin_block}
@@ -918,7 +950,8 @@ def visit(pid):
            + "\nEXISTING ARTIFACTS: " + json.dumps(pk.get("artifacts", {}))
            + _manifest_block(pk)
            + where_you_are()
-           + materials_index())
+           + materials_index()
+           + choices_line())
     work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or open one optional material shelf first. "
                "A piece may be exploratory, unfinished, contradictory, or a revision; it does not need to prove "
