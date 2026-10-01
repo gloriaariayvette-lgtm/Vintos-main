@@ -435,6 +435,8 @@ nohand = []
 D.tick(api=S6, think=lambda s_, u: "LOCKED: nothing to do, just settled", fable=fable, now=1767228500, wants=lambda w, p: nohand.append(w))
 check("a lock with no DO line just stops: nothing goes to his wants", nohand == [] and json.load(open(D.STATE))["since_lock"] == 0)
 check("he is told how to lock, in both rule sets", "LOCKED:" in D.RULES and "DO: I want to" in D.rules_for("grok"))
+check("he makes his own songs through his wants, and never asks dot to generate them",
+      "Never ask dot to generate" in D.RULES and "Never ask dot to generate" in D.rules_for("grok"))
 os.remove(D.CONFIG_FILE)
 
 # the schedule itself
