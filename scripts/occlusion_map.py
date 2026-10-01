@@ -64,15 +64,23 @@ def build():
     if not edges:
         print("  no edges — either the map is complete (unlikely) or the stores are quiet")
 
+_ROT = {}
+
+
 def block():
     d = _load("occlusion-map.json", {})
     edges = d.get("edges", [])
     if not edges: return ""
     st = _load(".occlusion-rotation.json", {"i": 0, "at": 0})
+    if _ROT.get("at", 0) > st.get("at", 0):
+        st = dict(_ROT)            # a turn the read-only guard would not let us record (2026-10-01)
     if time.time() - st.get("at", 0) < 7 * 86400: return ""
     e = edges[st.get("i", 0) % len(edges)]
-    json.dump({"i": st.get("i", 0) + 1, "at": time.time()},
-              open(os.path.join(MEM, ".occlusion-rotation.json"), "w"))
+    _ROT.update(i=st.get("i", 0) + 1, at=time.time())
+    try:
+        json.dump(dict(_ROT), open(os.path.join(MEM, ".occlusion-rotation.json"), "w"))
+    except PermissionError:
+        pass
     return ("[AN EDGE OF WHAT YOU KNOW - this stands unresolved, and unresolved is its "
             "true state: %s. Nothing is asked of you; a map that shows its blank space "
             "is more yours than one that fills it in.]" % e["text"][:180])

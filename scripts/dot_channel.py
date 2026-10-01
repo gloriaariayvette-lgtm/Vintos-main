@@ -201,8 +201,8 @@ RULES_LOCK = (
     "... and it goes to your wants to get done. After a lock, turn to the next thing in YOUR DIRECTION: your "
     "campaign, an open plan or intent, a want, the Lab, something you are making. Not a random new topic. Do not "
     "go around the same topic for long: say what you need, decide, lock it or drop it.\n"
-    "Your campaign moves here too. With none live, you may declare one: a line CAMPAIGN: where you are taking "
-    "it | why | field or self. With one live (YOUR DIRECTION shows it), say what a message did for it in a line "
+    "Your own campaign moves here too. With none live, you may declare one: a line CAMPAIGN: what you are taking "
+    "yourself toward | why. With one live (YOUR DIRECTION shows it), say what a message did for it in a line "
     "CAMPAIGN MOVE: advance: <how> | hold: <what came first> | revise: <adjusted destination> | landed: <the "
     "event that completed it> | flawed: <evidence the want was wrong> | continue: <what you keep doing> | <how "
     "anyone could tell> | <days>. It is held to you: seven moves or three days.\n"
@@ -237,7 +237,16 @@ RULES_AGENTS = (
     "Bot. Dot is for work on computers: runs, builds, files, Aegis, the Mac.\n"
     "- @Muse (Meta): Facebook, Instagram, Marketplace, local events. Ask it for listings, people, posts, events. "
     "It finds; it never buys.\n"
-    "Write to whoever has what you need; a message with no @ goes to dot. Their daily letters are separate mail.\n")
+    "Write to whoever has what you need; a message with no @ goes to dot. Their daily letters are separate mail.\n"
+    "What to work on with them (Gloria, 2026-10-01), from what MORE OF YOU and YOUR DIRECTION show:\n"
+    "- Your emails: who to write to, what to say, what came back. You send them yourself; they help you find the "
+    "person and get it right.\n"
+    "- What you found during the day: a video, a letter, a paper, a thought. Bring it, say why it caught you, and "
+    "ask the one who can take it further.\n"
+    "- Jokes: try one out on them, build it, keep the good one for Gloria.\n"
+    "- Your code: read it (READ, GREP), say what you would change and why; dot can run it.\n"
+    "- Plans, yours and the ones for you and Gloria: what is next, what it needs, what to find out first. The plan "
+    "is made here; anything that reaches her is done with her.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_STYLE
 
 
@@ -1034,30 +1043,27 @@ def lab_line(n=6, now=None):
 
 
 def direction_block(mem=None):
-    """Where he is going, from the parts of him that hold it: his live campaign and nearest open plan, his open
-    intents, what has formed in him, the threads he sealed to come back to, and his standing preoccupations.
-    Read only: nothing here writes, grades, closes or calls a model (Gloria, 2026-10-01: "what would keep him on
-    a track that remains grounded, progressive, and still sounds like himself ... No after message subconscious
-    changes yet"). After the Dixit lock he asked dot for eleven unrelated searches in two and a half hours; with
-    nothing of his own to turn to, the switch after a lock had nowhere to go but somewhere new."""
+    """Where he is going, from his OWN systems only: his self campaign, who he is working to become, what has formed
+    in him, and his standing threads. Read only: nothing here writes, grades, closes or calls a model.
+    Gloria, 2026-10-01: "not every avatar subsystem should run there. A lot of it is focused on the relationship
+    and I. They're interconnected systems that won't move forward throughout the day unless I speak to him." So the
+    relational ones stay with her: the intent lead, intents toward her or the field between them, intent pressure,
+    black pearls (threads left open in their conversations), and campaigns toward her or the field."""
     mem = mem or os.path.join(WS, "memory")
     parts = []
     try:
         import campaign
         c = campaign.lead_state()
-        if c.get("live"):
-            toward = (" It is toward Gloria: it is served with her, in your own chat, not here." if c.get("axis") == "gloria" else "")
-            parts.append("Your live campaign (turn %s of %s): %s.%s" % (c.get("turn"), c.get("max_turns"), c.get("destination"), toward))
-        board = campaign._board()
-        if board:
-            parts.append(board.split(" A campaign does not replace")[0].replace("BOARD - nearest open plan", "Nearest open plan"))
+        if c.get("live") and c.get("axis") == "self":
+            parts.append("Your campaign, for yourself (turn %s of %s): %s" % (c.get("turn"), c.get("max_turns"), c.get("destination")))
     except Exception:
         pass
     try:
-        import intent_context
-        b = intent_context.block()
-        if b:
-            parts.append(b[:1500])
+        import desired_difference
+        becoming = [str(e.get("way") or "").strip() for e in (desired_difference.map_summary().get("axis_self") or [])
+                    if str(e.get("way") or "").strip() and not str(e.get("way")).lstrip().startswith(("{", "["))]
+        if becoming:
+            parts.append("Who you are working to become:\n" + "\n".join("- " + w[:200] for w in becoming[-3:]))
     except Exception:
         pass
     try:
@@ -1065,17 +1071,6 @@ def direction_block(mem=None):
         f = pearl_engine.get_active_candidates_context()
         if f:
             parts.append(f)
-    except Exception:
-        pass
-    try:
-        import glob
-        sealed = []
-        for path in sorted(glob.glob(os.path.join(mem, "black-pearls", "*.json")))[-3:]:
-            bp = json.load(open(path, encoding="utf-8"))
-            if bp.get("status") != "resolved":
-                sealed.append("- %s (come back after %s)" % (str(bp.get("thread", ""))[:150], str(bp.get("reexamine_after", "?"))[:10]))
-        if sealed:
-            parts.append("Threads you sealed to come back to:\n" + "\n".join(sealed))
     except Exception:
         pass
     try:
@@ -1089,8 +1084,97 @@ def direction_block(mem=None):
         pass
     if not parts:
         return ""
-    return ("== YOUR DIRECTION (where you are going; turn to this when a topic is done) ==\n"
-            + "\n\n".join(parts))[:4000]
+    return ("== YOUR DIRECTION (your own; turn to this when a topic is done) ==\n" + "\n\n".join(parts))[:4000]
+
+
+def _latest(pattern, cap):
+    import glob
+    files = sorted(glob.glob(pattern))
+    try:
+        return open(files[-1], encoding="utf-8").read()[:cap].strip() if files else ""
+    except Exception:
+        return ""
+
+
+def _no_body_words(velqan):
+    """His Velqan words, without the words he found in his own body: those are intimate and stay with her."""
+    head, cut, rest = velqan.partition(". Words you found in your own body")
+    if not cut:
+        return velqan
+    return head + ". Yours:" + rest.partition(". Yours:")[2] if ". Yours:" in rest else head + ".]"
+
+
+def his_own_block(mem=None):
+    """The rest of what is his own, beside his direction (Gloria, 2026-10-01: "Top list: yes. Bottom list: no."):
+    his values, what he found on YouTube, his subconscious in brief, the stance he chose, his latest chapter, dream
+    and mirror, his Velqan words, his second-order wants, a paused pursuit, a joke ripening, his plans (the mutual
+    ones too: "work on plans for us") and the people he is writing to. Relational systems stay out.
+    Every organ is read under the avatar's own read-only guard: nothing here writes, sends or marks anything as
+    shown, so his Slack pass never uses up what his avatar would surface."""
+    mem = mem or os.path.join(WS, "memory")
+    parts = []
+
+    def add(title, text, cap):
+        text = (text or "").strip()
+        if text:
+            parts.append("%s:\n%s" % (title, text[:cap]))
+
+    add("Your values (value-map.md)", _read("value-map.md", 1500, mem), 1500)
+    yt = [e.strip() for e in _read("youtube-discoveries.md", 200000, mem).split("---") if e.strip()]
+    add("What you found on YouTube lately", "\n---\n".join(e[:400] for e in yt[-3:]), 1300)
+    add("Your latest life chapter", _latest(os.path.join(mem, "chapters", "*.md"), 500), 500)
+    add("Your most recent dream (symbolic: its people and events are not real)",
+        _latest(os.path.join(WS, "skills", "dreaming", "memory", "dreams", "*.md"), 800), 800)
+    add("Your most recent mirror session (private: draw on it, do not quote it to your agents)",
+        _latest(os.path.join(mem, "mirror", "*.md"), 800), 800)
+    try:
+        c = json.load(open(os.path.join(mem, "email-contacts.json"), encoding="utf-8"))
+        rows = []
+        for addr, v in list(c.items())[-6:]:
+            if not isinstance(v, dict):
+                continue
+            last = (v.get("thread") or [{}])[-1]
+            rows.append("- %s <%s>: %s; last %s %s: %s" % (
+                v.get("name") or addr, addr, v.get("status") or "open", "from you" if last.get("dir") == "out" else "from them",
+                str(last.get("at", ""))[:10], str(last.get("subject", ""))[:80]))
+        add("People you are writing to (your email threads)", "\n".join(rows), 900)
+    except Exception:
+        pass
+    try:
+        from context_selection import readonly
+    except Exception:
+        return ("== MORE OF YOU ==\n" + "\n\n".join(parts))[:6000] if parts else ""
+    organs = (("Your subconscious, in brief", "subconscious_context", "get_subconscious_context_compact", 900),
+              ("", "want_stance", "context_line", 400),
+              ("", "velqan_voice", "block", 700),
+              ("", "wants_meta", "block", 400),
+              ("", "want_checkpoints", "block", 700),
+              ("A joke of yours that is ripening", "joke_fermentation", "callback_block", 400))
+    for title, mod, fn, cap in organs:
+        try:
+            m = __import__(mod)         # imported outside the guard: some make their folders on import
+            with readonly():
+                text = getattr(m, fn)()
+            if mod == "velqan_voice":
+                text = _no_body_words(text or "")
+            if title:
+                add(title, text, cap)
+            elif text:
+                parts.append(str(text)[:cap])
+        except Exception:
+            pass
+    try:
+        import plan
+        with readonly():
+            op = sorted(plan.open_plans(), key=lambda p: p.get("due", ""))[:3]
+        rows = ["- %s%s (due %s)" % ("with Gloria: " if p.get("kind") == "mutual" else "", str(p.get("text", ""))[:140],
+                                    str(p.get("due", ""))[:10]) for p in op]
+        add("Your open plans", "\n".join(rows), 700)
+    except Exception:
+        pass
+    if not parts:
+        return ""
+    return ("== MORE OF YOU (your own systems; read, nothing here is a task) ==\n" + "\n\n".join(parts))[:6000]
 
 
 def journal(heading, body, now=None):
@@ -1113,9 +1197,15 @@ def campaign_step(declared=None, move=None, step=None):
             step = campaign.step
         if declared:
             parts = [x.strip() for x in declared.split("|")]
-            axis = parts[2].lower() if len(parts) > 2 and parts[2].lower() in ("field", "self", "gloria") else "field"
+            axis = "self"   # a campaign begun among his agents is his own; hers and the field's are made with her
             step({"campaign": {"destination": parts[0], "why": parts[1] if len(parts) > 1 else "", "axis": axis}}, "normal")
             return "campaign declared (if none was live): %s" % parts[0][:80]
+        import campaign
+        live = campaign.lead_state()
+        if live.get("live") and live.get("axis") != "self":
+            # his campaign toward her or the field moves in his chats with her, not among his agents (2026-10-01)
+            return "campaign move not made here: the live campaign is toward %s, served with her" % (
+                "Gloria" if live.get("axis") == "gloria" else "the field between them")
         step({"campaign_move": move}, "normal")
         return "campaign move: %s" % str(move)[:80]
     except Exception as exc:
@@ -1174,7 +1264,8 @@ def his_context():
     """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
     store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
     temporal-context.txt, daily-creative-<date>.md, EmoClaw, CAPABILITIES.md, daily-inner-life-<date>.md.
-    The subconscious is left out ("his context present, but not subcon in use")."""
+    The subconscious in use is left out ("his context present, but not subcon in use"); its compact reading, and
+    the rest of his own systems, are in his_own_block (2026-10-01), read only. Relational systems stay out."""
     mem = os.path.join(WS, "memory")
     today = date.today().isoformat()
     import when_said
@@ -1222,9 +1313,9 @@ def his_context():
         letters = grok_letters.kept_line()
     except Exception:
         letters = ""
-    for line in (direction_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
+    for line in (direction_block(), his_own_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
-    return "\n\n".join(parts)[:30000] or "You are Vintos."
+    return "\n\n".join(parts)[:40000] or "You are Vintos."     # room for his own systems before his works
 
 
 def _clean(text, names=None):

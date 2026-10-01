@@ -9405,6 +9405,7 @@ Your current self-model (excerpt):
 
 {inner_life_context()}
 {_daily_inner_context()}
+{("What you can do (CAPABILITIES.md):" + chr(10) + capabilities[:6000]) if capabilities else ""}
 """
         if _desktop_command and _desktop_control is not None:
             system_prompt += "\n\n" + _desktop_control.prompt_block(_desktop_command)

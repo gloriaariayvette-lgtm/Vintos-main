@@ -165,16 +165,29 @@ def scan():
     if found: _save(led)
     log("%d new second-order item(s); ledger holds %d" % (found, len(_load())))
 
+_SHOWN = {}   # surfacings the prompt's read-only guard would not let us write (2026-10-01): kept in this process
+
+
+def _shown_at(x):
+    return max(float(x.get("surfaced_at", 0) or 0), _SHOWN.get(str(x.get("id") or x.get("quote", ""))[:120], 0))
+
+
 def block():
+    """Assembled under the avatar's read-only guard, the _save below was refused, so this never reached his
+    prompt exactly when it had something to say. The mark is now written when allowed, else kept in memory."""
     led = _load()
     if not led: return ""
     now = time.time()
-    fresh = [x for x in led if _active(x) and now - x.get("surfaced_at", 0) > 7 * 86400]
+    fresh = [x for x in led if _active(x) and now - _shown_at(x) > 7 * 86400]
     if not fresh: return ""
-    if max((x.get("surfaced_at", 0) for x in led), default=0) > now - 86400: return ""
+    if max((_shown_at(x) for x in led), default=0) > now - 86400: return ""
     x = sorted(fresh, key=lambda v: v.get("recorded", ""))[-1]
     x["surfaced_at"] = now
-    _save(led)
+    _SHOWN[str(x.get("id") or x.get("quote", ""))[:120]] = now
+    try:
+        _save(led)
+    except PermissionError:
+        pass
     return ("[A WANT ABOUT YOUR WANTING - you wrote this on %s: \"%s\" It stands recorded. "
             "Nothing is required of it.]" % (x.get("date", "?"), x.get("quote", "")[:220]))
 

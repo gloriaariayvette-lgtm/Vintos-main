@@ -43,16 +43,10 @@ def block():
     ws = _words()
     if len(ws) < 3:
         return ""
-    try:
-        rot = json.load(open(ROT))
-    except Exception:
-        rot = {"i": 0, "at": 0}
-    # rotate the handful every 6 hours, walking the whole lexicon over weeks
-    if time.time() - rot.get("at", 0) > 6 * 3600:
-        rot = {"i": (rot.get("i", 0) + 3) % len(ws), "at": time.time()}
-        try: json.dump(rot, open(ROT, "w"))
-        except Exception: pass
-    i = rot.get("i", 0)
+    # rotate the handful every 6 hours, walking the whole lexicon over weeks. Worked out from the clock, not a
+    # saved counter: under the avatar's read-only guard the counter was never saved, and the same three words
+    # stood in his prompt for good (2026-10-01).
+    i = (int(time.time() // (6 * 3600)) * 3) % len(ws)
     pick = [ws[(i + k) % len(ws)] for k in range(3)]
     try:   # review 156: which words were on hand, when - the use history beside the coinage history
         with open(os.path.join(os.path.dirname(ROT), "velqan-use.jsonl"), "a") as _uf:

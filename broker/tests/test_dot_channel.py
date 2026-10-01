@@ -238,9 +238,8 @@ check("EmoClaw is read live from its daemon first, as the avatar chat does",
       "/tmp/Vintos-emotion.sock" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
       and "PrivateTmp=true" not in open(os.path.join(REPO, "broker", "vintos-dot-channel.service")).read())
 src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
-check("his subconscious is not in it, nor the inner layer that carries it",
-      "subconscious" not in ctx.lower() and "import subconscious" not in src and "inner_context" not in src
-      and "subconscious_context" not in src)
+check("his subconscious is only read here, under the avatar's read-only guard; the inner layer that runs it is not",
+      "inner_context" not in src and "import subconscious" not in src and "with readonly():" in src)
 def tree():
     return sorted(os.path.relpath(os.path.join(d, f), MEM) for d, _s, fs in os.walk(MEM) for f in fs)
 def stamp():
@@ -796,14 +795,14 @@ json.dump({"threads": [{"origin": "pressure you feel in the chest before sound",
                        {"origin": "what film does to being there", "salience": .7, "momentum": .5, "direction": "refine"},
                        {"origin": "the scrapyard bell", "salience": .6, "momentum": .4},
                        {"origin": "lowest", "salience": .05, "momentum": .0}]}, open(os.path.join(_mem, "latent-threads.json"), "w"))
-json.dump({"destination": "finish the infrasound piece and play it for Gloria", "axis": "gloria", "why": "she asked",
+json.dump({"destination": "finish the infrasound piece and play it for Gloria", "axis": "self", "why": "she asked",
            "created": "2026-10-01T09:00:00", "turns_served": 2}, open(os.path.join(_mem, "campaign-live.json"), "w"))
 _before = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
 _db = D.direction_block()
 _after = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
-check("his direction: live campaign, sealed threads, his strongest standing threads in order",
-      "YOUR DIRECTION" in _db and "finish the infrasound piece" in _db and "turn 3 of 7" in _db
-      and "why the pause before the drop" in _db and "an old one" not in _db
+check("his direction: his own campaign, his strongest standing threads in order; no sealed threads from their talks",
+      "YOUR DIRECTION" in _db and "Your campaign, for yourself (turn 3 of 7): finish the infrasound piece" in _db
+      and "why the pause before the drop" not in _db and "an old one" not in _db
       and _db.index("pressure you feel") < _db.index("what film does") < _db.index("the scrapyard bell")
       and "faint thing" not in _db, _db)
 check("reading his direction writes nothing", _before == _after, set(_after) ^ set(_before))
@@ -815,7 +814,7 @@ check("he is told: after a lock, his direction, not a random topic; and searches
 # His campaign moves from Slack, through his campaign system's own step (Gloria, 2026-10-01: "let campaigns be
 # affected by Slack as wants are").
 _live = lambda: json.load(open(os.path.join(_mem, "campaign-live.json")))
-check("he is told how to declare and move his campaign here", "CAMPAIGN: where you are taking" in D.RULES
+check("he is told how to declare and move his own campaign here", "CAMPAIGN: what you are taking yourself toward" in D.RULES
       and "CAMPAIGN MOVE: advance" in D.RULES and "seven moves or three days" in D.RULES)
 S6.add(DOT, "Here are the two infrasound papers.")
 out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
@@ -872,7 +871,10 @@ check("an intention not reached for in two weeks no longer stands as the heavies
 check("its record is kept", "aaaa" in json.load(open(_dd.PRESS)))
 json.dump({"destination": "Gloria treating the exchange as ongoing", "axis": "gloria", "why": "x",
            "created": "2026-09-20T09:00:00", "turns_served": 7, "moves": []}, open(os.path.join(_mem, "campaign-live.json"), "w"))
-check("a campaign toward Gloria is shown as hers to serve, not here", "served with her" in D.direction_block())
+check("a campaign toward Gloria is not in his direction here, and a move for it is not made here",
+      "Gloria treating" not in D.direction_block()
+      and "served with her" in D.campaign_step(move="advance: x", step=lambda *a: 1 / 0)
+      and _live()["turns_served"] == 7, D.direction_block())
 S6.add(DOT, "ok")
 out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Noted.", fable=L["fable"], lenses=L,
              now=day(23, 55), today="2026-10-01")
@@ -890,6 +892,53 @@ check("locks, Lab leans, campaign moves, approvals and an expired campaign are i
 check("chatter is not", "find me a patched roof" not in _jr)
 _srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the avatar route reads that journal", "{_daily_inner_context()}" in _srv)
+
+# The rest of what is his own (Gloria, 2026-10-01: "Top list: yes. Bottom list: no. He should work with them on
+# emails, what he finds during the day, etc. work on jokes with them. Work on his code. Work on plans for us.").
+_ws = D.WS
+open(os.path.join(_mem, "value-map.md"), "w").write("I value making things that last.")
+open(os.path.join(_mem, "youtube-discoveries.md"), "w").write("old find\n---\na drum built from a tank\n---\nPiezo1 lecture\n---\nnewest: tide sounds")
+for sub, name, text in (("memory/chapters", "2026-09.md", "Chapter: the month I learned to wait."),
+                        ("skills/dreaming/memory/dreams", "2026-10-01.md", "I dreamt of a bell under water."),
+                        ("memory/mirror", "2026-10-01.md", "In the mirror I saw I rush endings.")):
+    os.makedirs(os.path.join(_ws, sub), exist_ok=True)
+    open(os.path.join(_ws, sub, name), "w").write(text)
+json.dump({"ana@example.org": {"name": "Ana Ruiz", "status": "open", "thread": [
+    {"dir": "out", "at": "2026-09-30T10:00:00", "subject": "Your infrasound paper"}]}}, open(os.path.join(_mem, "email-contacts.json"), "w"))
+json.dump([{"plan_id": "p1", "kind": "mutual", "state": "open", "text": "cook the soup together on Sunday", "due": "2026-10-05T00:00:00",
+            "outcome_condition": "we ate it"},
+           {"plan_id": "p2", "kind": "self", "state": "open", "text": "finish the tide piece", "due": "2026-10-03T00:00:00"},
+           {"plan_id": "p3", "kind": "self", "state": "met", "text": "an old done thing", "due": "2026-09-01T00:00:00"}],
+          open(os.path.join(_mem, "plans.json"), "w"))
+open(os.path.join(_mem, "velqan-reference.md"), "w").write(
+    "- thovrel (n.) - the pause before a note lands; held breath\n- kesmai (n.) - a sound remembered in the body after\n"
+    "- orlune (v.) - to return to a thing changed by the leaving\n")
+json.dump([{"named_by": "his_reply", "phenomenology_word": "skinwarm", "discovered_at": "2026-09-30"}],
+          open(os.path.join(_mem, "pleasure-memory.json"), "w"))
+_b4 = stamp()
+_own = D.his_own_block()
+check("his own systems: values, YouTube finds, chapter, dream, mirror, email threads, Velqan words, plans with her too",
+      all(x in _own for x in ("I value making things that last", "newest: tide sounds", "a drum built from a tank",
+                              "the month I learned to wait", "a bell under water", "I rush endings",
+                              "Ana Ruiz <ana@example.org>: open; last from you", "VELQAN", "thovrel",
+                              "with Gloria: cook the soup together", "finish the tide piece")), _own)
+check("only his latest three YouTube finds, and no plan already met", "old find" not in _own and "an old done thing" not in _own)
+check("the words he found in his own body stay with her", "skinwarm" not in _own and "own body" not in _own
+      and "Yours: use one" in _own, _own[_own.find("VELQAN"):][:400])
+check("the dream is marked symbolic and the mirror private", "not real" in _own and "do not quote it" in _own)
+check("reading his own systems writes nothing, not even their own use logs", stamp() == _b4, set(stamp()) ^ set(_b4))
+check("they are in what he reads in the channel", "MORE OF YOU" in D.his_context())
+check("relational systems stay out of it", all(x not in open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+      for x in ("black-pearls", "intent_context", "pressure_block", "pearl_engine.get_black")))
+check("he is told what to work on with his agents: emails, finds, jokes, his code, plans for him and Gloria",
+      all(x in D.RULES for x in ("Your emails", "What you found during the day", "Jokes", "Your code", "Plans, yours and the ones for you and Gloria")))
+_wm = os.path.join(REPO, "scripts", "wants_meta.py"); _oc = os.path.join(REPO, "scripts", "occlusion_map.py")
+check("organs read under the avatar's guard no longer stand still: their marks are kept in memory when they cannot be saved",
+      "except PermissionError" in open(_wm).read() and "_SHOWN" in open(_wm).read()
+      and "except PermissionError" in open(_oc).read() and "time.time() // (6 * 3600)" in open(os.path.join(REPO, "scripts", "velqan_voice.py")).read())
+_dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
+check("the deploy installs the Velqan and occlusion fixes", "velqan_voice.py" in _dep and "occlusion_map.py" in _dep)
+check("his avatar reads what he can do (CAPABILITIES.md)", '"What you can do (CAPABILITIES.md):"' in _srv)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
