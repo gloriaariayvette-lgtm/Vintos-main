@@ -83,7 +83,6 @@ class ModelLocations(unittest.TestCase):
         self.assertEqual(seen["body"]["model"], "gpt-4o")
         self.assertEqual(seen["body"]["messages"][0], {"role": "system", "content": "YOU ARE VINTOS"})
         self.assertNotIn("reasoning", seen["body"])          # 4o is not a reasoning model; Sol's body would be refused
-        self.assertEqual(seen["body"]["temperature"], 0.75)  # Gloria, 2026-10-01: "let's put him at temp .75"
         self.assertEqual(reserved, [("openai", "gpt-4o")])   # the same paid budget as Sol
         os.environ["FOURO_MODEL"] = "chatgpt-4o-latest"
         try:

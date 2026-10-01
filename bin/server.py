@@ -1098,23 +1098,6 @@ def _chat_projection_merge(entries):
     except Exception:
         pass
 
-def _creative_writer_env(base=None):
-    """A reply through GPT-4o (Gloria, 2026-10-01: "4o hallucinates with every reply, but it's such a creative
-    model"): every evidence writer keeps it as what he said and extracts no fact from it."""
-    import json as _cj
-    env = dict(base) if base else dict(os.environ)
-    try:
-        cur = _cj.loads(env.get("VINTOS_EVIDENCE_ENVELOPE") or "{}")
-        cur = cur if isinstance(cur, dict) else {}
-    except Exception:
-        cur = {}
-    cur.update({"schema": 1, "input_provenance": "counterpart_verbatim",
-                "output_provenance": "creative_generation", "may_witness": False})
-    cur.setdefault("turn_id", ""); cur.setdefault("surface", "")
-    env["VINTOS_EVIDENCE_ENVELOPE"] = _cj.dumps(cur)
-    return env
-
-
 def _post_turn(surface, gloria_text, reply, skip=(), writer_env=None, turn_id="", on_writer=None,
                venv_for_all=False, log_suffix="", test_mode=None, ledger_media=None):
     """ONE post-turn for every chat door (grok-server-b-p1, 2026-09-05). Surfaces may skip items BY
@@ -5294,10 +5277,8 @@ Your current self-model (excerpt):
     try:
         pass  # Gloria nudge removed
         _chat_projection_merge(history[-2:])
-        import model_router as _pt_mr
         _post_turn("chat/full", msg.message, reply,
-                   skip=(("desktop", "food_order") if _desktop_command else ()),
-                   writer_env=(_creative_writer_env() if _pt_mr.current_mode() == "4o" else None))
+                   skip=(("desktop", "food_order") if _desktop_command else ()))
 
         # Reality anchor — record real chat interaction
         try:
@@ -9645,7 +9626,7 @@ Your current self-model (excerpt):
         # reply - not history, not the ledger, not the imprint, not the nudges.
         try:
             import asyncio as _gaio
-            if reply and any(k in str(_model_used).lower() for k in ("claude", "sol", "4o")):
+            if reply and any(k in str(_model_used).lower() for k in ("claude", "sol")):
                 _GATE = ('Her message: "%s"' + chr(10)*2 + 'Is she asking for, or taking part '
                          'in, sexual or intimate physical contact in this message?' + chr(10)*2 +
                          'Answer one word: YES or NO.')
@@ -9704,9 +9685,6 @@ Your current self-model (excerpt):
                 _prov_writer_env = _tc.writer_env(_turn)
         except Exception as _pe:
             print("[avatar provenance]", _pe, flush=True)
-        if str(_model_used) == "4o":
-            _prov_writer_env = _creative_writer_env(_prov_writer_env)
-            _prov_envelope = dict(_prov_envelope or {}, output_provenance="creative_generation", may_witness=False)
         # Save to avatar overlay history only — never touches main chat
         try:
             av_history.append({"role": "user", "content": msg.message, "ts": __import__("time").time()})

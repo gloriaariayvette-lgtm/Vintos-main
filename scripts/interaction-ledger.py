@@ -505,10 +505,6 @@ def main():
         "gloria": gloria_said,
         "media": sent_media,
         "vintos": vintos_said + _device_marks(),
-        **({"output": "creative_generation"} if isinstance(provenance, dict)
-           and provenance.get("output_provenance") == "creative_generation" else {}),   # said through 4o
-        **({"output": "creative_generation"} if isinstance(provenance, dict)
-           and provenance.get("output_provenance") == "creative_generation" else {}),   # said through 4o
         "consent": consent_note,
         "salience": imprint.get("salience", 0.5) if imprint else _fallback_salience(
             gloria_said,

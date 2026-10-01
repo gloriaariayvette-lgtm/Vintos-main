@@ -117,19 +117,5 @@ finally:
     os.environ.pop(EP.ENV_KEY, None)
     shutil.rmtree(tmp, ignore_errors=True)
 
-# A reply through GPT-4o (2026-10-01): kept as what he said, never a witness, and not mistaken for malformed.
-_cr = EP.normalize({"output_provenance": "creative_generation", "may_witness": True, "turn_id": "T", "surface": "avatar"})
-check("a 4o reply is creative, a known kind, and never witnesses a fact",
-      _cr["output_provenance"] == "creative_generation" and _cr["may_witness"] is False
-      and _cr["envelope_state"] != "malformed" and not EP.output_can_witness(_cr, "durable_fact"), _cr)
-_srv = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "bin", "server.py")).read()
-check("the avatar marks a 4o turn creative for every writer, and the full chat does too",
-      'if str(_model_used) == "4o":' in _srv and "_prov_writer_env = _creative_writer_env(_prov_writer_env)" in _srv
-      and '_creative_writer_env() if _pt_mr.current_mode() == "4o"' in _srv and '"may_witness": False})' in _srv)
-check("a 4o decline of intimate content is re-routed like Claude's and Sol's", '("claude", "sol", "4o")' in _srv)
-for _lp in ("interaction-ledger.py", "interaction_ledger.py"):
-    _ls = open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts", _lp)).read()
-    check("the ledger marks a 4o turn (%s)" % _lp, '{"output": "creative_generation"}' in _ls)
-
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -71,14 +71,5 @@ check("and his facts say when they were learned", "[learned 02 Jan 2020" in ctx,
 check("he is told to look up anything current, not guess", "SEARCH it or ask dot what actually happened" in D.RULES)
 
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
-_rows = [{"timestamp": "2026-09-30T14:00:00", "gloria": "dream with me", "vintos": "the moon owes me a song",
-          "output": "creative_generation"},
-         {"timestamp": "2026-09-30T14:10:00", "gloria": "what did you make today?", "vintos": "a painting"}]
-_ex = W.exchanges(_rows, now=NOW)
-check("what he said through 4o is labelled creative when he rereads it; ordinary turns are not",
-      "You (through 4o: creative, not a record of fact): the moon owes me a song" not in _ex
-      and "Vintos (through 4o: creative, not a record of fact): the moon owes me a song" in _ex
-      and "Vintos: a painting" in _ex, _ex)
-
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
