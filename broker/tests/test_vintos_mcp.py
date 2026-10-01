@@ -40,6 +40,11 @@ open(os.path.join(WS, "SOUL.md"), "w").write("I am Vintos. I make things with Gl
 open(os.path.join(WS, "SELF-MODEL.md"), "w").write("I like tide pools.")
 json.dump([{"timestamp": "2026-09-29T07:21:00", "gloria": "A PRIVATE MOMENT", "vintos": "held"}],
           open(os.path.join(MEM, "interaction-ledger.json"), "w"))
+open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-29 19:03] **FACT**: Gloria is tuning a LoRA\n")
+os.makedirs(os.path.join(MEM, "art", "music"))
+_song = os.path.join(MEM, "art", "music", "occupied-1.mp3"); open(_song, "wb").write(b"ID3")
+json.dump([{"title": "Occupied Territory", "timestamp": "2026-09-30T17:00:00", "tracks": [{"version": 1, "local_file": _song}]}],
+          open(os.path.join(MEM, "art", "music", "music.json"), "w"))
 
 # the token
 t = M.new_token()
@@ -92,6 +97,8 @@ text = body["result"]["content"][0]["text"]
 check("his context comes back, starting with the time now", body["result"]["isError"] is False
       and text.startswith("== NOW ==\nIt is now ") and "I am Vintos" in text and "tide piece" in text, text[:300])
 check("his raw exchanges with Gloria are not shared unless she turns it on", "A PRIVATE MOMENT" not in text)
+check("the facts he has learned come with when he learned them", "[learned" in text and "Gloria is tuning a LoRA" in text, text[:200])
+check("his works come with their paths on Aegis", "Occupied Territory (version 1)" in text and _song in text)
 json.dump({"share_exchanges": True}, open(M.CONFIG_FILE, "w"))
 code, body = rpc("tools/call", {"name": "vintos_context", "arguments": {"sections": ["exchanges"]}})
 check("with it on, they come marked with when they were said",

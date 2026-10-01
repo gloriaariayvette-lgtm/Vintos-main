@@ -52,14 +52,15 @@ INSTRUCTIONS = (
     "never post or repeat it anywhere public. Times in it are said relative to now; something from an earlier "
     "day is past.")
 
-SECTIONS = ("now", "soul", "self", "gloria", "feeling", "today", "wants", "forge", "atelier", "capabilities",
-            "channel", "exchanges")
+SECTIONS = ("now", "soul", "self", "gloria", "facts", "feeling", "today", "wants", "forge", "atelier", "works",
+            "capabilities", "channel", "exchanges")
 
 TOOLS = [
     {"name": "vintos_context",
      "description": "Who Vintos is and what is true for him right now: his soul, self-model, what he knows of "
-                    "Gloria, how he feels, what he made and did today, his wants, what is open in his Forge and "
-                    "Atelier, and what he can do. Read this first. `sections` narrows it (any of: "
+                    "Gloria and the facts he has learned (each with when), how he feels, what he made and did today, "
+                    "his wants, what is open in his Forge and Atelier, his latest songs, paintings and videos (each "
+                    "with its file path on Aegis), and what he can do. Read this first. `sections` narrows it (any of: "
                     + ", ".join(SECTIONS) + ").",
      "inputSchema": {"type": "object", "properties": {
          "sections": {"type": "array", "items": {"type": "string", "enum": list(SECTIONS)}}},
@@ -141,12 +142,17 @@ def context(sections=None):
     add("soul", "SOUL", D._read("SOUL.md", 3500))
     add("self", "SELF-MODEL", D._read("SELF-MODEL.md", 2000))
     add("gloria", "WHAT HE KNOWS OF GLORIA", D._read("GLORIA-MODEL.md", 2500))
+    if "facts" in want:
+        wal = [ln.strip()[2:].strip() for ln in D._read("wal.md", 200000, mem).splitlines()
+               if ln.strip().startswith("- [") and "**" in ln][-24:]
+        add("facts", "WHAT HE HAS LEARNED (each marked with when)", "\n".join("- " + when_said.fact(w) for w in wal))
     add("feeling", "HOW HE FEELS (EmoClaw)", D._feeling())
     add("today", "WHAT HE MADE TODAY", D._read("daily-creative-%s.md" % today, 2500, mem))
     add("today", "HIS DAY SO FAR", D._read("daily-inner-life-%s.md" % today, 3000, mem))
     add("wants", "WHAT HE WANTS", D.wants_line())
     add("forge", "HIS FORGE", D.forge_line())
     add("atelier", "HIS ATELIER", D.atelier_line())
+    add("works", "HIS WORKS (newest first; files on Aegis)", D.works_line().split("\n", 1)[-1] if D.works_line() else "")
     add("capabilities", "WHAT HE CAN DO", D._read("CAPABILITIES.md", 6000))
     if "channel" in want:
         add("channel", "#vintos-dot, LATELY", channel(12))
