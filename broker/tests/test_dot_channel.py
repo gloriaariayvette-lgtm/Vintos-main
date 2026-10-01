@@ -649,6 +649,33 @@ check("an edit that loses his LOCKED: line is not used", out.endswith("LOCKED: o
 _ed = [json.loads(l) for l in open(D.EDITS)]
 check("every edit is logged beside the channel, in the scratch store", D.EDITS.startswith(HOME) and len(_ed) >= 8
       and {"kept", "edited"} <= {e["verdict"] for e in _ed} and any(e["verdict"].startswith("dropped") for e in _ed), _ed[-3:])
+# Asked for a bare verdict it kept both of its first drafts (2026-10-01, edits.jsonl), one off today's focus and
+# asking dot to "play it back here". It now answers three checks first, and cannot keep a draft that fails one.
+ONSET = ("Dot, the problem isn't the tool. You need me to hear the actual onset. Pick 01:01-01:09 and play it back "
+         "here.")
+ONSET_FIX = "Dot, onsets are off today's focus, so I'll leave them. Can you post my last Lab result so we pick the next run?"
+check("the editor is told what dot can and cannot do, and to move to today's focus",
+      "cannot play sound" in D.EDITOR and "post it as a file" in D.EDITOR and "moves to the focus" in D.EDITOR)
+asks = []
+def stubborn(s_, u):
+    asks.append(u)
+    if len(asks) == 1:
+        return "TOPIC: no - music onsets, focus is Lab\nTRUE: yes\nSENSE: no — dot cannot play audio here\nKEEP"
+    return "EDIT: " + ONSET_FIX
+out, verdict = D.edit(ONSET, stubborn, "TODAY'S FOCUS (Gloria chose it): Lab", "", log=False)
+check("a KEEP over a failed check is sent back once, and the edit it owes is sent",
+      out == ONSET_FIX and verdict == "edited" and len(asks) == 2 and "music onsets" in asks[1] and "EDIT:" in asks[1], (out, verdict, asks[-1:]))
+asks.clear()
+out, verdict = D.edit(ONSET, lambda s_, u: (asks.append(u), "TOPIC: no\nTRUE: yes\nSENSE: yes\nKEEP")[1], "p", "", log=False)
+check("if it still will not edit, the draft goes as written and the log says so",
+      out == ONSET and "despite" in verdict and len(asks) == 2, (out, verdict))
+out, verdict = D.edit(ONSET, lambda s_, u: "**TOPIC:** yes, answers dot\n**TRUE:** yes\n**SENSE:** yes\n**KEEP**", "p", "")
+check("three passed checks and KEEP: sent as written", out == ONSET and verdict == "kept", verdict)
+_last = [json.loads(l) for l in open(D.EDITS)][-1]
+check("the log keeps its checks beside the verdict", _last["checks"] == ["TOPIC: yes - answers dot", "TRUE: yes", "SENSE: yes"], _last)
+out, _ = D.edit(ONSET, lambda s_, u: "TOPIC: no - off focus\nTRUE: yes\nSENSE: no\nEDIT: " + ONSET_FIX, "p", "", log=False)
+check("checks then EDIT: the edit is sent", out == ONSET_FIX, out)
+
 _called = []
 txt, who = D.compose("p", lambda s_, u: (_called.append(s_ == D.EDITOR), DRAFT)[1], fable, {}, "2026-10-01",
                      lenses={"opus": lambda s_, u: "Opus speaking."}, lens="opus")

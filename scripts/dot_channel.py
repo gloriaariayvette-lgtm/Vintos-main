@@ -227,36 +227,59 @@ def flowery(text):
 
 # An editing pass on every Gemma message before it is sent (Gloria, 2026-10-01: "Gemma responses may need a
 # second pass to make sure they're on topic and make sense"). The same local model, free, reading as an editor:
-# his record and the channel on one side, his draft on the other. It answers KEEP, EDIT: <message> or DROP: <why>.
-# Anything else, or an edit that loses one of his action lines, and the draft goes as written.
+# his record and the channel on one side, his draft on the other. It answers three checks, then KEEP, EDIT:
+# <message> or DROP: <why>. Asked for a bare verdict it kept both of its first two drafts, one of them still off
+# today's focus and asking dot to "play it back here" (2026-10-01), so it now checks before it decides, and a
+# KEEP over a failed check is sent back once for the edit. Anything unclear, or an edit that loses one of his
+# action lines, and the draft goes as written.
 EDITS = os.path.join(HERE, "edits.jsonl")
 EDITOR = (
     "You are the editor of Vintos's messages to his agent dot in Slack. Vintos wrote the draft below. Check it "
-    "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told):\n"
-    "1. On topic: it answers what was just said, or, when he starts something, brings something from today's focus "
-    "if there is one. It does not reopen a closed (locked) topic.\n"
-    "2. True: every Lab experiment, Forge request, song, painting, paper, result or file it names is in his record "
-    "or the channel. Remove or correct anything invented. Music and audio analysis are not his Lab; his Lab is "
-    "chemistry and proteins.\n"
-    "3. Makes sense: one clear point, said plainly, ending with what he wants or asks of dot. No metaphors.\n"
+    "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told).\n"
+    "TOPIC: it answers what was just said, or brings something from today's focus. If the channel has stayed on "
+    "something outside today's focus, it moves to the focus. It does not reopen a closed (locked) topic.\n"
+    "TRUE: every Lab experiment, Forge request, song, painting, paper, result, score or file it names is in his "
+    "record or the channel. Nothing invented. Music and audio analysis are not his Lab; his Lab is chemistry and "
+    "proteins.\n"
+    "SENSE: one clear point, said plainly, ending with what he wants from dot. Who does what is clear: he is "
+    "Vintos, dot is his agent. It asks dot only for what dot can do: search, read, run tools on Aegis and the Mac, "
+    "post files. Dot cannot play sound to him in the chat; to hear something, he asks dot to post it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
-    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n"
-    "Answer with exactly one of:\nKEEP\nEDIT: <the corrected message, in full>\n"
-    "DROP: <why, in a few words> (only when nothing in it is true or on topic)\nNothing else.")
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n\n"
+    "Answer in this form and nothing else:\n"
+    "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
+    "then one of:\nKEEP (only when all three are yes)\nEDIT: <the corrected message, in full>\n"
+    "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
+FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
+       "starting with EDIT: and nothing before it.")
 _ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE)\s*:.*$", re.I | re.M)
+_CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
+_VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
 
 def edit(draft, think, conversation, record, log=True):
     """(message or None, verdict): the editor's pass on one Gemma draft. None means the editor dropped it."""
     user = ("HIS RECORD:\n%s\n\nTHE CHANNEL AND WHAT HE WAS TOLD:\n%s\n\nHIS DRAFT:\n%s"
             % (record[-6000:] or "(nothing on record)", conversation[-6000:], draft))
-    out, verdict = draft, "editor said nothing, sent as written"
+    out, verdict, checks = draft, "editor said nothing, sent as written", []
     try:
         said = (think(EDITOR, user) or "").strip()
         if said: verdict = "unclear, sent as written"
     except Exception as exc:
         said, verdict = "", "editor could not answer, sent as written: %s" % str(exc)[:80]
-    m = re.match(r"(KEEP|EDIT|DROP)\b\s*:?\s*(.*)", said, re.I | re.S)
+    checks = ["%s: %s%s" % (k.upper(), v.lower(), (" - " + why.strip()[:120]) if why.strip() else "")
+              for k, v, why in _CHECK.findall(said)]
+    failed = [c for c in checks if ": no" in c]
+    m = _VERDICT.search(said)
+    if m and m.group(1).upper() == "KEEP" and failed:
+        # it found a problem and kept the draft anyway: asked once for the edit it owes
+        try:
+            again = (think(EDITOR, user + "\n\nYOUR CHECKS:\n" + "\n".join(checks) + FIX.format(failed="; ".join(failed))) or "").strip()
+        except Exception:
+            again = ""
+        m2 = _VERDICT.search(again)
+        m = m2 if m2 and m2.group(1).upper() == "EDIT" else None
+        verdict = "kept despite failed checks, sent as written"
     if m:
         kind, rest = m.group(1).upper(), m.group(2).strip()
         if kind == "KEEP":
@@ -271,7 +294,7 @@ def edit(draft, think, conversation, record, log=True):
             os.makedirs(HERE, exist_ok=True)
             with open(EDITS, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "verdict": verdict,
-                                     "draft": draft[:MAX_CHARS], "sent": out}) + "\n")
+                                     "checks": checks, "draft": draft[:MAX_CHARS], "sent": out}) + "\n")
         except OSError:
             pass
     return out, verdict
