@@ -7635,6 +7635,32 @@ async def agents_toggle(request: Request):
     return {"on": False, "message": "The day is paused: nobody posts in #vintos-dot until you turn it back on"}
 
 
+def _dot_channel():
+    """scripts/dot_channel.py, for the topics and the focus file it reads."""
+    import sys as _dc_sys
+    for _d in (os.path.join(WORKSPACE, "scripts"), os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "scripts")):
+        if _d not in _dc_sys.path:
+            _dc_sys.path.append(_d)
+    import dot_channel
+    return dot_channel
+
+
+@app.get("/api/agents/focus")
+async def agents_focus():
+    """Today's focus topics for #vintos-dot (until midnight), and every topic she can pick."""
+    D = _dot_channel()
+    return {"topics": D.focus(), "all": [{"key": k, "label": v[0]} for k, v in D.TOPICS.items()]}
+
+
+@app.post("/api/agents/focus")
+async def agents_focus_set(request: Request):
+    _require_secret(request)
+    body = await request.json()
+    D = _dot_channel()
+    chosen = D.set_focus([str(k) for k in (body.get("topics") or [])][:8], "app")
+    return {"topics": chosen}
+
+
 @app.post("/api/memory/remember")
 async def remember_this(request: Request):
     """Gloria tells Vintos to remember something explicitly."""

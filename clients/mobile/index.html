@@ -838,6 +838,12 @@ input[type="range"]::-webkit-slider-thumb {
                         <span id="agents-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
                     </label>
                 </div>
+                <!-- Today's focus in #vintos-dot: topics that steer the day, until midnight (2026-10-02) -->
+                <div style="padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
+                    <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">today's focus</div>
+                    <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;" id="focus-status-text">loading...</div>
+                    <div id="focus-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;"></div>
+                </div>
                 <!-- Chemistry Lab Toggle — separate from Atelier -->
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
                     <div style="padding-right:14px;">
@@ -1279,7 +1285,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'valuemap') loadValueMap();
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
-        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadChemistryLabStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadFocus(); loadChemistryLabStatus(); loadSystemStatus(); }
         if (tab.dataset.tab === 'lab') { loadLab(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
@@ -1533,6 +1539,52 @@ async function toggleAgents() {
         haptic('light');
     } catch {}
     loadAgentsStatus();
+}
+let _focusChosen = [];
+let _focusAll = [];
+function _renderFocus() {
+    const box = document.getElementById('focus-chips');
+    const text = document.getElementById('focus-status-text');
+    if (!box) return;
+    box.innerHTML = '';
+    _focusAll.forEach(t => {
+        const on = _focusChosen.includes(t.key);
+        const b = document.createElement('button');
+        b.textContent = t.label;
+        b.style.cssText = 'font-size:0.68rem;padding:6px 12px;border-radius:14px;cursor:pointer;border:0.5px solid var(--border);'
+            + (on ? 'background:var(--accent-dim);color:var(--text);' : 'background:var(--surface);color:var(--text-dim);');
+        b.onclick = () => toggleFocus(t.key);
+        box.appendChild(b);
+    });
+    if (text) text.textContent = _focusChosen.length
+        ? 'steering today: ' + _focusAll.filter(t => _focusChosen.includes(t.key)).map(t => t.label).join(', ')
+        : 'none chosen: he follows his own lead';
+}
+async function loadFocus() {
+    try {
+        const res = await VintosUI.request(`${API}/api/agents/focus`);
+        const data = await res.json();
+        _focusChosen = data.topics || [];
+        _focusAll = data.all || [];
+        _renderFocus();
+    } catch {
+        const text = document.getElementById('focus-status-text');
+        if (text) text.textContent = 'unreachable';
+    }
+}
+async function toggleFocus(key) {
+    const next = _focusChosen.includes(key) ? _focusChosen.filter(k => k !== key) : _focusChosen.concat([key]);
+    try {
+        const res = await VintosUI.request(`${API}/api/agents/focus`, {
+            method: 'POST',
+            headers: { 'X-Vintos-Secret': CONFIG.secret, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topics: next })
+        });
+        const data = await res.json();
+        _focusChosen = data.topics || next;
+        haptic('light');
+    } catch {}
+    _renderFocus();
 }
 async function toggleGrounding() {
     try {

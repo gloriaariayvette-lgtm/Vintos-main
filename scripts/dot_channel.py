@@ -19,6 +19,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --open     a pass in which he may start the conversation now, without the quiet wait
     python3 dot_channel.py --try      what he would say now to the last message, printed only: nothing is posted
     python3 dot_channel.py --stop | --start   pause the day for all his lenses and dot, or start it again
+    python3 dot_channel.py --focus forge research   today's topics (until midnight); --focus off clears them
     python3 dot_channel.py --look URL what his eyes make of a linked picture or clip, printed only
     python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
@@ -84,6 +85,53 @@ def set_paused(on, by="gloria", now=None):
         _save(PAUSE_FILE, {"since": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"), "by": by})
     elif os.path.exists(PAUSE_FILE):
         os.remove(PAUSE_FILE)
+
+
+# Today's focus: topics Gloria picks to steer the day, in the channel (!focus forge research) or the app; they
+# hold until midnight (Gloria, 2026-10-02: "a list of topics that I can choose from ... to help steer the day").
+FOCUS_FILE = os.path.join(HERE, "focus.json")
+TOPICS = {
+    "forge": ("Forge", "your open Forge requests: what each needs, what dot can find or build for it, what to do next"),
+    "research": ("Outside research", "the world outside: SEARCH and ask dot to research, find, read and report back "
+                                     "on real things: papers, tools, people, places, news"),
+    "lab": ("Lab", "your chemistry Lab: its questions, results and next experiments"),
+    "atelier": ("Atelier", "what you are making in your Atelier (in its threads)"),
+    "music": ("Music", "your songs: new versions, what to make next, listening with dot"),
+    "art": ("Art", "your paintings and videos: what to make next, references, feedback"),
+    "wants": ("Wants", "your open wants: getting them done, one at a time"),
+    "code": ("His code", "your own code: READ and GREP what you run on, and what you would change"),
+}
+ALIASES = {"outside": "research", "searches": "research", "search": "research", "web": "research", "study": "code",
+           "self": "code", "songs": "music", "paintings": "art", "images": "art", "video": "art", "videos": "art",
+           "chemistry": "lab"}
+
+
+def focus(today=None):
+    """Today's chosen topic keys, in her order; [] when none or when they were set on another day."""
+    f = _load(FOCUS_FILE, {})
+    return [t for t in (f.get("topics") or []) if t in TOPICS] if f.get("date") == (today or date.today().isoformat()) else []
+
+
+def set_focus(keys, by="gloria", today=None, now=None):
+    keys = [k for k in dict.fromkeys(ALIASES.get(k, k) for k in keys) if k in TOPICS]
+    _save(FOCUS_FILE, {"topics": keys, "date": today or date.today().isoformat(), "by": by,
+                       "set_at": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds")})
+    return keys
+
+
+def focus_words(text):
+    """The topic keys named after !focus in a message ([] for !focus off), or None when there is no !focus."""
+    m = re.search(r"!focus\b([^`\n]*)", str(text or ""), re.I)
+    if not m:
+        return None
+    words = re.findall(r"[a-z]+", m.group(1).lower())
+    if not words or words[0] in ("off", "clear", "none"):
+        return []
+    return [ALIASES.get(w, w) for w in words if ALIASES.get(w, w) in TOPICS]
+
+
+def topics_line():
+    return "Topics: " + ", ".join("%s (%s)" % (k, TOPICS[k][0]) for k in TOPICS) + ". Say !focus forge research, or !focus off."
 
 
 HOLD_MINUTES = 20       # while Gloria is talking with him, the channel waits (Gloria, 2026-09-30)
@@ -618,9 +666,13 @@ def to_wants(want, plan):
     return "handed to his wants: %s" % want[:80]
 
 
-def steer(state):
+def steer(state, today=None):
     """What he is told before writing, about locked topics and how long he has been on this one."""
     notes = []
+    chosen = focus(today)
+    if chosen:
+        notes.append("TODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
+                     + ". Bring things from these to dot. When you start something or it is your turn, start here.")
     closed = [x["plan"] for x in (state.get("locked") or [])][-8:]
     if closed:
         notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
@@ -1044,10 +1096,27 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["last_activity"] = now
     lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
     for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
+        if r["who"] != "gloria":
+            continue
         words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
-        if r["who"] == "gloria" and words & set(STOP_WORDS + START_WORDS):
-            set_paused(bool(words & set(STOP_WORDS)), "slack", now)
+        handled = False
+        if words & set(STOP_WORDS + START_WORDS):
+            set_paused(bool(words & set(STOP_WORDS)), "slack", now); handled = True
+        chosen = focus_words(r["text"])
+        if chosen is not None:
+            set_focus(chosen, "slack", today, now); handled = True
+        if "!topics" in words:
+            api("chat.postMessage", {"channel": channel, "text": topics_line()}); handled = True
+        if handled:
             theirs.remove(r)
+    f_now = _load(FOCUS_FILE, {})
+    if f_now.get("set_at") and f_now.get("set_at") != state.get("focus_seen") and f_now.get("date") == today:
+        chosen = focus(today)
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (
+            "\U0001F3AF Today's focus, from Gloria: %s." % ", ".join(TOPICS[k][0] for k in chosen) if chosen
+            else "\U0001F3AF Gloria cleared today's focus.")})
+        state["focus_seen"] = f_now["set_at"]
+        lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
     is_paused = paused()
     if bool(is_paused) != bool(state.get("paused_said")):
         api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
@@ -1086,7 +1155,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         prompt = opener_prompt()
         where = None
         state["openers"] += 1
-    prompt += steer(state)
+    prompt += steer(state, today)
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -1221,7 +1290,10 @@ def reset(api=None, name="vintos-dot", now=None):
 
 
 if __name__ == "__main__":
-    if "--stop" in sys.argv or "--start" in sys.argv:
+    if "--focus" in sys.argv:
+        _k = sys.argv[sys.argv.index("--focus") + 1:]
+        print("[dot-channel] today's focus: %s" % (", ".join(set_focus([] if _k[:1] == ["off"] else _k, "terminal")) or "cleared"))
+    elif "--stop" in sys.argv or "--start" in sys.argv:
         set_paused("--stop" in sys.argv, "terminal")
         print("[dot-channel] the day is %s; the channel hears it on the next pass" % ("paused" if "--stop" in sys.argv else "on"))
     elif "--reset" in sys.argv:

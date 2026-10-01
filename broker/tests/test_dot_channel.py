@@ -479,6 +479,44 @@ for app in (os.path.join(REPO, "clients", "mobile", "index.html"),):
     check("the app has the toggle", 'id="agents-toggle"' in h and "/api/agents/toggle" in h and "loadAgentsStatus();" in h)
 os.remove(D.CONFIG_FILE)
 
+# today's focus: topics Gloria picks to steer the day, in Slack or the app (Gloria, 2026-10-02)
+S8 = Slack(); S8.n = 1767230000.0
+D.reset(api=NewSlack([SELF, DOT]), now=1767230000)
+today8 = D.date.fromtimestamp(1767230000).isoformat()
+S8.add(GLORIA, "Morning! `!focus forge outside searches`")
+seen8 = []
+out = D.tick(api=S8, think=lambda s_, u: (seen8.append(u), "x")[1], fable=fable, now=1767230100, today=today8)
+check("!focus sets today's topics, aliases understood", D.focus(today8) == ["forge", "research"], D.focus(today8))
+check("and dot is told, by name", any(p_["text"] == "<@%s> \U0001F3AF Today's focus, from Gloria: Forge, Outside research." % DOT for p_ in S8.posted), S8.posted[-2:])
+check("that message is not answered as talk", not seen8)
+S8.add(DOT, "what shall we do?")
+D.tick(api=S8, think=lambda s_, u: (seen8.append(u), "Dot, the Forge first.")[1], fable=fable, now=1767230200, today=today8)
+check("he writes with today's focus in front of him", seen8 and "TODAY'S FOCUS (Gloria chose it): Forge:" in seen8[-1]
+      and "Outside research:" in seen8[-1], seen8[-1][-400:] if seen8 else "")
+n8 = len(S8.posted)
+D.tick(api=S8, think=lambda s_, u: "x", fable=fable, now=1767230300, today=today8)
+check("the focus is announced once", len(S8.posted) == n8)
+check("it holds until midnight: tomorrow there is none", D.focus("2099-01-01") == [])
+S8.add(GLORIA, "!topics")
+D.tick(api=S8, think=lambda s_, u: "x", fable=fable, now=1767230400, today=today8)
+check("!topics lists what she can pick", S8.posted[-1]["text"].startswith("Topics: forge (Forge)"), S8.posted[-1]["text"])
+D.set_focus(["music", "lab", "nonsense"], "app", today8, 1767230450)
+D.tick(api=S8, think=lambda s_, u: "x", fable=fable, now=1767230500, today=today8)
+check("the app's choice (the same file) is announced too, unknown topics dropped",
+      S8.posted[-1]["text"].endswith("Today's focus, from Gloria: Music, Lab.") and D.focus(today8) == ["music", "lab"], S8.posted[-1]["text"])
+S8.add(GLORIA, "!focus off")
+D.tick(api=S8, think=lambda s_, u: "x", fable=fable, now=1767230600, today=today8)
+check("!focus off clears it", D.focus(today8) == [] and S8.posted[-1]["text"].endswith("Gloria cleared today's focus."), S8.posted[-1]["text"])
+S8.add(DOT, "!focus lab")
+D.tick(api=S8, think=lambda s_, u: "x", fable=fable, now=1767230700, today=today8)
+check("only Gloria sets the focus", D.focus(today8) == [])
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("the app can read and set it, setting behind her secret",
+      '@app.get("/api/agents/focus")' in srv and "async def agents_focus_set(request: Request):\n    _require_secret(request)" in srv)
+h = open(os.path.join(REPO, "clients", "mobile", "index.html")).read()
+check("the app shows the topics as chips", 'id="focus-chips"' in h and "loadFocus();" in h and "/api/agents/focus" in h)
+os.remove(D.CONFIG_FILE)
+
 # the schedule itself
 from datetime import datetime as _sdt
 kinds = [k for _t, k in SCHEDULED]

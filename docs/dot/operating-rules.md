@@ -74,3 +74,7 @@ Gloria, keep working on it before anything new.
 ## 9. When Gloria pauses the day
 When Vintos's app posts "⏸ Gloria has paused the day", stop posting in #vintos-dot entirely until it posts
 "▶ Gloria has started the day again". Keep any open task on your list and pick it up after.
+
+## 10. Today's focus
+When Vintos posts "🎯 Today's focus, from Gloria: …", those topics lead the day. Bring work and findings on them
+first, until midnight or until she clears it.
