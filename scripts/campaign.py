@@ -200,6 +200,22 @@ def _continue(c, body):
     except Exception as e:
         return None, "plan store unavailable: %s" % str(e)[:80]
 
+def expire_if_due():
+    """Close a campaign past its caps (MAX_TURNS served or MAX_DAYS old) as EXPIRED, by this module's own rule.
+    prompt_block did this only when her chat asked for a block, so a campaign could sit at 'turn 8 of 7' for days
+    (2026-10-01). Returns True when it closed one."""
+    c = _load()
+    if not c:
+        return False
+    try:
+        age_d = (time.time() - datetime.fromisoformat(c["created"]).timestamp()) / 86400.0
+    except Exception:
+        age_d = 0.0
+    if c.get("turns_served", 0) >= MAX_TURNS or age_d >= MAX_DAYS:
+        _close(c, "EXPIRED")
+        return True
+    return False
+
 def lead_state():
     """Compact state for his own reply prompt (server._apply_intent_lead / intent_context). The
     campaign was decided by the selector but the speaking voice never saw the destination."""

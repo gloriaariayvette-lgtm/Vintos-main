@@ -1046,7 +1046,8 @@ def direction_block(mem=None):
         import campaign
         c = campaign.lead_state()
         if c.get("live"):
-            parts.append("Your live campaign (turn %s of %s): %s" % (c.get("turn"), c.get("max_turns"), c.get("destination")))
+            toward = (" It is toward Gloria: it is served with her, in your own chat, not here." if c.get("axis") == "gloria" else "")
+            parts.append("Your live campaign (turn %s of %s): %s.%s" % (c.get("turn"), c.get("max_turns"), c.get("destination"), toward))
         board = campaign._board()
         if board:
             parts.append(board.split(" A campaign does not replace")[0].replace("BOARD - nearest open plan", "Nearest open plan"))
@@ -1455,6 +1456,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state = _load(STATE, {})
     if state.get("date") != today:
         state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0)
+    try:   # a campaign past its seven moves or three days is closed by its own rule before he reads it
+        import campaign
+        if campaign.expire_if_due():
+            lines_pre = ["his campaign had run its course; it is closed as expired"]
+        else:
+            lines_pre = []
+    except Exception:
+        lines_pre = []
     if not state.get("self"):
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
@@ -1483,7 +1492,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
     if theirs:
         state["last_activity"] = now
-    lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
+    lines = lines_pre + (["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")])
     for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
         if r["who"] != "gloria":
             continue

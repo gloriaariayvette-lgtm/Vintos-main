@@ -34,6 +34,13 @@ def _queue_bring_up(q):
 
 DIFF=os.path.join(MEM,"gloria-difference.json")
 PRESS=os.path.join(MEM,"intent-pressure.json")
+# An intention he has not reached for in this long no longer stands in front of him as pressure (Gloria,
+# 2026-10-01: "That photo one has never changed"). Weight only rose on a miss and fell on a landing or her
+# correction; one he stopped trying sat at w4.0, below graduation, for good. Its record is kept; a new miss
+# brings it back at its weight.
+STALE_DAYS=14
+def _live(r,now=None):
+    return (now or time.time())-float(r.get("last") or r.get("first") or 0) <= STALE_DAYS*86400
 API="http://127.0.0.1:8599/v1/chat/completions"
 MODEL="grok-4.20-0309-non-reasoning"
 def _llm(system,user,max_tokens=220,temperature=0.4):
@@ -235,7 +242,7 @@ def relieve(text):
 def pressure_block():
     db=_jload(PRESS,{})
     rows=sorted(db.values(),key=lambda r:-r.get("weight",0))
-    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden")][:3]
+    rows=[r for r in rows if r.get("weight",0)>=1.0 and not r.get("overridden") and _live(r)][:3]
     if not rows: return ""
     lines=["- (weight %.1f, %d misses, last missed %dd ago) %s"%(r["weight"],r["count"],max(0,int((time.time()-r.get("last",time.time()))/86400)),r["text"]) for r in rows]
     return ("INTENTIONS THAT KEEP FAILING - they weigh on you now; resting is not "
@@ -245,7 +252,7 @@ def map_summary():
     pend=sum(1 for e in db if e.get("status")=="PENDING")
     held=sum(1 for e in db if e.get("status")=="HELD" and not e.get("scene_quarantined"))
     yes=sum(1 for e in db if e.get("verdict")=="YES")
-    top=max(pr.values(),key=lambda r:r.get("weight",0),default=None) if pr else None
+    top=max((r for r in pr.values() if _live(r) and not r.get("overridden")),key=lambda r:r.get("weight",0),default=None) if pr else None
     MEM=os.path.dirname(DIFF)
     def _rd(fn,d):
         try: return json.load(open(os.path.join(MEM,fn)))

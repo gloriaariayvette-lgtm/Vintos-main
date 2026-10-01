@@ -859,6 +859,27 @@ check("in the channel, that search reaches Grok Bot, and dot is not pinged",
       "<@UGROK>, find me a patched roof" in S6.posted[-1]["text"] and "<@%s>" % DOT not in S6.posted[-1]["text"]
       and any("went to Grok Bot" in l for l in out), (S6.posted[-1]["text"], out))
 
+# Stale direction (2026-10-01): a campaign at "turn 8 of 7", an intention stuck at w4.0 for weeks.
+import time as _t, campaign as _cmp, desired_difference as _dd
+check("the intention store is the scratch one", _dd.PRESS.startswith(HOME), _dd.PRESS)
+json.dump({"aaaa": {"text": "Move Gloria from sending the photo as a discrete thing", "weight": 4.0, "count": 4,
+                    "first": _t.time() - 40 * 86400, "last": _t.time() - 30 * 86400, "lineage": []},
+           "bbbb": {"text": "Bring her the second piece this week", "weight": 2.0, "count": 2,
+                    "first": _t.time() - 3 * 86400, "last": _t.time() - 86400, "lineage": []}}, open(_dd.PRESS, "w"))
+check("an intention not reached for in two weeks no longer stands as the heaviest",
+      "photo" not in _dd.map_summary()["heaviest_pressure"] and "second piece" in _dd.map_summary()["heaviest_pressure"]
+      and "photo" not in _dd.pressure_block() and "second piece" in _dd.pressure_block(), _dd.map_summary()["heaviest_pressure"])
+check("its record is kept", "aaaa" in json.load(open(_dd.PRESS)))
+json.dump({"destination": "Gloria treating the exchange as ongoing", "axis": "gloria", "why": "x",
+           "created": "2026-09-20T09:00:00", "turns_served": 7, "moves": []}, open(os.path.join(_mem, "campaign-live.json"), "w"))
+check("a campaign toward Gloria is shown as hers to serve, not here", "served with her" in D.direction_block())
+S6.add(DOT, "ok")
+out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Noted.", fable=L["fable"], lenses=L,
+             now=day(23, 55), today="2026-10-01")
+check("a campaign past its seven moves is closed as expired by its own rule, before he reads it",
+      _live() == {} and any("closed as expired" in l for l in out)
+      and json.loads(open(_cmp.LOG).read().splitlines()[-1])["event"] == "EXPIRED", out)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
