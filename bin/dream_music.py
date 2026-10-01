@@ -24,7 +24,9 @@ def _env(name, default=""):
         return _ev(name, default)
     except Exception:
         try:
-            for l in open(os.path.expanduser("~/.vintos/vintos.env")):
+            _own = os.path.expanduser("~/.vintos/vintos.env")
+            _beside = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "vintos.env"))
+            for l in open(os.environ.get("VINTOS_ENV_FILE") or (_own if os.path.exists(_own) else _beside)):
                 t = l.strip()
                 if t.startswith("export "): t = t[7:].lstrip()
                 if t.startswith(name + "="):

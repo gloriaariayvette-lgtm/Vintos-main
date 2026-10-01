@@ -31,7 +31,23 @@ still wins over the file, as it always did.
 """
 import os
 
-DEFAULT_PATH = os.path.expanduser("~/.vintos/vintos.env")
+def _default_path():
+    """Which vintos.env to read: VINTOS_ENV_FILE when it is set; the caller's own ~/.vintos/vintos.env when it
+    exists; else the one beside the install this module lives in (<home>/.vintos/workspace/scripts ->
+    <home>/.vintos/vintos.env). The last is for an agent that runs his scripts as itself, with another home:
+    dot ran his music on Aegis and was told "no KIE_API_KEY in vintos.env" (Gloria, 2026-10-01: "Dot needs to
+    be able to use the keys!"). Reading it still needs the file's permissions to allow that agent."""
+    explicit = os.environ.get("VINTOS_ENV_FILE")
+    if explicit:
+        return os.path.expanduser(explicit)
+    own = os.path.expanduser("~/.vintos/vintos.env")
+    if os.path.exists(own):
+        return own
+    beside = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "vintos.env"))
+    return beside if os.path.exists(beside) else own
+
+
+DEFAULT_PATH = _default_path()
 
 
 def _unquote(raw):
