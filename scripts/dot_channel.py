@@ -94,7 +94,8 @@ TOPICS = {
     "forge": ("Forge", "your open Forge requests: what each needs, what dot can find or build for it, what to do next"),
     "research": ("Outside research", "the world outside: SEARCH and ask dot to research, find, read and report back "
                                      "on real things: papers, tools, people, places, news"),
-    "lab": ("Lab", "your chemistry Lab: its questions, results and next experiments"),
+    "lab": ("Lab", "your chemistry Lab (YOUR LAB, in your context): its real questions, results, faults and next "
+                   "experiments. Music and audio analysis are not the Lab"),
     "atelier": ("Atelier", "what you are making in your Atelier (in its threads)"),
     "music": ("Music", "your songs: new versions, what to make next, listening with dot"),
     "art": ("Art", "your paintings and videos: what to make next, references, feedback"),
@@ -812,6 +813,43 @@ def forge_line():
     return ("== YOUR FORGE (open requests) ==\n" + "\n".join(out)) if out else ""
 
 
+def lab_line(n=6, now=None):
+    """His chemistry Lab's last sessions: what he asked, how it ended (and why, when it failed), what he wants
+    next. Without it, "today's focus: Lab" had nothing to stand on and he made a Lab up out of his music audit
+    (2026-10-01: spectral-flux onset papers, "something real from the Lab")."""
+    path = os.path.join(WS, "memory", "chemistry-lab", "sessions.jsonl")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            fh.seek(max(0, fh.tell() - 256 * 1024))
+            tail = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return ""
+    rows = []
+    for ln in tail:
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(r, dict):
+            rows.append(r)
+    import when_said
+    out = []
+    for r in rows[-n:]:
+        plan = r.get("plan") if isinstance(r.get("plan"), dict) else {}
+        reading = r.get("reading") if isinstance(r.get("reading"), dict) else {}
+        grade = r.get("grade") if isinstance(r.get("grade"), dict) else {}
+        why = " ".join(str(x) for x in (r.get("error"), r.get("detail")) if x).replace("\n", " ")[:200]
+        bits = ["- [%s] %s" % (when_said.ago(r.get("at"), now) or "time unknown", plan.get("experiment") or "session")]
+        if plan.get("question"): bits.append("asked: " + str(plan["question"])[:200])
+        bits.append("ended: " + str(r.get("state") or grade.get("execution_state") or "unknown")
+                    + (" (" + why + ")" if why else ""))
+        if grade.get("aggregate_accuracy"): bits.append("answer: " + str(grade["aggregate_accuracy"]).lower().replace("_", " "))
+        if reading.get("next_question"): bits.append("you wanted next: " + str(reading["next_question"])[:200])
+        out.append("; ".join(bits))
+    return ("== YOUR LAB (chemistry and proteins; its last sessions) ==\n" + "\n".join(out)) if out else ""
+
+
 def wants_line():
     """What he wants right now and where each stands."""
     rows = _load(os.path.join(WS, "memory", "current-wants.json"), [])
@@ -907,7 +945,7 @@ def his_context():
     except Exception:
         pass
     # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
-    for line in (atelier_line(), forge_line(), wants_line(), works_line()):
+    for line in (atelier_line(), forge_line(), lab_line(), wants_line(), works_line()):
         if line: parts.append(line)
     return "\n\n".join(parts)[:30000] or "You are Vintos."
 

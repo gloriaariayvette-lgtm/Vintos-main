@@ -595,6 +595,25 @@ check("a lens that cannot answer sends nothing and says why", any("Grok 4.6 coul
       and "21:30" in json.load(open(D.STATE))["slots_done"], out)
 D.SCHEDULE = []
 
+# The Lab is real to him: its last sessions are in his context, failures with why (2026-10-01: with "Lab" as the
+# focus and no Lab in view, he made one up out of his music audit).
+check("the Lab reads from the scratch workspace", D.WS.startswith(HOME), D.WS)
+check("no Lab ledger, no Lab section", D.lab_line() == "")
+_lab = os.path.join(D.WS, "memory", "chemistry-lab"); os.makedirs(_lab, exist_ok=True)
+with open(os.path.join(_lab, "sessions.jsonl"), "w") as fh:
+    fh.write(json.dumps({"at": "2026-10-01T08:21:00", "lens": "claude", "state": "failed", "error": "RuntimeError",
+                         "detail": "frontier lens claude returned no plan"}) + "\n")
+    fh.write("not json\n")
+    fh.write(json.dumps({"at": "2026-10-01T09:40:00", "state": "graded", "plan": {"experiment": "h2_vqe", "question": "does the ansatz beat HF?"},
+                         "grade": {"aggregate_accuracy": "ALL_BETTER_THAN_HARTREE_FOCK"},
+                         "reading": {"next_question": "stretch the bond to 2.5 A"}}) + "\n")
+_lb = D.lab_line(now="2026-10-01T10:00:00")
+check("his Lab: what failed and why, what he asked, what he wants next",
+      "YOUR LAB" in _lb and "returned no plan" in _lb and "h2_vqe" in _lb and "does the ansatz beat HF?" in _lb
+      and "all better than hartree fock" in _lb and "stretch the bond" in _lb and "today 09:40" in _lb, _lb)
+check("the Lab is in his context", "YOUR LAB" in D.his_context())
+check("the Lab topic says what the Lab is", "chemistry" in D.TOPICS["lab"][1] and "not the Lab" in D.TOPICS["lab"][1])
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
