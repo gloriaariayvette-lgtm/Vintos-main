@@ -483,14 +483,16 @@ def _watch(clip, frames_dir):
 # A link to a picture or a clip is looked at too: dot shares what it finds as links, and he answered as if he
 # had watched them (2026-09-30). Links named as a source, licence or credit are pages about the media, not it.
 LINK = re.compile(r"<(https?://[^|>\s]+)(?:\|([^>]*))?>")
-MEDIA_EXT = re.compile(r"\.(?:mp4|webm|mov|m4v|ogv|gif|jpe?g|png|webp)(?:$|[?#])", re.I)
-PLAYABLE = re.compile(r"\b(?:play|watch|video|gif|image|clip|photo|picture|open|view)\b", re.I)
+# a song sent as a link was never heard: these knew pictures and clips only (2026-10-01, dot's links to Still Under)
+AUDIO_EXT = re.compile(r"\.(?:mp3|wav|flac|m4a|ogg|oga|opus|aac)(?:$|[?#])", re.I)
+MEDIA_EXT = re.compile(r"\.(?:mp4|webm|mov|m4v|ogv|gif|jpe?g|png|webp|mp3|wav|flac|m4a|ogg|oga|opus|aac)(?:$|[?#])", re.I)
+PLAYABLE = re.compile(r"\b(?:play|watch|video|gif|image|clip|photo|picture|open|view|listen|song|track|audio|download)\b", re.I)
 NOT_MEDIA = re.compile(r"source|licen[cs]e|credit|attribution|author", re.I)
 UA = "VintosDotChannel/1.0 (a home companion reading links shared with him in Slack)"
 
 
 def media_links(raw):
-    """(url, label) for each link in a Slack message that points at a picture or a clip, in order."""
+    """(url, label) for each link in a Slack message that points at a picture, a clip or a sound, in order."""
     out, seen = [], set()
     for url, label in LINK.findall(str(raw or "")):
         if NOT_MEDIA.search(label or "") or url in seen:
@@ -505,7 +507,8 @@ def _page_media(page, base):
     import html
     for pat in (r'<meta[^>]+(?:property|name)=["\'](?:og:video(?::secure_url|:url)?|twitter:player:stream)["\'][^>]+content=["\']([^"\']+)',
                 r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:video(?::secure_url|:url)?["\']',
-                r'<video[^>]+src=["\']([^"\']+)', r'<source[^>]+src=["\']([^"\']+)',
+                r'<meta[^>]+(?:property|name)=["\']og:audio(?::secure_url|:url)?["\'][^>]+content=["\']([^"\']+)',
+                r'<video[^>]+src=["\']([^"\']+)', r'<audio[^>]+src=["\']([^"\']+)', r'<source[^>]+src=["\']([^"\']+)',
                 r'<meta[^>]+(?:property|name)=["\']og:image(?::secure_url|:url)?["\'][^>]+content=["\']([^"\']+)',
                 r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']og:image["\']'):
         m = re.search(pat, page, re.I)
@@ -515,11 +518,14 @@ def _page_media(page, base):
 
 
 def _get(url, dest):
-    """(path, content type) for a picture or clip at url; (None, the page's own media url) for a web page."""
+    """(path, content type) for a picture, clip or sound at url; (None, the page's own media url) for a web page."""
+    import mimetypes
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=120) as r:
         ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        if ctype.split("/")[0] in ("image", "video"):
+        if ctype in ("application/octet-stream", "binary/octet-stream", "") and AUDIO_EXT.search(url):
+            ctype = mimetypes.guess_type(urllib.parse.urlparse(url).path)[0] or "audio/mpeg"   # file hosts often say only "bytes"
+        if ctype.split("/")[0] in ("image", "video", "audio"):
             n = 0
             with open(dest, "wb") as f:
                 while True:
@@ -533,7 +539,7 @@ def _get(url, dest):
             return dest, ctype
         if ctype in ("text/html", "application/xhtml+xml"):
             return None, _page_media(r.read(2000000).decode("utf-8", "replace"), r.geturl())
-    raise RuntimeError("the link is not a picture or a video (%s)" % (ctype or "unknown"))
+    raise RuntimeError("the link is not a picture, a video or a sound (%s)" % (ctype or "unknown"))
 
 
 def fetch_link(url, dest):
@@ -545,7 +551,7 @@ def fetch_link(url, dest):
         path, ctype = _get(found, dest)
         if path:
             return path, ctype
-    raise RuntimeError("no picture or video was found at the link")
+    raise RuntimeError("no picture, video or sound was found at the link")
 
 
 # Files on Aegis named in a message, and text he may open, inside these folders only (Gloria, 2026-10-01: dot

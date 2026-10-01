@@ -145,7 +145,7 @@ try:
     try:
         D.fetch_link("https://example.org/blank", os.path.join(HOME, "l3")); none = False
     except RuntimeError as e:
-        none = "no picture or video" in str(e)
+        none = "no picture, video or sound" in str(e)
 finally:
     urllib.request.urlopen = real_urlopen
 check("a direct link to a clip is saved as it is", p1[1] == "video/webm" and open(p1[0], "rb").read() == b"webm-bytes")
@@ -153,6 +153,34 @@ check("a page is followed once to the clip it names", p2[1] == "video/webm" and 
 check("a page with no clip says so", none)
 check("links are fetched without the Slack token, and say who is asking",
       all(a is None for _u, a, _ua in opened) and all(ua and "Vintos" in ua for _u, _a, ua in opened), opened)
+
+# a song sent as a link is heard (2026-10-01: dot sent Still Under as links, and he never heard them)
+SONG_MSG = ("Done: Still Under. <https://files.example.org/Still_Under_v1.mp3|Still_Under_v1.mp3> · "
+            "<https://files.example.org/s/abc123|Listen to v2> · <https://example.org/credits|Credits>")
+check("links to songs are picked out, by their file or their label", [u for u, _ in D.media_links(SONG_MSG)]
+      == ["https://files.example.org/Still_Under_v1.mp3", "https://files.example.org/s/abc123"], D.media_links(SONG_MSG))
+heard_links = []
+def song_fetch(url, dest):
+    heard_links.append(url); open(dest, "wb").write(b"mp3"); return dest, "audio/mpeg"
+def song_watch(path, frames_dir):
+    return {"duration": 180, "has_audio": True, "speech": "still under the water", "sound": "Tempo: 70 BPM."}
+seen = D.look_at_files({"text": SONG_MSG}, "Dot", look=look, watch=song_watch, fetch=song_fetch)
+check("each linked song is fetched and heard: its words and how its sound is built",
+      len(heard_links) == 2 and seen.count("a sound file") == 2 and "still under the water" in seen
+      and "Tempo: 70 BPM." in seen and "What your eyes saw" not in seen, seen)
+def song_open(req, timeout=0):
+    if req.full_url.endswith(".mp3"): return Resp(b"ID3mp3", "application/octet-stream")
+    if "player" in req.full_url: return Resp(b'<html><meta property="og:audio" content="/a/song.ogg"></html>', "text/html")
+    if req.full_url.endswith(".ogg"): return Resp(b"OggS", "audio/ogg")
+    return Resp(b"<html></html>", "text/html")
+urllib.request.urlopen = song_open
+try:
+    s1 = D.fetch_link("https://files.example.org/Still_Under_v1.mp3", os.path.join(HOME, "s1"))
+    s2 = D.fetch_link("https://files.example.org/player", os.path.join(HOME, "s2"))
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a song a file host sends as plain bytes is still a song", s1[1] == "audio/mpeg" and open(s1[0], "rb").read() == b"ID3mp3", s1)
+check("a page is followed once to the song it names", s2[1] == "audio/ogg", s2)
 
 # files on Aegis named by their path, and the OPEN tool (Gloria, 2026-10-01)
 import zipfile
