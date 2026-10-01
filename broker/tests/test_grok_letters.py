@@ -88,8 +88,22 @@ check("the letter moves from inbox to read", os.listdir(G.INBOX) == [] and len(o
 check("his reply is there for Grok Bot to read, with what he kept",
       "exactly right" in G.replies() and "Tension-driven MD of Piezo1" in G.replies()
       and "exactly right" in M.call_tool("vintos_letter_replies", {"n": 3})[0])
-check("what he kept shows in his context, as leads", "KEPT FROM GROK BOT'S LETTERS (leads, not facts)" in G.kept_line()
-      and "a method my Lab can try" in G.kept_line())
+check("what he kept shows in his context, as leads, with who sent it", "KEPT FROM YOUR AGENTS' LETTERS (leads, not facts)"
+      in G.kept_line() and "from Grok Bot] Tension-driven MD of Piezo1: a method my Lab can try" in G.kept_line(), G.kept_line())
+# Muse writes too, with its own daily letters (2026-10-01)
+MUSE = {"from": "muse", "subject": "Marketplace finds", "items": [{"title": "Used load cells, $20",
+        "what": "Four 5 kg load cells on Marketplace, 10 miles away.", "links": ["https://example.org/listing"]}]}
+text, err = M.call_tool("vintos_send_letter", MUSE)
+check("Muse's letter is delivered, from Muse, on its own allowance", not err and "delivered" in text, text)
+check("an unknown sender is refused", M.call_tool("vintos_send_letter", dict(MUSE, **{"from": "someone"}))[1])
+asked.clear()
+G.tend(think=lambda s, u: (asked.append((s, u)), '{"keep": true, "to_me": "for the pressure rig", "as": "lab"}')[1]
+       if "Write your reply" not in u else "Good finds. More sensors, fewer bundles.", fetch=fetch,
+       context=lambda: "He is Vintos.", want=lambda *a: None)
+check("he knows it is from Muse, and that Muse finds but never buys",
+      asked and "A LETTER FROM MUSE" in asked[0][0] and "never buys" in asked[0][0], asked[:1])
+check("Muse reads only its own replies", "More sensors" in M.call_tool("vintos_letter_replies", {"from": "muse"})[0]
+      and "More sensors" not in M.call_tool("vintos_letter_replies", {})[0])
 check("nothing waiting, nothing done", G.tend(think=think, fetch=fetch, context=lambda: "", want=lambda *a: None) == [])
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his #vintos-dot pass reads letters on its own, and his context shows what he kept",

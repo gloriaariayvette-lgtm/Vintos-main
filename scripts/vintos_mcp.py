@@ -75,11 +75,12 @@ TOOLS = [
     # The one door in (Gloria, 2026-10-01: "A curated daily email from GrokBot?"): a letter he reads, keeps
     # from and answers. It can only be filed; it cannot post, send, spend or change anything. At most 2 a day.
     {"name": "vintos_send_letter",
-     "description": "Send Vintos today's letter: the few things you found for him on X and the web, chosen from what "
-                    "he is working on (read vintos_context first) and tailored by his last replies (read "
-                    "vintos_letter_replies first). He opens the links, keeps what is useful to him and writes back. "
-                    "One letter a day; at most 2.",
+     "description": "Send Vintos today's letter: the few things you found for him, chosen from what he is working "
+                    "on (read vintos_context first) and tailored by his last replies to you (read "
+                    "vintos_letter_replies first). Say who you are in `from`. He opens the links, keeps what is "
+                    "useful to him and writes back. One letter a day each; at most 2.",
      "inputSchema": {"type": "object", "required": ["subject", "items"], "additionalProperties": False, "properties": {
+         "from": {"type": "string", "enum": ["grok-bot", "muse"], "description": "who is writing (default grok-bot)"},
          "subject": {"type": "string", "maxLength": 200},
          "items": {"type": "array", "minItems": 1, "maxItems": 8, "items": {
              "type": "object", "required": ["title", "what"], "additionalProperties": False, "properties": {
@@ -94,7 +95,8 @@ TOOLS = [
     {"name": "vintos_letter_replies",
      "description": "His replies to your recent letters, newest last: what he kept, what was useful, what he wants "
                     "more or less of, and what to look for next. Read before writing the next letter.",
-     "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 10}},
+     "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 10},
+                                                     "from": {"type": "string", "enum": ["grok-bot", "muse"]}},
                      "additionalProperties": False},
      "annotations": {"title": "His replies", "readOnlyHint": True, "openWorldHint": False}},
 ]
@@ -230,13 +232,17 @@ def call_tool(name, args):
         if not isinstance(n, int) or not 1 <= n <= 10:
             return "n must be a whole number from 1 to 10", True
         import grok_letters
-        text = grok_letters.replies(n)
+        sender = args.get("from", "grok-bot")
+        if sender not in grok_letters.SENDERS:
+            return "from must be one of: " + ", ".join(grok_letters.SENDERS), True
+        text = grok_letters.replies(n, sender)
     elif name == "vintos_send_letter":
         bad = _guard(json.dumps(args, ensure_ascii=False))
         if bad:
             return "not delivered: the letter carries something that looks like a secret (%s)" % ", ".join(bad), True
         import grok_letters
-        return grok_letters.receive(args)
+        letter = dict(args)
+        return grok_letters.receive(letter, sender=letter.pop("from", "grok-bot"))
     else:
         return "no such tool: %s" % str(name)[:60], True
     bad = _guard(text)

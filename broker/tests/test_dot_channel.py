@@ -656,8 +656,9 @@ check("every edit is logged beside the channel, in the scratch store", D.EDITS.s
 ONSET = ("Dot, the problem isn't the tool. You need me to hear the actual onset. Pick 01:01-01:09 and play it back "
          "here.")
 ONSET_FIX = "Dot, onsets are off today's focus, so I'll leave them. Can you post my last Lab result so we pick the next run?"
-check("the editor is told what dot can and cannot do, and to move to today's focus",
-      "cannot play sound" in D.EDITOR and "post it as a file" in D.EDITOR and "moves to the focus" in D.EDITOR)
+check("the editor is told what his agents can and cannot do, keeps his @s, and moves to today's focus",
+      "can play sound" in D.EDITOR and "asks for it as a file" in D.EDITOR and "moves to the focus" in D.EDITOR
+      and "Keep his @s as written" in D.EDITOR and "@GrokBot (X and the web)" in D.EDITOR)
 asks = []
 def stubborn(s_, u):
     asks.append(u)
@@ -739,6 +740,43 @@ _rules = open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read()
 check("dot's rules: ask Vintos, his answer is final, Gloria only for money, secrets, the irreversible and beyond his limits",
       "Ask **Vintos**" in _rules and "it is final" in _rules and "Ask **Gloria** only for" in _rules
       and "anything outside Vintos's limits" in _rules and "at most 20 GB" in _rules)
+
+# His agents in Slack (Gloria, 2026-10-01: "He should be able to @GrokBot and receive news from X, @Muse and receive
+# marketplace material, @Dot and tell it it's being bothersome").
+check("he is told who each agent is, what it has, and that he may tell dot it is bothersome",
+      "@GrokBot: X and the web" in D.RULES and "@Muse (Meta): Facebook, Instagram, Marketplace" in D.RULES
+      and "bothersome" in D.RULES and "@GrokBot" in D.rules_for("grok"))
+check("@GrokBot becomes a real mention once its Slack id is known, and dot is not pinged",
+      D.address("@GrokBot what is new on X about Piezo1?", DOT, {"grokbot": "UGROK"}) == ("<@UGROK> what is new on X about Piezo1?", False))
+check("before its id is known it stays readable", D.address("@Grok Bot news?", DOT, {}) == ("@GrokBot news?", False))
+check("@Muse stays @Muse (it watches the channel for it)", D.address("@muse find load cells", DOT, {}) == ("@Muse find load cells", False))
+check("@dot pings dot; no @ at all is for dot, as always",
+      D.address("@Dot you are repeating yourself.", DOT, {}) == ("<@%s> you are repeating yourself." % DOT, True)
+      and D.address("Dot, look at this.", DOT, {}) == ("Dot, look at this.", True))
+class Slack6(Slack):
+    def __call__(self, method, params):
+        if method == "users.list":
+            self.listed = getattr(self, "listed", 0) + 1
+            return {"ok": True, "members": [{"id": "UGROK", "name": "grok", "real_name": "Grok", "is_bot": True},
+                                            {"id": GLORIA, "name": "gloria", "is_bot": False}]}
+        return Slack.__call__(self, method, params)
+_st = {}
+check("Grok Bot's Slack id is found once and kept for the day",
+      D.agent_ids(Slack6(), _st, now=1000) == {"grokbot": "UGROK"} and D.agent_ids(None, _st, now=2000) == {"grokbot": "UGROK"})
+S6 = Slack6(); S6.n = day(23, 0)
+st = json.load(open(D.STATE)); st["since"] = S6.n; st.pop("agent_ids", None); json.dump(st, open(D.STATE, "w"))
+S6.add(GLORIA, "[Muse] Found 3 load cell listings near you: $20, $35, $60. Links below.")
+S6.add("UGROK", "Top X posts on Piezo1 today: a new cryo-EM of the open state.")
+S6.msgs[-1].update(bot_id="BGROK", bot_profile={"name": "Grok"})
+heard = []
+D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else (heard.append(u), "@GrokBot which lab posted the cryo-EM?")[1],
+       fable=L["fable"], lenses=L, now=day(23, 5), today="2026-10-01")
+check("he hears Muse by its sign, not as Gloria, and Grok Bot by name",
+      heard and "Muse: [Muse] Found 3 load cell listings" in heard[-1] and "Grok Bot: Top X posts" in heard[-1]
+      and "Gloria: [Muse]" not in heard[-1], heard[-1][-600:] if heard else heard)
+_said = S6.posted[-1]["text"]
+check("his @GrokBot question goes to Grok Bot as a real mention, without pinging dot",
+      _said.startswith("[Gemma] <@UGROK> which lab") and "<@%s>" % DOT not in _said, _said)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

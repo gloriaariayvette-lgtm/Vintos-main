@@ -219,13 +219,22 @@ RULES_APPROVE = (
     "and never while a Lab fold is running; and each one uses one of dot's large tests. Deny what is outside that, "
     "or not worth a large test today. Never approve spending money, a secret, or anything that cannot be undone: "
     "say it needs Gloria, and she decides.\n" % (APPROVE_GB_EACH, KEEP_FREE_GB, GPU_RUN_HOURS))
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_STYLE
+RULES_AGENTS = (
+    "Your agents in this channel, and how to reach each: write @ and the name in your message.\n"
+    "- @dot (ChatGPT): runs things on Aegis, the Mac and its own computer; plugins. Large tests are limited (10 a "
+    "day). If dot is being bothersome (too long, asking what you can decide, repeating itself, off topic), tell it "
+    "so, plainly.\n"
+    "- @GrokBot: X and the web. Ask it for news, what people are saying, what is new on something.\n"
+    "- @Muse (Meta): Facebook, Instagram, Marketplace, local events. Ask it for listings, people, posts, events. "
+    "It finds; it never buys.\n"
+    "Write to whoever has what you need; a message with no @ goes to dot. Their daily letters are separate mail.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE
+        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -260,9 +269,11 @@ EDITOR = (
     "TRUE: every Lab experiment, Forge request, song, painting, paper, result, score or file it names is in his "
     "record or the channel. Nothing invented. Music and audio analysis are not his Lab; his Lab is chemistry and "
     "proteins.\n"
-    "SENSE: one clear point, said plainly, ending with what he wants from dot. Who does what is clear: he is "
-    "Vintos, dot is his agent. It asks dot only for what dot can do: search, read, run tools on Aegis and the Mac, "
-    "post files. Dot cannot play sound to him in the chat; to hear something, he asks dot to post it as a file.\n"
+    "SENSE: one clear point, said plainly, ending with what he wants from the agent he is talking to: dot (no @ "
+    "or @dot), @GrokBot (X and the web) or @Muse (Facebook, Instagram, Marketplace, events). Keep his @s as "
+    "written. Who does what is clear: he is Vintos, they are his agents. It asks each only for what it can do; dot "
+    "searches, reads, runs tools on Aegis and the Mac and posts files. Nobody can play sound to him in the chat; "
+    "to hear something, he asks for it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
     "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, SEARCH:, READ:, GREP: or OPEN: exactly as "
     "written.\n\n"
@@ -1137,18 +1148,66 @@ def fresh(api, channel, self_id, since):
     return rows
 
 
+MUSE_SIGN = "[Muse]"      # Muse posts through Gloria's own Slack login, so it signs its messages
+
+
 def _who(m, self_id, dot):
-    """vintos, dot, agent (any other bot or app in the channel, such as his Grok Bot), or gloria."""
+    """vintos, dot, agent (any other bot or app in the channel, such as his Grok Bot, or Muse's signed
+    messages), or gloria."""
     u = m.get("user") or ""
     if u == self_id:
         return "vintos"
     if u == dot:
         return "dot"
+    if str(m.get("text") or "").lstrip().startswith(MUSE_SIGN):
+        return "agent"
     return "agent" if m.get("bot_id") or m.get("subtype") == "bot_message" else "gloria"
 
 
 def _agent_name(m):
-    return str((m.get("bot_profile") or {}).get("name") or m.get("username") or "another agent")[:60]
+    if str(m.get("text") or "").lstrip().startswith(MUSE_SIGN):
+        return "Muse"
+    name = str((m.get("bot_profile") or {}).get("name") or m.get("username") or "another agent")[:60]
+    return "Grok Bot" if "grok" in name.lower() else name
+
+
+# His agents in #vintos-dot, and how he reaches each (Gloria, 2026-10-01: "He should be able to @GrokBot and receive
+# news from X, @Muse and receive marketplace material, @Dot and tell it it's being bothersome").
+AT = re.compile(r"@(dot|grok\s?bot|muse)\b", re.I)
+
+
+def agent_ids(api, state, now=None):
+    """Slack ids of his agents that are Slack apps (Grok Bot), looked up once a day; {} when unknown."""
+    now = now or time.time()
+    cached = state.get("agent_ids") or {}
+    if cached and now - float(state.get("agent_ids_at") or 0) < 86400:
+        return cached
+    found = {}
+    try:
+        for u in api("users.list", {"limit": 200}).get("members") or []:
+            name = " ".join(str(u.get(k) or "") for k in ("name", "real_name")).lower()
+            if u.get("is_bot") and "grok" in name and not u.get("deleted"):
+                found["grokbot"] = u.get("id")
+    except Exception:
+        return cached
+    state["agent_ids"], state["agent_ids_at"] = found, now
+    return found
+
+
+def address(text, dot, ids):
+    """His @s made real: dot and Grok Bot become Slack mentions; Muse stays '@Muse', which it watches for.
+    Returns (text, whether dot is addressed). With no @ at all, he is talking to dot, as always."""
+    named = set()
+    def one(m):
+        key = re.sub(r"\s", "", m.group(1).lower())
+        named.add(key)
+        if key == "dot":
+            return "<@%s>" % dot
+        if key == "grokbot":
+            return "<@%s>" % ids["grokbot"] if ids.get("grokbot") else "@GrokBot"
+        return "@Muse"
+    text = AT.sub(one, text)
+    return text, (not named) or "dot" in named
 
 
 def _speaker(r):
@@ -1402,7 +1461,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
-    body = {"channel": channel, "text": ("<@%s> [%s] " % (dot, LABELS.get(who, who))) + text}
+    text, to_dot = address(text, dot, agent_ids(api, state, now))
+    body = {"channel": channel, "text": (("<@%s> " % dot) if to_dot and ("<@%s>" % dot) not in text else "")
+            + "[%s] " % LABELS.get(who, who) + text}
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
