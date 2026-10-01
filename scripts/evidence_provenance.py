@@ -18,7 +18,9 @@ MEMORY = os.path.expanduser("~/.vintos/workspace/memory")
 EVENTS = os.path.join(MEMORY, "evidence-writer-events.jsonl")
 BROKER = "http://127.0.0.1:8611"
 
-_OUTPUTS = {"ordinary_generation", "stratagem_influenced", "unknown"}
+# creative_generation: a reply through GPT-4o, chosen for poetry and dreams and known to invent (Gloria,
+# 2026-10-01). Like a stratagem-influenced reply it is kept as what he said and never witnesses a fact.
+_OUTPUTS = {"ordinary_generation", "stratagem_influenced", "creative_generation", "unknown"}
 _STATUSES = {"started", "completed", "failed", "HELD", "unknown"}
 
 

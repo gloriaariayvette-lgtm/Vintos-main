@@ -198,7 +198,7 @@ def _fouro_model():
     except Exception:
         return FOURO_MODEL_DEFAULT
 
-async def fouro_draft(system_text, convo, max_tokens=1200, paid_reservation=None, temperature=1.0, _open=None):
+async def fouro_draft(system_text, convo, max_tokens=1200, paid_reservation=None, temperature=0.75, _open=None):
     """4o draft. Returns (text, '') like sol_draft, or (None, '') on any failure."""
     import asyncio as _aio, urllib.request as _u
     k = _openai_key()
