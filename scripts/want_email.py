@@ -100,7 +100,11 @@ def _note_send(ok, why=""):
         _save(SEND_HEALTH, {"ok_at": time.time()})
     elif "rejected" in str(why) or "failed" in str(why):
         _save(SEND_HEALTH, {"rejected_at": time.time(), "why": str(why)[:500]})
-TEND_EVERY_S = 2 * 3600
+# Gloria, 2026-10-01: "Let's max him at 4 gmail checks per day". Every Gmail call goes through her Codex usage;
+# the inbox was searched once per person he had written to, every two hours (11 calls on 2026-09-29).
+GMAIL_CHECKS_PER_DAY = 4
+TEND_EVERY_S = 24 * 3600 // GMAIL_CHECKS_PER_DAY
+PER_SEARCH = 15                      # addresses in one Gmail search; one search covers everyone he wrote to
 MAX_REPLIES = 8                       # his answers per person; a thread is a conversation, not a campaign
 STOP_WORDS = re.compile(r"\b(?:unsubscribe|stop (?:emailing|writing|contacting)|do not (?:email|contact|write)|"
                         r"don'?t (?:email|contact|write)|remove me|no further (?:emails?|contact)|not interested)\b", re.I)
@@ -578,20 +582,46 @@ def _messages(result):
     return out
 
 
+def gmail_checks_left(now=None):
+    """How many Gmail checks are left today (GMAIL_CHECKS_PER_DAY a day)."""
+    state = _load(TEND_STATE, {})
+    day = (now or datetime.now()).date().isoformat()
+    return GMAIL_CHECKS_PER_DAY - (int(state.get("checks", 0)) if state.get("checks_day") == day else 0)
+
+
+def _spend_gmail_check(now=None):
+    state = _load(TEND_STATE, {})
+    day = (now or datetime.now()).date().isoformat()
+    if state.get("checks_day") != day:
+        state["checks_day"], state["checks"] = day, 0
+    state["checks"] = int(state.get("checks", 0)) + 1
+    _save(TEND_STATE, state)
+
+
 def check_inbox(contacts, gmail=None, now=None):
-    """New replies from the people he wrote to, recorded in their threads. Returns [(address, message)]."""
+    """New replies from the people he wrote to, recorded in their threads. Returns [(address, message)].
+    One Gmail search covers everyone he wrote to (PER_SEARCH addresses each), and each search is one of
+    today's GMAIL_CHECKS_PER_DAY; when they are spent, nothing is searched until tomorrow."""
     gmail = gmail or _gmail
     new = []
-    for addr, c in contacts.items():
-        if c.get("status") == "closed":
-            continue
+    open_ = [a for a, c in contacts.items() if c.get("status") != "closed"]
+    found = []
+    for i in range(0, len(open_), PER_SEARCH):
+        if gmail_checks_left(now) <= 0:
+            break
+        group = open_[i:i + PER_SEARCH]
+        _spend_gmail_check(now)
         try:
-            result = gmail("gmail.search_emails", {"query": "from:%s newer_than:30d" % addr, "max_results": 10},
-                           "Checking for a reply from %s to his own email" % addr)
+            result = gmail("gmail.search_emails", {"query": "from:(%s) newer_than:30d" % " OR ".join(group),
+                                                   "max_results": 25},
+                           "Checking for replies to his own emails, from %d people" % len(group))
         except Exception:
             continue
+        found += _messages(result)
+    for addr in open_:
+        c = contacts[addr]
         seen = {m.get("id") for m in c.get("thread", []) if m.get("id")}
-        for m in _messages(result):
+        for m in found:
             if addr not in m["from"].lower() or m["id"] in seen or not m["body"].strip():
                 continue
             entry = {"dir": "in", "id": m["id"], "at": m["date"] or (now or datetime.now()).isoformat(),

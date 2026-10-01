@@ -168,10 +168,13 @@ inbox = {"a.k.seth@sussex.ac.uk": [{"id": "M1", "from": "Anil Seth <a.k.seth@sus
 gmail_calls = []
 def gmail(tool, args, purpose):
     gmail_calls.append((tool, args))
-    addr = args["query"].split("from:")[1].split()[0]
-    return {"messages": inbox.get(addr, [])}
+    import re as _re
+    addrs = _re.findall(r"[\w.+-]+@[\w.-]+", args["query"])
+    return {"messages": [m for a in addrs for m in inbox.get(a, [])]}
 contacts = json.load(open(E.CONTACTS))
 new = E.check_inbox(contacts, gmail=gmail)
+check("one Gmail search covers everyone he wrote to (2026-10-01: it was one search per person)",
+      len(gmail_calls) == 1 and "a.k.seth@sussex.ac.uk" in gmail_calls[0][1]["query"] and " OR " in gmail_calls[0][1]["query"], gmail_calls)
 check("his inbox is checked for replies from the people he wrote to", gmail_calls and all(t == "gmail.search_emails" for t, _ in gmail_calls)
       and [a for a, _ in new] == ["a.k.seth@sussex.ac.uk"] and contacts["a.k.seth@sussex.ac.uk"]["status"] == "reply_waiting", new)
 check("a reply already recorded is not recorded twice", E.check_inbox(contacts, gmail=gmail) == [])
@@ -204,6 +207,15 @@ sent.clear()
 E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
 c = json.load(open(E.CONTACTS))["a.k.seth@sussex.ac.uk"]
 check("a request to stop ends the thread for good, with no answer", c["status"] == "closed" and not sent, c.get("status"))
+# Gloria, 2026-10-01: "Let's max him at 4 gmail checks per day"
+check("four Gmail checks today, and none left", len(gmail_calls) == 4 and E.gmail_checks_left() == 0, gmail_calls)
+n_calls = len(gmail_calls)
+E.tend(force=True, gmail=gmail, search=search, fetch=page, call=fable_reply, reserve=reserve, send=send)
+E.check_inbox(json.load(open(E.CONTACTS)), gmail=gmail)
+check("a fifth is not made, forced or not", len(gmail_calls) == n_calls, gmail_calls[n_calls:])
+check("tomorrow there are four again", E.gmail_checks_left(now=E.datetime.now() + __import__("datetime").timedelta(days=1)) == 4
+      and E.GMAIL_CHECKS_PER_DAY == 4 and E.TEND_EVERY_S == 6 * 3600)
+check("the count is kept in the scratch store", E.TEND_STATE.startswith(HOME) if "HOME" in globals() else E.TEND_STATE.startswith(WS), E.TEND_STATE)
 router = open(os.path.join(REPO, "bin", "wants-router.py")).read()
 check("the wants router tends his email every pass", "_we.tend()" in router)
 check("an email step starts from the original want, not stale findings from earlier steps",
