@@ -107,9 +107,15 @@ def validate_uniprot(query):
     # records. taxonomy_id matches that taxon and everything under it, so it is never narrower.
     query = re.sub(r'\borganism_id:', 'taxonomy_id:', query)
     query = re.sub(r'\breviewed:(true|false)\b', lambda m: 'reviewed:' + m.group(1).lower(), query, flags=re.I)
+    # UniProt takes length only as a range: a bare "length:500" is refused with a 400, and every looser
+    # form kept it, so the search failed seven times in a row (2026-09-30, SLC25A1).
+    query = re.sub(r'\blength:(\d+)\b', r'length:[\1 TO \1]', query, flags=re.I)
     if re.search(r'\b(?:protein_name|gene|keyword):', query, re.I):
-        query = re.sub(r'(?:^|\s+AND\s+)length:\[[^\]]+\](?=\s+AND\s+|$)', ' ', query,
-                       flags=re.I)
+        # He named the protein; a guessed length only hides it. Drop the term wherever it sits,
+        # inside parentheses too, with the AND that joined it.
+        term = r'length:\[[^\]]+\]'
+        query = re.sub(r'\s+AND\s+' + term + r'(?=\s|\)|$)', '', query, flags=re.I)
+        query = re.sub(r'(?:^|(?<=\())\s*' + term + r'\s+AND\s+', '', query, flags=re.I)
         query = re.sub(r'\s+', ' ', query).strip()
     return query
 

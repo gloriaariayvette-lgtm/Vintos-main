@@ -6900,7 +6900,10 @@ async def chemistry_lab_sessions(request: Request, limit: int = 12):
                          "aggregate_accuracy": grade.get("aggregate_accuracy"),
                          "isolation_attestation": grade.get("isolation_attestation"),
                          "reading": (row.get("reading") or {}).get("reading"),
-                         "next_question": (row.get("reading") or {}).get("next_question")})
+                         "next_question": (row.get("reading") or {}).get("next_question"),
+                         # A failed run read as a blank card: say why it stopped.
+                         "why": (" ".join(str(x) for x in (row.get("error"), row.get("detail")) if x)
+                                 .splitlines() or [""])[0][:220] or None})
         return {"ok": True, "sessions": rows}
     except Exception as exc:
         return {"ok": False, "sessions": [], "error": str(exc)[:180]}

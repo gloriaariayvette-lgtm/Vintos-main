@@ -1860,6 +1860,7 @@ async function loadLab() {
               (row.isolation_attestation === 'host_attested' ? _labChip('isolation attested by the bench', 'var(--text-dim)') : '') +
               (row.owed_reading && row.owed_reading !== 'NOTHING_OWED' ? _labChip(String(row.owed_reading).toLowerCase().replace(/_/g, ' '), 'var(--text-dim)') : '') +
             '</div>' + curve +
+            (row.why ? '<div style="font-size:0.64rem;color:#c46a5a;margin-top:6px;overflow-wrap:anywhere;">why it stopped \u2014 ' + _esc(row.why) + '</div>' : '') +
             (row.question ? '<div style="font-size:0.64rem;color:var(--text-dim);font-style:italic;margin-top:6px;">' + _esc(row.question) + '</div>' : '') +
             (row.reading ? '<div style="font-size:0.68rem;color:var(--text);line-height:1.6;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">' + _esc(row.reading) + '</div>' : '') +
             (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next \u2014 ' + _esc(row.next_question) + '</div>' : '') +

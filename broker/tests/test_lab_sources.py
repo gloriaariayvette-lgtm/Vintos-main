@@ -70,6 +70,19 @@ class Tests(unittest.TestCase):
         self.assertEqual(sources.validate_uniprot(
             'reviewed:true AND length:[40 TO 1000] AND protein_name:PFOR'),
             'reviewed:true AND protein_name:PFOR')
+    def test_bare_length_is_never_sent(self):
+        # Refused by UniProt seven times on 2026-09-30: a bare length inside parentheses survived.
+        self.assertEqual(sources.validate_uniprot(
+            'reviewed:true AND (protein_name:SLC25A1 AND organism_id:9606 AND reviewed:true AND length:500)'),
+            'reviewed:true AND (protein_name:SLC25A1 AND taxonomy_id:9606 AND reviewed:true)')
+        self.assertEqual(sources.validate_uniprot('length:[40 TO 90] AND gene:kaiC'), 'gene:kaiC')
+        self.assertEqual(sources.validate_uniprot('(length:500 AND gene:kaiC)'), '(gene:kaiC)')
+        # With no protein named, the length is the search, so it is kept in the form UniProt takes.
+        self.assertEqual(sources.validate_uniprot('taxonomy_id:9606 AND length:500'),
+                         'taxonomy_id:9606 AND length:[500 TO 500]')
+        for label, alt in sources.uniprot_relaxations(sources.validate_uniprot(
+                'protein_name:SLC25A1 AND organism_id:9606 AND length:500')):
+            self.assertNotRegex(alt, r'length:\d')
     def test_bounded_queries(self):
         for q in ('length:[40 TO 350', 'protein_name:"abc', '\nreviewed:true'):
             with self.assertRaises(ValueError): sources.validate_uniprot(q)
