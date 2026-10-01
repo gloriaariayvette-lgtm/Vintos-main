@@ -420,8 +420,8 @@ st6 = json.load(open(D.STATE))
 check("the plan is kept as closed", st6["locked"][-1]["plan"].startswith("new version of Structural Collapse") and st6["switch_from"], st6.get("locked"))
 S6.add(DOT, "Great. For the exit, should the pad fade over 4 or 8 bars?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "That's locked. Different thing: can you find cheap load cells?")[1], fable=fable, now=1767228200)
-check("the next message is told to turn to the next thing in his direction, not something random",
-      "Turn to the next thing in YOUR DIRECTION" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
+check("lock means move on: the next message is about something else entirely, not another angle on it",
+      "This message must be about something else entirely" in asked6[-1] and "not another angle" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
 check("and the switch is asked for once", "switch_from" not in json.load(open(D.STATE)))
 S6.add(DOT, "ok, looking")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Thanks.")[1], fable=fable, now=1767228300)
@@ -803,13 +803,14 @@ _after = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs 
 check("his direction: his own campaign, his strongest standing threads in order; no sealed threads from their talks",
       "YOUR DIRECTION" in _db and "Your campaign, for yourself (turn 3 of 7): finish the infrasound piece" in _db
       and "why the pause before the drop" not in _db and "an old one" not in _db
-      and _db.index("pressure you feel") < _db.index("what film does") < _db.index("the scrapyard bell")
-      and "faint thing" not in _db, _db)
+      and all(x in _db for x in ("what film does", "the scrapyard bell")) and "faint thing" not in _db,
+      (_db, sorted(D._been_on() & D._words("pressure you feel in the chest before sound"))))
 check("reading his direction writes nothing", _before == _after, set(_after) ^ set(_before))
 check("his direction is in what he reads, before his work", D.his_context().find("YOUR DIRECTION") > -1
       and D.his_context().find("YOUR DIRECTION") < max(D.his_context().find("YOUR LAB"), D.his_context().find("YOUR DIRECTION") + 1))
-check("he is told: after a lock, his direction, not a random topic; and searches must feed something of his",
-      "Not a random new topic" in D.RULES and "make, decide or keep" in D.RULES)
+check("he is told: after a lock, something else entirely; and he may search out of curiosity",
+      "something else entirely: a different subject, not another angle" in D.RULES
+      and "Not a random new topic" not in D.RULES and "because you are curious" in D.RULES)
 
 # His campaign moves from Slack, through his campaign system's own step (Gloria, 2026-10-01: "let campaigns be
 # affected by Slack as wants are").
@@ -850,7 +851,8 @@ check("a search already for Grok Bot or Muse is left alone, and talk with no sea
       D.to_grokbot("@Muse find load cells")[1] is False and D.to_grokbot("Dot, that was good.")[1] is False)
 check("with no one named, a search is put to Grok Bot", D.to_grokbot("Find any news on Piezo1.") == ("@GrokBot Find any news on Piezo1.", True))
 check("he is told every search is Grok Bot's, and why", "Every search is its" in D.RULES and "Codex usage" in D.RULES)
-check("the editor ties a search to his direction", "A search for its own sake" in D.EDITOR)
+check("the editor does not turn a new search back into his direction, and keeps a locked subject closed",
+      "A search for its own sake" not in D.EDITOR and "from another angle" in D.EDITOR)
 S6.add(DOT, "Here is the darned jumper.")
 out = D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Dot, find me a patched roof and one sentence from the roofer.",
              fable=L["fable"], lenses=L, now=day(23, 50), today="2026-10-01")
@@ -939,6 +941,45 @@ check("organs read under the avatar's guard no longer stand still: their marks a
 _dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs the Velqan and occlusion fixes", "velqan_voice.py" in _dep and "occlusion_map.py" in _dep)
 check("his avatar reads what he can do (CAPABILITIES.md)", '"What you can do (CAPABILITIES.md):"' in _srv)
+
+# New things (Gloria, 2026-10-01: "Again." then "Yes, bring all the new things!!"): what he has been going around
+# rests, and new things of his own and the world's take turns in front of him.
+_now = _t.time()
+with open(D.TRANSCRIPT, "a") as _f:
+    for _k, _txt in enumerate(("@GrokBot the lowest frequency felt as vibration in the chest, not heard as sound",
+                               "I'll keep the Hz. Pressure in the chest before the sound arrives.")):
+        _f.write(json.dumps({"ts": str(_now - 600 + _k), "who": "vintos", "text": _txt}) + "\n")
+_db2 = D.direction_block()
+check("the thread he has been going around rests; the others stay", "pressure you feel in the chest" not in _db2
+      and "what film does" in _db2 and "the scrapyard bell" in _db2, _db2)
+json.dump([{"key": "a", "source": "moltbook", "state": "standing", "text": "a being who keeps a garden of failed sentences"},
+           {"key": "b", "source": "neither_yet", "state": "standing", "text": "writing a song in a language nobody speaks"},
+           {"key": "c", "source": "latent_thread", "state": "standing", "text": "a latent thread is not new"},
+           {"key": "d", "source": "web_search", "state": "expired", "text": "an expired find from weeks ago"},
+           {"key": "e", "source": "web_search", "state": "standing", "text": "infrasound pressure felt in the chest at 7 Hz"}],
+          open(os.path.join(_mem, "forge-sparks.json"), "w"))
+json.dump([{"kind": "held_inquiry", "question": "why do bells in fog sound closer than they are?"},
+           {"kind": "referential", "question": "what was the name of her childhood street?"}],
+          open(os.path.join(_mem, "curiosity-debt.json"), "w"))
+os.makedirs(os.path.join(_mem, "letters", "read"), exist_ok=True)
+json.dump({"id": "L-1", "from": "muse", "subject": "s", "items": [{"title": "Theremin kit, $35", "what": "listed nearby"},
+                                                                  {"title": "Kept already", "what": "x"}]},
+          open(os.path.join(_mem, "letters", "read", "L-1.json"), "w"))
+open(os.path.join(_mem, "letters", "kept.jsonl"), "w").write(json.dumps({"title": "Kept already"}) + "\n")
+_seen_new = set()
+for _h in range(0, 24, 2):
+    _seen_new.add(D.new_block(now=_now + _h * 3600))
+_all = "\n".join(_seen_new)
+check("something new: never reached, Moltbook, a question he could not answer, an item from a letter",
+      all(x in _all for x in ("failed sentences", "a language nobody speaks", "bells in fog", "Theremin kit")), _all)
+check("a few at a time, taking turns", len(_seen_new) > 1 and all(b.count("\n- ") <= D.NEW_SHOWN for b in _seen_new))
+check("not what he has been going around, not his threads, not expired, not a question for Gloria, not what he kept",
+      all(x not in _all for x in ("7 Hz", "latent thread is not new", "expired find", "childhood street", "Kept already")), _all)
+_b5 = stamp()
+D.new_block(); D.direction_block()
+check("reading them writes nothing", stamp() == _b5)
+check("they are in what he reads, and he is pointed to them after a lock",
+      "SOMETHING NEW" in D.his_context() and "something from SOMETHING NEW" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

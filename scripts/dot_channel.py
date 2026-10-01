@@ -198,16 +198,15 @@ RULES_WORKS = (
 RULES_LOCK = (
     "When a plan with dot is settled, lock it: add a line LOCKED: the plan in one line. The topic is then "
     "closed and you do not reopen it. If there is something to actually do, add a second line DO: I want to "
-    "... and it goes to your wants to get done. After a lock, turn to the next thing in YOUR DIRECTION: your "
-    "campaign, an open plan or intent, a want, the Lab, something you are making. Not a random new topic. Do not "
-    "go around the same topic for long: say what you need, decide, lock it or drop it.\n"
+    "... and it goes to your wants to get done. Your next message after a lock is about something else "
+    "entirely: a different subject, not another angle on the one you locked. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n"
     "Your own campaign moves here too. With none live, you may declare one: a line CAMPAIGN: what you are taking "
     "yourself toward | why. With one live (YOUR DIRECTION shows it), say what a message did for it in a line "
     "CAMPAIGN MOVE: advance: <how> | hold: <what came first> | revise: <adjusted destination> | landed: <the "
     "event that completed it> | flawed: <evidence the want was wrong> | continue: <what you keep doing> | <how "
     "anyone could tell> | <days>. It is held to you: seven moves or three days.\n"
-    "Ask an agent to search only for something you will make, decide or keep, and say which. A string of "
-    "searches that feed nothing of yours is not progress.\n"
+    "Search for something new because you are curious, any time: SOMETHING NEW has places to start. Say what "
+    "caught you, and do something with what comes back.\n"
     "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
     "P02730 with ESMFold). Your next scheduled Lab run is shown it and leans toward it. Without that line, "
     "nothing said here reaches your Lab.\n"
@@ -285,9 +284,8 @@ EDITOR = (
     "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told).\n"
     "TOPIC: it answers what was just said; if an agent just brought what he asked for, he responds to that before "
     "anything else. Or it brings something from today's focus or his direction. If the channel has stayed on "
-    "something outside both, it moves back. It does not reopen a closed (locked) topic. A request to find or "
-    "search says what it is for: a thing in his direction he will make, decide or keep. A search for its own "
-    "sake (one more find, one more quote) becomes the next step of his direction instead.\n"
+    "something outside both, it moves back. It does not reopen a closed (locked) topic, or come back to its "
+    "subject from another angle: after a lock the subject is new.\n"
     "TRUE: every Lab experiment, Forge request, song, painting, paper, result, score or file it names is in his "
     "record or the channel. Nothing invented. Music and audio analysis are not his Lab; his Lab is chemistry and "
     "proteins.\n"
@@ -852,9 +850,10 @@ def steer(state, today=None):
     if closed:
         notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
     if state.get("switch_from"):
-        notes.append("You just locked: %s. That topic is closed. Turn to the next thing in YOUR DIRECTION: your "
-                     "campaign, an open plan or intent, a want, the Lab, what you are making. If dot is still on "
-                     "the locked topic, say in a few words that it is locked, then bring the next thing."
+        notes.append("You just locked: %s. That topic is closed. This message must be about something else "
+                     "entirely, a different subject, not another angle on this one: another want, the Forge, the "
+                     "Lab, something you are curious about, something from SOMETHING NEW. If dot is still on the locked topic, say in a few "
+                     "words that it is locked, then bring the new thing."
                      % state["switch_from"])
     elif state.get("since_lock", 0) >= LONG_ON_ONE:
         notes.append("You have said %d messages since you last locked anything. If this topic is settled, lock "
@@ -1075,16 +1074,109 @@ def direction_block(mem=None):
         pass
     try:
         threads = json.load(open(os.path.join(mem, "latent-threads.json"), encoding="utf-8")).get("threads") or []
-        top = sorted((t for t in threads if isinstance(t, dict) and t.get("origin")),
-                     key=lambda t: -(float(t.get("salience", .5)) * .6 + float(t.get("momentum", .3)) * .4))[:3]
+        pull = lambda t: float(t.get("salience", .5)) * .6 + float(t.get("momentum", .3)) * .4
+        top = sorted((t for t in threads if isinstance(t, dict) and t.get("origin") and pull(t) >= .3), key=lambda t: -pull(t))[:9]
+        # the one he has been on lately rests, and the rest take turns: the strongest thread was first every time,
+        # so every lock led back to it (2026-10-01: "Again.")
+        been = _been_on()
+        top = [t for t in top if _fresh(t["origin"], been)]
         if top:
+            i = int(time.time() // (6 * 3600)) % len(top)
+            top = (top[i:] + top[:i])[:3]
             parts.append("What keeps returning to you (standing threads):\n" + "\n".join(
                 "- %s (%s)" % (str(t["origin"])[:120], t.get("direction") or "open") for t in top))
     except Exception:
         pass
     if not parts:
         return ""
-    return ("== YOUR DIRECTION (your own; turn to this when a topic is done) ==\n" + "\n\n".join(parts))[:4000]
+    return ("== YOUR DIRECTION (your own) ==\n" + "\n\n".join(parts))[:4000]
+
+
+_STOP = set("about after again their there these those which while would could should being other thing things where "
+             "yours from with that this have what when just more than into like only them they will been were very some "
+             "first next still never every want wants need dot's grokbot muse".split())
+
+
+def _words(text):
+    return {w for w in re.findall(r"[a-z]{5,}", str(text).lower()) if w not in _STOP}
+
+
+def _been_on(hours=48, now=None):
+    """The words of what he has been on lately in the channel: his own messages and what he locked."""
+    now = now or time.time()
+    said = []
+    for r in recent(60):
+        try:
+            ts = float(r.get("ts") or 0)
+        except (TypeError, ValueError):
+            ts = 0
+        if r.get("who") == "vintos" and now - ts < hours * 3600:
+            said.append(str(r.get("text", "")))
+    for x in (_load(STATE, {}).get("locked") or [])[-12:]:
+        try:
+            if now - datetime.fromisoformat(str(x.get("at"))).timestamp() < hours * 3600:
+                said.append(str(x.get("plan", "")))
+        except ValueError:
+            pass
+    return _words(" ".join(said))
+
+
+def _fresh(text, been):
+    """Not what he has just been going around: fewer than two of its words are in what he has been saying."""
+    return len(_words(text) & been) < 2
+
+
+SPARK_KINDS = {"neither_yet": "never reached, but within reach", "moltbook": "you saved it from a post on Moltbook",
+               "web_search": "you came across it looking around", "skill_surfing": "a skill someone else has that you could have",
+               "lab": "from your Lab's reading"}
+NEW_SHOWN = 3
+
+
+def new_block(mem=None, now=None):
+    """New things, his own and the world's, for him to follow or not (Gloria, 2026-10-01: "Yes, bring all the new
+    things!!"). From the sparks his wants loop gathers (what he has never reached, Moltbook saves, his web finds, skills
+    he could have, the Lab), the questions he went looking for and could not answer, and the newest of what his
+    agents' letters brought that he did not keep. What he has been going around lately is left out; the rest take
+    turns, a few at a time. Read only: nothing is marked, adopted or counted."""
+    mem = mem or os.path.join(WS, "memory")
+    now = now or time.time()
+    items = []
+    for r in _load(os.path.join(mem, "forge-sparks.json"), []) or []:
+        if isinstance(r, dict) and r.get("state") == "standing" and r.get("source") in SPARK_KINDS:
+            items.append((SPARK_KINDS[r["source"]], str(r.get("text", ""))))
+    for r in _load(os.path.join(mem, "curiosity-debt.json"), []) or []:
+        if isinstance(r, dict) and r.get("kind") == "held_inquiry" and r.get("question"):
+            items.append(("a question you went looking for and could not answer", str(r["question"])))
+    try:
+        import glob
+        kept = set()
+        for line in open(os.path.join(mem, "letters", "kept.jsonl"), encoding="utf-8") if os.path.exists(
+                os.path.join(mem, "letters", "kept.jsonl")) else []:
+            try:
+                kept.add(json.loads(line).get("title"))
+            except ValueError:
+                pass
+        for path in sorted(glob.glob(os.path.join(mem, "letters", "read", "*.json")))[-4:]:
+            letter = json.load(open(path, encoding="utf-8"))
+            sender = {"muse": "Muse"}.get(letter.get("from"), "Grok Bot")
+            for it in letter.get("items") or []:
+                if isinstance(it, dict) and it.get("title") and it["title"] not in kept:   # kept ones show as kept
+                    items.append(("in %s's letter" % sender, "%s: %s" % (it["title"], str(it.get("what", ""))[:160])))
+    except Exception:
+        pass
+    been = _been_on(now=now)
+    seen, fresh = set(), []
+    for kind, text in items:
+        key = text.strip().lower()[:80]
+        if len(text.strip()) >= 12 and key not in seen and _fresh(text, been):
+            seen.add(key)
+            fresh.append((kind, text.strip()))
+    if not fresh:
+        return ""
+    i = (int(now // (2 * 3600)) * NEW_SHOWN) % len(fresh)
+    pick = (fresh[i:] + fresh[:i])[:NEW_SHOWN]
+    return ("== SOMETHING NEW (yours to follow, or not) ==\n" + "\n".join("- %s (%s)" % (t[:240], k) for k, t in pick)
+            + "\nAfter a lock, or when the channel is quiet, one of these is a good place to go.")
 
 
 def _latest(pattern, cap):
@@ -1313,7 +1405,7 @@ def his_context():
         letters = grok_letters.kept_line()
     except Exception:
         letters = ""
-    for line in (direction_block(), his_own_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
+    for line in (direction_block(), his_own_block(), new_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:40000] or "You are Vintos."     # room for his own systems before his works
 
