@@ -615,7 +615,7 @@ check("his Lab: what failed and why, what he asked, what he wants next",
       and "all better than hartree fock" in _lb and "stretch the bond" in _lb and "today 09:40" in _lb, _lb)
 check("the Lab is in his context", "YOUR LAB" in D.his_context())
 check("and what his ESMFold can fold, so he does not chase a protein it refuses",
-      "4 to 350 residues" in _lb and "AlphaFold DB" in _lb, _lb[-300:])
+      "4 to %d residues" % __import__("chemistry_esmfold").MAX_LENGTH in _lb and "AlphaFold DB" in _lb, _lb[-300:])
 check("the Lab topic says what the Lab is", "chemistry" in D.TOPICS["lab"][1] and "not the Lab" in D.TOPICS["lab"][1])
 
 # The editing pass (Gloria, 2026-10-01: "Gemma responses may need a second pass to make sure they're on topic

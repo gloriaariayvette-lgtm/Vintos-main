@@ -14,7 +14,10 @@ from pathlib import Path
 import re
 import sys
 
-MAX_LENGTH = 350
+# Measured on Aegis's RTX 5080 (15.9 GiB), 2026-10-01: 350 residues 8.7 GiB peak / 13 s, 600 10.3 GiB / 63 s,
+# 911 13.3 GiB / 443 s. 350 was a guess that refused Band 3 (P02730, 911). The limit is the longest length
+# measured, not extrapolated; chemistry_mac's 900 s timeout leaves 911 twice its time.
+MAX_LENGTH = 911
 AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 ACCESSION = re.compile(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?")
 WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser().resolve()

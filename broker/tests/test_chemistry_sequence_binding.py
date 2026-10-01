@@ -136,12 +136,22 @@ assert '"SEQUENCE_ACCESSION_MISMATCH"' in session_source and "grading.grade(resu
 
 esmfold = load("chemistry_esmfold_sequence_test", os.path.join(REPO, "scripts", "chemistry_esmfold.py"))
 acc, seq, source, mapping = esmfold._validate(esm_seen[0])
+# The limit is what Aegis's GPU was measured to fold (2026-10-01): Band 3, 911 residues, is taken; longer is refused.
+_long = ("ACDEFGHIKLMNPQRSTVWY" * 50)
+def _body(n): return {"accession": "P02730", "sequence": _long[:n], "sequence_source": {"accession": "P02730"},
+                      "hp_mapping": [{"residue": c} for c in _long[:n]]}
+_ok = esmfold._validate(_body(911))[1] == _long[:911]
+try:
+    esmfold._validate(_body(912)); _refused = False
+except ValueError:
+    _refused = True
 assert acc == "A1L190" and seq == long_sequence and len(mapping) == 88
 esm_source = open(os.path.join(REPO, "scripts", "chemistry_esmfold.py"), encoding="utf-8").read()
 assert "VINTOS_CHEMISTRY_MODEL_CACHE" in esm_source and "cache_dir=str(MODEL_HUB)" in esm_source, \
        "the worker must use the commissioned offline checkpoint cache"
 assert "mean_plddt *= 100.0" in esm_source, "ESMFold confidence must use the grader's 0..100 scale"
 assert "local_files_only=True" in esm_source and "ARTIFACTS" in esm_source
+assert _ok and _refused, "ESMFold takes the measured 911 residues (Band 3) and refuses longer"
 
 assert grade.GRADES.startswith(HOME) and mac.CONFIG.startswith(HOME)
 assert not os.path.exists(os.path.expanduser("~/.vintos/chemistry-mac.json")) or HOME in os.path.expanduser("~/.vintos/chemistry-mac.json")
