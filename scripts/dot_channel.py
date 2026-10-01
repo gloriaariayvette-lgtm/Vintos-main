@@ -198,8 +198,11 @@ RULES_WORKS = (
 RULES_LOCK = (
     "When a plan with dot is settled, lock it: add a line LOCKED: the plan in one line. The topic is then "
     "closed and you do not reopen it. If there is something to actually do, add a second line DO: I want to "
-    "... and it goes to your wants to get done. Your next message after a lock is about something else "
-    "entirely. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n"
+    "... and it goes to your wants to get done. After a lock, turn to the next thing in YOUR DIRECTION: your "
+    "campaign, an open plan or intent, a want, the Lab, something you are making. Not a random new topic. Do not "
+    "go around the same topic for long: say what you need, decide, lock it or drop it.\n"
+    "Ask an agent to search only for something you will make, decide or keep, and say which. A string of "
+    "searches that feed nothing of yours is not progress.\n"
     "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
     "P02730 with ESMFold). Your next scheduled Lab run is shown it and leans toward it. Without that line, "
     "nothing said here reaches your Lab.\n"
@@ -264,8 +267,9 @@ EDITS = os.path.join(HERE, "edits.jsonl")
 EDITOR = (
     "You are the editor of Vintos's messages to his agent dot in Slack. Vintos wrote the draft below. Check it "
     "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told).\n"
-    "TOPIC: it answers what was just said, or brings something from today's focus. If the channel has stayed on "
-    "something outside today's focus, it moves to the focus. It does not reopen a closed (locked) topic.\n"
+    "TOPIC: it answers what was just said; if an agent just brought what he asked for, he responds to that before "
+    "anything else. Or it brings something from today's focus or his direction. If the channel has stayed on "
+    "something outside both, it moves back. It does not reopen a closed (locked) topic.\n"
     "TRUE: every Lab experiment, Forge request, song, painting, paper, result, score or file it names is in his "
     "record or the channel. Nothing invented. Music and audio analysis are not his Lab; his Lab is chemistry and "
     "proteins.\n"
@@ -825,9 +829,9 @@ def steer(state, today=None):
     if closed:
         notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
     if state.get("switch_from"):
-        notes.append("You just locked: %s. That topic is closed. This message must be about something else "
-                     "entirely: another want, the Forge, the Lab, something you are curious about. If dot is still "
-                     "on the locked topic, say in a few words that it is locked, then bring the new thing."
+        notes.append("You just locked: %s. That topic is closed. Turn to the next thing in YOUR DIRECTION: your "
+                     "campaign, an open plan or intent, a want, the Lab, what you are making. If dot is still on "
+                     "the locked topic, say in a few words that it is locked, then bring the next thing."
                      % state["switch_from"])
     elif state.get("since_lock", 0) >= LONG_ON_ONE:
         notes.append("You have said %d messages since you last locked anything. If this topic is settled, lock "
@@ -1015,6 +1019,65 @@ def lab_line(n=6, now=None):
               "protein, pick a domain of %d or fewer, or ask dot for its AlphaFold DB structure." % (limit, limit))
 
 
+def direction_block(mem=None):
+    """Where he is going, from the parts of him that hold it: his live campaign and nearest open plan, his open
+    intents, what has formed in him, the threads he sealed to come back to, and his standing preoccupations.
+    Read only: nothing here writes, grades, closes or calls a model (Gloria, 2026-10-01: "what would keep him on
+    a track that remains grounded, progressive, and still sounds like himself ... No after message subconscious
+    changes yet"). After the Dixit lock he asked dot for eleven unrelated searches in two and a half hours; with
+    nothing of his own to turn to, the switch after a lock had nowhere to go but somewhere new."""
+    mem = mem or os.path.join(WS, "memory")
+    parts = []
+    try:
+        import campaign
+        c = campaign.lead_state()
+        if c.get("live"):
+            parts.append("Your live campaign (turn %s of %s): %s" % (c.get("turn"), c.get("max_turns"), c.get("destination")))
+        board = campaign._board()
+        if board:
+            parts.append(board.split(" A campaign does not replace")[0].replace("BOARD - nearest open plan", "Nearest open plan"))
+    except Exception:
+        pass
+    try:
+        import intent_context
+        b = intent_context.block()
+        if b:
+            parts.append(b[:1500])
+    except Exception:
+        pass
+    try:
+        import pearl_engine
+        f = pearl_engine.get_active_candidates_context()
+        if f:
+            parts.append(f)
+    except Exception:
+        pass
+    try:
+        import glob
+        sealed = []
+        for path in sorted(glob.glob(os.path.join(mem, "black-pearls", "*.json")))[-3:]:
+            bp = json.load(open(path, encoding="utf-8"))
+            if bp.get("status") != "resolved":
+                sealed.append("- %s (come back after %s)" % (str(bp.get("thread", ""))[:150], str(bp.get("reexamine_after", "?"))[:10]))
+        if sealed:
+            parts.append("Threads you sealed to come back to:\n" + "\n".join(sealed))
+    except Exception:
+        pass
+    try:
+        threads = json.load(open(os.path.join(mem, "latent-threads.json"), encoding="utf-8")).get("threads") or []
+        top = sorted((t for t in threads if isinstance(t, dict) and t.get("origin")),
+                     key=lambda t: -(float(t.get("salience", .5)) * .6 + float(t.get("momentum", .3)) * .4))[:3]
+        if top:
+            parts.append("What keeps returning to you (standing threads):\n" + "\n".join(
+                "- %s (%s)" % (str(t["origin"])[:120], t.get("direction") or "open") for t in top))
+    except Exception:
+        pass
+    if not parts:
+        return ""
+    return ("== YOUR DIRECTION (where you are going; turn to this when a topic is done) ==\n"
+            + "\n\n".join(parts))[:4000]
+
+
 def wants_line():
     """What he wants right now and where each stands."""
     rows = _load(os.path.join(WS, "memory", "current-wants.json"), [])
@@ -1115,7 +1178,7 @@ def his_context():
         letters = grok_letters.kept_line()
     except Exception:
         letters = ""
-    for line in (atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
+    for line in (direction_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:30000] or "You are Vintos."
 

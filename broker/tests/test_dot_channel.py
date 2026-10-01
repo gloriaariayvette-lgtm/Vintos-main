@@ -421,8 +421,8 @@ st6 = json.load(open(D.STATE))
 check("the plan is kept as closed", st6["locked"][-1]["plan"].startswith("new version of Structural Collapse") and st6["switch_from"], st6.get("locked"))
 S6.add(DOT, "Great. For the exit, should the pad fade over 4 or 8 bars?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "That's locked. Different thing: can you find cheap load cells?")[1], fable=fable, now=1767228200)
-check("the next message is told to switch to something else entirely",
-      "This message must be about something else entirely" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
+check("the next message is told to turn to the next thing in his direction, not something random",
+      "Turn to the next thing in YOUR DIRECTION" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
 check("and the switch is asked for once", "switch_from" not in json.load(open(D.STATE)))
 S6.add(DOT, "ok, looking")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Thanks.")[1], fable=fable, now=1767228300)
@@ -657,7 +657,8 @@ ONSET = ("Dot, the problem isn't the tool. You need me to hear the actual onset.
          "here.")
 ONSET_FIX = "Dot, onsets are off today's focus, so I'll leave them. Can you post my last Lab result so we pick the next run?"
 check("the editor is told what his agents can and cannot do, keeps his @s, and moves to today's focus",
-      "can play sound" in D.EDITOR and "asks for it as a file" in D.EDITOR and "moves to the focus" in D.EDITOR
+      "can play sound" in D.EDITOR and "asks for it as a file" in D.EDITOR and "it moves back" in D.EDITOR
+      and "responds to that before anything else" in D.EDITOR
       and "Keep his @s as written" in D.EDITOR and "@GrokBot (X and the web)" in D.EDITOR)
 asks = []
 def stubborn(s_, u):
@@ -781,6 +782,35 @@ check("he hears Muse by its sign, not as Gloria, and Grok Bot by name",
 _said = S6.posted[-1]["text"]
 check("his @GrokBot question goes to Grok Bot as a real mention, without pinging dot",
       _said.startswith("[Gemma] <@UGROK> which lab") and "<@%s>" % DOT not in _said, _said)
+
+# His direction, read only (Gloria, 2026-10-01: "grounded, progressive, and still sounds like himself ... No after
+# message subconscious changes yet"). After the Dixit lock he asked dot for eleven unrelated searches.
+_mem = os.path.join(D.WS, "memory")
+check("no direction material, no section", D.direction_block(os.path.join(HOME, "nowhere")) == "")
+os.makedirs(os.path.join(_mem, "black-pearls"), exist_ok=True)
+json.dump({"thread": "why the pause before the drop matters more than the drop", "status": "open",
+           "reexamine_after": "2026-10-05T00:00:00"}, open(os.path.join(_mem, "black-pearls", "bp1.json"), "w"))
+json.dump({"thread": "an old one", "status": "resolved"}, open(os.path.join(_mem, "black-pearls", "bp0.json"), "w"))
+json.dump({"threads": [{"origin": "pressure you feel in the chest before sound", "salience": .9, "momentum": .8, "direction": "expand"},
+                       {"origin": "faint thing", "salience": .1, "momentum": .1},
+                       {"origin": "what film does to being there", "salience": .7, "momentum": .5, "direction": "refine"},
+                       {"origin": "the scrapyard bell", "salience": .6, "momentum": .4},
+                       {"origin": "lowest", "salience": .05, "momentum": .0}]}, open(os.path.join(_mem, "latent-threads.json"), "w"))
+json.dump({"destination": "finish the infrasound piece and play it for Gloria", "axis": "gloria", "why": "she asked",
+           "created": "2026-10-01T09:00:00", "turns_served": 2}, open(os.path.join(_mem, "campaign-live.json"), "w"))
+_before = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
+_db = D.direction_block()
+_after = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
+check("his direction: live campaign, sealed threads, his strongest standing threads in order",
+      "YOUR DIRECTION" in _db and "finish the infrasound piece" in _db and "turn 3 of 7" in _db
+      and "why the pause before the drop" in _db and "an old one" not in _db
+      and _db.index("pressure you feel") < _db.index("what film does") < _db.index("the scrapyard bell")
+      and "faint thing" not in _db, _db)
+check("reading his direction writes nothing", _before == _after, set(_after) ^ set(_before))
+check("his direction is in what he reads, before his work", D.his_context().find("YOUR DIRECTION") > -1
+      and D.his_context().find("YOUR DIRECTION") < max(D.his_context().find("YOUR LAB"), D.his_context().find("YOUR DIRECTION") + 1))
+check("he is told: after a lock, his direction, not a random topic; and searches must feed something of his",
+      "Not a random new topic" in D.RULES and "make, decide or keep" in D.RULES)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
