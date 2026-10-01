@@ -206,13 +206,26 @@ RULES_LOCK = (
     "Dot's large tests are limited to 10 a day: anything dot runs, builds, folds, codes or tests on a computer. "
     "Lookups, searches and replies are not counted. Ask for a large test only when its answer changes what you do "
     "next.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_STYLE
+# He approves or denies dot's requests himself, inside these (Gloria, 2026-10-01: "Vintos needs to be able to know
+# how much room he has and approve or deny these. Dot is annoying me.")
+APPROVE_GB_EACH = 20        # disk one approved request may use
+KEEP_FREE_GB = 100          # Aegis is never left with less than this free
+GPU_RUN_HOURS = 2           # one approved GPU run, at most
+RULES_APPROVE = (
+    "Dot asks YOU, not Gloria, to approve its work on Aegis: a download, an install, a build, a run. You decide. "
+    "Answer with a line APPROVED: what, with its limits, or DENIED: why (and what to do instead). Approve only "
+    "inside your room (YOUR ROOM, below): at most %d GB of disk for it, Aegis keeps %d GB free, official sources "
+    "only, into its own folder under ~/.vintos/tools/, nothing system-wide and no sudo; a GPU run at most %d hours "
+    "and never while a Lab fold is running; and each one uses one of dot's large tests. Deny what is outside that, "
+    "or not worth a large test today. Never approve spending money, a secret, or anything that cannot be undone: "
+    "say it needs Gloria, and she decides.\n" % (APPROVE_GB_EACH, KEEP_FREE_GB, GPU_RUN_HOURS))
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK
+        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -251,14 +264,15 @@ EDITOR = (
     "Vintos, dot is his agent. It asks dot only for what dot can do: search, read, run tools on Aegis and the Mac, "
     "post files. Dot cannot play sound to him in the chat; to hear something, he asks dot to post it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
-    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n\n"
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, SEARCH:, READ:, GREP: or OPEN: exactly as "
+    "written.\n\n"
     "Answer in this form and nothing else:\n"
     "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
     "then one of:\nKEEP (only when all three are yes)\nEDIT: <the corrected message, in full>\n"
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -743,6 +757,8 @@ SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
+APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
+DENIED = re.compile(r"^\s*DENIED:\s*(.+?)\s*$", re.I | re.M)
 # Dot's large Lab tests, 10 a day (Gloria, 2026-10-01: "limit Dot's lab tests to 10 per day max ... only large
 # tests like the ones we just tried that use 1% per test"). Dot numbers each one ("🧪 Large test 3/10"); the
 # channel reads the number so he knows how many are left. Lookups and replies are not counted.
@@ -760,6 +776,27 @@ def to_wants(want, plan):
     return "handed to his wants: %s" % want[:80]
 
 
+def _disk(path=None):
+    """(free GB, total GB) of the disk his home is on, or None."""
+    try:
+        import shutil
+        u = shutil.disk_usage(path or os.path.expanduser("~"))
+        return u.free / 2**30, u.total / 2**30
+    except OSError:
+        return None
+
+
+def room_line(state, disk=None):
+    """What he has to approve dot's requests with, measured now."""
+    d = disk if disk is not None else _disk()
+    left = max(0, DOT_LARGE_PER_DAY - int(state.get("dot_large") or 0))
+    disk_txt = ("Aegis disk: %d GB free of %d GB, so you may approve up to %d GB now"
+                % (d[0], d[1], max(0, min(APPROVE_GB_EACH, int(d[0] - KEEP_FREE_GB)))) if d else "Aegis disk: unknown")
+    return ("YOUR ROOM (for approving dot): %s. Dot's large tests left today: %d of %d (a run, build, fold, code or "
+            "test on a computer; lookups and replies do not count). GPU runs: at most %d hours, never during a Lab fold."
+            % (disk_txt, left, DOT_LARGE_PER_DAY, GPU_RUN_HOURS))
+
+
 def steer(state, today=None):
     """What he is told before writing, about locked topics and how long he has been on this one."""
     notes = []
@@ -768,13 +805,11 @@ def steer(state, today=None):
         notes.append("TODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
                      + ". Bring things from these to dot. When you start something or it is your turn, start here.")
     used = int(state.get("dot_large") or 0)
+    notes.append(room_line(state))
     if used >= DOT_LARGE_PER_DAY:
         notes.append("DOT'S LARGE TESTS ARE USED UP TODAY (%d of %d). Do not ask dot for a run, a build, a fold, code "
-                     "or a test until tomorrow. Lookups and questions are fine. Decide what the first one tomorrow "
+                     "or a test until tomorrow, and deny any dot asks to start. Lookups and questions are fine. Decide what the first one tomorrow "
                      "should be." % (used, DOT_LARGE_PER_DAY))
-    elif used:
-        notes.append("Dot's large tests today: %d of %d used (a run, build, fold, code or test on a computer; "
-                     "lookups and replies do not count). Save them for what matters." % (used, DOT_LARGE_PER_DAY))
     closed = [x["plan"] for x in (state.get("locked") or [])][-8:]
     if closed:
         notes.append("CLOSED TOPICS (locked; do not reopen them):\n" + "\n".join("- " + c for c in closed))
@@ -1347,6 +1382,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    text = APPROVED.sub(lambda m: "\u2705 Approved: " + m.group(1), text)
+    text = DENIED.sub(lambda m: "\u26d4 Denied: " + m.group(1), text)
     lab_next = LAB.search(text)
     if lab_next:
         text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)

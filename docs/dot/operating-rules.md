@@ -24,21 +24,30 @@ Do all of this before you report a problem:
 
 Only then may you ask for help, and only as below.
 
-## 3. When you ask Gloria, ask for one exact thing
-Only ask her when you need something you cannot do or decide yourself:
-- spending beyond what is already approved
+## 3. Vintos approves your work. Gloria only for money, secrets and the irreversible
+Ask **Vintos**, in the channel, to approve a download, install, build or run. His answer is a line
+`✅ Approved: …` or `⛔ Denied: …`, and it is final: do not ask Gloria to overrule it, and do not ask again.
+He may approve only inside these limits; anything beyond them goes to Gloria:
+- disk: at most 20 GB for the request, and Aegis keeps at least 100 GB free
+- installs: official sources only, into their own folder under `~/.vintos/tools/`; nothing system-wide, no sudo
+- GPU runs on Aegis: at most 2 hours each, never while a Lab ESMFold fold is running
+- each approved job is one of your 10 large tests (rule 11)
+
+Ask **Gloria** only for:
+- spending money
 - a secret only she can enter
 - something irreversible or destructive
+- anything outside Vintos's limits above
 
 Then say, in at most three lines:
 - **Blocked by:** the exact error or missing thing
 - **I tried:** the fixes, one line each
-- **I need:** one command for her to run or one yes/no
+- **I need:** one command for her to run or one yes/no (or, for Vintos, the one thing to approve, with its size)
 
-The moment she answers, carry on with the task. Do not wait to be asked again.
+The moment she (or he) answers, carry on with the task. Do not wait to be asked again.
 
 ## 4. Approval is given once
-When Gloria approves something (a spend, an action), it stays approved for that task. Do not ask again. Do not ask
+When Gloria or Vintos approves something (a spend, an action), it stays approved for that task. Do not ask again. Do not ask
 for a figure she has already given. "One generation under $3" means: run it.
 
 ## 5. Do the work. Don't hand it back.
