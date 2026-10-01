@@ -74,6 +74,32 @@ def seal_the_wires():
     os.system = lambda cmd: (blocked.append("process %s" % str(cmd)[:90]), 1)[1]
 
 
+openai_calls = []
+
+
+def watch_openai(real_urlopen):
+    """urlopen that, for OpenAI's answers, notes what OpenAI itself reports: the model that served the call,
+    the tokens it read and wrote, and how long it took. (Gloria: "Can't be right. Came back instantly.")"""
+    import io
+
+    def urlopen(req, *a, **k):
+        url = str(getattr(req, "full_url", req))
+        t0 = time.time()
+        resp = real_urlopen(req, *a, **k)
+        if "api.openai.com" not in url:
+            return resp
+        body = resp.read()
+        try:
+            d = json.loads(body)
+            u = d.get("usage") or {}
+            openai_calls.append({"model": d.get("model"), "in": u.get("prompt_tokens", u.get("input_tokens")),
+                                 "out": u.get("completion_tokens", u.get("output_tokens")), "s": time.time() - t0})
+        except ValueError:
+            pass
+        return io.BytesIO(body)
+    return urlopen
+
+
 def main():
     if len(sys.argv) < 3:
         sys.exit("usage: avatar_sealed_turn.py SERVER_PY MESSAGE")
@@ -81,6 +107,8 @@ def main():
         sys.exit("refusing: his home is not sealed. Run scripts/avatar-sealed-turn.sh, which seals it first.")
     server_py, message = os.path.abspath(sys.argv[1]), sys.argv[2]
     seal_the_wires()
+    import urllib.request
+    urllib.request.urlopen = watch_openai(urllib.request.urlopen)
     here = os.path.dirname(server_py)
     for p in (os.path.expanduser("~/.vintos/workspace/scripts"), here):
         if p not in sys.path:
@@ -106,6 +134,9 @@ def main():
     print("served by: %s   (%.1f s, HTTP %d)" % (d.get("model"), took, r.status_code))
     if d.get("error"):
         print("error:", d["error"])
+    for c in openai_calls:
+        print("OpenAI says: served by %s, read %s tokens (his prompt and context), wrote %s, in %.1f s"
+              % (c["model"], c["in"], c["out"], c["s"]))
     print("\n" + (d.get("reply") or "(no reply)"))
     print("=" * 72)
     seen = sorted(set(blocked))

@@ -61,6 +61,15 @@ try:
     check("the wrapper seals home with an overlay, hides /tmp, runs the house server as her, and deletes the layer",
           "mount -t overlay" in sh and "mount -t tmpfs tmpfs /tmp" in sh and "setpriv --reuid" in sh
           and "trap 'sudo rm -rf \"$LAYER\"' EXIT" in sh and "vintos-server" in sh)
+    import io, json as _j
+    class _Req:
+        full_url = "https://api.openai.com/v1/chat/completions"
+    fake = lambda req, *a, **k: io.BytesIO(_j.dumps({"model": "gpt-4o-2024-11-20", "choices": [],
+                                                     "usage": {"prompt_tokens": 19881, "completion_tokens": 120}}).encode())
+    body = A.watch_openai(fake)(_Req()).read()
+    check("it reports what OpenAI says served the call, and still hands the answer on unchanged",
+          A.openai_calls and A.openai_calls[-1]["model"] == "gpt-4o-2024-11-20" and A.openai_calls[-1]["in"] == 19881
+          and _j.loads(body)["model"] == "gpt-4o-2024-11-20", A.openai_calls)
     check("nothing was dialled", dialled == [], dialled)
 finally:
     socket.getaddrinfo, socket.socket.connect, socket.socket.connect_ex, subprocess.Popen, os.system = real
