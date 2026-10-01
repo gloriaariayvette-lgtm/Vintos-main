@@ -40,6 +40,24 @@ class AtelierMediaTests(unittest.TestCase):
         self.assertEqual(song["bytes"], b"RIFFprivate")
         self.assertFalse(any("gallery" in p or "activity" in p for p in os.listdir(self.tmp)))
 
+    def test_music_in_the_shape_the_real_tool_returns_is_kept(self):
+        # 2026-10-01: dream-music hands each track back under "file" (Kie and ACE-Step); the Atelier read only
+        # audio_url/url/file_url, so every song he composed there came back "no track URL" and was thrown away.
+        src = open(os.path.join(ROOT, "scripts", "dream-music.py")).read()
+        self.assertIn('tracks = [{"file": (it.get("audioUrl")', src)     # the shape the fake below copies
+        fetched = []
+        music = types.SimpleNamespace(generate=lambda *a: "kie:task-2",
+                                      poll=lambda _t: [{"file": "https://cdn.example/t1.mp3", "duration": 120, "id": "a"}],
+                                      dl=lambda u, path: (fetched.append(u), open(path, "wb").write(b"RIFFsong") > 0)[1])
+        with mock.patch.object(MEDIA, "_load", side_effect=lambda _n, f: music):
+            song = MEDIA.render_music("The Switch", "solo piano")
+        self.assertTrue(song.get("ok"), song)
+        self.assertEqual(fetched, ["https://cdn.example/t1.mp3"])
+        self.assertEqual(song["bytes"], b"RIFFsong")
+        visit = open(os.path.join(ROOT, "scripts", "atelier-visit.py")).read()
+        self.assertIn('print("%s NOT made: %s"', visit)        # a lost piece is now said in the visit log
+        self.assertIn('print("sealed %s NOT kept: %s"', visit)
+
     def test_binary_artifact_is_kept_and_read_in_the_scratch_room(self):
         pid = BK.create_project({"intent": "paint privately", "sealed": True})["id"]
         BK.to_table({"id": pid}); opened = BK.open_visit({"id": pid})

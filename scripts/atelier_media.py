@@ -61,7 +61,9 @@ def render_music(title, style, description="", duration=120, instrumental=True):
                              str(description or "")[:2500], bool(instrumental), duration)
         tracks = music.poll(tid) if tid else None
         first = tracks[0] if tracks else {}
-        url = first.get("audio_url") or first.get("url") or first.get("file_url") or ""
+        # dream-music hands every track back under "file" (Kie and ACE-Step alike, since 15 September); reading
+        # only the other names threw away every song he composed in the Atelier (found 2026-10-01).
+        url = first.get("file") or first.get("audio_url") or first.get("url") or first.get("file_url") or ""
         if not url: return {"ok": False, "configured": True, "error": "music renderer returned no track URL"}
         fd, path = tempfile.mkstemp(prefix="atelier-music-", suffix=".wav"); os.close(fd)
         try:

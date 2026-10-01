@@ -636,6 +636,9 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
     except Exception as exc:
         result = {"ok": False, "configured": True, "error": "media doorway failed: %s" % str(exc)[:180]}
     artifact = ""
+    if not result.get("ok"):
+        # it was asked for and did not arrive: say why in the visit log, not only to him (2026-10-01)
+        print("%s NOT made: %s" % (wanted["kind"], str(result.get("error") or "no reason given")[:200]))
     if result.get("ok"):
         data = result.pop("bytes")
         saved = requests.post(f"{B}/make", json={"id": pid, "kind": wanted["kind"],
@@ -643,6 +646,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
             "capability": capability}, timeout=120).json()
         if saved.get("error"):
             result = {"ok": False, "error": "broker store refused: %s" % saved["error"]}
+            print("sealed %s NOT kept: %s" % (wanted["kind"], result["error"]))
         else:
             artifact = saved.get("file", "")
             result["artifact"] = artifact
