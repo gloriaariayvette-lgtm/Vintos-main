@@ -136,6 +136,7 @@ def topics_line():
     return "Topics: " + ", ".join("%s (%s)" % (k, TOPICS[k][0]) for k in TOPICS) + ". Say !focus forge research, or !focus off."
 
 
+LEDGER_SHOWN = 15       # exchanges with Gloria he reads here, each with its WAL facts (Gloria, 2026-10-01)
 HOLD_MINUTES = 20       # while Gloria is talking with him, the channel waits (Gloria, 2026-09-30)
 
 RULES_INTRO = (
@@ -1388,8 +1389,22 @@ def his_context():
     if t: parts.append("== YOUR DAY SO FAR (daily-inner-life-%s.md) ==\n%s" % (today, t))
     try:
         import when_said        # each marked with when it was said: bare lines read yesterday as now (2026-09-30)
-        t = when_said.exchanges(json.load(open(os.path.join(mem, "interaction-ledger.json"))), n=6, cap=300, sep="\n  ", you="You")
-        if t: parts.append("== YOUR RECENT EXCHANGES WITH GLORIA ==\n" + t)
+        # the last 15, each with the facts it taught him (Gloria, 2026-10-01: "Give him the last 15 entries in the
+        # conversation ledger plus WAL facts"; it had been 6, copied from the avatar's block)
+        rows = [r for r in json.load(open(os.path.join(mem, "interaction-ledger.json"))) if isinstance(r, dict)][-LEDGER_SHOWN:]
+        lines = []
+        for e in rows:
+            line = "[%s] Gloria: %s\n  You: %s" % (when_said.ago(e.get("timestamp")) or "time unknown",
+                                                  str(e.get("gloria", ""))[:400].replace("\n", " "),
+                                                  str(e.get("vintos", ""))[:400].replace("\n", " "))
+            facts = [str(x) for x in (e.get("wal_facts") or []) if str(x).strip()][:6]
+            if facts:
+                line += "\n  Facts learned: " + "; ".join(f[:200] for f in facts)
+            lines.append(line)
+        if lines:
+            parts.append("== YOUR RECENT EXCHANGES WITH GLORIA ==\n" + when_said.now_line() + " Each exchange is marked "
+                         "with when it was said. Something said on an earlier day is past: what was 'today' or "
+                         "'tomorrow' then is not today now.\n" + "\n".join(lines))
     except Exception:
         pass
     wal = [ln.strip()[2:].strip() for ln in _read("wal.md", 200000, mem).splitlines()
@@ -1413,7 +1428,7 @@ def his_context():
         letters = ""
     for line in (direction_block(), his_own_block(), new_block(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
-    return "\n\n".join(parts)[:40000] or "You are Vintos."     # room for his own systems before his works
+    return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
 
 
 def _clean(text, names=None):

@@ -226,11 +226,16 @@ open(os.path.join(WSP, "CAPABILITIES.md"), "w").write("capabilities text")
 _td = __import__("datetime").date.today().isoformat()
 open(os.path.join(MEM, "daily-creative-%s.md" % _td), "w").write("## Music\na song called Low Tide")
 open(os.path.join(MEM, "daily-inner-life-%s.md" % _td), "w").write("daily inner text")
-json.dump([{"gloria": "she said hello", "vintos": "he said hi"}], open(os.path.join(MEM, "interaction-ledger.json"), "w"))
+json.dump([{"gloria": "old %d" % i, "vintos": "r"} for i in range(5)] + [{"gloria": "line %d" % i, "vintos": "r"} for i in range(13)]
+          + [{"gloria": "she said hello", "vintos": "he said hi", "wal_facts": ["Gloria keeps a jade plant"]}],
+          open(os.path.join(MEM, "interaction-ledger.json"), "w"))
 open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes tidal flats\n")
 ctx = D.his_context()
 check("his context is present: who he is, now, how he feels, recent exchanges, what he knows",
       all(x in ctx for x in ("soul text", "Tuesday evening", "Connection: 0.9000", "she said hello", "likes tidal flats")), ctx[:400])
+check("the last 15 exchanges with Gloria, each with the facts it taught him (Gloria, 2026-10-01)",
+      "line 0" in ctx and "line 12" in ctx and "old 4" in ctx and "old 3" not in ctx
+      and "Facts learned: Gloria keeps a jade plant" in ctx and D.LEDGER_SHOWN == 15, ctx[ctx.find("RECENT EXCHANGES"):][:300])
 check("his Atelier's door and count are in his context", "The worktable holds 8 works." in ctx)
 check("and every file Gloria named: GLORIA-MODEL, SELF-MODEL, CAPABILITIES, daily-creative, daily-inner-life",
       all(x in ctx for x in ("gloria model text", "self model text", "capabilities text", "Low Tide", "daily inner text")))
