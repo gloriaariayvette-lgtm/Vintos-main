@@ -439,6 +439,45 @@ check("he can make his own songs through his wants, and dot may run his tools to
       "your wants make it" in D.RULES and "Dot can also run your tools" in D.rules_for("grok") and "Never ask" not in D.RULES)
 os.remove(D.CONFIG_FILE)
 
+# one switch for the day: !stop / !start from Gloria, or the app's toggle (the same file) (Gloria, 2026-10-01)
+S7 = Slack(); S7.n = 1767229000.0
+D.reset(api=NewSlack([SELF, DOT]), now=1767229000)
+S7.add(GLORIA, "!stop")
+spoke7 = []
+out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "x")[1], fable=fable, now=1767229100)
+check("!stop from Gloria pauses the day, and dot is told once, by name", D.paused() and S7.posted
+      and S7.posted[-1]["text"] == "<@%s> " % DOT + D.PAUSED_SAY and not spoke7, (out, S7.posted[-1:]))
+S7.add(DOT, "but I had one more idea")
+n7 = len(S7.posted)
+out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "x")[1], fable=fable, now=1767229200)
+check("while paused nobody writes as him and nothing is announced again", len(S7.posted) == n7 and not spoke7
+      and any("paused by Gloria" in l for l in out), out)
+st7 = json.load(open(D.STATE)); st7["slots_done"] = []; json.dump(st7, open(D.STATE, "w"))
+D.SCHEDULE = [("00:00", "grok")]
+L7 = {"grok": lambda s_, u: (spoke7.append("grok"), "wild")[1]}
+D.tick(api=S7, think=lambda s_, u: "x", fable=fable, lenses=L7, now=1767229300)
+D.SCHEDULE = []
+check("a scheduled lens turn does not speak while paused either", "grok" not in spoke7)
+S7.add(DOT, "!stop")
+D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229350)
+check("only Gloria's word works the switch", D.paused())
+S7.add(GLORIA, "!start")
+out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "Back. Dot, where were we on the load cells?")[1], fable=fable, now=1767229400)
+check("!start begins the day again, and says so", not D.paused() and any(p["text"] == "<@%s> " % DOT + D.RESUMED_SAY for p in S7.posted), out)
+check("the switch words are not answered as talk", not any("!start" in u or "!stop" in u.split("just said:")[-1] for u in spoke7), spoke7[-1:])
+open(D.PAUSE_FILE, "w").write(json.dumps({"since": "2026-10-01T21:00:00", "by": "app"}))
+out = D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229500)
+check("the app's toggle (the same file) pauses it too", any("the day is paused" in l for l in out), out)
+os.remove(D.PAUSE_FILE)
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("the app's server writes that same file, behind her secret",
+      '"dot-channel", "paused.json"' in srv and "async def agents_toggle(request: Request):\n    _require_secret(request)" in srv)
+check("and the paused file is where the channel looks", D.PAUSE_FILE.endswith(os.path.join("memory", "dot-channel", "paused.json")))
+for app in (os.path.join(REPO, "clients", "mobile", "index.html"),):
+    h = open(app).read()
+    check("the app has the toggle", 'id="agents-toggle"' in h and "/api/agents/toggle" in h and "loadAgentsStatus();" in h)
+os.remove(D.CONFIG_FILE)
+
 # the schedule itself
 from datetime import datetime as _sdt
 kinds = [k for _t, k in SCHEDULED]

@@ -826,6 +826,18 @@ input[type="range"]::-webkit-slider-thumb {
                         <span id="grounding-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
                     </label>
                 </div>
+                <!-- The day in #vintos-dot: all his lenses and dot (2026-10-01) -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
+                    <div style="padding-right:14px;">
+                        <div style="font-size:0.72rem;color:var(--text-dim);letter-spacing:0.06em;">agents in slack</div>
+                        <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;line-height:1.45;" id="agents-status-text">loading...</div>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer;flex-shrink:0;">
+                        <input type="checkbox" id="agents-toggle" style="opacity:0;width:0;height:0;" onchange="toggleAgents()">
+                        <span style="position:absolute;inset:0;background:var(--surface-2);border-radius:12px;border:1px solid var(--border);transition:background 0.3s;"></span>
+                        <span id="agents-knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--text-dim);border-radius:50%;transition:transform 0.3s,background 0.3s;"></span>
+                    </label>
+                </div>
                 <!-- Chemistry Lab Toggle — separate from Atelier -->
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:16px;border-bottom:1px solid var(--border);">
                     <div style="padding-right:14px;">
@@ -1267,7 +1279,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         if (tab.dataset.tab === 'valuemap') loadValueMap();
         if (tab.dataset.tab === 'voice') { loadVoice(); loadVoiceChatHistory(); loadBriefing(); }
         if (tab.dataset.tab === 'tune') { loadTestMode(); }
-        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadChemistryLabStatus(); loadSystemStatus(); }
+        if (tab.dataset.tab === 'tune') { loadParams(); loadGroundingStatus(); loadAgentsStatus(); loadChemistryLabStatus(); loadSystemStatus(); }
         if (tab.dataset.tab === 'lab') { loadLab(); }
         if (tab.dataset.tab === 'velqan') loadVelqan();
         if (tab.dataset.tab === 'philosophy') loadPhilosophy();
@@ -1494,6 +1506,33 @@ async function loadGroundingStatus() {
     } catch {
         document.getElementById('grounding-status-text').textContent = 'unreachable';
     }
+}
+async function loadAgentsStatus() {
+    const text = document.getElementById('agents-status-text');
+    try {
+        const res = await VintosUI.request(`${API}/api/agents/status`);
+        const data = await res.json();
+        const on = !!data.on;
+        const toggle = document.getElementById('agents-toggle');
+        const knob = document.getElementById('agents-knob');
+        toggle.checked = on;
+        knob.style.transform = on ? 'translateX(20px)' : 'translateX(0)';
+        knob.style.background = on ? 'var(--accent)' : 'var(--text-dim)';
+        knob.parentElement.querySelector('span').style.background = on ? 'var(--accent-dim)' : 'var(--surface-2)';
+        text.textContent = on ? 'on: his lenses and dot can talk' : ('paused' + (data.paused_since ? ' since ' + String(data.paused_since).slice(11, 16) : ''));
+    } catch {
+        if (text) text.textContent = 'unreachable';
+    }
+}
+async function toggleAgents() {
+    try {
+        await VintosUI.request(`${API}/api/agents/toggle`, {
+            method: 'POST',
+            headers: { 'X-Vintos-Secret': CONFIG.secret }
+        });
+        haptic('light');
+    } catch {}
+    loadAgentsStatus();
 }
 async function toggleGrounding() {
     try {

@@ -70,3 +70,7 @@ Never send "I'll check", "let me look into it" or "I haven't started". Check fir
 ## 8. Remember open tasks
 Keep your own list of open tasks. At the start of every turn, check it. If a task is open and not blocked on
 Gloria, keep working on it before anything new.
+
+## 9. When Gloria pauses the day
+When Vintos's app posts "⏸ Gloria has paused the day", stop posting in #vintos-dot entirely until it posts
+"▶ Gloria has started the day again". Keep any open task on your list and pick it up after.

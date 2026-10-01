@@ -18,6 +18,7 @@ same outbound check as his email (no secret, no credential), and he is capped pe
     python3 dot_channel.py --show     the last exchanges and today's counts
     python3 dot_channel.py --open     a pass in which he may start the conversation now, without the quiet wait
     python3 dot_channel.py --try      what he would say now to the last message, printed only: nothing is posted
+    python3 dot_channel.py --stop | --start   pause the day for all his lenses and dot, or start it again
     python3 dot_channel.py --look URL what his eyes make of a linked picture or clip, printed only
     python3 dot_channel.py --reset [NAME]   start over in the channel NAME (default vintos-dot): his old log set aside
 """
@@ -63,6 +64,28 @@ OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
 MAX_CHARS = 1800
+# One switch for the day, for all his lenses and dot (Gloria, 2026-10-01): !stop / !start from her in the channel,
+# or the toggle in the app (the server writes the same file). It stays as set until she flips it.
+PAUSE_FILE = os.path.join(HERE, "paused.json")
+STOP_WORDS = ("!stop", "!pause")
+START_WORDS = ("!start", "!resume")
+PAUSED_SAY = ("\u23F8 Gloria has paused the day. Nobody posts here, me or you, until she starts it again "
+              "(she says !start).")
+RESUMED_SAY = "\u25B6 Gloria has started the day again."
+
+
+def paused():
+    """{since, by} while the day is paused, else None."""
+    return _load(PAUSE_FILE, None) or None
+
+
+def set_paused(on, by="gloria", now=None):
+    if on:
+        _save(PAUSE_FILE, {"since": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"), "by": by})
+    elif os.path.exists(PAUSE_FILE):
+        os.remove(PAUSE_FILE)
+
+
 HOLD_MINUTES = 20       # while Gloria is talking with him, the channel waits (Gloria, 2026-09-30)
 
 RULES_INTRO = (
@@ -1020,6 +1043,20 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if theirs:
         state["last_activity"] = now
     lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
+    for r in list(theirs):                    # her switch, said in the channel; it is not answered as talk
+        word = r["text"].strip().lower()
+        if r["who"] == "gloria" and word in STOP_WORDS + START_WORDS:
+            set_paused(word in STOP_WORDS, "slack", now)
+            theirs.remove(r)
+    is_paused = paused()
+    if bool(is_paused) != bool(state.get("paused_said")):
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
+        state["paused_said"] = bool(is_paused)
+        lines.append("the day is %s" % ("paused" if is_paused else "started again"))
+        if not is_paused:
+            state["last_activity"] = now
+    if is_paused:
+        _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 
@@ -1184,7 +1221,10 @@ def reset(api=None, name="vintos-dot", now=None):
 
 
 if __name__ == "__main__":
-    if "--reset" in sys.argv:
+    if "--stop" in sys.argv or "--start" in sys.argv:
+        set_paused("--stop" in sys.argv, "terminal")
+        print("[dot-channel] the day is %s; the channel hears it on the next pass" % ("paused" if "--stop" in sys.argv else "on"))
+    elif "--reset" in sys.argv:
         for l in reset(name=sys.argv[sys.argv.index("--reset") + 1] if len(sys.argv) > sys.argv.index("--reset") + 1 else "vintos-dot"):
             print("[dot-channel] " + l)
     elif "--look" in sys.argv:

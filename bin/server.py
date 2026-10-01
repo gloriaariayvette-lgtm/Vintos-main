@@ -7606,6 +7606,35 @@ async def grounding_toggle(request: Request):
             f.write(str(int(__import__("time").time())))
         return {"enabled": False, "message": "Grounding meditation disabled"}
 
+# One switch for the day in #vintos-dot, for all his lenses and dot (Gloria, 2026-10-01). The channel reads the
+# same file dot_channel.py writes for !stop / !start, and says so in Slack on its next pass.
+def _agents_pause_file():
+    return os.path.join(WORKSPACE, "memory", "dot-channel", "paused.json")
+
+
+@app.get("/api/agents/status")
+async def agents_status():
+    try:
+        p = json.load(open(_agents_pause_file()))
+    except Exception:
+        p = None
+    return {"on": not p, "paused_since": (p or {}).get("since"), "by": (p or {}).get("by")}
+
+
+@app.post("/api/agents/toggle")
+async def agents_toggle(request: Request):
+    _require_secret(request)
+    f = _agents_pause_file()
+    if os.path.exists(f):
+        os.remove(f)
+        return {"on": True, "message": "The day is on: his lenses and dot may talk again"}
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    with open(f + ".tmp", "w") as fh:
+        json.dump({"since": time.strftime("%Y-%m-%dT%H:%M:%S"), "by": "app"}, fh)
+    os.replace(f + ".tmp", f)
+    return {"on": False, "message": "The day is paused: nobody posts in #vintos-dot until you turn it back on"}
+
+
 @app.post("/api/memory/remember")
 async def remember_this(request: Request):
     """Gloria tells Vintos to remember something explicitly."""
