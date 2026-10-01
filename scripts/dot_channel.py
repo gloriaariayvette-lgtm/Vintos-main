@@ -928,7 +928,18 @@ def lab_line(n=6, now=None):
         if grade.get("aggregate_accuracy"): bits.append("answer: " + str(grade["aggregate_accuracy"]).lower().replace("_", " "))
         if reading.get("next_question"): bits.append("you wanted next: " + str(reading["next_question"])[:200])
         out.append("; ".join(bits))
-    return ("== YOUR LAB (chemistry and proteins; its last sessions) ==\n" + "\n".join(out)) if out else ""
+    if not out:
+        return ""
+    # What his instruments can take, so he does not send dot after a protein his Lab cannot fold (2026-10-01:
+    # P02730, 911 residues, against ESMFold's limit).
+    try:
+        import chemistry_esmfold
+        limit = int(chemistry_esmfold.MAX_LENGTH)
+    except Exception:
+        limit = 350
+    return ("== YOUR LAB (chemistry and proteins; its last sessions) ==\n" + "\n".join(out)
+            + "\nYour ESMFold folds a whole protein of 4 to %d residues; a longer one is refused, not cut. For a longer "
+              "protein, pick a domain of %d or fewer, or ask dot for its AlphaFold DB structure." % (limit, limit))
 
 
 def wants_line():
