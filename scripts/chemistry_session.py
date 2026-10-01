@@ -271,7 +271,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "plugin_query; choose at most one extra call total. Its result reaches your reading. "
               "Source predictions and model disagreements are hypotheses, not validation or proof of novelty.")
     raw = asyncio.run(_frontier(lens, system, prompt))
-    if not raw: raise RuntimeError("frontier lens returned no plan")
+    if not raw: raise RuntimeError("frontier lens %s returned no plan" % lens)
     value = lab._json_object(raw)
     experiment = str(value.get("experiment", ""))
     if experiment not in experiments: raise ValueError("frontier selected an unavailable experiment")
