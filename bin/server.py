@@ -9638,7 +9638,9 @@ Your current self-model (excerpt):
 
         # -- model router (single source of truth): Claude primary, grok fallback --
         import model_router as _mr
-        _reason = (not _felt_now) and ("touched" not in (msg.message or "").lower())
+        # No thinking before an avatar reply (Gloria, 2026-10-01: "Off"). It had been on since before this
+        # repository's history, and its shared budget cut one reply off at "[SCENE:".
+        _reason = False
         try:
             try:
                 import json as _cap_j
