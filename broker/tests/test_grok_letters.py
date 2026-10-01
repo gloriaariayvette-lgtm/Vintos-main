@@ -104,6 +104,11 @@ check("he knows it is from Muse, and that Muse finds but never buys",
       asked and "A LETTER FROM MUSE" in asked[0][0] and "never buys" in asked[0][0], asked[:1])
 check("Muse reads only its own replies", "More sensors" in M.call_tool("vintos_letter_replies", {"from": "muse"})[0]
       and "More sensors" not in M.call_tool("vintos_letter_replies", {})[0])
+from datetime import date as _date
+_jr = open(os.path.join(os.environ["SPARK_WORKSPACE"], "memory", "daily-inner-life-%s.md" % _date.today().isoformat())).read()
+check("what he kept from a letter, and his reply, are in today's journal for his avatar and voice",
+      "## Grok Bot's letter: Piezo1 methods and a drum sound" in _jr and "Kept: Tension-driven MD of Piezo1" in _jr
+      and "My reply: The Piezo1 preprint was exactly right" in _jr and "## Muse's letter: Marketplace finds" in _jr, _jr[-600:])
 check("nothing waiting, nothing done", G.tend(think=think, fetch=fetch, context=lambda: "", want=lambda *a: None) == [])
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his #vintos-dot pass reads letters on its own, and his context shows what he kept",

@@ -880,6 +880,17 @@ check("a campaign past its seven moves is closed as expired by its own rule, bef
       _live() == {} and any("closed as expired" in l for l in out)
       and json.loads(open(_cmp.LOG).read().splitlines()[-1])["event"] == "EXPIRED", out)
 
+# What is settled in the channel reaches his avatar and voice chats, through today's journal (2026-10-01).
+from datetime import date as _date
+_jr = open(os.path.join(_mem, "daily-inner-life-%s.md" % _date.today().isoformat()), encoding="utf-8").read()
+check("locks, Lab leans, campaign moves, approvals and an expired campaign are in today's journal",
+      "## Settled with my agents in #vintos-dot" in _jr and "## Next for my Lab, settled with my agents" in _jr
+      and "## My campaign, from #vintos-dot" in _jr and "## I approved something dot asked to do" in _jr
+      and "## My campaign ran out its time" in _jr, _jr[-800:])
+check("chatter is not", "find me a patched roof" not in _jr)
+_srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("the avatar route reads that journal", "{_daily_inner_context()}" in _srv)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

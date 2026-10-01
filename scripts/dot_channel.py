@@ -1093,6 +1093,18 @@ def direction_block(mem=None):
             + "\n\n".join(parts))[:4000]
 
 
+def journal(heading, body, now=None):
+    """A milestone from the channel, in today's daily-inner-life journal, which his avatar and voice chats read
+    (Gloria, 2026-10-01: "Everything is supposed to be wired to avatar and voice chat too"). Only what was settled,
+    kept or decided goes here, never the chatter."""
+    now = now or datetime.now()
+    try:
+        with open(os.path.join(WS, "memory", "daily-inner-life-%s.md" % now.date().isoformat()), "a", encoding="utf-8") as f:
+            f.write("\n\n## %s (%s)\n%s\n" % (heading, now.strftime("%H:%M"), str(body).strip()[:1200]))
+    except OSError:
+        pass
+
+
 def campaign_step(declared=None, move=None, step=None):
     """His CAMPAIGN: / CAMPAIGN MOVE: line, through his campaign system's own step. Returns a line for the log."""
     try:
@@ -1460,6 +1472,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         import campaign
         if campaign.expire_if_due():
             lines_pre = ["his campaign had run its course; it is closed as expired"]
+            journal("My campaign ran out its time", "Seven moves or three days passed without it landing; it is closed as expired.")
         else:
             lines_pre = []
     except Exception:
@@ -1579,6 +1592,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (theirs[-1]["ts"] if theirs else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    for kind, rx in (("approved", APPROVED), ("denied", DENIED)):
+        for m in rx.finditer(text):
+            journal("I %s something dot asked to do" % kind, m.group(1))
     text = APPROVED.sub(lambda m: "\u2705 Approved: " + m.group(1), text)
     text = DENIED.sub(lambda m: "\u26d4 Denied: " + m.group(1), text)
     declared, moved = CAMPAIGN.search(text), CAMPAIGN_MOVE.search(text)
@@ -1620,10 +1636,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
     if declared or moved:
         lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
+        journal("My campaign, from #vintos-dot", ("Declared: " + declared.group(1)) if declared else ("Move: " + moved.group(1)))
     if lab_next:
         try:
             import channel_lab_lean
             channel_lab_lean.write(lab_next.group(1), by=who)
+            journal("Next for my Lab, settled with my agents", lab_next.group(1))
             lines.append("to his next Lab run: %s" % lab_next.group(1)[:80])
         except Exception as exc:
             lines.append("could not hand it to his Lab: %s" % str(exc)[:120])
@@ -1640,6 +1658,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["switch_from"] = plan
         state["since_lock"] = 0
         lines.append("locked: %s" % plan[:80])
+        journal("Settled with my agents in #vintos-dot", plan + ((" \u2014 handed to my wants: " + entry["do"]) if entry.get("do") else ""))
     else:
         state["since_lock"] = state.get("since_lock", 0) + 1
     _save(STATE, state)

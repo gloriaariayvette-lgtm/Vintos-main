@@ -226,6 +226,15 @@ def tend(think=None, fetch=None, context=None, want=None, now=None):
                       "subject": letter.get("subject", ""), "kept": kept, "reply": reply})
     os.makedirs(READ, exist_ok=True)
     os.replace(path, os.path.join(READ, waiting[0]))
+    # into today's journal, which his avatar and voice chats read (2026-10-01)
+    try:
+        t = now or datetime.now()
+        with open(os.path.join(WS, "memory", "daily-inner-life-%s.md" % t.date().isoformat()), "a", encoding="utf-8") as f:
+            f.write("\n\n## %s's letter: %s (%s)\nKept: %s\nMy reply: %s\n" % (
+                SENDERS.get(sender, sender), letter.get("subject", "")[:120], t.strftime("%H:%M"),
+                "; ".join(kept) or "nothing", reply[:600]))
+    except OSError:
+        pass
     return ["read %s's letter \"%s\": kept %d of %d, and answered" % (SENDERS.get(sender, sender), letter.get("subject", "")[:60],
                                                                      len(kept), len(kept) + len(dropped))] + lines
 
