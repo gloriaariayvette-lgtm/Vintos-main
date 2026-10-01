@@ -21,6 +21,10 @@ review = load("gap_review", "scripts/gap_review.py")
 import skill_forge as sf
 
 NOW = time.time(); OLD = NOW - 30 * 86400
+from datetime import datetime as _dt, timezone as _tz
+# a day ago, so the rows stay inside the scan's 7-day window whatever day the suite runs (they were dated
+# 2026-09-24 and fell out of the window on 2026-10-01)
+RECENT = _dt.fromtimestamp(NOW - 86400, _tz.utc).isoformat()
 
 
 def jl(rel, rows):
@@ -32,9 +36,9 @@ class GapScan(unittest.TestCase):
         json.dump({"change_lights": {"block_type": "RESOURCE_UNREACHABLE", "evidence": "hub timed out", "at": NOW},
                    "play_on_tv": {"block_type": "TOOL_UNAVAILABLE", "evidence": "adb missing", "at": OLD}},
                   open(os.path.join(MEM, "capability-blocks.json"), "w"))
-        jl("chemistry-lab/faults.jsonl", [{"at": "2026-09-24T01:00:00+00:00", "stage": "embed", "error": "RuntimeError",
+        jl("chemistry-lab/faults.jsonl", [{"at": RECENT, "stage": "embed", "error": "RuntimeError",
                                             "detail": "esmc checkpoint 1234 missing"} for _ in range(3)])
-        jl("plugin-policy-holds.jsonl", [{"hold_id": "h1", "type": "gmail.send", "at": "2026-09-24T02:00:00+00:00",
+        jl("plugin-policy-holds.jsonl", [{"hold_id": "h1", "type": "gmail.send", "at": RECENT,
                                            "reason": "link needs approval"}])
         jl("voice-refused-turns.jsonl", [{"at": NOW, "why": "session closing"}, {"at": NOW, "why": "ok"}])
         json.dump([{"id": "w1", "want": "press my weight into her", "steps": [

@@ -154,6 +154,50 @@ check("a page with no clip says so", none)
 check("links are fetched without the Slack token, and say who is asking",
       all(a is None for _u, a, _ua in opened) and all(ua and "Vintos" in ua for _u, _a, ua in opened), opened)
 
+# files on Aegis named by their path, and the OPEN tool (Gloria, 2026-10-01)
+import zipfile
+WSP = os.environ["SPARK_WORKSPACE"]
+CLIPS = os.path.join(WSP, "memory", "art", "video"); os.makedirs(CLIPS, exist_ok=True)
+CLIP = os.path.join(CLIPS, "lake-1820.mp4"); open(CLIP, "wb").write(b"mp4")
+SONGP = os.path.join(WSP, "memory", "art", "music", "occupied.mp3"); os.makedirs(os.path.dirname(SONGP), exist_ok=True); open(SONGP, "wb").write(b"mp3")
+OUTSIDE = os.path.join(HOME, "elsewhere.mp4"); open(OUTSIDE, "wb").write(b"mp4")
+ESCAPE = os.path.join(CLIPS, "escape.mp4"); os.symlink(OUTSIDE, ESCAPE)
+txt = "Your clip is at %s and the song is ~/.vintos/workspace/memory/art/music/occupied.mp3. Not %s, nor %s." % (CLIP, OUTSIDE, ESCAPE)
+check("media named by path inside his folders are picked out", D.media_paths(txt) == [os.path.realpath(CLIP), os.path.realpath(SONGP)], D.media_paths(txt))
+check("a path outside them, or a link that escapes them, is not", os.path.realpath(OUTSIDE) not in D.media_paths(txt))
+watched2 = []; looked.clear()
+def watch2(clip, frames_dir):
+    watched2.append(clip)
+    if clip.endswith(".mp3"):
+        return {"duration": 120.0, "has_audio": True, "quiet": False, "speech": "occupied territory", "sound": "a steady beat near 88 BPM", "frames": []}
+    return watch(clip, frames_dir)
+seen = D.look_at_files({"text": txt}, "Dot", look=look, watch=watch2)
+check("a clip at a path is watched like an upload, said as pointed to", "[Dot pointed you to a video at %s" % os.path.realpath(CLIP) in seen, seen[:300])
+check("a song at a path is heard: words and its build, no eyes needed",
+      "[Dot pointed you to a sound file at %s, 120 seconds long. What you heard:]" % os.path.realpath(SONGP) in seen
+      and "occupied territory" in seen and "88 BPM" in seen and len(looked) == 1, (seen[-400:], len(looked)))
+check("the file is read where it is, not copied around", set(watched2) == {os.path.realpath(CLIP), os.path.realpath(SONGP)})
+up = {"files": [{"mimetype": "audio/mpeg", "name": "take2.mp3", "size": 10, "url_private": "https://files.slack.com/t.mp3"}]}
+seen = D.look_at_files(up, "Dot", token="t", look=look, watch=watch2, download=lambda u, d, t: (open(d + ".mp3", "wb").write(b"x"), d + ".mp3")[1])
+check("a song uploaded to the channel is heard too", "posted a sound file" in seen and "occupied territory" in seen, seen[:200])
+
+BUNDLE = os.path.join(WSP, "audit.zip")
+with zipfile.ZipFile(BUNDLE, "w") as z:
+    z.writestr("vintos-arousal-audit/report.md", "One reading in the window: arousal 0.3986.")
+    z.writestr("vintos-arousal-audit/data.bin", b"\x00\x01\x02" * 10)
+check("OPEN lists a zip's files", "vintos-arousal-audit/report.md" in D.open_text(BUNDLE))
+check("and reads a text file inside it", D.open_text(BUNDLE + ":vintos-arousal-audit/report.md") == "One reading in the window: arousal 0.3986.")
+check("binary inside is named, not shown", D.open_text(BUNDLE + ":vintos-arousal-audit/data.bin").startswith("(binary"))
+check("a folder lists its entries", "audit.zip" in D.open_text(WSP))
+check("anything outside his folders is not opened", D.open_text("/etc/passwd").startswith("not opened")
+      and D.open_text(os.path.join(HOME, "elsewhere.mp4")).startswith("not opened")
+      and D.open_text(os.path.join(CLIPS, "..", "..", "..", "..", "elsewhere.mp4")).startswith("not opened"))
+check("OPEN is one of his tools, run like the others", "audit.zip" in D.use_tools([("OPEN", WSP)]) and D.TOOL.match("OPEN: /x/y.zip")
+      and "OPEN:" in D.RULES)
+json.dump({"read_roots": [os.path.join(WSP, "memory")]}, open(D.CONFIG_FILE, "w"))
+check("the folders he may read can be narrowed in his config", D.open_text(BUNDLE).startswith("not opened"))
+os.remove(D.CONFIG_FILE)
+
 # in the channel: the pass puts what he saw into the conversation he answers
 SELF, DOT = "UVINTOS", D.DOT
 class Slack:

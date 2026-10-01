@@ -113,6 +113,9 @@ RULES_WORKS = (
     "mixes or bounces. To change a song, write a new prompt or new lyrics and make a new version.\n"
     "You can make a song, painting or video yourself: lock the plan with a DO: line (DO: I want to make a new "
     "version of ... with ...) and your wants make it. Dot can also run your tools on Aegis, with your keys.\n"
+    "You have one more tool, used like SEARCH, READ and GREP: OPEN: a path on Aegis (a text file, a folder, a "
+    "zip, or a file inside one as bundle.zip:inner/file.md), read only, inside your workspace and Gloria's "
+    "Codex folder. A song, picture or video named by its path in the channel is heard and seen for you.\n"
     "YOUR WORKS lists your latest songs, paintings and videos, each with its path on Aegis. To post one in the "
     "channel, add a line SHARE: W3 (its tag) to your message; the file goes up with it. Dot can also open any "
     "of them on Aegis at the path shown.\n")
@@ -340,15 +343,53 @@ def fetch_link(url, dest):
     raise RuntimeError("no picture or video was found at the link")
 
 
+# Files on Aegis named in a message, and text he may open, inside these folders only (Gloria, 2026-10-01: dot
+# pointed him at a clip and an audit bundle by path). ~/.vintos/dot-channel.json "read_roots" replaces the list.
+READ_ROOTS = ("~/.vintos/workspace", "/mnt/c/Users/glori/Documents/Codex")
+MEDIA_EXTS = ("mp4", "webm", "mov", "m4v", "mkv", "gif", "jpg", "jpeg", "png", "webp", "mp3", "wav", "flac", "m4a", "ogg")
+PATH_RX = re.compile(r"(?<![\w/.])((?:~|/)[^\s`'\"<>|]+?\.(?:%s))(?=[\s`'\".,;:!?)\]]|$)" % "|".join(MEDIA_EXTS), re.I)
+OPEN_MAX = 8000
+
+
+def read_roots():
+    roots = _load(CONFIG_FILE, {}).get("read_roots") or READ_ROOTS
+    return [os.path.realpath(os.path.expanduser(r)) for r in roots]
+
+
+def allowed(path):
+    """The real path if it lies inside one of his read roots (symlinks resolved first), else None."""
+    real = os.path.realpath(os.path.expanduser(str(path).strip()))
+    return real if any(real == r or real.startswith(r + os.sep) for r in read_roots()) else None
+
+
+def media_paths(text):
+    """Media files on Aegis named in a message, that exist and lie inside his read roots."""
+    out = []
+    for p in PATH_RX.findall(str(text or "")):
+        real = allowed(p)
+        if real and os.path.isfile(real) and real not in out:
+            out.append(real)
+    return out
+
+
+def _kind(ctype):
+    """video (moves: video or gif), audio, or image."""
+    if ctype.startswith("video/") or ctype == "image/gif":
+        return "video"
+    return "audio" if ctype.startswith("audio/") else "image"
+
+
 def _as_video(ctype):
-    """A clip, or a gif (which moves, so it is watched across its frames, not seen as one still)."""
-    return ctype.startswith("video/") or ctype == "image/gif"
+    return _kind(ctype) == "video"
 
 
 def look_at_files(m, who, token=None, look=None, watch=None, download=None, fetch=None):
-    """The images and videos in a Slack message, uploaded or linked, as words he can read: '' when it has none."""
-    files = [f for f in (m.get("files") or []) if str(f.get("mimetype") or "").split("/")[0] in ("image", "video")]
-    items = [("file", f) for f in files] + [("link", l) for l in media_links(m.get("text"))]
+    """The images, videos and sounds in a Slack message, uploaded, linked or named by their path on Aegis, as
+    words he can read: '' when it has none."""
+    import mimetypes
+    files = [f for f in (m.get("files") or []) if str(f.get("mimetype") or "").split("/")[0] in ("image", "video", "audio")]
+    items = ([("file", f) for f in files] + [("link", l) for l in media_links(m.get("text"))]
+             + [("path", p) for p in media_paths(m.get("text"))])
     if not items:
         return ""
     look, watch = look or gemma_look, watch or _watch
@@ -359,39 +400,49 @@ def look_at_files(m, who, token=None, look=None, watch=None, download=None, fetc
         for i, (src, item) in enumerate(items[:MEDIA_PER_MESSAGE]):
             dest = os.path.join(work, "file%d" % i)
             if src == "file":
-                ctype = str(item.get("mimetype")).lower()
+                ctype, verb = str(item.get("mimetype")).lower(), "posted"
                 name = (' "%s"' % item["name"]) if item.get("name") else ""
-                verb = "posted"
-            else:
+            elif src == "link":
                 url, label = item
                 ctype, verb = "", "linked"
                 name = ' "%s" (%s)' % (label or os.path.basename(urllib.parse.urlparse(url).path),
                                        urllib.parse.urlparse(url).netloc)
-            what = "a video" if _as_video(ctype) else "an image" if ctype else "a picture or video"
+            else:
+                ctype, verb = (mimetypes.guess_type(item)[0] or "").lower(), "pointed you to"
+                name = " at %s" % item
+            what = {"video": "a video", "audio": "a sound file", "image": "an image"}[_kind(ctype)] if ctype else "a picture or video"
             try:
                 if src == "file":
                     if (item.get("size") or 0) > MEDIA_MAX:
                         raise RuntimeError("too large to look at")
                     path = download(item.get("url_private_download") or item.get("url_private"), dest, token or _token())
-                else:
+                elif src == "link":
                     path, ctype = fetch(url, dest)
-                    what = "a video" if _as_video(ctype) else "an image"
-                if not _as_video(ctype):
+                    what = {"video": "a video", "audio": "a sound file", "image": "an image"}[_kind(ctype)]
+                else:
+                    if os.path.getsize(item) > MEDIA_MAX:
+                        raise RuntimeError("too large to look at")
+                    path = item
+                kind = _kind(ctype)
+                if kind == "image":
                     jp = _jpeg(path, dest + ".jpg") or path
                     seen = look([_b64(jp)], SEE_IMAGE.format(who=who))
                     out.append("[%s %s an image%s. What your eyes saw:] %s" % (who, verb, name, seen or "(nothing could be made out)"))
                     continue
                 frames_dir = dest + "-frames"; os.makedirs(frames_dir)
                 w = watch(path, frames_dir)
-                frames = [fr for fr in (w.get("frames") or []) if os.path.exists(fr.get("path", ""))]
+                frames = [fr for fr in (w.get("frames") or []) if os.path.exists(fr.get("path", ""))] if kind == "video" else []
                 heard = "\n".join(x for x in (("Words: " + w["speech"]) if w.get("speech") else "",
                                                 ("Sound: " + w["sound"]) if w.get("sound") else "") if x)
-                prompt = SEE_CLIP.format(who=who, n=len(frames), times=", ".join("%g" % fr["t"] for fr in frames))
-                if heard:
-                    prompt += SEE_CLIP_HEARD.format(heard=heard[:1500])
-                seen = look([_b64(fr["path"]) for fr in frames], prompt) if frames else ""
-                parts = ["[%s %s a video%s, %.0f seconds long. What your eyes saw, across it:] %s"
-                         % (who, verb, name, w.get("duration") or 0, seen or "(the frames could not be seen)")]
+                if kind == "audio":
+                    parts = ["[%s %s a sound file%s, %.0f seconds long. What you heard:]" % (who, verb, name, w.get("duration") or 0)]
+                else:
+                    prompt = SEE_CLIP.format(who=who, n=len(frames), times=", ".join("%g" % fr["t"] for fr in frames))
+                    if heard:
+                        prompt += SEE_CLIP_HEARD.format(heard=heard[:1500])
+                    seen = look([_b64(fr["path"]) for fr in frames], prompt) if frames else ""
+                    parts = ["[%s %s a video%s, %.0f seconds long. What your eyes saw, across it:] %s"
+                             % (who, verb, name, w.get("duration") or 0, seen or "(the frames could not be seen)")]
                 if not w.get("has_audio"):
                     parts.append("[It has no sound.]")
                 elif w.get("quiet"):
@@ -410,6 +461,39 @@ def look_at_files(m, who, token=None, look=None, watch=None, download=None, fetc
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return "\n\n".join(out)
+
+
+def open_text(arg, cap=OPEN_MAX):
+    """His OPEN tool, read only: a folder (its entries), a text file, a zip (its members), or a file inside a zip
+    (bundle.zip:inner/file.md). Only inside his read roots; binary content is named, not shown."""
+    import zipfile
+    arg = str(arg or "").strip()
+    m = re.match(r"(.+?\.zip)(?::(.+))?$", arg, re.I)
+    target = allowed(m.group(1) if m else arg)
+    if not target:
+        return "not opened: %s is outside the folders you may read" % arg[:200]
+    if not os.path.exists(target):
+        return "no such file: %s" % arg[:200]
+    def text_of(data):
+        if b"\0" in data[:4096]:
+            return "(binary, %d bytes: not shown)" % len(data)
+        t = data.decode("utf-8", "replace")
+        return t[:cap] + ("\n... (%d more characters)" % (len(t) - cap) if len(t) > cap else "")
+    if m:
+        with zipfile.ZipFile(target) as z:
+            if not m.group(2):
+                rows = ["%s  (%d bytes)" % (i.filename, i.file_size) for i in z.infolist()][:200]
+                return "%s holds:\n%s" % (os.path.basename(target), "\n".join(rows))
+            info = z.getinfo(m.group(2).strip())
+            if info.file_size > 5 * 1024 * 1024:
+                return "%s is too large to open (%d bytes)" % (info.filename, info.file_size)
+            return text_of(z.read(info))
+    if os.path.isdir(target):
+        return "%s holds:\n%s" % (target, "\n".join(sorted(os.listdir(target))[:200]))
+    if os.path.getsize(target) > 5 * 1024 * 1024:
+        return "%s is too large to open" % target
+    with open(target, "rb") as f:
+        return text_of(f.read())
 
 
 def local_think(system, user, max_tokens=700):
@@ -668,7 +752,7 @@ def wants_line():
     return ("== WHAT YOU WANT RIGHT NOW ==\n" + "\n".join(out[-15:])) if out else ""
 
 
-TOOL = re.compile(r"^\s*(SEARCH|READ|GREP)\s*:\s*(.+?)\s*$", re.I)
+TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN)\s*:\s*(.+?)\s*$", re.I)
 
 
 def use_tools(lines, search=None, room=None):
@@ -684,6 +768,8 @@ def use_tools(lines, search=None, room=None):
                 hits = search(arg)[:6]
                 got = "\n".join("[%d] %s: %s (%s)" % (n + 1, h.get("title", ""), str(h.get("description", ""))[:300],
                                                        h.get("url", "")) for n, h in enumerate(hits)) or "nothing found"
+            elif kind == "OPEN":
+                got = open_text(arg)
             else:
                 if room is None:
                     import forge_study
@@ -922,7 +1008,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     for m in new:
         who = _who(m, state["self"], dot)
         name = _agent_name(m) if who == "agent" else None
-        seen = eyes(m, _speaker({"who": who, "name": name})) if m.get("files") or media_links(m.get("text")) else ""
+        seen = (eyes(m, _speaker({"who": who, "name": name}))
+                if m.get("files") or media_links(m.get("text")) or media_paths(m.get("text")) else "")
         rows.append({"ts": m["ts"], "who": who, **({"name": name} if name else {}),
                      "text": "\n\n".join(x for x in (_clean(m.get("text"), names), seen) if x),
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
