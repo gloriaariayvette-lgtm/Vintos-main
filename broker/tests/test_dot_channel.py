@@ -70,6 +70,7 @@ S = Slack()
 S.add(DOT, "an old message from before he listened")
 said = []
 def think(system, user):
+    if system == D.EDITOR: return "KEEP"      # the editing pass is tested on its own, below
     said.append((system, user)); return "I have been thinking about tidal flats, actually."
 def fable(system, user):
     return "Fable's words, as mine."
@@ -154,6 +155,7 @@ check("his Atelier state is only the content-free facts its status shows",
 # His tools: he looks something up, gets it back, then writes; the lookup lines are never posted.
 calls, seen_prompts = [], []
 def looker(system, user):
+    if system == D.EDITOR: return "KEEP"
     seen_prompts.append(user)
     return "SEARCH: tidal flat ecology\nGREP: def tick" if "WHAT YOU LOOKED UP" not in user else "Found it: mudflats breathe."
 class Room:
@@ -277,13 +279,13 @@ FLOWERY = "Let's inhabit today; the weight of the archive is a cage, an architec
 PLAINLY = "Dot, can you find research on whether filming a moment changes how present people are in it?"
 seq = iter([FLOWERY, PLAINLY])
 S.add(DOT, "What do you want to look into?")
-D.tick(api=S, think=lambda s_, u: (heard.append(u), next(seq))[1], fable=fable, now=99999999 + 200)
+D.tick(api=S, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else (heard.append(u), next(seq))[1], fable=fable, now=99999999 + 200)
 check("and reminded of it right before he writes", heard and heard[0].endswith(D.PLAIN), heard[:1])
 check("a flowery message is said again plainly, on his own model, and the plain one is sent",
       len(heard) == 2 and FLOWERY in heard[1] and S.posted[-1]["text"].endswith(PLAINLY), S.posted[-1]["text"])
 seq = iter([FLOWERY, FLOWERY + " The quiet hum of the threshold."])
 S.add(DOT, "Go on?")
-D.tick(api=S, think=lambda s_, u: next(seq), fable=fable, now=99999999 + 300)
+D.tick(api=S, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else next(seq), fable=fable, now=99999999 + 300)
 check("a rewrite that is no plainer is not used", S.posted[-1]["text"].endswith(FLOWERY), S.posted[-1]["text"])
 check("plain words are not rewritten", D.flowery(PLAINLY) == [] and len(D.flowery(FLOWERY)) >= 2)
 n4, before = len(S.posted), {f: open(os.path.join(D.HERE, f)).read() for f in os.listdir(D.HERE)}
@@ -613,6 +615,44 @@ check("his Lab: what failed and why, what he asked, what he wants next",
       and "all better than hartree fock" in _lb and "stretch the bond" in _lb and "today 09:40" in _lb, _lb)
 check("the Lab is in his context", "YOUR LAB" in D.his_context())
 check("the Lab topic says what the Lab is", "chemistry" in D.TOPICS["lab"][1] and "not the Lab" in D.TOPICS["lab"][1])
+
+# The editing pass (Gloria, 2026-10-01: "Gemma responses may need a second pass to make sure they're on topic
+# and make sense"). The same local model reads his draft as an editor, against his record and the channel.
+DRAFT = "Dot, let's start with something real from the Lab: spectral flux onset papers for our music."
+FIXED = "Dot, my last Lab run failed: the claude lens returned no plan. Can you help me pick the next experiment?"
+def editor_says(verdict, seen=None):
+    def f(s_, u):
+        if s_ == D.EDITOR:
+            if seen is not None: seen.append(u)
+            if isinstance(verdict, Exception): raise verdict
+            return verdict
+        return DRAFT
+    return f
+_seen = []
+txt, who = D.compose("THE CONVERSATION SO FAR:\ndot: bring me the next Lab task", editor_says("EDIT: " + FIXED, _seen),
+                     fable, {}, "2026-10-01")
+check("an off-topic draft is corrected by the editor, and it is still Gemma's", txt == FIXED and who == "gemma", (txt, who))
+check("the editor reads his record (his real Lab) and the channel, beside his draft",
+      _seen and "YOUR LAB" in _seen[0] and "bring me the next Lab task" in _seen[0] and DRAFT in _seen[0], _seen[:1])
+check("and is told music is not his Lab, and to keep his action lines", "Music and audio analysis are not his Lab" in D.EDITOR
+      and "LOCKED:" in D.EDITOR and "KEEP" in D.EDITOR)
+txt, _ = D.compose("p", editor_says("KEEP"), fable, {}, "2026-10-01")
+check("KEEP sends the draft as written", txt == DRAFT, txt)
+txt, why = D.compose("p", editor_says("DROP: nothing in it is true"), fable, {}, "2026-10-01")
+check("DROP sends nothing, and says why", txt is None and "nothing in it is true" in why, why)
+for odd in ("Sure, here is my edit.", "", RuntimeError("LM Studio down"), "EDIT: NOTHING", "EDIT: " + "x" * (D.MAX_CHARS + 1)):
+    txt, _ = D.compose("p", editor_says(odd), fable, {}, "2026-10-01")
+    check("an editor answer that is unclear, empty, failed or too long leaves the draft as written (%r)" % str(odd)[:20],
+          txt == DRAFT, txt)
+out, verdict = D.edit("Agreed, that is done.\nLOCKED: onset study plan", lambda s_, u: "EDIT: Agreed, it is done.", "p", "", log=False)
+check("an edit that loses his LOCKED: line is not used", out.endswith("LOCKED: onset study plan") and "lost" in verdict, (out, verdict))
+_ed = [json.loads(l) for l in open(D.EDITS)]
+check("every edit is logged beside the channel, in the scratch store", D.EDITS.startswith(HOME) and len(_ed) >= 8
+      and {"kept", "edited"} <= {e["verdict"] for e in _ed} and any(e["verdict"].startswith("dropped") for e in _ed), _ed[-3:])
+_called = []
+txt, who = D.compose("p", lambda s_, u: (_called.append(s_ == D.EDITOR), DRAFT)[1], fable, {}, "2026-10-01",
+                     lenses={"opus": lambda s_, u: "Opus speaking."}, lens="opus")
+check("a scheduled lens's message is its own: not edited", txt == "Opus speaking." and True not in _called, _called)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

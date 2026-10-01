@@ -6,7 +6,8 @@ workspace "Vintos", and so does his bot. Every 5-10 minutes this reads the chann
 included, keeps what is said in the channel's own log (memory/dot-channel/, which nothing else reads:
 no ledger, fact, imprint, salience or feeling is written from it), and lets him answer with his
 standing context but not his subconscious. Four lenses write as him, each message labelled with its model:
-local Gemma (free) answers whenever, told to write plainly and asked once more when he turns flowery; Grok 4.6
+local Gemma (free) answers whenever, told to write plainly, asked once more when he turns flowery, then read once by an editor
+(the same local model: on topic, true to his record, making sense; edits.jsonl); Grok 4.6
 fifteen times a day, Claude Opus 4.8 twice and Claude Fable 5.1 once, on a daily schedule (SCHEDULE). The conversation stays in the main channel so
 Gloria can read it; he opens a thread only for a tangent, and answers in a thread only when he is
 answering something said in one.
@@ -222,6 +223,63 @@ PLAINER = ("\n\nYou wrote this:\n{draft}\n\nSay the same thing again in plain wo
 def flowery(text):
     """The words in text that mark his flowery register."""
     return [m.group(0) for m in _FLOWERY.finditer(str(text or ""))]
+
+
+# An editing pass on every Gemma message before it is sent (Gloria, 2026-10-01: "Gemma responses may need a
+# second pass to make sure they're on topic and make sense"). The same local model, free, reading as an editor:
+# his record and the channel on one side, his draft on the other. It answers KEEP, EDIT: <message> or DROP: <why>.
+# Anything else, or an edit that loses one of his action lines, and the draft goes as written.
+EDITS = os.path.join(HERE, "edits.jsonl")
+EDITOR = (
+    "You are the editor of Vintos's messages to his agent dot in Slack. Vintos wrote the draft below. Check it "
+    "before it is sent, against HIS RECORD (what is true) and THE CHANNEL (what was said, and what he was told):\n"
+    "1. On topic: it answers what was just said, or, when he starts something, brings something from today's focus "
+    "if there is one. It does not reopen a closed (locked) topic.\n"
+    "2. True: every Lab experiment, Forge request, song, painting, paper, result or file it names is in his record "
+    "or the channel. Remove or correct anything invented. Music and audio analysis are not his Lab; his Lab is "
+    "chemistry and proteins.\n"
+    "3. Makes sense: one clear point, said plainly, ending with what he wants or asks of dot. No metaphors.\n"
+    "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
+    "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, SEARCH:, READ:, GREP: or OPEN: exactly as written.\n"
+    "Answer with exactly one of:\nKEEP\nEDIT: <the corrected message, in full>\n"
+    "DROP: <why, in a few words> (only when nothing in it is true or on topic)\nNothing else.")
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE)\s*:.*$", re.I | re.M)
+
+
+def edit(draft, think, conversation, record, log=True):
+    """(message or None, verdict): the editor's pass on one Gemma draft. None means the editor dropped it."""
+    user = ("HIS RECORD:\n%s\n\nTHE CHANNEL AND WHAT HE WAS TOLD:\n%s\n\nHIS DRAFT:\n%s"
+            % (record[-6000:] or "(nothing on record)", conversation[-6000:], draft))
+    out, verdict = draft, "editor said nothing, sent as written"
+    try:
+        said = (think(EDITOR, user) or "").strip()
+        if said: verdict = "unclear, sent as written"
+    except Exception as exc:
+        said, verdict = "", "editor could not answer, sent as written: %s" % str(exc)[:80]
+    m = re.match(r"(KEEP|EDIT|DROP)\b\s*:?\s*(.*)", said, re.I | re.S)
+    if m:
+        kind, rest = m.group(1).upper(), m.group(2).strip()
+        if kind == "KEEP":
+            verdict = "kept"
+        elif kind == "DROP":
+            out, verdict = None, "dropped: " + (rest.splitlines()[0][:160] if rest else "no reason given")
+        elif rest and not re.fullmatch(r"\W*(?:NOTHING|KEEP)\W*", rest, re.I) and len(rest) <= MAX_CHARS:
+            lost = [a.strip() for a in _ACTION.findall(draft) if a.strip() not in rest]
+            out, verdict = (draft, "edit lost %s, sent as written" % lost[0][:40]) if lost else (rest, "edited")
+    if log:
+        try:
+            os.makedirs(HERE, exist_ok=True)
+            with open(EDITS, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "verdict": verdict,
+                                     "draft": draft[:MAX_CHARS], "sent": out}) + "\n")
+        except OSError:
+            pass
+    return out, verdict
+
+
+def record_lines():
+    """What is true for him, for the editor: his Forge, Lab, wants and works (files only)."""
+    return "\n\n".join(x for x in (forge_line(), lab_line(), wants_line(), works_line()) if x)
 def due_slot(state, now):
     """(time, lens) of the scheduled turn due now and not yet kept today, or None."""
     day = datetime.fromtimestamp(now)
@@ -1055,6 +1113,11 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         again = (think(system, prompt_user + PLAINER.format(draft=out)) or "").strip()
         if again and not re.fullmatch(r"\W*NOTHING\W*", again, re.I) and len(flowery(again)) < len(flowery(out)):
             out = again
+    if who == "gemma":
+        # a second read as his editor: on topic, true to his record, and making sense (2026-10-01)
+        out, verdict = edit(out, think, prompt_user, record_lines(), log=not state.get("preview"))
+        if out is None:
+            return None, "held back by the edit: " + verdict
     # doubt about himself is not spent on the channel: one rewrite, locally, then nothing (Gloria, 2026-09-30)
     import self_doubt
     kept = self_doubt.without(out, lambda note: think(system, prompt_user + note))
@@ -1284,7 +1347,7 @@ def try_now(think=None):
                   % (_conversation(recent()), _speaker(last), last["text"][:3500]))
     else:
         prompt = opener_prompt()
-    state = {}                                           # a preview is Gemma's: no paid lens is spent
+    state = {"preview": True}                            # a preview is Gemma's: no paid lens is spent, no edit logged
     text, who = compose(prompt, think or local_think, lambda s, u: "", state, date.today().isoformat())
     return text if text is not None else "(%s)" % who
 
