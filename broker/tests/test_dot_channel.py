@@ -442,7 +442,7 @@ os.remove(D.CONFIG_FILE)
 # one switch for the day: !stop / !start from Gloria, or the app's toggle (the same file) (Gloria, 2026-10-01)
 S7 = Slack(); S7.n = 1767229000.0
 D.reset(api=NewSlack([SELF, DOT]), now=1767229000)
-S7.add(GLORIA, "!stop")
+S7.add(GLORIA, "Goodnight, boys.\n\n`!stop`")
 spoke7 = []
 out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "x")[1], fable=fable, now=1767229100)
 check("!stop from Gloria pauses the day, and dot is told once, by name", D.paused() and S7.posted
@@ -464,6 +464,7 @@ check("only Gloria's word works the switch", D.paused())
 S7.add(GLORIA, "!start")
 out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "Back. Dot, where were we on the load cells?")[1], fable=fable, now=1767229400)
 check("!start begins the day again, and says so", not D.paused() and any(p["text"] == "<@%s> " % DOT + D.RESUMED_SAY for p in S7.posted), out)
+check("the word works anywhere in her message, and that goodnight is not answered", not any("Goodnight" in u for u in spoke7))
 check("the switch words are not answered as talk", not any("!start" in u or "!stop" in u.split("just said:")[-1] for u in spoke7), spoke7[-1:])
 open(D.PAUSE_FILE, "w").write(json.dumps({"since": "2026-10-01T21:00:00", "by": "app"}))
 out = D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229500)

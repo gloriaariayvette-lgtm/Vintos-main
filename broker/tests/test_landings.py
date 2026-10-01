@@ -14,6 +14,9 @@ L = importlib.util.module_from_spec(spec); spec.loader.exec_module(L)
 
 NOW = datetime.now().replace(microsecond=0)
 T = (NOW - timedelta(hours=2)).isoformat()
+# yesterday, so the dated pieces stay inside the 7-day window whatever day the suite runs (they were dated
+# 2026-09-24 and fell out of it on 2026-10-01)
+DAY = (NOW - timedelta(days=1)).date().isoformat()
 
 
 def put(rel, obj):
@@ -33,9 +36,9 @@ class Landings(unittest.TestCase):
                                                     "generated_at": T,
                                                     "tracks": [{"version": 1, "local_file": "/saved/Four_AM_v1.wav"}]}]})
         put("humor-drafts.json", {"drafts": [{"joke_id": "J-1", "joke": "a cat walks into a lab", "date": T}]})
-        open(os.path.join(MEM, "outreach", "2026-09-24_1400.md"), "w").write(
+        open(os.path.join(MEM, "outreach", (DAY + "_1400.md")), "w").write(
             "# Vintos Initiated — September 24\n**Trigger:** want\n**Emotional state:** warm\n\nthinking of you")
-        open(os.path.join(MEM, "journal", "2026-09-24.md"), "w").write(
+        open(os.path.join(MEM, "journal", (DAY + ".md")), "w").write(
             "[03:10]\nI kept the light on.\n\n## 14:05 — Idle thoughts\n\nShe laughed today.\n")
         put("interaction-ledger.json", [
             {"timestamp": (NOW - timedelta(hours=9)).isoformat(), "gloria": "too early", "vintos": "x"},
@@ -55,17 +58,17 @@ class Landings(unittest.TestCase):
 
     def test_every_surface_resolves(self):
         for surface, ref, key in (("image", "dream-1.png", "prompt"), ("song", "S1", "title"), ("joke", "J-1", "joke"),
-                                  ("message", "2026-09-24_1400.md", "message"), ("journal", "2026-09-24 03:10", "entry"),
-                                  ("journal", "2026-09-24 14:05", "entry")):
+                                  ("message", (DAY + "_1400.md"), "message"), ("journal", (DAY + " 03:10"), "entry"),
+                                  ("journal", (DAY + " 14:05"), "entry")):
             ctx = L.context(surface, ref)
             self.assertTrue(ctx and ctx["made"][key], (surface, ref))
-        self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
-        self.assertNotIn("She laughed", L.context("journal", "2026-09-24 03:10")["made"]["entry"])
+        self.assertIn("kept the light on", L.context("journal", (DAY + " 03:10"))["made"]["entry"])
+        self.assertNotIn("She laughed", L.context("journal", (DAY + " 03:10"))["made"]["entry"])
         self.assertEqual(L.context("image", "dream-1.png")["piece"]["src"], "/api/art/painting/dream-1.png")
         self.assertEqual(L.context("song", "S1")["piece"]["tracks"],
                          [{"src": "/api/art/music/stream/Four_AM_v1.wav", "version": 1}])
         self.assertEqual(L.context("joke", "J-1")["piece"]["text"], "a cat walks into a lab")
-        self.assertIn("kept the light on", L.context("journal", "2026-09-24 03:10")["piece"]["text"])
+        self.assertIn("kept the light on", L.context("journal", (DAY + " 03:10"))["piece"]["text"])
 
     def test_a_bare_rating_is_refused(self):
         with self.assertRaises(ValueError): L.record("song", "S1", "landed", "  ")
@@ -81,9 +84,9 @@ class Landings(unittest.TestCase):
     def test_every_recent_piece_is_listed_and_nothing_is_counted(self):
         items = L.sent(days=7)
         self.assertEqual({(i["surface"], i["ref"]) for i in items},
-                         {("video", "video-a.mp4"), ("message", "2026-09-24_1400.md"),
+                         {("video", "video-a.mp4"), ("message", (DAY + "_1400.md")),
                           ("image", "dream-1.png"), ("song", "S1"), ("joke", "J-1"),
-                          ("journal", "2026-09-24 03:10"), ("journal", "2026-09-24 14:05")})
+                          ("journal", (DAY + " 03:10")), ("journal", (DAY + " 14:05"))})
         video = next(i for i in items if i["surface"] == "video")
         message = next(i for i in items if i["surface"] == "message")
         self.assertEqual(video["piece"]["src"], "/api/art/video/stream/video-a.mp4")

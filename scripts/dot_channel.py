@@ -1043,10 +1043,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if theirs:
         state["last_activity"] = now
     lines = ["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")]
-    for r in list(theirs):                    # her switch, said in the channel; it is not answered as talk
-        word = r["text"].strip().lower()
-        if r["who"] == "gloria" and word in STOP_WORDS + START_WORDS:
-            set_paused(word in STOP_WORDS, "slack", now)
+    for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
+        words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
+        if r["who"] == "gloria" and words & set(STOP_WORDS + START_WORDS):
+            set_paused(bool(words & set(STOP_WORDS)), "slack", now)
             theirs.remove(r)
     is_paused = paused()
     if bool(is_paused) != bool(state.get("paused_said")):
