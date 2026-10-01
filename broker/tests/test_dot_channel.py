@@ -771,6 +771,10 @@ S6.msgs[-1].update(bot_id="BGROK", bot_profile={"name": "Grok"})
 heard = []
 D.tick(api=S6, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else (heard.append(u), "@GrokBot which lab posted the cryo-EM?")[1],
        fable=L["fable"], lenses=L, now=day(23, 5), today="2026-10-01")
+S6.add(GLORIA, "[Grok Bot] The cryo-EM is from the Patapoutian lab: https://x.com/example/1")
+check("Grok Bot posting through Gloria's login, signed, is Grok Bot, not Gloria",
+      D._who(S6.msgs[-1], SELF, DOT) == "agent" and D._agent_name(S6.msgs[-1]) == "Grok Bot"
+      and D._who({"user": GLORIA, "text": "Good morning"}, SELF, DOT) == "gloria")
 check("he hears Muse by its sign, not as Gloria, and Grok Bot by name",
       heard and "Muse: [Muse] Found 3 load cell listings" in heard[-1] and "Grok Bot: Top X posts" in heard[-1]
       and "Gloria: [Muse]" not in heard[-1], heard[-1][-600:] if heard else heard)

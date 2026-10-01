@@ -1148,7 +1148,14 @@ def fresh(api, channel, self_id, since):
     return rows
 
 
-MUSE_SIGN = "[Muse]"      # Muse posts through Gloria's own Slack login, so it signs its messages
+# Muse and Grok Bot post through Gloria's own Slack login (their Slack connectors), so they sign their messages.
+# Grok Bot cannot join as its own Slack app: it is her personal bot (Grok Bot, 2026-10-01).
+SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot"}
+
+
+def _signed(m):
+    t = str(m.get("text") or "").lstrip()
+    return next((name for sign, name in SIGNS.items() if t.startswith(sign)), None)
 
 
 def _who(m, self_id, dot):
@@ -1159,14 +1166,14 @@ def _who(m, self_id, dot):
         return "vintos"
     if u == dot:
         return "dot"
-    if str(m.get("text") or "").lstrip().startswith(MUSE_SIGN):
+    if _signed(m):
         return "agent"
     return "agent" if m.get("bot_id") or m.get("subtype") == "bot_message" else "gloria"
 
 
 def _agent_name(m):
-    if str(m.get("text") or "").lstrip().startswith(MUSE_SIGN):
-        return "Muse"
+    if _signed(m):
+        return _signed(m)
     name = str((m.get("bot_profile") or {}).get("name") or m.get("username") or "another agent")[:60]
     return "Grok Bot" if "grok" in name.lower() else name
 
@@ -1195,7 +1202,8 @@ def agent_ids(api, state, now=None):
 
 
 def address(text, dot, ids):
-    """His @s made real: dot and Grok Bot become Slack mentions; Muse stays '@Muse', which it watches for.
+    """His @s made real: dot becomes a Slack mention, and Grok Bot too if it is ever a Slack app here; otherwise
+    '@GrokBot' and '@Muse' stay as written, which their routines watch the channel for.
     Returns (text, whether dot is addressed). With no @ at all, he is talking to dot, as always."""
     named = set()
     def one(m):
