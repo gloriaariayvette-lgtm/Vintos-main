@@ -9778,6 +9778,9 @@ Your current self-model (excerpt):
                                                    "first_words": (reply or "").strip()[:60]}) + "\n")
                 reply = _tagre.sub(r"\s*\[(?:COLOR|GESTURE|HOLD):[^\]]*\]\s*", " ",
                                    reply or "", flags=_tagre.I).strip()
+                # a tag cut off at the end ("[SCENE:" with no close) is not words and not a room: it went out as
+                # his whole reply and into the ledger once (2026-10-01)
+                reply = _tagre.sub(r"\s*\[[A-Z_]+\s*:[^\]]*$", "", reply or "").strip()
                 # Defense in depth: even if a model echoes an old avatar tag
                 # from history, ReelRoom never displays, remembers, or executes it.
                 if _surface == "reelroom":

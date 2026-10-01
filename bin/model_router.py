@@ -335,12 +335,24 @@ def _sysblocks(system_text):
         return blocks
     return [{"type": "text", "text": system_text}]
 
+# Room for his thinking ON TOP of the reply. max_tokens counts thinking and reply together, and it was 1200 in
+# all: a turn that thought for ~1200 tokens had nothing left, and "[SCENE:" went out as his whole reply
+# (2026-10-01, t-41f6c4549c8a4627). Only tokens used are billed.
+THINK_ROOM = 6000
+_TAG_ONLY = __import__("re").compile(r"\[[A-Z_]+\s*:[^\]]*(?:\]|$)")
+
+
+def words_left(text):
+    """What of a reply is words once his private tags, closed or cut off, are taken out."""
+    return _TAG_ONLY.sub(" ", str(text or "")).strip()
+
+
 async def _claude(system_text, convo, params, reason, paid_reservation=None):
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
     if reason:
         thinking = {"type": "adaptive", "display": "summarized"}
-        max_tok = max(int(params.get("max_tokens", 400)), 1200)
+        max_tok = max(int(params.get("max_tokens", 400)), 900) + THINK_ROOM
     else:
         thinking = {"type": "disabled"}
         max_tok = max(int(params.get("max_tokens", 400)), 128)
@@ -482,6 +494,16 @@ async def route_reply_result(surface, system_text, convo, params, grok_endpoint,
         # and answered "no reply formed" (review P10, 2026-09-05).
         res = await _rb_aio.wait_for(_claude(system_text, convo, params, reason, paid_reservation), timeout=ROUTE_BUDGET_S)
         stages.append(res); _ledger(res, surface, _t0, "claude")
+        if GR.usable(res) and res["status"] == "truncated" and not words_left(res["text"]):
+            # cut off before a single word reached her: the same model once more, without thinking, rather than
+            # a tag fragment as his reply or another model's voice
+            res["status"], res["reason"] = "unavailable", "cut off before any words: %r" % res["text"][:40]
+            _t1 = _rb_t.time()
+            res = await _rb_aio.wait_for(_claude(system_text, convo, params, False, paid_reservation),
+                                         timeout=max(ROUTE_FLOOR_S, ROUTE_BUDGET_S - (_rb_t.time() - _t0)))
+            stages.append(res); _ledger(res, surface, _t1, "claude-again")
+            if GR.usable(res) and not words_left(res["text"]):
+                res["status"], res["reason"] = "unavailable", "cut off before any words again"
         if GR.usable(res):
             res["route"] = "claude:" + current_claude_model(); res["stages"] = stages
             return res
@@ -523,7 +545,7 @@ async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=Non
     while convo and convo[0].get("role") != "user":
         convo = convo[1:]
     chosen = model or current_claude_model()
-    body = {"model": chosen, "max_tokens": max_tokens,
+    body = {"model": chosen, "max_tokens": max_tokens + THINK_ROOM,   # thinking shares the budget
             "system": _sysblocks(system_text),
             "messages": _cachetail(for_anthropic(convo)), "thinking": {"type": "adaptive", "display": "summarized"}}
     _reserve_provider("anthropic",chosen,paid_reservation)
