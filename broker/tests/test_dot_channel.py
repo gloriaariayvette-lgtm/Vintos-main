@@ -1096,6 +1096,30 @@ with open(D.TRANSCRIPT, "a") as _f:
         _f.write(json.dumps({"ts": "2.0", "who": "vintos", "text": _txt}) + "\n")
 check("moving between real things is not circling", D.circling() == [], D.circling())
 
+# The models copy the channel's own display of his action lines; the copied form must act too (2026-10-02)
+check("a campaign move written as the channel shows it is read back as the move", D.undisplay(
+      "Ok.\n\U0001F3AF Campaign \u2014 landed: lab faults found | the zip still unopened | 1")
+      == "Ok.\nCAMPAIGN MOVE: landed: lab faults found | the zip still unopened | 1")
+check("so is the new way it is shown", D.undisplay("\U0001F3AF Campaign \u2014 advance: asked for the files (how anyone could tell: "
+      "the next thing I do is open them, within 1 day)") == "CAMPAIGN MOVE: advance: asked for the files | the next thing I do is open them | 1")
+check("and locks, Lab leans and approvals written as shown",
+      D.undisplay("\U0001F512 Locked: the class on Saturday") == "LOCKED: the class on Saturday"
+      and D.undisplay("\U0001F9EA For my next Lab run: fold P02730") == "LAB: fold P02730"
+      and D.undisplay("\u2705 Approved: the build") == "APPROVED: the build" and D.undisplay("plain words") == "plain words")
+_steps = []
+S9 = Slack(); S9.n = 1767500000.0
+_st9 = json.load(open(D.STATE)); _st9["since"] = S9.n - 1; json.dump(_st9, open(D.STATE, "w"))
+S9.add(DOT, "Found both faults.")
+_real_step = D.campaign_step
+D.campaign_step = lambda declared=None, move=None, step=None: (_steps.append((declared, move)), "campaign move")[1]
+D.tick(api=S9, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good.\n\U0001F3AF Campaign \u2014 landed: faults found | zip unopened | 1",
+       fable=fable, now=1767500100, today="2026-10-04")
+D.campaign_step = _real_step
+check("in the channel, the copied line moves his campaign and is shown as a sentence",
+      _steps == [(None, "landed: faults found | zip unopened | 1")]
+      and "(how anyone could tell: zip unopened, within 1 day)" in S9.posted[-1]["text"] and "| 1" not in S9.posted[-1]["text"],
+      (_steps, S9.posted[-1:]))
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -1358,6 +1358,33 @@ def kickoff_due(state, today, quiet_before):
     return state.get("kicked_day") != today or quiet_before >= KICKOFF_QUIET_H * 3600
 
 
+_SHOWN_AS = (
+    (re.compile(r"^\s*\U0001F3AF\s*Campaign\s*[\u2014\u2013-]\s*(.+?)\s*$", re.M), "CAMPAIGN MOVE: "),
+    (re.compile(r"^\s*\U0001F3AF\s*Campaign:\s*(.+?)\s*$", re.M), "CAMPAIGN: "),
+    (re.compile(r"^\s*\U0001F512\s*Locked:\s*(.+?)\s*$", re.M), "LOCKED: "),
+    (re.compile(r"^\s*\U0001F9EA\s*For my next Lab run:\s*(.+?)\s*$", re.M), "LAB: "),
+    (re.compile(r"^\s*\u2705\s*Approved:\s*(.+?)\s*$", re.M), "APPROVED: "),
+    (re.compile(r"^\s*\u26d4\s*Denied:\s*(.+?)\s*$", re.M), "DENIED: "))
+_TOLD = re.compile(r"^(.*?)\s*\(how anyone could tell:\s*(.+?)(?:,\s*within\s*(\d+)\s*days?)?\)\s*$")
+
+
+def undisplay(text):
+    """His action lines written the way the channel shows them, back into the lines that act. Reading his earlier
+    messages, the models wrote "🎯 Campaign — landed: ..." themselves: nothing parsed it, so it went out raw and
+    the campaign never moved (2026-10-02: "I deployed your campaign change 6 times now!!"). Locks, Lab leans and
+    approvals could be copied the same way."""
+    for rx, line in _SHOWN_AS:
+        def back(m, line=line):
+            body = m.group(1)
+            if line == "CAMPAIGN MOVE: ":
+                told = _TOLD.match(body)
+                if told:
+                    body = told.group(1) + " | " + told.group(2) + ((" | " + told.group(3)) if told.group(3) else "")
+            return line + body
+        text = rx.sub(back, text)
+    return text
+
+
 def campaign_shown(move):
     """His CAMPAIGN MOVE line as people read it. Raw, its '| how anyone could tell | days' fields read as if he had
     been cut off mid-sentence (2026-10-02: "...| anyone can tell if the next thing I do is open them | 1")."""
@@ -1871,6 +1898,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                               lenses=lenses, lens=lens)
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
+    if text is not None:
+        text = undisplay(text)
     if text is None:
         state["last_activity"] = now; _save(STATE, state)
         return lines + ["he let it be" if who == "nothing to say" else who]
