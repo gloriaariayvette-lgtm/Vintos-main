@@ -760,13 +760,17 @@ def opus_think(system, user, model=None):
     return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
 
 
+DOT_SOL_DEFAULT = "gpt-6.1"
+
+
 def sol_model():
-    """Sol's model, as SOL_MODEL in ~/.vintos/vintos.env names it (the same setting his chat's Sol uses)."""
+    """Sol's model in this channel only: DOT_SOL_MODEL in ~/.vintos/vintos.env, else gpt-6.1 (Gloria, 2026-10-02: "6.1
+    only here, not to replace Sol 5.6 elsewhere"). SOL_MODEL, which his chat's Sol uses, is not read or changed."""
     try:
         import env_file
-        return env_file.value("SOL_MODEL", "gpt-5.6") or "gpt-5.6"
+        return env_file.value("DOT_SOL_MODEL", DOT_SOL_DEFAULT) or DOT_SOL_DEFAULT
     except Exception:
-        return "gpt-5.6"
+        return DOT_SOL_DEFAULT
 
 
 def sol_label():

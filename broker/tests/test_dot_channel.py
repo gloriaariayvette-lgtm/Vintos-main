@@ -1170,6 +1170,10 @@ _o11 = D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma 
 check("if its model cannot answer, Gemma does, and the log says why", _body(S11.posted[-1]).startswith("[Gemma] Gemma steps in.")
       and any("could not answer" in l for l in _o11), (S11.posted[-1:], _o11))
 D.SCHEDULE = _SAVED_SCHED; D.ROTATION = ("gemma",)
+_src_sol = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+_src_sol = _src_sol[_src_sol.index("def sol_model():"):_src_sol.index("def sol_label():")]
+check("Sol in the channel is 6.1 by its own setting, never SOL_MODEL (Sol 5.6 elsewhere stays)",
+      D.DOT_SOL_DEFAULT == "gpt-6.1" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
