@@ -12,11 +12,16 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 ASTRA_MODEL = os.environ.get("VINTOS_ATELIER_ASTRA_MODEL", "gpt-6-astra")
 
 
-def ask(system, user, max_tokens=2000):
+def ask(system, user, max_tokens=2000, images=None):
+    """`images`: [(media_type, base64)] he sees in this message, his own painting (2026-10-02). Both voices take
+    them: model_router hands each provider the picture in its own shape."""
     for path in (os.path.join(WS, "bin"), os.path.expanduser("~/Vintos")):
         if path not in sys.path: sys.path.append(path)
     import model_router
-    convo = [{"role": "user", "content": user}]
+    content = user
+    if images:
+        content = [{"type": "text", "text": user}] + [{"type": "image", "media_type": m, "data": d} for m, d in images]
+    convo = [{"role": "user", "content": content}]
     # The old Atelier-only Fable override refused every live request. That
     # silently made Astra the room's permanent voice and spent two provider
     # attempts per decision. Follow the same explicit Claude mode as Vintos's

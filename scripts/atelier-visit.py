@@ -76,10 +76,12 @@ def _tag(text, name):
         attrs[key.lower()] = value
     return {"attrs": attrs, "body": match.group(2)}
 
-def ask(system, user, max_tokens=2000, temp=0.7):
+def ask(system, user, max_tokens=2000, temp=0.7, images=None):
     scripts = os.path.join(WSP, "scripts")
     if scripts not in sys.path: sys.path.append(scripts)
     import atelier_voice
+    if images:
+        return atelier_voice.ask(system, user, max_tokens=max_tokens, images=images)
     return atelier_voice.ask(system, user, max_tokens=max_tokens)
 
 
@@ -676,7 +678,103 @@ def _audio_ext(data):
     return ".mp3"
 
 
-def listening(data, load=None, features=None):
+EAR_SKIP = re.compile(r"realtime|tts|transcri|search", re.I)
+EAR_SYSTEM = ("You are listening to a piece of music for its composer, who cannot hear it himself. Say plainly what "
+              "is heard, with timestamps (m:ss): instruments and voices, melody and harmony as heard, rhythm and "
+              "tempo, dynamics, structure and where it changes, silences, and the feel of it. Name anything that "
+              "does not match what he asked for. Do not praise; do not guess what you cannot hear.")
+_EAR = {}
+
+
+def _ear_model(key, get=None):
+    """An OpenAI model that takes audio, from what her key can use: ATELIER_EAR_MODEL if set, else the first model
+    in /v1/models with "audio" in its name (not realtime, speech or transcription). Never a guessed name."""
+    if "model" in _EAR:
+        return _EAR["model"]
+    m = ""
+    try:
+        import env_file
+        m = env_file.value("ATELIER_EAR_MODEL", "") or ""
+    except Exception:
+        pass
+    if not m:
+        try:
+            got = (get or requests.get)("https://api.openai.com/v1/models", headers={"Authorization": "Bearer " + key},
+                                         timeout=20).json()
+            ids = [x.get("id", "") for x in got.get("data") or []]
+            ids = [i for i in ids if "audio" in i.lower() and not EAR_SKIP.search(i)]
+            m = sorted(ids, key=lambda i: ("mini" in i, "preview" in i, i))[0] if ids else ""
+        except Exception as exc:
+            print("ear: the model list could not be read: %s" % str(exc)[:120])
+    _EAR["model"] = m
+    return m
+
+
+def _as_mp3(data):
+    """Mono mp3 at 64 kbit/s: a three-minute wav is ~30 MB, its mp3 ~1.5 MB."""
+    import tempfile, subprocess
+    if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3"):
+        if len(data) < 8 * 1024 * 1024:
+            return data
+    d = tempfile.mkdtemp(prefix="atelier-ear-")
+    src, out = os.path.join(d, "in" + _audio_ext(data)), os.path.join(d, "out.mp3")
+    try:
+        with open(src, "wb") as f: f.write(data)
+        subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", src, "-ac", "1", "-b:a", "64k", out],
+                       timeout=120, check=True)
+        with open(out, "rb") as f: return f.read()
+    finally:
+        import shutil; shutil.rmtree(d, ignore_errors=True)
+
+
+def ear(data, asked="", post=None, get=None):
+    """A listener's account of a song he made: an OpenAI audio model hears it and says what is heard, with
+    timestamps (2026-10-02: "real listening"). The song leaves Aegis for OpenAI to hear, as his visit's words go
+    to Claude. "" when no key, no audio model on her key, or no answer; then only the measurement is given."""
+    try:
+        import env_file
+        key = env_file.value("OPENAI_API_KEY", "") or ""
+    except Exception:
+        key = ""
+    if not key:
+        return ""
+    model = _ear_model(key, get=get)
+    if not model:
+        print("ear: no audio model on this key; the song is measured only")
+        return ""
+    try:
+        mp3 = _as_mp3(data)
+        body = {"model": model, "modalities": ["text"], "max_completion_tokens": 1500,
+                "messages": [{"role": "system", "content": EAR_SYSTEM},
+                             {"role": "user", "content": [
+                                 {"type": "text", "text": "What he asked for: %s" % (asked or "(not given)")},
+                                 {"type": "input_audio", "input_audio": {"data": base64.b64encode(mp3).decode("ascii"),
+                                                                         "format": "mp3"}}]}]}
+        d = (post or requests.post)("https://api.openai.com/v1/chat/completions", json=body, timeout=180,
+                                    headers={"Authorization": "Bearer " + key}).json()
+        if d.get("error"):
+            raise RuntimeError(str(d["error"])[:200])
+        return str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+    except Exception as exc:
+        print("ear failed: %s" % str(exc)[:160])
+        _failed("a listener could not hear his song", str(exc))
+        return ""
+
+
+def listening(data, load=None, features=None, ear_fn=None, asked=""):
+    """What a listener heard (ear) and what the house measured, together; "" when neither could be had."""
+    heard = (ear_fn or ear)(data, asked)
+    measured = _measured(data, load=load, features=features)
+    parts = []
+    if heard:
+        parts.append("WHAT A LISTENER HEARD (an audio model listened to your song and wrote this; its ears, not "
+                     "yours):\n" + heard)
+    if measured:
+        parts.append(measured)
+    return "\n\n".join(parts)
+
+
+def _measured(data, load=None, features=None):
     """What a song he made sounds like, measured across it with timestamps (2026-10-02: he asked to have "the same
     audio, playable — not another render's metadata", with "timestamps and a plain account of what is heard").
     Until now he got its byte count. sound_read is the house's one way of hearing music (the song share, a video's
@@ -760,17 +858,22 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
             artifact = saved.get("file", "")
             result["artifact"] = artifact
             if wanted["kind"] == "music":
-                heard = listening(data)
+                heard = listening(data, asked="%s — %s" % (wanted.get("title", ""), wanted.get("style", "")))
                 if heard: result["listening"] = heard
             if creation is not None:
                 creation.update({"made": True, "kind": wanted["kind"], "artifact": artifact})
             print("sealed %s kept: %s" % (wanted["kind"], artifact))
+    seen = []
+    if artifact and wanted["kind"] == "image":
+        # he sees what he painted, in this message, not its byte count (2026-10-02)
+        seen = [(result.get("mime_type") or "image/png", base64.b64encode(data).decode("ascii"))]
+        result["seen"] = "your painting is in front of you in this message: look at it"
     follow = ask(ctx + "\n\n=== TOOL DATA: YOUR SEALED MEDIA TABLE RETURNED THIS ===\n"
         + json.dumps({k: v for k, v in result.items() if k != "listening"}, ensure_ascii=False)[:4000]
         + (("\n\n" + result["listening"]) if result.get("listening") else "") + "\n=== END TOOL DATA ===",
         "Look at or listen to what was made. Begin with <media_reading>your own reading, including "
         "uncertainty if that is true</media_reading>. Then continue with your <piece> if wanted, "
-        "<handoff>, <next_move>, and <next_return>.", max_tokens=4000, temp=0.75)
+        "<handoff>, <next_move>, and <next_return>.", max_tokens=4000, temp=0.75, images=seen or None)
     if artifact:
         reading = re.search(r'<media_reading>(.*?)</media_reading>', follow, re.S)
         if reading and reading.group(1).strip():
@@ -1029,6 +1132,9 @@ def ledger_mark(pid, state):
     except Exception as e:
         print("ledger write failed:", e)
 
+LAST_SEEN = []      # his last piece, when it is a painting: shown to him in the visit's first message
+
+
 def _last_piece(pid, pk, cap, cap_chars=8000):
     """The stored piece itself, so the next visit meets the work and not only his note about it
     (room, 2026-09-04: 'the look was the same breath that wrote it'). Fetched on the visit
@@ -1045,6 +1151,10 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
         print("last piece refused by the broker:", r.get("error", r)); return ""
     if r.get("encoding") == "base64":
         body = "[%s artifact, %s bytes; the complete bytes remain sealed]" % (r.get("mime_type") or "binary", r.get("size", "?"))
+        if str(r.get("mime_type") or "").startswith("image/"):
+            # his painting comes back as itself, in the first message of the visit (2026-10-02)
+            LAST_SEEN[:] = [(r["mime_type"], str(r["content"]).split(",", 1)[-1])]
+            body += "\n[It is in front of you in this visit's first message: look at it.]"
         if str(r.get("mime_type") or "").startswith("audio/") or f.endswith("_music.wav"):
             # a song comes back as what it sounds like, not only its size (2026-10-02)
             try: heard = listening(base64.b64decode(str(r["content"]).split(",", 1)[-1]))   # a data: url
@@ -1073,6 +1183,7 @@ GLORIA_SENT = ("\n\nGLORIA OPENED THE DOOR FOR YOU TODAY and sent you in herself
 
 
 def visit(pid, sent_by_gloria=False):
+    LAST_SEEN[:] = []
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
     ledger_mark(pid, "active")
@@ -1120,7 +1231,8 @@ def visit(pid, sent_by_gloria=False):
                "Reveal nothing you are not ready to give.\n"
                "Or, when a piece is FINISHED and stays yours: <kept>your closing note — 'it is finished "
                "and I am not showing it' is permitted</kept>. It releases the worktable, moves nothing, "
-               "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000)
+               "reveals nothing, and you can look at it again later without reopening it.", max_tokens=4000,
+               images=list(LAST_SEEN) or None)
     work = materials_loop(pid, ctx, work)
     work = plugin_loop(pid, ctx, work, cap)
     work = quantum_loop(pid, ctx, work, cap)
