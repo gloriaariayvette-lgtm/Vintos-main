@@ -24,6 +24,7 @@ socket.socket.connect = _no_net
 
 import dot_channel as D
 D.kickoff_due = lambda *a: False   # this suite tests what he sees; the Opus 5.5 kickoff has its own checks in test_dot_channel
+D.ROTATION = ("gemma",)   # this suite tests what he sees; the rotation has its own checks in test_dot_channel
 D.SCHEDULE = []           # no scheduled lens turn here: none may reach a real model
 D.atelier_line = lambda: ""
 D.recall_block = lambda: ""

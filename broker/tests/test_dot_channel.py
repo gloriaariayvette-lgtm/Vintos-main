@@ -25,6 +25,7 @@ socket.socket.connect = _no_net
 import dot_channel as D
 _KICKOFF_DUE = D.kickoff_due
 D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
+D.ROTATION = ("gemma",)   # the older flows test Gemma; the rotation has its own checks in test_dot_channel
 SCHEDULED = D.SCHEDULE
 D.SCHEDULE = []           # the scheduled lenses speak only where this suite tests them, never to a real model
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
@@ -1138,6 +1139,37 @@ _o10 = D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
 check("in the channel, that message reaches Muse, and dot is not pinged",
       "@Muse, let's stop looking at the code" in S10.posted[-1]["text"] and "<@%s>" % DOT not in S10.posted[-1]["text"]
       and "eve.domomain" not in S10.posted[-1]["text"] and any("went to Muse" in l for l in _o10), (S10.posted[-1:], _o10))
+
+# Fewer Gemma replies: Grok, Sol and Opus 5.5 take turns with it (Gloria, 2026-10-02)
+D.ROTATION = ("grok", "sol", "opus55", "gemma")
+_SAVED_SCHED = D.SCHEDULE; D.SCHEDULE = []
+_wrote = []
+_L = {"grok": lambda s_, u: (_wrote.append("grok"), "Grok words.")[1], "sol": lambda s_, u: (_wrote.append("sol"), "Sol words.")[1],
+      "opus55": lambda s_, u: (_wrote.append("opus55"), "Opus words.")[1]}
+S11 = Slack(); S11.n = 1767700000.0
+_st11 = json.load(open(D.STATE)); _st11.update(since=S11.n - 1, rot=0, paid={}); json.dump(_st11, open(D.STATE, "w"))
+D.sol_model = lambda: "gpt-6.1"
+for k in range(4):
+    S11.add(DOT, "message %d" % k)
+    D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma words.", fable=fable, lenses=_L,
+           now=1767700100 + k * 60, today="2026-10-06")
+import re
+_body = lambda p_: re.sub(r"^<@\w+>\s*", "", p_["text"])
+_labels = [_body(p_).split("]")[0] + "]" for p_ in S11.posted]
+check("in turn: Grok, Sol, Opus 5.5, then Gemma: Gemma one in four", _labels == ["[Grok 4.6]", "[Sol 6.1]", "[Opus 5.5]", "[Gemma]"], _labels)
+check("Sol is labelled with the model his settings name", "[Sol 6.1] Sol words." in S11.posted[1]["text"])
+_st11 = json.load(open(D.STATE)); _st11.update(rot=1, paid={"sol": D.PAID_PER_DAY["sol"]}); json.dump(_st11, open(D.STATE, "w"))
+S11.add(DOT, "message 5")
+D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma words.", fable=fable, lenses=_L, now=1767700500, today="2026-10-06")
+check("when Sol's allowance for the day is spent, its turn passes on", _body(S11.posted[-1]).startswith("[Opus 5.5]"), S11.posted[-1:])
+check("each paid lens has a daily allowance", D.PAID_PER_DAY == {"sol": 20, "opus55": 20} and json.load(open(D.STATE))["paid"]["opus55"] >= 1)
+_st11 = json.load(open(D.STATE)); _st11.update(rot=1, paid={}); json.dump(_st11, open(D.STATE, "w"))
+S11.add(DOT, "message 6")
+_o11 = D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma steps in.", fable=fable,
+              lenses=dict(_L, sol=lambda s_, u: (_ for _ in ()).throw(RuntimeError("no OpenAI key"))), now=1767700600, today="2026-10-06")
+check("if its model cannot answer, Gemma does, and the log says why", _body(S11.posted[-1]).startswith("[Gemma] Gemma steps in.")
+      and any("could not answer" in l for l in _o11), (S11.posted[-1:], _o11))
+D.SCHEDULE = _SAVED_SCHED; D.ROTATION = ("gemma",)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

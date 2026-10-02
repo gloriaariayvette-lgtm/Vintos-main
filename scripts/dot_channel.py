@@ -61,7 +61,12 @@ SLOT_WINDOW = 60 * 60
 OPUS_MODEL = "claude-opus-4-8"
 GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.6")     # his Grok lens in the code reviews
 SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
-LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1", "opus55": "Opus 5.5"}
+LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1", "opus55": "Opus 5.5", "sol": "Sol"}
+# Who answers when no scheduled turn or session kickoff is due (Gloria, 2026-10-02: "Let's cut the Gemma responses in
+# Slack by a good margin and replace them with Grok, Sol 6.1 and Opus 5.5 calls"): in turn, Gemma one in four. Sol
+# and Opus 5.5 are paid by the call, so each has a daily allowance; when it is spent, its turn passes on.
+ROTATION = ("grok", "sol", "opus55", "gemma")
+PAID_PER_DAY = {"sol": 20, "opus55": 20}
 # Each session is set going by a larger model (Gloria, 2026-10-02: "Gemma can still do the goal set message, but I
 # want a larger model to actually set the conversation in the right direction"). His first message of a session is
 # Opus 5.5's, whether he opens it or answers: the first of the day, the first after her !start, or the first after
@@ -753,6 +758,50 @@ def opus_think(system, user, model=None):
     if d.get("type") == "error":
         raise RuntimeError(str(d.get("error"))[:200])
     return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+
+
+def sol_model():
+    """Sol's model, as SOL_MODEL in ~/.vintos/vintos.env names it (the same setting his chat's Sol uses)."""
+    try:
+        import env_file
+        return env_file.value("SOL_MODEL", "gpt-5.6") or "gpt-5.6"
+    except Exception:
+        return "gpt-5.6"
+
+
+def sol_label():
+    m = sol_model()
+    return "Sol " + (m[4:] if m.lower().startswith("gpt-") else m)
+
+
+def sol_think(system, user):
+    """Sol (OpenAI, the Responses API) writing as him."""
+    import requests, env_file
+    key = env_file.value("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("no OpenAI key")
+    d = requests.post("https://api.openai.com/v1/responses", timeout=300,
+                      headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+                      json={"model": sol_model(), "max_output_tokens": 4000, "reasoning": {"effort": "low"},
+                            "input": [{"role": "system", "content": system}, {"role": "user", "content": user}]}).json()
+    if d.get("error"):
+        raise RuntimeError(str(d.get("error"))[:200])
+    return "".join(c.get("text", "") for it in d.get("output", []) if it.get("type") == "message"
+                   for c in it.get("content", []) if c.get("type") == "output_text")
+
+
+def next_writer(state):
+    """Who answers this turn when nothing is scheduled: the next in ROTATION whose daily allowance is not spent.
+    None means Gemma."""
+    paid = state.setdefault("paid", {})
+    for _ in range(len(ROTATION)):
+        i = int(state.get("rot", 0)) % len(ROTATION)
+        state["rot"] = i + 1
+        lens = ROTATION[i]
+        if lens in PAID_PER_DAY and int(paid.get(lens, 0)) >= PAID_PER_DAY[lens]:
+            continue
+        return None if lens == "gemma" else lens
+    return None
 
 
 def grok_think(system, user):
@@ -1714,7 +1763,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
     names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
     lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
-                   "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL)}, **(lenses or {}))
+                   "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL), "sol": sol_think}, **(lenses or {}))
     writer, who = (lenses[lens], lens) if lens else (think, "gemma")
     system = his_context() + "\n\n---\n\n" + rules_for(lens)
     if atelier:
@@ -1805,7 +1854,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0)
+        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0, paid={})
     try:   # a campaign past its seven moves or three days is closed by its own rule before he reads it
         import campaign
         if campaign.expire_if_due():
@@ -1914,6 +1963,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if kickoff:       # his first message of this session, opener or answer, is Opus 5.5's; tried once, then the session goes on
         lens = "opus55"; state["kicked_day"] = today
         lines.append("Opus 5.5 sets the session going")
+    rotated = False
+    if lens is None:
+        lens = next_writer(state)
+        rotated = lens is not None
     prompt += steer(state, today) + (KICKOFF if kickoff else "")
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
@@ -1925,6 +1978,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                               lenses=lenses, lens=lens)
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
+    if text is None and rotated and "could not answer" in str(who):
+        lines.append(who)                     # his turn in the rotation could not answer: Gemma does
+        text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+                            lenses=lenses, lens=None)
     if text is not None:
         text = undisplay(text)
     if text is None:
@@ -1989,7 +2046,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))
     body = {"channel": channel, "text": (("<@%s> " % dot) if to_dot and ("<@%s>" % dot) not in text else "")
-            + "[%s] " % LABELS.get(who, who) + text}
+            + "[%s] " % (sol_label() if who == "sol" else LABELS.get(who, who)) + text}
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
@@ -1999,6 +2056,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         except Exception as exc:
             lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
     state["sent"] += 1; state["last_activity"] = now
+    if who in PAID_PER_DAY:
+        state.setdefault("paid", {})[who] = int(state["paid"].get(who, 0)) + 1
     state["since"] = max(state["since"], float(posted.get("ts") or 0))
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
