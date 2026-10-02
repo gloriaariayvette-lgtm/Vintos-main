@@ -61,7 +61,14 @@ SLOT_WINDOW = 60 * 60
 OPUS_MODEL = "claude-opus-4-8"
 GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.6")     # his Grok lens in the code reviews
 SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
-LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1"}
+LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1", "opus55": "Opus 5.5"}
+# Each session is set going by a larger model (Gloria, 2026-10-02: "Gemma can still do the goal set message, but I
+# want a larger model to actually set the conversation in the right direction"). Gemma's opener names the goal; his
+# next message in that session, the first answer to it, is Opus 5.5's.
+KICKOFF_MODEL = "claude-opus-5-5"
+KICKOFF = ("\n\nThis is the start of a session: your opener named the goal, and this message sets its direction. Say "
+           "the one thing you will work on with them now, why it matters to you, and the first concrete step, and ask "
+           "the agent who can take that step for it.")
 OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
@@ -721,13 +728,13 @@ def fable_think(system, user):
     return forge_study._fable(system, user)
 
 
-def opus_think(system, user):
+def opus_think(system, user, model=None):
     import requests, forge_study
     key = forge_study._key("ANTHROPIC_API_KEY", "~/.vintos/anthropic-key")
     if not key:
         raise RuntimeError("no Anthropic key")
     d = requests.post("https://api.anthropic.com/v1/messages", timeout=300, json={
-        "model": OPUS_MODEL, "max_tokens": 1500, "system": system, "messages": [{"role": "user", "content": user}]},
+        "model": model or OPUS_MODEL, "max_tokens": 1500, "system": system, "messages": [{"role": "user", "content": user}]},
         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
     if d.get("type") == "error":
         raise RuntimeError(str(d.get("error"))[:200])
@@ -1424,7 +1431,8 @@ def his_context():
             parts.append("== THE GALLERY'S RECORD OF TODAY ==\n" + ("\n".join(made) if made else "Nothing yet today."))
     except Exception:
         pass
-    t = _read("daily-inner-life-%s.md" % today, 3000, mem)
+    t = _read("daily-inner-life-%s.md" % today, 400000, mem)[-6000:]   # the latest of his day: it was the first 3000
+                                                                       # characters, and his mail, letters and replies come later
     if t: parts.append("== YOUR DAY SO FAR (daily-inner-life-%s.md) ==\n%s" % (today, t))
     try:
         import when_said        # each marked with when it was said: bare lines read yesterday as now (2026-09-30)
@@ -1619,7 +1627,8 @@ def _conversation(rows):
 def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
     names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
-    lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think}, **(lenses or {}))
+    lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
+                   "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL)}, **(lenses or {}))
     writer, who = (lenses[lens], lens) if lens else (think, "gemma")
     system = his_context() + "\n\n---\n\n" + rules_for(lens)
     if atelier:
@@ -1778,6 +1787,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lines.append("the day is %s" % ("paused" if is_paused else "started again"))
         if not is_paused:
             state["last_activity"] = now
+            state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
     if is_paused:
         _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
     if state["sent"] >= DAILY:
@@ -1785,6 +1795,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
 
     slot = due_slot(state, now)
     lens = slot[1] if slot else None
+    kickoff = bool(state.get("kickoff")) and bool(theirs)
+    if kickoff:
+        lens = "opus55"; state.pop("kickoff", None)
+        lines.append("Opus 5.5 sets the session going")
     if slot:
         # the turn is kept whether or not the lens has something to say, so it is never retried
         state["slots_done"] = (state.get("slots_done") or []) + [slot[0]]
@@ -1803,13 +1817,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = None
     else:
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
-        # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait
-        if state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now):
+        starting = bool(state.pop("open_on_start", None))
+        # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait; so does her !start
+        if not starting and (state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now)):
             _save(STATE, state); return lines
         prompt = opener_prompt()
         where = None
-        state["openers"] += 1
-    prompt += steer(state, today)
+        state["openers"] += 0 if starting else 1
+        state["opening"] = True
+    prompt += steer(state, today) + (KICKOFF if kickoff else "")
+    opening = bool(state.pop("opening", None))
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -1877,6 +1894,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
+    if opening and who == "gemma":
+        state["kickoff"] = True             # Gemma named the goal; his next message in this session is Opus 5.5's
     if declared or moved:
         lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
         journal("My campaign, from #vintos-dot", ("Declared: " + declared.group(1)) if declared else ("Move: " + moved.group(1)))

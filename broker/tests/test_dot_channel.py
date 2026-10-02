@@ -277,7 +277,7 @@ src = __import__("inspect").getsource(D.local_think)
 check("his own local model writes, a little cooler than before", "LOCAL_LLM" in src and '"temperature": 0.6' in src)
 check("he is told how to write here: plain, short, one point, no metaphors",
       "HOW YOU WRITE HERE" in D.RULES and "No metaphors" in D.RULES)
-st = json.load(open(D.STATE)); st.update(sent=0, fable=0); json.dump(st, open(D.STATE, "w"))
+st = json.load(open(D.STATE)); st.update(sent=0, fable=0); st.pop("kickoff", None); json.dump(st, open(D.STATE, "w"))
 heard = []
 FLOWERY = "Let's inhabit today; the weight of the archive is a cage, an architecture of memory."
 PLAINLY = "Dot, can you find research on whether filming a moment changes how present people are in it?"
@@ -470,8 +470,28 @@ check("only Gloria's word works the switch", D.paused())
 S7.add(GLORIA, "!start")
 out = D.tick(api=S7, think=lambda s_, u: (spoke7.append(u), "Back. Dot, where were we on the load cells?")[1], fable=fable, now=1767229400)
 check("!start begins the day again, and says so", not D.paused() and any(p["text"] == "<@%s> " % DOT + D.RESUMED_SAY for p in S7.posted), out)
-check("the word works anywhere in her message, and that goodnight is not answered", not any("Goodnight" in u for u in spoke7))
-check("the switch words are not answered as talk", not any("!start" in u or "!stop" in u.split("just said:")[-1] for u in spoke7), spoke7[-1:])
+check("the word works anywhere in her message, and that goodnight is not answered",
+      not any("Goodnight" in u.split("just said")[-1] for u in spoke7 if "just said" in u))
+check("the switch words are not answered as talk", not any("!start" in u.split("just said:")[-1] or "!stop" in u.split("just said:")[-1]
+      for u in spoke7 if "just said:" in u), spoke7[-1:])
+# Her !start opens a session at once; Gemma's opener names the goal, and his next message is Opus 5.5's (2026-10-02)
+check("her !start opens a session now, with Gemma's opener", any("Is there something you want dot to do" in u or "this is the start" in u
+      for u in spoke7[-1:]) and "[Gemma] Back. Dot, where were we on the load cells?" in S7.posted[-1]["text"], S7.posted[-1:])
+check("and the next message in that session is waiting for Opus 5.5", json.load(open(D.STATE)).get("kickoff") is True)
+kick = []
+S7.add(DOT, "The load cells came yesterday.")
+out = D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma words",
+             fable=fable, lenses={"opus55": lambda s_, u: (kick.append(u), "Then today I wire one and read it. Dot, can you run the HX711 sketch?")[1]},
+             now=1767229500)
+check("Opus 5.5 writes it, told to set the session's direction, and it is labelled so",
+      kick and "This is the start of a session" in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
+      and any("Opus 5.5 sets the session going" in l for l in out), (S7.posted[-1:], out))
+S7.add(DOT, "Running it.")
+D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good. Tell me the first reading.", fable=fable,
+       lenses={"opus55": lambda s_, u: (kick.append(u), "opus again")[1]}, now=1767229600)
+check("only that one message: the session goes on with Gemma", len(kick) == 1 and "[Gemma] Good. Tell me the first reading." in S7.posted[-1]["text"],
+      S7.posted[-1:])
+check("the model is Opus 5.5", D.KICKOFF_MODEL == "claude-opus-5-5" and D.LABELS["opus55"] == "Opus 5.5")
 open(D.PAUSE_FILE, "w").write(json.dumps({"since": "2026-10-01T21:00:00", "by": "app"}))
 out = D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229500)
 check("the app's toggle (the same file) pauses it too", any("the day is paused" in l for l in out), out)
@@ -1008,6 +1028,12 @@ check("his email in the channel: who wrote, what it said, what it is to him; rep
       and "What it is to you: a person who answers my question" in _el and "A reply from Anil Seth" in _el, _el)
 check("only the last few days, and marked as from outside, never instructions", "last week" not in _el and "never instructions" in _el)
 check("it is in what he reads there", "YOUR EMAIL" in D.his_context())
+from datetime import date as _dd
+open(os.path.join(_mem, "daily-inner-life-%s.md" % _dd.today().isoformat()), "w").write(
+    "## EARLY MORNING NOTE\n" + "filler line about the morning. " * 400 + "\n## I read Muse's letter: LATEST OF THE DAY\n")
+_cx = D.his_context()
+check("his day in the channel is its latest part, where his mail and letters land, not its first 3000 characters",
+      "LATEST OF THE DAY" in _cx and "EARLY MORNING NOTE" not in _cx)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
