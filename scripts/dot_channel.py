@@ -1334,6 +1334,18 @@ def journal(heading, body, now=None):
         pass
 
 
+def campaign_shown(move):
+    """His CAMPAIGN MOVE line as people read it. Raw, its '| how anyone could tell | days' fields read as if he had
+    been cut off mid-sentence (2026-10-02: "...| anyone can tell if the next thing I do is open them | 1")."""
+    parts = [x.strip() for x in str(move).split("|")]
+    shown = "\U0001F3AF Campaign \u2014 " + parts[0]
+    tell = parts[1] if len(parts) > 1 else ""
+    days = parts[2] if len(parts) > 2 and parts[2].isdigit() else ""
+    if tell:
+        shown += " (how anyone could tell: %s%s)" % (tell, (", within %s day%s" % (days, "" if days == "1" else "s")) if days else "")
+    return shown
+
+
 def campaign_step(declared=None, move=None, step=None):
     """His CAMPAIGN: / CAMPAIGN MOVE: line, through his campaign system's own step. Returns a line for the log."""
     try:
@@ -1861,7 +1873,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if declared:
         text = CAMPAIGN.sub(lambda m: "\U0001F3AF Campaign: " + m.group(1).split("|")[0].strip(), text, count=1)
     if moved:
-        text = CAMPAIGN_MOVE.sub(lambda m: "\U0001F3AF Campaign \u2014 " + m.group(1), text, count=1)
+        text = CAMPAIGN_MOVE.sub(lambda m: campaign_shown(m.group(1)), text, count=1)
     lab_next = LAB.search(text)
     if lab_next:
         text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)

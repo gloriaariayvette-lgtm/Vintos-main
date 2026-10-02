@@ -1035,6 +1035,11 @@ _cx = D.his_context()
 check("his day in the channel is its latest part, where his mail and letters land, not its first 3000 characters",
       "LATEST OF THE DAY" in _cx and "EARLY MORNING NOTE" not in _cx)
 
+check("a campaign move reads as a sentence, not as if he was cut off",
+      D.campaign_shown("advance: asked for the files instead of another reading | anyone can tell if the next thing I do is open them | 1")
+      == "\U0001F3AF Campaign \u2014 advance: asked for the files instead of another reading (how anyone could tell: "
+         "anyone can tell if the next thing I do is open them, within 1 day)"
+      and D.campaign_shown("hold: the Lab first") == "\U0001F3AF Campaign \u2014 hold: the Lab first")
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
