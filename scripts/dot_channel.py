@@ -1742,6 +1742,29 @@ def _speaker(r):
     return {"dot": "Dot", "gloria": "Gloria", "vintos": "You"}.get(r.get("who")) or r.get("name") or "another agent"
 
 
+THREAD_SHOWN = 30      # replies of one thread he reads, after its first message
+
+
+def thread_block(api, channel, thread_ts, self_id, dot, names=None):
+    """The whole thread a message was said in: its first message and who started it, then every reply, oldest
+    first (Gloria, 2026-10-02). Without it a thread reply reached him as a lone line among the channel's, and a
+    thread begun more than 30 lines back was about nothing he could see. "" when Slack cannot give it."""
+    try:
+        msgs = api("conversations.replies", {"channel": channel, "ts": thread_ts, "limit": 100}).get("messages") or []
+    except Exception:
+        return ""
+    if not msgs:
+        return ""
+    lines = []
+    for i, m in enumerate(msgs[:1] + msgs[1:][-THREAD_SHOWN:]):
+        who = _who(m, self_id, dot)
+        said = _clean(m.get("text"), names)[:1500]
+        lines.append("%s%s: %s" % ("STARTED BY " if i == 0 else "",
+                                   _speaker({"who": who, "name": _agent_name(m) if who == "agent" else None}), said))
+    return ("THE THREAD THIS WAS SAID IN (its first message, then every reply, oldest first; your answer goes "
+            "in this thread):\n" + "\n".join(lines))
+
+
 def _log(rows):
     os.makedirs(HERE, exist_ok=True)
     with open(TRANSCRIPT, "a", encoding="utf-8") as f:
@@ -1945,12 +1968,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if theirs:
         last = theirs[-1]
         in_atelier = last["thread"] in (state.get("atelier") or [])
-        prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s just said%s: %s\n\nYour reply, as yourself."
-                  % (_conversation(recent()), _speaker(last),
+        thread = thread_block(api, channel, last["thread"], state["self"], dot, names) if last["thread"] else ""
+        prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s%s just said%s: %s\n\nYour reply, as yourself."
+                  % (_conversation(recent()), (thread + "\n\n") if thread else "", _speaker(last),
                      " in your Atelier thread" if in_atelier else " in a thread" if last["thread"] else "",
                      last["text"][:3500]))
-        # the main channel is where she reads; he answers in a thread only inside a tangent or Atelier thread
-        where = last["thread"] if in_atelier or last["thread"] in (state.get("tangents") or []) else None
+        # said in a thread, answered in that thread, whoever started it (Gloria, 2026-10-02); otherwise the channel
+        where = last["thread"] or None
     elif lens:
         prompt = opener_prompt()          # his scheduled turn, with nothing new to answer: he starts something
         where = None

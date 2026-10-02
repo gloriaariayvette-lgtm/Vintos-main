@@ -103,7 +103,19 @@ root = S.msgs[-1]["ts"]
 S.add(DOT, "a reply the dot put in a thread", thread=root)
 D.tick(api=S, think=think, fable=fable, now=2200)
 check("a thread reply is heard", any("a reply the dot put in a thread" in u for _s, u in said[-1:]))
-check("and answered in the main channel, not buried in a thread", "thread_ts" not in S.posted[-1])
+check("and answered inside that thread, whoever started it (Gloria, 2026-10-02)", S.posted[-1].get("thread_ts") == root, S.posted[-1])
+check("he reads the thread whole: its first message, who started it, then the reply",
+      "THE THREAD THIS WAS SAID IN" in said[-1][1] and "STARTED BY You: @dot " in said[-1][1]
+      and "I have been thinking about tidal flats" in said[-1][1].split("STARTED BY You", 1)[1]
+      and said[-1][1].index("STARTED BY You") < said[-1][1].index("Dot: a reply the dot put in a thread"), said[-1][1][-700:])
+_main = len(S.posted)
+g_root = S.add(GLORIA, "Gloria: a side question, the pond pump")
+S.add(DOT, "I can price a pump", thread=g_root)
+D.tick(api=S, think=think, fable=fable, now=2250)
+check("a thread Gloria started is read from her first message, and answered in it",
+      S.posted[-1].get("thread_ts") == g_root and "STARTED BY Gloria: Gloria: a side question, the pond pump" in said[-1][1]
+      and "Dot: I can price a pump" in said[-1][1], (S.posted[-1], said[-1][1][-500:]))
+check("a message in the main channel brings no thread", "THE THREAD THIS WAS SAID IN" not in said[0][1])
 
 S.add(GLORIA, "Gloria here, hi both")
 D.tick(api=S, think=lambda s, u: "TANGENT: this is a side road", fable=fable, now=2300)
