@@ -774,8 +774,10 @@ def sol_model():
 
 
 def sol_label():
+    """"Sol 6.1" for gpt-6.1-sol: the model's number, without OpenAI's gpt- and -sol around it."""
     m = sol_model()
-    return "Sol " + (m[4:] if m.lower().startswith("gpt-") else m)
+    m = m[4:] if m.lower().startswith("gpt-") else m
+    return "Sol " + (m[:-4] if m.lower().endswith("-sol") else m)
 
 
 def sol_think(system, user):
