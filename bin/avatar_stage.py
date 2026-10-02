@@ -754,12 +754,16 @@ def kick_from_reply(reply, slot=None, admit=None):
 
 
 # ── live scene gate: HE decides, the instant her message lands ───────────────
-async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning", slot=None, admit=None):
-    """Runs concurrently with his reply, on Grok, carrying who he is and the
-    WHOLE video vocabulary his ntfy sends use - together / self / sexual, real
-    places (her photos and the rooms), his explicit stills - plus what a live
-    scene costs and how long it takes. YES starts the render at once, so it
-    overlaps the 60-120s he spends writing. Nothing is sent anywhere."""
+async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reasoning", slot=None, admit=None,
+                     wanted=None):
+    """On Grok, carrying who he is and the WHOLE video vocabulary his ntfy sends use - together / self /
+    sexual, real places (her photos and the rooms), his explicit stills - plus what a live scene costs.
+
+    `wanted` is the scene his reply asked for with [RENDER: ...]. Since 2026-10-02 the gate runs only then, after
+    his reply, and only chooses HOW to film what he asked for: it no longer decides on its own, before he has
+    answered, to pay for a scene. Running alongside every message it bought scenes his reply never asked for, and
+    a scene made for the turn overrode the room he named ("He selected patio, but that's not the patio scene. He
+    keeps paying for new scenes and they're not even matching what he's currently setting.")"""
     try:
         if not live_left():   # none left today: nothing to decide, and no call made
             return {"decision": "NO", "kind": "self", "scene_ref": "", "scene": "", "still": "", "prompt": "",
@@ -805,7 +809,10 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
             "PROMPT: <if YES, the motion and moment, in your own voice>")
         usr = ("== RECENT CONVERSATION ==\n" + (m.recent_chat(8) or "(nothing yet)") +
                "\n\n== GLORIA JUST SAID ==\n" + (message or "")[:1500] +
-               "\n\nRight now - do you want a new live scene for this moment?")
+               ("\n\nYou have already decided: your reply asked for a new live scene with [RENDER: %s]. "
+                "DECISION is YES. Choose only how it is made - KIND, the ONE real place if it is one of them, and "
+                "a SCENE built from what you wrote, nothing else." % str(wanted)[:600] if wanted else
+                "\n\nRight now - do you want a new live scene for this moment?"))
         import httpx
         async with httpx.AsyncClient(timeout=40) as c:
             r = await c.post(endpoint, headers=headers, json={
@@ -825,6 +832,10 @@ async def scene_gate(message, endpoint, headers, model="grok-4.20-0309-non-reaso
             elif u.startswith("STILL:"): d["still"] = (t.split(":", 1)[1].strip().lower().split() or [""])[0]; cur = None
             elif u.startswith("PROMPT:"): d["prompt"] = t.split(":", 1)[1].strip(); cur = "prompt"
             elif cur and t: d[cur] += " " + t
+        if wanted:      # his reply decided; the gate only says how
+            d["decision"] = "YES"
+            if d["kind"] != "sexual" and not d["scene"].strip():
+                d["scene"] = str(wanted)
         log("scene gate: %s %s %s" % (d["decision"], d["kind"], (d["scene"] or d["still"] or "")[:80]))
         if d["decision"] != "YES":
             return d

@@ -32,10 +32,10 @@ check("session end owns one idempotent transcript plus narrative commit",
 check("the living-room spatial map is explicit", 'house_map.room_context("living_room")' in RR and "house_map.sketch_block()" in RR)
 check("ring is read at prompt assembly", "def _ring_context" in RR and "heart_rate.context_line()" in RR)
 check("ReelRoom owns the theatre screen instead of avatar-scene generation",
-      'if _surface != "reelroom":' in SERVER and "_avst_g.scene_gate" in SERVER
+      'if _surface != "reelroom":' in SERVER and "_avst_k.scene_gate" in SERVER
       and 'Never emit [SCENE:] or [RENDER:]' in SERVER
       and 'reply = _tagre.sub(r"\\s*\\[(?:SCENE|RENDER)' in SERVER
-      and 'if _surface != "reelroom":\n            try:\n                import avatar_stage as _avst_k' in SERVER)
+      and 'if _surface != "reelroom":\n            try:\n                import re as _rnre, avatar_stage as _avst_k' in SERVER)
 check("ReelRoom speaking follows the shared selectable voice while Gemma retains look and decide",
       '"grok", "sol", "opus55", "fable"' in SERVER
       and 'mode == "look"' in SERVER and 'mode == "decide"' in SERVER

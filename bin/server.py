@@ -9112,20 +9112,9 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         _turn = _tc.begin(_counterpart_text, _surface, test_mode=_test_turn)
     except Exception as _tc_e:
         print("[coordinator]", _tc_e, flush=True)
-    # Live scene gate: HE decides, on Grok, the instant her message lands -
-    # concurrent with the reply, so a YES renders while he is still writing.
-    # Started only once the turn exists: a YES is admitted through the same
-    # effect gate this route runs for its device commands (kind "live_scene"),
-    # and the render owns THIS turn's slot - never a single global one another
-    # session could clobber.
-    if _surface != "reelroom":
-        try:
-            import avatar_stage as _avst_g
-            asyncio.create_task(_avst_g.scene_gate(str(getattr(msg, "message", "") or ""),
-                                                   f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
-                                                   slot=(_turn.turn_id if _turn is not None else None),
-                                                   admit=_avatar_scene_admit(_turn, _tc)))
-        except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
+    # No live scene is decided here any more (2026-10-02). The scene gate used to run on Grok the instant her
+    # message landed, alongside his reply, and bought scenes his reply never asked for; a scene made for the turn
+    # then overrode the room he named. A new scene is made only when his reply asks with [RENDER:] (below).
     message = msg.message
     _desktop_control = _desktop_command = None
     if _surface == "avatar":
@@ -10026,13 +10015,26 @@ Your current self-model (excerpt):
                 # a response to FastAPI. Delivery/read remain unknowable here.
                 _tc.mark_lifecycle(_turn, "transport", "handed_to_framework")
         except Exception: pass
-        # [RENDER:] starts NOW, server-side, before the app even receives the
-        # reply - the render is ~2 min and every second counts. Idempotent.
+        # [RENDER:] starts NOW, server-side, before the app even receives the reply - the render is ~2 min.
+        # Only his reply asks for a new scene; the gate (Grok, his full video vocabulary: together / self /
+        # sexual, her photos' real places) only chooses how to film what he asked for. It is awaited, so the
+        # render is already in this turn's slot when the app looks for it. If it cannot answer, his words are
+        # rendered as written. Without [RENDER:], no scene is bought and his [SCENE:] decides.
         if _surface != "reelroom":
             try:
-                import avatar_stage as _avst_k
-                _avst_k.kick_from_reply(reply, slot=(_turn.turn_id if _turn is not None else None),
-                                        admit=_avatar_scene_admit(_turn, _tc))
+                import re as _rnre, avatar_stage as _avst_k
+                _rn = _rnre.search(r"\[RENDER:\s*([^\]]+)\]", reply or "", _rnre.I)
+                if _rn:
+                    _slot = (_turn.turn_id if _turn is not None else None)
+                    _gd = None
+                    try:
+                        _gd = await _avst_k.scene_gate(str(getattr(msg, "message", "") or ""),
+                                                       f"{LM_STUDIO_API}/chat/completions", LLM_AUTH_HEADERS,
+                                                       slot=_slot, admit=_avatar_scene_admit(_turn, _tc),
+                                                       wanted=_rn.group(1).strip())
+                    except Exception as _sge: print("[avatar-stage] scene gate:", _sge, flush=True)
+                    if not _gd or not _gd.get("status"):
+                        _avst_k.kick_from_reply(reply, slot=_slot, admit=_avatar_scene_admit(_turn, _tc))
             except Exception as _avk: print("[avatar-stage] kick:", _avk, flush=True)
         # live_slot: the slot this turn's live scene renders in (gate or [RENDER:] kick), so the app
         # follows THIS turn's scene - from a photo send too (2026-09-28: a render finished and never showed).

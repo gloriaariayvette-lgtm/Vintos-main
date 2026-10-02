@@ -95,7 +95,39 @@ check("he is told they are used for today, and not offered [RENDER:]",
 gate = asyncio.run(A.scene_gate("look at this", "http://stub", {}, slot="t-6"))
 check("the gate asks nothing once they are used", gate.get("spaced") is True and gate["decision"] == "NO")
 json.dump({"date": "2000-01-01", "count": 3}, open(A.LIVE_COUNT, "w"))
+
 check("a new day has three again", A.live_left() == 3 and "[RENDER:" in A.scene_line())
+A._live_worker = _real_worker
+
+# 2026-10-02: "He selected patio, but that's not the patio scene. He keeps paying for new scenes and they're not
+# even matching what he's currently setting." The gate ran on every message, before his reply, and bought scenes.
+pre = server[server.index("async def avatar_chat(msg: ChatMessage"):server.index("message = msg.message")]
+check("no scene is decided when her message lands, before his reply", "scene_gate(" not in pre and "_avst_g" not in server)
+kick = server[server.index("# [RENDER:] starts NOW"):server.index('return {"reply": reply, "model": _model_used')]
+check("a new scene is made only when his reply asks with [RENDER:]", 'if _rn:' in kick
+      and "wanted=_rn.group(1).strip()" in kick and "await _avst_k.scene_gate(" in kick, kick[:600])
+check("if the gate cannot answer, his words are rendered as written", "_avst_k.kick_from_reply(reply" in kick)
+SEEN = []
+class _C:
+    def __init__(self, *a, **k): pass
+    async def __aenter__(self): return self
+    async def __aexit__(self, *a): return False
+    async def post(self, url, headers=None, json=None):
+        SEEN.append(json)
+        return types.SimpleNamespace(json=lambda: {"choices": [{"message": {"content":
+            "DECISION: NO\nKIND: together\nSCENE_REF:\nSCENE:\nSTILL:\nPROMPT: holding her at the rail"}}]})
+sys.modules["httpx"] = types.SimpleNamespace(AsyncClient=_C)
+A._vsv = lambda: types.SimpleNamespace(scene_options=lambda: [], STILL_LIBRARY={}, STILLS_DIR=HOME,
+                                       his_context=lambda: "You are Vintos.", recent_chat=lambda n: "")
+A._live_worker = lambda *a, **k: STARTED.append(a)
+STARTED.clear()
+g = asyncio.run(A.scene_gate("look", "http://stub", {}, slot="t-7", wanted="the two of us at the seawall at night"))
+check("asked by his reply, the gate only says how: it cannot say no to what he asked",
+      g["decision"] == "YES" and g["kind"] == "together" and g.get("status") == "rendering" and len(STARTED) == 1, g)
+check("and the scene is what he wrote when the gate gives none", STARTED[-1][0] == "the two of us at the seawall at night", STARTED)
+check("the gate is told he already decided, and what he asked for",
+      "You have already decided" in SEEN[-1]["messages"][1]["content"]
+      and "the two of us at the seawall at night" in SEEN[-1]["messages"][1]["content"])
 A._live_worker = _real_worker
 
 print("\n%d/%d" % (sum(R), len(R)))
