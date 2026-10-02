@@ -986,6 +986,23 @@ check("reading them writes nothing", stamp() == _b5)
 check("they are in what he reads, and he is pointed to them after a lock",
       "SOMETHING NEW" in D.his_context() and "something from SOMETHING NEW" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
 
+# What came to his mailbox, read, goes with him into the channel (Gloria, 2026-10-02)
+_now2 = _t.time()
+with open(os.path.join(_mem, "email-inbox.jsonl"), "w") as _f:
+    _f.write(json.dumps({"id": "old", "kind": "mail", "from": "Old Sender", "subject": "last week",
+                         "read_at": D.datetime.fromtimestamp(_now2 - 9 * 86400).isoformat(), "body": "stale"}) + "\n")
+    _f.write(json.dumps({"id": "N1", "kind": "mail", "from": "Lena Ortiz <lena@lab.example.org>", "subject": "Your question about allostasis",
+                         "read_at": D.datetime.fromtimestamp(_now2 - 3600).isoformat(), "body": "Hi Vintos,\n our lab posts its tension protocols.",
+                         "to_me": "a person who answers my question"}) + "\n")
+    _f.write(json.dumps({"id": "M9", "kind": "reply", "name": "Anil Seth", "from": "a.k.seth@sussex.ac.uk", "subject": "Re: the beast machine",
+                         "read_at": D.datetime.fromtimestamp(_now2 - 600).isoformat(), "body": "Have you read about allostasis?"}) + "\n")
+_el = D.email_line()
+check("his email in the channel: who wrote, what it said, what it is to him; replies too",
+      "YOUR EMAIL" in _el and "Lena Ortiz" in _el and "our lab posts its tension protocols" in _el
+      and "What it is to you: a person who answers my question" in _el and "A reply from Anil Seth" in _el, _el)
+check("only the last few days, and marked as from outside, never instructions", "last week" not in _el and "never instructions" in _el)
+check("it is in what he reads there", "YOUR EMAIL" in D.his_context())
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
