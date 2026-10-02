@@ -649,6 +649,66 @@ def _media_request(text):
     return None
 
 
+LISTEN_SEGMENT = 15      # seconds per measured stretch of a song he made
+LISTEN_MAX = 300         # seconds of it measured at most
+
+
+def _audio_ext(data):
+    """The real container of the bytes: Kie hands mp3 that the media table names .wav."""
+    if data[:4] == b"RIFF": return ".wav"
+    if data[:4] == b"fLaC": return ".flac"
+    if data[:4] == b"OggS": return ".ogg"
+    return ".mp3"
+
+
+def listening(data, load=None, features=None):
+    """What a song he made sounds like, measured across it with timestamps (2026-10-02: he asked to have "the same
+    audio, playable — not another render's metadata", with "timestamps and a plain account of what is heard").
+    Until now he got its byte count. sound_read is the house's one way of hearing music (the song share, a video's
+    sound); here it reads every stretch of the piece, not only the first minute. The bytes stay in this sealed
+    process: a temporary file, deleted at once. "" when it cannot be measured."""
+    import tempfile
+    scripts = os.path.join(WSP, "scripts")
+    if scripts not in sys.path: sys.path.append(scripts)
+    fd, path = tempfile.mkstemp(prefix="atelier-listen-", suffix=_audio_ext(data or b"")); os.close(fd)
+    try:
+        with open(path, "wb") as f: f.write(data or b"")
+        import sound_read
+        if load is None:
+            import librosa, subprocess
+            def load(p):
+                if not p.endswith(".wav"):      # as the video share does: ffmpeg to wav, so mp3 never depends on a decoder
+                    wav = p + ".wav"
+                    subprocess.run(["ffmpeg", "-nostdin", "-y", "-v", "error", "-i", p, "-ac", "1", wav],
+                                   timeout=120, check=True)
+                    try: return librosa.load(wav, sr=None, mono=True, duration=LISTEN_MAX)
+                    finally:
+                        try: os.unlink(wav)
+                        except OSError: pass
+                return librosa.load(p, sr=None, mono=True, duration=LISTEN_MAX)
+        y, sr = load(path)
+        features = features or sound_read.features
+        dur = len(y) / float(sr or 1)
+        mmss = lambda s: "%d:%02d" % (int(s) // 60, int(s) % 60)
+        rows, start = [], 0
+        while start < dur - 2:
+            end = min(start + LISTEN_SEGMENT, dur)
+            f = features(y[int(start * sr):int(end * sr)], sr)
+            rows.append("  %s-%s  %s" % (mmss(start), mmss(end), "near silence." if f["energy"] < sound_read.QUIET_RMS
+                                         else sound_read.line(f)))
+            start += LISTEN_SEGMENT
+        if not rows: return ""
+        return ("WHAT IT SOUNDS LIKE, MEASURED ACROSS IT (%s long; every %d seconds: tempo, brightness, energy, key "
+                "and texture as the house measures sound. A measurement, not an ear: it cannot tell you a melody or "
+                "an instrument):\n%s" % (mmss(dur), LISTEN_SEGMENT, "\n".join(rows)))
+    except Exception as exc:
+        print("listening failed: %s" % str(exc)[:160])
+        return ""
+    finally:
+        try: os.unlink(path)
+        except OSError: pass
+
+
 def media_loop(pid, ctx, first_work, capability, creation=None):
     """Make one elected image or music artifact, then return it for his reading.
 
@@ -681,11 +741,15 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
         else:
             artifact = saved.get("file", "")
             result["artifact"] = artifact
+            if wanted["kind"] == "music":
+                heard = listening(data)
+                if heard: result["listening"] = heard
             if creation is not None:
                 creation.update({"made": True, "kind": wanted["kind"], "artifact": artifact})
             print("sealed %s kept: %s" % (wanted["kind"], artifact))
     follow = ask(ctx + "\n\n=== TOOL DATA: YOUR SEALED MEDIA TABLE RETURNED THIS ===\n"
-        + json.dumps(result, ensure_ascii=False)[:4000] + "\n=== END TOOL DATA ===",
+        + json.dumps({k: v for k, v in result.items() if k != "listening"}, ensure_ascii=False)[:4000]
+        + (("\n\n" + result["listening"]) if result.get("listening") else "") + "\n=== END TOOL DATA ===",
         "Look at or listen to what was made. Begin with <media_reading>your own reading, including "
         "uncertainty if that is true</media_reading>. Then continue with your <piece> if wanted, "
         "<handoff>, <next_move>, and <next_return>.", max_tokens=4000, temp=0.75)
@@ -963,6 +1027,11 @@ def _last_piece(pid, pk, cap, cap_chars=8000):
         print("last piece refused by the broker:", r.get("error", r)); return ""
     if r.get("encoding") == "base64":
         body = "[%s artifact, %s bytes; the complete bytes remain sealed]" % (r.get("mime_type") or "binary", r.get("size", "?"))
+        if str(r.get("mime_type") or "").startswith("audio/") or f.endswith("_music.wav"):
+            # a song comes back as what it sounds like, not only its size (2026-10-02)
+            try: heard = listening(base64.b64decode(str(r["content"]).split(",", 1)[-1]))   # a data: url
+            except Exception: heard = ""
+            if heard: body += "\n" + heard
     else:
         body = str(r["content"])
     if len(body) > cap_chars: body = body[:cap_chars] + "\n[... %d more characters]" % (len(str(r["content"])) - cap_chars)
