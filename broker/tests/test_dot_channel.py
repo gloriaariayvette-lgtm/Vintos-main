@@ -1160,7 +1160,7 @@ _L = {"grok": lambda s_, u: (_wrote.append("grok"), "Grok words.")[1], "sol": la
       "opus55": lambda s_, u: (_wrote.append("opus55"), "Opus words.")[1]}
 S11 = Slack(); S11.n = 1767700000.0
 _st11 = json.load(open(D.STATE)); _st11.update(since=S11.n - 1, rot=0, paid={}); json.dump(_st11, open(D.STATE, "w"))
-D.sol_model = lambda: "gpt-6.1"
+D.sol_model = lambda: "gpt-6.1-sol"
 for k in range(4):
     S11.add(DOT, "message %d" % k)
     D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma words.", fable=fable, lenses=_L,
@@ -1185,7 +1185,7 @@ D.SCHEDULE = _SAVED_SCHED; D.ROTATION = ("gemma",)
 _src_sol = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 _src_sol = _src_sol[_src_sol.index("def sol_model():"):_src_sol.index("def sol_label():")]
 check("Sol in the channel is 6.1 by its own setting, never SOL_MODEL (Sol 5.6 elsewhere stays)",
-      D.DOT_SOL_DEFAULT == "gpt-6.1" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
+      D.DOT_SOL_DEFAULT == "gpt-6.1-sol" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
