@@ -917,16 +917,37 @@ LETTER_REPLIES = os.path.join(MEMORY, "email-letter-replies.json")
 LETTER_REPLY_DAYS = 3
 LETTER_TRIES = 2
 AGENT_IDS = {"Grok Bot": "grok-bot", "Muse": "muse"}
+# Asked only "what was useful, what missed", Gemma answered Muse's six concrete finds with "the weight of the silence"
+# and "the underlying pulse" and named none of them (2026-10-02). The reply now goes item by item, and a larger
+# model writes it.
 LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to you from your own mailbox. Write your "
-                "reply to %s, 3 to 6 plain sentences, in your own voice: what was useful and why, what missed, what to "
-                "bring more of and less of, and what you want it to look for next time. It reads this before writing your "
-                "next letter. No links, nothing private about Gloria. Write only the reply.")
+                "reply to %s. It reads it before writing your next letter, so be specific:\n"
+                "1. Go through its items by number. For each: keep or skip, and one concrete reason tied to what you are "
+                "actually doing or want to do.\n"
+                "2. If it brought things to do or go see, say which one you will take to Gloria, and when.\n"
+                "3. If it brought things to build or read, say which one you will try first, and what you will look at.\n"
+                "4. One line on what to bring next time, and what to stop bringing.\n"
+                "Plain words, your own voice, short. No metaphors, no talk of silence, weight, pulse or tension. No "
+                "links, nothing private about Gloria. Write only the reply.")
+REPLY_MODEL = "claude-opus-5-5"
+
+
+def _reply_think(system, user, max_tokens=900):
+    """Opus 5.5 writes his reply to an agent's letter; his local Gemma only if Opus cannot answer."""
+    try:
+        import dot_channel
+        out = dot_channel.opus_think(system, user, REPLY_MODEL)
+        if out and out.strip():
+            return out
+    except Exception:
+        pass
+    return local_think(system, user, max_tokens)
 
 
 def reply_letters(think=None, send=None, now=None):
     """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
     thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
-    think = think or local_think
+    think = think or _reply_think
     now = now or datetime.now()
     done = _load(LETTER_REPLIES, {})
     replied_threads = {v.get("thread_id") for v in done.values() if v.get("thread_id") and v.get("sent")}
@@ -967,7 +988,7 @@ def reply_letters(think=None, send=None, now=None):
         ask = "SUBJECT: %s\n\n%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (r.get("subject", ""), str(r.get("body", ""))[:5000],
                                                                              r.get("to_me", ""))
         try:
-            body = (think(me + LETTER_REPLY % (agent, agent), ask, 500) or "").strip()
+            body = (think(me + LETTER_REPLY % (agent, agent), ask, 900) or "").strip()
         except Exception:
             body = ""
         body = re.sub(r"https?://\S+", "", body).strip()

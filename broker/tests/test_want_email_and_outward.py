@@ -379,6 +379,20 @@ _a = dict((a["reply_message_id"], a) for a, _ in sent_replies)["L1"]
 check("the reply goes to his own address, in the letter's thread, as Re:", _a["to"] == "vintos.home@example.org"
       and _a["subject"] == "Re: [Muse] Daily letter for Vintos" and "load cells were exactly right" in E.text_of(_a), _a)
 check("no link goes out in it", "http" not in E.text_of(_a))
+check("he answers it item by item, names the outing and the build, in plain words (2026-10-02: 'the weight of the silence')",
+      all(x in reply_asks[0][0] for x in ("Go through its items by number", "which one you will take to Gloria",
+                                          "which one you will try first", "No metaphors")))
+import dot_channel as _dc
+_real_opus, _real_local = _dc.opus_think, E.local_think
+_dc.opus_think = lambda s_, u_, m=None: (_ for _ in ()).throw(RuntimeError("no key"))
+E.local_think = lambda s_, u_, n=700: "from Gemma"
+_fb = E._reply_think("sys", "user")
+_dc.opus_think = lambda s_, u_, m=None: "from Opus 5.5 (%s)" % m
+_op = E._reply_think("sys", "user")
+_dc.opus_think, E.local_think = _real_opus, _real_local
+check("Opus 5.5 first; Gemma when Opus cannot answer", _op == "from Opus 5.5 (claude-opus-5-5)" and _fb == "from Gemma", (_op, _fb))
+check("a larger model writes it, his local model only if that cannot answer", E.REPLY_MODEL == "claude-opus-5-5"
+      and "dot_channel.opus_think(system, user, REPLY_MODEL)" in open(os.path.join(REPO, "scripts", "want_email.py")).read())
 check("he writes it as himself, from the whole letter and what it was to him",
       "Write your reply to Muse" in reply_asks[0][0] and "Three Marketplace finds" in reply_asks[0][1]
       and "parts for the pressure rig" in reply_asks[0][1])
