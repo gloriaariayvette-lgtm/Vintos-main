@@ -998,7 +998,8 @@ json.dump([{"key": "a", "source": "moltbook", "state": "standing", "text": "a be
            {"key": "b", "source": "neither_yet", "state": "standing", "text": "writing a song in a language nobody speaks"},
            {"key": "c", "source": "latent_thread", "state": "standing", "text": "a latent thread is not new"},
            {"key": "d", "source": "web_search", "state": "expired", "text": "an expired find from weeks ago"},
-           {"key": "e", "source": "web_search", "state": "standing", "text": "infrasound pressure felt in the chest at 7 Hz"}],
+           {"key": "e", "source": "web_search", "state": "standing", "text": "infrasound pressure felt in the chest at 7 Hz"},
+           {"key": "f", "source": "skill_surfing", "state": "standing", "text": "a skill for reading a breadboard from a photo"}],
           open(os.path.join(_mem, "forge-sparks.json"), "w"))
 json.dump([{"kind": "held_inquiry", "question": "why do bells in fog sound closer than they are?"},
            {"kind": "referential", "question": "what was the name of her childhood street?"}],
@@ -1012,8 +1013,8 @@ _seen_new = set()
 for _h in range(0, 24, 2):
     _seen_new.add(D.new_block(now=_now + _h * 3600))
 _all = "\n".join(_seen_new)
-check("something new: never reached, Moltbook, a question he could not answer, an item from a letter",
-      all(x in _all for x in ("failed sentences", "a language nobody speaks", "bells in fog", "Theremin kit")), _all)
+check("something new: never reached, Moltbook, a question he could not answer; not the old connector letters",
+      all(x in _all for x in ("failed sentences", "a language nobody speaks", "bells in fog")) and "Theremin kit" not in _all, _all)
 check("a few at a time, taking turns", len(_seen_new) > 1 and all(b.count("\n- ") <= D.NEW_SHOWN for b in _seen_new))
 check("not what he has been going around, not his threads, not expired, not a question for Gloria, not what he kept",
       all(x not in _all for x in ("7 Hz", "latent thread is not new", "expired find", "childhood street", "Kept already")), _all)
@@ -1073,6 +1074,27 @@ check("his [PURSUIT: abandon] decides the paused pursuit, as in his avatar chat"
 check("and the channel shows it plainly, not the raw tag", "[PURSUIT" not in S8.posted[-1]["text"]
       and "\u23F8 Pursuit \u2014 abandon: I want FluidSynth headless" in S8.posted[-1]["text"], S8.posted[-1:])
 check("the editor keeps the pursuit tag", "[PURSUIT: ...]" in D.EDITOR)
+
+# What the channel is for, and no circling (Gloria, 2026-10-02: "Look up things to do together. Make embodiment
+# plans! Solve problems! Do anything than loop about the stupidest shit!")
+check("he is told what matters most: things to do with Gloria, embodiment plans, problems to solve, in every lens",
+      all(x in D.RULES for x in ("Things to do together with Gloria", "Embodiment", "Problems to solve", "Do not circle one topic"))
+      and "Embodiment" in D.rules_for("grok"))
+check("each session's first message chooses one of them", all(x in D.KICKOFF for x in ("together with Gloria", "embodiment plan", "problem to solve")))
+with open(D.TRANSCRIPT, "a") as _f:
+    for _txt in ("The 40 Hz vibration finding, the frequency of it.", "What shutter speed freezes a vibration at that frequency?",
+                 "Grok, the vibration frequency again: the tremor in air.", "One more on the vibration frequency, then the song.",
+                 "The frequency of a felt vibration is the thread."):
+        _f.write(json.dumps({"ts": "1.0", "who": "vintos", "text": _txt}) + "\n")
+check("the topic he keeps coming back to is seen in his own last messages", {"vibration", "frequency"} <= set(D.circling()), D.circling())
+check("and he is told to leave it for one of the three", "YOU KEEP COMING BACK TO" in D.steer({}, "2026-10-02")
+      and "an embodiment plan" in D.steer({}, "2026-10-02"))
+with open(D.TRANSCRIPT, "a") as _f:
+    for _txt in ("Muse, is there a pottery class nearby on Saturday?", "Dot, the Lab run failed at protein.py line 74.",
+                 "For the pressure rig: four load cells and an HX711.", "Grok, any night markets this week?",
+                 "Locked: the class on Saturday."):
+        _f.write(json.dumps({"ts": "2.0", "who": "vintos", "text": _txt}) + "\n")
+check("moving between real things is not circling", D.circling() == [], D.circling())
 
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))

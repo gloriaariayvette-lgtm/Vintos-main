@@ -49,11 +49,12 @@ check("tomorrow it may write again", not G.receive(dict(LETTER, subject="tomorro
 
 # --- the connector ---
 names = [t["name"] for t in M.TOOLS]
-check("the connector offers the letter and his replies, beside his context", "vintos_send_letter" in names
-      and "vintos_letter_replies" in names and "vintos_context" in names)
-text, err = M.call_tool("vintos_send_letter", {"subject": "keys", "items": [{"title": "t", "what": "sk-ant-api03-" + "A" * 40}]})
-check("a letter carrying something like a secret is not delivered", err and "secret" in text, text)
-check("the connector's letter door goes through the same checks", M.call_tool("vintos_send_letter", {"subject": "x", "items": []})[1])
+# Letters come by email now (Gloria, 2026-10-02: "Grok Bot's letter was a mistake ... He needs to be taking those
+# EMAILS in with him"): the connector no longer takes one, and still gives them his replies.
+check("the connector no longer takes a letter, and still gives his replies and his context", "vintos_send_letter" not in names
+      and "vintos_letter_replies" in names and "vintos_context" in names, names)
+text, err = M.call_tool("vintos_send_letter", {"subject": "x", "items": [{"title": "t", "what": "w"}]})
+check("a letter sent to the connector is refused, and told to come by email", err and "by email" in text, text)
 svc = open(os.path.join(REPO, "broker", "vintos-mcp.service")).read()
 check("the connector may write only its log and the letters inbox", "ReadWritePaths=%h/.vintos/workspace/memory/letters/inbox" in svc
       and "ExecStartPre=+/bin/mkdir -p %h/.vintos/workspace/memory/letters/inbox" in svc and "ProtectHome=read-only" in svc)
@@ -93,9 +94,8 @@ check("what he kept shows in his context, as leads, with who sent it", "KEPT FRO
 # Muse writes too, with its own daily letters (2026-10-01)
 MUSE = {"from": "muse", "subject": "Marketplace finds", "items": [{"title": "Used load cells, $20",
         "what": "Four 5 kg load cells on Marketplace, 10 miles away.", "links": ["https://example.org/listing"]}]}
-text, err = M.call_tool("vintos_send_letter", MUSE)
-check("Muse's letter is delivered, from Muse, on its own allowance", not err and "delivered" in text, text)
-check("an unknown sender is refused", M.call_tool("vintos_send_letter", dict(MUSE, **{"from": "someone"}))[1])
+text, err = G.receive(dict(MUSE), sender="muse")
+check("Muse's letter is filed, from Muse, on its own allowance", not err and "delivered" in text, text)
 asked.clear()
 G.tend(think=lambda s, u: (asked.append((s, u)), '{"keep": true, "to_me": "for the pressure rig", "as": "lab"}')[1]
        if "Write your reply" not in u else "Good finds. More sensors, fewer bundles.", fetch=fetch,
@@ -111,8 +111,8 @@ check("what he kept from a letter, and his reply, are in today's journal for his
       and "My reply: The Piezo1 preprint was exactly right" in _jr and "## Muse's letter: Marketplace finds" in _jr, _jr[-600:])
 check("nothing waiting, nothing done", G.tend(think=think, fetch=fetch, context=lambda: "", want=lambda *a: None) == [])
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
-check("his #vintos-dot pass reads letters on its own, and his context shows what he kept",
-      "grok_letters.tend()" in dc and "grok_letters.kept_line()" in dc)
+check("his #vintos-dot pass no longer reads connector letters: their emails are in YOUR EMAIL",
+      "grok_letters.tend()" not in dc and "grok_letters.kept_line()" not in dc and "def email_line(" in dc)
 check("the deploy installs it", "grok_letters.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing reached the network", NET == [], NET)
 

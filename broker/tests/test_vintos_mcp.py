@@ -89,11 +89,9 @@ code, body = post({"jsonrpc": "2.0", "method": "notifications/initialized"})
 check("a notification is accepted with no body", code == 202 and body is None, (code, body))
 code, body = rpc("tools/list")
 tools = {x["name"]: x for x in body["result"]["tools"]}
-# 2026-10-01: Grok Bot's daily letter is the one door in; everything else stays read only
-check("four tools: only the letter writes, and it only files a letter", set(tools) == {
-      "vintos_context", "vintos_channel", "vintos_send_letter", "vintos_letter_replies"}
-      and [n for n, x in tools.items() if not x["annotations"]["readOnlyHint"]] == ["vintos_send_letter"]
-      and tools["vintos_send_letter"]["annotations"]["destructiveHint"] is False, list(tools))
+# 2026-10-02: letters come by email now; the connector's letter door is gone and every tool is read only
+check("three tools, all read only: no letter door", set(tools) == {"vintos_context", "vintos_channel", "vintos_letter_replies"}
+      and all(x["annotations"]["readOnlyHint"] for x in tools.values()), list(tools))
 
 code, body = rpc("tools/call", {"name": "vintos_context", "arguments": {}})
 text = body["result"]["content"][0]["text"]

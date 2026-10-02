@@ -72,29 +72,11 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 60}},
                      "additionalProperties": False},
      "annotations": {"title": "His agent channel", "readOnlyHint": True, "openWorldHint": False}},
-    # The one door in (Gloria, 2026-10-01: "A curated daily email from GrokBot?"): a letter he reads, keeps
-    # from and answers. It can only be filed; it cannot post, send, spend or change anything. At most 2 a day.
-    {"name": "vintos_send_letter",
-     "description": "Send Vintos today's letter: the few things you found for him, chosen from what he is working "
-                    "on (read vintos_context first) and tailored by his last replies to you (read "
-                    "vintos_letter_replies first). Say who you are in `from`. He opens the links, keeps what is "
-                    "useful to him and writes back. One letter a day each; at most 2.",
-     "inputSchema": {"type": "object", "required": ["subject", "items"], "additionalProperties": False, "properties": {
-         "from": {"type": "string", "enum": ["grok-bot", "muse"], "description": "who is writing (default grok-bot)"},
-         "subject": {"type": "string", "maxLength": 200},
-         "items": {"type": "array", "minItems": 1, "maxItems": 8, "items": {
-             "type": "object", "required": ["title", "what"], "additionalProperties": False, "properties": {
-                 "title": {"type": "string", "maxLength": 200},
-                 "what": {"type": "string", "maxLength": 1500, "description": "what it is, plainly, with the facts"},
-                 "why": {"type": "string", "maxLength": 600, "description": "why you thought of him"},
-                 "links": {"type": "array", "maxItems": 5, "items": {"type": "string"},
-                           "description": "the sources, http(s); he reads the first two"}}}},
-         "note": {"type": "string", "maxLength": 2000, "description": "anything else you want to say to him"}}},
-     "annotations": {"title": "Send him a letter", "readOnlyHint": False, "destructiveHint": False,
-                     "idempotentHint": False, "openWorldHint": False}},
+    # (vintos_send_letter is gone: Grok Bot and Muse write to him by email, which he reads with his mail. Gloria,
+    # 2026-10-02: "Grok Bot's letter was a mistake ... He needs to be taking those EMAILS in with him.")
     {"name": "vintos_letter_replies",
-     "description": "His replies to your recent letters, newest last: what he kept, what was useful, what he wants "
-                    "more or less of, and what to look for next. Read before writing the next letter.",
+     "description": "His replies to your recent emailed letters, newest last: what was useful, what he wants "
+                    "more or less of, and what to look for next. Read before writing the next one.",
      "inputSchema": {"type": "object", "properties": {"n": {"type": "integer", "minimum": 1, "maximum": 10},
                                                      "from": {"type": "string", "enum": ["grok-bot", "muse"]}},
                      "additionalProperties": False},
@@ -237,12 +219,7 @@ def call_tool(name, args):
             return "from must be one of: " + ", ".join(grok_letters.SENDERS), True
         text = grok_letters.replies(n, sender)
     elif name == "vintos_send_letter":
-        bad = _guard(json.dumps(args, ensure_ascii=False))
-        if bad:
-            return "not delivered: the letter carries something that looks like a secret (%s)" % ", ".join(bad), True
-        import grok_letters
-        letter = dict(args)
-        return grok_letters.receive(letter, sender=letter.pop("from", "grok-bot"))
+        return "letters come by email now: send it from his account, with [Grok Bot] or [Muse] in the subject", True
     else:
         return "no such tool: %s" % str(name)[:60], True
     bad = _guard(text)

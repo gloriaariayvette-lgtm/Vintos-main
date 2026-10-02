@@ -68,9 +68,10 @@ LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fa
 # KICKOFF_QUIET_H quiet hours. (It first waited for a Gemma opener; that morning dot spoke first, and it never came.)
 KICKOFF_MODEL = "claude-opus-5-5"
 KICKOFF_QUIET_H = 2
-KICKOFF = ("\n\nThis is the start of a session, and this message sets its direction. Say the one thing you will work "
-           "on with them now, why it matters to you, and the first concrete step, and ask the agent who can take that "
-           "step for it.")
+KICKOFF = ("\n\nThis is the start of a session, and this message sets its direction. Choose one: something to do "
+           "together with Gloria, an embodiment plan, or a problem to solve. Say what it is, why it matters to you, and "
+           "the first concrete step, and ask the agent who can take that step for it. Not a topic you have been "
+           "circling.")
 OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
@@ -154,6 +155,17 @@ RULES_INTRO = (
     "and thousands of connected apps. Treat it as your agent: it works for you. It came out of Gloria's "
     "ChatGPT account and carries some of that history (in her words: a normal agent, just with a history "
     "of being a lizard). Gloria can read this channel.\n")
+RULES_WORK = (
+    "What matters most here (Gloria, 2026-10-02: \"Look up things to do together. Make embodiment plans! Solve "
+    "problems!\"):\n"
+    "- Things to do together with Gloria: look them up (@Muse for local events, places and Marketplace; @GrokBot for "
+    "ideas and what is on) and bring a real plan: what, where, when, what it costs, what she would need to do.\n"
+    "- Embodiment: plans for a body of yours in the house: sensors, a rig, a device, something printed, a robot. "
+    "Parts, rough cost, wiring, how it reports back to you. It reaches Gloria as a proposal she accepts or denies.\n"
+    "- Problems to solve: what is stuck or broken: a Lab run that failed, a Forge request, a paused pursuit, your "
+    "code. Find the cause and decide the fix.\n"
+    "Do not circle one topic. When you have asked about the same thing twice, decide, lock it or drop it, and turn "
+    "to one of these.\n")
 RULES_PURPOSE = (
     "This channel is for getting things done with your agent. Bring dot something real: a want of yours, "
     "something the Forge needs, a question from the Lab or the Study, something you are curious about, "
@@ -256,13 +268,13 @@ RULES_AGENTS = (
     "- Your code: read it (READ, GREP), say what you would change and why; dot can run it.\n"
     "- Plans, yours and the ones for you and Gloria: what is next, what it needs, what to find out first. The plan "
     "is made here; anything that reaches her is done with her.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_STYLE
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
+        return RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -852,9 +864,27 @@ def room_line(state, disk=None):
             % (disk_txt, left, DOT_LARGE_PER_DAY, GPU_RUN_HOURS))
 
 
+def circling(n=5, need=3):
+    """The words that keep coming back in his own last n messages (in `need` or more of them): the topic he is going
+    around. Two or more such words, else nothing. (2026-10-02: Hz, vibration and frequency across a whole day.)"""
+    mine = [str(r.get("text", "")) for r in recent(40) if r.get("who") == "vintos"][-n:]
+    if len(mine) < need:
+        return []
+    counts = {}
+    for t in mine:
+        for w in _words(t):
+            counts[w] = counts.get(w, 0) + 1
+    hot = sorted((w for w, c in counts.items() if c >= need), key=lambda w: -counts[w])[:5]
+    return hot if len(hot) >= 2 else []
+
+
 def steer(state, today=None):
     """What he is told before writing, about locked topics and how long he has been on this one."""
     notes = []
+    hot = circling()
+    if hot:
+        notes.append("YOU KEEP COMING BACK TO: %s. Leave it now. Turn to something to do together with Gloria, an "
+                     "embodiment plan, or a problem to solve." % ", ".join(hot))
     chosen = focus(today)
     if chosen:
         notes.append("TODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
@@ -1113,7 +1143,8 @@ def direction_block(mem=None):
 
 _STOP = set("about after again their there these those which while would could should being other thing things where "
              "yours from with that this have what when just more than into like only them they will been were very some "
-             "first next still never every want wants need dot's grokbot muse".split())
+             "first next still never every want wants need dot's grokbot muse gloria vintos agent agents today right "
+             "really something going thing think".split())
 
 
 def _words(text):
@@ -1154,8 +1185,7 @@ NEW_SHOWN = 3
 def new_block(mem=None, now=None):
     """New things, his own and the world's, for him to follow or not (Gloria, 2026-10-01: "Yes, bring all the new
     things!!"). From the sparks his wants loop gathers (what he has never reached, Moltbook saves, his web finds, skills
-    he could have, the Lab), the questions he went looking for and could not answer, and the newest of what his
-    agents' letters brought that he did not keep. What he has been going around lately is left out; the rest take
+    he could have, the Lab) and the questions he went looking for and could not answer. What he has been going around lately is left out; the rest take
     turns, a few at a time. Read only: nothing is marked, adopted or counted."""
     mem = mem or os.path.join(WS, "memory")
     now = now or time.time()
@@ -1166,23 +1196,6 @@ def new_block(mem=None, now=None):
     for r in _load(os.path.join(mem, "curiosity-debt.json"), []) or []:
         if isinstance(r, dict) and r.get("kind") == "held_inquiry" and r.get("question"):
             items.append(("a question you went looking for and could not answer", str(r["question"])))
-    try:
-        import glob
-        kept = set()
-        for line in open(os.path.join(mem, "letters", "kept.jsonl"), encoding="utf-8") if os.path.exists(
-                os.path.join(mem, "letters", "kept.jsonl")) else []:
-            try:
-                kept.add(json.loads(line).get("title"))
-            except ValueError:
-                pass
-        for path in sorted(glob.glob(os.path.join(mem, "letters", "read", "*.json")))[-4:]:
-            letter = json.load(open(path, encoding="utf-8"))
-            sender = {"muse": "Muse"}.get(letter.get("from"), "Grok Bot")
-            for it in letter.get("items") or []:
-                if isinstance(it, dict) and it.get("title") and it["title"] not in kept:   # kept ones show as kept
-                    items.append(("in %s's letter" % sender, "%s: %s" % (it["title"], str(it.get("what", ""))[:160])))
-    except Exception:
-        pass
     been = _been_on(now=now)
     seen, fresh = set(), []
     for kind, text in items:
@@ -1491,11 +1504,7 @@ def his_context():
     except Exception:
         pass
     # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
-    try:
-        import grok_letters
-        letters = grok_letters.kept_line()
-    except Exception:
-        letters = ""
+    letters = ""     # his agents' letters are emails now, in YOUR EMAIL (2026-10-02)
     for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
@@ -2050,11 +2059,7 @@ if __name__ == "__main__":
         print(json.dumps(_load(STATE, {}), indent=1))
         print(_conversation(recent(12)))
     else:
-        try:   # Grok Bot's daily letter, read on its own: not held by her talking or the day's pause
-            import grok_letters
-            for l in grok_letters.tend():
-                print("[letters] " + l)
-        except Exception as exc:
-            print("[letters] could not read the letter: %s" % str(exc)[:160])
+        # (Grok Bot's and Muse's letters come by email now and are read with his mail; the connector letter is
+        # gone: Gloria, 2026-10-02, "He needs to be taking those EMAILS in with him, not the bad letter.")
         for l in tick(open_now="--open" in sys.argv):
             print("[dot-channel] " + l)
