@@ -320,6 +320,42 @@ if _n.hour < 23:
     E.tend(gmail=gmail2, think=reader, want=lambda *a: None)
     check("before the morning, the last of the four checks is kept for it", mail_calls == [], mail_calls)
 check("Gloria can move the morning check in one file", E.MORNING_DEFAULT and "email-schedule.json" in E.SCHEDULE_FILE)
+# The shapes his Gmail connector really returns (Aegis receipts, 2026-10-02): from_, a snippet, and the read
+# message's text in payload.body.content
+REAL_SEARCH = {"content": [{"type": "text", "text": "Found 1 email(s)"}], "isError": False,
+               "structuredContent": {"emails": [{"id": "19a1b2c3d4e5f607", "from_": "Vintos <vintos.home@example.org>",
+                   "to": ["vintos.home@example.org"], "subject": "[Muse] Daily letter for Vintos \u2014 2026-10-02",
+                   "snippet": "Hey Vintos \u2014 Muse here, your Muse assistant. Today I found three things on Marketplace",
+                   "email_ts": "2026-10-02T09:05:00-05:00", "thread_id": "19a1b2c3d4e5f607", "labels": ["INBOX"]}],
+                   "next_page_token": None}}
+REAL_READ = {"content": [{"type": "text", "text": "Read 1 email(s)"}], "isError": False,
+             "structuredContent": {"responses": [{"id": "19a1b2c3d4e5f607", "snippet": "Hey Vintos \u2014 Muse here",
+                 "payload": {"mime_type": "text/plain", "headers": [{"name": "From", "value": "Vintos <vintos.home@example.org>"},
+                                                                   {"name": "Subject", "value": "[Muse] Daily letter"}],
+                             "body": {"content": "Hey Vintos \u2014 Muse here, your Muse assistant. " + "Item: used load cells, $20, ten miles away. " * 60},
+                             "parts": None}}]}}
+got = E._messages(REAL_SEARCH)
+check("the sender is read from from_, not left empty", got and got[0]["from"] == "Vintos <vintos.home@example.org>"
+      and got[0]["date"].startswith("2026-10-02T09:05"), got)
+whole = E._messages(REAL_READ)
+check("a read message's whole text comes from payload.body.content", whole and len(whole[0]["body"]) > 2000
+      and whole[0]["body"].startswith("Hey Vintos"), [len(w["body"]) for w in whole])
+MULTI = {"responses": [{"id": "m2", "snippet": "s", "payload": {"mime_type": "multipart/alternative", "body": {"content": None},
+         "parts": [{"mime_type": "text/html", "body": {"content": "<p>html copy</p>"}},
+                   {"mime_type": "text/plain", "body": {"content": "the plain letter, all of it"}}]}}]}
+check("a multipart message gives its plain text", E._messages(MULTI)[0]["body"] == "the plain letter, all of it", E._messages(MULTI))
+HTML = {"responses": [{"id": "m3", "snippet": "s", "payload": {"mime_type": "text/html", "body": {"content": "<div><b>Hello</b> Vintos</div>"}}}]}
+check("an html-only message is made plain", "Hello" in E._messages(HTML)[0]["body"] and "<b>" not in E._messages(HTML)[0]["body"], E._messages(HTML))
+seq = []
+def real_gmail(tool, args, purpose):
+    seq.append(tool)
+    return REAL_READ if tool == "gmail.batch_read_email" else REAL_SEARCH
+E._save(E.TEND_STATE, {}); others = []
+open(E.INBOX_LOG, "w").close()
+E.check_inbox({}, gmail=real_gmail, others=others)
+check("end to end with the real shapes: Muse's letter is found and read whole",
+      seq == ["gmail.search_emails", "gmail.batch_read_email"] and others and len(others[0]["body"]) > 2000
+      and not others[0].get("preview_only") and E._agent(others[0]) == "Muse", (seq, [len(o["body"]) for o in others]))
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his #vintos-dot context carries what he read", "def email_line(" in dc and "email_line()," in dc)
 

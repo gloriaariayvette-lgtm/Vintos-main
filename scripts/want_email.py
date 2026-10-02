@@ -556,15 +556,47 @@ def _gmail(tool, arguments, purpose, gateway=None):
     return gateway.load_receipt(rid, "wants")["result"] if rid else {}
 
 
+def _payload_text(payload):
+    """The text of a Gmail message payload: its own body, or its parts (plain text first, else html made plain)."""
+    if not isinstance(payload, dict):
+        return ""
+    plain, html = [], []
+    def walk(p):
+        if not isinstance(p, dict):
+            return
+        body = p.get("body") if isinstance(p.get("body"), dict) else {}
+        text = body.get("content") or body.get("data") or ""
+        if isinstance(text, str) and text.strip():
+            (html if "html" in str(p.get("mime_type") or p.get("mimeType") or "").lower() else plain).append(text)
+        for part in p.get("parts") or []:
+            walk(part)
+    walk(payload)
+    if plain:
+        return "\n\n".join(plain)
+    if html:
+        return _page_text("\n".join(html))
+    return ""
+
+
+def _header(g, name):
+    for h in ((g.get("payload") or {}).get("headers") or []) if isinstance(g.get("payload"), dict) else []:
+        if isinstance(h, dict) and str(h.get("name", "")).lower() == name:
+            return str(h.get("value") or "")
+    return ""
+
+
 def _messages(result):
-    """Every message-like object in a Gmail tool result, however the connector shapes it."""
+    """Every message-like object in a Gmail tool result, however the connector shapes it. The connector Vintos
+    uses names the sender from_ and keeps a read message's text in payload.body.content (2026-10-02: every email
+    had come in with no sender, and with only its 200-character preview)."""
     found = []
     def walk(o):
         if isinstance(o, dict):
             keys = {k.lower() for k in o}
-            if ("id" in keys or "message_id" in keys) and keys & {"from", "sender", "body", "snippet", "text", "content"}:
+            if ("id" in keys or "message_id" in keys) and keys & {"from", "from_", "sender", "body", "snippet", "text", "content", "payload"}:
                 found.append(o)
-            for v in o.values(): walk(v)
+            for k, v in o.items():
+                if k != "payload": walk(v)
         elif isinstance(o, list):
             for v in o: walk(v)
         elif isinstance(o, str) and o.strip().startswith(("{", "[")):
@@ -574,10 +606,12 @@ def _messages(result):
     out = []
     for m in found:
         g = {k.lower(): v for k, v in m.items()}
-        body = g.get("body") or g.get("text") or g.get("content") or g.get("snippet") or ""
+        body = _payload_text(g.get("payload")) or g.get("body") or g.get("text") or g.get("content") or g.get("snippet") or ""
         if isinstance(body, (dict, list)): body = json.dumps(body)[:4000]
-        out.append({"id": str(g.get("id") or g.get("message_id")), "from": str(g.get("from") or g.get("sender") or ""),
-                    "subject": str(g.get("subject") or ""), "date": str(g.get("date") or g.get("internal_date") or ""),
+        out.append({"id": str(g.get("id") or g.get("message_id")),
+                    "from": str(g.get("from") or g.get("from_") or g.get("sender") or _header(g, "from") or ""),
+                    "subject": str(g.get("subject") or _header(g, "subject") or ""),
+                    "date": str(g.get("date") or g.get("email_ts") or _header(g, "date") or g.get("internal_date") or ""),
                     "thread_id": str(g.get("thread_id") or g.get("threadid") or ""), "body": str(body)})
     return out
 
