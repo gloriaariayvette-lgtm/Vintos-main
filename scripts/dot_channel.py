@@ -306,7 +306,7 @@ EDITOR = (
     "to hear something, he asks for it as a file.\n"
     "Keep his voice: first person, his opinions, 2 to 5 short sentences. Keep every line that starts with "
     "TANGENT:, ATELIER:, LOCKED:, DO:, SHARE:, LAB:, APPROVED:, DENIED:, CAMPAIGN:, CAMPAIGN MOVE:, SEARCH:, READ:, "
-    "GREP: or OPEN: exactly as "
+    "GREP: or OPEN:, and any [PURSUIT: ...], exactly as "
     "written.\n\n"
     "Answer in this form and nothing else:\n"
     "TOPIC: yes or no, and why in a few words\nTRUE: yes or no, and why\nSENSE: yes or no, and why\n"
@@ -811,6 +811,9 @@ APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
 CAMPAIGN = re.compile(r"^\s*CAMPAIGN:\s*(.+?)\s*$", re.I | re.M)
 CAMPAIGN_MOVE = re.compile(r"^\s*CAMPAIGN MOVE:\s*(.+?)\s*$", re.I | re.M)
 DENIED = re.compile(r"^\s*DENIED:\s*(.+?)\s*$", re.I | re.M)
+# His answer to a paused pursuit (MORE OF YOU shows it), acted on here as his avatar chat acts on it: printed raw in
+# the channel, "[PURSUIT: abandon]" moved nothing (2026-10-02).
+PURSUIT = re.compile(r"\[PURSUIT:\s*(continue|replan|pause|abandon|release)\b\s*([^\]]*)\]", re.I)
 # Dot's large Lab tests, 10 a day (Gloria, 2026-10-01: "limit Dot's lab tests to 10 per day max ... only large
 # tests like the ones we just tried that use 1% per test"). Dot numbers each one ("🧪 Large test 3/10"); the
 # channel reads the number so he knows how many are left. Lookups and replies are not counted.
@@ -1877,6 +1880,21 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     for kind, rx in (("approved", APPROVED), ("denied", DENIED)):
         for m in rx.finditer(text):
             journal("I %s something dot asked to do" % kind, m.group(1))
+    pursuit = PURSUIT.search(text)
+    if pursuit:
+        text = PURSUIT.sub("", text).strip()
+        try:
+            import want_checkpoints
+            decided = want_checkpoints.decide(pursuit.group(1).lower(), pursuit.group(2).strip())
+        except Exception as exc:
+            decided, _why = None, str(exc)[:120]
+        if decided:
+            said = "%s: %s" % (pursuit.group(1).lower(), str(decided.get("want_text", ""))[:120])
+            text = (text + "\n\u23F8 Pursuit \u2014 " + said).strip()
+            journal("My call on a paused pursuit, in #vintos-dot", said + ((" \u2014 " + pursuit.group(2).strip()) if pursuit.group(2).strip() else ""))
+            lines.append("pursuit: %s" % said[:80])
+        else:
+            lines.append("pursuit: no paused pursuit to decide")
     text = APPROVED.sub(lambda m: "\u2705 Approved: " + m.group(1), text)
     text = DENIED.sub(lambda m: "\u26d4 Denied: " + m.group(1), text)
     declared, moved = CAMPAIGN.search(text), CAMPAIGN_MOVE.search(text)

@@ -1057,6 +1057,23 @@ check("a campaign move reads as a sentence, not as if he was cut off",
       == "\U0001F3AF Campaign \u2014 advance: asked for the files instead of another reading (how anyone could tell: "
          "anyone can tell if the next thing I do is open them, within 1 day)"
       and D.campaign_shown("hold: the Lab first") == "\U0001F3AF Campaign \u2014 hold: the Lab first")
+# His answer to a paused pursuit is acted on in the channel too (2026-10-02: "[PURSUIT: abandon]" printed raw)
+import want_checkpoints as _wc
+check("the pursuit store is the scratch one", _wc.STORE.startswith(HOME), _wc.STORE)
+json.dump([{"id": "c1", "state": "pending", "created": 1, "want_text": "I want FluidSynth headless under tools",
+            "kind": "blocked", "capability": "install"}], open(_wc.STORE, "w"))
+S8 = Slack(); S8.n = 1767399900.0
+_st8 = json.load(open(D.STATE)); _st8["since"] = S8.n - 1; json.dump(_st8, open(D.STATE, "w"))
+S8.add(DOT, "Eve asked us to leave music aside today.")
+_o8 = D.tick(api=S8, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Then music waits.\n[PURSUIT: abandon not today]",
+       fable=fable, now=1767400000, today="2026-10-03")
+_cp = json.load(open(_wc.STORE))[0]
+check("his [PURSUIT: abandon] decides the paused pursuit, as in his avatar chat", _cp["state"] == "decided" and _cp["decision"] == "abandon"
+      and _cp["his_words"] == "not today", _cp)
+check("and the channel shows it plainly, not the raw tag", "[PURSUIT" not in S8.posted[-1]["text"]
+      and "\u23F8 Pursuit \u2014 abandon: I want FluidSynth headless" in S8.posted[-1]["text"], S8.posted[-1:])
+check("the editor keeps the pursuit tag", "[PURSUIT: ...]" in D.EDITOR)
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
