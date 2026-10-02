@@ -1627,6 +1627,33 @@ COMPUTER = re.compile(r"\b(run|build|install|fold|compile|benchmark|script|code|
                       r"render|simulat\w*|pilot|gromacs|esmfold|tool|plugin|on your computer)\b", re.I)
 
 
+# Finding what is near, what is on, and what is for sale is Muse's (Facebook, Instagram, Marketplace, local events).
+# He had never once asked it: "local events ... near Gloria" went to dot (2026-10-02). Such a request, meant for dot
+# or no one, goes to @Muse; it is checked before the search rule sends it to Grok Bot.
+LOCAL = re.compile(r"\b(local|near(?:by)?|around (?:here|town)|in town|this weekend|tonight|events?|things to do|"
+                   r"places? to|restaurants?|class(?:es)?|markets?|marketplace|listings?|for sale|facebook|instagram|"
+                   r"concerts?|festivals?|shows? (?:near|in|this|tonight))\b", re.I)
+# dot's Slack handle, copied from the channel, is dot: "@eve.domomain.ai-dot" slipped past every rule for "@dot"
+DOT_HANDLE = re.compile(r"@[\w.]+-dot\b", re.I)
+
+
+def to_muse(text):
+    """(text, rerouted). A request to find something local, on, or for sale, with no @ or only @dot and no computer
+    work in it, is put to @Muse."""
+    named = {re.sub(r"\s", "", m.lower()) for m in AT.findall(text)}
+    # the request itself, not the whole message, is what is judged: "let's stop looking at the code. Can you look up
+    # local events" is a local find
+    asks = [x for x in re.split(r"(?<=[.!?])\s+|\n+", text) if SEARCHING.search(x) and LOCAL.search(x)]
+    if (named - {"dot"}) or not asks or any(COMPUTER.search(x) for x in asks):
+        return text, False
+    out, n = re.subn(r"(^|[.!?]\s+|\n)@?dot\s*[,:\u2014-]\s*", r"\1@Muse, ", text, flags=re.I)
+    if not n:
+        out = re.sub(r"@dot\b", "@Muse", text, flags=re.I)
+        if out == text:
+            out = "@Muse " + text
+    return out, True
+
+
 def to_grokbot(text):
     """(text, rerouted). A search with no @ or only @dot, and no computer work in it, is put to @GrokBot."""
     named = {re.sub(r"\s", "", m.lower()) for m in AT.findall(text)}
@@ -1953,7 +1980,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     bad = _guarded(text)
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
-    text, rerouted = to_grokbot(text)
+    text = DOT_HANDLE.sub("@dot", text)
+    text, to_m = to_muse(text)
+    if to_m:
+        lines.append("a local find went to Muse, not dot")
+    text, rerouted = (text, False) if to_m else to_grokbot(text)
     if rerouted:
         lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))

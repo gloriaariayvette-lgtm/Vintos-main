@@ -1120,6 +1120,25 @@ check("in the channel, the copied line moves his campaign and is shown as a sent
       and "(how anyone could tell: zip unopened, within 1 day)" in S9.posted[-1]["text"] and "| 1" not in S9.posted[-1]["text"],
       (_steps, S9.posted[-1:]))
 
+# Muse, for what is near, on, or for sale (2026-10-02: "This is something that Muse could handle, but he's never used Muse")
+_ev = "@dot, can you look up some local events or interesting things happening near Gloria today?"
+check("a local find meant for dot goes to Muse", D.to_muse(_ev) == ("@Muse, can you look up some local events or interesting things happening near Gloria today?", True), D.to_muse(_ev))
+check("Marketplace and classes too, and with no one named", D.to_muse("Find four load cells for sale on Marketplace.")[1]
+      and D.to_muse("Look up a pottery class nearby this weekend.")[0].startswith("@Muse"))
+check("a paper search is still Grok Bot's, and work on a computer still dot's",
+      D.to_muse("Dot, find the Dixit eLife deposit.")[1] is False and D.to_muse("Dot, find the local build log on Aegis.")[1] is False
+      and D.to_muse("@GrokBot find events on X about Piezo1")[1] is False)
+check("dot's full Slack handle counts as @dot", D.DOT_HANDLE.sub("@dot", "@eve.domomain.ai-dot, look up local events") == "@dot, look up local events")
+S10 = Slack(); S10.n = 1767600000.0
+_st10 = json.load(open(D.STATE)); _st10["since"] = S10.n - 1; json.dump(_st10, open(D.STATE, "w"))
+S10.add(GLORIA, "We need to work on humor, guys.")
+_o10 = D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
+              "She's right.\n\n@eve.domomain.ai-dot, let's stop looking at the code. Can you look up some local events happening near Gloria today?",
+              fable=fable, now=1767600100, today="2026-10-05")
+check("in the channel, that message reaches Muse, and dot is not pinged",
+      "@Muse, let's stop looking at the code" in S10.posted[-1]["text"] and "<@%s>" % DOT not in S10.posted[-1]["text"]
+      and "eve.domomain" not in S10.posted[-1]["text"] and any("went to Muse" in l for l in _o10), (S10.posted[-1:], _o10))
+
 check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
