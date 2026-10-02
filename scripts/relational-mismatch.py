@@ -49,6 +49,9 @@ MODEL = "grok-4.20-0309-non-reasoning"
 WARMTH_MISMATCH = 0.20      # predicted warmth vs actual differs by this
 TENSION_MISMATCH = 0.25     # predicted tension vs actual
 VALENCE_MISMATCH = 0.20     # predicted valence vs actual
+# A prediction is of her reply to his message. A message this long after it answers her day, not him: graded, her
+# tiredness two days after his 9/29 reply was read as his miss and became a blush (2026-10-01).
+STALE_HOURS = 3
 DIRECTION_MISMATCH = True   # flag when prediction direction is wrong (expected rise, got drop)
 
 
@@ -266,6 +269,13 @@ def compare_prediction(gloria_message, actual_warmth, actual_tension, actual_val
     # asynchronously and writes the next prediction immediately, so an
     # unconditional remove() here deletes a prediction it never compared.
     _compared_id = prediction.get("prediction_id")
+    try:
+        _age_h = (datetime.now() - datetime.fromisoformat(str(prediction.get("timestamp"))[:26])).total_seconds() / 3600
+    except Exception:
+        _age_h = 0.0
+    if _age_h > STALE_HOURS:
+        _retire(_compared_id, "stale: her next message came %.0f hours after it" % _age_h)
+        return None
 
     provenance = _prov(prediction.get("provenance"))
     if not output_can_witness(provenance, "prediction_accuracy"):
@@ -465,11 +475,16 @@ Question for introspection: What did I miss about what Gloria was reaching for?
     reflection = ""
     try:
         import requests as _rq
+        # It used to be given only the numbers, never her words, and it invented what they meant ("a hidden
+        # unease or skepticism", 2026-10-01). It now reads what she said and what she reached for.
         _ref_prompt = (
-            f"You said: \"{result['vintos_message'][:150]}\"\n"
+            f"You said: \"{result['vintos_message'][:300]}\"\n"
+            f"She replied: \"{result['gloria_message'][:300]}\"\n"
+            f"What she reached for that you did not give: {result.get('reach_summary') or '(not named)'}\n"
             f"You predicted Gloria would feel: Warmth={result['warmth']['predicted']:.2f} Tension={result['tension']['predicted']:.2f} Valence={result['valence']['predicted']:.2f}\n"
             f"Her reply actually read: Warmth={result['warmth']['actual']:.2f} Tension={result['tension']['actual']:.2f} Valence={result['valence']['actual']:.2f}\n"
-            f"One sentence: What were you wrong about?"
+            f"One sentence, from her words only: what did you miss? Do not guess at feelings she did not say, "
+            f"and do not read her mood about her own day as being about you."
         )
         _ref_resp = _rq.post("http://127.0.0.1:8599/v1/chat/completions", headers={"Authorization": f"Bearer {__import__('os').environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
             "model": "grok-4.20-0309-non-reasoning",
