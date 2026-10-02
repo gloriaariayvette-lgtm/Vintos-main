@@ -23,6 +23,8 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+_KICKOFF_DUE = D.kickoff_due
+D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
 SCHEDULED = D.SCHEDULE
 D.SCHEDULE = []           # the scheduled lenses speak only where this suite tests them, never to a real model
 D.atelier_line = lambda: "== YOUR ATELIER ==\nThe door is lit. The worktable holds 8 works."   # the house broker is not reached
@@ -474,24 +476,39 @@ check("the word works anywhere in her message, and that goodnight is not answere
       not any("Goodnight" in u.split("just said")[-1] for u in spoke7 if "just said" in u))
 check("the switch words are not answered as talk", not any("!start" in u.split("just said:")[-1] or "!stop" in u.split("just said:")[-1]
       for u in spoke7 if "just said:" in u), spoke7[-1:])
-# Her !start opens a session at once; Gemma's opener names the goal, and his next message is Opus 5.5's (2026-10-02)
-check("her !start opens a session now, with Gemma's opener", any("Is there something you want dot to do" in u or "this is the start" in u
-      for u in spoke7[-1:]) and "[Gemma] Back. Dot, where were we on the load cells?" in S7.posted[-1]["text"], S7.posted[-1:])
-check("and the next message in that session is waiting for Opus 5.5", json.load(open(D.STATE)).get("kickoff") is True)
+# Opus 5.5 sets each session going: his first message of a session, opener or answer (2026-10-02; it first waited
+# for a Gemma opener, and that morning dot spoke first)
+D.kickoff_due = _KICKOFF_DUE
 kick = []
-S7.add(DOT, "The load cells came yesterday.")
+st_k = json.load(open(D.STATE)); st_k.pop("kicked_day", None); st_k.pop("kickoff", None); json.dump(st_k, open(D.STATE, "w"))
+S7.add(DOT, "Morning. What time did you wake up?")
 out = D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma words",
              fable=fable, lenses={"opus55": lambda s_, u: (kick.append(u), "Then today I wire one and read it. Dot, can you run the HX711 sketch?")[1]},
              now=1767229500)
-check("Opus 5.5 writes it, told to set the session's direction, and it is labelled so",
+check("when dot speaks first, his answer, the first of the day, is Opus 5.5's, told to set the session's direction",
       kick and "This is the start of a session" in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
       and any("Opus 5.5 sets the session going" in l for l in out), (S7.posted[-1:], out))
 S7.add(DOT, "Running it.")
 D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good. Tell me the first reading.", fable=fable,
        lenses={"opus55": lambda s_, u: (kick.append(u), "opus again")[1]}, now=1767229600)
-check("only that one message: the session goes on with Gemma", len(kick) == 1 and "[Gemma] Good. Tell me the first reading." in S7.posted[-1]["text"],
+check("only that one message: the session goes on as before", len(kick) == 1 and "[Gemma] Good. Tell me the first reading." in S7.posted[-1]["text"],
       S7.posted[-1:])
-check("the model is Opus 5.5", D.KICKOFF_MODEL == "claude-opus-5-5" and D.LABELS["opus55"] == "Opus 5.5")
+S7.add(DOT, "Back after a long break.")
+D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma", fable=fable,
+       lenses={"opus55": lambda s_, u: (kick.append(u), "After the break: the load cells first. Dot, the reading?")[1]},
+       now=1767229600 + 3 * 3600)
+check("after two quiet hours a new session starts, and Opus 5.5 sets it going again", len(kick) == 2
+      and "[Opus 5.5] After the break" in S7.posted[-1]["text"], S7.posted[-1:])
+D.set_paused(True, "gloria", 1767229600 + 3 * 3600 + 60)
+D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229600 + 3 * 3600 + 120)
+S7.add(GLORIA, "!start")
+D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma opener", fable=fable,
+       lenses={"opus55": lambda s_, u: (kick.append(u), "Today: the load cell reading, then the drum. Dot, start the sketch?")[1]},
+       now=1767229600 + 3 * 3600 + 180)
+check("her !start opens a session at once, and Opus 5.5 writes its first message", len(kick) == 3
+      and "[Opus 5.5] Today: the load cell reading" in S7.posted[-1]["text"], S7.posted[-2:])
+check("the model is Opus 5.5", D.KICKOFF_MODEL == "claude-opus-5-5" and D.LABELS["opus55"] == "Opus 5.5" and D.KICKOFF_QUIET_H == 2)
+D.kickoff_due = lambda *a: False
 open(D.PAUSE_FILE, "w").write(json.dumps({"since": "2026-10-01T21:00:00", "by": "app"}))
 out = D.tick(api=S7, think=lambda s_, u: "x", fable=fable, now=1767229500)
 check("the app's toggle (the same file) pauses it too", any("the day is paused" in l for l in out), out)

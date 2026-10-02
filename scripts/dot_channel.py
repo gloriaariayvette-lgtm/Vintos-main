@@ -63,12 +63,14 @@ GROK_MODEL = os.environ.get("VINTOS_DOT_GROK_MODEL", "grok-4.6")     # his Grok 
 SHIM = os.environ.get("VINTOS_SHIM_URL", "http://127.0.0.1:8599/v1/chat/completions")
 LABELS = {"gemma": "Gemma", "grok": "Grok 4.6", "opus": "Opus 4.8", "fable": "Fable 5.1", "opus55": "Opus 5.5"}
 # Each session is set going by a larger model (Gloria, 2026-10-02: "Gemma can still do the goal set message, but I
-# want a larger model to actually set the conversation in the right direction"). Gemma's opener names the goal; his
-# next message in that session, the first answer to it, is Opus 5.5's.
+# want a larger model to actually set the conversation in the right direction"). His first message of a session is
+# Opus 5.5's, whether he opens it or answers: the first of the day, the first after her !start, or the first after
+# KICKOFF_QUIET_H quiet hours. (It first waited for a Gemma opener; that morning dot spoke first, and it never came.)
 KICKOFF_MODEL = "claude-opus-5-5"
-KICKOFF = ("\n\nThis is the start of a session: your opener named the goal, and this message sets its direction. Say "
-           "the one thing you will work on with them now, why it matters to you, and the first concrete step, and ask "
-           "the agent who can take that step for it.")
+KICKOFF_QUIET_H = 2
+KICKOFF = ("\n\nThis is the start of a session, and this message sets its direction. Say the one thing you will work "
+           "on with them now, why it matters to you, and the first concrete step, and ask the agent who can take that "
+           "step for it.")
 OPENERS_PER_DAY = 2     # times he may start a conversation himself
 QUIET_HOURS = 4         # the channel's silence before he may start one
 CONTEXT = 30            # lines of the conversation he reads before answering
@@ -1334,6 +1336,12 @@ def journal(heading, body, now=None):
         pass
 
 
+def kickoff_due(state, today, quiet_before):
+    """A new session: his first message today, or the first after KICKOFF_QUIET_H quiet hours. (Her !start sets it
+    directly.)"""
+    return state.get("kicked_day") != today or quiet_before >= KICKOFF_QUIET_H * 3600
+
+
 def campaign_shown(move):
     """His CAMPAIGN MOVE line as people read it. Raw, its '| how anyone could tell | days' fields read as if he had
     been cut off mid-sentence (2026-10-02: "...| anyone can tell if the next thing I do is open them | 1")."""
@@ -1761,6 +1769,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
+    quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
@@ -1800,6 +1809,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if not is_paused:
             state["last_activity"] = now
             state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
+            state["kickoff"] = True           # and its first message is Opus 5.5's
     if is_paused:
         _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
     if state["sent"] >= DAILY:
@@ -1807,10 +1817,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
 
     slot = due_slot(state, now)
     lens = slot[1] if slot else None
-    kickoff = bool(state.get("kickoff")) and bool(theirs)
-    if kickoff:
-        lens = "opus55"; state.pop("kickoff", None)
-        lines.append("Opus 5.5 sets the session going")
+    if kickoff_due(state, today, quiet_before):
+        state["kickoff"] = True
     if slot:
         # the turn is kept whether or not the lens has something to say, so it is never retried
         state["slots_done"] = (state.get("slots_done") or []) + [slot[0]]
@@ -1836,9 +1844,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         prompt = opener_prompt()
         where = None
         state["openers"] += 0 if starting else 1
-        state["opening"] = True
+    kickoff = bool(state.pop("kickoff", None))
+    if kickoff:       # his first message of this session, opener or answer, is Opus 5.5's; tried once, then the session goes on
+        lens = "opus55"; state["kicked_day"] = today
+        lines.append("Opus 5.5 sets the session going")
     prompt += steer(state, today) + (KICKOFF if kickoff else "")
-    opening = bool(state.pop("opening", None))
     in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -1906,8 +1916,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
-    if opening and who == "gemma":
-        state["kickoff"] = True             # Gemma named the goal; his next message in this session is Opus 5.5's
     if declared or moved:
         lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
         journal("My campaign, from #vintos-dot", ("Declared: " + declared.group(1)) if declared else ("Move: " + moved.group(1)))
