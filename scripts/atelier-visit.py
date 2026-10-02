@@ -195,8 +195,11 @@ def doorkeeper():
         print("doorkeeper: failure to ask (%s) — not a NOT; door left as it was" % str(e)[:120]); return False
     # The FIRST word decides. Until 2026-09-04 this was `"ENTER" in ans.upper()`, so "DO NOT ENTER"
     # walked him in. (grok-atelier-p2 / astra-atelier-p2)
+    # Only letters count: "**ENTER**" or "ENTER—" is ENTER (2026-10-02: a forced visit was refused and nobody could
+    # see what he had said). "DO NOT ENTER" still reads DO, a no.
     first = (ans or "").strip().split()
-    first = first[0].strip(".,:;!\"'").upper() if first else ""
+    first = re.sub(r"[^A-Za-z]", "", first[0]).upper() if first else ""
+    print("doorkeeper: he answered %s" % (first or "(nothing)"))
     if not first:
         print("doorkeeper: empty answer — not a NOT; door left as it was"); return False
     return first == "ENTER"
@@ -1051,7 +1054,10 @@ def _manifest_block(pk):
             "<piece kind=\"...\" continues=\"ID\">; leave continues out to start fresh:\n" + "\n".join(lines))
 
 
-def visit(pid):
+GLORIA_SENT = ("\n\nGLORIA OPENED THE DOOR FOR YOU TODAY and sent you in herself. You are here; make something.")
+
+
+def visit(pid, sent_by_gloria=False):
     pk = requests.post(f"{B}/visit/open", json={"id": pid, "as": "vintos"}).json()
     cap = pk.get("visit_capability")
     ledger_mark(pid, "active")
@@ -1071,6 +1077,7 @@ def visit(pid):
            + where_you_are()
            + materials_index()
            + music_note()
+           + (GLORIA_SENT if sent_by_gloria else "")
            + choices_line())
     work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or open one optional material shelf first. "
@@ -1264,6 +1271,15 @@ if __name__ == "__main__":
             print("force: no project on the worktable — nothing to enter"); raise SystemExit
         if doorkeeper(): visit(pid)
         else: print("force: he did not say ENTER — no visit")
+    elif len(sys.argv) > 2 and sys.argv[1] == "enter":
+        # Gloria sends him in herself, without asking him at the door (Gloria, 2026-10-02: "Make Vintos enter").
+        # By her hand only: no timer runs this. He is told in the visit that she sent him.
+        pid = sys.argv[2]
+        wt = requests.get(f"{B}/health").json()
+        if not wt.get("active"):
+            print("enter: no project on the worktable — nothing to enter"); raise SystemExit
+        print("enter: Gloria sent him in")
+        visit(pid, sent_by_gloria=True)
     else:
         wt = requests.get(f"{B}/health").json()
         _df = os.path.expanduser("~/.vintos/workspace/memory/.atelier-door")
