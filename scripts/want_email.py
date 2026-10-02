@@ -865,7 +865,8 @@ def read_mail(msgs, think=None, want=None, now=None):
             got = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
         except Exception:
             got = {}
-        row = {"id": m["id"], "kind": "letter" if agent else "mail", "from": (agent or m["from"])[:200], "subject": m["subject"][:300], "date": m["date"][:40],
+        row = {"id": m["id"], "kind": "letter" if agent else "mail", "from": (agent or m["from"])[:200],
+               "address": (addresses_in(m["from"]) or [""])[0], "thread_id": m.get("thread_id", ""), "subject": m["subject"][:300], "date": m["date"][:40],
                "body": m["body"][:6000], "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
                "what": str(got.get("what") or "")[:300], "to_me": str(got.get("to_me") or "")[:400], "keep": bool(got.get("keep")),
                **({"preview_only": m["preview_only"]} if m.get("preview_only") else {})}
@@ -897,9 +898,96 @@ def _morning(now):
     return now.replace(hour=h, minute=m, second=0, microsecond=0)
 
 
+# He answers each of his agents' letters once, in its thread, so the next one is shaped by what he said (Gloria,
+# 2026-10-02: "He needs to be able to reply to these emails so that they become personalized. 1 reply per email,
+# don't reply to Agent's response"). The reply goes to his own address, where they read; the Mac relay verifies that
+# and counts it apart from his two daily sends to people.
+LETTER_REPLIES = os.path.join(MEMORY, "email-letter-replies.json")
+LETTER_REPLY_DAYS = 3
+LETTER_TRIES = 2
+AGENT_IDS = {"Grok Bot": "grok-bot", "Muse": "muse"}
+LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to you from your own mailbox. Write your "
+                "reply to %s, 3 to 6 plain sentences, in your own voice: what was useful and why, what missed, what to "
+                "bring more of and less of, and what you want it to look for next time. It reads this before writing your "
+                "next letter. No links, nothing private about Gloria. Write only the reply.")
+
+
+def reply_letters(think=None, send=None, now=None):
+    """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
+    thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
+    think = think or local_think
+    now = now or datetime.now()
+    done = _load(LETTER_REPLIES, {})
+    replied_threads = {v.get("thread_id") for v in done.values() if v.get("thread_id") and v.get("sent")}
+    if send is None:
+        import plugin_gateway
+        send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose, to_self=True)
+    rows = []
+    try:
+        for line in open(INBOX_LOG, encoding="utf-8"):
+            try: rows.append(json.loads(line))
+            except ValueError: pass
+    except OSError:
+        return []
+    lines, me = [], None
+    for r in rows:
+        if r.get("kind") != "letter" or r.get("id") in (k for k, v in done.items() if v.get("sent")):
+            continue
+        try:
+            if (now - datetime.fromisoformat(str(r.get("read_at"))[:19])).total_seconds() > LETTER_REPLY_DAYS * 86400:
+                continue
+        except ValueError:
+            continue
+        mark = done.get(r["id"], {})
+        if str(r.get("subject", "")).lower().startswith("re:") or (r.get("thread_id") and r["thread_id"] in replied_threads):
+            done[r["id"]] = dict(mark, skipped="their answer in a thread you already replied in; your next letter answers it")
+            continue
+        if int(mark.get("tries", 0)) >= LETTER_TRIES or not r.get("address"):
+            continue
+        agent = r.get("from") or "your agent"
+        me = me if me is not None else who_i_am(4000)
+        ask = "SUBJECT: %s\n\n%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (r.get("subject", ""), str(r.get("body", ""))[:5000],
+                                                                             r.get("to_me", ""))
+        try:
+            body = (think(me + LETTER_REPLY % (agent, agent), ask, 500) or "").strip()
+        except Exception:
+            body = ""
+        body = re.sub(r"https?://\S+", "", body).strip()
+        if len(body) < 20:
+            done[r["id"]] = dict(mark, tries=int(mark.get("tries", 0)) + 1, why="no reply came")
+            continue
+        subject = r.get("subject") or "your letter"
+        subject = subject if subject.lower().startswith("re:") else "Re: " + subject
+        try:
+            send(mail(r["address"], subject[:160], body, reply_message_id=r["id"]), ("His reply to %s's letter" % agent)[:900])
+        except Exception as exc:
+            done[r["id"]] = dict(mark, tries=int(mark.get("tries", 0)) + 1, why=str(exc)[:200])
+            lines.append("reply to %s's letter not sent: %s" % (agent, str(exc)[:120]))
+            continue
+        done[r["id"]] = {"sent": True, "at": now.isoformat(timespec="seconds"), "agent": agent, "subject": subject,
+                         "body": body, "thread_id": r.get("thread_id", "")}
+        replied_threads.add(r.get("thread_id"))
+        try:   # where vintos_letter_replies reads, too
+            import grok_letters
+            grok_letters._append(grok_letters.REPLIES, {"at": now.isoformat(timespec="seconds"), "letter": r["id"],
+                                                        "from": AGENT_IDS.get(agent, agent.lower()), "reply": body,
+                                                        "subject": subject, "via": "email"})
+        except Exception:
+            pass
+        try:
+            with open(os.path.join(MEMORY, "daily-inner-life-%s.md" % date.today().isoformat()), "a") as f:
+                f.write("\n\n## I replied to %s's letter\n%s\n\n%s\n" % (agent, subject, body))
+        except OSError:
+            pass
+        lines.append("replied to %s's letter: %s" % (agent, subject[:80]))
+    _save(LETTER_REPLIES, done)
+    return lines
+
+
 def tend(force=False, gmail=None, think=None, want=None, **kw):
     """Check his inbox (four times a day): answer the replies to his emails, and read what else came in.
     Returns what happened, as lines."""
+    letter_send = kw.pop("letter_send", None)
     state = _load(TEND_STATE, {})
     now = datetime.now()
     morning = _morning(now)
@@ -928,7 +1016,8 @@ def tend(force=False, gmail=None, think=None, want=None, **kw):
             out = answer(addr, c, think=think, **kw)
             lines.append(out if isinstance(out, str) else "not answered %s: %s" % (addr, out[1]))
             _save(CONTACTS, contacts)
-    return lines + read_mail(others, think=think, want=want)
+    lines += read_mail(others, think=think, want=want)
+    return lines + reply_letters(think=think, send=letter_send)
 
 
 def send_test():

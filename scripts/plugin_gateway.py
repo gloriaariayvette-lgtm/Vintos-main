@@ -152,7 +152,7 @@ def _store(surface, plugin, tool, arguments, result, visibility):
     return receipt
 
 
-def call(surface, plugin, tool, arguments, purpose, *, transport=None):
+def call(surface, plugin, tool, arguments, purpose, *, transport=None, to_self=False):
     if plugin == "nvidia_nim":
         from bionemo_gateway import call as hosted_call
         return hosted_call(surface, plugin, tool, arguments, purpose, transport=transport)
@@ -164,6 +164,10 @@ def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     if not isinstance(arguments, dict): raise ValueError("arguments must be an object")
     request = {"action":"call", "surface":surface, "plugin":plugin, "tool":tool,
                "arguments":arguments, "purpose":purpose}
+    if to_self:
+        # a reply to his own address (his agents' letters): the Mac relay verifies it against the mailbox's own
+        # address and counts it apart from the two daily sends to people (2026-10-02)
+        request["to_self"] = True
     outbound = entry.get("outbound_policy") or {}
     if tool in outbound.get("tools", ()):
         findings = outbound_findings(arguments)

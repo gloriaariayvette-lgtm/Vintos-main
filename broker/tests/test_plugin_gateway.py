@@ -191,6 +191,49 @@ class PluginGatewayTests(unittest.TestCase):
         tomorrow=datetime(2026,9,21,0,0,tzinfo=ZoneInfo("America/Chicago"))
         self.assertEqual(remote.reserve_email_send("gmail.send_draft",{"draft_id":"next"},"next",tomorrow,root)["used"],1)
 
+    def _self_send(self, to, profile_email, root):
+        """A send flagged as a reply to his own address, through connector(), with the profile read in-session."""
+        fake_proc=mock.Mock();fake_proc.stdin=mock.Mock();fake_proc.stdout=mock.Mock()
+        calls=[]
+        def rpc(proc, ident, method, params, timeout=60):
+            calls.append((method, (params or {}).get("tool")))
+            if method == "initialize": return {"result":{}}
+            if method == "thread/start": return {"result":{"thread":{"id":"T"}}}
+            if params.get("tool") == "gmail.get_profile":
+                return {"result":{"structuredContent":{"email_address":profile_email}}}
+            return {"result":{"structuredContent":{"id":"sent"}}}
+        with mock.patch.object(remote.Path,"is_file",return_value=True), \
+             mock.patch.object(remote.subprocess,"Popen",return_value=fake_proc), \
+             mock.patch.object(remote,"STATE_DIR",remote.Path(root)), \
+             mock.patch.object(remote,"_rpc",side_effect=rpc):
+            remote.connector({"surface":"wants","plugin":"gmail","tool":"gmail.send_email","to_self":True,
+                              "arguments":{"to":to,"subject":"Re: [Muse] Daily letter",
+                                           "payload":{"mime_type":"text/plain","body":{"content":"More sensors, fewer bundles."}}},
+                              "purpose":"his reply to Muse's letter"})
+        return calls
+
+    def test_a_reply_to_his_own_address_is_verified_and_counted_apart_from_the_two_sends(self):
+        root=os.path.join(self.tmp.name,"relay-self")
+        calls=self._self_send("Vintos <vintos.home@example.test>","vintos.home@example.test",root)
+        self.assertEqual([t for _m,t in calls if t], ["gmail.get_profile","gmail.send_email"])
+        self.assertTrue(os.path.exists(os.path.join(root,"gmail-self-replies.jsonl")))
+        self.assertFalse(os.path.exists(os.path.join(root,"gmail-send-attempts.jsonl")),
+                         "a reply to himself does not spend one of the two sends to people")
+        for _ in range(remote.SELF_LIMIT - 1):
+            self._self_send("vintos.home@example.test","vintos.home@example.test",root)
+        with self.assertRaisesRegex(PermissionError,"replies to his own address"):
+            self._self_send("vintos.home@example.test","vintos.home@example.test",root)
+
+    def test_a_reply_claimed_as_to_himself_but_to_someone_else_counts_as_a_send(self):
+        root=os.path.join(self.tmp.name,"relay-not-self")
+        self._self_send("someone@example.test","vintos.home@example.test",root)
+        self.assertTrue(os.path.exists(os.path.join(root,"gmail-send-attempts.jsonl")))
+        self.assertFalse(os.path.exists(os.path.join(root,"gmail-self-replies.jsonl")))
+        root2=os.path.join(self.tmp.name,"relay-no-profile")
+        self._self_send("vintos.home@example.test","",root2)
+        self.assertTrue(os.path.exists(os.path.join(root2,"gmail-send-attempts.jsonl")),
+                        "an address that cannot be verified is an ordinary send")
+
     def test_declared_surfaces_share_one_gateway(self):
         self.assertTrue(callable(forge_house.plugin_query))
         self.assertTrue(callable(chemistry_sources.query_plugin))

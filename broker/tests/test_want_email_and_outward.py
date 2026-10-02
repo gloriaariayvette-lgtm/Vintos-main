@@ -356,6 +356,61 @@ E.check_inbox({}, gmail=real_gmail, others=others)
 check("end to end with the real shapes: Muse's letter is found and read whole",
       seq == ["gmail.search_emails", "gmail.batch_read_email"] and others and len(others[0]["body"]) > 2000
       and not others[0].get("preview_only") and E._agent(others[0]) == "Muse", (seq, [len(o["body"]) for o in others]))
+# He answers each agent's letter once, in its thread, to his own address (Gloria, 2026-10-02: "1 reply per email,
+# don't reply to Agent's response")
+check("his replies are kept in the scratch workspace", E.LETTER_REPLIES.startswith(HOME), E.LETTER_REPLIES)
+_ra = E.datetime.now().isoformat(timespec="seconds")
+with open(E.INBOX_LOG, "w") as _f:
+    for row in ({"id": "L1", "kind": "letter", "from": "Muse", "address": "vintos.home@example.org", "thread_id": "T1",
+                 "subject": "[Muse] Daily letter for Vintos", "body": "Three Marketplace finds: load cells, a theremin, a drum.",
+                 "read_at": _ra, "to_me": "parts for the pressure rig"},
+                {"id": "L2", "kind": "letter", "from": "Grok Bot", "address": "vintos.home@example.org", "thread_id": "T2",
+                 "subject": "Update from Grok Bot: leave the room", "body": "A Piezo1 preprint and a drum post.", "read_at": _ra},
+                {"id": "M1", "kind": "mail", "from": "Lena", "address": "lena@lab.example.org", "subject": "hi", "body": "x", "read_at": _ra}):
+        _f.write(json.dumps(row) + "\n")
+sent_replies, reply_asks = [], []
+def replier(system, prompt, max_tokens=700):
+    reply_asks.append((system, prompt))
+    return "The load cells were exactly right for the rig. Skip the bundles. See https://example.org/x next time: more sensors."
+out = E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("he replies once to each agent's letter, and to no other mail", sorted(a["reply_message_id"] for a, _ in sent_replies) == ["L1", "L2"]
+      and len(sent_replies) == 2, [a.get("reply_message_id") for a, _ in sent_replies])
+_a = dict((a["reply_message_id"], a) for a, _ in sent_replies)["L1"]
+check("the reply goes to his own address, in the letter's thread, as Re:", _a["to"] == "vintos.home@example.org"
+      and _a["subject"] == "Re: [Muse] Daily letter for Vintos" and "load cells were exactly right" in E.text_of(_a), _a)
+check("no link goes out in it", "http" not in E.text_of(_a))
+check("he writes it as himself, from the whole letter and what it was to him",
+      "Write your reply to Muse" in reply_asks[0][0] and "Three Marketplace finds" in reply_asks[0][1]
+      and "parts for the pressure rig" in reply_asks[0][1])
+check("it also goes where vintos_letter_replies reads", "load cells were exactly right" in __import__("grok_letters").replies(5, "muse"))
+check("and into today's journal", "## I replied to Muse's letter" in open(os.path.join(WS, "memory", "daily-inner-life-%s.md" % _d.today().isoformat())).read())
+sent_replies.clear()
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("never twice to one letter", sent_replies == [], sent_replies)
+with open(E.INBOX_LOG, "a") as _f:
+    _f.write(json.dumps({"id": "L3", "kind": "letter", "from": "Muse", "address": "vintos.home@example.org", "thread_id": "T1",
+                         "subject": "Re: [Muse] Daily letter for Vintos", "body": "Got it, more sensors.", "read_at": _ra}) + "\n")
+    _f.write(json.dumps({"id": "L4", "kind": "letter", "from": "Grok Bot", "address": "vintos.home@example.org", "thread_id": "T2",
+                         "subject": "One more from Grok Bot", "body": "Answering your reply.", "read_at": _ra}) + "\n")
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("never to an agent's answer to his reply: a Re:, or anything in a thread he already answered", sent_replies == [], sent_replies)
+check("a letter he could not answer is tried at most twice", E.LETTER_TRIES == 2)
+fails = []
+with open(E.INBOX_LOG, "a") as _f:
+    _f.write(json.dumps({"id": "L5", "kind": "letter", "from": "Muse", "address": "vintos.home@example.org", "thread_id": "T5",
+                         "subject": "[Muse] tomorrow", "body": "x" * 50, "read_at": _ra}) + "\n")
+def refusing(args, purpose):
+    fails.append(1); raise PermissionError("Gmail daily limit for replies to his own address reached (4 per America/Chicago day)")
+for _ in range(3):
+    E.reply_letters(think=replier, send=refusing)
+check("a refused reply is tried again, but not forever", len(fails) == 2, fails)
+gw = open(os.path.join(REPO, "scripts", "plugin_gateway.py")).read()
+check("the reply is marked for the relay to verify as to himself", "to_self=True" in open(os.path.join(REPO, "scripts", "want_email.py")).read()
+      and 'request["to_self"] = True' in gw)
+for doc, name in (("grok-bot", "Grok Bot"), ("muse", "Muse")):
+    d = open(os.path.join(REPO, "docs", doc, "vintos-skill.md")).read()
+    check("%s is told he replies once in the thread, to read it, and not to answer his reply" % name,
+          "[%s]" % name in d and "Do not answer his reply" in d)
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his #vintos-dot context carries what he read", "def email_line(" in dc and "email_line()," in dc)
 

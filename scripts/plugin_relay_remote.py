@@ -5,6 +5,7 @@ One JSON request in, one JSON response out.  There is no conversation resume and
 no model turn for connector calls.  Authentication remains in the Mac Codex home.
 """
 import json
+import re
 import os
 import base64
 import fcntl
@@ -29,11 +30,35 @@ MAX_INPUT_FILES = 4
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 SEND_TOOLS = frozenset(("gmail.send_email", "gmail.send_draft", "gmail.forward_emails"))
 SEND_LIMIT = 2
+# His replies to his own agents' letters go to his own address, where Grok Bot and Muse read. They are counted
+# apart from the two sends a day to people (Gloria, 2026-10-02), and only when the one recipient is verified, in the
+# same session, as his own mailbox's address.
+SELF_LIMIT = 4
+_ADDR = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 SEND_ZONE = ZoneInfo("America/Chicago")
 STATE_DIR = Path(os.environ.get("VINTOS_PLUGIN_RELAY_STATE", "~/.codex/vintos-plugin-relay")).expanduser()
 
 
-def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
+def _recipients(arguments):
+    found = []
+    for key in ("to", "cc", "bcc"):
+        v = (arguments or {}).get(key)
+        for item in (v if isinstance(v, list) else [v] if v else []):
+            found += [a.lower() for a in _ADDR.findall(str(item))]
+    return sorted(set(found))
+
+
+def _own_address(result):
+    """His mailbox's own address, from a gmail.get_profile result; '' when it cannot be read."""
+    sc = (result or {}).get("structuredContent") or {}
+    for key in ("email_address", "emailAddress", "email"):
+        if isinstance(sc.get(key), str) and _ADDR.fullmatch(sc[key].strip()):
+            return sc[key].strip().lower()
+    hits = _ADDR.findall(json.dumps(result or {}))
+    return hits[0].lower() if len(set(h.lower() for h in hits)) == 1 else ""
+
+
+def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None, to_self=False):
     """Reserve one of the two daily outbound attempts before contacting Gmail.
 
     Reservations are append-only and count even if the provider later fails.  The
@@ -49,8 +74,9 @@ def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
     root = Path(state_dir) if state_dir is not None else STATE_DIR
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(root, 0o700)
-    ledger = root / "gmail-send-attempts.jsonl"
-    lock_path = root / "gmail-send-attempts.lock"
+    name, limit = ("gmail-self-replies", SELF_LIMIT) if to_self else ("gmail-send-attempts", SEND_LIMIT)
+    ledger = root / (name + ".jsonl")
+    lock_path = root / (name + ".lock")
     day = moment.date().isoformat()
     with lock_path.open("a+", encoding="utf-8") as lock:
         os.chmod(lock_path, 0o600)
@@ -67,8 +93,10 @@ def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
                         used += 1
                     elif row.get("day") == day and row.get("event") == "released":
                         used -= 1     # rejected by the connector's own validation: nothing reached Gmail
-        if used >= SEND_LIMIT:
-            raise PermissionError("Gmail daily send limit reached (2 attempts per America/Chicago day)")
+        if used >= limit:
+            raise PermissionError(("Gmail daily limit for replies to his own address reached (%d per America/Chicago day)"
+                                   % SELF_LIMIT) if to_self else
+                                  "Gmail daily send limit reached (2 attempts per America/Chicago day)")
         digest = hashlib.sha256(json.dumps(arguments, sort_keys=True, separators=(",", ":"),
                                                    ensure_ascii=False).encode()).hexdigest()
         row = {"event":"reserved", "day":day, "at":moment.isoformat(), "tool":tool,
@@ -78,7 +106,7 @@ def reserve_email_send(tool, arguments, purpose="", now=None, state_dir=None):
             rows.write(json.dumps(row, sort_keys=True) + "\n")
             rows.flush()
             os.fsync(rows.fileno())
-        return {"day":day, "used":used + 1, "limit":SEND_LIMIT, "request_sha256":digest}
+        return {"day":day, "used":used + 1, "limit":limit, "request_sha256":digest, "ledger":name}
 
 
 def release_email_send(reservation, why, state_dir=None):
@@ -88,8 +116,9 @@ def release_email_send(reservation, why, state_dir=None):
     if not reservation:
         return False
     root = Path(state_dir) if state_dir is not None else STATE_DIR
-    ledger = root / "gmail-send-attempts.jsonl"
-    lock_path = root / "gmail-send-attempts.lock"
+    name = reservation.get("ledger") or "gmail-send-attempts"
+    ledger = root / (name + ".jsonl")
+    lock_path = root / (name + ".lock")
     row = {"event":"released", "day":reservation["day"], "at":datetime.now(SEND_ZONE).isoformat(),
            "request_sha256":reservation.get("request_sha256", ""), "why":str(why)[:200]}
     with lock_path.open("a+", encoding="utf-8") as lock:
@@ -138,7 +167,8 @@ def connector(request):
                                   "request_sha256":findings["request_sha256"], "links":findings["links"]})
     # A policy hold has not contacted Gmail and must not consume one of the two
     # daily provider attempts. Reserve under the Mac-side lock immediately before RPC.
-    send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
+    self_candidate = (tool == "gmail.send_email" and request.get("to_self") is True and len(_recipients(arguments)) == 1)
+    send_budget = None if self_candidate else reserve_email_send(tool, arguments, str(request.get("purpose") or ""))
     if not Path(CODEX).is_file(): raise RuntimeError("Codex app-server binary is unavailable")
     proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True)
@@ -149,7 +179,15 @@ def connector(request):
             "sandbox":"read-only", "approvalPolicy":"never", "serviceName":"vintos-plugin-relay"}, 30)
         thread_id = ((started.get("result") or {}).get("thread") or {}).get("id")
         if not thread_id: raise RuntimeError("contextless plugin session did not start")
-        called = _rpc(proc, 3, "mcpServer/tool/call", {"threadId":thread_id, "server":"codex_apps",
+        n = 3
+        if self_candidate:
+            # verified here, not taken on trust: the one recipient must be this mailbox's own address
+            prof = _rpc(proc, n, "mcpServer/tool/call", {"threadId":thread_id, "server":"codex_apps",
+                "tool":"gmail.get_profile", "arguments":{}}, 60); n += 1
+            mine = _own_address(prof.get("result") or {})
+            send_budget = reserve_email_send(tool, arguments, str(request.get("purpose") or ""),
+                                             to_self=bool(mine) and _recipients(arguments) == [mine])
+        called = _rpc(proc, n, "mcpServer/tool/call", {"threadId":thread_id, "server":"codex_apps",
             "tool":tool, "arguments":arguments}, 180)
         if called.get("error"): raise RuntimeError("connected tool call failed")
         result = called.get("result") or {}
