@@ -152,6 +152,7 @@ def topics_line():
 
 
 LEDGER_SHOWN = 15       # exchanges with Gloria he reads here, each with its WAL facts (Gloria, 2026-10-01)
+WAL_SEARCH_LOG = re.compile(r"\*\*CONTEXT\*\*:\s*Web search on", re.I)   # vintos-websearch.py's log line in wal.md
 HOLD_MINUTES = 20       # while Gloria is talking with him, the channel waits (Gloria, 2026-09-30)
 
 RULES_INTRO = (
@@ -1572,8 +1573,10 @@ def his_context():
                          "'tomorrow' then is not today now.\n" + "\n".join(lines))
     except Exception:
         pass
+    # his web-search log lines ("**CONTEXT**: Web search on ...") are not facts about Gloria or his world; in Slack
+    # they kept handing him yesterday's searches to go round again (the 40 Hz loop, 2026-10-02)
     wal = [ln.strip()[2:].strip() for ln in _read("wal.md", 200000, mem).splitlines()
-           if ln.strip().startswith("- [") and "**" in ln][-24:]
+           if ln.strip().startswith("- [") and "**" in ln and not WAL_SEARCH_LOG.search(ln)][-24:]
     if wal:
         import when_said
         parts.append("== WHAT YOU KNOW ABOUT GLORIA AND YOUR WORLD (wal.md, each marked with when you learned it) ==\n"

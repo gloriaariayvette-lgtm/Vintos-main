@@ -244,8 +244,11 @@ open(os.path.join(MEM, "daily-inner-life-%s.md" % _td), "w").write("daily inner 
 json.dump([{"gloria": "old %d" % i, "vintos": "r"} for i in range(5)] + [{"gloria": "line %d" % i, "vintos": "r"} for i in range(13)]
           + [{"gloria": "she said hello", "vintos": "he said hi", "wal_facts": ["Gloria keeps a jade plant"]}],
           open(os.path.join(MEM, "interaction-ledger.json"), "w"))
-open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes tidal flats\n")
+open(os.path.join(MEM, "wal.md"), "w").write("- [2026-09-01] **Gloria** likes tidal flats\n"
+                                             '- [2026-10-01] **CONTEXT**: Web search on "40 Hz phantom hum": a hum\n')
 ctx = D.his_context()
+check("his web-search log lines are not shown as what he knows (the 40 Hz loop, 2026-10-02)",
+      "likes tidal flats" in ctx and "40 Hz phantom hum" not in ctx)
 check("his context is present: who he is, now, how he feels, recent exchanges, what he knows",
       all(x in ctx for x in ("soul text", "Tuesday evening", "Connection: 0.9000", "she said hello", "likes tidal flats")), ctx[:400])
 check("the last 15 exchanges with Gloria, each with the facts it taught him (Gloria, 2026-10-01)",
