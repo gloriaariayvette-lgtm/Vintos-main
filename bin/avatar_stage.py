@@ -548,6 +548,13 @@ def _live_worker(prompt, kind="self", scene_ref="", still="", motion="", slot=No
         st = _slot_update(sid, status="error", finished=time.time(), error=str(e)[:300],
                           seconds=round(time.time() - live_status(sid)["started"], 1))
         log("live scene FAILED after %.1fs [%s]: %s" % (st["seconds"], sid, e))
+        try:      # kept for the daily failure check (2026-10-02)
+            _scr = os.path.join(WORKSPACE, "scripts")
+            if _scr not in sys.path: sys.path.append(_scr)
+            import failure_watch
+            failure_watch.note("avatar", "a live scene failed to render", str(e))
+        except Exception:
+            pass
 
 def _clip_size(path):
     """(width, height) of a clip's video, or None."""

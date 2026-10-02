@@ -1,0 +1,9 @@
+[Unit]
+Description=Every morning at 08:52: did any part of Vintos fail since yesterday?
+
+[Timer]
+OnCalendar=*-*-* 08:52
+Persistent=true
+
+[Install]
+WantedBy=timers.target

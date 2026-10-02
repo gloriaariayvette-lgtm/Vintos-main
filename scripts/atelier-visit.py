@@ -29,6 +29,17 @@ CHOICES = os.path.join(WSP, "memory", "atelier-choices.jsonl")
 SHELVES = ("media", "quantum", "connected_tools", "lab", "forge", "stratagem", "self_review")
 
 
+def _failed(what, why=""):
+    """Kept for the daily failure check (failure_watch): which part of the room failed, never what he made."""
+    try:
+        scripts = os.path.join(WSP, "scripts")
+        if scripts not in sys.path: sys.path.append(scripts)
+        import failure_watch
+        failure_watch.note("atelier", what, why)
+    except Exception:
+        pass
+
+
 def _chose(kind, what):
     try:
         with open(CHOICES, "a") as f:
@@ -192,7 +203,8 @@ def doorkeeper():
                   "If the door names weather (fog), that is a fact about your own clarity today, not a verdict; you decide with it in view. "
                   "Answer one word: ENTER or NOT.", door_line, max_tokens=5, temp=0.3)
     except Exception as e:
-        print("doorkeeper: failure to ask (%s) — not a NOT; door left as it was" % str(e)[:120]); return False
+        print("doorkeeper: failure to ask (%s) — not a NOT; door left as it was" % str(e)[:120])
+        _failed("the door could not ask him", str(e)); return False
     # The FIRST word decides. Until 2026-09-04 this was `"ENTER" in ans.upper()`, so "DO NOT ENTER"
     # walked him in. (grok-atelier-p2 / astra-atelier-p2)
     # Only letters count: "**ENTER**" or "ENTER—" is ENTER (2026-10-02: a forced visit was refused and nobody could
@@ -706,6 +718,7 @@ def listening(data, load=None, features=None):
                 "an instrument):\n%s" % (mmss(dur), LISTEN_SEGMENT, "\n".join(rows)))
     except Exception as exc:
         print("listening failed: %s" % str(exc)[:160])
+        _failed("a song he made could not be listened to", str(exc))
         return ""
     finally:
         try: os.unlink(path)
@@ -733,6 +746,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
     if not result.get("ok"):
         # it was asked for and did not arrive: say why in the visit log, not only to him (2026-10-01)
         print("%s NOT made: %s" % (wanted["kind"], str(result.get("error") or "no reason given")[:200]))
+        _failed("a %s he asked for did not arrive" % wanted["kind"], str(result.get("error") or "no reason given"))
     if result.get("ok"):
         data = result.pop("bytes")
         saved = requests.post(f"{B}/make", json={"id": pid, "kind": wanted["kind"],
@@ -741,6 +755,7 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
         if saved.get("error"):
             result = {"ok": False, "error": "broker store refused: %s" % saved["error"]}
             print("sealed %s NOT kept: %s" % (wanted["kind"], result["error"]))
+            _failed("a %s was made but not kept" % wanted["kind"], result["error"])
         else:
             artifact = saved.get("file", "")
             result["artifact"] = artifact
@@ -1240,6 +1255,8 @@ def visit(pid, sent_by_gloria=False):
     ho, nr, nm = _last("handoff", work), _last("next_return", work), _last("next_move", work)
     produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
                           or media_creation.get("made"))
+    if not produced_piece:
+        _failed("a visit made nothing")
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
           ("yes" if produced_piece else "no", media_choice,
            "yes" if ho is not None else "no", nr or "tomorrow"))
@@ -1256,6 +1273,7 @@ def visit(pid, sent_by_gloria=False):
                   "capability": cap}).json()
     if _hr.get("error"):
         print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
+        _failed("his handoff was refused", str(_hr["error"]))
     else:
         print("visit closed with handoff")
         consume_knock(pid)

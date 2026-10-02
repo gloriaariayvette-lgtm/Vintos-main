@@ -1804,6 +1804,18 @@ def _conversation(rows):
                                      " (in a thread)" if r.get("thread") else "", r["text"][:1500]) for r in rows)
 
 
+def _lens_failed(who, exc):
+    """A lens that could not answer, said in the pass log and kept for the daily failure check (2026-10-02: Sol
+    failed every turn for a day and nobody saw it, because Gemma answered in its place)."""
+    said = "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
+    try:
+        import failure_watch
+        failure_watch.note("slack", "%s could not answer" % LABELS.get(who, who), str(exc)[:300])
+    except Exception:
+        pass
+    return said
+
+
 def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
     names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
@@ -1822,7 +1834,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         try:
             out = (writer(system, user) or "").strip()
         except Exception as exc:
-            return None, "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
+            return None, _lens_failed(who, exc)
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
         if not asks or looked and _round:
             break
@@ -1832,7 +1844,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         try:
             out = (writer(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain) or "").strip()
         except Exception as exc:
-            return None, "%s could not answer: %s" % (LABELS.get(who, who), str(exc)[:120])
+            return None, _lens_failed(who, exc)
     if any(TOOL.match(l) for l in out.splitlines()):
         out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):

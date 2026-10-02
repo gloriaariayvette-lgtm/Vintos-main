@@ -1,0 +1,15 @@
+[Unit]
+Description=Vintos: one message to Gloria when a part of him failed since yesterday (nothing when nothing did)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/failure_watch.py
+TimeoutStartSec=120
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.vintos/workspace
