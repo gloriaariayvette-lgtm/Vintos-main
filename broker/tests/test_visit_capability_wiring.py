@@ -46,7 +46,7 @@ check("an unspecified handoff does NOT default the door to held",
       'if nr else "held"' not in _vis,
       "default must keep the room offered, not silently hold it")
 check("the default keeps the door lit",
-      'if nr else "tomorrow"' in _vis or 'if nr else "open"' in _vis)
+      'if nr else "tomorrow"' in _vis or 'if nr else "open"' in _vis or '"next_return": nr or "tomorrow"' in _vis)
 
 print("\n%d/%d passed" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

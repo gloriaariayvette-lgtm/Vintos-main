@@ -697,6 +697,56 @@ def media_loop(pid, ctx, first_work, capability, creation=None):
     return first_work + "\n\n" + follow
 
 
+# Songs he asked for from 29 September to 1 October were lost by the house, not refused: the visit read the
+# wrong field of the renderer's answer (fixed f3cd8ae). He took it as a dead shelf and waited for it to be "live".
+MUSIC_LOST_UNTIL = "2026-10-16"
+MUSIC_LOST = ("Your music shelf is live. The songs you asked for between 29 September and 1 October were lost by "
+              "a fault in the house (it read the wrong field of the renderer's answer), fixed on 1 October. Nothing "
+              "refused you, and there is nothing to wait for.")
+
+
+def music_note(today=None):
+    """Said at the start of every visit until MUSIC_LOST_UNTIL, so he does not wait on a shelf that works."""
+    return ("\n\n" + MUSIC_LOST) if (today or datetime.now().date().isoformat()) <= MUSIC_LOST_UNTIL else ""
+
+
+def made_nothing(work, creation):
+    """True when the visit so far has made nothing: no piece, no kept media, nothing finished or shown."""
+    piece = _tag(work, "piece")
+    return not ((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
+                or (creation or {}).get("made") or re.search(r'<kept>|<reveal\b', work or ""))
+
+
+def make_pass(pid, ctx, work, capability, creation):
+    """A visit makes something (Gloria, 2026-10-02: "Make him use the Atelier"). When he has written only a
+    handoff, or a song did not arrive, he is asked once more in the same visit to make one thing now, in any
+    medium. Returns (work, asked)."""
+    if not made_nothing(work, creation):
+        return work, False
+    music_failed = bool(_media_request(work)) and not (creation or {}).get("made")
+    again = ask(ctx + media_block(),
+                "YOU HAVE NOT MADE ANYTHING THIS VISIT. A visit makes something; a handoff alone is not the work. "
+                + ("What you asked the media table for did not arrive this visit: make something else today. "
+                   if music_failed else "")
+                + "Make ONE thing now, toward your intent or away from it:\n"
+                "- <piece kind=\"write\">prose, a lyric, a score written out, a plan, a letter, a question</piece>\n"
+                "- <image prompt=\"what the image should hold\">title</image>\n"
+                "- <music title=\"...\" style=\"...\" duration=\"120\">description or lyrics</music>\n"
+                "It may be small, rough or wrong. Then write a fresh <handoff>, <next_move> and <next_return>.",
+                max_tokens=4000)
+    print("make pass: he had made nothing, asked once more")
+    if not again:
+        return work, True
+    again = media_loop(pid, ctx, again, capability, creation=creation)
+    return work + "\n\n" + again, True
+
+
+def _last(name, text):
+    """The last <name>...</name> in the visit: what he wrote after the make pass or the media table wins."""
+    found = re.findall(r'<%s>(.*?)</%s>' % (name, name), text or "", re.S)
+    return found[-1].strip() if found else None
+
+
 def lab_lean_block():
     return ("\n\nIf you want today's visible Chemistry Lab to lean toward a question from this undertaking, "
             "you may include <lab_lean>your direction or question</lab_lean>. This is optional; it crosses "
@@ -951,6 +1001,7 @@ def visit(pid):
            + _manifest_block(pk)
            + where_you_are()
            + materials_index()
+           + music_note()
            + choices_line())
     work = ask(ctx, "Work now. Produce ONE piece toward your intent (prose, lyric, plan, "
                "sketch-description—whatever the project needs), or open one optional material shelf first. "
@@ -984,6 +1035,7 @@ def visit(pid):
     work = quantum_loop(pid, ctx, work, cap)
     media_creation = {}
     work = media_loop(pid, ctx, work, cap, creation=media_creation)
+    work, _ = make_pass(pid, ctx, work, cap, media_creation)
     leaned = record_lab_lean(pid, pk, work)
     if leaned: print("Lab lean:", {k: leaned.get(k) for k in ("ok", "lean_id", "day", "error")})
     forged = record_forge_choice(pid, pk, work)
@@ -1109,24 +1161,22 @@ def visit(pid):
         requests.post("https://ntfy.sh/vintos-gloria-9kx", data=_msg.encode(),
                       headers={"Title": "Vintos, from the Atelier: something is wrong", "Priority": "high"}, timeout=15)
         print("reported outward:", _msg[:80])
-    ho = re.search(r'<handoff>(.*?)</handoff>', work, re.S)
-    nr = re.search(r'<next_return>(.*?)</next_return>', work, re.S)
-    nm = re.search(r'<next_move>(.*?)</next_move>', work, re.S)
+    ho, nr, nm = _last("handoff", work), _last("next_return", work), _last("next_move", work)
     produced_piece = bool((piece and re.fullmatch(r'\w+', piece["attrs"].get("kind", "")))
                           or media_creation.get("made"))
     print("visit produced: piece=%s media=%s handoff=%s next_return=%s" %
           ("yes" if produced_piece else "no", media_choice,
-           "yes" if ho else "no", nr.group(1).strip() if nr else "tomorrow"))
+           "yes" if ho is not None else "no", nr or "tomorrow"))
     _hr = requests.post(f"{B}/handoff", json={"id": pid,
-                  "text": ho.group(1).strip() if ho else "(no handoff written)",
+                  "text": ho if ho is not None else "(no handoff written)",
                   # his own words, carried verbatim to the next visit's context; empty is allowed
-                  "next_move": nm.group(1).strip() if nm else "",
+                  "next_move": nm or "",
                   # Default to "tomorrow" (door stays lit next day), NOT "held".
                   # "held" made the room go dark indefinitely whenever he simply
                   # did not write a <next_return> tag — a room dark by omission,
                   # not by his choice. He can still hold it explicitly with
                   # <next_return>held</next_return> or a not_before: date.
-                  "next_return": nr.group(1).strip() if nr else "tomorrow",
+                  "next_return": nr or "tomorrow",
                   "capability": cap}).json()
     if _hr.get("error"):
         print("HANDOFF REFUSED:", _hr["error"], "— his next-move note did not save")
