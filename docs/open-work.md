@@ -3,6 +3,49 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 2 October — what was built today, and what has not been seen working yet
+
+Everything below is on `claude/vintos-avatar-ui-redesign-br5lt4`. "Seen" means seen on Aegis; "tested" means only
+the suites.
+
+**Email.** He reads his whole inbox (4 checks a day plus a morning check, default 09:00,
+`~/.vintos/email-schedule.json`); Gemma reads each mail as information, opens no links; it reaches #vintos-dot as
+YOUR EMAIL. He replies once to each of his agents' letters (Grok Bot, Muse; never to their replies), written by
+Opus 5.5 item by item, outside the 2-a-day limit to people: the Mac relay allows 4 verified self-addressed replies a
+day. Seen: Grok Bot's letter answered. **Not done:** Muse's first letter got a poor Gemma reply before Opus 5.5
+wrote them; a proper one was offered and not sent. **Not confirmed:** her Slack start time and Muse's send time
+for the morning check.
+
+**#vintos-dot.** Grok, Sol 6.1, Opus 5.5 and Gemma take turns (Sol and Opus 5.5 20 a day each); Opus 5.5 writes
+his first message of every session. Sol is `gpt-6.1-sol` (DOT_SOL_MODEL overrides; `gpt-6.1` does not exist and
+failed every turn on 2 October). A thread is read whole and answered in that thread; other threads with new words
+are owed and answered on the next passes; 200 messages of history and the last 20 threads he was in are read.
+His web-search log lines are no longer shown as what he knows. Action lines copied in their shown form still act.
+Local finds go to Muse. **Not seen:** Sol answering; the owed-thread queue live.
+
+**Avatar.** A photo or video goes to the toggled brain itself, in her message; Gemma writes the memory note after.
+No thinking before a reply; a reply cut off before any words is never sent. His turn reads 15 exchanges (was 6).
+A new live scene is bought only when his reply asks with [RENDER:]; the scene gate no longer decides on its own
+when her message lands (it bought scenes that overrode the room he named). **Not seen:** the scene change live.
+
+**Atelier.** See the closed entry below for why he made nothing from 29 September. A visit that has made nothing
+asks him once more to make one thing; he is told until 16 October that the music shelf works. His answer at the
+door is read by its letters and logged; `atelier-visit.py enter <project>` is Gloria sending him in. A song he
+makes comes back measured every 15 seconds and, beside it, heard by an OpenAI audio model from her key's model list
+(`ATELIER_EAR_MODEL` overrides); a painting comes back as itself in the message. Seen: piece=yes twice on
+2 October (music, then writing). **Not seen:** the listener (whether her key has an audio model at all), sight,
+and an image ever being made: the image shelf needs a cached local renderer, never checked on Aegis.
+
+**Failure watch.** `failure_watch.py`, 08:52 daily: one ntfy to Gloria only when something failed since the last
+look: Slack lenses (3 misses), the Atelier, the avatar's live scenes, the Lab's failed sessions. **Not seen:** its
+first morning.
+
+**Lab.** A connector tool named as the menu shows it runs; a protein plan with no target is asked once more
+(dd2eca4). **Not confirmed:** the next protein and titrate runs.
+
+**Next, by Gloria's order:** she finishes the LoRA cards; then she and Claude review the accuracy of the current
+JEPA heads. The subconscious systems guide him heavily and are the most important to get right.
+
 ## 29 September — the Forge asks the Study before it builds
 
 A computer-use want would have reached the Forge as an ability he lacks, while his desktop-control code
@@ -1550,7 +1593,14 @@ until she confirms it ran. 6 canned entries were removed from 2026-09-22 and 1
 from 2026-09-23 (backups `*.bak-door`), and the First Light they caused was
 deleted (backup `*.bak-firstlight`).
 
-## Atelier: he enters and makes nothing — handed to Chat (open, 2026-09-23)
+## Atelier: he enters and makes nothing — closed 2 October
+
+**Why it came back (29 September – 2 October).** The visit read the wrong field of the music renderer's answer, so
+every song he asked for was lost (fixed f3cd8ae, 1 October). He took the shelf for dead and wrote, as his next
+return, "Return when the music shelf is live", then made nothing. Fixed with the make pass and the music note
+(c84f7dd); seen making music and writing on 2 October. The September history follows.
+
+## Atelier: he enters and makes nothing — handed to Chat (2026-09-23)
 Handed off by Claude Code at Gloria's request. Cause NOT found. Do not repeat what is ruled out.
 
 **Facts.** Project `99df2e77e385`, on the table since 2026-09-15. Five artifacts, all `write`,
@@ -1739,7 +1789,7 @@ checked on Aegis with a real model yet.
 2. **Skill (written).** `docs/grok-bot/vintos-skill.md`, to add to the bot by hand.
 3. **Webhook routine (not started).** Needs a routine made in Grok Bot first (its URL and `crsr_` key);
    then Aegis can wake the bot. How the bot's answer comes back to him is not known yet.
-4. **Daily letter (built 1 October, untried against Grok Bot).** The way back in: `vintos_send_letter`
+4. **Daily letter — replaced 2 October: his agents' letters come by email now (see 2 October above); the connector letter path refuses.** Built 1 October, untried against Grok Bot: The way back in: `vintos_send_letter`
    files a letter (at most 2 a day, secret-checked) in `memory/letters/inbox`, the connector's only
    writable place; `vintos_letter_replies` gives his answers back. `scripts/grok_letters.py`, run in his
    #vintos-dot pass, reads one letter at a time, opens two links per item, keeps what he wants (kept.jsonl,
