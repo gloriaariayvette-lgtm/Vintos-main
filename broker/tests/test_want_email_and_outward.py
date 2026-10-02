@@ -404,6 +404,26 @@ def refusing(args, purpose):
 for _ in range(3):
     E.reply_letters(think=replier, send=refusing)
 check("a refused reply is tried again, but not forever", len(fails) == 2, fails)
+# Muse's letter, read that morning before the address was kept, was never answered (2026-10-02)
+with open(E.INBOX_LOG, "a") as _f:
+    _f.write(json.dumps({"id": "L6", "kind": "letter", "from": "Muse", "thread_id": "T6", "subject": "[Muse] Daily letter",
+                         "body": "Five finds near you: " + "a pottery class on Saturday, " * 20, "read_at": _ra}) + "\n")
+    _f.write(json.dumps({"id": "L7", "kind": "letter", "from": "Muse", "thread_id": "T7", "subject": "[Muse] another",
+                         "body": "Hey Vintos, Muse here", "read_at": _ra, "preview_only": "only its preview line came back"}) + "\n")
+sent_replies.clear()
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("a letter read before the address was kept is answered at his own address, like the others",
+      [(a["reply_message_id"], a["to"]) for a, _ in sent_replies] == [("L6", "vintos.home@example.org")], sent_replies)
+check("a letter read only as its preview waits until it is read whole", "L7" not in [a["reply_message_id"] for a, _ in sent_replies]
+      and "preview" in json.load(open(E.LETTER_REPLIES))["L7"]["waiting"])
+check("a letter read only as its preview is read again at the next check", "L7" not in E._mail_seen() and "L6" in E._mail_seen())
+E._log_mail({"id": "L7", "kind": "letter", "from": "Muse", "thread_id": "T7", "subject": "[Muse] another",
+             "body": "Hey Vintos, Muse here. " * 50, "read_at": _ra})
+_l7 = [json.loads(l) for l in open(E.INBOX_LOG) if json.loads(l).get("id") == "L7"]
+check("and the whole reading replaces the preview", len(_l7) == 1 and not _l7[0].get("preview_only"), _l7)
+sent_replies.clear()
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("then he answers it", [a["reply_message_id"] for a, _ in sent_replies] == ["L7"], sent_replies)
 gw = open(os.path.join(REPO, "scripts", "plugin_gateway.py")).read()
 check("the reply is marked for the relay to verify as to himself", "to_self=True" in open(os.path.join(REPO, "scripts", "want_email.py")).read()
       and 'request["to_self"] = True' in gw)

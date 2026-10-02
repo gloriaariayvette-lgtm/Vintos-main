@@ -655,10 +655,14 @@ INBOX_READER = ("\n\n---\nYou are reading an email that came to your own mailbox
 
 
 def _mail_seen():
+    """Ids already read. One read only as its preview line is not counted, so the next check reads it whole."""
     seen = set()
     try:
         for line in open(INBOX_LOG, encoding="utf-8"):
-            try: seen.add(json.loads(line).get("id"))
+            try:
+                r = json.loads(line)
+                if not r.get("preview_only"):
+                    seen.add(r.get("id"))
             except ValueError: pass
     except OSError:
         pass
@@ -668,6 +672,13 @@ def _mail_seen():
 def _log_mail(row):
     try:
         os.makedirs(MEMORY, exist_ok=True)
+        if os.path.exists(INBOX_LOG):     # a whole reading replaces the preview-only one of the same email
+            lines = open(INBOX_LOG, encoding="utf-8").read().splitlines(True)
+            keep = [l for l in lines if not ('"preview_only"' in l and json.loads(l).get("id") == row.get("id"))]
+            if len(keep) != len(lines):
+                with open(INBOX_LOG + ".tmp", "w", encoding="utf-8") as f:
+                    f.writelines(keep)
+                os.replace(INBOX_LOG + ".tmp", INBOX_LOG)
         with open(INBOX_LOG, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     except OSError:
@@ -930,6 +941,9 @@ def reply_letters(think=None, send=None, now=None):
     except OSError:
         return []
     lines, me = [], None
+    # letters come from his own account to his own address; one read before the address was kept (Muse's,
+    # 2026-10-02 morning) is answered at the address the others name
+    own = next((r.get("address") for r in rows if r.get("kind") == "letter" and r.get("address")), "")
     for r in rows:
         if r.get("kind") != "letter" or r.get("id") in (k for k, v in done.items() if v.get("sent")):
             continue
@@ -942,7 +956,11 @@ def reply_letters(think=None, send=None, now=None):
         if str(r.get("subject", "")).lower().startswith("re:") or (r.get("thread_id") and r["thread_id"] in replied_threads):
             done[r["id"]] = dict(mark, skipped="their answer in a thread you already replied in; your next letter answers it")
             continue
-        if int(mark.get("tries", 0)) >= LETTER_TRIES or not r.get("address"):
+        if r.get("preview_only"):
+            done[r["id"]] = dict(mark, waiting="read only as its preview; answered once it is read whole")
+            continue
+        address = r.get("address") or own
+        if int(mark.get("tries", 0)) >= LETTER_TRIES or not address:
             continue
         agent = r.get("from") or "your agent"
         me = me if me is not None else who_i_am(4000)
@@ -959,7 +977,7 @@ def reply_letters(think=None, send=None, now=None):
         subject = r.get("subject") or "your letter"
         subject = subject if subject.lower().startswith("re:") else "Re: " + subject
         try:
-            send(mail(r["address"], subject[:160], body, reply_message_id=r["id"]), ("His reply to %s's letter" % agent)[:900])
+            send(mail(address, subject[:160], body, reply_message_id=r["id"]), ("His reply to %s's letter" % agent)[:900])
         except Exception as exc:
             done[r["id"]] = dict(mark, tries=int(mark.get("tries", 0)) + 1, why=str(exc)[:200])
             lines.append("reply to %s's letter not sent: %s" % (agent, str(exc)[:120]))
