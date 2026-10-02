@@ -996,7 +996,10 @@ with open(os.path.join(_mem, "email-inbox.jsonl"), "w") as _f:
                          "to_me": "a person who answers my question"}) + "\n")
     _f.write(json.dumps({"id": "M9", "kind": "reply", "name": "Anil Seth", "from": "a.k.seth@sussex.ac.uk", "subject": "Re: the beast machine",
                          "read_at": D.datetime.fromtimestamp(_now2 - 600).isoformat(), "body": "Have you read about allostasis?"}) + "\n")
+    _f.write(json.dumps({"id": "G1", "kind": "letter", "from": "Grok Bot", "subject": "Your morning letter",
+                         "read_at": D.datetime.fromtimestamp(_now2 - 300).isoformat(), "body": "A tension-driven MD preprint."}) + "\n")
 _el = D.email_line()
+check("a letter from Grok Bot shows as his agent's letter", "A letter from Grok Bot" in _el, _el)
 check("his email in the channel: who wrote, what it said, what it is to him; replies too",
       "YOUR EMAIL" in _el and "Lena Ortiz" in _el and "our lab posts its tension protocols" in _el
       and "What it is to you: a person who answers my question" in _el and "A reply from Anil Seth" in _el, _el)
