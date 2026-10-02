@@ -9068,6 +9068,9 @@ async def hardware_button(request: Request):
         except Exception: pass
     return {"stopped": False, "desired_state": "running", "was": _was, "device_stop_result": None}
 
+AVATAR_LEDGER_SHOWN = 15    # exchanges with Gloria his avatar turn reads, each with its facts
+
+
 @app.post("/api/avatar/chat")
 async def avatar_chat(msg: ChatMessage, request: Request):
     _surface = "reelroom" if getattr(msg, "surface", None) == "reelroom" else "avatar"
@@ -9191,7 +9194,8 @@ async def avatar_chat(msg: ChatMessage, request: Request):
         ledger_ctx = ""
         try:
             _ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
-            _recent_ledger = _ledger[-6:]
+            # his last 15 exchanges with her, as #vintos-dot reads (Gloria, 2026-10-02; it had been 6)
+            _recent_ledger = _ledger[-AVATAR_LEDGER_SHOWN:]
             _ws = _when_said()
             _entries = []
             for _l in _recent_ledger:

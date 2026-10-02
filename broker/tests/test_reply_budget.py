@@ -80,6 +80,8 @@ check("the avatar turn also strips a tag cut off at the end before history and t
       'reply = _tagre.sub(r"\\s*\\[[A-Z_]+\\s*:[^\\]]*$", "", reply or "").strip()' in src)
 check("no thinking before an avatar reply (Gloria, 2026-10-01)", "        _reason = False" in src
       and "_reason = (not _felt_now)" not in src)
+check("his avatar turn reads his last 15 exchanges with Gloria, as #vintos-dot does (2026-10-02; it was 6)",
+      "AVATAR_LEDGER_SHOWN = 15" in src and "_recent_ledger = _ledger[-AVATAR_LEDGER_SHOWN:]" in src)
 check("nothing reached the network", NET == [])
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))
