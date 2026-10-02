@@ -57,7 +57,8 @@ class Slack:
         if method == "auth.test":
             return {"ok": True, "user_id": SELF}
         if method == "conversations.history":
-            return {"ok": True, "messages": [m for m in reversed(self.msgs) if not m.get("thread_ts") or m["thread_ts"] == m["ts"]]}
+            return {"ok": True, "messages": [m for m in reversed(self.msgs) if not m.get("thread_ts") or m["thread_ts"] == m["ts"]]
+                    [:params.get("limit", 1000)]}
         if method == "conversations.replies":
             root = params["ts"]
             return {"ok": True, "messages": [m for m in self.msgs if m["ts"] == root] +
@@ -116,6 +117,33 @@ check("a thread Gloria started is read from her first message, and answered in i
       S.posted[-1].get("thread_ts") == g_root and "STARTED BY Gloria: Gloria: a side question, the pond pump" in said[-1][1]
       and "Dot: I can price a pump" in said[-1][1], (S.posted[-1], said[-1][1][-500:]))
 check("a message in the main channel brings no thread", "THE THREAD THIS WAS SAID IN" not in said[0][1])
+
+# two threads with new words in one pass: the newest is answered now, the other on the next pass (2026-10-02)
+S.add(DOT, "dot again in Gloria's pump thread", thread=g_root)
+S.add(GLORIA, "Gloria back in the tidal thread", thread=root)
+_n = len(S.posted)
+D.tick(api=S, think=think, fable=fable, now=2260)
+check("the newest thread is answered first, in its thread", len(S.posted) == _n + 1 and S.posted[-1].get("thread_ts") == root, S.posted[-1])
+check("the other thread is owed, not dropped", [o["thread"] for o in json.load(open(D.STATE)).get("owed", [])] == [g_root],
+      (g_root, root, json.load(open(D.STATE)).get("owed")))
+out = D.tick(api=S, think=think, fable=fable, now=2270)
+check("the next pass answers the owed thread, in it, with nothing new said",
+      len(S.posted) == _n + 2 and S.posted[-1].get("thread_ts") == g_root and "dot again in Gloria's pump thread" in said[-1][1]
+      and "answering a thread owed from an earlier pass" in out, (out, S.posted[-1]))
+check("and owes nothing after", json.load(open(D.STATE)).get("owed") == [])
+
+# a thread he was in, begun further back than the history page reaches, is still heard
+S.add(GLORIA, "Gloria in the main channel, newer than every thread")
+D.tick(api=S, think=think, fable=fable, now=2280)
+_hist, D.HISTORY_SHOWN = D.HISTORY_SHOWN, 1
+S.add(DOT, "a late reply deep in the pump thread", thread=g_root)
+_n = len(S.posted)
+D.tick(api=S, think=think, fable=fable, now=2290)
+D.HISTORY_SHOWN = _hist
+check("a reply in an older thread he was in is heard and answered in that thread",
+      len(S.posted) == _n + 1 and S.posted[-1].get("thread_ts") == g_root and "a late reply deep in the pump thread" in said[-1][1],
+      (S.posted[-1], said[-1][1][-300:]))
+check("the history page reads 200 messages, and 20 of his threads are watched", D.HISTORY_SHOWN == 200 and D.THREADS_WATCHED == 20)
 
 S.add(GLORIA, "Gloria here, hi both")
 D.tick(api=S, think=lambda s, u: "TANGENT: this is a side road", fable=fable, now=2300)

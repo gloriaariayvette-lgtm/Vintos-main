@@ -1603,10 +1603,16 @@ def _clean(text, names=None):
     return t.strip()
 
 
-def fresh(api, channel, self_id, since):
-    """Messages after `since`, thread replies included, oldest first, without his own or Slack's notices."""
+HISTORY_SHOWN = 200     # top-level messages read each pass, for thread replies under them (was 50)
+THREADS_WATCHED = 20    # threads he has been in, read even when their first message is older than that
+
+
+def fresh(api, channel, self_id, since, watch=()):
+    """Messages after `since`, thread replies included, oldest first, without his own or Slack's notices. `watch`
+    names threads he has been in: their new replies are read even when the thread began further back than the
+    history page reaches (2026-10-02)."""
     out = []
-    hist = api("conversations.history", {"channel": channel, "limit": 50}).get("messages") or []
+    hist = api("conversations.history", {"channel": channel, "limit": HISTORY_SHOWN}).get("messages") or []
     for m in hist:
         if float(m.get("ts", 0)) > since:
             out.append(m)
@@ -1614,6 +1620,13 @@ def fresh(api, channel, self_id, since):
             for r in (api("conversations.replies", {"channel": channel, "ts": m["ts"], "limit": 100}).get("messages") or [])[1:]:
                 if float(r.get("ts", 0)) > since:
                     out.append(r)
+    paged = {m.get("ts") for m in hist}
+    for ts in [t for t in dict.fromkeys(watch or ()) if t and t not in paged][-THREADS_WATCHED:]:
+        try:
+            got = api("conversations.replies", {"channel": channel, "ts": ts, "limit": 100}).get("messages") or []
+        except Exception:
+            continue
+        out.extend(r for r in got[1:] if float(r.get("ts", 0)) > since)
     seen, rows = set(), []
     for m in sorted(out, key=lambda m: float(m.get("ts", 0))):
         if m["ts"] in seen or (self_id and m.get("user") == self_id) or m.get("subtype") in ("channel_join", "channel_leave", "channel_topic", "channel_purpose"):
@@ -1900,7 +1913,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
     since = float(state.get("since") or now)
-    new = [] if first else fresh(api, channel, state["self"], since)
+    new = [] if first else fresh(api, channel, state["self"], since, watch=state.get("threads") or [])
     if first:          # the first pass only starts listening; nothing said before it is answered
         state["since"] = now; _save(STATE, state)
         return ["listening from now"]
@@ -1970,8 +1983,27 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         # the turn is kept whether or not the lens has something to say, so it is never retried
         state["slots_done"] = (state.get("slots_done") or []) + [slot[0]]
         lines.append("%s's %s turn" % (LABELS[lens], slot[0]))
+    # Every thread with new words is answered, one a pass: the newest now, the others owed to the next passes
+    # (Gloria, 2026-10-02). Until then only the newest was answered and the rest were dropped.
+    def _key(r): return r.get("thread") or ""
+    owed = list(state.get("owed") or [])
+    last = None
     if theirs:
         last = theirs[-1]
+        latest = {}
+        for r in theirs[:-1]:
+            # the message a thread began with is answered by answering in that thread
+            if _key(r) != _key(last) and r.get("ts") != last.get("thread"):
+                latest[_key(r)] = r
+        owed = [o for o in owed if _key(o) != _key(last) and _key(o) not in latest
+                and o.get("ts") != last.get("thread")] + list(latest.values())
+    elif owed:
+        last = owed.pop(0)
+        lines.append("answering a thread owed from an earlier pass")
+    state["owed"] = owed[-10:]
+    state["threads"] = list(dict.fromkeys((state.get("threads") or []) + [r["thread"] for r in theirs if r.get("thread")]
+                                          + ([last["thread"]] if last and last.get("thread") else [])))[-THREADS_WATCHED:]
+    if last:
         in_atelier = last["thread"] in (state.get("atelier") or [])
         thread = thread_block(api, channel, last["thread"], state["self"], dot, names) if last["thread"] else ""
         prompt = ("THE CONVERSATION SO FAR (most recent last):\n%s\n\n%s%s just said%s: %s\n\nYour reply, as yourself."
@@ -2001,7 +2033,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lens = next_writer(state)
         rotated = lens is not None
     prompt += steer(state, today) + (KICKOFF if kickoff else "")
-    in_thread_atelier = bool(theirs) and theirs[-1]["thread"] in (state.get("atelier") or [])
+    in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
@@ -2029,7 +2061,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["since"] = max(float(state["since"]), float(where or 0))
     elif text.upper().startswith("TANGENT:"):
         text = text[len("TANGENT:"):].strip()
-        where = where or (theirs[-1]["ts"] if theirs else None)
+        where = where or (last["ts"] if last else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
     for kind, rx in (("approved", APPROVED), ("denied", DENIED)):
