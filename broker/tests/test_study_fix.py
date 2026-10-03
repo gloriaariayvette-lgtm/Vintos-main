@@ -186,6 +186,24 @@ row4 = next(r for r in S._load() if r["id"] == row4["id"])
 S.work(row4, ask=fable_seq({"refuse": "that is his subconscious; it needs Gloria"}), post=POSTS.append, suite=suite_seq(), deploy=deploy)
 check("a fix Fable declines is said, and nothing changes", row4["state"] == "refused" and "declined by Fable" in POSTS[-1] and origin_log() == before)
 
+# --- a deploy that refuses it: reverted, said in Slack, and Gloria is told -------------------------------
+rr = S._load()
+for x in rr:
+    if str(x.get("asked", ""))[:10] == S._today(): x["asked"] = "2026-01-01T00:00:00"
+    if x["state"] == "queued": x["state"] = "withdrawn"
+S._save(rr)
+row6, _ = S.request("greet() should wave as well as say hello")
+row6 = next(r for r in S._load() if r["id"] == row6["id"])
+sent_before = len(SENT)
+S.work(row6, ask=fable_seq({"summary": "wave", "edits": [{"path": "scripts/greet.py", "old": "return", "new": "return"}],
+                            "new_files": [{"path": "broker/tests/test_greet_wave.py", "content": "assert True\n"}]}),
+       post=POSTS.append, send=SENT.append, suite=suite_seq([]),
+       deploy=lambda run: "...\nDEPLOY FAILED - files are installed, but:\n  - forge not updated (sudo wants a password)\n")
+check("a fix the deploy refuses is reverted and said in Slack", row6["state"] == "failed"
+      and "refused by the deploy" in POSTS[-1], (row6["state"], POSTS[-1]))
+check("... and Gloria is told, with what the deploy said", len(SENT) == sent_before + 1
+      and "refused by the deploy" in SENT[-1] and "sudo wants a password" in SENT[-1], SENT[sent_before:])
+
 # --- the Slack line and the deploy ----------------------------------------------------------------------
 D = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his STUDY FIX: line goes to the Study and is shown as sent, or why not",

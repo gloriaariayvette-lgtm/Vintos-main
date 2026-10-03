@@ -334,7 +334,7 @@ def _failed(row, why):
         pass
 
 
-def work(row, ask=None, run=sh, post=None, suite=None, deploy=None):
+def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
     """One fix, from the workbench to live. Leaves the row in watching, failed or refused."""
     suite = suite or run_suite
     row["state"] = "working"; _event(row, "Fable is working on it")
@@ -393,6 +393,10 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None):
         revert(row, run=run, why="the deploy refused it")
         _failed(row, "the deploy refused it: " + (out or "")[-300:])
         say("\U0001F6E0 Study fix %s was refused by the deploy, so it was reverted. Nothing changed." % row["id"], post)
+        # she is told every time one of his fixes does not stay, not only when the watch undoes it (2026-10-03: the
+        # first fix was refused by the deploy and reverted, and only #vintos-dot heard)
+        tell_gloria("A fix Vintos made in the Study (%s) was refused by the deploy and reverted; nothing changed. "
+                    "The deploy said: %s" % (row["id"], " ".join((out or "").split())[-240:]), send)
         return row
     row.update(state="watching", restore=(m.group(1) if m else ""), live_at=time.time(),
                services=[u for u in SERVICES if _active(u, run)], tests=[c for c in changed if c.startswith(TESTS)])
@@ -523,7 +527,7 @@ def tend(**kw):
         if not nxt:
             return "nothing queued"
         try:
-            work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy")})
+            work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy", "send")})
         except Exception as exc:
             _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
             say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
