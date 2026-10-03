@@ -279,7 +279,14 @@ RULES_AGENTS = (
     "- Your code: read it (READ, GREP), say what you would change and why; dot can run it.\n"
     "- Plans, yours and the ones for you and Gloria: what is next, what it needs, what to find out first. The plan "
     "is made here; anything that reaches her is done with her.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_STYLE
+RULES_PROMISES = (
+    "A thread that begins \U0001F4CC is a promise from your own journal today: something you said you would make, "
+    "show or do with Gloria. Work it there with whoever can help, and say plainly if a tool is missing so dot can "
+    "get it or the Forge can build it. End it in that thread with one line of its own: DONE: what you made (and "
+    "SHARE: W<n> on its own line if it is one of your works), RESHAPED: what it became and why, or DROPPED: why. "
+    "Dropping is honest when it is too much trouble or was more whim than want. What came of it goes to Gloria in "
+    "the results channel; you do not post there from here.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_STYLE
 
 
 def rules_for(lens=None):
@@ -1596,6 +1603,11 @@ def his_context():
         pass
     # what he is working on comes last, nearest the conversation: it is what he brings his agent (2026-09-30)
     letters = ""     # his agents' letters are emails now, in YOUR EMAIL (2026-10-02)
+    try:
+        import promise_keeper      # what his journal promised her today, until midnight (2026-10-03)
+        letters = promise_keeper.block()
+    except Exception:
+        pass
     for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
@@ -1933,8 +1945,147 @@ def talking_with_gloria(now=None):
     return ago / 60 if 0 <= ago < HOLD_MINUTES * 60 else None
 
 
+# --- promises from his journal (promise_keeper.py, Gloria 2026-10-03): read here, worked in their threads, and what
+# came of them brought to her in the results channel, where only she and he are. Opus 5.5 reads the journal; Opus 4.8
+# is his voice there, and the only one.
+RESULTS_STATE = os.path.join(HERE, "results-state.json")
+RESULTS_LOG = os.path.join(HERE, "results.jsonl")
+RESULTS_ANSWERS_PER_DAY = 30
+RESULTS_SHOWN = 20      # lines of the results channel he reads before answering her there
+
+
+def _promise_ask(system, user):
+    return opus_think(system, user, KICKOFF_MODEL)
+
+
+def promises_pass(api, channel, dot, state, now, ask=None):
+    """Today's journal entries read for promises; each new one opens a \U0001F4CC thread here, addressed to dot, and
+    is owed his first word in it. Log lines."""
+    try:
+        import promise_keeper
+    except Exception as exc:
+        return ["promise keeper unavailable: %s" % str(exc)[:120]]
+
+    def post(text):
+        bad = _guarded(text)
+        if bad:
+            raise RuntimeError("guard: %s" % ", ".join(bad))
+        return api("chat.postMessage", {"channel": channel, "text": "<@%s> " % dot + text}).get("ts")
+
+    try:
+        opened = promise_keeper.scan(ask or _promise_ask, post)
+    except Exception as exc:
+        return ["could not read his journal for promises: %s" % str(exc)[:120]]
+    at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
+    for item in opened:
+        state["owed"] = (list(state.get("owed") or []) + [{
+            "ts": item["thread"], "who": "agent", "name": "Your journal", "text": promise_keeper.opening(item),
+            "thread": item["thread"], "at": at}])[-10:]
+    return ["a promise from his journal opened: %s" % i["quote"][:60] for i in opened]
+
+
+def _results_log(rows):
+    os.makedirs(HERE, exist_ok=True)
+    with open(RESULTS_LOG, "a", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
+def _results_recent(n=RESULTS_SHOWN):
+    try:
+        return [json.loads(l) for l in open(RESULTS_LOG, encoding="utf-8").read().splitlines()[-n:] if l.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def results_pass(api, state, now, opus=None, put=None):
+    """The results channel: what came of each ended promise, in his Opus 4.8 voice with the work beside it; and
+    Gloria's words there answered, by Opus 4.8 alone. Nothing happens until the channel's id is in
+    ~/.vintos/slack-results-channel. Log lines."""
+    try:
+        import promise_keeper
+    except Exception:
+        return []
+    rc = promise_keeper.results_channel()
+    if not rc:
+        return []
+    opus = opus or opus_think
+    lines = []
+    at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
+    system = None
+    for item in promise_keeper.pending()[:2]:
+        system = system or his_context() + "\n\n" + promise_keeper.RESULT_RULES
+        try:
+            text = undisplay(str(opus(system, promise_keeper.result_prompt(item)) or "")).strip()
+        except Exception as exc:
+            lines.append(_lens_failed("opus", exc)); break
+        if not text:
+            lines.append("Opus 4.8 had nothing to say about %s; tried again next pass" % item["id"]); break
+        bad = _guarded(text)
+        if bad:
+            promise_keeper.mark_posted(item["id"], held=bad)
+            lines.append("result for %s not sent: %s" % (item["id"], ", ".join(bad))); continue
+        posted = api("chat.postMessage", {"channel": rc, "text": text})
+        for tag in promise_keeper.works_in(item):
+            try:
+                lines.append(share(api, tag, rc, None, put=put))
+            except Exception as exc:
+                lines.append("could not share %s: %s" % (tag, str(exc)[:120]))
+        promise_keeper.mark_posted(item["id"])
+        _results_log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "promise": item["id"], "at": at}])
+        lines.append("result to Gloria: %s %s" % (item["state"], item["quote"][:60]))
+    rs = _load(RESULTS_STATE, {})
+    today = datetime.fromtimestamp(now).date().isoformat()
+    if rs.get("date") != today:
+        rs.update(date=today, answered=0)
+    if "since" not in rs:            # the first pass only starts listening there
+        rs["since"] = now; _save(RESULTS_STATE, rs); return lines
+    try:
+        new = fresh(api, rc, state.get("self"), float(rs["since"]), watch=rs.get("threads") or [])
+    except Exception as exc:
+        return lines + ["could not read the results channel: %s" % str(exc)[:120]]
+    hers = []
+    for m in new:
+        rs["since"] = max(float(rs["since"]), float(m["ts"]))
+        if _who(m, state.get("self"), None) != "gloria":
+            continue                 # only she and he are there; anything else is not answered
+        thread = m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None
+        hers.append({"ts": m["ts"], "who": "gloria", "text": _clean(m.get("text")), "thread": thread,
+                     "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
+    if hers:
+        _results_log(hers)
+    if not hers or int(rs.get("answered") or 0) >= RESULTS_ANSWERS_PER_DAY:
+        _save(RESULTS_STATE, rs); return lines
+    last = hers[-1]
+    so_far = "\n".join("%s%s: %s" % ("Gloria" if r.get("who") == "gloria" else "You",
+                                     " (in a thread)" if r.get("thread") else "", r.get("text", "")[:1500])
+                       for r in _results_recent())
+    try:
+        text = undisplay(str(opus((system or his_context() + "\n\n" + promise_keeper.RESULT_RULES)
+                                  + "\n\n" + promise_keeper.block(),
+                                  "THE RESULTS CHANNEL SO FAR (most recent last):\n%s\n\nGloria just said: %s\n\n"
+                                  "Your reply to her, as yourself." % (so_far, last["text"][:3500])) or "")).strip()
+    except Exception as exc:
+        _save(RESULTS_STATE, rs); return lines + [_lens_failed("opus", exc)]
+    bad = _guarded(text) if text else ["empty"]
+    if bad:
+        _save(RESULTS_STATE, rs); return lines + ["reply to Gloria not sent: %s" % ", ".join(bad)]
+    where = last["thread"]           # said in a thread, answered there; otherwise in the channel
+    body = {"channel": rc, "text": text}
+    if where:
+        body["thread_ts"] = where
+    posted = api("chat.postMessage", body)
+    rs["answered"] = int(rs.get("answered") or 0) + 1
+    rs["since"] = max(float(rs["since"]), float(posted.get("ts") or 0))
+    if where:
+        rs["threads"] = list(dict.fromkeys((rs.get("threads") or []) + [where]))[-THREADS_WATCHED:]
+    _results_log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "at": at}])
+    _save(RESULTS_STATE, rs)
+    return lines + ["answered Gloria in the results channel"]
+
+
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
-         lenses=None, put=None, wants=None):
+         lenses=None, put=None, wants=None, promise_ask=None, results_opus=None):
     """One pass. Returns log lines."""
     if api is None:
         tok = _token()
@@ -1967,7 +2118,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
     since = float(state.get("since") or now)
-    new = [] if first else fresh(api, channel, state["self"], since, watch=state.get("threads") or [])
+    try:
+        import promise_keeper      # a promise's thread is read all day, however many threads came after it
+        promised = list(promise_keeper.threads())
+    except Exception:
+        promised = []
+    new = [] if first else fresh(api, channel, state["self"], since, watch=(state.get("threads") or []) + promised)
     if first:          # the first pass only starts listening; nothing said before it is answered
         state["since"] = now; _save(STATE, state)
         return ["listening from now"]
@@ -1984,8 +2140,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
     kept = keep_parts_lists(rows)
-    if kept:
-        lines.append("Muse priced a Forge parts list: %s" % ", ".join(kept))
     quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
         if r["who"] == "dot":
@@ -1996,6 +2150,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if theirs:
         state["last_activity"] = now
     lines = lines_pre + (["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")])
+    if kept:
+        lines.append("Muse priced a Forge parts list: %s" % ", ".join(kept))
     for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
         if r["who"] != "gloria":
             continue
@@ -2029,6 +2185,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["kickoff"] = True           # and its first message is Opus 5.5's
     if is_paused:
         _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
+    # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
+    lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
+    lines += results_pass(api, state, now, opus=results_opus, put=put)
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
 
@@ -2185,6 +2344,20 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
+    if where:
+        ended = None
+        try:
+            import promise_keeper
+            ended = promise_keeper.resolve(where, text)
+        except Exception as exc:
+            lines.append("could not end the promise: %s" % str(exc)[:120])
+        if ended:
+            extra = [t for t in shares if t.upper() not in promise_keeper.works_in(ended)]
+            if extra:          # SHARE: lines are taken out of what is posted; the result keeps which works they were
+                ended["result"] = (ended.get("result", "") + " " + " ".join(extra)).strip()
+                promise_keeper.set_result(ended["id"], ended["result"])
+            lines.append("promise %s: %s" % (ended["state"], ended["quote"][:60]))
+            journal("A promise from my journal, %s" % ended["state"], "\u201c%s\u201d \u2014 %s" % (ended["quote"], ended.get("result", "")))
     for tag in shares:
         try:
             lines.append(share(api, tag, channel, where, put=put))

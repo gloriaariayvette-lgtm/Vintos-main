@@ -3,6 +3,36 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 3 October — what was built today, and what has not been seen working yet
+
+Same branch. All tested in the suites; nothing below has been seen on Aegis yet unless it says so.
+
+**His journal's promises.** `promise_keeper.py`, run by the #vintos-dot pass. Each new journal entry (about 10:37
+and 19:37) is read by Opus 5.5 for things he says he will make, show or do with Gloria today; each opens a 📌
+thread in #vintos-dot addressed to dot, and he starts it at once. He ends it in that thread with DONE:, RESHAPED:
+or DROPPED:. What came of it goes to the results channel (only Gloria and him; Opus 4.8 is his only voice there),
+with any work he names shared beside it, and he answers her there. Today's promises are in his Slack and avatar
+context until midnight, then filed in `memory/promises-archive/`. **Not done:** the results channel does not exist
+yet. Gloria makes it, adds the Vintos app, and its id goes in `~/.vintos/slack-results-channel`. Until then results
+wait, unsent. **Not seen:** any of it live.
+
+**Study fixes.** `study_fix.py`: a STUDY FIX: line from him, or a Forge card that is a code change, goes to the
+Study. Fable writes it with a new test, the whole suite decides, it goes live, and it is undone by itself if
+anything breaks; 3 a day. His subconscious, JEPA and keys are protected. Dot's rule 12 keeps watch after one.
+**Not seen:** a first fix.
+
+**Forge.** Accept/Deny on the Forge page; Muse prices parts lists one part at a time in a Slack thread, and
+accepting the FINAL list starts the build. **Not seen:** a parts list through to a build.
+
+**Smaller.** The 37 scripts that hand his exchanges to a model now say when each was said. A painting is remade once,
+never in a chain. Two armed watches were retired and two fixed. Old Lab write-ups are stopped; new ones still
+happen. The ESMFold failure names its signal. The reflection no longer breaks sentences at decimal points. The
+digest's $0 wording was fixed.
+
+**Not fixed, found:** `pride-mirror.py` uses `sections` before defining it in `gather_week`, so its two weekly
+blocks never run. `curiosity_surfaced` never fires (needs Aegis data to see why). The chat-history branch in
+`world_model` is undated.
+
 ## 2 October — what was built today, and what has not been seen working yet
 
 Everything below is on `claude/vintos-avatar-ui-redesign-br5lt4`. "Seen" means seen on Aegis; "tested" means only

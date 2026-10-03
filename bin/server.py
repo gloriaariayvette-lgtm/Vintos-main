@@ -9468,6 +9468,12 @@ Your current self-model (excerpt):
             if _spb_: system_prompt = system_prompt + '\n\n' + _spb_
         except Exception:
             pass
+        try:   # what his journal promised her today, and what came of it, until midnight (promise_keeper.py, 2026-10-03)
+            import promise_keeper as _pk
+            _pkb = _pk.block()
+            if _pkb: system_prompt = system_prompt + '\n\n' + _pkb
+        except Exception:
+            pass
         try:
             import json as _pwj, time as _pwt
             _pw = _pwj.load(open(os.path.join(MEMORY, ".projector-window.json")))
