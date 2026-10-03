@@ -1613,6 +1613,41 @@ HISTORY_SHOWN = 200     # top-level messages read each pass, for thread replies 
 THREADS_WATCHED = 20    # threads he has been in, read even when their first message is older than that
 
 
+PARTS_TAG = re.compile(r"\[Forge parts (P-[0-9a-f]{4,12})\]", re.I)
+
+
+def keep_parts_lists(rows, mem=None):
+    """Muse's priced parts list for a Forge project, kept for Gloria to accept or deny on her Forge page
+    (forge_house.py makes it a card; 2026-10-03). Only Muse's own signed reply carrying the request's tag."""
+    mem = mem or os.path.join(WS, "memory")
+    path = os.path.join(mem, "forge-parts-lists.json")
+    got = []
+    for r in rows:
+        m = PARTS_TAG.search(r.get("text") or "")
+        if not m or r.get("who") != "agent" or r.get("name") != "Muse":
+            continue
+        tag = "P-" + m.group(1)[2:].lower()
+        try:
+            lists = json.load(open(path))
+        except (OSError, ValueError):
+            lists = {}
+        asked = {}
+        try:
+            asked = {v.get("tag"): (k, v) for k, v in json.load(open(os.path.join(mem, "forge-parts-asked.json"))).items()
+                     if isinstance(v, dict) and v.get("tag")}
+        except (OSError, ValueError):
+            pass
+        project, info = asked.get(tag, ("", {}))
+        body = PARTS_TAG.sub("", re.sub(r"^\s*\[Muse\]\s*", "", r["text"])).strip()
+        total = next((l.strip() for l in body.splitlines() if re.match(r"\s*total\b", l, re.I)), "")
+        lists[tag] = {"project": project, "title": info.get("title", ""), "text": body[:6000], "total": total[:200],
+                      "at": r.get("at", "")}
+        os.makedirs(mem, exist_ok=True)
+        tmp = path + ".tmp"; json.dump(lists, open(tmp, "w"), indent=1, ensure_ascii=False); os.replace(tmp, path)
+        got.append(tag)
+    return got
+
+
 def fresh(api, channel, self_id, since, watch=()):
     """Messages after `since`, thread replies included, oldest first, without his own or Slack's notices. `watch`
     names threads he has been in: their new replies are read even when the thread began further back than the
@@ -1947,6 +1982,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "thread": m.get("thread_ts") if m.get("thread_ts") and m.get("thread_ts") != m["ts"] else None,
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
+    kept = keep_parts_lists(rows)
+    if kept:
+        lines.append("Muse priced a Forge parts list: %s" % ", ".join(kept))
     quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
         if r["who"] == "dot":

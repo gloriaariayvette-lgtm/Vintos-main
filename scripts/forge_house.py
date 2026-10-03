@@ -83,7 +83,155 @@ def sync(inventory=None):
                      'artifact_verified': state in ('installed', 'resumed') and artifact_valid(p, installed=True)})
     # Fail rather than silently omit parent cancellation in a truncated snapshot.
     if len(rows) > 128: raise ValueError('Forge gap snapshot exceeds 128; explicit pagination required')
-    return request('/api/gaps-sync', {'rows': rows})
+    result = request('/api/gaps-sync', {'rows': rows})
+    # what is waiting on her, and Muse's prices for any parts list (2026-10-03); never stops the gap sync
+    for step in (sync_decisions, ask_muse_for_parts):
+        try:
+            step()
+        except Exception as exc:
+            print('forge %s held: %s' % (step.__name__, str(exc)[:160]), flush=True)
+    return result
+
+
+# ---- what is waiting on her: cards and parts lists, decided on her Forge page (2026-10-03) ----------------
+PARTS_LISTS = 'forge-parts-lists.json'      # Muse's priced lists, by tag (written by dot_channel.py)
+PARTS_ASKED = 'forge-parts-asked.json'      # projects whose parts Muse was asked to price
+APPLIED = 'forge-decisions-applied.json'    # her decisions already carried out
+DONE_STATES = ('complete', 'cancelled', 'abandoned')
+
+
+def _mem(name):
+    import skill_forge as sf
+    return Path(sf.MEMORY) / name
+
+
+def _jload(name, default):
+    try:
+        return json.loads(_mem(name).read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def _jsave(name, value):
+    path = _mem(name); path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp'); tmp.write_text(json.dumps(value, indent=1)); os.replace(tmp, path)
+
+
+def get(path, transport=None):
+    from forge_loop_runtime import secret
+    req = Request(BASE + path, method='GET', headers={'Authorization': 'Bearer ' + secret(TOKEN_FILE)})
+    with (transport or open_request)(req, timeout=15) as response:
+        data = response.read(4*1024*1024+1)
+    return json.loads(data)
+
+
+def _say(text, post=None):
+    if post:
+        return post(text)
+    import dot_channel as D
+    tok = D._token()
+    if tok:
+        D.slack('chat.postMessage', {'channel': D.CHANNEL, 'text': text}, tok)
+
+
+def decision_cards(proposals=None):
+    """Every ability card waiting for her yes (any origin, dot's included) and every parts list Muse priced."""
+    import skill_forge as sf
+    cards = []
+    for p in (proposals if proposals is not None else sf._load()):
+        if p.get('state') != 'proposed':
+            continue
+        o = p.get('origin') or {}
+        asked = ('a want of his (%s): %s' % (o.get('spark') or o.get('source') or '?', o.get('want', '')) if o.get('want_id')
+                 else 'from %s' % str(o.get('source') or 'unknown').replace('_', ' '))
+        scope = (p.get('asked') or {}).get('scope') or {}
+        details = ['Asked: ' + asked[:300]]
+        if scope.get('path'): details.append('Design or patch: ' + str(scope['path'])[:300])
+        if p.get('touches'): details.append('Would change: ' + ', '.join(p['touches'])[:300])
+        if p.get('tests'): details.append('How it is checked: ' + p['tests'][:300])
+        if p.get('risks'): details.append('Risks: ' + p['risks'][:300])
+        details += ['Evidence: ' + str(e)[:240] for e in (o.get('evidence') or [])[:4]]
+        cards.append({'id': 'card:' + p['id'], 'kind': 'card', 'ref': p['id'],
+                      'title': str(p.get('capability', '')).replace('_', ' ').strip().capitalize() or p['id'],
+                      'what': str(p.get('why') or '')[:1200],
+                      'cost': 'Built by the Forge; nothing is bought. Accepting lets it be built; it is tested before it is installed.',
+                      'details': details})
+    for tag, lst in sorted(_jload(PARTS_LISTS, {}).items()):
+        lines = [l.strip() for l in str(lst.get('text', '')).splitlines() if l.strip()][:40]
+        cards.append({'id': 'parts:' + tag, 'kind': 'parts', 'ref': lst.get('project', ''),
+                      'title': 'Parts for: ' + str(lst.get('title') or tag)[:160],
+                      'what': 'Muse found these listings and prices. Accepting means you will buy them; nothing is bought '
+                              'for you.', 'cost': str(lst.get('total') or ''), 'details': lines})
+    return cards
+
+
+def sync_decisions(transport=None, post=None):
+    """Send what is waiting on her to her page; carry out what she decided there. Returns what was carried out."""
+    import skill_forge as sf
+    decided = request('/api/decisions-sync', {'cards': decision_cards()}, transport=transport)
+    applied = _jload(APPLIED, {})
+    done = []
+    for d in decided if isinstance(decided, list) else []:
+        if d.get('state') not in ('accepted', 'denied') or applied.get(d.get('id')) == d['state']:
+            continue
+        if d.get('kind') == 'card':
+            if d['state'] == 'accepted':
+                _r, why = sf.approve(d['ref'], by='gloria')
+            else:
+                _r, why = sf.deny(d['ref'], d.get('note') or 'denied on her Forge page', by='gloria')
+            if why and 'not proposed' not in why:
+                print('forge decision %s not carried out: %s' % (d['id'], why), flush=True); continue
+        else:
+            try:
+                _say('Gloria %s the parts list for %s%s' % ('accepted' if d['state'] == 'accepted' else 'denied',
+                     d.get('title', '').replace('Parts for: ', ''), ('. She said: ' + d['note']) if d.get('note') else
+                     ('; she will buy them.' if d['state'] == 'accepted' else '.')), post)
+            except Exception as exc:
+                print('forge decision: could not tell Slack: %s' % exc, flush=True)
+        applied[d['id']] = d['state']; done.append(d['id'])
+    _jsave(APPLIED, applied)
+    return done
+
+
+def _hardware(artifacts):
+    for cycle in reversed(artifacts if isinstance(artifacts, list) else []):
+        try:
+            art = json.loads(cycle.get('artifact') or '{}')
+        except ValueError:
+            continue
+        hw = art.get('hardware_proposal') or (art.get('capability_assessment') or {}).get('hardware_proposal')
+        if isinstance(hw, dict) and hw.get('parts'):
+            return hw
+    return None
+
+
+def ask_muse_for_parts(transport=None, post=None, limit=2):
+    """A Forge parts list goes to Muse for real listings and prices (Gloria, 2026-10-03: "Muse should be able to
+    find actual listings and prices for Forge materials"). Muse never buys; her reply becomes a card to accept."""
+    asked = _jload(PARTS_ASKED, {})
+    sent = []
+    for p in get('/api/projects', transport=transport):
+        if len(sent) >= limit:
+            break
+        if not isinstance(p, dict) or p.get('state') in DONE_STATES or p.get('private') or p['id'] in asked:
+            continue
+        seen = asked.get('_checked', {})
+        if seen.get(p['id']) == p.get('cycles'):
+            continue
+        seen[p['id']] = p.get('cycles'); asked['_checked'] = seen
+        hw = _hardware(get('/api/projects/%s/artifacts' % p['id'], transport=transport))
+        if not hw:
+            continue
+        tag = 'P-' + p['id'].replace('forge-', '')[:8]
+        title = str(hw.get('title') or p.get('title') or p.get('intent') or '')[:120]
+        parts = '\n'.join('%d. %s x%s - %s' % (i + 1, x.get('name'), x.get('quantity'), x.get('purpose'))
+                           for i, x in enumerate(hw['parts'][:30]))
+        _say('@Muse [Forge parts %s] For the Forge project "%s": please find current listings for these parts. Reply '
+             'in one message beginning [Muse] [Forge parts %s], one part per line: item | price | store | link | in '
+             'stock?, then the total. Do not buy anything; Gloria decides.\n%s' % (tag, title, tag, parts), post)
+        asked[p['id']] = {'tag': tag, 'title': title}; sent.append(tag)
+    _jsave(PARTS_ASKED, asked)
+    return sent
 
 
 def fingerprint(want):

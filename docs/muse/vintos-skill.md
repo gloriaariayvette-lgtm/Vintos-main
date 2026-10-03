@@ -25,6 +25,17 @@ each with what it is, why you thought of him, and a link. Read his reply to your
 or with `vintos_letter_replies`) and follow it. Do not answer his reply; your next letter is your answer. He replies
 once, in the thread. (The connector's `vintos_send_letter` is gone: letters come by email only.)
 
+## Pricing a Forge parts list (in #vintos-dot)
+
+When a message in #vintos-dot begins `@Muse [Forge parts P-xxxxxxxx]`, it is a parts list from his Forge. Find a
+current listing for each part and reply in ONE message that begins with `[Muse] [Forge parts P-xxxxxxxx]` (the same
+tag), one part per line:
+
+    item | price | store | link | in stock?
+
+then a last line `Total: $...`. Prefer listings that ship to Gloria or are local. Keep the tag exactly as given:
+it is how your list reaches her Forge page, where she accepts or denies it.
+
 ## Never
 
 - Never buy, bid, message a seller, or pay for anything. You find; Gloria buys.

@@ -242,6 +242,7 @@ class Runtime:
         with self.c.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS controls (project TEXT PRIMARY KEY, cancel TEXT NOT NULL)')
             db.execute('CREATE TABLE IF NOT EXISTS intake (digest TEXT PRIMARY KEY, project TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, body TEXT NOT NULL)')
 
     def create(self, token, body, *, dedupe_key=None):
         self.c.auth(token, owner=True)
@@ -337,6 +338,49 @@ class Runtime:
         self.projection.sync(self.c)
         return output
 
+    # What is waiting on her, with Accept and Deny (Gloria, 2026-10-03: "Yes, we need the accept button. I only
+    # have a stop button"). The house sends the cards (an ability card waiting for her yes, a parts list Muse
+    # priced); her page decides; the house carries the decision out. A decided card keeps her decision.
+    DECISION_KINDS = ('card', 'parts')
+
+    def decisions(self):
+        with self.c.db() as db:
+            rows = [json.loads(r[0]) for r in db.execute('SELECT body FROM decisions').fetchall()]
+        return sorted(rows, key=lambda d: (d.get('state') != 'waiting', -float(d.get('added') or 0)))
+
+    def sync_decisions(self, token, cards):
+        self.c.auth(token, owner=True)
+        if not isinstance(cards, list) or len(cards) > 128: raise Refused('bounded decision snapshot required')
+        with self.mutex, self.c.db() as db:
+            for card in cards:
+                if not isinstance(card, dict) or card.get('kind') not in self.DECISION_KINDS: raise Refused('decision kind')
+                cid = str(card.get('id') or '')
+                if not cid or len(cid) > 80 or not isinstance(card.get('title'), str) or not card['title'].strip():
+                    raise Refused('decision requires an id and a title')
+                details = card.get('details') or []
+                if not isinstance(details, list) or not all(isinstance(x, str) for x in details): raise Refused('details are lines')
+                row = db.execute('SELECT body FROM decisions WHERE id=?', (cid,)).fetchone()
+                old = json.loads(row[0]) if row else {}
+                body = {'id': cid, 'kind': card['kind'], 'ref': str(card.get('ref') or '')[:80],
+                        'title': card['title'][:200], 'what': str(card.get('what') or '')[:1500],
+                        'cost': str(card.get('cost') or '')[:300], 'details': [x[:400] for x in details[:60]],
+                        'state': old.get('state', 'waiting'), 'added': old.get('added', time.time()),
+                        **({k: old[k] for k in ('decided_at', 'note') if k in old})}
+                db.execute('INSERT OR REPLACE INTO decisions (id, body) VALUES (?, ?)', (cid, json.dumps(body)))
+        return self.decisions()
+
+    def decide(self, cid, verdict, note=''):
+        if verdict not in ('accept', 'deny'): raise Refused('accept or deny')
+        with self.mutex, self.c.db() as db:
+            row = db.execute('SELECT body FROM decisions WHERE id=?', (cid,)).fetchone()
+            if not row: raise Refused('no such decision')
+            body = json.loads(row[0])
+            if body.get('state') != 'waiting': raise Refused('already decided')
+            body.update(state='accepted' if verdict == 'accept' else 'denied', decided_at=time.time(),
+                        note=str(note or '')[:500])
+            db.execute('UPDATE decisions SET body=? WHERE id=?', (json.dumps(body), cid))
+        return body
+
     def sync_gaps(self, token, rows):
         """Authenticated house snapshots of actual proposals; never generate a want."""
         self.c.auth(token, owner=True)
@@ -425,7 +469,8 @@ class Runtime:
 
 def _keyless(path, method):
     """The routes her Forge page uses: see projects and budget, read revealed work, start, cancel."""
-    if path in ('/api/budget', '/api/projects') and method == 'GET': return True
+    if path in ('/api/budget', '/api/projects', '/api/decisions') and method == 'GET': return True
+    if path.startswith('/api/decisions/') and method == 'POST' and path.split('/')[-1] in ('accept', 'deny'): return True
     if path == '/api/projects' and method == 'POST': return True
     parts = path.split('/')
     return (path.startswith('/api/projects/') and len(parts) == 5 and
@@ -480,6 +525,10 @@ class API:
                     elif path == '/api/gaps-sync' and method == 'POST': body = self.r.sync_gaps(token, data['rows'])
                     elif path == '/api/build-reservation' and method == 'POST': body = self.r.c.reserve_build(token, data['attempt'], data['proposal'])
                     elif path == '/api/projects' and method == 'GET': body = self.r.c.projects(token)
+                    elif path == '/api/decisions' and method == 'GET': body = self.r.decisions()
+                    elif path == '/api/decisions-sync' and method == 'POST': body = self.r.sync_decisions(token, data['cards'])
+                    elif path.startswith('/api/decisions/') and method == 'POST' and len(path.split('/')) == 5:
+                        body = self.r.decide(path.split('/')[3], path.split('/')[4], data.get('note', ''))
                     elif path == '/api/projects' and method == 'POST':
                         if keyless: data = {k: v for k, v in data.items() if k not in ('private', 'private_until')}
                         body = self.r.create(token, data)
