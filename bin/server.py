@@ -12601,59 +12601,8 @@ from pydantic import BaseModel as _MSBase
 # SHADOWED[Q2-phase2, removed 2026-08-23; winner at line 7562]: @app.get("/api/wants/dismissed")
 # [corpse get_dismissed_wants GC'd 2026-08-27 — 16 lines]
 
-@app.patch("/api/wants/{want_id}")
-async def patch_want(want_id: str, request: Request):
-    """Set capability and/or manually_routed on a want."""
-    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        body = await request.json()
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                if "capability" in body:
-                    w["capability"] = body["capability"]
-                if "multistep" in body:
-                    w["multistep"] = body["multistep"]
-                if "steps" in body and not w.get("steps"):
-                    w["steps"] = body["steps"]
-                if "step_history" in body and not w.get("step_history"):
-                    w["step_history"] = body["step_history"]
-                if "current_step_index" in body and not w.get("current_step_index"):
-                    w["current_step_index"] = body["current_step_index"]
-                if "manually_routed" in body:
-                    w["manually_routed"] = body["manually_routed"]
-                if "gloria_routed" in body:
-                    w["gloria_routed"] = body["gloria_routed"]
-                if "intensity" in body:
-                    w["intensity"] = body["intensity"]
-                if "dismissed" in body:
-                    w["dismissed"] = body["dismissed"]
-                    if "dismissed_at" in body:
-                        w["dismissed_at"] = body["dismissed_at"]
-                if "unfulfilled" in body:
-                    w["unfulfilled"] = body["unfulfilled"]
-                    w["unfulfilled_at"] = __import__("datetime").datetime.now().isoformat()
-                    if body["unfulfilled"] and body.get("reasoning"):
-                        w["unfulfilled_reasoning"] = body["reasoning"]
-                    if body["unfulfilled"]:
-                        # Archive to unfulfilled-wants.json
-                        _uf_path = os.path.join(MEMORY, "unfulfilled-wants.json")
-                        try:
-                            _uf = json.load(open(_uf_path))
-                        except:
-                            _uf = []
-                        _uf.append({**w, "unfulfilled_reasoning": body.get("reasoning", "")})
-                        json.dump(_uf, open(_uf_path, "w"), indent=2)
-                break
-        with open(wants_path, "w") as f:
-            json.dump(wants, f, indent=2)
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# SHADOWED[2026-10-03; winner: server_domains/humor_wants.py, mounted first]: @app.patch("/api/wants/{want_id}")
+# [corpse patch_want removed 2026-10-03 — 53 lines; it also wrote current-wants.json without the store lock]
 
 # SHADOWED[Q2-phase2, removed 2026-08-23; winner at line 7634]: @app.get("/api/wants/{want_id}/discussion")
 # [corpse get_want_discussion GC'd 2026-08-27 — 14 lines]
@@ -12669,34 +12618,8 @@ async def patch_want(want_id: str, request: Request):
 
 
 
-@app.patch("/api/wants/{want_id}/multistep")
-async def set_multistep(want_id: str, request: Request):
-    """Enable multistep mode on a want and optionally set initial steps."""
-    if request.headers.get("X-Vintos-Secret") != APP_SECRET:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        body = await request.json()
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        with open(wants_path) as f:
-            wants = json.load(f)
-        for w in wants:
-            if w.get("id") == want_id:
-                w["multistep"] = body.get("multistep", True)
-                w["capability"] = "multistep"
-                w["manually_routed"] = True
-                if "steps" not in w:
-                    w["steps"] = []
-                if "step_history" not in w:
-                    w["step_history"] = []
-                if "current_step_index" not in w:
-                    w["current_step_index"] = 0
-                with open(wants_path, "w") as f:
-                    json.dump(wants, f, indent=2)
-                return {"success": True, "want": w}
-        return {"success": False, "error": "Want not found"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# SHADOWED[2026-10-03; winner: server_domains/humor_wants.py, mounted first]: @app.patch("/api/wants/{want_id}/multistep")
+# [corpse set_multistep removed 2026-10-03 — 28 lines; the route gate counted it as a shadowed pair]
 
 # SHADOWED[Q2-phase2, removed 2026-08-23; winner at line 7826]: @app.post("/api/wants/{want_id}/steps")
 # [corpse add_want_step GC'd 2026-08-27 — 29 lines]
