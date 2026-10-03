@@ -329,6 +329,9 @@ locate() {
             case "$h" in
                 "$_SELF"/*) ;;                    # the checkout we deploy FROM
                 "$HOME"/.vintos/deploy/*) ;;      # any other deploy clone
+                "$HOME"/.vintos/study-workbench*) ;;    # the Study's own clone (study_fix.py), where Fable
+                                                        # writes; never live (2026-10-03: the first Study fix was
+                                                        # refused because the deploy found its turn_coordinator.py)
                 # Installed libraries and caches. "server.py" and
                 # "encounter.py" are ordinary names; without this a package
                 # inside a venv or a uv cache reads as one of his files.
