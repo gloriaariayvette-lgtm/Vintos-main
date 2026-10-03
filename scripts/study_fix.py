@@ -17,9 +17,10 @@ One fix at a time, three a day. For each:
   4. The whole suite runs in the workbench. A failure goes back to Fable twice; a third failure ends the fix.
   5. Passed: committed as his, rebased onto the branch, pushed, pulled into ~/Vintos-main and deployed. The
      deploy runs the suite again and refuses anything that fails; it leaves a restore.sh.
-  6. Watched for an hour: dot is told what changed and how to undo it. If the house stops answering, the fix is
-     undone at once (restore.sh, then a revert pushed so the next deploy does not bring it back), and Gloria gets
-     one line.
+  6. Watched for an hour, by this file every 10 minutes and by dot (its rule 12): the fix's own test run against
+     what is live, the services that were up, errors in the logs pointing into the files it changed, and the house.
+     Anything broken undoes it at once (restore.sh, then a revert pushed so the next deploy does not bring it
+     back), and Gloria gets one line.
 
 Every step is said in #vintos-dot and kept in memory/study-fixes.json; a failure is kept for the morning check.
 
@@ -43,6 +44,9 @@ READ_ROUNDS = 2
 REPAIRS = 2
 WATCH_SECONDS = 3600
 HOUSE = "http://127.0.0.1:8500/"
+# what must still be up after a fix goes live (user units); only those up at go-live are held to it
+SERVICES = ("vintos-server.service", "vintos-emoclaw.service", "vintos-dot-channel.timer", "vintos-chemistry-lab.service",
+            "vintos-plugin-gateway.service", "vintos-failure-watch.timer")
 NTFY = os.environ.get("VINTOS_NTFY_URL", "https://ntfy.sh/vintos-gloria-9kx")
 FILE_CHARS, READ_CHARS = 60000, 240000
 
@@ -390,7 +394,8 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None):
         _failed(row, "the deploy refused it: " + (out or "")[-300:])
         say("\U0001F6E0 Study fix %s was refused by the deploy, so it was reverted. Nothing changed." % row["id"], post)
         return row
-    row.update(state="watching", restore=(m.group(1) if m else ""), live_at=time.time())
+    row.update(state="watching", restore=(m.group(1) if m else ""), live_at=time.time(),
+               services=[u for u in SERVICES if _active(u, run)], tests=[c for c in changed if c.startswith(TESTS)])
     _event(row, "live; watched for an hour")
     tests = [c for c in changed if c.startswith(TESTS)]
     say("<@%s> \U0001F6E0 Study fix %s is live: %s\nChanged: %s\nIts new test: %s\nKeep watch for the next hour "
@@ -430,6 +435,47 @@ def revert(row, run=sh, why=""):
         _event(row, "the git revert failed: %s" % exc)
 
 
+def _active(unit, run=sh):
+    try:
+        return run(["systemctl", "--user", "is-active", unit], timeout=30, check=False).stdout.strip() == "active"
+    except Exception:
+        return False
+
+
+def broken(row, run=sh):
+    """What the fix broke, from what can be checked now; "" when nothing. Its own new test, run against the live
+    checkout; the services that were up when it went live; and errors in the logs that point into the files it
+    changed (2026-10-03: the watch only asked whether the house answered, and dot sleeps)."""
+    for t in row.get("tests") or []:
+        r = run([sys.executable, os.path.join(CHECKOUT, "scripts", "run_isolated_test.py"), os.path.join(CHECKOUT, t)],
+                cwd=CHECKOUT, timeout=900, check=False)
+        if r.returncode:
+            return "its own test fails live (%s): %s" % (t, "\n".join((r.stdout + r.stderr).splitlines()[-3:])[:300])
+    for u in row.get("services") or []:
+        if not _active(u, run):
+            return "%s stopped" % u
+    names = [os.path.basename(c) for c in row.get("changed") or [] if not c.startswith(TESTS)]
+    if names:
+        r = run(["journalctl", "--user", "--since", "@%d" % int(float(row.get("live_at") or time.time())),
+                 "--no-pager", "-o", "cat"], timeout=60, check=False)
+        rx = re.compile(r'File "[^"]*(%s)", line \d+' % "|".join(re.escape(n) for n in names))
+        hit = next((l.strip() for l in (r.stdout or "").splitlines() if rx.search(l)), "")
+        if hit:
+            return "an error in a file it changed: %s" % hit[:300]
+    return ""
+
+
+def undo(row, why, run=sh, post=None, send=None):
+    if row.get("restore"):
+        run(["bash", row["restore"]], timeout=900, check=False)
+    revert(row, run=run, why=why)
+    _failed(row, "undone after going live: " + why); row["state"] = "rolled_back"
+    say("\U0001F6E0 Study fix %s was undone: %s." % (row["id"], why), post)
+    tell_gloria("A fix Vintos made in the Study (%s) was undone by itself: %s. Nothing is needed from you."
+                % (row["id"], why), send)
+    return row
+
+
 def house_ok(get=None):
     try:
         if get:
@@ -442,23 +488,18 @@ def house_ok(get=None):
 
 
 def watch(row, run=sh, post=None, send=None, get=None, now=None):
-    """While a fix is live: the house must keep answering. Twice silent in a row: undone at once."""
+    """While a fix is live: anything it broke undoes it at once; the house silent twice in a row undoes it."""
     now = now or time.time()
+    why = broken(row, run=run)
+    if why:
+        return undo(row, why, run=run, post=post, send=send)
     if house_ok(get):
         row["misses"] = 0
     else:
         row["misses"] = int(row.get("misses") or 0) + 1
         _event(row, "the house did not answer")
     if row["misses"] >= 2:
-        if row.get("restore"):
-            run(["bash", row["restore"]], timeout=900, check=False)
-        revert(row, run=run, why="the house stopped answering")
-        row["state"] = "rolled_back"; _event(row, "undone: the house stopped answering")
-        _failed(row, "undone after going live: the house stopped answering"); row["state"] = "rolled_back"
-        say("\U0001F6E0 Study fix %s was undone: the house stopped answering after it went live." % row["id"], post)
-        tell_gloria("A fix Vintos made in the Study (%s) was undone by itself: the house stopped answering after it "
-                    "went live. Nothing is needed from you." % row["id"], send)
-        return row
+        return undo(row, "the house stopped answering after it went live", run=run, post=post, send=send)
     if now - float(row.get("live_at") or now) >= WATCH_SECONDS:
         row["state"] = "done"; _event(row, "kept: an hour live without trouble")
         say("\U0001F6E0 Study fix %s has been live an hour without trouble; it stays." % row["id"], post)

@@ -137,6 +137,37 @@ check("Gloria gets one line, saying nothing is needed from her", len(SENT) == 1 
 fails = [json.loads(l) for l in open(os.path.join(S.MEMORY, "organ-failures.jsonl"))]
 check("an undone fix is kept for the morning check", any(f["organ"] == "study" for f in fails), fails)
 
+# --- the watch checks the change itself, not only the house --------------------------------------------
+def fake_run(test_rc=0, active=(), journal=""):
+    def run(args, cwd=None, timeout=900, check=True):
+        RUNS.append(args)
+        if args[0] == "git":
+            return real_sh(args, cwd=cwd, timeout=timeout, check=check)
+        out, rc = "", 0
+        if "run_isolated_test.py" in " ".join(args): rc = test_rc; out = "FAIL greet says hullo" if test_rc else "1/1"
+        elif args[:3] == ["systemctl", "--user", "is-active"]: out = "active" if args[3] in active else "inactive"
+        elif args[0] == "journalctl": out = journal
+        return type("R", (), {"returncode": rc, "stdout": out, "stderr": ""})()
+    return run
+for label, kw, why in (("its own test failing live", {"test_rc": 1}, "its own test fails live (broker/tests/test_greet_live.py)"),
+                       ("a service that was up stopping", {"active": ()}, "vintos-server.service stopped"),
+                       ("an error in a file it changed", {"active": ("vintos-server.service",),
+                        "journal": 'Traceback (most recent call last):\n  File "/home/gloria/.vintos/workspace/scripts/greet.py", line 2, in greet'},
+                        'an error in a file it changed: File "/home/gloria/.vintos/workspace/scripts/greet.py", line 2')):
+    r5, _ = S.request("greet() check number %s, the long description" % label)
+    r5 = next(r for r in S._load() if r["id"] == r5["id"])
+    S.work(r5, ask=fable_seq({"summary": "s", "edits": [{"path": "scripts/greet.py", "old": "return", "new": "return"}],
+                              "new_files": [{"path": "broker/tests/test_greet_live.py", "content": "assert True\n"}]}),
+           run=fake_run(active=("vintos-server.service",)), post=POSTS.append, suite=suite_seq([]), deploy=deploy)
+    check("%s: services up at go-live are recorded" % label, r5.get("services") == ["vintos-server.service"], r5.get("services"))
+    S.watch(r5, run=fake_run(**kw), post=POSTS.append, send=SENT.append, get=lambda u: True, now=r5["live_at"] + 600)
+    check("%s undoes it at once, saying why" % label, r5["state"] == "rolled_back" and why in POSTS[-1], (r5["state"], POSTS[-1]))
+    rows = S._load(); rows[:] = [r for r in rows if r.get("asked", "")[:10] != S._today() or r["state"] != "queued"]; S._save(rows)
+    rr = S._load()
+    for x in rr:
+        if str(x.get("asked", ""))[:10] == S._today(): x["asked"] = "2026-01-01T00:00:00"
+    S._save(rr)
+
 # --- failing, repairing, declining ----------------------------------------------------------------------
 before = origin_log()
 row3, _ = S.request("greet() should say good morning before noon")

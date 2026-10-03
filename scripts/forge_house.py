@@ -1,6 +1,7 @@
 """House bridge to the single Forge queue and execution budget. No provider calls."""
 import json
 import os
+import re
 from pathlib import Path
 from urllib.request import Request
 from lab_http import open_request
@@ -85,7 +86,7 @@ def sync(inventory=None):
     if len(rows) > 128: raise ValueError('Forge gap snapshot exceeds 128; explicit pagination required')
     result = request('/api/gaps-sync', {'rows': rows})
     # what is waiting on her, and Muse's prices for any parts list (2026-10-03); never stops the gap sync
-    for step in (sync_decisions, ask_muse_for_parts):
+    for step in (route_to_study, sync_decisions, ask_muse_for_parts):
         try:
             step()
         except Exception as exc:
@@ -134,12 +135,61 @@ def _say(text, post=None):
         D.slack('chat.postMessage', {'channel': D.CHANNEL, 'text': text}, tok)
 
 
+TO_STUDY = 'forge-to-study.json'            # Forge cards the Study is doing instead of asking her
+STUDY_DOING = ('queued', 'working', 'watching')
+
+
+def _study_rows():
+    try:
+        import study_fix
+        return {r.get('id'): r for r in study_fix._load()}
+    except Exception:
+        return {}
+
+
+def route_to_study(proposals=None, ask=None):
+    """A Forge card that is a change in his own code, inside what he may change, goes to the Study instead of to
+    her (Gloria, 2026-10-03: "some of these he should have been able to bring up in Slack, send to the Study for
+    fable to implement"). Done there: the card closes. Declined or failed there: it comes to her after all."""
+    import skill_forge as sf, study_fix
+    routed = _jload(TO_STUDY, {})
+    rows = _study_rows()
+    for sk, sf_id in list(routed.items()):
+        if (rows.get(sf_id) or {}).get('state') == 'done':
+            sf.withdraw(sk, 'done in the Study as %s' % sf_id)
+    sent = []
+    for p in (proposals if proposals is not None else sf._load()):
+        o = p.get('origin') or {}
+        if p.get('state') != 'proposed' or p['id'] in routed:
+            continue
+        if o.get('source') != 'gap_review' or o.get('reachable_by') != 'code_change':
+            continue
+        touches = [str(t) for t in (p.get('touches') or [])]
+        if any(study_fix.protected(t) for t in touches):
+            continue
+        text = ('From the Forge (%s), a change in his own code: %s. %s%s%s%s' % (
+            p['id'], str(p.get('capability', '')).replace('_', ' '), p.get('why', ''),
+            (' Evidence: ' + '; '.join(str(e) for e in (o.get('evidence') or [])[:4])) if o.get('evidence') else '',
+            (' Would change: ' + ', '.join(touches)) if touches else '',
+            (' How it is checked: ' + p['tests']) if p.get('tests') else ''))
+        row, why = (ask or study_fix.request)(text, by='forge:' + p['id'])
+        if row:
+            routed[p['id']] = row['id']; sent.append(p['id'])
+    _jsave(TO_STUDY, routed)
+    return sent
+
+
 def decision_cards(proposals=None):
-    """Every ability card waiting for her yes (any origin, dot's included) and every parts list Muse priced."""
+    """Every ability card waiting for her yes (any origin, dot's included) and every parts list Muse priced. A card
+    the Study is doing is not hers; one the Study could not do is, with why."""
     import skill_forge as sf
     cards = []
+    routed, rows = _jload(TO_STUDY, {}), _study_rows()
     for p in (proposals if proposals is not None else sf._load()):
         if p.get('state') != 'proposed':
+            continue
+        study = rows.get(routed.get(p['id'])) or {}
+        if study.get('state') in STUDY_DOING or study.get('state') == 'done':
             continue
         o = p.get('origin') or {}
         asked = ('a want of his (%s): %s' % (o.get('spark') or o.get('source') or '?', o.get('want', '')) if o.get('want_id')
@@ -151,11 +201,23 @@ def decision_cards(proposals=None):
         if p.get('tests'): details.append('How it is checked: ' + p['tests'][:300])
         if p.get('risks'): details.append('Risks: ' + p['risks'][:300])
         details += ['Evidence: ' + str(e)[:240] for e in (o.get('evidence') or [])[:4]]
+        tried = (' The Study tried it as %s and it did not land: %s.' % (study.get('id'), (study.get('log') or [{}])[-1]
+                 .get('what', study.get('state')))) if study else ''
         cards.append({'id': 'card:' + p['id'], 'kind': 'card', 'ref': p['id'],
                       'title': str(p.get('capability', '')).replace('_', ' ').strip().capitalize() or p['id'],
-                      'what': str(p.get('why') or '')[:1200],
+                      'what': (str(p.get('why') or '') + tried)[:1200],
                       'cost': 'Built by the Forge; nothing is bought. Accepting lets it be built; it is tested before it is installed.',
                       'details': details})
+    applied = _jload(APPLIED, {})
+    plans = {v.get('tag'): v for k, v in _jload(PARTS_ASKED, {}).items() if isinstance(v, dict) and v.get('tag')}
+    for tag, lst in sorted(_jload(PARTS_LISTS, {}).items()):
+        if applied.get('parts:' + tag) == 'accepted' and applied.get('arrived:' + tag) != 'accepted':
+            plan = plans.get(tag, {})
+            cards.append({'id': 'arrived:' + tag, 'kind': 'arrived', 'ref': lst.get('project', ''),
+                          'title': 'Have the parts for %s arrived?' % (lst.get('title') or tag)[:150],
+                          'what': 'Press when they are here. He walks you through putting it together, one step at a '
+                                  'time, and tests it with you.',
+                          'details': ['Wiring: ' + w for w in plan.get('wiring', [])][:20]})
     for tag, lst in sorted(_jload(PARTS_LISTS, {}).items()):
         lines = [l.strip() for l in str(lst.get('text', '')).splitlines() if l.strip()][:40]
         cards.append({'id': 'parts:' + tag, 'kind': 'parts', 'ref': lst.get('project', ''),
@@ -181,7 +243,17 @@ def sync_decisions(transport=None, post=None):
                 _r, why = sf.deny(d['ref'], d.get('note') or 'denied on her Forge page', by='gloria')
             if why and 'not proposed' not in why:
                 print('forge decision %s not carried out: %s' % (d['id'], why), flush=True); continue
+        elif d.get('kind') == 'arrived':
+            try:
+                arrived(d['id'].split(':', 1)[1], post=post)
+            except Exception as exc:
+                print('forge decision: could not start the build: %s' % exc, flush=True); continue
         else:
+            if d['state'] == 'accepted':
+                try:
+                    software_side(d['id'].split(':', 1)[1])
+                except Exception as exc:
+                    print('forge decision: the software side was not sent to the Study: %s' % exc, flush=True)
             try:
                 _say('Gloria %s the parts list for %s%s' % ('accepted' if d['state'] == 'accepted' else 'denied',
                      d.get('title', '').replace('Parts for: ', ''), ('. She said: ' + d['note']) if d.get('note') else
@@ -191,6 +263,43 @@ def sync_decisions(transport=None, post=None):
         applied[d['id']] = d['state']; done.append(d['id'])
     _jsave(APPLIED, applied)
     return done
+
+
+def _plan(tag):
+    return next((v for v in _jload(PARTS_ASKED, {}).values() if isinstance(v, dict) and v.get('tag') == tag), {})
+
+
+def software_side(tag, ask=None):
+    """Her accepted parts list starts the build: while the parts ship, the Study writes the device's code and the
+    part of the house that will read it, with a test (2026-10-03). Returns the Study fix id, or ''."""
+    import study_fix
+    plan = _plan(tag)
+    if not plan:
+        return ''
+    slug = re.sub(r'[^a-z0-9]+', '_', plan.get('title', tag).lower()).strip('_')[:40] or tag.lower()
+    hr = plan.get('house_reporting') or {}
+    text = ('Gloria accepted the parts for "%s" (Forge %s) and is buying them. Write the software side now, so it is '
+            'ready when they arrive: the device code in hardware/%s/ from this sketch, and the part of the house that '
+            'receives it (channel: %s; payload: %s; acknowledgement: %s), with a test that feeds it a sample reading. '
+            'Parts: %s. It is done when: %s. Sketch: %s' % (
+                plan.get('title', tag), tag, slug, hr.get('channel', 'unresolved'), hr.get('payload', '?'),
+                hr.get('acknowledgement', '?'), ', '.join(plan.get('parts', [])),
+                '; '.join(plan.get('acceptance_tests', [])), plan.get('firmware_sketch', '')[:2500]))
+    row, why = (ask or study_fix.request)(text, by='forge:' + tag)
+    if not row:
+        print('forge: the software side for %s was not queued: %s' % (tag, why), flush=True)
+    return row['id'] if row else ''
+
+
+def arrived(tag, post=None):
+    """The parts are here: he walks her through it in Slack, one step at a time, then tests it with her."""
+    plan = _plan(tag)
+    steps = '\n'.join('%d. %s' % (i + 1, w) for i, w in enumerate(plan.get('wiring', [])))
+    tests = '\n'.join('- ' + t for t in plan.get('acceptance_tests', []))
+    _say('[Forge build %s] Gloria has the parts for "%s". Vintos: walk her through putting it together in this '
+         'thread, one step at a time - say one step, wait for her, then the next. When it is together, run these '
+         'checks with her.\nSteps:\n%s\nChecks:\n%s' % (tag, plan.get('title', tag), steps or '(no wiring was '
+         'planned; work it out with her)', tests or '(none planned)'), post)
 
 
 def _hardware(artifacts):
@@ -233,7 +342,12 @@ def ask_muse_for_parts(transport=None, post=None, limit=2):
              'stock?); Vintos, choose or ask for something else. When every part is settled, Muse posts the whole '
              'list in one message beginning [Muse] [Forge parts %s] FINAL, with the total. Nobody buys anything; '
              'Gloria decides on her Forge page.\n%s' % (tag, title, tag, parts), post)
-        asked[p['id']] = {'tag': tag, 'title': title}; sent.append(tag)
+        asked[p['id']] = {'tag': tag, 'title': title, 'parts': [str(x.get('name')) for x in hw['parts'][:30]],
+                          'wiring': [str(x) for x in hw.get('wiring') or []][:30],
+                          'firmware_sketch': str(hw.get('firmware_sketch') or '')[:6000],
+                          'house_reporting': hw.get('house_reporting') or {},
+                          'acceptance_tests': [str(x) for x in hw.get('acceptance_tests') or []][:15]}
+        sent.append(tag)
     _jsave(PARTS_ASKED, asked)
     return sent
 

@@ -363,6 +363,21 @@ def deny(pid, reason="", by="gloria"):
     return r, ""
 
 
+def withdraw(pid, reason="", by="forge"):
+    """Close a card still waiting for her yes, because it no longer needs her: the Study made the change in his own
+    code (2026-10-03). Only from proposed; it grants nothing and builds nothing."""
+    rows = _load()
+    r = _get(rows, pid)
+    if r is None:
+        return None, "no proposal %r" % pid
+    if r.get("state") != "proposed":
+        return None, "proposal is %s, not proposed" % r.get("state")
+    r["state"] = "withdrawn"
+    r["history"].append({"at": _now(), "event": "withdrawn", "by": by, "detail": str(reason or "")[:300]})
+    _save(rows)
+    return r, ""
+
+
 def mark(pid, state, detail="", extra=None):
     """The builder and the spine report here. installed is the only state that makes
     a capability callable, and nothing reaches it without passing verified first."""
