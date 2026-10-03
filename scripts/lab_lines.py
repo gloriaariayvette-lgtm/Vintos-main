@@ -301,8 +301,10 @@ def after_reflection(line_id, note):
     return "line %s: step %d" % (line_id, len(line["steps"]))
 
 
-def frontier_block(limit_steps=10):
-    """Every open line with its tests, for the frontier review and the day's experiment planner."""
+def frontier_block(limit_steps=10, with_tests=True):
+    """Every open line with its tests, for the frontier review. with_tests=False is for the day's experiment
+    planner, which never reads Gemma's journal (Gloria, 2026-09-28): the lines' questions, next steps and last steer,
+    not the local loop's results."""
     live = open_lines()
     if not live:
         return ""
@@ -311,8 +313,8 @@ def frontier_block(limit_steps=10):
         out.append({"line_id": l["id"], "title": l["title"], "question": l["question"], "standing": bool(l.get("standing")),
                     "opened": l.get("opened", "")[:10], "tests": len(l.get("steps") or []),
                     "stalled_tests": int(l.get("stalls") or 0), "next_step": l.get("next_step", ""),
-                    "recent_tests": [{k: s.get(k, "")[:260] for k in ("at", "source", "question", "result", "answered")}
-                                     for s in (l.get("steps") or [])[-limit_steps:]],
+                    **({"recent_tests": [{k: s.get(k, "")[:260] for k in ("at", "source", "question", "result", "answered")}
+                                         for s in (l.get("steps") or [])[-limit_steps:]]} if with_tests else {}),
                     "last_steer": (l.get("steer") or [{}])[-1].get("note", "")})
     return ("[HIS OPEN LINES OF INQUIRY — each a question he follows to its end; standing lines are Gloria's]\n"
             + json.dumps(out, ensure_ascii=False))
@@ -335,10 +337,11 @@ def _tail(path, nbytes):
     return out
 
 
-def tests_block(limit=10, budget=1400):
-    """What he has run lately, and what came of it: the minute loop's sources and the day's experiments."""
+def tests_block(limit=10, budget=1400, notebook=True):
+    """What he has run lately, and what came of it: the minute loop's sources and the day's experiments
+    (notebook=False: the experiments only, for the frontier planner)."""
     rows = []
-    for r in _tail(NOTEBOOK, 1500 * 1024):
+    for r in (_tail(NOTEBOOK, 1500 * 1024) if notebook else []):
         k = r.get("kind")
         if k == "additional_source":
             q = r.get("query_sent") or {}

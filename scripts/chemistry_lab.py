@@ -791,9 +791,11 @@ def _as_atlas_turn(inquiry):
 def _orient(context, lean=None):
     """His question for this cycle: the next step on the line of inquiry this cycle works (lab_lines.pick), or, on a
     free cycle, any curiosity, which may open a new line."""
+    # An Atlas turn, when due, takes the cycle (Gloria, 2026-09-28: "make it chosen more frequently"); the line waits
+    atlas_due = atlas_turn_due()
     try:
         import lab_lines
-        line = lab_lines.pick()
+        line = None if atlas_due else lab_lines.pick()
     except Exception as exc:
         _fault("lab_lines_pick", exc); line = None
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -887,7 +889,7 @@ def _orient(context, lean=None):
         "merely because it appears in this menu."
         + lines_text + "\n\nAlso return line_id (the line this works, or null) and new_line (an object, or null)."
     )
-    atlas_turn = atlas_turn_due() and line is None      # a line's cycle is the line's; Atlas takes a free one
+    atlas_turn = atlas_due
     if atlas_turn:
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
                  "uniprot_query 'gene:SYMBOL AND organism_id:9606', source_query {source:atlas, gene:SYMBOL}.")

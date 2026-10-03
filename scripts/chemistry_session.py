@@ -65,7 +65,9 @@ def frontier_context():
     context, receipt = lab.lab_context(gemma_journal=False)
     try:   # his lines of inquiry and his recent tests: the day's experiment can be a step on a line (2026-10-03)
         import lab_lines
-        lines = "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=12, budget=2000)) if x)
+        # not Gemma's journal (2026-09-28): the lines without the local loop's results, and the experiments only
+        lines = "\n\n".join(x for x in (lab_lines.frontier_block(with_tests=False),
+                                         lab_lines.tests_block(limit=6, budget=1200, notebook=False)) if x)
     except Exception:
         lines = ""
     if lines:
