@@ -178,7 +178,10 @@ def _prompt(work, log, lines=""):
             "your turns: {line_id, decision: 'continue', 'redirect', 'answered' or 'drop', note (why, and what he "
             "should test next), next_step (required for redirect: the exact next test)}; and at most one "
             "{decision: 'open', title, question, why} when his work shows a question worth following for days. "
-            "Gloria's standing lines can be redirected, never dropped or answered).")
+            "Gloria's standing lines can be redirected, never dropped or answered), "
+            "keep (a list, usually empty, at most two: {entry_id, why} for a review in this segment whose finding is "
+            "worth him returning to — sourced, specific, and opening something; why says what it opens. Kept is not "
+            "proven; he may ask dot to double-check it).")
     return system, user
 
 
@@ -257,6 +260,12 @@ def run(call=None, now=None):
                **{k: str(value.get(k, ""))[:1200] for k in ("summary", "pattern", "guidance", "drop", "next_focus")},
                turn_counts=work["turn_counts"],
                truth_status="frontier_review_of_lab_work_advice_not_evidence")
+    try:   # what it judged worth keeping, into his kept findings (lab_keepers), only from entries it reviewed
+        import lab_keepers
+        row["kept"] = [k["id"] for k in lab_keepers.keep_from_review(value.get("keep"), row["reviewed_entry_ids"],
+                                                                     by=lens, review_id=aid)]
+    except Exception as exc:
+        row["kept"] = []; lab._fault("lab_keepers", exc)
     try:   # its decisions on his lines, applied: a standing line refuses a drop, and the refusal is kept
         import lab_lines
         row["lines"] = lab_lines.steer(value.get("lines"), by=lens)

@@ -822,6 +822,9 @@ def _orient(context, lean=None):
         lines_text = lab_lines.orient_text(line)
         tests = lab_lines.tests_block()
         if tests: lines_text += "\n\n" + tests
+        import lab_keepers   # what his reviewers kept, so he can build on it
+        kept = lab_keepers.block(limit=5)
+        if kept: lines_text += "\n\n" + kept
     except Exception as exc:
         _fault("lab_lines_orient", exc); lines_text = ""
     try:  # the commissioned relay instruments, offered only when the Lab holds something real to run one on

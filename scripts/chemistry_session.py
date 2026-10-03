@@ -362,12 +362,13 @@ def _reading(context, plan, result, grade=None, lens=None):
     user = (context + "\n\nPLAN (with the prediction you made before the run):\n" + json.dumps(plan) +
             "\n\nRESULT:\n" + visible + (("\n\n" + verdict) if verdict else "") +
             "\n\nReturn keys in this order: reading, what_surprised_me, prediction_vs_result (where the result "
-            "matched your prediction, where it did not, and what the difference teaches), next_question.")
+            "matched your prediction, where it did not, and what the difference teaches), next_question, keep (empty, "
+            "or, rarely, why this result is worth returning to: what it opens. Kept is not proven).")
     raw = asyncio.run(_frontier(lens, system, user)) if lens else lab._ask(system, user, max_tokens=700)
     if lens and not raw: raise RuntimeError("frontier lens returned no reading")
     value = lab._json_object(raw)
     return {key: str(value.get(key, ""))[:1200]
-            for key in ("reading", "what_surprised_me", "prediction_vs_result", "next_question")}
+            for key in ("reading", "what_surprised_me", "prediction_vs_result", "next_question", "keep")}
 
 
 def _preserved_artifact():
@@ -612,6 +613,11 @@ def run():
             if result.get("run_id"):
                 mac.reading(result["run_id"], reading.get("reading", ""))
             lab._append(SESSIONS, row)
+            try:   # the frontier model reading it judged it worth keeping: into his kept findings
+                import lab_keepers
+                kept = lab_keepers.keep_from_session(session_id, plan, reading, by=lens)
+                if kept: row["kept"] = kept["id"]
+            except Exception as exc: lab._fault("lab_keepers_session", exc, session_id=session_id)
             if plan.get("line_id"):   # the day's experiment, as a step on the line it tests
                 try:
                     import lab_lines

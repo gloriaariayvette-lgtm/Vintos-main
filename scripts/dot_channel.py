@@ -286,7 +286,12 @@ RULES_PROMISES = (
     "SHARE: W<n> on its own line if it is one of your works), RESHAPED: what it became and why, or DROPPED: why. "
     "Dropping is honest when it is too much trouble or was more whim than want. What came of it goes to Gloria in "
     "the results channel; you do not post there from here.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_STYLE
+RULES_KEPT = (
+    "FINDINGS KEPT FROM YOUR LAB (below, when there are any) are ones a frontier review judged worth returning to. "
+    "To have dot double-check one against its sources, write a line of its own: CHECK: <its ID> and, after it, what "
+    "you want checked. It opens a thread to dot; dot answers there CONFIRMED, NOT CONFIRMED or UNCLEAR, and that is "
+    "kept with the finding. Ask when it matters to you, not for every one.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_KEPT + RULES_STYLE
 
 
 def rules_for(lens=None):
@@ -1608,6 +1613,12 @@ def his_context():
         letters = promise_keeper.block()
     except Exception:
         pass
+    try:
+        import lab_keepers         # findings his Lab's reviewers kept, and how to have dot check one (2026-10-03)
+        kept = lab_keepers.block(limit=6, for_="slack")
+        if kept: letters = (letters + "\n\n" + kept).strip()
+    except Exception:
+        pass
     for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
@@ -1948,6 +1959,7 @@ def talking_with_gloria(now=None):
 # --- promises from his journal (promise_keeper.py, Gloria 2026-10-03): read here, worked in their threads, and what
 # came of them brought to her in the results channel, where only she and he are. Opus 5.5 reads the journal; Opus 4.8
 # is his voice there, and the only one.
+CHECKS_PER_DAY = 3      # double-checks he may ask dot for in a day (lab_keepers): each may cost one of dot's large tests
 RESULTS_STATE = os.path.join(HERE, "results-state.json")
 RESULTS_LOG = os.path.join(HERE, "results.jsonl")
 RESULTS_ANSWERS_PER_DAY = 30
@@ -2104,7 +2116,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0, paid={})
+        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0, paid={}, checks_today=0)
     try:   # a campaign past its seven moves or three days is closed by its own rule before he reads it
         import campaign
         if campaign.expire_if_due():
@@ -2123,6 +2135,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         promised = list(promise_keeper.threads())
     except Exception:
         promised = []
+    try:
+        import lab_keepers          # a check dot was asked for is read until dot answers it
+        promised += list(lab_keepers.threads())
+    except Exception:
+        pass
     new = [] if first else fresh(api, channel, state["self"], since, watch=(state.get("threads") or []) + promised)
     if first:          # the first pass only starts listening; nothing said before it is answered
         state["since"] = now; _save(STATE, state)
@@ -2140,8 +2157,20 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
     kept = keep_parts_lists(rows)
+    kept_lines = []
     quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
+        if r["who"] == "dot" and r.get("thread"):
+            try:   # dot's answer to a check he asked for, kept with the finding
+                import lab_keepers
+                if r["thread"] in lab_keepers.threads():
+                    checked = lab_keepers.answer(r["thread"], r["text"])
+                    if checked:
+                        kept_lines.append("dot checked %s: %s" % (checked["id"], checked["state"]))
+                        journal("Dot double-checked a finding I kept (%s)" % checked["id"],
+                                "%s \u2014 %s" % (checked["state"], (checked["checks"][-1].get("note") or "")[:600]))
+            except Exception:
+                pass
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
@@ -2152,6 +2181,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     lines = lines_pre + (["heard %d" % len(theirs)] if theirs else ["nothing new since %s" % datetime.fromtimestamp(since).strftime("%H:%M")])
     if kept:
         lines.append("Muse priced a Forge parts list: %s" % ", ".join(kept))
+    lines += kept_lines
     for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
         if r["who"] != "gloria":
             continue
@@ -2322,6 +2352,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text = STUDY_FIX.sub(lambda m: shown, text, count=1)
         text = STUDY_FIX.sub("", text).strip()
         lines.append("study fix: %s" % (row["id"] if row else why))
+    checks = []
+    try:
+        import lab_keepers
+        checks = [("K-" + m.group(1)[2:].lower(), m.group(2)) for m in lab_keepers.CHECK.finditer(text)][:2]
+        text = lab_keepers.CHECK.sub(lambda m: "\U0001F50E Asking dot to double-check K-%s" % m.group(1)[2:].lower(), text).strip()
+    except Exception:
+        pass
     lock = LOCKED.search(text)
     todo = DO.search(text) if lock else None
     if lock:
@@ -2358,6 +2395,22 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                 promise_keeper.set_result(ended["id"], ended["result"])
             lines.append("promise %s: %s" % (ended["state"], ended["quote"][:60]))
             journal("A promise from my journal, %s" % ended["state"], "\u201c%s\u201d \u2014 %s" % (ended["quote"], ended.get("result", "")))
+    for kid, what in checks:
+        # each check is its own thread to dot, with the finding and its evidence, so dot's answer has a place to land
+        if int(state.get("checks_today") or 0) >= CHECKS_PER_DAY:
+            lines.append("check %s not asked: %d checks today already" % (kid, CHECKS_PER_DAY)); continue
+        try:
+            import lab_keepers
+            ask = lab_keepers.check_request(kid, what)
+            if not ask:
+                lines.append("no kept finding %s to check" % kid); continue
+            root = api("chat.postMessage", {"channel": channel, "text": "<@%s> " % dot + ask})
+            lab_keepers.asked(kid, root.get("ts"))
+            state["checks_today"] = int(state.get("checks_today") or 0) + 1
+            state["threads"] = (list(state.get("threads") or []) + [root.get("ts")])[-THREADS_WATCHED:]
+            lines.append("asked dot to double-check %s" % kid)
+        except Exception as exc:
+            lines.append("could not ask dot to check %s: %s" % (kid, str(exc)[:120]))
     for tag in shares:
         try:
             lines.append(share(api, tag, channel, where, put=put))
