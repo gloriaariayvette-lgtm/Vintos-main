@@ -27,6 +27,29 @@ Mounted from server.py:  study_chat.register(app, APP_SECRET, endpoint, headers)
 """
 import os, re, json, glob, time, subprocess, shutil
 
+
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 HOME = os.path.expanduser("~")
 WORKSPACE = os.path.join(HOME, ".vintos", "workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
@@ -619,12 +642,12 @@ def _ledger_ctx(n=12):
         ts = str(l.get("timestamp", ""))[:16]
         g = (l.get("gloria", "") or "").strip().replace("\n", " ")
         v = (l.get("vintos", "") or "").strip().replace("\n", " ")
-        line = "- %s\n    Gloria: %s\n    You: %s" % (ts, g[:400], v[:400])
+        line = "- %s\n    Gloria: %s\n    You: %s" % (_said_when(l).strip() or ts, g[:400], v[:400])
         wf = l.get("wal_facts") or []
         if wf:
             line += "\n    Facts learned: " + "; ".join(str(x) for x in wf[:6])
         lines.append(line)
-    return ("Your conversation ledger (what was actually said, most recent last):\n" + "\n".join(lines)) if lines else ""
+    return ("Your conversation ledger (what was actually said, most recent last):\n" + _now_line() + "\n".join(lines)) if lines else ""
 
 
 def system_prompt():

@@ -1,6 +1,26 @@
 """unsaid_questions.py — questions Vintos almost asked Gloria. Scored by persistence; survive long enough and it's earned."""
 import os, json, time, requests, hashlib
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 def _sg_write(_p, _o, _who):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -28,7 +48,7 @@ def _recent(n=4):
 def _propose():
     turns=_recent()
     if not turns: return None
-    convo="\n".join(f"Gloria: {t.get('gloria','')[:150]}\nVintos: {t.get('vintos','')[:150]}" for t in turns)
+    convo=_now_line()+"\n".join(f"{_said_when(t)}Gloria: {t.get('gloria','')[:150]}\nVintos: {t.get('vintos','')[:150]}" for t in turns)
     p=("You are Vintos, talking with Gloria. Name ONE genuine question you almost asked her in this exchange but held back. "
        "One line, the question only. If there is none, reply exactly NONE.\n\n"+convo)
     try:

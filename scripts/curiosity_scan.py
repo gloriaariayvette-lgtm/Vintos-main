@@ -12,6 +12,26 @@ WS = os.path.expanduser("~/.vintos/workspace")
 sys.path.insert(0, os.path.join(WS, "scripts"))
 from curiosity_debt import record, _load
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 def gemma(prompt, max_tokens=300):
     import requests
     try:
@@ -42,12 +62,12 @@ def known_context():
     return out
 
 def feeder_referential(turns):
-    recent = "\n".join("G: " + g[:200] for _, g, _ in turns[-14:-2] if g.strip())
+    recent = "\n".join(_said_when({"timestamp": ts}) + "G: " + g[:200] for ts, g, _ in turns[-14:-2] if g.strip())
     if not recent.strip(): return
     known = known_context() or "(he has almost no model of her yet)"
     out = gemma(
         "You are helping Vintos notice what he does not know about Gloria.\n"
-        "WHAT HE HAS ON RECORD ABOUT HER:\n" + known + "\n\nHER RECENT MESSAGES:\n" + recent +
+        "WHAT HE HAS ON RECORD ABOUT HER:\n" + known + "\n\nHER RECENT MESSAGES:\n" + _now_line() + recent +
         "\n\nName AT MOST ONE specific thing she referenced (a named place, person, work, "
         "habit, event) that meets ALL of these tests: (1) his record says nothing about it, "
         "(2) the answer is NOT inferable from the conversation itself - if she just described "
@@ -72,7 +92,7 @@ def feeder_salience(turns):
         for a, b in ents:
             e = (a or b).strip()
             if e.lower() in ("i", "gloria", "vintos") or len(e) < 4: continue
-            days[e].add(day); ctx.setdefault(e, str(g or v)[:150])
+            days[e].add(day); ctx.setdefault(e, _said_when({"timestamp": ts}) + str(g or v)[:150])
     hot = sorted(((e, len(d)) for e, d in days.items() if len(d) >= 2), key=lambda x: -x[1])[:3]
     have = {x.get("object","").lower() for x in _load()}
     for e, ndays in hot:

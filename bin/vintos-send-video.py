@@ -22,6 +22,28 @@ import os, sys, json, time, base64
 from datetime import datetime, timedelta
 import requests
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
@@ -146,9 +168,9 @@ def conversation_ledger(n=14):
         g = str(e.get("gloria", "")).strip()
         v = str(e.get("vintos", "")).strip()
         src = e.get("source", "chat")
-        if g: rows.append("Gloria [%s]: %s" % (src, g[:220]))
-        if v: rows.append("  You: %s" % v[:220])
-    return "\n".join(rows)
+        if g: rows.append("%sGloria [%s]: %s" % (_said_when(e), src, g[:220]))
+        if v: rows.append(("  You: %s" if g else _said_when(e) + "You: %s") % v[:220])
+    return (_now_line() + "\n".join(rows)) if rows else ""
 
 
 def living_trajectory():

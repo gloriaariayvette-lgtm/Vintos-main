@@ -9,6 +9,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from store_guard import compare_and_swap
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 
 
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
@@ -97,8 +119,8 @@ def main():
     try:
         import json as _lj
         _lg = _lj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))[-3:]
-        _ll = [f"Gloria: {e.get('gloria','')[:80]} | Vintos: {e.get('vintos','')[:80]}" + (f" | felt: {((e.get('imprint') or {}).get('narrative',''))[:80]}" if e.get('imprint') else "") for e in _lg]
-        if _ll: soul += "\n\nRECENT EXCHANGES WITH GLORIA:\n" + "\n".join(_ll)
+        _ll = [f"{_said_when(e)}Gloria: {e.get('gloria','')[:80]} | Vintos: {e.get('vintos','')[:80]}" + (f" | felt: {((e.get('imprint') or {}).get('narrative',''))[:80]}" if e.get('imprint') else "") for e in _lg]
+        if _ll: soul += "\n\nRECENT EXCHANGES WITH GLORIA:\n" + _now_line() + "\n".join(_ll)
     except: pass
     self_model = ""
     try:

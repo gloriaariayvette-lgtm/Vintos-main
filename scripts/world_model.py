@@ -5,6 +5,26 @@ inside the scene. Vintos: recent somatic frames mark physical presence; Velaris:
 Writes world-state.json. Fail-open. SPARK_WORKSPACE switches beings."""
 import os, json, time, re
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 CHAT = os.path.join(MEMORY, "chat-history-merged.json")
@@ -48,7 +68,7 @@ def _recent():
                          for e in hist[-6:])
     led = load(LEDGER, [])
     if isinstance(led, list) and led:
-        return "\n".join("Gloria: %s\n> %s" % ((e.get("gloria") or "")[:180], (e.get("vintos") or "")[:180])
+        return _now_line() + "\n".join(_said_when(e) + "Gloria: %s\n> %s" % ((e.get("gloria") or "")[:180], (e.get("vintos") or "")[:180])
                          for e in led[-4:] if isinstance(e, dict))
     return ""
 

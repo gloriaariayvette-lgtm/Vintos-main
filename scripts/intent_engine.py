@@ -7,6 +7,26 @@ Identity decides whether I'm willing to let it.
 import json, os, glob, sys, urllib.request
 from datetime import datetime
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 WS     = os.path.expanduser("~/.vintos/workspace")
 MEM    = os.path.join(WS, "memory")
 SCR    = os.path.join(WS, "scripts")
@@ -80,8 +100,8 @@ def _recent_conversation(n=6):
         g = e.get("gloria") or ""
         v = e.get("vintos") or e.get("reply") or ""
         if g or v:
-            out.append(f"GLORIA: {g}\nVINTOS: {v}")
-    return "\n\n".join(out)
+            out.append(f"{_said_when(e)}GLORIA: {g}\nVINTOS: {v}")
+    return (_now_line() + "\n\n".join(out)) if out else ""
 
 _SCHEMA = (
     "Return ONLY JSON, in my voice:\n"

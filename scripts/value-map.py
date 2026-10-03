@@ -15,6 +15,28 @@ Referenced by: thread-triage, wants-check, humor-practice, gallery-walk,
 import os, sys, json, glob, requests
 from datetime import datetime, date, timedelta
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 
@@ -153,9 +175,8 @@ def gather_full_context():
                     g = e.get("gloria","")[:100]
                     v = e.get("vintos","")[:100]
                     felt = ((e.get("imprint") or dict()).get("narrative", ""))[:80]
-                    ts = e.get("timestamp","")[:16]
-                    led_lines.append(f"  [{ts}] Gloria: {g} | Vintos: {v}" + (f" | felt: {felt}" if felt else ""))
-                parts.append(f"RECENT EXCHANGES WITH GLORIA:\n" + "\n".join(led_lines))
+                    led_lines.append(f"  {_said_when(e)}Gloria: {g} | Vintos: {v}" + (f" | felt: {felt}" if felt else ""))
+                parts.append(f"RECENT EXCHANGES WITH GLORIA:\n" + _now_line() + "\n".join(led_lines))
     except: pass
 
     # 11. Gloria model
@@ -283,8 +304,8 @@ def gather_full_context():
                 v = entry.get("vintos", "")[:150]
                 wal = entry.get("wal_facts", [])
                 wal_text = " | ".join(wal[:3]) if wal else ""
-                ledger_text += f"Gloria: {g}\nVintos: {v}\nFacts: {wal_text}\n\n"
-            parts.append(f"RECENT EXCHANGES WITH GLORIA (exact words + WAL facts):\n{ledger_text}")
+                ledger_text += f"{_said_when(entry)}Gloria: {g}\nVintos: {v}\nFacts: {wal_text}\n\n"
+            parts.append(f"RECENT EXCHANGES WITH GLORIA (exact words + WAL facts):\n{_now_line()}{ledger_text}")
     except: pass
 
     # 21c. Autonomous WAL — Vintos's own discoveries and reflections

@@ -21,6 +21,28 @@ import subprocess
 import math
 from datetime import datetime
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 ENTANGLE_FILE = os.path.join(MEMORY, "emotional-entanglements.json")
@@ -289,9 +311,9 @@ def scan():
         import json as _ej
         ledger = _ej.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         recent = ledger[-10:] if len(ledger) >= 10 else ledger
-        ledger_text = "\n".join(f"Gloria: {e.get('gloria','')[:200]}" for e in recent if e.get("gloria"))
+        ledger_text = "\n".join(f"{_said_when(e)}Gloria: {e.get('gloria','')[:200]}" for e in recent if e.get("gloria"))
         if ledger_text:
-            content_parts.append(ledger_text)
+            content_parts.append(_now_line() + ledger_text)
     except: pass
 
     # Autonomous WAL — discoveries
@@ -342,6 +364,7 @@ def scan():
 
     for match in re.finditer(r'MOMENT:\s*(.+?)(?:MOMENT:|$)', result, re.DOTALL):
         text = match.group(1).strip().strip('"\'')
+        text = re.sub(r"^\[[^\]\n]*\]\s*", "", text).strip('"\'')  # a copied when-said marker is not part of her words
         if text and text[:50] not in existing:
             absorb(text, source="scan")
         else:

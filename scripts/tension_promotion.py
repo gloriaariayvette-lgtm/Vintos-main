@@ -34,6 +34,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, os.path.expanduser("~/.vintos/workspace/scripts"))
 from store_guard import compare_and_swap, serialized, transactions, write_json
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEM = os.path.join(WS, "memory")
 LEDGER = os.path.join(MEM, "tension-ledger.json")
@@ -148,7 +168,7 @@ def find_evidence(t, channel, items, kind):
             continue
         t["evaluated"] = (t.get("evaluated") or [])[-400:] + [_key]
         prompt = ("MECHANISM UNDER TEST (verbatim from the producer - do NOT restate, broaden, or "
-                  "translate it into a more general theme): %s\nThis is a hypothesis about %s.\nMATERIAL (%s): %s\n"
+                  "translate it into a more general theme): %s\nThis is a hypothesis about %s.\n%sMATERIAL (%s): %s\n"
                   "JURISDICTION: this material may ONLY establish %s. If the evidence you see proves "
                   "something outside that class, answer none - it is not this channel's to prove.\n"
                   "WHEN THE MATERIAL IS HER WORDS: read what SHE is asserting, not what he might conclude from it. "
@@ -176,7 +196,7 @@ def find_evidence(t, channel, items, kind):
                   "gathered support; if you find yourself never able to answer contradicts, you are applying an "
                   "asymmetric standard. "
                   'ONLY JSON: {"found": "supports|contradicts|none", "quote": "EXACT VERBATIM quote copied from the material"}'
-                  % (t["canonical"][:250], BEING, kind, text[:1500], JURISDICTION[channel]))
+                  % (t["canonical"][:250], BEING, _said_when({"timestamp": at}) if channel in ("E1", "E2") else "", kind, text[:1500], JURISDICTION[channel]))
         d = jparse(ask(prompt))
         if not d or d.get("found") not in ("supports", "contradicts"): continue
         q = str(d.get("quote", "")).strip().strip('"')

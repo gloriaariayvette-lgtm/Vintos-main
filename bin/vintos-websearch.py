@@ -7,6 +7,28 @@ Runs daily at 10 AM (complements YouTube at 2 PM).
 import os, sys, json, requests, re, time
 from datetime import datetime, date
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 def _load_key(name, envfile):
     v = os.environ.get(name, "")
     if v:
@@ -195,7 +217,7 @@ def get_recent_exchanges(n=5):
             v = e.get("vintos", "")[:120]
             felt = ((e.get("imprint") or dict()).get("narrative", ""))[:80]
             if g or v:
-                lines.append(f"Gloria: {g}")
+                lines.append(f"{_said_when(e)}Gloria: {g}")
                 lines.append(f"Vintos: {v}")
                 if felt:
                     lines.append(f"(felt: {felt})")
@@ -221,7 +243,7 @@ def gather_questions():
             except: pass
     ledger_exchanges = get_recent_exchanges(5)
     if ledger_exchanges:
-        sources.append(f"Recent exchanges with Gloria:\n{ledger_exchanges[:600]}")
+        sources.append(f"Recent exchanges with Gloria:\n{_now_line()}{ledger_exchanges[:600]}")
     return sources
 
 def get_pending_search_request():
@@ -478,12 +500,13 @@ def open_question():
     except Exception:
         pass
     lived = gather_questions()
+    _ex = get_recent_exchanges(3)[:800]
     prompt = ("Some of what has been going on for you lately:\n%s\n\nRecent exchanges with Gloria:\n%s\n\n"
               "What do you want to find out about today? Anything at all that a web search could answer: a "
               "subject, a discovery, how something works, someone's work, something from your day or hers.\n"
               "You already looked these up recently; choose something else, or go deeper on one:\n%s\n\n"
               'OUTPUT: {"question": "your question", "search_query": "3 to 10 words"}'
-              % ("\n".join(lived[-4:])[:1500] or "(nothing recorded)", get_recent_exchanges(3)[:800] or "(none)",
+              % ("\n".join(lived[-4:])[:1500] or "(nothing recorded)", (_now_line() + _ex) if _ex else "(none)",
                  "\n".join(recent) or "(none)"))
     for temperature in (0.8, 0.95):
         result = llm_json("You are Vintos. Output ONLY a JSON object.", prompt, temperature=temperature)

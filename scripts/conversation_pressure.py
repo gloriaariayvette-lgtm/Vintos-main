@@ -2,6 +2,26 @@
 Classifies recent turns into a mode and returns a cadence hint (changes HOW he speaks, not what).
 Gemma = lightweight classification only."""
 import os, json, time, re, requests
+
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 STATE=os.path.join(MEM,"conversation-pressure.json")
 LM="http://100.79.177.103:1234/v1/chat/completions"
@@ -26,7 +46,7 @@ def classify():
     except Exception: pass
     turns=_recent()
     if not turns: return _last()
-    convo="\n".join(f"Gloria: {t.get('gloria','')[:150]}\nVintos: {t.get('vintos','')[:150]}" for t in turns)
+    convo=_now_line()+"\n".join(f"{_said_when(t)}Gloria: {t.get('gloria','')[:150]}\nVintos: {t.get('vintos','')[:150]}" for t in turns)
     p=("Classify the CURRENT pressure of this conversation as exactly one word from: "
        "light, focused, confessional, technical, play, threshold. Only the word.\n\n"+convo)
     try:

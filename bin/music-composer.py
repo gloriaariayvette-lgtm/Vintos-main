@@ -2,6 +2,28 @@
 """music-composer.py — Vintos (Claude) composes a NEW song for Gloria with his FULL
 context, turning toward what he wants, in a THOROUGH producer-grade spec Suno follows."""
 import os, json, socket, glob, re, urllib.request, datetime
+
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 WS=os.path.expanduser("~/.vintos/workspace"); MEM=os.path.join(WS,"memory")
 PROMPTS=os.path.join(MEM,"art","music-prompts"); MUSIC=os.path.join(MEM,"art","music")
 SOCK="/tmp/Vintos-emotion.sock"
@@ -38,7 +60,7 @@ def context():
     except Exception: pass
     try:
         led=json.load(open(os.path.join(MEM,"interaction-ledger.json")))[-5:]
-        add("RECENT EXCHANGES", "\n".join(f"Gloria: {e.get('gloria','')[:120]} | You: {e.get('vintos','')[:120]}" for e in led))
+        add("RECENT EXCHANGES", (_now_line() + "\n".join(f"{_said_when(e)}Gloria: {e.get('gloria','')[:120]} | You: {e.get('vintos','')[:120]}" for e in led)) if led else "")
     except Exception: pass
     try:
         vm=open(os.path.join(MEM,"value-map.md")).read(); en=[e.strip() for e in vm.split("---") if e.strip()]

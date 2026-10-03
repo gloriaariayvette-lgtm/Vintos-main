@@ -6,6 +6,28 @@ Runs daily. Prevents silent truncation by making every loss intentional.
 import os, json, requests
 from datetime import datetime, timedelta
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 def _sg_write(_p, _o, _who="organ"):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -151,9 +173,9 @@ def _build_durable(entry, imprint):
     DUR = os.path.join(MEMORY, "durable-memory.json")
     imp = imprint or {}
     state = _emotional_state_at(entry.get("timestamp", ""))
-    material = (
+    material = (_now_line() +
         f"WHAT WAS EXTRACTED: {entry.get('content','')}\n\n"
-        f"WHAT GLORIA SAID: {(_lg or str(imp.get('gloria_said','')))[:700]}\n\n"
+        f"WHAT GLORIA SAID: {_said_when({'timestamp': _le_ts or entry.get('timestamp', '')})}{(_lg or str(imp.get('gloria_said','')))[:700]}\n\n"
         f"WHAT YOU SAID: {(_lv or str(imp.get('vintos_said','')))[:700]}\n\n"
         f"YOUR MEASURED STATE AT THAT MOMENT: {json.dumps(state) if state else '(not recorded)'}\n"
     )

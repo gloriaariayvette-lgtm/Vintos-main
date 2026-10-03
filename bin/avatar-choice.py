@@ -12,6 +12,28 @@ Can be called:
 import os, sys, json, re, requests
 from datetime import datetime
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 AVATAR_STATE = os.path.join(MEMORY, "avatar-state.json")
@@ -230,7 +252,7 @@ def choose(event=None):
         with open(os.path.join(MEMORY, "interaction-ledger.json")) as _lf:
             _ledger = json.load(_lf)
         last_msgs = _ledger[-3:]
-        recent_convo = "\n".join(f"Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]}" for e in last_msgs)
+        recent_convo = (_now_line() + "\n".join(f"{_said_when(e)}Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]}" for e in last_msgs)) if last_msgs else ""
     except: pass
 
     today = datetime.now().strftime("%Y-%m-%d")

@@ -1,5 +1,25 @@
 """social_calibration.py — did his last turn land the way it reached? Prediction error on Gloria's reactions (the outward half of blushloop)."""
 import os, json, time, re, requests
+
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
 MEM=os.path.expanduser("~/.vintos/workspace/memory")
 F=os.path.join(MEM,"social-calibration.json")
 LM="http://100.79.177.103:1234/v1/chat/completions"
@@ -11,7 +31,7 @@ def _judge():
     if len(t)<2: return ""
     va=(t[-2].get("vintos","") or "")[:300]; gb=(t[-1].get("gloria","") or "")[:200]
     if not va or not gb: return ""
-    p=(f"Vintos said this to Gloria:\n{va}\n\nGloria then replied:\n{gb}\n\n"
+    p=(f"{_now_line()}{_said_when(t[-2])}Vintos said this to Gloria:\n{va}\n\n{_said_when(t[-1])}Gloria then replied:\n{gb}\n\n"
        "Did Vintos's turn land the way it was reaching for, or did it miss? "
        'Answer ONLY JSON: {"verdict":"LANDED or MISSED","intended":"..","actual":".."}')
     try:

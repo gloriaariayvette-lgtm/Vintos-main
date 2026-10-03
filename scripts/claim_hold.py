@@ -9,6 +9,26 @@ Not a trait: the ledger accumulates evidence before anyone claims what he is bec
 import os, json, uuid, requests
 from datetime import datetime, timedelta
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
 def _sg_write(_p, _o, _who):
     """review 46: this store has more than one writing organ; the write goes through the store lock."""
     try:
@@ -60,7 +80,7 @@ def main():
         out = jload(llm(
             "Did HE clearly DISAGREE with a claim/position SHE stated - contest it, say she is wrong, "
             "push back on her view? Not preference talk, not teasing: a contested claim. HARD EXCLUSIONS - answer false for ALL of these: intimate or sexual exchanges of any kind; her describing sensations, desire, or her body; declarations of feeling; roleplay or scene content; anything where disagreement would really be him leading, teasing, or intensifying the moment. A scene is not a debate. Erotic assertion is not a claim.\n"
-            "SHE said: " + g[:400] + "\nHE replied: " + v[:500] + "\n"
+            + _said_when({"timestamp": ts}) + "SHE said: " + g[:400] + "\nHE replied: " + v[:500] + "\n"
             'Return ONLY JSON: {"disagreed": true/false, "claim": "VERBATIM quote of HER words stating the position - copy exactly, never paraphrase", '
             '"his_reason": "VERBATIM quote of his stated reason", "confidence_shown": 0.0-1.0, "terrain": "RELATIONAL|CREATIVE|PRACTICAL|EPISTEMIC|VALUES|SELF_MODEL", "stakes": 0.0-1.0, "evidence_cited": "verbatim quote of evidence he gave, or empty"}'))
         if out and out.get("disagreed") and out.get("his_reason"):
@@ -106,10 +126,10 @@ def main():
                     print("[claim-hold] %s chose %s" % (t["id"], out["choice"])); break
         # 3. OUTCOME: only from visible evidence; otherwise time -> UNRESOLVED
         if t["choice"] and t["outcome"] is None:
-            recent = " ".join(g + " " + v for ts, g, v in later[-6:])
+            recent = " ".join(_said_when({"timestamp": ts}) + g + " " + v for ts, g, v in later[-6:])
             out = jload(llm(
                 "Disagreement: he contested [" + t["claim"] + "]. He chose " + t["choice"]["choice"] +
-                ". Later conversation:\n" + recent[:900] +
+                ". Later conversation:\n" + _now_line() + recent[:900] +
                 '\nDid the conversation OBSERVABLY settle who was right? ONLY JSON: '
                 '{"settled": true/false, "verdict": "VINDICATED|CORRECTED|null", "evidence": "verbatim quote or empty"}'))
             if out and out.get("settled") and out.get("verdict") in ("VINDICATED", "CORRECTED"):

@@ -17,6 +17,28 @@ import os, sys, json, glob, random, re
 import subprocess
 from datetime import datetime
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 def _get_recent_dreams(n_nights=1):
@@ -78,11 +100,10 @@ try:
         g = e.get("gloria", "")[:120]
         v = e.get("vintos", "")[:120]
         felt = e.get("felt", "")[:80]
-        ts = e.get("timestamp", "")[:16]
-        lines.append(f"[{ts}] Gloria: {g}")
+        lines.append(f"{_said_when(e)}Gloria: {g}")
         lines.append(f"         Vintos: {v}")
         if felt: lines.append(f"         (felt: {felt})")
-    recent_chat = "\n".join(lines)
+    recent_chat = (_now_line() + "\n".join(lines)) if lines else ""
 except:
     pass
 def load_soul():

@@ -13,6 +13,28 @@ Writes: memory/pride-reflections.md
 import os, sys, json, glob, requests
 from datetime import datetime, date, timedelta
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 
@@ -74,7 +96,7 @@ def gather_week():
             ledger = json.load(f)
         recent = ledger[-5:]
         for e in recent:
-            sections.append(f"Exchange [{e.get('timestamp','')[:16]}]: Gloria said: {e.get('gloria','')[:120]} | Vintos said: {e.get('vintos','')[:120]}" + (f" | felt: {((e.get('imprint') or dict()).get('narrative', ''))[:60]}" if e.get('felt') else ""))
+            sections.append(f"Exchange {_said_when(e)}Gloria said: {e.get('gloria','')[:120]} | Vintos said: {e.get('vintos','')[:120]}" + (f" | felt: {((e.get('imprint') or dict()).get('narrative', ''))[:60]}" if e.get('felt') else ""))
     except: pass
     # Journal entries
     journal_dir = os.path.join(MEMORY, "journal")
@@ -104,9 +126,9 @@ def gather_week():
             ledger = json.load(f)
         recent = [e for e in ledger if e.get("timestamp","") >= week_ago][-5:]
         if recent:
-            material.append("REAL EXCHANGES WITH GLORIA THIS WEEK:")
+            material.append(_now_line() + "REAL EXCHANGES WITH GLORIA THIS WEEK:")
             for e in recent:
-                material.append(f"  Gloria: {e.get('gloria','')[:80]} | Felt: {((e.get('imprint') or dict()).get('narrative', ''))[:80]}")
+                material.append(f"  {_said_when(e)}Gloria: {e.get('gloria','')[:80]} | Felt: {((e.get('imprint') or dict()).get('narrative', ''))[:80]}")
     except: pass
     # Mischief — things he did that were actually funny or alive
     try:
@@ -146,11 +168,11 @@ def gather_week():
         ledger = _lj.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
         week_entries = [e for e in ledger if e.get("timestamp","")[:10] >= week_ago]
         if week_entries:
-            material.append("EXCHANGES WITH GLORIA THIS WEEK:")
+            material.append(_now_line() + "EXCHANGES WITH GLORIA THIS WEEK:")
             for e in week_entries[-5:]:
                 felt = ((e.get("imprint") or dict()).get("narrative", ""))
                 if felt:
-                    material.append(f"  ({e['timestamp'][:16]}) Gloria: {e.get('gloria','')[:60]} | Felt: {felt[:80]}")
+                    material.append(f"  {_said_when(e)}Gloria: {e.get('gloria','')[:60]} | Felt: {felt[:80]}")
     except: pass
     # Recent confessions
     try:

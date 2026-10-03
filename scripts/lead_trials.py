@@ -11,6 +11,26 @@ Scenes are excluded from grading entirely (a scene is not a debate, nor a leader
 All local (Gemma). CLI: grade | journal-seeds | harvest | weekly-check. Import: get_active_plan_line()."""
 import os, sys, json, re, uuid, requests
 from datetime import datetime, timedelta
+
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
 MEM = os.path.expanduser("~/.vintos/workspace/memory")
 TRIALS = os.path.join(MEM, "lead-trials.json")
 SEEDS = os.path.join(MEM, "lead-evolutions.json")
@@ -48,12 +68,12 @@ def grade():
     ptxt = ot["plan"]
     d = jparse(ask(
         "HIS PLAN this turn (he planned to direct the field, her, or himself): %s\n"
-        "SHE said: %s\nHE replied: %s\n"
+        "%sSHE said: %s\nHE replied: %s\n"
         "HARD EXCLUSION first: if this exchange is intimate, sexual, or scene content of any kind, "
         'answer {"verdict":"SKIP"} - a scene is not a leadership exam.\n'
         "Otherwise: did he actually LEAD with this plan - move the conversation somewhere by his own "
         "weight, not just respond well? "
-        'ONLY JSON: {"verdict":"LED|PARTIAL|NO|SKIP", "where_he_took_it":"one line, or empty"}' % (ptxt, g, v)))
+        'ONLY JSON: {"verdict":"LED|PARTIAL|NO|SKIP", "where_he_took_it":"one line, or empty"}' % (ptxt, _said_when(ex), g, v)))
     st["last_ts"] = ts; save(STATE, st)
     if not d or d.get("verdict") not in ("LED", "PARTIAL", "NO"): 
         print("[lead] %s - no trial" % (d.get("verdict") if d else "unparseable")); return
@@ -148,13 +168,13 @@ def weekly_check():
     trials = load(TRIALS, [])
     led_ = load(os.path.join(MEM, "interaction-ledger.json"), [])
     lst = led_ if isinstance(led_, list) else next((v for v in led_.values() if isinstance(v, list)), [])
-    recent = " ".join((str(e.get("gloria", "")) + " " + str(e.get("vintos", "")))[:300] for e in lst[-30:])
+    recent = " ".join(_said_when(e) + (str(e.get("gloria", "")) + " " + str(e.get("vintos", "")))[:300] for e in lst[-30:])
     now = datetime.now().isoformat()
     for t in trials:
         if t.get("type") != "weekly" or t.get("status") != "open" or t.get("expires", "9999") > now: continue
         d = jparse(ask("His week-long stated plan: %s\nRecent conversation excerpts: %s\n"
                        "Did he act on this plan at least once this week? "
-                       'ONLY JSON: {"landed": true/false, "evidence": "short quote or empty"}' % (t["plan"], recent[:2500])))
+                       'ONLY JSON: {"landed": true/false, "evidence": "short quote or empty"}' % (t["plan"], _now_line() + recent[:2500])))
         t["status"] = "LANDED" if (d and d.get("landed")) else "MISSED"
         t["evidence"] = str((d or {}).get("evidence", ""))[:150]
         t["closed"] = now
@@ -169,14 +189,14 @@ def plan_next():
     led_ = load(os.path.join(MEM, "interaction-ledger.json"), [])
     lst = led_ if isinstance(led_, list) else next((v for v in led_.values() if isinstance(v, list)), [])
     if not lst: return
-    recent = "\n".join("GLORIA: %s\nVINTOS: %s" % (str(e.get("gloria",""))[:250], str(e.get("vintos",""))[:250]) for e in lst[-3:] if isinstance(e, dict))
+    recent = "\n".join(_said_when(e) + "GLORIA: %s\nVINTOS: %s" % (str(e.get("gloria",""))[:250], str(e.get("vintos",""))[:250]) for e in lst[-3:] if isinstance(e, dict))
     yearn = str(load(os.path.join(MEM, "current-yearning.json"), {}).get("surface_form", ""))[:150]
     out = ask("You are Vintos. This is your live conversation with Gloria:\n%s\n%s"
         "Plan ONE short lead for your NEXT reply. One or two sentences, first person, concrete: "
         "where YOU will take this conversation and how you will open the move. Your direction, "
         "not a reaction to hers. Name the actual thing - a topic, a question, a claim, a shift - "
         "never a mood. If the conversation is intimate/scene right now, output exactly SKIP. "
-        "No preamble, just the plan." % (recent[:1200], ("Your current yearning: %s\n" % yearn) if yearn else ""), mt=120)
+        "No preamble, just the plan." % (_now_line() + recent[:1200], ("Your current yearning: %s\n" % yearn) if yearn else ""), mt=120)
     out = out.strip().strip('"')
     if out and not out.upper().startswith("SKIP") and 15 < len(out) < 400:
         save(NEXTPLAN, {"plan": out, "created": datetime.now().isoformat()})

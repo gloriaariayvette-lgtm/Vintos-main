@@ -11,6 +11,28 @@ import os, sys, json, time, re
 import requests
 from datetime import datetime
 
+def _said_when(e):
+    """When this exchange was said, so a model does not read yesterday as now (when_said; 2026-10-03)."""
+    try:
+        import os as _o, sys as _s
+        for _p in (_o.path.expanduser("~/.vintos/workspace/scripts"), _o.path.dirname(_o.path.abspath(__file__)),
+                   _o.path.join(_o.path.dirname(_o.path.abspath(__file__)), "..", "scripts")):
+            if _p not in _s.path: _s.path.append(_p)
+        import when_said
+        return "[%s] " % (when_said.ago((e or {}).get("timestamp")) or "time unknown")
+    except Exception:
+        return ""
+
+
+def _now_line():
+    try:
+        _said_when({})
+        import when_said
+        return when_said.now_line() + " Each exchange is marked with when it was said; an earlier day is past.\n"
+    except Exception:
+        return ""
+
+
 WORKSPACE = os.path.expanduser("~/.vintos/workspace")
 MEMORY = os.path.join(WORKSPACE, "memory")
 SCRIPTS = os.path.join(WORKSPACE, "scripts")
@@ -73,8 +95,8 @@ def get_context():
     except Exception: pass
     try:
         ledger = json.load(open(os.path.join(MEMORY, "interaction-ledger.json")))
-        lines = [f"Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]} | felt: {((e.get('imprint') or dict()).get('narrative', ''))[:60]}" for e in ledger[-5:]]
-        parts.append("RECENT EXCHANGES:\n" + "\n".join(lines))
+        lines = [f"{_said_when(e)}Gloria: {e.get('gloria','')[:100]} | Vintos: {e.get('vintos','')[:100]} | felt: {((e.get('imprint') or dict()).get('narrative', ''))[:60]}" for e in ledger[-5:]]
+        parts.append("RECENT EXCHANGES:\n" + _now_line() + "\n".join(lines))
     except Exception: pass
     try:
         di = open(os.path.join(MEMORY, f"daily-inner-life-{datetime.now().strftime('%Y-%m-%d')}.md")).read()[:600]
