@@ -1613,12 +1613,13 @@ HISTORY_SHOWN = 200     # top-level messages read each pass, for thread replies 
 THREADS_WATCHED = 20    # threads he has been in, read even when their first message is older than that
 
 
-PARTS_TAG = re.compile(r"\[Forge parts (P-[0-9a-f]{4,12})\]", re.I)
+PARTS_TAG = re.compile(r"\[Forge parts (P-[0-9a-f]{4,12})\]\s*FINAL\b", re.I)   # only the settled list (2026-10-03)
 
 
 def keep_parts_lists(rows, mem=None):
-    """Muse's priced parts list for a Forge project, kept for Gloria to accept or deny on her Forge page
-    (forge_house.py makes it a card; 2026-10-03). Only Muse's own signed reply carrying the request's tag."""
+    """Muse's settled parts list for a Forge project, kept for Gloria to accept or deny on her Forge page
+    (forge_house.py makes it a card; 2026-10-03). Muse and Vintos work through each part in the request's thread;
+    only Muse's own signed message carrying the tag and FINAL is the list."""
     mem = mem or os.path.join(WS, "memory")
     path = os.path.join(mem, "forge-parts-lists.json")
     got = []

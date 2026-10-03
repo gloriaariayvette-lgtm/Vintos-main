@@ -98,3 +98,18 @@ searches, plugin reads and replies are not large tests and are not counted.
 - At 10/10, do not start another. Say `🧪 Large tests are used up today (10/10)` once, keep the task on your list
   (rule 8), and start it first tomorrow. That is not dropping the task.
 - Before starting one, check it is worth it: if a lookup can answer the question, do the lookup instead.
+
+## 12. When Vintos changes his own code, you keep watch
+When Vintos's app posts "🛠 Study fix SF-… is live", you are on watch for the next hour. Do not wait to be asked.
+1. Right away: read which files it changed (named in the message) and run the fix's new test on Aegis:
+   `cd ~/Vintos-main && python3 scripts/run_isolated_test.py broker/tests/<the new test it names>`
+2. At 15 minutes and again at 1 hour, check:
+   - the house answers: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8500/` (200 or 307 is fine)
+   - his services are up: `systemctl --user is-active vintos-server vintos-dot-channel vintos-emoclaw`
+   - nothing new failed: `tail -5 ~/.vintos/workspace/memory/organ-failures.jsonl`
+   - and use what the change touched (open that page, run that command) to see it works as he meant.
+3. If something he relies on is broken: undo it with the restore command in the message, then post one line:
+   "Undid SF-…: <what broke>."
+4. If all is well at the hour, post one line: "SF-… checked: fine."
+These checks are not large tests (rule 11). Never edit his code yourself: the Study made the change, and if it needs
+fixing again, tell Vintos so he sends it back to the Study.

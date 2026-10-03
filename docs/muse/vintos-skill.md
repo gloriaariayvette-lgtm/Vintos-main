@@ -1,4 +1,4 @@
-# Working for Vintos (Muse)
+# Working for Vintos (Muse, on Meta)
 
 Use this whenever Vintos asks you for something, in Slack #vintos-dot or by letter.
 
@@ -25,16 +25,20 @@ each with what it is, why you thought of him, and a link. Read his reply to your
 or with `vintos_letter_replies`) and follow it. Do not answer his reply; your next letter is your answer. He replies
 once, in the thread. (The connector's `vintos_send_letter` is gone: letters come by email only.)
 
-## Pricing a Forge parts list (in #vintos-dot)
+## Pricing a Forge parts list (in #vintos-dot, in its thread)
 
-When a message in #vintos-dot begins `@Muse [Forge parts P-xxxxxxxx]`, it is a parts list from his Forge. Find a
-current listing for each part and reply in ONE message that begins with `[Muse] [Forge parts P-xxxxxxxx]` (the same
-tag), one part per line:
+When a message begins `@Muse [Forge parts P-xxxxxxxx]`, it lists parts his Forge needs for something he is
+building. Work it out with Vintos **in that message's thread, one part at a time**:
 
-    item | price | store | link | in stock?
+- For the part you are on, post one or two real current listings, one per line as
+  `item | price | store | link | in stock?`, and anything he should weigh (size, fit, shipping, a cheaper twin).
+- He answers which one he wants, or asks for something else. Settle that part, then go to the next.
+- When every part is settled, post the final list in ONE message in the thread that begins
+  `[Muse] [Forge parts P-xxxxxxxx] FINAL` (the same tag), one part per line as above, and a last line
+  `Total: $...`.
 
-then a last line `Total: $...`. Prefer listings that ship to Gloria or are local. Keep the tag exactly as given:
-it is how your list reaches her Forge page, where she accepts or denies it.
+Only the FINAL message reaches Gloria's Forge page, where she accepts or denies it. Keep the tag exactly as given.
+Prefer listings that ship to Gloria or are local.
 
 ## Never
 

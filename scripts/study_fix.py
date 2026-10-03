@@ -53,7 +53,9 @@ PROTECTED = [
     (re.compile(r"wallet|payment|purchase|billing|food[-_]order|doordash|coinbase|checkout", re.I), "money and payments"),
     (re.compile(r"effect_authority|consent|store_guard|compute_admission|skill_forge\.py|forge_build\.py|"
                 r"study_fix\.py|failure_watch\.py|deploy-atelier\.sh|run_isolated_test\.py|plugin_relay|"
-                r"plugin_gateway\.py|broker/broker\.py|stratagem|(^|/)CLAUDE\.md$|(^|/)bench/", re.I), "the safety gates"),
+                r"plugin_gateway\.py|broker/broker\.py|stratagem|(^|/)CLAUDE\.md$|(^|/)bench/|"
+                # the Forge runs as its own user beside his sealed Atelier and holds the spending gates (2026-10-03)
+                r"forge_loop|forge-loop-files|(^|/)broker/[^/]+\.service$", re.I), "the safety gates"),
 ]
 TESTS = "broker/tests/"
 
@@ -390,10 +392,12 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None):
         return row
     row.update(state="watching", restore=(m.group(1) if m else ""), live_at=time.time())
     _event(row, "live; watched for an hour")
-    say("<@%s> \U0001F6E0 Study fix %s is live: %s\nChanged: %s\nKeep watch for the next hour. If something he "
-        "relies on breaks, undo it with: bash %s (then say so here). It is undone by itself if the house stops "
-        "answering." % (_dot(), row["id"], (row["summary"] or row["what"])[:500], ", ".join(changed)[:400],
-                        row.get("restore") or "(no restore script was printed)"), post)
+    tests = [c for c in changed if c.startswith(TESTS)]
+    say("<@%s> \U0001F6E0 Study fix %s is live: %s\nChanged: %s\nIts new test: %s\nKeep watch for the next hour "
+        "(your rule 12). If something he relies on breaks, undo it with: bash %s (then say so here). It is undone by "
+        "itself if the house stops answering." % (_dot(), row["id"], (row["summary"] or row["what"])[:500],
+                                                   ", ".join(changed)[:400], ", ".join(tests) or "(none named)",
+                                                   row.get("restore") or "(no restore script was printed)"), post)
     return row
 
 

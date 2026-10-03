@@ -115,14 +115,16 @@ HW = {"title": "Pressure pad for the bed", "parts": [{"name": "Arduino Nano", "q
                                                      {"name": "FSR 406", "quantity": 2, "rough_cost_usd": 9, "purpose": "pressure"}]}
 FORGE["artifacts"] = {"forge-11a7cf5677b44a88": [{"artifact": json.dumps({"capability_assessment": {"hardware_proposal": HW}})}]}
 sent = H.ask_muse_for_parts(transport=transport, post=SAID.append)
-check("a parts list from the Forge goes to Muse, tagged, with every part, and told not to buy",
+check("a parts list goes to Muse and Vintos to settle part by part in its thread, tagged, and nobody buys",
       sent == ["P-11a7cf56"] and SAID[-1].startswith("@Muse [Forge parts P-11a7cf56]") and "Arduino Nano x1" in SAID[-1]
-      and "FSR 406 x2" in SAID[-1] and "Do not buy anything" in SAID[-1], SAID[-1:])
+      and "FSR 406 x2" in SAID[-1] and "Nobody buys anything" in SAID[-1] and "one part at a time" in SAID[-1], SAID[-1:])
 check("it is asked once", H.ask_muse_for_parts(transport=transport, post=SAID.append) == [])
 import dot_channel as D
 MUSE = {"who": "agent", "name": "Muse", "at": "2026-10-03T12:00:00",
-        "text": "[Muse] [Forge parts P-11a7cf56]\nArduino Nano | $24.90 | Arduino Store | https://store.arduino.cc/nano | yes\n"
+        "text": "[Muse] [Forge parts P-11a7cf56] FINAL\nArduino Nano | $24.90 | Arduino Store | https://store.arduino.cc/nano | yes\n"
                 "FSR 406 x2 | $19.90 | Adafruit | https://adafruit.com/product/1075 | yes\nTotal: $44.80"}
+check("Muse's messages while they work through each part are not the list", D.keep_parts_lists(
+      [dict(MUSE, text="[Muse] [Forge parts P-11a7cf56] Arduino Nano: two options...")], mem=SF.MEMORY) == [])
 check("someone else using the tag is not taken for Muse", D.keep_parts_lists([dict(MUSE, name="Grok Bot")], mem=SF.MEMORY) == [])
 check("Muse's tagged reply is kept", D.keep_parts_lists([MUSE], mem=SF.MEMORY) == ["P-11a7cf56"])
 parts = next(x for x in H.decision_cards() if x["kind"] == "parts")
@@ -137,7 +139,7 @@ check("her Accept on a parts list is told to him in Slack: she will buy them",
       SAID[-1].startswith("Gloria accepted the parts list for Pressure pad for the bed") and "she will buy them" in SAID[-1], SAID[-1:])
 muse_doc = open(os.path.join(REPO, "docs", "muse", "vintos-skill.md")).read()
 check("Muse's skill says how to answer a Forge parts request, and still never to buy",
-      "[Muse] [Forge parts P-xxxxxxxx]" in muse_doc and "item | price | store | link | in stock?" in muse_doc and "Never buy" in muse_doc)
+      "[Muse] [Forge parts P-xxxxxxxx] FINAL" in muse_doc and "one part at a time" in muse_doc and "item | price | store | link | in stock?" in muse_doc and "Never buy" in muse_doc)
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
 check("the house sync runs both after the gap sync, and neither can stop it",
       "for step in (sync_decisions, ask_muse_for_parts):" in house)

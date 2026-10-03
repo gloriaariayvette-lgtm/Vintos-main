@@ -50,7 +50,8 @@ rows = S._load(); rows[:] = rows[:1]; S._save(rows)
 for path, want in (("scripts/jepa_predictor.py", "his subconscious and JEPA"), ("scripts/subconscious-drift.py", "his subconscious and JEPA"),
                    ("scripts/env_file.py", "keys and secrets"), ("scripts/food_order.py", "money and payments"),
                    ("scripts/deploy-atelier.sh", "the safety gates"), ("scripts/study_fix.py", "the safety gates"),
-                   ("CLAUDE.md", "the safety gates")):
+                   ("CLAUDE.md", "the safety gates"), ("scripts/forge_loop_runtime.py", "the safety gates"),
+                   ("scripts/forge_loop_ui.html", "the safety gates")):
     check("%s is protected (%s)" % (path, want), S.protected(path) == want, S.protected(path))
 check(".claude/settings.json is protected, written with or without ./", S.protected(".claude/settings.json") == "keys and secrets"
       and S.protected("./.claude/settings.json") == "keys and secrets")
@@ -107,7 +108,8 @@ check("it was deployed the ordinary way, and is watched with its restore script"
       DEPLOYED and row["state"] == "watching" and row["restore"] == "/home/gloria/.vintos/backups/atelier-x/restore.sh", row)
 check("Slack heard it start, and dot was told to keep watch, what changed, and how to undo it",
       "Study fix %s started" % row["id"] in POSTS[0] and POSTS[-1].startswith("<@") and "is live" in POSTS[-1]
-      and "scripts/greet.py" in POSTS[-1] and "bash /home/gloria/.vintos/backups/atelier-x/restore.sh" in POSTS[-1], POSTS)
+      and "scripts/greet.py" in POSTS[-1] and "bash /home/gloria/.vintos/backups/atelier-x/restore.sh" in POSTS[-1]
+      and "Its new test: broker/tests/test_greet_hello.py" in POSTS[-1] and "rule 12" in POSTS[-1], POSTS)
 
 # --- the watch ------------------------------------------------------------------------------------------
 RUNS = []

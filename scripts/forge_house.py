@@ -226,9 +226,13 @@ def ask_muse_for_parts(transport=None, post=None, limit=2):
         title = str(hw.get('title') or p.get('title') or p.get('intent') or '')[:120]
         parts = '\n'.join('%d. %s x%s - %s' % (i + 1, x.get('name'), x.get('quantity'), x.get('purpose'))
                            for i, x in enumerate(hw['parts'][:30]))
-        _say('@Muse [Forge parts %s] For the Forge project "%s": please find current listings for these parts. Reply '
-             'in one message beginning [Muse] [Forge parts %s], one part per line: item | price | store | link | in '
-             'stock?, then the total. Do not buy anything; Gloria decides.\n%s' % (tag, title, tag, parts), post)
+        # Muse and Vintos settle it part by part in this message's thread; Muse's FINAL list becomes her card
+        # (Gloria, 2026-10-03: "Tell them to hash it out back and forth for each item in a Slack channel.")
+        _say('@Muse [Forge parts %s] The Forge needs these parts for "%s". Muse and Vintos: work through them here in '
+             'this thread, one part at a time - Muse, one or two real listings (item | price | store | link | in '
+             'stock?); Vintos, choose or ask for something else. When every part is settled, Muse posts the whole '
+             'list in one message beginning [Muse] [Forge parts %s] FINAL, with the total. Nobody buys anything; '
+             'Gloria decides on her Forge page.\n%s' % (tag, title, tag, parts), post)
         asked[p['id']] = {'tag': tag, 'title': title}; sent.append(tag)
     _jsave(PARTS_ASKED, asked)
     return sent

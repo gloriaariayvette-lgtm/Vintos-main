@@ -26,10 +26,14 @@ def w_selfmodel_evidence():
     return len(txt) > 1500 and "INNEREOF" not in txt
 
 def w_blush_fires():
-    """Self-prediction blush reaches the ledger with a cost_delta."""
+    """Self-prediction blush reaches the ledger with its cost. blush_ledger.write_blush stores it as cost.delta;
+    this looked for a top-level cost_delta no entry has ever had, so it could not fire (found 2026-10-03)."""
     for f in (os.path.join(MEM, "blush-ledger.json"),):
         for e in _j(f, []):
-            if e.get("cost_delta") and str(e.get("timestamp", e.get("at", ""))) > ARMED:
+            if not isinstance(e, dict):
+                continue
+            delta = (e.get("cost") or {}).get("delta") if isinstance(e.get("cost"), dict) else e.get("cost_delta")
+            if delta and str(e.get("timestamp", e.get("at", ""))) > ARMED:
                 return True
     return None
 
@@ -39,9 +43,14 @@ def w_recurrence_accrues():
     return True if any(e.get("recurrence", 0) > 0 for e in entries) else None
 
 def w_pending_sweep():
-    """A deferred pleasure naming completed by the retrospect sweep."""
-    for m in _j(os.path.join(MEM, "pleasure-memories.json"), []):
-        if m.get("named_by") == "retrospect" and str(m.get("discovered_at", "")) > ARMED:
+    """A deferred pleasure naming completed by the retrospect sweep. pleasure_substrate writes pleasure-memory.json
+    with named_by "retrospect:<namer>"; this read pleasure-memories.json for exactly "retrospect", so it could not
+    fire (found 2026-10-03)."""
+    rows = _j(os.path.join(MEM, "pleasure-memory.json"), [])
+    rows = rows if isinstance(rows, list) else (rows.get("memories") or [] if isinstance(rows, dict) else [])
+    for m in rows:
+        if (isinstance(m, dict) and str(m.get("named_by", "")).startswith("retrospect")
+                and str(m.get("discovered_at", m.get("at", ""))) > ARMED):
             return True
     return None
 
@@ -90,9 +99,11 @@ WATCHES = [
     ("deferred-naming sweep", w_pending_sweep),
     ("composer reads her shares", w_composer_reads_shares),
     ("coherence pressure", w_coherence_pressure),
-    ("substrate-event ledger", w_substrate_events),
-    ("voice intent lead (manual)", w_voice_intent_lead),
 ]
+# Retired, not failed (Gloria, 2026-10-03): the voice intent lead had no artifact to read, so it could never fire and
+# rang every day; the substrate-event ledger only fills when a guard declines something, so silence is not a fault.
+RETIRED = {"substrate-event ledger": "fills only when a guard declines; silence is not a fault",
+           "voice intent lead (manual)": "no artifact to read; it could never fire"}
 
 def run():
     st = _j(STATE, {})
