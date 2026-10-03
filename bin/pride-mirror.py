@@ -90,14 +90,8 @@ def gather_week():
     material = []
     week_ago = (date.today() - timedelta(days=7)).isoformat()
 
-    # Recent imprints (high salience)
-    try:
-        with open(os.path.join(MEMORY, "interaction-ledger.json")) as f:
-            ledger = json.load(f)
-        recent = ledger[-5:]
-        for e in recent:
-            sections.append(f"Exchange {_said_when(e)}Gloria said: {e.get('gloria','')[:120]} | Vintos said: {e.get('vintos','')[:120]}" + (f" | felt: {((e.get('imprint') or dict()).get('narrative', ''))[:60]}" if e.get('felt') else ""))
-    except: pass
+    # (A "recent imprints" block stood here and never ran: it wrote to `sections`, which this function never had,
+    # and the bare except hid it. The week's exchanges are given twice below; a third copy is not added. 2026-10-03)
     # Journal entries
     journal_dir = os.path.join(MEMORY, "journal")
     try:
@@ -159,7 +153,7 @@ def gather_week():
         from datetime import date as _date
         dc_path = os.path.join(MEMORY, f"daily-creative-{_date.today().isoformat()}.md")
         if os.path.exists(dc_path):
-            sections.append(f"TODAY'S CREATIVE OUTPUT:\n{open(dc_path).read()[:600]}")
+            material.append(f"TODAY'S CREATIVE OUTPUT:\n{open(dc_path).read()[:600]}")   # was `sections`: it never ran
     except: pass
     # Chat (recent)
     # Interaction ledger — real exchanges with Gloria this week
