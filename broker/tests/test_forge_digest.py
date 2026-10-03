@@ -71,7 +71,7 @@ assert text.count(f"<!-- forge-digest:{DATA_DAY} -->") == 1, "marker keyed to th
 assert f"forge-digest:{FILE_DAY}" not in text, "never keyed to the unfinished day"
 assert f"## Forge — {DATA_DAY}" in text, "heading names the day summarized"
 
-assert "What the Forge is building (you are paying for this):" in text
+assert "What the Forge is working on (" in text and "you are paying for this" not in text
 assert "a keyboard-macro capability so he can trigger scenes" in text, "non-private intent is named — no code"
 assert "pressure-sensing hardware proposal for the pillow" in text
 assert "$2.50 of $10.00" in text, "spend is shown — what she is paying for"

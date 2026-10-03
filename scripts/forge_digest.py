@@ -120,7 +120,10 @@ def render(day=None, projects=None):
             lines.append("Quiet day — the Forge is building nothing and nothing was revealed.")
         else:
             if named:
-                lines.append("What the Forge is building (you are paying for this):")
+                total = sum(p.get("spent") or 0 for p in live if isinstance(p.get("spent"), (int, float)))
+                # it said "you are paying for this" over $0 of local work (2026-10-03: "We need to fix that 0")
+                lines.append("What the Forge is working on (%s):" % (
+                    "spent so far: $%.2f" % (total / 100) if total else "nothing charged: it runs on the local model, $0"))
                 for p in named[:8]:
                     lines.append(f"- {_clip(p['intent'])} — {p.get('state', '?')}{_cost(p)}")
             else:
@@ -129,8 +132,8 @@ def render(day=None, projects=None):
                 lines.append(f"Private undertakings sealed: {len(sealed)} "
                              "(his own interval — intent hidden until he reveals it or it ends).")
             lines.extend(_reveal_lines(reveals))
-        lines.append("These are the Forge's own owner-side figures — intent, state and spend for what "
-                     "you are paying for; only a private interval stays sealed. No fitness is inferred.")
+        lines.append("\"ready\" means waiting for its next step; nothing is needed from you unless a card asks for "
+                     "your yes. These are the Forge's own figures; only a private interval stays sealed.")
     else:
         # Forge unreachable — fall back to the content-free house mirror rather than fabricate.
         undertakings = _load(UNDERTAKINGS, {})

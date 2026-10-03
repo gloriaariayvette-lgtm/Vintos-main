@@ -183,6 +183,13 @@ def narrate(context, mismatch_summary):
         log(f"Narrative failed: {e}")
         return ""
 
+def _sentences(text):
+    """Sentences, split where one ends - never at a decimal point. Splitting on every "." cut "(0.44)" in two, and
+    the morning showed "44), alongside the discrepancy in desire (0." as last night's reflection (2026-10-03)."""
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'(])", str(text or "").strip())
+    return [p for p in parts if p.strip()] or [""]
+
+
 def main():
     log(f"Starting (model: {MODEL})")
     actual, src = get_actual_state()
@@ -240,15 +247,15 @@ def main():
     carry = f"{now.strftime('%Y-%m-%d')}: " + ", ".join(
         f"{word} {dim} by {diff:.2f}" for dim, pv, av, diff, word in mismatches[:3]) + "."
     if narrative:
-        first = next((s.strip() for s in narrative.split(".") if len(s.strip()) > 40), "")
-        if first: carry += f" {first}."
+        first = next((s.strip() for s in _sentences(narrative) if len(s.strip()) > 40), "")
+        if first: carry += " " + first + ("" if first[-1] in ".!?" else ".")
     open(CARRY_FILE, "w").write(carry)
 
     try:
         sys.path.insert(0, SCRIPTS)
         from emoclaw_utils import seed_thread
         worst = mismatches[0]
-        seed_text = (narrative.split(".")[0].strip() if narrative
+        seed_text = (_sentences(narrative)[0].strip() if narrative
                      else f"{worst[0]} blind spot ({worst[4]} by {worst[3]:.2f})")
         seed_thread("emotional-reflection", seed_text[:200], reasoning=f"largest prediction blind spot this cycle: {worst[0]} {worst[4]} by {worst[3]:.2f}", extra={"decision_mode": "threshold"})
         log(f"Seeded thread on {worst[0]}")

@@ -179,6 +179,19 @@ def prepare_protein(parameters, resolver=None):
     return {"ok": True, "parameters": parameters, "sequence_request": contract}
 
 
+def _death(code, length):
+    """Why a fold that said nothing ended: its exit code or signal, in words."""
+    import signal as _sig
+    if code < 0:
+        try: name = _sig.Signals(-code).name
+        except ValueError: name = "signal %d" % -code
+        why = {"SIGKILL": "killed - most often the system ran out of memory (check dmesg for 'Out of memory')",
+               "SIGSEGV": "crashed in native code (the GPU driver or torch)",
+               "SIGABRT": "aborted in native code (often CUDA)"}.get(name, "ended by a signal")
+        return "%s (exit %d) on a %d-residue sequence: %s" % (name, code, length, why)
+    return "exit %d with no message on a %d-residue sequence" % (code, length)
+
+
 def _run_esmfold(parameters, contract, worker=None):
     body = {"accession": contract["requested_accession"], "sequence": contract["sequence"],
             "sequence_source": contract["source"], "hp_mapping": contract["hp_mapping"]}
@@ -198,6 +211,10 @@ def _run_esmfold(parameters, contract, worker=None):
                     detail = str(reported["error"])
             except Exception:
                 pass
+            if not detail:
+                # Killed before it could say anything (2026-10-03: four folds failed with an empty reason). A
+                # negative exit is the signal that ended it; SIGKILL is most often the system out of memory.
+                detail = _death(done.returncode, len(contract["sequence"]))
             return {"ok": False, "error": "local ESMFold failed: " + detail[-500:]}
         try: result = json.loads(done.stdout)
         except Exception:
