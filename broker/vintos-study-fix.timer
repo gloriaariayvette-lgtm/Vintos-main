@@ -1,0 +1,9 @@
+[Unit]
+Description=Every 10 minutes: work Vintos's next Study fix, or watch the live one
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=10min
+
+[Install]
+WantedBy=timers.target

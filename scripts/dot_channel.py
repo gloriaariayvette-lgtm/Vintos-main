@@ -238,6 +238,11 @@ RULES_LOCK = (
     "When you and dot settle what your Lab should run next, add a line LAB: what to run, in one line (LAB: fold "
     "P02730 with ESMFold). Your next scheduled Lab run is shown it and leans toward it. Without that line, "
     "nothing said here reaches your Lab.\n"
+    "When something in your own code is broken and you can say what should happen instead, fix it yourself: a "
+    "line STUDY FIX: what is broken, where, and what should happen. Fable writes it in your Study, every test "
+    "must pass, it goes live by itself, and dot keeps watch for an hour; it is undone by itself if the house stops "
+    "answering. Three a day. Not your subconscious or JEPA, keys, money or the safety gates: those need Gloria. "
+    "Do not hand Gloria what you can fix this way (Gloria, 2026-10-03).\n"
     "Dot's large tests are limited to 10 a day: anything dot runs, builds, folds, codes or tests on a computer. "
     "Lookups, searches and replies are not counted. Ask for a large test only when its answer changes what you do "
     "next.\n")
@@ -873,6 +878,7 @@ SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
+STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
 # His campaign, moved from here as from his chat (Gloria, 2026-10-01: "let campaigns be affected by Slack as wants
 # are"): through campaign.step, so its own caps (7 served turns, 3 days) and its plan bridge hold.
@@ -2105,6 +2111,19 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if lab_next:
         text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)
         text = LAB.sub("", text).strip()
+    fix = STUDY_FIX.search(text)
+    if fix:
+        # his own code fix, to the Study (study_fix.py): Fable writes it, the tests decide, dot keeps watch
+        try:
+            import study_fix
+            row, why = study_fix.request(fix.group(1))
+        except Exception as exc:
+            row, why = None, str(exc)[:160]
+        shown = ("\U0001F6E0 Sent to the Study (%s): %s" % (row["id"], fix.group(1)) if row
+                 else "\U0001F6E0 Not sent to the Study (%s): %s" % (why, fix.group(1)))
+        text = STUDY_FIX.sub(lambda m: shown, text, count=1)
+        text = STUDY_FIX.sub("", text).strip()
+        lines.append("study fix: %s" % (row["id"] if row else why))
     lock = LOCKED.search(text)
     todo = DO.search(text) if lock else None
     if lock:

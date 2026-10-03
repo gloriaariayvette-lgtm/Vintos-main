@@ -1,0 +1,13 @@
+[Unit]
+Description=Vintos's Study fixes: Fable writes the fix he asked for, the whole suite decides, the deploy puts it live, and it is watched for an hour
+After=network-online.target vintos-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.vintos/workspace
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/study_fix.py
+# the whole suite twice (workbench, then the deploy) and the deploy itself
+TimeoutStartSec=7200
+NoNewPrivileges=true

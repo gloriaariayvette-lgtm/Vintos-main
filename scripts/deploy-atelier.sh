@@ -70,6 +70,9 @@ SURF_TIMER_SRC="$SRC/broker/$SURF_UNIT_NAME.timer";     SURF_TIMER_DST="$HOME/.c
 DOTCH_UNIT_NAME="vintos-dot-channel"   # he and Gloria's dot talk in Slack #vintos-dot (2026-09-30)
 DOTCH_SERVICE_SRC="$SRC/broker/$DOTCH_UNIT_NAME.service"; DOTCH_SERVICE_DST="$HOME/.config/systemd/user/$DOTCH_UNIT_NAME.service"
 DOTCH_TIMER_SRC="$SRC/broker/$DOTCH_UNIT_NAME.timer";     DOTCH_TIMER_DST="$HOME/.config/systemd/user/$DOTCH_UNIT_NAME.timer"
+FIX_UNIT_NAME="vintos-study-fix"   # his own code fixes, written by Fable, gated by the suite, watched an hour (2026-10-03)
+FIX_SERVICE_SRC="$SRC/broker/$FIX_UNIT_NAME.service"; FIX_SERVICE_DST="$HOME/.config/systemd/user/$FIX_UNIT_NAME.service"
+FIX_TIMER_SRC="$SRC/broker/$FIX_UNIT_NAME.timer";     FIX_TIMER_DST="$HOME/.config/systemd/user/$FIX_UNIT_NAME.timer"
 WATCH_UNIT_NAME="vintos-failure-watch"   # one morning message to Gloria when a part of him failed (2026-10-02)
 WATCH_SERVICE_SRC="$SRC/broker/$WATCH_UNIT_NAME.service"; WATCH_SERVICE_DST="$HOME/.config/systemd/user/$WATCH_UNIT_NAME.service"
 WATCH_TIMER_SRC="$SRC/broker/$WATCH_UNIT_NAME.timer";     WATCH_TIMER_DST="$HOME/.config/systemd/user/$WATCH_UNIT_NAME.timer"
@@ -195,7 +198,7 @@ DOMAINFILES="bin/server_domains/galleries.py bin/server_domains/music.py bin/ser
 SCRIPTS="$SCRIPTS pearl-engine.py pearl_engine.py"
 SCRIPTS="$SCRIPTS gap_scan.py gap_review.py"   # the daily wall count and the Monday gap review into the Forge (2026-09-24)
 SCRIPTS="$SCRIPTS landings.py grok_subscription.py"   # her landing notes (2026-09-24); his Grok renders on her SuperGrok login (2026-09-25)
-SCRIPTS="$SCRIPTS failure_watch.py forge_tidy.py"   # one morning message to Gloria when a part of him failed (2026-10-02); stop the old Lab write-ups (2026-10-03)
+SCRIPTS="$SCRIPTS failure_watch.py forge_tidy.py study_fix.py"   # one morning message to Gloria when a part of him failed (2026-10-02); stop the old Lab write-ups (2026-10-03)
 BINS="$BINS pearl-engine.py pearl_engine.py"
 BINS="$BINS avatar_route_probe.py"   # diagnostic: runs the real /api/avatar/chat handler against live Grok + hub, writes to a throwaway workspace
 BINS="$BINS vintos-websearch.py"   # his web search (cron 10:15 and the wants router); was never in the manifest, so fixes never reached Aegis
@@ -208,6 +211,7 @@ MANIFEST="$(printf 'scripts/%s\n' $SCRIPTS; printf 'bin/%s\n' $BINS; printf '%s\
             printf 'broker/%s\n' "$SURF_UNIT_NAME.service" "$SURF_UNIT_NAME.timer"
             printf 'broker/%s\n' "$DOTCH_UNIT_NAME.service" "$DOTCH_UNIT_NAME.timer"
             printf 'broker/%s\n' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"
+            printf 'broker/%s\n' "$FIX_UNIT_NAME.service" "$FIX_UNIT_NAME.timer"
             printf 'broker/%s\n' "$MCP_UNIT_NAME.service"
             true)"
 MANIFEST="$(printf '%s\n' "$MANIFEST" | sort -u)"
@@ -613,6 +617,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     say "  would install + enable (user)    $SURF_UNIT_NAME.timer -> $SURF_TIMER_DST, then confirm Id/ActiveState/next elapse"
     say "  would install + enable (user)    $DOTCH_UNIT_NAME.timer -> $DOTCH_TIMER_DST (every 5-10 min; idle without a Slack token)"
     say "  would install + enable (user)    $WATCH_UNIT_NAME.timer -> $WATCH_TIMER_DST (08:52 daily; sends only when something failed)"
+    say "  would install + enable (user)    $FIX_UNIT_NAME.timer -> $FIX_TIMER_DST (every 10 min; works his queued Study fix)"
     say "  would install (user)             $MCP_UNIT_NAME.service -> $MCP_SERVICE_DST; started only once $MCP_TOKEN exists"
     if sudo -n true 2>/dev/null; then
         say "  would install (sudo)             $BROKER, $STORE, $UNIT_DST; restart $UNIT_NAME, confirm, wait for 127.0.0.1:8611/health"
@@ -751,6 +756,21 @@ done
 printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
 [ "$_watch_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$WATCH_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 [ "$_watch_active" = "active" ] && printf 'systemctl --user start %q\n' "$WATCH_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+_fix_enabled="$(systemctl --user is-enabled "$FIX_UNIT_NAME.timer" 2>/dev/null || true)"
+_fix_active="$(systemctl --user is-active "$FIX_UNIT_NAME.timer" 2>/dev/null || true)"
+printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$FIX_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+for _ext in service timer; do
+    _dest="$HOME/.config/systemd/user/$FIX_UNIT_NAME.$_ext"
+    if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+        cp -Pp "$_dest" "$BACKUP/$FIX_UNIT_NAME.$_ext.pre-deploy" || die "unit backup failed"
+        printf 'rm -f %q; cp -Pp "$(dirname "$0")/%s.%s.pre-deploy" %q\n' "$_dest" "$FIX_UNIT_NAME" "$_ext" "$_dest" >> "$BACKUP/restore.sh"
+    else
+        printf 'rm -f %q\n' "$_dest" >> "$BACKUP/restore.sh"
+    fi
+done
+printf 'systemctl --user daemon-reload\n' >> "$BACKUP/restore.sh"
+[ "$_fix_enabled" = "enabled" ] && printf 'systemctl --user enable %q\n' "$FIX_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
+[ "$_fix_active" = "active" ] && printf 'systemctl --user start %q\n' "$FIX_UNIT_NAME.timer" >> "$BACKUP/restore.sh"
 _mcp_enabled="$(systemctl --user is-enabled "$MCP_UNIT_NAME.service" 2>/dev/null || true)"
 _mcp_active="$(systemctl --user is-active "$MCP_UNIT_NAME.service" 2>/dev/null || true)"
 printf 'systemctl --user disable --now %q >/dev/null 2>&1 || true\n' "$MCP_UNIT_NAME.service" >> "$BACKUP/restore.sh"
@@ -991,6 +1011,20 @@ if systemctl --user enable "$WATCH_UNIT_NAME.timer" >/dev/null 2>&1 \
     confirm_timer --user "$WATCH_UNIT_NAME"
 else
     flag "$WATCH_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $WATCH_UNIT_NAME.timer"
+fi
+say
+# His own code fixes (study_fix.py): every 10 minutes it works his next queued fix or watches the live one.
+say "== Study fixes (every 10 minutes) =="
+install -m 644 "$(staged "$FIX_SERVICE_SRC")" "$FIX_SERVICE_DST" \
+    || die "failed to install $FIX_SERVICE_DST — rollback: bash $BACKUP/restore.sh"
+install -m 644 "$(staged "$FIX_TIMER_SRC")" "$FIX_TIMER_DST" \
+    || die "failed to install $FIX_TIMER_DST — rollback: bash $BACKUP/restore.sh"
+systemctl --user daemon-reload
+if systemctl --user enable "$FIX_UNIT_NAME.timer" >/dev/null 2>&1 \
+   && systemctl --user restart "$FIX_UNIT_NAME.timer" >/dev/null 2>&1; then
+    confirm_timer --user "$FIX_UNIT_NAME"
+else
+    flag "$FIX_UNIT_NAME.timer installed but not enabled — run: systemctl --user enable --now $FIX_UNIT_NAME.timer"
 fi
 say
 
