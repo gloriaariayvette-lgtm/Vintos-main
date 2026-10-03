@@ -79,7 +79,7 @@ F._now = lambda: datetime(2026, 10, 5, 9, 41)
 AV._failed("a visit made nothing")
 check("the Atelier's note lands in the same scratch log", json.loads(open(F.FAILURES).read().splitlines()[-1])["organ"] == "atelier")
 deploy = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
-check("the deploy installs it and its 08:52 timer", 'SCRIPTS="$SCRIPTS failure_watch.py"' in deploy
+check("the deploy installs it and its 08:52 timer", 'SCRIPTS="$SCRIPTS failure_watch.py' in deploy
       and 'printf \'broker/%s\\n\' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"' in deploy
       and 'confirm_timer --user "$WATCH_UNIT_NAME"' in deploy
       and "OnCalendar=*-*-* 08:52" in open(os.path.join(REPO, "broker", "vintos-failure-watch.timer")).read())
