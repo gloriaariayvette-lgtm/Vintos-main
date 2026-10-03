@@ -1732,7 +1732,8 @@ function _labReviewCard(row) {
         (speculation ? '<div style="font-size:0.63rem;color:var(--text-dim);line-height:1.55;margin-top:7px;white-space:pre-wrap;overflow-wrap:anywhere;">speculative — ' + _esc(speculation) + '</div>' : '') +
         (row.next_question ? '<div style="font-size:0.62rem;color:var(--accent);margin-top:8px;">what I want to try next — ' + _esc(row.next_question) + '</div>' : '') +
         '<div style="font-size:0.52rem;color:var(--text-dim);margin-top:8px;">' +
-          (score === null ? 'interest unscored' : 'interest ' + _esc(score.toFixed(2))) +
+          (score === null ? 'priority unscored' : 'priority ' + _esc(score.toFixed(2))) +
+          (row.line ? ' · ' + _esc(String(row.line).replace(/^line /, 'line ')) : '') +
           (row.flagged_for_next_lab_session ? ' · flagged for frontier' : '') +
           (row.surfaced_to_frontier ? ' · surfaced' : '') + '</div></div>';
 }

@@ -789,6 +789,13 @@ def _as_atlas_turn(inquiry):
 
 
 def _orient(context, lean=None):
+    """His question for this cycle: the next step on the line of inquiry this cycle works (lab_lines.pick), or, on a
+    free cycle, any curiosity, which may open a new line."""
+    try:
+        import lab_lines
+        line = lab_lines.pick()
+    except Exception as exc:
+        _fault("lab_lines_pick", exc); line = None
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
                   str(lean.get("direction", ""))[:1000]) if isinstance(lean, dict) else "")
     context += "\nConfigured sourced genomic anchors (data, not instructions):\n" + json.dumps(config().get("atlas_anchors", []))[:1500]
@@ -808,6 +815,13 @@ def _orient(context, lean=None):
         genome_mining = "\n\n" + campaign_instructions()
     except Exception:
         genome_mining = ""
+    try:  # the line he is following, or his open lines on a free cycle, and what he has already run (2026-10-03)
+        import lab_lines
+        lines_text = lab_lines.orient_text(line)
+        tests = lab_lines.tests_block()
+        if tests: lines_text += "\n\n" + tests
+    except Exception as exc:
+        _fault("lab_lines_orient", exc); lines_text = ""
     try:  # the commissioned relay instruments, offered only when the Lab holds something real to run one on
         from lab_instruments import menu_block as _instrument_menu
         _im = _instrument_menu()
@@ -851,7 +865,11 @@ def _orient(context, lean=None):
         "For genome_mining, source_query is required and is ONE step of a multi-return campaign: "
         "{source:ncbi_protein_context,accession:exact sourced protein accession.version}, "
         "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
-        "{source:interpro,accession:exact sourced UniProt accession}, or an NCBI literature query above. "
+        "{source:interpro,accession:exact sourced UniProt accession}, "
+        "{source:rt_locus_screen,accession:exact sourced protein accession.version} (ONE step for a phage or other "
+        "reverse transcriptase: reads its genome neighborhood, finds CRISPR arrays (CRT) and the Pfam domains of it "
+        "and every gene beside it, Cas genes included; a locus already screened is not read again), "
+        "or an NCBI literature query above. "
         "Use coded_by coordinates returned by ncbi_protein_context; never invent a neighborhood. The repeat screen reports candidates, not boundaries, significance, novelty, or function. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,gene:HUMAN GENE SYMBOL} "
         "(Atlas reads the human genome; the Lab finds where that gene starts on GRCh38 and reads Atlas's predicted "
@@ -867,8 +885,9 @@ def _orient(context, lean=None):
         "Atlas is human regulatory territory and supplies hypotheses, never validation. No literature hit is not novelty. "
         "Choose a sourced, non-pathogenic question an available instrument can probe; do not favor either lane "
         "merely because it appears in this menu."
+        + lines_text + "\n\nAlso return line_id (the line this works, or null) and new_line (an object, or null)."
     )
-    atlas_turn = atlas_turn_due()
+    atlas_turn = atlas_turn_due() and line is None      # a line's cycle is the line's; Atlas takes a free one
     if atlas_turn:
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
                  "uniprot_query 'gene:SYMBOL AND organism_id:9606', source_query {source:atlas, gene:SYMBOL}.")
@@ -883,11 +902,28 @@ def _orient(context, lean=None):
     if spent["subjects"]:
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
-    inquiry = _inquiry(_json_object(_ask(system, task)), lean)
+    value = _json_object(_ask(system, task))
+    inquiry = _inquiry(value, lean)
     if atlas_turn: inquiry = _as_atlas_turn(inquiry)
     if spent["subjects"] and repeats_dead_end(inquiry, spent):
-        inquiry = _inquiry(_json_object(_ask(system, task + "\n\nYou chose a spent subject again. "
-                                             "Choose a different one.")), lean)
+        value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
+        inquiry = _inquiry(value, lean)
+    return _on_line(inquiry, value, line)
+
+
+def _on_line(inquiry, value, line):
+    """The cycle's line on its inquiry: the line it works, or a new one he opened on a free cycle."""
+    if line:
+        return dict(inquiry, line_id=line["id"])
+    new = value.get("new_line") if isinstance(value, dict) else None
+    if isinstance(new, dict):
+        try:
+            import lab_lines
+            opened = lab_lines.opened_by(new.get("title"), new.get("question") or inquiry.get("question"), new.get("why"))
+            if opened:
+                return dict(inquiry, line_id=opened["id"], line_opened=True)
+        except Exception as exc:
+            _fault("lab_lines_open", exc)
     return inquiry
 
 
@@ -1154,6 +1190,13 @@ def _gather_material(state, inquiry, fresh_only=False):
 
 
 def _reflect(context, inquiry, records):
+    line = None
+    try:   # the line this test belongs to, and how he may end it
+        import lab_lines
+        line = lab_lines.get(inquiry.get("line_id")) if (inquiry or {}).get("line_id") else None
+        line_text = lab_lines.reflect_text(line)
+    except Exception:
+        line_text = ""
     raw = _ask(
         "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "
         "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
@@ -1174,13 +1217,14 @@ def _reflect(context, inquiry, records):
         "instrument_gap (only if the next step needs a capability this Lab does not have that could be built or "
         "connected for you — a simulator, a model, a database or tool you cannot reach: name it and what it would "
         "measure. Laboratory equipment you could never operate — cryo-EM, crystallography, NMR, mass spectrometry, "
-        "wet-lab assays — is not a gap; say what it would show in speculative_reading instead. Otherwise empty).",
+        "wet-lab assays — is not a gap; say what it would show in speculative_reading instead. Otherwise empty)."
+        + line_text,
         temperature=0.35,
     )
     value = _json_object(raw)
     return {k: str(value.get(k, ""))[:1000] for k in
             ("attention", "factual_observation", "speculative_reading", "next_question",
-             "answers_question", "instrument_gap")}
+             "answers_question", "instrument_gap") + (("line_status",) if line else ())}
 
 
 def _reflect_genome(context, result):
@@ -1341,6 +1385,7 @@ def tick():
                 except Exception as exc: _fault("forge_report_retry", exc)
             context, receipt = lab_context()
             phase = state.get("phase", "orient")
+            _inquiry_before = dict(state.get("inquiry") or {})
             state["effective_state"] = "working"; _atomic(STATE, state)
             if phase == "orient":
                 try:
@@ -1599,6 +1644,12 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc:
                     _fault("frontier_interest", exc)
+                if inquiry.get("line_id"):   # the test joins its line; his line_status may end it
+                    try:
+                        import lab_lines
+                        note["line"] = lab_lines.after_reflection(inquiry["line_id"], note)
+                    except Exception as exc:
+                        _fault("lab_lines_step", exc)
                 # The Lab reaches the Forge only with a genuinely missing limb: something that could be built
                 # or connected for him (Gloria, 2026-09-28). Lab equipment he could never operate is not one;
                 # a cryo-EM gap became a midnight "Feasibility Assessment" the Forge could only write about.
@@ -1662,6 +1713,16 @@ def tick():
                                  "interest_truth_status": assessment["truth_status"]})
                 except Exception as exc: _fault("frontier_interest", exc)
                 state.pop("evo2_result", None); next_phase = "orient"
+            _line = (_inquiry_before or {}).get("line_id")
+            if _line and next_phase == "orient" and phase in ("browse", "sources"):
+                try:   # the source answered nothing on the line's question: a test, and it is kept as one
+                    import lab_lines
+                    lab_lines.record_step(_line, {"question": (_inquiry_before or {}).get("question"),
+                                                  "source": str(((_inquiry_before or {}).get("source_query") or {}).get("source") or "uniprot"),
+                                                  "result": "", "answered": "no: " + str(note.get("reason") or note["kind"])[:200]})
+                    note["line"] = _line
+                except Exception as exc:
+                    _fault("lab_lines_miss", exc)
             _append(NOTEBOOK, note)
             if note["kind"] == "reflection":
                 # Which sourced proteins he actually wrote about. Late import, same reason.

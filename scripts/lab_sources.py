@@ -206,7 +206,7 @@ def fetch_record(url, *, transport=None):
         return body.decode('utf-8')
 
 
-def _gbseq(xml, expected):
+def _gbseq(xml, expected, translations=False):
     try: root = ET.fromstring(xml)
     except ET.ParseError as exc: raise ValueError('NCBI returned malformed sequence XML') from exc
     node = root.find('.//GBSeq')
@@ -216,13 +216,19 @@ def _gbseq(xml, expected):
     features = []
     for feature in node.findall('./GBSeq_feature-table/GBFeature')[:96]:
         quals = {}
+        translation = ''
         for qual in feature.findall('./GBFeature_quals/GBQualifier'):
             name, value = qual.findtext('GBQualifier_name'), qual.findtext('GBQualifier_value')
             if name in ('gene','product','protein_id','locus_tag','coded_by','note') and value:
                 quals.setdefault(name, []).append(value[:500])
-        features.append({'key': feature.findtext('GBFeature_key') or '',
-                         'location': (feature.findtext('GBFeature_location') or '')[:200],
-                         'qualifiers': quals})
+            elif name == 'translation' and value and translations:
+                translation = re.sub(r'\s+', '', value)[:6000]
+        row = {'key': feature.findtext('GBFeature_key') or '',
+               'location': (feature.findtext('GBFeature_location') or '')[:200],
+               'qualifiers': quals}
+        if translation:     # kept for the Lab's own domain scan (lab_phage), never shown to the model
+            row['translation'] = translation
+        features.append(row)
     return {'accession': accession, 'definition': (node.findtext('GBSeq_definition') or '')[:500],
             'organism': (node.findtext('GBSeq_organism') or '')[:300],
             'taxonomy': (node.findtext('GBSeq_taxonomy') or '')[:800],
@@ -467,6 +473,9 @@ class Sources:
                 raise ValueError('sourced one-based inclusive anchor coordinates required')
             if type(flank) is not int or not 500 <= flank <= 5000:
                 raise ValueError('flank must be 500..5000 bases')
+            # The repeat screen reads at most 12 kb; a 2 kb gene with 5 kb either side asked for more and the whole
+            # read failed (2026-10-03). The flank shrinks to fit; a gene longer than that is read without one.
+            flank = max(0, min(flank, (12000 - (end - start + 1)) // 2))
             window_start, window_end = max(1, start-flank), end+flank
             parsed = _gbseq(self.fetch_record(NCBI_BASE + 'efetch.fcgi?' + urlencode({
                 'db':'nuccore','id':accession,'seq_start':window_start,'seq_stop':window_end,
@@ -475,18 +484,27 @@ class Sources:
             if not parsed['sequence'] or len(parsed['sequence']) > expected_length:
                 raise ValueError('NCBI returned invalid neighborhood sequence')
             from lab_genome_mining import scan_repeat_arrays
-            screen = scan_repeat_arrays(parsed['sequence']) if len(parsed['sequence']) >= 200 else {
-                'candidate_arrays': [], 'candidate_count': 0,
-                'truth_status': 'window_too_short_for_pattern_screen'}
+            try:
+                screen = scan_repeat_arrays(parsed['sequence']) if 200 <= len(parsed['sequence']) <= 12000 else {
+                    'candidate_arrays': [], 'candidate_count': 0,
+                    'truth_status': 'window_outside_pattern_screen_bounds'}
+            except ValueError as exc:
+                screen = {'candidate_arrays': [], 'candidate_count': 0, 'error': str(exc)[:200]}
+            import lab_crt
+            arrays = [dict(a, start=window_start + a['start'] - 1, end=window_start + a['end'] - 1,
+                           spacers=len(a['spacers'])) for a in lab_crt.find_arrays(parsed['sequence'])]
             record = {key: parsed[key] for key in ('accession','definition','organism','taxonomy','features')}
             record.update({'window_start':window_start,'window_end':window_start+len(parsed['sequence'])-1,
                            'anchor_start':start,'anchor_end':end,'sequence':parsed['sequence'],
-                           'repeat_screen':screen})
+                           'repeat_screen':screen, 'crispr_arrays':arrays})
             return receipt(source, {'source':source,'accession':accession,'anchor_start':start,
                                     'anchor_end':end,'flank':flank}, [record], metadata={
                 'service':'NCBI_EFetch_GenBank','coordinates':'one_based_inclusive',
                 'feature_locations':'provider_text; verify against the accession before comparison',
                 'coverage':'bounded_anchor_neighborhood','evidence':'primary_sequence_and_provider_annotation'})
+        if source == 'rt_locus_screen':
+            import lab_phage
+            return lab_phage.screen(self, spec)
         if source == 'interpro':
             accession = _uniprot_accession(spec.get('accession'))
             data, _ = self.fetch(INTERPRO_BASE + 'entry/interpro/protein/uniprot/' + accession + '/?' + urlencode({'page_size':8}))

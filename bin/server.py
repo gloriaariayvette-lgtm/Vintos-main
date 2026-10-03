@@ -6812,7 +6812,7 @@ async def chemistry_lab_reviews(request: Request, limit: int = 20):
                                       kinds=("reflection", "genome_reflection")):
             rows.append({key: row.get(key) for key in
                          ("at", "kind", "entry_id", "factual_observation", "speculative_reading",
-                          "attention", "next_question", "interest_score", "reason_for_score",
+                          "attention", "next_question", "interest_score", "reason_for_score", "line",
                           "flagged_for_next_lab_session", "surfaced_to_frontier", "truth_status")})
         return {"ok": True, "reviews": rows, "limit": 20}
     except Exception as exc:

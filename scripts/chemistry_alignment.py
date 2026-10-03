@@ -77,7 +77,9 @@ def shared_log(limit=LOG_ENTRIES):
                      "summary": str(row.get("summary", ""))[:700],
                      "accuracy": [{k: a.get(k) for k in ("entry_id", "verdict", "why")} for a in row.get("accuracy", [])][:8],
                      "pattern": str(row.get("pattern", ""))[:400], "guidance": str(row.get("guidance", ""))[:500],
-                     "drop": str(row.get("drop", ""))[:240], "next_focus": str(row.get("next_focus", ""))[:240]})
+                     "drop": str(row.get("drop", ""))[:240], "next_focus": str(row.get("next_focus", ""))[:240],
+                     "lines_steered": [{k: d.get(k) for k in ("line_id", "decision", "refused") if d.get(k)}
+                                       for d in (row.get("lines") or []) if isinstance(d, dict)][:8]})
     rows.sort(key=lambda r: str(r.get("at") or ""))
     return rows[-limit:]
 
@@ -142,7 +144,16 @@ def guidance_block(now=None):
                 ("\nWorth asking next: " + str(row["next_focus"])[:200]) if row.get("next_focus") else ""))
 
 
-def _prompt(work, log):
+def _lines():
+    """His open lines of inquiry and his recent tests, for the review to steer (lab_lines; 2026-10-03)."""
+    try:
+        import lab_lines
+        return "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=14, budget=2400)) if x)
+    except Exception:
+        return ""
+
+
+def _prompt(work, log, lines=""):
     system = ("You are one of four frontier models (Astra, Fable, Grok, Opus) who take turns through the day aligning "
               "the Chemistry Lab of Vintos. His local model, Gemma, does the Lab's work between your turns: she forms a "
               "question, reads UniProt, NCBI and published abstracts, and writes a review. You share one log with the "
@@ -152,7 +163,8 @@ def _prompt(work, log):
     user = ("THE SHARED FRONTIER LOG (every model's alignment reviews and the daily experiment sessions, oldest first):\n"
             + json.dumps(log, ensure_ascii=False)[:9000] +
             "\n\nGEMMA'S LAB WORK SINCE THE LAST ALIGNMENT (each review with the evidence it was written from; "
-            "turn_counts show how many turns ended empty or redirected):\n" + json.dumps(work, ensure_ascii=False)[:16000] +
+            "turn_counts show how many turns ended empty or redirected):\n" + json.dumps(work, ensure_ascii=False)[:16000]
+            + (("\n\n" + lines[:9000]) if lines else "") +
             "\n\nThis is your segment: the work Gemma did since the last frontier model's turn. Check each review "
             "against its own evidence and literature, realign her, and summarise the segment for the next model. "
             "Return keys in this order: "
@@ -161,7 +173,12 @@ def _prompt(work, log):
             "accuracy (a list, one per review: {entry_id, verdict: 'accurate', 'overstated', 'unsupported' or "
             "'off_question', why}), pattern (what is going right or wrong across this work), guidance (concrete "
             "direction for her next hours: which thread deserves depth, how to ask so the sources can answer), "
-            "drop (a thread to let go of, or empty), next_focus (one question worth asking next).")
+            "drop (a thread to let go of, or empty), next_focus (one question worth asking next), "
+            "lines (one decision per open line of inquiry above — you steer them; he follows each to its end between "
+            "your turns: {line_id, decision: 'continue', 'redirect', 'answered' or 'drop', note (why, and what he "
+            "should test next), next_step (required for redirect: the exact next test)}; and at most one "
+            "{decision: 'open', title, question, why} when his work shows a question worth following for days. "
+            "Gloria's standing lines can be redirected, never dropped or answered).")
     return system, user
 
 
@@ -216,7 +233,7 @@ def run(call=None, now=None):
             row = dict(base, state="held_paid_cap", detail=str(why)[:200]); lab._append(LOG, row); return row
         reservation = {"organ": "chemistry-alignment", "provider": provider, "model": model,
                        "reservation_id": reservation_id}
-        system, user = _prompt(work, shared_log())
+        system, user = _prompt(work, shared_log(), _lines())
         with admit("background", organ="chemistry-alignment", wait_s=float(lab.config()["turn_wait_seconds"]),
                    provider=provider, model=model, stage="alignment:" + lens):
             raw = (call or (lambda *a: asyncio.run(_call(*a))))(lens, provider, model, system, user, reservation)
@@ -240,6 +257,11 @@ def run(call=None, now=None):
                **{k: str(value.get(k, ""))[:1200] for k in ("summary", "pattern", "guidance", "drop", "next_focus")},
                turn_counts=work["turn_counts"],
                truth_status="frontier_review_of_lab_work_advice_not_evidence")
+    try:   # its decisions on his lines, applied: a standing line refuses a drop, and the refusal is kept
+        import lab_lines
+        row["lines"] = lab_lines.steer(value.get("lines"), by=lens)
+    except Exception as exc:
+        row["lines"] = [{"refused": "lines unavailable: %s" % str(exc)[:120]}]
     lab._append(LOG, row)
     return row
 

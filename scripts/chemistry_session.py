@@ -63,6 +63,15 @@ def frontier_context():
     """His identity, taste and grades, and the shared frontier log — never Gemma's journal
     (Gloria, 2026-09-28)."""
     context, receipt = lab.lab_context(gemma_journal=False)
+    try:   # his lines of inquiry and his recent tests: the day's experiment can be a step on a line (2026-10-03)
+        import lab_lines
+        lines = "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=12, budget=2000)) if x)
+    except Exception:
+        lines = ""
+    if lines:
+        context += "\n\n" + lines[:8000]
+        receipt = dict(receipt, sources=list(receipt.get("sources", [])) + [{"name": "lab_lines", "chars": len(lines[:8000]),
+                       "sha256": hashlib.sha256(lines[:8000].encode()).hexdigest()}])
     log = frontier_log()
     if not log: return context, receipt
     block = ("[THE SHARED FRONTIER LOG — every frontier model's alignment reviews of the Lab and the daily "
@@ -257,7 +266,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "addressed_entry_ids (array drawn only from " + json.dumps(offered_entry_ids or []) +
               "), experiment, parameters (object), shots (integer 256..16384), question, why_this, "
               "prediction (what you expect THIS run to show, concretely enough to be wrong, e.g. which state "
-              "is likeliest and whether it is the lowest-energy one — decided before it runs). "
+              "is likeliest and whether it is the lowest-energy one — decided before it runs), "
+              "line_id (the open line of inquiry this experiment is a step on, from the lines above, or null). "
               "Parameters may be empty. Optionally return source_query for ONE additional public source read: "
               "{source:pdb,entry_id:known ID}, {source:chembl,target_id:known CHEMBL target}, or "
               "{source:atlas,assembly:GRCh38,chromosome:chrN,start:integer,end:integer,scorers:[documented names]}, "
@@ -268,6 +278,8 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "{source:ncbi_protein_context,accession:exact sourced protein accession.version}, "
               "{source:ncbi_neighborhood,accession:exact sourced nuccore accession.version,anchor_start:sourced one-based integer,anchor_end:sourced one-based integer,flank:500..5000}, "
               "{source:interpro,accession:exact sourced UniProt accession}, "
+              "{source:rt_locus_screen,accession:exact sourced protein accession.version} (a reverse transcriptase's "
+              "genome neighborhood in one step: CRISPR arrays and the Pfam domains of it and every gene beside it), "
               "{source:bvbrc,operation:genomes,taxon_id:sourced numeric ID}, "
               "{source:bvbrc,operation:pathways,genome_id:sourced BV-BRC ID}, or "
               "{source:uniprot,query:taxonomy_id:SOURCED_ID AND reviewed:true} (taxonomy_id covers a whole group such as a phylum; organism_id matches one exact organism only and returns nothing for a group ID). "
@@ -311,6 +323,7 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
             "shots": shots, "question": str(value.get("question", ""))[:800],
             "why_this": str(value.get("why_this", ""))[:800],
             "prediction": str(value.get("prediction", ""))[:800],
+            **({"line_id": str(value["line_id"])[:40]} if isinstance(value.get("line_id"), str) and value.get("line_id") else {}),
             **({"atelier_lean_id": lean.get("lean_id"), "atelier_lean": str(lean.get("direction", ""))[:1000]}
                if isinstance(lean, dict) else {}),
             **({"channel_lean_id": channel_lean.get("lean_id"), "channel_lean": str(channel_lean.get("direction", ""))[:600]}
@@ -597,6 +610,14 @@ def run():
             if result.get("run_id"):
                 mac.reading(result["run_id"], reading.get("reading", ""))
             lab._append(SESSIONS, row)
+            if plan.get("line_id"):   # the day's experiment, as a step on the line it tests
+                try:
+                    import lab_lines
+                    lab_lines.record_step(plan["line_id"], {
+                        "question": plan.get("question"), "source": "experiment:" + str(plan.get("experiment")),
+                        "result": reading.get("reading"), "answered": reading.get("prediction_vs_result"),
+                        "next": reading.get("next_question"), "session_id": session_id})
+                except Exception as exc: lab._fault("lab_lines_session", exc, session_id=session_id)
             # Taste accrues from what he chose, never from how the run scored.
             try: taste.observe_session(row)
             except Exception as exc: lab._fault("taste", exc, session_id=session_id)

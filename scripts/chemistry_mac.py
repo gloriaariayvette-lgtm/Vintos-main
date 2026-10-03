@@ -24,6 +24,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 import uuid
 
 MAX_HP_LATTICE_RESIDUES = 9
@@ -192,6 +193,37 @@ def _death(code, length):
     return "exit %d with no message on a %d-residue sequence" % (code, length)
 
 
+def _short_of_memory(done):
+    """A fold that died for memory: killed (SIGKILL, most often the OOM killer) or CUDA out of memory."""
+    text = (done.stderr or "") + (done.stdout or "")
+    return done.returncode == -9 or bool(re.search(r"out of memory|CUDA error|cudaMalloc|OutOfMemory", text, re.I))
+
+
+def _with_gemma_unloaded(run):
+    """run() with Gemma off the GPU, then Gemma reloaded. None when Gemma could not be unloaded (no LM Studio, no
+    lock): then the first failure stands."""
+    try:
+        import chemistry_evo2 as evo
+        guard = evo._watchdog_exclusion()
+        guard.__enter__()
+    except Exception:
+        return None
+    try:
+        try:
+            if evo._lms("unload", evo.GEMMA_MODEL).returncode != 0:
+                return None
+        except Exception:
+            return None
+        time.sleep(2)
+        try:
+            return run()
+        finally:
+            try: evo._restore_gemma()
+            except Exception as exc: print("esmfold: Gemma was not reloaded: %s" % exc, file=sys.stderr)
+    finally:
+        guard.__exit__(None, None, None)
+
+
 def _run_esmfold(parameters, contract, worker=None):
     body = {"accession": contract["requested_accession"], "sequence": contract["sequence"],
             "sequence_source": contract["source"], "hp_mapping": contract["hp_mapping"]}
@@ -200,6 +232,12 @@ def _run_esmfold(parameters, contract, worker=None):
         try:
             done = subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body), text=True,
                                   capture_output=True, timeout=900, check=False)
+            if done.returncode and _short_of_memory(done):
+                # The fold shares a 16 GB GPU with Gemma, and nothing made room for it (2026-10-03). Once more with
+                # Gemma unloaded, the way Evo 2 runs, and Gemma put back after.
+                done = _with_gemma_unloaded(lambda: subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body),
+                                                                  text=True, capture_output=True, timeout=900,
+                                                                  check=False)) or done
         except subprocess.TimeoutExpired:
             return {"ok": False, "state": "unknown_after_timeout",
                     "error": "local ESMFold timed out; outcome not retried"}

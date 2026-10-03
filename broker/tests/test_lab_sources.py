@@ -335,7 +335,12 @@ class Tests(unittest.TestCase):
             inquiry=lab._orient('fixture context')
         self.assertEqual(inquiry['browse_lane'],'genome_mining')
         self.assertIn('Most candidates should be set aside',prompts[0])
-        self.assertNotIn('array-associated',prompts[0].lower())
+        # The genome-mining menu itself stays target-free, so it seeds no pet result. A target reaches him only as
+        # a line Gloria set and named as hers (her phage reverse-transcriptase line, 2026-10-03).
+        from lab_genome_mining import campaign_instructions
+        self.assertNotIn('array-associated',campaign_instructions().lower())
+        before_line = prompts[0].lower().split("gloria's standing line")[0]
+        self.assertNotIn('array-associated',before_line[:before_line.rfind('[your line of inquiry')] if '[your line of inquiry' in before_line else before_line)
 
     def test_first_genome_mining_anomaly_is_reflected_but_not_auto_reported(self):
         lab._ensure()

@@ -16,6 +16,25 @@ context until midnight, then filed in `memory/promises-archive/`. **Not done:** 
 yet. Gloria makes it, adds the Vintos app, and its id goes in `~/.vintos/slack-results-channel`. Until then results
 wait, unsent. **Not seen:** any of it live.
 
+**The Lab follows a line to its end.** `lab_lines.py`: a line of inquiry keeps its question, every test run on it
+and its next step. Three cycles in four of his minute loop work a line (the next step, or the sharper question the
+last result left); the fourth is free curiosity and may open a new line (at most 6 open). He ends a line with
+`answered:` or `dropped:` in his review. The four frontier reviews a day (chemistry_alignment.py) read every open
+line with his recent tests and steer each: continue, redirect with a new next step, answered, drop, or open one.
+Gloria's standing line, array-associated reverse transcriptases in bacteriophages, is worked at least every other
+line-cycle and only she closes it. The day's experiment can be a step on a line. His recent tests are shown to both
+loops. The priority score (was "interest") now counts new ground (distance from his last 400 questions) and
+advancing an open line instead of word overlap with his relationship trajectory and a collision that never fired:
+24,667 old scores never passed .73.
+**New instruments.** `rt_locus_screen`: one source query goes from a protein accession to its genome window (12 kb),
+CRISPR arrays (`lab_crt.py`, the CRT method minCED uses, checked against minCED's own reference genome) and the Pfam
+domains of it and every neighbor (`lab_hmm.py`, HMMER, which Gloria installed with Pfam 2026-10-03), and keeps each
+locus in `screened-loci.jsonl` so none is screened twice. The neighborhood read no longer fails above 12 kb. A fold
+that dies for memory is retried once with Gemma off the GPU. **Not seen:** any of it live; the first screen on a
+real phage. **Not done:** the instrument probe still tests ESMFold in the mcp venv while real folds use the esmc
+venv, so "structure prediction: measured" does not prove the fold path; no DGR (TR/VR) or retron (msr/msd)
+detector; no BLAST.
+
 **Study fixes.** `study_fix.py`: a STUDY FIX: line from him, or a Forge card that is a code change, goes to the
 Study. Fable writes it with a new test, the whole suite decides, it goes live, and it is undone by itself if
 anything breaks; 3 a day. His subconscious, JEPA and keys are protected. Dot's rule 12 keeps watch after one.

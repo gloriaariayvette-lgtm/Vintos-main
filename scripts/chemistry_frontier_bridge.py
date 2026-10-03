@@ -2,10 +2,12 @@
 """Carry selected local Lab findings into a frontier session, with receipts.
 
 The local reader may nominate an occasion but cannot certify its own importance.
-Priority is computed here from independent, inspectable signals: a successful
-source query, new source accessions, lexical contact with the Living Trajectory,
-and an already-recorded cross-organ collision. Repetition subtracts priority.
-The number is a routing score, never evidence that a biological claim is true.
+Priority is computed here from independent, inspectable signals: a sourced record,
+a successful source query, new source accessions, whether it advanced one of his
+open lines of inquiry, and how far its question is from every recent one (new
+territory). Asking the same question again subtracts priority. The number is a
+routing score, never evidence that a biological claim is true; the Lab page calls
+it priority.
 
 Notebook history stays append-only. Delivery and acknowledgment are later events,
 not retroactive booleans written into an old row. A finding is ``delivered`` when
@@ -39,14 +41,9 @@ def _words(value):
     return set(re.findall(r"[a-z]{4,}", str(value or "").lower()))
 
 
-def _trajectory_overlap(text):
-    trajectory = lab._load(os.path.join(lab.MEM, "living-trajectory.json"), {})
-    target = json.dumps(trajectory, ensure_ascii=False) if trajectory else ""
-    left, right = _words(text), _words(target)
-    return len(left & right) / float(len(left | right) or 1)
-
-
 def _collision_witness(accessions):
+    """A cross-organ collision already recorded for one of these accessions: kept on the row as a witness, no longer
+    scored (it almost never exists yet when a finding is scored)."""
     needles = {str(x).upper() for x in accessions if x}
     if not needles: return None
     for row in reversed(lab._jsonl(COLLISIONS)[-500:]):
@@ -55,6 +52,30 @@ def _collision_witness(accessions):
         text = " ".join(str(side.get("content_summary") or "") for side in sides).upper()
         if any(item in text for item in needles): return row.get("collision_id")
     return None
+
+
+def _novelty(question, prior, window=400):
+    """How far this question is from the ones before it: 1 for new ground, 0 for one already asked. Measured as
+    1 minus the closest word overlap with the last `window` questions (2026-10-03)."""
+    words = _words(question)
+    if not words: return 0.0
+    closest = 0.0
+    for row in prior[-window:]:
+        other = _words(row.get("question") or row.get("next_question"))
+        if other:
+            closest = max(closest, len(words & other) / float(len(words | other)))
+    return 1.0 - closest
+
+
+def _open_line(line_id):
+    """True when the reflection advanced a line of inquiry that is still open (lab_lines)."""
+    if not line_id: return False
+    try:
+        import lab_lines
+        line = lab_lines.get(line_id)
+        return bool(line and line.get("state") == "open")
+    except Exception:
+        return False
 
 
 def _latest_interest():
@@ -85,15 +106,19 @@ def assess(reflection, *, source_query_succeeded=False):
                             for row in prior if question)
     evidence_sha256 = _digest(sorted(set(accessions)), finding.lower().strip())
     repeated_evidence = any(_evidence_key(row) == evidence_sha256 for row in prior)
-    overlap = _trajectory_overlap(" ".join((finding, reading, question)))
+    asked = str((reflection.get("inquiry") or {}).get("question") or question)
+    line_id = reflection.get("line_id") or (reflection.get("inquiry") or {}).get("line_id")
     collision_id = _collision_witness(accessions)
+    # Until 2026-10-03 a quarter of this came from word overlap with his relationship trajectory and a fifth from a
+    # cross-organ collision that could not yet exist when a finding was scored: 24,667 scores, none above .73. What
+    # counts now is new ground and following a line through.
     components = {
-        "sourced_record": 0.15 if accessions else 0.0,
-        "source_query_succeeded": 0.20 if source_query_succeeded else 0.0,
+        "sourced_record": 0.10 if accessions else 0.0,
+        "source_query_succeeded": 0.15 if source_query_succeeded else 0.0,
         "new_source_accessions": round(0.20 * len(novel) / float(len(accessions) or 1), 4),
-        "trajectory_contact": round(min(0.25, overlap * 4.0), 4),
-        "cross_organ_collision": 0.20 if collision_id else 0.0,
-        "repetition_penalty": -0.20 if repeated_question else 0.0,
+        "advances_open_line": 0.25 if _open_line(line_id) else 0.0,
+        "new_territory": round(0.30 * _novelty(asked, prior), 4),
+        "repetition_penalty": -0.10 if repeated_question else 0.0,
     }
     score = round(max(0.0, min(1.0, sum(components.values()))), 4)
     reasons = [name for name, value in components.items() if value > 0]
@@ -101,7 +126,8 @@ def assess(reflection, *, source_query_succeeded=False):
     if repeated_evidence: reasons.append("duplicate_evidence_suppressed")
     row = {
         "entry_id": entry_id, "at": reflection.get("at") or lab.now_iso(),
-        "finding": finding, "reflection": reading, "next_question": question,
+        "finding": finding, "reflection": reading, "next_question": question, "question": asked[:600],
+        **({"line_id": line_id} if line_id else {}),
         "source_accessions": accessions, "interest_score": score,
         "reason_for_score": reasons, "score_components": components,
         "flagged_for_next_lab_session": score >= FLAG_THRESHOLD and not repeated_evidence,
@@ -109,6 +135,7 @@ def assess(reflection, *, source_query_succeeded=False):
         "collision_id": collision_id, "question_sha256": _digest(question.lower().strip()) if question else None,
         "evidence_sha256": evidence_sha256,
         "truth_status": "routing_priority_from_independent_receipts_not_truth_or_importance",
+        "score_version": 2,
     }
     lab._append(INTEREST, row)
     return row
