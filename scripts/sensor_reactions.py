@@ -66,9 +66,8 @@ def _change(sensor, prev, value, meta):
         return True, ("her heart rate rose %d to %d bpm" % (d, value)) if d > 0 else ("her heart rate fell %d to %d bpm" % (-d, value))
     if sensor == "presence":
         if prev is None or bool(prev) == bool(value):
-            return False, "no change in whether her phone is on the house wifi"
-        # the phone is what was seen; it joining or leaving the wifi is not proof she came or went
-        return True, "her phone just joined the house wifi" if value else "her phone just left the house wifi (asleep, airplane mode, or out with her - it cannot say which)"
+            return False, "no change in whether she is home"
+        return True, "she just came home (her phone joined the house wifi)" if value else "she just left (her phone dropped off the house wifi)"
     if sensor == "touch":
         if prev is None or prev == value:
             return False, "no change"

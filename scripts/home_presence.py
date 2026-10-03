@@ -50,14 +50,15 @@ def _ping(ip):
 
 
 def _neigh_has(mac, ip):
-    """The kernel neighbor table: sees devices that ignore ping. Only REACHABLE entries count -
-    STALE/DELAY/FAILED rows linger for minutes after a phone stops answering and would keep it 'seen'."""
+    """The kernel neighbor table: sees devices that ignore ping. FAILED entries don't count."""
     try:
-        out = subprocess.run(["ip", "neigh", "show", "nud", "reachable"], capture_output=True,
+        out = subprocess.run(["ip", "neigh", "show"], capture_output=True,
                              timeout=6, text=True).stdout.lower()
     except Exception:
         return False
     for line in out.splitlines():
+        if "failed" in line:
+            continue
         if (mac and mac.lower() in line) or (ip and line.startswith(ip + " ")):
             return True
     return False
