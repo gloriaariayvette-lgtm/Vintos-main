@@ -106,12 +106,17 @@ def main():
         e["verdict"] = verdict
         e["suitable"] = {"keep": True, "take_down": False, "remake": False}.get(verdict)   # None when unjudged
         if verdict == "take_down": e["taken_down"] = True
+        if verdict == "remake" and int(e.get("remake_count", 0)) >= 1:
+            # only one remake (Gloria, 2026-10-03): a remake he would remake again is not painted again
+            e["remake_declined"] = "already a remake; remade only once"
         if verdict == "remake" and words and int(e.get("remake_count", 0)) < 1:
             e["taken_down"] = True
             env = os.environ.copy()
             env["DREAM_ART_WANT_TEXT"] = (str(e.get("prompt",""))[:180] + ". Changed: " + words)[:200]
             env["DREAM_ART_WANT_SOURCE"] = "remake"
             env["DREAM_ART_WANT_ID"] = str(e.get("want_id", ""))
+            env["DREAM_ART_REMAKE_OF"] = str(e.get("image", ""))
+            env["DREAM_ART_REMAKE_COUNT"] = str(int(e.get("remake_count", 0)) + 1)
             try:
                 subprocess.run(["python3", os.path.join(WORKSPACE, "scripts", "dream-art.py"),
                                 "--force", "--prompt", env["DREAM_ART_WANT_TEXT"]],

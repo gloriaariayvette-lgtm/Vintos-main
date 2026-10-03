@@ -237,6 +237,10 @@ def main():
         "image_class": "DREAM_BORN" if src == "dream" else "WANT_ACT",
         "softened_from_dream": src == "dream",  # p6 (2026-08-26): dreams render CLOTHED/UNSPICY for the moderated API — the image is softer than the dream; the archive says so honestly
         "want_id": os.environ.get("DREAM_ART_WANT_ID", ""),
+        # a remake knows what it remakes and how many times, so it is remade once and never again in a chain
+        # (2026-10-03: every remake started at 0 and could be remade again, forever)
+        **({"remake_of": os.environ.get("DREAM_ART_REMAKE_OF", ""),
+            "remake_count": int(os.environ.get("DREAM_ART_REMAKE_COUNT") or 1)} if src == "remake" else {}),
         **_am.build(_fpath, "image", source_want=os.environ.get("DREAM_ART_WANT_ID", ""), revision=_rev, shelf=ART_DIR),
     })
     _am.append_ledger(GALLERY, gallery[-1])   # review 302: the one shelf transaction (locked + atomic)
