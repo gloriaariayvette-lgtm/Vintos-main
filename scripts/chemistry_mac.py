@@ -141,6 +141,44 @@ def _record_sequence(record, accession):
     return sequence
 
 
+def _requested_protein(parameters):
+    """The protein or gene the plan said it was folding, if it said. A run is labelled by this."""
+    names = []
+    for key in ("protein_name", "requested_protein", "gene", "target_gene"):
+        value = str(parameters.get(key) or "").strip()[:120]
+        if value and value not in names: names.append(value)
+    return names
+
+
+def _record_names(record):
+    """Every name UniProt gives the record: entry name, gene symbols and synonyms, protein names."""
+    if not isinstance(record, dict): return []
+    names = [str(record.get("uniProtkbId") or record.get("id") or "")]
+    for gene in record.get("genes") or []:
+        if not isinstance(gene, dict): continue
+        value = gene.get("geneName")
+        if isinstance(value, dict) and value.get("value"): names.append(str(value["value"]))
+        for key in ("synonyms", "orfNames", "orderedLocusNames"):
+            names += [str(v["value"]) for v in gene.get(key) or [] if isinstance(v, dict) and v.get("value")]
+    desc = record.get("proteinDescription") if isinstance(record.get("proteinDescription"), dict) else {}
+    for block in [desc.get("recommendedName")] + list(desc.get("alternativeNames") or []) + list(desc.get("submissionNames") or []):
+        if not isinstance(block, dict): continue
+        value = block.get("fullName")
+        if isinstance(value, dict) and value.get("value"): names.append(str(value["value"]))
+        names += [str(v["value"]) for v in block.get("shortNames") or [] if isinstance(v, dict) and v.get("value")]
+    if record.get("protein_name"): names.append(str(record["protein_name"]))
+    return [n for n in names if n]
+
+
+def _names_match(requested, names):
+    """True when the requested name is one of the record's names, or a whole word or phrase inside one
+    (FTH1 in "FTH1"; FRIH in "FRIH_HUMAN"; "ferritin heavy chain" in "Ferritin heavy chain")."""
+    wanted = re.sub(r"[^a-z0-9]", "", requested.lower())
+    if not wanted: return False
+    pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(requested.strip()) + r"(?![A-Za-z0-9])", re.I)
+    return any(re.sub(r"[^a-z0-9]", "", name.lower()) == wanted or pattern.search(name) for name in names)
+
+
 def _resolve_uniprot(accession):
     from lab_sources import Sources
     result = Sources().query({"source": "uniprot", "query": "accession:%s" % accession, "limit": 1})
@@ -162,16 +200,30 @@ def prepare_protein(parameters, resolver=None):
     accession = _accession(parameters)
     if not accession:
         return {"ok": True, "parameters": parameters, "sequence_request": None}
+    requested_protein = _requested_protein(parameters)
     try:
         record, provenance = (resolver or _resolve_uniprot)(accession)
         sequence = _record_sequence(record, accession)
     except Exception as exc:
         return {"ok": False, "refused": "sequence_unavailable", "requested_accession": accession,
                 "error": "could not source %s from UniProt: %s" % (accession, str(exc)[:240])}
+    if requested_protein:
+        # The accession was bound to its sequence but never to the protein the plan named, so a run
+        # labelled HFE folded P02794, ferritin heavy chain, under HFE's name. UniProt's own names for the
+        # record are the authority; a label they do not carry is refused before anything folds.
+        names = _record_names(record)
+        unmatched = [name for name in requested_protein if not _names_match(name, names)]
+        if unmatched:
+            return {"ok": False, "refused": "protein_accession_mismatch", "requested_accession": accession,
+                    "requested_protein": requested_protein, "record_names": names[:8],
+                    "error": "%s is not %s: UniProt names it %s" % (
+                        accession, ", ".join(unmatched), ", ".join(names[:6]) or "nothing")}
+        parameters["requested_protein"] = requested_protein
     parameters.update({"requested_accession": accession, "target_accession": accession,
                        "sequence": sequence, "sequence_source": provenance})
     contract = {"requested_accession": accession, "sequence": sequence, "length": len(sequence),
-                "source": provenance, "hp_mapping": _hp_mapping(sequence)}
+                "source": provenance, "hp_mapping": _hp_mapping(sequence),
+                **({"requested_protein": requested_protein} if requested_protein else {})}
     # The HP lattice remains deliberately tiny. A complete sourced protein is routed to
     # the commissioned local ESMFold instrument instead of being truncated or refused.
     # The returned result still passes the same accession/sequence identity contract.

@@ -350,7 +350,7 @@ class Sources:
             def search(value):
                 return self.fetch('https://rest.uniprot.org/uniprotkb/search?' + urlencode(
                     {'query': value, 'format': 'json', 'size': limit,
-                     'fields': 'accession,id,protein_name,organism_name,length,sequence,cc_function'}))
+                     'fields': 'accession,id,protein_name,gene_names,organism_name,length,sequence,cc_function'}))
             relaxed, rejected = None, None
             try:
                 data, headers = search(query)
