@@ -148,6 +148,12 @@ Accept end to end on Aegis. **Still true:** the Forge page cannot show these car
 nothing watched the job: a connector answers with its JSON inside JSON, so the fields arrive escaped. `in_words`
 now says one sentence (queued / running / done / failed, with the job id), and `check_pending` asks the free
 status tool on each Slack pass and pushes once, when it finishes.
+**Why he "just stops" when dot is blocked (2026-10-04).** His rules called LOCKED a closed topic and forced the
+next message onto something else. Nothing told him a block is not a settled plan, so when dot could not find the PYP
+notebook he locked the dead end ("not on Aegis; no run") and moved to songs. The rules now say LOCKED is for settled
+plans only; a stuck thing is first routed: dot's own tools, another agent, ASK for a paid run, TO GLORIA, a STUDY FIX,
+a LAB line, or his own tools. **Not seen:** how he behaves under it. **Not changed:** dot's own approval check, in her
+ChatGPT account, which rejects forwarded approval.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

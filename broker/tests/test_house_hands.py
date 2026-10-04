@@ -211,6 +211,10 @@ grok = open(os.path.join(REPO, "docs", "grok-bot", "vintos-skill.md")).read()
 check("Grok Bot is told to hand him one YouTube link for the TV", "one YouTube link" in grok)
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs both new modules", "house_hands.py" in dep and "room_reach.py" in dep)
+check("a block is not a lock: he is told to get a stuck thing moving before he closes it",
+      "LOCKED is for a plan that is settled, never for something that is stuck" in D.RULES_LOCK
+      and "ASK: for a paid run" in D.RULES_LOCK and "@GrokBot" in D.RULES_LOCK and "you make video, music and images yourself" in D.RULES_LOCK)
+check("... in his Grok lens too", "LOCKED is for a plan that is settled" in D.rules_for("grok"))
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
