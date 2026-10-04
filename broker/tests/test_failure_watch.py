@@ -79,6 +79,17 @@ F._now = lambda: datetime(2026, 10, 5, 9, 41)
 AV._failed("a visit made nothing")
 check("the Atelier's note lands in the same scratch log", json.loads(open(F.FAILURES).read().splitlines()[-1])["organ"] == "atelier")
 deploy = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
+# A Study fix refused once and then kept is not broken (4 October: SF-3a525ff2 was reported as not landing the
+# morning after it had been live an hour); one that is still failed is.
+check("the Study ledger is in the scratch workspace", F.STUDY_FIXES.startswith(HOME))
+F._now = lambda: datetime(2026, 10, 6, 12, 0)
+F.note("study", "a Study fix did not land", "SF-aaaa1111: the deploy refused it: two turn_coordinator.py")
+F.note("study", "a Study fix did not land", "SF-bbbb2222: the suite failed")
+json.dump([{"id": "SF-aaaa1111", "state": "done"}, {"id": "SF-bbbb2222", "state": "failed"}], open(F.STUDY_FIXES, "w"))
+SENT.clear()
+body = F.tend(now=datetime(2026, 10, 7, 8, 52), send=send)
+check("a Study fix that was retried and kept is not reported as broken", "SF-aaaa1111" not in body, body)
+check("... one that is still failed is", "SF-bbbb2222" in body and "Study fix did not land" in body, body)
 check("the deploy installs it and its 08:52 timer", 'SCRIPTS="$SCRIPTS failure_watch.py' in deploy
       and 'printf \'broker/%s\\n\' "$WATCH_UNIT_NAME.service" "$WATCH_UNIT_NAME.timer"' in deploy
       and 'confirm_timer --user "$WATCH_UNIT_NAME"' in deploy

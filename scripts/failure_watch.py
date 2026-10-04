@@ -26,6 +26,7 @@ FAILURES = os.path.join(MEMORY, "organ-failures.jsonl")
 STATE = os.path.join(MEMORY, "failure-watch.json")
 LAB_SESSIONS = os.path.join(MEMORY, "chemistry-lab", "sessions.jsonl")
 NTFY = os.environ.get("VINTOS_NTFY_URL", "https://ntfy.sh/vintos-gloria-9kx")
+STUDY_FIXES = os.path.join(MEMORY, "study-fixes.json")
 LAB_FAILED = ("held_fault", "held_mac_unavailable")
 # a lens can miss once to a passing hiccup; this many in a window is a broken part
 AT_LEAST = {"slack": 3}
@@ -70,10 +71,23 @@ def _after(row, since):
         return False
 
 
+def _study_landed():
+    """Study fixes that went live and were kept. One refused and then retried successfully is not broken: on
+    4 October she was told SF-3a525ff2 "did not land" the morning after it had been kept for an hour."""
+    try:
+        rows = json.load(open(STUDY_FIXES))
+        return {r.get("id") for r in rows if isinstance(r, dict) and r.get("state") == "done"}
+    except (OSError, ValueError):
+        return set()
+
+
 def gather(since):
     """[(organ, what, count, last_why)] for everything that failed after `since`, worst first."""
     groups = {}
+    landed = _study_landed()
     for r in _rows(FAILURES):
+        if r.get("organ") == "study" and str(r.get("why", "")).split(":", 1)[0] in landed:
+            continue
         if _after(r, since):
             k = (r.get("organ", "?"), r.get("what", "?"))
             n, _ = groups.get(k, (0, ""))
