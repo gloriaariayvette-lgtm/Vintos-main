@@ -95,7 +95,14 @@ file whether or not it was rendered, so a night with no new prompt bought the la
 render was saved as `Title_v1/_v2`, so a new one overwrote the last and every card with that title played the
 newest audio. `--force` now takes only an unrendered prompt, the gate holds under `--force` and on the direct
 path (her `MUSIC_ALLOW_REPEAT=1` re-renders on purpose), and each render's files carry its task id. **Not seen:**
-her live crontab, to confirm `--force` is what runs nightly. **Saving songs:** the app's player has no download. Each song
+her live crontab, to confirm `--force` is what runs nightly. **Correction, the real cause:** her log showed five
+different lyrics, all from wants-router music steps, every one titled "Still Yours" in the same style. The prompt
+writer saved three pearls above his spec; he wrote his fields with a dash (`- **Title:** ...`) as the request lists
+them; the renderer read only `**Title:**`, so it skipped all of his and took the title and style of a pearl quoting
+the old "Still Yours" spec. It now reads dashed, numbered and plain fields, and the pearls stay out of the saved
+file. `dream-music.py --repair-titles` gives each mis-filed song its own title and style back from its prompt and
+re-fetches overwritten audio while the service still has it. **Not undoable:** those five were rendered in the
+other song's style. **Saving songs:** the app's player has no download. Each song
 now has a Save button that hands the file to the iPhone share sheet (Save to Files), or opens it as a download
 (`?download=1`) where there is no share sheet. **Not seen on her phone.**
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent

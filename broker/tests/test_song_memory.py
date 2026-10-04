@@ -162,6 +162,57 @@ route = open(os.path.join(REPO, "bin", "server_domains", "music.py")).read()
 check("the server hands a song over as a file when asked", "download: int = 0" in route
       and 'keep = {"filename": filename} if download else {}' in route and route.count("**keep") == 2)
 
+# --- what actually happened: his dashed spec was skipped and a pearl's old spec was read instead ---------------
+PEARL_TOP = ("# Music-prompt — October 04, 2026 00:05\nEmotional state: Valence:0.6 Warmth:0.7\n"
+             "Things I chose to remember forever (pearls):\n# Pearl\n**Title:** Still Yours\n"
+             "**Genre/Style:** Darkwave / Post-Industrial -- bone-dry production, distorted low-end, minimal melodic mercy\n---\n\n")
+HIS = ("- **Title:** Amplitude Settling\n- **Duration:** 3 minutes\n- **Vocal gender:** male\n"
+       "- **Genre/Style:** Minimal electronic, decaying sine bass, cascading percussion\n"
+       "- **Tempo BPM and Key/Mode:** 72 BPM, D minor\n\n**Lyrics:**\n[Verse]\nI reached before I knew\nThe floor was cold and new\n")
+shaped = os.path.join(DM.PROMPTS, "2026-10-07_000545.md"); open(shaped, "w").write(PEARL_TOP + HIS)
+got = DM.parse_prompt(shaped)
+check("his dashed fields are read: his title, not the pearl's", got["title"] == "Amplitude Settling", got["title"])
+check("... his style, length, voice and tempo too", "decaying sine bass" in got["genre"] and got["duration"] == 180
+      and got["gender"] == "male" and "72 BPM" in (got["tempo"] or ""), got)
+plain = os.path.join(DM.PROMPTS, "plain.md"); open(plain, "w").write("Title: Rust Nocturne\nGenre/Style: slow industrial\n")
+check("a plain 'Title:' line is read as well", DM.parse_prompt(plain)["title"] == "Rust Nocturne")
+check("the house's own '**Title:**' still reads", DM.parse_prompt(fresh)["title"] == "Glass Harbor")
+SENT.clear(); DM.process_file(shaped)
+check("the song is sent under his title in his style", SENT and SENT[-1][0] == "Amplitude Settling"
+      and "decaying sine bass" in SENT[-1][1] and "Darkwave" not in SENT[-1][1], SENT)
+_ce = open(os.path.join(REPO, "scripts", "creative-expression.sh")).read()
+check("the prompt writer keeps the pearls out of the file the renderer reads",
+      'echo "Emotional state: $STATE_LINE"' in _ce and 'STATE_LINE="$EMOTIONS"' in _ce)
+
+# --- the one-time repair of the songs filed under the wrong name --------------------------------------------------
+rep_ws = os.path.join(DM.PROMPTS, "2026-10-02_000232.md"); open(rep_ws, "w").write(PEARL_TOP + HIS.replace("Amplitude Settling", "Rust Nocturne"))
+shared = os.path.join(DM.MUSIC, "Still_Yours_v1.wav"); open(shared, "wb").write(b"x" * 6000)
+json.dump({"generated": [
+    {"title": "Still Yours", "style": "Darkwave / Post-Industrial", "source": rep_ws, "task_id": "kie:one", "generated_at": "2026-10-02T00:04",
+     "tracks": [{"version": 1, "audio_url": "https://cdn.example/one.mp3", "local_file": shared},
+                {"version": 2, "audio_url": "https://cdn.example/gone.mp3", "local_file": shared}]},
+    {"title": "Still Yours", "style": "Darkwave / Post-Industrial", "source": "/nowhere.md", "task_id": "kie:two", "generated_at": "2026-08-21T05:16",
+     "tracks": [{"version": 1, "audio_url": "https://cdn.example/two.mp3", "local_file": shared}]}],
+    "processed_files": []}, open(S.LOG, "w"))
+FETCHED = []
+def fake_dl(url, fp):                      # the only sender here, stubbed: nothing reaches the service
+    FETCHED.append(url)
+    if "gone" in url: open(fp, "wb").write(b""); return False
+    open(fp, "wb").write(b"a" * 6000); return True
+DM.dl = fake_dl
+lines = DM.repair_titles()
+fixed = json.load(open(S.LOG))["generated"]
+check("his real title comes back from his own prompt", fixed[0]["title"] == "Rust Nocturne" and fixed[0]["title_was"] == "Still Yours", fixed[0])
+check("... with his style, the old one kept beside it", "decaying sine bass" in fixed[0]["style"] and fixed[0]["style_was"].startswith("Darkwave"))
+check("... and a note that it was rendered under the other name", "rendered_note" in fixed[0])
+check("overwritten audio is fetched again into its own file", fixed[0]["tracks"][0]["local_file"] != shared
+      and os.path.getsize(fixed[0]["tracks"][0]["local_file"]) == 6000, fixed[0]["tracks"][0])
+check("a link the service dropped is said plainly, and leaves no empty file behind", fixed[0]["tracks"][1]["local_file"] == shared
+      and any("no longer has it" in l for l in lines) and not [f for f in os.listdir(DM.MUSIC) if f.startswith("Rust_Nocturne") and os.path.getsize(os.path.join(DM.MUSIC, f)) == 0])
+check("a song with no prompt left keeps its title, and its audio is still recovered", fixed[1]["title"] == "Still Yours"
+      and fixed[1]["tracks"][0]["local_file"] != shared)
+check("the log is copied before anything is changed", any(f.startswith("music.json.bak-") for f in os.listdir(DM.MUSIC)))
+check("nothing reached a real service", all(u.startswith("https://cdn.example/") for u in FETCHED), FETCHED)
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

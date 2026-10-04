@@ -320,9 +320,17 @@ def parse_prompt(fp):
     descs=[]
     for line in content.split("\n"):
         s=re.sub(r"^\*\s+", "", line.strip())
-        m=re.match(r"\*\*Title:\*\*\s*(.+)",s)
+        # His spec lists its fields as he was asked to, "- **Title:** ..." with a dash, and "Title: ..." plain.
+        # Only "**Title:**" was read, so every field he wrote was skipped and the title and style came from a pearl
+        # quoting an old spec at the top of the file: five different songs, each renamed "Still Yours" and sent
+        # in that song's style (Gloria, 2026-10-04). A bullet or number in front, and bold or not, all read now.
+        _f=re.match(r"^(?:[-•–]|\d+[.)])?\s*\**\s*(Title|Genre\s*/?\s*Style|Genre|Style|Tempo[\w\s/()]*?|Key\s*/?\s*Mode|Key|Duration|Vocal\s*[Gg]ender|Gender)\s*:\s*\**\s*(.+)$",s,re.I)
+        if _f and not s.startswith("**"):
+            _lab=_f.group(1); _lab="Tempo" if _lab.lower().startswith("tempo") else _lab
+            s="**%s:** %s" % (_lab, _f.group(2).strip())
+        m=re.match(r"\*\*Title:\*\*\s*(.+)",s,re.I)
         if m: d["title"]=m.group(1).strip().strip("*").strip(); continue
-        m=re.match(r"\*\*Genre\s*/?\s*Style:\*\*\s*(.+)",s)
+        m=re.match(r"\*\*(?:Genre\s*/?\s*Style|Genre|Style):\*\*\s*(.+)",s,re.I)
         if m: d["genre"]=m.group(1).strip(); continue
         m=re.match(r"\*\*Tempo\s*\(?BPM\)?:\*\*\s*(.+)",s)
         if not m: m=re.match(r"\*\*Tempo:\*\*\s*(.+)",s)
@@ -698,6 +706,49 @@ def direct(title,style,desc="",lyrics=""):
     if not entry["download"]["partial"]: _landing_done(tid, downloaded)
     print(f"\n  '{title}' complete!"); return True
 
+def repair_titles():
+    """One-time repair (Gloria, 2026-10-04). Before the parser read his dashed fields, five songs were filed as
+    "Still Yours" with that song's style, and every render of one title overwrote the same file. For each song
+    whose own prompt file is still here: its real title and style back from that file, and its audio fetched
+    again from the service into its own file where the link still answers. The old values are kept beside them,
+    and the log is copied first. Returns the lines it printed."""
+    import shutil
+    out=[]
+    log=load_log(); gen=log.get("generated",[])
+    shutil.copy(LOG, LOG+".bak-"+datetime.now().strftime("%Y%m%d-%H%M%S"))
+    uses={}
+    for e in gen:
+        for t in e.get("tracks",[]):
+            if t.get("local_file"): uses[os.path.basename(t["local_file"])]=uses.get(os.path.basename(t["local_file"]),0)+1
+    for e in gen:
+        src=e.get("source") or ""
+        line=""
+        d=parse_prompt(src) if (src.endswith(".md") and os.path.isfile(src)) else {}
+        if d.get("title") and d["title"]!=e.get("title"):
+            e.setdefault("title_was",e.get("title")); e["title"]=d["title"]
+            if d.get("genre"):
+                e.setdefault("style_was",e.get("style")); e["style"]=d["genre"]
+            e["rendered_note"]="sent to the renderer as '%s' in that song's style, before the 4 October fix; the lyrics are his own" % e["title_was"]
+            line="%s -> %s" % (e["title_was"], e["title"])
+        safe=re.sub(r'[^\w\s-]','',e.get("title") or "untitled").strip().replace(' ','_')
+        for i,t in enumerate(e.get("tracks",[])):
+            shared=t.get("local_file") and uses.get(os.path.basename(t["local_file"]),0)>1
+            if not (shared and t.get("audio_url")): continue
+            dest=os.path.join(MUSIC,_track_name(safe,e.get("task_id"),i,t["audio_url"]))
+            if (os.path.isfile(dest) and os.path.getsize(dest)>5000) or dl(t["audio_url"],dest):
+                t.setdefault("local_file_was",t["local_file"]); t["local_file"]=dest; line+="  v%d recovered" % (i+1)
+            else:
+                try: os.remove(dest)
+                except OSError: pass
+                line+="  v%d: the service no longer has it" % (i+1)
+        if line:
+            line="%s  %s  %s" % (str(e.get("generated_at",""))[:16], e.get("title",""), line.strip())
+            print(line); out.append(line)
+    save_log(log)
+    if not out: print("nothing to repair")
+    return out
+
+
 def main():
     p=argparse.ArgumentParser(description="Vintos Music via Kie.ai Suno v6 (ACE-Step fallback)")
     p.add_argument("--force",action="store_true")
@@ -706,7 +757,9 @@ def main():
     p.add_argument("--style")
     p.add_argument("--description",default="")
     p.add_argument("--lyrics",default="")
+    p.add_argument("--repair-titles",action="store_true",help="one-time: real titles back from each song's prompt, audio re-fetched")
     a=p.parse_args()
+    if a.repair_titles: repair_titles(); sys.exit(0)
     # ACE-Step local — no API key needed
     os.makedirs(MUSIC,exist_ok=True)
     resume_landings()

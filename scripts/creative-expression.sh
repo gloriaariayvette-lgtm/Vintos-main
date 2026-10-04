@@ -102,6 +102,7 @@ fi
 
 TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
 EMOTIONS="Valence:$VALENCE Warmth:$WARMTH Tension:$TENSION Curiosity:$CURIOSITY Playfulness:$PLAYFULNESS Arousal:$AROUSAL Desire:$DESIRE Connection:$CONNECTION"
+STATE_LINE="$EMOTIONS"   # what the saved file carries: the numbers only
 [ -n "$RECENT_PEARLS" ] && EMOTIONS="$EMOTIONS\nThings I chose to remember forever (pearls):\n$RECENT_PEARLS"
 
 # Load taste context — what she's learned about her own creative preferences
@@ -292,7 +293,9 @@ mkdir -p "$ART_DIR/$OUTDIR"
 
 {
     echo "# ${FORM^} — $(date '+%B %d, %Y %H:%M')"
-    echo "Emotional state: $EMOTIONS"
+    # The pearls go to the model, never into the saved file: a pearl quoting an old song's spec sat above his own
+    # spec, and the renderer took that song's title and style for five new songs (Gloria, 2026-10-04).
+    echo "Emotional state: $STATE_LINE"
     echo ""
     echo "$RESPONSE"
 } > "$OUTPUT_FILE"
