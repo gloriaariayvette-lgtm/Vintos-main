@@ -125,8 +125,9 @@ to hand him one YouTube link. **Mischief never fired** for four reasons, three f
 (now it does), the drift spur read only `Playfulness: x | ...` while the main writer writes `Playfulness: x` so
 it read 0 (both read), and the Echo/Spotify acts were offered with no Home Assistant and failed unlogged (offered
 only when the house can carry them). The want actions for mischief, Echo and TV reported success that had not
-happened; now only a real act counts. **Not done:** the Echo needs `memory/homeassistant-config.json` with the
-Alexa entities, which Aegis does not have; until then ECHO: says so. The TV needs its adb pairing accepted once.
+happened; now only a real act counts. The Echo goes through the same Home Assistant config his chat's
+`[HOME: echo_speak]` already uses on Aegis (an earlier note here said Aegis had none; that was assumed, not checked,
+and was wrong). The TV answered over adb on 4 October (`TV is on, showing com.wbd.stream`).
 Mischief's own mood bar (Playfulness >= 0.6) is unchanged. **Not seen:** any of it run on Aegis.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
