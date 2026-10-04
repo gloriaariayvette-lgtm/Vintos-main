@@ -79,6 +79,34 @@ fresh = os.path.join(DM.PROMPTS, "2026-10-05_231000.md")
 open(fresh, "w").write("# Music-prompt\n\n**Title:** Glass Harbor\n**Genre/Style:** dark synth\n**Lyrics:**\n[Chorus]\nSalt on the window, lamps on the pier\nTell me the tide is the reason we're here\n")
 DM.process_file(fresh)
 check("a new song still goes to be rendered", len(SENT) == 1 and SENT[0][0] == "Glass Harbor", SENT)
+SENT.clear()
+DM.process_file(again, force=True)
+check("--force does not buy a song he already made either", SENT == [], SENT)
+os.environ["MUSIC_ALLOW_REPEAT"] = "1"
+DM.process_file(again, force=True)
+check("... only her explicit MUSIC_ALLOW_REPEAT=1 re-renders one on purpose", len(SENT) == 1, SENT)
+del os.environ["MUSIC_ALLOW_REPEAT"]; SENT.clear()
+check("the direct path is gated too", DM.direct("Still Yours", "darkwave") is False and SENT == [], SENT)
+
+# What it actually did every night: --force took the newest prompt, done or not, and bought it again, whole.
+log = json.load(open(S.LOG)); log["processed_files"] = sorted(set(log["processed_files"]) | {again, fresh}); json.dump(log, open(S.LOG, "w"))
+real_pf = DM.process_file; TAKEN = []
+DM.process_file = lambda f, force=False: TAKEN.append(f)
+sys.argv = ["dream-music.py", "--force"]
+try:
+    DM.main(); exited = False
+except SystemExit:
+    exited = True
+check("with every prompt rendered, --force renders nothing instead of the last song again", exited and TAKEN == [], TAKEN)
+waiting = os.path.join(DM.PROMPTS, "2026-10-06_231000.md"); open(waiting, "w").write("**Title:** Lanterns\n")
+try: DM.main()
+except SystemExit: pass
+check("... and with a new prompt waiting, --force renders that one", TAKEN == [waiting], TAKEN)
+DM.process_file = real_pf; sys.argv = [sys.argv[0]]
+
+n1, n2 = DM._track_name("Still_Yours", "kie:AAA", 0, "x.wav"), DM._track_name("Still_Yours", "kie:BBB", 0, "x.wav")
+check("two renders with one title are two files, so neither overwrites the other", n1 != n2
+      and n1.startswith("Still_Yours_") and n1.endswith("_v1.wav"), (n1, n2))
 check("both copies of the renderer carry the gate", open(os.path.join(REPO, "scripts", "dream-music.py")).read()
       == open(os.path.join(REPO, "bin", "dream_music.py")).read())
 

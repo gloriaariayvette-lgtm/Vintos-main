@@ -396,6 +396,32 @@ def style_str(d):
             print(f"  Style rewrite failed: {_e}")
     return style
 
+def _track_name(safe, tid, i, url):
+    """Title_v1.wav was the same name for every render of a title, so a new one overwrote the last and every card
+    with that title played the newest audio (Gloria, 2026-10-04). The task id makes each render its own file."""
+    tag=hashlib.sha256(str(tid).encode()).hexdigest()[:8]
+    return f"{safe}_{tag}_v{i+1}{_ext_for(url)}"
+
+
+def _repeat_of(title, lyrics):
+    """Why this would be a song he already made, or "". MUSIC_ALLOW_REPEAT=1 is her way to re-render on purpose."""
+    if os.environ.get("MUSIC_ALLOW_REPEAT") == "1": return ""
+    try:
+        for _p in (os.path.expanduser("~/.vintos/workspace/scripts"),
+                   os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")):
+            if _p not in sys.path: sys.path.append(_p)
+        import song_memory
+        return song_memory.too_close(title, lyrics)
+    except Exception:
+        return ""
+
+
+def _note_repeat(title, why, source):
+    try:
+        import song_memory; song_memory.note_refused(title, why, source)
+    except Exception: pass
+
+
 def _landing_begin(tid, title, n_tracks, metadata=None):
     """review 301: a landing record written BEFORE the download. A crash between here and the entry
     leaves {state: landing, task_id} in the log; pending_landings() names it and the next run can poll the
@@ -521,21 +547,15 @@ def process_file(fp,force=False):
         desc = desc.replace(d["felt"], "").strip()
     # Check if prompt includes lyrics
     lyrics = d.get("lyrics", "")
-    # A song he has already made is not bought again (Gloria, 2026-10-04: the same "still yours" song every night).
-    if not force:
-        try:
-            for _p in (os.path.expanduser("~/.vintos/workspace/scripts"),
-                       os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")):
-                if _p not in sys.path: sys.path.append(_p)
-            import song_memory
-            _again = song_memory.too_close(d["title"], lyrics)
-        except Exception:
-            _again = ""
-        if _again:
-            print(f"  Not rendered: {_again}")
-            song_memory.note_refused(d["title"], _again, fp)
-            log.setdefault("processed_files", []).append(fp); save_log(log)
-            return False
+    # A song he has already made is not bought again, --force or not (Gloria, 2026-10-04: the same "Still Yours",
+    # the whole song, every night). --force lifts the daily cap; it was never meant to buy a song twice.
+    _again = _repeat_of(d["title"], lyrics)
+    if _again:
+        print(f"  Not rendered: {_again}")
+        _note_repeat(d["title"], _again, fp)
+        if fp not in log.get("processed_files", []): log.setdefault("processed_files", []).append(fp)
+        save_log(log)
+        return False
     _dur = d.get("duration", 120)
     _gen = d.get("gender", None)
     if lyrics:
@@ -551,7 +571,7 @@ def process_file(fp,force=False):
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
-            mp3=os.path.join(MUSIC,f"{safe}_v{i+1}{_ext_for(t.get('file'))}")
+            mp3=os.path.join(MUSIC,_track_name(safe,tid,i,t.get('file')))
             print(f"  Downloading track {i+1}...")
             if dl(t["file"],mp3):
                 sz=os.path.getsize(mp3)/(1024*1024)
@@ -643,6 +663,8 @@ def _feel_landed(entry):
 def direct(title,style,desc="",lyrics=""):
     resume_landings()
     if any(l.get("title")==title and l.get("metadata",{}).get("source")=="direct" for l in pending_landings(float("inf"))): return False
+    _again=_repeat_of(title,lyrics)
+    if _again: print(f"Not rendered: {_again}"); _note_repeat(title,_again,"direct"); return False
     print(f"\nDirect: {title}")
     tid=generate(title,style,lyrics if lyrics else desc,instrumental=not bool(lyrics),duration=120,gender=None)
     if not tid: return False
@@ -653,7 +675,7 @@ def direct(title,style,desc="",lyrics=""):
     downloaded=[]; downloaded_by_track={}   # by track index: a failed earlier download must not shift a later file onto its slot (review P07)
     for i,t in enumerate(tracks):
         if t.get("file"):
-            wav=os.path.join(MUSIC,f"{safe}_v{i+1}{_ext_for(t.get('file'))}")
+            wav=os.path.join(MUSIC,_track_name(safe,tid,i,t.get('file')))
             print(f"  Downloading track {i+1}...")
             if dl(t["file"],wav):
                 sz=os.path.getsize(wav)/(1024*1024)
@@ -710,11 +732,11 @@ def main():
             time.sleep(2)
         print(f"\n{ok}/{len(todo)} generated")
     else:
-        if a.force: target=files[-1]
-        else:
-            todo=[f for f in files if f not in done]
-            if not todo: print("All done (use --force)"); sys.exit(0)
-            target=todo[-1]
+        # --force used to take files[-1], the newest prompt whether or not it was done: on a night with no new
+        # prompt that bought the last song again, whole (Gloria, 2026-10-04). Only an unrendered prompt is taken.
+        todo=[f for f in files if f not in done]
+        if not todo: print("All done: no prompt waiting to be rendered"); sys.exit(0)
+        target=todo[-1]
         process_file(target,a.force)
 
 # Resolve sibling helpers for direct file loading as well as deployed entrypoints.
