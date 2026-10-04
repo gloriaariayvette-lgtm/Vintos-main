@@ -18,6 +18,7 @@ The Mac's own ``code`` action still needs its own authenticated authority, separ
 the scheduled named-experiment route; ``docs/open-work.md`` carries that as open.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -276,6 +277,23 @@ def _with_gemma_unloaded(run):
         guard.__exit__(None, None, None)
 
 
+def _fault(done, body):
+    """What a failed fold left behind, kept whole for the session record: its stdout and stderr, its exit code or
+    the signal that ended it, and the identity of what it was folding. The exception string alone lost all of this
+    (2026-10-03: four held_fault rows read "local ESMFold failed: " and nothing else)."""
+    import signal as _sig
+    code = done.returncode
+    name = None
+    if code < 0:
+        try: name = _sig.Signals(-code).name
+        except ValueError: name = "signal %d" % -code
+    return {"instrument": "Aegis ESMFold", "python": ESMFOLD_PYTHON,
+            "accession": body["accession"], "sequence_length": len(body["sequence"]),
+            "input_sha256": hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest(),
+            "exit_code": code, "signal": name,
+            "stdout": (done.stdout or "")[-2000:], "stderr": (done.stderr or "")[-2000:]}
+
+
 def _run_esmfold(parameters, contract, worker=None):
     body = {"accession": contract["requested_accession"], "sequence": contract["sequence"],
             "sequence_source": contract["source"], "hp_mapping": contract["hp_mapping"]}
@@ -305,10 +323,11 @@ def _run_esmfold(parameters, contract, worker=None):
                 # Killed before it could say anything (2026-10-03: four folds failed with an empty reason). A
                 # negative exit is the signal that ended it; SIGKILL is most often the system out of memory.
                 detail = _death(done.returncode, len(contract["sequence"]))
-            return {"ok": False, "error": "local ESMFold failed: " + detail[-500:]}
+            # The session files this whole result beside the fault it raises; the child's own words travel with it.
+            return {"ok": False, "error": "local ESMFold failed: " + detail[-500:], "fault": _fault(done, body)}
         try: result = json.loads(done.stdout)
         except Exception:
-            return {"ok": False, "error": "local ESMFold returned unreadable output"}
+            return {"ok": False, "error": "local ESMFold returned unreadable output", "fault": _fault(done, body)}
     else:
         result = worker(body)
     if not isinstance(result, dict) or not result.get("ok"):
