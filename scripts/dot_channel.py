@@ -2335,11 +2335,15 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
-    try:   # what he made since the last pass, said in the channel
+    try:   # what he made since the last pass, SAID IN THE CHANNEL: lines_pre is the service log, which she never
+        # reads, so an hour passed with the clip made and nothing said (Gloria, 2026-10-04: "Next pass?")
         import make_thing
-        lines_pre += make_thing.untold()
-    except Exception:
-        pass
+        made_lines = make_thing.untold()
+        if made_lines:
+            api("chat.postMessage", {"channel": channel, "text": "\U0001F3AC " + "\n".join(made_lines)})
+            lines_pre += made_lines
+    except Exception as exc:
+        lines_pre.append("could not say what he made: %s" % str(exc)[:120])
     try:   # a run she accepted: ask for free whether it has finished, and tell her when it has (2026-10-04)
         import lab_asks
         if lab_asks.pending():

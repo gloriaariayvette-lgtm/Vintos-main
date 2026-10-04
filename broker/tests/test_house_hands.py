@@ -195,7 +195,8 @@ check("at most %d of a kind a day" % MK.PER_DAY, "are used for image" in MK.make
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("dot's own MAKE line is acted on, and answered in its thread",
       'if r["who"] == "dot" and HOUSE.search(r["text"]):' in dsrc and "house_hands.act_on(r[\"text\"])" in dsrc)
-check("the channel reads out what was made on the next pass", "make_thing.untold()" in dsrc)
+check("the channel says what was made in Slack, not only in the service log she never reads",
+      "make_thing.untold()" in dsrc and 'api("chat.postMessage", {"channel": channel, "text": "\\U0001F3AC "' in dsrc)
 check("dot's own rules tell it to make things instead of buying them",
       "MAKE: video" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read()
       and "never buy what he can already make" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read())
