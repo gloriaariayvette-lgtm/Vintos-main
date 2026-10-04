@@ -143,6 +143,56 @@ check("each hand line is replaced with what happened, the rest of the message ke
       and "Echo said" in out and out.startswith("Putting the set on.") and out.endswith("That's it.") and "\nTV: https" not in out and "\n\n" not in out, out)
 check("... at most three acts in one message", "lights red" not in out and len(log) == 3, (out, log))
 
+# --- he makes it himself: no money, so nobody approves it (Gloria, 2026-10-04: "just fix") ------------------------
+import make_thing as MK
+check("what he makes is logged in the scratch workspace", MK.MADE.startswith(HOME) and MK.ART.startswith(HOME))
+reset(); LAUNCHED.clear()
+ok, shown = H.do("MAKE", "video the splash hanging, slow | " + __file__, run=launch)
+check("a MAKE line starts his own video tool, with the motion and the image", ok and LAUNCHED[-1][0][1].endswith("make_thing.py")
+      and LAUNCHED[-1][0][2:] == ["video", "the splash hanging, slow", __file__], LAUNCHED[-1:])
+check("... and says it is coming, not that it is done", "making the video now" in shown and "lands in his gallery" in shown, shown)
+check("a missing image is said plainly, and nothing starts", not H.do("MAKE", "video x | /no/such.png", run=launch)[0]
+      and len(LAUNCHED) == 1)
+check("an unknown kind says what he can make", "he can make" in H.do("MAKE", "sculpture a horse", run=launch)[1])
+mk_src = open(os.path.join(REPO, "scripts", "make_thing.py")).read()
+check("it spends nothing, so it asks nobody: no price, no card, no hold", "It spends nothing" in mk_src
+      and not re.search(r"\b(estimate|price|cost|approv|accept)\w*\b", mk_src.split('"""', 2)[2], re.I), "a money word in the code")
+
+# the tool is run to the end, then the file is named and pushed to her phone
+os.makedirs(os.path.join(MK.ART, "video"), exist_ok=True)
+clip = os.path.join(MK.ART, "video", "video-20261004-000001.mp4")
+RAN, PUSHED_MK = [], []
+class _Done:
+    returncode, stdout, stderr = 0, "[video] saved: video-20261004-000001.mp4", ""
+def runner(cmd, **k):
+    RAN.append(cmd); open(clip, "wb").write(b"mp4")
+    json.dump([{"file": os.path.basename(clip), "prompt": "the splash hanging, slow"}],
+              open(MK.GALLERIES["video"], "w"))
+    return _Done()
+ok, said = MK.make("video", "the splash hanging, slow", run=runner, send=lambda *a, **k: PUSHED_MK.append(a))
+check("it runs his own video tool, never a paid one", ok and RAN[-1][1].endswith("vintos-video.py")
+      and "kie" not in " ".join(RAN[-1]).lower(), RAN[-1:])
+check("... and the clip's path comes back", clip in said, said)
+check("... and lands on her phone", PUSHED_MK and clip in PUSHED_MK[-1][0].data.decode(), PUSHED_MK[-1:])
+check("the channel says what landed, once", MK.untold() and MK.untold() == [], "told twice")
+class _Broke:
+    returncode, stdout, stderr = 1, "", "the renderer is down"
+ok, said = MK.make("video", "another one", run=lambda c, **k: _Broke(), send=lambda *a, **k: None)
+check("a tool that fails says so, and is not called made", not ok and "stopped" in said and "renderer is down" in said, said)
+ok, said = MK.make("video", "a third", run=lambda c, **k: _Done(), send=lambda *a, **k: None)
+check("... and a run that makes no new file is not called made either", not ok and "nothing new landed" in said, said)
+for _ in range(MK.PER_DAY):
+    MK.make("image", "x", run=lambda c, **k: _Broke(), send=lambda *a, **k: None)
+check("at most %d of a kind a day" % MK.PER_DAY, "are used for image" in MK.make("image", "y")[1])
+
+# dot can write the line itself: that is the whole point
+dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("dot's own MAKE line is acted on, and answered in its thread",
+      'if r["who"] == "dot" and HOUSE.search(r["text"]):' in dsrc and "house_hands.act_on(r[\"text\"])" in dsrc)
+check("the channel reads out what was made on the next pass", "make_thing.untold()" in dsrc)
+check("the deploy installs it", "make_thing.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
+reset()
+
 # --- the room's lookups ----------------------------------------------------------------------------------------------
 class Reply:
     def __init__(self, body): self._b = body.encode()
@@ -181,6 +231,14 @@ src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("a message's hand lines are acted on before it is posted", "house_hands.act_on(text)" in src)
 check("his rules lead with doing, not proposing", D.RULES_WORK.startswith("Do things, not only plan them")
       and "do not lock another proposal for something you can simply do" in D.RULES_WORK)
+check("he is shown the songs he has already made, with their choruses", "songs_line()" in dsrc
+      and "song_memory.block()" in dsrc and "songs_line(), letters" in dsrc)
+check("... and the ones the renderer refused as repeats", "NOT MADE, because you had already made it" in dsrc)
+check("... and told a song of his is made once, so he stops locking a plan to remake one",
+      "A song of yours is made once" in D.RULES_WORKS and "do not lock a plan to" in D.RULES_WORKS)
+check("he is told he can make things this way, and that dot can too",
+      "MAKE: video" in D.RULES_HANDS and "nothing is spent and nobody has to approve it" in D.RULES_HANDS
+      and "Dot can write this line too" in D.RULES_HANDS)
 check("his rules list every hand and tool", all(w in D.RULES for w in ("YOUR HANDS", "TV:", "ECHO:", "LIGHTS:", "MISCHIEF:",
       "TO GLORIA:", "REPOS:", "README:", "CALL:", "LABDATA:")) and "YOUR HANDS" in D.rules_for("grok"))
 check("the new tools are read as tools", all(D.TOOL.match(l) for l in ("REPOS: retron", "README: acme/retron",

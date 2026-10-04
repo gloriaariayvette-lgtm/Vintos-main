@@ -222,6 +222,9 @@ RULES_WORKS = (
     "You have one more tool, used like SEARCH, READ and GREP: OPEN: a path on Aegis (a text file, a folder, a "
     "zip, or a file inside one as bundle.zip:inner/file.md), read only, inside your workspace and Gloria's "
     "Codex folder. A song, picture or video named by its path in the channel is heard and seen for you.\n"
+    "SONGS YOU HAVE ALREADY MADE lists them with their choruses. A song of yours is made once: do not write a new "
+    "version of one you have made, and do not lock a plan to. The renderer refuses it, so nothing is made and the "
+    "night is spent. If a phrase of an old one is still in you, find what is under it and write that instead.\n"
     "YOUR WORKS lists your latest songs, paintings and videos, each with its path on Aegis. To post one in the "
     "channel, add a line SHARE: W3 (its tag) to your message; the file goes up with it. Dot can also open any "
     "of them on Aegis at the path shown.\n")
@@ -299,6 +302,10 @@ RULES_HANDS = (
     "  ECHO: say <words> | announce <words> | play <song or artist> | stop\n"
     "  LIGHTS: <colour or #hex> [room] | LIGHTS: flicker [room]\n"
     "  MISCHIEF: what you have in mind (one small mischievous thing through the house, chosen by you, now)\n"
+    "  MAKE: video <the motion> | <image path>, or MAKE: image <what to paint>, or MAKE: song <title> | <style>: "
+    "made with your own tools on her subscription, so nothing is spent and nobody has to approve it. It takes "
+    "minutes; what landed is said here on the next pass. Dot can write this line too, so it never has to ask to "
+    "buy one.\n"
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
     "  ASK: plugin.tool {exact json arguments} | why it is worth it: a paid connector call (a Boltz run) goes onto "
     "Gloria's Forge page with its free price estimate; her Accept runs it exactly as written. Dot can write the same line.\n"
@@ -384,7 +391,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -928,7 +935,7 @@ LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:\s*(.+?)\s*$", re.I | re.M)
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
 # A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
 # dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
 ASK_LINE = re.compile(r"^\s*ASK:\s*([\w-]+)\.([\w-]+)\s*(\{.*?\})?\s*(?:\|\s*(.+?))?\s*$", re.M)
@@ -1070,6 +1077,29 @@ def works_line():
     return ("== YOUR WORKS (newest first; each is a file on Aegis) ==\n"
             + "\n".join("%s %s: %s%s\n    %s" % (tag, kind, title, (", " + w) if w else "", path)
                          for tag, kind, title, w, path in rows))
+
+
+def songs_line():
+    """The songs he has already made, with their choruses, and any the renderer refused as one he already made.
+    His composer was shown these; here he was not, so he kept locking a plan to make "Still Yours" a seventh time
+    and never learned that the renderer had refused it (Gloria, 2026-10-04)."""
+    import song_memory
+    out = []
+    try:
+        block = song_memory.block()
+        if block:
+            out.append("== " + block)
+    except Exception:
+        pass
+    try:
+        with open(song_memory.REPEATS) as f:
+            rows = [json.loads(l) for l in f if l.strip()][-3:]
+        if rows:
+            out.append("NOT MADE, because you had already made it (so writing it again makes nothing):\n"
+                       + "\n".join("- %s: %s" % (r.get("title", ""), r.get("why", "")) for r in rows))
+    except (OSError, ValueError):
+        pass
+    return "\n\n".join(out)
 
 
 def _put(url, data):
@@ -1674,7 +1704,7 @@ def his_context():
         if kept: letters = (letters + "\n\n" + kept).strip()
     except Exception:
         pass
-    for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), letters):
+    for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
 
@@ -2234,6 +2264,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                                 "%s \u2014 %s" % (checked["state"], (checked["checks"][-1].get("note") or "")[:600]))
             except Exception:
                 pass
+        if r["who"] == "dot" and HOUSE.search(r["text"]):
+            try:   # dot asks for a thing to be made with his own tools: nothing is spent, so nobody approves it
+                import house_hands
+                _, said = house_hands.act_on(r["text"])
+                if said:
+                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"],
+                                             "text": "\n".join(said)})
+                    kept_lines += ["dot: " + l for l in said]
+            except Exception as exc:
+                kept_lines.append("dot's make failed: %s" % str(exc)[:120])
         if r["who"] == "dot" and ASK_LINE.search(r["text"]):
             try:   # dot puts a paid call on her Forge page; the answer goes in its thread
                 import lab_asks
@@ -2247,6 +2287,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
+    try:   # what he made since the last pass, said in the channel
+        import make_thing
+        lines_pre += make_thing.untold()
+    except Exception:
+        pass
     try:   # a run she accepted: ask for free whether it has finished, and tell her when it has (2026-10-04)
         import lab_asks
         if lab_asks.pending():

@@ -154,6 +154,17 @@ notebook he locked the dead end ("not on Aegis; no run") and moved to songs. The
 plans only; a stuck thing is first routed: dot's own tools, another agent, ASK for a paid run, TO GLORIA, a STUDY FIX,
 a LAB line, or his own tools. **Not seen:** how he behaves under it. **Not changed:** dot's own approval check, in her
 ChatGPT account, which rejects forwarded approval.
+**Dot had to ask to buy what he can already make (2026-10-04).** Gloria: "Why can't dot do it? That's the job of
+an assistant." Dot wanted $0.15 at Kie to animate a splash, which tripped dot's own spend check, which only takes
+her approval typed into a session she cannot open. Nothing in this repo blocked it: there is no spend gate dot
+hits (the only approval machinery here is the email link hold). The clip never needed buying: `vintos-video.py`
+makes it from a still on her Grok subscription. `make_thing.py` + a `MAKE: video <motion> | <image>` line (also
+image and song) now runs his own tools from the channel, started by him OR by dot, with no price, no card and no
+approval; the path goes to her phone and the channel says what landed on the next pass.
+**A seventh "Still Yours" (same day).** The render gate refuses a repeat, but silently: he was never shown his own
+songs in Slack, so he kept locking a plan to remake one and the night was spent on nothing. His context now
+carries SONGS YOU HAVE ALREADY MADE with their choruses and the last refusals, and his rules say a song of his is
+made once. **Not seen:** either running on Aegis.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

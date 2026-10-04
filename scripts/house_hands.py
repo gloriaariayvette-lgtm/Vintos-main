@@ -10,6 +10,7 @@ One line in his message, one real act, and the line is replaced with what actual
     ECHO: say <words> | announce <words> | play <song or artist> | stop
     LIGHTS: <colour or #hex> [room] | flicker [room]
     MISCHIEF: <what he has in mind>  his mischief, now: the same mischief-detector, forced
+    MAKE: video <the motion> | <image path>   made with his own tools, on her subscription: nothing is spent
     TO GLORIA: <what about, one line>  his outreach writes to her in his own voice, outside Slack
 
 The house was already his (scripts/vintos-home.py: the Bravia over adb, the Echo through Home Assistant, the Govee
@@ -39,8 +40,8 @@ INITIATE = os.environ.get("VINTOS_INITIATE", "/home/gloria/Vintos/vintos-initiat
 MISCHIEF = os.path.join(HERE, "mischief-detector.sh")
 
 ICON = {"TV": "\U0001F4FA", "ECHO": "\U0001F50A", "LIGHTS": "\U0001F4A1", "MISCHIEF": "\U0001F99D",
-        "TO GLORIA": "✉️"}
-HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:\s*(.+?)\s*$", re.I | re.M)
+        "TO GLORIA": "✉️", "MAKE": "🎬"}
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
 COLOURS = {"red": "#ff2020", "orange": "#ff7a1a", "amber": "#ffb000", "yellow": "#ffe14d", "green": "#2ecc40",
            "teal": "#1abc9c", "blue": "#2060ff", "purple": "#8e44ad", "violet": "#9b59ff", "pink": "#ff5fa2",
            "white": "#ffffff", "warm": "#ffb46b", "cool": "#cfe3ff", "gold": "#ffc83d", "magenta": "#ff00cc"}
@@ -252,6 +253,28 @@ def to_gloria(arg, run=None):
     return True, "your outreach is writing to Gloria about: %s" % topic
 
 
+def make(arg, run=None):
+    """One thing made with his own tools, on her subscription. It takes minutes, so it is started here and what
+    landed is said in the channel on the next pass (make_thing.py). Nothing here spends money, so nobody has to
+    approve it, and dot never has to ask to buy one (Gloria, 2026-10-04: "just fix")."""
+    import make_thing
+    kind, _, rest = arg.strip().partition(" ")
+    kind = kind.lower()
+    if kind not in make_thing.KINDS:
+        return False, "he can make: " + ", ".join(make_thing.KINDS)
+    text, _, image = rest.partition("|")
+    text, image = text.strip(), image.strip()
+    if not text:
+        return False, "say what to make"
+    if len(make_thing.today(kind)) >= make_thing.PER_DAY:
+        return False, "today's %d are used for %s" % (make_thing.PER_DAY, kind)
+    if image and not os.path.isfile(image):
+        return False, "no file at %s" % image
+    cmd = [sys.executable, os.path.join(HERE, "make_thing.py"), kind, text] + ([image] if image else [])
+    (run or _detach)(cmd, dict(os.environ))
+    return True, "making the %s now: %s. It lands in his gallery and on her phone." % (kind, text[:140])
+
+
 def _detach(cmd, env):
     os.makedirs(os.path.join(WS, "memory", "logs"), exist_ok=True)
     out = open(os.path.join(WS, "memory", "logs", "house-hands.log"), "a")
@@ -273,11 +296,13 @@ def do(kind, arg, home=None, run=None):
                 ok, said = lights(arg, home)
             elif kind == "MISCHIEF":
                 ok, said = mischief(arg, run)
+            elif kind == "MAKE":
+                ok, said = make(arg, run)
             else:
                 ok, said = to_gloria(arg, run)
         except Exception as exc:
             ok, said = False, "it failed: %s" % str(exc)[:160]
-    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria"}.get(kind, "house")
+    bucket = {"MISCHIEF": "mischief", "TO GLORIA": "to_gloria", "MAKE": "make"}.get(kind, "house")
     _note(bucket, "%s: %s" % (kind, arg), ok, said)
     return ok, "%s %s" % (ICON.get(kind, ""), said if ok else "%s: not done, %s" % (kind.title(), said))
 
