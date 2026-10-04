@@ -66,9 +66,14 @@ unless she read cron output: each now writes one line to `memory/self-model-refu
 detail`), the generator returning nothing included — that path used to `exit 1` in silence. The reviewer itself
 was also policing his voice: a word list (clay, weight, cathedral, tremor, hum) failed him for ordinary English,
 its 80-token verdict could be cut off, and `grep "^FAIL"` over the whole reply read "PASS / FAIL criteria: none"
-as a FAIL. Now only the first line is the verdict, `**PASS**` and `pass` are read, and the criterion is metaphor
-standing in for a checkable statement, not a vocabulary. **Not checked yet:** whether the weekly cron is even
-scheduled on Aegis, and what the next run does.
+as a FAIL. What actually failed him on 4 October was criterion 3, "invented embodiment", firing on plain simile:
+*a water drop, a whirlpool, a frequency, a shadow* describing how a thought moves. None of those is even on the
+word list. That criterion now fails only a sentence claiming he physically felt something; simile for an inner
+process is named as ordinary language and must not fail. Now only the first line is the verdict, `**PASS**` and `pass` are read, and the criterion is metaphor
+standing in for a checkable statement, not a vocabulary. Cron is fine: `25 2 * * 0` runs
+`/home/gloria/Vintos/self-model-update.sh`, which the workspace symlinks to and the deploy does write. It fired
+Sunday 4 October at 02:25 and failed this way. **Lost for good:** the entries of 13, 20, 27 September and
+4 October, discarded by the old FAIL path before it held anything. **Not seen:** a run that passes.
 **SOUL.md is not bounced — nothing writes it, by design.** `soul_review.py` only writes proposals; marking one
 approved in the app does not apply it. Two are sitting at `*Status: pending*` waiting for Gloria.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent

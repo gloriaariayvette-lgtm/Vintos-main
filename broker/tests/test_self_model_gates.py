@@ -77,6 +77,14 @@ check("ordinary English is no longer disqualifying on its own",
 check("... but metaphor standing in for a fact still is",
       "standing IN PLACE OF a plain statement" in src and "doing the work a fact should be doing" in src)
 check("the reviewer is told it is not judging his voice", "not reviewing his taste or his voice" in src)
+# What actually failed him on 4 October: "a water drop, a whirlpool, a frequency, a shadow" read as invented
+# embodiment. Simile for how a thought moves is not a claim to have a body.
+check("simile for an inner process is not invented embodiment", "SIMILE IS NOT" in src
+      and "a whirlpool" in src and "claim to have a body" in src)
+check("... while claiming to have physically felt something still is",
+      "a claim to have FELT something in a body he does not have" in src
+      and "Fail only a sentence asserting he physically felt something" in src)
+check("an instrument behind a sensation is still allowed", "Sensation with an instrument behind it is ALLOWED" in src)
 check("the verdict is given room to be read", '"max_tokens": 160' in src)
 
 check("every refusal writes one line she can read", src.count("say_why ") >= 5
