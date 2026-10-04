@@ -156,10 +156,17 @@ assert "instruments_refreshed" in paid, paid.keys()
 # Age the held receipt out so there is something expired to refresh; a live one must not be.
 from datetime import datetime, timedelta, timezone
 _now = datetime.now(timezone.utc)
-lab._append(probe_mod.PROBES, {"receipt_id": "CP-aged", "tool": "openmm", "host": "aegis",
-                               "outcome": "not_configured", "probe_version": "x",
-                               "measured_at": _now.isoformat(),
-                               "expires_at": (_now - timedelta(days=1)).isoformat()})
+# Every openmm receipt in this scratch ledger is aged out, so whichever is current is expired. Appending one aged
+# row stamped "now" lost to a receipt the previous run had written in the same instant, and the suite failed on
+# Aegis only (2026-10-04).
+_rows = lab._jsonl(probe_mod.PROBES)
+for _r in _rows:
+    if _r.get("tool") == "openmm":
+        _r["expires_at"] = (_now - timedelta(days=1)).isoformat()
+with open(probe_mod.PROBES, "w") as _f:
+    _f.write("".join(json.dumps(_r) + "\n" for _r in _rows))
+_cur = probe_mod.current_receipts().get("openmm")
+assert _cur and _cur["expires_at"] < _now.isoformat(), ("the current openmm receipt is expired", _cur)
 before = len(lab._jsonl(probe_mod.PROBES))
 again = session.run()
 assert len(lab._jsonl(probe_mod.PROBES)) > before, (
