@@ -82,6 +82,14 @@ now writes a `day_limit` event once per project per day, the projection carries 
 (day/used/limit/remaining), and such a project reads "Today's three steps are used. It goes on tomorrow; nothing
 is wrong."
 
+**A test that expired on 4 October and stopped every deploy.** `test_dot_channel` wrote a live campaign with
+`created: 2026-10-01T09:00:00` and `campaign.expire_if_due()` ages a campaign against the real clock
+(MAX_DAYS=3). Three days later the fixture expired on its own, the check failed, and `deploy-atelier.sh` refuses
+to install when a suite fails — so her 03:17 deploy was the last one that could have worked, and nothing after it
+could land. The fixture is now one day old whenever the suite runs. **Worth a sweep:** other suites pin dates in
+fixtures (`test_atelier_breadth`, `test_capability`, the chemistry ones); only a fixture whose date is measured
+against the real clock can rot this way, and only the campaign one does today.
+
 **Watched calls: he asks, she decides.** `lab_asks.py`. A tool he may not run alone (today: the paid Boltz
 `start_*` tools for predicting one complex, ADME, and the two screens) is no longer a dead end. His Lab names it,
 nothing is called, and it goes to her Forge page as an **ask** card: the tool, why, the price from the free

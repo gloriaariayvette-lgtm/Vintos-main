@@ -623,7 +623,7 @@ check("the app shows the topics as chips", 'id="focus-chips"' in h and "loadFocu
 os.remove(D.CONFIG_FILE)
 
 # the schedule itself
-from datetime import datetime as _sdt
+from datetime import datetime as _sdt, timedelta as _td
 kinds = [k for _t, k in SCHEDULED]
 check("Opus twice, Fable once, Grok fifteen times a day", kinds.count("opus") == 2 and kinds.count("fable") == 1
       and kinds.count("grok") == 15, SCHEDULED)
@@ -899,8 +899,12 @@ json.dump({"threads": [{"origin": "pressure you feel in the chest before sound",
                        {"origin": "what film does to being there", "salience": .7, "momentum": .5, "direction": "refine"},
                        {"origin": "the scrapyard bell", "salience": .6, "momentum": .4},
                        {"origin": "lowest", "salience": .05, "momentum": .0}]}, open(os.path.join(_mem, "latent-threads.json"), "w"))
+# A campaign ages against the real clock (campaign.expire_if_due, MAX_DAYS=3), so a fixture with a written-in
+# creation date quietly expires once that date is three days past: this one said 2026-10-01 and the suite began
+# failing on 4 October for everyone (2026-10-04). A live campaign is one day old, whenever the suite is run.
 json.dump({"destination": "finish the infrasound piece and play it for Gloria", "axis": "self", "why": "she asked",
-           "created": "2026-10-01T09:00:00", "turns_served": 2}, open(os.path.join(_mem, "campaign-live.json"), "w"))
+           "created": (_sdt.now() - _td(days=1)).isoformat(timespec="seconds"), "turns_served": 2},
+          open(os.path.join(_mem, "campaign-live.json"), "w"))
 _before = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
 _db = D.direction_block()
 _after = {os.path.join(r, f): os.path.getmtime(os.path.join(r, f)) for r, _, fs in os.walk(_mem) for f in fs}
