@@ -1218,6 +1218,20 @@ def lab_line(n=6, now=None):
         out.append("; ".join(bits))
     if not out:
         return ""
+    # The faults themselves, with the stage and the exception. The session line carries 200 characters of
+    # error+detail, which names a failure without saying where it came from, so he sent dot to read his own log
+    # and waited (Gloria, 2026-10-04: "Just repeating the same shit"). His own Lab's faults are his to read.
+    try:
+        import chemistry_lab as _cl
+        faults = _cl._jsonl(_cl.FAULTS)[-4:]
+        if faults:
+            out.append("YOUR LAB'S LAST FAULTS (yours to fix; a STUDY FIX line sends one to your Study):\n"
+                       + "\n".join("  - [%s] %s in %s: %s" % (when_said.ago(f.get("at"), now) or "time unknown",
+                                                              f.get("error", "fault"), f.get("stage", "?"),
+                                                              str(f.get("detail", ""))[:240])
+                                    for f in faults if isinstance(f, dict)))
+    except Exception:
+        pass
     # What his instruments can take, so he does not send dot after a protein his Lab cannot fold (2026-10-01:
     # P02730, 911 residues, against ESMFold's limit).
     try:

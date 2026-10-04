@@ -234,6 +234,8 @@ src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("a message's hand lines are acted on before it is posted", "house_hands.act_on(text)" in src)
 check("his rules lead with doing, not proposing", D.RULES_WORK.startswith("Do things, not only plan them")
       and "do not lock another proposal for something you can simply do" in D.RULES_WORK)
+check("he is shown his Lab's own faults, with the stage and the exception, so he stops sending dot to read them",
+      "YOUR LAB'S LAST FAULTS" in dsrc and "_cl.FAULTS" in dsrc and "a STUDY FIX line sends one to your Study" in dsrc)
 check("he is shown the songs he has already made, with their choruses", "songs_line()" in dsrc
       and "song_memory.block()" in dsrc and "songs_line(), letters" in dsrc)
 check("... and the ones the renderer refused as repeats", "NOT MADE, because you had already made it" in dsrc)

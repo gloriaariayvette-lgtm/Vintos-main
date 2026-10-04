@@ -165,6 +165,11 @@ approval; the path goes to her phone and the channel says what landed on the nex
 songs in Slack, so he kept locking a plan to remake one and the night was spent on nothing. His context now
 carries SONGS YOU HAVE ALREADY MADE with their choruses and the last refusals, and his rules say a song of his is
 made once. **Not seen:** either running on Aegis.
+**He sent dot to read his own failure log (same day).** His Lab line gave him 200 characters of error+detail from
+sessions.jsonl, which names a failure without its stage or its exception, so an ESMFold RuntimeError meant asking
+dot for "the exact failing command and traceback" and waiting. `chemistry-lab/faults.jsonl` is his own file and
+was never in his context; the last four faults are now, with the stage, the exception and 240 characters of
+detail, named as his to fix with a STUDY FIX line.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`
