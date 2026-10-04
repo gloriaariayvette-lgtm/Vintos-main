@@ -126,7 +126,7 @@ SCRIPTS="$SCRIPTS chemistry_taste.py"   # scientific taste, kept apart from corr
 SCRIPTS="$SCRIPTS chemistry_spark.py chemistry_proposal.py"   # Lab occasions that may spark, and the staged road to the Forge, 2026-09-13
 SCRIPTS="$SCRIPTS chemistry_digest.py"   # daily Chemistry Lab receipt in inner life, separate from the Admission Lab, 2026-09-13
 SCRIPTS="$SCRIPTS forge_digest.py"   # daily evidence-honest Forge receipt (reveals + state changes) in inner life, 2026-09-21
-SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_genome_mining.py lab_crt.py lab_hmm.py lab_phage.py lab_lines.py lab_keepers.py imgvr_store.py configure-imgvr.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
+SCRIPTS="$SCRIPTS lab_http.py lab_sources.py lab_genome_mining.py lab_crt.py lab_hmm.py lab_phage.py lab_lines.py lab_keepers.py connector_discover.py imgvr_store.py configure-imgvr.py lab_atlas_worker.py chemistry_sources.py chemistry_genomic.py forge_loop.py forge_loop_runtime.py forge_loop_atelier.py forge_loop_ntfy.py plugin_catalog.py plugin_gateway.py plugin_gateway_service.py plugin_relay_remote.py plugin_send_guard.py atelier_plugin.py"
 SCRIPTS="$SCRIPTS bionemo_gateway.py configure-bionemo.py"   # bounded hosted NVIDIA NIM lane; key setup is interactive and never run by deploy
 SCRIPTS="$SCRIPTS nvmolkit_gateway.py nvmolkit_worker.py"   # bounded local GPU molecular tasks, isolated from production Python
 SCRIPTS="$SCRIPTS claude_connector_catalog.py claude_connector_relay.py claude_connector_gateway.py"   # Gloria's OTHER Claude account's connectors, same plugin_query path as Chat's (subscription usage, no browser, no token export), 2026-09-22
@@ -1279,6 +1279,15 @@ say "  self-review:  $(systemctl --user is-active "$REVIEW_UNIT_NAME" 2>/dev/nul
 say "  chemistry:    $(systemctl --user is-active "$CHEM_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_UNIT_NAME" 2>/dev/null || echo disabled)"
 say "  plugin gate:  $(systemctl --user is-active "$PLUGIN_GATEWAY_UNIT_NAME" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$PLUGIN_GATEWAY_UNIT_NAME" 2>/dev/null || echo disabled)"
 say "  chem session: $(systemctl --user is-active "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo inactive) / $(systemctl --user is-enabled "$CHEM_SESSION_NAME.timer" 2>/dev/null || echo disabled)"
+say
+# A connector she has connected whose MCP url nobody here knows: the deploy asks the network for it, so she is
+# never asked for a url she was never shown (2026-10-04). Never fatal; a connector not found stays unoffered.
+say "connectors"
+if _cd_out="$(timeout 180 python3 "$ANCHOR_DIR/connector_discover.py" --write 2>&1)"; then
+    printf '%s\n' "$_cd_out" | sed 's/^/  /'
+else
+    say "  not looked for this time (${_cd_out:0:120})"
+fi
 say
 # review 18/19: the release record - what this deploy installed (with hashes), from which commit,
 # which units it restarted and confirmed, the broker's state, the backup and the rollback command.

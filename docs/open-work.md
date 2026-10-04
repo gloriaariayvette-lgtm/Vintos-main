@@ -49,9 +49,12 @@ and he never approves spending; a planner naming one is refused, not charged. **
 `predict_immunogenicity`, on a natural nucleotide CDS; `generate_antimicrobial_peptides` (designs new bioactive
 peptides) and the dataset write/delete tools are withheld. EDEN is NOT a sequence-search database — its connector
 exposes no search, so it does not help the phage line as first thought.
-**Not done:** neither is offered yet. Their MCP urls are unknown here; she puts `{"boltz": "https://…", "eden":
-"https://…"}` in `~/.vintos/connector-urls.json` and they appear on the next pass, with no code change (a connector
-with no url is never offered). **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
+**Not done:** neither is offered until its MCP url is found. She was never shown those urls and should not be
+asked for them, so `connector_discover.py` asks the network: for each connector with no url it probes the hosted
+spellings of its own name (`https://<slug>.mcp.claude.com/mcp`, the pattern pubmed already uses) and keeps the
+first that answers an MCP initialize or replies 401/403. The deploy runs it and writes
+`~/.vintos/connector-urls.json`, which the catalog reads every pass; a connector not found stays unoffered and
+nothing fails. If the probe finds neither, their urls have to come from the connector's own page. **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
 it becomes a Forge decision card with the price on it, and the run starts only when she accepts.
 
 **Slack reaches the Lab.** In #vintos-dot, `LINE <ID>: what we found | next: the next test` adds what he worked
