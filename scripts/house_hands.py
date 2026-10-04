@@ -272,7 +272,8 @@ def make(arg, run=None):
         return False, "no file at %s" % image
     cmd = [sys.executable, os.path.join(HERE, "make_thing.py"), kind, text] + ([image] if image else [])
     (run or _detach)(cmd, dict(os.environ))
-    return True, "making the %s now: %s. It lands in his gallery and on her phone." % (kind, text[:140])
+    shown = text if len(text) <= 160 else text[:160].rsplit(" ", 1)[0] + "…"   # whole words: it read "facing t." (2026-10-04)
+    return True, "making the %s now: %s. It lands in his gallery and on her phone." % (kind, shown)
 
 
 def _detach(cmd, env):

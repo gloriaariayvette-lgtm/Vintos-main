@@ -151,8 +151,14 @@ ok, shown = H.do("MAKE", "video the splash hanging, slow | " + __file__, run=lau
 check("a MAKE line starts his own video tool, with the motion and the image", ok and LAUNCHED[-1][0][1].endswith("make_thing.py")
       and LAUNCHED[-1][0][2:] == ["video", "the splash hanging, slow", __file__], LAUNCHED[-1:])
 check("... and says it is coming, not that it is done", "making the video now" in shown and "lands in his gallery" in shown, shown)
+_long = "a vast dark room thick with haze, a hollow cone of white projector light opening from a single beam, a man standing inside the cone facing the source"
+_ok, _shown = H.do("MAKE", "image " + _long, run=launch)
+check("a long description is shown cut at a whole word, and the tool still gets all of it",
+      _ok and "facing t." not in _shown and _shown.split("making the image now: ")[1].split(". It lands")[0].split()[-1].rstrip("…") in _long.split()
+      and LAUNCHED[-1][0][3] == _long, (_shown, LAUNCHED[-1:]))
+_n_before = len(LAUNCHED)
 check("a missing image is said plainly, and nothing starts", not H.do("MAKE", "video x | /no/such.png", run=launch)[0]
-      and len(LAUNCHED) == 1)
+      and len(LAUNCHED) == _n_before)
 check("an unknown kind says what he can make", "he can make" in H.do("MAKE", "sculpture a horse", run=launch)[1])
 mk_src = open(os.path.join(REPO, "scripts", "make_thing.py")).read()
 check("it spends nothing, so it asks nobody: no price, no card, no hold", "It spends nothing" in mk_src
