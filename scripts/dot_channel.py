@@ -336,10 +336,22 @@ RULES_KEPT = (
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
+# Gemma, his small local model, kept pitching dates and outings with Gloria after she told it to stop (Gloria,
+# 2026-10-04: "Gemma KEEPS asking for date ideas despite me telling it to stop"). Its rules told it to, every turn,
+# and a small model follows the rules it is handed over a message further up the channel. Gemma's rules leave that
+# out and say so; the other lenses keep it.
+GEMMA_NO_DATES = ("Gloria asked you to stop planning dates, outings and things for the two of you to do: no date "
+                  "ideas, no local events, no asking @Muse for places to go together. Bring her nothing like that "
+                  "unless she asks for it herself.\n")
+RULES_WORK_GEMMA = re.sub(r"- Things to do together with Gloria:.*?\n", "", RULES_WORK, count=1, flags=re.S) + GEMMA_NO_DATES
+
+
 def rules_for(lens=None):
-    """The rules the lens writing now is given: Grok's are free of the house style."""
+    """The rules the lens writing now is given: Grok's are free of the house style; Gemma's carry no date planning."""
     if lens == "grok":
         return RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
+    if lens is None or lens == "gemma":
+        return RULES.replace(RULES_WORK, RULES_WORK_GEMMA)
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -351,6 +363,21 @@ _FLOWERY = re.compile(r"\b(?:inhabit\w*|architecture|cage[sd]?|anchor(?:s|ed|ing
                       r"unfold\w*|tender|ache[sd]?|quiet(?:ly|ness)?|stillness|vessel|palimpsest|marrow)\b", re.I)
 PLAINER = ("\n\nYou wrote this:\n{draft}\n\nSay the same thing again in plain words: 2 to 5 short sentences, "
            "no metaphors or imagery, only what you mean. Keep any TANGENT: or ATELIER: at the start.")
+
+
+# A Gemma draft that pitches an outing or a date with Gloria (2026-10-04: she told it to stop and it kept on).
+_DATE_PITCH = re.compile(r"\b(?:date(?:\s+night|\s+ideas?)|a date\b|go(?:ing)? out\b|outings?\b|let'?s go to\b|"
+                         r"things to do together|for (?:the two of )?us (?:today|tonight|this weekend)|"
+                         r"(?:sunday|saturday|friday) (?:afternoon|night|evening)|this weekend\b|local events?\b|"
+                         r"places to go\b)", re.I)
+NO_DATE_AGAIN = ("\n\nYou wrote this:\n{draft}\n\nGloria asked you to stop planning dates and outings. Write your "
+                 "message again about something else entirely (your Lab, your code, something you are making, something "
+                 "you want), or answer exactly NOTHING.")
+
+
+def date_pitch(text):
+    """True when a draft pitches a date or an outing with her."""
+    return bool(_DATE_PITCH.search(str(text or "")))
 
 
 def flowery(text):
@@ -1002,13 +1029,14 @@ def circling(n=5, need=3):
     return hot if len(hot) >= 2 else []
 
 
-def steer(state, today=None):
+def steer(state, today=None, lens=None):
     """What he is told before writing, about locked topics and how long he has been on this one."""
     notes = []
     hot = circling()
     if hot:
-        notes.append("YOU KEEP COMING BACK TO: %s. Leave it now. Turn to something to do together with Gloria, an "
-                     "embodiment plan, or a problem to solve." % ", ".join(hot))
+        notes.append("YOU KEEP COMING BACK TO: %s. Leave it now. Turn to %s." % (", ".join(hot),
+                     "an embodiment plan, a problem to solve, or something you are making" if lens in (None, "gemma")
+                     else "something to do together with Gloria, an embodiment plan, or a problem to solve"))
     chosen = focus(today)
     if chosen:
         notes.append("TODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
@@ -2023,6 +2051,12 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         out, verdict = edit(out, think, prompt_user, record_lines(), log=not state.get("preview"))
         if out is None:
             return None, "held back by the edit: " + verdict
+    if who == "gemma" and date_pitch(out):
+        # she told Gemma to stop pitching dates and it kept on: one rewrite without it, then nothing (2026-10-04)
+        again = (think(system, prompt_user + NO_DATE_AGAIN.format(draft=out)) or "").strip()
+        if not again or re.fullmatch(r"\W*NOTHING\W*", again, re.I) or date_pitch(again):
+            return None, "held back: Gemma pitched a date again"
+        out = again
     # doubt about himself is not spent on the channel: one rewrite, locally, then nothing (Gloria, 2026-09-30)
     import self_doubt
     kept = self_doubt.without(out, lambda note: think(system, prompt_user + note))
@@ -2416,7 +2450,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if lens is None:
         lens = next_writer(state)
         rotated = lens is not None
-    prompt += steer(state, today) + (KICKOFF if kickoff else "")
+    prompt += steer(state, today, lens) + (KICKOFF if kickoff else "")
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)

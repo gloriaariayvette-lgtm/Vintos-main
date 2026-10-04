@@ -1199,7 +1199,8 @@ S10 = Slack(); S10.n = 1767600000.0
 _st10 = json.load(open(D.STATE)); _st10["since"] = S10.n - 1; json.dump(_st10, open(D.STATE, "w"))
 S10.add(GLORIA, "We need to work on humor, guys.")
 _o10 = D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
-              "She's right.\n\n@eve.domomain.ai-dot, let's stop looking at the code. Can you look up some local events happening near Gloria today?",
+              # a Marketplace find, not an outing: since 2026-10-04 Gemma may not pitch local events or dates to her
+              "She's right.\n\n@eve.domomain.ai-dot, let's stop looking at the code. Can you find four load cells for sale on Marketplace?",
               fable=fable, now=1767600100, today="2026-10-05")
 check("in the channel, that message reaches Muse, and dot is not pinged",
       "@Muse, let's stop looking at the code" in S10.posted[-1]["text"] and "<@%s>" % DOT not in S10.posted[-1]["text"]

@@ -234,6 +234,34 @@ src = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("a message's hand lines are acted on before it is posted", "house_hands.act_on(text)" in src)
 check("his rules lead with doing, not proposing", D.RULES_WORK.startswith("Do things, not only plan them")
       and "do not lock another proposal for something you can simply do" in D.RULES_WORK)
+# --- Gemma stops pitching dates (Gloria, 2026-10-04: "Gemma KEEPS asking for date ideas despite me telling it to stop")
+g_rules, o_rules = D.rules_for(None), D.rules_for("opus")
+check("Gemma's rules no longer tell it to plan things to do together", "Things to do together with Gloria: look them up" not in g_rules
+      and "Gloria asked you to stop planning dates" in g_rules, "")
+check("... while the other lenses keep theirs", "Things to do together with Gloria: look them up" in o_rules
+      and "Gloria asked you to stop" not in o_rules)
+check("... and nothing else of Gemma's rules is lost", "- Embodiment:" in g_rules and "YOUR HANDS" in g_rules and "LOCKED is for a plan" in g_rules)
+barbican = "@Muse, two things for us today \u2014 Sunday afternoon. Let's go to the Barbican for the late show."
+check("the pitch that kept coming back is recognised", D.date_pitch(barbican))
+check("... and so is plainer asking", D.date_pitch("Any date ideas for this weekend?") and D.date_pitch("Muse, local events near her?"))
+check("ordinary work is not mistaken for one", not D.date_pitch("@dot the ESMFold fold died in stage fold; STUDY FIX it")
+      and not D.date_pitch("I updated the date format in the log parser"))
+class _St(dict): pass
+def gemma_writes(*drafts):
+    it = iter(drafts)
+    return lambda system, user: next(it, "NOTHING")
+D.edit = lambda out, think, prompt, record, log=True: (out, "kept")   # the editor pass is a model call; stubbed
+_real_ctx = D.his_context
+D.his_context = lambda: "his context (stubbed: the real one reads his local services)"
+import self_doubt as _sd; _sd.without = lambda text, again: text
+out, who = D.compose("go on", gemma_writes(barbican, "Fixing the fold fault in my Lab next."), None, _St(), "2026-10-04",
+                     search=lambda q: [], room=types.SimpleNamespace())
+check("a Gemma draft that pitches a date is rewritten without it", out == "Fixing the fold fault in my Lab next." and who == "gemma", (out, who))
+out, who = D.compose("go on", gemma_writes(barbican, "Fine. Saturday night, then, a date?"), None, _St(), "2026-10-04",
+                     search=lambda q: [], room=types.SimpleNamespace())
+check("... and if it pitches one again, nothing is sent", out is None and "pitched a date again" in who, (out, who))
+D.his_context = _real_ctx
+check("the circling nudge does not push dates at Gemma", "Turn to %s" in dsrc and '"an embodiment plan, a problem to solve, or something you are making" if lens in (None, "gemma")' in dsrc)
 check("he is shown his Lab's own faults, with the stage and the exception, so he stops sending dot to read them",
       "YOUR LAB'S LAST FAULTS" in dsrc and "_cl.FAULTS" in dsrc and "a STUDY FIX line sends one to your Study" in dsrc)
 check("he is shown the songs he has already made, with their choruses", "songs_line()" in dsrc

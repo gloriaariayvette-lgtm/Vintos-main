@@ -170,6 +170,13 @@ sessions.jsonl, which names a failure without its stage or its exception, so an 
 dot for "the exact failing command and traceback" and waiting. `chemistry-lab/faults.jsonl` is his own file and
 was never in his context; the last four faults are now, with the stage, the exception and 240 characters of
 detail, named as his to fix with a STUDY FIX line.
+**Gemma kept pitching dates after she said stop (2026-10-04).** Every lens's rules said "Things to do together
+with Gloria: look them up (@Muse ...)", and the circling nudge said "turn to something to do together". Gemma, the
+small local model, follows the rules it is handed each turn over her message further up the channel. Gemma's rules
+now leave that out and say she asked it to stop; its circling nudge names other things; and a Gemma draft that
+still pitches a date or an outing gets one rewrite, then is not sent. The other lenses are unchanged. One routing
+test in test_dot_channel used a Gemma "local events near Gloria" request; its request is now a Marketplace find,
+its checks unchanged.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`
