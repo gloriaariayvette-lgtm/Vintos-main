@@ -561,6 +561,24 @@ srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the app's server writes that same file, behind her secret",
       '"dot-channel", "paused.json"' in srv and "async def agents_toggle(request: Request):\n    _require_secret(request)" in srv)
 check("and the paused file is where the channel looks", D.PAUSE_FILE.endswith(os.path.join("memory", "dot-channel", "paused.json")))
+# the switch sets what she chose, not a flip (2026-10-03): run the route's own code against the scratch pause file
+import asyncio, time as _t
+_src = srv[srv.index("async def agents_toggle"):srv.index("\n\n\n", srv.index("async def agents_toggle"))]
+_ns = {"os": os, "json": json, "time": _t, "Request": object, "_require_secret": lambda r: None,
+       "_agents_pause_file": lambda: D.PAUSE_FILE}
+exec(_src, _ns)
+class _Req:
+    def __init__(self, body): self.body = body
+    async def json(self):
+        if self.body is None: raise ValueError("no body")
+        return self.body
+_toggle = lambda body: asyncio.run(_ns["agents_toggle"](_Req(body)))
+open(D.PAUSE_FILE, "w").write(json.dumps({"since": "2026-10-02T18:34:18", "by": "app"}))
+check("the switch set to on starts the day", _toggle({"on": True})["on"] is True and not os.path.exists(D.PAUSE_FILE))
+check("... and set to on again leaves it on (no flip)", _toggle({"on": True})["on"] is True and not os.path.exists(D.PAUSE_FILE))
+check("set to off pauses it, and off again leaves it paused", _toggle({"on": False})["on"] is False
+      and _toggle({"on": False})["on"] is False and os.path.exists(D.PAUSE_FILE))
+check("with no body it still flips, for an older app", _toggle(None)["on"] is True and not os.path.exists(D.PAUSE_FILE))
 for app in (os.path.join(REPO, "clients", "mobile", "index.html"),):
     h = open(app).read()
     check("the app has the toggle", 'id="agents-toggle"' in h and "/api/agents/toggle" in h and "loadAgentsStatus();" in h)

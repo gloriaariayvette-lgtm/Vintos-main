@@ -138,11 +138,17 @@ def threads():
     return {i["thread"]: i for i in load()["items"] if i.get("thread")}
 
 
+TEMPLATE = re.compile(r"what you made|W<n>|what it became and why|why, honestly", re.I)
+
+
 def resolve(thread, text):
-    """His DONE / RESHAPED / DROPPED line in a promise's thread ends it. The item, or None."""
-    m = ENDED.search(text or "")
-    if not m:
+    """His DONE / RESHAPED / DROPPED line in a promise's thread ends it. The item, or None. The opening's own
+    instruction, copied back word for word, is not an ending (2026-10-03: his first DONE: line was the template, and
+    it was kept as what he made); the last real ending line in the message is."""
+    real = [m for m in ENDED.finditer(text or "") if not TEMPLATE.search(m.group(0))]
+    if not real:
         return None
+    m = real[-1]
     d = load()
     item = next((i for i in d["items"] if i.get("thread") == thread and i["state"] == "open"), None)
     if not item:

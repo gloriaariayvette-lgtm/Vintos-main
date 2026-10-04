@@ -1525,20 +1525,35 @@ async function loadAgentsStatus() {
         knob.style.transform = on ? 'translateX(20px)' : 'translateX(0)';
         knob.style.background = on ? 'var(--accent)' : 'var(--text-dim)';
         knob.parentElement.querySelector('span').style.background = on ? 'var(--accent-dim)' : 'var(--surface-2)';
-        text.textContent = on ? 'on: his lenses and dot can talk' : ('paused' + (data.paused_since ? ' since ' + String(data.paused_since).slice(11, 16) : ''));
+        const since = String(data.paused_since || ''), today = new Date().toISOString().slice(0, 10);
+        text.textContent = on ? 'on: his lenses and dot can talk' : ('paused' + (since ? ' since ' + (since.slice(0, 10) === today ? '' : since.slice(5, 10) + ' ') + since.slice(11, 16) : ''));
     } catch {
         if (text) text.textContent = 'unreachable';
     }
 }
 async function toggleAgents() {
+    // The day is set to exactly what the switch now shows, and a tap that does not reach Aegis says so (2026-10-03:
+    // it sent "flip" and swallowed errors, and the day stayed paused while the switch read on).
+    const want = document.getElementById('agents-toggle').checked;
+    let ok = false;
     try {
-        await VintosUI.request(`${API}/api/agents/toggle`, {
+        const res = await VintosUI.request(`${API}/api/agents/toggle`, {
             method: 'POST',
-            headers: { 'X-Vintos-Secret': CONFIG.secret }
+            headers: { 'X-Vintos-Secret': CONFIG.secret, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on: want })
         });
-        haptic('light');
+        ok = !!(res && res.ok);
+        if (ok) haptic('light');
     } catch {}
-    loadAgentsStatus();
+    await loadAgentsStatus();
+    if (!ok) {   // the switch goes back to what it was, so it never shows a day that is not so
+        const toggle = document.getElementById('agents-toggle'), knob = document.getElementById('agents-knob');
+        toggle.checked = !want;
+        knob.style.transform = !want ? 'translateX(20px)' : 'translateX(0)';
+        knob.style.background = !want ? 'var(--accent)' : 'var(--text-dim)';
+        const text = document.getElementById('agents-status-text');
+        if (text) text.textContent = 'could not reach Aegis: the day was not changed';
+    }
 }
 let _focusChosen = [];
 let _focusAll = [];

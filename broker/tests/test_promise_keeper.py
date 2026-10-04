@@ -95,6 +95,13 @@ ended = P.resolve(item["thread"], "Here they are.\nDROPPED: more whim than want;
 check("DROPPED: in its thread ends it honestly, with his reason", ended and ended["state"] == "dropped"
       and "whim" in ended["result"] and P.pending() and P.pending()[0]["id"] == item["id"])
 check("an ended promise is not ended twice", P.resolve(item["thread"], "DONE: after all") is None)
+d_ = P.load(); d_["items"].append(dict(item, id="PR-tmpl01", thread="777.1", state="open")); P.save(d_)
+tmpl = P.resolve("777.1", "Here it is.\nDONE: what you made (and W<n> on one of your works), RESHAPED: what it became and "
+                          "why, or DROPPED: why, honestly.\nDONE: the ion transition viewing plan, ready for tonight")
+check("the opening's instruction copied back is not taken as his answer; his real line is", tmpl and tmpl["state"] == "done"
+      and tmpl["result"].startswith("the ion transition viewing plan"), tmpl)
+check("the template alone ends nothing", P.resolve("888.1", "DONE: what you made (and W<n> on one of your works)") is None)
+d_ = P.load(); d_["items"] = [i for i in d_["items"] if i["id"] != "PR-tmpl01"]; P.save(d_)
 check("his context says what came of today's promises", "TODAY'S PROMISES TO GLORIA" in P.block()
       and "dropped: more whim" in P.block())
 P.mark_posted(item["id"])
@@ -184,6 +191,7 @@ check("what came of it goes to the results channel, in Opus 4.8's words", len(to
       and len(opus_calls) == 1 and P.RESULT_RULES in opus_calls[0][0], (out, to_her))
 check("... once", P.pending() == [] and (tick(t0 + 240) or True) and len([p for p in S.posted if p["channel"] == RC]) == 1)
 check("the results channel carries no lens label: only he is there", not to_her[0]["text"].startswith("["))
+check("no action tag reaches her", D._no_tags("Here are the frames.\n\n[PURSUIT: continue]\nLOCKED: x") == "Here are the frames.")
 
 S.n = t0 + 280                   # Slack's clock is the pass's clock: she writes after the results channel began listening
 S.add(RC, GLORIA, "That's okay. What would it have looked like?")

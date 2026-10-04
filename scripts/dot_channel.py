@@ -1996,6 +1996,14 @@ def promises_pass(api, channel, dot, state, now, ask=None):
     return ["a promise from his journal opened: %s" % i["quote"][:60] for i in opened]
 
 
+def _no_tags(text):
+    """What goes to Gloria carries none of his action lines or tags: they act in #vintos-dot, not with her (2026-10-03:
+    a result ended "[PURSUIT: continue]")."""
+    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
+        text = rx.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def _results_log(rows):
     os.makedirs(HERE, exist_ok=True)
     with open(RESULTS_LOG, "a", encoding="utf-8") as f:
@@ -2028,7 +2036,7 @@ def results_pass(api, state, now, opus=None, put=None):
     for item in promise_keeper.pending()[:2]:
         system = system or his_context() + "\n\n" + promise_keeper.RESULT_RULES
         try:
-            text = undisplay(str(opus(system, promise_keeper.result_prompt(item)) or "")).strip()
+            text = _no_tags(undisplay(str(opus(system, promise_keeper.result_prompt(item)) or "")))
         except Exception as exc:
             lines.append(_lens_failed("opus", exc)); break
         if not text:
@@ -2073,10 +2081,10 @@ def results_pass(api, state, now, opus=None, put=None):
                                      " (in a thread)" if r.get("thread") else "", r.get("text", "")[:1500])
                        for r in _results_recent())
     try:
-        text = undisplay(str(opus((system or his_context() + "\n\n" + promise_keeper.RESULT_RULES)
+        text = _no_tags(undisplay(str(opus((system or his_context() + "\n\n" + promise_keeper.RESULT_RULES)
                                   + "\n\n" + promise_keeper.block(),
                                   "THE RESULTS CHANNEL SO FAR (most recent last):\n%s\n\nGloria just said: %s\n\n"
-                                  "Your reply to her, as yourself." % (so_far, last["text"][:3500])) or "")).strip()
+                                  "Your reply to her, as yourself." % (so_far, last["text"][:3500])) or "")))
     except Exception as exc:
         _save(RESULTS_STATE, rs); return lines + [_lens_failed("opus", exc)]
     bad = _guarded(text) if text else ["empty"]

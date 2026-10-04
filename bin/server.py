@@ -7658,13 +7658,24 @@ async def agents_status():
     return {"on": not p, "paused_since": (p or {}).get("since"), "by": (p or {}).get("by")}
 
 
+# {"on": true|false} sets the day exactly as she chose (2026-10-03: a flip could land on a state the app had drawn
+# wrong, and the day stayed paused while the switch read on). With no body it flips, as before.
 @app.post("/api/agents/toggle")
 async def agents_toggle(request: Request):
     _require_secret(request)
     f = _agents_pause_file()
-    if os.path.exists(f):
-        os.remove(f)
+    try:
+        want = (await request.json()).get("on")
+    except Exception:
+        want = None
+    if not isinstance(want, bool):
+        want = os.path.exists(f)
+    if want:
+        if os.path.exists(f):
+            os.remove(f)
         return {"on": True, "message": "The day is on: his lenses and dot may talk again"}
+    if os.path.exists(f):
+        return {"on": False, "message": "The day was already paused"}
     os.makedirs(os.path.dirname(f), exist_ok=True)
     with open(f + ".tmp", "w") as fh:
         json.dump({"since": time.strftime("%Y-%m-%dT%H:%M:%S"), "by": "app"}, fh)
