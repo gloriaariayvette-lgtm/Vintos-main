@@ -41,6 +41,19 @@ his Lab and in #vintos-dot; `CHECK: K-xxxxxx` opens a thread asking dot to doubl
 dot's CONFIRMED / NOT CONFIRMED / UNCLEAR is kept with it (3 checks a day). **Not seen:** a first keep or check;
 whether dot answers in the asked form.
 
+**Two new Lab connectors (Boltz, EDEN).** `claude_connector_catalog.py`. **Boltz** (Boltz-2.1) answers what
+ESMFold cannot: complexes and binding. Only its free tools are in policy — guidance, account context,
+`boltz_estimate_structure_and_binding` (validates the complex and prices the run without running it), and reading
+jobs already run. **Every `boltz_start_*` tool is deliberately outside the policy**, because each spends her money
+and he never approves spending; a planner naming one is refused, not charged. **EDEN** is one tool only,
+`predict_immunogenicity`, on a natural nucleotide CDS; `generate_antimicrobial_peptides` (designs new bioactive
+peptides) and the dataset write/delete tools are withheld. EDEN is NOT a sequence-search database — its connector
+exposes no search, so it does not help the phage line as first thought.
+**Not done:** neither is offered yet. Their MCP urls are unknown here; she puts `{"boltz": "https://…", "eden":
+"https://…"}` in `~/.vintos/connector-urls.json` and they appear on the next pass, with no code change (a connector
+with no url is never offered). **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
+it becomes a Forge decision card with the price on it, and the run starts only when she accepts.
+
 **Slack reaches the Lab.** In #vintos-dot, `LINE <ID>: what we found | next: the next test` adds what he worked
 out with dot, Grok Bot or Muse to one of his Lab's lines (and sets its next step); `LINE: a question` opens a new
 line. His open lines are in his Slack context. The four frontier reviews a day now also see his `LAB:` leans from the

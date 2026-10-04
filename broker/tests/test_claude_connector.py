@@ -21,6 +21,64 @@ import claude_connector_relay as relay
 from plugin_send_guard import PolicyHold
 
 
+class ScienceConnectorTests(unittest.TestCase):
+    """Boltz and EDEN, added 2026-10-04. Nothing here reaches either account: the catalog is pure policy."""
+
+    def test_her_url_file_offers_a_connector_without_a_code_change(self):
+        for name in ("boltz", "eden"):
+            self.assertNotIn(name, ccc.prompt_instructions("lab"), name + " is offered with no url")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "connector-urls.json")
+            open(path, "w").write('{"boltz": "https://boltz.example/mcp", "eden": "https://eden.example/mcp"}')
+            with mock.patch.object(ccc, "URLS_FILE", path):
+                self.assertEqual(ccc.url_for("boltz"), "https://boltz.example/mcp")
+                block = ccc.prompt_instructions("lab")
+                self.assertIn("boltz", block)
+                self.assertIn("eden", block)
+                self.assertEqual(ccc.policy("boltz", "lab", "boltz_get_guidance")["url"], "https://boltz.example/mcp")
+        self.assertEqual(ccc.url_for("boltz"), "")          # her file gone, it is unreachable again
+        self.assertTrue(ccc.url_for("pubmed").startswith("https://"))   # a wired one is unaffected
+
+    def test_no_boltz_tool_that_spends_her_money_is_reachable(self):
+        entry = ccc.PLUGINS["boltz"]
+        self.assertEqual(entry["action"], frozenset())
+        reachable = entry["read"] | entry["action"]
+        self.assertFalse([t for t in reachable if "_start_" in t], reachable)
+        for tool in entry["paid_tools_withheld"]:
+            for surface in entry["surfaces"]:
+                with self.assertRaises(PermissionError):
+                    ccc.policy("boltz", surface, tool)
+
+    def test_boltz_can_validate_and_price_a_run_for_free(self):
+        for tool in ("boltz_estimate_structure_and_binding", "boltz_get_guidance", "boltz_get_job_results"):
+            self.assertFalse(ccc.policy("boltz", "lab", tool)["is_action"], tool)
+
+    def test_boltz_is_a_lab_instrument_not_an_everywhere_one(self):
+        self.assertEqual(set(ccc.PLUGINS["boltz"]["surfaces"]), {"lab", "forge"})
+        for surface in ("wants", "atelier"):
+            with self.assertRaises(PermissionError):
+                ccc.policy("boltz", surface, "boltz_get_guidance")
+
+    def test_eden_designs_nothing_and_touches_no_dataset(self):
+        entry = ccc.PLUGINS["eden"]
+        self.assertEqual(entry["read"], frozenset(("predict_immunogenicity",)))
+        self.assertEqual(entry["action"], frozenset())
+        for tool in entry["withheld"]:
+            with self.assertRaises(PermissionError):
+                ccc.policy("eden", "lab", tool)
+        self.assertIn("generate_antimicrobial_peptides", entry["withheld"])
+
+    def test_eden_says_the_sequence_it_needs_and_what_it_is_not(self):
+        when = ccc.PLUGINS["eden"]["when"].lower()
+        self.assertIn("nucleotide", when)
+        self.assertIn("never an amino-acid", when)
+        self.assertIn("research use only", when)
+
+    def test_boltz_says_the_estimate_is_free_and_the_run_is_hers(self):
+        self.assertIn("without running it", ccc.PLUGINS["boltz"]["when"].lower())
+        self.assertIn("gloria starts a paid run", ccc.PLUGINS["boltz"]["when"].lower())
+
+
 class CatalogTests(unittest.TestCase):
     def test_url_less_connector_is_never_offered(self):
         # uber_eats deliberately has no MCP url — it must not appear in any surface's menu.
@@ -32,6 +90,7 @@ class CatalogTests(unittest.TestCase):
         self.assertNotIn("uber_eats", block)
 
     def test_wired_connectors_carry_a_url(self):
+        # boltz and eden are deliberately not here: their url is hers to supply (connector-urls.json)
         for name in ("pubmed", "chembl", "hugging_face", "spotify", "google_calendar"):
             self.assertTrue(ccc.PLUGINS[name].get("url"), name)
 

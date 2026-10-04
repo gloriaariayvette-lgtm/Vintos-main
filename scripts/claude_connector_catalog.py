@@ -9,8 +9,28 @@ MCP server segment. Reads/searches are free; anything that changes a real-world 
 library/playlists, Calendar writes) is marked `action` — the relay still just executes one call, and
 the two-reply / approval behaviour Gloria specified lives on Vintos's conversation side, not here.
 """
+import json
+import os
 
 SURFACES = frozenset(("wants", "forge", "lab", "atelier"))
+
+# A connector she has connected but whose MCP url is not written here yet: she puts {"plugin": "url"} in this
+# file and it is offered from the next pass, with no code change (2026-10-04).
+URLS_FILE = os.path.expanduser(os.environ.get("VINTOS_CONNECTOR_URLS", "~/.vintos/connector-urls.json"))
+
+
+def _her_urls():
+    try:
+        with open(URLS_FILE) as f:
+            rows = json.load(f)
+        return {str(k): str(v) for k, v in rows.items() if isinstance(v, str) and v.startswith("https://")}
+    except Exception:
+        return {}
+
+
+def url_for(plugin):
+    """The connector's MCP url: hers if she named one, else the one written here."""
+    return _her_urls().get(plugin) or (PLUGINS.get(plugin) or {}).get("url") or ""
 
 PLUGINS = {
     "pubmed": {
@@ -44,6 +64,46 @@ PLUGINS = {
         "surfaces": ("wants", "lab", "forge", "atelier"),
         "read": frozenset(("hf_whoami", "hub_repo_search", "hub_repo_details", "hf_fs")),
         "action": frozenset(),
+    },
+    "boltz": {
+        "server": "Boltz_API", "visibility": "project",
+        # Her account's Boltz connector. The MCP url is hers to supply (connector-urls.json, below);
+        # until it is there this connector is simply not offered, like uber_eats.
+        "purpose": "Boltz-2.1 structure AND binding prediction: complexes, ligands, protein-protein.",
+        "when": ("Use when the question is about a COMPLEX or an interaction, which ESMFold cannot answer: does "
+                 "this protein bind that one, what does the pair look like. boltz_estimate_structure_and_binding "
+                 "validates the complex and prices the run WITHOUT running it, and is the only way to propose one. "
+                 "Read the estimate, say in your reading whether the run is worth it; Gloria starts a paid run."),
+        "surfaces": ("lab", "forge"),
+        # Free: guidance, account context, validation+cost estimate, and reading jobs that already ran.
+        "read": frozenset(("boltz_get_guidance", "boltz_get_account_context",
+                           "boltz_estimate_structure_and_binding",
+                           "boltz_get_job_status", "boltz_get_job_results",
+                           "boltz_get_structure_and_binding_prediction")),
+        # Deliberately EMPTY. Every boltz_start_* tool spends her money on compute, and the rule is that he
+        # never approves spending: a paid run is hers to accept. They are left outside this policy entirely,
+        # so a planner that names one is refused rather than quietly charged (Gloria, 2026-10-04).
+        "action": frozenset(),
+        "paid_tools_withheld": ("boltz_start_structure_and_binding", "boltz_start_protein_design",
+                                "boltz_start_protein_screen", "boltz_start_small_molecule_adme",
+                                "boltz_start_small_molecule_design", "boltz_start_small_molecule_screen"),
+    },
+    "eden": {
+        "server": "EDEN_by_Basecamp_Research", "visibility": "project",
+        "purpose": ("EDEN (Basecamp Research): the probability that a protein-coding antigen provokes an immune "
+                    "response, from its NATIVE nucleotide coding sequence."),
+        "when": ("Only with a natural nucleotide CDS he sourced (A/C/G/T, forward strand, in frame, 150-8192 nt) "
+                 "— never an amino-acid, codon-optimised, partial or epitope sequence, which are out of "
+                 "distribution and answer nothing. Research use only; never a clinical or diagnostic judgement, "
+                 "and a probability is not a measured immune response."),
+        "surfaces": ("lab",),
+        "read": frozenset(("predict_immunogenicity",)),
+        # Its other tools are deliberately outside this policy: generate_antimicrobial_peptides designs new
+        # bioactive peptides, which is not something he does unwatched, and the dataset tools write to and
+        # delete from her account (Gloria, 2026-10-04).
+        "action": frozenset(),
+        "withheld": ("generate_antimicrobial_peptides", "create_dataset_upload", "create_dataset_download",
+                     "delete_dataset"),
     },
     "spotify": {
         "server": "Spotify", "visibility": "private",
@@ -88,7 +148,7 @@ def policy(plugin, surface, tool):
         raise PermissionError("tool is outside this connector's policy")
     # Shape the relay expects: visibility + an outbound_policy hook (unused for these connectors,
     # since none send to a person; Gloria's approval/two-reply rules live on Vintos's side).
-    return {"visibility": entry["visibility"], "server": entry["server"], "url": entry.get("url"),
+    return {"visibility": entry["visibility"], "server": entry["server"], "url": url_for(plugin),
             "tools": entry["read"] | entry["action"],
             "is_action": tool in entry["action"], "outbound_policy": {}}
 
@@ -103,7 +163,7 @@ def instructions(surface=None):
             continue
         if e.get("enabled") is False:
             continue
-        if not e.get("url"):
+        if not url_for(name):
             continue   # a connector with no reachable MCP url (e.g. uber_eats) is not offered
         tools = sorted(e["read"]) + [t + " (action)" for t in sorted(e["action"])]
         out.append("- %s [%s]: %s %s\n    tools: %s" %
