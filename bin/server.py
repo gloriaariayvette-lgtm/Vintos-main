@@ -6757,6 +6757,59 @@ def _chemistry_structure_module():
     return module
 
 
+# --- the calls his Lab may not make alone: her Yes or No, from the push on her phone -----------------------------
+# Her Forge page runs as another user and cannot read this store, so the card there never reached her (Gloria,
+# 2026-10-04). These run as her, beside the store, and the notification's buttons call them with the card's own
+# one-use token so no app secret is ever put in a notification.
+def _lab_asks():
+    import sys as _la_s
+    _la_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    import lab_asks
+    return lab_asks
+
+
+@app.get("/api/lab/asks")
+async def lab_asks_waiting(request: Request):
+    _require_secret(request)
+    try:
+        A = _lab_asks()
+        return {"ok": True, "asks": [{"id": r["id"], "plugin": r["plugin"], "tool": r["tool"], "why": r.get("why", ""),
+                                      "cost": A.price(r), "generative": bool(r.get("generative")),
+                                      "arguments": r.get("arguments")}
+                                     for r in A.load() if r["state"] in A.OPEN]}
+    except Exception as exc:
+        return {"ok": False, "asks": [], "error": str(exc)[:180]}
+
+
+@app.post("/api/lab/asks/{ask_id}/decide")
+async def lab_asks_decide(ask_id: str, request: Request, t: str = "", state: str = ""):
+    """Her Yes or No. The card's own token authorises it (the push's buttons); her app secret does too."""
+    A = _lab_asks()
+    if state not in ("accepted", "denied"):
+        raise HTTPException(status_code=422, detail="state must be accepted or denied")
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
+        row = A.decided(ask_id, state, "from her app")
+        why = "" if row else "no call waiting with that id"
+    else:
+        row, why = A.decide_with_token(ask_id, t, state)
+    if not row:
+        raise HTTPException(status_code=403, detail=why or "not this call's button")
+    if state != "accepted":
+        A.told(ask_id, "Not run: you said no.")
+        return {"ok": True, "state": "denied"}
+
+    def _run(aid=ask_id):
+        try:
+            lines = A.run_accepted()
+            done = A.get(aid) or {}
+            A.told(aid, (done.get("summary") or done.get("error") or "; ".join(lines) or "it ran")[:600])
+        except Exception as exc:
+            A.told(aid, "It did not run: %s" % str(exc)[:300])
+    import threading as _la_th
+    _la_th.Thread(target=_run, daemon=True).start()
+    return {"ok": True, "state": "accepted", "running": True}
+
+
 @app.get("/api/lab/chemistry/status")
 async def chemistry_lab_status(request: Request):
     _require_secret(request)

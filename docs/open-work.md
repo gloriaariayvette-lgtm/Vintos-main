@@ -136,8 +136,14 @@ tools are outside the gateway's policy on purpose and run_accepted used the ordi
 gateway). Now `claude_connector_catalog.accepted_policy` admits exactly the accepted ask (same tool, same
 arguments, still accepted), through the gateway's `call_accepted` and the relay. Anyone in #vintos-dot, him or
 dot, can write `ASK: plugin.tool {json} | why`: the call goes onto her Forge page with Boltz's free estimate, and
-dot gets the card number in its thread. dot's rules say so (paste them into dot again). **Not seen:** an Accept
-run end to end on Aegis.
+dot gets the card number in its thread. dot's rules say so (paste them into dot again). **The card never reached
+her at all:** her Forge page runs as `atelier` with `ProtectHome=read-only`, and `lab_asks.py` is not even in
+`forge-loop-files.txt`, so `forge_house.cards()` could not read her asked-calls store and the import failed
+silently. Every ask now pushes to her phone instead: title with the price from Boltz's own estimate, body with
+the call and why, and two ntfy buttons calling `POST /api/lab/asks/<id>/decide?t=<token>&state=…` on her server,
+which runs as her beside the store. Each card carries its own one-use token, so no app secret is ever in a
+notification; her app secret works too. Yes runs it and pushes back what came of it. **Not seen:** a push and an
+Accept end to end on Aegis. **Still true:** the Forge page cannot show these cards; the phone is the route.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

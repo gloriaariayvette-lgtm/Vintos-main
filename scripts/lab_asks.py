@@ -18,6 +18,7 @@ import json
 import re
 import os
 import sys
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 
@@ -29,6 +30,11 @@ WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace")
 LAB = os.path.join(WS, "memory", "chemistry-lab")
 STORE = os.path.join(LAB, "asked-calls.json")
 PER_DAY = 3             # calls he may ask her for in a day: her page is not a queue to flood
+# The push to her phone: the price, Yes and No. Her Forge page runs as another user and cannot read this store at
+# all, so a card there reached her never (Gloria, 2026-10-04: "I HAVE NO CARD NO NOTIFICATIONS NO APPROVAL LINK").
+# Each card carries its own one-use token, so the buttons need no app secret in a notification anyone could read.
+NTFY = os.environ.get("VINTOS_NTFY_URL", "https://ntfy.sh/vintos-gloria-9kx")
+AEGIS = os.environ.get("VINTOS_AEGIS_URL", "http://100.72.225.119:8500")
 ARGS_SHOWN = 1200
 OPEN = ("asked",)
 
@@ -87,12 +93,63 @@ def propose(plugin, tool, arguments, why, *, surface="lab", estimate="", line_id
         return None, "she already said no to this one: %s" % (denied.get("note") or "no reason given")
     if len(asked_today(rows)) >= PER_DAY:
         return None, "the %d calls he may ask for today are used" % PER_DAY
-    row = {"id": "A-" + uuid.uuid4().hex[:6], "at": _now(), "surface": surface, "plugin": plugin, "tool": tool,
+    row = {"id": "A-" + uuid.uuid4().hex[:6], "token": uuid.uuid4().hex, "at": _now(),
+           "surface": surface, "plugin": plugin, "tool": tool,
            "generative": bool(__import__("claude_connector_catalog").is_generative(plugin, tool)),
            "arguments": arguments, "why": str(why)[:800], "estimate": str(estimate or "")[:400],
            "line_id": line_id or "", "question": str(question or "")[:400], "state": "asked"}
     rows.append(row); save(rows)
+    notify(row)
     return row, ""
+
+
+def price(row):
+    """The dollar figure from the free estimate, as she needs to read it: "$0.03", or what the estimate said."""
+    est = str(row.get("estimate") or "")
+    m = re.search(r"(?:estimated_cost_usd|cost_usd|estimate|price)[^0-9]{0,12}([0-9]+\.[0-9]+|[0-9]+)", est, re.I) \
+        or re.search(r"\$\s*([0-9]+(?:\.[0-9]+)?)", est)
+    if m:
+        return "$%.2f" % float(m.group(1)) if float(m.group(1)) >= 0.01 else "$%s" % m.group(1)
+    return "no price was estimated; accepting may spend money"
+
+
+def notify(row, send=None):
+    """One push to her phone: what it is, what it costs, Yes and No. Never raises."""
+    try:
+        url = "%s/api/lab/asks/%s/decide?t=%s&state=" % (AEGIS.rstrip("/"), row["id"], row["token"])
+        body = "%s.%s\n%s\n%s" % (row["plugin"], row["tool"], price(row), str(row.get("why") or "")[:300])
+        if row.get("generative"):
+            body = "MAKES something new (not a tested molecule).\n" + body
+        headers = {"Title": "Run this for him? %s" % price(row), "Priority": "high", "Tags": "test_tube",
+                   "Actions": "http, Yes - run it, %saccepted, method=POST, clear=true; "
+                              "http, No, %sdenied, method=POST, clear=true" % (url, url)}
+        req = urllib.request.Request(NTFY, data=body.encode("utf-8"), headers=headers)
+        (send or urllib.request.urlopen)(req, timeout=20)
+        return True
+    except Exception:
+        return False
+
+
+def told(aid, text, send=None):
+    """What came of a call she accepted, to her phone."""
+    try:
+        req = urllib.request.Request(NTFY, data=str(text)[:800].encode("utf-8"),
+                                     headers={"Title": "His run %s" % aid, "Tags": "test_tube"})
+        (send or urllib.request.urlopen)(req, timeout=20)
+        return True
+    except Exception:
+        return False
+
+
+def decide_with_token(aid, token, state):
+    """Her Yes or No from the notification. The token is this card's own, used once."""
+    row = get(aid)
+    if not row or not row.get("token") or token != row["token"]:
+        return None, "that is not this call's button"
+    if row["state"] not in OPEN:
+        return None, "already %s" % row["state"]
+    done = decided(aid, "accepted" if state == "accepted" else "denied", "from her phone")
+    return done, ""
 
 
 def _arguments_shown(row):

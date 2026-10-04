@@ -24,6 +24,11 @@ import lab_asks as A
 import lab_lines as LL
 import claude_connector_catalog as catalog
 
+# Every propose() pushes to her phone; the real sender is held here and the push is a recorder, so this suite
+# cannot reach ntfy. The push itself is checked below with its own stub.
+_real_notify, NOTIFIED = A.notify, []
+A.notify = lambda row, send=None: NOTIFIED.append(row)
+
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))
@@ -43,6 +48,7 @@ check("a tool he can already run himself is not something to ask for",
       A.propose("boltz", "boltz_get_guidance", {}, "x")[1] == "that tool is not one he may ask for")
 check("a tool nobody put on the asking list is refused",
       A.propose("boltz", "boltz_get_job_status", {"id": "x"}, "y")[1] == "that tool is not one he may ask for")
+check("every new card pushes to her phone", NOTIFIED and NOTIFIED[0]["id"] == row["id"], NOTIFIED)
 check("a reason is required", A.propose("boltz", "boltz_start_small_molecule_adme", {"smiles": ["CCO"]}, "  ")[1]
       == "say why it is worth it")
 check("the same call twice is one card", A.propose("boltz", "boltz_start_structure_and_binding", ARGS, "again")[1]
@@ -188,6 +194,46 @@ check("no ASK line reaches her results channel", "ASK:" not in Dc._no_tags("Done
 check("he is told how to ask", "ASK: plugin.tool" in Dc.RULES_HANDS)
 check("dot is told to ask this way, never to send her to a task she cannot open",
       "ASK: boltz.boltz_start_structure_and_binding" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read())
+
+# --- the push to her phone: the price, Yes and No (Gloria, 2026-10-04: "no card no notifications no approval link") ---
+PUSHED = []
+def push(req, timeout=None):
+    PUSHED.append((req.full_url, dict(req.headers), req.data.decode()))
+A.PER_DAY = 9
+A.AEGIS = "http://100.72.225.119:8500"
+pri, _ = A.propose("boltz", "boltz_start_structure_and_binding", {"input": {"entities": [{"v": "PYP-push"}]}},
+                   "one PYP sample", estimate='Free estimate: {"estimated_cost_usd": "0.0250"}')
+check("the price is read out of Boltz's own estimate", A.price(pri) == "$0.03", A.price(pri))
+check("... and an estimate with no number says plainly that it may spend money",
+      "may spend money" in A.price({"estimate": "runtime-dependent"}))
+_real_notify(pri, send=push)
+url, headers, body = PUSHED[-1]
+check("the push says the price in its title", "Run this for him?" in headers["Title"] and "$0.03" in headers["Title"], headers)
+check("... and what the call is, in its body", "boltz.boltz_start_structure_and_binding" in body and "one PYP sample" in body, body)
+act = headers["Actions"]
+check("... with a Yes that runs it and a No", "Yes - run it" in act and "state=accepted" in act and "state=denied" in act, act)
+check("... each carrying this card's own one-use token, never her app secret",
+      pri["token"] in act and "secret" not in act.lower() and len(pri["token"]) == 32, act)
+check("a wrong token decides nothing", A.decide_with_token(pri["id"], "0" * 32, "accepted") == (None, "that is not this call's button")
+      and A.get(pri["id"])["state"] == "asked")
+done, _ = A.decide_with_token(pri["id"], pri["token"], "accepted")
+check("her Yes from the push is her Accept", done and A.get(pri["id"])["state"] == "accepted")
+check("... and the same button cannot run it twice", A.decide_with_token(pri["id"], pri["token"], "accepted")[1].startswith("already"))
+gen, _ = A.propose("eden", "generate_antimicrobial_peptides", {"n": 2}, "candidates")
+_real_notify(gen, send=push)
+check("a tool that makes something says so on the push, before she taps Yes", "MAKES something new" in PUSHED[-1][2], PUSHED[-1][2])
+PUSHED.clear()
+A.told(pri["id"], "a predicted complex, ipTM 0.74", send=push)
+check("what came of it reaches her too", "ipTM 0.74" in PUSHED[-1][2] and pri["id"] in PUSHED[-1][1]["Title"])
+check("a push that cannot be sent never breaks the ask",
+      _real_notify(pri, send=lambda *a, **k: (_ for _ in ()).throw(OSError("no network"))) is False)
+A.PER_DAY = _cap
+srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("the buttons reach a route that runs as her, beside the store", '@app.post("/api/lab/asks/{ask_id}/decide")' in srv
+      and '@app.get("/api/lab/asks")' in srv and "_la_s.path.insert(0, \"/home/gloria/.vintos/workspace/scripts\")" in srv)
+check("... which accepts the card's token or her app secret, and nothing else", "A.decide_with_token(ask_id, t, state)" in srv
+      and 'request.headers.get("X-Vintos-Secret") == APP_SECRET' in srv and "status_code=403" in srv)
+check("... and her Yes actually runs it, then tells her what came of it", "A.run_accepted()" in srv and "A.told(aid," in srv)
 
 # --- the wiring ------------------------------------------------------------------------------------------------
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
