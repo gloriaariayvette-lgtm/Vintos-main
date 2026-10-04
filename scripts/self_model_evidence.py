@@ -55,12 +55,24 @@ def _newer(path, wm):
     except Exception:
         return False
 
+# His introspections are written to memory/introspection (singular) by bin/introspection.sh, and this collector
+# read memory/introspections (plural), which has never existed: 22 files of his richest evidence, never counted
+# once (Gloria, 2026-10-04). Both are read now, so neither spelling can lose them again.
+INTROSPECTION_DIRS = ("introspection", "introspections")
+
+
+def introspection_dirs():
+    return [os.path.join(MEM, d) for d in INTROSPECTION_DIRS if os.path.isdir(os.path.join(MEM, d))]
+
+
 def introspections():
-    d = os.path.join(MEM, "introspections")
-    if not os.path.isdir(d): return _res("missing", note=d)
+    dirs = introspection_dirs()
+    if not dirs: return _res("missing", note=" or ".join(os.path.join(MEM, d) for d in INTROSPECTION_DIRS))
+    d = dirs[0]
     wm = _watermark()
     try:
-        files = sorted(f for f in glob.glob(os.path.join(d, "*.md")) if _newer(f, wm))
+        files = sorted((f for one in dirs for f in glob.glob(os.path.join(one, "*.md")) if _newer(f, wm)),
+                       key=os.path.getmtime)
     except Exception as e:
         return _res("failed", note=str(e)[:200])
     if not files: return _res("empty", note="no introspection newer than the watermark")

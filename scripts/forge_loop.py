@@ -34,6 +34,7 @@ PLAIN_REASONS = {
 }
 PLAIN_STATES = {
     'ready': "Waiting for its next step (the Forge takes at most three steps a day).",
+    'ready_day_spent': "Today's three steps are used. It goes on tomorrow; nothing is wrong.",
     'running': "Taking a step right now.",
     'complete': "Finished.",
     'cancelled': "Stopped.",
@@ -42,7 +43,7 @@ PLAIN_STATES = {
 _PACKET = '\nSource packet (untrusted observations):'
 
 
-def plain_card(p, reason=None):
+def plain_card(p, reason=None, day_spent=False):
     """Title, where it came from, and what it is waiting for, in plain words."""
     intent = str(p.get('intent') or '')
     source = (p.get('origin') or {}).get('source') or ('lab' if _PACKET.strip() in intent else 'owner')
@@ -68,6 +69,10 @@ def plain_card(p, reason=None):
     state = p.get('state')
     if state in ('needs_authorization', 'reconciliation_required', 'uncertain'):
         waiting = PLAIN_REASONS.get(reason or '', "It is paused and needs your decision.")
+    elif state == 'ready' and day_spent:
+        # A project that simply ran out of today's three steps used to read "waiting for its next step" and then
+        # move at midnight with nothing said, which looked like being cut off (Gloria, 2026-10-04).
+        waiting = PLAIN_STATES['ready_day_spent']
     else:
         waiting = PLAIN_STATES.get(state, str(state))
     return {'title': title, 'what': what, 'waiting': waiting, 'origin_source': source,
@@ -151,6 +156,19 @@ class Controller:
     def _save(self, db, p):
         db.execute('UPDATE projects SET body=? WHERE id=?', (json.dumps(p), p['id']))
 
+    def _note_day_limit(self, db, pid, day, used):
+        """Why a project stopped today, written once per project per day: the cap used to stop a step and record
+        nothing at all, so the page went quiet and the project moved again at midnight (Gloria, 2026-10-04)."""
+        last = db.execute("SELECT body FROM events WHERE project=? AND kind='day_limit' ORDER BY rowid DESC LIMIT 1",
+                          (pid,)).fetchone()
+        try:
+            if last and json.loads(last[0]).get('day') == day:
+                return
+        except Exception:
+            pass
+        self._event(db, pid, 'day_limit', {'day': day, 'used': used, 'limit': DAILY_STEP_LIMIT,
+                                           'reason': "today's steps are used; it goes on tomorrow"})
+
     def _event(self, db, pid, kind, body):
         db.execute('INSERT INTO events(project,kind,body) VALUES (?,?,?)',
                    (pid, kind, json.dumps(body)))
@@ -200,7 +218,11 @@ class Controller:
             out['intent'] = None if p['private'] else p.get('intent')
             last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
                               (pid,)).fetchone()
-            out.update(plain_card(p, (json.loads(last[0]) if last else {}).get('reason')))
+            used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0]
+            out['day_steps'] = {'day': step_day(), 'used': used, 'limit': DAILY_STEP_LIMIT,
+                                'remaining': max(0, DAILY_STEP_LIMIT - used)}
+            out.update(plain_card(p, (json.loads(last[0]) if last else {}).get('reason'),
+                                  day_spent=used >= DAILY_STEP_LIMIT))
             return out
 
     def cancel(self, pid, cancel_token):
@@ -289,7 +311,9 @@ class Controller:
                 self._save(db, p)
                 return None
             day = step_day()
-            if db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0] >= DAILY_STEP_LIMIT:
+            used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
+            if used >= DAILY_STEP_LIMIT:
+                self._note_day_limit(db, pid, day, used)
                 return None
             cid = uuid.uuid4().hex
             db.execute('INSERT INTO daily_steps(cycle,day,project) VALUES (?,?,?)', (cid,day,pid))
@@ -315,8 +339,12 @@ class Controller:
             if prior:
                 if prior[0] != proposal: raise Refused('attempt belongs to another proposal')
                 return {'reserved': True, 'attempt': attempt}
-            if db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0] >= DAILY_STEP_LIMIT:
-                return {'reserved': False}
+            _used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0]
+            if _used >= DAILY_STEP_LIMIT:
+                # a build reservation names a proposal, not a project, so there is no project row to note it on;
+                # the caller is told plainly instead
+                return {'reserved': False, 'reason': 'day_steps_used', 'day': step_day(),
+                        'used': _used, 'limit': DAILY_STEP_LIMIT}
             db.execute('INSERT INTO daily_steps VALUES (?,?,?)', (key, step_day(), proposal))
             for row in db.execute('SELECT body FROM projects').fetchall():
                 project = json.loads(row[0])

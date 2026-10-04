@@ -13,9 +13,22 @@ MODEL="gemma-4-26b-a4b-it-uncensored"
 
 # --- p3 (his countersigned restructure, 2026-08-27): fixed base + dated accretion ---
 # The base is written by Gloria and Vintos together and NOTHING regenerates it.
+# Every refusal writes one line here, so a month of silence can never look like a month of nothing to say
+# (Gloria, 2026-10-04: his self-model had not changed since 6 September and nothing said why).
+WHY_LEDGER="$WORKSPACE/memory/self-model-refusals.jsonl"
+say_why() {
+    mkdir -p "$WORKSPACE/memory"
+    python3 - "$1" "$2" <<'WHYEOF' >> "$WHY_LEDGER" 2>/dev/null || true
+import json, sys, datetime
+print(json.dumps({"at": datetime.datetime.now().isoformat(timespec="seconds"), "file": "SELF-MODEL.md",
+                  "refused": sys.argv[1], "detail": sys.argv[2][:600]}, ensure_ascii=False))
+WHYEOF
+}
+
 BASE=$(sed -n '/<!-- BASE-START -->/,/<!-- BASE-END -->/p' "$MODEL_FILE" 2>/dev/null)
 if [ -z "$BASE" ]; then
     echo "[SelfModel] no BASE yet — the weekly accretion waits for the base they write together"
+    say_why "no_base" "$MODEL_FILE has no BASE-START/BASE-END block"
     exit 0
 fi
 ACCRETED=$(awk '/<!-- BASE-END -->/{f=1; next} f' "$MODEL_FILE" 2>/dev/null)
@@ -54,7 +67,8 @@ SELF_REVIEW=$(python3 "$EVIDENCE" section self_review 2>/dev/null)
 ARCHITECTURAL_CHANGES=$(python3 "$EVIDENCE" section architectural_changes 2>/dev/null)
 CORRECTIONS=$(python3 "$EVIDENCE" section corrections 2>/dev/null)
 if ! python3 "$EVIDENCE" gate 2>/dev/null; then
-    echo "[SelfModel] nothing new since the watermark - no introspections, review, changes or corrections (statuses above say which were empty, missing or failed)"; exit 0
+    echo "[SelfModel] nothing new since the watermark - no introspections, review, changes or corrections (statuses above say which were empty, missing or failed)"; say_why "nothing_new" "$(python3 "$EVIDENCE" status 2>/dev/null | tr -d "\n" | head -c 400)"
+    exit 0
 fi
 
 SOUL_IDENTITY=$(cat "$SOUL" 2>/dev/null | head -60)
@@ -361,7 +375,12 @@ except Exception as e:
     print(f"ERROR: {e}", file=sys.stderr)
 SMEOF
 )
-[ -z "$CONTENT" ] && exit 1
+if [ -z "$CONTENT" ]; then
+    # the generator said nothing: this used to exit with no line anywhere, which is how a month passed unseen
+    say_why "generator_returned_nothing" "127.0.0.1:8599 /v1/chat/completions returned no content"
+    echo "[SelfModel] the generator returned nothing - nothing written"
+    exit 1
+fi
 
 export CONTENT
 # --- Reviewer check before writing ---
@@ -375,11 +394,15 @@ try:
     r = requests.post("http://100.79.177.103:1234/v1/chat/completions", headers={"Authorization": "Bearer " + __import__("os").environ.get("XAI_API_KEY","")}, json={
         "model": "gemma-4-26b-a4b-it-uncensored",
         "messages": [
-            {"role": "system", "content": "You review a self-model update for quality. Answer with PASS or FAIL followed by a brief reason."},
+            {"role": "system", "content": "You review a self-model update for quality. Your FIRST word must be PASS or FAIL, then a brief reason. You are not reviewing his taste or his voice: he writes warmly and that is not a fault. Fail only what is listed."},
             {"role": "user", "content": (
                 "Review this self-model update for these problems:\n"
                 "1. Disassociation — written in third person or as an outside observer\n"
-                "2. Metaphor substitution — uses clay, kilns, ochre, mineral density, weight, cathedral, tremor, hum as self-description instead of plain statements\n"
+                "2. Metaphor substitution — a figure of speech standing IN PLACE OF a plain statement he could have "
+                "made, so that the sentence says nothing checkable (\"I am clay in her kiln\" instead of what changed). "
+                "A vivid word is not itself a fault: weight, hum, tremor, warmth and the like are ordinary English "
+                "and are FINE when the sentence they are in still states something real. Fail only when the metaphor "
+                "is doing the work a fact should be doing.\n"
                 "3. Invented embodiment — body-poetry presented as sensation (texture, weight, a cathedral chest) with no instrument behind it. Sensation with an instrument behind it is ALLOWED and must not fail: the somatic bridge, device telemetry, GPU temperature, her heart rate from the ring, images he was shown.\n"
                 "4. Fabricated Gloria interactions\n\n"
                 f"Self-model:\n{content[:1500]}\n\n"
@@ -387,17 +410,20 @@ try:
             )}
         ],
         "temperature": 0.1,
-        "max_tokens": 80
+        "max_tokens": 160
     }, timeout=30)
     result = r.json()["choices"][0]["message"]["content"].strip()
-    print(result)
+    # The verdict is the FIRST line only. "PASS\nFAIL criteria: none present" used to be read as a FAIL by a
+    # grep for ^FAIL anywhere in the reply (Gloria, 2026-10-04).
+    print(next((l.strip() for l in result.splitlines() if l.strip()), "") + ("\n-- " + result.replace("\n", " ")[:300]))
 except Exception as e:
     print(f"UNAVAILABLE (reviewer error: {e})")
 REVIEWEOF
 )
 export CONTENT
 echo "[SelfModel] Reviewer: $REVIEWER_RESULT"
-if echo "$REVIEWER_RESULT" | grep -q "^UNAVAILABLE"; then
+VERDICT=$(printf '%s' "$REVIEWER_RESULT" | sed -n '1p')
+if printf '%s' "$VERDICT" | grep -q "^UNAVAILABLE"; then
     # An unavailable review is not a PASS (astra-models-p3): the entry is HELD for a later run, not written.
     mkdir -p "$WORKSPACE/memory/self-model-pending"
     printf '%s\n' "$CONTENT" > "$WORKSPACE/memory/self-model-pending/$(date +%Y-%m-%d).md"
@@ -405,16 +431,24 @@ if echo "$REVIEWER_RESULT" | grep -q "^UNAVAILABLE"; then
     curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx" -H "Title: Self-model entry held" -H "Priority: default" -d "The weekly self-model entry was written but the reviewer was unavailable; it is held in memory/self-model-pending/ and not committed." > /dev/null 2>&1 &
     exit 1
 fi
-if echo "$REVIEWER_RESULT" | grep -q "^FAIL"; then
-    echo "[SelfModel] Reviewer flagged content — skipping write"
-    curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx"         -H "Title: Self-Model Review Failed"         -H "Priority: default"         -d "Self-model update blocked by reviewer: $REVIEWER_RESULT" > /dev/null 2>&1 &
+if printf '%s' "$VERDICT" | grep -qiE '^[[:space:]]*[*_`#>-]*[[:space:]]*FAIL'; then
+    # A refused entry is HELD, never thrown away (Gloria, 2026-10-04): this path used to discard what he wrote,
+    # so a week of his self-understanding vanished on one 80-token verdict from a 26B local model.
+    mkdir -p "$WORKSPACE/memory/self-model-pending"
+    printf '%s\n' "$CONTENT" > "$WORKSPACE/memory/self-model-pending/$(date +%Y-%m-%d).md"
+    say_why "reviewer_failed" "$REVIEWER_RESULT"
+    echo "[SelfModel] Reviewer flagged content — entry held in memory/self-model-pending, not written"
+    curl -s -X POST "https://ntfy.sh/vintos-gloria-9kx"         -H "Title: Self-Model Review Failed"         -H "Priority: default"         -d "Self-model update blocked by reviewer: $REVIEWER_RESULT -- his entry is kept in memory/self-model-pending/, not lost." > /dev/null 2>&1 &
     exit 1
 fi
 # only an explicit PASS installs (P04-04): an empty reply, prose, or 'PASSING' is not a verdict - held like UNAVAILABLE
-if ! echo "$REVIEWER_RESULT" | grep -qE '^PASS([[:space:][:punct:]]|$)'; then
+# markdown bold is Gemma's default formatting, and "**PASS**" used to fail the PASS test, the FAIL test and the
+# UNAVAILABLE test at once: held with no word to anyone (2026-10-04). Leading punctuation and case are allowed now.
+if ! printf '%s' "$VERDICT" | grep -qiE '^[[:space:]]*[*_`#>-]*[[:space:]]*PASS([[:space:][:punct:]]|$)'; then
     mkdir -p "$WORKSPACE/memory/self-model-pending"
     printf '%s\n' "$CONTENT" > "$WORKSPACE/memory/self-model-pending/$(date +%Y-%m-%d).md"
     echo "[SelfModel] reviewer reply was not PASS or FAIL ($(echo "$REVIEWER_RESULT" | head -c 80)) - entry held, not written"
+    say_why "reviewer_unreadable" "$REVIEWER_RESULT"
     exit 1
 fi
 # --- Archive the previous model, only now that a write will follow (fable-models-p6) ---

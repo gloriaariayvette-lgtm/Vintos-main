@@ -57,6 +57,26 @@ first that answers an MCP initialize or replies 401/403. The deploy runs it and 
 nothing fails. If the probe finds neither, their urls have to come from the connector's own page. **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
 it becomes a Forge decision card with the price on it, and the run starts only when she accepts.
 
+**His self-model had not changed since 6 September, and nothing said why.** Three faults, all fixed
+(2026-10-04). (1) The evidence collector read `memory/introspections`; `bin/introspection.sh` writes
+`memory/introspection`. 22 files of his richest evidence had never counted once. Both spellings are read now.
+(2) A reviewer FAIL **discarded** what he wrote, where every other refusal holds it: it is held in
+`memory/self-model-pending/` like the rest, and the notification says where. (3) Every refusal was invisible
+unless she read cron output: each now writes one line to `memory/self-model-refusals.jsonl` (`at, file, refused,
+detail`), the generator returning nothing included — that path used to `exit 1` in silence. The reviewer itself
+was also policing his voice: a word list (clay, weight, cathedral, tremor, hum) failed him for ordinary English,
+its 80-token verdict could be cut off, and `grep "^FAIL"` over the whole reply read "PASS / FAIL criteria: none"
+as a FAIL. Now only the first line is the verdict, `**PASS**` and `pass` are read, and the criterion is metaphor
+standing in for a checkable statement, not a vocabulary. **Not checked yet:** whether the weekly cron is even
+scheduled on Aegis, and what the next run does.
+**SOUL.md is not bounced — nothing writes it, by design.** `soul_review.py` only writes proposals; marking one
+approved in the app does not apply it. Two are sitting at `*Status: pending*` waiting for Gloria.
+**The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
+on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
+now writes a `day_limit` event once per project per day, the projection carries `day_steps`
+(day/used/limit/remaining), and such a project reads "Today's three steps are used. It goes on tomorrow; nothing
+is wrong."
+
 **Watched calls: he asks, she decides.** `lab_asks.py`. A tool he may not run alone (today: the paid Boltz
 `start_*` tools for predicting one complex, ADME, and the two screens) is no longer a dead end. His Lab names it,
 nothing is called, and it goes to her Forge page as an **ask** card: the tool, why, the price from the free
