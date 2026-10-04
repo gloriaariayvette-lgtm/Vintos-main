@@ -87,6 +87,7 @@ def propose(plugin, tool, arguments, why, *, surface="lab", estimate="", line_id
     if len(asked_today(rows)) >= PER_DAY:
         return None, "the %d calls he may ask for today are used" % PER_DAY
     row = {"id": "A-" + uuid.uuid4().hex[:6], "at": _now(), "surface": surface, "plugin": plugin, "tool": tool,
+           "generative": bool(__import__("claude_connector_catalog").is_generative(plugin, tool)),
            "arguments": arguments, "why": str(why)[:800], "estimate": str(estimate or "")[:400],
            "line_id": line_id or "", "question": str(question or "")[:400], "state": "asked"}
     rows.append(row); save(rows)
@@ -106,6 +107,15 @@ def cards():
         if r["state"] not in OPEN:
             continue
         details = ["He would send exactly this:", _arguments_shown(r)]
+        try:
+            import claude_connector_catalog as catalog
+            if catalog.is_generative(r["plugin"], r["tool"]):
+                details.insert(0, "This one MAKES something new (a binder, a molecule, a peptide) rather than "
+                                  "predicting or ranking what he already has. What comes back is a computational "
+                                  "design: not a tested molecule, nothing about whether it works or is safe, and "
+                                  "never a step toward making it for real.")
+        except Exception:
+            pass
         if r.get("question"):
             details.insert(0, "The question it serves: " + r["question"])
         if r.get("line_id"):

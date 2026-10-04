@@ -87,12 +87,14 @@ PLUGINS = {
         "paid_tools_withheld": ("boltz_start_structure_and_binding", "boltz_start_protein_design",
                                 "boltz_start_protein_screen", "boltz_start_small_molecule_adme",
                                 "boltz_start_small_molecule_design", "boltz_start_small_molecule_screen"),
-        # He may ASK her for these: predicting one complex, ADME on compounds he sourced, or ranking candidates
-        # he already has. The card carries the price from the free estimate and nothing runs until she accepts
-        # (lab_asks.py, 2026-10-04). The two *design* tools generate new binders and are not on this list: that is
-        # a separate question for her, not a spending one.
+        # He may ASK her for these; none of them runs without her Accept on the card, which carries the exact
+        # call and the price from the free estimate (lab_asks.py, 2026-10-04). Predicting, ADME and ranking went
+        # on first; the two design tools, which generate new binders, she added the same day.
         "proposable": frozenset(("boltz_start_structure_and_binding", "boltz_start_small_molecule_adme",
-                                 "boltz_start_protein_screen", "boltz_start_small_molecule_screen")),
+                                 "boltz_start_protein_screen", "boltz_start_small_molecule_screen",
+                                 "boltz_start_protein_design", "boltz_start_small_molecule_design")),
+        # What a card must say out loud before she accepts it: these make something that did not exist.
+        "generative": frozenset(("boltz_start_protein_design", "boltz_start_small_molecule_design")),
     },
     "eden": {
         "server": "EDEN_by_Basecamp_Research", "visibility": "project",
@@ -110,9 +112,10 @@ PLUGINS = {
         "action": frozenset(),
         "withheld": ("generate_antimicrobial_peptides", "create_dataset_upload", "create_dataset_download",
                      "delete_dataset"),
-        # Nothing here is his to even ask for yet. generate_antimicrobial_peptides designs new bioactive peptides;
-        # whether it should be reachable at all, with her accepting each call, is hers to say, not mine.
-        "proposable": frozenset(),
+        # generate_antimicrobial_peptides designs new bioactive peptides. It is never his to run; he may ask, and
+        # she decides each call on its own card (Gloria, 2026-10-04).
+        "proposable": frozenset(("generate_antimicrobial_peptides",)),
+        "generative": frozenset(("generate_antimicrobial_peptides",)),
     },
     "spotify": {
         "server": "Spotify", "visibility": "private",
@@ -143,6 +146,13 @@ PLUGINS = {
         "action": frozenset(),   # publish_analytics is not a food action; left out deliberately
     },
 }
+
+
+def is_generative(plugin, tool):
+    """True when the tool MAKES something that did not exist (a binder, a molecule, a peptide), rather than
+    predicting or ranking what he already has. Her card says so before she accepts it."""
+    entry = PLUGINS.get(plugin) or {}
+    return tool in (entry.get("generative") or frozenset())
 
 
 def may_propose(plugin, surface, tool):

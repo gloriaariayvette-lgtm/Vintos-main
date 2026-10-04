@@ -42,9 +42,7 @@ check("he can ask her for a paid Boltz run", row and row["state"] == "asked" and
 check("a tool he can already run himself is not something to ask for",
       A.propose("boltz", "boltz_get_guidance", {}, "x")[1] == "that tool is not one he may ask for")
 check("a tool nobody put on the asking list is refused",
-      A.propose("boltz", "boltz_start_protein_design", ARGS, "design me a binder")[1] == "that tool is not one he may ask for")
-check("EDEN's peptide designer is not his to ask for either, until Gloria says so",
-      A.propose("eden", "generate_antimicrobial_peptides", {"n": 4}, "x")[1] == "that tool is not one he may ask for")
+      A.propose("boltz", "boltz_get_job_status", {"id": "x"}, "y")[1] == "that tool is not one he may ask for")
 check("a reason is required", A.propose("boltz", "boltz_start_small_molecule_adme", {"smiles": ["CCO"]}, "  ")[1]
       == "say why it is worth it")
 check("the same call twice is one card", A.propose("boltz", "boltz_start_structure_and_binding", ARGS, "again")[1]
@@ -63,6 +61,21 @@ check("and which line and question it serves", "L-gloria-phage-rt" in body and "
 unpriced, _ = A.propose("boltz", "boltz_start_small_molecule_adme", {"smiles": ["CCO"]}, "ADME on the one I sourced")
 check("a call with no estimate says plainly that accepting may spend money",
       "may spend money" in next(c for c in A.cards() if c["ref"] == unpriced["id"])["cost"])
+
+# --- a tool that MAKES something says so on the card before she accepts it (Gloria added these 2026-10-04) ----
+_cap = A.PER_DAY; A.PER_DAY = 9        # the cap is its own check below; these two are about the card's words
+for plugin, tool, args in (("boltz", "boltz_start_protein_design", {"target": "X"}),
+                           ("eden", "generate_antimicrobial_peptides", {"n": 4})):
+    g, why = A.propose(plugin, tool, args, "it would make candidates to look at")
+    check("he may ask her for %s" % tool, g and g["state"] == "asked" and g["generative"] is True, (g, why))
+    body = "\n".join(next(c for c in A.cards() if c["ref"] == g["id"])["details"])
+    check("... and the card says plainly that it makes something new, and what it is not", "MAKES something new" in body
+          and "not a tested molecule" in body and "never a step toward making it for real" in body, body)
+    check("... and he still cannot run it himself", not catalog.policy.__module__ or
+          tool not in (catalog.PLUGINS[plugin]["read"] | catalog.PLUGINS[plugin]["action"]))
+    A.decided(g["id"], "denied", "not this week")
+A.PER_DAY = _cap
+check("a predicting tool is not labelled as making anything", A.get(row["id"])["generative"] is False)
 
 # --- nothing runs until she accepts -------------------------------------------------------------------------
 calls = []
@@ -96,10 +109,13 @@ made = 0
 for i in range(6):
     r, _ = A.propose("boltz", "boltz_start_protein_screen", {"n": i}, "screen %d" % i)
     made += bool(r)
-check("at most %d calls a day reach her" % A.PER_DAY, made + 2 == A.PER_DAY, made)
+check("at most %d calls a day reach her" % A.PER_DAY, made == 0 and len(A.asked_today()) >= A.PER_DAY, made)
 
 # --- a failed run says so, and is not left looking accepted ----------------------------------------------------
-pend = next(r for r in A.load() if r["state"] == "asked")
+A.PER_DAY = 9
+pend, _ = A.propose("boltz", "boltz_start_structure_and_binding", {"input": {"entities": [{"v": 2}]}},
+                    "the other complex")
+A.PER_DAY = _cap
 A.decided(pend["id"], "accepted")
 def broken(*a, **k):
     raise RuntimeError("the relay was unreachable")

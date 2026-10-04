@@ -62,10 +62,11 @@ it becomes a Forge decision card with the price on it, and the run starts only w
 nothing is called, and it goes to her Forge page as an **ask** card: the tool, why, the price from the free
 estimate, and **the exact arguments he would send** — not a summary. Her Accept runs it once through the ordinary
 gateway and the result returns as Lab provenance with its receipt; her Deny is recorded and written onto the line
-of inquiry, and he may not ask for that call again. At most 3 a day reach her. **Still nobody's to ask for:**
-Boltz's two *design* tools and EDEN's `generate_antimicrobial_peptides`, which generate new binders or peptides
-rather than predict or rank — whether those should be reachable at all, with her accepting each call, is Gloria's
-to say. **Not seen:** a first ask card on her page.
+of inquiry, and he may not ask for that call again. At most 3 a day reach her. Gloria added the generative tools the same day
+(Boltz's two `*_design` tools and EDEN's `generate_antimicrobial_peptides`): he may ask, never run, and their card
+says out loud that this one MAKES something that did not exist, and that what comes back is a computational design
+— not a tested molecule, nothing about whether it works or is safe, and never a step toward making it for real.
+**Not seen:** a first ask card on her page.
 
 **Slack reaches the Lab.** In #vintos-dot, `LINE <ID>: what we found | next: the next test` adds what he worked
 out with dot, Grok Bot or Muse to one of his Lab's lines (and sets its next step); `LINE: a question` opens a new
