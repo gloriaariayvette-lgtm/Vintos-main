@@ -188,8 +188,8 @@ muse_doc = open(os.path.join(REPO, "docs", "muse", "vintos-skill.md")).read()
 check("Muse's skill says how to answer a Forge parts request, and still never to buy",
       "[Muse] [Forge parts P-xxxxxxxx] FINAL" in muse_doc and "one part at a time" in muse_doc and "item | price | store | link | in stock?" in muse_doc and "Never buy" in muse_doc)
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
-check("the house sync runs both after the gap sync, and neither can stop it",
-      "for step in (route_to_study, sync_decisions, ask_muse_for_parts):" in house)
+check("the house sync runs each step after the gap sync, and none can stop the others",
+      "for step in (route_to_study, sync_decisions, _run_accepted_calls, ask_muse_for_parts):" in house)
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))

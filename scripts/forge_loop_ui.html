@@ -148,13 +148,13 @@ async function renderWaiting(){
   box.append(el('h2',null,open.length?('Waiting on you ('+open.length+')'):'Nothing is waiting on you'));
   for(const d of open){
     const card=el('div','card');
-    card.append(el('p','making',d.kind==='parts'?'A parts list to buy':d.kind==='arrived'?'Parts you bought':'An ability he wants built'));
+    card.append(el('p','making',d.kind==='parts'?'A parts list to buy':d.kind==='arrived'?'Parts you bought':d.kind==='ask'?'A call his Lab cannot make alone':'An ability he wants built'));
     card.append(el('p','intent',d.title));
     if(d.what)card.append(el('p','plain',d.what));
     if(d.cost)card.append(el('p','total',d.cost));
     if(d.details&&d.details.length){const det=el('details');det.append(el('summary',null,'Details'));for(const l of d.details)det.append(el('p','v',l));card.append(det)}
     const actions=el('div','meta');
-    actions.append(button(d.kind==='parts'?'Accept this list':d.kind==='arrived'?'They are here':'Accept','primary',async()=>{await api('/api/decisions/'+encodeURIComponent(d.id)+'/accept','POST',{});await refresh()}));
+    actions.append(button(d.kind==='parts'?'Accept this list':d.kind==='arrived'?'They are here':d.kind==='ask'?'Run it':'Accept','primary',async()=>{await api('/api/decisions/'+encodeURIComponent(d.id)+'/accept','POST',{});await refresh()}));
     if(d.kind!=='arrived')actions.append(button('Deny','ghost',async()=>{const why=prompt('Deny "'+d.title.slice(0,80)+'"? A word on why (optional):','');if(why===null)return;await api('/api/decisions/'+encodeURIComponent(d.id)+'/deny','POST',{note:why});await refresh()}));
     card.append(actions);box.append(card);
   }

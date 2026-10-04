@@ -341,7 +341,7 @@ class Runtime:
     # What is waiting on her, with Accept and Deny (Gloria, 2026-10-03: "Yes, we need the accept button. I only
     # have a stop button"). The house sends the cards (an ability card waiting for her yes, a parts list Muse
     # priced); her page decides; the house carries the decision out. A decided card keeps her decision.
-    DECISION_KINDS = ('card', 'parts', 'arrived')
+    DECISION_KINDS = ('card', 'parts', 'arrived', 'ask')
 
     def decisions(self):
         with self.c.db() as db:

@@ -825,6 +825,9 @@ def _orient(context, lean=None):
         import lab_keepers   # what his reviewers kept, so he can build on it
         kept = lab_keepers.block(limit=5)
         if kept: lines_text += "\n\n" + kept
+        import lab_asks      # and what he has asked her for, so he neither waits twice nor asks twice
+        asks = lab_asks.block()
+        if asks: lines_text += "\n\n" + asks
     except Exception as exc:
         _fault("lab_lines_orient", exc); lines_text = ""
     try:  # the commissioned relay instruments, offered only when the Lab holds something real to run one on
@@ -1514,6 +1517,28 @@ def tick():
                     state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "unsourced_id", "ids": exc.ids, "query_sent": sent_query,
                             "truth_status": "id_not_returned_by_any_receipt_not_sent"}
+                except PermissionError as exc:
+                    # A tool he may not run himself, but MAY ask her for: it becomes a card on her Forge page
+                    # with the exact call on it, instead of a dead end (lab_asks, 2026-10-04).
+                    pq = inquiry.get("plugin_query") or {}
+                    asked, why_not = None, str(exc)[:200]
+                    try:
+                        import lab_asks
+                        asked, why_not = lab_asks.propose(
+                            pq.get("plugin"), str(pq.get("tool") or "").split(".")[-1], pq.get("arguments") or {},
+                            pq.get("purpose") or inquiry.get("question", ""), surface="lab",
+                            line_id=inquiry.get("line_id", ""), question=inquiry.get("question", ""))
+                    except Exception as inner:
+                        why_not = str(inner)[:200]
+                    state['source_query_succeeded'] = False
+                    state.pop('additional_source', None)
+                    note = {"at": now_iso(), "kind": "asked_gloria" if asked else "source_unavailable",
+                            "reason": ("asked Gloria for %s.%s" % (pq.get("plugin"), pq.get("tool"))) if asked
+                                      else why_not,
+                            "source": str(pq.get("plugin") or "plugin")[:80], "query_sent": sent_query,
+                            **({"ask_id": asked["id"]} if asked else {}),
+                            "truth_status": "waiting_on_her_decision_not_an_observation" if asked
+                                            else "no_observation_no_inference"}
                 except Exception as exc:
                     # Sourcing is best-effort: a public read that fails, OR a connector the model
                     # picked that is out of policy / held / unreachable (PermissionError, PolicyHold,

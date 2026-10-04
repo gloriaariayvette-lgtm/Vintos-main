@@ -86,7 +86,7 @@ def sync(inventory=None):
     if len(rows) > 128: raise ValueError('Forge gap snapshot exceeds 128; explicit pagination required')
     result = request('/api/gaps-sync', {'rows': rows})
     # what is waiting on her, and Muse's prices for any parts list (2026-10-03); never stops the gap sync
-    for step in (route_to_study, sync_decisions, ask_muse_for_parts):
+    for step in (route_to_study, sync_decisions, _run_accepted_calls, ask_muse_for_parts):
         try:
             step()
         except Exception as exc:
@@ -218,6 +218,11 @@ def decision_cards(proposals=None):
                           'what': 'Press when they are here. He walks you through putting it together, one step at a '
                                   'time, and tests it with you.',
                           'details': ['Wiring: ' + w for w in plan.get('wiring', [])][:20]})
+    try:   # a call his Lab may not make alone: she sees the exact call before it happens (lab_asks, 2026-10-04)
+        import lab_asks
+        cards += lab_asks.cards()
+    except Exception as exc:
+        print('forge: could not read the calls he asked for: %s' % exc, flush=True)
     for tag, lst in sorted(_jload(PARTS_LISTS, {}).items()):
         lines = [l.strip() for l in str(lst.get('text', '')).splitlines() if l.strip()][:40]
         cards.append({'id': 'parts:' + tag, 'kind': 'parts', 'ref': lst.get('project', ''),
@@ -243,6 +248,15 @@ def sync_decisions(transport=None, post=None):
                 _r, why = sf.deny(d['ref'], d.get('note') or 'denied on her Forge page', by='gloria')
             if why and 'not proposed' not in why:
                 print('forge decision %s not carried out: %s' % (d['id'], why), flush=True); continue
+        elif d.get('kind') == 'ask':
+            try:
+                import lab_asks
+                row = lab_asks.decided(d['ref'], d['state'], d.get('note') or '')
+                _say('Gloria %s the %s call he asked for (%s).' % (
+                    'accepted' if d['state'] == 'accepted' else 'denied',
+                    (row or {}).get('tool', d.get('ref')), d.get('ref')), post)
+            except Exception as exc:
+                print('forge decision: the asked call was not recorded: %s' % exc, flush=True); continue
         elif d.get('kind') == 'arrived':
             try:
                 arrived(d['id'].split(':', 1)[1], post=post)
@@ -263,6 +277,13 @@ def sync_decisions(transport=None, post=None):
         applied[d['id']] = d['state']; done.append(d['id'])
     _jsave(APPLIED, applied)
     return done
+
+
+def _run_accepted_calls():
+    """A call she accepted on her page runs here, once, on the next pass (lab_asks, 2026-10-04)."""
+    import lab_asks
+    for line in lab_asks.run_accepted():
+        print('forge: ' + line, flush=True)
 
 
 def _plan(tag):

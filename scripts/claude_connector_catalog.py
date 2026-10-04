@@ -87,6 +87,12 @@ PLUGINS = {
         "paid_tools_withheld": ("boltz_start_structure_and_binding", "boltz_start_protein_design",
                                 "boltz_start_protein_screen", "boltz_start_small_molecule_adme",
                                 "boltz_start_small_molecule_design", "boltz_start_small_molecule_screen"),
+        # He may ASK her for these: predicting one complex, ADME on compounds he sourced, or ranking candidates
+        # he already has. The card carries the price from the free estimate and nothing runs until she accepts
+        # (lab_asks.py, 2026-10-04). The two *design* tools generate new binders and are not on this list: that is
+        # a separate question for her, not a spending one.
+        "proposable": frozenset(("boltz_start_structure_and_binding", "boltz_start_small_molecule_adme",
+                                 "boltz_start_protein_screen", "boltz_start_small_molecule_screen")),
     },
     "eden": {
         "server": "EDEN_by_Basecamp_Research", "visibility": "project",
@@ -104,6 +110,9 @@ PLUGINS = {
         "action": frozenset(),
         "withheld": ("generate_antimicrobial_peptides", "create_dataset_upload", "create_dataset_download",
                      "delete_dataset"),
+        # Nothing here is his to even ask for yet. generate_antimicrobial_peptides designs new bioactive peptides;
+        # whether it should be reachable at all, with her accepting each call, is hers to say, not mine.
+        "proposable": frozenset(),
     },
     "spotify": {
         "server": "Spotify", "visibility": "private",
@@ -134,6 +143,17 @@ PLUGINS = {
         "action": frozenset(),   # publish_analytics is not a food action; left out deliberately
     },
 }
+
+
+def may_propose(plugin, surface, tool):
+    """True when he may not run this himself but MAY ask Gloria for it (a card on her Forge page). Everything else
+    outside the policy stays a flat refusal."""
+    entry = PLUGINS.get(plugin)
+    if not entry or surface not in entry.get("surfaces", ()) or entry.get("enabled") is False:
+        return False
+    if tool in entry["read"] or tool in entry["action"]:
+        return False                       # he can already run it; there is nothing to ask
+    return tool in (entry.get("proposable") or frozenset())
 
 
 def policy(plugin, surface, tool):

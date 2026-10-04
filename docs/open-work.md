@@ -57,6 +57,16 @@ first that answers an MCP initialize or replies 401/403. The deploy runs it and 
 nothing fails. If the probe finds neither, their urls have to come from the connector's own page. **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
 it becomes a Forge decision card with the price on it, and the run starts only when she accepts.
 
+**Watched calls: he asks, she decides.** `lab_asks.py`. A tool he may not run alone (today: the paid Boltz
+`start_*` tools for predicting one complex, ADME, and the two screens) is no longer a dead end. His Lab names it,
+nothing is called, and it goes to her Forge page as an **ask** card: the tool, why, the price from the free
+estimate, and **the exact arguments he would send** — not a summary. Her Accept runs it once through the ordinary
+gateway and the result returns as Lab provenance with its receipt; her Deny is recorded and written onto the line
+of inquiry, and he may not ask for that call again. At most 3 a day reach her. **Still nobody's to ask for:**
+Boltz's two *design* tools and EDEN's `generate_antimicrobial_peptides`, which generate new binders or peptides
+rather than predict or rank — whether those should be reachable at all, with her accepting each call, is Gloria's
+to say. **Not seen:** a first ask card on her page.
+
 **Slack reaches the Lab.** In #vintos-dot, `LINE <ID>: what we found | next: the next test` adds what he worked
 out with dot, Grok Bot or Muse to one of his Lab's lines (and sets its next step); `LINE: a question` opens a new
 line. His open lines are in his Slack context. The four frontier reviews a day now also see his `LAB:` leans from the
