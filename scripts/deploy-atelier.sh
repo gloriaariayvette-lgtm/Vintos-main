@@ -160,7 +160,7 @@ SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served view
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
 SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py"
 SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py somatic_narrate.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
-SCRIPTS="$SCRIPTS song_memory.py creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py tension_promotion.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
+SCRIPTS="$SCRIPTS house_hands.py room_reach.py song_memory.py creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py tension_promotion.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
 SCRIPTS="$SCRIPTS vintos-home.py"   # every home route loads it by absolute path; it did not exist on Aegis (2026-09-05)
 SCRIPTS="$SCRIPTS mischief-detector.sh mischief_log.py mischief_timing.py reelroom.py"

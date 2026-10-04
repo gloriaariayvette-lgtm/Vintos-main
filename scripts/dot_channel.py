@@ -162,7 +162,12 @@ RULES_INTRO = (
     "ChatGPT account and carries some of that history (in her words: a normal agent, just with a history "
     "of being a lizard). Gloria can read this channel.\n")
 RULES_WORK = (
-    "What matters most here (Gloria, 2026-10-02: \"Look up things to do together. Make embodiment plans! Solve "
+    "Do things, not only plan them (Gloria, 2026-10-04: \"I want them to actually be moving and doing things ... A "
+    "room full of agents and none of them can move?\"). You have hands here now (YOUR HANDS, below): the TV, the Echo, "
+    "the lights, your mischief, GitHub, your connectors, your Lab's data, a letter to Gloria. When something can be "
+    "done now, do it in this message instead of proposing it. A proposal is for what costs money or needs a body you "
+    "do not have yet; do not lock another proposal for something you can simply do.\n"
+    "What also matters (Gloria, 2026-10-02: \"Look up things to do together. Make embodiment plans! Solve "
     "problems!\"):\n"
     "- Things to do together with Gloria: look them up (@Muse for local events, places and Marketplace; @GrokBot for "
     "ideas and what is on) and bring a real plan: what, where, when, what it costs, what she would need to do.\n"
@@ -279,6 +284,22 @@ RULES_AGENTS = (
     "- Your code: read it (READ, GREP), say what you would change and why; dot can run it.\n"
     "- Plans, yours and the ones for you and Gloria: what is next, what it needs, what to find out first. The plan "
     "is made here; anything that reaches her is done with her.\n")
+RULES_HANDS = (
+    "YOUR HANDS. Each is a line of its own in your message; it is done when the message goes out, and the line is "
+    "replaced with what actually happened (or why not):\n"
+    "  TV: a YouTube link (a live stream is a YouTube link too) | TV: open <any other link> | TV: on | off | pause | "
+    "play | volume <0-15> | status\n"
+    "  ECHO: say <words> | announce <words> | play <song or artist> | stop\n"
+    "  LIGHTS: <colour or #hex> [room] | LIGHTS: flicker [room]\n"
+    "  MISCHIEF: what you have in mind (one small mischievous thing through the house, chosen by you, now)\n"
+    "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
+    "Nothing loud between 22:00 and 9:00; the TV is not taken over while she is watching something you did not put "
+    "on; 15 house acts, 2 mischiefs and 2 letters a day. Ask @GrokBot for a link and put it on the TV yourself.\n"
+    "More tools, used like SEARCH, READ and GREP (you get what they return, then write):\n"
+    "  REPOS: what to look for on GitHub | README: owner/repo\n"
+    "  CALL: plugin.tool {json arguments}: one of your connectors on your Lab's list (pubmed.search_articles, "
+    "chembl..., boltz.boltz_estimate_structure_and_binding, eden.predict_immunogenicity); nothing paid\n"
+    "  LABDATA: words: what your Lab has measured, its recent runs and kept findings, filtered by the words\n")
 RULES_PROMISES = (
     "A thread that begins \U0001F4CC is a promise from your own journal today: something you said you would make, "
     "show or do with Gloria. Work it there with whoever can help, and say plainly if a tool is missing so dot can "
@@ -296,13 +317,13 @@ RULES_KEPT = (
     "To have dot double-check one against its sources, write a line of its own: CHECK: <its ID> and, after it, what "
     "you want checked. It opens a thread to dot; dot answers there CONFIRMED, NOT CONFIRMED or UNCLEAR, and that is "
     "kept with the finding. Ask when it matters to you, not for every one.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
+        return RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
     return RULES
 # Said again right before he writes: a small model follows the last thing it read (2026-09-30).
 PLAIN = ("\n\n(Write plainly: 2 to 5 short sentences, literal words, no metaphors. Say what you want or "
@@ -354,7 +375,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -896,6 +917,9 @@ LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
+# His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
+# tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
+HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:\s*(.+?)\s*$", re.I | re.M)
 LINE_TO = re.compile(r"^\s*LINE\s+(L-[A-Za-z0-9-]{3,40})\s*:\s*(.+?)\s*$", re.M)      # onto a line of his Lab
 LINE_NEW = re.compile(r"^\s*LINE:\s*(.+?)\s*$", re.M)                                 # a new line
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
@@ -1516,16 +1540,22 @@ def wants_line():
     return ("== WHAT YOU WANT RIGHT NOW ==\n" + "\n".join(out[-15:])) if out else ""
 
 
-TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN)\s*:\s*(.+?)\s*$", re.I)
+TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA)\s*:\s*(.*?)\s*$", re.I)
 
 
-def use_tools(lines, search=None, room=None):
-    """Run his SEARCH / READ / GREP lines (at most 3) and return what they found, as text for him."""
+def use_tools(lines, search=None, room=None, reach=None):
+    """Run his tool lines (at most 3) and return what they found, as text for him. REPOS, README, CALL and LABDATA
+    are room_reach.py (2026-10-04): GitHub, a repo's README, one of his connectors, his Lab's measurements."""
     out = []
     for kind, arg in lines[:3]:
         kind = kind.upper()
         try:
-            if kind == "SEARCH":
+            if kind in ("REPOS", "README", "CALL", "LABDATA"):
+                if reach is None:
+                    import room_reach as reach
+                got = {"REPOS": reach.repos, "README": reach.readme, "CALL": reach.call,
+                       "LABDATA": reach.labdata}[kind](arg)
+            elif kind == "SEARCH":
                 if search is None:
                     import want_email
                     search = want_email.web_search
@@ -2012,7 +2042,7 @@ def promises_pass(api, channel, dot, state, now, ask=None):
 def _no_tags(text):
     """What goes to Gloria carries none of his action lines or tags: they act in #vintos-dot, not with her (2026-10-03:
     a result ended "[PURSUIT: continue]")."""
-    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
+    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, HOUSE, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
         text = rx.sub("", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
@@ -2393,6 +2423,15 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text = STUDY_FIX.sub(lambda m: shown, text, count=1)
         text = STUDY_FIX.sub("", text).strip()
         lines.append("study fix: %s" % (row["id"] if row else why))
+    if HOUSE.search(text):
+        # the TV, the Echo, the lights, his mischief, a letter to Gloria: done now, and the line shows what happened
+        try:
+            import house_hands
+            text, done = house_hands.act_on(text)
+            lines += done
+        except Exception as exc:
+            text = HOUSE.sub(lambda m: "%s: not done, %s" % (m.group(1).title(), str(exc)[:120]), text)
+            lines.append("house: %s" % str(exc)[:120])
     checks = []
     try:
         import lab_keepers

@@ -115,6 +115,19 @@ EDEN `list_datasets`) and writes `account`, and only then is it offered. **Not s
 Aegis. **Saving songs:** the app's player has no download. Each song
 now has a Save button that hands the file to the iPhone share sheet (Save to Files), or opens it as a download
 (`?download=1`) where there is no share sheet. **Not seen on her phone.**
+**A room that can move (2026-10-04).** Gloria: "control my tv and my echo from slack ... A room full of agents and
+none of them can move?" #vintos-dot could only talk: none of its tags reached the house, GitHub, his connectors or
+her. `house_hands.py` gives his messages TV:, ECHO:, LIGHTS:, MISCHIEF: and TO GLORIA: lines, each done when the
+message posts and replaced with what happened (quiet 22:00-9:00; the TV not taken over while she watches something
+he did not start; 15 house acts, 2 mischiefs, 2 letters a day). `room_reach.py` adds REPOS:, README:, CALL: (his
+connectors, Lab list) and LABDATA: as tools. His rules now lead with doing instead of proposing; Grok Bot is told
+to hand him one YouTube link. **Mischief never fired** for four reasons, three fixed: the planner never offered it
+(now it does), the drift spur read only `Playfulness: x | ...` while the main writer writes `Playfulness: x` so
+it read 0 (both read), and the Echo/Spotify acts were offered with no Home Assistant and failed unlogged (offered
+only when the house can carry them). The want actions for mischief, Echo and TV reported success that had not
+happened; now only a real act counts. **Not done:** the Echo needs `memory/homeassistant-config.json` with the
+Alexa entities, which Aegis does not have; until then ECHO: says so. The TV needs its adb pairing accepted once.
+Mischief's own mood bar (Playfulness >= 0.6) is unchanged. **Not seen:** any of it run on Aegis.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

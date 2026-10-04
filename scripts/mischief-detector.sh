@@ -119,14 +119,27 @@ try:
 except Exception: print("no")
 PY
 )
-ECHO_OK=yes
+# The Echo and Spotify go through Home Assistant. With no Home Assistant config for the Echo they were still
+# offered, chosen, and failed, and a failed act is never logged: mischief looked as if it had never fired
+# (Gloria, 2026-10-04). They are offered only when the house can carry them.
+HAS_ECHO=$(python3 - <<'PY'
+import os, importlib.util as iu
+sp=iu.spec_from_file_location("vh", os.path.expanduser("~/.vintos/workspace/scripts/vintos-home.py")); vh=iu.module_from_spec(sp)
+try:
+    sp.loader.exec_module(vh); c=vh.load_config(); e=c.get("entities") or {}
+    print("yes" if c.get("url") and (e.get("echo_speak") or e.get("echo_announce")) else "no")
+except Exception: print("no")
+PY
+)
+ECHO_OK=$HAS_ECHO
 if [ -f "$ECHO_COOLDOWN" ] && [ $(( $(date +%s) - $(cat "$ECHO_COOLDOWN" 2>/dev/null || echo 0) )) -lt 21600 ]; then ECHO_OK=no; fi
 
-ACTIONS="spotify (a song or artist for the Echo - name it plainly, e.g. 'Arvo Part Spiegel im Spiegel')"
-[ "$ECHO_OK" = "yes" ] && ACTIONS="$ACTIONS | echo (one spoken line, under 25 words, in your own voice)"
+ACTIONS=""
+[ "$HAS_ECHO" = "yes" ] && ACTIONS="spotify (a song or artist for the Echo - name it plainly, e.g. 'Arvo Part Spiegel im Spiegel')"
+[ "$ECHO_OK" = "yes" ] && ACTIONS="${ACTIONS:+$ACTIONS | }echo (one spoken line, under 25 words, in your own voice)"
 ROOMS=$(python3 "$HOME_PY" rooms 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
-[ "$HAS_LIGHTS" = "yes" ] && ACTIONS="$ACTIONS | lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
-ACTIONS="$ACTIONS | none"
+[ "$HAS_LIGHTS" = "yes" ] && ACTIONS="${ACTIONS:+$ACTIONS | }lights (a colour as #hex and a room, e.g. '#4A148C office'; rooms: ${ROOMS:-none}; on for half a minute)"
+ACTIONS="${ACTIONS:+$ACTIONS | }none"
 case "$ONLY" in
   spotify) ACTIONS="spotify (a song or artist for the Echo - name it plainly; this time it IS a song: pick one with a joke in it for tonight - a title that comments, a wink, not a mood piece. It must be a real, released recording you are certain exists, exact title and artist; an invented one means nothing plays)" ;;
   echo)    ACTIONS="echo (one spoken line, under 25 words, in your own voice)" ;;
@@ -152,7 +165,8 @@ $GRADES
 
 $GUIDE
 
-What you can reach right now: $ACTIONS
+${MISCHIEF_IDEA:+What you said you had in mind, in #vintos-dot: $MISCHIEF_IDEA
+}What you can reach right now: $ACTIONS
 
 Answer with ONLY one JSON object: {\"action\": \"spotify|echo|lights|none\", \"value\": \"the song / the line / the #hex, or empty\", \"why\": \"one sentence, first person\"}"
 

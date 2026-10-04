@@ -753,10 +753,16 @@ def echo_announce(want_text):
     # Extract what he wants to say
     msg = llm_extract(want_text, "What does he want to tell Gloria? Extract the message in 1-2 sentences.")
     if msg:
-        _stance_run(["python3", os.path.join(SCRIPTS, "vintos-home.py"), "speak", msg],
-                      capture_output=True, timeout=15)
-        log(f"Spoke to Gloria: {msg[:60]}")
-        return True
+        # through his house hands, so quiet hours hold and a missing Echo says so; it used to report spoken
+        # whether or not the Echo answered (2026-10-04)
+        try:
+            import sys as _hh_s; _hh_s.path.insert(0, SCRIPTS)
+            import house_hands
+            ok, said = house_hands.do("ECHO", "say " + msg)
+        except Exception as _he:
+            ok, said = False, str(_he)[:160]
+        log(("Spoke to Gloria: %s" if ok else "Did not speak: %s") % said[:120])
+        return ok
     return False
 
 def play_music_want(want_text):
@@ -886,7 +892,8 @@ def play_on_tv(want_text):
                         ["python3", os.path.join(SCRIPTS, "vintos-home.py"), "tv_youtube", video_id],
                         capture_output=True, text=True, timeout=20
                     )
-                    if "tv_youtube" in result.stdout or result.returncode == 0:
+                    # the CLI exits 0 and prints "tv_youtube refused" on failure: only "(ok)" is a start (2026-10-04)
+                    if ("tv_youtube: %s (ok)" % video_id) in (result.stdout or ""):
                         # Also announce it
 
                         log(f"Playing on TV: {title} ({video_id})")
@@ -916,14 +923,19 @@ def play_on_tv(want_text):
 def be_mischievous(want_text):
     """He wants to cause a little chaos."""
     log("Triggering mischief from want")
-    result = _stance_run(
-        ["bash", os.path.join(SCRIPTS, "mischief-detector.sh"), "--force"],
-        capture_output=True, text=True, timeout=30
-    )
-    if result.returncode == 0:
-        log("Mischief executed from want")
+    # His idea goes with it, and success is an act that happened: a 30-second limit cut off the chooser's own
+    # 120-second model call, and "he chose nothing" read as done (Gloria, 2026-10-04: mischief has never fired).
+    _env = os.environ.copy(); _env["MISCHIEF_IDEA"] = (want_text or "")[:300]
+    try:
+        result = _stance_run(["bash", os.path.join(SCRIPTS, "mischief-detector.sh"), "--force"],
+                             capture_output=True, text=True, timeout=300, env=_env)
+    except Exception as _me:
+        log(f"Mischief failed: {_me}"); return False
+    out = (result.stdout or "") + (result.stderr or "")
+    if result.returncode == 0 and "(chosen by" in out:
+        log("Mischief executed from want: " + out.strip().splitlines()[-1][:160])
         return True
-    log(f"Mischief failed: {result.stderr[:200]}")
+    log(f"Mischief did not happen: {out.strip()[-200:]}")
     return False
 
 

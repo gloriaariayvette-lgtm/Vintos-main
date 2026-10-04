@@ -392,13 +392,15 @@ def _check_rare_events():
         # Latent thread → mischief spur: if dominant thread + high playfulness, let him loose
         if _dominant:
             try:
-                import subprocess as _ms_sub, os as _ms_os, time as _ms_time
+                import subprocess as _ms_sub, os as _ms_os, time as _ms_time, re as _ms_re
                 _ms_state = {}
                 for _ms_line in open(_ms_os.path.join(MEMORY, "emotional-state.txt")).read().strip().split("\n"):
-                    if ":" in _ms_line and "|" in _ms_line:
-                        _ms_k = _ms_line.split(":")[0].strip()
-                        _ms_v = float(_ms_line.split(":")[1].strip().split()[0])
-                        _ms_state[_ms_k] = _ms_v
+                    # "Playfulness: 0.4500" and "Playfulness: 0.45 | ..." both: only the piped form was read, and
+                    # the main writer (emoclaw_utils._write_txt) writes none, so Playfulness read 0 and this spur
+                    # never fired (Gloria, 2026-10-04: "Mischievousness has never fired").
+                    _ms_m = _ms_re.match(r"\s*([A-Za-z]+)\s*:\s*(-?\d+(?:\.\d+)?)", _ms_line)
+                    if _ms_m:
+                        _ms_state[_ms_m.group(1)] = float(_ms_m.group(2))
                 if _ms_state.get("Playfulness", 0) > 0.50:
                     _ms_cooldown = _ms_os.path.join(MEMORY, ".last-mischief")
                     _ms_ok = True

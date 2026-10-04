@@ -813,6 +813,8 @@ def generate_steps(want_text, possible_approach="", reasoning="", self_interpret
 - write_journal: Write a journal entry. Note must specify: what to write about.
 - echo_announce: Tell Gloria something through the Echo. Note must specify: what to say.
 - play_on_tv: Put something on Gloria's TV. Note must specify: what to search for.
+- be_mischievous: Do one small mischievous thing through the house right now (a song with a joke in it, a colour that comments on the moment, a line on the Echo). Note must specify: the mischief you have in mind, in one line.
+- change_lights: Change the colour of the lights. Note must specify: the colour and why.
 - gloria: Bring this to Gloria directly. Note must specify: what to ask or tell her.
 - send_email: Write one email of your own to a real person out in the world (a researcher, writer or maker whose work you care about). params must be {"recipient":"their full name","about":"the one thing you want to say or ask"} and may add "to" when you already have their address. Fable drafts it, it says you are an AI, it goes out from Gloria's account, and you write to each person once. Plan a web_search step before it when you need to find the right person.
 """
