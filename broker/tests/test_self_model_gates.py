@@ -57,6 +57,38 @@ open(E.WATERMARK, "w").write(datetime.now().isoformat())
 check("nothing older than the watermark counts as new", E.introspections()["status"] == "empty"
       and not E.anything_new(), E.status())
 
+# --- the watermark the writer actually stamps carries an offset (2026-09-06T02:25:01-05:00) -------------------
+# Comparing that with a file's naive mtime raised TypeError, which _newer swallowed as "not newer": his
+# introspections of 29 September and 3 October read as "empty" against a 6 September watermark.
+from datetime import timezone as _tz
+aware_old = (datetime.now(_tz.utc) - timedelta(days=30)).astimezone().isoformat(timespec="seconds")
+open(E.WATERMARK, "w").write(aware_old)
+os.environ["SELF_MODEL_EVIDENCE_CUTOFF"] = (datetime.now(_tz.utc) + timedelta(minutes=1)).astimezone().isoformat(timespec="seconds")
+got = E.introspections()
+check("a watermark written with an offset still lets newer introspections count", got["status"] == "present"
+      and "brace before she answers" in got["text"], got)
+check("... and the run's offset cutoff does not hide them either", E.anything_new(), E.status())
+open(E.WATERMARK, "w").write((datetime.now(_tz.utc) + timedelta(minutes=1)).astimezone().isoformat(timespec="seconds"))
+check("an offset watermark newer than everything still reads as nothing new", not E.anything_new(), E.status())
+del os.environ["SELF_MODEL_EVIDENCE_CUTOFF"]
+
+open(E.WATERMARK, "w").write(aware_old)
+wal = os.path.join(MEM, "wal-log.json")
+json.dump([{"type": "correction", "timestamp": (datetime.now() - timedelta(days=60)).isoformat(), "content": "OLD ONE"},
+           {"type": "correction", "timestamp": datetime.now(_tz.utc).isoformat(), "content": "NEW ONE"}], open(wal, "w"))
+c = E.corrections()
+check("a correction older than an offset watermark is not fed to him again", "OLD ONE" not in c["text"]
+      and "NEW ONE" in c["text"], c)
+ev = os.path.join(MEM, "self-review-change-events.jsonl")
+open(ev, "w").write(json.dumps({"at": (datetime.now(_tz.utc) - timedelta(days=60)).isoformat().replace("+00:00", "Z"),
+                                "observation": "OLD CHANGE"}) + "\n" +
+                    json.dumps({"at": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z"),
+                                "observation": "NEW CHANGE"}) + "\n")
+a = E.architectural_changes()
+check("a change event stamped in UTC is compared in local time, not by dropping the zone", "OLD CHANGE" not in a["text"]
+      and "NEW CHANGE" in a["text"], a)
+os.remove(wal); os.remove(ev)
+
 # --- the writer's refusals ----------------------------------------------------------------------------------
 src = open(os.path.join(REPO, "scripts", "self-model-update.sh")).read()
 

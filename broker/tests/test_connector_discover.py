@@ -79,6 +79,17 @@ check("a url she set herself is kept", json.load(open(catalog.URLS_FILE))["pubme
 found2, _ = D.find(("eden",), opener_for({}))
 check("a connector already reachable is not looked for again", found2 == [], found2)
 
+# What her file actually held on 4 October: a template line Claude gave her before discovery existed.
+json.dump({"boltz": "https://PASTE_BOLTZ_URL/mcp", "eden": "https://PASTE_EDEN_URL/mcp"}, open(catalog.URLS_FILE, "w"))
+check("a placeholder in her file is not taken for a url", catalog.url_for("boltz") == "" and catalog.url_for("eden") == "")
+check("... so the Lab is not offered a connector that does not exist", "boltz" not in catalog.prompt_instructions("lab"))
+found3, missed3 = D.find(("boltz", "eden"), opener_for({live: '{"jsonrpc":"2.0","result":{}}'}))
+check("... and discovery looks for both instead of skipping them", [r["name"] for r in found3] == ["eden"]
+      and [r["name"] for r in missed3] == ["boltz"], (found3, missed3))
+D.write(found3)
+check("what it found replaces the placeholder", json.load(open(catalog.URLS_FILE))["eden"] == live
+      and catalog.url_for("eden") == live)
+
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs it", "connector_discover.py" in dep)
 check("... and runs it, so she never has to", 'connector_discover.py" --write' in dep)

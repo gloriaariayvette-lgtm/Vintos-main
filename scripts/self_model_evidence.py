@@ -27,10 +27,21 @@ MEM = os.path.join(WS, "memory")
 WATERMARK = os.path.join(MEM, ".self-model-evidence-watermark")
 CORRECTIONS_LEDGER = os.path.join(MEM, "self-model-corrections.jsonl")
 
+# The writer stamps the watermark with an offset (2026-09-06T02:25:01-05:00) and file times are naive local.
+# Comparing the two raises TypeError, which every collector swallowed as "not newer": from 6 September on,
+# nothing he wrote ever counted as new (Gloria, 2026-10-04). Every time is made naive local before comparing.
+def _local(dt):
+    if dt is None or dt.tzinfo is None:
+        return dt
+    return dt.astimezone().replace(tzinfo=None)
+
+def _parse(v):
+    v = str(v or "").strip()
+    return _local(datetime.fromisoformat(v.replace("Z", "+00:00"))) if v else None
+
 def _watermark():
     try:
-        v = open(WATERMARK).read().strip()
-        return datetime.fromisoformat(v) if v else None
+        return _parse(open(WATERMARK).read())
     except Exception:
         return None
 
@@ -38,7 +49,7 @@ def _cutoff():
     """One bounded collection cutoff for a whole run (P04-02): SELF_MODEL_EVIDENCE_CUTOFF, ISO. Material
     newer than it is left for the next run, and commit() advances the watermark to the cutoff, not to now."""
     v = os.environ.get("SELF_MODEL_EVIDENCE_CUTOFF", "").strip()
-    try: return datetime.fromisoformat(v) if v else None
+    try: return _parse(v)
     except Exception: return None
 
 def _within(dt):
@@ -111,7 +122,7 @@ def architectural_changes():
     for x in rows[-40:]:
         at = str(x.get("at", ""))
         try:
-            _atd = datetime.fromisoformat(at.replace("Z", "+00:00")).replace(tzinfo=None) if at else None
+            _atd = _parse(at)
             if wm is not None and _atd is not None and _atd <= wm: continue
             if _atd is not None and not _within(_atd): continue
         except Exception:
@@ -134,8 +145,9 @@ def corrections():
         if str(e.get("type", "")).lower() != "correction" and "CORRECTION" not in json.dumps(e).upper(): continue
         ts = str(e.get("timestamp", ""))
         try:
-            if wm is not None and ts and datetime.fromisoformat(ts) <= wm: continue
-            if ts and not _within(datetime.fromisoformat(ts)): continue
+            _tsd = _parse(ts)
+            if wm is not None and _tsd is not None and _tsd <= wm: continue
+            if _tsd is not None and not _within(_tsd): continue
         except Exception:
             pass
         ids.append("wal:" + ts); lines.append("- " + str(e.get("content") or e.get("fact") or e)[:180])

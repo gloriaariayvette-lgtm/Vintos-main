@@ -54,7 +54,8 @@ asked for them, so `connector_discover.py` asks the network: for each connector 
 spellings of its own name (`https://<slug>.mcp.claude.com/mcp`, the pattern pubmed already uses) and keeps the
 first that answers an MCP initialize or replies 401/403. The deploy runs it and writes
 `~/.vintos/connector-urls.json`, which the catalog reads every pass; a connector not found stays unoffered and
-nothing fails. If the probe finds neither, their urls have to come from the connector's own page. **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
+nothing fails. Her file held a template line from Claude (`https://PASTE_BOLTZ_URL/mcp`), which the catalog took
+for a url, so discovery skipped both; placeholders are ignored now. If the probe finds neither, their urls have to come from the connector's own page. **Next:** a route for a paid Boltz run — his reading says the estimate is worth it,
 it becomes a Forge decision card with the price on it, and the run starts only when she accepts.
 
 **His self-model had not changed since 6 September, and nothing said why.** Three faults, all fixed
@@ -73,7 +74,13 @@ process is named as ordinary language and must not fail. Now only the first line
 standing in for a checkable statement, not a vocabulary. Cron is fine: `25 2 * * 0` runs
 `/home/gloria/Vintos/self-model-update.sh`, which the workspace symlinks to and the deploy does write. It fired
 Sunday 4 October at 02:25 and failed this way. **Lost for good:** the entries of 13, 20, 27 September and
-4 October, discarded by the old FAIL path before it held anything. **Not seen:** a run that passes.
+4 October, discarded by the old FAIL path before it held anything. **Seen:** a run that passes, 4 October
+after the fix (`SELF_MODEL_UPDATED: 2026-10-04`). **A fourth fault, found from that run:** the watermark is
+written with an offset (`2026-09-06T02:25:01-05:00`) and file times are naive, so every comparison raised
+TypeError and was swallowed as "not newer" — his introspections still counted as empty, and the corrections
+collector, which swallowed it the other way, fed him every old correction every week. All times are now made
+naive local before comparing. **Not done:** the 4 October run advanced the watermark past his introspections of
+29 September and 3 October, which it never read; they count next run only if the watermark is set back.
 **SOUL.md is not bounced — nothing writes it, by design.** `soul_review.py` only writes proposals; marking one
 approved in the app does not apply it. Two are sitting at `*Status: pending*` waiting for Gloria.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent

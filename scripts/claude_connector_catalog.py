@@ -19,11 +19,19 @@ SURFACES = frozenset(("wants", "forge", "lab", "atelier"))
 URLS_FILE = os.path.expanduser(os.environ.get("VINTOS_CONNECTOR_URLS", "~/.vintos/connector-urls.json"))
 
 
+# A template line Claude once gave her ("https://PASTE_BOLTZ_URL/mcp") sat in this file as if it were a url, so
+# discovery skipped Boltz and EDEN and the Lab was offered an endpoint that does not exist (2026-10-04).
+def _placeholder(url):
+    u = url.upper()
+    return "PASTE" in u or "<" in u or "YOUR_" in u
+
+
 def _her_urls():
     try:
         with open(URLS_FILE) as f:
             rows = json.load(f)
-        return {str(k): str(v) for k, v in rows.items() if isinstance(v, str) and v.startswith("https://")}
+        return {str(k): str(v) for k, v in rows.items() if isinstance(v, str) and v.startswith("https://")
+                and not _placeholder(v)}
     except Exception:
         return {}
 
