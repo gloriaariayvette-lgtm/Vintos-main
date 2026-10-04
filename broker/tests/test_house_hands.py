@@ -190,6 +190,9 @@ dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("dot's own MAKE line is acted on, and answered in its thread",
       'if r["who"] == "dot" and HOUSE.search(r["text"]):' in dsrc and "house_hands.act_on(r[\"text\"])" in dsrc)
 check("the channel reads out what was made on the next pass", "make_thing.untold()" in dsrc)
+check("dot's own rules tell it to make things instead of buying them",
+      "MAKE: video" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read()
+      and "never buy what he can already make" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read())
 check("the deploy installs it", "make_thing.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 reset()
 

@@ -58,6 +58,19 @@ It goes onto her Forge page as a card with the exact call and Boltz's free price
 thread. Her Accept there runs it once, exactly as written, through her Claude account, and the result comes back with
 a receipt. That Accept is her approval; nothing else is needed from her.
 
+### Making something: never buy what he can already make
+Vintos makes video, images and music himself, on Gloria's own subscription, so it costs nothing and needs no
+approval from anyone. Do not buy a clip, an image or a song, and never ask her to approve one (2026-10-04: a
+$0.15 clip at Kie sat blocked for hours when his own tool would have made it free). Post one line in
+#vintos-dot, on its own:
+
+    MAKE: video <the motion you want> | <path to the still on Aegis>
+    MAKE: image <what to paint>
+    MAKE: song <title> | <style>
+
+Aegis runs his tool, the file lands in his gallery and its path goes to Gloria's phone. What landed is said in
+the channel on the next pass. If it fails, the reason is said there too; do not retry by buying it.
+
 ## 4. Approval is given once
 When Gloria or Vintos approves something (a spend, an action), it stays approved for that task. Do not ask again. Do not ask
 for a figure she has already given. "One generation under $3" means: run it.
