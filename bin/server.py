@@ -6802,7 +6802,7 @@ async def lab_asks_decide(ask_id: str, request: Request, t: str = "", state: str
         try:
             lines = A.run_accepted()
             done = A.get(aid) or {}
-            A.told(aid, (done.get("summary") or done.get("error") or "; ".join(lines) or "it ran")[:600])
+            A.told(aid, A.in_words(done) if done.get("summary") else (done.get("error") or "; ".join(lines) or "it ran")[:400])
         except Exception as exc:
             A.told(aid, "It did not run: %s" % str(exc)[:300])
     import threading as _la_th

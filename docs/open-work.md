@@ -144,6 +144,10 @@ the call and why, and two ntfy buttons calling `POST /api/lab/asks/<id>/decide?t
 which runs as her beside the store. Each card carries its own one-use token, so no app secret is ever in a
 notification; her app secret works too. Yes runs it and pushes back what came of it. **Not seen:** a push and an
 Accept end to end on Aegis. **Still true:** the Forge page cannot show these cards; the phone is the route.
+**Seen 4 October 17:08:** she accepted A-eaaf0c and Boltz started the PYP run. Its push was the raw record, and
+nothing watched the job: a connector answers with its JSON inside JSON, so the fields arrive escaped. `in_words`
+now says one sentence (queued / running / done / failed, with the job id), and `check_pending` asks the free
+status tool on each Slack pass and pushes once, when it finishes.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

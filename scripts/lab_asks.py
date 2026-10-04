@@ -130,6 +130,77 @@ def notify(row, send=None):
         return False
 
 
+def _field(blob, *names):
+    # A connector hands its record back as JSON inside JSON, so the fields arrive escaped (\"status\": \"pending\").
+    blob = str(blob or "").replace('\\"', '"').replace("\\n", "\n")
+    for n in names:
+        m = re.search(r'"%s"\s*:\s*"?([^",}\n]+)' % n, blob)
+        if m and m.group(1).strip() not in ("null", ""):
+            return m.group(1).strip()
+    return ""
+
+
+def in_words(row, blob=""):
+    """What a result means, in her words. A connector answers with its whole JSON record, and the push read as a
+    wall of it (Gloria, 2026-10-04: "What is this notification?")."""
+    blob = str(blob or row.get("summary") or "")
+    if not blob.strip():
+        return "it ran"
+    state = _field(blob, "status", "state").lower()
+    job = _field(blob, "id", "prediction_id", "job_id")
+    said = {"pending": "queued, not started yet", "queued": "queued", "running": "running now",
+            "succeeded": "done", "completed": "done", "complete": "done", "success": "done",
+            "failed": "it failed", "error": "it failed", "cancelled": "cancelled"}.get(state, state or "")
+    what = "%s.%s" % (row.get("plugin", ""), row.get("tool", ""))
+    if not said:
+        return (blob[:300] + ("…" if len(blob) > 300 else ""))
+    line = "%s: %s." % (what, said)
+    if said in ("queued, not started yet", "queued", "running now"):
+        line += " You will get its result here when it finishes."
+    err = _field(blob, "error")
+    if err and said == "it failed":
+        line += " " + err[:160]
+    return line + ((" (job %s)" % job) if job else "")
+
+
+def pending(rows=None):
+    """Runs she accepted that are started but not finished."""
+    return [r for r in (rows if rows is not None else load())
+            if r.get("state") == "ran" and not r.get("finished")
+            and _field(str(r.get("summary") or ""), "status", "state").lower() in ("pending", "queued", "running")]
+
+
+def check_pending(call=None, limit=2, send=None):
+    """Ask the connector, for free, whether an accepted run has finished; push its result once it has. Log lines."""
+    rows, lines, asked = load(), [], 0
+    for row in rows:
+        if row not in pending(rows) or asked >= limit:
+            continue
+        job = _field(str(row.get("summary") or ""), "id", "prediction_id", "job_id")
+        if not job:
+            continue
+        asked += 1
+        try:
+            if call is None:
+                import claude_connector_gateway
+                call = claude_connector_gateway.call
+            tool = "boltz_get_structure_and_binding_prediction" if "structure_and_binding" in row["tool"] else "boltz_get_job_status"
+            out = call(row.get("surface") or "lab", row["plugin"], tool, {"id": job},
+                       "checking a run Gloria accepted; this call is free")
+            blob = str(out.get("summary") or "")
+            state = _field(blob, "status", "state").lower()
+            if state in ("pending", "queued", "running", ""):
+                lines.append("%s still %s" % (row["id"], state or "unknown")); continue
+            row.update(finished=_now(), result=blob[:4000], result_state=state)
+            told(row["id"], in_words(row, blob), send=send)
+            _tell_the_line(row, "It finished: " + in_words(row, blob)[:400])
+            lines.append("%s %s" % (row["id"], state))
+        except Exception as exc:
+            lines.append("%s could not be checked: %s" % (row["id"], str(exc)[:120]))
+    save(rows)
+    return lines
+
+
 def told(aid, text, send=None):
     """What came of a call she accepted, to her phone."""
     try:

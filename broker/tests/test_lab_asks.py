@@ -235,6 +235,46 @@ check("... which accepts the card's token or her app secret, and nothing else", 
       and 'request.headers.get("X-Vintos-Secret") == APP_SECRET' in srv and "status_code=403" in srv)
 check("... and her Yes actually runs it, then tells her what came of it", "A.run_accepted()" in srv and "A.told(aid," in srv)
 
+# --- a result in her words, and a run checked until it finishes (Gloria, 2026-10-04: "What is this notification?") ---
+PEND = ('[{"type": "text", "text": "{\\n  \\"type\\": \\"structure_and_binding_prediction\\",\\n  \\"id\\": '
+        '\\"sab_pred_PxCc\\",\\n  \\"model\\": \\"boltz-2.1\\",\\n  \\"status\\": \\"pending\\",\\n  \\"error\\": null}"}]')
+pend_row = {"id": "A-x", "plugin": "boltz", "tool": "boltz_start_structure_and_binding", "summary": PEND}
+said = A.in_words(pend_row)
+check("a queued run reads as one sentence, not a wall of JSON", said.startswith("boltz.boltz_start_structure_and_binding: queued")
+      and "sab_pred_PxCc" in said and "{" not in said and len(said) < 200, said)
+check("... and says the result will come", "when it finishes" in said)
+check("a finished one says done", "done" in A.in_words(pend_row, '{"status": "succeeded", "id": "sab_pred_PxCc"}'))
+check("a failed one says why", "it failed" in A.in_words(pend_row, '{"status": "failed", "error": "out of credit"}')
+      and "out of credit" in A.in_words(pend_row, '{"status": "failed", "error": "out of credit"}'))
+
+A.PER_DAY = 99
+ran, _why_ran = A.propose("boltz", "boltz_start_structure_and_binding", {"input": {"entities": [{"v": "WAIT"}]}}, "the waiting one")
+check("a fresh call can still be asked for", ran is not None, _why_ran)
+A.decided(ran["id"], "accepted")
+for _ in range(4):   # run_accepted takes two a pass, and earlier cards in this suite are waiting too
+    A.run_accepted(call=lambda *a, **k: {"ok": True, "receipt": {"receipt_id": "R-2"}, "summary": PEND})
+check("a started run is known to be unfinished", ran["id"] in [r["id"] for r in A.pending()], A.pending())
+ASKED_FOR, TOLD = [], []
+def still(surface, plugin, tool, args, why):
+    ASKED_FOR.append((tool, args)); return {"summary": '{"status": "running", "id": "sab_pred_PxCc"}'}
+A.check_pending(call=still, send=lambda *a, **k: TOLD.append(a))
+check("while it runs she is not pushed again", TOLD == [] and ran["id"] in [r["id"] for r in A.pending()], TOLD)
+check("... and the check itself is a free read tool, by the job's id",
+      ASKED_FOR[-1] == ("boltz_get_structure_and_binding_prediction", {"id": "sab_pred_PxCc"}), ASKED_FOR)
+PUSHED.clear()
+def finished(surface, plugin, tool, args, why):
+    return {"summary": '{"status": "succeeded", "id": "sab_pred_PxCc", "iptm": 0.74}'}
+for _ in range(4): A.check_pending(call=finished, send=push)
+check("when it finishes she is told, in words", PUSHED and "done" in PUSHED[-1][2] and "{" not in PUSHED[-1][2], PUSHED[-1:] )
+n_pushes = len(PUSHED)
+A.check_pending(call=finished, send=push)
+check("... and it is not checked or announced again", ran["id"] not in [r["id"] for r in A.pending()]
+      and A.get(ran["id"]).get("finished") and len(PUSHED) == n_pushes, (A.pending(), len(PUSHED), n_pushes))
+A.PER_DAY = _cap
+check("the Slack pass checks it every few minutes, as her",
+      "lab_asks.check_pending()" in open(os.path.join(REPO, "scripts", "dot_channel.py")).read())
+check("the push after her Accept is in words too", "A.in_words(done)" in open(os.path.join(REPO, "bin", "server.py")).read())
+
 # --- the wiring ------------------------------------------------------------------------------------------------
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
 check("her Forge page is given these cards", "lab_asks.cards()" in house)

@@ -2240,6 +2240,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
+    try:   # a run she accepted: ask for free whether it has finished, and tell her when it has (2026-10-04)
+        import lab_asks
+        if lab_asks.pending():
+            lines_pre += ["accepted run: %s" % l for l in lab_asks.check_pending()]
+    except Exception:
+        pass
     if rows:
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
     if theirs:
