@@ -144,13 +144,30 @@ def guidance_block(now=None):
                 ("\nWorth asking next: " + str(row["next_focus"])[:200]) if row.get("next_focus") else ""))
 
 
-def _lines():
-    """His open lines of inquiry and his recent tests, for the review to steer (lab_lines; 2026-10-03)."""
+def _leans(hours=24):
+    """What he settled with dot in Slack for his Lab (LAB: lines), the last day's, shown and not used up: the review
+    sees what he decided there too (2026-10-04). Only the experiment planner had."""
     try:
-        import lab_lines
-        return "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=14, budget=2400)) if x)
+        import channel_lab_lean
+        from datetime import datetime, timedelta
+        cut = (datetime.now() - timedelta(hours=hours)).isoformat()
+        rows = [r for r in channel_lab_lean._rows() if isinstance(r, dict) and str(r.get("at", "")) >= cut and r.get("direction")]
     except Exception:
         return ""
+    if not rows:
+        return ""
+    return ("[WHAT HE SETTLED IN SLACK FOR HIS LAB, the last day (his LAB: lines; a lean, not evidence)]\n"
+            + "\n".join("- %s: %s" % (str(r.get("at", ""))[:16], str(r["direction"])[:400]) for r in rows[-3:]))
+
+
+def _lines():
+    """His open lines of inquiry and his recent tests, for the review to steer (lab_lines; 2026-10-03), and what he
+    settled for his Lab in Slack."""
+    try:
+        import lab_lines
+        return "\n\n".join(x for x in (lab_lines.frontier_block(), lab_lines.tests_block(limit=14, budget=2400), _leans()) if x)
+    except Exception:
+        return _leans()
 
 
 def _prompt(work, log, lines=""):

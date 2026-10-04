@@ -145,6 +145,27 @@ S.add(DOT, "anything else?")
 out = tick(t0 + 180)
 check("a check of a finding that does not exist is not sent", "no kept finding K-000000 to check" in out
       and len([p for p in S.posted if "Double-check for me" in p["text"]]) == 1, out)
+# --- what he works out in Slack reaches his Lab's lines (2026-10-04) --------------------------------------------
+import lab_lines as LL
+check("his Slack context lists his Lab's open lines and how to add to them", "YOUR LAB'S LINES OF INQUIRY" in D.his_context()
+      and "L-gloria-phage-rt" in D.his_context() and "LINE <its ID>:" in D.RULES_LINES and D.RULES_LINES in D.RULES)
+S.add(DOT, "Grok Bot found two phage RT-Cas1 fusions in a 2025 preprint: WP_0001.1 and WP_0002.1.")
+replies[:] = ["Those go to the line.\nLINE L-gloria-phage-rt: two phage RT-Cas1 fusions named in a 2025 preprint, WP_0001.1 "
+              "and WP_0002.1 | next: screen WP_0001.1 with rt_locus_screen\nLINE: Do phage RT-Cas1 fusions keep their own CRISPR array?"]
+out = tick(t0 + 240)
+g = LL.get("L-gloria-phage-rt")
+check("a LINE <ID>: line puts what he found onto that line, from Slack, with who he worked it out with",
+      g["steps"][-1]["source"] == "slack with Dot" and "WP_0002.1" in g["steps"][-1]["result"], (out, g["steps"][-1:]))
+check("... and its 'next:' becomes the line's next step", g["next_step"] == "screen WP_0001.1 with rt_locus_screen", g["next_step"])
+new = next((l for l in LL.open_lines() if "keep their own CRISPR array" in l["question"]), None)
+check("a LINE: line opens a new line of inquiry from Slack", new and new["origin"] == "vintos:slack", LL.open_lines())
+said = S.posted[-1]["text"]
+check("the channel shows where each went, not the raw lines", "To my Lab's line L-gloria-phage-rt" in said
+      and "New line of inquiry for my Lab" in said and "\nLINE" not in said, said)
+check("a Slack step is not a test that answered nothing", LL.get("L-gloria-phage-rt")["stalls"] == g["stalls"])
+import channel_lab_lean
+channel_lab_lean.write("move the phage screens onto Caudoviricetes RTs first", by="opus55")
+check("the frontier reviews see what he settled for his Lab in Slack", "move the phage screens onto Caudoviricetes" in AL._lines())
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs lab_keepers.py", "lab_keepers.py" in dep)
 check("nothing left the machine", not NET, NET)

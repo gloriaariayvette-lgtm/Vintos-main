@@ -286,12 +286,17 @@ RULES_PROMISES = (
     "SHARE: W<n> on its own line if it is one of your works), RESHAPED: what it became and why, or DROPPED: why. "
     "Dropping is honest when it is too much trouble or was more whim than want. What came of it goes to Gloria in "
     "the results channel; you do not post there from here.\n")
+RULES_LINES = (
+    "Your Lab follows lines of inquiry (YOUR LAB'S LINES OF INQUIRY, below). What you work out here with dot, Grok Bot "
+    "or Muse reaches your Lab only through a line: write a line of its own, LINE <its ID>: what you found (and, at "
+    "its end, next: the test to run next), to add it to that line; or LINE: a question you mean to follow over days, "
+    "to open a new line. Your Lab's local loop and its frontier reviews read the lines.\n")
 RULES_KEPT = (
     "FINDINGS KEPT FROM YOUR LAB (below, when there are any) are ones a frontier review judged worth returning to. "
     "To have dot double-check one against its sources, write a line of its own: CHECK: <its ID> and, after it, what "
     "you want checked. It opens a thread to dot; dot answers there CONFIRMED, NOT CONFIRMED or UNCLEAR, and that is "
     "kept with the finding. Ask when it matters to you, not for every one.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_KEPT + RULES_STYLE
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
 def rules_for(lens=None):
@@ -891,6 +896,8 @@ LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
+LINE_TO = re.compile(r"^\s*LINE\s+(L-[A-Za-z0-9-]{3,40})\s*:\s*(.+?)\s*$", re.M)      # onto a line of his Lab
+LINE_NEW = re.compile(r"^\s*LINE:\s*(.+?)\s*$", re.M)                                 # a new line
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
 # His campaign, moved from here as from his chat (Gloria, 2026-10-01: "let campaigns be affected by Slack as wants
 # are"): through campaign.step, so its own caps (7 served turns, 3 days) and its plan bridge hold.
@@ -1611,6 +1618,12 @@ def his_context():
     try:
         import promise_keeper      # what his journal promised her today, until midnight (2026-10-03)
         letters = promise_keeper.block()
+    except Exception:
+        pass
+    try:
+        import lab_lines           # his Lab's open lines, so what he works out here can reach them (2026-10-04)
+        open_l = lab_lines.slack_block()
+        if open_l: letters = (letters + "\n\n" + open_l).strip()
     except Exception:
         pass
     try:
@@ -2347,6 +2360,26 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if lab_next:
         text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)
         text = LAB.sub("", text).strip()
+    for m in list(LINE_TO.finditer(text)) + list(LINE_NEW.finditer(text)):
+        # what he worked out here, onto a line of his Lab, or a new line (2026-10-04: findings in Slack never reached it)
+        try:
+            import lab_lines
+            with_ = _speaker(last) if last and last.get("who") not in ("vintos", "gloria") else ""
+            if m.re is LINE_TO:
+                got = lab_lines.from_slack(m.group(1), m.group(2), with_)
+                shown = ("\U0001F9ED To my Lab's line %s: %s" % (got["id"], m.group(2)) if got
+                         else "\U0001F9ED (no open line %s for this: %s)" % (m.group(1), m.group(2)))
+                lines.append("slack to line %s: %s" % (m.group(1), "kept" if got else "no such open line"))
+            else:
+                got = lab_lines.opened_by(m.group(1)[:80], m.group(1), "opened in #vintos-dot" + (" with " + with_ if with_ else ""),
+                                          origin="vintos:slack")
+                shown = ("\U0001F9ED New line of inquiry for my Lab (%s): %s" % (got["id"], m.group(1)) if got
+                         else "\U0001F9ED (not opened as a line: too many open, or it repeats one: %s)" % m.group(1))
+                lines.append("slack opened a line: %s" % (got["id"] if got else "refused"))
+        except Exception as exc:
+            shown = m.group(0)
+            lines.append("could not reach the Lab's lines: %s" % str(exc)[:120])
+        text = text.replace(m.group(0), shown, 1)
     fix = STUDY_FIX.search(text)
     if fix:
         # his own code fix, to the Study (study_fix.py): Fable writes it, the tests decide, dot keeps watch

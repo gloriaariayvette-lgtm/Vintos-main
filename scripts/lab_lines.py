@@ -176,6 +176,43 @@ def record_step(line_id, step):
         return line
 
 
+NEXT = re.compile(r"\bnext\s*:\s*(.+)$", re.I | re.S)
+
+
+def from_slack(line_id, text, with_=""):
+    """What he worked out in #vintos-dot, onto a line (2026-10-03: findings in Slack never reached his Lab). A
+    'next: ...' at its end becomes the line's next step. Not a test, so it neither answers nor stalls the line."""
+    text = str(text or "").strip()
+    if not text:
+        return None
+    m = NEXT.search(text)
+    found, nxt = (text[:m.start()].strip(" |;,.-"), m.group(1).strip()) if m else (text, "")
+    with _locked():
+        d = _read()
+        line = next((l for l in d["lines"] if l["id"].lower() == str(line_id).lower() and l.get("state") == "open"), None)
+        if not line:
+            return None
+        row = {"at": _now(), "question": "(from #vintos-dot)", "source": "slack" + (" with " + with_ if with_ else ""),
+               "result": found[:700], "answered": "", "next": nxt[:700], "entry_id": "", "session_id": ""}
+        line["steps"] = ((line.get("steps") or []) + [row])[-60:]
+        if nxt:
+            line["next_step"] = nxt[:700]
+        _write(d)
+        return line
+
+
+def slack_block():
+    """His open lines, for #vintos-dot: their IDs, so he can add to one or open another from there."""
+    live = open_lines()
+    if not live:
+        return ""
+    return ("== YOUR LAB'S LINES OF INQUIRY (open) ==\n" + "\n".join(
+        "- %s%s: %s (%d steps) — next: %s" % (l["id"], " (Gloria's)" if l.get("standing") else "", l["title"],
+                                             len(l.get("steps") or []), (l.get("next_step") or "-")[:200]) for l in live)
+        + "\nWhat you work out here can go to your Lab: a line of its own, LINE <ID>: what you found (and, at its "
+          "end, next: the next test), or LINE: a new question to follow as a line.")
+
+
 def end(line_id, state, verdict, by="vintos"):
     """He (or a frontier review) ends a line: answered, or dropped with a reason. A standing line is not dropped."""
     if state not in ENDINGS:

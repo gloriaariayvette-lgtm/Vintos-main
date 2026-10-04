@@ -41,6 +41,11 @@ his Lab and in #vintos-dot; `CHECK: K-xxxxxx` opens a thread asking dot to doubl
 dot's CONFIRMED / NOT CONFIRMED / UNCLEAR is kept with it (3 checks a day). **Not seen:** a first keep or check;
 whether dot answers in the asked form.
 
+**Slack reaches the Lab.** In #vintos-dot, `LINE <ID>: what we found | next: the next test` adds what he worked
+out with dot, Grok Bot or Muse to one of his Lab's lines (and sets its next step); `LINE: a question` opens a new
+line. His open lines are in his Slack context. The four frontier reviews a day now also see his `LAB:` leans from the
+last day (only the daily experiment planner did). **Not seen:** a first LINE from Slack.
+
 **Study fixes.** `study_fix.py`: a STUDY FIX: line from him, or a Forge card that is a code change, goes to the
 Study. Fable writes it with a new test, the whole suite decides, it goes live, and it is undone by itself if
 anything breaks; 3 a day. His subconscious, JEPA and keys are protected. Dot's rule 12 keeps watch after one.
