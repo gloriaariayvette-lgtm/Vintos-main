@@ -184,6 +184,23 @@ def may_propose(plugin, surface, tool):
     return tool in (entry.get("proposable") or frozenset())
 
 
+def accepted_policy(plugin, tool, ask_id, arguments):
+    """The one door for a call Gloria accepted on her Forge page: only that ask, only while it is accepted, only the
+    tool and the exact arguments her card showed. Without it an accepted card could never run, because the paid tools
+    are outside policy() on purpose (found 2026-10-04: every Accept would have failed as "outside policy")."""
+    import lab_asks
+    row = lab_asks.get(ask_id) or {}
+    if row.get("state") != "accepted" or row.get("plugin") != plugin or row.get("tool") != tool:
+        raise PermissionError("not a call Gloria accepted")
+    if json.dumps(row.get("arguments"), sort_keys=True) != json.dumps(arguments, sort_keys=True):
+        raise PermissionError("not the call her card showed")
+    if not may_propose(plugin, row.get("surface") or "lab", tool):
+        raise PermissionError("not a tool he may ask her for")
+    entry = PLUGINS[plugin]
+    return {"visibility": entry["visibility"], "server": entry["server"], "url": url_for(plugin),
+            "tools": frozenset((tool,)), "is_action": True, "outbound_policy": {}}
+
+
 def policy(plugin, surface, tool):
     if surface not in SURFACES:
         raise ValueError("unknown connector surface")

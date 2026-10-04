@@ -293,6 +293,8 @@ RULES_HANDS = (
     "  LIGHTS: <colour or #hex> [room] | LIGHTS: flicker [room]\n"
     "  MISCHIEF: what you have in mind (one small mischievous thing through the house, chosen by you, now)\n"
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
+    "  ASK: plugin.tool {exact json arguments} | why it is worth it: a paid connector call (a Boltz run) goes onto "
+    "Gloria's Forge page with its free price estimate; her Accept runs it exactly as written. Dot can write the same line.\n"
     "Nothing loud between 22:00 and 9:00; the TV is not taken over while she is watching something you did not put "
     "on; 15 house acts, 2 mischiefs and 2 letters a day. Ask @GrokBot for a link and put it on the TV yourself.\n"
     "More tools, used like SEARCH, READ and GREP (you get what they return, then write):\n"
@@ -375,7 +377,7 @@ EDITOR = (
     "DROP: <why, in a few words> (only when nothing in it is true or on topic)")
 FIX = ("\n\nYour checks found: {failed}. So it cannot be kept as written. Write the corrected message in full, "
        "starting with EDIT: and nothing before it.")
-_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:.*$", re.I | re.M)
+_ACTION = re.compile(r"^\s*(?:TANGENT|ATELIER|LOCKED|DO|SHARE|LAB|APPROVED|DENIED|CAMPAIGN|CAMPAIGN MOVE|TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK)\s*:.*$", re.I | re.M)
 _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-—,:.*]*(.*)$", re.I | re.M)
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
@@ -920,6 +922,9 @@ STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
 HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA)\s*:\s*(.+?)\s*$", re.I | re.M)
+# A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
+# dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
+ASK_LINE = re.compile(r"^\s*ASK:\s*([\w-]+)\.([\w-]+)\s*(\{.*?\})?\s*(?:\|\s*(.+?))?\s*$", re.M)
 LINE_TO = re.compile(r"^\s*LINE\s+(L-[A-Za-z0-9-]{3,40})\s*:\s*(.+?)\s*$", re.M)      # onto a line of his Lab
 LINE_NEW = re.compile(r"^\s*LINE:\s*(.+?)\s*$", re.M)                                 # a new line
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
@@ -2042,7 +2047,7 @@ def promises_pass(api, channel, dot, state, now, ask=None):
 def _no_tags(text):
     """What goes to Gloria carries none of his action lines or tags: they act in #vintos-dot, not with her (2026-10-03:
     a result ended "[PURSUIT: continue]")."""
-    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, HOUSE, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
+    for rx in (PURSUIT, SHARE, LOCKED, DO, LAB, STUDY_FIX, HOUSE, ASK_LINE, CAMPAIGN, CAMPAIGN_MOVE, APPROVED, DENIED):
         text = rx.sub("", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
@@ -2222,6 +2227,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                                 "%s \u2014 %s" % (checked["state"], (checked["checks"][-1].get("note") or "")[:600]))
             except Exception:
                 pass
+        if r["who"] == "dot" and ASK_LINE.search(r["text"]):
+            try:   # dot puts a paid call on her Forge page; the answer goes in its thread
+                import lab_asks
+                said = [shown for _, shown in lab_asks.from_slack(r["text"], by="dot")]
+                if said:
+                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"],
+                                             "text": "\n".join(said)})
+                    kept_lines.append("dot asked Gloria: %d card(s)" % len(said))
+            except Exception as exc:
+                kept_lines.append("dot's ask failed: %s" % str(exc)[:120])
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
@@ -2423,6 +2438,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text = STUDY_FIX.sub(lambda m: shown, text, count=1)
         text = STUDY_FIX.sub("", text).strip()
         lines.append("study fix: %s" % (row["id"] if row else why))
+    if ASK_LINE.search(text):
+        try:
+            import lab_asks
+            shown_asks = iter(lab_asks.from_slack(text, by="vintos"))
+            text = ASK_LINE.sub(lambda m: next(shown_asks, (False, ""))[1], text).strip()
+            lines.append("asked Gloria on her Forge page")
+        except Exception as exc:
+            text = ASK_LINE.sub(lambda m: "Not asked: %s" % str(exc)[:120], text)
     if HOUSE.search(text):
         # the TV, the Echo, the lights, his mischief, a letter to Gloria: done now, and the line shows what happened
         try:

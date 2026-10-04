@@ -15,6 +15,7 @@ Watched means she sees the call before it happens. The card shows what would be 
 """
 from __future__ import annotations
 import json
+import re
 import os
 import sys
 import uuid
@@ -163,10 +164,13 @@ def run_accepted(call=None, limit=2):
         ran += 1
         try:
             if call is None:
+                # through the gateway's accepted door: the paid tools are outside its ordinary policy on purpose,
+                # so the ordinary call refused every Accept as "outside policy" (found 2026-10-04)
                 import claude_connector_gateway
-                call = claude_connector_gateway.call
-            out = call(row["surface"], row["plugin"], row["tool"], row["arguments"],
-                       "Gloria accepted this on her Forge page: " + row["why"][:400])
+                out = claude_connector_gateway.call_accepted(row)
+            else:
+                out = call(row["surface"], row["plugin"], row["tool"], row["arguments"],
+                           "Gloria accepted this on her Forge page: " + row["why"][:400])
             row.update(state="ran", ran_at=_now(), receipt_id=(out.get("receipt") or {}).get("receipt_id"),
                        summary=str(out.get("summary") or "")[:800])
             lines.append("ran %s (%s.%s)" % (row["id"], row["plugin"], row["tool"]))
@@ -177,6 +181,44 @@ def run_accepted(call=None, limit=2):
             _tell_the_line(row, "She accepted it but it did not run: " + str(exc)[:300])
     save(rows)
     return lines
+
+
+# An ask from #vintos-dot (Gloria, 2026-10-04: "Dot needs to be able to do this!"). Dot's own review would only take
+# her yes typed into a session she has no way to open; this puts the exact call on her Forge page instead.
+#   ASK: boltz.boltz_start_structure_and_binding {"input": {...}} | why it is worth it
+ASK = re.compile(r"^\s*ASK:\s*([\w-]+)\.([\w-]+)\s*(\{.*?\})?\s*(?:\|\s*(.+?))?\s*$", re.M)
+
+
+def _estimate(plugin, tool, arguments, gateway=None):
+    """The free price for a paid Boltz start, from its own estimate tool when he may run it; "" when there is none."""
+    est = tool.replace("_start_", "_estimate_", 1)
+    try:
+        import claude_connector_catalog as catalog
+        if est == tool or est not in (catalog.PLUGINS.get(plugin) or {}).get("read", ()):
+            return ""
+        if gateway is None:
+            import claude_connector_gateway as gateway
+        out = gateway.call("lab", plugin, est, arguments, "the free price for a card on Gloria's Forge page")
+        return "Free estimate: " + str(out.get("summary") or "")[:300]
+    except Exception as exc:
+        return ""
+
+
+def from_slack(text, by="vintos", gateway=None):
+    """Every ASK line in a message, onto her Forge page. [(ok, the line to show)]."""
+    out = []
+    for m in ASK.finditer(text or ""):
+        plugin, tool, raw, why = m.group(1), m.group(2), m.group(3) or "{}", (m.group(4) or "").strip()
+        try:
+            arguments = json.loads(raw)
+        except ValueError as exc:
+            out.append((False, "\U0001F9FE Not asked: the arguments are not JSON (%s)" % exc)); continue
+        row, why_not = propose(plugin, tool, arguments, why or ("asked for in #vintos-dot by " + by),
+                               estimate=_estimate(plugin, tool, arguments, gateway))
+        out.append((bool(row), ("\U0001F9FE On Gloria's Forge page for her Accept (%s): %s.%s%s" % (
+            row["id"], plugin, tool, (" — " + row["estimate"]) if row.get("estimate") else "")) if row
+            else "\U0001F9FE Not asked (%s): %s.%s" % (why_not, plugin, tool)))
+    return out
 
 
 def block(limit=4):

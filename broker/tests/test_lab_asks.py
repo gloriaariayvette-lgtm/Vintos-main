@@ -5,7 +5,7 @@
 Scratch workspace; every socket refused; the connector gateway and her Forge page are stubs. Nothing here reaches
 her account, her page, or a paid tool.
 """
-import json, os, socket, sys, tempfile
+import json, os, socket, sys, tempfile, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -125,6 +125,69 @@ check("a call that could not run is marked failed, with why", A.get(pend["id"])[
 
 check("his Lab is told what is waiting and what she answered", "CALLS YOU ASKED GLORIA FOR" in A.block()
       and "she said no" in A.block() and "Do not ask again" in A.block())
+
+# --- her Accept really runs: through the gateway's accepted door, not its ordinary policy --------------------------
+# The paid tools are outside policy() on purpose, so the ordinary call refused every Accept (found 2026-10-04).
+import claude_connector_gateway as G
+import claude_connector_relay as relay
+A.PER_DAY = 9
+door, _ = A.propose("boltz", "boltz_start_structure_and_binding", {"input": {"entities": [{"v": "door"}]}}, "the door")
+try:
+    G.call("lab", "boltz", "boltz_start_structure_and_binding", door["arguments"], "x", transport=lambda r: {"ok": True, "result": {}}); ordinary = True
+except PermissionError:
+    ordinary = False
+check("the ordinary gateway still refuses a paid tool", not ordinary)
+try:
+    G.call_accepted(door, transport=lambda r: {"ok": True, "result": {}}); before = True
+except PermissionError:
+    before = False
+check("a card she has not accepted cannot run", not before)
+A.decided(door["id"], "accepted", "yes")
+SENT_REQ = []
+row = A.get(door["id"])
+got = G.call_accepted(row, transport=lambda r: SENT_REQ.append(r) or {"ok": True, "result": {"job": "J-1"}})
+check("her accepted card runs through the gateway, marked as hers", got["ok"] and SENT_REQ[-1]["accepted"] == door["id"]
+      and SENT_REQ[-1]["tool"] == "boltz_start_structure_and_binding" and SENT_REQ[-1]["arguments"] == door["arguments"], SENT_REQ)
+try:
+    G.call_accepted(dict(row, arguments={"input": {"entities": [{"v": "SOMETHING ELSE"}]}}), transport=lambda r: {"ok": True, "result": {}}); swapped = True
+except PermissionError:
+    swapped = False
+check("the arguments cannot be changed after she accepted the card", not swapped)
+seen_by_relay = []
+relay._run_with_timeout = lambda *a: (seen_by_relay.append(a) or __import__("asyncio").sleep(0, {"result": {"job": "J-1"}, "source": "tool_result"}))
+ok = relay.connector({"plugin": "boltz", "surface": "lab", "tool": "boltz_start_structure_and_binding",
+                      "arguments": door["arguments"], "accepted": door["id"]})
+check("the relay's own door lets her accepted call through", ok["ok"] and seen_by_relay, ok)
+try:
+    relay.connector({"plugin": "boltz", "surface": "lab", "tool": "boltz_start_protein_design", "arguments": {}, "accepted": door["id"]}); smuggled = True
+except PermissionError:
+    smuggled = False
+check("... and nothing else rides in under her Accept", not smuggled)
+check("run_accepted uses that door when no stub is given", "claude_connector_gateway.call_accepted(row)" in open(os.path.join(REPO, "scripts", "lab_asks.py")).read())
+A.PER_DAY = _cap
+
+# --- an ask from #vintos-dot, from him or from dot ---------------------------------------------------------------------
+A.PER_DAY = 9
+EST = []
+fake_gw = types.SimpleNamespace(call=lambda s, p, t, a, why: EST.append((s, p, t)) or {"summary": "about $0.08"})
+said = A.from_slack('Running it.\nASK: boltz.boltz_start_structure_and_binding {"input": {"entities": [{"v": "PYP"}]}} | PYP binding, up to $0.10',
+                    by="dot", gateway=fake_gw)
+check("an ASK line in Slack puts the exact call on her Forge page", said and said[0][0] and "On Gloria's Forge page" in said[0][1], said)
+card = next(c for c in A.cards() if "PYP" in "\n".join(c["details"]))
+check("... priced by Boltz's own free estimate", "about $0.08" in card["cost"] and EST[-1] == ("lab", "boltz", "boltz_estimate_structure_and_binding"), (card["cost"], EST))
+check("... with the reason it was asked", "PYP binding, up to $0.10" in card["what"])
+check("a tool nobody may ask for is not put on her page", not A.from_slack("ASK: boltz.boltz_get_guidance {}", gateway=fake_gw)[0][0])
+check("arguments that are not JSON say so", "not JSON" in A.from_slack("ASK: boltz.boltz_start_protein_screen {nope}", gateway=fake_gw)[0][1])
+A.PER_DAY = _cap
+import dot_channel as Dc
+check("the channel reads the same ASK line as the asks module", Dc.ASK_LINE.pattern == A.ASK.pattern)
+dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("his ASK lines and dot's both reach her page, and dot gets the card number in its thread",
+      'lab_asks.from_slack(text, by="vintos")' in dsrc and 'lab_asks.from_slack(r["text"], by="dot")' in dsrc and '"thread_ts": r.get("thread") or r["ts"]' in dsrc)
+check("no ASK line reaches her results channel", "ASK:" not in Dc._no_tags("Done.\nASK: boltz.x {}"))
+check("he is told how to ask", "ASK: plugin.tool" in Dc.RULES_HANDS)
+check("dot is told to ask this way, never to send her to a task she cannot open",
+      "ASK: boltz.boltz_start_structure_and_binding" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read())
 
 # --- the wiring ------------------------------------------------------------------------------------------------
 house = open(os.path.join(REPO, "scripts", "forge_house.py")).read()

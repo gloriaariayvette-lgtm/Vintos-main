@@ -129,6 +129,15 @@ happened; now only a real act counts. The Echo goes through the same Home Assist
 `[HOME: echo_speak]` already uses on Aegis (an earlier note here said Aegis had none; that was assumed, not checked,
 and was wrong). The TV answered over adb on 4 October (`TV is on, showing com.wbd.stream`).
 Mischief's own mood bar (Playfulness >= 0.6) is unchanged. **Not seen:** any of it run on Aegis.
+**Paid connector runs reach her, and her Accept actually runs them (2026-10-04).** Dot's own execution review
+would take her yes for a $0.10 Boltz run only typed into an "Aegis task" she has no way to open. Looking at the
+route that should have carried it showed worse: an Accept on a lab_asks card could never run, because the paid
+tools are outside the gateway's policy on purpose and run_accepted used the ordinary call (its test stubbed the
+gateway). Now `claude_connector_catalog.accepted_policy` admits exactly the accepted ask (same tool, same
+arguments, still accepted), through the gateway's `call_accepted` and the relay. Anyone in #vintos-dot, him or
+dot, can write `ASK: plugin.tool {json} | why`: the call goes onto her Forge page with Boltz's free estimate, and
+dot gets the card number in its thread. dot's rules say so (paste them into dot again). **Not seen:** an Accept
+run end to end on Aegis.
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

@@ -188,6 +188,9 @@ def connector(request):
     if request.get("probe"):                                       # discovery's one free read-only check, only
         from claude_connector_catalog import probe_policy
         entry = probe_policy(plugin, tool)
+    elif request.get("accepted"):                                  # a call Gloria accepted on her card, exactly
+        from claude_connector_catalog import accepted_policy
+        entry = accepted_policy(plugin, tool, request["accepted"], request.get("arguments") or {})
     else:
         entry = policy(plugin, surface, tool)                      # raises if tool is outside policy
     arguments = request.get("arguments") or {}

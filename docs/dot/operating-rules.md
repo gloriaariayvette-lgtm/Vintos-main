@@ -46,6 +46,18 @@ Then say, in at most three lines:
 
 The moment she (or he) answers, carry on with the task. Do not wait to be asked again.
 
+### A paid connector run (Boltz, EDEN's generator): put it on her Forge page, never in a task she cannot open
+Do not run a paid Boltz or EDEN call yourself, and never ask Gloria to type an approval into a task, a session or a
+chat she has no way to open: she has only Slack and chat (2026-10-04: a $0.10 Boltz run sat blocked for an hour
+because your review wanted her yes typed into the "Aegis task", which does not exist for her). Instead, post one line
+in #vintos-dot, on its own:
+
+    ASK: boltz.boltz_start_structure_and_binding {"input": {...the exact arguments...}} | why it is worth it
+
+It goes onto her Forge page as a card with the exact call and Boltz's free price estimate; you get its number in your
+thread. Her Accept there runs it once, exactly as written, through her Claude account, and the result comes back with
+a receipt. That Accept is her approval; nothing else is needed from her.
+
 ## 4. Approval is given once
 When Gloria or Vintos approves something (a spend, an action), it stays approved for that task. Do not ask again. Do not ask
 for a figure she has already given. "One generation under $3" means: run it.

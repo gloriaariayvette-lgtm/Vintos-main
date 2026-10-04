@@ -97,3 +97,14 @@ def probe(plugin, *, transport=None):
         return True, "answered %s through her Claude login" % tool
     except Exception as exc:
         return False, str(exc)[:200]
+
+
+def call_accepted(row, *, transport=None):
+    """Run one call Gloria accepted on her Forge page (lab_asks), exactly as her card showed it, with a receipt."""
+    entry = claude_connector_catalog.accepted_policy(row["plugin"], row["tool"], row["id"], row.get("arguments") or {})
+    request = {"plugin": row["plugin"], "surface": row.get("surface") or "lab", "tool": row["tool"],
+               "arguments": row.get("arguments") or {}, "accepted": row["id"]}
+    response = _send(request, transport=transport)
+    receipt = _store(row.get("surface") or "lab", row["plugin"], row["tool"], request["arguments"],
+                     response["result"], entry["visibility"])
+    return {"ok": True, "receipt": receipt, "summary": summary(response["result"])}
