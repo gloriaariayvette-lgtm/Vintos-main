@@ -68,8 +68,15 @@ def answers(url, opener=None):
         return False, type(exc).__name__
 
 
+def account_probe(name):
+    """Through her Claude login: the connector's one free read-only call (claude_connector_gateway.probe)."""
+    import claude_connector_gateway
+    return claude_connector_gateway.probe(name)
+
+
 def find(names=(), opener=None):
-    """[{name, url, why}] for each connector whose url was found, and the misses."""
+    """[{name, url, why}] for each connector whose url was found, and the misses. A connector with no address
+    that answers its free probe through her Claude login is found as catalog.ACCOUNT."""
     found, missed = [], []
     for name, entry in sorted(catalog.PLUGINS.items()):
         if names and name not in names:
@@ -86,6 +93,12 @@ def find(names=(), opener=None):
                 break
             why_not.append("%s: %s" % (url, why))
         else:
+            if entry.get("probe"):
+                ok, why = account_probe(name)
+                if ok:
+                    found.append({"name": name, "url": catalog.ACCOUNT, "why": why})
+                    continue
+                why_not.append("her Claude login: %s" % why)
             missed.append({"name": name, "tried": why_not})
     return found, missed
 

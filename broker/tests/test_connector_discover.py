@@ -22,6 +22,14 @@ socket.socket.connect = _no_net
 import claude_connector_catalog as catalog
 import connector_discover as D
 
+# The probe through her Claude login is the one thing here that could reach her account: stubbed for the whole suite.
+PROBED = []
+LOGIN_HAS = set()
+def _probe_stub(name):
+    PROBED.append(name)
+    return (True, "answered through her Claude login (stub)") if name in LOGIN_HAS else (False, "stub: no login here")
+D.account_probe = _probe_stub
+
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
@@ -89,6 +97,87 @@ check("... and discovery looks for both instead of skipping them", [r["name"] fo
 D.write(found3)
 check("what it found replaces the placeholder", json.load(open(catalog.URLS_FILE))["eden"] == live
       and catalog.url_for("eden") == live)
+
+# --- Boltz and EDEN have no address: they are reached through her Claude login (2026-10-04) ------------------------
+check("the login probe in this suite is the stub", D.account_probe is _probe_stub)
+os.remove(catalog.URLS_FILE)
+found4, missed4 = D.find(("boltz", "eden"), opener_for({}))
+check("with no address and no answer through the login, neither is offered, and it says what it tried",
+      found4 == [] and all(any("her Claude login" in t for t in m["tried"]) for m in missed4), missed4)
+LOGIN_HAS.update({"boltz", "eden"})
+found5, _ = D.find(("boltz", "eden"), opener_for({}))
+check("a connector that answers its free call through her login is found", sorted(r["name"] for r in found5) == ["boltz", "eden"]
+      and all(r["url"] == catalog.ACCOUNT for r in found5), found5)
+D.write(found5)
+check("... written, and read back as reachable", catalog.url_for("boltz") == catalog.ACCOUNT and catalog.url_for("eden") == catalog.ACCOUNT)
+lab_menu = catalog.prompt_instructions("lab")
+check("... and offered to his Lab from the next pass", "boltz.boltz_estimate_structure_and_binding" in lab_menu
+      and "eden.predict_immunogenicity" in lab_menu, lab_menu[:300])
+n = len(PROBED); D.find(("boltz", "eden"), opener_for({}))
+check("once found it is not probed again on every deploy", len(PROBED) == n)
+check("the probe is one free read-only call and nothing else", catalog.PLUGINS["boltz"]["probe"] == ("boltz_get_guidance", {})
+      and catalog.PLUGINS["eden"]["probe"] == ("list_datasets", {}))
+try:
+    catalog.probe_policy("boltz", "boltz_start_protein_design"); probe_refused = False
+except PermissionError:
+    probe_refused = True
+check("the probe door opens for the probe tool only, never a paid one", probe_refused
+      and catalog.probe_policy("boltz", "boltz_get_guidance")["tools"] == frozenset(("boltz_get_guidance",)))
+
+# --- the relay: through her login there is no address to configure --------------------------------------------------
+import asyncio, types
+SDK_CALLS = []
+class Opts:
+    def __init__(self, **kw): self.kw = kw; SDK_CALLS.append(kw)
+class SystemMessage:
+    def __init__(self, tools): self.subtype = "init"; self.data = {"subtype": "init", "tools": tools}
+class ToolUseBlock:
+    def __init__(self, i, n): self.id, self.name = i, n
+class ToolResultBlock:
+    def __init__(self, i, c): self.tool_use_id, self.content, self.is_error = i, c, False
+class Msg:
+    def __init__(self, blocks): self.content = blocks
+LOGIN_TOOLS = ["mcp__claude_ai_Boltz_API__boltz_get_guidance", "mcp__claude_ai_PubMed__search_articles"]
+def fake_query(prompt, options):
+    async def gen():
+        yield SystemMessage(LOGIN_TOOLS)
+        name = next((t for t in LOGIN_TOOLS if t in options.kw["allowed_tools"] and t.endswith("__boltz_get_guidance")), None)
+        if name and "boltz_get_guidance" in prompt:
+            yield Msg([ToolUseBlock("u1", name)])
+            yield Msg([ToolResultBlock("u1", '{"guidance": "validate first"}')])
+    return gen()
+sys.modules["claude_agent_sdk"] = types.SimpleNamespace(query=fake_query, ClaudeAgentOptions=Opts)
+import claude_connector_relay as relay
+out = asyncio.run(relay._run("Boltz_API", "boltz_get_guidance", {}, catalog.ACCOUNT))
+check("through her login the relay configures no address and gets the tool's own result",
+      "mcp_servers" not in SDK_CALLS[-1] and out["result"] == {"guidance": "validate first"}, (SDK_CALLS[-1], out))
+check("... and allows only that one tool, under the names her account gives it",
+      "mcp__claude_ai_Boltz_API__boltz_get_guidance" in SDK_CALLS[-1]["allowed_tools"]
+      and all(t.endswith("__boltz_get_guidance") for t in SDK_CALLS[-1]["allowed_tools"]), SDK_CALLS[-1]["allowed_tools"])
+try:
+    asyncio.run(relay._run("EDEN_by_Basecamp_Research", "list_datasets", {}, catalog.ACCOUNT)); said = ""
+except RuntimeError as exc:
+    said = str(exc)
+check("a login without that connector says so, naming the connectors it does have",
+      "has no EDEN_by_Basecamp_Research connector" in said and "claude_ai_Boltz_API" in said, said)
+try:
+    asyncio.run(relay._run("PubMed", "search_articles", {}, "https://pubmed.mcp.claude.com/mcp"))
+except RuntimeError:
+    pass
+check("a connector with an address is still configured by its address",
+      SDK_CALLS[-1].get("mcp_servers") == {"PubMed": {"type": "http", "url": "https://pubmed.mcp.claude.com/mcp"}})
+ok = relay.connector({"plugin": "boltz", "surface": "probe", "tool": "boltz_get_guidance", "arguments": {}, "probe": True})
+check("the probe goes through the relay's own door", ok["ok"] and ok["result"] == {"guidance": "validate first"}, ok)
+try:
+    relay.connector({"plugin": "boltz", "surface": "probe", "tool": "boltz_start_protein_design", "arguments": {}, "probe": True}); smuggled = True
+except PermissionError:
+    smuggled = False
+check("a paid tool cannot ride in as a probe", not smuggled)
+import claude_connector_gateway as G
+check("the gateway's probe reports an answer, and a failure as a reason, never a crash",
+      G.probe("boltz", transport=lambda r: {"ok": True, "result": {}})[0] is True
+      and G.probe("eden", transport=lambda r: {"ok": False, "detail": "no login"}) == (False, "claude connector relay refused or failed: no login"))
+del sys.modules["claude_agent_sdk"]
 
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs it", "connector_discover.py" in dep)

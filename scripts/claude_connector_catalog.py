@@ -26,12 +26,19 @@ def _placeholder(url):
     return "PASTE" in u or "<" in u or "YOUR_" in u
 
 
+# A connector reached through her Claude login rather than an address. Claude Code and the Agent SDK load the
+# account's claude.ai connectors themselves when logged in with her account (code.claude.com/docs/en/mcp, "Use MCP
+# servers from Claude.ai"); Boltz and EDEN have no public address at all. connector_discover.py writes this only
+# after one free read-only call through the login has come back (2026-10-04).
+ACCOUNT = "account"
+
+
 def _her_urls():
     try:
         with open(URLS_FILE) as f:
             rows = json.load(f)
-        return {str(k): str(v) for k, v in rows.items() if isinstance(v, str) and v.startswith("https://")
-                and not _placeholder(v)}
+        return {str(k): str(v) for k, v in rows.items() if isinstance(v, str)
+                and (v == ACCOUNT or (v.startswith("https://") and not _placeholder(v)))}
     except Exception:
         return {}
 
@@ -75,8 +82,9 @@ PLUGINS = {
     },
     "boltz": {
         "server": "Boltz_API", "visibility": "project",
-        # Her account's Boltz connector. The MCP url is hers to supply (connector-urls.json, below);
-        # until it is there this connector is simply not offered, like uber_eats.
+        # Her account's Boltz connector, reached through her Claude login: it has no public address. Offered once
+        # discovery has had one free answer from it (probe), never before.
+        "probe": ("boltz_get_guidance", {}),
         "purpose": "Boltz-2.1 structure AND binding prediction: complexes, ligands, protein-protein.",
         "when": ("Use when the question is about a COMPLEX or an interaction, which ESMFold cannot answer: does "
                  "this protein bind that one, what does the pair look like. boltz_estimate_structure_and_binding "
@@ -106,6 +114,8 @@ PLUGINS = {
     },
     "eden": {
         "server": "EDEN_by_Basecamp_Research", "visibility": "project",
+        # Reached through her Claude login; the probe only lists her datasets, which reads and changes nothing.
+        "probe": ("list_datasets", {}),
         "purpose": ("EDEN (Basecamp Research): the probability that a protein-coding antigen provokes an immune "
                     "response, from its NATIVE nucleotide coding sequence."),
         "when": ("Only with a natural nucleotide CDS he sourced (A/C/G/T, forward strand, in frame, 150-8192 nt) "
@@ -189,6 +199,16 @@ def policy(plugin, surface, tool):
     return {"visibility": entry["visibility"], "server": entry["server"], "url": url_for(plugin),
             "tools": entry["read"] | entry["action"],
             "is_action": tool in entry["action"], "outbound_policy": {}}
+
+
+def probe_policy(plugin, tool):
+    """The one free read-only call discovery may make to see a connector answer through her login. Nothing else."""
+    entry = PLUGINS.get(plugin) or {}
+    probe = entry.get("probe")
+    if not probe or tool != probe[0]:
+        raise PermissionError("not this connector's probe")
+    return {"visibility": entry["visibility"], "server": entry["server"], "url": url_for(plugin),
+            "tools": frozenset((tool,)), "is_action": False, "outbound_policy": {}}
 
 
 def instructions(surface=None):

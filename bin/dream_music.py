@@ -356,7 +356,9 @@ def parse_prompt(fp):
             if len(t)>20: descs.append(t)
     if descs: d["description"]=" ".join(descs)
     # Extract lyrics section if present
-    lyrics_match = re.search(r'\*\*Lyrics:\*\*\s*\n(.*?)(?=\n\*\*Internal|\n\*\*Description|\n\*\*Genre|\n\*\*Tempo|\n\*\*Title|\n\*\*How|\n---|\Z)', content, re.DOTALL)
+    # He heads them "## Lyrics" as often as "**Lyrics:**"; only the second was read, so two songs went to the
+    # renderer without his words (Gloria, 2026-10-04). A heading, a bullet, bold or not, all read now.
+    lyrics_match = re.search(r'(?im)^(?:#{1,6}\s*|[-*]\s+)?\**\s*Lyrics\s*:?\s*\**\s*:?\s*\n(.*?)(?=\n\*\*Internal|\n\*\*Description|\n\*\*Genre|\n\*\*Tempo|\n\*\*Title|\n\*\*How|\n#{1,6}\s*How|\n---|\Z)', content, re.DOTALL)
     if lyrics_match:
         d["lyrics"] = lyrics_match.group(1).strip()
     d["raw"] = content

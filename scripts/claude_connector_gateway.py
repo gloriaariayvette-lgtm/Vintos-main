@@ -82,3 +82,18 @@ def call(surface, plugin, tool, arguments, purpose, *, transport=None):
     response = _send(request, transport=transport)
     receipt = _store(surface, plugin, tool, arguments, response["result"], entry["visibility"])
     return {"ok": True, "receipt": receipt, "summary": summary(response["result"])}
+
+
+def probe(plugin, *, transport=None):
+    """(True, why) when this connector answers its one free read-only call through her Claude login. No receipt:
+    nothing of hers is read beyond whether it answers. Never raises."""
+    entry = claude_connector_catalog.PLUGINS.get(plugin) or {}
+    if not entry.get("probe"):
+        return False, "no probe for this connector"
+    tool, arguments = entry["probe"]
+    try:
+        _send({"plugin": plugin, "surface": "probe", "tool": tool, "arguments": dict(arguments), "probe": True},
+              timeout=180, transport=transport)
+        return True, "answered %s through her Claude login" % tool
+    except Exception as exc:
+        return False, str(exc)[:200]

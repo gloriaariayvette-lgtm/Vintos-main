@@ -101,8 +101,18 @@ writer saved three pearls above his spec; he wrote his fields with a dash (`- **
 them; the renderer read only `**Title:**`, so it skipped all of his and took the title and style of a pearl quoting
 the old "Still Yours" spec. It now reads dashed, numbered and plain fields, and the pearls stay out of the saved
 file. `dream-music.py --repair-titles` gives each mis-filed song its own title and style back from its prompt and
-re-fetches overwritten audio while the service still has it. **Not undoable:** those five were rendered in the
-other song's style. **Saving songs:** the app's player has no download. Each song
+re-fetches overwritten audio while the service still has it. **Second correction (her grep of the 4 October
+file):** the only title in it is his own; he did name five different songs "Still Yours". The pearl reading above
+was wrong; the cause is the writer never having seen his songs, fixed by song_memory. The grep did show a real
+fault: he heads lyrics `## Lyrics`, which was not read, so two of those songs went without his words. Read now.
+Audio for 18 songs (36 versions) was recovered on 4 October.
+
+**Boltz and EDEN (2026-10-04).** They have no public address; discovery's guesses all failed. The relay said
+headless Claude Code cannot see her account's connectors, which the docs contradict (code.claude.com/docs/en/mcp:
+the Agent SDK loads claude.ai connectors when logged in with her account). The relay now calls through her login
+when there is no address; discovery confirms each with one free read-only call (Boltz `boltz_get_guidance`,
+EDEN `list_datasets`) and writes `account`, and only then is it offered. **Not seen:** the probe answering on
+Aegis. **Saving songs:** the app's player has no download. Each song
 now has a Save button that hands the file to the iPhone share sheet (Save to Files), or opens it as a download
 (`?download=1`) where there is no share sheet. **Not seen on her phone.**
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent

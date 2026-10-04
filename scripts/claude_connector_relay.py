@@ -123,40 +123,73 @@ def _tool_result_from(message, wanted, tool_uses):
     return None
 
 
-async def _run(server, tool, arguments, url):
-    """One restricted model turn: call exactly mcp__<server>__<tool> and return its raw result.
+def tool_names(server, tool):
+    """Every name the one requested tool can carry: mcp__<server>__<tool> when configured by address, and
+    mcp__claude_ai_<server>__<tool> when it comes from her account's connectors. Nothing else is allowed."""
+    names = []
+    for prefix in ("", "claude_ai_"):
+        for srv in (server, server.lower()):
+            n = f"mcp__{prefix}{srv}__{tool}"
+            if n not in names:
+                names.append(n)
+    return names
 
-    The connector is configured explicitly as a remote MCP server here — headless Claude Code does
-    NOT inherit the claude.ai account's UI connectors, so we point it at the connector's own MCP URL
-    (auth rides the account OAuth token in the environment). No dependence on `claude mcp add`.
+
+def _init_tools(message):
+    """The tool names the session started with, from the SDK's init message, or None."""
+    data = getattr(message, "data", None)
+    if isinstance(data, dict) and (getattr(message, "subtype", None) == "init" or data.get("subtype") == "init"):
+        return [str(t) for t in (data.get("tools") or [])]
+    return None
+
+
+async def _run(server, tool, arguments, url):
+    """One restricted model turn: call exactly the requested tool once and return its raw result.
+
+    With an https address the connector is configured as a remote MCP server. Without one (Boltz, EDEN: no public
+    address exists) the call goes through her Claude login, which loads the account's claude.ai connectors in the
+    Agent SDK as it does in the terminal (code.claude.com/docs/en/mcp). This file used to say headless Claude Code
+    does not inherit them, and refused; that left both connectors unreachable (Gloria, 2026-10-04).
     """
     from claude_agent_sdk import query, ClaudeAgentOptions   # imported lazily so CI can parse this file
-    fq = f"mcp__{server}__{tool}"
-    if not url:
-        raise RuntimeError(f"no MCP url configured for connector '{server}' — cannot reach it headless")
+    names = tool_names(server, tool)
+    kw = {}
+    if url and str(url).startswith("https://"):
+        kw["mcp_servers"] = {server: {"type": "http", "url": url}}
     options = ClaudeAgentOptions(
         model=RELAY_MODEL,
-        mcp_servers={server: {"type": "http", "url": url}},
-        allowed_tools=[fq, f"mcp__claude_ai_{server}__{tool}"],
+        allowed_tools=names,
         permission_mode="dontAsk",
-        system_prompt=("You are a deterministic connector relay, not a conversation. Call the tool "
-                       f"{fq} exactly once with the arguments given, then stop. Do not call any other "
-                       "tool, do not add commentary. The tool's own result is the only output that matters."),
+        system_prompt=("You are a deterministic connector relay, not a conversation. Call the tool named "
+                       f"{tool} on the {server} connector (it may appear as {names[0]} or {names[2]}) exactly "
+                       "once with the arguments given, then stop. Do not call any other tool, do not add "
+                       "commentary. The tool's own result is the only output that matters."),
+        **kw,
     )
-    prompt = f"Call {fq} once with these arguments (JSON): {json.dumps(arguments, ensure_ascii=False)}"
-    captured, tool_uses = None, {}
+    prompt = f"Call {tool} on {server} once with these arguments (JSON): {json.dumps(arguments, ensure_ascii=False)}"
+    captured, tool_uses, seen = None, {}, None
     async for message in query(prompt=prompt, options=options):
+        if seen is None:
+            seen = _init_tools(message)
         got = _tool_result_from(message, tool, tool_uses)
         if got is not None:
             captured = got
     if captured is not None:
         return {"result": captured, "source": "tool_result"}
+    if seen is not None and not any(t.endswith("__" + tool) for t in seen):
+        servers = sorted({t.split("__")[1] for t in seen if t.startswith("mcp__") and t.count("__") >= 2})
+        raise RuntimeError(f"this Claude login has no {server} connector; its connectors: "
+                           + (", ".join(servers) or "none"))
     raise RuntimeError("requested connector produced no verified tool result")
 
 
 def connector(request):
     plugin, surface, tool = request.get("plugin"), request.get("surface"), request.get("tool")
-    entry = policy(plugin, surface, tool)                          # raises if tool is outside policy
+    if request.get("probe"):                                       # discovery's one free read-only check, only
+        from claude_connector_catalog import probe_policy
+        entry = probe_policy(plugin, tool)
+    else:
+        entry = policy(plugin, surface, tool)                      # raises if tool is outside policy
     arguments = request.get("arguments") or {}
     if not isinstance(arguments, dict):
         raise ValueError("arguments must be an object")

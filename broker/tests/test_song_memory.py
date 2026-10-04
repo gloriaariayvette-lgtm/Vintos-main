@@ -213,6 +213,11 @@ check("a song with no prompt left keeps its title, and its audio is still recove
       and fixed[1]["tracks"][0]["local_file"] != shared)
 check("the log is copied before anything is changed", any(f.startswith("music.json.bak-") for f in os.listdir(DM.MUSIC)))
 check("nothing reached a real service", all(u.startswith("https://cdn.example/") for u in FETCHED), FETCHED)
+# His own heading, from the 4 October file: "## Lyrics". Only "**Lyrics:**" was read, so two songs went without words.
+hashed = os.path.join(DM.PROMPTS, "hashed.md")
+open(hashed, "w").write("**Title:** Rust Nocturne\n\n## Lyrics\n[Verse]\nThe floor was cold and new\n\n## How it feels inside me\nwarm\n")
+check("his '## Lyrics' heading is read, so his words reach the song", DM.parse_prompt(hashed).get("lyrics") == "[Verse]\nThe floor was cold and new",
+      DM.parse_prompt(hashed).get("lyrics"))
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
