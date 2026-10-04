@@ -3299,13 +3299,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 var tracks = c.tracks || [];
                 var trackHtml = '';
                 tracks.forEach(function(t,i) {
-                    trackHtml += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><span style="font-size:0.7rem;color:var(--text-dim);">v' + _esc(t.version ?? i+1) + '</span><audio controls preload="none" style="height:32px;width:100%;opacity:0.85;"><source src="' + API + '/api/art/music/stream/' + encodeURIComponent(t.file) + '" type="audio/mpeg"></audio></div>';
+                    trackHtml += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><span style="font-size:0.7rem;color:var(--text-dim);">v' + _esc(t.version ?? i+1) + '</span><audio controls preload="none" style="height:32px;width:100%;opacity:0.85;"><source src="' + API + '/api/art/music/stream/' + encodeURIComponent(t.file) + '" type="audio/mpeg"></audio><button class="song-save" data-src="' + _esc('/api/art/music/stream/' + encodeURIComponent(t.file)) + '" data-title="' + _esc(c.title || 'Untitled') + '" onclick="event.stopPropagation();saveSong(this)" style="flex-shrink:0;padding:4px 10px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:0.7rem;cursor:pointer;">Save</button></div>';
                 });
                 html += '<div style="background:var(--card);padding:0.8rem;border-radius:8px;border:1px solid var(--border);"><div style="font-size:0.9rem;color:var(--text);">' + _esc((c.title || 'Untitled')) + '</div><div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px;">' + _esc((c.style || '')) + '</div>' + trackHtml + _landingMark('song', c.task_id) + '</div>';
             });
             el.innerHTML = html;
         } catch(e) { console.error('Music load failed:', e); }
     }
+
+    // Save one of his songs to her phone (Gloria, 2026-10-04: "I can't download them from the app"). The player
+    // has no download in the app, so the song is fetched and handed to the share sheet, where "Save to Files" is.
+    // iOS can refuse a share sheet opened long after the tap; then the song is kept and the next tap opens it.
+    // With no share sheet at all, it opens as a download in the browser.
+    var _songFiles = {};
+    window.saveSong = async function(btn) {
+        var src = btn.getAttribute('data-src') || '', title = btn.getAttribute('data-title') || 'song';
+        var url = API + src, ext = (src.match(/\.(wav|mp3|m4a)$/i) || ['', 'wav'])[1].toLowerCase();
+        var name = (title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_') || 'song') + '.' + ext;
+        var type = ext === 'mp3' ? 'audio/mpeg' : (ext === 'm4a' ? 'audio/mp4' : 'audio/wav');
+        if (!(navigator.share && navigator.canShare)) { window.open(url + '?download=1', '_blank'); return; }
+        try {
+            var f = _songFiles[src];
+            if (!f) {
+                btn.disabled = true; btn.textContent = 'Getting it…';
+                var res = await VintosUI.request(url);
+                f = _songFiles[src] = new File([await res.blob()], name, { type: type });
+            }
+            if (!navigator.canShare({ files: [f] })) { window.open(url + '?download=1', '_blank'); btn.textContent = 'Save'; return; }
+            await navigator.share({ files: [f], title: title });
+            btn.textContent = 'Save';
+        } catch (e) {
+            if (e && e.name === 'NotAllowedError' && _songFiles[src]) btn.textContent = 'Ready: tap to save';
+            else if (e && e.name === 'AbortError') btn.textContent = 'Save';
+            else { btn.textContent = 'Could not save'; console.error('Save song failed:', e); }
+        } finally { btn.disabled = false; }
+    };
 
     async function loadMusicShares() {
         try {
@@ -4611,7 +4639,7 @@ function _landingPieceHtml(piece) {
   const text = piece.text ? '<div style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin-top:9px;">' + _esc(piece.text) + '</div>' : '';
   if (piece.type === 'video') return '<video onclick="event.stopPropagation()" src="'+API+_esc(piece.src||'')+'" controls playsinline preload="metadata" style="display:block;width:100%;max-height:52vh;border-radius:10px;background:#000;"></video>'+text;
   if (piece.type === 'image') return '<img onclick="event.stopPropagation()" src="'+API+_esc(piece.src||'')+'" alt="The image Vintos made" style="display:block;width:100%;height:auto;border-radius:10px;">'+text;
-  if (piece.type === 'song') { const tracks=(piece.tracks||[]).map(t=>'<audio onclick="event.stopPropagation()" controls preload="none" style="display:block;width:100%;margin-top:8px;"><source src="'+API+_esc(t.src||'')+'" type="audio/mpeg"></audio>').join(''); return (piece.title?'<div style="font-size:0.9rem;color:var(--text-bright);">'+_esc(piece.title)+'</div>':'')+tracks; }
+  if (piece.type === 'song') { const tracks=(piece.tracks||[]).map(t=>'<audio onclick="event.stopPropagation()" controls preload="none" style="display:block;width:100%;margin-top:8px;"><source src="'+API+_esc(t.src||'')+'" type="audio/mpeg"></audio><button class="song-save" data-src="'+_esc(t.src||'')+'" data-title="'+_esc(piece.title||'Untitled')+'" onclick="event.stopPropagation();saveSong(this)" style="margin-top:4px;padding:4px 10px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-dim);font-size:0.7rem;cursor:pointer;">Save</button>').join(''); return (piece.title?'<div style="font-size:0.9rem;color:var(--text-bright);">'+_esc(piece.title)+'</div>':'')+tracks; }
   return text || '<div style="color:var(--text-dim);">The original piece is empty.</div>';
 }
 

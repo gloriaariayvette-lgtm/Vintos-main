@@ -48,16 +48,18 @@ async def get_music(limit: int = 20):
 
 
 @router.get("/api/art/music/stream/{filename}")
-async def stream_music(filename: str):
-    """Stream a music file."""
+async def stream_music(filename: str, download: int = 0):
+    """Stream a music file. ?download=1 hands it over as a file to keep (Gloria, 2026-10-04: the app had no way
+    to save a song)."""
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
     music_path = os.path.join(MEMORY, "art", "music", filename)
     if os.path.exists(music_path):
+        keep = {"filename": filename} if download else {}
         if filename.endswith(".mp3"):
-            return FileResponse(music_path, media_type="audio/mpeg")
+            return FileResponse(music_path, media_type="audio/mpeg", **keep)
         elif filename.endswith(".wav"):
-            return FileResponse(music_path, media_type="audio/wav")
+            return FileResponse(music_path, media_type="audio/wav", **keep)
         elif filename.endswith(".jpeg") or filename.endswith(".jpg"):
             return FileResponse(music_path, media_type="image/jpeg")
     raise HTTPException(status_code=404, detail="Music file not found")

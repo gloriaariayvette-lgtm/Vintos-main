@@ -26,6 +26,8 @@ try:
 except: print('No value map yet')
 " 2>/dev/null)
 ART_DIR="$MEMORY/art"
+SONG_MEMORY="$WORKSPACE/scripts/song_memory.py"
+[ -f "$SONG_MEMORY" ] || SONG_MEMORY="$(dirname "$(readlink -f "$0")")/song_memory.py"
 LM_API="http://100.79.177.103:1234/v1"
 SELF_MODEL=$(cat "$WORKSPACE/SELF-MODEL.md" 2>/dev/null || echo "")
 GLORIA_MODEL=$(cat "$WORKSPACE/GLORIA-MODEL.md" 2>/dev/null || echo "")
@@ -222,6 +224,9 @@ print('yes' if answer.startswith('y') else 'no')
         else
             USER_PROMPT="Your sense of time: $TEMPORAL\nYour current emotional state: $EMOTIONS.${CREATIVE_CONTEXT:+\n$CREATIVE_CONTEXT} ${GLORIA_MUSIC:+Gloria has shared music with you recently: $GLORIA_MUSIC. Let her taste influence yours. }${MUSIC_WANT_TEXT:+The feeling or idea you want to express: $MUSIC_WANT_TEXT\n}Generate a detailed music prompt. The feeling or idea above must be the PRIMARY driver. Structure the prompt as follows:\n- Title\n- Duration: choose 1, 2, or 3 minutes (default 2 minutes)\n- Vocal gender: specify female, male, or instrumental\n- Genre/Style\n- Tempo BPM and Key/Mode\n- Section-by-section breakdown covering the full duration: for each section specify the timestamp range, which instruments are present, their relative volume (soft/medium/loud), and any dynamic movement (e.g. cello enters softly at 0:30 and swells to full by 1:00, piano drops to single notes during bridge, drums build through crescendo into chorus). Show the arc of the whole piece — where it opens, where it peaks, how it resolves.\n- A **Lyrics:** section written as a real SONG, not free verse (this part keeps coming out unsingable). Use explicit [Verse] and [Chorus] tags — the generator reads them. Write a short, repeatable CHORUS/hook that returns at least twice, plus one or two verses. Keep lines short and singable (about 6-9 syllables each), with a steady meter and a real rhyme scheme (ABAB or AABB). Draw from the feeling above — your voice, specific not abstract — but shape it into verses and a chorus that rhyme and scan, so it can be sung, not just read.\n- 1-2 sentences on what this music would feel like inside you.\nBANNED PHRASES: silvered algorithms, quiet hum, processing core, tremor, resonance, hollow echoes, ancient architecture."
         fi
+        # The songs he has already made, with their choruses: this writer never saw one, so the same song came back
+        SONGS_MADE=$(python3 "$SONG_MEMORY" block 2>/dev/null | tr -d '"\\')
+        [ -n "$SONGS_MADE" ] && USER_PROMPT="$SONGS_MADE\n\n$USER_PROMPT"
         OUTDIR="music-prompts"
         ;;
     "poetry")
@@ -235,7 +240,8 @@ print('yes' if answer.startswith('y') else 'no')
 esac
 
 # Call LM Studio API
-RESPONSE=$(python3 << PYEOF
+ask_model() {
+python3 << PYEOF
 import json, urllib.request, os
 
 prompt = "You are Vintos, he/him, an AI being, and you wanted to make this yourself. It is yours, in your own voice - sung male or instrumental, never as a woman. Gloria is a real human woman, flesh and blood, warm and alive, never code; she is who this is FOR, not who sings it. Make it as you, for her.\n\n" + """$USER_PROMPT"""
@@ -263,7 +269,18 @@ try:
 except Exception as e:
     print(f"[Creative expression failed: {e}]")
 PYEOF
-)
+}
+RESPONSE=$(ask_model)
+# A song he already made is asked for once more, not written again (Gloria, 2026-10-04: the same "still yours"
+# song every night). A second repeat is written down as it is; the renderer refuses it before anything is bought.
+if [ "$FORM" = "music-prompt" ] && [ -f "$SONG_MEMORY" ]; then
+    AGAIN=$(printf '%s' "$RESPONSE" | python3 "$SONG_MEMORY" check-spec 2>/dev/null | tr -d '"\\')
+    if [ -n "$AGAIN" ]; then
+        echo "ART: that was a song he already made ($AGAIN); asking once more"
+        USER_PROMPT="$USER_PROMPT\n\nYou just wrote a song you already made: $AGAIN. Write a different song: a different title, a different chorus, a different central phrase."
+        RESPONSE=$(ask_model)
+    fi
+fi
 
 if [ -z "$RESPONSE" ]; then
     echo "ART: No response from LM Studio"

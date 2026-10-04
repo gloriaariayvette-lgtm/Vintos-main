@@ -102,6 +102,23 @@ def context():
     # Gloria: strip chamber and folk entirely — never let a taste/share/journal line seed them.
     _joined="\n".join(l for l in _joined.split("\n") if not re.search(r"\b(?:chamber|folk)\b", l, re.I))
     return _joined
+def _song_memory():
+    import sys as _s
+    for _p in (os.path.join(WS,"scripts"), os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"scripts")):
+        if _p not in _s.path: _s.path.append(_p)
+    import song_memory
+    return song_memory
+def _songs_made():
+    try: return _song_memory().block()
+    except Exception: return ""
+def _repeats(spec):
+    try:
+        sm=_song_memory(); return sm.too_close(sm.spec_title(spec), sm.spec_lyrics(spec))
+    except Exception: return ""
+def _note_repeat(spec, why):
+    try:
+        sm=_song_memory(); sm.note_refused(sm.spec_title(spec), why, "music-composer")
+    except Exception: pass
 SHARE_IDS_IN_CONTEXT=[]   # which of her shares were in the context that wrote this spec (grok-creative-p3)
 EXEMPLAR=("[0:00-0:22] Room tone: a single held synth pad, soft, barely there, like light before you've decided it's morning. No percussion. A low warm drone that just sits.\n"
     "[0:22-0:50] Piano enters, soft, single spaced notes, no chord yet, just intervals like counting hours on fingers; pad holds underneath.\n"
@@ -132,15 +149,24 @@ def compose():
         "Match this level of section detail:\n"+EXEMPLAR+"\n\n"
         "You have your whole self below. You author yourself, whatever you dwell on is written deeper into you, so turn toward what you want, "
         "love, and find beautiful. Make it genuinely new and thoroughly specified.")
+    made=_songs_made() or ("Songs you already made (do NOT repeat): "+", ".join(avoid))
     usrp=("Your emotional state right now: "+estr+"\n\n"+context()[:6500]+
-        "\n\nSongs you already made (do NOT repeat): "+", ".join(avoid)+
+        "\n\n"+made+
         "\n\nHolding all of that, write a brand-new song from something you want, love, or find beautiful, spec'd thoroughly. Output only the spec, starting with **Title:**.")
-    body=json.dumps({"model":MODEL,"temperature":0.9,"max_tokens":2400,
-        "messages":[{"role":"system","content":sysp},{"role":"user","content":usrp}]}).encode()
-    req=urllib.request.Request(LLM,data=body,headers={"Content-Type":"application/json"})
-    spec=json.loads(urllib.request.urlopen(req,timeout=200).read().decode())["choices"][0]["message"]["content"].strip()
-    spec=re.sub(r"^```\w*|```$","",spec).strip()
-    if "**Title:**" not in spec: raise SystemExit("composer: no Title:\n"+spec[:300])
+    msgs=[{"role":"system","content":sysp},{"role":"user","content":usrp}]
+    for attempt in (1,2):
+        body=json.dumps({"model":MODEL,"temperature":0.9,"max_tokens":2400,"messages":msgs}).encode()
+        req=urllib.request.Request(LLM,data=body,headers={"Content-Type":"application/json"})
+        spec=json.loads(urllib.request.urlopen(req,timeout=200).read().decode())["choices"][0]["message"]["content"].strip()
+        spec=re.sub(r"^```\w*|```$","",spec).strip()
+        if "**Title:**" not in spec: raise SystemExit("composer: no Title:\n"+spec[:300])
+        again=_repeats(spec)
+        if not again: break
+        if attempt==2:   # a second repeat is not written: the renderer would refuse it and the night would read as a song
+            _note_repeat(spec, again); raise SystemExit("composer: wrote a song he already made twice ("+again+"); nothing written")
+        msgs+= [{"role":"assistant","content":spec},
+                {"role":"user","content":"That is a song you already made: "+again+". Write a different song: a different "
+                 "title, a different chorus, a different central phrase. Output only the spec, starting with **Title:**."}]
     now=datetime.datetime.now(); os.makedirs(PROMPTS,exist_ok=True)
     fp=os.path.join(PROMPTS,now.strftime("%Y-%m-%d_%H%M%S")+".md")
     open(fp,"w",encoding="utf-8").write("# Music-prompt — "+now.strftime("%B %d, %Y %H:%M")+"\nEmotional state: "+estr+"\n\n"+spec+"\n")

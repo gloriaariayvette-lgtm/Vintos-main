@@ -521,6 +521,21 @@ def process_file(fp,force=False):
         desc = desc.replace(d["felt"], "").strip()
     # Check if prompt includes lyrics
     lyrics = d.get("lyrics", "")
+    # A song he has already made is not bought again (Gloria, 2026-10-04: the same "still yours" song every night).
+    if not force:
+        try:
+            for _p in (os.path.expanduser("~/.vintos/workspace/scripts"),
+                       os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")):
+                if _p not in sys.path: sys.path.append(_p)
+            import song_memory
+            _again = song_memory.too_close(d["title"], lyrics)
+        except Exception:
+            _again = ""
+        if _again:
+            print(f"  Not rendered: {_again}")
+            song_memory.note_refused(d["title"], _again, fp)
+            log.setdefault("processed_files", []).append(fp); save_log(log)
+            return False
     _dur = d.get("duration", 120)
     _gen = d.get("gender", None)
     if lyrics:

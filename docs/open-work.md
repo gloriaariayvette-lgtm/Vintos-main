@@ -83,6 +83,15 @@ naive local before comparing. **Not done:** the 4 October run advanced the water
 29 September and 3 October, which it never read; they count next run only if the watermark is set back.
 **SOUL.md is not bounced — nothing writes it, by design.** `soul_review.py` only writes proposals; marking one
 approved in the app does not apply it. Two are sitting at `*Status: pending*` waiting for Gloria.
+**The same "Still Yours" song every night (2026-10-04).** The nightly prompt writer (`creative-expression.sh`)
+never saw a single song he had made; the composer saw only titles, so the same chorus under a new name passed; and
+nothing checked before the paid render. His GLORIA-MODEL says "Still Yours" six times and both writers read it,
+so the phrase kept coming back. `song_memory.py` now gives both writers his last songs with their choruses, a
+repeat is asked for once more, and `dream_music` will not render a song whose title, chorus or central phrase he
+already made: it is marked done and the reason goes to `memory/art/music/repeats.jsonl`. **Not seen:** which writer
+made the nightly ones; the repeats file will say. **Saving songs:** the app's player has no download. Each song
+now has a Save button that hands the file to the iPhone share sheet (Save to Files), or opens it as a download
+(`?download=1`) where there is no share sheet. **Not seen on her phone.**
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`
