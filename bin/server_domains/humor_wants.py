@@ -131,7 +131,11 @@ async def get_wants(request: Request):
             wants = json.load(f)
         unfulfilled = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed")]
         unfulfilled.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        return {"success": True, "wants": unfulfilled}
+        # every open want, as before; each parked one carries "board" (awaiting_gloria, blocked: want_board.py)
+        counts = {"working": len([w for w in unfulfilled if not w.get("board")]),
+                  "awaiting_gloria": len([w for w in unfulfilled if w.get("board") == "awaiting_gloria"]),
+                  "blocked": len([w for w in unfulfilled if w.get("board") == "blocked"])}
+        return {"success": True, "wants": unfulfilled, "counts": counts}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -194,14 +198,22 @@ async def get_dismissed_wants(request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        wants_path = os.path.join(MEMORY, "current-wants.json")
-        if not os.path.exists(wants_path):
-            return {"success": True, "wants": []}
-        with open(wants_path) as f:
-            wants = json.load(f)
-        dismissed = [w for w in wants if w.get("dismissed") and not w.get("fulfilled") and not w.get("unfulfilled")]
+        # the dismissed archive itself, not stragglers left in current-wants.json (2026-10-05: the app showed the
+        # 9 left behind, not the 64 actually filed)
+        rows = []
+        for name in ("dismissed-wants.json", "current-wants.json"):
+            path = os.path.join(MEMORY, name)
+            if os.path.exists(path):
+                with open(path) as f:
+                    data = json.load(f)
+                rows += [w for w in data if isinstance(w, dict) and w.get("dismissed") and not w.get("fulfilled")
+                         and not w.get("unfulfilled")]
+        seen, dismissed = set(), []
+        for w in rows:
+            if w.get("id") not in seen:
+                seen.add(w.get("id")); dismissed.append(w)
         dismissed.sort(key=lambda x: x.get("dismissed_at", x.get("timestamp", "")), reverse=True)
-        return {"success": True, "wants": dismissed}
+        return {"success": True, "wants": dismissed[:60]}
     except Exception as e:
         return {"success": False, "error": str(e)}
 

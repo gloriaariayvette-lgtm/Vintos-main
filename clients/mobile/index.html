@@ -2148,24 +2148,35 @@ function _wbCard(w, inCap) {
 }
 
 function _wbRender() {
-    const incoming = _wbWants.filter(w => !w.capability && !w.gloria_routed);
-    const routed = _wbWants.filter(w => w.capability || w.gloria_routed);
+    // parked off the working board (want_board.py): blocked on a hand he lacks, or waiting quietly on Gloria
+    const blocked = _wbWants.filter(w => w.board === 'blocked');
+    const board = _wbWants.filter(w => w.board !== 'blocked');
+    const incoming = board.filter(w => !w.capability && !w.gloria_routed);
+    const routed = board.filter(w => w.capability || w.gloria_routed);
     document.getElementById('wb-incoming-count').textContent = incoming.length;
     document.getElementById('wb-routed-count').textContent = routed.length;
     document.getElementById('wb-incoming').innerHTML = incoming.map(w => _wbCard(w, false)).join('') ||
         '<div style="font-size:0.75rem;color:var(--text-dim);padding:0.5rem;text-align:center;">All routed</div>';
     let ch = _wbCaps.map(cap => {
-        const cw = _wbWants.filter(w => w.capability === cap && !w.gloria_routed);
+        const cw = board.filter(w => w.capability === cap && !w.gloria_routed);
         return '<div style="background:var(--surface);border-radius:8px;padding:8px;margin-bottom:8px;">' +
             '<div style="font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:' + (WB_COLORS[cap] || 'var(--text-dim)') + ';margin-bottom:6px;">' + _esc((WB_LABELS[cap] || cap)) + '</div>' +
             (cw.length ? cw.map(w => _wbCard(w, true)).join('') : '<div style="font-size:11px;color:var(--text-dim);padding:6px;border:0.5px dashed rgba(255,255,255,0.08);border-radius:4px;text-align:center;">empty</div>') +
             '</div>';
     }).join('');
-    const gw = _wbWants.filter(w => w.gloria_routed);
-    if (gw.length) {
+    const gw = board.filter(w => w.gloria_routed && w.board !== 'awaiting_gloria');
+    const quiet = board.filter(w => w.board === 'awaiting_gloria');
+    if (gw.length || quiet.length) {
         ch += '<div style="background:var(--surface);border-radius:8px;padding:8px;margin-bottom:8px;">' +
             '<div style="font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:#534AB7;margin-bottom:6px;">you</div>' +
-            gw.map(w => _wbCard(w, true)).join('') + '</div>';
+            gw.map(w => _wbCard(w, true)).join('') +
+            (quiet.length ? '<details style="margin-top:6px;"><summary style="font-size:11px;color:var(--text-dim);cursor:pointer;">waiting quietly on you (' + quiet.length + ')</summary>' +
+                quiet.map(w => _wbCard(w, true)).join('') + '</details>' : '') + '</div>';
+    }
+    if (blocked.length) {
+        ch += '<div style="background:var(--surface);border-radius:8px;padding:8px;margin-bottom:8px;">' +
+            '<details><summary style="font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);cursor:pointer;">waiting for a hand he does not have (' + blocked.length + ')</summary>' +
+            blocked.map(w => _wbCard(w, true)).join('') + '</details></div>';
     }
     document.getElementById('wb-caps').innerHTML = ch;
     _wbRenderDisc();

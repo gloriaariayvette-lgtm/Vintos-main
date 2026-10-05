@@ -3,6 +3,32 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — his wants board stays bounded
+
+Chat's inspection on Aegis: 66 rows in `current-wants.json`, 57 active, **57 of 57 protected**, the oldest 26 days;
+one router pass moved 2 steps and finished 1 want of 56. Checked in the code, every finding held, and one was worse:
+`age_wants()` was never called by anything, so no want ever aged.
+- **The cap protected everything.** It protected `multistep`, `gloria_routed` and `READY`, and every want had become
+  all three. It now protects a want that completed a step in the last 48 hours, one Gloria routed or holds, and
+  anything parked; the rest are capped at 10 as designed.
+- **`want_board.tend()`** runs first in every router pass: fulfilled/dismissed rows still in the store are filed in
+  their archives; a want waiting on Gloria over 7 days parks `awaiting_gloria` (never rejected; woken the moment she
+  writes in its discussion); a want blocked on a missing hand parks `blocked` until the Forge clears it;
+  near-duplicates fold into the oldest, keeping their words; working wants that have not *moved* (a step completed,
+  not merely tried) in 7 days age out through his own aging (`age_one`: scar or let go), 5 a pass.
+- **Echoes no longer multiply.** An echo takes its parent's place (the parent filed as "reframed as") and keeps the
+  line's start date, so a failing chain neither grows the board nor stays young.
+- **Reconciliation** needs a quote that is in the record verbatim and shares two content words with the want ("The
+  air in this room is sixty-eight degrees" fulfilled a want about motion-freezing parameters). It was not in the
+  deploy manifest at all; it is now.
+- **The app**: the failed list reads `dismissed-wants.json`, not stragglers; parked wants sit in folded groups
+  ("waiting quietly on you", "waiting for a hand he does not have").
+
+**Expect on the first passes after deploy:** the board drops to roughly 10 working wants plus what is being worked;
+the rest are parked, folded, aged or capped, and every one is filed (fulfilled-, dismissed-wants.json, want-scars),
+none deleted. **Not seen on Aegis.** **Not done:** completed steps still wait for Gloria to advance them ("Gloria
+needs to review and advance" in the router); 84 pending steps may be partly that, not checked.
+
 ## 5 October — work in hand in #vintos-dot, so the room gets something done
 
 Gloria: "I want VINTOS in Slack to actually do real work", and of working alone:

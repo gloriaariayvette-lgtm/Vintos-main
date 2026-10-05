@@ -115,6 +115,17 @@ def main():
         w["reconcile_checked_at"] = datetime.now().isoformat()
         res = gemma_check(w.get("want", ""), evidence)
         if res:
+            # the quote has to be in the record and about this want, not any line of the day
+            try:
+                import want_board as _wbd
+                _why_not = _wbd.grounded(w.get("want", ""), res.get("evidence", ""), evidence)
+            except Exception:
+                _why_not = ""
+            if _why_not:
+                w["reconcile_refused"] = {"at": datetime.now().isoformat(), "why": _why_not,
+                                          "gemma_said": str(res.get("evidence", ""))[:200]}
+                log(f"NOT FULFILLED ({_why_not}): {w.get('want','')[:80]}")
+                continue
             # A make-want is proven by a file, not by Gemma reading his words. If
             # the artifact is not on disk, this is not fulfillment — record the
             # honest gap and leave the want alive. (evidence cannot generate itself)

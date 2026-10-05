@@ -1764,15 +1764,21 @@ def wants_line():
     """What he wants right now and where each stands."""
     rows = _load(os.path.join(WS, "memory", "current-wants.json"), [])
     out = []
+    parked = 0
     for w in rows if isinstance(rows, list) else []:
         if not isinstance(w, dict) or w.get("fulfilled") or w.get("dismissed"):
+            continue
+        if w.get("board"):       # parked off the working board: waiting on Gloria, or on a hand (want_board.py)
+            parked += 1
             continue
         steps = w.get("steps") or []
         i = int(w.get("current_step_index") or 0)
         step = steps[i] if 0 <= i < len(steps) and isinstance(steps[i], dict) else {}
         now = step.get("capability") or step.get("action") or ""
         out.append("- %s%s" % (str(w.get("want", ""))[:220], (" (next: %s)" % now) if now else ""))
-    return ("== WHAT YOU WANT RIGHT NOW ==\n" + "\n".join(out[-15:])) if out else ""
+    return (("== WHAT YOU WANT RIGHT NOW ==\n" + "\n".join(out[-15:])
+             + ("\n(%d more are parked: waiting on Gloria or on a hand you do not have yet)" % parked if parked else ""))
+            if out else "")
 
 
 TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA)\s*:\s*(.*?)\s*$", re.I)

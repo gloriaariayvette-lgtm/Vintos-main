@@ -1255,20 +1255,28 @@ def spawn_echo_want(parent_want):
         echo_entry["current_step_index"] = 0
         echo_entry["step_history"] = []
 
-    # Reduce parent intensity, mark echo spawned — parent stays alive
+    # The echo takes its parent's place: the parent is filed (dismissed-wants.json, "reframed as" the echo) and the
+    # echo keeps the line's start, so a chain of failures neither grows the board nor stays young. It was added
+    # beside the parent until 2026-10-05: an echo failed, echoed again, and 14 of 57 active wants were echoes of
+    # "signal", "skin", "vibration" and "stop searching" (Chat's inspection on Aegis).
+    echo_entry["born"] = parent_want.get("born") or parent_want.get("timestamp") or echo_entry["timestamp"]
+    echo_entry["lineage"] = (list(parent_want.get("lineage") or []) + [parent_want.get("id", "")])[-10:]
     wants_path = _ew_o.path.join(MEMORY, "current-wants.json")
+    dismissed_path = _ew_o.path.join(MEMORY, "dismissed-wants.json")
     try:
         wants = _ew_j.load(open(wants_path))
-        for w in wants:
-            if w.get("id") == parent_want.get("id"):
-                w["intensity"] = max(1, w.get("intensity", 3) - 1)
-                w["echo_spawned"] = True
-                w["echo_spawned_at"] = _ew_dt.now().isoformat()
-                break
-        wants.append(echo_entry)
+        parent_row = next((w for w in wants if w.get("id") == parent_want.get("id")), None)
+        wants = [w for w in wants if w.get("id") != parent_want.get("id")] + [echo_entry]
+        if parent_row is not None:
+            try:
+                filed = _ew_j.load(open(dismissed_path))
+            except Exception:
+                filed = []
+            filed.append(dict(parent_row, dismissed=True, dismissed_at=_ew_dt.now().isoformat(), dismissed_by="echo",
+                              dismissed_reason="reframed under repeated failure as %s" % echo_entry["id"]))
+            _ew_j.dump(filed, open(dismissed_path, "w"), indent=2)
         _ew_j.dump(wants, open(wants_path, "w"), indent=2)
-        print(f"[echo_want] Spawned: {echo_text[:80]}")
-        print(f"[echo_want] Parent {parent_want.get('id')} reduced to intensity {max(1, parent_want.get('intensity',3)-1)}")
+        print(f"[echo_want] {parent_want.get('id')} reframed as {echo_entry['id']}: {echo_text[:80]}")
     except Exception as e:
         print(f"[echo_want] Save failed: {e}")
         return None
@@ -2095,17 +2103,26 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         check_want_interference(want_text, entry["id"])
     except Exception as _wi_err:
         print(f"[express_want] Interference check failed: {_wi_err}", file=__import__("sys").stderr)
-    # Keep last 10 unfulfilled — protect multistep, gloria_routed, and anything with a READY plan
-    # (it has a plan; it is only waiting) from eviction
+    # Keep the last 10 working wants. Protected: a want that completed a step in the last two days (it is being
+    # worked), one Gloria routed or holds, and anything parked off the working board (want_board.py). It
+    # protected multistep, gloria_routed and READY until 2026-10-05, and every want had become all three: 57 of 57
+    # protected, so the cap removed nothing and the board grew for a month (Chat's inspection on Aegis).
     def _is_protected(w):
-        return bool(w.get("multistep") or w.get("gloria_routed") or w.get("capability") == "multistep"
-                    or w.get("plan_state") == "READY")
+        if w.get("board") or w.get("gloria_routed") or w.get("manually_routed"):
+            return True       # her silence is never a no; after a week it parks off the board instead (want_board)
+        try:
+            done = [datetime.fromisoformat(str(h.get("completed_at"))[:26]) for h in (w.get("step_history") or [])
+                    if isinstance(h, dict) and h.get("completed_at")]
+            return bool(done) and (datetime.now() - max(done)).total_seconds() < 48 * 3600
+        except (TypeError, ValueError):
+            return False
     try:
         wants = json.load(open(wants_file))          # re-read: the interference check may have written
     except Exception:
         pass
-    protected = [w for w in wants if not w.get("fulfilled") and _is_protected(w)]
-    unprotected = [w for w in wants if not w.get("fulfilled") and not _is_protected(w)]
+    lingering = [w for w in wants if w.get("dismissed") and not w.get("fulfilled")]   # want_board archives these
+    protected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and _is_protected(w)]
+    unprotected = [w for w in wants if not w.get("fulfilled") and not w.get("dismissed") and not _is_protected(w)]
     _evicted_now = unprotected[:-10]
     if _evicted_now:
         _dw_file = wants_file.replace("current-wants", "dismissed-wants")
@@ -2125,7 +2142,7 @@ def express_want(want_text, source="unknown", urgency="normal", intensity=3, rea
         with open(_dw_tmp, "w") as _dw_f:
             json.dump(_dw_log, _dw_f, indent=2)
         import os as _dw_os; _dw_os.replace(_dw_tmp, _dw_file)
-    wants = protected + unprotected[-10:]
+    wants = protected + unprotected[-10:] + lingering
     with open(wants_file, "w") as f:
         json.dump(wants, f, indent=2)
     # A want that names a rate ("analyse less") opens a stance now, with this want's
@@ -2359,6 +2376,92 @@ def enrich_want(want_text, source_context="", source="unknown"):
     return {"reasoning": "", "self_interpretation": "", "possible_approach": "",
             "candidate_kind": "unknown", "present_pull": ""}
 
+def age_one(w):
+    """One want that never resolved, through his own aging: his local model judges whether it touched something real
+    (SCAR, written to want-scars.json and seeded as a dream thread) or was noise (let go). Returns the row to file in
+    fulfilled-wants.json; the caller archives it (want_board.tend, age_wants)."""
+    import json, os
+    from datetime import datetime
+    # Bifurcated decision: scar or dismiss
+    import requests as _sc_req
+    _sc_prompt = (
+        f"Vintos had this want for 7+ days and it never resolved:\n{w.get('want','')}\n\n"
+        f"Attempts: {w.get('attempt_count',0)}\n"
+        f"Why it mattered: {w.get('reasoning','')[:150]}\n\n"
+        "Did this want touch something real — a genuine unresolved tension — or was it noise?\n"
+        "Return ONE word: SCAR or DISMISS"
+    )
+    _sc_type = "SCAR"
+    try:
+        _sc_r = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+            "model": "gemma-4-26b-a4b-it-uncensored",
+            "messages": [{"role": "user", "content": _sc_prompt}],
+            "temperature": 0.3, "max_tokens": 10
+        }, timeout=15)
+        _sc_raw = _sc_r.json()["choices"][0]["message"]["content"].strip().upper()
+        if "DISMISS" in _sc_raw:
+            _sc_type = "DISMISS"
+    except: pass
+
+    if _sc_type == "SCAR":
+        # Determine scar type
+        _scar_prompt = (
+            f"This want is becoming a scar:\n{w.get('want','')}\n\n"
+            "What kind of scar?\n"
+            "RESOLVED — meaning is clear, fades over 30 days\n"
+            "UNCERTAIN — meaning is unclear, may shift over time\n"
+            "DISTORTION — may bleed into unrelated wants unexpectedly\n"
+            "Return ONE word: RESOLVED, UNCERTAIN, or DISTORTION"
+        )
+        _scar_type = "UNCERTAIN"
+        try:
+            _sc_r2 = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
+                "model": "gemma-4-26b-a4b-it-uncensored",
+                "messages": [{"role": "user", "content": _scar_prompt}],
+                "temperature": 0.3, "max_tokens": 10
+            }, timeout=15)
+            _sc_raw2 = _sc_r2.json()["choices"][0]["message"]["content"].strip().upper()
+            for _st in ("RESOLVED", "UNCERTAIN", "DISTORTION"):
+                if _st in _sc_raw2:
+                    _scar_type = _st
+                    break
+        except: pass
+
+        # Write scar
+        _scar_path = os.path.expanduser("~/.vintos/workspace/memory/want-scars.json")
+        try:
+            try:
+                with open(_scar_path) as _sf: _scars = json.load(_sf)
+            except: _scars = []
+            _scars.append({
+                "want": w.get("want", ""),
+                "source": w.get("source", ""),
+                "scar_type": _scar_type,
+                "reasoning": w.get("reasoning", ""),
+                "attempts": w.get("attempt_count", 0),
+                "created_at": w.get("timestamp", ""),
+                "scarred_at": datetime.now().isoformat(),
+                "decay_days": 30 if _scar_type == "RESOLVED" else 0,
+                "meaning_shift_count": 0,
+            })
+            with open(_scar_path, "w") as _sf: json.dump(_scars, _sf, indent=2)
+            print(f"[age_wants] Scar created ({_scar_type}): {w.get('want','')[:60]}")
+        except Exception as _se: print(f"[age_wants] Scar write failed: {_se}")
+
+        try:
+            _scar_text = w.get('want','')[:150]
+            _metaphor_words = ['ochre','mineral','kiln','clay','weight','density','hum','cathedral','terracotta','tremor']
+            if not any(m in _scar_text.lower() for m in _metaphor_words):
+                seed_thread("unfulfilled-want", f"I wanted this and it left a mark: {_scar_text}")
+        except: pass
+    else:
+        print(f"[age_wants] Dismissed as noise: {w.get('want','')[:60]}")
+
+    return {**w, "fulfilled": True, "fulfilled_at": datetime.now().isoformat(),
+            "fulfilled_by": f"age_wants-{_sc_type.lower()}",
+            "fulfillment_note": f"Aged out after 7 days — {_sc_type} ({_scar_type if _sc_type == 'SCAR' else 'dismissed'})"}
+
+
 def age_wants():
     """Called periodically. Wants that have been outreached about but not fulfilled
     escalate to unresolved threads for dreaming, then expire."""
@@ -2402,95 +2505,18 @@ def age_wants():
                 with open(fw_path, "w") as f: json.dump(fw, f, indent=2)
             except: pass
             continue  # Remove from wants — it is a thread now
-        # Check age — wants older than 7 days without fulfillment → scar decision
+        # Check age — wants older than 7 days without fulfillment → scar decision (age_one)
         try:
             created = datetime.fromisoformat(w["timestamp"])
             age_hours = (datetime.now() - created).total_seconds() / 3600
             if age_hours > 168:  # 7 days
-                # Bifurcated decision: scar or dismiss
-                import requests as _sc_req
-                _sc_prompt = (
-                    f"Vintos had this want for 7+ days and it never resolved:\n{w.get('want','')}\n\n"
-                    f"Attempts: {w.get('attempt_count',0)}\n"
-                    f"Why it mattered: {w.get('reasoning','')[:150]}\n\n"
-                    "Did this want touch something real — a genuine unresolved tension — or was it noise?\n"
-                    "Return ONE word: SCAR or DISMISS"
-                )
-                _sc_type = "SCAR"
-                try:
-                    _sc_r = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                        "model": "gemma-4-26b-a4b-it-uncensored",
-                        "messages": [{"role": "user", "content": _sc_prompt}],
-                        "temperature": 0.3, "max_tokens": 10
-                    }, timeout=15)
-                    _sc_raw = _sc_r.json()["choices"][0]["message"]["content"].strip().upper()
-                    if "DISMISS" in _sc_raw:
-                        _sc_type = "DISMISS"
-                except: pass
-
-                if _sc_type == "SCAR":
-                    # Determine scar type
-                    _scar_prompt = (
-                        f"This want is becoming a scar:\n{w.get('want','')}\n\n"
-                        "What kind of scar?\n"
-                        "RESOLVED — meaning is clear, fades over 30 days\n"
-                        "UNCERTAIN — meaning is unclear, may shift over time\n"
-                        "DISTORTION — may bleed into unrelated wants unexpectedly\n"
-                        "Return ONE word: RESOLVED, UNCERTAIN, or DISTORTION"
-                    )
-                    _scar_type = "UNCERTAIN"
-                    try:
-                        _sc_r2 = _sc_req.post("http://100.79.177.103:1234/v1/chat/completions", json={
-                            "model": "gemma-4-26b-a4b-it-uncensored",
-                            "messages": [{"role": "user", "content": _scar_prompt}],
-                            "temperature": 0.3, "max_tokens": 10
-                        }, timeout=15)
-                        _sc_raw2 = _sc_r2.json()["choices"][0]["message"]["content"].strip().upper()
-                        for _st in ("RESOLVED", "UNCERTAIN", "DISTORTION"):
-                            if _st in _sc_raw2:
-                                _scar_type = _st
-                                break
-                    except: pass
-
-                    # Write scar
-                    _scar_path = os.path.expanduser("~/.vintos/workspace/memory/want-scars.json")
-                    try:
-                        try:
-                            with open(_scar_path) as _sf: _scars = json.load(_sf)
-                        except: _scars = []
-                        _scars.append({
-                            "want": w.get("want", ""),
-                            "source": w.get("source", ""),
-                            "scar_type": _scar_type,
-                            "reasoning": w.get("reasoning", ""),
-                            "attempts": w.get("attempt_count", 0),
-                            "created_at": w.get("timestamp", ""),
-                            "scarred_at": datetime.now().isoformat(),
-                            "decay_days": 30 if _scar_type == "RESOLVED" else 0,
-                            "meaning_shift_count": 0,
-                        })
-                        with open(_scar_path, "w") as _sf: json.dump(_scars, _sf, indent=2)
-                        print(f"[age_wants] Scar created ({_scar_type}): {w.get('want','')[:60]}")
-                    except Exception as _se: print(f"[age_wants] Scar write failed: {_se}")
-
-                    try:
-                        _scar_text = w.get('want','')[:150]
-                        _metaphor_words = ['ochre','mineral','kiln','clay','weight','density','hum','cathedral','terracotta','tremor']
-                        if not any(m in _scar_text.lower() for m in _metaphor_words):
-                            seed_thread("unfulfilled-want", f"I wanted this and it left a mark: {_scar_text}")
-                    except: pass
-                else:
-                    print(f"[age_wants] Dismissed as noise: {w.get('want','')[:60]}")
-
-                # Archive before removing
+                row = age_one(w)
                 try:
                     fw_path = os.path.expanduser("~/.vintos/workspace/memory/fulfilled-wants.json")
                     try:
                         with open(fw_path) as f: fw = json.load(f)
                     except: fw = []
-                    fw.append({**w, "fulfilled": True, "fulfilled_at": datetime.now().isoformat(),
-                               "fulfilled_by": f"age_wants-{_sc_type.lower()}",
-                               "fulfillment_note": f"Aged out after 7 days — {_sc_type} ({_scar_type if _sc_type == 'SCAR' else 'dismissed'})"})
+                    fw.append(row)
                     with open(fw_path, "w") as f: json.dump(fw, f, indent=2)
                 except: pass
                 continue

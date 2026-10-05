@@ -2301,6 +2301,17 @@ def main():
     except Exception as _cale:
         log(f"  → calendar fire skipped: {str(_cale)[:120]}")
 
+    # The board first: closed rows filed, wants waiting on Gloria or on a hand parked off it, duplicates folded,
+    # idle ones aged (want_board.py; 2026-10-05: 57 active, every one protected, the oldest 26 days). Before the
+    # wants are read, for the same reason as the forge sync above.
+    if not _args.repair_plans_only and not _args.force_want_id:
+        try:
+            import want_board as _wb
+            for _l in _wb.tend():
+                log(f"  → board: {_l[:160]}")
+        except Exception as _wbe:
+            log(f"  → board tending skipped: {str(_wbe)[:120]}")
+
     all_wants = get_unfulfilled_wants()
 
     # Build desire self-statements from persistent wants
@@ -2351,6 +2362,8 @@ def main():
 
     for want in wants:
         text = want.get("want", "")
+        if want.get("board") and not _args.force_want_id:
+            continue      # parked off the working board (awaiting Gloria, or a hand he does not have yet)
         log(f"Processing want: {text[:80]} (intensity {want.get('intensity', '?')})")
         # review 266: a pursuit he paused stays paused across sessions until its horizon, whatever process runs
         _pp = want.get("pursuit") or {}
