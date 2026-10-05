@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — hardware she buys: the software is written while it ships
+
+Gloria: "if I buy the hardware I want him working on the software in the meantime." A Forge parts list already did
+this; a Muse `BUY:` did not. Now (`gloria_asks.tend_buys`, each Slack pass): her Yes to hardware (Muse's `| hardware`
+mark, or the item's own words) sends its software to the Study at once, with the listing link so the Study can read
+the exact model, retried each pass while today's three Study fixes are used; two days on her phone asks "Has the ...
+arrived?" (again every two days, at most four times); when she says yes, he is told in Muse's thread to walk her
+through setting it up with the Study's software, and that thread is owed to him so he answers it on his next pass.
+A book is not hardware: nothing starts. **Not seen on Aegis.**
+
 ## 5 October — Forge cards and purchases reach her phone with prices and links; Grok Bot looks on Aegis
 
 Gloria: "they're talking about yes or no on a free card but I don't receive an update, price, links to the

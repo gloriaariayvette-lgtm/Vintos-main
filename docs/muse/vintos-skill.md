@@ -53,6 +53,11 @@ line of its own:
 
     BUY: item | price | store | link | why he wants it
 
-One line per thing. It goes to her phone with the price, the store and the link (tapping it opens the listing),
-and Yes and No. Her answer comes back in the thread ("Gloria said YES: she will buy ..."). Nobody buys but Gloria;
-you never buy. A Forge parts list still ends with your FINAL message (above); that one reaches her phone too.
+One line per thing. It goes to her phone with the price, the store and the link; tapping it opens a page with the
+listing and Yes and No. Her answer comes back in the thread ("Gloria said YES: she will buy ..."). Nobody buys but
+Gloria; you never buy. A Forge parts list still ends with your FINAL message (above); that one reaches her phone too.
+
+If it is hardware he will run (a sensor, a board, a motor, a light, anything he needs software for), you may end
+the line with `| hardware` so it is never missed. When she says Yes to hardware, the Study starts writing its
+software straight away; two days later her phone asks whether it has arrived, and when it has, he walks her through
+setting it up.

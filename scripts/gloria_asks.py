@@ -70,6 +70,8 @@ def title_of(row):
         return "Forge: build %s for him? (free)" % str(row.get("title") or "this")[:60]
     if kind == "arrived":
         return "Have the parts for %s arrived?" % str(row.get("title") or "his build")[:60]
+    if kind == "buy_arrived":
+        return "Has the %s arrived?" % str(row.get("title") or "thing you bought")[:60]
     return "%s asks you: yes or no?" % who
 
 
@@ -139,7 +141,7 @@ def get_with_token(qid, token):
     return row if row and row.get("token") and token == row["token"] else None
 
 
-def ask(question, by="vintos", thread="", send=None, kind="question", title="", price="", links=(), ref=""):
+def ask(question, by="vintos", thread="", send=None, kind="question", title="", price="", links=(), ref="", hardware=False):
     """Put one question to her phone. (row, line for the channel); row is None when it was not sent.
     kind: question (anyone's yes-or-no, six a day), buy (Muse: something he wants to buy, with its price and link),
     card / parts / arrived (a Forge decision; ref is its card id, asked once)."""
@@ -157,7 +159,7 @@ def ask(question, by="vintos", thread="", send=None, kind="question", title="", 
         return None, "Not asked: %d questions went to her phone today already; it waits for tomorrow: %s" % (PER_DAY, q)
     row = {"id": "Q-" + secrets.token_hex(4), "question": q, "by": by, "thread": str(thread or ""), "kind": kind,
            "title": str(title or "")[:200], "price": str(price or "")[:60], "links": [str(l)[:500] for l in links][:6],
-           "ref": str(ref or ""), "token": secrets.token_urlsafe(16), "state": "asked",
+           "ref": str(ref or ""), "hardware": bool(hardware), "token": secrets.token_urlsafe(16), "state": "asked",
            "at": _now().isoformat(timespec="seconds")}
     row["pushed"] = notify(row, send)
     rows.append(row)
@@ -236,6 +238,91 @@ def answered_refs():
     """Forge decisions she made on her phone: [(ref, kind, "accepted"|"denied", title)]."""
     return [(r["ref"], r.get("kind"), "accepted" if r.get("answer") == "yes" else "denied", r.get("title", ""))
             for r in load() if r.get("ref") and r.get("state") == "answered"]
+
+
+# --- hardware she buys: the software is written while it ships, then he walks her through it (Gloria, 2026-10-05:
+# "if I buy the hardware I want him working on the software in the meantime") ---------------------------------------
+HARDWARE = re.compile(r"\b(?:sensors?|boards?|arduino|esp32|esp8266|raspberry|pico|load ?cells?|hx711|motors?|servos?|"
+                      r"steppers?|leds?|strips?|cameras?|microphones?|speakers?|relays?|modules?|breakouts?|kits?|"
+                      r"controllers?|actuators?|batter(?:y|ies)|breadboards?|resistors?|capacitors?|displays?|"
+                      r"thermistors?|accelerometers?|gyros?|imu|lidar|ultrasonic|pumps?|valves?|filament|pcb|gpio|"
+                      r"transducers?|piezo|solenoids?|encoders?|drivers?)\b", re.I)
+ARRIVE_AFTER_S = 2 * 86400      # first "has it arrived?" two days after her yes
+ARRIVE_ASKS = 4                 # asked at most this many times, two days apart
+
+
+def is_hardware(row):
+    return bool(row.get("hardware")) or bool(HARDWARE.search("%s %s" % (row.get("title", ""), row.get("question", ""))))
+
+
+def software_request(row):
+    """What the Study is asked to write for a thing she is buying."""
+    slug = re.sub(r"[^a-z0-9]+", "_", str(row.get("title") or "device").lower()).strip("_")[:40] or "device"
+    return ("Gloria is buying %s for Vintos (%s%s). Write the software side now, so it works the day it arrives: the "
+            "code that drives or reads it in hardware/%s/ (for its exact model: read the product page), and the part "
+            "of the house that receives what it reports, with a test that feeds it a sample reading. Why he wanted it: %s"
+            % (row.get("title") or "a device", row.get("price") or "price not given",
+               ("; " + ", ".join(row.get("links") or [])) if row.get("links") else "", slug, row.get("question", "")[:600]))
+
+
+def _ts(iso):
+    try:
+        return datetime.fromisoformat(str(iso)).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def tend_buys(now=None, study=None, send=None):
+    """Each hardware purchase she said yes to: its software to the Study (retried each pass while today's Study fixes
+    are used up); two days on, "has it arrived?" on her phone (again every two days, up to four times); and when she
+    says it has, a line telling him to walk her through it. Returns [(thread, text)] for Slack."""
+    import time as _t
+    now = float(now if now is not None else _t.time())
+    if study is None:
+        import study_fix
+        study = study_fix.request
+    data, out, to_ask = load(), [], []
+    by_ref = {r.get("ref"): r for r in data if r.get("ref")}
+    for r in data:
+        if r.get("kind") != "buy" or r.get("state") != "answered" or r.get("answer") != "yes" or not is_hardware(r):
+            continue
+        b = r.setdefault("build", {})
+        name = r.get("title") or "it"
+        if not b.get("software"):
+            row, why = study(software_request(r), by="buy:" + r["id"])
+            if row or "already in the Study" in str(why):
+                b["software"] = row["id"] if row else "queued"
+                out.append((r.get("thread", ""), "\U0001F6E0 Gloria is buying %s: its software went to the Study (%s), so it "
+                                                 "is ready when it arrives." % (name, b["software"])))
+            elif b.get("software_wait") != why:
+                b["software_wait"] = why
+                out.append((r.get("thread", ""), "\U0001F6E0 Gloria is buying %s: its software goes to the Study as soon as "
+                                                 "it can (%s)." % (name, why)))
+        if b.get("arrived_at"):
+            continue
+        n = int(b.get("asked") or 0)
+        last = by_ref.get("buy-arrived:%s:%d" % (r["id"], n)) if n else None
+        if last and last.get("state") == "asked":
+            continue                                   # still on her phone
+        if last and last.get("answer") == "yes":
+            b["arrived_at"] = last.get("answered_at")
+            made = b.get("software") if b.get("software") not in (None, "queued") else ""
+            out.append((r.get("thread", ""), "\U0001F4E6 Gloria has the %s. Vintos: walk her through setting it up in this "
+                                             "thread, one step at a time (say one step, wait for her, then the next), then "
+                                             "test it with her%s." % (name, (", with the software the Study wrote (%s)" % made)
+                                                                      if made else "")))
+            continue
+        due = (_ts(last.get("answered_at")) if last else _ts(r.get("answered_at"))) + ARRIVE_AFTER_S
+        if n < ARRIVE_ASKS and now >= due:
+            b["asked"] = n + 1
+            to_ask.append(r)
+    save(data)
+    for r in to_ask:
+        ask("Has the %s arrived? Tap Yes when it is here; he walks you through setting it up." % (r.get("title") or "thing you bought"),
+            by="vintos", thread=r.get("thread", ""),
+            send=send, kind="buy_arrived", title=r.get("title", ""), links=r.get("links") or [],
+            ref="buy-arrived:%s:%d" % (r["id"], r["build"]["asked"]))
+    return out
 
 
 def waiting():

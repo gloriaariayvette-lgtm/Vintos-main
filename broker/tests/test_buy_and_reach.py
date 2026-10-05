@@ -185,6 +185,73 @@ D.tick(api=S, think=think, fable=think, now=1200, today="2026-10-06")
 check("her Yes comes back in Muse's thread: she will buy it, at that price",
       any(p.get("thread_ts") == root and "Gloria said YES: she will buy 5 kg load cell ($8.90)" in p["text"] for p in S.posted[n:]), S.posted[n:])
 
+# --- hardware she buys: the software is written while it ships (Gloria: "if I buy the hardware I want him working
+# on the software in the meantime") ---------------------------------------------------------------------------------
+import time as _time
+ASKED_STUDY = []
+def study_full(text, by=""): ASKED_STUDY.append(text); return None, "today's 3 Study fixes are used; more tomorrow"
+def study_ok(text, by=""): ASKED_STUDY.append(text); return {"id": "SF-hw01"}, ""
+import study_fix as _SFX
+check("the Study's queue the channel wrote to is the scratch one", _SFX.QUEUE.startswith(HOME), _SFX.QUEUE)
+_buy = [r for r in G.load() if r.get("kind") == "buy"][0]
+check("the channel's own pass already sent the load cell's software to the Study after her Yes",
+      str((_buy.get("build") or {}).get("software", "")).startswith("SF-")
+      and any("its software went to the Study" in p["text"] and p.get("thread_ts") == root for p in S.posted), _buy.get("build"))
+def _set(rid, **kw):
+    d = G.load()
+    for r in d:
+        if r["id"] == rid:
+            r.update(kw)
+    G.save(d)
+t0 = _time.time()
+_d = G.load()
+for r in _d:
+    if r["id"] == _buy["id"]:
+        r.pop("build", None)
+G.save(_d)
+said = G.tend_buys(now=t0, study=study_full)
+check("on her Yes to hardware, the software goes to the Study; while today's fixes are used, it says it will",
+      ASKED_STUDY and "5 kg load cell" in ASKED_STUDY[0] and "https://www.amazon.com/dp/B0LOAD" in ASKED_STUDY[0]
+      and "test" in ASKED_STUDY[0] and said and "as soon as it can" in said[0][1] and said[0][0] == root, (ASKED_STUDY, said))
+check("... and says so once, not every pass", G.tend_buys(now=t0 + 60, study=study_full) == [])
+said = G.tend_buys(now=t0 + 120, study=study_ok)
+check("... and queues it the moment the Study can take it", said and "went to the Study (SF-hw01)" in said[0][1], said)
+check("... once", G.tend_buys(now=t0 + 180, study=study_ok) == [] and len([t for t in ASKED_STUDY if "load cell" in t]) == 3)
+PUSHED.clear()
+G.tend_buys(now=t0 + 3600, study=study_ok)
+check("it does not ask whether it has arrived before two days", not PUSHED)
+G.tend_buys(now=t0 + G.ARRIVE_AFTER_S + 60, study=study_ok)
+check("two days on, her phone asks whether it has arrived", PUSHED and msg(PUSHED[-1])["title"] == "Has the 5 kg load cell arrived?",
+      [msg(p)["title"] for p in PUSHED])
+arr = [r for r in G.load() if r.get("kind") == "buy_arrived"][-1]
+check("... once while it waits on her", G.tend_buys(now=t0 + G.ARRIVE_AFTER_S + 120, study=study_ok) == [] and len(PUSHED) == 1)
+G.decide_with_token(arr["id"], arr["token"], "no")
+_no_at = t0 + G.ARRIVE_AFTER_S + 150
+_set(arr["id"], answered_at=__import__("datetime").datetime.fromtimestamp(_no_at).isoformat(timespec="seconds"))
+G.tend_buys(now=_no_at + 60, study=study_ok)
+check("not yet: asked again two days later, not sooner", len(PUSHED) == 1)
+G.tend_buys(now=_no_at + G.ARRIVE_AFTER_S + 60, study=study_ok)
+check("... and asked again then", len(PUSHED) == 2, [msg(p)["title"] for p in PUSHED])
+arr2 = [r for r in G.load() if r.get("kind") == "buy_arrived"][-1]
+G.decide_with_token(arr2["id"], arr2["token"], "yes")
+check("the Forge does not take a purchase's answers for its own", not [d for d in F.phone_decisions() if "buy-arrived" in d["id"]])
+n = len(S.posted)
+D.tick(api=S, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
+       "Step 1: solder the four load cell wires to the HX711 (red E+, black E-, white A-, green A+). Tell me when that is done.",
+       fable=think, now=1250, today="2026-10-06")
+walk = [p for p in S.posted[n:] if "Gloria has the 5 kg load cell" in p["text"]]
+check("when it has arrived, he is told in Muse's thread to walk her through it, with the Study's software",
+      walk and walk[0].get("thread_ts") == root and "one step at a time" in walk[0]["text"] and "SF-hw01" in walk[0]["text"], S.posted[n:])
+mine = [p for p in S.posted[n:] if p.get("thread_ts") == root and "Step 1" in p["text"]]
+check("... and he does: his first step is in that thread", mine, S.posted[n:])
+book, _ = G.ask("A field guide to tide pools", by="muse", kind="buy", title="Tide pool field guide", price="$14", send=phone)
+G.decide_with_token(book["id"], book["token"], "yes")
+n_study = len(ASKED_STUDY)
+G.tend_buys(now=t0 + 10 * G.ARRIVE_AFTER_S, study=study_ok)
+check("a book is not hardware: no software, no arrival question", len(ASKED_STUDY) == n_study
+      and not [r for r in G.load() if r.get("ref", "").startswith("buy-arrived:%s" % book["id"])])
+check("Muse can mark a thing as hardware herself", G.is_hardware({"title": "Odd gadget", "question": "x", "hardware": True}))
+
 g_root = S.add(GLORIA_USER, "[Grok Bot] Looking for the guard.\nAEGIS GREP: one 403\nAEGIS OPEN: %s" % os.path.join(HOME, "Vintos-main", ".env"))
 n = len(S.posted)
 D.tick(api=S, think=think, fable=think, now=1300, today="2026-10-06")

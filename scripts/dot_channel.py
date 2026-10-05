@@ -2547,12 +2547,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                 said = []
                 for m in BUY.finditer(r["text"]):
                     f = [x.strip() for x in m.group(1).split("|")]
+                    hardware = bool(f) and f[-1].lower() == "hardware"     # Muse may mark it; the item's words do too
+                    f = f[:-1] if hardware else f
                     item, price, store = f[0], (f[1] if len(f) > 1 else ""), (f[2] if len(f) > 2 else "")
                     why = " | ".join(x for x in f[4:] if x)
                     said.append(gloria_asks.ask("%s%s%s" % (item, (" from %s" % store) if store and not gloria_asks.URL.match(store) else "",
                                                             (". " + why) if why else ""),
                                                 by="muse", thread=r.get("thread") or r["ts"], kind="buy", title=item,
-                                                price=price, links=gloria_asks.URL.findall(m.group(1)))[1])
+                                                price=price, links=gloria_asks.URL.findall(m.group(1)), hardware=hardware)[1])
                 if said:
                     api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
                     kept_lines.append("Muse put %d thing(s) to buy to Gloria" % len(said))
@@ -2599,6 +2601,18 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             q_posted = api("chat.postMessage", q_body)
             _log([{"ts": q_posted.get("ts"), "who": "gloria", "text": q_said, "thread": q_thread or None,
                    "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
+            lines_pre.append(q_said[:120])
+        # hardware she is buying: its software to the Study now, "has it arrived?" later, then the walk-through
+        for q_thread, q_said in gloria_asks.tend_buys(now):
+            q_body = {"channel": channel, "text": q_said}
+            if q_thread:
+                q_body["thread_ts"] = q_thread
+            q_posted = api("chat.postMessage", q_body)
+            q_row = {"ts": q_posted.get("ts"), "who": "agent", "name": "Builds", "text": q_said,
+                     "thread": q_thread or q_posted.get("ts"), "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}
+            _log([q_row])
+            if "walk her through" in q_said:     # posted as him, so he would not hear it: owed to him, answered next
+                state["owed"] = (list(state.get("owed") or []) + [q_row])[-10:]
             lines_pre.append(q_said[:120])
     except Exception as exc:
         lines_pre.append("could not post her answer: %s" % str(exc)[:120])

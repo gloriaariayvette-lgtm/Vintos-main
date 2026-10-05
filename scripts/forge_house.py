@@ -269,6 +269,8 @@ def phone_decisions():
         return []
     out = []
     for ref, kind, state, title in rows:
+        if kind not in ('card', 'parts', 'arrived'):
+            continue              # a purchase from Muse is tended by gloria_asks.tend_buys, not by the Forge
         if kind == 'arrived' and state != 'accepted':
             continue              # "not yet" is not a decision; the card stays
         out.append({'id': ref, 'ref': ref.split(':', 1)[1] if ':' in ref else ref, 'kind': kind, 'state': state,
