@@ -297,6 +297,35 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.call('/api/projects',token='i'*40)[0],403)
         record['records'][0]['exptl'][0]['method']='tampered'
         self.assertEqual(self.call('/api/lab-intake','POST',body,token='i'*40)[0],403)
+    def test_a_refusal_names_its_guard_to_the_lab_alone_and_in_faults(self):
+        # Vintos, #vintos-dot 2026-10-05: same 403, same body, but say which guard. The guard goes to faults.jsonl
+        # beside the database (this test's scratch root) and, in a header, only to a caller holding the intake token.
+        from lab_sources import receipt
+        self.r.intake_token='i'*40
+        faults=self.root/'faults.jsonl'
+        self.assertTrue(faults.parent==self.c.path.parent and faults.is_relative_to(self.root))
+        def call(body,token):
+            raw=json.dumps(body).encode();seen=[]
+            out=API(self.r)({'PATH_INFO':'/api/lab-intake','REQUEST_METHOD':'POST','HTTP_AUTHORIZATION':'Bearer '+token,
+                             'CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)},lambda s,h:seen.append((s,dict(h))))
+            return int(seen[0][0].split()[0]),b''.join(out),seen[0][1]
+        record=receipt('pdb',{'entry_id':'1ABC'},[{'exptl':[{'method':'fixture'}]}])
+        def body(r): return {'intent':'d','source_packet':{'kind':'lab_research_report','source_receipts':[r]}}
+        generic=json.dumps({'error':'request refused; check authority, scope, or private interval'}).encode()
+        status,raw,head=call(body(record),'x'*40)
+        self.assertEqual((status,raw),(403,generic));self.assertNotIn('X-Forge-Refusal',head,'no token, no reason')
+        status,raw,head=call({'source_packet':{'kind':'other'}},'i'*40)
+        self.assertEqual((status,raw,head.get('X-Forge-Refusal')),(403,generic,'packet'))
+        tampered=json.loads(json.dumps(record));tampered['records'][0]['exptl'][0]['method']='tampered'
+        self.assertEqual(call(body(tampered),'i'*40)[2].get('X-Forge-Refusal'),'receipt_hash')
+        for n in range(4):
+            r=receipt('pdb',{'entry_id':'X%d'%n},[{'n':n}]);self.assertEqual(call(body(r),'i'*40)[0],200)
+        status,raw,head=call(body(record),'i'*40)
+        self.assertEqual((status,raw,head.get('X-Forge-Refusal')),(403,generic,'four_unfinished'))
+        rows=[json.loads(l) for l in faults.read_text().splitlines()]
+        self.assertEqual([r['guard'] for r in rows],['token','packet','receipt_hash','four_unfinished'])
+        self.assertTrue(all(r['error']=='Refused' for r in rows))
+        self.assertNotIn('i'*40,faults.read_text());self.assertNotIn('x'*40,faults.read_text())
     def keyless(self,path,method='GET',body=None):
         raw=json.dumps(body or {}).encode();status=[]
         out=API(self.r)({'PATH_INFO':path,'REQUEST_METHOD':method,'HTTP_AUTHORIZATION':'',

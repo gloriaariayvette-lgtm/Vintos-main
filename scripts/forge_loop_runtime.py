@@ -489,13 +489,39 @@ def open_lab_privacy(controller):
     return opened
 
 
+# Which guard refused a request (Vintos's ask in #vintos-dot, 2026-10-05). Every refusal still answers the same 403
+# and the same body; the guard is written to faults.jsonl beside the Forge's database, and is named back in an
+# X-Forge-Refusal header only to the Lab, only once its intake token has matched. An unauthenticated caller learns
+# nothing new. The Lab records the guard in its own faults.jsonl, which Grok and Vintos can read.
+GUARDS = (('Lab intake authority', 'token'), ('intake too large', 'size'), ('bounded source receipt packet', 'packet'),
+          ('integrity mismatch', 'receipt_hash'), ('four unfinished', 'four_unfinished'))
+
+
+def guard(exc):
+    if isinstance(exc, Refused):
+        return next((name for words, name in GUARDS if words in str(exc)), 'refused')
+    return 'malformed'
+
+
 class API:
     def __init__(self, runtime): self.r = runtime
+    def fault(self, path, exc):
+        try:
+            row = {'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'route': path[:80], 'guard': guard(exc),
+                   'error': type(exc).__name__, 'detail': str(exc)[:240]}
+            with open(self.r.c.path.parent/'faults.jsonl', 'a') as f: f.write(json.dumps(row)+'\n')
+            print('Forge refused %s: %s (%s)' % (row['route'], row['guard'], row['error']), flush=True)
+        except Exception:
+            pass
     def __call__(self, env, start):
+        import hmac
         path, method = env.get('PATH_INFO', ''), env.get('REQUEST_METHOD', '')
         token = env.get('HTTP_AUTHORIZATION', '').removeprefix('Bearer ')
         status = 200
         content_type = 'application/json'
+        named = []
+        lab = (path == '/api/lab-intake' and bool(self.r.intake_token) and bool(token)
+               and hmac.compare_digest(token, self.r.intake_token))
         try:
             if method == 'GET' and (path == '/' or path.startswith('/projects/')):
                 content_type = 'text/html; charset=utf-8'
@@ -546,13 +572,16 @@ class API:
                             raise Refused('stop the worker and use offline reconcile command')
                         else: status, body = 404, {'error': 'unknown route'}
                     else: status, body = 404, {'error': 'unknown route'}
-        except (Refused, ValueError, KeyError): status, body = 403, {'error': 'request refused; check authority, scope, or private interval'}
+        except (Refused, ValueError, KeyError) as exc:
+            status, body = 403, {'error': 'request refused; check authority, scope, or private interval'}
+            self.fault(path, exc)
+            if lab: named.append(('X-Forge-Refusal', guard(exc)))
         except Exception: status, body = 500, {'error': 'operation failed; outcome must be inspected before retry'}
         encoded = body.encode() if isinstance(body, str) else json.dumps(body).encode()
         start(str(status)+' '+{200:'OK',403:'Forbidden',404:'Not Found',405:'Method Not Allowed',500:'Internal Server Error'}[status],
               [('Content-Type',content_type),('Content-Length',str(len(encoded))),('Cache-Control','no-store'),
                ('Referrer-Policy','no-referrer'), ('X-Content-Type-Options','nosniff'),
-               ('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")])
+               ('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")]+named)
         return [encoded]
 
 

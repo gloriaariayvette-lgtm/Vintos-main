@@ -66,6 +66,17 @@ class ReportRetry(unittest.TestCase):
         os.unlink(src.REPORT_PAUSE)
         self.assertEqual(src.offer_report(["R1"], "q", send=Sender())["id"], "P-1", "after the pause it lands")
 
+    def test_the_guard_the_forge_names_is_kept_on_the_report_and_in_the_fault(self):
+        named = Sender(urllib.error.HTTPError("u", 403, "Forbidden", {"X-Forge-Refusal": "four_unfinished"}, io.BytesIO(b"")))
+        with self.assertRaises(urllib.error.HTTPError) as got: src.offer_report(["R2"], "q", send=named)
+        self.assertIn("Forge guard: four_unfinished", str(got.exception))
+        row = next(iter(lab._load(OUTBOX, {}).values()))
+        self.assertEqual((row["state"], row["forge_guard"]), ("pending", "four_unfinished"))
+        os.unlink(src.REPORT_PAUSE)
+        bare = Sender(urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"")))
+        with self.assertRaises(urllib.error.HTTPError): src.offer_report(["R3"], "q", send=bare)
+        self.assertIn("not_named", [r.get("forge_guard") for r in lab._load(OUTBOX, {}).values()])
+
     def test_a_report_left_refused_by_the_earlier_build_is_retried(self):
         lab._atomic(OUTBOX, {"k": {"receipt_ids": ["R9"], "state": "refused", "next_attempt": 0,
                                    "question": "The Lab needs an instrument it does not have: a docking program"}})

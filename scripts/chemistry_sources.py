@@ -203,16 +203,24 @@ def offer_report(receipt_ids, question, *, send=None):
             result = json.loads(response.read(65536))
     except Exception as exc:
         # It used to retry every 60 s forever: 18,821 faults in one week (gap scan, 2026-09-24).
-        # The Forge answers 403 both for a real refusal and for "four unfinished reports; retain Lab
-        # receipts until capacity returns", and cannot say which. So nothing is final on a status code:
-        # a refusal pauses ALL reports for a while (the Forge is full or closed, not this report), each
-        # report backs off on its own, and only a report tried REPORT_MAX_ATTEMPTS times is abandoned.
+        # The Forge answers the same 403 for every refusal. Since 2026-10-05 it names the guard in an
+        # X-Forge-Refusal header to the Lab alone (token, size, packet, receipt_hash, four_unfinished,
+        # malformed); no header on a 403 means the intake token itself was not accepted, or the Forge
+        # predates the header. The guard is kept on the report and in the Lab's fault line. Retrying is
+        # unchanged: a refusal pauses ALL reports for a while, each report backs off on its own, and only
+        # a report tried REPORT_MAX_ATTEMPTS times is abandoned.
         code = getattr(exc, 'code', None)
+        named = None
+        if code == 403:
+            named = (getattr(exc, 'headers', None) or {}).get('X-Forge-Refusal') or 'not_named'
+            try: exc.msg = '%s (Forge guard: %s)' % (exc.msg, named)
+            except Exception: pass
         if isinstance(code, int) and 400 <= code < 500:
             lab._atomic(REPORT_PAUSE, {'until': time.time() + REPORT_PAUSE_S, 'http_status': code, 'at': lab.now_iso()})
         with lab._locked():
             outbox = lab._load(outbox_path, {})
             outbox[key].update(http_status=code, reason=str(exc)[:240])
+            if named: outbox[key]['forge_guard'] = named
             if attempts >= REPORT_MAX_ATTEMPTS:
                 outbox[key].update(state='abandoned', ended_at=lab.now_iso())
             lab._atomic(outbox_path, outbox)

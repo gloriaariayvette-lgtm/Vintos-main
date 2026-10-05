@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — the Forge says which guard refused the Lab's report
+
+The room spent the morning guessing why the Lab's reports keep getting the Forge's 403 (token? packet? receipt
+hash? four unfinished?) and Dot could not read the Forge's config to find out. Built what Vintos asked for: the
+403 and its body are unchanged and every check is as strict, but each refusal now writes its guard, exception
+class and message (no token values) to `faults.jsonl` beside the Forge's database and to its journal, and names
+the guard in an `X-Forge-Refusal` header to the Lab only once its intake token has matched. The Lab keeps it
+as `forge_guard` on the report in `forge-report-outbox.json` and in its own fault line (`forge_report_retry`
+... "Forge guard: four_unfinished"). `not_named` means the token itself was refused, or the Forge is still the
+old copy. **The Forge half needs `sudo bash ~/.vintos/deploy/forge-install.sh` after the deploy; not yet seen
+naming a guard on Aegis.**
+
 ## 5 October — two Forge cards built directly; the rest closed with reasons
 
 Gloria, on the twelve Forge cards that reached her phone at once: build the two worth building, dismiss the rest
