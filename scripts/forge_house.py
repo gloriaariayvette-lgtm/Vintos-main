@@ -2,6 +2,7 @@
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from urllib.request import Request
 from lab_http import open_request
@@ -203,7 +204,7 @@ def decision_cards(proposals=None):
         details += ['Evidence: ' + str(e)[:240] for e in (o.get('evidence') or [])[:4]]
         tried = (' The Study tried it as %s and it did not land: %s.' % (study.get('id'), (study.get('log') or [{}])[-1]
                  .get('what', study.get('state')))) if study else ''
-        cards.append({'id': 'card:' + p['id'], 'kind': 'card', 'ref': p['id'],
+        cards.append({'id': 'card:' + p['id'], 'kind': 'card', 'ref': p['id'], 'created': str(p.get('created') or ''),
                       'title': str(p.get('capability', '')).replace('_', ' ').strip().capitalize() or p['id'],
                       'what': (str(p.get('why') or '') + tried)[:1200],
                       'cost': 'Built by the Forge; nothing is bought. Accepting lets it be built; it is tested before it is installed.',
@@ -232,6 +233,9 @@ def decision_cards(proposals=None):
     return cards
 
 
+CARDS_PER_DAY = 3      # Forge ability cards to her phone a day; the rest wait on her page, newest go first
+
+
 def push_cards(cards, applied, ask=None):
     """Each Forge decision to her phone, once: what it is, what it costs, the product links, Yes and No (Gloria,
     2026-10-05: "they're talking about yes or no on a free card but I don't receive an update, price, links to the
@@ -240,10 +244,22 @@ def push_cards(cards, applied, ask=None):
     import gloria_asks
     ask = ask or gloria_asks.ask
     pushed = []
+    # At most CARDS_PER_DAY ability cards a day, newest first, and never two of one name: on the first pass the whole
+    # backlog on her page went to her phone at once (Gloria, 2026-10-05: "I just got 12 Forge requests").
+    asked = gloria_asks.load()
+    today = datetime.now().date().isoformat()
+    room = CARDS_PER_DAY - sum(1 for r in asked if r.get('kind') == 'card' and str(r.get('at', ''))[:10] == today)
+    seen = {str(r.get('title', '')).strip().lower() for r in asked if r.get('kind') == 'card'}
+    cards = sorted(cards, key=lambda c: str(c.get('created') or ''), reverse=True)
     for c in cards:
         kind = c.get('kind')
         if kind not in ('card', 'parts', 'arrived') or applied.get(c.get('id')):
             continue
+        if kind == 'card':
+            name = str(c.get('title') or '').strip().lower()
+            if room <= 0 or name in seen:
+                continue
+            seen.add(name)
         details = [str(d) for d in (c.get('details') or [])]
         links = [u.rstrip('.,;') for d in details for u in gloria_asks.URL.findall(d)]
         if kind == 'parts':
@@ -257,6 +273,8 @@ def push_cards(cards, applied, ask=None):
                           price=str(c.get('cost') or '') if kind == 'parts' else '', links=links, ref=c['id'])
         if row:
             pushed.append(c['id'])
+            if kind == 'card':
+                room -= 1
     return pushed
 
 

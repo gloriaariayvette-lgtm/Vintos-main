@@ -80,6 +80,19 @@ check("... and the Forge says them in Slack itself, so they are not said twice",
 fsrc = open(os.path.join(REPO, "scripts", "forge_house.py")).read()
 check("the Forge pushes and reads her phone on every pass", "push_cards(cards, applied)" in fsrc and "+ phone_decisions()" in fsrc)
 
+# a backlog on her page does not all land on her phone at once (Gloria: "I just got 12 Forge requests")
+_store = json.load(open(G.STORE)); json.dump([], open(G.STORE, "w")); PUSHED.clear()
+backlog = [{"id": "card:b%d" % i, "kind": "card", "ref": "b%d" % i, "title": "Ability %d" % i, "what": "what ability %d would do" % i,
+            "created": "2026-09-%02dT10:00:00" % (10 + i), "details": []} for i in range(6)]
+backlog.append({"id": "card:b9", "kind": "card", "ref": "b9", "title": "Ability 5", "what": "the same name again",
+                "created": "2026-09-30T10:00:00", "details": []})
+got = F.push_cards(backlog, applied={})
+check("at most %d Forge cards a day reach her phone, newest first" % F.CARDS_PER_DAY,
+      got == ["card:b9", "card:b4", "card:b3"], got)
+check("... never two with the same name", not ({"card:b9", "card:b5"} <= set(got)), got)
+check("... and the rest wait (on her page), not lost", F.push_cards(backlog, applied={}) == [])
+json.dump(_store, open(G.STORE, "w")); PUSHED.clear(); PUSHED.extend([free, parts])
+
 # --- Slack links keep their address -------------------------------------------------------------------------------
 import dot_channel as D
 check("a Slack link keeps its address, not only its text",
