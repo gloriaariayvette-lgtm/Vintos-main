@@ -6,9 +6,12 @@ Run at the start of every wants-router pass. Each pass:
 
   1. closed rows leave the board: anything fulfilled or dismissed still sitting in current-wants.json goes to its
      archive (fulfilled-wants.json, dismissed-wants.json), once;
-  2. a want routed to Gloria that has waited AWAIT_DAYS without her answer is parked AWAITING_GLORIA: never
-     rejected (silence is not a no), off the working board, and woken the moment she writes in its discussion;
+  2. a want routed to Gloria that has waited AWAIT_DAYS without her answer is parked AWAITING_GLORIA, off the
+     working board, and woken the moment she writes in its discussion;
   3. a want blocked on a hand he does not have is parked BLOCKED until the block clears (the Forge clears it);
+  3b. nothing waits forever (Gloria, 2026-10-05: "they can't stay stuck at the end forever"): a parked want still
+     unmoved RELEASE_DAYS after parking is released through his own aging, filed as released, not as fulfilled or
+     declined; if she later writes in its discussion it comes back to the board;
   4. near-duplicates on the working board are folded into the oldest, which keeps their history;
   5. working wants that have not moved in IDLE_DAYS age out, AGE_PER_PASS at a time, through his own aging
      (scar or let go: emoclaw_utils.age_one), archived with the reason.
@@ -37,6 +40,7 @@ DISCUSSIONS = os.path.join(MEM, "want-discussions.json")
 
 AWAIT_DAYS = 7          # a want routed to Gloria parks after this long without her answer
 IDLE_DAYS = 7           # a working want that has not moved in this long ages out
+RELEASE_DAYS = 7        # a parked want leaves for good this long after it would have parked
 AGE_PER_PASS = 5        # at most this many age in one pass (each may ask his local model whether it left a scar)
 PROTECT_HOURS = 48      # a want that completed a step this recently is never capped or aged
 SAME = 0.6              # share of the shorter want's content words found in the longer, to fold them
@@ -147,9 +151,21 @@ def tend(now=None, age=None, discussions=None):
     stamp = datetime.fromtimestamp(now).isoformat(timespec="seconds")
     disc = discussions if discussions is not None else _load(DISCUSSIONS, {})
     log, closed_f, closed_d, aging = [], [], [], []
+    # a released want she has since answered comes back
+    filed = _load(DISMISSED, [])
+    back = [w for w in filed if isinstance(w, dict) and w.get("dismissed_by") == "released"
+            and _gloria_answered(w.get("id", ""), disc) and len(disc.get(w.get("id", "")) or []) > int(w.get("discussion_len") or 0)]
 
     def mutate(rows):
         keep = []
+        here = {w.get("id") for w in rows if isinstance(w, dict)} if isinstance(rows, list) else set()
+        for w in back:
+            if w.get("id") not in here:
+                w = {k: v for k, v in w.items() if k not in ("dismissed", "dismissed_at", "dismissed_by",
+                                                              "dismissed_reason", "discussion_len", "board", "parked_at")}
+                w["unparked_at"] = stamp
+                rows = list(rows) + [w]
+                log.append("back on the board: Gloria answered released %s" % w.get("id"))
         for w in rows if isinstance(rows, list) else []:
             if not isinstance(w, dict):
                 continue
@@ -189,14 +205,21 @@ def tend(now=None, age=None, discussions=None):
                                      dismissed_reason="the same want as %s, folded into it" % older.get("id")))
                 log.append("folded %s into %s" % (newer.get("id"), older.get("id")))
         keep = [w for w in keep if w.get("id") not in gone]
-        # working wants that have not moved in IDLE_DAYS age out, oldest first, a few a pass
-        idle = sorted([w for w in keep if working(w) and not moving(w, now)
-                       and now - last_moved(w) > IDLE_DAYS * 86400], key=last_moved)[:AGE_PER_PASS]
-        aging.extend(idle)
-        ids = {w.get("id") for w in idle}
+        # working wants that have not moved in IDLE_DAYS age out, and parked ones RELEASE_DAYS past parking are
+        # released: oldest first, a few a pass, through his own aging
+        due = [w for w in keep if not moving(w, now) and (
+            (working(w) and now - last_moved(w) > IDLE_DAYS * 86400)
+            or (w.get("board") and now - last_moved(w) > (AWAIT_DAYS + RELEASE_DAYS) * 86400))]
+        due = sorted(due, key=last_moved)[:AGE_PER_PASS]
+        aging.extend(due)
+        ids = {w.get("id") for w in due}
         return [w for w in keep if w.get("id") not in ids]
 
     _write_current(mutate)
+    if back:
+        gone_back = {w.get("id") for w in back}
+        _save(DISMISSED, [w for w in _load(DISMISSED, []) if not (isinstance(w, dict) and w.get("id") in gone_back
+                                                                  and w.get("dismissed_by") == "released")])
     _archive(FULFILLED, closed_f)
     _archive(DISMISSED, closed_d)
     if closed_f or closed_d:
@@ -208,17 +231,27 @@ def tend(now=None, age=None, discussions=None):
                 from emoclaw_utils import age_one as age
             except Exception:
                 age = None
-        rows = []
+        rows, released = [], []
         for w in aging:
             row = None
             try:
-                row = age(w) if age else None
+                row = age(w) if age else None      # his scar-or-let-go, for a released want as for an idle one
             except Exception as exc:
                 log.append("aging %s could not ask: %s" % (w.get("id"), str(exc)[:80]))
-            rows.append(row or dict(w, fulfilled=True, fulfilled_at=stamp, fulfilled_by="age_wants-idle",
-                                    fulfillment_note="Aged out: did not move in %d days" % IDLE_DAYS))
-            log.append("aged out after %d idle days: %s" % (int((now - last_moved(w)) // 86400), str(w.get("want", ""))[:60]))
+            days = int((now - last_moved(w)) // 86400)
+            if w.get("board"):
+                why = ("waited %d days on Gloria with no answer" % days if w["board"] == "awaiting_gloria"
+                       else "blocked %d days on a hand he does not have (%s)" % (days, (w.get("plan_block") or {}).get("block_type", "")))
+                released.append(dict(w, dismissed=True, dismissed_at=stamp, dismissed_by="released", dismissed_reason=why,
+                                     released_note=str((row or {}).get("fulfillment_note", ""))[:200],
+                                     discussion_len=len(disc.get(w.get("id", "")) or [])))
+                log.append("released after %s: %s" % (why, str(w.get("want", ""))[:60]))
+            else:
+                rows.append(row or dict(w, fulfilled=True, fulfilled_at=stamp, fulfilled_by="age_wants-idle",
+                                        fulfillment_note="Aged out: did not move in %d days" % IDLE_DAYS))
+                log.append("aged out after %d idle days: %s" % (days, str(w.get("want", ""))[:60]))
         _archive(FULFILLED, rows)
+        _archive(DISMISSED, released)
     return log
 
 

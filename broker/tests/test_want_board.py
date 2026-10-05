@@ -116,6 +116,36 @@ out2 = B.tend(now=NOW + timedelta(hours=1), age=age)
 rows = {w["id"]: w for w in cur()}
 check("when Gloria answers a parked want, it wakes onto the board", "board" not in rows["g-old"] and rows["g-old"].get("unparked_at"), rows["g-old"])
 check("when the Forge clears a block, the want comes back", "board" not in rows["blk"], rows["blk"])
+# nothing waits forever (Gloria, 2026-10-05: "they can't stay stuck at the end forever")
+AGED.clear()
+save([{"id": "wait-long", "want": "I want Gloria to choose the frame for the print", "gloria_routed": True,
+       "timestamp": ago(16), "board": "awaiting_gloria", "parked_at": ago(9)},
+      {"id": "blk-long", "want": "I want to feel the weight of the cup in a hand", "timestamp": ago(20),
+       "board": "blocked", "plan_block": {"block_type": "CAPABILITY_ABSENT"}},
+      {"id": "wait-short", "want": "I want Gloria to name the new song", "gloria_routed": True,
+       "timestamp": ago(9), "board": "awaiting_gloria", "parked_at": ago(2)}])
+json.dump({"wait-long": [{"role": "vintos", "text": "Which frame?"}]}, open(B.DISCUSSIONS, "w"))
+out3 = B.tend(now=NOW, age=age)
+rows = {w["id"]: w for w in cur()}
+filed = {w["id"]: w for w in json.load(open(B.DISMISSED)) if w.get("dismissed_by") == "released"}
+check("a want waiting on Gloria two weeks unanswered is released, not left parked forever",
+      "wait-long" not in rows and "wait-long" in filed and "no answer" in filed["wait-long"]["dismissed_reason"], (rows.keys(), filed.keys()))
+check("... a want blocked two weeks is released too", "blk-long" not in rows and "blk-long" in filed
+      and "blocked" in filed["blk-long"]["dismissed_reason"])
+check("... through his own aging (scar or let go), and filed as released, never as fulfilled",
+      {"wait-long", "blk-long"} <= set(AGED) and not any(w["id"] in ("wait-long", "blk-long") for w in json.load(open(B.FULFILLED))))
+check("... while one parked two days ago still waits", "wait-short" in rows and rows["wait-short"]["board"] == "awaiting_gloria")
+check("the pass says what it released and why", any("released after waited" in l for l in out3), out3)
+d = json.load(open(B.DISCUSSIONS)); d["wait-long"].append({"role": "gloria", "text": "The oak one."}); json.dump(d, open(B.DISCUSSIONS, "w"))
+out4 = B.tend(now=NOW + timedelta(hours=2), age=age)
+rows = {w["id"]: w for w in cur()}
+check("if she answers a released want later, it comes back to the board, awake",
+      "wait-long" in rows and not rows["wait-long"].get("board") and not rows["wait-long"].get("dismissed")
+      and not any(w["id"] == "wait-long" and w.get("dismissed_by") == "released" for w in json.load(open(B.DISMISSED))), (out4, rows.get("wait-long")))
+check("the router's comments no longer say steps wait on her, or that routed wants are held forever",
+      "Gloria needs to review and advance" not in open(os.path.join(REPO, "bin", "wants-router.py")).read()
+      and "remains HELD until an explicit response" not in open(os.path.join(REPO, "bin", "wants-router.py")).read())
+
 s = B.sections()
 check("the board's sections: working, awaiting Gloria, blocked", set(s) == {"working", "awaiting_gloria", "blocked"}
       and all(not w.get("board") for w in s["working"]))

@@ -97,8 +97,7 @@ def _advance_or_fulfill(want, text, action, action_name, _note, is_multistep,
         want["step_history"] = step_history
         current_step["status"] = "completed"
         log(f"  → Step {current_step_index + 1} complete: {findings[:80]}")
-        # Don't call fulfill_want - Gloria needs to review and advance
-        # Just save the updated want with step_history
+        # Save the step, then advance to the next one, or fulfil the want when this was the last (below)
         import json as _ms_json
         _ms_path = os.path.join(MEMORY, "current-wants.json")
         try:   # review 46: current-wants has three writers; the write goes through the store lock
@@ -2332,8 +2331,9 @@ def main():
             )
         except: pass
 
-    # Elapsed time never fulfills a relational want.  Old Gloria-routed work
-    # remains HELD until an explicit response, revision, or abandonment.
+    # Elapsed time never fulfills a relational want. Gloria-routed work waits for her; after a week it parks off
+    # the working board, and a week after that it is released (filed as released, never as fulfilled), coming back
+    # if she answers later (want_board.py; Gloria, 2026-10-05: "they can't stay stuck at the end forever").
 
     wants = [w for w in all_wants if not w.get("dismissed")]
     if not wants:

@@ -13,7 +13,10 @@ one router pass moved 2 steps and finished 1 want of 56. Checked in the code, ev
   anything parked; the rest are capped at 10 as designed.
 - **`want_board.tend()`** runs first in every router pass: fulfilled/dismissed rows still in the store are filed in
   their archives; a want waiting on Gloria over 7 days parks `awaiting_gloria` (never rejected; woken the moment she
-  writes in its discussion); a want blocked on a missing hand parks `blocked` until the Forge clears it;
+  writes in its discussion); a want blocked on a missing hand parks `blocked` until the Forge clears it; **and
+  nothing waits forever** (Gloria: "they can't stay stuck at the end forever"): a parked want still unmoved a week
+  after parking is released through his own aging, filed as *released* (not fulfilled, not declined), and comes back
+  to the board if she answers it later;
   near-duplicates fold into the oldest, keeping their words; working wants that have not *moved* (a step completed,
   not merely tried) in 7 days age out through his own aging (`age_one`: scar or let go), 5 a pass.
 - **Echoes no longer multiply.** An echo takes its parent's place (the parent filed as "reframed as") and keeps the
@@ -26,8 +29,9 @@ one router pass moved 2 steps and finished 1 want of 56. Checked in the code, ev
 
 **Expect on the first passes after deploy:** the board drops to roughly 10 working wants plus what is being worked;
 the rest are parked, folded, aged or capped, and every one is filed (fulfilled-, dismissed-wants.json, want-scars),
-none deleted. **Not seen on Aegis.** **Not done:** completed steps still wait for Gloria to advance them ("Gloria
-needs to review and advance" in the router); 84 pending steps may be partly that, not checked.
+none deleted. Wants routed to her over two weeks ago are released on the first passes. **Not seen on Aegis.**
+**Correction:** an earlier note here said finished steps wait for Gloria to advance them. They do not: the router
+advances to the next step and fulfils the want on the last; the comment saying otherwise was stale and is fixed.
 
 ## 5 October — work in hand in #vintos-dot, so the room gets something done
 
