@@ -92,6 +92,24 @@ for _ln in json.load(open(P.STORE))["lines"].values():     # he answers every on
         P.answered(_f["url"], "looked; not for this line")
 check("with nothing left unanswered, he is shown nothing at all", P.block() == "", P.block())
 
+# --- the room itself asks, once a day (Gloria: "Someone should have said Lytic Selection and Evolution by now") ---
+d = P.load(); d.pop("asked_on", None); P.save(d)
+THIRD = {"id": "L-third", "state": "open", "title": "Prophage induction", "question": "What triggers induction?"}
+import lab_lines as _LL
+_LL.open_lines = lambda d=None: [LINE, OTHER, THIRD]
+searched = set((P.load().get("lines") or {}).keys())
+check("the lines nobody has looked into are known: every open one but the one searched above",
+      [l["id"] for l in P.unexamined()] == ["L-second", "L-third"] and searched == {LINE["id"]}, (P.unexamined(), searched))
+line_id, ask = P.ask_the_room()
+check("the room asks GrokBot what exists for one of them", line_id == "L-second" and ask.startswith("@GrokBot")
+      and "Phage lytic selection" in ask and "How is lysis selected for?" in ask, ask)
+check("... for things he could run, not papers", "not papers" in ask and "link" in ask
+      and ("platform" in ask.lower() and "repositor" in ask.lower()), ask)
+check("... once a day", P.ask_the_room() == ("", ""))
+d = P.load(); d.pop("asked_on", None); P.save(d)
+_LL.open_lines = lambda d=None: [LINE]
+check("with every open line already looked into, the room asks nothing", P.ask_the_room() == ("", ""))
+
 # --- the channel ---------------------------------------------------------------------------------------------------
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("it is in his context, beside SOMETHING NEW", "prospect_line()" in dsrc and "new_block(), prospect_line()" in dsrc)
@@ -99,6 +117,10 @@ check("the search runs from his Lab's own session, beside his lines, not from th
       "line_prospect.prospect()" in open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
       and "line_prospect.prospect(" not in dsrc)
 check("his rules tell him what it is and what to do with it", "WHAT ALREADY EXISTS FOR YOUR LINES is searched for you" in dsrc)
+check("the ask rides on his own message in Slack, so he is the one who asks",
+      "line_prospect.ask_the_room()" in dsrc and 'text = text.rstrip() + "\\n\\n" + ask' in dsrc)
+check("GrokBot is told to answer it", "Once a day the channel asks you what already exists" in
+      open(os.path.join(REPO, "docs", "grok-bot", "vintos-skill.md")).read())
 check("the deploy installs it", "line_prospect.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))

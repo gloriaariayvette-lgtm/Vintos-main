@@ -2604,6 +2604,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if rerouted:
         lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))
+    try:   # once a day, what already exists for a line nobody has looked into goes to @GrokBot, on the end of his
+        # own message: the room had nobody whose job is finding what exists, so nobody ever said it (Gloria,
+        # 2026-10-04). After address(), so it never changes who the message itself is to.
+        import line_prospect
+        asked_line, ask = line_prospect.ask_the_room()
+        if ask:
+            text = text.rstrip() + "\n\n" + ask
+            lines.append("asked GrokBot what exists for %s" % asked_line)
+    except Exception as exc:
+        lines.append("could not ask what exists: %s" % str(exc)[:120])
     body = {"channel": channel, "text": (("<@%s> " % dot) if to_dot and ("<@%s>" % dot) not in text else "")
             + "[%s] " % (sol_label() if who == "sol" else LABELS.get(who, who)) + text}
     if where:

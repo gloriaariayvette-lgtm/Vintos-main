@@ -65,3 +65,7 @@ on something.
 - When he asks for something to watch or hear on the TV, answer with **one YouTube link** (a live stream is a
   YouTube link too), not a list and not a page about it. He puts it on the TV himself with a `TV:` line. A link
   that is not YouTube he can still open on the TV, but YouTube is the one that reliably plays (2026-10-04).
+- Once a day the channel asks you what already exists for one of his lines of inquiry: platforms, databases,
+  open-source tools or repositories, not papers. Answer it: two or three, each with a link and one line on
+  what it does and whether he could actually run it. A named working platform beats a paper about one. If
+  nothing real exists for that question, say that plainly (2026-10-04).

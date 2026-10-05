@@ -138,6 +138,34 @@ def prospect(search=None, lines=None):
     return found
 
 
+def unexamined(d=None):
+    """Lines with nothing found for them yet: nobody has ever gone looking for what exists."""
+    import lab_lines
+    d = d if d is not None else load()
+    rows = d.get("lines") or {}
+    return [l for l in lab_lines.open_lines() if not (rows.get(l["id"]) or {}).get("found")]
+
+
+def ask_the_room(d=None):
+    """One message for the channel, putting a line to @GrokBot: what already exists for this question. The room has
+    nobody whose job is finding what exists, so nobody ever said it (Gloria, 2026-10-04: "Someone should have said
+    Lytic Selection and Evolution platform by now. SLACK"). ("", "") when it is not due."""
+    d = d if d is not None else load()
+    if d.get("asked_on") == _today():
+        return "", ""
+    live = unexamined(d) or []
+    if not live:
+        return "", ""
+    line = live[0]
+    d["asked_on"] = _today()
+    d.setdefault("asked", []).append({"at": _now().isoformat(timespec="seconds"), "line": line["id"]})
+    save(d)
+    return line["id"], (
+        "@GrokBot What already exists for this question, that I could actually use? Platforms, databases, "
+        "open-source tools or repositories, not papers. Two or three, each with a link and one line on what it "
+        "does.\n%s: %s" % (line.get("title", "")[:80], str(line.get("question", ""))[:300]))
+
+
 def answered(url, said):
     """He said on a line what he is doing with one. Marks it, so it stops being shown."""
     d = load()

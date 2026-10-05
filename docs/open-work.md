@@ -185,8 +185,12 @@ nothing said there was anything to reach for. `line_prospect.py` searches one op
 datasets and repositories that exist for THAT question (three angles, one hit per site), and what it finds goes
 in his channel context with the line it belongs to. He answers on the line what it is and whether he is using it;
 what he has been shown three times and never spoken to is said plainly. The search runs in the Lab's own session,
-beside his lines, not in the Slack tick (there it dragged the network into four suites). **Not seen:** a real
-search, or him using one.
+beside his lines, not in the Slack tick (there it dragged the network into four suites). **And the room asks:**
+once a day the end of his own message puts a line to @GrokBot ("what already exists for this question, that I
+could actually use? Platforms, databases, open-source tools or repositories, not papers"), appended after
+address() so it never changes who the message is to; GrokBot's skill doc says to answer it. Nobody in that room
+had the job of finding what exists, which is why nobody ever said one. **Not seen:** a real search, GrokBot
+answering, or him using anything found.
 **His Lab's JSON parser crashed 74 times in one day** and took every reflect tick with it; he found it himself
 (chemistry_lab.py:654) and then locked it to go make a song. A local model truncates and sometimes writes a stray
 backslash; the parser took the first `{` to the last `}` and gave up on anything else. It now repairs those two
