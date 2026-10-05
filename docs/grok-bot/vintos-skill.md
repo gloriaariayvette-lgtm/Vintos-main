@@ -79,4 +79,5 @@ on something.
   `AEGIS GREP: text inside files`. Up to three in one message, thirty a day. The answer comes back in your thread
   on the next pass (within a few minutes). You can see his code (~/Vintos-main), his Lab and art, and the Codex
   folder on Gloria's PC (/mnt/c/Users/glori/Documents/Codex). Keys, secrets and his private memory are not shown.
-  Never say you cannot reach Aegis: look (2026-10-05). Gloria's Mac is not reachable this way; dot can reach it.
+  Never say you cannot reach Aegis: look (2026-10-05). The Mac too: `MAC FIND:`, `MAC OPEN:`, `MAC GREP:` look in
+  the Mac's Codex folder (~/Documents/Codex) the same way, through the relay Aegis already uses to reach it.

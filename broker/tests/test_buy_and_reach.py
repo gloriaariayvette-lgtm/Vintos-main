@@ -101,6 +101,33 @@ check("an answer that looks like it holds a secret is withheld",
       "withheld" in GR.run("AEGIS OPEN: %s" % os.path.join(HOME, "Vintos-main", "scripts", "forge_loop_runtime.py"),
                            guard=lambda t: ["looks like a key"])[0])
 
+# --- and on the Mac, through the plugin relay's door ----------------------------------------------------------------
+SENT = []
+def relay(req, timeout=60):
+    SENT.append(req); return {"ok": True, "text": "/Users/kevin/Documents/Codex/2026-10-03/task/lab-intake.patch"}
+got = GR.run("MAC FIND: lab-intake patch", mac=relay)
+check("MAC FIND goes through the plugin relay's door as a read-only look",
+      SENT == [{"action": "look", "op": "FIND", "arg": "lab-intake patch"}] and "lab-intake.patch" in got[0], (SENT, got))
+def old_relay(req, timeout=60): raise RuntimeError("plugin relay refused or failed: unsupported relay action")
+check("a Mac whose relay has not been updated says what is missing",
+      "must be copied onto the Mac" in GR.on_mac("FIND", "x", send=old_relay))
+def no_relay(req, timeout=60): raise FileNotFoundError("plugin-relay.json")
+check("an Aegis with no relay set up says so", "not set up on Aegis" in GR.on_mac("FIND", "x", send=no_relay))
+# the Mac side: the relay's look action, with only the Codex folder in reach
+os.makedirs(os.path.join(HOME, "Documents", "Codex", "2026-10-03", "task"), exist_ok=True)
+open(os.path.join(HOME, "Documents", "Codex", "2026-10-03", "task", "lab-intake.patch"), "w").write("+ log the guard\n")
+open(os.path.join(HOME, "Documents", "Codex", "api_keys.json"), "w").write('{"x": "sk-mac-never"}')
+os.makedirs(os.path.join(HOME, "Documents", "Private"), exist_ok=True)
+open(os.path.join(HOME, "Documents", "Private", "diary.txt"), "w").write("not for anyone")
+import importlib, plugin_relay_remote as PRR
+_roots = GR.ROOTS
+mac_find = PRR.handle({"action": "look", "op": "FIND", "arg": "lab-intake"})
+check("on the Mac, the relay's look finds in the Codex folder", mac_find["ok"] and "lab-intake.patch" in mac_find["text"], mac_find)
+check("... and nothing outside it, nor a key file", "not opened" in PRR.handle({"action": "look", "op": "OPEN",
+      "arg": os.path.join(HOME, "Documents", "Private", "diary.txt")})["text"]
+      and "sk-mac-never" not in PRR.handle({"action": "look", "op": "GREP", "arg": "sk-mac"})["text"]
+      and "not opened" in PRR.handle({"action": "look", "op": "OPEN", "arg": os.path.join(HOME, "Documents", "Codex", "api_keys.json")})["text"])
+GR.ROOTS = _roots
 D.kickoff_due = lambda *a: False
 D.ROTATION = ("gemma",); D.SCHEDULE = []
 D.atelier_line = lambda: ""; D.recall_block = lambda: ""
@@ -160,8 +187,8 @@ check("... and a key file it asks for is refused, its contents never posted",
       ans and "not opened" in ans[0]["text"] and "sk-should-never-show" not in json.dumps(S.posted))
 
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
-check("he is told: buying goes to Muse, and Grok Bot can look on Aegis",
-      "a thing you want to buy goes to @Muse" in dsrc and "Grok Bot can now look on Aegis too" in dsrc)
+check("he is told: buying goes to Muse, and Grok Bot can look on Aegis and the Mac",
+      "a thing you want to buy goes to @Muse" in dsrc and "Grok Bot can now look on Aegis too" in dsrc and "MAC FIND:" in dsrc)
 check("Muse, dot and Grok Bot are told", "BUY: item | price | store | link | why he wants it" in open(os.path.join(REPO, "docs", "muse", "vintos-skill.md")).read()
       and "## 14. Buying, and Grok Bot's reach" in open(os.path.join(REPO, "docs", "dot", "operating-rules.md")).read()
       and "AEGIS FIND:" in open(os.path.join(REPO, "docs", "grok-bot", "vintos-skill.md")).read())

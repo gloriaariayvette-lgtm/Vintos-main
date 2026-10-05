@@ -344,7 +344,21 @@ def handle(request):
     if action == "call": return connector(request)
     if action == "skill": return skill_job(request)
     if action == "schema": return tool_schemas(request)
+    if action == "look": return look(request)
     raise ValueError("unsupported relay action")
+
+
+def look(request):
+    """Grok Bot's read-only look on the Mac (Gloria, 2026-10-05: "Can GrokBot not use that too?"): FIND, OPEN or GREP,
+    inside the Codex folder only, never keys, secrets or private files. grok_reach.py sits beside this file."""
+    import sys as _ls
+    _ls.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import grok_reach
+    grok_reach.ROOTS = grok_reach.MAC_ROOTS
+    op = str(request.get("op") or "").upper()
+    if op not in ("FIND", "OPEN", "GREP"):
+        raise ValueError("look takes FIND, OPEN or GREP")
+    return {"ok": True, "text": str(grok_reach.local(op, str(request.get("arg") or "")[:300]))[:grok_reach.SHOWN]}
 
 
 def main():

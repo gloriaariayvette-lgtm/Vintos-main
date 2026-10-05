@@ -10,7 +10,13 @@ reach files on Aegis, so I didn't copy anything"). In #vintos-dot it writes a li
 
 and the next Slack pass runs it here and answers in its thread. Only in ROOTS: his code, his Lab, his art and the
 Codex folder on Gloria's PC. Never keys, secrets or his private memory (DENY), and every answer passes the same
-secret check as anything posted to Slack. The Mac is not reachable from Aegis for files; dot has its own computer.
+secret check as anything posted to Slack.
+
+    MAC FIND: / MAC OPEN: / MAC GREP:
+
+do the same on the Mac, through the plugin relay's SSH door (plugin_gateway; the forced-command key that already
+carries his plugin calls). On the Mac this file answers the relay's "look" action, with MAC_ROOTS only: the Codex
+folder. It must be copied beside plugin_relay_remote.py on the Mac for that to work (the deploy never reaches it).
 """
 from __future__ import annotations
 import json
@@ -27,7 +33,8 @@ DENY = re.compile(r"secret|token|credential|password|passwd|(^|/)\.env|vintos\.e
                   r"\.pem$|\.key$|keys?\.json|api[-_]?key|cookie|wallet|interaction-ledger|GLORIA-MODEL|daily-inner|"
                   r"SOUL\.md|wal\.md|(^|/)\.git(/|$)", re.I)
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".cache"}
-LINE = re.compile(r"^\s*AEGIS\s+(FIND|OPEN|GREP)\s*:\s*(.+?)\s*$", re.I | re.M)
+MAC_ROOTS = ("~/Documents/Codex",)       # on the Mac, the only place a look reaches (Gloria, 2026-10-05)
+LINE = re.compile(r"^\s*(AEGIS|MAC)\s+(FIND|OPEN|GREP)\s*:\s*(.+?)\s*$", re.I | re.M)
 PER_DAY = 30            # looks a day
 PER_MESSAGE = 3
 SHOWN = 3500            # characters of one answer posted in Slack
@@ -35,6 +42,28 @@ SHOWN = 3500            # characters of one answer posted in Slack
 
 def roots():
     return [os.path.realpath(os.path.expanduser(r)) for r in ROOTS if os.path.isdir(os.path.expanduser(r))]
+
+
+def local(op, arg):
+    """One look on this machine: FIND, OPEN or GREP."""
+    return {"FIND": find, "OPEN": open_, "GREP": grep}[str(op).upper()](arg)
+
+
+def on_mac(op, arg, send=None):
+    """One look on the Mac through the plugin relay's door. send is the relay (plugin_gateway._send)."""
+    if send is None:
+        import plugin_gateway
+        send = plugin_gateway._send
+    try:
+        got = send({"action": "look", "op": str(op).upper(), "arg": str(arg)[:300]}, timeout=60)
+    except FileNotFoundError:
+        return "the Mac is not reachable: the relay to it is not set up on Aegis (~/.vintos/plugin-relay.json)"
+    except Exception as exc:
+        text = str(exc)
+        if "unsupported relay action" in text:
+            return "the Mac's relay does not know how to look yet: grok_reach.py and the new plugin_relay_remote.py must be copied onto the Mac"
+        return "the Mac did not answer: %s" % text[:200]
+    return str((got or {}).get("text") or "nothing came back")
 
 
 def allowed(path):
@@ -128,21 +157,22 @@ def _count(n=0):
     return d["used"]
 
 
-def run(text, guard=None):
+def run(text, guard=None, mac=None):
     """Grok Bot's AEGIS lines in one message, run: [answer text]. guard(text) returns findings when an answer looks
     like it holds a secret; such an answer is withheld."""
     out = []
-    for kind, arg in [m.groups() for m in LINE.finditer(str(text or ""))][:PER_MESSAGE]:
+    for where, kind, arg in [m.groups() for m in LINE.finditer(str(text or ""))][:PER_MESSAGE]:
+        where, kind = where.upper(), kind.upper()
         if _count() >= PER_DAY:
-            out.append("AEGIS %s %s\nnot looked: %d looks today already" % (kind.upper(), arg, PER_DAY))
+            out.append("%s %s %s\nnot looked: %d looks today already" % (where, kind, arg, PER_DAY))
             continue
         _count(1)
         try:
-            got = {"FIND": find, "OPEN": open_, "GREP": grep}[kind.upper()](arg)
+            got = local(kind, arg) if where == "AEGIS" else on_mac(kind, arg, send=mac)
         except Exception as exc:
             got = "could not: %s" % str(exc)[:160]
         bad = guard(got) if guard else []
         if bad:
             got = "withheld: it looked like it held a secret (%s)" % ", ".join(bad)[:120]
-        out.append("AEGIS %s %s\n%s" % (kind.upper(), arg, str(got)[:SHOWN]))
+        out.append("%s %s %s\n%s" % (where, kind, arg, str(got)[:SHOWN]))
     return out

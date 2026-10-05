@@ -316,8 +316,8 @@ RULES_HANDS = (
     "buying: a thing you want to buy goes to @Muse, who finds the real listing and puts it to Gloria with its "
     "price and link (her phone gets it); she is the only one who buys.\n"
     "Grok Bot can now look on Aegis too, read only (its own AEGIS FIND: / AEGIS OPEN: / AEGIS GREP: lines; the "
-    "answer comes back in its thread): your code, your Lab, your art and the Codex folder on her PC. Ask it to "
-    "look instead of saying it cannot.\n"
+    "answer comes back in its thread): your code, your Lab, your art and the Codex folder on her PC; and on the "
+    "Mac's Codex folder with MAC FIND: / MAC OPEN: / MAC GREP:. Ask it to look instead of saying it cannot.\n"
     "  ASK: plugin.tool {exact json arguments} | why it is worth it: a paid connector call (a Boltz run) goes onto "
     "Gloria's Forge page with its free price estimate; her Accept runs it exactly as written. Dot can write the same line.\n"
     "Nothing loud between 22:00 and 9:00; the TV is not taken over while she is watching something you did not put "
@@ -2569,13 +2569,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("%s asked Gloria on her phone: %d" % (by, len(said)))
             except Exception as exc:
                 kept_lines.append("could not ask Gloria: %s" % str(exc)[:120])
-        if r["who"] == "agent" and r.get("name") == "Grok Bot" and "AEGIS " in r["text"].upper():
-            try:   # Grok Bot looks on Aegis, read only; the answer goes back in its thread (grok_reach.py, 2026-10-05)
+        if r["who"] == "agent" and r.get("name") == "Grok Bot" and re.search(r"^\s*(?:AEGIS|MAC)\s+(?:FIND|OPEN|GREP)\s*:", r["text"], re.I | re.M):
+            try:   # Grok Bot looks on Aegis or the Mac, read only; the answer goes back in its thread (grok_reach.py)
                 import grok_reach
                 found = grok_reach.run(r["text"], guard=_guarded)
                 if found:
                     api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"],
-                                             "text": "@GrokBot here is what Aegis has:\n\n" + "\n\n".join(found)})
+                                             "text": "@GrokBot here is what it found:\n\n" + "\n\n".join(found)})
                     kept_lines.append("Grok Bot looked on Aegis: %d" % len(found))
             except Exception as exc:
                 kept_lines.append("could not look on Aegis for Grok Bot: %s" % str(exc)[:120])

@@ -19,9 +19,11 @@ Aegis/Mac too."
   only Gloria buys.
 - **Grok Bot looks on Aegis**, read only (`grok_reach.py`): `AEGIS FIND:` / `AEGIS OPEN:` / `AEGIS GREP:` lines,
   answered in its thread on the next pass; his code, his Lab, his art and the Codex folder on her PC; keys, secrets
-  and his private memory refused; every answer through the Slack secret check; 30 a day. **The Mac is not
-  reachable from Aegis for files** (only dot reaches it); a read-only Mac route would need a forced-command SSH key
-  on the Mac, which is hers to set up.
+  and his private memory refused; every answer through the Slack secret check; 30 a day. **And the Mac**: `MAC
+  FIND/OPEN/GREP` go through the plugin relay's existing SSH door (the forced-command key that carries his plugin
+  calls) as a new read-only `look` action, inside the Mac's ~/Documents/Codex only. **Needs on the Mac:** the new
+  `plugin_relay_remote.py` and `grok_reach.py` copied into the relay's folder (the deploy never reaches the Mac;
+  Chat can do it). Until then a MAC line answers that the Mac's relay does not know how to look yet.
 - Also: the wants board missed the Forge's own block field (`blocked`); it reads both now.
 
 **She must paste**: `docs/muse/vintos-skill.md` into Muse, `docs/dot/operating-rules.md` (rules 13–14) into dot,
