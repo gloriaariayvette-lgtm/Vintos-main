@@ -604,7 +604,8 @@ def lab_context(gemma_journal=True):
         if source_note.get('kind') != 'additional_source': continue
         if mentions_spent(source_note.get('source_summary')): break
         compact = {'receipt_id': source_note.get('receipt_id'),
-                   'source_summary': str(source_note.get('source_summary') or '')[:540],
+                   # notes written before 2026-10-05 hold a sequence cut at 1800 characters: never shown part-way
+                   'source_summary': no_partial_sequences(source_note.get('source_summary'))[:540],
                    'source_metadata': source_note.get('source_metadata')}
         text = json.dumps(compact, ensure_ascii=False)[:min(700, budget-used)]
         if text:
@@ -1286,6 +1287,30 @@ def observed(records, budget=OBSERVED):
             "The records themselves are complete; do not report them as truncated.]" % (len(text) - budget))
 
 
+_SEQ_RUN = re.compile(r"[A-Z]{40,}")
+
+
+def no_partial_sequences(text):
+    """A sequence cut to fit a short excerpt reads to him as a truncated record. Every run of sequence letters in a
+    short excerpt is named, not shown (2026-10-05: "the truncated C-terminal region", of a record that was whole)."""
+    return _SEQ_RUN.sub(lambda m: "[sequence not shown here (%d+ residues); the receipt holds it whole]" % len(m.group(0)),
+                        str(text or ""))
+
+
+def source_summary(records, budget=1800):
+    """The notebook's note of what a source returned: whole JSON, each sequence named by its length rather than cut
+    part-way (it was json.dumps(records)[:1800], so a 759-residue sequence was noted as its first few hundred)."""
+    def walk(o):
+        if isinstance(o, str):
+            return ("[%d-residue sequence; whole in the receipt]" % len(o)) if _SEQ.fullmatch(o) else o
+        if isinstance(o, list):
+            return [walk(x) for x in o]
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        return o
+    return observed(walk(records), budget)
+
+
 def _reflect(context, inquiry, records):
     line = None
     try:   # the line this test belongs to, and how he may end it
@@ -1594,7 +1619,7 @@ def tick():
                         except Exception as exc: _fault("remember_taxa", exc)
                     note = {"at": now_iso(), "kind": "additional_source", "receipt_id": receipt_row.get("receipt_id"),
                             "query_sent": sent_query, "records_returned": returned,
-                            "source_summary": json.dumps(receipt_row.get("records", []))[:1800],
+                            "source_summary": source_summary(receipt_row.get("records", [])),
                             "source_metadata": receipt_row.get("metadata", {}),
                             "plugin_receipt_id": (sourced.get("plugin_receipt") or {}).get("receipt_id"),
                             # A source that holds no such record has answered him. It is not licence to

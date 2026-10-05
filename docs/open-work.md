@@ -10,8 +10,13 @@ UniProt's: `_browse` kept only the first 350 residues of a record (a cap meant f
 anyway), and the review read `json.dumps(observations)[:14000]`, a blind cut that fell inside the UniProt sequence
 of the extra source. Now the record keeps the whole sequence (up to 5,000 residues, marked when longer), and the
 review's excerpt (`chemistry_lab.observed`) shortens prose and long lists first, keeps sequences whole, and, if it
-still cannot fit, says the excerpt ends there and the records are complete. **Not yet seen on Aegis:** his next
-review of a long protein should quote its C-terminus. Unchanged: his own `ncbi_sequence` slices are still capped at
+still cannot fit, says the excerpt ends there and the records are complete. A third cut, found after the deploy
+(his 4:49 question and 4:50 review still said "truncated"): the notebook noted each source as
+`json.dumps(records)[:1800]`, and his context showed the first 540 characters of that note as "RECENT LAB SOURCE",
+so both his next question and his review read a sequence cut part-way. Now the note names each sequence by its
+length (`source_summary`) and the context never shows a run of sequence letters part-way (`no_partial_sequences`),
+old notes included. **Not yet seen on Aegis:** his next review of a long protein should quote its C-terminus. His
+earlier notebook lines that call Q9BXS9 truncated are left as written. Unchanged: his own `ncbi_sequence` slices are still capped at
 350 residues per request.
 
 ## 5 October — his Claude calls cache what does not change

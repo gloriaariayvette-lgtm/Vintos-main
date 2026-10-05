@@ -79,6 +79,20 @@ check("if it still cannot fit, it says the excerpt ends there and the records ar
 check("the review uses it", "observed(records)" in open(M.__file__).read() and "json.dumps(records)[:14000]" not in
       open(M.__file__).read().split("def _reflect(", 1)[1].split("def _reflect_genome", 1)[0])
 
+# --- the third cut: the notebook's note of a source, and the excerpt of it in his context --------------------------
+note = M.source_summary([raw])
+check("the notebook notes a source as whole JSON, the sequence named by its length",
+      json.loads(note)[0]["sequence"]["value"] == "[759-residue sequence; whole in the receipt]"
+      and not M._SEQ_RUN.search(note), note[:300])
+old_note = json.dumps([raw])[:600]           # a note cut part-way through a sequence, as notes were until 2026-10-05
+check("an old note held the sequence cut part-way", M._SEQ_RUN.search(old_note) and SEQ not in old_note)
+M._append(M.NOTEBOOK, {"at": "2026-10-05T21:48:00+00:00", "kind": "additional_source", "receipt_id": "R-1",
+                       "source_summary": old_note, "source_metadata": {"service": "UniProtKB"}})
+ctx = M.lab_context()[0]
+check("his context names the sequence instead of showing it cut", "[RECENT LAB SOURCE" in ctx
+      and "the receipt holds it whole" in ctx and not M._SEQ_RUN.search(ctx.split("[RECENT LAB SOURCE", 1)[1][:800]),
+      ctx.split("[RECENT LAB SOURCE", 1)[-1][:400])
+
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
