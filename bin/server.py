@@ -6281,6 +6281,11 @@ def _mount_domain(name, attr="router"):
 _mount_domain("galleries")
 _mount_domain("music")
 _mount_domain("landings")   # her notes on how his pieces landed; her side only (2026-09-24)
+try:
+    import watch_routes as _watch_routes
+    app.include_router(_watch_routes.router(app_secret=APP_SECRET))
+except Exception as _watch_routes_error:
+    print("[watch] routes not mounted (%s)" % str(_watch_routes_error)[:160], flush=True)
 _mount_domain("journal")    # his journal, read-only, for her JOURNAL tab (2026-09-24)
 
 

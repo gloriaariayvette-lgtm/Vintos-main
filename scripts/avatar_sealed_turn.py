@@ -23,10 +23,15 @@ def sealed():
     """True only when the home directory is an overlay and /tmp a fresh tmpfs, in this process's view."""
     home = os.path.realpath(os.path.expanduser("~"))
     kinds = {}
-    for line in open("/proc/self/mounts"):
-        parts = line.split()
-        if len(parts) > 2:
-            kinds[parts[1]] = parts[2]
+    try:
+        mounts = open("/proc/self/mounts")
+    except OSError:
+        return False  # non-Linux hosts cannot satisfy the Linux overlay seal
+    with mounts:
+        for line in mounts:
+            parts = line.split()
+            if len(parts) > 2:
+                kinds[parts[1]] = parts[2]
     return kinds.get(home) == "overlay" and kinds.get("/tmp") == "tmpfs" and os.environ.get("VINTOS_SEALED") == "1"
 
 

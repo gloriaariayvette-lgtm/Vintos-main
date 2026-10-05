@@ -14,6 +14,9 @@ HOME = tempfile.mkdtemp(prefix="dot-media-")
 os.environ["HOME"] = HOME
 os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
 os.environ["VINTOS_SECRETS"] = os.path.join(HOME, "no-secrets")
+# The isolated runner intentionally supplies a minimal PATH. Keep the real media fixture
+# available on macOS as well as Linux; production still invokes the ordinary ffmpeg name.
+os.environ["PATH"] = "/usr/local/bin:/opt/homebrew/bin:" + os.environ.get("PATH", "")
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 
 NET = []
@@ -36,8 +39,10 @@ def check(n, ok, d=""):
 check("every store is in the scratch workspace", D.HERE.startswith(HOME) and D._scratch().startswith(HOME))
 
 # a real picture for ffmpeg to turn into what Gemma reads
+FFMPEG = next((p for p in ("/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/bin/ffmpeg") if os.path.isfile(p)), "ffmpeg")
+FFPROBE = next((p for p in ("/usr/local/bin/ffprobe", "/opt/homebrew/bin/ffprobe", "/usr/bin/ffprobe") if os.path.isfile(p)), "ffprobe")
 PNG = os.path.join(HOME, "pic.png")
-subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=1600x900", "-frames:v", "1", PNG], check=True)
+subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=1600x900", "-frames:v", "1", PNG], check=True)
 
 fetched, looked = [], []
 def download(url, dest, token):
@@ -53,7 +58,7 @@ check("and seen by his own model, told plainly what to say", looked and looked[0
       and "plainly" in looked[0][1], looked)
 check("he reads it as what his eyes saw, named", seen.startswith('[Dot posted an image "red.png". What your eyes saw:] A plain red rectangle.'), seen)
 j = D._jpeg(PNG, os.path.join(HOME, "out.jpg"))
-w = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width", "-of", "csv=p=0", j], capture_output=True, text=True).stdout.strip()
+w = subprocess.run([FFPROBE, "-v", "error", "-show_entries", "stream=width", "-of", "csv=p=0", j], capture_output=True, text=True).stdout.strip()
 check("a picture is turned into a jpeg no wider than 1024 for the local model", j and w == "1024", w)
 check("nothing is left behind in the working folder", os.listdir(D._scratch()) == [], os.listdir(D._scratch()))
 

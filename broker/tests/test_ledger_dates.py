@@ -5,7 +5,7 @@ outreach and more) still pasted bare lines, so whatever model ran them read yest
 imported or run."""
 import glob, os, re, sys
 
-REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:900]) if d and not ok else ""))

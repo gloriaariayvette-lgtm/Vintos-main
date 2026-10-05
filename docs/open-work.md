@@ -2237,3 +2237,17 @@ checked on Aegis with a real model yet.
    Gloria making the daily task in the Grok app, and a first real letter.
 
 Also: a bot other than dot posting in #vintos-dot is now heard by its own name, not taken for Gloria.
+**Vintos on Gloria's Apple Watch (in progress, 2026-10-05).** The wrist app is its own presence, not an
+extension of the R21M ring. `watch_presence.py` keeps Apple Watch telemetry and replies in private 0600 stores,
+with observed time, source, age and estimate wording; charging means not worn, while sample gaps only mean
+unknown. `watch_routes.py` carries direct Watch telemetry, APNs registration, the current Landings feed, landing
+notes and private Avatar-chat replies. The wrist uses the same complete pieces and `landings.record` contract as
+the phone Landings tab, so her rating and explanation remain one record. `watch_apns.py` sends directly to the
+Watch through APNs and holds while the Watch says Gloria is asleep. The Watch bearer is commissioned on Aegis;
+the .p8 key is read only from `~/.vintos/secrets/apns-watch.json` and is never in the repository or a notification.
+The native watchOS target and complication build successfully without signing. **Not done or seen yet:** the app
+is not installed because this Mac has no Apple Developer account signed into Xcode, and no APNs .p8 key exists;
+notification contact presentation, Double Tap, Watch-speaker song playback, real complication refresh, automatic
+push creation for every new Landing, Live Activity push updates and both extended-runtime session modes have not
+been observed on Gloria's Watch. Apple does not expose arbitrary notification haptic waveforms; his distinct
+patterns play inside the app/shared session, while a notification uses his sound and the system haptic.

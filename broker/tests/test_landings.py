@@ -103,7 +103,10 @@ class Landings(unittest.TestCase):
         self.assertNotIn("unrated", json.dumps(items))
 
     def test_nothing_he_reads_opens_her_notes(self):
-        allowed = {"scripts/landings.py", "bin/server_domains/landings.py"}
+        # watch_routes is Gloria's bearer-protected wrist surface. Like the phone Landings
+        # route, it may present her feed and record her response; no Vintos context builder
+        # imports it.
+        allowed = {"scripts/landings.py", "scripts/watch_routes.py", "bin/server_domains/landings.py"}
         pat = re.compile(r"landings\.jsonl|VINTOS_LANDINGS_DIR|\.vintos/landings|import landings|landings as _l")
         hits = []
         for top in ("bin", "scripts"):
