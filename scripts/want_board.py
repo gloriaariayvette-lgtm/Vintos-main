@@ -112,9 +112,17 @@ def alike(a, b):
     return bool(wa and wb) and len(shared) >= SAME_MIN and len(shared) / min(len(wa), len(wb)) >= SAME
 
 
+def _block(w):
+    """The block on this want, or {}: the router's plan block, or the Forge's missing hand ("blocked")."""
+    for key in ("blocked", "plan_block"):
+        block = w.get(key) or {}
+        if isinstance(block, dict) and block.get("block_type"):
+            return block
+    return {}
+
+
 def _blocked(w):
-    block = w.get("plan_block") or {}
-    return isinstance(block, dict) and bool(block.get("block_type"))
+    return bool(_block(w))
 
 
 def _gloria_answered(want_id, discussions):
@@ -182,7 +190,7 @@ def tend(now=None, age=None, discussions=None):
                 log.append("unblocked: %s" % w.get("id"))
             elif not board and _blocked(w) and not moving(w, now):
                 w["board"], w["parked_at"] = "blocked", stamp
-                log.append("parked BLOCKED (%s): %s" % ((w.get("plan_block") or {}).get("block_type"), w.get("id")))
+                log.append("parked BLOCKED (%s): %s" % (_block(w).get("block_type"), w.get("id")))
             elif (not board and w.get("gloria_routed") and not _gloria_answered(w.get("id", ""), disc)
                   and now - last_moved(w) > AWAIT_DAYS * 86400):
                 w["board"], w["parked_at"] = "awaiting_gloria", stamp
@@ -241,7 +249,7 @@ def tend(now=None, age=None, discussions=None):
             days = int((now - last_moved(w)) // 86400)
             if w.get("board"):
                 why = ("waited %d days on Gloria with no answer" % days if w["board"] == "awaiting_gloria"
-                       else "blocked %d days on a hand he does not have (%s)" % (days, (w.get("plan_block") or {}).get("block_type", "")))
+                       else "blocked %d days on a hand he does not have (%s)" % (days, _block(w).get("block_type", "")))
                 released.append(dict(w, dismissed=True, dismissed_at=stamp, dismissed_by="released", dismissed_reason=why,
                                      released_note=str((row or {}).get("fulfillment_note", ""))[:200],
                                      discussion_len=len(disc.get(w.get("id", "")) or [])))

@@ -63,6 +63,11 @@ check("her page shows Waiting on you with Accept and Deny, above the projects",
 import skill_forge as SF
 import forge_house as H
 check("the house's stores are in the scratch workspace", SF.MEMORY.startswith(HOME))
+# every card now also goes to her phone (2026-10-05): her phone is a stub here, and her questions a scratch store
+import gloria_asks as GA
+PHONE = []
+GA.notify = lambda row, send=None: (PHONE.append(row), True)[1]
+check("her phone is a stub and its store is the scratch one", GA.STORE.startswith(HOME) and GA.notify("x") is True and PHONE.pop() == "x")
 os.makedirs(SF.MEMORY, exist_ok=True)
 gap, _ = SF.propose_from_gap_review("citation_graph_traversal", "Follow citations both ways", ["dot: two-way traversal design"],
                                     path="/mnt/c/Users/glori/Documents/design.md", touches=["scripts/citations.py"], tests="a two-way test")

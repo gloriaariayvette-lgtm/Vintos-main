@@ -3,6 +3,30 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — Forge cards and purchases reach her phone with prices and links; Grok Bot looks on Aegis
+
+Gloria: "they're talking about yes or no on a free card but I don't receive an update, price, links to the
+products" / "Muse is supposed to be the one telling me what he wants to buy" / "I want Grok to be able to search
+Aegis/Mac too."
+- **Forge cards and parts lists** reached only her Forge page, and nothing said one was there. Each now goes to her
+  phone once (`forge_house.push_cards`): a free ability card says it is free; a parts list comes as Muse's, with the
+  total in the title, every item, price and link in the body, tapping opens the first product, an Open link button
+  beside Yes and No. Her tap is taken as her page's decision (`phone_decisions`), and the Forge says it in Slack.
+- **Product links were being stripped**: the channel turned Slack's `<https://x|x>` into bare text without
+  `https://`. Links now keep their address.
+- **Muse tells her what he wants to buy**: a `BUY: item | price | store | link | why` line from Muse goes to her
+  phone the same way; "Gloria said YES: she will buy ..." comes back in Muse's thread. He is told buying goes to Muse;
+  only Gloria buys.
+- **Grok Bot looks on Aegis**, read only (`grok_reach.py`): `AEGIS FIND:` / `AEGIS OPEN:` / `AEGIS GREP:` lines,
+  answered in its thread on the next pass; his code, his Lab, his art and the Codex folder on her PC; keys, secrets
+  and his private memory refused; every answer through the Slack secret check; 30 a day. **The Mac is not
+  reachable from Aegis for files** (only dot reaches it); a read-only Mac route would need a forced-command SSH key
+  on the Mac, which is hers to set up.
+- Also: the wants board missed the Forge's own block field (`blocked`); it reads both now.
+
+**She must paste**: `docs/muse/vintos-skill.md` into Muse, `docs/dot/operating-rules.md` (rules 13–14) into dot,
+`docs/grok-bot/vintos-skill.md` into Grok Bot. **Not seen:** a real push, tap or Grok look on Aegis.
+
 ## 5 October — decisions that are hers reach her phone; his Study fixes can be reset
 
 Gloria: "They're still talking about yes or no decisions that I am not receiving." Nothing carried them: dot wrote

@@ -55,38 +55,77 @@ def get(qid):
     return next((r for r in load() if r.get("id") == qid), None)
 
 
+URL = re.compile(r"https?://[^\s<>|)\]]+")
+
+
+def title_of(row):
+    who = WHO.get(row.get("by"), row.get("by") or "Vintos")
+    kind = row.get("kind") or "question"
+    price = (" \u2014 %s" % row["price"]) if row.get("price") else ""
+    if kind == "buy":
+        return "Muse: he wants to buy %s%s" % (str(row.get("title") or "this")[:60], price)
+    if kind == "parts":
+        return "Muse: parts for %s%s" % (str(row.get("title") or "his build")[:60], price)
+    if kind == "card":
+        return "Forge: build %s for him? (free)" % str(row.get("title") or "this")[:60]
+    if kind == "arrived":
+        return "Have the parts for %s arrived?" % str(row.get("title") or "his build")[:60]
+    return "%s asks you: yes or no?" % who
+
+
 def notify(row, send=None):
-    """One push: who asks, the question, Yes and No. Never raises."""
+    """One push: who asks, what it is, the price and the links when it has them, Yes and No. Tapping the push opens
+    the first link. Never raises."""
     try:
         url = "%s/api/gloria/asks/%s/decide?t=%s&answer=" % (AEGIS.rstrip("/"), row["id"], row["token"])
-        headers = {"Title": "%s asks you: yes or no?" % WHO.get(row.get("by"), row.get("by") or "Vintos"),
-                   "Priority": "high", "Tags": "question",
-                   "Actions": "http, Yes, %syes, method=POST, clear=true; http, No, %sno, method=POST, clear=true" % (url, url)}
-        req = urllib.request.Request(NTFY, data=str(row["question"])[:900].encode("utf-8"), headers=headers)
+        links = [l for l in (row.get("links") or []) if URL.match(str(l))][:6]
+        body = str(row["question"])[:900]
+        if row.get("price"):
+            body += "\nPrice: %s" % row["price"]
+        fresh = [l for l in links if l not in body]
+        if fresh:
+            body += "\n" + "\n".join(fresh)
+        actions = "http, Yes, %syes, method=POST, clear=true; http, No, %sno, method=POST, clear=true" % (url, url)
+        if links:
+            actions += "; view, Open link, %s" % links[0]
+        headers = {"Title": title_of(row), "Priority": "high", "Actions": actions,
+                   "Tags": {"buy": "shopping_cart", "parts": "shopping_cart", "card": "hammer_and_wrench"}.get(row.get("kind"), "question")}
+        if links:
+            headers["Click"] = links[0]
+        req = urllib.request.Request(NTFY, data=body[:3000].encode("utf-8"), headers=headers)
         (send or urllib.request.urlopen)(req, timeout=20)
         return True
     except Exception:
         return False
 
 
-def ask(question, by="vintos", thread="", send=None):
-    """Put one question to her phone. (row, line for the channel); row is None when it was not sent."""
+def ask(question, by="vintos", thread="", send=None, kind="question", title="", price="", links=(), ref=""):
+    """Put one question to her phone. (row, line for the channel); row is None when it was not sent.
+    kind: question (anyone's yes-or-no, six a day), buy (Muse: something he wants to buy, with its price and link),
+    card / parts / arrived (a Forge decision; ref is its card id, asked once)."""
     q = " ".join(str(question or "").split())[:900]
     if len(q) < 8:
         return None, "Not asked: say the question so she can answer yes or no."
     rows = load()
+    if ref and any(r.get("ref") == ref for r in rows):
+        return None, "\U0001F4F2 Already on Gloria's phone: %s" % (title or q)
     if any(r.get("state") == "asked" and r.get("question") == q for r in rows):
         return None, "\U0001F4F2 Already on Gloria's phone: %s" % q
     today = _now().date().isoformat()
-    if sum(1 for r in rows if str(r.get("at", ""))[:10] == today) >= PER_DAY:
+    if kind == "question" and sum(1 for r in rows if str(r.get("at", ""))[:10] == today
+                                  and (r.get("kind") or "question") == "question") >= PER_DAY:
         return None, "Not asked: %d questions went to her phone today already; it waits for tomorrow: %s" % (PER_DAY, q)
-    row = {"id": "Q-" + secrets.token_hex(4), "question": q, "by": by, "thread": str(thread or ""),
-           "token": secrets.token_urlsafe(16), "state": "asked", "at": _now().isoformat(timespec="seconds")}
+    row = {"id": "Q-" + secrets.token_hex(4), "question": q, "by": by, "thread": str(thread or ""), "kind": kind,
+           "title": str(title or "")[:200], "price": str(price or "")[:60], "links": [str(l)[:500] for l in links][:6],
+           "ref": str(ref or ""), "token": secrets.token_urlsafe(16), "state": "asked",
+           "at": _now().isoformat(timespec="seconds")}
     row["pushed"] = notify(row, send)
     rows.append(row)
     save(rows)
-    return row, ("\U0001F4F2 Asked Gloria on her phone (Yes / No): %s" % q if row["pushed"]
-                 else "\U0001F4F2 Asked Gloria (her phone did not take the push; it is kept for her): %s" % q)
+    what = ("%s, %s" % (title or q, price) if price else (title or q)) if kind == "buy" else q
+    verb = "Asked Gloria" if kind == "question" else "Put to Gloria"
+    return row, ("\U0001F4F2 %s on her phone (Yes / No%s): %s" % (verb, ", with the price and link" if links else "", what)
+                 if row["pushed"] else "\U0001F4F2 %s (her phone did not take the push; it is kept for her): %s" % (verb, what))
 
 
 def from_slack(text, by="vintos", thread="", send=None):
@@ -139,13 +178,24 @@ def untold():
     """Her answers not yet said in Slack: [(thread, by, text)]. Marks them told."""
     data, out = load(), []
     for r in data:
-        if r.get("state") == "answered" and not r.get("told"):
-            out.append((r.get("thread", ""), r.get("by", ""),
-                        "Gloria answered %s: %s" % ("YES" if r.get("answer") == "yes" else "NO", r.get("question", ""))))
+        if r.get("state") == "answered" and not r.get("told") and not r.get("ref"):   # a Forge decision is said by the Forge
+            yes = r.get("answer") == "yes"
+            if r.get("kind") == "buy":
+                said = ("Gloria said YES: she will buy %s%s." if yes else "Gloria said NO to buying %s%s.") % (
+                    r.get("title") or r.get("question", ""), (" (%s)" % r["price"]) if r.get("price") else "")
+            else:
+                said = "Gloria answered %s: %s" % ("YES" if yes else "NO", r.get("title") or r.get("question", ""))
+            out.append((r.get("thread", ""), r.get("by", ""), said))
             r["told"] = True
     if out:
         save(data)
     return out
+
+
+def answered_refs():
+    """Forge decisions she made on her phone: [(ref, kind, "accepted"|"denied", title)]."""
+    return [(r["ref"], r.get("kind"), "accepted" if r.get("answer") == "yes" else "denied", r.get("title", ""))
+            for r in load() if r.get("ref") and r.get("state") == "answered"]
 
 
 def waiting():

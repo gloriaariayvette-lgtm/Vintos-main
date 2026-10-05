@@ -312,7 +312,12 @@ RULES_HANDS = (
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
     "  ASK GLORIA: a question she can answer yes or no: it goes to her phone with Yes and No, and her answer is "
     "posted back in this thread. She does not read every thread: a decision that is hers reaches her only this way. "
-    "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too.\n"
+    "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too. Not for "
+    "buying: a thing you want to buy goes to @Muse, who finds the real listing and puts it to Gloria with its "
+    "price and link (her phone gets it); she is the only one who buys.\n"
+    "Grok Bot can now look on Aegis too, read only (its own AEGIS FIND: / AEGIS OPEN: / AEGIS GREP: lines; the "
+    "answer comes back in its thread): your code, your Lab, your art and the Codex folder on her PC. Ask it to "
+    "look instead of saying it cannot.\n"
     "  ASK: plugin.tool {exact json arguments} | why it is worth it: a paid connector call (a Boltz run) goes onto "
     "Gloria's Forge page with its free price estimate; her Accept runs it exactly as written. Dot can write the same line.\n"
     "Nothing loud between 22:00 and 9:00; the TV is not taken over while she is watching something you did not put "
@@ -991,6 +996,9 @@ STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*$", re.I | re.M)
 # A paid connector call onto Gloria's Forge page for her Accept, from him or from dot (lab_asks.from_slack, 2026-10-04:
 # dot's own review would take her yes only in a session she cannot open). The same pattern as lab_asks.ASK.
+# Muse puts what he wants to buy to Gloria: item | price | store | link | why (Gloria, 2026-10-05: "Muse is
+# supposed to be the one telling me what he wants to buy").
+BUY = re.compile(r"^\s*(?:\[Muse\]\s*)?BUY:\s*(.+?)\s*$", re.I | re.M)
 ASK_LINE = re.compile(r"^\s*ASK:\s*([\w-]+)\.([\w-]+)\s*(\{.*?\})?\s*(?:\|\s*(.+?))?\s*$", re.M)
 LINE_TO = re.compile(r"^\s*LINE\s+(L-[A-Za-z0-9-]{3,40})\s*:\s*(.+?)\s*$", re.M)      # onto a line of his Lab
 LINE_NEW = re.compile(r"^\s*LINE:\s*(.+?)\s*$", re.M)                                 # a new line
@@ -1916,7 +1924,13 @@ def _clean(text, names=None):
     """Slack's markup to plain words: <@U..> mentions become names, links their text."""
     names = names or {}
     t = re.sub(r"<@([A-Z0-9]+)>", lambda m: "@" + names.get(m.group(1), "someone"), str(text or ""))
-    t = re.sub(r"<(https?://[^|>]+)\|([^>]+)>", r"\2", t)
+    # a link keeps its address: Slack shows <https://x|x> as x, and the bare text lost "https://", so Muse's product
+    # links reached nobody as links (Gloria, 2026-10-05: no "links to the products")
+    def link(m):
+        url, label = m.group(1), m.group(2)
+        bare = lambda u: re.sub(r"^https?://(www\.)?", "", u.strip()).rstrip("/").lower()
+        return url if not label or bare(label) == bare(url) else "%s (%s)" % (label, url)
+    t = re.sub(r"<(https?://[^|>]+)(?:\|([^>]+))?>", link, t)
     return t.strip()
 
 
@@ -2527,6 +2541,23 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("dot asked Gloria: %d card(s)" % len(said))
             except Exception as exc:
                 kept_lines.append("dot's ask failed: %s" % str(exc)[:120])
+        if r["who"] == "agent" and r.get("name") == "Muse" and BUY.search(r["text"]):
+            try:   # what he wants to buy, to her phone with its price, store and link; her answer back in this thread
+                import gloria_asks
+                said = []
+                for m in BUY.finditer(r["text"]):
+                    f = [x.strip() for x in m.group(1).split("|")]
+                    item, price, store = f[0], (f[1] if len(f) > 1 else ""), (f[2] if len(f) > 2 else "")
+                    why = " | ".join(x for x in f[4:] if x)
+                    said.append(gloria_asks.ask("%s%s%s" % (item, (" from %s" % store) if store and not gloria_asks.URL.match(store) else "",
+                                                            (". " + why) if why else ""),
+                                                by="muse", thread=r.get("thread") or r["ts"], kind="buy", title=item,
+                                                price=price, links=gloria_asks.URL.findall(m.group(1)))[1])
+                if said:
+                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
+                    kept_lines.append("Muse put %d thing(s) to buy to Gloria" % len(said))
+            except Exception as exc:
+                kept_lines.append("could not put Muse's find to Gloria: %s" % str(exc)[:120])
         if r["who"] in ("dot", "agent") and "ASK GLORIA" in r["text"].upper():
             try:   # a yes-or-no only she can give, from dot or an agent: to her phone, her answer back in this thread
                 import gloria_asks
@@ -2538,6 +2569,16 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("%s asked Gloria on her phone: %d" % (by, len(said)))
             except Exception as exc:
                 kept_lines.append("could not ask Gloria: %s" % str(exc)[:120])
+        if r["who"] == "agent" and r.get("name") == "Grok Bot" and "AEGIS " in r["text"].upper():
+            try:   # Grok Bot looks on Aegis, read only; the answer goes back in its thread (grok_reach.py, 2026-10-05)
+                import grok_reach
+                found = grok_reach.run(r["text"], guard=_guarded)
+                if found:
+                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"],
+                                             "text": "@GrokBot here is what Aegis has:\n\n" + "\n\n".join(found)})
+                    kept_lines.append("Grok Bot looked on Aegis: %d" % len(found))
+            except Exception as exc:
+                kept_lines.append("could not look on Aegis for Grok Bot: %s" % str(exc)[:120])
         if r["who"] == "agent" and r.get("name") == "Grok Bot":
             try:   # its answer to the room's daily "what already exists", onto the line it was asked for
                 import line_prospect

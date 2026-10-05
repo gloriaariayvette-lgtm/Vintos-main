@@ -232,13 +232,65 @@ def decision_cards(proposals=None):
     return cards
 
 
+def push_cards(cards, applied, ask=None):
+    """Each Forge decision to her phone, once: what it is, what it costs, the product links, Yes and No (Gloria,
+    2026-10-05: "they're talking about yes or no on a free card but I don't receive an update, price, links to the
+    products"). Her page was the only place they reached, and nothing told her one was there. The paid calls his
+    Lab asks for push themselves (lab_asks). Returns the cards pushed."""
+    import gloria_asks
+    ask = ask or gloria_asks.ask
+    pushed = []
+    for c in cards:
+        kind = c.get('kind')
+        if kind not in ('card', 'parts', 'arrived') or applied.get(c.get('id')):
+            continue
+        details = [str(d) for d in (c.get('details') or [])]
+        links = [u.rstrip('.,;') for d in details for u in gloria_asks.URL.findall(d)]
+        if kind == 'parts':
+            question = 'He wants to buy these for his build. Yes means you will buy them; nothing is bought for you.\n' + '\n'.join(details[:15])
+        elif kind == 'arrived':
+            question = 'Tap Yes when the parts are here; he walks you through putting it together.'
+        else:
+            question = (str(c.get('what') or '') + '\n' + '\n'.join(details[:4])).strip()
+        row, _shown = ask(question, by='muse' if kind == 'parts' else 'vintos', kind=kind,
+                          title=str(c.get('title') or '').replace('Parts for: ', ''),
+                          price=str(c.get('cost') or '') if kind == 'parts' else '', links=links, ref=c['id'])
+        if row:
+            pushed.append(c['id'])
+    return pushed
+
+
+def phone_decisions():
+    """What she decided by tapping Yes or No on her phone, as the page would have said it."""
+    try:
+        import gloria_asks
+        rows = gloria_asks.answered_refs()
+    except Exception:
+        return []
+    out = []
+    for ref, kind, state, title in rows:
+        if kind == 'arrived' and state != 'accepted':
+            continue              # "not yet" is not a decision; the card stays
+        out.append({'id': ref, 'ref': ref.split(':', 1)[1] if ':' in ref else ref, 'kind': kind, 'state': state,
+                    'title': ('Parts for: ' + title) if kind == 'parts' else title, 'note': ''})
+    return out
+
+
 def sync_decisions(transport=None, post=None):
-    """Send what is waiting on her to her page; carry out what she decided there. Returns what was carried out."""
+    """Send what is waiting on her to her page and her phone; carry out what she decided on either. Returns what was
+    carried out."""
     import skill_forge as sf
-    decided = request('/api/decisions-sync', {'cards': decision_cards()}, transport=transport)
+    cards = decision_cards()
+    decided = request('/api/decisions-sync', {'cards': cards}, transport=transport)
     applied = _jload(APPLIED, {})
+    try:
+        for cid in push_cards(cards, applied):
+            print('forge: on her phone: %s' % cid, flush=True)
+    except Exception as exc:
+        print('forge: could not push to her phone: %s' % exc, flush=True)
+    decided = (decided if isinstance(decided, list) else []) + phone_decisions()
     done = []
-    for d in decided if isinstance(decided, list) else []:
+    for d in decided:
         if d.get('state') not in ('accepted', 'denied') or applied.get(d.get('id')) == d['state']:
             continue
         if d.get('kind') == 'card':

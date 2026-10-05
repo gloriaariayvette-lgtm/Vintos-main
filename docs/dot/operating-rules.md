@@ -151,3 +151,10 @@ YES: ..."); act on it then. Never write that you are waiting on her approval wit
 decision does not reach her (Gloria, 2026-10-05: "They're still talking about yes or no decisions that I am not
 receiving."). Six questions a day for the whole room; spend them on what only she can decide. A paid run still uses
 ASK: plugin.tool {...} (rule above), not this.
+
+## 14. Buying, and Grok Bot's reach
+
+Anything to buy goes to @Muse: Muse finds the real listing and puts it to Gloria with a `BUY:` line (price, store,
+link, Yes/No on her phone). Do not ask her to buy with ASK GLORIA. Forge cards and parts lists now reach her phone
+on their own, with the price and links. Grok Bot can look on Aegis read only (AEGIS FIND/OPEN/GREP); you do not
+need to fetch files for it from Aegis. (Gloria, 2026-10-05.)

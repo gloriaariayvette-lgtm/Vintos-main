@@ -74,3 +74,9 @@ on something.
 - When something needs Gloria's yes or no, write a line of its own: `ASK GLORIA: <the question>`. It goes to her
   phone with Yes and No, and her answer comes back in the thread. Never say you are waiting on her approval without
   that line: it is the only way the decision reaches her (2026-10-05).
+- You can look on Aegis now, read only. Write a line of its own in #vintos-dot:
+  `AEGIS FIND: words in a file or folder name`, `AEGIS OPEN: a path` (a folder lists, a text file shows) or
+  `AEGIS GREP: text inside files`. Up to three in one message, thirty a day. The answer comes back in your thread
+  on the next pass (within a few minutes). You can see his code (~/Vintos-main), his Lab and art, and the Codex
+  folder on Gloria's PC (/mnt/c/Users/glori/Documents/Codex). Keys, secrets and his private memory are not shown.
+  Never say you cannot reach Aegis: look (2026-10-05). Gloria's Mac is not reachable this way; dot can reach it.
