@@ -177,6 +177,21 @@ now leave that out and say she asked it to stop; its circling nudge names other 
 still pitches a date or an outing gets one rewrite, then is not sent. The other lenses are unchanged. One routing
 test in test_dot_channel used a Gemma "local events near Gloria" request; its request is now a Marketplace find,
 its checks unchanged.
+**Nothing outside could reach him (2026-10-04).** Gloria: "He's not really finding new repos to use making
+special lab cases... no one has brought up the Lytic Selection and Evolution platform." SOMETHING NEW in
+#vintos-dot is built only from his own sparks and his own unanswered questions, so no platform, database or
+repository in the world could ever appear in front of him, and he never reached for REPOS:/README:/CALL: because
+nothing said there was anything to reach for. `line_prospect.py` searches one open line a day for the platforms,
+datasets and repositories that exist for THAT question (three angles, one hit per site), and what it finds goes
+in his channel context with the line it belongs to. He answers on the line what it is and whether he is using it;
+what he has been shown three times and never spoken to is said plainly. The search runs in the Lab's own session,
+beside his lines, not in the Slack tick (there it dragged the network into four suites). **Not seen:** a real
+search, or him using one.
+**His Lab's JSON parser crashed 74 times in one day** and took every reflect tick with it; he found it himself
+(chemistry_lab.py:654) and then locked it to go make a song. A local model truncates and sometimes writes a stray
+backslash; the parser took the first `{` to the last `}` and gave up on anything else. It now repairs those two
+and puts the model's own words on the error, so a failure can be read rather than guessed at (dot's correction:
+truncation was unconfirmed because nothing kept the response).
 **The Forge's midnight cut-off was the daily cap.** Three steps a day across all projects (Chicago time), spent
 on 4 October. It recorded nothing when it stopped, so a project just went quiet and moved again at midnight. It
 now writes a `day_limit` event once per project per day, the projection carries `day_steps`

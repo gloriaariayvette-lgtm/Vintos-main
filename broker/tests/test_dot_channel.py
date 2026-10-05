@@ -1241,6 +1241,6 @@ _src_sol = _src_sol[_src_sol.index("def sol_model():"):_src_sol.index("def sol_l
 check("Sol in the channel is 6.1 by its own setting, never SOL_MODEL (Sol 5.6 elsewhere stays)",
       D.DOT_SOL_DEFAULT == "gpt-6.1-sol" and 'env_file.value("DOT_SOL_MODEL"' in _src_sol and 'value("SOL_MODEL"' not in _src_sol)
 
-check("nothing reached the network", NET == [] and socket.socket.connect is _no_net)
+check("nothing reached the network", NET == [] and socket.socket.connect is _no_net, NET[:3])
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

@@ -324,6 +324,10 @@ RULES_PROMISES = (
     "Dropping is honest when it is too much trouble or was more whim than want. What came of it goes to Gloria in "
     "the results channel; you do not post there from here.\n")
 RULES_LINES = (
+    "WHAT ALREADY EXISTS FOR YOUR LINES is searched for you, one line a day: the platforms, databases and "
+    "repositories the world already has for the question you are on. Before you plan another experiment, look at "
+    "one: REPOS: for its code, README: owner/repo to read it, OPEN: or CALL: to try it. Then say on the line what "
+    "it is and whether you are using it. Not looking is a choice you are making; say that on the line instead.\n"
     "Your Lab follows lines of inquiry (YOUR LAB'S LINES OF INQUIRY, below). What you work out here with dot, Grok Bot "
     "or Muse reaches your Lab only through a line: write a line of its own, LINE <its ID>: what you found (and, at "
     "its end, next: the test to run next), to add it to that line; or LINE: a question you mean to follow over days, "
@@ -1107,6 +1111,17 @@ def works_line():
                          for tag, kind, title, w, path in rows))
 
 
+def prospect_line():
+    """What already exists in the world for the questions he is following. SOMETHING NEW is built only from his own
+    sparks, so no platform, database or repository could ever reach him and none ever did (Gloria, 2026-10-04: "no
+    one has brought up the Lytic Selection and Evolution platform")."""
+    try:
+        import line_prospect
+        return line_prospect.block()
+    except Exception:
+        return ""
+
+
 def songs_line():
     """The songs he has already made, with their choruses, and any the renderer refused as one he already made.
     His composer was shown these; here he was not, so he kept locking a plan to make "Still Yours" a seventh time
@@ -1746,7 +1761,7 @@ def his_context():
         if kept: letters = (letters + "\n\n" + kept).strip()
     except Exception:
         pass
-    for line in (direction_block(), his_own_block(), new_block(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
+    for line in (direction_block(), his_own_block(), new_block(), prospect_line(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
     return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
 

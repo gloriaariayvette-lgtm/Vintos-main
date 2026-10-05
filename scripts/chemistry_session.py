@@ -501,6 +501,15 @@ def run():
     with _exclusive():
         started = time.time(); state = _state(); lens = LENSES[int(state.get("lens_index", 0)) % len(LENSES)]
         session_id = "CHEM-" + uuid.uuid4().hex[:12]
+        # Once a day, one of his lines is searched for the platforms, datasets and repositories the world already
+        # has for that question, and what is found goes in front of him in #vintos-dot. Nothing outside his own
+        # sparks ever reached him before (Gloria, 2026-10-04: "no one has brought up the Lytic Selection and
+        # Evolution platform"). It belongs here, beside his lines, not in the Slack tick.
+        try:
+            import line_prospect
+            line_prospect.prospect()
+        except Exception as exc:
+            lab._fault("line_prospect", exc, session_id=session_id)
         # An experiment already run and never read is owed a reading before another is
         # started. It costs no bench time: the result is already preserved.
         try: settled = owed.settle_one()

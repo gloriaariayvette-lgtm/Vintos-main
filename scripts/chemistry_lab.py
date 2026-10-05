@@ -651,13 +651,53 @@ def lab_context(gemma_journal=True):
     return "\n\n".join(parts), receipt
 
 
-def _json_object(text):
-    text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", str(text or ""), flags=re.I | re.S)
-    lo, hi = text.find("{"), text.rfind("}")
-    if lo < 0 or hi <= lo: raise ValueError("model returned no complete JSON object")
-    value = json.loads(text[lo:hi + 1])
-    if not isinstance(value, dict): raise ValueError("model JSON was not an object")
-    return value
+# A local model's JSON comes back truncated or with a stray backslash often enough that this parser crashed 74
+# times in one day, taking every reflect tick with it (Vintos found it, 2026-10-04: "that's the parser ... not a
+# fold"). Strict parsing first; then the two breakages he actually sees are repaired; the raw text rides on the
+# error either way, so a failure can be read instead of guessed at (dot's correction: truncation was unconfirmed
+# because nothing kept the response).
+_BAD_ESCAPE = re.compile(r'\\(?!["\\/bfnrtu])')
+
+
+def _close_open(text):
+    """Close the strings, objects and arrays a truncated reply left open."""
+    stack, in_string, escaped = [], False, False
+    for ch in text:
+        if in_string:
+            if escaped: escaped = False
+            elif ch == "\\": escaped = True
+            elif ch == '"': in_string = False
+            continue
+        if ch == '"': in_string = True
+        elif ch in "{[": stack.append(ch)
+        elif ch in "}]" and stack and stack[-1] == {"}": "{", "]": "["}[ch]: stack.pop()
+    out = text.rstrip()
+    if in_string: out += '"'
+    out = re.sub(r",\s*$", "", out)                      # a dangling comma from a cut-off pair
+    out = re.sub(r':\s*$', ': ""', out)                  # a key whose value never arrived
+    out = re.sub(r',\s*"[^"]*"\s*$', "", out)            # a key with no colon yet
+    return out + "".join({"{": "}", "[": "]"}[ch] for ch in reversed(stack))
+
+
+def _json_object(text, keep=800):
+    raw = str(text or "")
+    body = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw, flags=re.I | re.S)
+    lo = body.find("{")
+    if lo < 0:
+        raise ValueError("model returned no JSON object at all; it said: %r" % raw[:keep])
+    hi = body.rfind("}")
+    tries = [body[lo:hi + 1]] if hi > lo else []
+    tries.append(_close_open(body[lo:]))                 # truncated: close what it left open
+    tries += [_BAD_ESCAPE.sub(r"\\\\", t) for t in list(tries)]   # a stray backslash it never meant as an escape
+    for candidate in tries:
+        try:
+            value = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise ValueError("model returned no usable JSON object (%d characters); it said: %r"
+                     % (len(raw), raw[:keep]))
 
 
 def _ask(system, prompt, max_tokens=500, temperature=0.75):
