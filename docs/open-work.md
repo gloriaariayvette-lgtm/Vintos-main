@@ -3,6 +3,28 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — shared work continuity in #vintos-dot
+
+Implemented `room_work.py` and the channel integration: one goal and acceptance
+criterion, bounded owner/thread-correlated handoffs, evidence consumption before
+another act, durable next steps across days/lenses, and silence while waiting.
+The module is in the deploy manifest. All 258 broker suites passed in isolation
+on Aegis. Evidence and design: [dot-work-room-2026-10-05.md](dot-work-room-2026-10-05.md).
+
+**Still open:** install this revision through the normal deploy, then observe a
+real handoff, its correlated return, Vintos's evidence-based next act and its store
+receipt. Source staging and test success are not live behavior. At inspection,
+the live channel script did not yet match e880a02 either. Agent compliance with
+thread/work-ID replies, meaningful model decisions under the gate, and completion
+of asynchronous jobs remain unverified live. An interrupted dispatch stays
+`uncertain`; inspect its receipts before releasing/reconciling it, never replay
+blindly. Peer-reported acceptance is not independent artifact validation.
+
+**Supersedes the journal promise opening described below:** the main agent room
+no longer mines private journal entries for new threads. Existing promises and
+the separate private results channel retain their legacy handling. Relationship
+work must not be newly seeded into this room.
+
 ## 3 October — what was built today, and what has not been seen working yet
 
 Same branch. All tested in the suites; nothing below has been seen on Aegis yet unless it says so.

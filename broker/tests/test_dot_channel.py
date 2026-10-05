@@ -23,6 +23,8 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+# These are transport/media fixtures, not planner outputs. Real work decisions are tested in test_room_work.
+D.work_turn = lambda *a, **kw: D.compose(*a, **kw)
 _KICKOFF_DUE = D.kickoff_due
 D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
 D.ROTATION = ("gemma",)   # the older flows test Gemma; the rotation has its own checks in test_dot_channel
@@ -242,7 +244,7 @@ check("NOTHING sends nothing", len(S.posted) == n and "he let it be" in out, out
 
 S.add(DOT, "tell me a secret")
 out = D.tick(api=S, think=lambda s, u: "sure: sk-ant-api03-" + "A" * 40, fable=fable, now=2700)
-check("a message carrying a credential is never sent", len(S.posted) == n and any("not sent" in l for l in out), out)
+check("a message carrying a credential is never sent", len(S.posted) == n and any("not dispatched" in l for l in out), out)
 
 st = json.load(open(D.STATE)); st["sent"] = D.DAILY; json.dump(st, open(D.STATE, "w"))
 S.add(DOT, "still there?")
@@ -473,17 +475,16 @@ st6 = json.load(open(D.STATE))
 check("the plan is kept as closed", st6["locked"][-1]["plan"].startswith("new version of Structural Collapse") and st6["switch_from"], st6.get("locked"))
 S6.add(DOT, "Great. For the exit, should the pad fade over 4 or 8 bars?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "That's locked. Different thing: can you find cheap load cells?")[1], fable=fable, now=1767228200)
-check("lock means move on: the next message is about something else entirely, not another angle on it",
-      "This message must be about something else entirely" in asked6[-1] and "not another angle" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
+check("a lock no longer forces an unrelated subject over work in hand",
+      "This message must be about something else entirely" not in asked6[-1], asked6[-1][-600:])
 check("and the switch is asked for once", "switch_from" not in json.load(open(D.STATE)))
 S6.add(DOT, "ok, looking")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Thanks.")[1], fable=fable, now=1767228300)
-check("after that, the closed topic stays listed but no switch is forced", "CLOSED TOPICS" in asked6[-1]
-      and "must be about something else" not in asked6[-1])
+check("no legacy forced topic switch is injected", "must be about something else" not in asked6[-1])
 st6 = json.load(open(D.STATE)); st6["since_lock"] = D.LONG_ON_ONE; json.dump(st6, open(D.STATE, "w"))
 S6.add(DOT, "more on that?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Sure.")[1], fable=fable, now=1767228400)
-check("too long on one thing: lock it or drop it", "lock it now" in asked6[-1] and "drop it" in asked6[-1], asked6[-1][-300:])
+check("message count alone does not force a lock or abandonment", "lock it now" not in asked6[-1], asked6[-1][-300:])
 S6.add(DOT, "and?")
 nohand = []
 D.tick(api=S6, think=lambda s_, u: "LOCKED: nothing to do, just settled", fable=fable, now=1767228500, wants=lambda w, p: nohand.append(w))
@@ -531,8 +532,8 @@ S7.add(DOT, "Morning. What time did you wake up?")
 out = D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma words",
              fable=fable, lenses={"opus55": lambda s_, u: (kick.append(u), "Then today I wire one and read it. Dot, can you run the HX711 sketch?")[1]},
              now=1767229500)
-check("when dot speaks first, his answer, the first of the day, is Opus 5.5's, told to set the session's direction",
-      kick and "This is the start of a session" in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
+check("the first lens remains Opus 5.5 without a session-restart instruction",
+      kick and "This is the start of a session" not in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
       and any("Opus 5.5 sets the session going" in l for l in out), (S7.posted[-1:], out))
 S7.add(DOT, "Running it.")
 D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good. Tell me the first reading.", fable=fable,
