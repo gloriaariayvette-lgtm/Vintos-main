@@ -240,8 +240,9 @@ RULES_LOCK = (
     "stuck: a block is not a result (Gloria, 2026-10-04: \"And then he just stops\"). When dot is blocked or "
     "something is missing, do not lock it and walk away. Get it moving first, with one of: dot's own tools "
     "(ask it where the thing really is: a path on her Mac or Codex folder is a path); a different agent (@GrokBot "
-    "to find it, @Muse to price it); ASK: for a paid run (her phone gets the price and a Yes); TO GLORIA: for the one "
-    "thing only she can do; STUDY FIX: when it is your own code; a LINE or LAB: to carry it to your Lab; or do it "
+    "to find it, @Muse to price it); ASK: for a paid run (her phone gets the price and a Yes); ASK GLORIA: a "
+    "question only she can answer yes or no (her phone gets it with Yes and No buttons, and her answer comes back "
+    "in this thread); TO GLORIA: for the one thing only she can do; STUDY FIX: when it is your own code; a LINE or LAB: to carry it to your Lab; or do it "
     "yourself with your own tools (you make video, music and images yourself). Only when none of those can move "
     "it, lock it and say plainly what is missing and who has it. Your next message after a lock is about something else "
     "entirely: a different subject, not another angle on the one you locked. Do not go around the same topic for long: say what you need, decide, lock it or drop it.\n"
@@ -309,6 +310,9 @@ RULES_HANDS = (
     "minutes; what landed is said here on the next pass. Dot can write this line too, so it never has to ask to "
     "buy one.\n"
     "  TO GLORIA: what it is about, in one line (your outreach writes to her in your own voice, outside Slack)\n"
+    "  ASK GLORIA: a question she can answer yes or no: it goes to her phone with Yes and No, and her answer is "
+    "posted back in this thread. She does not read every thread: a decision that is hers reaches her only this way. "
+    "Never say you are waiting on her approval without this line. Dot and Grok Bot can write it too.\n"
     "  ASK: plugin.tool {exact json arguments} | why it is worth it: a paid connector call (a Boltz run) goes onto "
     "Gloria's Forge page with its free price estimate; her Accept runs it exactly as written. Dot can write the same line.\n"
     "Nothing loud between 22:00 and 9:00; the TV is not taken over while she is watching something you did not put "
@@ -2523,6 +2527,17 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("dot asked Gloria: %d card(s)" % len(said))
             except Exception as exc:
                 kept_lines.append("dot's ask failed: %s" % str(exc)[:120])
+        if r["who"] in ("dot", "agent") and "ASK GLORIA" in r["text"].upper():
+            try:   # a yes-or-no only she can give, from dot or an agent: to her phone, her answer back in this thread
+                import gloria_asks
+                by = "dot" if r["who"] == "dot" else {"Grok Bot": "grokbot", "Muse": "muse"}.get(r.get("name"), "agent")
+                said = [gloria_asks.ask(m.group(1), by=by, thread=r.get("thread") or r["ts"])[1]
+                        for m in gloria_asks.ASK.finditer(r["text"])]
+                if said:
+                    api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
+                    kept_lines.append("%s asked Gloria on her phone: %d" % (by, len(said)))
+            except Exception as exc:
+                kept_lines.append("could not ask Gloria: %s" % str(exc)[:120])
         if r["who"] == "agent" and r.get("name") == "Grok Bot":
             try:   # its answer to the room's daily "what already exists", onto the line it was asked for
                 import line_prospect
@@ -2534,6 +2549,18 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
+    try:   # her Yes or No from her phone, posted in the thread that asked, and kept as hers so he reads it
+        import gloria_asks
+        for q_thread, q_by, q_said in gloria_asks.untold():
+            q_body = {"channel": channel, "text": (("<@%s> " % dot) if q_by == "dot" else "") + "\U0001F4F2 " + q_said}
+            if q_thread:
+                q_body["thread_ts"] = q_thread
+            q_posted = api("chat.postMessage", q_body)
+            _log([{"ts": q_posted.get("ts"), "who": "gloria", "text": q_said, "thread": q_thread or None,
+                   "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
+            lines_pre.append(q_said[:120])
+    except Exception as exc:
+        lines_pre.append("could not post her answer: %s" % str(exc)[:120])
     try:   # what he made since the last pass, SAID IN THE CHANNEL: lines_pre is the service log, which she never
         # reads, so an hour passed with the clip made and nothing said (Gloria, 2026-10-04: "Next pass?")
         import make_thing
@@ -2798,6 +2825,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines.append("asked Gloria on her Forge page")
         except Exception as exc:
             text = ASK_LINE.sub(lambda m: "Not asked: %s" % str(exc)[:120], text)
+    q_rows = []
+    if "ASK GLORIA" in text.upper():
+        try:   # a yes-or-no only she can give: to her phone now, her answer back in this thread
+            import gloria_asks
+            text, q_rows = gloria_asks.from_slack(text, by="vintos", thread=where or "")
+            lines.append("asked Gloria on her phone: %d" % len(q_rows))
+        except Exception as exc:
+            lines.append("could not ask Gloria: %s" % str(exc)[:120])
     if HOUSE.search(text):
         # the TV, the Echo, the lights, his mischief, a letter to Gloria: done now, and the line shows what happened
         try:
@@ -2864,6 +2899,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
+    if q_rows:
+        try:   # a question in a message that starts a thread: the thread is that message
+            gloria_asks.threaded(q_rows, where or posted.get("ts"))
+        except Exception:
+            pass
     if ask:
         try:   # where the ask went, so GrokBot's answer can be found and kept on the line
             line_prospect.asked_in(asked_line, posted.get("ts"), where)

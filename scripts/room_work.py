@@ -39,7 +39,7 @@ DROPPED = re.compile(r"^\s*WORK DROPPED:\s*(.+?)\s*$", re.I | re.M)
 
 # Every line that makes something happen in the channel, his and the new ones; one of these moves the work.
 ACTS = re.compile(r"^\s*(?:LOCKED|DO|LAB|LINE(?:\s+L-[\w-]+)?|CHECK|STUDY FIX|APPROVED|DENIED|CAMPAIGN(?: MOVE)?|SHARE|ASK|"
-                  r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED)\s*:"
+                  r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED)\s*:"
                   r"|\[PURSUIT:", re.I | re.M)
 # A request to someone: a question, or an agent told to do a thing.
 _VERBS = (r"find|run|check|look(?: up| at| into)?|send|open|fold|build|make|compare|read|search|get|write|pull|fetch|list|"

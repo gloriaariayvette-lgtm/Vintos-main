@@ -26,6 +26,7 @@ Every step is said in #vintos-dot and kept in memory/study-fixes.json; a failure
 
     python3 study_fix.py            work the next fix, or watch the live one (the timer)
     python3 study_fix.py --status   what is queued, working, watched or done
+    python3 study_fix.py --reset-today   Gloria gives him today's three again (the records stay as they are)
 """
 import fcntl, json, os, re, subprocess, sys, time, uuid
 from datetime import datetime
@@ -33,6 +34,7 @@ from datetime import datetime
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
 QUEUE = os.path.join(MEMORY, "study-fixes.json")
+RESET = os.path.join(MEMORY, "study-fix-reset.json")   # Gloria's "reset his Study fixes for the day" (--reset-today)
 LOCK = os.path.join(MEMORY, ".study-fix.lock")
 WORKBENCH = os.path.expanduser(os.environ.get("VINTOS_STUDY_WORKBENCH", "~/.vintos/study-workbench"))
 CHECKOUT = os.path.expanduser(os.environ.get("VINTOS_CHECKOUT", "~/Vintos-main"))
@@ -91,13 +93,39 @@ def _event(row, what):
     row.setdefault("log", []).append({"at": _now().isoformat(timespec="seconds"), "what": str(what)[:600]})
 
 
+def _reset_at():
+    """When Gloria last reset today's Study fixes, or "" (Gloria, 2026-10-05: "Let's reset his study fixes for the
+    day so he can work"). Fixes asked before it no longer count against today's three; their records are unchanged."""
+    try:
+        d = json.load(open(RESET))
+        return str(d.get("at", "")) if str(d.get("date", "")) == _today() else ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def used_today(rows=None):
+    """Study fixes asked today, since Gloria's last reset."""
+    since = _reset_at()
+    return sum(1 for r in (rows if rows is not None else _load())
+               if str(r.get("asked", ""))[:10] == _today() and str(r.get("asked", "")) > since)
+
+
+def reset_today(by="gloria"):
+    """Today's three, given back. Returns how many he has now."""
+    os.makedirs(MEMORY, exist_ok=True)
+    tmp = RESET + ".tmp"
+    json.dump({"date": _today(), "at": _now().isoformat(timespec="seconds"), "by": by}, open(tmp, "w"))
+    os.replace(tmp, RESET)
+    return PER_DAY - used_today()
+
+
 def request(what, by="vintos"):
     """His fix, queued. (row, "") or (None, why not)."""
     what = " ".join(str(what or "").split())
     if len(what) < 12:
         return None, "say what is broken, where, and what should happen"
     rows = _load()
-    if sum(1 for r in rows if str(r.get("asked", ""))[:10] == _today()) >= PER_DAY:
+    if used_today(rows) >= PER_DAY:
         return None, "today's %d Study fixes are used; more tomorrow" % PER_DAY
     if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching") for r in rows):
         return None, "that fix is already in the Study"
@@ -536,7 +564,9 @@ def tend(**kw):
 
 
 if __name__ == "__main__":
-    if "--status" in sys.argv:
+    if "--reset-today" in sys.argv:
+        print("Study fixes reset for today: %d available now" % reset_today())
+    elif "--status" in sys.argv:
         for r in _load()[-10:]:
             print("%s  %-11s %s" % (r["id"], r.get("state"), r.get("what", "")[:100]))
     else:

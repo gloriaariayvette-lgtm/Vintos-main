@@ -6768,6 +6768,38 @@ def _lab_asks():
     return lab_asks
 
 
+def _gloria_asks():
+    import sys as _ga_s
+    _ga_s.path.insert(0, "/home/gloria/.vintos/workspace/scripts")
+    import gloria_asks
+    return gloria_asks
+
+
+@app.post("/api/gloria/asks/{qid}/decide")
+async def gloria_asks_decide(qid: str, request: Request, t: str = "", answer: str = ""):
+    """Her Yes or No to a question from #vintos-dot (gloria_asks.py; Gloria, 2026-10-05: "yes or no decisions that I
+    am not receiving"). The question's own token authorises it (the push's buttons); her app secret does too."""
+    G = _gloria_asks()
+    if answer not in ("yes", "no"):
+        raise HTTPException(status_code=422, detail="answer must be yes or no")
+    if request.headers.get("X-Vintos-Secret") == APP_SECRET:
+        row = G.decide(qid, answer, "from her app")
+        why = "" if row else "no question waiting with that id"
+    else:
+        row, why = G.decide_with_token(qid, t, answer)
+    if not row:
+        raise HTTPException(status_code=403, detail=why or "not this question's button")
+    return {"ok": True, "answer": answer, "question": row.get("question", "")}
+
+
+@app.get("/api/gloria/asks")
+async def gloria_asks_waiting(request: Request):
+    _require_secret(request)
+    G = _gloria_asks()
+    return {"ok": True, "asks": [{"id": r["id"], "by": r.get("by"), "question": r["question"], "at": r.get("at")}
+                                 for r in G.waiting()]}
+
+
 @app.get("/api/lab/asks")
 async def lab_asks_waiting(request: Request):
     _require_secret(request)

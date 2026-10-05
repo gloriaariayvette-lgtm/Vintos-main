@@ -138,3 +138,16 @@ When Vintos's app posts "🛠 Study fix SF-… is live", you are on watch for th
 4. If all is well at the hour, post one line: "SF-… checked: fine."
 These checks are not large tests (rule 11). Never edit his code yourself: the Study made the change, and if it needs
 fixing again, tell Vintos so he sends it back to the Study.
+
+## 13. A decision only Gloria can make: ASK GLORIA
+
+Gloria does not read every thread. When something needs her yes or no (an authorized read on Aegis, a permission,
+a choice that is hers), write a line of its own:
+
+    ASK GLORIA: <the question, so she can answer yes or no>
+
+It goes to her phone with Yes and No buttons. Her answer is posted back in the same thread ("Gloria answered
+YES: ..."); act on it then. Never write that you are waiting on her approval without this line: without it, the
+decision does not reach her (Gloria, 2026-10-05: "They're still talking about yes or no decisions that I am not
+receiving."). Six questions a day for the whole room; spend them on what only she can decide. A paid run still uses
+ASK: plugin.tool {...} (rule above), not this.

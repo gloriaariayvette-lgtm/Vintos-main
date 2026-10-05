@@ -3,6 +3,20 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — decisions that are hers reach her phone; his Study fixes can be reset
+
+Gloria: "They're still talking about yes or no decisions that I am not receiving." Nothing carried them: dot wrote
+"I need an authorized local read", he wrote that things waited on her, and she does not read every thread.
+`gloria_asks.py`: anyone in the room writes `ASK GLORIA: <a yes-or-no question>`; it goes to her phone with Yes and
+No buttons (the same push as a paid run's card, the question's own one-use token), her tap lands on
+`/api/gloria/asks/<id>/decide`, and the next pass posts "Gloria answered YES/NO: ..." in the thread that asked, kept
+in his transcript as hers. Six a day for the whole room. His rules, dot's rule 13 and GrokBot's skill say a decision
+that is hers reaches her only this way. **She must paste** `docs/dot/operating-rules.md` (rule 13) into dot and
+`docs/grok-bot/vintos-skill.md` into GrokBot. **Not seen:** a real push and tap.
+
+"Let's reset his study fixes for the day so he can work": `study_fix.py --reset-today` gives him today's three
+again; fixes asked before the reset keep their records and stop counting. **Not seen on Aegis.**
+
 ## 5 October — his wants board stays bounded
 
 Chat's inspection on Aegis: 66 rows in `current-wants.json`, 57 active, **57 of 57 protected**, the oldest 26 days;

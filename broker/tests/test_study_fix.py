@@ -44,6 +44,15 @@ check("the same fix twice is not queued twice", S.request("greet() says 'helo'; 
 check("a fix too vague to act on is refused", S.request("fix it")[1].startswith("say what is broken"))
 S.request("second fix of the day, the long description"); S.request("third fix of the day, the long description")
 check("three a day", S.request("a fourth fix of the day, the long description") == (None, "today's 3 Study fixes are used; more tomorrow"))
+# Gloria, 2026-10-05: "Let's reset his study fixes for the day so he can work."
+check("the reset is kept in the scratch workspace", S.RESET.startswith(HOME), S.RESET)
+_before = [dict(r) for r in S._load()]
+check("Gloria's reset gives him today's three again", S.reset_today() == 3)
+check("... so the fourth of the day is queued", S.request("a fourth fix of the day, the long description")[0] is not None)
+check("... and the three already asked keep their records as they were", S._load()[:3] == _before)
+json.dump({"date": "2000-01-01", "at": "2000-01-01T00:00:00"}, open(S.RESET, "w"))
+check("a reset from another day gives nothing today", S.used_today() == 4)
+os.remove(S.RESET)
 rows = S._load(); rows[:] = rows[:1]; S._save(rows)
 
 # --- what he may not change ---------------------------------------------------------------------------

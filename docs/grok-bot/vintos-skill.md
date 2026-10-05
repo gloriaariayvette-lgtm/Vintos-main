@@ -71,3 +71,6 @@ on something.
   nothing real exists for that question, say that plainly (2026-10-04). Write it as a list, one tool per line,
   its name first: `1. NAME - what it does - link`. Each line is kept on his line of inquiry and shown to him
   until he says what he is doing with it (2026-10-05).
+- When something needs Gloria's yes or no, write a line of its own: `ASK GLORIA: <the question>`. It goes to her
+  phone with Yes and No, and her answer comes back in the thread. Never say you are waiting on her approval without
+  that line: it is the only way the decision reaches her (2026-10-05).
