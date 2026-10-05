@@ -73,11 +73,20 @@ def title_of(row):
     return "%s asks you: yes or no?" % who
 
 
+def page_url(row):
+    """Her answer page for this question: what it is, the price, the links, and big Yes and No buttons."""
+    return "%s/api/gloria/asks/%s?t=%s" % (AEGIS.rstrip("/"), row["id"], row["token"])
+
+
 def notify(row, send=None):
-    """One push: who asks, what it is, the price and the links when it has them, Yes and No. Tapping the push opens
-    the first link. Never raises."""
+    """One push: who asks, what it is, the price and the links when it has them. Tapping it opens her answer page
+    (Yes / No, the product link), because on her iPhone ntfy shows its own buttons only on a long press (Gloria,
+    2026-10-05: "it came with no link to the product and no y/n buy now options... literally just the message").
+    Sent as ntfy's JSON, not headers: a "\u2014" in a header title made Python refuse to send the push at all.
+    Never raises."""
     try:
-        url = "%s/api/gloria/asks/%s/decide?t=%s&answer=" % (AEGIS.rstrip("/"), row["id"], row["token"])
+        decide = "%s/api/gloria/asks/%s/decide?t=%s&answer=" % (AEGIS.rstrip("/"), row["id"], row["token"])
+        page = page_url(row)
         links = [l for l in (row.get("links") or []) if URL.match(str(l))][:6]
         body = str(row["question"])[:900]
         if row.get("price"):
@@ -85,18 +94,49 @@ def notify(row, send=None):
         fresh = [l for l in links if l not in body]
         if fresh:
             body += "\n" + "\n".join(fresh)
-        actions = "http, Yes, %syes, method=POST, clear=true; http, No, %sno, method=POST, clear=true" % (url, url)
-        if links:
-            actions += "; view, Open link, %s" % links[0]
-        headers = {"Title": title_of(row), "Priority": "high", "Actions": actions,
-                   "Tags": {"buy": "shopping_cart", "parts": "shopping_cart", "card": "hammer_and_wrench"}.get(row.get("kind"), "question")}
-        if links:
-            headers["Click"] = links[0]
-        req = urllib.request.Request(NTFY, data=body[:3000].encode("utf-8"), headers=headers)
+        body += "\n\nTap to answer Yes or No: " + page
+        actions = [{"action": "http", "label": "Yes", "url": decide + "yes", "method": "POST", "clear": True},
+                   {"action": "http", "label": "No", "url": decide + "no", "method": "POST", "clear": True},
+                   ({"action": "view", "label": "Open the listing", "url": links[0]} if links
+                    else {"action": "view", "label": "Answer", "url": page})]
+        server, _, topic = NTFY.rstrip("/").rpartition("/")
+        message = {"topic": topic, "title": title_of(row), "message": body[:3500], "priority": 4, "click": page,
+                   "tags": [{"buy": "shopping_cart", "parts": "shopping_cart", "card": "hammer_and_wrench"}.get(row.get("kind"), "question")],
+                   "actions": actions}
+        req = urllib.request.Request(server + "/", data=json.dumps(message, ensure_ascii=False).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"}, method="POST")
         (send or urllib.request.urlopen)(req, timeout=20)
         return True
     except Exception:
         return False
+
+
+def page(row, done=""):
+    """Her answer page, as HTML: what it is, who asks, the price, the links, Yes and No."""
+    import html
+    esc = lambda t: html.escape(str(t or ""))
+    links = "".join('<p><a class="link" href="%s">Open the listing: %s</a></p>' % (esc(l), esc(l[:80]))
+                    for l in (row.get("links") or []) if URL.match(str(l)))
+    if done or row.get("state") != "asked":
+        said = done or ("You said %s." % ("Yes" if row.get("answer") == "yes" else "No"))
+        buttons = '<p class="done">%s</p>' % esc(said)
+    else:
+        act = "/api/gloria/asks/%s/decide?t=%s&page=1&answer=" % (esc(row["id"]), esc(row["token"]))
+        yes = "Yes, I will buy it" if row.get("kind") in ("buy", "parts") else "Yes"
+        buttons = ('<form method="post" action="%syes"><button class="yes">%s</button></form>'
+                   '<form method="post" action="%sno"><button class="no">No</button></form>' % (act, yes, act))
+    return ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>%s</title><style>body{font:17px -apple-system,system-ui,sans-serif;margin:24px;background:#111;"
+            "color:#eee}h1{font-size:20px}.price{font-size:22px;font-weight:600}a{color:#7cf}button{width:100%%;"
+            "font-size:20px;padding:16px;margin:8px 0;border:0;border-radius:12px}.yes{background:#2a7}.no{background:#555;"
+            "color:#fff}.done{font-size:20px}</style><h1>%s</h1><p>%s</p>%s%s%s"
+            % (esc(title_of(row)), esc(title_of(row)), esc(row.get("question")).replace("\n", "<br>"),
+               ('<p class="price">%s</p>' % esc(row["price"])) if row.get("price") else "", links, buttons))
+
+
+def get_with_token(qid, token):
+    row = get(qid)
+    return row if row and row.get("token") and token == row["token"] else None
 
 
 def ask(question, by="vintos", thread="", send=None, kind="question", title="", price="", links=(), ref=""):

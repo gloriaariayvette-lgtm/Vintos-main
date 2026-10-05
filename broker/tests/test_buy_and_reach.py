@@ -33,7 +33,8 @@ PUSHED = []
 phone = lambda req, timeout=20: PUSHED.append(req)
 _real_notify = G.notify
 G.notify = lambda row, send=None: _real_notify(row, send=phone)
-def heads(req): return {k.lower(): v for k, v in req.header_items()}
+def msg(req): return json.loads(req.data.decode("utf-8"))
+def acts(req): return {a["label"]: a for a in msg(req)["actions"]}
 
 # --- Forge cards reach her phone, with what they cost and the product links -----------------------------------------
 import forge_house as F
@@ -50,15 +51,21 @@ cards = [
 pushed = F.push_cards(cards, applied={"parts:P-old": "accepted"})
 check("a free Forge card and a priced parts list go to her phone", pushed == ["card:p-free", "parts:P-1"], pushed)
 free, parts = PUSHED[0], PUSHED[1]
-check("... the free card says so in its title", heads(free)["title"] == "Forge: build Lab intake guard log for him? (free)", heads(free))
+check("... the free card says so in its title", msg(free)["title"] == "Forge: build Lab intake guard log for him? (free)", msg(free))
 check("... the parts list comes from Muse, with the total in the title",
-      heads(parts)["title"] == "Muse: parts for Pressure pad — Total: $23.40", heads(parts))
-body = parts.data.decode()
+      msg(parts)["title"] == "Muse: parts for Pressure pad — Total: $23.40", msg(parts))
+body = msg(parts)["message"]
 check("... every item, its price and its link are in it", "$8.90" in body and "https://www.amazon.com/dp/B0LOAD" in body
       and "https://www.adafruit.com/product/5974" in body, body)
-check("... tapping it opens the first product, and an Open link button sits beside Yes and No",
-      heads(parts).get("click") == "https://www.amazon.com/dp/B0LOAD" and "view, Open link, https://www.amazon.com/dp/B0LOAD" in heads(parts)["actions"]
-      and "http, Yes," in heads(parts)["actions"] and "http, No," in heads(parts)["actions"], heads(parts))
+check("... tapping it opens her answer page; an Open the listing button sits beside Yes and No",
+      msg(parts)["click"].startswith("http://100.72.225.119:8500/api/gloria/asks/")
+      and acts(parts)["Open the listing"]["url"] == "https://www.amazon.com/dp/B0LOAD"
+      and set(acts(parts)) == {"Yes", "No", "Open the listing"}, msg(parts))
+_prow = [r for r in G.load() if r.get("ref") == "parts:P-1"][0]
+_page = G.page(_prow)
+check("... and the page has the total, the product links, and Yes, I will buy it / No",
+      "Total: $23.40" in _page and 'href="https://www.amazon.com/dp/B0LOAD"' in _page and "Yes, I will buy it" in _page
+      and ">No<" in _page, _page[-900:])
 check("a paid call his Lab asked for is not pushed twice (it has its own push), nor a list she already decided",
       "ask:A-1" not in pushed and "parts:P-old" not in pushed)
 check("each card is pushed once", F.push_cards(cards, applied={"parts:P-old": "accepted"}) == [] and len(PUSHED) == 2)
@@ -163,12 +170,12 @@ GLORIA_USER = "UGLORIA"
 root = S.add(GLORIA_USER, "[Muse] He settled on this one.\nBUY: 5 kg load cell | $8.90 | Amazon | "
                           "<https://www.amazon.com/dp/B0LOAD|amazon.com/dp/B0LOAD> | to feel how hard the cup is pressed")
 D.tick(api=S, think=think, fable=think, now=1100, today="2026-10-06")
-check("Muse's BUY line reaches her phone", len(PUSHED) == 1, [heads(p) for p in PUSHED])
-h = heads(PUSHED[0]) if PUSHED else {}
+check("Muse's BUY line reaches her phone", len(PUSHED) == 1, [msg(p) for p in PUSHED])
+h = msg(PUSHED[0]) if PUSHED else {}
 check("... saying it is Muse, what he wants and its price", h.get("title") == "Muse: he wants to buy 5 kg load cell — $8.90", h)
-check("... with the store, why, and the link that opens when she taps",
-      PUSHED and "Amazon" in PUSHED[0].data.decode() and "cup is pressed" in PUSHED[0].data.decode()
-      and h.get("click") == "https://www.amazon.com/dp/B0LOAD", PUSHED[0].data.decode() if PUSHED else "")
+check("... with the store, why, and the listing link (in the message and on its own button)",
+      PUSHED and "Amazon" in h["message"] and "cup is pressed" in h["message"] and "https://www.amazon.com/dp/B0LOAD" in h["message"]
+      and acts(PUSHED[0])["Open the listing"]["url"] == "https://www.amazon.com/dp/B0LOAD", h)
 check("... and Muse's thread is told it went to her", any(p.get("thread_ts") == root and "Put to Gloria on her phone" in p["text"]
                                                          and "price and link" in p["text"] for p in S.posted), S.posted)
 buy = [r for r in G.load() if r.get("kind") == "buy"][0]

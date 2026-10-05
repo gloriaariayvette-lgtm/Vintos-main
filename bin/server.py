@@ -6775,8 +6775,18 @@ def _gloria_asks():
     return gloria_asks
 
 
+@app.get("/api/gloria/asks/{qid}")
+async def gloria_asks_page(qid: str, t: str = ""):
+    """Her answer page, opened by tapping the push: what it is, the price, the listing link, Yes and No."""
+    G = _gloria_asks()
+    row = G.get_with_token(qid, t)
+    if not row:
+        raise HTTPException(status_code=403, detail="not this question's link")
+    return HTMLResponse(G.page(row), headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
 @app.post("/api/gloria/asks/{qid}/decide")
-async def gloria_asks_decide(qid: str, request: Request, t: str = "", answer: str = ""):
+async def gloria_asks_decide(qid: str, request: Request, t: str = "", answer: str = "", page: int = 0):
     """Her Yes or No to a question from #vintos-dot (gloria_asks.py; Gloria, 2026-10-05: "yes or no decisions that I
     am not receiving"). The question's own token authorises it (the push's buttons); her app secret does too."""
     G = _gloria_asks()
@@ -6788,7 +6798,14 @@ async def gloria_asks_decide(qid: str, request: Request, t: str = "", answer: st
     else:
         row, why = G.decide_with_token(qid, t, answer)
     if not row:
+        if page:
+            prior = G.get_with_token(qid, t)
+            if prior:
+                return HTMLResponse(G.page(prior), headers={"Cache-Control": "no-store"})
         raise HTTPException(status_code=403, detail=why or "not this question's button")
+    if page:
+        return HTMLResponse(G.page(row, done="Done. You said %s; he will hear it in Slack." % ("Yes" if answer == "yes" else "No")),
+                            headers={"Cache-Control": "no-store"})
     return {"ok": True, "answer": answer, "question": row.get("question", "")}
 
 

@@ -35,12 +35,22 @@ row, shown = G.ask("May dot read /home/atelier/forge-loop-config.json once, read
                    by="dot", thread="171.000100", send=phone)
 check("a question goes to her phone", row and len(PUSHED) == 1 and row["pushed"], shown)
 req = PUSHED[-1]
-heads = {k.lower(): v for k, v in req.header_items()}
-check("... saying who asks", heads.get("title") == "dot asks you: yes or no?", heads)
-check("... with the question itself", "forge-loop-config.json" in req.data.decode())
-check("... and Yes and No buttons that carry this question's own token",
-      "http, Yes," in heads["actions"] and "http, No," in heads["actions"] and row["token"] in heads["actions"]
-      and "/api/gloria/asks/%s/decide" % row["id"] in heads["actions"], heads.get("actions"))
+msg = json.loads(req.data.decode("utf-8"))
+acts = {a["label"]: a for a in msg["actions"]}
+check("it is sent as ntfy's JSON to the topic, so any character in it is safe (a dash in a header title made the "
+      "push fail outright)", req.get_header("Content-type") == "application/json" and msg["topic"] == "vintos-gloria-9kx"
+      and req.full_url == "https://ntfy.sh/", (req.full_url, msg.get("topic")))
+check("... saying who asks", msg["title"] == "dot asks you: yes or no?", msg)
+check("... with the question itself", "forge-loop-config.json" in msg["message"])
+check("... with Yes and No buttons that carry this question's own token",
+      acts["Yes"]["method"] == "POST" and acts["Yes"]["url"].endswith("answer=yes") and row["token"] in acts["Yes"]["url"]
+      and "/api/gloria/asks/%s/decide" % row["id"] in acts["No"]["url"], acts)
+check("... and tapping it opens her answer page (on her iPhone the buttons show only on a long press)",
+      msg["click"] == G.page_url(row) and row["token"] in msg["click"] and G.page_url(row) in msg["message"], msg)
+page = G.page(row)
+check("her answer page shows the question and Yes and No buttons that post her answer",
+      "forge-loop-config.json" in page and page.count("<form method=\"post\"") == 2 and "answer=yes" in page and "answer=no" in page)
+check("... only with this question's own link", G.get_with_token(row["id"], "wrong") is None and G.get_with_token(row["id"], row["token"]))
 check("the channel is told it went to her phone", shown.startswith("\U0001F4F2 Asked Gloria on her phone (Yes / No)"))
 check("the same question while it waits is not pushed twice",
       G.ask(row["question"], by="vintos", send=phone)[0] is None and len(PUSHED) == 1)
@@ -119,6 +129,8 @@ rows = [json.loads(l) for l in open(D.TRANSCRIPT)]
 check("... and kept as hers in what he reads", any(r.get("who") == "gloria" and "Gloria answered YES" in r.get("text", "") for r in rows))
 
 srv = open(os.path.join(REPO, "bin", "server.py")).read()
+check("her page is served by the house, with its token, and says what she chose",
+      '@app.get("/api/gloria/asks/{qid}")' in srv and "G.get_with_token(qid, t)" in srv and "he will hear it in Slack" in srv)
 check("her buttons reach a house route", '@app.post("/api/gloria/asks/{qid}/decide")' in srv and "G.decide_with_token(qid, t, answer)" in srv)
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("he is told: a decision that is hers reaches her only this way", "ASK GLORIA: a question she can answer yes or no" in dsrc
