@@ -60,7 +60,10 @@ LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 # Named searches have no length ceiling; the bounded range is only for random wandering.
-# ESM-C still reads only the first 350 residues; the sequence slice below keeps that cap.
+# ESM-C reads only the first 350 residues and trims its own copy (chemistry_esmc.MAX_LENGTH). The record he reads
+# keeps the whole sequence, up to SEQUENCE_KEPT: it was cut to 350 here, so a 759-residue protein read as 350 and its
+# C-terminal domains were never in front of him (Gloria, 2026-10-05).
+SEQUENCE_KEPT = 5000
 BASELINE_QUERY = "reviewed:true"
 RANDOM_QUERY = "reviewed:true AND length:[40 TO 1000]"
 DEFAULTS = {
@@ -742,7 +745,7 @@ def _safe_query(query):
     query = re.sub(r"(?<!AND)(?<=[A-Za-z0-9\]\"])\s+(?=" + fields + r":)", " AND ", query)
     # A named protein must not disappear merely because it is longer than the wandering
     # window (S-layer protein A is 1,231 aa). The random browse fallback remains bounded;
-    # ESM-C independently receives only the first 350 residues in _browse.
+    # ESM-C trims its own copy to 350 residues; the record keeps the whole sequence.
     names_subject = bool(re.search(r"\b(?:protein_name|gene|keyword):", query, re.I))
     if names_subject:
         query = re.sub(r"(?:^|\s+AND\s+)length:\[[^\]]+\](?=\s+AND\s+|$)", " ", query,
@@ -1062,7 +1065,9 @@ def _browse(query, limit):
                      "function": " ".join(functions)[:1200],
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
-                     "sequence": (item.get("sequence") or {}).get("value", "")[:350],
+                     "sequence": (item.get("sequence") or {}).get("value", "")[:SEQUENCE_KEPT],
+                     **({"sequence_shown": "first %d residues" % SEQUENCE_KEPT}
+                        if len((item.get("sequence") or {}).get("value", "")) > SEQUENCE_KEPT else {}),
                      **({"found_by": relaxed, "curated": str(item.get("entryType", "")).startswith("UniProtKB reviewed"),
                          "partial_match": relaxed == "partial_any_word"}
                         if relaxed else {})})
@@ -1248,6 +1253,39 @@ def _gather_material(state, inquiry, fresh_only=False):
     return bool(records)
 
 
+_SEQ = re.compile(r"[A-Z*\-]{40,}")
+OBSERVED = 14000        # characters of observations a review reads
+
+
+def _clip(o, cap):
+    """Long prose shortened, long lists cut short, each saying so; a sequence is never shortened."""
+    if isinstance(o, str):
+        return o if len(o) <= cap or _SEQ.fullmatch(o) else o[:cap] + "...[shortened]"
+    if isinstance(o, list):
+        kept = [_clip(x, cap) for x in o[:max(4, cap // 50)]]
+        return kept + (["...[%d more items not shown]" % (len(o) - len(kept))] if len(o) > len(kept) else [])
+    if isinstance(o, dict):
+        return {k: _clip(v, cap) for k, v in o.items()}
+    return o
+
+
+def observed(records, budget=OBSERVED):
+    """What a review reads of its observations. It was json.dumps(records)[:14000]: the raw UniProt rows came after
+    everything else and the cut fell inside a sequence, so he read "the sequence field in the current record is
+    truncated" of a record that was whole (SLC26A6, 759 residues; Gloria, 2026-10-05). Now prose and long lists are
+    shortened first, sequences kept whole, and if it still does not fit, the excerpt says that it, not the record,
+    ends there."""
+    text = json.dumps(records, ensure_ascii=False)
+    for cap in (2000, 1000, 500, 250, 120):
+        if len(text) <= budget:
+            return text
+        text = json.dumps(_clip(records, cap), ensure_ascii=False)
+    if len(text) <= budget:
+        return text
+    return (text[:budget] + " ...[EXCERPT ENDS HERE: %d more characters of these observations were not shown to you. "
+            "The records themselves are complete; do not report them as truncated.]" % (len(text) - budget))
+
+
 def _reflect(context, inquiry, records):
     line = None
     try:   # the line this test belongs to, and how he may end it
@@ -1266,7 +1304,7 @@ def _reflect(context, inquiry, records):
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
         "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
         "and keep them apart from what the database records state. Return JSON only.",
-        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + json.dumps(records)[:14000] +
+        context + "\n\nQUESTION:\n" + json.dumps(inquiry) + "\n\nSOURCE OBSERVATIONS (bounded excerpt; missing content is unknown):\n" + observed(records) +
         "\n\nReturn keys in this order: attention (the one record or feature you are staying with, and why), "
         "factual_observation (only what the records actually state — this is the core; be specific and "
         "quantitative wherever the record lets you), speculative_reading (ONE specific, falsifiable hypothesis "

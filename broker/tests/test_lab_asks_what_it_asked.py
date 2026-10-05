@@ -237,9 +237,12 @@ check("a named protein search has no length ceiling",
       and [r["accession"] for r in pfor["records"]] == ["P0PFOR"]
       and "length:[" not in long_one["executed_query"] and "length:[" not in pfor["executed_query"],
       (asked[-3:], long_one["executed_query"], pfor["executed_query"]))
-check("its full length is recorded but only 350 residues go on to ESM-C",
+# the record keeps the whole sequence, and ESM-C trims its own copy to 350 (Gloria, 2026-10-05: a 759-residue
+# protein read as 350, so its C-terminal domain was never in front of him)
+check("its full length is recorded and its whole sequence kept; ESM-C trims its own copy to 350",
       long_one["records"] and long_one["records"][0]["length"] == 519
-      and len(long_one["records"][0]["sequence"]) == 350)
+      and len(long_one["records"][0]["sequence"]) == 519
+      and "[:MAX_LENGTH]" in open(os.path.join(REPO, "scripts", "chemistry_esmc.py")).read())
 
 # --- he gets the records he asked for even when his wording is not UniProt's (2026-09-28) ---------
 # A stand-in for UniProt: a protein_name phrase must match a name exactly; bare words match anywhere.
