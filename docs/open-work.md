@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — two Forge cards built directly; the rest closed with reasons
+
+Gloria, on the twelve Forge cards that reached her phone at once: build the two worth building, dismiss the rest
+(except the presence card), tell the room where each stands.
+- **Built directly:** `midi_check.py` ("Isolated midi render and verify": every MIDI event checked, coincident
+  release/attack pairs named, rendered to controlled piano audio, rendered attacks timed against the schedule) and
+  `citation_trace.py` ("Citation graph traversal": a paper's ancestors and descendants through OpenAlex, and whether
+  what follows rests on it alone). His tool lines `MIDI:` and `CITES:`. Tested against a generated MIDI file and an
+  OpenAlex stub; **not yet run on Aegis against the Atelier undertaking's own file, or against live OpenAlex.**
+- **Withdrawn** (no longer needs her): both built cards, the citation design supplement, computer use (he already
+  has it), tolerant JSON (his Study fix landed), embed handling (the code already checks; a remaining failure is
+  LM Studio's embedding model), save_pool (not in current code). **Denied:** physical interaction (not buildable),
+  the two "API credential" cards (wrong diagnosis: the 403 is the Forge's own intake guard, whose logging fix is
+  queued). The mmWave sensor design stays open with Gloria. Also: Forge cards now reach her phone at most three a
+  day, newest first, one per name.
+
 ## 5 October — hardware she buys: the software is written while it ships
 
 Gloria: "if I buy the hardware I want him working on the software in the meantime." A Forge parts list already did

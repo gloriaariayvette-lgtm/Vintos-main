@@ -326,7 +326,11 @@ RULES_HANDS = (
     "  REPOS: what to look for on GitHub | README: owner/repo\n"
     "  CALL: plugin.tool {json arguments}: one of your connectors on your Lab's list (pubmed.search_articles, "
     "chembl..., boltz.boltz_estimate_structure_and_binding, eden.predict_immunogenicity); nothing paid\n"
-    "  LABDATA: words: what your Lab has measured, its recent runs and kept findings, filtered by the words\n")
+    "  LABDATA: words: what your Lab has measured, its recent runs and kept findings, filtered by the words\n"
+    "  MIDI: a .mid file on Aegis: every event checked, coincident releases and attacks listed, rendered to piano "
+    "audio and the rendered attacks timed against the schedule\n"
+    "  CITES: a DOI or a paper's title: its citation lineage, what it rests on and what rests on it, and whether "
+    "what follows rests on it alone\n")
 RULES_PROMISES = (
     "A thread that begins \U0001F4CC is a promise from your own journal today: something you said you would make, "
     "show or do with Gloria. Work it there with whoever can help, and say plainly if a tool is missing so dot can "
@@ -1793,7 +1797,7 @@ def wants_line():
             if out else "")
 
 
-TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA)\s*:\s*(.*?)\s*$", re.I)
+TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA|MIDI|CITES)\s*:\s*(.*?)\s*$", re.I)
 
 
 def use_tools(lines, search=None, room=None, reach=None):
@@ -1817,6 +1821,18 @@ def use_tools(lines, search=None, room=None, reach=None):
                                                        h.get("url", "")) for n, h in enumerate(hits)) or "nothing found"
             elif kind == "OPEN":
                 got = open_text(arg)
+            elif kind == "MIDI":
+                # a MIDI file checked event by event and rendered to piano audio (midi_check; his Forge card, 2026-10-05)
+                real = allowed(arg)
+                if not real:
+                    got = "not checked: %s is outside the folders you may read" % arg[:200]
+                else:
+                    import midi_check
+                    got = midi_check.check(real, out_dir=os.path.join(WS, "memory", "art", "midi-checks"))
+            elif kind == "CITES":
+                # a paper's citation lineage, ancestors and descendants (citation_trace; his Forge card, 2026-10-05)
+                import citation_trace
+                got = citation_trace.trace(arg)
             else:
                 if room is None:
                     import forge_study
