@@ -47,16 +47,20 @@ def rows():
 
 
 def today(kind=None):
+    """Today's makes (one each: the start receipt is not a second one)."""
     day = _now().date().isoformat()
-    return [r for r in rows() if str(r.get("at", "")).startswith(day) and (kind is None or r.get("kind") == kind)]
+    return [r for r in rows() if str(r.get("at", "")).startswith(day) and not r.get("running")
+            and (kind is None or r.get("kind") == kind)]
 
 
-def _note(kind, what, ok, said, path=""):
+def _note(kind, what, ok, said, path="", rid="", running=False):
     os.makedirs(MEM, exist_ok=True)
+    row = {"at": _now().isoformat(timespec="seconds"), "kind": kind, "what": what[:300], "ok": bool(ok),
+           "said": said[:400], "path": path, "told": running, "id": rid}
+    if running:
+        row["running"] = True
     with open(MADE, "a") as f:
-        f.write(json.dumps({"at": _now().isoformat(timespec="seconds"), "kind": kind, "what": what[:300],
-                            "ok": bool(ok), "said": said[:400], "path": path, "told": False},
-                           ensure_ascii=False) + "\n")
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def _latest(kind):
@@ -114,30 +118,48 @@ def make(kind, text, image="", run=None, send=None, timeout=1800):
     if image and not os.path.isfile(image):
         return False, "no file at %s" % image
     before, _ = _latest(kind)
+    # a receipt that it started, so a job killed partway is said in the channel instead of vanishing (two MAKEs
+    # launched on 4 October left nothing at all: the pass's end killed them; Chat's audit, 2026-10-05)
+    rid = os.urandom(4).hex()
+    _note(kind, text, False, "started", rid=rid, running=True)
     try:
         done = (run or subprocess.run)(_tool(kind, text, image), capture_output=True, text=True, timeout=timeout)
         out = ((getattr(done, "stdout", "") or "") + (getattr(done, "stderr", "") or ""))[-400:]
         ok = getattr(done, "returncode", 1) == 0
     except Exception as exc:
-        _note(kind, text, False, str(exc)[:300])
+        _note(kind, text, False, str(exc)[:300], rid=rid)
         return False, "it did not run: %s" % str(exc)[:200]
     path, title = _latest(kind)
     landed = bool(path) and path != before and os.path.isfile(path)
     if not (ok and landed):
         said = ("it ran but nothing new landed" if ok else "the tool stopped") + (": " + out.strip()[-200:] if out.strip() else "")
-        _note(kind, text, False, said)
+        _note(kind, text, False, said, rid=rid)
         return False, said
     said = "%s: %s" % (kind, path)
-    _note(kind, text, True, said, path)
+    _note(kind, text, True, said, path, rid=rid)
     tell("%s\n%s" % (title or text[:120], path), title="His new %s" % kind, send=send)
     return True, said
 
 
+LOST_AFTER_S = 1800 + 300     # a job still "started" this long after it began was stopped before it finished
+
+
 def untold(limit=3):
-    """What was made since the channel last said so; marks them told."""
+    """What was made since the channel last said so, and any job that stopped before it finished; marks them told."""
     all_rows = rows()
+    ended = {r.get("id") for r in all_rows if r.get("id") and not r.get("running")}
+    lost = []
+    for r in all_rows:
+        if r.get("running") and not r.get("lost") and r.get("id") not in ended:
+            try:
+                age = (_now() - datetime.fromisoformat(str(r.get("at")))).total_seconds()
+            except ValueError:
+                age = LOST_AFTER_S + 1
+            if age > LOST_AFTER_S:
+                r["lost"] = True
+                lost.append(r)
     fresh = [r for r in all_rows if not r.get("told")][-limit:]
-    if not fresh:
+    if not fresh and not lost:
         return []
     for r in all_rows:
         r["told"] = True
@@ -146,8 +168,10 @@ def untold(limit=3):
             f.write("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in all_rows))
     except OSError:
         pass
-    return ["%s %s: %s" % ("made" if r.get("ok") else "could not make", r.get("kind"), r.get("said", "")[:200])
-            for r in fresh]
+    return (["could not make %s: it stopped before it finished, and nothing landed (%s)" % (r.get("kind"), r.get("what", "")[:120])
+             for r in lost[-limit:]]
+            + ["%s %s: %s" % ("made" if r.get("ok") else "could not make", r.get("kind"), r.get("said", "")[:200])
+               for r in fresh])
 
 
 if __name__ == "__main__":

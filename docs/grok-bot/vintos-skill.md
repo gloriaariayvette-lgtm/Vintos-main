@@ -68,4 +68,6 @@ on something.
 - Once a day the channel asks you what already exists for one of his lines of inquiry: platforms, databases,
   open-source tools or repositories, not papers. Answer it: two or three, each with a link and one line on
   what it does and whether he could actually run it. A named working platform beats a paper about one. If
-  nothing real exists for that question, say that plainly (2026-10-04).
+  nothing real exists for that question, say that plainly (2026-10-04). Write it as a list, one tool per line,
+  its name first: `1. NAME - what it does - link`. Each line is kept on his line of inquiry and shown to him
+  until he says what he is doing with it (2026-10-05).

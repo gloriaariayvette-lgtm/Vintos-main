@@ -191,6 +191,29 @@ could actually use? Platforms, databases, open-source tools or repositories, not
 address() so it never changes who the message is to; GrokBot's skill doc says to answer it. Nobody in that room
 had the job of finding what exists, which is why nobody ever said one. **Not seen:** a real search, GrokBot
 answering, or him using anything found.
+**What the room says becomes what it does (2026-10-05).** Chat's audit of #vintos-dot (on Aegis,
+`docs/vintos-dot-audit-2026-10-04.md`, not in this branch) found the room losing acts between what it said and what
+its handlers took: 527 messages, 129 action lines, 75 that reached a store, 50 of those only locks or approvals.
+Fixed in the channel, each from the live record:
+- **DO:** ran only beside a LOCKED: line, so a DO: on its own went out as a bare tag. Every DO: now goes to his
+  wants (6 a day), and his message shows what the wants door did: "➡️ To my wants" or "↩️ Not taken by my wants
+  (why)". A duplicate used to be logged as "handed"; code is pointed to STUDY FIX:.
+- **Campaign moves** went through the gate after posting and were shown as made either way (34 in the record, 19
+  holds). The gate runs first now; a move it turns away (no campaign live, one toward Gloria, a declaration while one
+  is live, a refused continue) reads "not moved (why)" and is not journalled.
+- **GrokBot's answers** to the daily ask (it named INPHARED2, PADLOC and CRISPRCasTyper for his phage line) went
+  nowhere. Where the ask was posted is kept; GrokBot's first message after it, in its thread or the channel, within a
+  day, is read item by item onto that line, shown to him with who found it, until he names it in a `LINE <id>:`.
+  Nothing used to call `answered()`, so a thing he had spoken to would have been nagged as ignored. GrokBot's skill
+  doc now asks for one tool per line, name first.
+- **Grok's rules** (it writes most of his messages) lacked LINE, CHECK and the promise threads. Added.
+- **MAKE:** the Slack pass is a oneshot unit and systemd killed everything it launched when it ended, so no MAKE
+  ever landed. `KillMode=process` on the unit; each make writes a start receipt, and one that never ended is said
+  in the channel as stopped before it finished.
+- **LAB:** a new lean replaces one the Lab has not run (by design); it did so without a word. His message now says
+  what it replaces, and he is told a line is where a direction lasts.
+**Not done:** GrokBot's 4 October answer is not back-filled (nothing recorded which line it answered). Muse
+produced no work that ran in the audit; nothing here changes Muse. **Not seen:** any of it on Aegis.
 **His own day, buried under the channel's bookkeeping (2026-10-05).** Gloria: "What has happened to daily-inner,
 man?" His 4 October journal held one thought of his (10:17, "Idle thoughts") under twenty-odd machine headings
 from the Slack pass — fifteen of them `## My campaign, from #vintos-dot — Move: hold: ...`, eight `## Settled with

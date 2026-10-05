@@ -158,12 +158,118 @@ def ask_the_room(d=None):
         return "", ""
     line = live[0]
     d["asked_on"] = _today()
-    d.setdefault("asked", []).append({"at": _now().isoformat(timespec="seconds"), "line": line["id"]})
+    d.setdefault("asked", []).append({"at": _now().isoformat(timespec="seconds"), "line": line["id"],
+                                      "title": line.get("title", "")[:120]})
     save(d)
     return line["id"], (
         "@GrokBot What already exists for this question, that I could actually use? Platforms, databases, "
         "open-source tools or repositories, not papers. Two or three, each with a link and one line on what it "
         "does.\n%s: %s" % (line.get("title", "")[:80], str(line.get("question", ""))[:300]))
+
+
+def asked_in(line_id, ts, thread=None):
+    """The Slack ts of the message that carried today's ask for this line (and the thread it was said in, if any),
+    so the answer can be found."""
+    d = load()
+    for a in reversed(d.get("asked") or []):
+        if a.get("line") == line_id and not a.get("ts"):
+            a["ts"] = str(ts or "")
+            if thread:
+                a["thread"] = str(thread)
+            save(d)
+            return True
+    return False
+
+
+_SLACK_LINK = re.compile(r"<(https?://[^|>\s]+)(?:\|([^>]*))?>")
+_URL = re.compile(r"https?://[^\s<>|)\]]+")
+_ITEM = re.compile(r"^\s*(?:[-*•]|\d{1,2}[.)])\s+(.+)$")
+
+
+def items(text):
+    """What an answer names: each list item (its name, its link if it gave one, the rest as what it does), or failing
+    a list, each link. [{title, url, why}]"""
+    text = _SLACK_LINK.sub(lambda m: m.group(1) + ((" " + m.group(2)) if m.group(2) else ""), str(text or ""))
+    out = []
+    for raw in text.splitlines():
+        m = _ITEM.match(raw)
+        if not m:
+            continue
+        body = m.group(1)
+        url = (_URL.search(body).group(0).rstrip(".,;") if _URL.search(body) else "")
+        plain = re.sub(r"\s+", " ", _URL.sub("", body).replace("**", "").replace("__", "")).strip(" -:()")
+        parts = re.split(r"\s+[—–-]\s+|:\s+", plain, maxsplit=1)
+        title = parts[0].strip()[:120]
+        if len(title) < 3:
+            continue
+        out.append({"title": title, "url": url or "name:" + title.lower(), "why": (parts[1] if len(parts) > 1 else "")[:300]})
+    if not out:
+        out = [{"title": re.sub(r"^https?://(www\.)?", "", u).split("/")[0], "url": u.rstrip(".,;"), "why": ""}
+               for u in dict.fromkeys(_URL.findall(text))]
+    return out[:KEEP]
+
+
+def from_room(text, ts, thread=None, by="GrokBot", within_h=24, channel_h=3):
+    """An agent's answer to the room's daily ask, onto the line it was asked for, so he is shown it and has to say
+    what he is doing with it. GrokBot named INPHARED2, PADLOC and CRISPRCasTyper for his phage line on 4 October
+    and nothing took them anywhere (Chat's audit of the room, 2026-10-05). The answer is the first message from
+    the agent in the ask's thread within a day, or after it in the channel within three hours (GrokBot answers in
+    minutes; later, it is talking about something else). (line_id, n kept) or ("", 0)."""
+    d = load()
+    try:
+        at = float(ts)
+    except (TypeError, ValueError):
+        return "", 0
+    ask = None
+    for a in reversed(d.get("asked") or []):
+        try:
+            asked_ts = float(a.get("ts") or 0)
+        except ValueError:
+            continue
+        if not asked_ts or a.get("answered") or not asked_ts < at:
+            continue
+        in_thread = bool(thread) and str(thread) in (str(a.get("ts")), str(a.get("thread") or ""))
+        in_channel = not thread and not a.get("thread")
+        if (in_thread and at <= asked_ts + within_h * 3600) or (in_channel and at <= asked_ts + channel_h * 3600):
+            ask = a
+            break
+    if not ask:
+        return "", 0
+    got = items(text)
+    if not got:
+        return "", 0
+    rows = d.setdefault("lines", {})
+    kept = rows.setdefault(ask["line"], {"title": ask.get("title", ""), "found": []})
+    kept["at"] = kept.get("at") or _now().isoformat(timespec="seconds")
+    have = {f["url"] for f in kept["found"]}
+    n = 0
+    for f in got:
+        if f["url"] not in have:
+            kept["found"].append({**f, "by": by, "shown": 0, "answered": ""})
+            n += 1
+    ask["answered"] = _now().isoformat(timespec="seconds")
+    save(d)
+    return ask["line"], n
+
+
+def spoken(line_id, said):
+    """He wrote on a line (LINE <id>: ...): each thing found for it that he names there is answered by what he said.
+    Nothing called answered() before, so a thing he had spoken to was shown again as ignored. The names answered."""
+    d = load()
+    low = str(said or "").lower()
+    out = []
+    for f in ((d.get("lines") or {}).get(line_id) or {}).get("found") or []:
+        if f.get("answered"):
+            continue
+        host = re.sub(r"^https?://(www\.)?", "", f.get("url", "")).split("/")[0].lower()
+        name = re.split(r"\s[|—–-]\s|:", f.get("title", "").lower())[0].strip()   # a page title's own name
+        if (len(name) >= 3 and name in low) or (host and not host.startswith("name:") and host in low) \
+                or (f.get("url", "").startswith("http") and f["url"].lower() in low):
+            f["answered"] = str(said)[:300]
+            out.append(f.get("title", ""))
+    if out:
+        save(d)
+    return out
 
 
 def answered(url, said):
@@ -195,12 +301,14 @@ def block(shown=SHOWN):
     save(d)
     out = ["== WHAT ALREADY EXISTS FOR YOUR LINES (found for you; nobody has looked at these yet) =="]
     for line_id, title, f in pick:
-        out.append("- %s | %s\n    %s\n    %s" % (line_id, title[:70], f["title"], f["url"]))
+        where = f["url"] if f["url"].startswith("http") else "no link given: REPOS: %s finds its code" % f["title"][:60]
+        out.append("- %s | %s\n    %s%s\n    %s" % (line_id, title[:70], f["title"],
+                                                (" (from %s)" % f["by"]) if f.get("by") else "", where))
         if f.get("why"):
             out.append("    " + f["why"][:220])
     out.append("Look at one before you plan another experiment: REPOS: to find its code, README: owner/repo to read "
                "it, OPEN: or CALL: to try it. Then say on the line what it does and whether you are using it "
-               "(LINE <id>: ...). If it is no use, say that on the line; that closes it.")
+               "(LINE <id>: ... naming it). If it is no use, say that on the line, naming it; that closes it.")
     if ignored:
         out.append("You have been shown %d of these %d times and said nothing about any of them." % (len(ignored), NAGS))
     return "\n".join(out)

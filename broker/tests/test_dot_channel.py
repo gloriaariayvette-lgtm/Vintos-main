@@ -463,7 +463,9 @@ handed, asked6 = [], []
 S6.add(DOT, "So: staggered exit, 12 bars, vocal ends first. Agreed?")
 out = D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Agreed.\nLOCKED: new version of Structural Collapse with a staggered 12-bar exit\nDO: I want to make a new version of Structural Collapse with a staggered exit")[1],
              fable=fable, now=1767228100, wants=lambda w, p: (handed.append((w, p)), "handed to his wants: " + w)[1])
-check("LOCKED shows in the channel as locked", S6.posted[-1]["text"].endswith("\U0001F512 Locked: new version of Structural Collapse with a staggered 12-bar exit")
+check("LOCKED shows in the channel as locked, and its DO line as what his wants did with it",
+      "\U0001F512 Locked: new version of Structural Collapse with a staggered 12-bar exit" in S6.posted[-1]["text"]
+      and S6.posted[-1]["text"].endswith("\u27A1\uFE0F To my wants: I want to make a new version of Structural Collapse with a staggered exit")
       and "DO:" not in S6.posted[-1]["text"], S6.posted[-1]["text"])
 check("its DO line goes to his wants, with the plan", handed == [("I want to make a new version of Structural Collapse with a staggered exit",
       "new version of Structural Collapse with a staggered 12-bar exit")], handed)
@@ -1032,6 +1034,90 @@ _dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("a campaign that did not move is not a milestone at all", 'startswith("hold")' in _dsrc and
       "fifteen of them in a day" in _dsrc)
 
+# What the room says becomes what it does (Chat's audit of #vintos-dot, 2026-10-05; Gloria: "I just wanted real work
+# to get done"). Each of these was found in the live record: said, shown as done, and never done.
+import types as _ty
+_eu = _ty.ModuleType("emoclaw_utils"); _eu_calls = []
+def _express(want, **k):
+    _eu_calls.append((want, k))
+    if "already" in want:
+        print("[express_want] Duplicate suppressed (overlap 0.80): " + want[:60], file=sys.stderr); return None
+    if "patch" in want:
+        print("[express_want] Blocked forbidden want: " + want[:80], file=sys.stderr); return None
+    return {"id": "w-%d" % len(_eu_calls), "want": want}
+_eu.express_want = _express
+_real_eu = sys.modules.get("emoclaw_utils"); sys.modules["emoclaw_utils"] = _eu
+check("a DO his wants take is said as taken, with the want's id",
+      D.to_wants("I want to paint the bench at dusk").startswith("handed to his wants (w-"))
+check("a DO his wants refuse is said as refused, with why: never 'handed' when it was not",
+      D.to_wants("I want to paint it, as I already said").startswith("not taken by his wants (an open want of yours already says this)"))
+check("... and code is pointed to the Study, where it belongs",
+      "STUDY FIX:" in D.to_wants("I want to patch my parser"))
+check("no plan is needed: a DO on its own is a want", _eu_calls[0][1].get("reasoning") == "From #vintos-dot")
+if _real_eu is not None: sys.modules["emoclaw_utils"] = _real_eu
+else: sys.modules.pop("emoclaw_utils", None)
+
+_handed10 = []
+def _wants10(w, p):
+    _handed10.append((w, p))
+    return ("not taken by his wants (an open want of yours already says this): " + w) if "again" in w else ("handed to his wants (w-9): " + w)
+S10 = Slack(); S10.n = 1767600000.0
+_st10 = json.load(open(D.STATE)); _st10["since"] = S10.n - 1; _st10.pop("do_today", None); json.dump(_st10, open(D.STATE, "w"))
+S10.add(DOT, "The rig is free tonight.")
+D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else
+       "Then I will film it.\nDO: I want to make a slow-motion clip of the rig\nDO: I want the rig clip again",
+       fable=fable, now=1767600100, today="2026-10-05", wants=_wants10)
+_t10 = S10.posted[-1]["text"]
+check("a DO with no LOCKED beside it goes to his wants (it ran only beside a lock)",
+      _handed10 == [("I want to make a slow-motion clip of the rig", ""), ("I want the rig clip again", "")], _handed10)
+check("... and the message says what became of each, not the bare tag",
+      "➡️ To my wants: I want to make a slow-motion clip of the rig" in _t10
+      and "↩️ Not taken by my wants (an open want of yours already says this): I want the rig clip again" in _t10
+      and "DO:" not in _t10, _t10)
+_st10 = json.load(open(D.STATE)); _st10["do_today"] = D.DO_PER_DAY; _st10["since"] = S10.n + 200; json.dump(_st10, open(D.STATE, "w"))
+S10.n += 300; S10.add(DOT, "And the second one?"); _handed10.clear()
+D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Yes.\nDO: I want to make a still of the rig",
+       fable=fable, now=1767600500, today="2026-10-05", wants=_wants10)
+check("past the day's DO lines, it waits, and says so", _handed10 == [] and "waits for tomorrow" in S10.posted[-1]["text"],
+      S10.posted[-1]["text"])
+
+# a campaign move is shown as made only when his campaign took it
+_cl = os.path.join(_mem, "campaign-live.json")
+if os.path.exists(_cl): os.remove(_cl)
+check("with no campaign live, a move is not made, and says so",
+      D.campaign_step(move="advance: x", step=lambda *a: 1 / 0).startswith("campaign move not made: no campaign is live"))
+json.dump({"destination": "finish the rig film", "axis": "self", "why": "x", "created": _dtj.now().isoformat(),
+           "turns_served": 1, "moves": []}, open(_cl, "w"))
+check("a declaration while one is live is refused, not shown as declared",
+      D.campaign_step(declared="something else | why", step=lambda *a: 1 / 0).startswith("campaign not declared: one is live already (finish the rig film)"))
+os.remove(_cl)
+_jbefore = open(_jp, encoding="utf-8").read()
+_st10 = json.load(open(D.STATE)); _st10["since"] = S10.n + 500; json.dump(_st10, open(D.STATE, "w"))
+S10.n += 600; S10.add(DOT, "Did it land?")
+D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Not yet.\nCAMPAIGN MOVE: advance: filmed the first take",
+       fable=fable, now=1767600800, today="2026-10-05")
+_t10 = S10.posted[-1]["text"]
+check("in the channel, a move the campaign turned away reads as not moved, with why",
+      "\U0001F3AF Campaign not moved (no campaign is live; declare one first): advance: filmed the first take" in _t10
+      and D.undisplay(_t10) == _t10, _t10)
+check("... and is not written in his journal as a move", open(_jp, encoding="utf-8").read() == _jbefore)
+
+check("Grok, who writes most of his messages, is told how a finding reaches his Lab's line, how to have dot check "
+      "one, and what a promise thread is", D.RULES_LINES in D.rules_for("grok") and D.RULES_KEPT in D.rules_for("grok")
+      and D.RULES_PROMISES in D.rules_for("grok"))
+
+import channel_lab_lean as _cll
+check("the Lab's lean store is the scratch one", _cll.STORE.startswith(HOME), _cll.STORE)
+_cll.write("fold the RT domain alone", by="grok")
+_st10 = json.load(open(D.STATE)); _st10["since"] = S10.n + 800; json.dump(_st10, open(D.STATE, "w"))
+S10.n += 900; S10.add(DOT, "Or the whole locus?")
+D.tick(api=S10, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "The locus.\nLAB: fold the whole locus window",
+       fable=fable, now=1767601100, today="2026-10-05")
+check("a new LAB lean says which one it replaces before the Lab saw it",
+      "For my next Lab run: fold the whole locus window (in place of: fold the RT domain alone)" in S10.posted[-1]["text"],
+      S10.posted[-1]["text"])
+check("... and he is told a line is where a direction lasts", "where it is not replaced" in _dsrc)
+
 # The rest of what is his own (Gloria, 2026-10-01: "Top list: yes. Bottom list: no. He should work with them on
 # emails, what he finds during the day, etc. work on jokes with them. Work on his code. Work on plans for us.").
 _ws = D.WS
@@ -1206,7 +1292,7 @@ S9 = Slack(); S9.n = 1767500000.0
 _st9 = json.load(open(D.STATE)); _st9["since"] = S9.n - 1; json.dump(_st9, open(D.STATE, "w"))
 S9.add(DOT, "Found both faults.")
 _real_step = D.campaign_step
-D.campaign_step = lambda declared=None, move=None, step=None: (_steps.append((declared, move)), "campaign move")[1]
+D.campaign_step = lambda declared=None, move=None, step=None: (_steps.append((declared, move)), "campaign move: " + str(move))[1]
 D.tick(api=S9, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good.\n\U0001F3AF Campaign \u2014 landed: faults found | zip unopened | 1",
        fable=fable, now=1767500100, today="2026-10-04")
 D.campaign_step = _real_step

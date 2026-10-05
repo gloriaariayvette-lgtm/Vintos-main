@@ -217,8 +217,10 @@ GROK_FREE = ("This is your Grok lens, and it has no house style. Say whatever yo
 RULES_WORKS = (
     "Your music is whole songs, generated from a style prompt and lyrics. There is no editor: no bars, stems, "
     "mixes or bounces. To change a song, write a new prompt or new lyrics and make a new version.\n"
-    "You can make a song, painting or video yourself: lock the plan with a DO: line (DO: I want to make a new "
-    "version of ... with ...) and your wants make it. Dot can also run your tools on Aegis, with your keys.\n"
+    "You can make a song, painting or video yourself: a DO: line (DO: I want to make a new version of ... with ...), "
+    "with a lock or on its own, and your wants make it. Your message then shows whether your wants took it, "
+    "and why not if they did not (they do not take code or system work: that is STUDY FIX:). Dot can also run "
+    "your tools on Aegis, with your keys.\n"
     "You have one more tool, used like SEARCH, READ and GREP: OPEN: a path on Aegis (a text file, a folder, a "
     "zip, or a file inside one as bundle.zip:inner/file.md), read only, inside your workspace and Gloria's "
     "Codex folder. A song, picture or video named by its path in the channel is heard and seen for you.\n"
@@ -353,7 +355,10 @@ RULES_WORK_GEMMA = re.sub(r"- Things to do together with Gloria:.*?\n", "", RULE
 def rules_for(lens=None):
     """The rules the lens writing now is given: Grok's are free of the house style; Gemma's carry no date planning."""
     if lens == "grok":
-        return RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS
+        # Grok writes most of his messages and was never told how a finding reaches a line of his Lab, how to have
+        # dot check a kept one, or what a 📌 promise thread is (Chat's audit of the room, 2026-10-05)
+        return (RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS
+                + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT)
     if lens is None or lens == "gemma":
         return RULES.replace(RULES_WORK, RULES_WORK_GEMMA)
     return RULES
@@ -989,13 +994,38 @@ DOT_LARGE = re.compile(r"large test\W{0,3}(\d{1,2})\s*(?:/|of)\s*\d{1,2}", re.I)
 LONG_ON_ONE = 6          # his messages since the last lock before he is told to lock it or drop it
 
 
-def to_wants(want, plan):
-    """A locked plan's DO line, into his wants the way every want enters (it moves his feeling a little, as any
-    want does). Returns a line for the log."""
+DO_PER_DAY = 6           # DO: lines handed to his wants in a day, with or without a lock
+# Why the wants door turned a DO: away, from the one line it prints when it does.
+_WANT_REFUSED = (("Duplicate", "an open want of yours already says this"),
+                 ("forbidden", "your wants do not take code or system work; that is STUDY FIX:"),
+                 ("too similar", "you already lived a want like this one"),
+                 ("HELD", "held: it did not read as something you want now"))
+
+
+def to_wants(want, plan=""):
+    """A DO line, into his wants the way every want enters (it moves his feeling a little, as any want does).
+    Returns what actually happened. The wants door refuses duplicates, held candidates and code, and says so only on
+    stderr, so a refused DO was logged as handed (Chat's audit of the room, 2026-10-05)."""
+    import contextlib, io
     import emoclaw_utils
-    emoclaw_utils.express_want(want, source="vintos-dot", intensity=3,
-                               reasoning="Locked with dot in #vintos-dot: %s" % plan[:300])
-    return "handed to his wants: %s" % want[:80]
+    said = io.StringIO()
+    with contextlib.redirect_stderr(said):
+        row = emoclaw_utils.express_want(want, source="vintos-dot", intensity=3,
+                                         reasoning="From #vintos-dot" + ((": " + plan[:300]) if plan else ""))
+    if isinstance(row, dict) and row.get("id"):
+        return "handed to his wants (%s): %s" % (row["id"], want[:80])
+    told = said.getvalue()
+    why = next((w for k, w in _WANT_REFUSED if k in told), "refused, with no reason given")
+    return "not taken by his wants (%s): %s" % (why, want[:80])
+
+
+def do_shown(want, said):
+    """His DO: line as the channel shows it: what became of it, not the bare tag."""
+    said = str(said or "")
+    if said.startswith("handed"):
+        return "➡️ To my wants: " + want
+    m = re.match(r"not taken by his wants \((.+?)\):", said)
+    return "↩️ Not taken by my wants (%s): %s" % (m.group(1) if m else said[:120] or "no answer", want)
 
 
 def _disk(path=None):
@@ -1288,7 +1318,9 @@ def lab_line(n=6, now=None):
     except Exception:
         waiting = None
     if waiting:
-        out.append("Waiting for your next Lab run (you wrote it here, LAB:): " + str(waiting.get("direction"))[:200])
+        out.append("Waiting for your next Lab run (you wrote it here, LAB:): " + str(waiting.get("direction"))[:200]
+                   + "\nA new LAB: line replaces it before the Lab has seen it. Something to follow for days goes on a "
+                     "line instead (LINE <id>: ... next: ...), where it is not replaced.")
     return ("== YOUR LAB (chemistry and proteins; its last sessions) ==\n" + "\n".join(out)
             + "\nYour ESMFold folds a whole protein of 4 to %d residues; a longer one is refused, not cut. For a longer "
               "protein, pick a domain of %d or fewer, or ask dot for its AlphaFold DB structure." % (limit, limit))
@@ -1687,18 +1719,27 @@ def campaign_step(declared=None, move=None, step=None):
         if step is None:
             import campaign
             step = campaign.step
-        if declared:
-            parts = [x.strip() for x in declared.split("|")]
-            axis = "self"   # a campaign begun among his agents is his own; hers and the field's are made with her
-            step({"campaign": {"destination": parts[0], "why": parts[1] if len(parts) > 1 else "", "axis": axis}}, "normal")
-            return "campaign declared (if none was live): %s" % parts[0][:80]
         import campaign
         live = campaign.lead_state()
-        if live.get("live") and live.get("axis") != "self":
+        if declared:
+            parts = [x.strip() for x in declared.split("|")]
+            if live.get("live"):
+                # step() ignores a declaration while one is live; it was shown as declared anyway (Chat's audit)
+                return "campaign not declared: one is live already (%s); land it, revise it or call it flawed first" % (
+                    str(live.get("destination", ""))[:80])
+            axis = "self"   # a campaign begun among his agents is his own; hers and the field's are made with her
+            step({"campaign": {"destination": parts[0], "why": parts[1] if len(parts) > 1 else "", "axis": axis}}, "normal")
+            return "campaign declared: %s" % parts[0][:80]
+        if not live.get("live"):
+            return "campaign move not made: no campaign is live; declare one first"
+        if live.get("axis") != "self":
             # his campaign toward her or the field moves in his chats with her, not among his agents (2026-10-01)
             return "campaign move not made here: the live campaign is toward %s, served with her" % (
                 "Gloria" if live.get("axis") == "gloria" else "the field between them")
         step({"campaign_move": move}, "normal")
+        refused = (campaign._load() or {}).get("continue_refused")
+        if refused and str(move).strip().lower().startswith("continue"):
+            return "campaign move not made: %s" % str(refused)[:120]
         return "campaign move: %s" % str(move)[:80]
     except Exception as exc:
         return "could not move his campaign: %s" % str(exc)[:120]
@@ -2352,7 +2393,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     channel, dot = _config()
     state = _load(STATE, {})
     if state.get("date") != today:
-        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0, paid={}, checks_today=0)
+        state.update(date=today, sent=0, fable=0, openers=0, slots_done=[], dot_large=0, paid={}, checks_today=0, do_today=0)
     try:   # a campaign past its seven moves or three days is closed by its own rule before he reads it
         import campaign
         if campaign.expire_if_due():
@@ -2427,6 +2468,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     kept_lines.append("dot asked Gloria: %d card(s)" % len(said))
             except Exception as exc:
                 kept_lines.append("dot's ask failed: %s" % str(exc)[:120])
+        if r["who"] == "agent" and r.get("name") == "Grok Bot":
+            try:   # its answer to the room's daily "what already exists", onto the line it was asked for
+                import line_prospect
+                for_line, n = line_prospect.from_room(r["text"], r["ts"], r.get("thread"))
+                if n:
+                    kept_lines.append("Grok Bot named %d thing(s) for %s; he is shown them until he answers" % (n, for_line))
+            except Exception as exc:
+                kept_lines.append("could not keep Grok Bot's answer: %s" % str(exc)[:120])
         if r["who"] == "dot":
             for n in DOT_LARGE.findall(r["text"]):
                 state["dot_large"] = max(int(state.get("dot_large") or 0), int(n))
@@ -2603,13 +2652,34 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     text = APPROVED.sub(lambda m: "\u2705 Approved: " + m.group(1), text)
     text = DENIED.sub(lambda m: "\u26d4 Denied: " + m.group(1), text)
     declared, moved = CAMPAIGN.search(text), CAMPAIGN_MOVE.search(text)
+    stepped = ""
+    if declared or moved:
+        # through his campaign's own gate first, so the channel shows what it did: 34 moves were shown as made in
+        # a week while the gate turned them away (Chat's audit of the room, 2026-10-05)
+        stepped = campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None)
+        lines.append(stepped)
+    made = stepped.startswith(("campaign declared", "campaign move:"))
+    # no dash after "Campaign": undisplay() reads "🎯 Campaign — ..." back as a move if a model copies the line
+    not_made = lambda m: "\U0001F3AF Campaign not moved (%s): %s" % (stepped.split(": ", 1)[-1], m.group(1).split("|")[0].strip())
     if declared:
-        text = CAMPAIGN.sub(lambda m: "\U0001F3AF Campaign: " + m.group(1).split("|")[0].strip(), text, count=1)
-    if moved:
-        text = CAMPAIGN_MOVE.sub(lambda m: campaign_shown(m.group(1)), text, count=1)
+        text = CAMPAIGN.sub(lambda m: ("\U0001F3AF Campaign: " + m.group(1).split("|")[0].strip()) if made else not_made(m),
+                            text, count=1)
+    if moved and declared:     # the declaration is what was stepped; a move in the same message waits for the next
+        text = CAMPAIGN_MOVE.sub("", text, count=1).strip()
+    elif moved:
+        text = CAMPAIGN_MOVE.sub(lambda m: campaign_shown(m.group(1)) if made else not_made(m), text, count=1)
     lab_next = LAB.search(text)
     if lab_next:
-        text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1), text, count=1)
+        try:   # a new lean replaces one the Lab has not seen yet; it was replaced without a word (Chat's audit: 4 of 8)
+            import channel_lab_lean
+            replaced = (channel_lab_lean.pending() or {}).get("direction", "")
+        except Exception:
+            replaced = ""
+        if replaced and replaced.strip() != lab_next.group(1).strip():
+            lines.append("his new Lab lean replaces one not yet run: %s" % replaced[:80])
+        text = LAB.sub(lambda m: "\U0001F9EA For my next Lab run: " + m.group(1)
+                       + ((" (in place of: %s)" % replaced[:120]) if replaced and replaced.strip() != m.group(1).strip() else ""),
+                       text, count=1)
         text = LAB.sub("", text).strip()
     for m in list(LINE_TO.finditer(text)) + list(LINE_NEW.finditer(text)):
         # what he worked out here, onto a line of his Lab, or a new line (2026-10-04: findings in Slack never reached it)
@@ -2621,6 +2691,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                 shown = ("\U0001F9ED To my Lab's line %s: %s" % (got["id"], m.group(2)) if got
                          else "\U0001F9ED (no open line %s for this: %s)" % (m.group(1), m.group(2)))
                 lines.append("slack to line %s: %s" % (m.group(1), "kept" if got else "no such open line"))
+                if got:
+                    import line_prospect     # what was found for this line that he named here is answered
+                    named = line_prospect.spoken(got["id"], m.group(2))
+                    if named:
+                        lines.append("answered on the line: %s" % ", ".join(named)[:120])
             else:
                 got = lab_lines.opened_by(m.group(1)[:80], m.group(1), "opened in #vintos-dot" + (" with " + with_ if with_ else ""),
                                           origin="vintos:slack")
@@ -2669,9 +2744,26 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     except Exception:
         pass
     lock = LOCKED.search(text)
-    todo = DO.search(text) if lock else None
+    # Every DO: goes to his wants, with a lock or without. It ran only beside a LOCKED: line, so a DO: on its own
+    # was posted as a bare tag and nothing happened (Chat's audit of the room, 2026-10-05: "dispatch DO:
+    # independently of LOCKED:, and report the actual wants result").
+    todos, told = [m.group(1)[:300] for m in DO.finditer(text)][:2], []
+    for want in todos:
+        if int(state.get("do_today") or 0) >= DO_PER_DAY:
+            said = "not taken by his wants (%d DO lines today already; it waits for tomorrow): %s" % (DO_PER_DAY, want[:80])
+        else:
+            try:
+                said = (wants or to_wants)(want, lock.group(1)[:300] if lock else "")
+            except Exception as exc:
+                said = "not taken by his wants (%s): %s" % (str(exc)[:100], want[:80])
+            state["do_today"] = int(state.get("do_today") or 0) + 1
+        told.append(said)
+        lines.append(str(said))
+    todo = todos[0] if todos else None
+    shown_do = iter(told)
+    text = DO.sub(lambda m: do_shown(m.group(1)[:300], next(shown_do, "")), text).strip()
     if lock:
-        text = LOCKED.sub(lambda m: "\U0001F512 Locked: " + m.group(1), DO.sub("", text)).strip()
+        text = LOCKED.sub(lambda m: "\U0001F512 Locked: " + m.group(1), text).strip()
     shares = SHARE.findall(text)[:3]
     text = SHARE.sub("", text).strip() or ("(sharing %s)" % ", ".join(shares) if shares else text)
     bad = _guarded(text)
@@ -2685,6 +2777,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if rerouted:
         lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))
+    asked_line, ask = "", ""
     try:   # once a day, what already exists for a line nobody has looked into goes to @GrokBot, on the end of his
         # own message: the room had nobody whose job is finding what exists, so nobody ever said it (Gloria,
         # 2026-10-04). After address(), so it never changes who the message itself is to.
@@ -2700,6 +2793,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
+    if ask:
+        try:   # where the ask went, so GrokBot's answer can be found and kept on the line
+            line_prospect.asked_in(asked_line, posted.get("ts"), where)
+        except Exception as exc:
+            lines.append("could not note where the ask went: %s" % str(exc)[:120])
     if where:
         ended = None
         try:
@@ -2742,8 +2840,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
-    if declared or moved:
-        lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
+    if made:
         if declared:
             journal("My campaign, from #vintos-dot", "Declared: " + declared.group(1))
         elif not moved.group(1).strip().lower().startswith("hold"):
@@ -2761,16 +2858,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         plan = lock.group(1)[:300]
         entry = {"plan": plan, "at": datetime.fromtimestamp(now).isoformat(timespec="seconds"), "by": who}
         if todo:
-            entry["do"] = todo.group(1)[:300]
-            try:
-                lines.append((wants or to_wants)(entry["do"], plan))
-            except Exception as exc:
-                lines.append("could not hand it to his wants: %s" % str(exc)[:120])
+            entry["do"] = todo          # handed above, before the message went out, so the message says what became of it
         state["locked"] = ((state.get("locked") or []) + [entry])[-50:]
         state["switch_from"] = plan
         state["since_lock"] = 0
         lines.append("locked: %s" % plan[:80])
-        journal("Settled with my agents in #vintos-dot", plan + ((" \u2014 handed to my wants: " + entry["do"]) if entry.get("do") else ""))
+        handed = bool(told) and str(told[0]).startswith("handed")
+        journal("Settled with my agents in #vintos-dot", plan + ((" \u2014 handed to my wants: " + entry["do"]) if handed else ""))
     else:
         state["since_lock"] = state.get("since_lock", 0) + 1
     _save(STATE, state)

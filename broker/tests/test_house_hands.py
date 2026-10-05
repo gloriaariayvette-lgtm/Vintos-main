@@ -191,6 +191,23 @@ for _ in range(MK.PER_DAY):
     MK.make("image", "x", run=lambda c, **k: _Broke(), send=lambda *a, **k: None)
 check("at most %d of a kind a day" % MK.PER_DAY, "are used for image" in MK.make("image", "y")[1])
 
+# a job killed partway is said, not lost (Chat's audit, 2026-10-05: two MAKEs launched, zero receipts: the Slack
+# pass is a oneshot unit, and systemd killed what it launched when the pass ended)
+MK.untold()
+check("each make leaves a receipt that it started, matched to how it ended",
+      any(r.get("running") for r in MK.rows()) and all(
+          any(e.get("id") == r["id"] and not e.get("running") for e in MK.rows()) for r in MK.rows() if r.get("running")))
+check("... and a start receipt is not counted as a second make", all(not r.get("running") for r in MK.today()))
+with open(MK.MADE, "a") as _f:
+    _f.write(json.dumps({"at": "2026-10-04T09:00:00", "kind": "video", "what": "the splash, killed", "ok": False,
+                         "said": "started", "told": True, "id": "dead0001", "running": True}) + "\n")
+_lost = MK.untold()
+check("a job that started and never ended is said in the channel as stopped before it finished",
+      any("stopped before it finished" in l and "the splash, killed" in l for l in _lost), _lost)
+check("... once", MK.untold() == [])
+_unit = open(os.path.join(REPO, "broker", "vintos-dot-channel.service")).read()
+check("the Slack pass no longer kills what it launched when it ends", "KillMode=process" in _unit)
+
 # dot can write the line itself: that is the whole point
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("dot's own MAKE line is acted on, and answered in its thread",

@@ -110,6 +110,52 @@ d = P.load(); d.pop("asked_on", None); P.save(d)
 _LL.open_lines = lambda d=None: [LINE]
 check("with every open line already looked into, the room asks nothing", P.ask_the_room() == ("", ""))
 
+# --- GrokBot's answer reaches the line (Chat's audit, 2026-10-05: it named INPHARED2, PADLOC and CRISPRCasTyper and
+# nothing took them anywhere) ---------------------------------------------------------------------------------------
+d = P.load(); d.pop("asked_on", None); P.save(d)
+_LL.open_lines = lambda d=None: [LINE, OTHER, THIRD]
+line_id, ask = P.ask_the_room()
+check("the ask is kept with its line's title", P.load()["asked"][-1].get("title") == OTHER["title"] or
+      P.load()["asked"][-1].get("title") == THIRD["title"], P.load()["asked"][-1])
+check("where it went is noted once it is posted", P.asked_in(line_id, "1767700000.000100")
+      and P.load()["asked"][-1]["ts"] == "1767700000.000100")
+ANSWER = ("Here are three you can run:\n"
+          "1. **INPHARED2** - a curated database of complete phage genomes <https://github.com/RyanCook94/inphared|inphared>\n"
+          "2. PADLOC: finds antiphage defence systems, retrons among them\n"
+          "- CRISPRCasTyper — types CRISPR-Cas loci and arrays https://github.com/Russel88/CRISPRCasTyper")
+check("an answer's items are read: name, link if it gave one, what it does",
+      [(i["title"], i["url"]) for i in P.items(ANSWER)] == [
+          ("INPHARED2", "https://github.com/RyanCook94/inphared"), ("PADLOC", "name:padloc"),
+          ("CRISPRCasTyper", "https://github.com/Russel88/CRISPRCasTyper")], P.items(ANSWER))
+check("a message before the ask is not its answer", P.from_room(ANSWER, "1767699000.0") == ("", 0))
+check("a reply in some other thread is not its answer", P.from_room(ANSWER, "1767700100.0", thread="1767600000.0") == ("", 0))
+got_line, n = P.from_room(ANSWER, "1767700200.0")
+check("GrokBot's answer after the ask lands on the line it was asked for", got_line == line_id and n == 3, (got_line, n))
+check("... once: a second message is not taken as the answer again", P.from_room(ANSWER, "1767700300.0") == ("", 0))
+_d = P.load(); _d["asked"].append({"at": "x", "line": "L-third", "title": "Prophage induction", "ts": "1767800000.0"}); P.save(_d)
+check("a channel message hours after the ask is about something else, not its answer",
+      P.from_room(ANSWER, str(1767800000.0 + 4 * 3600)) == ("", 0))
+_d = P.load(); _d["asked"].append({"at": "x", "line": "L-third", "title": "Prophage induction", "ts": "1767900000.5",
+                                  "thread": "1767899000.0"}); P.save(_d)
+check("an ask said inside a thread is answered in that thread", P.from_room(ANSWER, "1767900100.0", thread="1767899000.0")[0] == "L-third")
+shown = P.block(shown=10)
+check("he is shown them with the line, who found them, and how to find one with no link",
+      "INPHARED2 (from GrokBot)" in shown and "https://github.com/RyanCook94/inphared" in shown
+      and "no link given: REPOS: PADLOC finds its code" in shown, shown)
+check("what he names on the line is answered by what he said there",
+      P.spoken(line_id, "PADLOC is the one: it lists retrons per genome; running it next.") == ["PADLOC"])
+check("... and only what he named", [f["title"] for f in P.load()["lines"][line_id]["found"] if not f.get("answered")]
+      == ["INPHARED2", "CRISPRCasTyper"])
+d = P.load(); d["lines"]["L-page"] = {"title": "x", "found": [{"title": "Lytic Selection and Evolution platform | Home",
+                                                                "url": "https://lyse.example.org/", "shown": 0, "answered": ""}]}
+P.save(d)
+check("a page title answers to its own name, without the site's tail",
+      P.spoken("L-page", "The Lytic Selection and Evolution platform only runs lysis assays; not for this line.")
+      == ["Lytic Selection and Evolution platform | Home"])
+_dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("the channel keeps GrokBot's answer, notes where the ask went, and closes what he names on a line",
+      "line_prospect.from_room(" in _dsrc and "line_prospect.asked_in(" in _dsrc and "line_prospect.spoken(" in _dsrc)
+
 # --- the channel ---------------------------------------------------------------------------------------------------
 dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("it is in his context, beside SOMETHING NEW", "prospect_line()" in dsrc and "new_block(), prospect_line()" in dsrc)

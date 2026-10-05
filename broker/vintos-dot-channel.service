@@ -11,6 +11,10 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 %h/.vintos/workspace/scripts/dot_channel.py
 # a video in the channel is heard (Whisper, on the CPU) and seen before he answers: minutes
 TimeoutStartSec=1800
+# A MAKE: (a clip, a painting, a song) runs for minutes after the pass that launched it ends. With the default
+# KillMode=control-group, systemd killed it with the pass, so nothing he asked to make ever landed (Chat's audit,
+# 2026-10-05: two launches, zero receipts). Only the pass itself is stopped now; what it launched finishes.
+KillMode=process
 NoNewPrivileges=true
 # no PrivateTmp: his EmoClaw reading comes from the daemon socket in /tmp, as the avatar chat reads it
 ProtectSystem=strict
