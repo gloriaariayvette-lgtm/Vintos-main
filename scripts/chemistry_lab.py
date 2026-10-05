@@ -685,6 +685,17 @@ def _json_object(text, keep=800):
     lo = body.find("{")
     if lo < 0:
         raise ValueError("model returned no JSON object at all; it said: %r" % raw[:keep])
+    # Strict boundary first: exactly one complete object from the opening brace, whatever follows it. Gemma
+    # sometimes keeps writing after its object (a second one, or a sentence with braces in it); taking the last
+    # "}" swallows that tail and the parse fails with "Extra data" (Vintos, SK-330c8fa6). Trailing text is not
+    # part of the answer. A stray backslash is tried here too, so a tail does not hide behind one.
+    for strict in (body, _BAD_ESCAPE.sub(r"\\\\", body)):
+        try:
+            value, _end = json.JSONDecoder().raw_decode(strict, lo)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            return value
     hi = body.rfind("}")
     tries = [body[lo:hi + 1]] if hi > lo else []
     tries.append(_close_open(body[lo:]))                 # truncated: close what it left open
