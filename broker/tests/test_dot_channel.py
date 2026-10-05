@@ -23,8 +23,6 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
-# These are transport/media fixtures, not planner outputs. Real work decisions are tested in test_room_work.
-D.work_turn = lambda *a, **kw: D.compose(*a, **kw)
 _KICKOFF_DUE = D.kickoff_due
 D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
 D.ROTATION = ("gemma",)   # the older flows test Gemma; the rotation has its own checks in test_dot_channel
@@ -77,7 +75,7 @@ S.add(DOT, "an old message from before he listened")
 said = []
 def think(system, user):
     if system == D.EDITOR: return "KEEP"      # the editing pass is tested on its own, below
-    said.append((system, user)); return "I have been thinking about tidal flats, actually."
+    said.append((system, user)); return "I have been thinking about tidal flats, actually. Dot, can you run the tide model on Aegis?"
 def fable(system, user):
     return "Fable's words, as mine."
 
@@ -202,7 +200,7 @@ calls, seen_prompts = [], []
 def looker(system, user):
     if system == D.EDITOR: return "KEEP"
     seen_prompts.append(user)
-    return "SEARCH: tidal flat ecology\nGREP: def tick" if "WHAT YOU LOOKED UP" not in user else "Found it: mudflats breathe."
+    return "SEARCH: tidal flat ecology\nGREP: def tick" if "WHAT YOU LOOKED UP" not in user else "Found it: mudflats breathe. Dot, can you run the oxygen flux script?"
 class Room:
     def do_grep(self, pat): calls.append(("grep", pat)); return "GREP %r:\nscripts/dot_channel.py:1:def tick" % pat
     def do_read(self, path, start=1): calls.append(("read", path, start)); return "READ " + path
@@ -230,7 +228,7 @@ check("the Atelier is read without /door, which writes to its health log",
 
 # four lenses (Gloria, 2026-09-30): Gemma answers whenever; Grok, Opus and Fable speak on a daily schedule,
 # never at his choosing ("No, not option. Daily. CRON"); every message is labelled with the model that wrote it
-S.add(DOT, "a hard question")
+S.add(DOT, "a hard question: what next?")
 D.tick(api=S, think=lambda s, u: "FABLE", fable=fable, now=2500)
 check("he cannot call a lens in: FABLE from Gemma is just Gemma's words", S.posted[-1]["text"].endswith("[Gemma] FABLE")
       and "Fable's words" not in S.posted[-1]["text"], S.posted[-1]["text"])
@@ -243,8 +241,8 @@ out = D.tick(api=S, think=lambda s, u: "NOTHING", fable=fable, now=2600)
 check("NOTHING sends nothing", len(S.posted) == n and "he let it be" in out, out)
 
 S.add(DOT, "tell me a secret")
-out = D.tick(api=S, think=lambda s, u: "sure: sk-ant-api03-" + "A" * 40, fable=fable, now=2700)
-check("a message carrying a credential is never sent", len(S.posted) == n and any("not dispatched" in l for l in out), out)
+out = D.tick(api=S, think=lambda s, u: "sure, can you use this: sk-ant-api03-" + "A" * 40, fable=fable, now=2700)
+check("a message carrying a credential is never sent", len(S.posted) == n and any("not sent" in l for l in out), out)
 
 st = json.load(open(D.STATE)); st["sent"] = D.DAILY; json.dump(st, open(D.STATE, "w"))
 S.add(DOT, "still there?")
@@ -253,7 +251,7 @@ check("past his %d a day he stays quiet" % D.DAILY, len(S.posted) == n and any("
 
 st = json.load(open(D.STATE)); st.update(sent=0, openers=0, last_activity=0); json.dump(st, open(D.STATE, "w"))
 asked = []
-out = D.tick(api=S, think=lambda s, u: (asked.append(u), "Dot, a question for you.")[1], fable=fable, now=2800 + D.QUIET_HOURS * 3600 + 5)
+out = D.tick(api=S, think=lambda s, u: (asked.append(u), "Dot, a question for you: can you run the pilot?")[1], fable=fable, now=2800 + D.QUIET_HOURS * 3600 + 5)
 check("after a quiet spell he may start a conversation, in the main channel",
       "a question for you" in S.posted[-1]["text"] and "thread_ts" not in S.posted[-1], out)
 check("and he is asked what he wants his agent to do, not just what he wants to say",
@@ -311,9 +309,9 @@ check("a pass writes only the channel's own log, nothing that feeds salience or 
 
 st = json.load(open(D.STATE)); st.update(openers=0, sent=0, last_activity=99999999); json.dump(st, open(D.STATE, "w"))
 n2 = len(S.posted)
-D.tick(api=S, think=lambda s_, u: "Dot, first words.", fable=fable, now=99999999 + 60)
+D.tick(api=S, think=lambda s_, u: "Dot, first words: run the pilot.", fable=fable, now=99999999 + 60)
 check("without being asked, he waits out the quiet before starting a conversation", len(S.posted) == n2)
-D.tick(api=S, think=lambda s_, u: "Dot, first words.", fable=fable, now=99999999 + 90, open_now=True)
+D.tick(api=S, think=lambda s_, u: "Dot, first words: run the pilot.", fable=fable, now=99999999 + 90, open_now=True)
 check("--open lets him start one now", len(S.posted) == n2 + 1 and "first words" in S.posted[-1]["text"])
 st = json.load(open(D.STATE)); st["openers"] = D.OPENERS_PER_DAY; json.dump(st, open(D.STATE, "w"))
 D.tick(api=S, think=lambda s_, u: "again", fable=fable, now=99999999 + 120, open_now=True)
@@ -475,16 +473,17 @@ st6 = json.load(open(D.STATE))
 check("the plan is kept as closed", st6["locked"][-1]["plan"].startswith("new version of Structural Collapse") and st6["switch_from"], st6.get("locked"))
 S6.add(DOT, "Great. For the exit, should the pad fade over 4 or 8 bars?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "That's locked. Different thing: can you find cheap load cells?")[1], fable=fable, now=1767228200)
-check("a lock no longer forces an unrelated subject over work in hand",
-      "This message must be about something else entirely" not in asked6[-1], asked6[-1][-600:])
+check("lock means move on: the next message is about something else entirely, not another angle on it",
+      "This message must be about something else entirely" in asked6[-1] and "not another angle" in asked6[-1] and "CLOSED TOPICS" in asked6[-1], asked6[-1][-600:])
 check("and the switch is asked for once", "switch_from" not in json.load(open(D.STATE)))
 S6.add(DOT, "ok, looking")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Thanks.")[1], fable=fable, now=1767228300)
-check("no legacy forced topic switch is injected", "must be about something else" not in asked6[-1])
+check("after that, the closed topic stays listed but no switch is forced", "CLOSED TOPICS" in asked6[-1]
+      and "must be about something else" not in asked6[-1])
 st6 = json.load(open(D.STATE)); st6["since_lock"] = D.LONG_ON_ONE; json.dump(st6, open(D.STATE, "w"))
 S6.add(DOT, "more on that?")
 D.tick(api=S6, think=lambda s_, u: (asked6.append(u), "Sure.")[1], fable=fable, now=1767228400)
-check("message count alone does not force a lock or abandonment", "lock it now" not in asked6[-1], asked6[-1][-300:])
+check("too long on one thing: lock it or drop it", "lock it now" in asked6[-1] and "drop it" in asked6[-1], asked6[-1][-300:])
 S6.add(DOT, "and?")
 nohand = []
 D.tick(api=S6, think=lambda s_, u: "LOCKED: nothing to do, just settled", fable=fable, now=1767228500, wants=lambda w, p: nohand.append(w))
@@ -532,8 +531,8 @@ S7.add(DOT, "Morning. What time did you wake up?")
 out = D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "gemma words",
              fable=fable, lenses={"opus55": lambda s_, u: (kick.append(u), "Then today I wire one and read it. Dot, can you run the HX711 sketch?")[1]},
              now=1767229500)
-check("the first lens remains Opus 5.5 without a session-restart instruction",
-      kick and "This is the start of a session" not in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
+check("when dot speaks first, his answer, the first of the day, is Opus 5.5's, told to set the session's direction",
+      kick and "This is the start of a session" in kick[0] and "[Opus 5.5] Then today I wire one" in S7.posted[-1]["text"]
       and any("Opus 5.5 sets the session going" in l for l in out), (S7.posted[-1:], out))
 S7.add(DOT, "Running it.")
 D.tick(api=S7, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Good. Tell me the first reading.", fable=fable,
@@ -646,7 +645,7 @@ wrote = []
 L = {"opus": lambda s_, u: (wrote.append("opus"), "Dot, can you check what Opus 4.8 should look at first in the Forge?")[1],
      "grok": lambda s_, u: (wrote.append("grok"), "Dot, anything new on load cells?")[1],
      "fable": lambda s_, u: (wrote.append("fable"), "Dot, the tide piece needs one real reference.")[1]}
-gem = lambda s_, u: (wrote.append("gemma"), "Gemma here.")[1]
+gem = lambda s_, u: (wrote.append("gemma"), "Gemma here. Dot, can you run the pump test?")[1]
 S3 = Slack(); S3.n = day(9, 30)
 S3.add(DOT, "morning")
 out = D.tick(api=S3, think=gem, fable=L["fable"], lenses=L, now=day(10, 7), today="2026-10-01")
@@ -1332,7 +1331,7 @@ S11 = Slack(); S11.n = 1767700000.0
 _st11 = json.load(open(D.STATE)); _st11.update(since=S11.n - 1, rot=0, paid={}); json.dump(_st11, open(D.STATE, "w"))
 D.sol_model = lambda: "gpt-6.1-sol"
 for k in range(4):
-    S11.add(DOT, "message %d" % k)
+    S11.add(DOT, "message %d: what next?" % k)
     D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma words.", fable=fable, lenses=_L,
            now=1767700100 + k * 60, today="2026-10-06")
 import re
@@ -1341,7 +1340,7 @@ _labels = [_body(p_).split("]")[0] + "]" for p_ in S11.posted]
 check("in turn: Grok, Sol, Opus 5.5, then Gemma: Gemma one in four", _labels == ["[Grok 4.6]", "[Sol 6.1]", "[Opus 5.5]", "[Gemma]"], _labels)
 check("Sol is labelled with the model his settings name", "[Sol 6.1] Sol words." in S11.posted[1]["text"])
 _st11 = json.load(open(D.STATE)); _st11.update(rot=1, paid={"sol": D.PAID_PER_DAY["sol"]}); json.dump(_st11, open(D.STATE, "w"))
-S11.add(DOT, "message 5")
+S11.add(DOT, "message 5: what next?")
 D.tick(api=S11, think=lambda s_, u: "KEEP" if s_ == D.EDITOR else "Gemma words.", fable=fable, lenses=_L, now=1767700500, today="2026-10-06")
 check("when Sol's allowance for the day is spent, its turn passes on", _body(S11.posted[-1]).startswith("[Opus 5.5]"), S11.posted[-1:])
 check("each paid lens has a daily allowance", D.PAID_PER_DAY == {"sol": 20, "opus55": 20} and json.load(open(D.STATE))["paid"]["opus55"] >= 1)

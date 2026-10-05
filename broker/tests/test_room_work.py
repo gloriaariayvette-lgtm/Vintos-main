@@ -1,215 +1,175 @@
 #!/usr/bin/env python3
-"""Multi-pass room workflow: real planner/gate, fake models, Slack and every sender/store."""
-import copy
-import json
-import os
-from pathlib import Path
-import socket
-import subprocess
-import sys
-import tempfile
-import types
+"""Work in hand in #vintos-dot, carried across passes (Gloria, 2026-10-05: "I want VINTOS in Slack to actually do
+real work", and of working alone: "Slack loses much of its reason for existing").
 
-HOME = tempfile.mkdtemp(prefix='room-work-')
-os.environ['HOME'] = HOME
-os.environ['SPARK_WORKSPACE'] = HOME + '/workspace'
-os.environ['VINTOS_SECRETS'] = HOME + '/secrets'
-os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-NETWORK = []
-def no_network(*a, **kw):
-    NETWORK.append('attempt'); raise AssertionError('suite may not send')
-socket.socket.connect = no_network
-socket.create_connection = no_network
-subprocess.Popen = no_network
-import urllib.request
-urllib.request.urlopen = no_network
+Two halves. First the pure transitions in room_work.py, directly. Then the whole layer through dot_channel.tick,
+with Slack, every model lens and every sender stubbed and every socket refused: a work opened, handed to an agent,
+the agent's answer matched back to it, used, and the work closed, over four passes; and a message that moves nothing
+sent back to him once.
+
+Scratch workspace; nothing here reaches Slack, a model or the network.
+"""
+import json, os, socket, sys, tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
+HOME = tempfile.mkdtemp(prefix="room-work-")
+os.environ["HOME"] = HOME
+os.environ["SPARK_WORKSPACE"] = os.path.join(HOME, ".vintos", "workspace")
+os.environ["VINTOS_SECRETS"] = os.path.join(HOME, "no-secrets")
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+
+NET = []
+def _no_net(self, *a, **k):
+    if self.family != socket.AF_UNIX: NET.append(a)
+    raise OSError("this suite reaches nothing")
+socket.socket.connect = _no_net
+
 import room_work as W
 import dot_channel as D
 
-# Stubs installed before tick's lazy imports; no provider or real house is reachable.
-modules = {
- 'campaign': dict(expire_if_due=lambda: False),
- 'promise_keeper': dict(threads=lambda: [], block=lambda: '', resolve=lambda *a: None),
- 'make_thing': dict(untold=lambda: []),
- 'lab_asks': dict(pending=lambda: []),
- 'lab_keepers': dict(threads=lambda: [], CHECK=__import__('re').compile(r'CHECK: (K-\w+)(.*)')),
- 'line_prospect': dict(from_room=lambda *a: ('',0), ask_the_room=lambda: ('','')),
- 'lab_lines': dict(from_slack=lambda *a, **kw: {'id':'L-test'}, slack_block=lambda: ''),
-}
-for name, funcs in modules.items(): sys.modules[name] = types.SimpleNamespace(**funcs)
-D.talking_with_gloria = lambda *a: None
-D.results_pass = lambda *a, **kw: []
-D.promises_pass = lambda *a, **kw: (_ for _ in ()).throw(AssertionError('private journal is not room work'))
-D.work_context = lambda: 'Operational Lab work only'
-D.his_context = lambda: (_ for _ in ()).throw(AssertionError('private context was read'))
-D.room_line = lambda *a: 'dot tests remaining: 10'
+R = []
+def check(n, ok, d=""):
+    R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:300]) if d and not ok else ""))
+
+check("its store rides in the channel's scratch state", D.STATE.startswith(HOME))
+
+# --- the transitions, directly ------------------------------------------------------------------------------------
+st = {}
+text, log, closed = W.apply(st, "Let's settle it.\nWORK: find a phage genome with an RT beside a CRISPR array | done when: one accession named",
+                            now=1000, by="grok")
+w = W.active(st)
+check("WORK: opens the one work in hand, with its goal and how anyone could tell it is done",
+      w and w["goal"].startswith("find a phage genome") and w["done_when"].startswith("one accession") and "\U0001F9F0 Working on:" in text, (w, text))
+check("a second WORK: while one is in hand does not replace it", W.apply(st, "WORK: something else entirely | done when: x", now=1050)[0].startswith("\U0001F9F0 (still working on")
+      and W.active(st)["goal"].startswith("find a phage"))
+
+# a request to an agent becomes an ask its answer is matched to
+W.posted(st, "@GrokBot can you find one such genome, with its accession?", ts="1001.0", thread=None, now=1001, to={"grokbot"})
+check("a request to an agent is kept as an ask out to that agent", W.active(st)["asks"][-1]["to"] == "grokbot" and not W.active(st)["asks"][-1]["answered"])
+check("asking GrokBot the same thing again is caught, while it is still out",
+      "has not answered yet" in W.asking_again(st, "@GrokBot could you find a genome with an array and an accession?", now=1100))
+
+# the agent's answer, in the channel soon after, is matched to the ask
+kept = W.receive(st, {"who": "agent", "name": "Grok Bot", "ts": "1200.0",
+                      "text": "Try NC_049900: it carries a group-II RT about 2 kb from a type I-C array."}, now=1200)
+check("GrokBot's answer soon after, in the channel, is kept on the work it answers", kept and W.active(st)["returns"][-1]["from"] == "grokbot")
+check("a second answer from GrokBot is not matched again to the same ask",
+      not W.receive(st, {"who": "agent", "name": "Grok Bot", "ts": "1300.0", "text": "Also NC_000001."}, now=1300))
+check("now he is told to use what came back, not ask again",
+      "already answered that" in W.asking_again(st, "@GrokBot find a genome with an accession, please", now=1300))
+blk = W.block(st, now=1300)
+check("what came back and is unused is put in front of him", "NOT USED YET" in blk and "NC_049900" in blk, blk)
+
+# an answer in the channel hours later is too late; in the thread it has a day
+st2 = {}; W.apply(st2, "WORK: fold the RT domain | done when: a pLDDT is reported", now=0)
+W.posted(st2, "@dot can you fold it?", ts="10.0", thread="10.0", now=10, to={"dot"})
+check("an answer in the ask's thread, a day later, still counts",
+      W.receive(st2, {"who": "dot", "ts": str(10 + 20 * 3600), "thread": "10.0", "text": "pLDDT 86 across the domain."}, now=10 + 20 * 3600))
+st3 = {}; W.apply(st3, "WORK: price a load cell | done when: a price in dollars", now=0)
+W.posted(st3, "@Muse what does a 5 kg load cell cost?", ts="5.0", thread=None, now=5, to={"muse"})
+check("an answer in the channel hours after the ask is not matched (it has moved on)",
+      not W.receive(st3, {"who": "agent", "name": "Muse", "ts": str(5 + 4 * 3600), "text": "About $12."}, now=5 + 4 * 3600))
+
+# closing, and expiry
+_t, _l, _c = W.apply(st, "WORK DONE: NC_049900 is the genome; accession named.", now=1400)
+check("WORK DONE: closes it and files it in history", _c and _c["state"] == "done" and W.active(st) is None
+      and W.board(st)["history"][-1]["goal"].startswith("find a phage"), (_c, W.active(st)))
+check("and he may now open the next", W.apply(st, "WORK: the next question | done when: an answer", now=1500)[0].startswith("\U0001F9F0 Working on: the next"))
+check("work untouched for days is let go", (W.active({"room_work": {"active": {"goal": "g", "opened": 0, "touched": 0}}})
+      and W.expire({"room_work": {"active": {"goal": "old", "opened": 0, "touched": 0}}}, now=W.STALE_DAYS * 86400 + 1)["state"] == "expired"))
+
+# moves() tells work from chatter
+for t, m in [("Dot, can you run the pilot?", True), ("LAB: fold the whole locus", True), ("WORK: x | done when: y", True),
+             ("Thanks, that's great.", False), ("Agreed. Good find.", False), ("I keep thinking about the tide.", False),
+             ("Next pass I'll look into it.", False)]:
+    check("moves(): %r is %s" % (t[:30], "work" if m else "chatter"), W.moves(t) is m, t)
+
+# --- the whole layer, through tick --------------------------------------------------------------------------------
+SELF, DOT, GLORIA, CH = "UVINTOS", D.DOT, "UGLORIA", D.CHANNEL
 D.kickoff_due = lambda *a: False
-D.SCHEDULE = []; D.ROTATION = ('gemma',)
-D.agent_ids = lambda *a: {}
-D.journal = lambda *a, **kw: True
-D._guarded = lambda t: ['credential'] if 'SECRET_TEST_VALUE' in t else []
-D.keep_parts_lists = lambda *a: []
-D.campaign_step = no_network
-D.to_wants = no_network
-D.look_at_files = no_network
-D.local_think = no_network
-D.fable_think = no_network
-D.sol_think = no_network
-D.opus_think = no_network
-D.grok_think = no_network
-assert all(str(getattr(D,k)).startswith(HOME) for k in ('STATE','TRANSCRIPT','FOCUS_FILE','PAUSE_FILE','RESULTS_STATE','RESULTS_LOG'))
-assert D.to_wants is no_network and urllib.request.urlopen is no_network
-assert socket.socket.connect is no_network and subprocess.Popen is no_network
-assert D.local_think is no_network and D.campaign_step is no_network
+D.ROTATION = ("gemma",); D.SCHEDULE = []
+D.atelier_line = lambda: ""; D.recall_block = lambda: ""
+
 
 class Slack:
- def __init__(self): self.rows=[]; self.posts=[]; self.n=100; self.fail=False
- def add(self, text, user=None, thread=None):
-  self.n+=1; r={'ts':str(self.n)+'.000000','user':user or D.DOT,'text':text}
-  if thread:
-   r['thread_ts']=thread
-   for root in self.rows:
-    if root['ts']==thread: root['reply_count']=root.get('reply_count',0)+1;root['latest_reply']=r['ts']
-  self.rows.append(r); return r['ts']
- def __call__(self, method, params):
-  if method=='auth.test':return {'user_id':'SELF'}
-  if method=='conversations.history':return {'messages':list(reversed([r for r in self.rows if not r.get('thread_ts')]))}
-  if method=='conversations.replies':return {'messages':[r for r in self.rows if r.get('thread_ts')==params['ts'] or r['ts']==params['ts']]}
-  if method=='chat.postMessage':
-   if self.fail: raise RuntimeError('uncertain transport')
-   self.posts.append(params); return {'ok':True,'ts':self.add(params['text'],'SELF',params.get('thread_ts'))}
-  raise AssertionError(method)
+    def __init__(self): self.msgs, self.posted, self.n = [], [], 100.0
+    def add(self, user, text, thread=None):
+        self.n += 1; ts = "%.6f" % self.n
+        m = {"ts": ts, "user": user, "text": text}
+        if thread:
+            m["thread_ts"] = thread
+            root = next(x for x in self.msgs if x["ts"] == thread)
+            root["reply_count"] = root.get("reply_count", 0) + 1; root["latest_reply"] = ts
+        self.msgs.append(m); return ts
+    def __call__(self, method, params):
+        if method == "auth.test": return {"ok": True, "user_id": SELF}
+        if method == "conversations.history":
+            return {"ok": True, "messages": [m for m in reversed(self.msgs) if not m.get("thread_ts") or m["thread_ts"] == m["ts"]]}
+        if method == "conversations.replies":
+            root = params["ts"]
+            return {"ok": True, "messages": [m for m in self.msgs if m["ts"] == root]
+                    + [m for m in self.msgs if m.get("thread_ts") == root and m["ts"] != root]}
+        if method == "chat.postMessage":
+            self.posted.append(params); return {"ok": True, "ts": self.add(SELF, params["text"], params.get("thread_ts"))}
+        raise AssertionError("unexpected " + method)
 
-slack=Slack(); calls=[]; next_plan={}
-def writer(system,user):
- calls.append((system,user)); return json.dumps(next_plan)
-def tick(now=1000, day='2026-10-05'):
- return D.tick(api=slack, think=writer, fable=no_network, now=now, today=day,
-               eyes=lambda *a:'', lenses={k:writer for k in ('sol','opus','opus55','fable','grok')})
-def state(): return json.load(open(D.STATE))
-def save(s): D._save(D.STATE,s)
-def reset():
- global slack
- slack=Slack(); save({'self':'SELF','since':100,'date':'2026-10-05','sent':0,'openers':0,'slots_done':[], 'last_activity':100})
- Path(D.TRANSCRIPT).write_text('')
-reset()
-next_plan={'move':'handoff','goal':'Diagnose the Lab intake 403 without changing authority',
- 'done_when':'Identify the exact rejecting guard from retained evidence', 'owner':'dot',
- 'step':'Read the sender and receiver once; locate the exact refusal guards',
- 'deliverable':'Redacted paths and line numbers, separating proven from unconfirmed',
- 'use_for':'choose one discriminating check rather than repeat the same inspection'}
-slack.add('Please diagnose the Lab delivery failure',user='GLORIA')
-tick(); w=state()['room_work']['active']; ident=w['id']; root=w['thread']
-assert w['phase']=='waiting' and w['owner']=='dot' and len(slack.posts)==1
-assert '[RW-' in slack.posts[0]['text'] and 'Return:' in slack.posts[0]['text']
-assert root in state()['threads']
-n=len(calls); tick(1100); assert len(calls)==n and len(slack.posts)==1
-# Across midnight no lost assignment, no duplicate ping.
-tick(1200,'2026-10-06'); assert state()['room_work']['active']['id']==ident and len(calls)==n
-# Wrong peer cannot satisfy it even when using the work ID.
-s=state(); W.receive(s,[{'who':'agent','name':'Muse','ts':'104','thread':root,'text':'['+ident+'] done'}],1300)
-assert not s['room_work']['active']['results']
-# Same assigned peer but another thread must not satisfy it.
-W.receive(s,[{'who':'dot','ts':'104','thread':'999','text':'unrelated reply'}],1300)
-assert not s['room_work']['active']['results']
-# Actual result arrives; no model claims needed to persist it.
-text='The header syntax matches. Refused, ValueError and KeyError all become 403; which guard fired is unconfirmed.'
-ts=slack.add(text,thread=root)
-next_plan={'move':'handoff', 'owner':'dot','step':'Read the sender and receiver once; locate the exact refusal guards',
- 'deliverable':'Redacted paths and line numbers, separating proven from unconfirmed','use_for':'pick the next check',
- 'evidence':[{'ref':ts,'quote':'The header syntax matches.'}], 'decision':'The sender already uses the correct header; we need the rejecting guard.'}
-tick(1400,'2026-10-06'); assert len(slack.posts)==1
-assert 'already handed off' in state()['room_work']['last_gate']
-# Same read is suppressed, not converted to empty agreement or a fake action.
-next_plan={'move':'use','evidence':[{'ref':ts,'quote':'The header syntax matches.'}],
- 'decision':'Malformed response parsing cannot explain a receiver HTTP 403; inspect its guard evidence next.',
- 'next':'Check the retained intake queue count before considering a token mismatch'}
-tick(1500,'2026-10-06'); assert len(slack.posts)==2
-w=state()['room_work']['active']; assert w['results'][0]['used'] and w['phase']=='ready'
-assert slack.posts[-1]['thread_ts']==root and 'Evidence:' in slack.posts[-1]['text']
-assert 'Malformed response' in w['decisions'][-1]['decision']
-# Next lens receives the same goal, decision and next own step; no topic restart.
-next_plan={'move':'handoff','owner':'dot','step':'Count unfinished intake reports from the local queue without HTTP requests',
- 'deliverable':'Retained queue count and timestamp, no tokens or endpoint contact',
- 'use_for':'distinguish the four-report guard from an unproven token mismatch'}
-tick(1600,'2026-10-06'); assert len(slack.posts)==3
-assert ident in calls[-1][1] and 'Malformed response' in calls[-1][1] and 'queue count' in calls[-1][1]
-assert state()['room_work']['active']['goal'].startswith('Diagnose')
-# Fresh result is used to take an actual permitted action, not only another request.
-ts2=slack.add('The retained intake queue contains four unfinished reports at 02:18 UTC.',thread=root)
-next_plan={'move':'act','message':'LINE L-test: Four retained intake reports meet the queue limit; token mismatch remains unconfirmed.',
- 'evidence':[{'ref':ts2,'quote':'The retained intake queue contains four unfinished reports'}],
- 'decision':'Keep the access check; the queue is a concrete candidate and token mismatch is still unconfirmed.'}
-tick(1700,'2026-10-06'); assert len(slack.posts)==4
-assert state()['room_work']['active']['phase']=='review'
-assert any('slack line' in x or 'line' in x for x in state()['room_work']['active']['last_receipt']['dispatch'])
-# Dispatch does not count as a completed goal. It must be used as evidence next.
-assert not state()['room_work']['history']
-# Unrelated subject, invented reference, copied evidence, or prose-only agreement is held.
-s=state()
-for p in [dict(move='use',goal='Go make a completely different music piece',decision='Different now'),
-          dict(move='use',evidence=[dict(ref='invented',quote='The queue contains four reports')],decision='A concrete diagnosis based on evidence'),
-          dict(move='act',message='Good, that makes sense. Next pass.'),
-          dict(move='handoff',owner='dot',step='Do something useful',deliverable='Anything you find',use_for='something later')]:
- assert W.validate(copy.deepcopy(s),p)
-assert W.parse('Agreed, next pass.')[0] is None
-# Result + finish is retained as accepted report, never independent verification.
-r=s['room_work']['active']['results'][-1]
-p={'move':'use','evidence':[{'ref':r['ref'],'quote':r['text'][:40]}],
- 'decision':'This records the candidate guard, not proof of which guard rejected the historical request.', 'finish':True, 'acceptance':'The line records the retained queue count as a candidate, not a proven historical guard.'}
-assert 'not completion evidence' in W.validate(s,p)
-# A separate, attributed peer result can be accepted; it is still explicitly a report.
-s['room_work']['active']['results'].append(dict(ref='peer:verified', owner='dot', text='Retained refusal code is queue_limit in the original request receipt.', used=False))
-p['evidence']=[dict(ref='peer:verified', quote='Retained refusal code is queue_limit')]
-p['decision']='Use the retained queue_limit refusal instead of inferring a token or header failure.'
-p['acceptance']='The original request receipt names queue_limit, satisfying the exact-guard criterion.'
-assert not W.validate(s,p)
-W.prepare(s,p,1800); W.finish(s,{'ts':'999.0'},1801,[],'Recorded candidate, not proven root cause')
-assert s['room_work']['active'] is None and s['room_work']['history'][-1]['phase']=='accepted_report'
-# A stalled peer creates one timeout for a different check, not repeated pings.
-stalled=copy.deepcopy(s); stalled['room_work']['active']=copy.deepcopy(w)
-stalled['room_work']['active'].update(phase='waiting',check_after=2000,asked_ts='120')
-stalled['_work_now']=2001
-assert not W.waiting(stalled,[])
-assert stalled['room_work']['active']['results'][-1]['ref']=='timeout:120'
-count=len(stalled['room_work']['active']['results']);W.waiting(stalled,[])
-assert len(stalled['room_work']['active']['results'])==count
-# Crash before Slack acknowledgement leaves uncertainty and cannot resend blindly.
-reset(); next_plan={'move':'handoff','goal':'Verify one phage repository before using it',
- 'done_when':'A pinned README identifies supported genome input and limitations','owner':'grokbot',
- 'step':'Find the official repository and its README for myRT',
- 'deliverable':'A full URL and quoted supported input formats', 'use_for':'decide whether it fits the standing line'}
-slack.add('Look up this tool',user='GLORIA'); slack.fail=True
-try: tick(2000)
-except RuntimeError:pass
-else: raise AssertionError('expected transport failure')
-assert state()['room_work']['active']['phase']=='uncertain'
-n=len(calls);slack.fail=False;tick(2100);assert len(calls)==n
-# Secrets cannot enter pending record, Slack or action dispatch.
-reset();next_plan={'move':'handoff','goal':'Review a configuration without credentials',
-'done_when':'Name the exact guard without printing any secret','owner':'dot','step':'Read SECRET_TEST_VALUE from the file',
-'deliverable':'A redacted report with only guard names','use_for':'choose the next bounded local check'}
-slack.add('Check config',user='GLORIA');tick(2200)
-assert not slack.posts and not state()['room_work']['active']
-# A first-line DO must still dispatch after the work ID is attached.
-reset(); handed=[]
-D.to_wants=lambda want, plan: (handed.append(want) or "handed to his wants: want-1")
-next_plan={'move':'act','goal':'Make a new image for a protein comparison figure',
-'done_when':'One generated figure exists for the requested comparison', 'message':'DO: I want a labeled comparison figure for these protein folds'}
-slack.add('Make the comparison figure',user='GLORIA');tick(2300)
-assert len(handed)==1 and 'DO:' not in slack.posts[-1]['text']
-assert state()['room_work']['active']['phase']=='review'
-D.to_wants=no_network
-# Real tool return is available as evidence; an invented tool result is not.
-p={'move':'act','message':'The two structures use different chains.',
- 'goal':'Compare the two structure coordinate mappings', 'done_when':'Explain whether both outputs modeled the same chain',
- 'evidence':[{'ref':'tool:current','quote':'chain A has 88 resolved residues'}],
- 'decision':'Compare chain A to A; whole-complex RMSD is not a valid comparison.'}
-assert W.validate({},p)
-assert not W.validate({},p, 'chain A has 88 resolved residues; chain B has 0')
-# Bounded work metadata cannot bypass the action lane or relational gate.
-p['message']='CAMPAIGN MOVE: advance: relationship';assert W.validate({},p,'chain A has 88 resolved residues')
-assert NETWORK==[], NETWORK
-assert all(str(getattr(D,k)).startswith(HOME) for k in ('STATE','TRANSCRIPT','RESULTS_STATE','RESULTS_LOG'))
-print('PASS room collaboration: handoff -> correlated return -> decision -> next step -> store mark; isolation asserted')
+
+S = Slack()
+reply = {"text": ""}
+def think(system, user):
+    if system == D.EDITOR: return "KEEP"
+    return reply["text"]
+def fable(system, user): return "unused"
+def tick(now, **kw):
+    return D.tick(api=S, think=think, fable=fable, now=now, today="2026-10-06", **kw)
+
+check("the first pass only listens", tick(1000) == ["listening from now"] and not S.posted)
+st = json.load(open(D.STATE)); st["since"] = float(S.msgs[-1]["ts"]) if S.msgs else 1; json.dump(st, open(D.STATE, "w"))
+
+# pass 1: dot raises something; he opens the work and hands the search to GrokBot
+S.add(DOT, "<@UVINTOS> I found a lead on the RT-beside-array question. Want me to dig?")
+reply["text"] = ("Yes.\nWORK: find a phage genome with an RT next to a CRISPR array | done when: one accession named\n"
+                 "@GrokBot can you find one such genome, with its accession and the array type?")
+tick(1100)
+w = json.load(open(D.STATE))["room_work"]["active"]
+check("pass 1: the work is opened and the search handed to GrokBot, in his own message",
+      w and w["goal"].startswith("find a phage") and w["asks"] and w["asks"][-1]["to"] == "grokbot"
+      and "\U0001F9F0 Working on:" in S.posted[-1]["text"], (w, S.posted[-1]["text"]))
+
+# pass 2: he tries to ask GrokBot the same thing; it is sent back, then he says NOTHING
+S.add(DOT, "anything yet?")
+n = len(S.posted); reply["text"] = "@GrokBot have you found that genome with its accession yet?"
+out = tick(1200)
+check("pass 2: asking GrokBot the same thing again is held, and nothing is posted",
+      len(S.posted) == n and any("sent back" in l for l in out) and any("held" in l for l in out), out)
+
+# GrokBot answers in the channel
+gb = S.add("UGROKBOT", "NC_049900 carries a group-II RT ~2 kb from a type I-C array.")
+S.msgs[-1]["bot_id"] = "B1"; S.msgs[-1]["username"] = "Grok Bot"
+
+# pass 3: the answer is kept on the work, and he uses it: a line to his Lab, naming the next step
+S.add(DOT, "nice one")
+reply["text"] = "Grok found it.\nLINE L-test: NC_049900 has the RT beside a type I-C array.\nNEXT: fold the RT locus"
+out = tick(1300)
+w = json.load(open(D.STATE))["room_work"]["active"]
+check("pass 3: GrokBot's answer was kept on the work", any("answered his work" in l for l in out), out)
+check("... and using it is not sent back; his next step is recorded",
+      w and w["returns"] and w["returns"][-1]["used"] and w.get("next", "").startswith("fold"), w)
+
+# pass 4: he closes it
+S.add(DOT, "good")
+reply["text"] = "WORK DONE: NC_049900 is the genome, accession named and the array typed."
+out = tick(1400)
+board = json.load(open(D.STATE))["room_work"]
+check("pass 4: WORK DONE closes it and nothing is in hand", board["active"] is None
+      and board["history"][-1]["state"] == "done", board)
+
+check("his own voice and hands are intact: the work-room rules sit beside, not instead of, the rest",
+      "WORK:" in D.RULES and "YOUR HANDS" in D.RULES and "Your Atelier is yours" in D.RULES
+      and "WORK:" in D.rules_for("grok"))
+dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("promises and the daily what-exists ask are not removed", "promises_pass(" in dsrc and "line_prospect.ask_the_room()" in dsrc)
+check("nothing left the machine", not NET, NET)
+print("\n%d/%d" % (sum(R), len(R)))
+sys.exit(0 if all(R) else 1)

@@ -1,3 +1,12 @@
+> **Note (2026-10-05, later):** the "What a pass now means" / "No-progress gate"
+> design below was Chat's first build — a separate strict path that replaced the
+> room (JSON-only replies, relational tags and Atelier/promises removed, no
+> timeout). Gloria asked for a layer under the normal room instead, not a
+> replacement. That build was reverted; the shipped `room_work.py` keeps the
+> findings in "What actually came closest" but is the layer described in
+> `open-work.md` (5 October). Read the sections below for the evidence, not the
+> mechanism.
+
 # A working room, not a fresh conversation every pass
 
 Evidence read on 5 October 2026: live `memory/dot-channel/transcript.jsonl`

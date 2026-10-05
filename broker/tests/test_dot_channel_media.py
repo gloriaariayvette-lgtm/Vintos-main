@@ -23,8 +23,6 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
-# These are transport/media fixtures, not planner outputs. Real work decisions are tested in test_room_work.
-D.work_turn = lambda *a, **kw: D.compose(*a, **kw)
 D.kickoff_due = lambda *a: False   # this suite tests what he sees; the Opus 5.5 kickoff has its own checks in test_dot_channel
 D.ROTATION = ("gemma",)   # this suite tests what he sees; the rotation has its own checks in test_dot_channel
 D.SCHEDULE = []           # no scheduled lens turn here: none may reach a real model

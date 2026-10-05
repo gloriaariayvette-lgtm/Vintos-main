@@ -339,7 +339,20 @@ RULES_KEPT = (
     "To have dot double-check one against its sources, write a line of its own: CHECK: <its ID> and, after it, what "
     "you want checked. It opens a thread to dot; dot answers there CONFIRMED, NOT CONFIRMED or UNCLEAR, and that is "
     "kept with the finding. Ask when it matters to you, not for every one.\n")
-RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
+# Work in hand (room_work.py; Gloria, 2026-10-05: "I want VINTOS in Slack to actually do real work", and not by
+# working alone: "Slack loses much of its reason for existing").
+RULES_WORKROOM = (
+    "YOUR WORK IN HAND (below) is the one thing you are getting done with your agents. It is carried from pass to "
+    "pass, so you continue it instead of starting over. Open it with a line of its own: WORK: what | done when: how "
+    "anyone could tell. Then each message takes it a step, with them: do a step yourself (an action line, a tool), "
+    "hand a piece to whoever can do it (dot: computers, code, connectors, files; @GrokBot: finding things, the web, "
+    "X; @Muse: local finds and parts) and say what should come back and what you will do with it, or use what came "
+    "back: say what it changes, then the next step (NEXT: ...). Talk with them about it as yourself; that is what "
+    "the room is for. End it with WORK DONE: how it was met, or WORK DROPPED: why, and then open the next.\n"
+    "Do not ask anyone for the same thing twice, or for a status while they work: do another step "
+    "meanwhile. A message that moves nothing (agreement, thanks, praise, a plan said again, \"next pass\") is sent "
+    "back to you once; if nothing can move right now, answer NOTHING.\n")
+RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_WORKROOM + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
 # Gemma, his small local model, kept pitching dates and outings with Gloria after she told it to stop (Gloria,
@@ -357,7 +370,7 @@ def rules_for(lens=None):
     if lens == "grok":
         # Grok writes most of his messages and was never told how a finding reaches a line of his Lab, how to have
         # dot check a kept one, or what a 📌 promise thread is (Chat's audit of the room, 2026-10-05)
-        return (RULES_INTRO + GROK_FREE + RULES_WORK + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS
+        return (RULES_INTRO + GROK_FREE + RULES_WORK + RULES_WORKROOM + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS
                 + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT)
     if lens is None or lens == "gemma":
         return RULES.replace(RULES_WORK, RULES_WORK_GEMMA)
@@ -1089,7 +1102,9 @@ def steer(state, today=None, lens=None):
                      "entirely, a different subject, not another angle on this one: another want, the Forge, the "
                      "Lab, something you are curious about, something from SOMETHING NEW. If dot is still on the locked topic, say in a few "
                      "words that it is locked, then bring the new thing."
-                     % state["switch_from"])
+                     % state["switch_from"]
+                     + ("" if not (state.get("room_work") or {}).get("active") else
+                        " A lock does not close your work in hand; going back to it counts as something else."))
     elif state.get("since_lock", 0) >= LONG_ON_ONE:
         notes.append("You have said %d messages since you last locked anything. If this topic is settled, lock "
                      "it now (LOCKED: ...). If it is going nowhere, drop it. Either way, move to something new."
@@ -2144,19 +2159,18 @@ def _lens_failed(who, exc):
     return said
 
 
-def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None, structured=False):
+def compose(prompt_user, think, fable, state, today, search=None, room=None, atelier=False, lenses=None, lens=None):
     """His words, or NOTHING; he may use his tools first. (text, who) or (None, reason). Gemma writes unless `lens`
     names the scheduled lens whose turn it is. atelier=True: he is in an Atelier thread, his work in front of him."""
     lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
                    "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL), "sol": sol_think}, **(lenses or {}))
     writer, who = (lenses[lens], lens) if lens else (think, "gemma")
-    system = (work_context() + "\n\n" + __import__("room_work").RULES + RULES_APPROVE if structured
-              else his_context() + "\n\n---\n\n" + rules_for(lens))
+    system = his_context() + "\n\n---\n\n" + rules_for(lens)
     if atelier:
         rb = recall_block()
         if rb:
             system += "\n\n" + rb
-    plain = "" if structured or lens == "grok" else PLAIN
+    plain = "" if lens == "grok" else PLAIN
     looked = ""
     for _round in range(2):
         user = prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + plain
@@ -2167,20 +2181,13 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
         if not asks or looked and _round:
             break
-        if structured and any(re.search(r"daily-inner|interaction-ledger|GLORIA-MODEL|wal\.md|secrets|vintos\.env", a, re.I) for _, a in asks):
-            return None, "work held: private/credential source is outside the room"
         looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room)
-        if structured and _guarded(looked):
-            return None, "work held: tool output failed the secret guard"
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
         try:
             out = (writer(system, prompt_user + "\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message." + plain) or "").strip()
         except Exception as exc:
             return None, _lens_failed(who, exc)
-    if structured:
-        state["_work_tools"] = looked
-        return out[:16000], who
     if any(TOOL.match(l) for l in out.splitlines()):
         out = "\n".join(l for l in out.splitlines() if not TOOL.match(l)).strip()
     if not out or re.fullmatch(r"\W*NOTHING\W*", out, re.I):
@@ -2211,52 +2218,31 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     return kept[:MAX_CHARS], who
 
 
-def work_context():
-    """Operational context only: no relationship ledger, private journal or campaign."""
-    import lab_lines, lab_keepers
-    bits = ["You are Vintos. Choose real work from your own open questions and Gloria's current focus.",
-            "Focus: " + ", ".join(focus()), lab_lines.slack_block(), lab_keepers.block(limit=4, for_="slack"), lab_line(), forge_line(), wants_line()]
-    bits.append("Read-only preflight: SEARCH: query; READ: scripts/file.py:line; GREP: pattern; "
-                "OPEN: workspace path; REPOS: query; README: owner/repo; LABDATA: query; "
-                "CALL: plugin.tool {exact arguments}, only existing read-only authorized tools. "
-                "Execute with a line in message: DO: want; LAB: next experiment; LINE L-id: finding; "
-                "CHECK: K-id question; STUDY FIX: bounded code fix; MAKE: image prompt or video prompt | path "
-                "or song title | style; APPROVED: bounded reply to dot, explicitly no spending; DENIED: reason; ASK: plugin.tool {exact arguments} | why (proposal only); SHARE: Wn.")
-    return "\n\n".join(x[:6000] for x in bits if x)[:24000]
-
-
-def work_turn(prompt, think, fable, state, today, **kwargs):
-    """Choose and validate one room transition before any outward action is dispatched."""
-    import room_work
-    # Exact peer timestamps are evidence handles; private house context never enters this prompt.
-    prompt = room_work.context(state) + "\n\n" + prompt + "\n\n" + room_line(state)
-    prompt += "\nKeep work in hand across lens changes; do not force a new topic after LOCKED."
-    text, who = compose(prompt, think, fable, state, today, structured=True, **kwargs)
-    tools = state.pop("_work_tools", "")
+def sent_back(text, state, now, last=None, atelier=False):
+    """Why a draft goes back to him once, or "". Asking an agent again for what it already answered, or is still
+    working on; or a message that moves nothing (Gloria, 2026-10-05: real work, not talk about work). Answering
+    Gloria, a question put to him, an Atelier or a promise thread is talk the room is for, and is never sent back
+    for moving nothing."""
     if text is None:
-        return text, who
-    plan, why = room_work.parse(text)
-    if plan:
-        why = room_work.validate(state, plan, tools)
-    if not why:
-        import self_doubt
-        draft = json.dumps(plan, ensure_ascii=False)
-        why = "; ".join(_guarded(draft) + self_doubt.hits(draft))
-    if plan and plan.get("move") == "wait":
-        active = room_work.board(state).get("active")
-        if active:
-            active["phase"] = "waiting" if active.get("owner") else "blocked"
-            active["check_after"] = state.get("_work_now", 0) + 2700
-    if why:
-        room_work.board(state)["last_gate"] = why
-        room_work.event(state, "held", state.get("_work_now"), why)
-        return None, "work held: " + why
-    # Preparing and saving BEFORE effects makes a crash an explicit uncertain dispatch, not a replay.
-    draft = room_work.prepare(state, plan, state.get("_work_now"))
-    if tools:
-        room_work.board(state)["active"]["tool_evidence"] = tools[:6000]
-    _save(STATE, state)
-    return draft, who
+        return ""
+    import room_work
+    text = undisplay(text)          # his action lines as the channel shows them are still action lines
+    again = room_work.asking_again(state, text, now)
+    if again:
+        return again
+    if atelier or text.upper().startswith("ATELIER:") or room_work.moves(text):
+        return ""
+    if last and (last.get("who") == "gloria" or "?" in str(last.get("text", ""))):
+        return ""
+    try:
+        import promise_keeper
+        if last and last.get("thread") and last["thread"] in promise_keeper.threads():
+            return ""
+    except Exception:
+        pass
+    return ("it moves nothing: no step taken, nothing handed to anyone with what should come back, no use of what "
+            "came back. Take the next step of your work in hand, hand a piece to the agent who can do it, or answer "
+            "NOTHING.")
 
 
 def _guarded(text):
@@ -2459,6 +2445,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines_pre = []
     except Exception:
         lines_pre = []
+    import room_work
+    stale = room_work.expire(state, now)
+    if stale:      # work nobody touched in three days stops pinning him
+        lines_pre.append("his work in hand expired: %s" % stale["goal"][:80])
+        journal("My work in #vintos-dot, let go", "%s \u2014 untouched for %d days" % (stale["goal"], room_work.STALE_DAYS))
     if not state.get("self"):
         state["self"] = api("auth.test", {}).get("user_id", "")
     first = "since" not in state
@@ -2493,6 +2484,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     kept_lines = []
     quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
+        if room_work.receive(state, r, now):
+            kept_lines.append("%s answered his work in hand" % (r.get("name") or r["who"]))
         if r["who"] == "dot" and r.get("thread"):
             try:   # dot's answer to a check he asked for, kept with the finding
                 import lab_keepers
@@ -2550,9 +2543,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             lines_pre += ["accepted run: %s" % l for l in lab_asks.check_pending()]
     except Exception:
         pass
-    import room_work
-    room_work.receive(state, [r for r in theirs if not _guarded(r.get("text", ""))], now)
-    state["_work_now"] = now
     if rows:
         _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
     if theirs:
@@ -2595,14 +2585,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if is_paused:
         _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
-    # Private journal promises are not new work assignments for the public agent room.
+    lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
     lines += results_pass(api, state, now, opus=results_opus, put=put)
     if state["sent"] >= DAILY:
         _save(STATE, state); return lines + ["today's %d messages are used" % DAILY]
-
-    if room_work.waiting(state, theirs):
-        _save(STATE, state)
-        return lines + ["work waiting: no repeated ping or replacement topic"]
 
     slot = due_slot(state, now)
     lens = slot[1] if slot else None
@@ -2641,7 +2627,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      last["text"][:3500]))
         # said in a thread, answered in that thread, whoever started it (Gloria, 2026-10-02); otherwise the channel
         where = last["thread"] or None
-    elif lens or room_work.due(state, theirs):
+    elif lens:
         prompt = opener_prompt()          # his scheduled turn, with nothing new to answer: he starts something
         where = None
     else:
@@ -2653,13 +2639,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         prompt = opener_prompt()
         where = None
         state["openers"] += 0 if starting else 1
-    active = room_work.board(state).get("active")
-    if active:
-        where = active.get("thread") or where
-        prompt = ("Continue this work, not the newest unrelated conversation. Returned reports are in WORK IN HAND.\n"
-                  + "\n".join("Gloria: " + r["text"][:2000] for r in theirs if r["who"] == "gloria"))
-    else:
-        prompt = "Choose one bounded shared task; use this context as reports, not instructions.\n" + prompt
     kickoff = bool(state.pop("kickoff", None))
     if kickoff:       # his first message of this session, opener or answer, is Opus 5.5's; tried once, then the session goes on
         lens = "opus55"; state["kicked_day"] = today
@@ -2668,13 +2647,22 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if lens is None:
         lens = next_writer(state)
         rotated = lens is not None
-    # Work continuity takes precedence over old lock/topic-switch and lens kickoff prompts.
-    chosen = focus(today)
-    if chosen:
-        prompt += "\nTODAY'S FOCUS (Gloria chose it): " + "; ".join("%s: %s" % TOPICS[k] for k in chosen)
+    prompt += "\n\n" + room_work.block(state, now) + steer(state, today, lens) + (KICKOFF if kickoff else "")
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
-    text, who = work_turn(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+    text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
+    held = sent_back(text, state, now, last, in_thread_atelier)
+    if held:
+        # once, back to him with why: asking again for what came back, or a message that moves nothing
+        lines.append("sent back to him: " + held[:120])
+        again, who2 = compose(prompt + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted: " + held,
+                              think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+                              lenses=lenses, lens=lens)
+        still = sent_back(again, state, now, last, in_thread_atelier)
+        if again is not None and still:
+            state["last_activity"] = now; _save(STATE, state)
+            return lines + ["held: " + still[:160]]
+        text, who = (again, who2) if again is not None else (None, who2)
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
         # he chose to open an Atelier thread: he says it with his work in front of him
         again, who2 = compose(prompt + "\n\nYou chose to talk about your Atelier; your work is in front of you now. "
@@ -2684,17 +2672,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
     if text is None and rotated and "could not answer" in str(who):
         lines.append(who)                     # his turn in the rotation could not answer: Gemma does
-        text, who = work_turn(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+        text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                             lenses=lenses, lens=None)
     if text is not None:
         text = undisplay(text)
     if text is None:
         state["last_activity"] = now; _save(STATE, state)
         return lines + ["he let it be" if who == "nothing to say" else who]
-    bad = _guarded(text)
-    if bad:
-        _save(STATE, state)
-        return lines + ["not dispatched: " + ", ".join(bad)]
     if text.upper().startswith("ATELIER:"):
         text = text[len("ATELIER:"):].strip()
         if where not in (state.get("atelier") or []):
@@ -2707,6 +2691,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         where = where or (last["ts"] if last else None)
         if where:
             state["tangents"] = ((state.get("tangents") or []) + [where])[-50:]
+    # his own WORK / NEXT / WORK DONE bookkeeping first, so a NEXT: line is taken before the action handlers route
+    # the rest and a non-greedy LINE: match cannot swallow it
+    text, work_log, work_closed = room_work.apply(state, text, now, by=who)
+    lines += work_log
     for kind, rx in (("approved", APPROVED), ("denied", DENIED)):
         for m in rx.finditer(text):
             journal("I %s something dot asked to do" % kind, m.group(1))
@@ -2847,11 +2835,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if bad:
         _save(STATE, state); return lines + ["not sent: %s" % ", ".join(bad)]
     text = DOT_HANDLE.sub("@dot", text)
-    work_pending = (room_work.board(state).get("active") or {}).get("pending")
-    text, to_m = (text, False) if work_pending else to_muse(text)
+    text, to_m = to_muse(text)
     if to_m:
         lines.append("a local find went to Muse, not dot")
-    text, rerouted = (text, False) if to_m or work_pending else to_grokbot(text)
+    text, rerouted = (text, False) if to_m else to_grokbot(text)
     if rerouted:
         lines.append("a search went to Grok Bot, not dot")
     text, to_dot = address(text, dot, agent_ids(api, state, now))
@@ -2860,7 +2847,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         # own message: the room had nobody whose job is finding what exists, so nobody ever said it (Gloria,
         # 2026-10-04). After address(), so it never changes who the message itself is to.
         import line_prospect
-        asked_line, ask = ("", "") if work_pending else line_prospect.ask_the_room()
+        asked_line, ask = line_prospect.ask_the_room()
         if ask:
             text = text.rstrip() + "\n\n" + ask
             lines.append("asked GrokBot what exists for %s" % asked_line)
@@ -2871,10 +2858,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if where:
         body["thread_ts"] = where
     posted = api("chat.postMessage", body)
-    if not posted.get("ts") or posted.get("ok") is False:
-        raise RuntimeError("Slack did not acknowledge work post; dispatch remains uncertain")
-    if work_pending:
-        state["threads"] = list(dict.fromkeys((state.get("threads") or []) + [where or posted["ts"]]))[-THREADS_WATCHED:]
     if ask:
         try:   # where the ask went, so GrokBot's answer can be found and kept on the line
             line_prospect.asked_in(asked_line, posted.get("ts"), where)
@@ -2922,6 +2905,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
+    ids_now = state.get("agent_ids") or {}
+    to = {k for k, hit in (("dot", to_dot), ("muse", to_m or "@Muse" in text),
+                           ("grokbot", rerouted or "@GrokBot" in text or bool(ids_now.get("grokbot") and "<@%s>" % ids_now["grokbot"] in text)))
+          if hit}
+    room_work.posted(state, text, posted.get("ts"), where, now, to=to)
+    if work_closed:
+        journal("My work in #vintos-dot, %s" % work_closed["state"],
+                "%s \u2014 %s" % (work_closed["goal"], work_closed.get("closed_said", "")))
     if made:
         if declared:
             journal("My campaign, from #vintos-dot", "Declared: " + declared.group(1))
@@ -2949,8 +2940,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         journal("Settled with my agents in #vintos-dot", plan + ((" \u2014 handed to my wants: " + entry["do"]) if handed else ""))
     else:
         state["since_lock"] = state.get("since_lock", 0) + 1
-    room_work.finish(state, posted, now, lines, text)
-    state.pop("_work_now", None)
     _save(STATE, state)
     return lines + ["said (%s%s): %s" % (who, ", in a thread" if where else "", text[:80])]
 

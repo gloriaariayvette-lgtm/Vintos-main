@@ -81,8 +81,6 @@ check("his Lab's question is asked with his kept findings in front of him", "FIN
 
 # --- the double-check, in #vintos-dot -------------------------------------------------------------------------
 import dot_channel as D
-# Test these existing dispatchers with supplied drafts; the real multi-pass planner is covered in test_room_work.
-D.work_turn = lambda *a, **kw: D.compose(*a, **kw)
 D.kickoff_due = lambda *a: False
 D.ROTATION = ("gemma",); D.SCHEDULE = []
 D.atelier_line = lambda: ""; D.recall_block = lambda: ""

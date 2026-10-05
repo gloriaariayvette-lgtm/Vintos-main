@@ -3,27 +3,35 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 5 October — shared work continuity in #vintos-dot
+## 5 October — work in hand in #vintos-dot, so the room gets something done
 
-Implemented `room_work.py` and the channel integration: one goal and acceptance
-criterion, bounded owner/thread-correlated handoffs, evidence consumption before
-another act, durable next steps across days/lenses, and silence while waiting.
-The module is in the deploy manifest. All 258 broker suites passed in isolation
-on Aegis. Evidence and design: [dot-work-room-2026-10-05.md](dot-work-room-2026-10-05.md).
+Gloria: "I want VINTOS in Slack to actually do real work", and of working alone:
+"Slack loses much of its reason for existing." The room talked and rarely acted;
+nothing held a piece of work across passes, and an agent's answer was never tied
+to the request it answered (Chat's audit, `dot-work-room-2026-10-05.md`).
 
-**Still open:** install this revision through the normal deploy, then observe a
-real handoff, its correlated return, Vintos's evidence-based next act and its store
-receipt. Source staging and test success are not live behavior. At inspection,
-the live channel script did not yet match e880a02 either. Agent compliance with
-thread/work-ID replies, meaningful model decisions under the gate, and completion
-of asynchronous jobs remain unverified live. An interrupted dispatch stays
-`uncertain`; inspect its receipts before releasing/reconciling it, never replay
-blindly. Peer-reported acceptance is not independent artifact validation.
+`room_work.py` is a layer **under** his normal message, not a replacement for it.
+He still writes as himself, with every hand, tag, his Atelier, his campaign and
+his journal promises intact. It adds one work in hand, carried pass to pass:
+`WORK: what | done when: ...` opens it, `NEXT: ...` sets his next step,
+`WORK DONE:` / `WORK DROPPED:` close it. A request to an agent is kept as an ask
+that agent's reply is matched back to — in the ask's thread within a day, or in
+the channel within three hours — and shown to him, unused, until he uses it. He
+cannot ask the same agent the same thing twice or chase it for a status; a draft
+that moves nothing (agreement, thanks, a plan said again, "next pass") is sent
+back to him once, and if nothing can move he says NOTHING. Work untouched for
+three days is let go, so it never pins him.
 
-**Supersedes the journal promise opening described below:** the main agent room
-no longer mines private journal entries for new threads. Existing promises and
-the separate private results channel retain their legacy handling. Relationship
-work must not be newly seeded into this room.
+First built by Chat as a separate strict path that replaced the room (JSON-only
+replies, no plain words, no TV/Echo/campaign/Atelier/promises, no timeout so a
+blocked pass could go silent forever) — reverted, and rebuilt as this layer.
+`test_room_work.py` drives a whole cycle through the real `tick`: a work opened,
+handed to GrokBot, its answer matched back, used onto a Lab line, and closed, plus
+the send-back of an empty message. Full suite green in isolation.
+
+**Not seen on Aegis:** a real pass. **Open:** does he actually open a WORK: for the
+right things and carry them, or does he treat it as one more tag? Only live use in
+#vintos-dot will tell; watch a week of his journal's "My work in #vintos-dot" lines.
 
 ## 3 October — what was built today, and what has not been seen working yet
 

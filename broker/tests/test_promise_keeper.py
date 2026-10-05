@@ -24,8 +24,6 @@ socket.socket.connect = _no_net
 
 import promise_keeper as P
 import dot_channel as D
-# Test these existing dispatchers with supplied drafts; the real multi-pass planner is covered in test_room_work.
-D.work_turn = lambda *a, **kw: D.compose(*a, **kw)
 D.kickoff_due = lambda *a: False
 D.ROTATION = ("gemma",)
 D.SCHEDULE = []
@@ -170,17 +168,11 @@ t0 = 990.0          # Slack stamps here start at 1001, after the first pass
 check("the first pass only starts listening", tick(t0) == ["listening from now"])
 replies[:] = ["Dot, the frames need a geometry: can you see if xtb is here?"]
 out = tick(t0 + 60)
-check("the room does not mine private journal promises into new assignments", S.posted == [])
-# Seed a legacy promise explicitly: existing promise results remain readable/resolvable.
-st = json.load(open(D.STATE))
-D.promises_pass(S, CH, DOT, st, t0 + 60, ask=ask_one)
-json.dump(st, open(D.STATE, "w"))
-out = tick(t0 + 61)
 opening = next((p for p in S.posted if p["channel"] == CH and "\U0001F4CC" in p["text"]), None)
-check("a legacy explicitly seeded promise keeps its thread and addressee",
+check("a promise in his journal opens a thread in #vintos-dot, addressed to dot",
       opening and opening["text"].startswith("<@%s>" % DOT) and "ion frames" in opening["text"], (out, S.posted))
 mine = [p for p in S.posted if p["channel"] == CH and p is not opening]
-check("the legacy promise dispatcher still addresses its own thread", mine and mine[-1].get("thread_ts") == S.msgs[CH][0]["ts"]
+check("he begins it at once, in its thread", mine and mine[-1].get("thread_ts") == S.msgs[CH][0]["ts"]
       and "xtb" in mine[-1]["text"], (out, mine))
 check("nothing is posted to the results channel before its id is set", not [p for p in S.posted if p["channel"] == RC])
 thread = S.msgs[CH][0]["ts"]
