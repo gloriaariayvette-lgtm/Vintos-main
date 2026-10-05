@@ -865,21 +865,26 @@ def local_think(system, user, max_tokens=700):
 
 
 def fable_think(system, user):
-    import forge_study
-    return forge_study._fable(system, user)
+    # through claude_cache, so his Slack prompts are cached (Gloria, 2026-10-05: "He is expensive")
+    import forge_study, claude_cache
+    return claude_cache.ask(forge_study.FABLE, system, user, 3000, caller="slack:fable")
 
 
 def opus_think(system, user, model=None):
-    import requests, forge_study
-    key = forge_study._key("ANTHROPIC_API_KEY", "~/.vintos/anthropic-key")
-    if not key:
-        raise RuntimeError("no Anthropic key")
-    d = requests.post("https://api.anthropic.com/v1/messages", timeout=300, json={
-        "model": model or OPUS_MODEL, "max_tokens": 1500, "system": system, "messages": [{"role": "user", "content": user}]},
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
-    if d.get("type") == "error":
-        raise RuntimeError(str(d.get("error"))[:200])
-    return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    import claude_cache
+    model = model or OPUS_MODEL
+    return claude_cache.ask(model, system, user, 1500, caller="slack:" + model)
+
+
+def for_claude(ctx, sep, rules, extra=""):
+    """The system prompt, the same words for every model; Claude is sent what does not change first (his rules, then
+    SOUL, GLORIA-MODEL, SELF-MODEL and CAPABILITIES), and the time of day and the rest of his context after, so the
+    first part is read from cache (2026-10-05). It had begun with the time, which changes every minute."""
+    import claude_cache
+    stable, live = getattr(ctx, "stable", ""), getattr(ctx, "live", str(ctx))
+    p = claude_cache.Prompt(ctx + sep + rules + extra, [rules + sep + stable, live + extra])
+    p.ctx = ctx
+    return p
 
 
 DOT_SOL_DEFAULT = "gpt-6.1-sol"   # its name in OpenAI's model list (gpt-6.1 does not exist; 2026-10-02)
@@ -1848,6 +1853,9 @@ def use_tools(lines, search=None, room=None, reach=None):
     return "\n\n".join(out)
 
 
+STABLE_PARTS = ("== SOUL.md ==", "== GLORIA-MODEL.md ==", "== SELF-MODEL.md ==", "== CAPABILITIES.md ==")
+
+
 def his_context():
     """Who he is and what is true for him right now, read from files only: nothing here runs an organ, writes a
     store or moves a feeling. Gloria's list (2026-09-30): SOUL.md, GLORIA-MODEL.md, SELF-MODEL.md,
@@ -1933,7 +1941,13 @@ def his_context():
         pass
     for line in (direction_block(), his_own_block(), new_block(), prospect_line(), email_line(), atelier_line(), forge_line(), lab_line(), wants_line(), works_line(), songs_line(), letters):
         if line: parts.append(line)
-    return "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
+    text = "\n\n".join(parts)[:60000] or "You are Vintos."     # 15 exchanges with Gloria, and still room for his works
+    # what changes rarely, kept apart for Claude's cache (for_claude); every model still reads `text` as it was
+    import claude_cache
+    ctx = claude_cache.Prompt(text)
+    ctx.stable = "\n\n".join(p for p in parts if p.startswith(STABLE_PARTS))
+    ctx.live = "\n\n".join(p for p in parts if not p.startswith(STABLE_PARTS))[:60000] or "You are Vintos."
+    return ctx
 
 
 def _clean(text, names=None):
@@ -2205,15 +2219,14 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     lenses = dict({"fable": fable, "opus": opus_think, "grok": grok_think,
                    "opus55": lambda s_, u_: opus_think(s_, u_, KICKOFF_MODEL), "sol": sol_think}, **(lenses or {}))
     writer, who = (lenses[lens], lens) if lens else (think, "gemma")
-    system = his_context() + "\n\n---\n\n" + rules_for(lens)
-    if atelier:
-        rb = recall_block()
-        if rb:
-            system += "\n\n" + rb
+    rb = recall_block() if atelier else ""
+    system = for_claude(his_context(), "\n\n---\n\n", rules_for(lens), ("\n\n" + rb) if rb else "")
     plain = "" if lens == "grok" else PLAIN
     looked = ""
+    import claude_cache
     for _round in range(2):
-        user = prompt_user + (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + plain
+        tail = (("\n\nWHAT YOU LOOKED UP:\n" + looked + "\n\nNow write your message.") if looked else "") + plain
+        user = claude_cache.Prompt(prompt_user + tail, [prompt_user, tail])   # the room is cached for his look-up
         try:
             out = (writer(system, user) or "").strip()
         except Exception as exc:
@@ -2385,7 +2398,7 @@ def results_pass(api, state, now, opus=None, put=None):
     at = datetime.fromtimestamp(now).isoformat(timespec="seconds")
     system = None
     for item in promise_keeper.pending()[:2]:
-        system = system or his_context() + "\n\n" + promise_keeper.RESULT_RULES
+        system = system or for_claude(his_context(), "\n\n", promise_keeper.RESULT_RULES)
         try:
             text = _no_tags(undisplay(str(opus(system, promise_keeper.result_prompt(item)) or "")))
         except Exception as exc:
@@ -2432,8 +2445,8 @@ def results_pass(api, state, now, opus=None, put=None):
                                      " (in a thread)" if r.get("thread") else "", r.get("text", "")[:1500])
                        for r in _results_recent())
     try:
-        text = _no_tags(undisplay(str(opus((system or his_context() + "\n\n" + promise_keeper.RESULT_RULES)
-                                  + "\n\n" + promise_keeper.block(),
+        text = _no_tags(undisplay(str(opus(for_claude(getattr(system, "ctx", None) or his_context(), "\n\n",
+                                                      promise_keeper.RESULT_RULES, "\n\n" + promise_keeper.block()),
                                   "THE RESULTS CHANNEL SO FAR (most recent last):\n%s\n\nGloria just said: %s\n\n"
                                   "Your reply to her, as yourself." % (so_far, last["text"][:3500])) or "")))
     except Exception as exc:

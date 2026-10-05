@@ -295,16 +295,15 @@ FABLE_TOKENS = 16000        # a fix and its test; the Study's read-only question
 
 
 def fable(system, user):
-    import requests, forge_study
-    key = forge_study._key("ANTHROPIC_API_KEY", "~/.vintos/anthropic-key")
-    if not key:
-        raise RuntimeError("no Anthropic key")
-    d = requests.post("https://api.anthropic.com/v1/messages", timeout=900, json={
-        "model": FABLE, "max_tokens": FABLE_TOKENS, "system": system, "messages": [{"role": "user", "content": user}]},
-        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
-    if d.get("type") == "error":
-        raise RuntimeError(str(d.get("error"))[:200])
-    return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+    import claude_cache
+    return claude_cache.ask(FABLE, system, user, FABLE_TOKENS, caller="study-fix", timeout=900)
+
+
+def _cached(base, text):
+    """The rules, the ask and the file list come first in every Fable call of one fix, so Claude reads them back
+    from cache on the second read and on each repair (Gloria, 2026-10-05: "He is expensive")."""
+    import claude_cache
+    return claude_cache.Prompt(text, [base, text[len(base):]] if text.startswith(base) else [text])
 
 
 def plan_fix(row, ask=None, root=None):
@@ -322,12 +321,12 @@ def plan_fix(row, ask=None, root=None):
         last = rnd == READ_ROUNDS
         user = base + (("\n\nWHAT YOU READ SO FAR:\n" + reading) if reading else "") + (
             "\n\nNo more reading: give the fix or decline." if last else "\n\nRead, or give the fix.")
-        got = _json(ask(SYSTEM, user))
+        got = _json(ask(SYSTEM, _cached(base, user)))
         if (got.get("read") or got.get("grep")) and not last:
             reading += ("\n\n" if reading else "") + read_for(got, root)
             continue
-        return got, base + "\n\nWHAT YOU READ:\n" + reading
-    return {"refuse": "it read without deciding"}, base
+        return got, _cached(base, base + "\n\nWHAT YOU READ:\n" + reading)
+    return {"refuse": "it read without deciding"}, _cached(base, base)
 
 
 # ---- the pipeline --------------------------------------------------------------------------------------
@@ -394,8 +393,9 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
             return row
         reset_workbench(run=run)
         detail = "\n\n".join("== %s ==\n%s" % (t, out) for t, out in failures)[:20000]
-        plan = _json((ask or fable)(SYSTEM, context + "\n\nYOUR LAST FIX:\n" + json.dumps(plan)[:30000]
-                                    + "\n\nIT DID NOT PASS:\n" + detail + "\n\nGive the corrected fix, whole, as JSON."))
+        base = (getattr(context, "pieces", None) or [""])[0]
+        plan = _json((ask or fable)(SYSTEM, _cached(base, context + "\n\nYOUR LAST FIX:\n" + json.dumps(plan)[:30000]
+                                    + "\n\nIT DID NOT PASS:\n" + detail + "\n\nGive the corrected fix, whole, as JSON.")))
         if plan.get("refuse"):
             _failed(row, "Fable gave up: " + str(plan["refuse"])); return row
     row["changed"], row["summary"] = changed, str(plan.get("summary") or "")[:1500]

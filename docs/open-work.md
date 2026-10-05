@@ -3,6 +3,21 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 5 October — his Claude calls cache what does not change
+
+Gloria: "I want Anthropic to have what it can cached. He is expensive." None of his Slack calls to Opus 4.8, Opus 5.5
+or Fable asked for caching, and the prompt began with the time of day, so nothing could have been reused. Now
+(`claude_cache.py`): Claude is sent his Slack rules, SOUL, GLORIA-MODEL, SELF-MODEL and CAPABILITIES first, marked
+for cache, then the time and the rest of his context; the room is its own cached piece, so a look-up mid-message
+re-reads it from cache. Every other model gets the same words in the same order as before. The Study fix's Fable
+rounds and repairs now share a cached start (rules, ask, file list). Every Claude call through it logs tokens and
+cache reads (never words) to `memory/anthropic-usage.jsonl`; `python3 ~/.vintos/workspace/scripts/claude_cache.py`
+prints today's calls by caller with an estimated cost. **Not yet measured on Aegis.** Five-minute cache only: if the
+log shows his Opus 5.5 turns usually more than five minutes apart, try the one-hour cache. Not changed: one-off
+calls (vision, the Forge's review, music-share, his letters' replies), which would only pay the write. Found on the
+way: `bin/music-share.py` sends `temperature` to Sonnet 5, which rejects it, so its Claude call always falls back to
+Gemma.
+
 ## 5 October — the Forge says which guard refused the Lab's report
 
 The room spent the morning guessing why the Lab's reports keep getting the Forge's 403 (token? packet? receipt
