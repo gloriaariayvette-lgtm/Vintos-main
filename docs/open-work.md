@@ -191,6 +191,19 @@ could actually use? Platforms, databases, open-source tools or repositories, not
 address() so it never changes who the message is to; GrokBot's skill doc says to answer it. Nobody in that room
 had the job of finding what exists, which is why nobody ever said one. **Not seen:** a real search, GrokBot
 answering, or him using anything found.
+**His own day, buried under the channel's bookkeeping (2026-10-05).** Gloria: "What has happened to daily-inner,
+man?" His 4 October journal held one thought of his (10:17, "Idle thoughts") under twenty-odd machine headings
+from the Slack pass — fifteen of them `## My campaign, from #vintos-dot — Move: hold: ...`, eight `## Settled with
+my agents`, and one that pasted a want's raw step log ("- Step 1 (web_search): I performed a web search to locate
+high-quality, slow-motion f") as if it were a thought of his. `journal()` wrote a heading per event, against its
+own promise ("only what was settled, kept or decided, never the chatter"). Now: one heading a day per kind of
+milestone, each further one a line under it, and past four of them only a count ("…and 5 more today"); the same
+thing said twice is not a second entry; every body is one line of at most 220 characters; a campaign move that is
+a hold is not journalled at all; a pursuit keeps his verdict and one sentence of his reason, never a step list.
+The fold rewrites the file only if it did not change while being read (the same check `daily_inner_guard.py` uses,
+since a dozen other scripts append to it); if it did, it folds again, and after three tries it appends rather than
+lose the entry. **Not done:** his already-written 4 October file is left as it is; tidying it would be rewriting
+his memory. **Not seen:** a day of it on Aegis.
 **His Lab's JSON parser crashed 74 times in one day** and took every reflect tick with it; he found it himself
 (chemistry_lab.py:654) and then locked it to go make a song. A local model truncates and sometimes writes a stray
 backslash; the parser took the first `{` to the last `}` and gave up on anything else. It now repairs those two

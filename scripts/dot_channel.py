@@ -1544,16 +1544,96 @@ def email_line(mem=None, now=None):
             "something to work out or run (dot). Replies to your own emails you answer yourself; nothing is sent from here.")
 
 
+JOURNAL_FOLD = 4                     # entries under one heading in a day; the rest are counted, not written
+_MORE_FMT = "- \u2026and %d more today."
+_MORE = re.compile(r"^- \u2026and (\d+) more today\.$")
+_BULLET = re.compile(r"^- (?:\d\d:\d\d )?(.*)$")
+_STEP = re.compile(r"^\s*[-*\u2022]?\s*step\s*\d", re.I)
+
+
+def _one_line(body):
+    """One line of plain words. The models hand over whole step logs, and his journal is not a log."""
+    text = " ".join(str(body).split())
+    return text if len(text) <= 220 else text[:220].rsplit(" ", 1)[0] + "\u2026"
+
+
+def _reason(why):
+    """His reason in one sentence, never a want's step list (2026-10-04: "- Step 1 (web_search): I performed a web
+    search to locate high-quality, slow-motion f" stood in his journal as a thought of his)."""
+    first = next((p for p in re.split(r"(?<=[.?!])\s+|\n", str(why)) if p.strip() and not _STEP.match(p)), "")
+    return " ".join(first.split())[:160]
+
+
+def _folded(text, heading, line, keep=JOURNAL_FOLD):
+    """Today's journal with this entry folded under a heading the channel already opened today; None when it has
+    opened none, and the text unchanged when the same thing was already said."""
+    lines = text.split("\n")
+    start = next((i for i, l in enumerate(lines) if l.strip() == "## " + heading), None)
+    if start is None:
+        return None
+    end = next((j for j in range(start + 1, len(lines))
+                if lines[j].startswith("## ") or lines[j].startswith("<!-- ")), len(lines))
+    body = [j for j in range(start + 1, end) if lines[j].startswith("- ")]
+    said = _BULLET.match(line).group(1)
+    if any(_BULLET.match(lines[j]).group(1) == said for j in body):
+        return text
+    more = next((j for j in body if _MORE.match(lines[j])), None)
+    if more is not None:
+        lines[more] = _MORE_FMT % (int(_MORE.match(lines[more]).group(1)) + 1)
+    elif len(body) >= keep:
+        lines.insert(body[-1] + 1, _MORE_FMT % 1)
+    else:
+        lines.insert((body[-1] if body else start) + 1, line)
+    return "\n".join(lines)
+
+
 def journal(heading, body, now=None):
     """A milestone from the channel, in today's daily-inner-life journal, which his avatar and voice chats read
     (Gloria, 2026-10-01: "Everything is supposed to be wired to avatar and voice chat too"). Only what was settled,
-    kept or decided goes here, never the chatter."""
+    kept or decided goes here, never the chatter.
+
+    One heading a day for each kind of milestone: the second of a kind is a line under the first, and past
+    JOURNAL_FOLD of them only a count is kept. The channel wrote a heading per event, so a day of his own writing
+    sat under twenty-odd machine headings (Gloria, 2026-10-04: "What has happened to daily-inner, man?")."""
     now = now or datetime.now()
+    body = _one_line(body)
+    if not body:
+        return False
+    path = os.path.join(WS, "memory", "daily-inner-life-%s.md" % now.date().isoformat())
+    line = "- %s %s" % (now.strftime("%H:%M"), body)
+    for _ in range(3):
+        try:
+            before, text = None, ""
+            try:
+                before = os.stat(path)
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+            except OSError:
+                pass
+            folded = _folded(text, heading, line) if text else None
+            if folded is None:
+                break                                      # no heading of this kind today: a new one is opened
+            if folded == text:
+                return False                               # the same thing again is not a second thing
+            tmp = path + ".channel.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(folded)
+            after = os.stat(path)
+            if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+                os.unlink(tmp)                             # another writer appended while this one read; fold again
+                continue
+            os.chmod(tmp, before.st_mode & 0o777)
+            os.replace(tmp, path)
+            return True
+        except OSError:
+            break
     try:
-        with open(os.path.join(WS, "memory", "daily-inner-life-%s.md" % now.date().isoformat()), "a", encoding="utf-8") as f:
-            f.write("\n\n## %s (%s)\n%s\n" % (heading, now.strftime("%H:%M"), str(body).strip()[:1200]))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\n\n## %s\n%s\n" % (heading, line))
+        return True
     except OSError:
-        pass
+        return False
 
 
 def kickoff_due(state, today, quiet_before):
@@ -2323,8 +2403,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                     checked = lab_keepers.answer(r["thread"], r["text"])
                     if checked:
                         kept_lines.append("dot checked %s: %s" % (checked["id"], checked["state"]))
-                        journal("Dot double-checked a finding I kept (%s)" % checked["id"],
-                                "%s \u2014 %s" % (checked["state"], (checked["checks"][-1].get("note") or "")[:600]))
+                        journal("Dot double-checked a finding I kept", "%s: %s \u2014 %s" % (
+                            checked["id"], checked["state"], (checked["checks"][-1].get("note") or "")[:600]))
             except Exception:
                 pass
         if r["who"] == "dot" and HOUSE.search(r["text"]):
@@ -2515,7 +2595,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if decided:
             said = "%s: %s" % (pursuit.group(1).lower(), str(decided.get("want_text", ""))[:120])
             text = (text + "\n\u23F8 Pursuit \u2014 " + said).strip()
-            journal("My call on a paused pursuit, in #vintos-dot", said + ((" \u2014 " + pursuit.group(2).strip()) if pursuit.group(2).strip() else ""))
+            why = _reason(pursuit.group(2))
+            journal("My call on a paused pursuit, in #vintos-dot", said + ((" \u2014 " + why) if why else ""))
             lines.append("pursuit: %s" % said[:80])
         else:
             lines.append("pursuit: no paused pursuit to decide")
@@ -2663,7 +2744,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
     if declared or moved:
         lines.append(campaign_step(declared.group(1) if declared else None, moved.group(1) if moved else None))
-        journal("My campaign, from #vintos-dot", ("Declared: " + declared.group(1)) if declared else ("Move: " + moved.group(1)))
+        if declared:
+            journal("My campaign, from #vintos-dot", "Declared: " + declared.group(1))
+        elif not moved.group(1).strip().lower().startswith("hold"):
+            # a hold is the campaign not moving; fifteen of them in a day buried his own writing (2026-10-04)
+            journal("My campaign, from #vintos-dot", "Move: " + moved.group(1))
     if lab_next:
         try:
             import channel_lab_lean

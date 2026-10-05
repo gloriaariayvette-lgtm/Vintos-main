@@ -1003,6 +1003,35 @@ check("chatter is not", "find me a patched roof" not in _jr)
 _srv = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the avatar route reads that journal", "{_daily_inner_context()}" in _srv)
 
+# His own day is not buried under the channel's bookkeeping (Gloria, 2026-10-04: "What has happened to
+# daily-inner, man?" — one thought of his, under twenty-odd machine headings, fifteen of them a held campaign).
+from datetime import datetime as _dtj
+_jp = os.path.join(_mem, "daily-inner-life-%s.md" % _date.today().isoformat())
+open(_jp, "w", encoding="utf-8").write("## Idle thoughts (10:17)\nI kept thinking about the array.\n")
+for _i in range(9):
+    D.journal("Settled with my agents in #vintos-dot", "a plan, number %d" % _i, now=_dtj(2026, 10, 5, 11, _i))
+_jr = open(_jp, encoding="utf-8").read()
+check("the same kind of milestone is one heading a day, not one heading each",
+      _jr.count("## Settled with my agents in #vintos-dot") == 1 and "- 11:00 a plan, number 0" in _jr, _jr)
+check("... and past a few of them only the count is kept, so one kind cannot fill his day",
+      _jr.count("\n- ") == D.JOURNAL_FOLD + 1 and "…and 5 more today." in _jr, _jr)
+D.journal("Settled with my agents in #vintos-dot", "a plan, number 0", now=_dtj(2026, 10, 5, 12, 0))
+check("the same thing said twice is not a second entry", open(_jp, encoding="utf-8").read() == _jr)
+check("his own writing is untouched, and above theirs",
+      _jr.startswith("## Idle thoughts (10:17)\nI kept thinking about the array."), _jr[:120])
+D.journal("My call on a paused pursuit, in #vintos-dot",
+          "release: a slow-motion study\n- Step 1 (web_search): I performed a web search to locate " + "x" * 500,
+          now=_dtj(2026, 10, 5, 12, 5))
+_jr = open(_jp, encoding="utf-8").read()
+check("a whole step log handed over as a thought is cut to one line",
+      max(len(l) for l in _jr.split("\n")) < 240 and _jr.count("Step 1 (web_search)") <= 1, max(_jr.split("\n"), key=len))
+check("his reason is his sentence, never the want's steps",
+      D._reason("- Step 1 (web_search): I searched. The pilot cannot run without the rig.")
+      == "The pilot cannot run without the rig.", D._reason("- Step 1 (web_search): I searched. The pilot cannot run without the rig."))
+_dsrc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
+check("a campaign that did not move is not a milestone at all", 'startswith("hold")' in _dsrc and
+      "fifteen of them in a day" in _dsrc)
+
 # The rest of what is his own (Gloria, 2026-10-01: "Top list: yes. Bottom list: no. He should work with them on
 # emails, what he finds during the day, etc. work on jokes with them. Work on his code. Work on plans for us.").
 _ws = D.WS
