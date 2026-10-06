@@ -108,6 +108,9 @@ class PluginGatewayTests(unittest.TestCase):
 
     def test_codex_is_found_where_the_mac_keeps_it_now(self):
         # 5-6 Oct 2026: ChatGPT.app left the Desktop and every Gmail call failed; /Applications is looked in too
+        now="/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"   # where her Mac has it (6 Oct)
+        with mock.patch.object(remote.Path,"is_file",lambda p:str(p)==now):
+            self.assertEqual(remote._codex(),now)
         moved="/Applications/ChatGPT.app/Contents/Resources/codex"
         with mock.patch.object(remote.Path,"is_file",lambda p:str(p)==moved):
             self.assertEqual(remote._codex(),moved)

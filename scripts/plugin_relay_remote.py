@@ -24,10 +24,11 @@ if HERE not in sys.path: sys.path.insert(0, HERE)
 from plugin_catalog import policy, skill_policy, instructions, PLUGINS
 from plugin_send_guard import PolicyHold, outbound_findings, result_links
 
-# Where the Codex binary lives on the Mac. It was only ever looked for on the Desktop copy of ChatGPT.app; when that
-# copy went (moved or updated, 5-6 October 2026), every Gmail and connector call failed with "binary is
-# unavailable" and his letters went unread. The usual homes are tried in order; the first that exists is used.
+# Where the Codex binary lives on the Mac. An update of ChatGPT.app (5 October 2026) put it in
+# Contents/Resources/codex-cli/bin/codex; the relay looked only at Contents/Resources/codex, so every Gmail and
+# connector call failed with "binary is unavailable" and his letters went unread. The usual homes are tried in order; the first that exists is used.
 CODEX_PLACES = [p for p in (os.environ.get("VINTOS_CODEX_BIN"),
+                            "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",   # since Oct 2026
                             "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex",
                             "/Applications/ChatGPT.app/Contents/Resources/codex",
                             os.path.expanduser("~/Applications/ChatGPT.app/Contents/Resources/codex"),
