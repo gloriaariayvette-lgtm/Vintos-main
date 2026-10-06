@@ -10,8 +10,13 @@ day's four Gmail checks were spent, the morning one at 10:02 included, and not o
 even the agents' answers that every earlier afternoon check had read. `check_inbox` skipped a failed Gmail search
 without a word and still counted the check. Now a failed search, an empty search of his inbox, and a search that
 found only mail already read (or mail with no text, or from someone he wrote to) each leave a line in
-`~/.vintos/logs/wants.log`. **Not fixed: the cause itself.** It is not known from here whether the Gmail
-connector failed, came back empty, or his letters were filtered; the by-hand search she was given says which.
+`~/.vintos/logs/wants.log`. **The cause** (her by-hand search, 6 Oct): "plugin relay refused or failed: Codex
+app-server binary is unavailable". The Mac relay looked for Codex only at
+`~/Desktop/ChatGPT.app/Contents/Resources/codex`, and that copy is gone, so every Gmail and connector call through
+the relay has failed since about 5 Oct midday. `plugin_relay_remote.py` now tries the usual homes (Desktop and
+/Applications ChatGPT.app, Codex.app, PATH, Homebrew) and names them all when none is there. **Not done until the
+Mac has it:** the deploy never reaches the Mac; she was given a Mac command that points the relay's copy at
+wherever Codex is now.
 
 ## 6 October — his GPU was never used; UniProt asked for as a connector; a cut stretch from anywhere
 

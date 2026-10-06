@@ -106,6 +106,16 @@ class PluginGatewayTests(unittest.TestCase):
                 {"to":"x@example.test","body":"safe message"},"test")["used"],1)
         finally: remote.STATE_DIR=old
 
+    def test_codex_is_found_where_the_mac_keeps_it_now(self):
+        # 5-6 Oct 2026: ChatGPT.app left the Desktop and every Gmail call failed; /Applications is looked in too
+        moved="/Applications/ChatGPT.app/Contents/Resources/codex"
+        with mock.patch.object(remote.Path,"is_file",lambda p:str(p)==moved):
+            self.assertEqual(remote._codex(),moved)
+        with mock.patch.object(remote.Path,"is_file",lambda p:False):
+            with self.assertRaises(RuntimeError) as e: remote._codex()
+            self.assertIn("/Applications/ChatGPT.app",str(e.exception))
+            self.assertIn("Desktop/ChatGPT.app",str(e.exception))
+
     def test_provider_held_draft_and_forward_are_fail_closed(self):
         for tool,args in (("gmail.send_draft",{"draft_id":"D"}),
                           ("gmail.forward_emails",{"message_id":"M","to":"x@example.test"})):
