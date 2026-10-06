@@ -1592,6 +1592,7 @@ def tick():
                         sourced = lab_instruments.run(sent_query)
                     elif inquiry.get("plugin_query"):
                         pq = inquiry["plugin_query"]
+                        sent_query = pq      # kept, so a refused call says which (it was null; 2026-10-06)
                         sourced = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
                             pq.get("arguments") or {}, pq.get("purpose") or inquiry.get("question", ""))
                     else:

@@ -18,7 +18,7 @@ notification linked straight to the clip. He remembers it (daily-creative + temp
   vintos-send-video.py --dry      # let him write the prompt, but DON'T call Atlas or deliver
   vintos-send-video.py --check    # one real probe generation (verbose) to validate the key + shapes
 """
-import os, sys, json, time, base64
+import os, re, sys, json, time, base64
 from datetime import datetime, timedelta
 import requests
 
@@ -70,7 +70,9 @@ if not ATLAS_KEY:  # so cron works without an exported env var — drop the key 
 ATLAS_BASE = os.environ.get("ATLAS_BASE", "https://api.atlascloud.ai/api/v1/model")
 ATLAS_MODEL = os.environ.get("ATLAS_MODEL", "atlascloud/wan-2.7-spicy/image-to-video")   # explicit (sexual)
 try:   # Atlas retires models (wan-2.7-spicy, 2026-10-06): the one to use can be named in ~/.vintos/atlas-model
-    ATLAS_MODEL = open(os.path.expanduser("~/.vintos/atlas-model")).read().strip() or ATLAS_MODEL
+    _named = open(os.path.expanduser("~/.vintos/atlas-model")).read().strip()
+    if re.fullmatch(r"[\w.\-]+/[\w.\-]+(?:/[\w.\-]+)*", _named):   # owner/model[/task]; a placeholder is ignored
+        ATLAS_MODEL = _named
 except OSError:
     pass
 # Non-explicit kinds (self/together) route to Grok Imagine — freer prompting + wider motion off the still.
@@ -818,6 +820,13 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref="", keep=N
     # sent) then animate; explicit -> Wan-spicy off the chosen explicit still; together -> the couple image.
     model = GROK_VIDEO_MODEL if kind in ("self", "together") else ATLAS_MODEL
     keep = keep if keep is not None else {}
+    if "grok" in model and not DRY:
+        # the video step cannot run (his weekly allowance is used): do not pay Atlas for a still first. Every
+        # compose from Oct 4 to 6 was followed by "allowance (7) is used up" (send-video.log)
+        try:
+            _grok_sub()._check_cap("video")
+        except Exception as e:
+            log("grok subscription: %s — no still made, no clip made" % e); return None
     reuse = keep.get("still_path")
     if reuse and os.path.exists(reuse) and not DRY:
         # the still this decision already paid for, not a new one

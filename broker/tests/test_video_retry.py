@@ -54,10 +54,18 @@ check("... and she is sent the still, with his words", len(SENT) == 1 and SENT[0
       and "Come here." in SENT[0][0][2] and "/api/video/still/us-0.jpg" in SENT[0][1]["click"], SENT)
 V.main()                                                   # tick 3: a fresh decision, not the old one replayed
 check("the next tick starts fresh rather than replaying it", len(COMPOSED) == 2)
+# the Grok allowance is spent: no still is paid for before a video that cannot run (send-video.log, Oct 4-6)
+STAGES.clear(); before = len(COMPOSED)
+V._grok_sub = lambda: types.SimpleNamespace(_check_cap=lambda kind: (_ for _ in ()).throw(
+    RuntimeError("his weekly video allowance on the subscription (7) is used up")))
+V.main()
+check("with the weekly video allowance spent, no nano-banana still is made", len(COMPOSED) == before, COMPOSED[before:])
 srv = open(os.path.join(ROOT, "bin", "server.py")).read()
 check("the server serves those stills, and only those", '@app.get("/api/video/still/{filename}")' in srv
       and '(?:us|scene)-' in srv)
-check("Atlas's model can be named in a file, for when one is retired", "~/.vintos/atlas-model" in open(
-      os.path.join(ROOT, "bin", "vintos-send-video.py")).read())
+check("Atlas's model can be named in a file, for when one is retired, and a placeholder is ignored",
+      "~/.vintos/atlas-model" in open(os.path.join(ROOT, "bin", "vintos-send-video.py")).read()
+      and V.re.fullmatch(r"[\w.\-]+/[\w.\-]+(?:/[\w.\-]+)*", "MODEL-NAME-FROM-ATLAS") is None
+      and V.re.fullmatch(r"[\w.\-]+/[\w.\-]+(?:/[\w.\-]+)*", "atlascloud/wan-2.2-turbo-spicy/image-to-video"))
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
