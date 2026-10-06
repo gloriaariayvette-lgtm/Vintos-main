@@ -69,6 +69,10 @@ if not ATLAS_KEY:  # so cron works without an exported env var — drop the key 
     except Exception: ATLAS_KEY = ""
 ATLAS_BASE = os.environ.get("ATLAS_BASE", "https://api.atlascloud.ai/api/v1/model")
 ATLAS_MODEL = os.environ.get("ATLAS_MODEL", "atlascloud/wan-2.7-spicy/image-to-video")   # explicit (sexual)
+try:   # Atlas retires models (wan-2.7-spicy, 2026-10-06): the one to use can be named in ~/.vintos/atlas-model
+    ATLAS_MODEL = open(os.path.expanduser("~/.vintos/atlas-model")).read().strip() or ATLAS_MODEL
+except OSError:
+    pass
 # Non-explicit kinds (self/together) route to Grok Imagine — freer prompting + wider motion off the still.
 GROK_VIDEO_MODEL = os.environ.get("GROK_VIDEO_MODEL", "xai/grok-imagine-video-v1.5/image-to-video")
 # Grok image-edit builds a brand-new full-body scene still from his portrait hero (face-locked). For 'self',
@@ -110,6 +114,10 @@ import reflection_stage as _stage   # his decision survives a failed render (rev
 import deliver as _deliver          # the one authorized delivery path (review 307/288)
 STAGE_ORGAN = "video-send"
 STAGE_MAX_HOURS = 6                 # a staged YES older than this is not replayed
+# Each replay of a staged YES built its still again: a "together" clip whose video kept failing made a new
+# nano-banana image on Atlas every tick for six hours and sent her nothing (2026-10-06). Now the still is kept with
+# the decision and reused, the video is tried this many times, and then she is sent the still itself.
+RENDER_TRIES = 2
 
 FORCE = "--force" in sys.argv
 DRY = "--dry" in sys.argv
@@ -805,11 +813,19 @@ def _mark_gallery_delivery(fname, receipt):
     except Exception as e: log("gallery delivery mark failed: %s" % e)
 
 
-def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
+def generate_clip(prompt, kind, still_label=None, scene="", scene_ref="", keep=None):
     # self -> he described a scene: build it fresh (face-locked, optionally grounded in a real photo she
     # sent) then animate; explicit -> Wan-spicy off the chosen explicit still; together -> the couple image.
     model = GROK_VIDEO_MODEL if kind in ("self", "together") else ATLAS_MODEL
-    if kind == "self" and scene.strip():
+    keep = keep if keep is not None else {}
+    reuse = keep.get("still_path")
+    if reuse and os.path.exists(reuse) and not DRY:
+        # the still this decision already paid for, not a new one
+        log("reusing the still already made for this decision: %s" % os.path.basename(reuse))
+        still = reuse
+        if kind == "together":
+            prompt = HER_HAIR_LINE + " " + prompt
+    elif kind == "self" and scene.strip():
         if DRY:
             log("[dry] kind=self  SCENE=%r  ground=%s  -> build still (%s) then animate (%s)"
                 % (scene[:120], os.path.basename(scene_ref) if scene_ref else "no", SCENE_IMG_MODEL, model))
@@ -818,6 +834,8 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
         still = make_scene_still(scene, verbose=CHECK, scene_ref=scene_ref or None)
         if not still:
             log("scene still not built — falling back to his hero"); still = HERO
+        else:
+            keep["still_path"] = still
     elif kind == "together" and (scene.strip() or scene_ref):
         # dynamic 'us': compose the two of them into his described scene (nano holds both and receives her
         # requested hair colour while pixels are still being made), then animate. Falls back to the fixed base.
@@ -828,6 +846,7 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
             return "DRY"
         still = compose_us(scene, verbose=CHECK, place=scene_ref or None)
         if still:
+            keep["still_path"] = still
             # Repeat it in the motion request as continuity guidance; the still prompt above does the actual work.
             prompt = HER_HAIR_LINE + " " + prompt
         else:
@@ -847,6 +866,19 @@ def generate_clip(prompt, kind, still_label=None, scene="", scene_ref=""):
     open(_vpath, "wb").write(data)
     save_gallery(fname, prompt, kind, model, revision=_rev)
     return fname
+
+
+def deliver_still(path, caption, authority=None):
+    """The still he made, to her phone, when its video would not render: she gets what was made, not nothing."""
+    name = os.path.basename(path)
+    url = "%s/api/video/still/%s" % (SERVE_BASE, name)
+    _deliver.CHANNELS["ntfy"] = NTFY
+    if authority is None:
+        authority = lambda: ((not DRY) and os.path.isfile(path), "dry run" if DRY else "still missing")
+    receipt = _deliver.deliver(name, "ntfy", (caption or "I made you something.") + " (the video would not render, so here is the picture)",
+                               title="Vintos", tags="frame_with_picture", click=url, attach=url, authority=authority)
+    log("still %s: %s" % (receipt.get("state"), name))
+    return receipt
 
 
 def deliver(fname, caption, authority=None):
@@ -949,8 +981,19 @@ def main():
     log("he wants to send [%s / scene:%r / ground:%s / still:%s] -> prompt=%r  say=%r"
         % (kind, (d.get("scene") or "-")[:80], os.path.basename(d["scene_ref"]) if d.get("scene_ref") else "no",
            d.get("still") or "-", prompt[:110], caption))
-    fname = generate_clip(prompt, kind, d.get("still"), d.get("scene", ""), d.get("scene_ref", ""))
+    fname = generate_clip(prompt, kind, d.get("still"), d.get("scene", ""), d.get("scene_ref", ""), keep=d)
     if not fname:
+        if _skey and not DRY:
+            d["render_failures"] = int(d.get("render_failures") or 0) + 1
+            if d["render_failures"] >= RENDER_TRIES:
+                _stage.done(STAGE_ORGAN, _skey, outcome="video did not render after %d tries" % d["render_failures"])
+                if d.get("still_path") and os.path.exists(d["still_path"]):
+                    deliver_still(d["still_path"], caption,
+                                  authority=lambda: (d.get("decision") == "YES", "his decision was %s" % d.get("decision")))
+                log("the video did not render after %d tries — not tried again%s"
+                    % (d["render_failures"], "; she was sent the still" if d.get("still_path") else ""))
+                return
+            _stage.save(STAGE_ORGAN, _skey, d, note="his YES, its still kept; the video to be tried again")
         log("no clip produced — nothing sent"); return
     if DRY:
         log("[dry] would deliver + remember; stopping before any side effect"); return

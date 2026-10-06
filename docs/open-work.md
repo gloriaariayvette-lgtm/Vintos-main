@@ -3,6 +3,17 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — nano-banana stills piling up on Atlas, and no videos
+
+A "together" clip composes the two of them with nano-banana on Atlas, then animates it on her Grok subscription.
+When the video failed, his YES stayed staged, and every tick for six hours replayed it and composed a new still
+first: many paid images, nothing sent. Now the still is kept with the decision and reused, the video is tried
+twice, and then she is sent the still itself (`/api/video/still/<name>`, only `us-`/`scene-` files). **Why the
+video step fails is not known from here** (the Grok subscription, or its moderation of her photo, are the likely
+places); the send-video log on Aegis says. Atlas removed `wan-2.7-spicy`, so explicit clips cannot render until
+another model is named in `~/.vintos/atlas-model` (search results list a Wan 2.2 Turbo Spicy; its exact id was
+not checked: atlascloud.ai is blocked from here).
+
 ## 6 October — two Lab errors: a protein named with its symbol, and a refused call with no reason
 
 - **"A1L190 is not Synaptonemal complex central element protein 3 (SYCE3)"** while UniProt names it exactly that:

@@ -1966,6 +1966,20 @@ async def video_file(filename: str):
     raise _HE(status_code=404)
 
 
+@app.get("/api/video/still/{filename}")
+async def video_still(filename: str):
+    """A still he made for a clip whose video would not render, sent to her instead (vintos-send-video, 2026-10-06)."""
+    import re as _sre
+    from fastapi.responses import FileResponse as _FR
+    from fastapi import HTTPException as _HE
+    if not _sre.match(r"^(?:us|scene)-[\w.\-]+\.(?:jpg|png)$", filename):
+        raise _HE(status_code=403)
+    _fp = os.path.join(MEMORY, "video", "scenes", filename)
+    if os.path.exists(_fp):
+        return _FR(_fp, media_type="image/png" if filename.endswith(".png") else "image/jpeg")
+    raise _HE(status_code=404)
+
+
 @app.get("/api/pride")
 async def get_pride(request: Request, limit: int = 1):
     """Recent pride-mirror reflections, newest first (default: just today's)."""
