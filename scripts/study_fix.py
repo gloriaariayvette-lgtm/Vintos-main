@@ -323,15 +323,36 @@ SYSTEM = (
     "\"broker/tests/test_<name>.py\", \"content\": ...}]}. To decline: {\"refuse\": \"why\"}.")
 
 
+def _why_not():
+    """Why Fable's last answer ended, in words, from claude_cache.LAST; '' when it is not known."""
+    try:
+        import claude_cache
+        last = dict(claude_cache.LAST)
+    except Exception:
+        return ""
+    stop, out = last.get("stop", ""), last.get("out", 0)
+    if stop == "max_tokens":
+        return " (its answer was cut off at the %d-token limit; its thinking counts toward it)" % FABLE_TOKENS
+    if stop == "refusal":
+        return " (it declined the request)"
+    return (" (it stopped: %s, %d tokens out)" % (stop, out)) if stop else ""
+
+
 def _json(text):
     text = str(text or "").strip()
     m = re.search(r"\{.*\}", text, re.S)
     if not m:
-        raise ValueError("Fable did not answer with JSON")
-    return json.loads(m.group(0))
+        raise ValueError("Fable did not answer with JSON" + _why_not())
+    try:
+        return json.loads(m.group(0))
+    except ValueError as exc:
+        raise ValueError("Fable's JSON did not parse: %s%s" % (str(exc)[:120], _why_not()))
 
 
-FABLE_TOKENS = 16000        # a fix and its test; the Study's read-only questions use 3000
+# A fix and its test. Fable 5.1 always thinks first, and its thinking counts toward this limit: at 16000 a
+# hard fix spent it thinking and the answer was cut off before its JSON closed (SF-6f9a460b, 2026-10-06). It is a
+# ceiling, not a charge: an answer that finishes costs what it used. The Study's read-only questions use 3000.
+FABLE_TOKENS = 32000
 
 
 def fable(system, user):

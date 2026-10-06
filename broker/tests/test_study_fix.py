@@ -223,6 +223,28 @@ check("he is told he can fix his own code, its limits, and not to hand Gloria wh
 dep = open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read()
 check("the deploy installs it and its timer", "study_fix.py" in dep and 'confirm_timer --user "$FIX_UNIT_NAME"' in dep
       and "OnUnitInactiveSec=10min" in open(os.path.join(REPO, "broker", "vintos-study-fix.timer")).read())
+# Fable's answer cut off at the limit says so (SF-6f9a460b, 2026-10-06: "Fable did not answer with JSON" and no why)
+import claude_cache
+claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.FABLE_TOKENS)
+try: S._json('{"summary": "half a fix", "edits": [{"path": "scripts/greet.py", "old": "helo'); _e = ""
+except ValueError as e: _e = str(e)
+check("an answer cut off at the limit is named as cut off", "did not answer with JSON" in _e and "cut off" in _e, _e)
+claude_cache.LAST.clear(); claude_cache.LAST.update(stop="refusal", out=0)
+try: S._json(""); _e = ""
+except ValueError as e: _e = str(e)
+check("a declined request is named as declined", "declined" in _e, _e)
+claude_cache.LAST.clear(); claude_cache.LAST.update(stop="end_turn", out=900)
+try: S._json('{"edits": [}'); _e = ""
+except ValueError as e: _e = str(e)
+check("JSON that does not parse is a ValueError that says so", "did not parse" in _e and "end_turn" in _e, _e)
+check("the fix has room past its thinking", S.FABLE_TOKENS >= 32000, S.FABLE_TOKENS)
+_answer = {"type": "message", "stop_reason": "max_tokens", "usage": {"output_tokens": 32000}, "content": [{"type": "text", "text": "{"}]}
+class _R:
+    def json(self): return _answer
+claude_cache.note = lambda *a, **k: None
+claude_cache.ask("claude-fable-5-1", "s", "u", 10, post=lambda *a, **k: _R(), key="test-key")
+check("claude_cache keeps why the last answer ended", claude_cache.LAST == {"stop": "max_tokens", "out": 32000}, claude_cache.LAST)
+
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))

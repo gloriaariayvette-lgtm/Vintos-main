@@ -87,6 +87,9 @@ def note(caller, model, usage, path=None):
     return row
 
 
+LAST = {}
+
+
 def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None):
     """Claude's text. Raises on no key or an API error, as the callers it replaces did."""
     key = key or _key()
@@ -100,6 +103,9 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
     if d.get("type") == "error":
         raise RuntimeError(str(d.get("error"))[:200])
     note(caller, model, d.get("usage"))
+    # why the answer ended (end_turn, max_tokens, refusal), and what it cost in output, for callers that parse it
+    # (2026-10-06: a Study fix stopped on "Fable did not answer with JSON" with nothing to say why)
+    LAST.clear(); LAST.update(stop=d.get("stop_reason") or "", out=int((d.get("usage") or {}).get("output_tokens") or 0))
     return "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
 
 
