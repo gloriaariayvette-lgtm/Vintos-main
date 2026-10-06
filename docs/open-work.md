@@ -3,6 +3,15 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — two Lab errors: a protein named with its symbol, and a refused call with no reason
+
+- **"A1L190 is not Synaptonemal complex central element protein 3 (SYCE3)"** while UniProt names it exactly that:
+  the label check (`chemistry_mac._names_match`) compared "Full name (SYMBOL)" whole. It now matches when both the
+  name and the symbol are the record's; a symbol from another protein still refuses.
+- **"that tool is not one he may ask for"**: a connector call his Lab picked was refused, it could not become an
+  ask on her Forge page, and the note kept only that second part. It now keeps which call it was and why it was
+  refused. Which tool it was on 6 October at 08:15 is not known from here.
+
 ## 6 October — her Watch's hearts taken back out of avatar chat
 
 00a0594 forwarded every Watch reply (hearts, scribbles, dictation) into `/api/avatar/chat` as if she had typed it,

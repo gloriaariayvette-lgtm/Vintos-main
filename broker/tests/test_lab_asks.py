@@ -286,6 +286,8 @@ ui = open(os.path.join(REPO, "scripts", "forge_loop_ui.html")).read()
 check("her page labels it and its button says what it does", "A call his Lab cannot make alone" in ui and "'Run it'" in ui)
 lab = open(os.path.join(REPO, "scripts", "chemistry_lab.py")).read()
 check("a withheld tool in his Lab becomes an ask, not a dead end", "lab_asks.propose(" in lab and "asked_gloria" in lab)
+check("... and when it cannot become one, the note keeps the refusal itself, not only that it may not be asked for",
+      '"%s.%s refused (%s); %s"' in lab and "str(exc)[:160], why_not" in lab)
 check("the deploy installs it", "lab_asks.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))

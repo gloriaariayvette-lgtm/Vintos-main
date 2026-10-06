@@ -173,7 +173,13 @@ def _record_names(record):
 
 def _names_match(requested, names):
     """True when the requested name is one of the record's names, or a whole word or phrase inside one
-    (FTH1 in "FTH1"; FRIH in "FRIH_HUMAN"; "ferritin heavy chain" in "Ferritin heavy chain")."""
+    (FTH1 in "FTH1"; FRIH in "FRIH_HUMAN"; "ferritin heavy chain" in "Ferritin heavy chain").
+    "Full name (SYMBOL)" matches when both the name and the symbol are the record's: it was refused whole, so A1L190
+    was "not Synaptonemal complex central element protein 3 (SYCE3)" while UniProt named it exactly that
+    (2026-10-05)."""
+    paren = re.fullmatch(r"\s*(.+?)\s*\(([^()]+)\)\s*", str(requested or ""))
+    if paren:
+        return all(_names_match(part, names) for part in paren.groups())
     wanted = re.sub(r"[^a-z0-9]", "", requested.lower())
     if not wanted: return False
     pattern = re.compile(r"(?<![A-Za-z0-9])" + re.escape(requested.strip()) + r"(?![A-Za-z0-9])", re.I)

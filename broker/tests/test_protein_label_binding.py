@@ -109,5 +109,14 @@ assert "parameters.protein_name" in session_source, "the lens must be asked whic
 sources_source = open(os.path.join(REPO, "scripts", "lab_sources.py"), encoding="utf-8").read()
 assert "gene_names" in sources_source, "UniProt must be asked for gene names"
 
+# "Full name (SYMBOL)" is the record's when both parts are (2026-10-05: A1L190 refused as "not Synaptonemal complex
+# central element protein 3 (SYCE3)" while UniProt named it exactly that); a symbol that is not its own still refuses.
+_syce3 = ["SYCE3_HUMAN", "SYCE3", "C22orf41", "THEG2", "Synaptonemal complex central element protein 3",
+          "Testis highly expressed gene 2 protein"]
+assert mac._names_match("Synaptonemal complex central element protein 3 (SYCE3)", _syce3)
+assert mac._names_match("SYCE3 (Synaptonemal complex central element protein 3)", _syce3)
+assert not mac._names_match("Synaptonemal complex central element protein 3 (FTH1)", _syce3)
+assert not mac._names_match("Ferritin heavy chain (SYCE3)", _syce3)
+
 assert not os.path.exists(os.path.expanduser("~/.vintos/chemistry-mac.json")) or HOME in os.path.expanduser("~/.vintos/chemistry-mac.json")
 print("PASS a run labelled with one protein cannot fold another accession")

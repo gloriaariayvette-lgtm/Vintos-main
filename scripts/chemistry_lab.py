@@ -1647,8 +1647,11 @@ def tick():
                     state['source_query_succeeded'] = False
                     state.pop('additional_source', None)
                     note = {"at": now_iso(), "kind": "asked_gloria" if asked else "source_unavailable",
+                            # the refusal itself, then why it could not become an ask: "that tool is not one he may
+                            # ask for" alone hid which call was refused and why (2026-10-06)
                             "reason": ("asked Gloria for %s.%s" % (pq.get("plugin"), pq.get("tool"))) if asked
-                                      else why_not,
+                                      else ("%s.%s refused (%s); %s" % (pq.get("plugin"), pq.get("tool"), str(exc)[:160], why_not)
+                                            if why_not != str(exc)[:200] else why_not),
                             "source": str(pq.get("plugin") or "plugin")[:80], "query_sent": sent_query,
                             **({"ask_id": asked["id"]} if asked else {}),
                             "truth_status": "waiting_on_her_decision_not_an_observation" if asked
