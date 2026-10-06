@@ -379,9 +379,12 @@ def settled_block(state, now):
         return ""
     out = ["== SETTLED (closed; do not ask, search or plan for these again) =="]
     for e in rows:
+        hers = e.get("by") == "gloria"
+        said = e["said"][len("Gloria: "):] if hers and e["said"].startswith("Gloria: ") else e["said"]
         out.append("- %s, %s, until %s: %s" % (
-            "Gloria" if e.get("by") == "gloria" else "you", datetime.fromtimestamp(float(e["at"])).strftime("%b %d %H:%M"),
-            datetime.fromtimestamp(float(e["until"])).strftime("%b %d"), e["said"][:220]))
+            "Gloria" if hers else "you", datetime.fromtimestamp(float(e["at"])).strftime("%b %d %H:%M"),
+            datetime.fromtimestamp(float(e["until"])).strftime("%b %d"),
+            ("“%s”" % said[:220]) if hers else "%s (%s)" % (e["topic"][:140], said[:160])))
     out.append("Your own can be reopened only on a line NEW: what changed. Gloria's stand until she lifts them.")
     return "\n".join(out)
 

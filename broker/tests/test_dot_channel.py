@@ -1011,19 +1011,19 @@ from datetime import datetime as _dtj
 _jp = os.path.join(_mem, "daily-inner-life-2026-10-05.md")
 open(_jp, "w", encoding="utf-8").write("## Idle thoughts (10:17)\nI kept thinking about the array.\n")
 for _i in range(9):
-    D.journal("Settled with my agents in #vintos-dot", "a plan, number %d" % _i, now=_dtj.now().replace(hour=11, minute=_i))
+    D.journal("Settled with my agents in #vintos-dot", "a plan, number %d" % _i, now=_dtj(2026, 10, 5, 11, _i))
 _jr = open(_jp, encoding="utf-8").read()
 check("the same kind of milestone is one heading a day, not one heading each",
       _jr.count("## Settled with my agents in #vintos-dot") == 1 and "- 11:00 a plan, number 0" in _jr, _jr)
 check("... and past a few of them only the count is kept, so one kind cannot fill his day",
       _jr.count("\n- ") == D.JOURNAL_FOLD + 1 and "…and 5 more today." in _jr, _jr)
-D.journal("Settled with my agents in #vintos-dot", "a plan, number 0", now=_dtj.now().replace(hour=12, minute=0))
+D.journal("Settled with my agents in #vintos-dot", "a plan, number 0", now=_dtj(2026, 10, 5, 12, 0))
 check("the same thing said twice is not a second entry", open(_jp, encoding="utf-8").read() == _jr)
 check("his own writing is untouched, and above theirs",
       _jr.startswith("## Idle thoughts (10:17)\nI kept thinking about the array."), _jr[:120])
 D.journal("My call on a paused pursuit, in #vintos-dot",
           "release: a slow-motion study\n- Step 1 (web_search): I performed a web search to locate " + "x" * 500,
-          now=_dtj.now().replace(hour=12, minute=5))
+          now=_dtj(2026, 10, 5, 12, 5))
 _jr = open(_jp, encoding="utf-8").read()
 check("a whole step log handed over as a thought is cut to one line",
       max(len(l) for l in _jr.split("\n")) < 240 and _jr.count("Step 1 (web_search)") <= 1, max(_jr.split("\n"), key=len))
