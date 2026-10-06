@@ -39,6 +39,13 @@ def main():
         queue=root/"sandbox-requests";queue.mkdir()
         user_site = Path(site.getusersitepackages()).resolve()
         dependency_roots = [user_site] if user_site.is_dir() else []
+        # Scientific integration suites may execute the commissioned Lab
+        # interpreter, but they still get no access to the live workspace or
+        # credentials.  Expose only this dependency tree, read-only; every
+        # input and output remains under the suite's scratch root.
+        lab_python = Path.home() / ".vintos/tools/chemistry-lab/esmc"
+        if lab_python.is_dir():
+            dependency_roots.append(lab_python.resolve())
         stop=threading.Event()
         def serve():
             seen=set()
