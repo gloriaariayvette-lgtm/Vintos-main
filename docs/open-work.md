@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — his pendrin model checked against a real structure (Grok Bot's letter)
+
+`chemistry_reference_compare.py`, offered in the Lab as the instrument `reference_compare` (structure.compare). It
+runs on Aegis in the Lab's own Python (tmtools 0.3.0, which Gloria installed, and BioPython 1.88), not through
+the Mac relay. His ESMFold model and an RCSB entry are lined up by sequence, so pendrin's five-residue offset to
+pig 8SGW and the IVS that has no density are handled without guessing numbers; TM-align runs on that alignment
+(and free, for contrast), and the entry's helices and strands come back in his numbering with how far his model
+sits from each. The entry is fetched once from RCSB and kept under `artifacts/reference/`. **Not run on real
+data:** tested only on a made-up model and entry; 8SGW and his O43511 model have not been compared yet (after
+the deploy, he can ask for it, or she can run it by hand). It does not say his model is right; the entry is pig,
+and the STAS is a domain-swapped dimer where ESMFold folded one chain.
+
 ## 6 October — a Study fix stopped on "Fable did not answer with JSON" (SF-6f9a460b)
 
 Fable 5.1 always thinks first, and its thinking counts toward the Study's output limit (16000). An answer with no

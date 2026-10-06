@@ -9,6 +9,8 @@ for ONE instrument on it:
   biohub_esm        on a sourced accession or sequence    (atlas.search / esmc.mutation_landscape /
                                                            esmc.feature_interpretation)
 
+  reference_compare on an ESMFold model the Lab made    (structure.compare: against a real RCSB entry, on Aegis)
+
 Adaptyv (needs Gloria's approval for anything real) and the NGS workbench (needs a real dataset) are not
 offered here. At most DAILY_RUNS instrument runs a day. A sequence the Lab fetches is kept as a FASTA
 artifact so the sequence instruments have something real to open.
@@ -31,6 +33,9 @@ OFFERED = {
     "structure_viewer": ("structure.analyze", "structure.measure", "structure.render_image"),
     "sequence_viewer": ("sequence.run_analysis", "sequence.align"),
     "biohub_esm": ("atlas.search", "esmc.mutation_landscape", "esmc.feature_interpretation"),
+    # his predicted structure against an experimental one (Grok Bot, 2026-10-06: pendrin's STAS against pig 8SGW);
+    # runs on Aegis in the Lab's own Python, not through the relay
+    "reference_compare": ("structure.compare",),
 }
 STRUCTURE = (".pdb", ".cif", ".cif.gz")
 SEQUENCE = (".fasta", ".fa", ".faa", ".fna", ".gb", ".gbk")
@@ -81,6 +86,13 @@ def menu_block():
                      "files from: " + ", ".join(structures))
     if sequences:
         lines.append("- sequence_viewer, operation sequence.run_analysis | sequence.align, files from: " + ", ".join(sequences))
+    models = [f for f in structures if f.startswith("artifacts/esmfold/") and f.endswith(".pdb")]
+    if models:
+        lines.append("- reference_compare, operation structure.compare, files [one of: " + ", ".join(models) + "], "
+                     "with reference (a PDB id you have a source for), chain, ref_span [first, last] in the entry's "
+                     "numbering, and offset (entry number + offset = your protein's number). Lines your model up "
+                     "with the real structure by sequence and gives TM-score, RMSD, and the entry's helices and strands "
+                     "in your numbering.")
     lines.append("- biohub_esm, operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
                  "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
     return "\n".join(lines)
@@ -97,8 +109,10 @@ def validate(req):
     allowed = set(artifacts("structure", 50) + artifacts("sequence", 50))
     if any(f not in allowed for f in files):
         raise ValueError("instrument files must be artifacts the Lab listed")
-    if skill in ("structure_viewer", "sequence_viewer") and not files:
+    if skill in ("structure_viewer", "sequence_viewer", "reference_compare") and not files:
         raise ValueError("this instrument needs a Lab artifact")
+    if skill == "reference_compare" and (len(files) != 1 or not files[0].startswith("artifacts/esmfold/")):
+        raise ValueError("reference_compare takes one ESMFold model the Lab made")
     question = str(req.get("question") or "")[:600]
     if len(question) < 10:
         raise ValueError("say what the instrument should answer")
@@ -111,6 +125,8 @@ def run(req, runner=None):
     today = _runs_today()
     if len(today["runs"]) >= DAILY_RUNS:
         raise PermissionError("instrument runs used up for today")
+    if runner is None and skill == "reference_compare":
+        runner = _compare_runner(req)
     if runner is None:
         import plugin_gateway
         runner = plugin_gateway.run_skill
@@ -128,3 +144,27 @@ def run(req, runner=None):
                                      "outputs": [os.path.basename(p) for p in out.get("files", [])]}],
                         "metadata": {"service": "relay_skill", "operation": op,
                                      "interpretation": "instrument_analysis_not_independent_validation"}}}
+
+
+def _compare_runner(req, run=None):
+    """reference_compare in the Lab's own Python on Aegis; answers like a relay skill (summary, files)."""
+    import subprocess
+    import sys
+    def runner(surface, skill, question, operation=None, input_files=()):
+        body = {"model": os.path.relpath(input_files[0], LAB), "reference": req.get("reference"),
+                "chain": req.get("chain", "A"), "ref_span": req.get("ref_span"), "offset": req.get("offset", 0)}
+        python = os.environ.get("VINTOS_ESMFOLD_PYTHON", os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"))
+        if not os.path.isfile(python):
+            python = sys.executable
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_reference_compare.py")
+        done = (run or subprocess.run)([python, script], input=json.dumps(body), text=True, capture_output=True, timeout=300)
+        try:
+            out = json.loads((done.stdout or "").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            raise RuntimeError("the comparison gave no answer: %s" % (done.stderr or "")[-300:])
+        if not out.get("ok"):
+            raise RuntimeError(out.get("error") or "the comparison failed")
+        r = out["result"]
+        return {"receipt": {"receipt_id": "compare-%s-%s" % (r["reference"], int(time.time()))},
+                "summary": "\n".join(r["display"]), "files": []}
+    return runner
