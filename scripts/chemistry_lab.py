@@ -552,6 +552,15 @@ def journal_context(cap=1050):
     return ""
 
 
+_PART_SEQ = re.compile(r"(?<![A-Za-z])[ACDEFGHIKLMNPQRSTVWY]{25,}(?![A-Za-z])")
+
+
+def _name_runs(text):
+    """Sequence-like runs in his context (from old notes, his journal threads, an earlier reading) are named, not
+    shown: a run cut part-way read to him as a truncated record ("35 residues vs. 780", 2026-10-06)."""
+    return _PART_SEQ.sub(lambda m: "[a stretch of sequence (%d residues) — the record holds the whole]" % len(m.group(0)), text)
+
+
 def lab_context(gemma_journal=True):
     """A small, attributed slice of him—not a generic scientist costume.
 
@@ -652,7 +661,7 @@ def lab_context(gemma_journal=True):
     receipt = {"at": now_iso(), "sources": sources, "total_chars": used,
                "context_sha256": hashlib.sha256("\n\n".join(parts).encode()).hexdigest()}
     _append(RECEIPTS, receipt)
-    return "\n\n".join(parts), receipt
+    return _name_runs("\n\n".join(parts)), receipt
 
 
 # A local model's JSON comes back truncated or with a stray backslash often enough that this parser crashed 74
@@ -990,8 +999,36 @@ def _on_line(inquiry, value, line):
     return inquiry
 
 
+_UNIPROT_ARGS = ("accession", "protein_name", "gene", "organism_id", "taxonomy_id", "organism_name", "reviewed", "keyword")
+
+
+def uniprot_from_plugin(pq):
+    """UniProt asked for as if it were a connector ({plugin: "uniprot", arguments: {protein_name: "Pendrin", ...}}),
+    as the public source it is. It is not one of his connectors, so the call was refused every time (2026-10-06,
+    four refusals in an hour). The source query, or None."""
+    if not isinstance(pq, dict) or str(pq.get("plugin") or "").lower() not in ("uniprot", "uniprotkb"):
+        return None
+    args = pq.get("arguments") if isinstance(pq.get("arguments"), dict) else {}
+    terms = []
+    for key in _UNIPROT_ARGS:
+        v = args.get(key)
+        if v in (None, "", []):
+            continue
+        if isinstance(v, bool):
+            v = "true" if v else "false"
+        v = str(v).strip()
+        terms.append('%s:%s' % (key, ('"%s"' % v.replace('"', '')) if re.search(r"\s", v) else v))
+    if not terms:
+        return None
+    return {"source": "uniprot", "query": " AND ".join(terms), "limit": 1 if "accession" in args else 4}
+
+
 def _inquiry(value, lean=None):
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
+    if not source_query:
+        source_query = uniprot_from_plugin(value.get("plugin_query"))
+        if source_query:
+            value = dict(value, plugin_query=None)
     requested_lane = value.get('browse_lane')
     lane = requested_lane if requested_lane in ('microbiology','genome_mining') and source_query else 'protein'
     return {"browse_lane": lane, "source_query": source_query,

@@ -93,6 +93,26 @@ check("his context names the sequence instead of showing it cut", "[RECENT LAB S
       and "the receipt holds it whole" in ctx and not M._SEQ_RUN.search(ctx.split("[RECENT LAB SOURCE", 1)[1][:800]),
       ctx.split("[RECENT LAB SOURCE", 1)[-1][:400])
 
+# --- 6 October: UniProt asked for as a connector, and a cut stretch from anywhere in his context -----------------
+q = M._inquiry({"plugin_query": {"plugin": "uniprot", "tool": "uniprot.search", "arguments":
+                {"protein_name": "Pendrin", "reviewed": True, "taxonomy_id": 9606}, "purpose": "full sequence"},
+                "question": "What is the 486-534 linker of Pendrin?"})
+check("UniProt asked for as a connector becomes the UniProt lookup he meant", q["plugin_query"] is None
+      and q["source_query"]["source"] == "uniprot" and q["source_query"]["query"] ==
+      "protein_name:Pendrin AND taxonomy_id:9606 AND reviewed:true", q)
+import lab_sources
+check("... a query UniProt accepts", lab_sources.validate_uniprot(q["source_query"]["query"]))
+check("... and a real connector call is left as it was", M._inquiry({"plugin_query": {"plugin": "pubmed",
+      "tool": "pubmed.search_articles", "arguments": {"query": "SLC26A4"}}})["plugin_query"]["plugin"] == "pubmed")
+M._append(M.NOTEBOOK, {"at": "2026-10-06T13:49:00+00:00", "kind": "reflection",
+                       "text": "the record ends at MAAPGGRSEPPQLPEYSCSYMVSRPV, truncated"})
+ctx6 = M.lab_context()[0]
+check("a stretch is named by its length, and short motifs and words are left alone",
+      M._name_runs("ends at MAAPGGRSEPPQLPEYSCSYMVSRPV here; a PxxP motif; UNIPROT") ==
+      "ends at [a stretch of sequence (26 residues) — the record holds the whole] here; a PxxP motif; UNIPROT")
+check("no stretch of sequence is shown to him part-way, from any part of his context",
+      not M._PART_SEQ.search(ctx6), M._PART_SEQ.findall(ctx6)[:3])
+
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

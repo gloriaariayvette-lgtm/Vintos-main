@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — his GPU was never used; UniProt asked for as a connector; a cut stretch from anywhere
+
+- **Aegis's RTX 5080 (sm_120) is not supported by the installed PyTorch** (2.5.1+cu124 knows sm_50–sm_90), so the
+  local painter ran on the CPU with sdxl-turbo at 512 px and two steps, and Flux.1-lite-8B and LTX-Video 0.9.1
+  sat unused in the cache. A CUDA 12.8 build of PyTorch (2.7 or later) supports it. **Not done: it is her
+  machine's install.**
+- **"uniprot" as a connector**: UniProt is a public source, not one of his connectors, so `plugin_query`
+  {plugin: uniprot} was refused every time (four in an hour). The Lab now turns it into the UniProt lookup.
+- **"35 residues vs. 780"**: a stretch of sequence cut part-way still reached him from somewhere in his Lab
+  context (old notes, his journal threads). Every run of 25+ residue letters in that context is now named by
+  its length instead of shown.
+
 ## 6 October — nano-banana stills piling up on Atlas, and no videos
 
 A "together" clip composes the two of them with nano-banana on Atlas, then animates it on her Grok subscription.
