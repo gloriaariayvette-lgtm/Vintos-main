@@ -3,6 +3,17 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — her Watch's hearts taken back out of avatar chat
+
+00a0594 forwarded every Watch reply (hearts, scribbles, dictation) into `/api/avatar/chat` as if she had typed it,
+so each became a full turn: her "♥︎" and his answer in avatar chat, a ledger row his Slack context reads, the facts
+his WAL drew from it, an imprint. 0b751e8 stopped it (the route keeps wrist words in their own inbox;
+test_watch_presence guards it), and the 21:12 deploy restarted the server with it. `watch_cleanup.py` removes
+what was left: a turn whose words are exactly a Watch reply and that came within five minutes of it, with its
+ledger row, the facts drawn from it (by turn id, or by the ledger's list and their minutes), and its imprint. Every
+file is backed up first; the dry run changes nothing. **Not undone:** the emotion nudges those turns gave at the
+time, and any fact the turn only repeated (the older fact keeps its count). **Not yet run on Aegis.**
+
 ## 6 October — what was settled stays settled; claims match receipts; a pause holds every send
 
 From dot's record of 4–5 October (her RSVP and sensor topics coming back, "Work done" beside "still working on",

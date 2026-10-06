@@ -158,7 +158,7 @@ SCRIPTS="$SCRIPTS diagnostic_contract.py subsystem_audit.py causality-engine.py 
 SCRIPTS="$SCRIPTS identity_revisions.py capability-view.py claim_hold.py tension_promotion.py"   # identity revisions and the capability view, 2026-09-10
 SCRIPTS="$SCRIPTS proposition_lineage.py configuration_space.py"   # served views and inspectable maps, 2026-09-10
 # release map 2026-09-05: every file the server or a deployed script references, so a fix in git reaches him
-SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py watch_presence.py watch_apns.py watch_routes.py"
+SCRIPTS="$SCRIPTS device_context.py lead_trials.py memory-index.py memory-index.sh memory-search.py residue.py durable_memory.py map_view_compiler.py watch_presence.py watch_apns.py watch_routes.py watch_cleanup.py"
 SCRIPTS="$SCRIPTS thread_temperature.py premonition-dreamer.py somatic_bridge.py somatic_narrate.py unseen.py emotional-entanglement.py emotional_entanglement.py self-statements.py self_statements.py"
 SCRIPTS="$SCRIPTS house_hands.py room_reach.py make_thing.py line_prospect.py song_memory.py creative-expression.sh dream-music.py humor_practice.py tension-field.py tension_field.py tension_promotion.py belief-sediment.py belief_sediment.py subconscious_drift.py emoclaw_mode.py"
 SCRIPTS="$SCRIPTS wal-decay.py interaction-ledger.py prediction_ledger.py"   # P02/P04 items, 2026-09-05
