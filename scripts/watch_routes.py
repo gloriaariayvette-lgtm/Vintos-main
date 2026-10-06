@@ -38,7 +38,7 @@ def router(chat_url="http://127.0.0.1:8500", app_secret=""):
     async def landings(request: Request, days: int = 7):
         auth(request)
         import landings as source
-        return {"items": source.sent(days=max(1, min(int(days), 30)))}
+        return {"items": source.sent(days=max(1, min(int(days), 30)))[:5]}
 
     @routes.post("/api/watch/landing")
     async def landing(request: Request):
@@ -56,21 +56,16 @@ def router(chat_url="http://127.0.0.1:8500", app_secret=""):
         auth(request); body = await request.json()
         ok, receipt = watch_presence.record_reply(body)
         if not ok: raise HTTPException(status_code=422, detail=receipt)
-        text = str(body.get("text") or "").strip()
-        if not text:
-            return {**receipt, "reply": ""}
-        # This is the same private conversation as Avatar chat. The watch token never becomes
-        # the app secret; only the local server-to-itself hop carries that existing credential.
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(chat_url.rstrip("/") + "/api/avatar/chat",
-                    headers={"X-Vintos-Secret": app_secret}, json={"message": text})
-            response.raise_for_status(); answer = response.json()
-            return {**receipt, "reply": str(answer.get("reply") or "")[:2000]}
-        except Exception as exc:
-            return {**receipt, "reply": "", "delivery":"stored_for_him",
-                    "delivery_error":"%s: %s" % (type(exc).__name__, str(exc)[:160])}
+        # Wrist words have their own private inbox and temporal path. They must not
+        # create an Avatar-chat turn or appear in that conversation's history.
+        return {**receipt, "reply": "Saved for Vintos."}
+
+    @routes.post("/api/watch/moment")
+    async def moment(request: Request):
+        auth(request)
+        ok, receipt = watch_presence.record_moment(await request.json())
+        if not ok: raise HTTPException(status_code=422, detail=receipt)
+        return receipt
 
     @routes.get("/api/watch/latest")
     async def latest(request: Request):

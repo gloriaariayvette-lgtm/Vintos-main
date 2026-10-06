@@ -480,7 +480,13 @@ EMOEOF
 
 # Opportunistic receipts only: iOS can restore a BLE connection, but it does
 # not promise that this app wakes at an exact half-hour while suspended.
-RING_TEMPORAL=$(python3 "$WORKSPACE/scripts/heart_rate.py" temporal 2>/dev/null || true)
+WATCH_TEMPORAL=$(python3 -c "import sys; sys.path.insert(0, '$WORKSPACE/scripts'); import watch_presence; print(watch_presence.temporal_block())" 2>/dev/null || true)
+if [ -n "$WATCH_TEMPORAL" ]; then
+    BODY_TEMPORAL="$WATCH_TEMPORAL"
+else
+    # Watch first; ring fallback. Their readings are never blended into one number.
+    BODY_TEMPORAL=$(python3 "$WORKSPACE/scripts/heart_rate.py" temporal 2>/dev/null || true)
+fi
 
 # === Write it ===
 cat > "$OUTPUT" << EOF
@@ -502,7 +508,7 @@ Day density: $DENSITY
 EOF
 [ -n "$EMOTIONAL_CURRENT" ] && echo "Emotional current: $EMOTIONAL_CURRENT" >> "$OUTPUT"
 [ -n "$PREOCCUPATION_LINE" ] && echo "$PREOCCUPATION_LINE" >> "$OUTPUT"
-[ -n "$RING_TEMPORAL" ] && echo "$RING_TEMPORAL" >> "$OUTPUT"
+[ -n "$BODY_TEMPORAL" ] && echo "$BODY_TEMPORAL" >> "$OUTPUT"
 if [ -n "$LAST_ACTIVITY" ]; then
     echo "Recent activity:" >> "$OUTPUT"
     echo "$LAST_ACTIVITY" | while IFS= read -r line; do

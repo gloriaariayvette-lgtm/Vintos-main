@@ -19,6 +19,7 @@ SECRETS = os.path.expanduser("~/.vintos/secrets")
 LATEST = os.path.join(MEMORY, "watch-presence.json")
 HISTORY = os.path.join(MEMORY, "watch-presence-history.jsonl")
 REPLIES = os.path.join(MEMORY, "watch-replies.jsonl")
+MOMENTS = os.path.join(MEMORY, "watch-shared-moments.jsonl")
 DEVICES = os.path.join(MEMORY, "watch-apns-devices.json")
 HELD = os.path.join(MEMORY, "watch-held-notifications.jsonl")
 TOKEN_FILE = os.path.join(SECRETS, "watch-bearer")
@@ -169,6 +170,66 @@ def record_reply(payload):
            "received_at": datetime.now(timezone.utc).isoformat(), "consumed": False}
     _append(REPLIES, row)
     return True, {"stored": True, "id": row["id"]}
+
+
+def record_moment(payload):
+    """Keep shared-session gestures in their own private Watch record."""
+    if not isinstance(payload, dict): return False, "body is not an object"
+    state = str(payload.get("state") or "").strip()
+    if state not in ("started", "ended", "pulse"):
+        return False, "unsupported shared moment state"
+    row = {"id": hashlib.sha256(os.urandom(24)).hexdigest()[:16], "device": "AppleWatch",
+           "state": state,
+           "observed_at": str(payload.get("observed_at") or datetime.now(timezone.utc).isoformat())[:48],
+           "received_at": datetime.now(timezone.utc).isoformat()}
+    _append(MOMENTS, row)
+    return True, {"stored": True, "id": row["id"], "state": state}
+
+
+def _last_jsonl(path):
+    try:
+        with open(path) as source:
+            rows = [json.loads(line) for line in source if line.strip()]
+        return rows[-1] if rows else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def temporal_block(now=None):
+    """Compact Watch-first context; empty means the caller may use the ring fallback."""
+    now = float(time.time() if now is None else now)
+    state = latest()
+    age = max(0.0, now - float(state.get("received_ts") or 0))
+    if not state or age > 7200:
+        return ""
+    lines = ["Apple Watch update: %d minutes old; wearing %s; motion %s. Device estimates, not medical facts."
+             % (int(age / 60), state.get("wearing", "unknown"), state.get("motion", "unknown"))]
+    readings = state.get("latest") or {}
+    names = {"heart_rate":"heart rate", "resting_heart_rate":"resting heart rate",
+             "hrv_sdnn":"HRV SDNN", "respiratory_rate":"respiratory rate",
+             "wrist_temperature":"wrist temperature", "oxygen_saturation":"oxygen saturation",
+             "sleep":"sleep stage", "time_in_daylight":"time in daylight"}
+    shown = []
+    for kind in ("heart_rate", "resting_heart_rate", "hrv_sdnn", "respiratory_rate",
+                 "wrist_temperature", "oxygen_saturation", "sleep", "time_in_daylight"):
+        row = readings.get(kind)
+        if not isinstance(row, dict): continue
+        reading_age = max(0.0, now - float(row.get("observed_ts") or 0))
+        if reading_age > (900 if kind == "heart_rate" else 86400): continue
+        value, unit = row.get("value"), row.get("unit") or ""
+        if kind == "oxygen_saturation" and isinstance(value, (int, float)):
+            value, unit = round(value * 100, 1), "%"
+        shown.append("%s %s%s (%dm old)" % (names[kind], value, (" " + unit if unit else ""), int(reading_age / 60)))
+    if shown: lines.append("Watch readings: " + "; ".join(shown[:5]) + ".")
+    reply = _last_jsonl(REPLIES)
+    reply_ts = _parse_ts(reply.get("received_at"))
+    if reply and reply_ts and now - reply_ts <= 86400 and reply.get("text"):
+        lines.append("Gloria wrote from her Watch: %s" % str(reply["text"])[:240])
+    moment = _last_jsonl(MOMENTS)
+    moment_ts = _parse_ts(moment.get("received_at"))
+    if moment and moment_ts and now - moment_ts <= 7200:
+        lines.append("Shared Watch moment: %s %d minutes ago." % (moment.get("state", "unknown"), int((now - moment_ts) / 60)))
+    return "\n".join(lines)
 
 
 def latest():

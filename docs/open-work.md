@@ -2246,13 +2246,16 @@ Also: a bot other than dot posting in #vintos-dot is now heard by its own name, 
 extension of the R21M ring. `watch_presence.py` keeps Apple Watch telemetry and replies in private 0600 stores,
 with observed time, source, age and estimate wording; charging means not worn, while sample gaps only mean
 unknown. `watch_routes.py` carries direct Watch telemetry, APNs registration, the current Landings feed, landing
-notes and private Avatar-chat replies. The wrist uses the same complete pieces and `landings.record` contract as
+notes and private Watch-inbox replies. The wrist uses the same complete pieces and `landings.record` contract as
 the phone Landings tab, so her rating and explanation remain one record. `watch_apns.py` sends directly to the
 Watch through APNs and holds while the Watch says Gloria is asleep. The Watch bearer is commissioned on Aegis;
 the .p8 key is read only from `~/.vintos/secrets/apns-watch.json` and is never in the repository or a notification.
-The native watchOS target and complication build successfully without signing. **Not done or seen yet:** the app
-is not installed because this Mac has no Apple Developer account signed into Xcode, and no APNs .p8 key exists;
-notification contact presentation, Double Tap, Watch-speaker song playback, real complication refresh, automatic
-push creation for every new Landing, Live Activity push updates and both extended-runtime session modes have not
-been observed on Gloria's Watch. Apple does not expose arbitrary notification haptic waveforms; his distinct
-patterns play inside the app/shared session, while a notification uses his sound and the system haptic.
+The signed app is installed on Gloria's Watch. The wrist feed is the newest five Landings. Voice/handwriting replies
+stay in a dedicated Watch inbox and reach his temporal context; they do not create Avatar-chat turns. The shared
+moment records start, end and pulse gestures in its own private store. Fresh Watch estimates now enter temporal
+context before the ring, with the ring used only as fallback and never blended into one reading. His ember face is
+visible in the app and circular complication. **Still not proved on the physical Watch:** APNs contact presentation,
+Double Tap on a real push, Watch-speaker song playback, complication refresh timing, automatic push creation for
+every new Landing, Live Activity push updates, and smart-alarm runtime. Apple does not expose arbitrary notification
+haptic waveforms; his distinct patterns play inside the app/shared session, while a notification uses his sound and
+the system haptic.

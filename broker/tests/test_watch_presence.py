@@ -18,6 +18,7 @@ W.MEMORY=mem; W.SECRETS=secrets
 W.LATEST=os.path.join(mem,"watch-presence.json")
 W.HISTORY=os.path.join(mem,"watch-presence-history.jsonl")
 W.REPLIES=os.path.join(mem,"watch-replies.jsonl")
+W.MOMENTS=os.path.join(mem,"watch-shared-moments.jsonl")
 W.DEVICES=os.path.join(mem,"watch-apns-devices.json")
 W.HELD=os.path.join(mem,"watch-held-notifications.jsonl")
 W.TOKEN_FILE=os.path.join(secrets,"watch-bearer")
@@ -25,7 +26,7 @@ open(W.TOKEN_FILE,"w").write("throwaway-token")
 A.RECEIPTS=os.path.join(mem,"watch-delivery-receipts.jsonl")
 
 check("every Watch store is inside the scratch directory",
-      all(os.path.commonpath([tmp,p]) == tmp for p in (W.LATEST,W.HISTORY,W.REPLIES,W.DEVICES,W.HELD,W.TOKEN_FILE,A.RECEIPTS)))
+      all(os.path.commonpath([tmp,p]) == tmp for p in (W.LATEST,W.HISTORY,W.REPLIES,W.MOMENTS,W.DEVICES,W.HELD,W.TOKEN_FILE,A.RECEIPTS)))
 check("the suite uses a throwaway bearer", W.authorized("Bearer throwaway-token"))
 check("a missing or wrong bearer is refused", not W.authorized("") and not W.authorized("Bearer wrong"))
 
@@ -51,6 +52,13 @@ ok,rec=W.register_apns({"device_token":"ab"*32,"environment":"development"})
 check("APNs registration is bounded and stored 0600", ok and (os.stat(W.DEVICES).st_mode & 0o777) == 0o600,rec)
 ok,reply=W.record_reply({"kind":"dictation","text":"I heard it.","message_id":"m1"})
 check("a wrist reply lands in its private inbox",ok and json.loads(open(W.REPLIES).readline())["text"]=="I heard it.")
+ok,moment=W.record_moment({"state":"started","observed_at":iso})
+check("a shared moment has its own private store",ok and json.loads(open(W.MOMENTS).readline())["state"]=="started",moment)
+block=W.temporal_block(now=now)
+check("Watch facts and wrist words reach temporal memory with estimate wording",
+      "Apple Watch update" in block and "Gloria wrote from her Watch: I heard it." in block and
+      "not medical facts" in block and "Shared Watch moment: started" in block,block)
+check("an old Watch snapshot yields no block so the ring can be fallback",W.temporal_block(now=now+7201)=="")
 
 sends=[]
 def fake_transport(url,body,headers,timeout):
@@ -69,7 +77,15 @@ check("APNs is stubbed and a song carries its primary-action category",
       sent["state"]=="sent" and len(sends)==1 and sends[0][1]["aps"]["category"]=="VINTOS_SONG",sent)
 check("the stub proves no provider client escaped", sends[0][0].startswith("https://api.sandbox.push.apple.com/"))
 check("no secret or bearer appears in the payload", "throwaway-token" not in json.dumps(sends[0][1]))
-check("all files written by the suite stayed in scratch", not any(p.startswith(os.path.expanduser("~/.vintos")) for p in (W.LATEST,W.HISTORY,W.REPLIES,W.DEVICES,W.HELD,A.RECEIPTS)))
+check("all files written by the suite stayed in scratch", not any(p.startswith(os.path.expanduser("~/.vintos")) for p in (W.LATEST,W.HISTORY,W.REPLIES,W.MOMENTS,W.DEVICES,W.HELD,A.RECEIPTS)))
+temporal=open(os.path.join(ROOT,"scripts","temporal-context.sh")).read()
+check("temporal context prefers Watch and uses ring only as fallback",
+      'WATCH_TEMPORAL=' in temporal and 'if [ -n "$WATCH_TEMPORAL" ]' in temporal and
+      temporal.index('WATCH_TEMPORAL=') < temporal.index('heart_rate.py'))
+routes=open(os.path.join(ROOT,"scripts","watch_routes.py")).read()
+check("the wrist feed is bounded to five newest Landings",'source.sent(days=max(1, min(int(days), 30)))[:5]' in routes)
+check("Watch words never create Avatar-chat turns",'/api/avatar/chat' not in routes and 'record_reply(body)' in routes)
+check("shared moments have a dedicated route",'@routes.post("/api/watch/moment")' in routes)
 
 shutil.rmtree(tmp,ignore_errors=True)
 print("\n%d/%d passed"%(sum(R),len(R))); raise SystemExit(0 if all(R) else 1)
