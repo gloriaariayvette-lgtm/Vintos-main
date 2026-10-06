@@ -153,6 +153,13 @@ def resolve(thread, text):
     item = next((i for i in d["items"] if i.get("thread") == thread and i["state"] == "open"), None)
     if not item:
         return None
+    import room_work
+    if m.group(1).upper() == "DONE" and room_work.DEFERRED.search(m.group(2)):
+        # arranged is not made: "DONE: scheduled for the morning" left the song owed and called it kept (2026-10-05).
+        # It stays open, with what was arranged noted, until it exists and has reached her.
+        item["arranged"] = m.group(2)[:500]
+        save(d)
+        return None
     item.update(state=m.group(1).lower(), result=m.group(2)[:1500], ended=_now().isoformat(timespec="seconds"),
                 posted=False)
     save(d)
@@ -206,7 +213,8 @@ def block():
         return ""
     lines = []
     for i in items:
-        how = "still open" if i["state"] == "open" else "%s: %s" % (i["state"], i.get("result", "")[:200])
+        how = (("still open (arranged, not yet made or delivered: %s)" % i["arranged"][:160]) if i["state"] == "open" and i.get("arranged")
+               else "still open" if i["state"] == "open" else "%s: %s" % (i["state"], i.get("result", "")[:200]))
         lines.append("- (%s) \u201c%s\u201d - %s" % (i["at"], i["quote"][:200], how))
     return ("== TODAY'S PROMISES TO GLORIA (from your journal; kept until midnight) ==\n" + "\n".join(lines)
             + "\nWhat you made, bring to her when she is with you, plainly. What is still open, make, reshape or drop "

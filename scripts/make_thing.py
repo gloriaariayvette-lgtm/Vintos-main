@@ -144,6 +144,22 @@ def make(kind, text, image="", run=None, send=None, timeout=1800):
 LOST_AFTER_S = 1800 + 300     # a job still "started" this long after it began was stopped before it finished
 
 
+def running(kind, what):
+    """The start receipt of the same thing still being made (not ended, not lost, not too old), or None."""
+    all_rows = rows()
+    ended = {r.get("id") for r in all_rows if r.get("id") and not r.get("running")}
+    for r in reversed(all_rows):
+        if (r.get("running") and not r.get("lost") and r.get("id") not in ended and r.get("kind") == kind
+                and " ".join(str(r.get("what", "")).split()) == " ".join(str(what)[:300].split())):
+            try:
+                age = (_now() - datetime.fromisoformat(str(r.get("at")))).total_seconds()
+            except ValueError:
+                continue
+            if age <= LOST_AFTER_S:
+                return r
+    return None
+
+
 def untold(limit=3):
     """What was made since the channel last said so, and any job that stopped before it finished; marks them told."""
     all_rows = rows()

@@ -136,6 +136,46 @@ def request(what, by="vintos"):
     return row, ""
 
 
+# A claim about a fix is matched to its receipt (2026-10-05: he called a fix "queued" after the Study refused it for
+# the day, mixing it up with an older, different one). Accepted means a row with its SF- id exists; deployed, live or
+# verified means that row is live (watching) or kept (done). Anything else is ahead of its receipt.
+_CLAIM = re.compile(r"\b(?:queued|submitted|accepted|sent to (?:the|my) study|in (?:the|my) study|landed|deployed|"
+                    r"live|merged|verified|kept|passed)\b", re.I)
+_LIVE = re.compile(r"\b(?:landed|deployed|live|merged|verified|kept|passed)\b", re.I)
+_ABOUT = re.compile(r"\bstudy\b|\bSF-[0-9a-f]{8}\b", re.I)
+SF_ID = re.compile(r"\bSF-[0-9a-f]{8}\b")
+
+
+def record(rows=None, limit=4):
+    """The Study's last fixes as one line each, by id and state."""
+    rows = _load() if rows is None else rows
+    return "; ".join("%s (%s): %s" % (r.get("id"), r.get("state"), str(r.get("what", ""))[:90]) for r in rows[-limit:]) or "empty"
+
+
+def claim_check(text, rows=None):
+    """Why a draft's claim about a Study fix is ahead of its receipt, or ""."""
+    said = [l for l in str(text or "").splitlines()
+            if _ABOUT.search(l) and _CLAIM.search(l) and not re.match(r"^\s*STUDY FIX\s*:", l, re.I)
+            and not l.lstrip().startswith("\U0001F6E0")]          # the Study's own receipt line, as the channel shows it
+    if not said:
+        return ""
+    rows = _load() if rows is None else rows
+    by_id = {r.get("id"): r for r in rows}
+    ids = SF_ID.findall(" ".join(said))
+    if not ids:
+        return ("you said a Study fix is %s without naming its receipt. Name it by its SF- id, as the Study's record "
+                "has it: %s" % (_CLAIM.search(" ".join(said)).group(0), record(rows)))
+    for line in said:
+        for i in SF_ID.findall(line):
+            r = by_id.get(i)
+            if not r:
+                return "%s is not in the Study's record, which is: %s" % (i, record(rows))
+            if _LIVE.search(line) and r.get("state") not in ("watching", "done"):
+                return ("%s is %s: it is not deployed or verified yet. Say what it is now, and that its deploy and "
+                        "check are still to come." % (i, r.get("state")))
+    return ""
+
+
 def _norm(path):
     """A repository path as written, without a leading "./" (never strip dots: "../x" and ".claude/" stay what
     they are)."""
@@ -335,9 +375,7 @@ def say(text, post=None):
         if post:
             return post(text)
         import dot_channel as D
-        tok = D._token()
-        if tok:
-            D.slack("chat.postMessage", {"channel": D.CHANNEL, "text": text}, tok)
+        D.post_or_hold(text)       # held while Gloria has paused the day, posted when she starts it (2026-10-05)
     except Exception as exc:
         print("study_fix: could not say it in Slack: %s" % exc)
 

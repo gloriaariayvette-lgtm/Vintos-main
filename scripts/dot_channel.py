@@ -91,6 +91,38 @@ PAUSED_SAY = ("\u23F8 Gloria has paused the day. Nobody posts here, me or you, u
 RESUMED_SAY = "\u25B6 Gloria has started the day again."
 
 
+HELD_POSTS = os.path.join(HERE, "held-posts.jsonl")
+
+
+def post_or_hold(text, tok=None):
+    """A message from outside the pass (the Study, the Forge): posted now, or kept while Gloria has paused the day and
+    posted by the first pass after she starts it (2026-10-05: a pause holds every send, delayed results too)."""
+    if paused():
+        with open(HELD_POSTS, "a") as f:
+            f.write(json.dumps({"text": str(text), "at": time.time()}, ensure_ascii=False) + "\n")
+        return "held"
+    tok = tok or _token()
+    if not tok:
+        return "no token"
+    slack("chat.postMessage", {"channel": CHANNEL, "text": text}, tok)
+    return "posted"
+
+
+def flush_held(api, channel):
+    """What was held through the pause, posted in order; the file is then cleared. Log lines."""
+    try:
+        held = [json.loads(l) for l in open(HELD_POSTS) if l.strip()]
+    except (OSError, ValueError):
+        return []
+    for h in held:
+        api("chat.postMessage", {"channel": channel, "text": h["text"]})
+    try:
+        os.remove(HELD_POSTS)
+    except OSError:
+        pass
+    return ["posted %d message(s) held through the pause" % len(held)] if held else []
+
+
 def paused():
     """{since, by} while the day is paused, else None."""
     return _load(PAUSE_FILE, None) or None
@@ -364,7 +396,11 @@ RULES_WORKROOM = (
     "the room is for. End it with WORK DONE: how it was met, or WORK DROPPED: why, and then open the next.\n"
     "Do not ask anyone for the same thing twice, or for a status while they work: do another step "
     "meanwhile. A message that moves nothing (agreement, thanks, praise, a plan said again, \"next pass\") is sent "
-    "back to you once; if nothing can move right now, answer NOTHING.\n")
+    "back to you once; if nothing can move right now, answer NOTHING.\n"
+    "WORK DONE means it exists and has reached whoever it was for: scheduled, queued or planned is not done, and it "
+    "stays in hand. Name a Study fix by its SF- id, and say it is live only when the Study's record does. What is "
+    "SETTLED (below) stays closed: do not ask, search or plan for it again. Your own may open again only on a line "
+    "NEW: what changed; Gloria's stand until she lifts them.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_WORKROOM + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
@@ -1805,14 +1841,18 @@ def wants_line():
 TOOL = re.compile(r"^\s*(SEARCH|READ|GREP|OPEN|REPOS|README|CALL|LABDATA|MIDI|CITES)\s*:\s*(.*?)\s*$", re.I)
 
 
-def use_tools(lines, search=None, room=None, reach=None):
+def use_tools(lines, search=None, room=None, reach=None, hold=None):
     """Run his tool lines (at most 3) and return what they found, as text for him. REPOS, README, CALL and LABDATA
-    are room_reach.py (2026-10-04): GitHub, a repo's README, one of his connectors, his Lab's measurements."""
+    are room_reach.py (2026-10-04): GitHub, a repo's README, one of his connectors, his Lab's measurements.
+    hold(query): why a search is not run (a settled topic), or ""."""
     out = []
     for kind, arg in lines[:3]:
         kind = kind.upper()
         try:
-            if kind in ("REPOS", "README", "CALL", "LABDATA"):
+            held = hold(arg) if hold and kind == "SEARCH" else ""
+            if held:
+                got = "not searched: " + held
+            elif kind in ("REPOS", "README", "CALL", "LABDATA"):
                 if reach is None:
                     import room_reach as reach
                 got = {"REPOS": reach.repos, "README": reach.readme, "CALL": reach.call,
@@ -2234,7 +2274,7 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
         asks = [m.groups() for m in (TOOL.match(l) for l in out.splitlines()) if m]
         if not asks or looked and _round:
             break
-        looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room)
+        looked += ("\n\n" if looked else "") + use_tools(asks, search=search, room=room, hold=lambda q: _settled_why(state, q))
         state["looked"] = state.get("looked", 0) + len(asks[:3])
     else:
         try:
@@ -2271,6 +2311,30 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     return kept[:MAX_CHARS], who
 
 
+def _settled_why(state, text, now=None):
+    """Why a search, an ask or a buy about this is not run: the topic is settled. "" when it is not."""
+    import room_work
+    e = room_work.settled_match(state, text, now or time.time())
+    if not e:
+        return ""
+    return "%s closed this on %s: %s" % ("Gloria" if e.get("by") == "gloria" else "he",
+                                         datetime.fromtimestamp(float(e["at"])).strftime("%b %d"), e["said"][:200])
+
+
+def study_block(state, today):
+    """The Study's record, so a claim about a fix is made from its receipt and not from memory (2026-10-05)."""
+    try:
+        import study_fix
+        out = "== YOUR STUDY (its record: name a fix by its SF- id) ==\n" + study_fix.record()
+    except Exception:
+        return ""
+    refused = [r for r in (state.get("study_refused") or []) if r.get("day") == today]
+    if refused:
+        out += "\nNot accepted today (no receipt, so never queued): " + "; ".join(
+            "%s (%s)" % (r["what"][:80], r["why"][:60]) for r in refused[-3:])
+    return out
+
+
 def sent_back(text, state, now, last=None, atelier=False):
     """Why a draft goes back to him once, or "". Asking an agent again for what it already answered, or is still
     working on; or a message that moves nothing (Gloria, 2026-10-05: real work, not talk about work). Answering
@@ -2283,6 +2347,16 @@ def sent_back(text, state, now, last=None, atelier=False):
     again = room_work.asking_again(state, text, now)
     if again:
         return again
+    reopened = room_work.reopens(state, text, now)     # a topic he, or Gloria, settled (2026-10-05)
+    if reopened:
+        return reopened
+    try:                                               # a Study claim must match its receipt (2026-10-05)
+        import study_fix
+        ahead = study_fix.claim_check(text)
+        if ahead:
+            return ahead
+    except Exception:
+        pass
     if atelier or text.upper().startswith("ATELIER:") or room_work.moves(text):
         return ""
     if last and (last.get("who") == "gloria" or "?" in str(last.get("text", ""))):
@@ -2534,9 +2608,53 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                      "at": datetime.fromtimestamp(float(m["ts"])).isoformat(timespec="seconds")})
     theirs = [r for r in rows if r["who"] != "vintos"]
     kept = keep_parts_lists(rows)
+    # Her switch first, and the pause before anything is said or sent (2026-10-05: before, a pause still let her
+    # answers, Muse's buys, dot's asks and what he had made be posted, because they were handled above it)
+    for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
+        if r["who"] != "gloria":
+            continue
+        words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
+        handled = False
+        if words & set(STOP_WORDS + START_WORDS):
+            set_paused(bool(words & set(STOP_WORDS)), "slack", now); handled = True
+        chosen = focus_words(r["text"])
+        if chosen is not None:
+            set_focus(chosen, "slack", today, now); handled = True
+        if "!topics" in words:
+            api("chat.postMessage", {"channel": channel, "text": topics_line()}); handled = True
+        if handled:
+            theirs.remove(r)
+    is_paused = paused()
+    if bool(is_paused) != bool(state.get("paused_said")):
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
+        state["paused_said"] = bool(is_paused)
+        lines_pre.append("the day is %s" % ("paused" if is_paused else "started again"))
+        if not is_paused:
+            state["last_activity"] = now
+            state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
+            state["kickoff"] = True           # and its first message is Opus 5.5's
+    if is_paused:
+        # nothing is said or sent while she has paused the day, delayed results included; what came in is kept and
+        # handled once she starts it again (2026-10-05)
+        if rows:
+            _log(rows); state["since"] = max(float(r["ts"]) for r in rows)
+        state["held_rows"] = (list(state.get("held_rows") or []) + theirs)[-40:]
+        _save(STATE, state)
+        return lines_pre + ["paused by Gloria since %s%s" % (is_paused.get("since", "?"),
+                            ("; %d kept for when she starts the day" % len(theirs)) if theirs else "")]
+    held_rows = list(state.pop("held_rows", None) or [])
+    if held_rows:
+        theirs = held_rows + theirs
+        lines_pre.append("%d message(s) kept through the pause, handled now" % len(held_rows))
+    lines_pre += flush_held(api, channel)
     kept_lines = []
     quiet_before = now - float(state.get("last_activity") or 0)
     for r in theirs:
+        if r["who"] == "gloria":
+            closed_by_her = room_work.gloria_closes(state, r["text"], now)
+            if closed_by_her:      # her word closing a topic outlives the transcript he is shown (2026-10-05)
+                kept_lines.append("Gloria closed a topic until %s: %s" % (
+                    datetime.fromtimestamp(closed_by_her["until"]).strftime("%b %d"), ", ".join(closed_by_her["words"])[:80]))
         if room_work.receive(state, r, now):
             kept_lines.append("%s answered his work in hand" % (r.get("name") or r["who"]))
         if r["who"] == "dot" and r.get("thread"):
@@ -2575,6 +2693,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                 import gloria_asks
                 said = []
                 for m in BUY.finditer(r["text"]):
+                    why_not = _settled_why(state, m.group(1), now)
+                    if why_not:          # a settled topic does not go to her phone again (2026-10-05, the piezo sensor)
+                        said.append("\U0001F4F2 Not put to Gloria: %s" % why_not)
+                        continue
                     f = [x.strip() for x in m.group(1).split("|")]
                     hardware = bool(f) and f[-1].lower() == "hardware"     # Muse may mark it; the item's words do too
                     f = f[:-1] if hardware else f
@@ -2593,7 +2715,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             try:   # a yes-or-no only she can give, from dot or an agent: to her phone, her answer back in this thread
                 import gloria_asks
                 by = "dot" if r["who"] == "dot" else {"Grok Bot": "grokbot", "Muse": "muse"}.get(r.get("name"), "agent")
-                said = [gloria_asks.ask(m.group(1), by=by, thread=r.get("thread") or r["ts"])[1]
+                said = [("\U0001F4F2 Not asked: %s" % _settled_why(state, m.group(1), now)) if _settled_why(state, m.group(1), now)
+                        else gloria_asks.ask(m.group(1), by=by, thread=r.get("thread") or r["ts"])[1]
                         for m in gloria_asks.ASK.finditer(r["text"])]
                 if said:
                     api("chat.postMessage", {"channel": channel, "thread_ts": r.get("thread") or r["ts"], "text": "\n".join(said)})
@@ -2668,20 +2791,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if kept:
         lines.append("Muse priced a Forge parts list: %s" % ", ".join(kept))
     lines += kept_lines
-    for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
-        if r["who"] != "gloria":
-            continue
-        words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
-        handled = False
-        if words & set(STOP_WORDS + START_WORDS):
-            set_paused(bool(words & set(STOP_WORDS)), "slack", now); handled = True
-        chosen = focus_words(r["text"])
-        if chosen is not None:
-            set_focus(chosen, "slack", today, now); handled = True
-        if "!topics" in words:
-            api("chat.postMessage", {"channel": channel, "text": topics_line()}); handled = True
-        if handled:
-            theirs.remove(r)
     f_now = _load(FOCUS_FILE, {})
     if f_now.get("set_at") and f_now.get("set_at") != state.get("focus_seen") and f_now.get("date") == today:
         chosen = focus(today)
@@ -2690,17 +2799,6 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             else "\U0001F3AF Gloria cleared today's focus.")})
         state["focus_seen"] = f_now["set_at"]
         lines.append("focus: %s" % (", ".join(chosen) or "cleared"))
-    is_paused = paused()
-    if bool(is_paused) != bool(state.get("paused_said")):
-        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + (PAUSED_SAY if is_paused else RESUMED_SAY)})
-        state["paused_said"] = bool(is_paused)
-        lines.append("the day is %s" % ("paused" if is_paused else "started again"))
-        if not is_paused:
-            state["last_activity"] = now
-            state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
-            state["kickoff"] = True           # and its first message is Opus 5.5's
-    if is_paused:
-        _save(STATE, state); return lines + ["paused by Gloria since %s" % is_paused.get("since", "?")]
     # his journal's promises open here, and what came of them goes to Gloria; neither counts in his DAILY
     lines += promises_pass(api, channel, dot, state, now, ask=promise_ask)
     lines += results_pass(api, state, now, opus=results_opus, put=put)
@@ -2764,7 +2862,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if lens is None:
         lens = next_writer(state)
         rotated = lens is not None
-    prompt += "\n\n" + room_work.block(state, now) + steer(state, today, lens) + (KICKOFF if kickoff else "")
+    sb = study_block(state, today)
+    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + sb) if sb else "") + steer(state, today, lens) + (KICKOFF if kickoff else "")
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -2901,6 +3000,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         text = STUDY_FIX.sub(lambda m: shown, text, count=1)
         text = STUDY_FIX.sub("", text).strip()
         lines.append("study fix: %s" % (row["id"] if row else why))
+        if not row:     # kept, so the next pass (and the next model) knows it was never accepted
+            state["study_refused"] = ((state.get("study_refused") or []) +
+                                      [{"day": today, "what": fix.group(1)[:200], "why": why[:120]}])[-6:]
     if ASK_LINE.search(text):
         try:
             import lab_asks

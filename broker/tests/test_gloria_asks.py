@@ -71,8 +71,11 @@ check("his ASK GLORIA line is asked and replaced with what happened",
       rows and "ASK GLORIA" not in text and "\U0001F4F2 Asked Gloria" in text, text)
 G.threaded(rows, "172.000200")
 check("a question in a message that starts a thread is threaded once posted", G.get(rows[0]["id"])["thread"] == "172.000200")
-for i in range(G.PER_DAY):
-    G.ask("Filler question number %d for the cap?" % i, send=phone)
+FILLERS = ["Can I paint the harbor tonight?", "Should Muse price a microphone stand?", "May dot reboot the toy hub?",
+           "Do you want the lecture notes summarized?", "Is the blue glaze better than green?", "Should I post the song draft?",
+           "Can Grok read the citation file?", "May I try the new tempo?"]
+for i in range(G.PER_DAY):        # distinct questions: the same one in other words is not asked twice (2026-10-05)
+    G.ask(FILLERS[i], send=phone)
 capped = G.ask("One question too many today, is it?", send=phone)
 check("six questions a day for the whole room, then it says so", capped[0] is None and "today already" in capped[1], capped)
 

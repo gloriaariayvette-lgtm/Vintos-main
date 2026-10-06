@@ -262,10 +262,15 @@ def make(arg, run=None):
     kind = kind.lower()
     if kind not in make_thing.KINDS:
         return False, "he can make: " + ", ".join(make_thing.KINDS)
-    text, _, image = rest.partition("|")
+    # Only a video takes "| image path". A song's "| style" is part of what to make: "MAKE: song Felt Edge | slow
+    # piano" was read as an image at "slow piano" and refused before anything was generated (2026-10-05).
+    text, image = (rest.partition("|")[0], rest.partition("|")[2]) if kind == "video" else (rest, "")
     text, image = text.strip(), image.strip()
     if not text:
         return False, "say what to make"
+    running = make_thing.running(kind, text)
+    if running:     # the same thing already being made is not started (or paid for) twice
+        return False, "already making that %s (started %s); it lands in his gallery when it is done" % (kind, running.get("at", "")[11:16])
     if len(make_thing.today(kind)) >= make_thing.PER_DAY:
         return False, "today's %d are used for %s" % (make_thing.PER_DAY, kind)
     if image and not os.path.isfile(image):

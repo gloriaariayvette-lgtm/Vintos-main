@@ -131,9 +131,7 @@ def _say(text, post=None):
     if post:
         return post(text)
     import dot_channel as D
-    tok = D._token()
-    if tok:
-        D.slack('chat.postMessage', {'channel': D.CHANNEL, 'text': text}, tok)
+    D.post_or_hold(text)           # held while Gloria has paused the day, posted when she starts it (2026-10-05)
 
 
 TO_STUDY = 'forge-to-study.json'            # Forge cards the Study is doing instead of asking her

@@ -31,15 +31,23 @@ ASK_PATIENCE_S = 45 * 60       # an ask unanswered this long is said plainly, so
 CHANNEL_REPLY_S = 3 * 3600     # an answer in the channel (not the thread) must come this soon after the ask
 THREAD_REPLY_S = 24 * 3600
 SAME_ASK = 0.6                 # share of the shorter request's content words in the longer, to count as asking again
+SETTLE_DAYS = 7                # what was finished, dropped, or closed by Gloria stays closed this long
 
 WORK = re.compile(r"^\s*WORK:\s*(.+?)\s*$", re.I | re.M)
 NEXT = re.compile(r"^\s*NEXT:\s*(.+?)\s*$", re.I | re.M)
 DONE = re.compile(r"^\s*WORK DONE:\s*(.+?)\s*$", re.I | re.M)
 DROPPED = re.compile(r"^\s*WORK DROPPED:\s*(.+?)\s*$", re.I | re.M)
+NEW = re.compile(r"^\s*NEW:\s*(.+?)\s*$", re.I | re.M)
+# A completion that is only arranged (2026-10-05: a song "scheduled for the morning" was closed as done, and it was
+# still owed). Done means it exists and was delivered; this names the ways of saying it has not happened yet.
+DEFERRED = re.compile(r"\b(?:scheduled|queued|pending|planned|awaiting|lined up|set up for|will (?:be|make|send|run|"
+                      r"deliver|land|post|generate)|to be (?:made|sent|delivered|generated|run)|tomorrow|"
+                      r"in the morning|later today|tonight at|once it (?:lands|runs|finishes|is made))\b", re.I)
 
 # Every line that makes something happen in the channel, his and the new ones; one of these moves the work.
 ACTS = re.compile(r"^\s*(?:LOCKED|DO|LAB|LINE(?:\s+L-[\w-]+)?|CHECK|STUDY FIX|APPROVED|DENIED|CAMPAIGN(?: MOVE)?|SHARE|ASK|"
-                  r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED)\s*:"
+                  r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED|"
+                  r"SEARCH|BUY)\s*:"
                   r"|\[PURSUIT:", re.I | re.M)
 # A request to someone: a question, or an agent told to do a thing.
 _VERBS = (r"find|run|check|look(?: up| at| into)?|send|open|fold|build|make|compare|read|search|get|write|pull|fetch|list|"
@@ -95,7 +103,97 @@ def _close(state, state_word, said, now):
     b = board(state)
     b["history"] = (b.get("history", []) + [w])[-8:]
     b["active"] = None
+    if state_word in ("done", "dropped"):
+        settle(state, w["goal"], "%s: %s" % (state_word, said), "vintos", now)
     return w
+
+
+# --- what is settled: kept in the channel's state, so the next pass and the next model read it (2026-10-05) ---------
+# Gloria, 2026-10-04: "No more plan making for Eve for the next week. Work on something else." He dropped the
+# Saturday lecture RSVP at 15:47 the next day and asked for its listing again at 19:34, on another model, with that
+# hour out of the transcript he was shown. Nothing that closed a topic outlived the messages it was said in.
+_SCAFFOLD = frozenset(("more stop stopped plan plans planning making make made next week weeks day days today tomorrow "
+                       "tonight work working something else anymore again please dont don about with any for until "
+                       "rest no not let lets let's drop dropped done finished leave alone enough quit now while "
+                       "this that these those just also want wants need needs going get got " + _VERBS.replace("|", " ")
+                       .replace("(?:", " ").replace(")?", " ")).split())
+# only a clear closing: her ordinary "don't" ("Don't talk about number 4") is not one
+_GLORIA_CLOSES = re.compile(r"\b(?:no more|stop \w+ing|quit \w+ing|drop (?:it|this|that|the)|leave [\w' ]{1,30} alone|"
+                            r"not now|enough (?:with|about|of)|(?:don'?t|do not) [\w' ]{1,40}\b(?:again|anymore))\b"
+                            r"|\bfor the (?:next|rest of the) (?:week|month|\d+ days)\b", re.I)
+_SPAN = re.compile(r"\b(?:for )?(?:the )?(?:next|rest of the|this) (week|month|day)\b|\bfor (\d+) days?\b|"
+                   r"\b(today|tonight)\b|\b(anymore|ever again|again)\b", re.I)
+
+
+def topic_words(text):
+    return sorted(w for w in _words(text) if w not in _SCAFFOLD)
+
+
+def settle(state, topic, said, by, now, days=SETTLE_DAYS):
+    """Close a topic for `days`: his finished or dropped work, a promise he dropped, or Gloria's word."""
+    words = topic_words(topic)
+    if not words:
+        return None
+    b = board(state)
+    keep = [e for e in b.get("settled", []) if e.get("words") != words]
+    entry = {"topic": str(topic)[:300], "words": words, "said": str(said)[:300], "by": by, "at": float(now),
+             "until": float(now) + float(days) * 86400}
+    b["settled"] = (keep + [entry])[-24:]
+    return entry
+
+
+def settled(state, now):
+    return [e for e in board(state).get("settled", []) if float(e.get("until", 0)) > float(now)]
+
+
+def settled_match(state, text, now):
+    """The settled entry this text is about, or None: most of its topic's words, at least two (one if that is all
+    the topic has)."""
+    have = _words(text)
+    for e in reversed(settled(state, now)):
+        words = set(e.get("words") or [])
+        shared = words & have
+        if words and len(shared) >= min(2, len(words)) and len(shared) / len(words) >= 0.5:
+            return e
+    return None
+
+
+def gloria_closes(state, text, now):
+    """Her message closing a topic ("no more plan making for Eve for the next week") kept as settled, for as long as
+    she said (a week when she named none). The entry, or None."""
+    if not _GLORIA_CLOSES.search(str(text or "")):
+        return None
+    days = SETTLE_DAYS
+    m = _SPAN.search(str(text))
+    if m:
+        unit, n, short, ever = m.groups()
+        days = (30 if unit and unit.lower() == "month" else 1 if unit and unit.lower() == "day" else 7 if unit
+                else int(n) if n else 1 if short else 30)
+    first = re.split(r"(?<=[.!?])\s+", str(text).strip())[0]
+    return settle(state, first, "Gloria: " + str(text).strip()[:280], "gloria", now, days=max(1, min(days, 60)))
+
+
+def reopens(state, text, now):
+    """Why this draft reopens a settled topic without new information, or "". Talk about it is free; an action on it
+    (an ask, a buy, a search request, new work) is not, unless a NEW: line says what changed, and never against
+    Gloria's own word while it stands."""
+    rest = "\n".join(l for l in str(text or "").splitlines()
+                     if not re.match(r"^\s*(?:WORK DONE|WORK DROPPED|DONE|DROPPED|RESHAPED)\s*:", l, re.I))
+    if not moves(rest):
+        return ""             # closing it, or talking about it, is never held
+    e = settled_match(state, rest, now)
+    if not e:
+        return ""
+    when = datetime.fromtimestamp(float(e["at"])).strftime("%b %d %H:%M")
+    until = datetime.fromtimestamp(float(e["until"])).strftime("%b %d")
+    if e.get("by") == "gloria":
+        return ("Gloria closed this on %s, until %s: “%s”. It stays closed: do not ask, plan or search for it. "
+                "Work on something else." % (when, until, e["said"][6:220]))
+    if NEW.search(str(text)):
+        return ""
+    return ("you settled this on %s (%s), and it stays settled until %s. Do not ask, search or plan for it again. "
+            "If something has truly changed, say it on a line NEW: what changed, and act on that."
+            % (when, e["said"][:200], until))
 
 
 def expire(state, now):
@@ -193,7 +291,32 @@ def apply(state, text, now, by=""):
     """His WORK / NEXT / WORK DONE / WORK DROPPED lines: done, and shown as what happened. (text, log lines, closed)."""
     log, closed = [], None
     w = active(state)
+    # A message that closes its work and names the work again (or opens the next) is read closing first: it showed
+    # "still working on ... finish it with WORK DONE:" beside "✅ Work done" for the same work (2026-10-05)
+    for rx, word, icon in ((DONE, "done", "✅ Work done"), (DROPPED, "dropped", "\U0001F9F0 Dropped")):
+        m = rx.search(text)
+        if not m:
+            continue
+        if w and word == "done" and DEFERRED.search(m.group(1)):
+            # arranged is not delivered: the work stays in hand until it exists (2026-10-05, the scheduled song)
+            w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "arranged, not delivered: " + m.group(1)[:240]}])[-12:]
+            w["touched"] = float(now)
+            shown = ("\u23F3 Not done yet: %s — arranged is not delivered. It stays in hand until it exists and has "
+                     "reached her; then WORK DONE: with where it is." % m.group(1))
+            log.append("work not closed: %s is arranged, not done" % w["id"])
+        elif w:
+            closed = _close(state, word, m.group(1), now)
+            shown = "%s: %s — %s" % (icon, closed["goal"][:160], m.group(1))
+            log.append("work %s %s" % (word, closed["id"]))
+            w = None
+        else:
+            shown = "(no work in hand to close: %s)" % m.group(1)
+        text = rx.sub(lambda _m: shown, text, count=1)
     m = WORK.search(text)
+    if m and closed and (norm(m.group(1).partition("|")[0]) == norm(closed["goal"])
+                         or _like(m.group(1).partition("|")[0], closed["goal"]) >= 0.8):
+        text = WORK.sub("", text, count=1).strip()       # the work just closed, named again: not reopened
+        m = None
     if m:
         goal, _, crit = m.group(1).partition("|")
         crit = re.sub(r"^\s*done when\s*:?\s*", "", crit, flags=re.I).strip()
@@ -220,18 +343,13 @@ def apply(state, text, now, by=""):
             w["next"] = m.group(1)[:300]
             w["touched"] = float(now)
         text = NEXT.sub(lambda _m: "➡️ Next: " + _m.group(1), text, count=1)
-    for rx, word, icon in ((DONE, "done", "✅ Work done"), (DROPPED, "dropped", "\U0001F9F0 Dropped")):
-        m = rx.search(text)
-        if not m:
-            continue
-        if w:
-            closed = _close(state, word, m.group(1), now)
-            shown = "%s: %s — %s" % (icon, closed["goal"][:160], m.group(1))
-            log.append("work %s %s" % (word, closed["id"]))
-            w = None
-        else:
-            shown = "(no work in hand to close: %s)" % m.group(1)
-        text = rx.sub(lambda _m: shown, text, count=1)
+    m = NEW.search(text)
+    if m:
+        lifted = settled_match(state, text, now)
+        if lifted and lifted.get("by") != "gloria":
+            board(state)["settled"] = [e for e in board(state).get("settled", []) if e is not lifted]
+            log.append("reopened with new information: %s" % lifted["topic"][:80])
+        text = NEW.sub(lambda _m: "\U0001F195 New: " + _m.group(1), text, count=1)
     return text, log, closed
 
 
@@ -255,8 +373,26 @@ def posted(state, text, ts, thread, now, to=()):
     w["touched"] = float(now)
 
 
+def settled_block(state, now):
+    rows = settled(state, now)[-8:]
+    if not rows:
+        return ""
+    out = ["== SETTLED (closed; do not ask, search or plan for these again) =="]
+    for e in rows:
+        out.append("- %s, %s, until %s: %s" % (
+            "Gloria" if e.get("by") == "gloria" else "you", datetime.fromtimestamp(float(e["at"])).strftime("%b %d %H:%M"),
+            datetime.fromtimestamp(float(e["until"])).strftime("%b %d"), e["said"][:220]))
+    out.append("Your own can be reopened only on a line NEW: what changed. Gloria's stand until she lifts them.")
+    return "\n".join(out)
+
+
 def block(state, now):
-    """WORK IN HAND, for what he reads before he writes."""
+    """WORK IN HAND, and what is settled, for what he reads before he writes."""
+    sb = settled_block(state, now)
+    return _block(state, now) + (("\n\n" + sb) if sb else "")
+
+
+def _block(state, now):
     w = active(state)
     if not w:
         last = (board(state).get("history") or [{}])[-1]

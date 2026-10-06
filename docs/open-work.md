@@ -3,6 +3,35 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — what was settled stays settled; claims match receipts; a pause holds every send
+
+From dot's record of 4–5 October (her RSVP and sensor topics coming back, "Work done" beside "still working on",
+a refused Study fix called queued, a scheduled song called done, a pause that still posted). Causes found in code:
+- **Settled topics had nowhere to live.** He reads the last 30 lines of the room (`dot_channel.CONTEXT`), and the work
+  block showed only the last closed item. Her Oct 4 word and his 15:47 drop were out of view by 19:34. Now
+  `room_work` keeps a SETTLED list in the channel's state (his WORK DONE / WORK DROPPED for 7 days, and her clear
+  closing words for as long as she said), shown to every lens. A draft that acts on a settled topic is sent back.
+  His own can reopen only on a `NEW:` line; hers can't be reopened by him. A SEARCH on it isn't run, and Muse's
+  BUY or dot's ASK GLORIA on it doesn't reach her phone. Talk about it is never held.
+- **WORK was read before WORK DONE** in the same message, so a message that named its work and closed it showed
+  "still working on … finish it with WORK DONE:" beside "✅ Work done". Now closing is read first.
+- **A Study claim had no receipt to check against.** The refusal said "Not sent", but he never saw the Study's
+  record afterwards. Now his prompt carries the record and today's refusals, and a draft calling a fix queued or
+  live must name an SF- id whose state says so (`study_fix.claim_check`).
+- **MAKE split every line on "|" as a video's image path** (`house_hands.make`), so `MAKE: song Felt Edge | style`
+  failed before generating. Only video splits now. The same make while one is running isn't started again.
+- **DONE accepted "scheduled"** (WORK DONE and a promise's DONE). Arranged is not done now: the work stays in hand.
+- **The pause check sat after the handlers that post** (her answers, Muse's buys, dot's asks, what he made), and
+  the Study and Forge post from their own processes. Now the pause comes first. What arrives meanwhile is kept and
+  handled after `!start`, and the Study's and Forge's messages are held (`post_or_hold`) and posted then.
+- Her phone no longer gets the same question in other words while one is waiting, or within a week of her answer.
+
+**Not verified live:** none of this has run on Aegis. I did not read the deployed runtime, the live state, or the
+Oct 6 morning song job, which is outside this checkout and left untouched. Hypotheses, not checked: that the 19:34
+model saw neither her word nor his drop (the code says it could not have, unless its rules carried it); that a
+missing WORK DONE in prose ("Work done" without the line) explains other mismatches. Recognising her closing words
+is a pattern, not a model: an unusual phrasing will not be caught, and she can see the list in his work block.
+
 ## 5 October — a protein he looks up reaches his review whole
 
 He read SLC26A6 (Q9BXS9, 759 residues) as "truncated" and asked for residues 700–759. Two cuts, both the Lab's, not

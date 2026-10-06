@@ -19,7 +19,7 @@ import os
 import re
 import secrets
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
 WS = os.environ.get("SPARK_WORKSPACE") or os.path.expanduser("~/.vintos/workspace")
 STORE = os.path.join(WS, "memory", "gloria-asks.json")
@@ -141,6 +141,26 @@ def get_with_token(qid, token):
     return row if row and row.get("token") and token == row["token"] else None
 
 
+SAME_DAYS = 7
+
+
+def _asked_before(q, rows):
+    """A question like this one still on her phone, or answered in the last SAME_DAYS days: most of the shorter
+    one's content words, at least three, shared."""
+    import room_work
+    have = room_work._words(q)
+    cutoff = (_now() - timedelta(days=SAME_DAYS)).isoformat(timespec="seconds")
+    for r in reversed(rows):
+        if r.get("ref") or r.get("state") not in ("asked", "answered"):
+            continue
+        if r.get("state") == "answered" and str(r.get("answered_at", "")) < cutoff:
+            continue
+        theirs = room_work._words(r.get("question", ""))
+        if theirs and have and len(have & theirs) >= 3 and room_work._like(q, r.get("question", "")) >= 0.7:
+            return r
+    return None
+
+
 def ask(question, by="vintos", thread="", send=None, kind="question", title="", price="", links=(), ref="", hardware=False):
     """Put one question to her phone. (row, line for the channel); row is None when it was not sent.
     kind: question (anyone's yes-or-no, six a day), buy (Muse: something he wants to buy, with its price and link),
@@ -153,6 +173,15 @@ def ask(question, by="vintos", thread="", send=None, kind="question", title="", 
         return None, "\U0001F4F2 Already on Gloria's phone: %s" % (title or q)
     if any(r.get("state") == "asked" and r.get("question") == q for r in rows):
         return None, "\U0001F4F2 Already on Gloria's phone: %s" % q
+    if not ref:
+        # the same decision asked again in other words (2026-10-05: "do not send me another decision request
+        # without material new information"): her answer this week stands, and one still on her phone is waiting
+        same = _asked_before(q, rows)
+        if same and same.get("state") == "answered":
+            return None, ("\U0001F4F2 Not asked: Gloria already answered this on %s: %s — %s" % (
+                str(same.get("answered_at", ""))[:10], str(same.get("answer", "")).upper(), same.get("title") or same.get("question", "")))
+        if same:
+            return None, "\U0001F4F2 Already on Gloria's phone: %s" % (same.get("title") or same.get("question", ""))
     today = _now().date().isoformat()
     if kind == "question" and sum(1 for r in rows if str(r.get("at", ""))[:10] == today
                                   and (r.get("kind") or "question") == "question") >= PER_DAY:
