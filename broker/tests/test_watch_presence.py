@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 """The Watch has a private store and APNs is always stubbed in the suite."""
-import json, os, shutil, sys, tempfile, time
+import asyncio, json, os, shutil, sys, tempfile, time, types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import watch_presence as W
 import watch_apns as A
+class _Route:
+    def __init__(self,path,endpoint): self.path,self.endpoint=path,endpoint
+class _Router:
+    def __init__(self): self.routes=[]
+    def _decorator(self,path):
+        def take(endpoint): self.routes.append(_Route(path,endpoint)); return endpoint
+        return take
+    post=_decorator; get=_decorator
+class _HTTPException(Exception):
+    def __init__(self,status_code,detail): self.status_code,self.detail=status_code,detail
+sys.modules.setdefault("fastapi",types.SimpleNamespace(APIRouter=_Router,BackgroundTasks=object,
+    HTTPException=_HTTPException,Request=object))
+import watch_routes as WR
 
 R=[]
 def check(name, ok, detail=""):
@@ -86,6 +99,35 @@ routes=open(os.path.join(ROOT,"scripts","watch_routes.py")).read()
 check("the wrist feed is bounded to five newest Landings",'source.sent(days=max(1, min(int(days), 30)))[:5]' in routes)
 check("Watch words never create Avatar-chat turns",'/api/avatar/chat' not in routes and 'record_reply(body)' in routes)
 check("shared moments have a dedicated route",'@routes.post("/api/watch/moment")' in routes)
+
+voice_calls=[]
+class FakeVoice:
+    @staticmethod
+    def turn(audio,sample_rate,instructions,framing):
+        voice_calls.append(("turn",audio,sample_rate,instructions,framing))
+        return {"ok":True,"transcript":"hello","reply":"hi","audio":"UklGRg=="}
+    @staticmethod
+    def models(active):
+        voice_calls.append(("models",active)); return {"ok":True,"active":active}
+touches=[]; voice_live=os.path.join(mem,".voice-live")
+voice_router=WR.router(voice_module=FakeVoice,foreground=lambda:touches.append("touch"),voice_live_path=voice_live)
+endpoints={route.path:route.endpoint for route in voice_router.routes}
+class FakeRequest:
+    headers={"Authorization":"Bearer throwaway-token"}
+    def __init__(self,body=None): self.body=body or {}
+    async def json(self): return self.body
+turn=asyncio.run(endpoints["/api/watch/voice/local/turn"](FakeRequest({
+    "audio":"cGNt","sample_rate":24000,"instructions":"his context","framing":"right now"})))
+check("the Watch local call passes its recording and context to the stubbed local ears",
+      turn["ok"] and voice_calls[-1]==("turn","cGNt",24000,"his context","right now"),voice_calls)
+beat=asyncio.run(endpoints["/api/watch/voice/local/heartbeat"](FakeRequest()))
+check("the Watch heartbeat touches foreground compute and only the scratch live marker",
+      beat["ok"] and touches==["touch","touch"] and os.path.exists(voice_live),touches)
+ended=asyncio.run(endpoints["/api/watch/voice/local/end"](FakeRequest()))
+check("ending the Watch call unloads the stubbed local voice and removes its scratch marker",
+      ended["ok"] and voice_calls[-1]==("models",False) and not os.path.exists(voice_live),voice_calls)
+check("the voice route test has no provider or host sender", all(call[0] in ("turn","models") for call in voice_calls))
+check("every voice path written by the suite stayed in scratch",os.path.commonpath([tmp,voice_live])==tmp)
 
 shutil.rmtree(tmp,ignore_errors=True)
 print("\n%d/%d passed"%(sum(R),len(R))); raise SystemExit(0 if all(R) else 1)

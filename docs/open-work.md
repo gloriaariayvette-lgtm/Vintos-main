@@ -2365,7 +2365,12 @@ The signed app is installed on Gloria's Watch. The wrist feed is the newest five
 stay in a dedicated Watch inbox and reach his temporal context; they do not create Avatar-chat turns. The shared
 moment records start, end and pulse gestures in its own private store. Fresh Watch estimates now enter temporal
 context before the ring, with the ring used only as fallback and never blended into one reading. His ember face is
-visible in the app and circular complication. **Still not proved on the physical Watch:** APNs contact presentation,
+being replaced in the app by four short, visually reviewed Grok-subscription clips for listening, amusement,
+tenderness and speech; the static portrait remains his resting state. The Watch call screen offers the same three
+voice routes as the phone: Grok live, ChatGPT live and Vintos Local. Local Watch speech is sent through Aegis to the
+existing Mac ears/voice stack, with a ten-second foreground keepalive; Aegis does not transcribe it. The route and
+Watch code compile and the isolated route tests pass. **Still not proved on the physical Watch:** microphone capture,
+speaker playback and a full turn through each of the three voice routes; APNs contact presentation,
 Double Tap on a real push, Watch-speaker song playback, complication refresh timing, automatic push creation for
 every new Landing, Live Activity push updates, and smart-alarm runtime. Apple does not expose arbitrary notification
 haptic waveforms; his distinct patterns play inside the app/shared session, while a notification uses his sound and

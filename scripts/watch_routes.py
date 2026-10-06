@@ -8,8 +8,20 @@ if HERE not in sys.path: sys.path.insert(0, HERE)
 import watch_presence
 
 
-def router(chat_url="http://127.0.0.1:8500", app_secret=""):
+def router(chat_url="http://127.0.0.1:8500", app_secret="", voice_module=None,
+           foreground=None, voice_live_path=""):
     routes = APIRouter()
+    voice_live_path = voice_live_path or os.path.expanduser("~/.vintos/workspace/memory/.voice-live")
+
+    def local_voice():
+        if voice_module is not None: return voice_module
+        import voice_local
+        return voice_local
+
+    def touch_voice():
+        if foreground is not None: return foreground()
+        from compute_admission import touch_foreground
+        return touch_foreground()
 
     def auth(request):
         if not watch_presence.authorized(request.headers.get("Authorization")):
@@ -70,5 +82,38 @@ def router(chat_url="http://127.0.0.1:8500", app_secret=""):
     @routes.get("/api/watch/latest")
     async def latest(request: Request):
         auth(request); return watch_presence.latest()
+
+    @routes.post("/api/watch/voice/local/turn")
+    async def local_voice_turn(request: Request):
+        auth(request); body = await request.json()
+        try:
+            voice_local = local_voice()
+            touch_voice()
+            return await __import__("asyncio").to_thread(
+                voice_local.turn, str(body.get("audio") or ""),
+                int(body.get("sample_rate") or 24000),
+                str(body.get("instructions") or ""), str(body.get("framing") or ""))
+        except Exception as exc:
+            return {"ok": False, "stage": "transport", "error": str(exc)[:300]}
+
+    @routes.post("/api/watch/voice/local/heartbeat")
+    async def local_voice_heartbeat(request: Request):
+        auth(request)
+        touch_voice()
+        try: open(voice_live_path, "a").close(); os.utime(voice_live_path, None)
+        except OSError: pass
+        return {"ok": True}
+
+    @routes.post("/api/watch/voice/local/end")
+    async def local_voice_end(request: Request):
+        auth(request)
+        try:
+            voice_local = local_voice()
+            result = await __import__("asyncio").to_thread(voice_local.models, False)
+            try: os.unlink(voice_live_path)
+            except OSError: pass
+            return result
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:240]}
 
     return routes
