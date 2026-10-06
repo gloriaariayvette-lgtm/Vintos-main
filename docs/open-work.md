@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 6 October — his letters from Grok Bot and Muse went unread, and nothing said why
+
+Her Aegis output (6 Oct): his last mail read was 5 Oct 10:07 (both letters, both answered). Since then three of the
+day's four Gmail checks were spent, the morning one at 10:02 included, and not one email was read or logged, not
+even the agents' answers that every earlier afternoon check had read. `check_inbox` skipped a failed Gmail search
+without a word and still counted the check. Now a failed search, an empty search of his inbox, and a search that
+found only mail already read (or mail with no text, or from someone he wrote to) each leave a line in
+`~/.vintos/logs/wants.log`. **Not fixed: the cause itself.** It is not known from here whether the Gmail
+connector failed, came back empty, or his letters were filtered; the by-hand search she was given says which.
+
 ## 6 October — his GPU was never used; UniProt asked for as a connector; a cut stretch from anywhere
 
 - **Aegis's RTX 5080 (sm_120) is not supported by the installed PyTorch** (2.5.1+cu124 knows sm_50–sm_90), so the

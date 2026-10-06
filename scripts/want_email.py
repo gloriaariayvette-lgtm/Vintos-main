@@ -712,11 +712,14 @@ def _agent(m):
     return next((name for name, rx in AGENTS if rx.search(head)), "")
 
 
-def check_inbox(contacts, gmail=None, now=None, others=None):
+def check_inbox(contacts, gmail=None, now=None, others=None, notes=None):
     """New replies from the people he wrote to, recorded in their threads. Returns [(address, message)].
     One Gmail search covers everyone he wrote to (PER_SEARCH addresses each) and, in the first search, whatever
     else came to his inbox lately; each search is one of today's GMAIL_CHECKS_PER_DAY, and when they are spent
-    nothing is searched until tomorrow. New mail from anyone else is added to `others`, when it is given."""
+    nothing is searched until tomorrow. New mail from anyone else is added to `others`, when it is given.
+    What the check found or why it failed goes to `notes`, when it is given (2026-10-06: a search that failed was
+    skipped without a word, still counted as one of the day's checks, and his letters went unread for a day)."""
+    notes = notes if notes is not None else []
     gmail = gmail or _gmail
     new = []
     open_ = [a for a, c in contacts.items() if c.get("status") != "closed"]
@@ -733,18 +736,30 @@ def check_inbox(contacts, gmail=None, now=None, others=None):
             result = gmail("gmail.search_emails", {"query": query, "max_results": 25},
                            ("Checking his inbox: replies from %d people he wrote to, and what else came in" % len(group))
                            if wide else "Checking for replies to his own emails, from %d people" % len(group))
-        except Exception:
+        except Exception as exc:
+            notes.append("Gmail search failed (one of today's %d checks spent): %s: %s"
+                         % (GMAIL_CHECKS_PER_DAY, type(exc).__name__, str(exc)[:200]))
             continue
-        found += _messages(result)
+        got = _messages(result)
+        if not got and wide:
+            notes.append("Gmail search of his inbox came back with no messages: %s" % json.dumps(result, default=str)[:200])
+        found += got
     if others is not None:
         seen = _mail_seen()
         mine = set(open_) | set(contacts)
-        fresh = []
+        fresh, skipped = [], {"already read": 0, "no text": 0, "from someone he wrote to": 0}
         for m in found:
-            if m["id"] in seen or not m["body"].strip() or any(a in m["from"].lower() for a in mine):
-                continue
+            if m["id"] in seen:
+                skipped["already read"] += 1; continue
+            if not m["body"].strip():
+                skipped["no text"] += 1; continue
+            if any(a in m["from"].lower() for a in mine):
+                skipped["from someone he wrote to"] += 1; continue
             seen.add(m["id"])
             fresh.append(m)
+        if found and not fresh:
+            notes.append("nothing new in his inbox: %d found, %s" % (len(found), ", ".join(
+                "%d %s" % (n, why) for why, n in skipped.items() if n)))
         _read_whole(fresh, gmail)
         others.extend(fresh)
     for addr in open_:
@@ -1041,8 +1056,8 @@ def tend(force=False, gmail=None, think=None, want=None, **kw):
         state["morning_day"] = now.date().isoformat()
     _save(TEND_STATE, state)
     contacts = _load(CONTACTS, {})
-    lines, others = [], []
-    for addr, m in check_inbox(contacts, gmail=gmail, others=others):
+    lines, others, notes = [], [], []
+    for addr, m in check_inbox(contacts, gmail=gmail, others=others, notes=notes):
         lines.append("reply from %s: %s" % (addr, m.get("subject", "")[:80]))
         try:
             with open(os.path.join(MEMORY, "daily-inner-life-%s.md" % date.today().isoformat()), "a") as f:
@@ -1055,7 +1070,7 @@ def tend(force=False, gmail=None, think=None, want=None, **kw):
             out = answer(addr, c, think=think, **kw)
             lines.append(out if isinstance(out, str) else "not answered %s: %s" % (addr, out[1]))
             _save(CONTACTS, contacts)
-    lines += read_mail(others, think=think, want=want)
+    lines += notes + read_mail(others, think=think, want=want)
     return lines + reply_letters(think=think, send=letter_send)
 
 

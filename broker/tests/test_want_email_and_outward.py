@@ -448,5 +448,21 @@ for doc, name in (("grok-bot", "Grok Bot"), ("muse", "Muse")):
 dc = open(os.path.join(REPO, "scripts", "dot_channel.py")).read()
 check("his #vintos-dot context carries what he read", "def email_line(" in dc and "email_line()," in dc)
 
+# A check that fails or finds nothing says why (2026-10-06: three checks spent, nothing read, nothing logged)
+def broken_gmail(tool, args, purpose): raise RuntimeError("connector token expired")
+E._save(E.TEND_STATE, {}); _notes = []
+E.check_inbox({}, gmail=broken_gmail, others=[], notes=_notes)
+check("a failed Gmail search is named, not skipped in silence", any("failed" in n and "token expired" in n for n in _notes), _notes)
+E._save(E.TEND_STATE, {})
+_out = E.tend(force=True, gmail=broken_gmail, think=reader, want=lambda *a: None, letter_send=lambda *a: None)
+check("and it reaches the router's log through tend", any("Gmail search failed" in l for l in _out), _out)
+E._save(E.TEND_STATE, {}); _notes = []
+E.check_inbox({}, gmail=lambda t, a, p: {"messages": []}, others=[], notes=_notes)
+check("an empty search of his inbox is named", any("no messages" in n for n in _notes), _notes)
+for _m in E._messages(REAL_SEARCH): E._log_mail({"id": _m["id"], "kind": "letter", "read_at": _ra})
+E._save(E.TEND_STATE, {}); _notes = []
+E.check_inbox({}, gmail=real_gmail, others=[], notes=_notes)
+check("a search that finds only mail already read says so", any("nothing new" in n and "already read" in n for n in _notes), _notes)
+
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
