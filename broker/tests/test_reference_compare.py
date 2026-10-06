@@ -40,7 +40,7 @@ with open(_tmp, "w") as f:
         x, y, z = ca(i)
         f.write("ATOM  %5d  CA  %3s A%4d    %8.3f%8.3f%8.3f  1.00 50.00           C\n" % (i, THREE[a], i + 5, x + 10, y - 4, z + 7))
     f.write("END\n")
-venv = os.path.expanduser("~gloria/.vintos/tools/chemistry-lab/esmc/bin/python")
+venv = os.environ.get("VINTOS_TEST_LAB_PYTHON") or os.path.expanduser("~gloria/.vintos/tools/chemistry-lab/esmc/bin/python")
 python = venv if os.path.isfile(venv) else sys.executable
 subprocess.run([python, "-c", "import sys; from Bio.PDB import PDBParser, MMCIFIO; io = MMCIFIO(); "
                 "io.set_structure(PDBParser(QUIET=True).get_structure('TEST', sys.argv[1])); io.save(sys.argv[2])",

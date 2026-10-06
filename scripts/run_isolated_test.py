@@ -33,7 +33,7 @@ def main():
         (root / ".vintos/workspace/memory").mkdir(parents=True)
         (root / "workspace/memory").mkdir(parents=True)
         # Copy path is the only checkout the child may read or write.
-        bootstrap = "import os,sys,runpy; os.environ.pop('SPARK_WORKSPACE',None); sys.path.insert(0,sys.argv[1]); sys.argv=sys.argv[2:]; __import__('test_http_fixture').install(); runpy.run_path(sys.argv[0],run_name='__main__')"
+        bootstrap = "import os,sys,runpy; os.environ.pop('SPARK_WORKSPACE',None); dep=sys.argv[3] if len(sys.argv)>3 else ''; dep and os.environ.__setitem__('VINTOS_TEST_LAB_PYTHON',dep); sys.path.insert(0,sys.argv[1]); sys.argv=sys.argv[2:3]; __import__('test_http_fixture').install(); runpy.run_path(sys.argv[0],run_name='__main__')"
         # macOS cannot stack sandbox profiles. A trusted parent launches nested
         # generated-code tests with a stricter sandbox through a scratch-only queue.
         queue=root/"sandbox-requests";queue.mkdir()
@@ -75,7 +75,8 @@ def main():
         if sys.platform=="darwin":
             listener=socket.socket();listener.bind(("127.0.0.1",0))
         try:
-            result = run([sys.executable, "-c", bootstrap, str(copied / "scripts"), str(copied / relative)], root,
+            commissioned_python = str(lab_python / "bin/python") if lab_python.is_dir() else ""
+            result = run([sys.executable, "-c", bootstrap, str(copied / "scripts"), str(copied / relative), commissioned_python], root,
                          read_roots=dependency_roots, python_paths=dependency_roots,
                          timeout=180, loopback=True, broker=queue if sys.platform=="darwin" else None, listener=listener)
         finally:
