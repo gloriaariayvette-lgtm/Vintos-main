@@ -7,11 +7,12 @@ It is the only place with a to-do in it.
 
 Fable 5.1 always thinks first, and its thinking counts toward the Study's output limit (16000). An answer with no
 closing brace at all means it was cut off before its JSON closed, or was empty or declined; the Study never said
-which. Now `claude_cache` keeps why each answer ended, the Study's error names it (cut off at the limit, declined,
-or how it stopped), and the limit is 32000: a ceiling, not a charge. **Not known from here:** which of those it
-was for SF-6f9a460b (her usage log's output tokens for study-fix say: 16000 means cut off). **Not redone:** the
-fix stays failed; he asks for it again after the deploy. A 32000-token answer can take Fable many minutes; the
-call's 900 s timeout still stands.
+which. Now `claude_cache` keeps why each answer ended and the Study's error names it (cut off at the limit,
+declined, or how it stopped). Gloria: "Don't increase headroom, turn off thinking." Fable 5.1's thinking cannot be
+turned off (the API refuses it), so the Study asks it for effort "low", the least thinking it allows; the limit
+stays 16000. **Not known from here:** which it was for SF-6f9a460b (her usage log's output tokens for study-fix
+say: 16000 means cut off), or whether low effort makes Fable's fixes worse. **Not redone:** the fix stays failed;
+he asks for it again after the deploy.
 
 ## 6 October — his letters from Grok Bot and Muse went unread, and nothing said why
 

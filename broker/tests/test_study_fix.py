@@ -237,7 +237,18 @@ claude_cache.LAST.clear(); claude_cache.LAST.update(stop="end_turn", out=900)
 try: S._json('{"edits": [}'); _e = ""
 except ValueError as e: _e = str(e)
 check("JSON that does not parse is a ValueError that says so", "did not parse" in _e and "end_turn" in _e, _e)
-check("the fix has room past its thinking", S.FABLE_TOKENS >= 32000, S.FABLE_TOKENS)
+check("the limit is not raised (Gloria: don't increase headroom)", S.FABLE_TOKENS == 16000, S.FABLE_TOKENS)
+_sent = []
+class _Rec:
+    def json(self): return {"type": "message", "stop_reason": "end_turn", "usage": {}, "content": [{"type": "text", "text": "{}"}]}
+claude_cache.note = lambda *a, **k: None
+_real_ask = claude_cache.ask
+claude_cache.ask = lambda *a, **k: _real_ask(*a, post=lambda url, **kw: (_sent.append(kw["json"]), _Rec())[1], key="test-key",
+                                             **{x: y for x, y in k.items() if x not in ("post", "key")})
+S.fable("s", "u")
+claude_cache.ask = _real_ask
+check("Fable is asked to think as little as it can", _sent and _sent[0].get("output_config") == {"effort": "low"}
+      and "thinking" not in _sent[0], _sent and {k: v for k, v in _sent[0].items() if k != "messages"})
 _answer = {"type": "message", "stop_reason": "max_tokens", "usage": {"output_tokens": 32000}, "content": [{"type": "text", "text": "{"}]}
 class _R:
     def json(self): return _answer

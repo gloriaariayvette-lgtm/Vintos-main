@@ -51,13 +51,16 @@ def _blocks(value, mark_last, points):
     return out, points
 
 
-def body(model, system, user, max_tokens):
-    """The request: system pieces each a cache point, user pieces all but the last."""
+def body(model, system, user, max_tokens, effort=None):
+    """The request: system pieces each a cache point, user pieces all but the last. `effort` (low..max) is how much
+    the model thinks first; Fable 5.1 always thinks and cannot be told not to, so low is the least."""
     sys_blocks, left = _blocks(system, True, MAX_POINTS - 1) if system else ([], MAX_POINTS - 1)
     user_blocks, _ = _blocks(user, False, left + 1)
     b = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": user_blocks}]}
     if sys_blocks:
         b["system"] = sys_blocks
+    if effort:
+        b["output_config"] = {"effort": effort}
     return b
 
 
@@ -90,7 +93,7 @@ def note(caller, model, usage, path=None):
 LAST = {}
 
 
-def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None):
+def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=None, effort=None):
     """Claude's text. Raises on no key or an API error, as the callers it replaces did."""
     key = key or _key()
     if not key:
@@ -98,7 +101,7 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
     if post is None:
         import requests
         post = requests.post
-    d = post(URL, timeout=timeout, json=body(model, system, user, max_tokens),
+    d = post(URL, timeout=timeout, json=body(model, system, user, max_tokens, effort),
              headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}).json()
     if d.get("type") == "error":
         raise RuntimeError(str(d.get("error"))[:200])

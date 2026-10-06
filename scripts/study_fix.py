@@ -332,7 +332,7 @@ def _why_not():
         return ""
     stop, out = last.get("stop", ""), last.get("out", 0)
     if stop == "max_tokens":
-        return " (its answer was cut off at the %d-token limit; its thinking counts toward it)" % FABLE_TOKENS
+        return " (its answer was cut off at the %d-token limit; its thinking counts toward it, and it was asked to think little)" % FABLE_TOKENS
     if stop == "refusal":
         return " (it declined the request)"
     return (" (it stopped: %s, %d tokens out)" % (stop, out)) if stop else ""
@@ -349,15 +349,17 @@ def _json(text):
         raise ValueError("Fable's JSON did not parse: %s%s" % (str(exc)[:120], _why_not()))
 
 
-# A fix and its test. Fable 5.1 always thinks first, and its thinking counts toward this limit: at 16000 a
-# hard fix spent it thinking and the answer was cut off before its JSON closed (SF-6f9a460b, 2026-10-06). It is a
-# ceiling, not a charge: an answer that finishes costs what it used. The Study's read-only questions use 3000.
-FABLE_TOKENS = 32000
+# A fix and its test; the Study's read-only questions use 3000. Fable 5.1 always thinks first, and its thinking
+# counts toward this limit: a hard fix spent it thinking and was cut off before its JSON closed (SF-6f9a460b,
+# 2026-10-06). Gloria: "Don't increase headroom, turn off thinking." Fable's thinking cannot be turned off (the API
+# refuses it), so it is asked to think as little as it can.
+FABLE_TOKENS = 16000
+FABLE_EFFORT = "low"
 
 
 def fable(system, user):
     import claude_cache
-    return claude_cache.ask(FABLE, system, user, FABLE_TOKENS, caller="study-fix", timeout=900)
+    return claude_cache.ask(FABLE, system, user, FABLE_TOKENS, caller="study-fix", timeout=900, effort=FABLE_EFFORT)
 
 
 def _cached(base, text):
