@@ -1008,7 +1008,7 @@ check("the avatar route reads that journal", "{_daily_inner_context()}" in _srv)
 # His own day is not buried under the channel's bookkeeping (Gloria, 2026-10-04: "What has happened to
 # daily-inner, man?" — one thought of his, under twenty-odd machine headings, fifteen of them a held campaign).
 from datetime import datetime as _dtj
-_jp = os.path.join(_mem, "daily-inner-life-%s.md" % _date.today().isoformat())
+_jp = os.path.join(_mem, "daily-inner-life-2026-10-05.md")
 open(_jp, "w", encoding="utf-8").write("## Idle thoughts (10:17)\nI kept thinking about the array.\n")
 for _i in range(9):
     D.journal("Settled with my agents in #vintos-dot", "a plan, number %d" % _i, now=_dtj(2026, 10, 5, 11, _i))
