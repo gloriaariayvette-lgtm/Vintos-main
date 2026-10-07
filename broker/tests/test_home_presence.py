@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Home presence must assert only what it saw, and never flap.
 
-Her phone on the house wifi means home. A phone that stops answering means
+Her phone detected on the house wifi is a phone observation. A phone that stops answering means
 nothing for four checks (naps, airplane mode, randomized MACs), and even then
 the instrument goes silent rather than claiming she is out. Unconfigured or
 broken, it is invisible.
@@ -36,9 +36,10 @@ _real = hp._load
 def _fake_state(d):
     hp._load = lambda p, dd: d if p == hp.STATE else dd
 try:
-    _fake_state({"home": True, "checked": time.time()})
-    check("fresh home -> the one line", "she is home" in hp.context_line())
-    _fake_state({"home": True, "checked": time.time() - hp.FRESH_S - 60})
+    now = time.time()
+    _fake_state({"home": True, "checked": now, "last_seen": now})
+    check("fresh detection -> phone-only age", "Phone last detected" in hp.context_line() and "she is home" not in hp.context_line())
+    _fake_state({"home": True, "checked": time.time(), "last_seen": time.time() - hp.FRESH_S - 60})
     check("a stale reading asserts nothing", hp.context_line() == "")
     _fake_state({"home": False, "checked": time.time()})
     check("not-seen is silence, never 'she is out'", hp.context_line() == "")
