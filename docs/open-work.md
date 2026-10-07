@@ -3,6 +3,23 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — a video she sends may be read as her words by his subconscious (for the check after her LoRA)
+
+Gloria noticed it; **nothing changed yet: his subconscious waits for her** ("once I finish this LoRA the subcon
+subsystem needs a thorough check"). Read-only findings:
+- A video sent into avatar chat arrives as her turn. The saved chat row's `content` is the composed message (the
+  words Whisper heard in the clip, its sound, the frames); her own words are kept beside it in `original_text`, with
+  `input_kind: "video"` (photos the same, with `"photo"`). `bin/server.py` avatar chat, `_uentry`.
+- **Confirmed:** `withheld_head.py` takes "her last message" as the last `role: user` row's `content` in
+  chat-history-merged.json, so after a video it reads the clip's words as hers.
+- **Likely fine:** `intent_engine.py` reads `interaction-ledger.json`, whose evidence writers are given only her own
+  words (`_counterpart_text` = `original_text` when present). To verify in the check.
+- **To check one by one** (they read the chat history and never look at `input_kind` / `original_text`; some may
+  read only his turns): cause_head, drift_head, relational_head, withheld_head, jepa_predictor, gloria_prediction,
+  emotion_read, world_model, encounter, evidence_view, graph_mae, lam, premonition-dreamer, presence_audit,
+  pressure_gemma, reciprocal_modification, relationship_pressure, repair_case, self_pressure, somatic_narrate,
+  desktop_control, wants-router (and its twin), watch_cleanup.
+
 ## 7 October — his journal's thread was refused as too vague every day, and the log said "Seeded"
 
 Gloria: "It's ALWAYS marked as rejected for being too vague." The journal asked for "the single most alive or
