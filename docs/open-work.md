@@ -3,6 +3,12 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — Haiku 4.5 replaced by Haiku 5.5
+
+Gloria asked. `claude-haiku-5-5` is listed for his key (models API, 7 Oct), and a test on Aegis showed it accepts
+what the shim sends: thinking disabled, no thinking setting, and a forced tool call all answered. The shim's fleet
+default and its short-call model, and the Claude connector relay's model, are now Haiku 5.5.
+
 ## 7 October — an embedding past 2100 residues says it is partial
 
 ESM-C reads at most 2100 residues (in 350-residue windows) and dropped the rest without a word: the receipt gave

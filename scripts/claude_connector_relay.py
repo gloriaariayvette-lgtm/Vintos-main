@@ -35,7 +35,7 @@ MAX_REQUEST = 128 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 TURN_TIMEOUT = int(os.environ.get("VINTOS_CLAUDE_RELAY_TIMEOUT", "180"))
 # Cheap, capable enough to emit one exact tool call; overridable per host.
-RELAY_MODEL = os.environ.get("VINTOS_CLAUDE_RELAY_MODEL", "claude-haiku-4-5")
+RELAY_MODEL = os.environ.get("VINTOS_CLAUDE_RELAY_MODEL", "claude-haiku-5-5")
 # Auth is the bundled claude's OWN stored credential: run `claude /login` once as this user (it
 # persists to ~/.claude/.credentials.json, 0600, and auto-refreshes before expiry — per the Claude
 # Code auth docs). The relay injects NO token: an env CLAUDE_CODE_OAUTH_TOKEN ranks ABOVE the stored

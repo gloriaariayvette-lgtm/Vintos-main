@@ -27,7 +27,7 @@ GEMMA_MODEL = "gemma-4-26b-a4b-it-uncensored"
 AEGIS_GEMMA_URL = "http://172.18.16.1:1234/api/v1/chat"
 AEGIS_GEMMA_MODEL = "google/gemma-4-12b-qat"
 CLAUDE_MODEL = "claude-opus-4-8"
-FLEET_DEFAULT = "claude-haiku-4-5-20251001"
+FLEET_DEFAULT = "claude-haiku-5-5"
 LOG = "/tmp/vintos-claude-shim.log"
 USAGE_LOG = os.path.expanduser("~/.vintos/logs/anthropic-usage.jsonl")
 
@@ -191,7 +191,7 @@ def claude_complete(j, call=None, model=None):
     _mdl = model if str(model or "").startswith("claude-") else FLEET_DEFAULT
     # mechanical calls (verdicts, judges, tiny reflections) ride Haiku - same answers, ~5x cheaper
     if _mt <= 120:
-        _mdl = "claude-haiku-4-5-20251001"
+        _mdl = "claude-haiku-5-5"
     body = {"model": _mdl, "max_tokens": _mt, "messages": conv}
     if "fable" not in _mdl.lower():
         body["thinking"] = {"type": "disabled"}
