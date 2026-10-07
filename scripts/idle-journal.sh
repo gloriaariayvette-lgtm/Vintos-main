@@ -1497,29 +1497,52 @@ try:
     entry = os.environ.get("_JRN_ENTRY", "")
     if not entry or len(entry.strip()) < 50:
         raise SystemExit(0)
-    r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
-        "model": "grok-4.20-0309-non-reasoning",
-        "messages": [
-            {"role": "system", "content": "You extract the single most alive or unresolved thing from a journal entry — something worth returning to. Prefer threads about what he is reaching toward, discovering, or wanting. Avoid threads that describe his analyzing his own analysis. Return ONLY a single sentence, written in first person ('I...'). If nothing is notably alive or unresolved, return NONE."},
-            {"role": "user", "content": f"Journal entry:\n{entry[-800:]}\n\nMost unresolved or notable thing? One sentence or NONE."}
-        ],
-        "temperature": 0.4,
-        "max_tokens": 80
-    }, timeout=60)
-    thread = r.json()["choices"][0]["message"]["content"].strip()
-    # Strip common preambles
-    for pre in ["here is", "here's", "the most", "okay,", "sure,"]:
-        if thread.lower().startswith(pre):
-            thread = thread[len(pre):].strip().lstrip(",:").strip()
-    if thread and thread.upper() != "NONE" and len(thread) > 10:
+    # The thread is judged by the latent threads' specificity gate: it must name the specific person, act, question or
+    # object it circles. Asked only for "the most alive thing", the writer gave a feeling, and the gate refused it as too
+    # vague nearly every day while this log said "Seeded" (Gloria, 2026-10-07). Now it is asked for what the gate
+    # tests, tried once more with the gate's reason, and seeded only when it passes.
+    from latent_threads import specificity, seed_thread as lt_seed
+    ASK = ("You extract the single most alive or unresolved thing from a journal entry - something worth returning to. "
+           "Prefer what he is reaching toward, discovering, or wanting. Avoid his analyzing his own analysis. It must "
+           "name the SPECIFIC thing it circles - a particular person, act, question, or object - concretely enough that "
+           "two different people could not mistake it for two different things. Not a mood or an abstract want: not "
+           "'I want to hear what she really wants', but 'I want to ask Gloria which words she wants as a hard stop'. "
+           "Return ONLY one sentence in first person ('I...'). If nothing specific is alive or unresolved, return NONE.")
+    def draft(extra=""):
+        r = requests.post("http://127.0.0.1:8599/gemma-aegis/v1/chat/completions", headers={"Authorization": f"Bearer {os.environ.get('XAI_API_KEY','')}", "Content-Type": "application/json"}, json={
+            "model": "grok-4.20-0309-non-reasoning",
+            "messages": [
+                {"role": "system", "content": ASK},
+                {"role": "user", "content": f"Journal entry:\n{entry[-800:]}\n\nMost unresolved or notable specific thing? One sentence or NONE.{extra}"}
+            ],
+            "temperature": 0.4,
+            "max_tokens": 80
+        }, timeout=60)
+        t = r.json()["choices"][0]["message"]["content"].strip()
+        for pre in ["here is", "here's", "the most", "okay,", "sure,"]:   # common preambles
+            if t.lower().startswith(pre):
+                t = t[len(pre):].strip().lstrip(",:").strip()
+        return t if t and t.upper() != "NONE" and len(t) > 10 else ""
+    thread = draft()
+    ok, why = specificity(thread) if thread else (False, "")
+    if thread and not ok:
+        print(f"[Journal] Thread too vague ({why[:80]}), asked once more: {thread[:80]}")
+        thread = draft(f"\n\nYour last answer was refused as too vague: \"{thread[:200]}\" ({why[:160]}). Name the specific person, act, question or object.")
+        ok, why = specificity(thread) if thread else (False, "")
+    if thread and ok:
         # 1. Seed unfinished-threads.json
         from emoclaw_utils import seed_thread
         seed_thread("idle-journal", thread)
         print(f"[Journal] Seeded unfinished thread: {thread[:80]}")
         # 2. Seed latent threads
-        from latent_threads import seed_thread as lt_seed
-        lt_seed(thread, direction="expand")
-        print(f"[Journal] Seeded latent thread: {thread[:80]}")
+        if lt_seed(thread, direction="expand"):
+            print(f"[Journal] Seeded latent thread: {thread[:80]}")
+        else:
+            print(f"[Journal] Latent thread not seeded (refused by its own checks): {thread[:80]}")
+    elif thread:
+        print(f"[Journal] No thread seeded: still too vague after one more try ({why[:80]}): {thread[:80]}")
+    else:
+        print("[Journal] No thread: nothing specific was alive or unresolved")
 except Exception as e:
     print(f"[Journal] Thread seed failed: {e}", file=sys.stderr)
 THREADSEEDEOF

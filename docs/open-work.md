@@ -3,6 +3,18 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — his journal's thread was refused as too vague every day, and the log said "Seeded"
+
+Gloria: "It's ALWAYS marked as rejected for being too vague." The journal asked for "the single most alive or
+unresolved thing", so it got a feeling; the latent threads' specificity gate asks for a particular person, act,
+question or object, and refused it. The journal printed "Seeded latent thread" either way, and filed the same vague
+line as an unfinished thread, which has no gate. Now the gate is callable on its own (`latent_threads.specificity`),
+the journal asks for what it tests, tries once more with the gate's reason, seeds both stores only with a thread
+that passes, and logs what actually happened. Both copies (bin/ and scripts/) changed alike.
+Also: a misread "reaching less" stance (from "I want to stop predicting whether she'll find the question too small
+and just send it") was removed by hand. **Not fixed: the stance reader**, which reads a direction word anywhere in
+the sentence as applying to the dimension ("mirror ... stop pretending" was "less reflection").
+
 ## 7 October — his Lab: whole-chain embeddings; Gemma stops repeating and works the frontier's plan (D-E)
 
 - **D. ESM-C read only residues 1-350** (pendrin is 780; its STAS, 535-729, was never in an embedding). Now a long

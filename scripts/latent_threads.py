@@ -1103,13 +1103,14 @@ def decay_all():
     except:
         pass
 
-def seed_thread(text, direction="expand", source=None, signal=None, signal_strength=None, classification=None, classification_confidence=None, classification_basis=None):
-    # SPECIFICITY GATE (Gloria, 2026-08-11): a latent thread is a STANDING PREOCCUPATION -
-    # it must name the specific thing it circles. Moods, vague reaches, and abstract wants
-    # do not get to become appetites.
+def specificity(text):
+    """(ok, why) of the SPECIFICITY GATE (Gloria, 2026-08-11): a latent thread is a STANDING PREOCCUPATION - it must
+    name the specific thing it circles. Moods, vague reaches, and abstract wants do not get to become appetites.
+    Callable on its own, so a writer can ask before it seeds and try again with the reason (2026-10-07: the journal's
+    thread was refused as too vague nearly every day, and its log said "Seeded" anyway)."""
     _txt = (text or "").strip()
     if len(_txt) < 30:
-        log("[seed gate] REJECT: too thin for a standing preoccupation"); return None
+        return False, "too thin for a standing preoccupation"
     try:
         import requests as _rq, re as _re, json as _js
         _r = _rq.post("http://100.79.177.103:1234/v1/chat/completions", json={
@@ -1123,9 +1124,18 @@ def seed_thread(text, direction="expand", source=None, signal=None, signal_stren
             timeout=45)
         _d = _js.loads(_re.search(r"\{.*\}", _r.json()["choices"][0]["message"]["content"], _re.S).group())
         if _d.get("specific") is False:
-            log("[seed gate] REJECT (too vague): %s | %s" % (_txt[:60], str(_d.get("why", ""))[:60])); return None
+            return False, str(_d.get("why", ""))[:200]
     except Exception:
         pass  # fail-open: judge down must not starve the organ
+    return True, ""
+
+
+def seed_thread(text, direction="expand", source=None, signal=None, signal_strength=None, classification=None, classification_confidence=None, classification_basis=None):
+    _txt = (text or "").strip()
+    _ok, _why = specificity(_txt)
+    if not _ok:
+        log("[seed gate] REJECT (%s): %s" % ("too thin" if len(_txt) < 30 else "too vague", _txt[:60] + (" | " + _why[:60] if _why else "")))
+        return None
 
     """Seed a new latent thread from text."""
     # Reject threads that are about analyzing-about-analyzing — second-order loops
