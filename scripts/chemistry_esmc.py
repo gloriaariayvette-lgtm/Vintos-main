@@ -39,6 +39,17 @@ def windows(length, window=WINDOW, stride=STRIDE):
     return [(a, a + window) for a in sorted(set(starts))]
 
 
+def coverage(input_length, embedded):
+    """What of the chain the vector holds, said in the receipt. Past MAX_LENGTH the rest was dropped without a word,
+    so a 2500-residue protein read as if embedded whole (2026-10-07)."""
+    whole = embedded >= input_length
+    return {"input_length": input_length, "embedded_residues": [1, embedded] if embedded else [],
+            "coverage": "whole_chain" if whole else "partial", "truncated": not whole,
+            **({} if whole else {"coverage_note": "partial: residues 1-%d of %d embedded; %d-%d are NOT in this vector "
+                                                  "(cap %d)" % (embedded, input_length, embedded + 1, input_length,
+                                                                MAX_LENGTH)})}
+
+
 def pool(per_window, length):
     """Average each residue over the windows that held it, then over the chain. per_window: [(start, end, rows)]."""
     total = np.zeros((length, per_window[0][2].shape[1]), dtype=np.float64)
@@ -67,8 +78,8 @@ def main():
     with torch.inference_mode():
         for row in rows:
             accession = str(row.get("accession", "unknown"))[:32]
-            sequence = "".join(c for c in str(row.get("sequence", "")).upper()
-                               if "A" <= c <= "Z")[:MAX_LENGTH]
+            whole = "".join(c for c in str(row.get("sequence", "")).upper() if "A" <= c <= "Z")
+            sequence = whole[:MAX_LENGTH]
             if not sequence:
                 continue
             parts = []
@@ -88,6 +99,7 @@ def main():
                 "accession": accession,
                 "sequence_length": len(sequence),
                 "windows": [[a + 1, b] for a, b, _ in parts],
+                **coverage(len(whole), len(sequence)),
                 "dimension": int(vector.shape[0]),
                 "embedding_sha256": digest,
                 "artifact": str(destination.relative_to(WS)),

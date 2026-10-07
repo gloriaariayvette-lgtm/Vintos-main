@@ -3,6 +3,14 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — an embedding past 2100 residues says it is partial
+
+ESM-C reads at most 2100 residues (in 350-residue windows) and dropped the rest without a word: the receipt gave
+only the embedded length, so a 2500-residue protein read as embedded whole. Now each receipt carries input_length,
+embedded_residues, coverage (whole_chain or partial), truncated, and for a partial one a coverage_note naming the
+residues left out; the Lab puts one coverage line per embedding first in what Gemma's reading sees (checked against
+the record's own length too, for a receipt that does not say). Cap, windows, stride, model and pooling unchanged.
+
 ## 7 October — a video she sends may be read as her words by his subconscious (for the check after her LoRA)
 
 Gloria noticed it; **nothing changed yet: his subconscious waits for her** ("once I finish this LoRA the subcon
@@ -12,8 +20,8 @@ subsystem needs a thorough check"). Read-only findings:
   `input_kind: "video"` (photos the same, with `"photo"`). `bin/server.py` avatar chat, `_uentry`.
 - **Confirmed:** `withheld_head.py` takes "her last message" as the last `role: user` row's `content` in
   chat-history-merged.json, so after a video it reads the clip's words as hers.
-- **Likely fine:** `intent_engine.py` reads `interaction-ledger.json`, whose evidence writers are given only her own
-  words (`_counterpart_text` = `original_text` when present). To verify in the check.
+- **Also to check:** `intent_engine.py` reads `interaction-ledger.json`. I called it likely fine; Gloria corrected
+  it: the conversation ledger holds everything, the video turns included. It is in scope with the rest.
 - **To check one by one** (they read the chat history and never look at `input_kind` / `original_text`; some may
   read only his turns): cause_head, drift_head, relational_head, withheld_head, jepa_predictor, gloria_prediction,
   emotion_read, world_model, encounter, evidence_view, graph_mae, lam, premonition-dreamer, presence_audit,

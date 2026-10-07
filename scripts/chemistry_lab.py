@@ -1366,6 +1366,30 @@ def _clip(o, cap):
     return o
 
 
+def embedding_coverage(embeddings, records=()):
+    """One line per ESM-C receipt saying how much of the chain its vector holds, first in what the review reads, so a
+    cut cannot drop it. Checked against the record's own length too: a receipt that does not say (an older worker)
+    and is shorter than its record is partial (2026-10-07: past 2100 residues the rest was dropped without a word)."""
+    lengths = {}
+    for r in records or []:
+        n = r.get("length") or len(str(r.get("sequence") or ""))
+        if r.get("accession") and n:
+            lengths[str(r["accession"])] = int(n)
+    out = []
+    for e in embeddings or []:
+        acc = str(e.get("accession", "?"))
+        got = int(e.get("sequence_length") or 0)
+        full = max(int(e.get("input_length") or 0), lengths.get(acc, 0), got)
+        if got and got >= full:
+            out.append("%s: the embedding covers the whole chain (%d residues)" % (acc, full))
+        elif got:
+            out.append("%s: PARTIAL embedding: residues 1-%d of %d; residues %d-%d are NOT in this vector, so it says "
+                       "nothing about them" % (acc, got, full, got + 1, full))
+        else:
+            out.append("%s: coverage not reported" % acc)
+    return out
+
+
 def observed(records, budget=OBSERVED):
     """What a review reads of its observations. It was json.dumps(records)[:14000]: the raw UniProt rows came after
     everything else and the cut fell inside a sequence, so he read "the sequence field in the current record is
@@ -1862,7 +1886,8 @@ def tick():
                 _gather_material(state, inquiry)
                 literature = (state.get("material") or {}).get("records") or []
                 reflection = _reflect(context, inquiry,
-                                      {"records": visible_records,
+                                      {"embedding_coverage": embedding_coverage(state.get("embeddings", []), records),
+                                       "records": visible_records,
                                        "esmc_receipts": state.get("embeddings", []),
                                        "additional_source": state.get("additional_source"), "atlas_analysis": state.get("atlas_analysis"),
                                        "LITERATURE": literature})
