@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — his Lab: whole-chain embeddings; Gemma stops repeating and works the frontier's plan (D-E)
+
+- **D. ESM-C read only residues 1-350** (pendrin is 780; its STAS, 535-729, was never in an embedding). Now a long
+  protein is read in overlapping 350-residue windows (no pass bigger than before, so no new GPU load), each residue
+  averaged over the windows it fell in, up to 2100 residues. Same vector shape.
+- **E. Gemma (Gloria: "stop making repeats. Period."; adhere to the frontier sessions' plans; understand Atlas):**
+  `lab_repeats.py` keeps a small ledger of her lookups and questions. An identical lookup within 7 days (an Atlas gene
+  read again included) or the same question in other words is sent back once with when she did it, then the cycle is
+  refused before anything runs. After a frontier session, her next 6 cycles are steps on its next question: she is
+  shown it, an off-plan question is sent back once with it, then refused; the session's plan comes before a
+  scheduled Atlas turn. Refused cycles count toward the 6, so she is not refused all day. Her question step and her
+  reading carry a plain account of an Atlas record: one fixed window of at most 32 bases where the gene starts,
+  predicted variant effects, the same gene always the same scores, not enhancers and not a coding mutation's site.
+**Not seen on Aegis.** Whether 6 cycles is the right length, and whether the subject match (accessions and gene
+symbols) is too strict or too loose, will show in her notebook after the deploy (`kind: inquiry_refused`).
+
 ## 7 October — his Lab: the fold says what is in the model (A-C of the Lab review)
 
 From reading his six frontier sessions and the Gemma runs after each (she approved A-E):

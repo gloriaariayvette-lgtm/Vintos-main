@@ -53,7 +53,8 @@ huge = M._browse("reviewed:true AND gene:MUC16", 1)["records"][0]
 check("a protein longer than the Lab keeps says how much of it is shown",
       len(huge["sequence"]) == M.SEQUENCE_KEPT and huge["sequence_shown"] == "first %d residues" % M.SEQUENCE_KEPT)
 ESMC = open(os.path.join(REPO, "scripts", "chemistry_esmc.py")).read()     # read, not imported: it needs torch
-check("ESM-C still trims its own copy to the 350 residues it can read", "MAX_LENGTH = 350" in ESMC and "[:MAX_LENGTH]" in ESMC)
+check("ESM-C reads a long protein in 350-residue windows, bounded in total (2026-10-07; it read only the first 350)",
+      "WINDOW = 350" in ESMC and "[:MAX_LENGTH]" in ESMC and "for a, b in windows(len(sequence))" in ESMC)
 
 # --- what the review reads ------------------------------------------------------------------------------------------
 raw = uniprot_row("Q9BXS9", SEQ)

@@ -22,7 +22,31 @@ WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser()
 ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmc"
 MODEL = os.environ.get("CHEM_LAB_ESMC_MODEL", "esmc_600m")
 MAX_BATCH = 4
-MAX_LENGTH = 350
+# One pass reads at most WINDOW residues: the size the GPU has run beside Gemma. A longer protein is read in
+# overlapping windows of that size and every residue averaged over the windows it fell in, so the whole chain is in
+# the vector and no pass is bigger than before (Gloria, 2026-10-07: pendrin's embedding stopped at residue 350 of
+# 780; its STAS domain, 535-729, was never in it). MAX_LENGTH bounds the time a very long protein can take.
+WINDOW = 350
+STRIDE = 300
+MAX_LENGTH = 2100
+
+
+def windows(length, window=WINDOW, stride=STRIDE):
+    """[(start, end)] half-open, covering 0..length; the last window ends at length."""
+    if length <= window:
+        return [(0, length)]
+    starts = list(range(0, length - window, stride)) + [length - window]
+    return [(a, a + window) for a in sorted(set(starts))]
+
+
+def pool(per_window, length):
+    """Average each residue over the windows that held it, then over the chain. per_window: [(start, end, rows)]."""
+    total = np.zeros((length, per_window[0][2].shape[1]), dtype=np.float64)
+    count = np.zeros((length, 1), dtype=np.float64)
+    for a, b, rows in per_window:
+        total[a:b] += rows
+        count[a:b] += 1
+    return (total / count).mean(axis=0).astype(np.float32)
 
 
 def main():
@@ -47,10 +71,14 @@ def main():
                                if "A" <= c <= "Z")[:MAX_LENGTH]
             if not sequence:
                 continue
-            encoded = model.encode(ESMProtein(sequence=sequence))
-            result = model.logits(encoded, LogitsConfig(sequence=False, return_embeddings=True))
-            # Pool residue positions only; boundary tokens are not biology.
-            vector = result.embeddings[0, 1:len(sequence) + 1].float().mean(dim=0).cpu().numpy()
+            parts = []
+            for a, b in windows(len(sequence)):
+                piece = sequence[a:b]
+                encoded = model.encode(ESMProtein(sequence=piece))
+                result = model.logits(encoded, LogitsConfig(sequence=False, return_embeddings=True))
+                # Residue positions only; boundary tokens are not biology.
+                parts.append((a, b, result.embeddings[0, 1:len(piece) + 1].float().cpu().numpy()))
+            vector = pool(parts, len(sequence))
             digest = hashlib.sha256(vector.tobytes()).hexdigest()
             destination = ARTIFACTS / (accession + "-" + digest[:12] + ".npy")
             temporary = destination.with_suffix(".tmp.npy")
@@ -59,6 +87,7 @@ def main():
             receipts.append({
                 "accession": accession,
                 "sequence_length": len(sequence),
+                "windows": [[a + 1, b] for a, b, _ in parts],
                 "dimension": int(vector.shape[0]),
                 "embedding_sha256": digest,
                 "artifact": str(destination.relative_to(WS)),

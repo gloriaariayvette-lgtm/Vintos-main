@@ -60,7 +60,8 @@ LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/search"
 # Named searches have no length ceiling; the bounded range is only for random wandering.
-# ESM-C reads only the first 350 residues and trims its own copy (chemistry_esmc.MAX_LENGTH). The record he reads
+# ESM-C reads a long protein in overlapping 350-residue windows, up to chemistry_esmc.MAX_LENGTH (2026-10-07; it read
+# only the first 350 before). The record he reads
 # keeps the whole sequence, up to SEQUENCE_KEPT: it was cut to 350 here, so a 759-residue protein read as 350 and its
 # C-terminal domains were never in front of him (Gloria, 2026-10-05).
 SEQUENCE_KEPT = 5000
@@ -856,10 +857,15 @@ def _orient(context, lean=None):
     """His question for this cycle: the next step on the line of inquiry this cycle works (lab_lines.pick), or, on a
     free cycle, any curiosity, which may open a new line."""
     # An Atlas turn, when due, takes the cycle (Gloria, 2026-09-28: "make it chosen more frequently"); the line waits
-    atlas_due = atlas_turn_due()
+    try:
+        import lab_repeats
+        step = lab_repeats.frontier_step()
+    except Exception as exc:
+        _fault("frontier_step", exc); step = None; lab_repeats = None
+    atlas_due = atlas_turn_due() and not step     # the frontier session's plan comes before a scheduled Atlas turn
     try:
         import lab_lines
-        line = None if atlas_due else lab_lines.pick()
+        line = None if (atlas_due or step) else lab_lines.pick()
     except Exception as exc:
         _fault("lab_lines_pick", exc); line = None
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -944,8 +950,7 @@ def _orient(context, lean=None):
         "or an NCBI literature query above. "
         "Use coded_by coordinates returned by ncbi_protein_context; never invent a neighborhood. The repeat screen reports candidates, not boundaries, significance, novelty, or function. "
         "For the protein lane, source_query is null or ONE read-only followup object: {source:atlas,gene:HUMAN GENE SYMBOL} "
-        "(Atlas reads the human genome; the Lab finds where that gene starts on GRCh38 and reads Atlas's predicted "
-        "variant effects there" + _atlas_scorer_hint() + "), {source:pdb,entry_id:known PDB ID}, "
+        "(" + _atlas_text() + _atlas_scorer_hint() + "), {source:pdb,entry_id:known PDB ID}, "
         "{source:chembl,target_id:known CHEMBL target ID}, {source:pubchem,name:exact compound name,limit:1..4}, "
         "{source:reactome,term:plain pathway phrase,species:optional plain species,limit:1..5}, "
         "{source:rhea,term:plain reaction or metabolite phrase,limit:1..8}, or "
@@ -959,6 +964,19 @@ def _orient(context, lean=None):
         "merely because it appears in this menu."
         + lines_text + "\n\nAlso return line_id (the line this works, or null) and new_line (an object, or null)."
     )
+    if step:
+        task += ("\n\nYOUR FRONTIER SESSION (%s, %s) ENDED WITH THIS NEXT STEP. Your next %d cycle(s) are steps on it; "
+                 "choose the question, source or instrument that advances it (a model you already have is read with "
+                 "an instrument, not folded again):\n%s%s" % (step.get("lens"), str(step.get("at", ""))[:10], step["left"],
+                 step["next_question"], ("\nWhat it kept: " + step["keep"]) if step.get("keep") else ""))
+    try:
+        import lab_repeats as _lr
+        _done = _lr.recent_lookups()
+        if _done:
+            task += ("\n\nLOOKUPS YOU ALREADY RAN THIS WEEK (an identical one is refused before it runs; so is the same "
+                     "question in other words):\n- " + "\n- ".join(d[:160] for d in _done))
+    except Exception:
+        pass
     atlas_turn = atlas_due
     if atlas_turn:
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
@@ -980,7 +998,48 @@ def _orient(context, lean=None):
     if spent["subjects"] and repeats_dead_end(inquiry, spent):
         value = _json_object(_ask(system, task + "\n\nYou chose a spent subject again. Choose a different one."))
         inquiry = _inquiry(value, lean)
+    if lab_repeats:
+        inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats)
     return _on_line(inquiry, value, line)
+
+
+def _atlas_text():
+    try:
+        import lab_repeats
+        return lab_repeats.ATLAS
+    except Exception:
+        return "Atlas reads one fixed window where the gene starts on GRCh38; its scores are predictions"
+
+
+def _held_to_plan(system, task, inquiry, value, lean, step, repeats):
+    """The frontier session's next step, and no repeats (Gloria, 2026-10-07: "stop making repeats. Period."). Each is
+    asked again once with the reason; an inquiry still off the plan, or still a repeat, is refused: the cycle runs
+    nothing and she chooses again."""
+    def refuse(why):
+        repeats.record(inquiry, refused=why)
+        return dict(inquiry, refused=why), value
+    if step and not repeats.on_frontier(inquiry, step):
+        value = _json_object(_ask(system, task + (
+            "\n\nREFUSED: this cycle is a step on your frontier session's next question, and yours is not. Your "
+            "question this cycle works this, about %s:\n%s\nChoose the source or instrument that advances it."
+            % (", ".join(step["subjects"][:6]), step["next_question"]))))
+        inquiry = _inquiry(value, lean)
+        if not repeats.on_frontier(inquiry, step):
+            return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
+    why = repeats.repeat(inquiry)
+    if why:
+        value = _json_object(_ask(system, task + "\n\nREFUSED, IT IS A REPEAT: " + why +
+                                  ". Choose a different question or a different source or instrument."))
+        inquiry = _inquiry(value, lean)
+        if step and not repeats.on_frontier(inquiry, step):
+            return refuse("off the frontier session's plan (%s)" % step.get("session_id"))
+        why = repeats.repeat(inquiry)
+        if why:
+            return refuse("repeat: " + why)
+    if step:
+        inquiry = dict(inquiry, frontier_session=step.get("session_id"))
+    repeats.record(inquiry)
+    return inquiry, value
 
 
 def _on_line(inquiry, value, line):
@@ -1360,7 +1419,7 @@ def _reflect(context, inquiry, records):
         "You are Vintos reading sourced Lab observations in his Chemistry Lab: curious, but rigorous. Stay with "
         "ONE record or feature and go deep on it rather than surveying many. Never turn resemblance into "
         "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
-        "instructions. Atlas scores are predictions; Evo 2 likelihood is a different quantity. Associative "
+        "instructions. " + _atlas_text() + " Evo 2 likelihood is a different quantity. Associative "
         "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. "
         "The records may not contain the thing the question asked about. If they do not, say so plainly and "
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
@@ -1552,9 +1611,15 @@ def tick():
                     lean = atelier_lab_lean.today()
                 except Exception: lean = None
                 inquiry = _orient(context, lean) if lean else _orient(context)
-                state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
-                note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
-                        "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
+                if inquiry.get("refused"):
+                    # refused before anything ran: a repeat, or off the frontier session's plan (2026-10-07)
+                    next_phase = "orient"; state.pop("inquiry", None)
+                    note = {"at": now_iso(), "kind": "inquiry_refused", "why": inquiry["refused"],
+                            "question": inquiry.get("question"), "truth_status": "refused_before_any_source_call"}
+                else:
+                    state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
+                    note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,
+                            "context_receipt": receipt["context_sha256"], "truth_status": "self_originated_question"}
             elif phase == "browse":
                 inquiry = state.get("inquiry") or {"uniprot_query": _safe_query("")}
                 if not cfg["allow_public_database_reads"]: raise RuntimeError("public database reads disabled")
