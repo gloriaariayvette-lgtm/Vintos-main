@@ -132,9 +132,10 @@ spec = importlib.util.spec_from_file_location("forge_loop", os.path.join(REPO, "
 FL = importlib.util.module_from_spec(spec); spec.loader.exec_module(FL)
 ready = FL.plain_card({"intent": "Build the thing", "state": "ready", "origin": {"source": "owner"}})
 spent = FL.plain_card({"intent": "Build the thing", "state": "ready", "origin": {"source": "owner"}}, day_spent=True)
-check("a project waiting its turn reads as waiting", "at most three steps a day" in ready["waiting"])
-check("a project that used today's three says exactly that, and that nothing is wrong",
-      "Today's three steps are used" in spent["waiting"] and "nothing is wrong" in spent["waiting"], spent)
+# the daily allowance comes from software_quota now, not a fixed three (Eve, 2026-10-07)
+check("a project waiting its turn reads as waiting", "within the daily allowance" in ready["waiting"])
+check("a project that used today's allowance says exactly that, and that nothing is wrong",
+      "Today's step allowance is used" in spent["waiting"] and "nothing is wrong" in spent["waiting"], spent)
 check("neither asks anything of her", not ready["needs_you"] and not spent["needs_you"])
 floop = open(os.path.join(REPO, "scripts", "forge_loop.py")).read()
 check("the cap writes down why it stopped, once a project a day", "_note_day_limit" in floop

@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-07",
+  "timezone": "America/Chicago",
+  "authorization": "slack:1791402204.566209",
+  "status": "implemented_locally_do_not_submit_duplicates",
+  "completion_gate": "Review and integrate the local source fixes, then perform separately authorized deployment. No Study submission is needed for these two fixes.",
+  "requests": [
+    {
+      "dedup": "home_presence.py still uses json.dump(st, open(STATE, 'w')); stale sensor baseline already fixed, do not repeat it",
+      "what": "Make home_presence.py state replacement atomic. main() currently truncates STATE with json.dump(st, open(STATE, 'w')); readers can see partial JSON. Write the complete new JSON to a unique temporary file in STATE's directory, flush and fsync it, then os.replace it onto STATE. Clean up temporary files on failure and preserve the prior complete state if replacement fails. Preserve presence semantics, timestamps and the existing sensor_reactions call. No hardware access or authority changes. Add a meaningful isolated test with scratch paths and all probes, sensor reactions and senders stubbed: prove success leaves valid complete state, injected write/replace failure preserves prior bytes, and no temporary files leak. Do not edit the already-fixed freshness logic. Do not touch unrelated code or deployed drift."
+    },
+    {
+      "dedup": "SF-6f9a460b failed; October 6 changes improved Study failure reporting but current chemistry_lab._json_object still has no evidence persistence",
+      "what": "Complete the unlanded SF-6f9a460b parser-evidence request against current chemistry_lab.py. At _json_object entry, before stripping or repairing, preserve the original response in memory/chemistry-lab/diagnostics under an opaque evidence ID; directory 0700, files 0600, maximum 64 KiB per evidence file, retain only the latest 200 evidence files. Record strict_parse_failed and repaired as distinct events; retain repaired text beside the raw when repair succeeds, within the same bounds. Keep original/repaired model text confined to protected diagnostic files. Errors, _fault and the tick exception path must expose only fixed labels and the evidence ID, never response excerpts; orientation calls must use the same path. Preserve successful parsing and current strict-before-repair behavior. Add isolated scratch-store tests for a recognizable truncated JSON response: original bytes are retained before repair, repaired text and distinct events exist, general fault output contains the evidence ID but no recognizable model text; also verify file-size/retention bounds and safe handling of diagnostic write failure. Stub model/network/senders. Do not read actual diagnostics or private records, expand permissions, or include model text in general logs."
+    }
+  ]
+}

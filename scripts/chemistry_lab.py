@@ -25,6 +25,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -667,10 +668,59 @@ def lab_context(gemma_journal=True):
 
 # A local model's JSON comes back truncated or with a stray backslash often enough that this parser crashed 74
 # times in one day, taking every reflect tick with it (Vintos found it, 2026-10-04: "that's the parser ... not a
-# fold"). Strict parsing first; then the two breakages he actually sees are repaired; the raw text rides on the
-# error either way, so a failure can be read instead of guessed at (dot's correction: truncation was unconfirmed
-# because nothing kept the response).
+# fold"). Strict parsing first; then the two breakages he actually sees are repaired. Original and repaired
+# text stay in bounded private diagnostics; general errors carry only a label and opaque evidence ID.
 _BAD_ESCAPE = re.compile(r'\\(?!["\\/bfnrtu])')
+DIAGNOSTIC_BYTES = 64 * 1024
+DIAGNOSTIC_FILES = 200
+
+
+class ModelJSONError(ValueError):
+    def __init__(self, label, evidence_id):
+        self.evidence_id = evidence_id
+        super().__init__(label + "; evidence=" + evidence_id)
+
+
+def _parser_evidence(evidence_id, events, *, raw=None, repaired=None):
+    """Best-effort bounded evidence; a storage failure never leaks the response or breaks parsing."""
+    root = os.path.join(ROOT, "diagnostics")
+    try:
+        _ensure()
+        os.makedirs(root, mode=0o700, exist_ok=True)
+        if os.path.islink(root):
+            return False
+        os.chmod(root, 0o700)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW
+        with os.fdopen(os.open(os.path.join(root, ".lock"), flags, 0o600), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            payloads = {"events.json": json.dumps({"evidence_id": evidence_id, "events": events})}
+            if raw is not None: payloads["raw.txt"] = raw
+            if repaired is not None: payloads["repaired.txt"] = repaired
+            try:
+                for suffix, text in payloads.items():
+                    data = text.encode("utf-8", "replace")[:DIAGNOSTIC_BYTES]
+                    fd, tmp = tempfile.mkstemp(prefix=".evidence-", dir=root)
+                    try:
+                        with os.fdopen(fd, "wb") as stream:
+                            stream.write(data); stream.flush(); os.fsync(stream.fileno())
+                        os.replace(tmp, os.path.join(root, evidence_id + "." + suffix))
+                    finally:
+                        if os.path.exists(tmp): os.unlink(tmp)
+            finally:
+                # Prune groups even after a partial write failure. Never prune a raw file alone.
+                groups = {}
+                for entry in os.scandir(root):
+                    if re.fullmatch(r"[0-9a-f]{32}\.(raw\.txt|repaired\.txt|events\.json)", entry.name):
+                        groups.setdefault(entry.name[:32], []).append(entry)
+                total = sum(map(len, groups.values()))
+                for key in sorted(groups, key=lambda k: min(e.stat(follow_symlinks=False).st_mtime_ns for e in groups[k])):
+                    if total <= DIAGNOSTIC_FILES: break
+                    if key == evidence_id: continue
+                    for entry in groups[key]: os.unlink(entry.path)
+                    total -= len(groups[key])
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 def _close_open(text):
@@ -695,20 +745,30 @@ def _close_open(text):
 
 def _json_object(text, keep=800):
     raw = str(text or "")
+    evidence_id, events = uuid.uuid4().hex, ["captured"]
+    _parser_evidence(evidence_id, events, raw=raw)
     body = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw, flags=re.I | re.S)
     lo = body.find("{")
     if lo < 0:
-        raise ValueError("model returned no JSON object at all; it said: %r" % raw[:keep])
+        events.append("strict_parse_failed")
+        _parser_evidence(evidence_id, events)
+        raise ModelJSONError("model returned no JSON object", evidence_id) from None
     # Strict boundary first: exactly one complete object from the opening brace, whatever follows it. Gemma
     # sometimes keeps writing after its object (a second one, or a sentence with braces in it); taking the last
     # "}" swallows that tail and the parse fails with "Extra data" (Vintos, SK-330c8fa6). Trailing text is not
     # part of the answer. A stray backslash is tried here too, so a tail does not hide behind one.
-    for strict in (body, _BAD_ESCAPE.sub(r"\\\\", body)):
+    for index, strict in enumerate((body, _BAD_ESCAPE.sub(r"\\\\", body))):
         try:
             value, _end = json.JSONDecoder().raw_decode(strict, lo)
         except ValueError:
+            if index == 0:
+                events.append("strict_parse_failed")
+                _parser_evidence(evidence_id, events)
             continue
         if isinstance(value, dict):
+            if index:
+                events.append("repaired")
+                _parser_evidence(evidence_id, events, repaired=strict[lo:_end])
             return value
     hi = body.rfind("}")
     tries = [body[lo:hi + 1]] if hi > lo else []
@@ -720,9 +780,10 @@ def _json_object(text, keep=800):
         except ValueError:
             continue
         if isinstance(value, dict):
+            events.append("repaired")
+            _parser_evidence(evidence_id, events, repaired=candidate)
             return value
-    raise ValueError("model returned no usable JSON object (%d characters); it said: %r"
-                     % (len(raw), raw[:keep]))
+    raise ModelJSONError("model returned no usable JSON object", evidence_id) from None
 
 
 def _ask(system, prompt, max_tokens=500, temperature=0.75):

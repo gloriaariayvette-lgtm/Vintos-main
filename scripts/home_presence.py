@@ -2,7 +2,8 @@
 """home_presence.py — is Gloria's phone on the house wifi?
 
 Option 1 of the position ladder, chosen by her: binary home/not-home from her
-phone's presence on the local network. It can never say which room — the house
+phone's presence on the local network. The retained `home` flag is detection hysteresis,
+not evidence of Gloria's whereabouts. It can never say which room — the house
 map carries the geometry once a room is known from her own words.
 
 Honesty rules:
@@ -24,7 +25,7 @@ in the router and use the IP.
 Cron (every 5 minutes):
     */5 * * * * python3 ~/.vintos/workspace/scripts/home_presence.py >> /tmp/home-presence.log 2>&1
 """
-import json, os, subprocess, time
+import json, math, os, subprocess, tempfile, time
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
@@ -84,7 +85,7 @@ def decide(prev, hit, now=None):
     if hit:
         if not st.get("home"):
             st["home_since"] = now
-        st.update({"home": True, "misses": 0})
+        st.update({"home": True, "misses": 0, "last_seen": now})
     else:
         st["misses"] = int(st.get("misses", 0)) + 1
         if st["misses"] >= ABSENT_AFTER:
@@ -94,13 +95,20 @@ def decide(prev, hit, now=None):
 
 
 def context_line():
-    """The one line he may receive — only positive, only fresh. '' otherwise."""
+    """Age of an actual phone detection, not the latest check or her whereabouts."""
     st = _load(STATE, {})
-    if not st.get("home"):
+    if not isinstance(st, dict) or st.get("home") is not True:
         return ""
-    if time.time() - float(st.get("checked", 0)) > FRESH_S:
+    seen, checked, now = st.get("last_seen"), st.get("checked"), time.time()
+    if any(type(t) not in (int, float) or (type(t) is float and not math.isfinite(t))
+           for t in (seen, checked, now)):
         return ""
-    return "Gloria's phone is on the house wifi - she is home."
+    if not 0 < seen <= checked <= now or now - seen > FRESH_S:
+        return ""
+    line = "Phone last detected on the house Wi-Fi %d seconds ago." % int(now - seen)
+    if type(st.get("misses")) is int and st["misses"] > 0:
+        line += " Latest check did not detect it."
+    return line
 
 
 def main():
@@ -111,7 +119,7 @@ def main():
     st = decide(prev, hit)
     try:
         os.makedirs(MEMORY, exist_ok=True)
-        json.dump(st, open(STATE, "w"), indent=2)
+        _save_state(st)
     except Exception:
         pass
     try:                                             # review 94: home/away flips may move him, within limits
@@ -121,6 +129,20 @@ def main():
     except Exception:
         pass
     print("[presence] %s (misses=%s)" % ("seen - home" if hit else "not seen", st.get("misses", 0)))
+
+
+def _save_state(state):
+    """Readers see either the previous complete state or the new complete state."""
+    fd, tmp = tempfile.mkstemp(prefix=".home-presence-", dir=os.path.dirname(STATE))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(state, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, STATE)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 if __name__ == "__main__":
