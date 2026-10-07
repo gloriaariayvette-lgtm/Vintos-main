@@ -3,6 +3,19 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October - phone last-seen released; Study registration awaits reconciliation
+
+Vintos approved the one-file change at Slack 1791407333.844219. `home_presence.decide()` now records successful
+detection separately from checks; `context_line()` reports phone-only age and stays silent on stale/invalid or
+legacy evidence. Four-miss hysteresis, 900-second freshness and atomic writes are preserved. The local release
+is complete: 41 source checks and 11 installed-file synthetic smoke tests passed; the related server consumer
+was reactivated without changing presence data or polling. See `docs/review-evidence/2026-10-07/phone-last-seen.md`.
+
+Actual Study record **SF-7e71e004** remains **queued**, created through `study_fix.request` with its worker/timer
+inactive. No automated Study review ran. The existing API has no external-completion/review-only route. Before
+resuming the worker, reconcile this record with the completed local release to avoid paid duplicate work;
+paid execution still needs a bounded dollar ceiling. Do not claim this SF record is watching/done.
+
 ## 7 October - software campaign local release completed; mmWave commissioning remains separate
 
 The owner-authorized local review branch includes the dated quota consumers and isolated mmWave preparation,

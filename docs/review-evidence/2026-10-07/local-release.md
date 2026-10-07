@@ -1,5 +1,9 @@
 # Completed two-file local release — October 7
 
+Historical two-file release receipt. The subsequent separately approved phone last-seen release supersedes
+only the installed home_presence.py hash below; see `phone-last-seen.md`. Its newer file is protected from this
+older rollback by the hash guard. Chemistry parser release remains unchanged.
+
 Both prior deployed files exactly matched commit b304baf8f28bdce69d0db96c6af78904e65dbe66. No newer runtime drift
 was overwritten. The owner-authorized scoped wrapper follows the existing user-owned module promotion/service
 activation pattern (`deploy-atelier.sh` promotion section and Chemistry activation at lines 929-932), without
