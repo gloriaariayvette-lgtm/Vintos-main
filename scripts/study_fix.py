@@ -28,7 +28,7 @@ Every step is said in #vintos-dot and kept in memory/study-fixes.json; a failure
     python3 study_fix.py --status   what is queued, working, watched or done
     python3 study_fix.py --reset-today   Gloria gives him today's three again (the records stay as they are)
 """
-import fcntl, json, os, re, subprocess, sys, time, uuid
+import fcntl, hashlib, json, os, re, subprocess, sys, tempfile, time, uuid
 from datetime import datetime
 import software_quota
 
@@ -150,7 +150,7 @@ def _request(what, by):
     limit = software_quota.limit("study", PER_DAY, _today())
     if used_today(rows) >= limit:
         return None, "today's %d Study fixes are used; more tomorrow" % limit
-    if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching") for r in rows):
+    if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching", "implemented_externally") for r in rows):
         return None, "that fix is already in the Study"
     row = {"id": "SF-" + uuid.uuid4().hex[:8], "what": what[:2000], "by": by, "state": "queued",
            "asked": _now().isoformat(timespec="seconds")}
@@ -169,10 +169,96 @@ _ABOUT = re.compile(r"\bstudy\b|\bSF-[0-9a-f]{8}\b", re.I)
 SF_ID = re.compile(r"\bSF-[0-9a-f]{8}\b")
 
 
+def record_sha256(row):
+    """Compare-and-set token for the exact registration being reconciled."""
+    return hashlib.sha256(json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+
+def reconcile_external(fix_id, receipt_path, receipt_sha256, commit, expected_record_sha256):
+    """Local owner-admin operation: attest an external release, never a Study review.
+
+    Lock out the worker and request writers; reject changed registrations/evidence. Repeating the exact
+    attestation is a no-op. No model, deployment, notification, quota reset or history truncation.
+    """
+    if not re.fullmatch(r"SF-[0-9a-f]{8}", fix_id) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("invalid fix ID or commit")
+    if any(not re.fullmatch(r"[0-9a-f]{64}", h) for h in (receipt_sha256, expected_record_sha256)):
+        raise ValueError("invalid evidence fingerprint")
+    receipt_path = os.path.abspath(receipt_path)
+    with open(LOCK, "a+") as worker, open(QUEUE + ".request.lock", "a+") as requests:
+        fcntl.flock(worker, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(requests, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Fail closed on corrupt/missing queue; _load's empty fallback is inappropriate for reconciliation.
+        with open(QUEUE, encoding="utf-8") as stream: rows = json.load(stream)
+        if not isinstance(rows, list): raise ValueError("invalid Study queue")
+        matches = [r for r in rows if isinstance(r, dict) and r.get("id") == fix_id]
+        if len(matches) != 1: raise ValueError("fix must identify exactly one registration")
+        row = matches[0]
+        if row.get("state") not in ("queued", "implemented_externally"):
+            raise ValueError("only queued registrations may be reconciled")
+        if os.path.islink(receipt_path) or not os.path.isfile(receipt_path): raise ValueError("receipt must be a regular file")
+        with open(receipt_path, "rb") as stream: raw = stream.read(65537)
+        if len(raw) > 65536 or hashlib.sha256(raw).hexdigest() != receipt_sha256:
+            raise ValueError("release receipt fingerprint mismatch")
+        receipt = json.loads(raw)
+        if (not isinstance(receipt, dict) or receipt.get("status") != "installed_locally" or receipt.get("study_id") != fix_id
+                or receipt.get("automated_study_review") is not False):
+            raise ValueError("receipt is not this externally installed fix")
+        smoke = receipt.get("smoke")
+        if (not isinstance(smoke, list) or not smoke or any(not isinstance(s, dict)
+                or not s.get("suite") or type(s.get("exit_code")) is not int or s["exit_code"] != 0 for s in smoke)):
+            raise ValueError("receipt lacks passing smoke evidence")
+        target = receipt.get("target", "")
+        name = os.path.basename(target)
+        if (not re.fullmatch(r"[A-Za-z0-9_-]+\.py", name)
+                or target != os.path.join(WS, "scripts", name) or protected("scripts/" + name)):
+            raise ValueError("receipt target is not an eligible runtime script")
+        installed = receipt.get("installed_sha256", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", installed): raise ValueError("invalid installed hash")
+        subprocess.run(["git", "merge-base", "--is-ancestor", commit, "HEAD"], cwd=CHECKOUT,
+                       check=True, capture_output=True, timeout=15)
+        source = subprocess.check_output(["git", "show", commit + ":scripts/" + name], cwd=CHECKOUT, timeout=15)
+        if hashlib.sha256(source).hexdigest() != installed: raise ValueError("commit does not match installed evidence")
+        if os.path.islink(target) or not os.path.isfile(target): raise ValueError("runtime target must be a regular file")
+        with open(target, "rb") as stream:
+            if hashlib.sha256(stream.read()).hexdigest() != installed: raise ValueError("installed code has changed")
+        evidence = {"receipt_path": receipt_path, "receipt_sha256": receipt_sha256, "commit": commit,
+                    "target": target, "installed_sha256": installed, "registered_sha256": expected_record_sha256,
+                    "study_reviewed": False}
+        if row.get("state") == "implemented_externally":
+            prior = dict(row); prior.pop("external_release", None); prior["state"] = "queued"
+            prior["log"] = prior.get("log", [])[:-1]
+            if (row.get("external_release") != evidence or record_sha256(prior) != expected_record_sha256
+                    or row.get("log", [{}])[-1].get("what") != "implemented locally; not Study-reviewed"):
+                raise ValueError("already reconciled with different evidence or history")
+            return dict(row)
+        if record_sha256(row) != expected_record_sha256 or "external_release" in row:
+            raise ValueError("registration changed since approval")
+        if not isinstance(row.get("log"), list): raise ValueError("registration history missing")
+        row.update(state="implemented_externally", external_release=evidence)
+        _event(row, "implemented locally; not Study-reviewed")
+        fd, tmp = tempfile.mkstemp(prefix=".study-reconcile-", dir=os.path.dirname(QUEUE))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(rows, stream, indent=1, ensure_ascii=False); stream.flush(); os.fsync(stream.fileno())
+            os.chmod(tmp, os.stat(QUEUE).st_mode & 0o777)
+            os.replace(tmp, QUEUE)
+            directory = os.open(os.path.dirname(QUEUE), os.O_RDONLY | os.O_DIRECTORY)
+            try: os.fsync(directory)
+            finally: os.close(directory)
+        finally:
+            if os.path.exists(tmp): os.unlink(tmp)
+        return dict(row)
+
+
+def _state_label(row):
+    return "implemented locally; not Study-reviewed" if row.get("state") == "implemented_externally" else row.get("state")
+
+
 def record(rows=None, limit=4):
     """The Study's last fixes as one line each, by id and state."""
     rows = _load() if rows is None else rows
-    return "; ".join("%s (%s): %s" % (r.get("id"), r.get("state"), str(r.get("what", ""))[:90]) for r in rows[-limit:]) or "empty"
+    return "; ".join("%s (%s): %s" % (r.get("id"), _state_label(r), str(r.get("what", ""))[:90]) for r in rows[-limit:]) or "empty"
 
 
 def claim_check(text, rows=None):
@@ -193,6 +279,8 @@ def claim_check(text, rows=None):
             r = by_id.get(i)
             if not r:
                 return "%s is not in the Study's record, which is: %s" % (i, record(rows))
+            if _LIVE.search(line) and r.get("state") == "implemented_externally":
+                return "%s was implemented locally, not Study-reviewed. Cite its external release receipt; do not claim an automated Study review." % i
             if _LIVE.search(line) and r.get("state") not in ("watching", "done"):
                 return ("%s is %s: it is not deployed or verified yet. Say what it is now, and that its deploy and "
                         "check are still to come." % (i, r.get("state")))
@@ -648,10 +736,19 @@ def tend(**kw):
 
 
 if __name__ == "__main__":
-    if "--reset-today" in sys.argv:
+    if "--reconcile-external" in sys.argv:
+        import argparse
+        parser = argparse.ArgumentParser(description="Reconcile an owner-approved external release without running Study.")
+        parser.add_argument("--reconcile-external", required=True)
+        parser.add_argument("--receipt", required=True); parser.add_argument("--receipt-sha256", required=True)
+        parser.add_argument("--commit", required=True); parser.add_argument("--expected-record-sha256", required=True)
+        args = parser.parse_args()
+        row = reconcile_external(args.reconcile_external, args.receipt, args.receipt_sha256, args.commit, args.expected_record_sha256)
+        print("%s: %s" % (row["id"], _state_label(row)))
+    elif "--reset-today" in sys.argv:
         print("Study fixes reset for today: %d available now" % reset_today())
     elif "--status" in sys.argv:
         for r in _load()[-10:]:
-            print("%s  %-11s %s" % (r["id"], r.get("state"), r.get("what", "")[:100]))
+            print("%s  %-11s %s" % (r["id"], _state_label(r), r.get("what", "")[:100]))
     else:
         print(tend())
