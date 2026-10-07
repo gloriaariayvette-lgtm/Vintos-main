@@ -1,5 +1,8 @@
 # Authorized local software completion — October 7
 
+**Source-validation snapshot:** the later authorized scoped release is complete. `local-release.md` supersedes
+the not-live/release-gate statements below. No remote publication is required for that local release.
+
 The campaign source includes the reviewed dated quota changes and isolated mmWave preparation, plus the two
 requested fixes below. This is owner-authorized repository work, not a Study self-edit or a change to its
 protected-file gates. No agent model was called. Existing unrelated untracked checkout files were excluded.

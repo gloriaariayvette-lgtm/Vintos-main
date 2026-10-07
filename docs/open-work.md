@@ -3,18 +3,20 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 7 October - software campaign source ready for integration, deployment remains scoped
+## 7 October - software campaign local release completed; mmWave commissioning remains separate
 
 The owner-authorized local review branch includes the dated quota consumers and isolated mmWave preparation,
 plus atomic `home_presence` state replacement and bounded Lab parser evidence. The two prepared Study requests
-are marked implemented locally: do not queue paid duplicate fixes. Presence and parser changes are not deployed.
+are marked implemented locally: do not queue paid duplicate fixes. Presence and parser changes are now deployed
+through the owner-authorized two-file user-level release; installed synthetic smoke tests passed (4 presence, 7 parser).
 The existing sensor freshness change was not repeated. mmWave has no hardware or live consumer integration.
 
 The owner installed the Forge quota and its worker used the full 10/10 allowance. Study's reviewed quota files
 are installed, but its timer is paused and worker inactive pending the dollar ceiling. No new paid work is
-authorized by these source changes. Source is integrated locally; still pending: publication/release through the normal reviewed workflow, scoped
-deployment of the presence/parser fixes, and any later hardware commissioning. Notification digest behavior
-requires separate approval and is unchanged. See `docs/review-evidence/2026-10-07/local-completion.md` for evidence.
+authorized by these source changes. Source is integrated locally and the requested local release is complete;
+remote publication is not needed or authorized. Hardware commissioning remains separate. Notification digest
+behavior requires separate approval and is unchanged. See `docs/review-evidence/2026-10-07/local-release.md` for
+installed hashes, backup, rollback command and verification; `local-completion.md` records source-test evidence.
 
 ## 7 October — a video she sends may be read as her words by his subconscious (for the check after her LoRA)
 
