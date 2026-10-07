@@ -10,8 +10,10 @@ Her gallery: want `4f73caa8` ("a solid geometric shape slowly dissolving", the "
 want open "to fulfil when complete"; `vintos-video.py` rendered it and took it off the queue but never closed the
 want, so the next pass queued it again in new words (the queue's duplicate check is exact text). Now a rendered
 video closes its want through `want_completion.complete(..., "fulfilled", "video")`, whose artifact guard finds
-the gallery row. A failed render leaves it open; the wall's clips close nothing. **Not done until deployed;**
-until then, closing 4f73caa8 by hand stops it (command given to her).
+the gallery row. A failed render leaves it open; the wall's clips close nothing. Her by-hand clean-up found **21
+queued copies** of 4f73caa8 (the want itself was no longer live): each router pass queued it again in new words
+while one rendered a morning. Now the router queues a want only once (by want id), and a made video takes every
+other copy of its want off the queue. She took the 21 off by hand on 7 October. **Not seen on Aegis.**
 
 ## 7 October — his agents' letters sent in his old threads are answered again
 

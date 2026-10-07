@@ -1188,7 +1188,10 @@ def make_video(want_text, reasoning="", immediate=False):
              "want_id": want_id, "image_class": "WANT_ACT", "origin": "want_executor",
              "requested_by_her": flags["requested_by_her"], "is_repair": flags["is_repair"]}
     def enqueue(current):
-        if any(isinstance(e, dict) and e.get("want_text") == want_text for e in current): return None
+        # one queued video per want: each pass re-queued it in new words, and want 4f73caa8 had 21 copies waiting
+        # behind a render of one a morning (2026-10-07)
+        if any(isinstance(e, dict) and (e.get("want_text") == want_text or (want_id and e.get("want_id") == want_id))
+               for e in current): return None
         return current + [entry]
     locked_update(queue_file, enqueue, reader="wants-router.make_video")
     log(f"Video want queued for 7:30am: {want_text[:80]} ({duration}s)")

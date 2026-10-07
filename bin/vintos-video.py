@@ -196,6 +196,9 @@ def _process_queue():
             if same:
                 entry = current.pop(index)
                 if not ok: current.append(entry)
+                elif isinstance(selected, dict) and selected.get("want_id") and selected["want_id"] != "projector":
+                    # its want is made: any other copy queued for it goes too (21 of 4f73caa8, 2026-10-07)
+                    current[:] = [r for r in current if not (isinstance(r, dict) and r.get("want_id") == selected["want_id"])]
                 return current
         return None
     locked_update(QUEUE, finish, reader="vintos-video.process_queue")
