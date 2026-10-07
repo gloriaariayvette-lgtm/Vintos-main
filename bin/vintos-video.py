@@ -175,6 +175,17 @@ def _process_queue():
         if not allowed:
             print("[stance] " + why); return
         ok = make_one(str(text), img, item.get("duration", 6), item.get("backend", "grok"), item.get("want_id", ""))
+    # A made video ends the want it was for. The router queues a video and leaves the want open "to fulfil when
+    # complete", and nothing here closed it, so the next pass queued it again in new words and the same video was
+    # made most mornings (want 4f73caa8: 3, 4 and 7 October). The wall's own clips have no want to close.
+    if ok and item.get("want_id") and item.get("want_id") != "projector":
+        try:
+            import want_completion as _wc
+            _done = _wc.complete({"id": item["want_id"], "want": item.get("want_text", "")}, "fulfilled", "video",
+                                 note="its video was made")
+            print(f"[video] want {item['want_id']}: {_done.get('result')}")
+        except Exception as _wce:
+            print(f"[video] the want was not closed: {_wce}")
     selected = q[0]
     from store_guard import locked_update
     def finish(current):

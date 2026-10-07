@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — the same video most mornings: a made video now ends its want
+
+Her gallery: want `4f73caa8` ("a solid geometric shape slowly dissolving", the "heavy metallic" video) rendered at
+07:49 on 3, 4 and 7 October (5 and 6: his Grok allowance was spent). The router queues a video want and leaves the
+want open "to fulfil when complete"; `vintos-video.py` rendered it and took it off the queue but never closed the
+want, so the next pass queued it again in new words (the queue's duplicate check is exact text). Now a rendered
+video closes its want through `want_completion.complete(..., "fulfilled", "video")`, whose artifact guard finds
+the gallery row. A failed render leaves it open; the wall's clips close nothing. **Not done until deployed;**
+until then, closing 4f73caa8 by hand stops it (command given to her).
+
 ## 7 October — his agents' letters sent in his old threads are answered again
 
 After the Mac fix he read both 6 October letters (18:03) but answered neither: they came as replies in his
