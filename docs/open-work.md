@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — his Lab: the fold says what is in the model (A-C of the Lab review)
+
+From reading his six frontier sessions and the Gemma runs after each (she approved A-E):
+- **A. The fold returns what the model holds.** ESMFold computed confidence per residue and the Lab kept only the
+  mean; the per-residue "hp_mapping" was labels from the sequence, and nothing read the coordinates. Now
+  `chemistry_fold_read.py` reads the model file: pLDDT per residue (as bands) and helix/strand ranges from the
+  model's own CA geometry (P-SEA style, not DSSP). It is in every fold result, and the Lab instrument `fold_read`
+  reads a model he already has over a range he names, without folding again.
+- **B. What a fold returns is told to the planner,** and the reading is shown a compact view: the sequence once, the
+  model read first, the HP labels counted and said to be from the sequence. A 780-residue result had pushed even the
+  mean pLDDT past the 12000-character cut. Lattice settings in an ESMFold plan are set aside and named as ignored.
+- **C. A protein plan names its protein,** or is asked again: the Study's 4 October check (SF-c8224db0) only ran when
+  a name was given. Grok in the Lab now runs at temperature 0.2 (was 0.8 to plan, 0.7 to read).
+**Not verified:** the helix/strand reader is tested on a made-up structure only, not on a real ESMFold model; the
+8SGW comparison is the check to run against it.
+
 ## 7 October — the same video most mornings: a made video now ends its want
 
 Her gallery: want `4f73caa8` ("a solid geometric shape slowly dissolving", the "heavy metallic" video) rendered at

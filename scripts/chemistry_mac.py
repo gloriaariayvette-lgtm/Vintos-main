@@ -29,6 +29,8 @@ import time
 import uuid
 
 MAX_HP_LATTICE_RESIDUES = 9
+ESMFOLD_PARAMETERS = {"target_accession", "requested_accession", "accession", "protein_name", "requested_protein",
+                      "gene", "target_gene", "sequence", "sequence_source", "protein_backend", "fragment"}
 AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 HP_HYDROPHOBIC = frozenset("ACILMFV")  # Kyte-Doolittle >= 1.0, matching the Mac experiment
 
@@ -236,6 +238,14 @@ def prepare_protein(parameters, resolver=None):
     # The returned result still passes the same accession/sequence identity contract.
     parameters["protein_backend"] = ("esmfold" if len(sequence) > MAX_HP_LATTICE_RESIDUES
                                      else "hp_lattice")
+    if parameters["protein_backend"] == "esmfold":
+        # ESMFold takes a sequence and nothing else. Lattice settings in an ESMFold plan ("chain_stiffness 0.7,
+        # hydrophobic_pull 0.6", 3 October) changed nothing and were then read as if they had; they are set aside
+        # and named, so the reading knows they did not exist for this run.
+        ignored = sorted(k for k in parameters if k not in ESMFOLD_PARAMETERS)
+        parameters = {k: v for k, v in parameters.items() if k in ESMFOLD_PARAMETERS}
+        if ignored:
+            parameters["ignored_parameters"] = ignored
     return {"ok": True, "parameters": parameters, "sequence_request": contract}
 
 

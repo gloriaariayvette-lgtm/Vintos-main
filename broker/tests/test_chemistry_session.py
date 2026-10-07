@@ -185,7 +185,8 @@ def answers(*replies):
         asked.append(prompt); return next(it)
     planner._frontier = _frontier
 answers(json.dumps({"experiment": "protein", "parameters": {}, "question": "How does SLC7A11 fold?"}),
-        json.dumps({"experiment": "protein", "parameters": {"target_accession": "Q9UPY5"}, "question": "How does Q9UPY5 fold?"}))
+        json.dumps({"experiment": "protein", "parameters": {"target_accession": "Q9UPY5", "protein_name": "SLC7A11"},
+                    "question": "How does Q9UPY5 fold?"}))
 p2 = planner._plan("ctx", ["protein", "fold"], "grok")
 assert p2["parameters"]["target_accession"] == "Q9UPY5" and len(asked) == 2, (p2, len(asked))
 assert "YOUR PLAN COULD NOT RUN" in asked[1] and "YOUR PLAN COULD NOT RUN" not in asked[0]
@@ -197,6 +198,21 @@ try:
 except ValueError as exc:
     raised = str(exc)
 assert "names no UniProt accession" in raised and len(asked) == 2, (raised, len(asked))
+asked.clear()
+# An accession with no protein named is asked again for the name: "HFE" with P02794 folded ferritin (2026-10-07)
+answers(json.dumps({"experiment": "protein", "parameters": {"target_accession": "P02794"}, "question": "How does HFE fold?"}),
+        json.dumps({"experiment": "protein", "parameters": {"target_accession": "P02794", "protein_name": "HFE"},
+                    "question": "How does HFE fold?"}))
+p3 = planner._plan("ctx", ["protein"], "grok")
+assert p3["parameters"]["protein_name"] == "HFE" and len(asked) == 2 and "not parameters.protein_name" in asked[1], (p3, len(asked))
+asked.clear()
+answers(json.dumps({"experiment": "protein", "parameters": {"target_accession": "P02794"}, "question": "fold"}),
+        json.dumps({"experiment": "protein", "parameters": {"target_accession": "P02794"}, "question": "fold"}))
+try:
+    planner._plan("ctx", ["protein"], "grok"); raised = ""
+except ValueError as exc:
+    raised = str(exc)
+assert "with its protein name" in raised and len(asked) == 2, (raised, len(asked))
 asked.clear()
 answers(json.dumps({"experiment": "protein", "parameters": {"fragment": "villin"}}))
 assert planner._plan("ctx", ["protein"], "grok")["parameters"]["fragment"] == "villin" and len(asked) == 1

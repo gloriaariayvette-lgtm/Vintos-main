@@ -10,6 +10,7 @@ for ONE instrument on it:
                                                            esmc.feature_interpretation)
 
   reference_compare on an ESMFold model the Lab made    (structure.compare: against a real RCSB entry, on Aegis)
+  fold_read         on an ESMFold model the Lab made    (structure.read: helix/strand and confidence over a range)
 
 Adaptyv (needs Gloria's approval for anything real) and the NGS workbench (needs a real dataset) are not
 offered here. At most DAILY_RUNS instrument runs a day. A sequence the Lab fetches is kept as a FASTA
@@ -36,7 +37,10 @@ OFFERED = {
     # his predicted structure against an experimental one (Grok Bot, 2026-10-06: pendrin's STAS against pig 8SGW);
     # runs on Aegis in the Lab's own Python, not through the relay
     "reference_compare": ("structure.compare",),
+    # what a model he already has holds, over the residues he names, without folding it again (2026-10-07)
+    "fold_read": ("structure.read",),
 }
+LOCAL = {"reference_compare": "chemistry_reference_compare.py", "fold_read": "chemistry_fold_read.py"}
 STRUCTURE = (".pdb", ".cif", ".cif.gz")
 SEQUENCE = (".fasta", ".fa", ".faa", ".fna", ".gb", ".gbk")
 
@@ -93,6 +97,9 @@ def menu_block():
                      "numbering, and offset (entry number + offset = your protein's number). Lines your model up "
                      "with the real structure by sequence and gives TM-score, RMSD, and the entry's helices and strands "
                      "in your numbering.")
+        lines.append("- fold_read, operation structure.read, files [one of: " + ", ".join(models) + "], with range "
+                     "[first, last] in your protein's numbering: helix and strand ranges from the model's own geometry "
+                     "and its confidence per stretch. Read a model you have; do not fold it again for this.")
     lines.append("- biohub_esm, operation atlas.search | esmc.mutation_landscape | esmc.feature_interpretation, files [], "
                  "with a sourced UniProt accession or sequence named in the question (never a duplicate of ESMC/ESMFold).")
     return "\n".join(lines)
@@ -109,10 +116,10 @@ def validate(req):
     allowed = set(artifacts("structure", 50) + artifacts("sequence", 50))
     if any(f not in allowed for f in files):
         raise ValueError("instrument files must be artifacts the Lab listed")
-    if skill in ("structure_viewer", "sequence_viewer", "reference_compare") and not files:
+    if skill in ("structure_viewer", "sequence_viewer") + tuple(LOCAL) and not files:
         raise ValueError("this instrument needs a Lab artifact")
-    if skill == "reference_compare" and (len(files) != 1 or not files[0].startswith("artifacts/esmfold/")):
-        raise ValueError("reference_compare takes one ESMFold model the Lab made")
+    if skill in LOCAL and (len(files) != 1 or not files[0].startswith("artifacts/esmfold/")):
+        raise ValueError("%s takes one ESMFold model the Lab made" % skill)
     question = str(req.get("question") or "")[:600]
     if len(question) < 10:
         raise ValueError("say what the instrument should answer")
@@ -125,7 +132,7 @@ def run(req, runner=None):
     today = _runs_today()
     if len(today["runs"]) >= DAILY_RUNS:
         raise PermissionError("instrument runs used up for today")
-    if runner is None and skill == "reference_compare":
+    if runner is None and skill in LOCAL:
         runner = _compare_runner(req)
     if runner is None:
         import plugin_gateway
@@ -147,16 +154,18 @@ def run(req, runner=None):
 
 
 def _compare_runner(req, run=None):
-    """reference_compare in the Lab's own Python on Aegis; answers like a relay skill (summary, files)."""
+    """A local instrument (reference_compare, fold_read) in the Lab's own Python on Aegis; answers like a relay skill."""
     import subprocess
     import sys
     def runner(surface, skill, question, operation=None, input_files=()):
-        body = {"model": os.path.relpath(input_files[0], LAB), "reference": req.get("reference"),
-                "chain": req.get("chain", "A"), "ref_span": req.get("ref_span"), "offset": req.get("offset", 0)}
+        model = os.path.relpath(input_files[0], LAB)
+        body = ({"model": model, "range": req.get("range")} if skill == "fold_read" else
+                {"model": model, "reference": req.get("reference"), "chain": req.get("chain", "A"),
+                 "ref_span": req.get("ref_span"), "offset": req.get("offset", 0)})
         python = os.environ.get("VINTOS_ESMFOLD_PYTHON", os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"))
         if not os.path.isfile(python):
             python = sys.executable
-        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_reference_compare.py")
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), LOCAL[skill])
         done = (run or subprocess.run)([python, script], input=json.dumps(body), text=True, capture_output=True, timeout=300)
         try:
             out = json.loads((done.stdout or "").strip().splitlines()[-1])
@@ -165,6 +174,6 @@ def _compare_runner(req, run=None):
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "the comparison failed")
         r = out["result"]
-        return {"receipt": {"receipt_id": "compare-%s-%s" % (r["reference"], int(time.time()))},
+        return {"receipt": {"receipt_id": "%s-%s-%s" % (skill, r.get("reference") or r.get("model", ""), int(time.time()))},
                 "summary": "\n".join(r["display"]), "files": []}
     return runner

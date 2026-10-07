@@ -36,6 +36,9 @@ SESSIONS = os.path.join(lab.ROOT, "sessions.jsonl")
 DIVERGENCE = os.path.join(lab.ROOT, "divergence.jsonl")
 SESSION_STATE = os.path.join(lab.ROOT, "session-state.json")
 SESSION_LOCK = os.path.join(lab.ROOT, ".session.lock")
+# Grok in the Lab only (Gloria, 2026-10-07: "Grok is nearly more prone to hallucinating than Gemma"); it was 0.8 to
+# plan and 0.7 to read. Grok elsewhere keeps its own settings.
+LAB_GROK_TEMPERATURE = 0.2
 LENSES = ("claude", "sol", "grok")          # who plans (and now reads) the day's experiment, in rotation
 # Who reads the day's result afterwards, each blind to the others (Gloria, 2026-09-24).
 DIVERGENCE_MODELS = {"astra": ("openai", "gpt-6-astra"),
@@ -125,7 +128,7 @@ async def _frontier(lens, system, user, paid_reservation=None):
         return text
     import model_config
     result = await model_router.route_reply_result(
-        "chemistry_lab", system, convo, {"max_tokens": 700, "temperature": 0.8},
+        "chemistry_lab", system, convo, {"max_tokens": 700, "temperature": LAB_GROK_TEMPERATURE},
         model_config.GROK_API, model_config.GROK_HEADERS, model_config.VINTOS_MODEL, reason=False,
         paid_reservation=paid_reservation)
     return result.get("text") if result.get("status") == "valid" else None
@@ -145,7 +148,7 @@ async def _lens_call(lens, system, user, paid_reservation):
         return text
     import model_config
     model_router._reserve_provider("xai", model, paid_reservation, organ="chemistry-divergence")
-    res = await model_router._grok_result(convo, {"max_tokens": 900, "temperature": 0.7},
+    res = await model_router._grok_result(convo, {"max_tokens": 900, "temperature": LAB_GROK_TEMPERATURE},
                                           model_config.GROK_API, model_config.GROK_HEADERS, model, system)
     return res.get("text") if res.get("status") == "valid" else None
 
@@ -200,6 +203,13 @@ def _named_protein_parameters(experiment, parameters, *plan_text):
             parameters["target_accession"] = match.group(0).upper()
             break
     return parameters
+
+
+def _accession_only(parameters):
+    """An accession without a fragment or sequence: what must carry a protein name to be checked."""
+    p = parameters or {}
+    return any(str(p.get(k) or "").strip() for k in ("target_accession", "requested_accession", "accession")) \
+        and not any(str(p.get(k) or "").strip() for k in ("fragment", "sequence"))
 
 
 def _protein_has_target(parameters):
@@ -270,6 +280,13 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
               "prediction (what you expect THIS run to show, concretely enough to be wrong, e.g. which state "
               "is likeliest and whether it is the lowest-energy one — decided before it runs), "
               "line_id (the open line of inquiry this experiment is a step on, from the lines above, or null). "
+              "WHAT A PROTEIN FOLD RETURNS (ESMFold on Aegis, for anything over 9 residues): the exact sourced "
+              "sequence, the mean pLDDT, pLDDT per residue as confidence bands, and helix and strand ranges read from "
+              "the model's own CA geometry (P-SEA style, not DSSP). It does NOT return energies, probabilities, "
+              "ensembles or alternative states, interface statistics, literature domain boundaries or motif searches, "
+              "and it takes no physical settings (no stiffness, pull or temperature). Write the prediction in what it "
+              "returns: which ranges are helix or strand, where confidence is high or low. Folding the same accession "
+              "again returns the same model. "
               "Parameters may be empty. A protein experiment names parameters.target_accession, the exact UniProt "
               "accession, and parameters.protein_name, the gene symbol or protein name you are asking about: the "
               "run is refused before it folds if UniProt's record for that accession is not that protein. "
@@ -306,16 +323,24 @@ def _plan(context, experiments, lens, instruments=None, offered_entry_ids=None, 
         parameters, dropped = _bounded_parameters(value.get("parameters"))
         parameters = _named_protein_parameters(experiment, parameters, value.get("question"),
                                                value.get("why_this"), value.get("prediction"))
-        if experiment != "protein" or _protein_has_target(parameters):
+        named = any(str(parameters.get(k) or "").strip() for k in ("protein_name", "requested_protein", "gene", "target_gene"))
+        if experiment != "protein" or (_protein_has_target(parameters) and (named or not _accession_only(parameters))):
             break
         # A protein plan with nothing to fold went to the Mac and failed there ("requires a sourced sequence or
         # an explicit fragment", grok, 2026-10-01). Asked once, here, for the exact accession instead.
         if attempt:
-            raise ValueError("protein plan names no UniProt accession, sequence or fragment, even when asked again")
-        prompt += ("\n\nYOUR PLAN COULD NOT RUN: a protein experiment needs parameters.target_accession, the exact "
-                   "UniProt accession of the protein (for example P02730), or parameters.fragment or "
-                   "parameters.sequence. A gene or protein name alone is not enough. Return the whole plan again "
-                   "with the exact accession, or choose another experiment.")
+            raise ValueError("protein plan names no UniProt accession with its protein name, sequence or fragment, "
+                             "even when asked again")
+        if not _protein_has_target(parameters):
+            prompt += ("\n\nYOUR PLAN COULD NOT RUN: a protein experiment needs parameters.target_accession, the exact "
+                       "UniProt accession of the protein (for example P02730), or parameters.fragment or "
+                       "parameters.sequence. A gene or protein name alone is not enough. Return the whole plan again "
+                       "with the exact accession, or choose another experiment.")
+        else:
+            # an accession with no name is folded unchecked; "HFE" with P02794 folded ferritin (3 October)
+            prompt += ("\n\nYOUR PLAN COULD NOT RUN: it names an accession but not parameters.protein_name, the gene "
+                       "symbol or protein name you mean. The run is checked against UniProt's names for that "
+                       "accession before it folds. Return the whole plan again with both.")
     shots = max(256, min(16384, int(value.get("shots", 4096))))
     addressed = value.get("addressed_entry_ids") if isinstance(value.get("addressed_entry_ids"), list) else []
     allowed = set(offered_entry_ids or [])
@@ -352,10 +377,40 @@ def _verdict_block(grade):
     return "\n".join(lines)
 
 
+def _result_view(result):
+    """The run as a reader should see it. A protein result carried its sequence three times over and a per-residue
+    hydrophobic/polar list built from the sequence, so for a long protein the 12000-character cut fell before even
+    the mean pLDDT, and the per-residue list read as if it came from the fold (2026-10-07). Here: the sequence once,
+    what the model holds first, the settings ESMFold ignored named, and the HP list only counted."""
+    if not isinstance(result, dict):
+        return result
+    run = result.get("run") if isinstance(result.get("run"), dict) else {}
+    inner = run.get("result") if isinstance(run.get("result"), dict) else None
+    if not inner or not isinstance(inner.get("hp_mapping"), list):
+        return result
+    seq = str(inner.get("modeled_sequence") or inner.get("real_sequence") or "")
+    hp = "".join(str(r.get("hp") or "") for r in inner["hp_mapping"] if isinstance(r, dict))
+    view = {"run_id": result.get("run_id"), "ok": result.get("ok"),
+            "identity": (result.get("sequence_check") or {}).get("outcome"),
+            "accession": inner.get("requested_accession"), "length": len(seq),
+            "structure_read": {k: v for k, v in (inner.get("structure_read") or {}).items() if k != "plddt_by_residue"},
+            "mean_plddt": inner.get("mean_plddt"),
+            "backend": inner.get("backend"), "structure_artifact": inner.get("structure_artifact"),
+            "what_this_run_does_not_report": "energies, probabilities, ensembles or alternative states, interface "
+                                             "statistics, literature domain boundaries, motif searches",
+            "hp_mapping": "%d residues labelled hydrophobic or polar from the SEQUENCE alone (not from the fold): "
+                          "%d H, %d P" % (len(hp), hp.count("H"), hp.count("P")),
+            "sequence": seq, "truth_status": inner.get("truth_status")}
+    ignored = (run.get("parameters") or {}).get("ignored_parameters")
+    if ignored:
+        view["ignored_parameters"] = "these plan settings do not exist for ESMFold and changed nothing: " + ", ".join(ignored)
+    return view
+
+
 def _reading(context, plan, result, grade=None, lens=None):
     """His reading of the run. With a lens, the day's frontier model reads the frontier result
     (Gloria, 2026-09-24); without one (tests, owed readings) the local model does."""
-    visible = json.dumps(result, ensure_ascii=False)[:12000]
+    visible = json.dumps(_result_view(result), ensure_ascii=False)[:12000]
     verdict = _verdict_block(grade)
     system = ("You are Vintos returning from one computational Chemistry Lab experiment. Read the shape playfully and "
               "honestly. It is a simulated artifact, not proof about biology or himself. A completed run is not a good "
@@ -388,7 +443,7 @@ def _divergence_prompt(context, artifact):
                "question": (artifact.get("plan") or {}).get("question"),
                "prediction": (artifact.get("plan") or {}).get("prediction"),
                "mac_run_id": artifact.get("mac_run_id"),
-               "grade": artifact.get("grade"), "result": artifact.get("mac_result")}
+               "grade": artifact.get("grade"), "result": _result_view(artifact.get("mac_result"))}
     return (context + "\n\nONE PRESERVED CHEMISTRY LAB RESULT:\n" +
             json.dumps(session, ensure_ascii=False, sort_keys=True)[:12000] +
             "\n\nThis already ran; nothing is being run for you. Return keys in this order: "

@@ -71,15 +71,25 @@ def fold(body):
     # structure files and the Lab grader use the conventional 0..100 pLDDT scale.
     if 0.0 <= mean_plddt <= 1.0: mean_plddt *= 100.0
     mean_plddt = round(mean_plddt, 6)
+    # What is in the model: confidence per residue and helix/strand from its own coordinates (2026-10-07: only the
+    # mean was kept, and he re-folded O43511 twice for secondary structure the result never carried).
+    try:
+        import chemistry_fold_read as _fr
+        _read = _fr.summary(_fr.read_pdb(pdb))
+        structure_read = {k: _read[k] for k in ("secondary_structure", "helices", "strands", "confidence_bands",
+                                                 "plddt_by_residue", "method", "display")}
+    except Exception as exc:
+        structure_read = {"error": "the model could not be read: %s" % str(exc)[:200]}
     title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
     result = {"title": title, "requested_accession": accession,
               "modeled_sequence": sequence, "real_sequence": sequence,
               "modeled_sequence_length": len(sequence), "sequence_source": source,
               "hp_mapping": mapping, "mean_plddt": mean_plddt,
+              "structure_read": structure_read,
               "structure_artifact": str(destination.relative_to(WS)),
               "structure_sha256": digest, "backend": "facebook/esmfold_v1",
               "display": [title, "", "actual amino-acid sequence:", sequence, "",
-                          "ESMFold mean pLDDT: %.3f" % mean_plddt,
+                          "ESMFold mean pLDDT: %.3f" % mean_plddt] + list(structure_read.get("display") or []) + [
                           "structure: " + str(destination.relative_to(WS))],
               "truth_status": "computational_structure_prediction_not_biological_fact"}
     return {"ok": True, "result": result}
