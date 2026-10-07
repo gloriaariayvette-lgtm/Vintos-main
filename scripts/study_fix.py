@@ -30,6 +30,7 @@ Every step is said in #vintos-dot and kept in memory/study-fixes.json; a failure
 """
 import fcntl, json, os, re, subprocess, sys, time, uuid
 from datetime import datetime
+import software_quota
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
@@ -67,7 +68,8 @@ TESTS = "broker/tests/"
 
 
 def _now():
-    return datetime.now()
+    # Keep the existing naive timestamp format, explicitly in the quota's timezone.
+    return datetime.now(software_quota.ZONE).replace(tzinfo=None)
 
 
 def _today():
@@ -93,6 +95,15 @@ def _event(row, what):
     row.setdefault("log", []).append({"at": _now().isoformat(timespec="seconds"), "what": str(what)[:600]})
 
 
+def _save_progress(rows):
+    """Keep requests submitted while the worker was fixing or watching a prior row."""
+    with open(QUEUE + ".request.lock", "a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        known = {r.get("id") for r in rows}
+        rows.extend(r for r in _load() if r.get("id") not in known)
+        _save(rows)
+
+
 def _reset_at():
     """When Gloria last reset today's Study fixes, or "" (Gloria, 2026-10-05: "Let's reset his study fixes for the
     day so he can work"). Fixes asked before it no longer count against today's three; their records are unchanged."""
@@ -105,13 +116,16 @@ def _reset_at():
 
 def used_today(rows=None):
     """Study fixes asked today, since Gloria's last reset."""
-    since = _reset_at()
+    # The dated campaign counts every submission, even if an old reset receipt exists.
+    since = "" if _today() == software_quota.AUTHORIZED_DAY else _reset_at()
     return sum(1 for r in (rows if rows is not None else _load())
                if str(r.get("asked", ""))[:10] == _today() and str(r.get("asked", "")) > since)
 
 
 def reset_today(by="gloria"):
     """Today's three, given back. Returns how many he has now."""
+    if _today() == software_quota.AUTHORIZED_DAY:
+        raise ValueError("the dated software campaign preserves every submission; reset refused")
     os.makedirs(MEMORY, exist_ok=True)
     tmp = RESET + ".tmp"
     json.dump({"date": _today(), "at": _now().isoformat(timespec="seconds"), "by": by}, open(tmp, "w"))
@@ -121,12 +135,21 @@ def reset_today(by="gloria"):
 
 def request(what, by="vintos"):
     """His fix, queued. (row, "") or (None, why not)."""
+    # Serialise count/check/append, including requests arriving from different callers.
+    os.makedirs(MEMORY, exist_ok=True)
+    with open(QUEUE + ".request.lock", "a") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        return _request(what, by)
+
+
+def _request(what, by):
     what = " ".join(str(what or "").split())
     if len(what) < 12:
         return None, "say what is broken, where, and what should happen"
     rows = _load()
-    if used_today(rows) >= PER_DAY:
-        return None, "today's %d Study fixes are used; more tomorrow" % PER_DAY
+    limit = software_quota.limit("study", PER_DAY, _today())
+    if used_today(rows) >= limit:
+        return None, "today's %d Study fixes are used; more tomorrow" % limit
     if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching") for r in rows):
         return None, "that fix is already in the Study"
     row = {"id": "SF-" + uuid.uuid4().hex[:8], "what": what[:2000], "by": by, "state": "queued",
@@ -611,7 +634,7 @@ def tend(**kw):
         live = next((r for r in rows if r.get("state") == "watching"), None)
         if live:
             watch(live, **{k: v for k, v in kw.items() if k in ("run", "post", "send", "get", "now")})
-            _save(rows); return "watching %s: %s" % (live["id"], live["state"])
+            _save_progress(rows); return "watching %s: %s" % (live["id"], live["state"])
         nxt = next((r for r in rows if r.get("state") == "queued"), None)
         if not nxt:
             return "nothing queued"
@@ -620,7 +643,7 @@ def tend(**kw):
         except Exception as exc:
             _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
             say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
-        _save(rows)
+        _save_progress(rows)
         return "%s: %s" % (nxt["id"], nxt["state"])
 
 

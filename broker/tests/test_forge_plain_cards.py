@@ -46,7 +46,7 @@ class PlainCards(unittest.TestCase):
     def test_each_origin_and_state_reads_plainly(self):
         self.assertIn('you started', plain_card({'intent': 'Map the house sensors', 'state': 'ready'})['what'])
         want = plain_card({'intent': 'send email', 'state': 'ready', 'origin': {'source': 'latent_thread'}})
-        self.assertIn('wants needs', want['what']); self.assertIn('three steps a day', want['waiting'])
+        self.assertIn('wants needs', want['what']); self.assertIn('daily allowance', want['waiting'])
         paid = plain_card({'intent': 'x', 'state': 'needs_authorization'}, 'dedicated_usd_wallet_unconnected')
         self.assertIn('no payment account', paid['waiting'])
 

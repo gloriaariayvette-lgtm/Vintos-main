@@ -15,6 +15,7 @@ import time
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import software_quota
 
 DAILY_STEP_LIMIT = 3
 STEP_TIMEZONE = ZoneInfo("America/Chicago")
@@ -33,8 +34,8 @@ PLAIN_REASONS = {
     'wallet_insufficient_funds': "Its next step costs more than the payment account holds.",
 }
 PLAIN_STATES = {
-    'ready': "Waiting for its next step (the Forge takes at most three steps a day).",
-    'ready_day_spent': "Today's three steps are used. It goes on tomorrow; nothing is wrong.",
+    'ready': "Waiting for its next step within the daily allowance.",
+    'ready_day_spent': "Today's step allowance is used. It goes on tomorrow; nothing is wrong.",
     'running': "Taking a step right now.",
     'complete': "Finished.",
     'cancelled': "Stopped.",
@@ -166,7 +167,7 @@ class Controller:
                 return
         except Exception:
             pass
-        self._event(db, pid, 'day_limit', {'day': day, 'used': used, 'limit': DAILY_STEP_LIMIT,
+        self._event(db, pid, 'day_limit', {'day': day, 'used': used, 'limit': software_quota.limit('forge', DAILY_STEP_LIMIT, day),
                                            'reason': "today's steps are used; it goes on tomorrow"})
 
     def _event(self, db, pid, kind, body):
@@ -218,11 +219,13 @@ class Controller:
             out['intent'] = None if p['private'] else p.get('intent')
             last = db.execute("SELECT body FROM events WHERE project=? AND kind='authorization' ORDER BY rowid DESC LIMIT 1",
                               (pid,)).fetchone()
-            used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0]
-            out['day_steps'] = {'day': step_day(), 'used': used, 'limit': DAILY_STEP_LIMIT,
-                                'remaining': max(0, DAILY_STEP_LIMIT - used)}
+            day = step_day()
+            limit = software_quota.limit('forge', DAILY_STEP_LIMIT, day)
+            used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
+            out['day_steps'] = {'day': day, 'used': used, 'limit': limit,
+                                'remaining': max(0, limit - used)}
             out.update(plain_card(p, (json.loads(last[0]) if last else {}).get('reason'),
-                                  day_spent=used >= DAILY_STEP_LIMIT))
+                                  day_spent=used >= limit))
             return out
 
     def cancel(self, pid, cancel_token):
@@ -312,7 +315,7 @@ class Controller:
                 return None
             day = step_day()
             used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
-            if used >= DAILY_STEP_LIMIT:
+            if used >= software_quota.limit('forge', DAILY_STEP_LIMIT, day):
                 self._note_day_limit(db, pid, day, used)
                 return None
             cid = uuid.uuid4().hex
@@ -339,13 +342,15 @@ class Controller:
             if prior:
                 if prior[0] != proposal: raise Refused('attempt belongs to another proposal')
                 return {'reserved': True, 'attempt': attempt}
-            _used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (step_day(),)).fetchone()[0]
-            if _used >= DAILY_STEP_LIMIT:
+            day = step_day()
+            limit = software_quota.limit('forge', DAILY_STEP_LIMIT, day)
+            _used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
+            if _used >= limit:
                 # a build reservation names a proposal, not a project, so there is no project row to note it on;
                 # the caller is told plainly instead
-                return {'reserved': False, 'reason': 'day_steps_used', 'day': step_day(),
-                        'used': _used, 'limit': DAILY_STEP_LIMIT}
-            db.execute('INSERT INTO daily_steps VALUES (?,?,?)', (key, step_day(), proposal))
+                return {'reserved': False, 'reason': 'day_steps_used', 'day': day,
+                        'used': _used, 'limit': limit}
+            db.execute('INSERT INTO daily_steps VALUES (?,?,?)', (key, day, proposal))
             for row in db.execute('SELECT body FROM projects').fetchall():
                 project = json.loads(row[0])
                 if project.get('origin', {}).get('proposal') == proposal:
@@ -376,10 +381,11 @@ class Controller:
     def step_budget(self, token):
         self.auth(token, owner=True)
         day = step_day()
+        limit = software_quota.limit('forge', DAILY_STEP_LIMIT, day)
         with self.db() as db:
             used = db.execute('SELECT count(*) FROM daily_steps WHERE day=?', (day,)).fetchone()[0]
-        return {'day': day, 'timezone': 'America/Chicago', 'limit': DAILY_STEP_LIMIT,
-                'used': used, 'remaining': max(0, DAILY_STEP_LIMIT-used),
+        return {'day': day, 'timezone': 'America/Chicago', 'limit': limit,
+                'used': used, 'remaining': max(0, limit-used),
                 'scope': 'all_projects', 'includes': ['report_cycles', 'capability_assessments', 'capability_briefs', 'approved_capability_builds'], 'failed_attempts_count': True}
 
     def accept(self, token, pid, cid, artifact, complete, receipt):

@@ -14,6 +14,9 @@ def _no(self, *a, **k): NET.append(a); raise OSError("this suite reaches nothing
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import study_fix as S
+# Exercise the legacy reset contract on its original date, outside the dated no-reset campaign.
+from datetime import datetime
+S._now = lambda: datetime(2026, 10, 5, 12, 0, 0)
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:500]) if d and not ok else ""))

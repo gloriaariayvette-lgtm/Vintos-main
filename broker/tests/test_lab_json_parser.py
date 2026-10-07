@@ -4,8 +4,7 @@
 
 A local model truncates and sometimes writes a backslash it does not mean as an escape. The parser took the first
 "{" to the last "}" and gave up on anything else. It repairs those two now, and a real non-answer fails with the
-model's own words on the error, so a failure can be read instead of guessed at (dot: truncation was unconfirmed
-because nothing kept the response).
+an opaque evidence ID on the error; model text is retained only in protected diagnostics.
 
 Pure parsing: this suite loads the module into a scratch HOME, calls no model and reaches nothing.
 """
@@ -67,7 +66,7 @@ try:
     LAB._json_object("I could not answer; the context was too long.")
 except ValueError as exc:
     said = str(exc)
-check("... and the model's own words ride on the error, so the failure can be read", "the context was too long" in said, said)
+check("errors identify evidence without exposing model text", "evidence=" in said and "the context was too long" not in said, said)
 long_raw = '{"attention": "' + "x" * 4000
 try:
     LAB._json_object(long_raw, keep=50)

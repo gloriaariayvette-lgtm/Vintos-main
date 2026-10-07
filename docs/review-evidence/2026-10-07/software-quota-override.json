@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "date": "2026-10-07",
+  "timezone": "America/Chicago",
+  "authorization": "slack:1791402204.566209",
+  "limits": {"forge": 10, "study": 10}
+}

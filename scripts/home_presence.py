@@ -24,7 +24,7 @@ in the router and use the IP.
 Cron (every 5 minutes):
     */5 * * * * python3 ~/.vintos/workspace/scripts/home_presence.py >> /tmp/home-presence.log 2>&1
 """
-import json, os, subprocess, time
+import json, os, subprocess, tempfile, time
 
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 MEMORY = os.path.join(WS, "memory")
@@ -111,7 +111,7 @@ def main():
     st = decide(prev, hit)
     try:
         os.makedirs(MEMORY, exist_ok=True)
-        json.dump(st, open(STATE, "w"), indent=2)
+        _save_state(st)
     except Exception:
         pass
     try:                                             # review 94: home/away flips may move him, within limits
@@ -121,6 +121,20 @@ def main():
     except Exception:
         pass
     print("[presence] %s (misses=%s)" % ("seen - home" if hit else "not seen", st.get("misses", 0)))
+
+
+def _save_state(state):
+    """Readers see either the previous complete state or the new complete state."""
+    fd, tmp = tempfile.mkstemp(prefix=".home-presence-", dir=os.path.dirname(STATE))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(state, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, STATE)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 if __name__ == "__main__":
