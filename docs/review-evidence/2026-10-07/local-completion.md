@@ -4,6 +4,10 @@ The campaign source includes the reviewed dated quota changes and isolated mmWav
 requested fixes below. This is owner-authorized repository work, not a Study self-edit or a change to its
 protected-file gates. No agent model was called. Existing unrelated untracked checkout files were excluded.
 
+Implementation commit `fafb0f0b7bab62b6f004584690f9ac9087a09823` was fast-forwarded into the local shared checkout
+on `claude/vintos-avatar-ui-redesign-br5lt4`, and remains on `codex/software-campaign-20261007`. No remote push
+was performed. Tracked checkout status is clean; unrelated untracked website/audit files were preserved.
+
 ## Atomic presence state
 
 `scripts/home_presence.py` writes complete JSON to a unique 0600 temporary file beside STATE, flushes and fsyncs,

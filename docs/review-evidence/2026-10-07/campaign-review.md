@@ -2,7 +2,8 @@
 
 **Historical preparation snapshot.** Later owner-installed Forge quota and independently installed, paused Study
 quota supersede the deployment status below. `local-completion.md` records the subsequent source fixes and
-validation. The shared checkout remains untouched; source is preserved on the campaign review branch.
+validation. Source was subsequently committed and fast-forwarded into the shared checkout, with unrelated
+untracked files preserved; the preparation statements below describe the earlier snapshot only.
 
 Base checkout: b304baf8f28bdce69d0db96c6af78904e65dbe66. Shared checkout and live runtime files have not been edited. Detached worktree lives in the authorized Windows task directory.
 

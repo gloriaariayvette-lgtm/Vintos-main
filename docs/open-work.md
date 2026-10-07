@@ -12,7 +12,7 @@ The existing sensor freshness change was not repeated. mmWave has no hardware or
 
 The owner installed the Forge quota and its worker used the full 10/10 allowance. Study's reviewed quota files
 are installed, but its timer is paused and worker inactive pending the dollar ceiling. No new paid work is
-authorized by these source changes. Still pending: merge/release through the normal reviewed workflow, scoped
+authorized by these source changes. Source is integrated locally; still pending: publication/release through the normal reviewed workflow, scoped
 deployment of the presence/parser fixes, and any later hardware commissioning. Notification digest behavior
 requires separate approval and is unchanged. See `docs/review-evidence/2026-10-07/local-completion.md` for evidence.
 
