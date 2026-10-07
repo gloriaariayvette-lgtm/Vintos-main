@@ -119,6 +119,25 @@ class PluginGatewayTests(unittest.TestCase):
             self.assertIn("/Applications/ChatGPT.app",str(e.exception))
             self.assertIn("Desktop/ChatGPT.app",str(e.exception))
 
+    def test_codex_discovery_order(self):
+        # the codex-cli/bin layout in every ChatGPT.app home, each before that home's old layout; the env first
+        P=remote.CODEX_PLACES; home=os.path.expanduser("~/Applications/ChatGPT.app/Contents/Resources/")
+        for base in ("/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/","/Applications/ChatGPT.app/Contents/Resources/",home):
+            self.assertIn(base+"codex-cli/bin/codex",P); self.assertIn(base+"codex",P)
+            self.assertLess(P.index(base+"codex-cli/bin/codex"),P.index(base+"codex"))
+        self.assertLess(P.index(home+"codex"),P.index("/Applications/Codex.app/Contents/Resources/codex"))
+        self.assertLess(P.index("/Applications/Codex.app/Contents/Resources/codex"),P.index("/opt/homebrew/bin/codex"))
+        new="/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"; old="/Applications/ChatGPT.app/Contents/Resources/codex"
+        with mock.patch.object(remote.Path,"is_file",lambda p:str(p) in (new,old)):
+            self.assertEqual(remote._codex(),new)                 # the new layout in /Applications
+        with mock.patch.object(remote.Path,"is_file",lambda p:str(p)==old):
+            self.assertEqual(remote._codex(),old)                 # an older app still found
+        with mock.patch.dict(os.environ,{"VINTOS_CODEX_BIN":"/custom/codex"}):
+            import importlib; fresh=importlib.reload(remote)
+            try: self.assertEqual(fresh.CODEX_PLACES[0],"/custom/codex")
+            finally:
+                os.environ.pop("VINTOS_CODEX_BIN",None); importlib.reload(remote)
+
     def test_provider_held_draft_and_forward_are_fail_closed(self):
         for tool,args in (("gmail.send_draft",{"draft_id":"D"}),
                           ("gmail.forward_emails",{"message_id":"M","to":"x@example.test"})):

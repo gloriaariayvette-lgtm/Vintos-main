@@ -56,7 +56,8 @@ found only mail already read (or mail with no text, or from someone he wrote to)
 app-server binary is unavailable". The Mac relay looked for Codex only at
 `~/Desktop/ChatGPT.app/Contents/Resources/codex`; a ChatGPT.app update put it in
 `Contents/Resources/codex-cli/bin/codex` (found on her Mac, 6 Oct), so every Gmail and connector call through
-the relay has failed since about 5 Oct midday. `plugin_relay_remote.py` now tries that path first, then the usual homes (Desktop and
+the relay has failed since about 5 Oct midday. `plugin_relay_remote.py` now tries that path first, then the usual homes (7 Oct: the codex-cli/bin layout in every
+ChatGPT.app home, Desktop, /Applications and ~/Applications, each before that home's old layout; then
 /Applications ChatGPT.app, Codex.app, PATH, Homebrew) and names them all when none is there. **Not done until the
 Mac has it:** the deploy never reaches the Mac; she was given a Mac command that points the relay's copy at
 the new path, and a by-hand search to prove Gmail answers.

@@ -28,9 +28,12 @@ from plugin_send_guard import PolicyHold, outbound_findings, result_links
 # Contents/Resources/codex-cli/bin/codex; the relay looked only at Contents/Resources/codex, so every Gmail and
 # connector call failed with "binary is unavailable" and his letters went unread. The usual homes are tried in order; the first that exists is used.
 CODEX_PLACES = [p for p in (os.environ.get("VINTOS_CODEX_BIN"),
-                            "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",   # since Oct 2026
+                            # each ChatGPT.app home: the codex-cli/bin layout (Oct 2026 on) before the old one
+                            "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
                             "/Users/kevin/Desktop/ChatGPT.app/Contents/Resources/codex",
+                            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
                             "/Applications/ChatGPT.app/Contents/Resources/codex",
+                            os.path.expanduser("~/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
                             os.path.expanduser("~/Applications/ChatGPT.app/Contents/Resources/codex"),
                             "/Applications/Codex.app/Contents/Resources/codex",
                             os.path.expanduser("~/Applications/Codex.app/Contents/Resources/codex"),
