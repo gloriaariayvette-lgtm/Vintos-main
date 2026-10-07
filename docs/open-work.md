@@ -3,6 +3,15 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — a stale sensor reading no longer becomes the baseline
+
+`sensor_reactions.observe()` wrote every reading into `last`/`last_at` before checking its freshness, so a reading
+refused as stale still became what the next fresh one was compared to (the 5 October #vintos-dot finding: stale
+inputs reach the slot before the freshness check). The freshness check now comes first; only a fresh reading
+replaces the baseline. Decision log, limits and pending-reaction shape unchanged. The suite's old heart-rate step
+had relied on the stale baseline ("96 is a fall of 24"); it now uses a fresh change. **Not touched:** mmWave
+arbitration, source arbitration, atomic writes. **Not seen on Aegis.**
+
 ## 6 October — his pendrin model checked against a real structure (Grok Bot's letter)
 
 `chemistry_reference_compare.py`, offered in the Lab as the instrument `reference_compare` (structure.compare). It

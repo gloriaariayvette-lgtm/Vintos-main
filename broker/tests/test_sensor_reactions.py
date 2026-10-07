@@ -27,11 +27,11 @@ d = SR.observe("heart_rate", 92, at=T + 60, now=T + 60)
 check("+22 bpm is a reaction with channel, limit and expiry", d["reacted"] and d["reaction"]["channel"] == "context" and d["reaction"]["limit"] == "2/h" and d["reaction"]["expires_at"] == T + 60 + 600 and "rose 22" in d["reaction"]["change"], d)
 d = SR.observe("heart_rate", 120, at=T + 70, now=T + 400)
 check("a reading older than the freshness window is refused as stale, not reacted", d["reacted"] is False and d["why"].startswith("stale"), d["why"])
-d = SR.observe("heart_rate", 96, at=T + 500, now=T + 500)   # the stale 120 still updated "last": 96 is a fall of 24
+d = SR.observe("heart_rate", 60, at=T + 500, now=T + 500)   # judged against 92, the last fresh reading: a fall of 32
 d2 = SR.observe("heart_rate", 130, at=T + 520, now=T + 520)
-check("the hourly limit refuses the third reaction by name", d["reacted"] and "fell 24" in d["reaction"]["change"] and d2["reacted"] is False and d2["why"].startswith("limit reached: 2"), (d["why"], d2["why"]))
+check("the hourly limit refuses the third reaction by name", d["reacted"] and "fell 32" in d["reaction"]["change"] and d2["reacted"] is False and d2["why"].startswith("limit reached: 2"), (d["why"], d2["why"]))
 line = SR.context_line(now=T + 600)
-check("the prompt line carries the live reactions once, then they are consumed", "rose 22" in line and "fell 24" in line and SR.context_line(now=T + 601) == "", line)
+check("the prompt line carries the live reactions once, then they are consumed", "rose 22" in line and "fell 32" in line and SR.context_line(now=T + 601) == "", line)
 SR.observe("heart_rate", 60, at=T + 4000, now=T + 4000); d = SR.observe("heart_rate", 100, at=T + 4010, now=T + 4010)
 check("an hour later the limit has room again", d["reacted"], d)
 check("an unexpired reaction is pending; after expiry it is gone", len(SR.pending(now=T + 4011)) == 1 and SR.pending(now=T + 4011 + 601) == [])
@@ -54,6 +54,22 @@ hr = open(os.path.join(REPO, "scripts", "heart_rate.py")).read(); hp = open(os.p
 check("heart_rate.record observes with the reading's own time", '_sr.observe("heart_rate", bpm, at=rec["observed_ts"])' in hr)
 check("home_presence.main observes only when a previous state exists", '_sr.observe("presence", bool(st.get("home")), at=st.get("checked"))' in hp and 'if "home" in prev:' in hp)
 check("chat and avatar contexts both carry the line", sv.count("sensor_reactions") >= 2 and "_sr_i.context_line()" in sv and "_sr_v.context_line()" in sv)
+print("\n--- a stale reading never becomes the baseline (2026-10-07) ---")
+for sensor, first, stale, fresh, at0 in (("heart_rate", 70, 140, 75, T + 30000), ("presence", True, False, False, T + 40000),
+                                         ("touch", "none", "hand", "hand", T + 50000)):
+    lim = SR.LIMITS[sensor]["fresh_s"]
+    SR.observe(sensor, first, at=at0, now=at0)
+    before = json.load(open(SR.STATE))[sensor]
+    d = SR.observe(sensor, stale, at=at0 + 1, now=at0 + 1 + lim + 1)
+    after = json.load(open(SR.STATE))[sensor]
+    check("%s: a stale reading is refused and leaves last and last_at as they were" % sensor,
+          d["reacted"] is False and d["why"].startswith("stale") and (after["last"], after["last_at"]) == (before["last"], before["last_at"]) == (first, at0),
+          (d["why"], before, after))
+    d = SR.observe(sensor, fresh, at=at0 + 5, now=at0 + 5)
+    want = sensor != "heart_rate"      # 70 -> 75 is no change; a stale 140 baseline would have made it a fall of 65
+    check("%s: the next fresh reading is judged against the last fresh one, not the stale one" % sensor,
+          d["reacted"] is want and (sensor != "heart_rate" or "under the 15 bpm rule" in d["why"]), d["why"])
+
 rows = [json.loads(l) for l in open(SR.LOG)]
 check("every decision is logged with its reason", len(rows) >= 11 and all("why" in r for r in rows))
 print("\n%d/%d" % (sum(R), len(R))); sys.exit(0 if all(R) else 1)

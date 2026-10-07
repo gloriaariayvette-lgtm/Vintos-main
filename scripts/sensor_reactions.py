@@ -85,11 +85,12 @@ def observe(sensor, value, at=None, meta=None, now=None):
     st = _load_state()
     s = st.setdefault(sensor, {"last": None, "last_at": None, "reactions": []})
     prev, prev_at = s.get("last"), s.get("last_at")
-    s["last"], s["last_at"] = value, at
     decision = {"sensor": sensor, "value": value, "at": at, "now": now}
     if now - at > lim["fresh_s"]:
+        # refused before it can become the baseline the next fresh reading is judged against (2026-10-07)
         decision.update(reacted=False, why="stale: reading is %ds old, limit %ds" % (now - at, lim["fresh_s"]))
     else:
+        s["last"], s["last_at"] = value, at
         is_change, desc = _change(sensor, prev, value, meta or {})
         if not is_change:
             decision.update(reacted=False, why=desc)
