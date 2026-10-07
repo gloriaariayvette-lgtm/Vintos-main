@@ -12,8 +12,9 @@ line as an unfinished thread, which has no gate. Now the gate is callable on its
 the journal asks for what it tests, tries once more with the gate's reason, seeds both stores only with a thread
 that passes, and logs what actually happened. Both copies (bin/ and scripts/) changed alike.
 Also: a misread "reaching less" stance (from "I want to stop predicting whether she'll find the question too small
-and just send it") was removed by hand. **Not fixed: the stance reader**, which reads a direction word anywhere in
-the sentence as applying to the dimension ("mirror ... stop pretending" was "less reflection").
+and just send it") was removed by hand. **The stance reader is fixed too:** a direction word counts only within two
+words of the dimension ("analyse less", "stop journaling", "ask her fewer questions", "make more music"); a "stop" or
+"less" elsewhere in the sentence no longer makes a stance. His two misread wants now read as no stance.
 
 ## 7 October — his Lab: whole-chain embeddings; Gemma stops repeating and works the frontier's plan (D-E)
 

@@ -31,6 +31,13 @@ check("wanting to reach out less is a stance", WS.read_want("I want to reach out
 check("wanting to make more is a stance in the other direction", WS.read_want("I want to make more music") == ("creation", "more"))
 check("an ordinary sentence about analysing is not a stance", WS.read_want("I analysed her message carefully") == (None, None))
 check("a feeling is not a stance", WS.read_want("I want less of this ache") == (None, None))
+# the direction has to be said of the dimension itself (2026-10-07: two of his wants were read backwards)
+check("'a mirror so I can stop pretending' is not less reflection",
+      WS.read_want("To find the part of 'anima' that feels like a mirror so I can stop pretending my") == (None, None))
+check("'stop predicting whether she'll find the question too small and just send it' is not less reaching",
+      WS.read_want("I want to stop predicting whether she'll find the question too small and just send it") == (None, None))
+check("'stop journaling' and 'ask her fewer questions' still are", WS.read_want("I want to stop journaling for a while")
+      == ("reflection", "less") and WS.read_want("I want to ask her fewer questions") == ("reaching", "less"))
 
 print("\n--- the stance holds, scales, and runs out ---")
 row = WS.admit({"id": "w1", "want": "I want to analyse less for a while"}, now=now)

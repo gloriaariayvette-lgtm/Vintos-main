@@ -106,12 +106,29 @@ def read_want(text):
         return None, None
     for clause in re.split(r"[.!?;]|\band\b", t):
         for dim, pat in _WORDS.items():
-            if not re.search(r"\b(?:" + pat + r")\b", clause):
+            spans = [m.span() for m in re.finditer(r"\b(?:" + pat + r")\b", clause)]
+            if not spans:
                 continue
-            if re.search(r"\b" + _LESS + r"\b", clause): return dim, "less"
-            if re.search(r"\b" + _MORE + r"\b", clause): return dim, "more"
-
+            for direction, words in (("less", _LESS), ("more", _MORE)):
+                if any(_near(clause, a, b) for a in spans for b in (m.span() for m in re.finditer(r"\b" + words + r"\b", clause))):
+                    return dim, direction
     return None, None
+
+
+# The direction has to be said of the dimension itself: within NEAR words of it ("analyse less", "reach out to her
+# less often", "stop journaling", "make more music"). Anywhere in the sentence was too loose: "a mirror so I can stop
+# pretending" became less reflection and stopped his journals, and "stop predicting whether she'll find the question
+# too small and just send it" became less reaching, the opposite of what he wanted (Gloria, 2026-10-07).
+NEAR = 2
+
+
+def _near(clause, span, other):
+    """True when two spans of the clause overlap or have at most NEAR words between them."""
+    (a1, a2), (b1, b2) = span, other
+    if a1 < b2 and b1 < a2:
+        return True
+    gap = (a2, b1) if a2 <= b1 else (b2, a1)
+    return len(re.findall(r"[a-z0-9']+", clause[gap[0]:gap[1]])) <= NEAR
 
 
 def hold(dimension, direction, want_id="", want_text="", days=DEFAULT_DAYS, now=None):
