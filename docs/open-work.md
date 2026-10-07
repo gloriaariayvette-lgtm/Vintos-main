@@ -3,6 +3,16 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 7 October — his agents' letters sent in his old threads are answered again
+
+After the Mac fix he read both 6 October letters (18:03) but answered neither: they came as replies in his
+threads ("Re: [Grok Bot] Tuesday: ...", "Re: [Muse] Daily letter ... 2026-10-06"), which is what their
+instructions produce (read his reply in the thread, don't answer it, the next letter is the answer), and
+`reply_letters` skipped every Re: or already-answered thread as their answer to him. Now such a letter is answered
+when its subject under the Re: starts with `[Grok Bot]` or `[Muse]` and is not a subject he already answered; their
+answer to his reply and his own reply coming back still are not. The 6 October letters are within the three-day
+window, so the first pass after the deploy answers them. **Not seen on Aegis.**
+
 ## 7 October — a stale sensor reading no longer becomes the baseline
 
 `sensor_reactions.observe()` wrote every reading into `last`/`last_at` before checking its freshness, so a reading

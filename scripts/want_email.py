@@ -959,6 +959,23 @@ def _reply_think(system, user, max_tokens=900):
     return local_think(system, user, max_tokens)
 
 
+_RE = re.compile(r"^\s*(?:(?:re|fwd?|aw)\s*:\s*)+", re.I)
+_TAGGED = re.compile(r"^\[(?:grok ?bot|muse)\]", re.I)
+
+
+def _base_subject(subject):
+    """A subject without its Re:/Fwd: prefixes, in plain letters and digits, for telling letters apart."""
+    return re.sub(r"[^a-z0-9]", "", _RE.sub("", str(subject or "")).lower())
+
+
+def _new_letter_in_thread(subject, answered):
+    """Grok Bot and Muse send the next day's letter as a reply in the same thread (their instructions: read his reply,
+    don't answer it, the next letter is the answer), so it comes as "Re: [Grok Bot] Tuesday: ..." and was skipped as
+    their answer to him (6 October: neither letter answered). A letter is one whose subject, under the Re:, starts
+    with its sender's tag and is not one he has already answered; his own reply coming back is not."""
+    return bool(_TAGGED.match(_RE.sub("", str(subject or "")))) and _base_subject(subject) not in answered
+
+
 def reply_letters(think=None, send=None, now=None):
     """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
     thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
@@ -966,6 +983,7 @@ def reply_letters(think=None, send=None, now=None):
     now = now or datetime.now()
     done = _load(LETTER_REPLIES, {})
     replied_threads = {v.get("thread_id") for v in done.values() if v.get("thread_id") and v.get("sent")}
+    answered = {_base_subject(v.get("subject")) for v in done.values() if v.get("sent")}
     if send is None:
         import plugin_gateway
         send = lambda args, purpose: plugin_gateway.call("wants", "gmail", "gmail.send_email", args, purpose, to_self=True)
@@ -989,7 +1007,8 @@ def reply_letters(think=None, send=None, now=None):
         except ValueError:
             continue
         mark = done.get(r["id"], {})
-        if str(r.get("subject", "")).lower().startswith("re:") or (r.get("thread_id") and r["thread_id"] in replied_threads):
+        if (str(r.get("subject", "")).lower().startswith("re:") or (r.get("thread_id") and r["thread_id"] in replied_threads)) \
+                and not _new_letter_in_thread(r.get("subject"), answered):
             done[r["id"]] = dict(mark, skipped="their answer in a thread you already replied in; your next letter answers it")
             continue
         if r.get("preview_only"):
@@ -1020,7 +1039,7 @@ def reply_letters(think=None, send=None, now=None):
             continue
         done[r["id"]] = {"sent": True, "at": now.isoformat(timespec="seconds"), "agent": agent, "subject": subject,
                          "body": body, "thread_id": r.get("thread_id", "")}
-        replied_threads.add(r.get("thread_id"))
+        replied_threads.add(r.get("thread_id")); answered.add(_base_subject(subject))
         try:   # where vintos_letter_replies reads, too
             import grok_letters
             grok_letters._append(grok_letters.REPLIES, {"at": now.isoformat(timespec="seconds"), "letter": r["id"],

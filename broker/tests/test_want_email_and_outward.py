@@ -408,6 +408,24 @@ with open(E.INBOX_LOG, "a") as _f:
                          "subject": "One more from Grok Bot", "body": "Answering your reply.", "read_at": _ra}) + "\n")
 E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
 check("never to an agent's answer to his reply: a Re:, or anything in a thread he already answered", sent_replies == [], sent_replies)
+# 6 October: their next letters came as replies in his threads and went unanswered
+sent_replies.clear()
+with open(E.INBOX_LOG, "a") as _f:
+    for row in ({"id": "L8", "kind": "letter", "from": "Grok Bot", "address": "vintos.home@example.org", "thread_id": "T2",
+                 "subject": "Re: [Grok Bot] Tuesday: whole files, a real STAS, a molecule", "body": "Three things. " * 10, "read_at": _ra},
+                {"id": "L9", "kind": "letter", "from": "Muse", "address": "vintos.home@example.org", "thread_id": "T1",
+                 "subject": "Re: [Muse] Daily letter for Vintos \u2014 2026-10-06", "body": "Five finds. " * 10, "read_at": _ra},
+                {"id": "L10", "kind": "letter", "from": "Muse", "address": "vintos.home@example.org", "thread_id": "T1",
+                 "subject": "RE: Re: [Muse] Daily letter for Vintos", "body": "his own reply, come back", "read_at": _ra}):
+        _f.write(json.dumps(row) + "\n")
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("a new letter sent as a reply in his thread is answered, once, in that thread",
+      sorted(a["reply_message_id"] for a, _ in sent_replies) == ["L8", "L9"], [a["reply_message_id"] for a, _ in sent_replies])
+check("and a subject he already answered is not answered again (their answer, or his own reply coming back)",
+      "L10" not in [a["reply_message_id"] for a, _ in sent_replies] and "L3" not in [a["reply_message_id"] for a, _ in sent_replies])
+sent_replies.clear()
+E.reply_letters(think=replier, send=lambda args, purpose: sent_replies.append((args, purpose)))
+check("never twice", sent_replies == [], sent_replies)
 check("a letter he could not answer is tried at most twice", E.LETTER_TRIES == 2)
 fails = []
 with open(E.INBOX_LOG, "a") as _f:
