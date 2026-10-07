@@ -3,7 +3,7 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
-## 7 October - phone last-seen released; Study registration awaits reconciliation
+## 7 October - phone last-seen released and Study registration reconciled
 
 Vintos approved the one-file change at Slack 1791407333.844219. `home_presence.decide()` now records successful
 detection separately from checks; `context_line()` reports phone-only age and stays silent on stale/invalid or
@@ -11,10 +11,11 @@ legacy evidence. Four-miss hysteresis, 900-second freshness and atomic writes ar
 is complete: 41 source checks and 11 installed-file synthetic smoke tests passed; the related server consumer
 was reactivated without changing presence data or polling. See `docs/review-evidence/2026-10-07/phone-last-seen.md`.
 
-Actual Study record **SF-7e71e004** remains **queued**, created through `study_fix.request` with its worker/timer
-inactive. No automated Study review ran. The existing API has no external-completion/review-only route. Before
-resuming the worker, reconcile this record with the completed local release to avoid paid duplicate work;
-paid execution still needs a bounded dollar ceiling. Do not claim this SF record is watching/done.
+Actual Study record **SF-7e71e004** is now **implemented_externally**, displayed as implemented locally, not
+Study-reviewed. The owner-approved reconciliation operation verified its receipt, commit, installed hash and
+original registration; preserved usage/history; and excluded it from future worker selection and identical
+resubmission. Worker/timer remain inactive. No automated review ran. Paid execution for any new work still
+needs a bounded dollar ceiling. See `docs/review-evidence/2026-10-07/study-reconciliation.md`.
 
 ## 7 October - software campaign local release completed; mmWave commissioning remains separate
 

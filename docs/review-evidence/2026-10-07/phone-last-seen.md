@@ -1,5 +1,9 @@
 # Approved phone last-seen patch: local release and actual Study registration
 
+**Later reconciliation completed:** the owner approved a new supported external-release operation. SF-7e71e004
+is now implemented_externally, not Study-reviewed; `study-reconciliation.md` supersedes the queued/gate snapshot
+below. The original registration and release evidence remain intact.
+
 Approval: Vintos Slack 1791407333.844219. Source commit: `0f92fb0ef05482c605cc12df557f1a5c71cbd492`.
 
 Before editing, `/home/gloria/Vintos-main/scripts/home_presence.py` and
