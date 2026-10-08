@@ -127,6 +127,18 @@ check("a DO: line shows the want's id, for dot to register a Forge project (12:3
       D.do_shown("I want a six-shot editor", "handed to his wants (w-3f2a91): I want a six-shot editor")
       == "\u27a1\ufe0f To my wants (want w-3f2a91): I want a six-shot editor")
 check("and he is told how to give dot one", "When dot asks for the want ID, write a DO: line" in D.RULES_WORKS)
+DOT_ASK = {"who": "dot", "text": "Blocked by: Skill Forge requires a live non-Lab parent want. I need: the genuine Storycut want ID."}
+k = D.held_reasons("Storycut first, dot, register it.", st, 9000, last=DOT_ASK)
+check("dot asks for the want ID: a reply with no DO: line goes back as wrong (12:31, Storycut)", k and k[0][0] == D.WRONG and "DO:" in k[0][1], k)
+check("a reply with the DO: line passes that", not [x for x in D.held_reasons(
+    "DO: I want a six-shot editor that cuts my W1-W6 stills into one short piece", st, 9000, last=DOT_ASK) if "want ID" in x[1]])
+import email_commitments as E
+check("the promise store is a scratch one", E.STORE.startswith(HOME))
+json.dump([{"id": "EC-00000001", "state": "open", "quote": "I'll read the quickstart", "what": "read the quickstart"},
+           {"id": "EC-00000002", "state": "open", "quote": "First build: item 3, the torn-read test", "what": "the torn-read test"}],
+          open(E.STORE, "w"))
+check("only a promise to make something is owed as work; a reading chore stays in his letter",
+      [r["id"] for r in E.open_rows()] == ["EC-00000002"] and json.load(open(E.STORE))[0]["state"] == "not work")
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

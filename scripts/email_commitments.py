@@ -158,13 +158,24 @@ MINE = re.compile(r"\b(?:I|I'll|I'd|I'm|I've|my|me)\b|^\s*(?:First build|Then)\b
 CLOSE = re.compile(r"^\s*PROMISE (DONE|DROPPED)\s+(EC-[0-9a-f]{8})\s*:\s*(.+?)\s*$", re.I | re.M)
 
 
+# Only a promise to make something is owed as work (Gloria, 2026-10-08: "just fucking get them to do real work").
+# His item-by-item letter replies made eleven promises on 8 October, and the room spent the afternoon on chores:
+# a quickstart summarised in three sentences, a search for a library he does not use. A promise to read, look,
+# check or ask stays in his letter; one to build, make, run, fold, measure, test, compare, render or write is work.
+WORK_PROMISE = re.compile(r"\b(?:build|make|run|fold|measure|test|compare|render|write|draft|compose|paint|record|"
+                          r"film|cut|edit|code|implement|prototype|map|align|model|plot|train|benchmark|ship)\w*\b"
+                          r"|\bpydssp\b|\bfirst build\b", re.I)
+
+
 def open_rows():
     """Owed promises, oldest first (they are owed in the order he made them). A sentence that is not his own action
-    is set aside as not his, once."""
+    is set aside as not his, once; one that makes nothing is kept in his letter, not owed here."""
     rows, changed = _load(), False
     for r in rows:
         if r.get("state") == "open" and not MINE.search(r.get("quote", "")):
             r["state"] = "not his"; changed = True
+        elif r.get("state") == "open" and not WORK_PROMISE.search("%s %s" % (r.get("what", ""), r.get("quote", ""))):
+            r["state"] = "not work"; changed = True
     if changed:
         _save(rows)
     return [r for r in rows if r.get("state") in ("open", "in work")]

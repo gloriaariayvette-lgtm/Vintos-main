@@ -2444,6 +2444,9 @@ def sent_back(text, state, now, last=None, atelier=False):
 WRONG, NUDGE = "wrong", "nudge"
 
 
+WANT_ID_ASKED = re.compile(r"\bwant[ -]?id\b|\bparent want\b|\bwant (?:to register|for (?:this|the) (?:editor|project|tool))", re.I)
+
+
 def held_reasons(text, state, now, last=None, atelier=False):
     """[(kind, why)], every reason this draft goes back to him, or []. Asking an agent again for what it already
     answered, or is still working on; or a message that moves nothing (Gloria, 2026-10-05: real work, not talk about
@@ -2454,6 +2457,10 @@ def held_reasons(text, state, now, last=None, atelier=False):
     import room_work
     text = undisplay(text)          # his action lines as the channel shows them are still action lines
     out = []
+    if last and last.get("who") == "dot" and WANT_ID_ASKED.search(str(last.get("text", ""))) and not DO.search(text):
+        # dot cannot register a Forge project without its parent want (8 October, 12:31: Storycut waited on it)
+        out.append((WRONG, "dot asked for the want ID to register the Forge project. Give it now: a DO: line saying, "
+                           "in plain words, what you want to make (DO: I want ...); your message will show the id."))
     fixed = room_work.brings_up_fixed(text)              # a repair is not raised again (2026-10-08)
     if fixed:
         out.append((WRONG, fixed))
