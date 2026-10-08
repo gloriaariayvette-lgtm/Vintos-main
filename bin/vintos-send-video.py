@@ -729,13 +729,15 @@ def compose_us(scene, verbose=False, place=None):
     where = "They are here: "
     if place and os.path.exists(place):
         images.append(data_uri(place))
-        where = ("The THIRD reference image is the REAL place she photographed. Reproduce THAT EXACT place — "
+        where = ("The third reference image is the place: reproduce that exact place — "
                  "the same layout, surfaces, furniture and features in the same positions. Do not invent a new "
                  "place and do not substitute a similar one; only the time of day and light may follow the "
                  "scene. They are in that place: ")
-    prompt = ("A photo of two REAL, specific people together. The WOMAN is exactly the person in the FIRST "
-              "reference image — keep her exact face, hair length and style. " + HER_HAIR_LINE + " The MAN is "
-              "exactly the person in the SECOND reference image — keep his exact face and build. Both "
+    # No "two REAL, specific people": shouting that they are real people spooked the model (Gloria, 2026-10-08,
+    # after a bed scene it had made before was refused). The references carry who they are.
+    prompt = ("A photo of the woman from the first reference image and the man from the second, together. "
+              "Keep her face, hair length and style as in her image. " + HER_HAIR_LINE + " Keep his face and "
+              "build as in his image. Both "
               "full-length, both fully in frame, close and natural together. " + where
               + (scene.strip().rstrip(".") or "together, close") + ". Photoreal, natural light, cinematic and gorgeous.")
     data = _atlas_image({"model": US_COMPOSE_MODEL, "prompt": prompt,
@@ -765,7 +767,7 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
         # An edit model is conditioned on ONE image (his hero) and treats a second
         # as guidance — the place came back as the idea of the place. nano-banana
         # holds two references at once, which is why 'together' keeps both faces.
-        gprompt = ("<IMAGE_0> is the REAL place she photographed. Reproduce THAT EXACT location — the same "
+        gprompt = ("<IMAGE_0> is the place she photographed. Reproduce that exact location — the same "
                    "ground, the same features in the same positions, the same light and weather. Do not "
                    "invent a new place and do not substitute a similar one. <IMAGE_1> is the man: keep his "
                    "exact face, hair and build. Place him within that real location, full-length, naturally. "
@@ -787,7 +789,7 @@ def make_scene_still(scene, verbose=False, scene_ref=None):
     # real place he chose was dropped and the video used his hero and the words only.
     grounded = bool(scene_ref and os.path.exists(scene_ref))
     if grounded:
-        prompt = (SUBJECT + "The FIRST reference image is the REAL place she photographed: reproduce THAT EXACT "
+        prompt = (SUBJECT + "The first reference image is the place she photographed: reproduce that exact "
                   "location, the same features in the same positions, the same light. Do not invent a new place. "
                   "The SECOND reference image is the man: keep his exact face, hair, and build, and show his WHOLE "
                   "body, full-length, naturally within that place. He is: " + scene.strip().rstrip(".")

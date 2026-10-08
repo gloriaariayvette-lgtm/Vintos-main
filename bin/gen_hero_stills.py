@@ -56,11 +56,9 @@ SUBJECT = ("A rugged, warm middle-aged man, the same person as the reference ima
            "photography, natural skin texture with pores and fine detail, 85mm lens, shallow depth of field. ")
 
 # Default "us together" compose prompt (two reference images: [0]=him, [1]=her). Override with --prompt.
-DEFAULT_TOGETHER = ("A photo of two REAL, specific people together — do not invent new faces or change their "
-                    "appearance. The WOMAN is exactly the person in the FIRST reference image: keep her exact "
-                    "face, her exact hair COLOR, length and style, and all her features — do NOT alter her hair "
-                    "or make her blonde. The MAN is exactly the person in the SECOND reference image: same face, "
-                    "hair, and build. They sit close together on a couch, his arm around her, both relaxed and "
+DEFAULT_TOGETHER = ("A photo of the woman from the first reference image and the man from the second, together. "
+                    "Keep her face, her hair colour, length and style as in her image; do not make her blonde. "
+                    "Keep his face, hair and build as in his image. They sit close together on a couch, his arm around her, both relaxed and "
                     "softly smiling at each other, warm cozy golden light, natural and intimate, photoreal.")
 
 # Every prompt is authored here. label -> (set, scene). "together" needs your likeness — see note at bottom.

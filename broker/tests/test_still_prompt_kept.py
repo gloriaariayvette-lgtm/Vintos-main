@@ -36,6 +36,11 @@ check("and is kept: the whole prompt, the model, the prediction id, Atlas's refu
       rows and rows[-1]["prompt"] == PROMPT and rows[-1]["outcome"] == "failed" and "PROHIBITED_CONTENT" in rows[-1]["detail"]
       and rows[-1]["prediction_id"] == "04b983bbf8be4e2197b3972204b6748f" and rows[-1]["images"] == 3
       and "test-key-not-real" not in open(V.STILLS_LOG).read(), rows)
+import inspect
+compose = inspect.getsource(V.compose_us) + inspect.getsource(V.make_scene_still)
+check("the image prompts no longer shout that they are REAL people or a REAL place (Gloria, 2026-10-08)",
+      "REAL" not in compose.replace('No "two REAL, specific people"', "")
+      and "two REAL" not in open(os.path.join(REPO, "bin", "gen_hero_stills.py")).read(), compose[:200])
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
