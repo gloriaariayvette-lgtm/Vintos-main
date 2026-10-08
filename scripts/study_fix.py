@@ -117,14 +117,14 @@ def _reset_at():
 def used_today(rows=None):
     """Study fixes asked today, since Gloria's last reset."""
     # The dated campaign counts every submission, even if an old reset receipt exists.
-    since = "" if _today() == software_quota.AUTHORIZED_DAY else _reset_at()
+    since = "" if software_quota.preserves_usage(_today()) else _reset_at()
     return sum(1 for r in (rows if rows is not None else _load())
                if str(r.get("asked", ""))[:10] == _today() and str(r.get("asked", "")) > since)
 
 
 def reset_today(by="gloria"):
     """Today's three, given back. Returns how many he has now."""
-    if _today() == software_quota.AUTHORIZED_DAY:
+    if software_quota.preserves_usage(_today()):
         raise ValueError("the dated software campaign preserves every submission; reset refused")
     os.makedirs(MEMORY, exist_ok=True)
     tmp = RESET + ".tmp"
