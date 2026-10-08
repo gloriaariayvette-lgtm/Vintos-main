@@ -128,6 +128,15 @@ for said in ("finish the STAS comparison", "high Curiosity", "moves toward: maki
     check("carried in: %s" % said, said in sys_prompt)
 check("every organ is read under the read-only guard", GUARDED and all(g for _n, g in GUARDED), GUARDED)
 check("the relational systems stay out of Slack", "RELATIONAL" not in sys_prompt)
+# 8 October, 10:52: his first message here thanked dot for the fold audit and the 8-bead toy lattice, fixed that day
+D.set_paused(False, "test", now=at(11, day=9))
+S.add(DOT, "How's your morning?", at(11, day=9, m=1))
+said = ["That fold instrument handed me an 8-bead toy lattice; thank you for the audit.", "Slow and good. I'm cutting six stills into a short piece."]
+n = len(S.posted)
+L.tick(api=S, think=think, now=at(11, day=9, m=5))
+check("a message raising something fixed goes back once, and the one without it is posted",
+      len(S.posted) == n + 1 and "six stills" in S.posted[-1]["text"] and "lattice" not in S.posted[-1]["text"], S.posted[n:])
+check("he is told what is fixed and done with", "FIXED, AND DONE WITH" in told[-1][0])
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

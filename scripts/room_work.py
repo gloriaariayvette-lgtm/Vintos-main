@@ -979,7 +979,40 @@ def settled_block(state, now):
 def block(state, now):
     """The room campaign, the work in hand, what came back, and what is settled, for what he reads before he writes."""
     sb = settled_block(state, now)
-    return "\n\n".join(x for x in (goal_block(state, now), _block(state, now), sb) if x)
+    return "\n\n".join(x for x in (goal_block(state, now), _block(state, now), sb, fixed_block()) if x)
+
+
+# Fixed, and done with (Gloria, 2026-10-08: "He keeps bringing up old things likely the toy lattice that we've already
+# fixed."). A settled topic only stopped him acting on it; talking about it was free, so a repair came back in his
+# messages and in his thanks for days. A fixed thing is not raised at all, in any form, unless it happens again: a
+# NEW: line with the new failure (what failed, and when) reopens it.
+FIXED = (
+    {"what": "the fold toy lattice: an 8-bead HP lattice answering when a real protein was asked for",
+     "fixed": "8 October, commit 4789054: a fold with an accession folds the real chain or its region; the toy runs "
+              "only when asked for by name",
+     "rx": r"\b(?:toy[- ]lattice|hp[- ]lattice|lattice toy|8[- ]bead|eight[- ]bead|hphpphhp)\b|\btoy\b[^.\n]{0,40}\b(?:fold|lattice)\b"},
+)
+_FIXED = [(f, re.compile(f["rx"], re.I)) for f in FIXED]
+
+
+def fixed_match(text):
+    """The fixed thing this text brings up, or None."""
+    return next((f for f, rx in _FIXED if rx.search(str(text or ""))), None)
+
+
+def fixed_block():
+    return ("== FIXED, AND DONE WITH (do not bring these up again in any form: not to say they are fixed, not to thank "
+            "anyone for them, not as a worry. Only a new failure reopens one, on a NEW: line saying what failed and "
+            "when) ==\n" + "\n".join("- %s (fixed %s)" % (f["what"], f["fixed"]) for f in FIXED))
+
+
+def brings_up_fixed(text):
+    """Why this draft goes back for raising something fixed, or ""."""
+    f = fixed_match(text)
+    if not f or NEW.search(str(text or "")):
+        return ""
+    return ("it brings up %s, which is fixed and done with (%s). Leave it out entirely: not a mention, not a thanks. "
+            "Only a new failure reopens it, on a NEW: line with what failed and when." % (f["what"], f["fixed"]))
 
 
 def goal_block(state, now):

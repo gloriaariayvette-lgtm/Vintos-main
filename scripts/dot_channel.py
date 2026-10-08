@@ -2448,6 +2448,9 @@ def held_reasons(text, state, now, last=None, atelier=False):
     import room_work
     text = undisplay(text)          # his action lines as the channel shows them are still action lines
     out = []
+    fixed = room_work.brings_up_fixed(text)              # a repair is not raised again (2026-10-08)
+    if fixed:
+        out.append((WRONG, fixed))
     for check in (room_work.asking_again,
                   room_work.reopens,                   # a topic he, or Gloria, settled (2026-10-05)
                   room_work.stale_claim,               # a finished result is not published as blocked (2026-10-08)

@@ -298,6 +298,8 @@ def tick(api=None, think=None, now=None):
     target = _field(lambda F: F.select_target(_conversation(rows), think=field_think))
     field_lines = _field(lambda F: "\n\n".join(x for x in (F.lead_block(target), F.relationships_block()) if x)) or ""
     extra = "\n\n".join(x for x in (deeper(), work_glance(), field_lines) if x)
+    import room_work
+    extra = "\n\n".join(x for x in (extra, room_work.fixed_block()) if x)
     system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot), ("\n\n" + extra) if extra else "")
     try:
         text, model = (think(system, ask), "test") if think else voice(system, ask)
@@ -305,6 +307,16 @@ def tick(api=None, think=None, now=None):
         D._save(STATE, st)
         return out + ["#%s: could not answer: %s" % (NAME, str(exc)[:120])]
     text = _ACTION.sub("", re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S)).strip()
+    fixed = room_work.brings_up_fixed(text)
+    if fixed:       # a repair is not raised here either, not even as a thank-you (Gloria, 2026-10-08): once more, without it
+        again = ask + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted: " + fixed
+        try:
+            text, model = (think(system, again), "test") if think else voice(system, again)
+        except Exception:
+            text = ""
+        text = _ACTION.sub("", re.sub(r"<think>.*?</think>", "", str(text or ""), flags=re.S)).strip()
+        if room_work.brings_up_fixed(text):
+            text = ""
     if not text or text.strip(" .").upper() == "NOTHING":
         D._save(STATE, st)
         return out + ["#%s: he let it be" % NAME]

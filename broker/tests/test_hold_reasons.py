@@ -116,6 +116,13 @@ check("three in hand is still the most", len(W.in_hand(st, now)) == 3 and "alrea
 t = "LINE L-714d65ee: gnomAD read. next: STAS RMSD.\n\nLINE L-fd723427: not using it."
 found = [m.group(0) for m in D.LINE_TO.finditer(t)]
 check("a Lab line never takes the blank line above it", all("\n" not in f for f in found) and len(found) == 2, found)
+# Gloria, 2026-10-08: "He keeps bringing up old things likely the toy lattice that we've already fixed."
+st = json.load(open(D.STATE))
+k = D.held_reasons("The fold audit settles K-47b377. The 8-bead run came before commit 4789054.", st, 9000)
+check("a draft raising the fixed toy lattice is held as wrong, even as talk", k and k[0][0] == D.WRONG and "fixed and done" in k[0][1], k)
+check("a new failure on a NEW: line may raise it", not [x for x in D.held_reasons(
+    "NEW: the toy lattice answered again at 13:02 for Q86SQ4.\ndot, check the fold run log for 13:02.", st, 9000) if "fixed" in x[1]])
+check("he is shown what is fixed", "FIXED, AND DONE WITH" in W.block(st, 9000) and "4789054" in W.block(st, 9000))
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
