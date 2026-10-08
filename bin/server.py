@@ -7428,7 +7428,7 @@ async def _describe_photo(photo_b64, content_type, local_only=False):
                 _ar = await _ac.post("https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": _ant, "anthropic-version": "2023-06-01",
                              "content-type": "application/json"},
-                    json={"model": "claude-sonnet-5", "max_tokens": 400,
+                    json={"model": "claude-sonnet-5", "max_tokens": 400, "thinking": {"type": "disabled"},
                           "messages": [{"role": "user", "content": [
                               {"type": "image", "source": {"type": "base64",
                                "media_type": content_type, "data": photo_b64}},
@@ -7643,7 +7643,7 @@ async def _describe_clip(frames, heard="", local_only=False):
             async with httpx.AsyncClient(timeout=120.0) as _ac:
                 _ar = await _ac.post("https://api.anthropic.com/v1/messages",
                     headers={"x-api-key": _ant, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                    json={"model": "claude-sonnet-5", "max_tokens": 600, "messages": [{"role": "user", "content":
+                    json={"model": "claude-sonnet-5", "max_tokens": 600, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content":
                           [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b}}
                            for b in imgs] + [{"type": "text", "text": prompt}]}]})
                 _blocks = _ar.json().get("content") or []

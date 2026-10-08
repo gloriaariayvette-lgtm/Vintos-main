@@ -359,7 +359,7 @@ class GemmaReflector:
                 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
                 import server as _srv  # type: ignore
                 key = _srv._anthropic_key()
-                body = json.dumps({"model": "claude-sonnet-5", "max_tokens": 700, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
+                body = json.dumps({"model": "claude-sonnet-5", "max_tokens": 700, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]}).encode("utf-8")
                 req = urlrequest.Request("https://api.anthropic.com/v1/messages", data=body, headers={"Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"})
                 with urlrequest.urlopen(req, timeout=self.timeout) as r:
                     payload = json.loads(r.read())

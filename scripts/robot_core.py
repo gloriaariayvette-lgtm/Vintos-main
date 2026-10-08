@@ -361,7 +361,7 @@ def _sonnet(system, messages, image_b64=None, max_tokens=500, timeout=60):
     if image_b64 and msgs and msgs[-1]["role"] == "user":
         msgs[-1] = {"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
                                                  {"type": "text", "text": str(msgs[-1]["content"])}]}
-    body = json.dumps({"model": SONNET_MODEL, "max_tokens": max_tokens, "system": system, "messages": msgs}).encode()
+    body = json.dumps({"model": SONNET_MODEL, "max_tokens": max_tokens, "thinking": {"type": "disabled"}, "system": system, "messages": msgs}).encode()
     from compute_admission import reserve_paid
     allowed,why=reserve_paid("robot/reelroom", "anthropic",SONNET_MODEL)
     if not allowed: raise RuntimeError(why)

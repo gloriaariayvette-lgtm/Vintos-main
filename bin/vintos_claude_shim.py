@@ -193,8 +193,7 @@ def claude_complete(j, call=None, model=None):
     if _mt <= 120:
         _mdl = "claude-haiku-5-5"
     body = {"model": _mdl, "max_tokens": _mt, "messages": conv}
-    if "fable" not in _mdl.lower():
-        body["thinking"] = {"type": "disabled"}
+    GR.least_thinking(body)
     # tools / stop pass-through. NOT temperature or top_p: Anthropic's current
     # models reject them ("temperature is deprecated for this model") — review 42
     # added a sampling pass-through here and it 400'd every Claude call through the

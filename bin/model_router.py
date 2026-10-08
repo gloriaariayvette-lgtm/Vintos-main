@@ -350,15 +350,15 @@ def words_left(text):
 async def _claude(system_text, convo, params, reason, paid_reservation=None):
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
-    if reason:
-        thinking = {"type": "adaptive", "display": "summarized"}
-        max_tok = max(int(params.get("max_tokens", 400)), 900) + THINK_ROOM
-    else:
-        thinking = {"type": "disabled"}
-        max_tok = max(int(params.get("max_tokens", 400)), 128)
+    # `reason` no longer turns thinking on: no one thinks (Gloria, 2026-10-08: "No one is to have thinking on.").
+    # A model that cannot be told not to (Opus 5.5, Fable) thinks as little as it can, and is still given room so
+    # its thinking never eats the reply.
+    thinking = GR.thinking_off(current_claude_model())
+    max_tok = max(int(params.get("max_tokens", 400)), 128) + (0 if thinking else THINK_ROOM)
     body = {"model": current_claude_model(), "max_tokens": max_tok,
             "system": _sysblocks(system_text),
-            "messages": _cachetail(for_anthropic(convo)), "thinking": thinking}
+            "messages": _cachetail(for_anthropic(convo))}
+    GR.least_thinking(body)
     # Do NOT send temperature/top_p to Anthropic: its current models reject them
     # ("temperature is deprecated for this model"), which 400'd the whole claude
     # route. Only stop passes through.
@@ -538,16 +538,19 @@ async def gemma_call(msgs, temp=0.85, max_tokens=800):
         return d["choices"][0]["message"]["content"] if "choices" in d else None
 
 async def claude_draft(system_text, convo, max_tokens=1500, paid_reservation=None, model=None):
-    """Two-first-pass draft on Claude with reasoning. Returns (text|None, reasoning). None on refusal."""
+    """Two-first-pass draft on Claude, without thinking (Gloria, 2026-10-08). Returns (text|None, reasoning); reasoning
+    is '' except from a model that cannot be told not to think. None on refusal."""
     key = _anthropic_key()
     if not key: raise RuntimeError("no anthropic key")
     convo = list(convo)
     while convo and convo[0].get("role") != "user":
         convo = convo[1:]
     chosen = model or current_claude_model()
-    body = {"model": chosen, "max_tokens": max_tokens + THINK_ROOM,   # thinking shares the budget
+    thinking = GR.thinking_off(chosen)
+    body = {"model": chosen, "max_tokens": max_tokens + (0 if thinking else THINK_ROOM),   # thinking shares the budget
             "system": _sysblocks(system_text),
-            "messages": _cachetail(for_anthropic(convo)), "thinking": {"type": "adaptive", "display": "summarized"}}
+            "messages": _cachetail(for_anthropic(convo))}
+    GR.least_thinking(body)
     _reserve_provider("anthropic",chosen,paid_reservation)
     async with httpx.AsyncClient(timeout=120) as c:
         r = await c.post("https://api.anthropic.com/v1/messages", json=body,

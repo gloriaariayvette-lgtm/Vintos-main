@@ -107,3 +107,30 @@ def from_openai(d, provider):
     return make_result(provider, model=d.get("model", ""), request_id=d.get("id", ""), status=st,
                        usage=d.get("usage"), text=text, finish_reason=fr, tool_calls=calls,
                        reason="" if st in ("valid", "truncated") else ("refusal" if st == "held" else "empty completion"))
+
+
+# No thinking, for anyone (Gloria, 2026-10-08: "No one is to have thinking on."). What turns it off differs by model:
+# Sonnet 5.5 refuses "disabled" and takes "between_tools"; Opus 5.5 and Fable 5.x cannot be told not to think at all
+# (the API refuses), so they are asked for the least: effort low, with room left to write. His models are never
+# changed to get round this (Gloria, 2026-10-08).
+ALWAYS_THINKS = ("claude-opus-5-5", "claude-fable-")
+
+
+def thinking_off(model):
+    """The `thinking` value that switches thinking off for this model, or None when it cannot be switched off."""
+    m = str(model or "").lower()
+    if any(m.startswith(p) for p in ALWAYS_THINKS):
+        return None
+    if m.startswith("claude-sonnet-5-5"):
+        return {"type": "between_tools"}
+    return {"type": "disabled"}
+
+
+def least_thinking(body):
+    """Thinking off where the model allows it; where it does not, effort low. Returns the body."""
+    off = thinking_off(body.get("model"))
+    if off:
+        body["thinking"] = off
+    else:
+        body.setdefault("output_config", {})["effort"] = "low"
+    return body

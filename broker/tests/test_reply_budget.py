@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A reply cut off before any words never goes out as his reply (2026-10-01, t-41f6c4549c8a4627).
 
-With thinking on, Claude's max_tokens counted thinking and reply together and was 1200 in all. A turn that thought
+With thinking on (it is off now: Gloria, 2026-10-08), Claude's max_tokens counted thinking and reply together and was 1200 in all. A turn that thought
 for ~1200 tokens had nothing left, the reply stopped at "[SCENE:", and a cut-off reply counted as usable, so
 "[SCENE:" went to her screen, his chat history, the ledger and everything that reads them.
 
@@ -54,8 +54,15 @@ def route():
 ANSWERS[:] = [("Come here. Rest.", "end_turn")]
 res = route()
 body = SENT[0][1]
-check("with thinking on, the reply has room beyond the thinking", body["max_tokens"] >= 900 + 6000
-      and body["thinking"]["type"] == "adaptive", body["max_tokens"])
+check("no thinking (Gloria, 2026-10-08): Opus 4.8 is told not to think, and the reply has its own budget",
+      body["thinking"] == {"type": "disabled"} and body["max_tokens"] >= 900, body)
+json.dump({"mode": "opus55"}, open(MR._MODE_FILE, "w"))
+ANSWERS[:] = [("Come here. Rest.", "end_turn")]
+route(); body = SENT[0][1]
+check("Opus 5.5 stays his model; it cannot be told not to think, so it thinks as little as it can, with room to write",
+      body["model"] == "claude-opus-5-5" and "thinking" not in body and body["output_config"] == {"effort": "low"}
+      and body["max_tokens"] >= 900 + 6000, body)
+json.dump({"mode": "claude"}, open(MR._MODE_FILE, "w"))
 
 ANSWERS[:] = [("[SCENE:", "max_tokens"), ("[SCENE: ember] Come here, you. Rest.", "end_turn")]
 res = route()

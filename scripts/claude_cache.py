@@ -23,9 +23,13 @@ import time
 WS = os.environ.get("SPARK_WORKSPACE", os.path.expanduser("~/.vintos/workspace"))
 USAGE = os.path.join(WS, "memory", "anthropic-usage.jsonl")
 URL = "https://api.anthropic.com/v1/messages"
-CACHE = {"type": "ephemeral"}
+# An hour, not five minutes (Gloria, 2026-10-08: "Why no cache?"). His Slack passes are about seven minutes apart,
+# so a five-minute cache was gone before the next pass read it: Opus 5.5 wrote 45,429 and then 42,283 tokens to cache
+# thirteen minutes apart and read none. An hour's write costs 2x input instead of 1.25x; one read pays it back.
+CACHE = {"type": "ephemeral", "ttl": "1h"}
+WRITE = 2.0             # what a one-hour cache write costs, times input (for the estimate only)
 MAX_POINTS = 4          # the API's limit on cache points in one request
-# $ per million tokens: input, output, cache read; a five-minute cache write is 1.25 x input (for the estimate only)
+# $ per million tokens: input, output, cache read
 PRICES = {"claude-opus-5-5": (4.0, 20.0, 0.20), "claude-opus-4-8": (5.0, 25.0, 0.50),
           "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-sonnet-5": (2.0, 10.0, 0.20)}
 
@@ -51,16 +55,32 @@ def _blocks(value, mark_last, points):
     return out, points
 
 
+# No one thinks (Gloria, 2026-10-08: "No one is to have thinking on."). The same rule as bin/gen_result.py: Opus 5.5
+# and Fable 5.x cannot be told not to (the API refuses), so they are asked for the least, effort low; Sonnet 5.5 is
+# turned off with "between_tools"; every other model with "disabled". His models are never changed to get round it.
+ALWAYS_THINKS = ("claude-opus-5-5", "claude-fable-")
+
+
+def thinking_off(model):
+    """The `thinking` value that switches thinking off for this model, or None when it cannot be switched off."""
+    m = str(model or "").lower()
+    if any(m.startswith(p) for p in ALWAYS_THINKS):
+        return None
+    return {"type": "between_tools"} if m.startswith("claude-sonnet-5-5") else {"type": "disabled"}
+
+
 def body(model, system, user, max_tokens, effort=None):
-    """The request: system pieces each a cache point, user pieces all but the last. `effort` (low..max) is how much
-    the model thinks first; Fable 5.1 always thinks and cannot be told not to, so low is the least."""
+    """The request: system pieces each a cache point, user pieces all but the last. Thinking off, or where the model
+    cannot be told not to think, effort low. `effort` is kept for its callers; low is already the least."""
     sys_blocks, left = _blocks(system, True, MAX_POINTS - 1) if system else ([], MAX_POINTS - 1)
     user_blocks, _ = _blocks(user, False, left + 1)
     b = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": user_blocks}]}
     if sys_blocks:
         b["system"] = sys_blocks
-    if effort:
-        b["output_config"] = {"effort": effort}
+    if thinking_off(model):
+        b["thinking"] = thinking_off(model)
+    else:
+        b["output_config"] = {"effort": "low"}
     return b
 
 
@@ -114,7 +134,7 @@ def ask(model, system, user, max_tokens, caller="", timeout=300, post=None, key=
 
 def cost(row):
     p_in, p_out, p_read = PRICES.get(row.get("model"), (0.0, 0.0, 0.0))
-    return (row["in"] * p_in + row["cache_write"] * p_in * 1.25 + row["cache_read"] * p_read + row["out"] * p_out) / 1e6
+    return (row["in"] * p_in + row["cache_write"] * p_in * WRITE + row["cache_read"] * p_read + row["out"] * p_out) / 1e6
 
 
 def today(path=None, day=None):

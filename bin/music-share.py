@@ -56,7 +56,7 @@ def llm(system, user, temperature=0.6):
         except Exception: _k = ""
     if _k:
         try:
-            _body = {"model": "claude-sonnet-5", "max_tokens": 1000, "temperature": temperature,
+            _body = {"model": "claude-sonnet-5", "max_tokens": 1000, "thinking": {"type": "disabled"},
                      "system": system,
                      "messages": [{"role": "user", "content": user}]}
             _rq = _u.Request("https://api.anthropic.com/v1/messages", data=_j.dumps(_body).encode(),
