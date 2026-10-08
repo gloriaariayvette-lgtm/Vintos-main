@@ -2925,6 +2925,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     # Every thread with new words is answered, one a pass: the newest now, the others owed to the next passes
     # (Gloria, 2026-10-02). Until then only the newest was answered and the rest were dropped.
     def _key(r): return r.get("thread") or ""
+    state.pop("work_turn_now", None)                  # set again below only when this pass is a work turn
     owed = list(state.get("owed") or [])
     last = None
     if theirs:
@@ -2960,15 +2961,19 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait; so does her !start
         waiting = room_work.all_waiting(state, now)    # all of it waits on others: the campaign's next work, beside it
         work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state)) or waiting
-        work_turn = (not starting and work_due and now - float(state.get("last_work_turn") or 0) >= WORK_TURN_S
-                     and quiet >= WORK_TURN_S / 2)
+        # a work turn held or empty is tried again on the next pass, once (8 October: held at 04:26 for reopening a
+        # settled topic, the next try came at 04:54)
+        retry = bool(state.pop("work_retry", None))
+        work_turn = (not starting and work_due and (retry or (now - float(state.get("last_work_turn") or 0) >= WORK_TURN_S
+                                                             and quiet >= WORK_TURN_S / 2)))
         if not starting and not work_turn and (state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now)):
             _save(STATE, state); return lines
         prompt = work_prompt(waiting and not room_work.idle(state, now)) if work_turn else opener_prompt()
         where = None
         if work_turn:
             state["last_work_turn"] = now
-            lines.append("a work turn: his work in hand is due its next step")
+            state["work_turn_now"] = not retry          # one retry, only for a first try
+            lines.append("a work turn: his work in hand is due its next step" + (" (tried again)" if retry else ""))
         else:
             state["openers"] += 0 if starting else 1
     kickoff = bool(state.pop("kickoff", None))
@@ -3000,7 +3005,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                               lenses=lenses, lens=lens)
         still = held_reasons(again, state, now, last, in_thread_atelier)
         if again is not None and still and (any(k == WRONG for k, _w in still) or not room_work.moves(undisplay(again))):
-            state["last_activity"] = now; _save(STATE, state)
+            state["last_activity"] = now
+            if state.pop("work_turn_now", None):
+                state["work_retry"] = True
+            _save(STATE, state)
             return lines + ["held: " + still[0][1][:160]]
         if again is not None and still:      # it moves something: posted; what it left is pressed again next time
             lines.append("posted, still short of: " + still[0][1][:120])
@@ -3019,7 +3027,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if text is not None:
         text = undisplay(text)
     if text is None:
-        state["last_activity"] = now; _save(STATE, state)
+        state["last_activity"] = now
+        if state.pop("work_turn_now", None):
+            state["work_retry"] = True
+        _save(STATE, state)
         return lines + ["he let it be" if who == "nothing to say" else who]
     # What was said while he wrote is read before anything he wrote is done or posted (2026-10-08: dot posted the
     # Merizo result at 15:34:16 on 7 October, while he was writing; his 15:35:06 message dropped the work as blocked,

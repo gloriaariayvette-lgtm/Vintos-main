@@ -63,6 +63,11 @@ n = len(S.posted)
 tick(5000 + 90 * 60)
 check("a work paused for a cause is not pressed; with a place free he is asked for the campaign's next work beside it",
       "waits on something outside you" in asked[-1] and "due its next step" not in asked[-1].split("== YOUR WORK")[0], asked[-1][-800:])
+out = tick(5000 + 97 * 60)
+check("that turn was held, so the very next pass tries again (8 October: held at 04:26, next try 04:54)",
+      any("tried again" in l for l in out), out)
+out = tick(5000 + 104 * 60)
+check("once: held again, it waits for the usual spacing", not any("work turn" in l for l in out), out)
 
 # a stop and a start between two passes, from the app (the switch removes paused.json and leaves resumed.json)
 D.set_paused(True, "app", now=20000); D.set_paused(False, "app", now=20010)
