@@ -24,7 +24,7 @@ def check(label, condition):
 
 video = (ROOT / "bin/vintos-send-video.py").read_text()
 check("hair colour is baked into together-still prompt",
-      '"reference image — keep her exact face, hair length and style. " + HER_HAIR_LINE' in video)
+      '"Keep her face, hair length and style as in her image. " + HER_HAIR_LINE' in video)
 check("obsolete brunette heal is gone", "def heal_hair(" not in video and "HAIR_HEAL" not in video)
 check("scheduled video requires positive presence", "if not FORCE and not autonomous_presence_allows()" in video)
 check("manual force remains the explicit presence bypass", '``--force`` is the explicit human/manual bypass' in video)

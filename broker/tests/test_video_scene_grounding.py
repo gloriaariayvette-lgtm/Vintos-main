@@ -71,7 +71,7 @@ class SceneGrounding(unittest.TestCase):
             V._atlas_image = real
         self.assertTrue(path and path.startswith(HOME))
         self.assertEqual(sent["images"], ["uri:her.jpg", "uri:him.jpg", "uri:patio.jpg"], "her first, the place third")
-        self.assertIn("THIRD reference image is the REAL place", sent["prompt"])
+        self.assertIn("third reference image is the place", sent["prompt"])
         self.assertIn(V.HER_HAIR_LINE, sent["prompt"])
 
     def test_generate_clip_hands_the_place_to_the_compose(self):
@@ -102,7 +102,7 @@ class SceneGrounding(unittest.TestCase):
             V._grok_sub, V.ATLAS_KEY = real_g, real_key
         self.assertTrue(grounded and grounded.startswith(HOME) and plain)
         self.assertEqual(edits[0][1], [PATIO, V.HERO], "the place first, then his hero")
-        self.assertIn("FIRST reference image is the REAL place", edits[0][0])
+        self.assertIn("first reference image is the place she photographed", edits[0][0])
         self.assertEqual(edits[1][1], [V.HERO], "no place chosen: his hero alone, as before")
 
     def test_window_stand_is_his_only_explicit_still(self):
