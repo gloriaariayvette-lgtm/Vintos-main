@@ -259,6 +259,50 @@ claude_cache.note = lambda *a, **k: None
 claude_cache.ask("claude-fable-5-1", "s", "u", 10, post=lambda *a, **k: _R(), key="test-key")
 check("claude_cache keeps why the last answer ended", claude_cache.LAST == {"stop": "max_tokens", "out": 32000}, claude_cache.LAST)
 
+# --- SF-6f9a460b replayed: a test's assertion, an edit that did not apply, then Fable cut off at the limit ------------
+# (Gloria, 2026-10-08: the record kept "attempt 1 failed: test_dot_channel.py" and not the assertion; the last answer
+# hit the 16,000-token cap. Both kept, and kept apart.)
+rr = S._load()
+for x in rr:
+    if x["state"] == "queued": x["state"] = "withdrawn"
+    if str(x.get("asked", ""))[:10] == S._today(): x["asked"] = "2026-01-01T00:00:00"
+S._save(rr)
+row7, _ = S.request("keep the raw model text when the Lab's JSON parse fails")
+S.reset_workbench()
+FAILING = ("exit status 1\nPASS the store is scratch\nTraceback (most recent call last):\n  File \"t.py\", line 9\n"
+           "AssertionError: the log line held model text: 'raw {\\\"edits\\\": ...'\nFAIL the log line has no model text\n1/2")
+def cut_off_third():
+    seq = [BAD, {"summary": "y", "edits": [{"path": "scripts/greet.py", "old": "not there", "new": "x"}],
+                 "new_files": [{"path": "broker/tests/test_greet_raw.py", "content": "assert True\n"}]}]
+    def ask(system, user):
+        if seq:
+            claude_cache.LAST.clear(); claude_cache.LAST.update(stop="end_turn", out=1200)
+            return json.dumps(seq.pop(0))
+        claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=S.FABLE_TOKENS)
+        return '{"summary": "split the capture", "edits": [{"path": "scripts/chemistry_lab.py", "old": "raw = str(te'
+    return ask
+S.tend(ask=cut_off_third(), suite=suite_seq([("test_lab_raw_evidence.py", FAILING)]), deploy=deploy, post=POSTS.append)
+row7 = next(r for r in S._load() if r["id"] == row7["id"])
+a = row7.get("attempts") or []
+check("SF-6f9a460b: the failing test's exact assertion and exit status are kept, not only its name",
+      a and a[0]["failures"][0]["test"] == "test_lab_raw_evidence.py" and a[0]["failures"][0]["exit_status"] == 1
+      and any("AssertionError: the log line held model text" in l for l in a[0]["failures"][0]["assertion"])
+      and "FAIL the log line has no model text" in a[0]["failures"][0]["output_tail"], a)
+check("... with the code it ran on (the workbench commit and a hash of the attempt's changes) and what it changed",
+      a and len(a[0]["code"].get("head", "")) == 40 and len(a[0]["code"].get("diff_sha256", "")) == 64
+      and a[0]["code"]["changed"] == ["scripts/greet.py", "broker/tests/test_greet_morning.py"], a and a[0]["code"])
+check("the second attempt's failure is the edit that did not apply, kept as its own",
+      len(a) == 2 and a[1]["failures"][0]["test"] == "the edits" and "found 0 times" in a[1]["failures"][0]["output_tail"], a[1:] )
+pf = row7.get("provider_failure") or {}
+check("Fable's cut-off answer is kept as a provider failure: stop reason, tokens against the limit, model",
+      pf.get("stop_reason") == "max_tokens" and pf.get("output_tokens") == 16000 and pf.get("output_limit") == 16000
+      and pf.get("hit_limit") is True and pf.get("model") == S.FABLE, pf)
+check("the two are not conflated: the provider failure names no test, the attempts name no stop reason",
+      "test" not in pf and all("stop_reason" not in x for x in a) and row7["state"] == "failed", (pf, row7["state"]))
+check("the log line names the assertion too", any("AssertionError: the log line held" in e["what"] for e in row7.get("log", [])),
+      row7.get("log"))
+check("a test failing in the Study says its exit status", "exit status" in open(S.__file__).read().split("def run_suite")[1][:900])
+
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))

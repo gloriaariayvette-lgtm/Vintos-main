@@ -3,6 +3,33 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — SF-1b8eb6cd checked; a full Forge is not asked again by new reports; Study failures keep their evidence
+
+**SF-1b8eb6cd (four_unfinished 403 retries).** Checked before doing anything new: the Study's own fix landed as
+commit 862cd9e on 7 October, with `test_forge_report_hold.py`, and is in the deployed branch. It logs the refusal
+once and holds `flush_reports` until the Forge's open count changes. Not duplicated.
+
+One path it missed: the reflect phase's `offer_report` (each new instrument gap) went straight to the Forge, so a
+full Forge got a fresh POST, 403 and fault per gap.
+- `chemistry_sources.held(cfg)` is checked by `offer_report` itself. While four_unfinished holds (count unchanged
+  or unreadable), or another refusal's timed pause runs, a new report is kept in the outbox, unattempted, and
+  `{"state": "held"}` is returned. `flush_reports` sends it when the hold lifts.
+- The pause now names the open projects (`open`: id, title, state), so the one blocker says what would clear it.
+- Test: a third case in `test_forge_report_hold.py`. It fails on the old code.
+
+**SF-6f9a460b (failure evidence).**
+- `run_suite` now keeps each failing test's exit status.
+- `work()` keeps each failed attempt in `row["attempts"]` (the last 4): the test, its exit status, the assertion
+  lines, the output tail (3000 characters), the workbench commit, a sha256 of the attempt's diff, and the files it
+  changed. The log line names the assertion too.
+- When Fable's answer fails, `row["provider_failure"]` keeps the stop reason, the output tokens against the 16,000
+  limit, the model and the error.
+- The two are kept apart.
+- Test: `test_study_fix.py` (now 71 checks) replays SF-6f9a460b: an assertion failure, then an edit that did not
+  apply, then Fable cut off at 16,000 tokens. Six of its checks fail on the old code.
+- **Not done:** the original 5 October run's assertion is gone (it was never kept), so it cannot be recovered. The
+  next Study run keeps it.
+
 ## 8 October — a stale blocker does not undo a result; a reply goes to the task it names
 
 Audit item "result reconciliation". On 7 October dot posted the Merizo success at 15:34:16, and at 15:35:06 the work

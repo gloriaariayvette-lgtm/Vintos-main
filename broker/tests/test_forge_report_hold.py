@@ -71,6 +71,27 @@ class ReportHold(unittest.TestCase):
         self.assertEqual(self.flush(), [["R1"]], "a changed count releases the hold")
         self.assertFalse(os.path.exists(src.REPORT_PAUSE))
 
+    def test_a_new_report_waits_while_the_forge_is_full(self):
+        # 2026-10-08: the reflect phase offered each new instrument gap straight to a full Forge (a fresh 403 and
+        # a fresh fault each time); flush_reports alone was held.
+        self.projects = [{"id": "P%d" % i, "title": "report %d" % i, "state": "ready"} for i in range(4)]
+        with self.assertRaises(urllib.error.HTTPError): src.offer_report(["R1"], GAP, send=Full())
+        pause = lab._load(src.REPORT_PAUSE, {})
+        self.assertEqual([p["id"] for p in pause["open"]], ["P0", "P1", "P2", "P3"], "the blocker names what holds it")
+        pause["until"] = 0; lab._atomic(src.REPORT_PAUSE, pause)     # long past the timed pause
+        never = Full()
+        got = src.offer_report(["R3"], GAP + " (another)", send=never)
+        self.assertEqual(got, {"state": "held", "guard": "four_unfinished"})
+        self.assertEqual(never.calls, 0, "a held Forge is not asked again")
+        row = [r for r in lab._load(OUTBOX, {}).values() if r["receipt_ids"] == ["R3"]][0]
+        self.assertEqual((row["state"], row["attempts"]), ("pending", 0), "kept, unattempted, for when the hold lifts")
+        self.projects = self.projects[:3]
+        rows = lab._load(OUTBOX, {})
+        for r in rows.values(): r["next_attempt"] = 0
+        lab._atomic(OUTBOX, rows)
+        self.assertIn(self.flush(), ([["R1"]], [["R3"]]), "a changed count lets the outbox go again")
+        self.assertEqual(src.held(lab.config()["forge_report_intake"]), "")
+
     def test_an_unnamed_403_keeps_only_the_timed_pause(self):
         bare = lambda req, timeout=0: (_ for _ in ()).throw(
             urllib.error.HTTPError("u", 403, "Forbidden", {}, io.BytesIO(b"")))

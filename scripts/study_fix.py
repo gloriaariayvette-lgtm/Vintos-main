@@ -413,7 +413,7 @@ def run_suite(root=None, run=sh):
             r = run([sys.executable, os.path.join(root, "scripts", "run_isolated_test.py"),
                      os.path.join(root, "broker", "tests", t)], cwd=root, timeout=900, check=False)
             if r.returncode:
-                failed.append((t, "\n".join((r.stdout + r.stderr).splitlines()[-25:])))
+                failed.append((t, "exit status %d\n" % r.returncode + "\n".join((r.stdout + r.stderr).splitlines()[-25:])))
         except subprocess.TimeoutExpired:
             failed.append((t, "timed out after 900 s"))
     return failed
@@ -524,6 +524,57 @@ def tell_gloria(text, send=None):
         print("study_fix: could not tell Gloria: %s" % exc)
 
 
+# What a failure leaves behind, so the next attempt and the next reader work from the exact evidence (Gloria,
+# 2026-10-08: "Retain exact failure evidence: assertion, stderr, exit status, provider stop reason, code version,
+# and artifact. SF-6f9a460b retained a test name but not its exact assertion; a separate final-response failure
+# hit a 16,000-output-token cap. Test both failures without conflating them."). Tests and Fable's answers are kept
+# apart: attempts[] for what the tests said, provider_failure for how Fable's answer ended.
+ATTEMPTS_KEPT = 4
+_ASSERT = re.compile(r"^(?:FAIL\b|AssertionError|E\s{2,}|.*\b\w+Error:|.*\bassert\b|Traceback)", re.I)
+
+
+def failure_evidence(test, out):
+    """One failing test, as kept: exit status, the assertion lines, and the tail of what it printed."""
+    text = str(out or "")
+    m = re.match(r"exit status (-?\d+)\n", text)
+    lines = text.splitlines()[1 if m else 0:]
+    return {"test": str(test)[:200], "exit_status": int(m.group(1)) if m else None,
+            "assertion": [l[:400] for l in lines if _ASSERT.search(l)][-6:],
+            "output_tail": "\n".join(lines)[-3000:]}
+
+
+def _code_version(changed, run=None):
+    """The workbench the attempt ran on: its commit, and a hash of the attempt's own changes."""
+    run = run or sh
+    out = {"changed": list(changed or [])[:20]}
+    try:
+        out["head"] = run(["git", "rev-parse", "HEAD"], cwd=WORKBENCH, check=False).stdout.strip()[:40]
+        diff = run(["git", "diff", "HEAD"], cwd=WORKBENCH, check=False).stdout or ""
+        out["diff_sha256"] = hashlib.sha256(diff.encode()).hexdigest()
+    except Exception as exc:
+        out["unknown"] = str(exc)[:120]
+    return out
+
+
+def keep_attempt(row, attempt, failures, changed, run=None):
+    row.setdefault("attempts", []).append({"attempt": attempt, "at": _now().isoformat(timespec="seconds"),
+                                           "code": _code_version(changed, run),
+                                           "failures": [failure_evidence(t, o) for t, o in failures][:6]})
+    row["attempts"] = row["attempts"][-ATTEMPTS_KEPT:]
+
+
+def provider_evidence(exc):
+    """How Fable's last answer ended, kept apart from any test failure."""
+    try:
+        import claude_cache
+        last = dict(claude_cache.LAST)
+    except Exception:
+        last = {}
+    return {"at": _now().isoformat(timespec="seconds"), "model": FABLE, "error": str(exc)[:400],
+            "stop_reason": last.get("stop") or None, "output_tokens": last.get("out"), "output_limit": FABLE_TOKENS,
+            "hit_limit": last.get("stop") == "max_tokens"}
+
+
 def _failed(row, why):
     row["state"] = "failed"; _event(row, why)
     try:
@@ -556,7 +607,11 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
         if not failures:
             break
         attempt += 1
-        _event(row, "attempt %d failed: %s" % (attempt, "; ".join(t for t, _ in failures)[:300]))
+        keep_attempt(row, attempt, failures, changed, run=run)
+        first = next((f for f in row["attempts"][-1]["failures"] if f["assertion"]), None)
+        said = next((l for l in reversed(first["assertion"]) if "Error" in l), first["assertion"][-1]) if first else ""
+        _event(row, "attempt %d failed: %s%s" % (attempt, "; ".join(t for t, _ in failures)[:300],
+                                                  (" — " + said.strip()[:200]) if said else ""))
         if attempt > REPAIRS:
             reset_workbench(run=run)
             _failed(row, "still failing after %d tries: %s" % (attempt, "; ".join(t for t, _ in failures)[:300]))
@@ -729,6 +784,8 @@ def tend(**kw):
         try:
             work(nxt, **{k: v for k, v in kw.items() if k in ("ask", "run", "post", "suite", "deploy", "send")})
         except Exception as exc:
+            if "Fable" in str(exc):          # how its answer ended, kept apart from what the tests said
+                nxt["provider_failure"] = provider_evidence(exc)
             _failed(nxt, "stopped by an error: %s" % str(exc)[:300])
             say("\U0001F6E0 Study fix %s stopped: %s. Nothing changed." % (nxt["id"], str(exc)[:200]), kw.get("post"))
         _save_progress(rows)

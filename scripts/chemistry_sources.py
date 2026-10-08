@@ -176,8 +176,21 @@ REPORT_DONE = ('complete', 'cancelled', 'abandoned')
 fetch_projects = None    # tests replace this; the Lab reads the Forge's keyless project list on the loop
 
 
+def forge_open(cfg):
+    """The Forge's open projects [{id, title, state}], or None when the Forge cannot be read."""
+    rows = _forge_projects(cfg)
+    if rows is None: return None
+    return [{'id': r.get('id'), 'title': str(r.get('title') or r.get('name') or r.get('intent') or '')[:120],
+             'state': r.get('state')} for r in rows if isinstance(r, dict) and r.get('state') not in REPORT_DONE]
+
+
 def forge_unfinished(cfg):
     """How many Forge projects are still open, or None when the Forge cannot be read."""
+    open_now = forge_open(cfg)
+    return None if open_now is None else len(open_now)
+
+
+def _forge_projects(cfg):
     try:
         if fetch_projects is not None:
             rows = fetch_projects()
@@ -188,9 +201,25 @@ def forge_unfinished(cfg):
             parsed = urlsplit(cfg['url'])
             with open_request(Request('%s://%s/api/projects' % (parsed.scheme, parsed.netloc)), timeout=15) as response:
                 rows = json.loads(response.read(1 << 20))
-        return sum(1 for r in rows if isinstance(r, dict) and r.get('state') not in REPORT_DONE)
+        return rows if isinstance(rows, list) else None
     except Exception:
         return None
+
+
+def held(cfg):
+    """Why a report may not be sent now, or '': the Forge said four_unfinished and its open count has not moved, or
+    another refusal's timed pause has not run out. A changed count lifts the four_unfinished hold."""
+    pause = lab._load(REPORT_PAUSE, {}) or {}
+    if pause.get('guard') == 'four_unfinished':
+        count = forge_unfinished(cfg)
+        if count is None or count == pause.get('unfinished'):
+            return 'four_unfinished'
+        try: os.unlink(REPORT_PAUSE)
+        except FileNotFoundError: pass
+        return ''
+    if pause.get('until', 0) > time.time():
+        return pause.get('guard') or 'paused after HTTP %s' % pause.get('http_status')
+    return ''
 
 
 def offer_report(receipt_ids, question, *, send=None):
@@ -205,8 +234,6 @@ def offer_report(receipt_ids, question, *, send=None):
     parsed = urlsplit(endpoint)
     if parsed.scheme != 'http' or parsed.hostname != '127.0.0.1' or parsed.path != '/api/lab-intake':
         raise ValueError('Lab intake requires the dedicated local loop endpoint')
-    packet = report_packet(receipt_ids)
-    body = {'source_packet': packet, 'intent': str(question)[:2000]}
     key = hashlib.sha256(json.dumps(sorted(receipt_ids)).encode()).hexdigest()
     outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
     with lab._locked():
@@ -214,6 +241,23 @@ def offer_report(receipt_ids, question, *, send=None):
         prior = outbox.get(key)
         if prior and prior.get('state') == 'accepted': return {'id': prior['project_id'], 'replayed': True}
         if prior and prior.get('state') == 'abandoned': return {'state': 'abandoned', 'replayed': True}
+    # A held Forge is not asked again by a new report either (2026-10-08: the reflect phase offered each new
+    # instrument gap straight to a full Forge, a fresh 403 and a fresh fault each time). It waits in the outbox,
+    # unattempted, for flush_reports to send once the hold lifts.
+    why_held = held(cfg)
+    if why_held:
+        with lab._locked():
+            outbox = lab._load(outbox_path, {})
+            row = outbox.get(key) or {'receipt_ids': receipt_ids, 'question': question, 'attempts': 0}
+            row.update(state='pending', held=why_held, next_attempt=0)
+            outbox[key] = row
+            lab._atomic(outbox_path, outbox)
+        return {'state': 'held', 'guard': why_held}
+    packet = report_packet(receipt_ids)
+    body = {'source_packet': packet, 'intent': str(question)[:2000]}
+    with lab._locked():
+        outbox = lab._load(outbox_path, {})
+        prior = outbox.get(key)
         attempts = int((prior or {}).get('attempts', 0)) + 1
         outbox[key] = {'receipt_ids': receipt_ids, 'question': question, 'state': 'pending', 'attempts': attempts,
                        'next_attempt': time.time() + min(REPORT_BACKOFF_CAP_S, 60 * 2 ** (attempts - 1))}
@@ -240,7 +284,9 @@ def offer_report(receipt_ids, question, *, send=None):
         if isinstance(code, int) and 400 <= code < 500:
             pause = {'until': time.time() + REPORT_PAUSE_S, 'http_status': code, 'at': lab.now_iso()}
             if named == 'four_unfinished':   # held, not retried, until the Forge's open count changes
-                pause.update(guard=named, unfinished=forge_unfinished(cfg))
+                open_now = forge_open(cfg)    # which ones: the blocker names what would clear it
+                pause.update(guard=named, unfinished=None if open_now is None else len(open_now),
+                             open=(open_now or [])[:8])
             lab._atomic(REPORT_PAUSE, pause)
         with lab._locked():
             outbox = lab._load(outbox_path, {})
@@ -264,13 +310,8 @@ def offer_report(receipt_ids, question, *, send=None):
 def flush_reports():
     cfg = lab.config().get('forge_report_intake')
     if not cfg: return
-    pause = lab._load(REPORT_PAUSE, {}) or {}
-    if pause.get('guard') == 'four_unfinished':
-        # The Forge was full; the loop logged that once. Nothing is offered until its open count moves.
-        count = forge_unfinished(cfg)
-        if count is None or count == pause.get('unfinished'): return
-        try: os.unlink(REPORT_PAUSE)
-        except FileNotFoundError: pass
+    if held(cfg) == 'four_unfinished':
+        return   # the Forge was full; the loop logged that once. Nothing is offered until its open count moves
     outbox_path = os.path.join(lab.ROOT, 'forge-report-outbox.json')
     with lab._locked():
         outbox = lab._load(outbox_path, {})
