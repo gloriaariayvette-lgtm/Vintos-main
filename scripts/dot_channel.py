@@ -410,6 +410,10 @@ RULES_WORKROOM = (
     "once; if nothing can move right now, answer NOTHING. Name a Study fix by its SF- id, and say it is live only "
     "when the Study's record does. What is SETTLED (below) stays closed: do not ask, search or plan for it again. "
     "Your own may open again only on a line NEW: what changed; Gloria's stand until she lifts them.\n"
+    "Carry your work: every message takes the next step on each work in hand that is not waiting on an agent, "
+    "beside anything new you raise. Stop a work only for a real cause, on its own line: PAUSE RW-id: what it waits "
+    "on (Gloria, hardware, an answer not yet come). A room campaign is always live: when one is reached or closed, "
+    "open the next from it in the same message.\n"
     "What you promised by email (below) is owed here: open it as WORK naming its EC- id, or close it on its own line, "
     "PROMISE DONE EC-id: the proof, or PROMISE DROPPED EC-id: why.\n"
     "RUN: {\"skill\": \"fold_read\" or \"reference_compare\", \"model\": a UniProt accession you have an ESMFold "
@@ -2392,6 +2396,11 @@ def sent_back(text, state, now, last=None, atelier=False):
         passed_over = room_work.ignoring(state, text)
         if passed_over:
             return passed_over
+        # his work is carried to its next step until a real cause to pause, and a campaign is always live
+        # (Gloria, 2026-10-08: "He needs to continue with the next step until there's actual cause for pause")
+        still = room_work.not_carried(state, text, now) or room_work.campaign_needed(state, text, now)
+        if still:
+            return still
     try:                                               # a Study claim must match its receipt (2026-10-05)
         import study_fix
         ahead = study_fix.claim_check(text)

@@ -51,6 +51,7 @@ NEXT = re.compile(r"^\s*NEXT:\s*(.+?)\s*$", re.I | re.M)
 DONE = re.compile(r"^\s*WORK DONE(?:\s+(RW-[0-9a-f]{8}))?:\s*(.+?)\s*$", re.I | re.M)
 DROPPED = re.compile(r"^\s*WORK DROPPED(?:\s+(RW-[0-9a-f]{8}))?:\s*(.+?)\s*$", re.I | re.M)
 NEW = re.compile(r"^\s*NEW:\s*(.+?)\s*$", re.I | re.M)
+PAUSE = re.compile(r"^\s*PAUSE\s+(RW-[0-9a-f]{8})\s*:\s*(.+?)\s*$", re.I | re.M)
 # A completion that is only arranged (2026-10-05: a song "scheduled for the morning" was closed as done, and it was
 # still owed). Done means it exists and was delivered; this names the ways of saying it has not happened yet.
 DEFERRED = re.compile(r"\b(?:scheduled|queued|pending|planned|awaiting|lined up|set up for|will (?:be|make|send|run|"
@@ -60,7 +61,7 @@ DEFERRED = re.compile(r"\b(?:scheduled|queued|pending|planned|awaiting|lined up|
 # Every line that makes something happen in the channel, his and the new ones; one of these moves the work.
 ACTS = re.compile(r"^\s*(?:LOCKED|DO|LAB|LINE(?:\s+L-[\w-]+)?|CHECK|STUDY FIX|APPROVED|DENIED|CAMPAIGN(?: MOVE)?|SHARE|ASK|"
                   r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED|"
-                  r"SEARCH|BUY|GOAL|GOAL REACHED|GOAL UNREACHABLE|RUN|PROMISE (?:DONE|DROPPED) EC-[0-9a-f]+|WORK DONE RW-[0-9a-f]+|WORK DROPPED RW-[0-9a-f]+)\s*:"
+                  r"SEARCH|BUY|GOAL|GOAL REACHED|GOAL UNREACHABLE|RUN|PROMISE (?:DONE|DROPPED) EC-[0-9a-f]+|PAUSE RW-[0-9a-f]+|WORK DONE RW-[0-9a-f]+|WORK DROPPED RW-[0-9a-f]+)\s*:"
                   r"|\[PURSUIT:", re.I | re.M)
 # A request to someone: a question, or an agent told to do a thing.
 _VERBS = (r"find|run|check|look(?: up| at| into)?|send|open|fold|build|make|compare|read|search|get|write|pull|fetch|list|"
@@ -317,6 +318,87 @@ def _goal_lines(state, text, now, by, log):
     if g and by and by not in g.setdefault("lenses", []):
         g["lenses"] = (g["lenses"] + [by])[-12:]
     return text
+
+
+# He carries his work forward until there is a cause to stop (Gloria, 2026-10-08: "He needs to continue with the
+# next step until there's actual cause for pause or he reaches a goal. Even after reaching a goal a new one can be
+# made from that. Campaigns."). On 7 October the CUB fold came back, he kept the work open ("packing hasn't been
+# assessed") and turned to a new paper; nothing made him take the step he had named.
+PAUSE_S = 12 * 3600            # a paused work waits this long, with its cause, then is due again
+PRESS_EVERY_S = 30 * 60       # an idle work (or a missing campaign) is sent back once, then not again for this long
+
+
+def _waiting(w, now):
+    """True when the work waits on an ask still out and not yet overdue: that is a step in progress."""
+    return any(not a.get("answered") and float(now) - float(a.get("at") or now) <= ASK_PATIENCE_S
+               for a in w.get("asks", []))
+
+
+# What moves a work: something done or asked. A note filed (LINE:), a lock, a plan said again (NEXT:) or the work
+# named again is not a step (7 October: "RW-f4c5f94c stays open" and a LINE note, while the one request in the
+# message was about a different paper).
+STEP = re.compile(r"^\s*(?:RUN|LAB|DO|CHECK|STUDY FIX|ASK|ASK GLORIA|MAKE|SEARCH|BUY|SHARE|TV|DONE|WORK DONE(?:\s+RW-\w+)?|"
+                  r"WORK DROPPED(?:\s+RW-\w+)?|GOAL REACHED|PROMISE (?:DONE|DROPPED)[^:]*)\s*:", re.I)
+
+
+def advances(text, w):
+    """True when a message takes a step on this work: one line (or sentence) that names it, by its id or its own
+    subject, and does something or asks someone for something."""
+    for part in re.split(r"\n|(?<=[.!?])\s+(?=[@A-Z])", str(text or "")):
+        named = w["id"] in part or _about(part, w) >= 2 or _like(part, w["goal"]) >= 0.5
+        if named and (STEP.search(part) or (REQUEST.search(part) and not re.match(r"^\s*(?:LINE|NEXT|LOCKED|WORK)\b", part, re.I))):
+            return True
+    return False
+
+
+def idle(state, now):
+    """Open work that is due a step now: nothing out with an agent, not paused for a cause."""
+    out = []
+    for w in open_items(state):
+        if _waiting(w, now) or float(w.get("paused_until") or 0) > float(now):
+            continue
+        out.append(w)
+    return sorted(out, key=lambda w: float(w.get("touched", w.get("opened", 0)) or 0))
+
+
+def not_carried(state, text, now):
+    """Why this draft leaves due work standing still, or "". Each idle work must get its next step in the message (a
+    new subject may sit beside it), or a PAUSE RW-id: cause line. Sent back once, then not again for PRESS_EVERY_S, so
+    a model that will not take it cannot hold the room."""
+    t = str(text or "")
+    for w in idle(state, now):
+        taking_up = any(not r.get("used") and engages(t, r.get("text", "")) for r in w.get("returns", []))
+        if advances(t, w) or taking_up or re.search(r"^\s*(?:PAUSE|WORK DONE|WORK DROPPED)\s+%s\b" % w["id"], t, re.I | re.M) \
+                or (w.get("idle_pressed_at") is not None and float(now) - float(w["idle_pressed_at"]) < PRESS_EVERY_S):
+            continue
+        if DONE.search(t) or DROPPED.search(t):
+            closing = (DONE.search(t) or DROPPED.search(t))
+            if _pick(state, (closing.group(1) or "") + " " + closing.group(2)) is w:
+                continue
+        w["idle_pressed_at"] = float(now)
+        return ("your work %s (%s) is due its next step and this message does not take it%s. Take it now, in this "
+                "message (an action line, RUN:, or a request to the agent who can do it, naming %s), beside anything "
+                "new. Stop only for a real cause: PAUSE %s: what it waits on (Gloria, hardware, an answer that has "
+                "not come), or close it with WORK DONE / WORK DROPPED." % (
+                    w["id"], w["goal"][:140], (" (the next step you set: %s)" % w["next"][:200]) if w.get("next") else "",
+                    w["id"], w["id"]))
+    return ""
+
+
+def campaign_needed(state, text, now):
+    """Why this draft goes on with no room campaign, or "": one is always live. After one is reached, the next is
+    made from it. Sent back once, then not again for PRESS_EVERY_S."""
+    b = board(state)
+    last = (b.get("goal_history") or [{}])[-1]
+    just_reached = last.get("state") == "reached" and float(now) - float(last.get("closed_at") or 0) < 3600
+    if goal(state) or GOAL.search(str(text or "")) or (b.get("goal_pressed_at") is not None and float(now) - float(b["goal_pressed_at"]) < PRESS_EVERY_S) \
+            or not (open_items(state) or just_reached):
+        return ""          # a campaign is made from work in hand, or from the one just reached
+    b["goal_pressed_at"] = float(now)
+    return ("there is no room campaign, and there always is one. Open it in this message: GOAL: what | done when: how "
+            "anyone could tell, made from your work in hand%s. Then take its first step." % (
+                (" or from what you just %s (%s)" % ("reached" if last.get("state") == "reached" else "closed",
+                                                     last.get("goal", "")[:120])) if last.get("goal") else ""))
 
 
 def lost_route(state, text, now):
@@ -774,6 +856,16 @@ def apply(state, text, now, by=""):
             w["next"] = m.group(1)[:300]
             w["touched"] = float(now)
         text = NEXT.sub(lambda _m: "➡️ Next: " + _m.group(1), text, count=1)
+    for m in list(PAUSE.finditer(text)):
+        w = next((x for x in open_items(state) if x["id"] == m.group(1)), None)
+        cause = m.group(2).strip()
+        if w and len(cause) >= 12:
+            w.update(paused_until=float(now) + PAUSE_S, pause_why=cause[:300], touched=float(now))
+            shown = "\u23F8 Paused %s (%s): %s" % (w["id"], w["goal"][:120], cause)
+            log.append("work paused %s" % w["id"])
+        else:
+            shown = "\u23F8 (not paused: %s)" % ("say what it waits on" if w else "no open work %s" % m.group(1))
+        text = text.replace(m.group(0), shown, 1)
     m = NEW.search(text)
     if m:
         lifted = settled_match(state, text, now)
@@ -795,6 +887,9 @@ def posted(state, text, ts, thread, now, to=(), by=""):
             r["used"] = str(ts)
         else:
             r["pressed"] = int(r.get("pressed", 0)) + 1
+    for x in open_items(state):
+        if advances(text, x):
+            x["touched"] = float(now)
     w = _pick(state, text) or loose(state)
     acts = [l.strip() for l in str(text).splitlines() if ACTS.search(l)]
     if acts:
@@ -885,6 +980,10 @@ def _block(state, now):
         out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
                    + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
         out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
+        if float(w.get("paused_until") or 0) > float(now):
+            out.append("PAUSED for a cause: %s (due again %s)" % (w.get("pause_why", ""), _ago(now, w["paused_until"]).replace("ago", "from now")))
+        elif not _waiting(w, now):
+            out.append("DUE ITS NEXT STEP THIS MESSAGE (nothing is out with an agent for it).")
         st, src, at, said = stage(w)
         if st != "open":
             out.append("Where it stands: %s (%s, %s)%s" % (st, SOURCES.get(src, src), _ago(at, now),

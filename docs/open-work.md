@@ -3,6 +3,29 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — he carries his work to its next step; a room campaign is always live
+
+Gloria: "He needs to continue with the next step until there's actual cause for pause or he reaches a goal. Even
+after reaching a goal a new one can be made from that. Campaigns." On 7 October at 22:13 the CUB fold had come
+back. He kept RW-f4c5f94c open ("packing hasn't been assessed"), filed a Lab note, and asked Grok Bot about a
+flutter-shutter paper. He took no step on the CUB, though he had named it earlier ("then compactness against
+6V55").
+
+- `room_work.not_carried`: every open work that is not waiting on an agent's answer must get a step in the message.
+  - A step is a line or sentence that names the work (its id, or its own subject) and does something (RUN, LAB,
+    DO, CHECK, a STUDY FIX, ASK, MAKE, SEARCH, a request to an agent, a close).
+  - A note filed, a lock, a NEXT or the work named again is not a step. Taking up a result that just came back
+    is.
+  - New subjects may sit beside it.
+- `PAUSE RW-id: cause` stops a work for 12 hours, for a named cause only. "later" is refused.
+- `room_work.campaign_needed`: with work in hand, or a campaign just reached, a draft without a live room campaign
+  is sent back to open one. After a campaign is reached, the next is made from it.
+- Both send back once, then not again for 30 minutes. A model that will not comply cannot freeze the room or
+  double every pass's model calls. Answering Gloria is never sent back for these.
+- The block marks each work "DUE ITS NEXT STEP THIS MESSAGE" or "PAUSED for a cause". The rules tell every lens.
+- Test: `test_room_campaign.py` (now 76 checks) replays the 22:13 message, which is sent back. A RUN of
+  reference_compare on Q86SQ4 41-149 against 6V55 passes, with the flutter-shutter question beside it.
+
 ## 8 October — ADGRG6 CUB folded on Gloria's approval; mean pLDDT was reported low
 
 Folded and posted to #vintos-dot by hand, on Aegis: Q86SQ4 41-149, 109 aa, ESMFold.

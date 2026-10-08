@@ -149,6 +149,42 @@ check("a Study ID alone is submitted, not succeeded", W.stage(W.open_items(ph2)[
 check("every lens sees where each work stands", "Where it stands: succeeded" in W.block(rs, 800) or "Where it stands: deployed" in W.block(rs, 800),
       W.block(rs, 800)[:800])
 
+# --- he carries his work forward until a cause to pause; a campaign is always live (Gloria, 2026-10-08) -------------
+cs2 = {}
+W.apply(cs2, "WORK: ESMFold Q86SQ4 CUB 41-149 | done when: mean pLDDT and whether 41-149 packed as a domain are here", now=1000)
+cub = W.open_items(cs2)[0]
+W.came_back(cs2, "lab", "fold Q86SQ4 41-149: 0 helix, 10 strands; mean pLDDT 94.0", 1100, about="Q86SQ4 CUB 41-149")
+for r in cub["returns"]: r["used"] = "1200"; r.pop("this_pass", None)
+SOL = ("The real CUB result replaces the toy result: sequence identity passed, and the verified per-residue mean pLDDT is "
+       "94.0, not 80.972. Packing hasn't been assessed, so %s stays open; no duplicate fold.\n"
+       "LINE L-c218c577: Q86SQ4 41-149 has a verified 109-aa prediction; mean per-residue pLDDT 94.0.\n"
+       "@GrokBot Find the flutter-shutter paper's demonstrated applications and limitations." % cub["id"])
+why = W.not_carried(cs2, SOL, now=2000)
+check("7 Oct 22:13 replayed: kept open, a note filed, a new paper asked about, and no step on the CUB: sent back",
+      cub["id"] in why and "due its next step" in why, why)
+check("... once; the rewrite is let through, so one stubborn model cannot hold the room", W.not_carried(cs2, SOL, now=2001) == "")
+STEP = ("Packing next. RUN: {\"skill\": \"reference_compare\", \"model\": \"Q86SQ4\", \"reference\": \"6V55\", "
+        "\"chain\": \"A\", \"ref_span\": [41, 149]}\n@GrokBot and the flutter-shutter paper, beside it.")
+check("a message that takes the CUB's next step (RUN on Q86SQ4 41-149) passes, with a new subject beside it",
+      W.not_carried(cs2, STEP, now=4000) == "")
+check("a real cause to pause is a line of its own, and holds it for a while",
+      W.apply(cs2, "PAUSE %s: waiting for Gloria to say whether the zebrafish 6V55 counts as a fair template" % cub["id"], now=5000)[0].startswith("\u23F8 Paused")
+      and W.not_carried(cs2, "something else entirely", now=9000) == "" and "PAUSED for a cause" in W.block(cs2, 9000))
+check("a pause with no cause is not taken", "not paused" in W.apply(cs2, "PAUSE %s: later" % cub["id"], now=5100)[0])
+check("work waiting on an agent's answer is not due (that is a step in progress)",
+      (W.posted(cs2, "@dot compare Q86SQ4 41-149 to 6V55 chain A", ts="9100.0", thread=None, now=60000, to={"dot"}) or True)
+      and W.not_carried(dict(cs2), "unrelated", now=60100) == "")
+why = W.campaign_needed(cs2, "anything", now=70000)
+check("with work in hand and no room campaign, he is sent back to open one", "always is one" in why, why)
+check("... not again within half an hour", W.campaign_needed(cs2, "anything", now=70100) == "")
+check("... and never in an empty room with nothing reached", W.campaign_needed({}, "hello", now=1) == "")
+gr = {}
+W.apply(gr, "GOAL: fold and compare CUB | done when: TM-score posted", now=1)
+W.apply(gr, "GOAL REACHED: TM-score 0.81 against 6V55 chain A over 105 residues", now=2)
+check("after a campaign is reached, the next is asked for, made from it", "reached" in W.campaign_needed(gr, "thanks", now=10)
+      and "fold and compare CUB" in W.campaign_needed(gr, "x", now=10 + W.PRESS_EVERY_S + 1))
+check("every lens is told to carry its work and keep a campaign live", all("Carry your work" in D.rules_for(l) for l in ("grok", "gemma", "opus55")))
+
 # --- 7. the room's campaign -------------------------------------------------------------------------------------------
 gs = {}
 t, _, _ = W.apply(gs, "GOAL: show whether my ESMFold model of pendrin's STAS matches 8SGW | done when: a TM-score and the helix/strand edges against 8SGW are posted",
