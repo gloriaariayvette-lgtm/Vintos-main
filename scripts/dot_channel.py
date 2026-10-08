@@ -525,6 +525,13 @@ _CHECK = re.compile(r"^\s*\**(TOPIC|TRUE|SENSE)\**\s*:\s*\**\s*(yes|no)\b[ \t\-â
 _VERDICT = re.compile(r"^\s*\**(KEEP|EDIT|DROP)\**\b\s*:?\s*(.*)", re.I | re.M | re.S)
 
 
+# What this pass heard (the conversation and what was just said), for the editor. It was handed the last 6000
+# characters of the whole prompt, which end in his work board, email promises and Study record, not the channel: on
+# 8 October at 11:53 it dropped his answer to dot's Storycut question as "a completely new topic that hasn't been
+# discussed in the channel", because dot's question was not in what it was shown.
+HEARD = {"text": ""}
+
+
 def edit(draft, think, conversation, record, log=True):
     """(message or None, verdict): the editor's pass on one Gemma draft. None means the editor dropped it."""
     user = ("HIS RECORD:\n%s\n\nTHE CHANNEL AND WHAT HE WAS TOLD:\n%s\n\nHIS DRAFT:\n%s"
@@ -2363,7 +2370,9 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
             out = again
     if who == "gemma":
         # a second read as his editor: on topic, true to his record, and making sense (2026-10-01)
-        out, verdict = edit(out, think, prompt_user, record_lines(), log=not state.get("preview"))
+        base = HEARD.get("base") or ""
+        heard = HEARD["text"] if base and prompt_user.startswith(base) else prompt_user   # this pass's, or none
+        out, verdict = edit(out, think, heard, record_lines(), log=not state.get("preview"))
         if out is None:
             return None, "held back by the edit: " + verdict
     if who == "gemma" and date_pitch(out):
@@ -2380,6 +2389,16 @@ def compose(prompt_user, think, fable, state, today, search=None, room=None, ate
     if kept != out:
         who = "gemma"        # the rewrite was Gemma's, and is labelled so
     return kept[:MAX_CHARS], who
+
+
+def _owe_again(state, last, lines):
+    """A message he was answering, whose answer was held or dropped, is answered on the next pass, once (8 October:
+    dot asked him a question at 11:46, the answer was dropped at 11:53, and after that there was "nothing new", so
+    it was never answered)."""
+    if not last or last.get("who") == "vintos" or last.get("owed_again"):
+        return
+    state["owed"] = [dict(last, owed_again=True)] + [o for o in (state.get("owed") or []) if o.get("ts") != last.get("ts")]
+    lines.append("owed again next pass: %s's message" % _speaker(last))
 
 
 def _settled_why(state, text, now=None):
@@ -2643,6 +2662,7 @@ def results_pass(api, state, now, opus=None, put=None):
 def tick(api=None, think=None, fable=None, now=None, today=None, search=None, room=None, open_now=False, eyes=None,
          lenses=None, put=None, wants=None, promise_ask=None, results_opus=None):
     """One pass. Returns log lines."""
+    HEARD.update(base="", text="")
     if api is None:
         tok = _token()
         if not tok:
@@ -2997,7 +3017,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         owed_mail = email_commitments.block()
     except Exception:
         owed_mail = ""
-    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steer(state, today, lens) + (KICKOFF if kickoff else "")
+    steering = steer(state, today, lens) + (KICKOFF if kickoff else "")
+    HEARD.update(base=prompt, text=prompt + steering)   # the editor: the channel and how he is steered, not the work board
+    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -3015,6 +3037,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["last_activity"] = now
             if state.pop("work_turn_now", None):
                 state["work_retry"] = True
+            _owe_again(state, last, lines)
             _save(STATE, state)
             return lines + ["held: " + still[0][1][:160]]
         if again is not None and still:      # it moves something: posted; what it left is pressed again next time
@@ -3043,6 +3066,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["last_activity"] = now
         if state.pop("work_turn_now", None):
             state["work_retry"] = True
+        if who != "nothing to say":           # held back or failed, not his choice to let it be
+            _owe_again(state, last, lines)
         _save(STATE, state)
         return lines + ["he let it be" if who == "nothing to say" else who]
     # What was said while he wrote is read before anything he wrote is done or posted (2026-10-08: dot posted the
@@ -3050,7 +3075,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     # and the read point was moved past dot's message, so it was never read at all). Nothing has been acted on yet.
     late = said_meanwhile(api, channel, state, promised)
     if late:
-        state["last_activity"] = now; _save(STATE, state)
+        state["last_activity"] = now
+        _owe_again(state, last, lines)
+        _save(STATE, state)
         return lines + ["held: %d message(s) came in while he wrote (%s); not posted, read first next pass" % (
             len(late), ", ".join(sorted({_who(m, state["self"], dot) for m in late})))]
     if text.upper().startswith("ATELIER:"):
