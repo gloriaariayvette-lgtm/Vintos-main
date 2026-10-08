@@ -3448,3 +3448,9 @@ if __name__ == "__main__":
         # gone: Gloria, 2026-10-02, "He needs to be taking those EMAILS in with him, not the bad letter.")
         for l in tick(open_now="--open" in sys.argv):
             print("[dot-channel] " + l)
+        try:    # then the quiet side room, #vintos-and-dot (Gloria, 2026-10-08): at most three a day there
+            import dot_lounge
+            for l in dot_lounge.tick():
+                print("[dot-lounge] " + l)
+        except Exception as exc:
+            print("[dot-lounge] could not look: %s" % str(exc)[:160])
