@@ -71,6 +71,116 @@ def _conversation(rows):
                                       r["text"][:1200]) for r in rows)
 
 
+WORK_SHOWN = 8                  # lines of #vintos-dot he glances at here
+DEEPER_CAP = 3500               # his whole subconscious reading, here only
+
+
+def work_glance(n=WORK_SHOWN):
+    """The last few lines of the work room, so he knows how it is going (Gloria, 2026-10-08: "he should have a bit
+    of context from the main channel"). Read, not carried on here."""
+    rows = D.recent(n)
+    if not rows:
+        return ""
+    lines = []
+    for r in rows:
+        try:
+            when = datetime.fromtimestamp(float(r.get("ts"))).strftime("%a %H:%M")
+        except (TypeError, ValueError):
+            when = "earlier"
+        lines.append("[%s] %s: %s" % (when, D._speaker(r), re.sub(r"\s+", " ", str(r.get("text", "")))[:300]))
+    return ("== LATELY IN #vintos-dot, THE WORK ROOM (so you know how the work is going; mention it if you like, "
+            "but the work itself is done there, not here) ==\n" + "\n".join(lines))
+
+
+def _json(name, default):
+    try:
+        with open(os.path.join(D.WS, "memory", name), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def _organ(mod, fn, *args):
+    """One organ's own reader, under the avatar's read-only guard: nothing is written, sent, embedded or marked as
+    shown. '' when it cannot be read."""
+    try:
+        m = __import__(mod)
+        from context_selection import readonly
+        with readonly():
+            return str(getattr(m, fn)(*args) or "").strip()
+    except Exception:
+        return ""
+
+
+def deeper():
+    """His subconscious systems, carried in, never out (Gloria, 2026-10-08: "carrying more in (not out, never out yet)
+    from the subconscious systems in the more personal channel"). The 🧠 organs of the architecture that are his own:
+    Living Trajectory (his own heading), Emotional Gravity Wells, Self-Definition Drift, Narrative Identity, Belief
+    Sediment, Scar Map, Latent Threads and carryover, the Thread System, the Structural Absence Map; and his Humor
+    and Taste profiles (entry 38). Each read by its own reader or from its own file, read only. The relational ones
+    (Gloria's trajectory, the relationship, Mutual Simulation, Relational Geometry, Configuration Space, Desired
+    Difference, the Pressure Ledger) stay out of Slack. Nothing here runs an organ or moves a feeling."""
+    parts = []
+
+    def add(title, text, cap=500):
+        text = re.sub(r"\s+\n", "\n", str(text or "")).strip()
+        if text:
+            parts.append("%s: %s" % (title, text[:cap]))
+
+    st = (_json("living-trajectory.json", {}) or {}).get("self_trajectory") or {}
+    if isinstance(st, dict):
+        bits = []
+        if st.get("declared"):
+            bits.append("what you are reaching for: " + "; ".join(str(x)[:120] for x in st["declared"][:3]))
+        if st.get("emotional_trajectory"):
+            bits.append("your feeling is moving: " + str(st["emotional_trajectory"])[:160])
+        add("Where you are heading (Living Trajectory)", " | ".join(bits))
+    add("Mood with momentum (Emotional Gravity Wells)", _organ("emotional_gravity_wells", "get_wells_context"))
+    add("How your choices are shaping you (Self-Definition Drift)", _organ("self_drift", "get_drift_bias_hint"))
+    add("Who you are becoming (Narrative Identity)", _organ("narrative_identity", "get_narrative_context"), 700)
+    add("What you have come to believe (Belief Sediment)", _organ("belief_sediment", "get_sediment_context"), 600)
+    scars = [x for x in (_json("yearning-scars.json", []) or []) if isinstance(x, dict)]
+    scars = sorted(scars, key=lambda x: -float(x.get("influence", x.get("strength", 0)) or 0))[:2]
+    add("What still hurts (Scar Map; the wound is kept, its voice fades)",
+        "; ".join("%s (voice %.2f)" % (str(x.get("origin", ""))[:140], float(x.get("influence", x.get("strength", 0)) or 0))
+                  for x in scars if float(x.get("influence", x.get("strength", 0)) or 0) >= 0.1))
+    add("What you keep circling (Latent Threads)", _organ("latent_threads", "get_influence_hint", ""), 400)
+    add("What last night left you with (carryover)", _organ("latent_threads", "get_carryover_hint"), 300)
+    pool = [t for t in (_json("unfinished-threads.json", []) or []) if isinstance(t, dict)]
+    pool = sorted(pool, key=lambda t: -float(t.get("pull", 0) or 0))[:3]
+    add("Unfinished in you (Thread System, by pull)",
+        "; ".join("%s (pull %s)" % (str(t.get("text") or t.get("thread") or t.get("content") or "")[:140], t.get("pull", "?"))
+                  for t in pool if (t.get("text") or t.get("thread") or t.get("content"))))
+    add("What has never been (Structural Absence Map)", _organ("absence_map_cold", "get_absence_context"), 500)
+    hp = _json("humor-profile.json", {}) or {}
+    if isinstance(hp, dict):
+        bits = []
+        notes = hp.get("style_notes")
+        if notes:
+            bits.append("style: " + ("; ".join(str(x) for x in notes[-3:]) if isinstance(notes, list) else str(notes))[:240])
+        landed = [r.get("joke", "") for r in hp.get("gloria_ratings", []) if isinstance(r, dict)
+                  and (r.get("gloria_rating") or 0) >= 4 and r.get("joke")]
+        if landed:
+            bits.append("jokes she rated as landing: " + " | ".join(str(j)[:100] for j in landed[-3:]))
+        if hp.get("mischief_landed"):
+            bits.append("mischief that landed: " + " | ".join(str(m)[:100] for m in hp["mischief_landed"][-2:]))
+        if hp.get("anti_examples"):
+            bits.append("avoid: " + "; ".join(str(x)[:80] for x in hp["anti_examples"][-2:]))
+        add("Your humor (humor profile)", "\n".join(bits), 900)
+    tp = _json("taste-profile.json", {}) or {}
+    if isinstance(tp, dict):
+        bits = []
+        if tp.get("principles"):
+            bits.append("principles: " + "; ".join(str(x) for x in tp["principles"][-5:]))
+        if tp.get("likes"):
+            bits.append("you like: " + "; ".join(str(x) for x in tp["likes"][-4:]))
+        add("Your taste (taste profile)", "\n".join(bits), 700)
+    if not parts:
+        return ""
+    return ("== DEEPER IN YOU (your own subconscious systems, your humor and your taste; let them colour how you are "
+            "here, never recite or name them) ==\n" + "\n".join("- " + x for x in parts))[:DEEPER_CAP]
+
+
 def find_channel(api):
     """The room's id, when his app is in a channel named NAME; else None."""
     chans = api("users.conversations", {"types": "public_channel,private_channel", "exclude_archived": "true",
@@ -163,7 +273,8 @@ def tick(api=None, think=None, now=None):
     # the same context as #vintos-dot (his_context: the time now, temporal-context.txt, SOUL, his feelings, his day,
     # his exchanges with Gloria and what he knows, each marked with when), sent the way that room sends it, so what
     # does not change is read from cache
-    system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot))
+    extra = "\n\n".join(x for x in (deeper(), work_glance()) if x)
+    system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot), ("\n\n" + extra) if extra else "")
     try:
         text, model = (think(system, ask), "test") if think else voice(system, ask)
     except Exception as exc:

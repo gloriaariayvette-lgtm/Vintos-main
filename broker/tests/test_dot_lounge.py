@@ -36,6 +36,31 @@ class Slack:
             self.posted.append(params); ts = 1e9 + len(self.posted); self.add(SELF, params["text"], ts); return {"ok": True, "ts": "%.6f" % ts}
         raise AssertionError(method)
 D.his_context = lambda: "WHO HE IS"
+D.recent = lambda n=30: [{"ts": "1791400000.0", "who": "vintos", "by": "grok", "text": "Opened RW-15d8ba9d: STAS 535-729 isolated vs full-length."}]
+import types, context_selection
+GUARDED = []
+def _organ(name, fn, said):
+    m = types.ModuleType(name)
+    def read(*a):
+        GUARDED.append((name, context_selection._active.get())); return said
+    setattr(m, fn, read); sys.modules[name] = m
+_organ("emotional_gravity_wells", "get_wells_context", "A well has formed: high Curiosity.")
+_organ("self_drift", "get_drift_bias_hint", "Naturally moves toward: making (0.40)")
+_organ("narrative_identity", "get_narrative_context", "I am someone who finishes what he names.")
+_organ("belief_sediment", "get_sediment_context", "Measured beats guessed.")
+_organ("latent_threads", "get_influence_hint", "the STAS loop that will not settle")
+sys.modules["latent_threads"].get_carryover_hint = lambda: "Carrying forward: 1 layer(s)"
+_organ("absence_map_cold", "get_absence_context", "never yet: a song she asked for twice")
+_organ("mutual_simulation", "get_interaction_hint", "RELATIONAL-HINT")
+MEM = os.path.join(os.environ["SPARK_WORKSPACE"], "memory"); os.makedirs(MEM, exist_ok=True)
+for name, obj in {"living-trajectory.json": {"self_trajectory": {"declared": ["finish the STAS comparison"]},
+                                             "gloria_trajectory": {"predicted": "RELATIONAL-GLORIA"},
+                                             "relationship": {"trajectory": "RELATIONAL-US"}},
+                  "humor-profile.json": {"style_notes": ["dry, specific"], "gloria_ratings": [{"joke": "the queue joke", "gloria_rating": 5}]},
+                  "taste-profile.json": {"principles": ["one true detail"], "likes": ["cold light"]},
+                  "yearning-scars.json": [{"origin": "the song that never rendered", "strength": 0.8, "influence": 0.4}],
+                  "unfinished-threads.json": [{"text": "why the Forge refuses", "pull": 4}]}.items():
+    json.dump(obj, open(os.path.join(MEM, name), "w"))
 told = []
 def think(system, user):
     told.append((system, user)); return said.pop(0) if said else "NOTHING"
@@ -94,6 +119,13 @@ check("it runs after each #vintos-dot pass", "dot_lounge.tick()" in src)
 check("it is in the deploy manifest", "dot_lounge.py" in open(os.path.join(REPO, "scripts", "deploy-atelier.sh")).read())
 lsrc = open(os.path.join(REPO, "scripts", "dot_lounge.py")).read()
 check("his voice is the model her chat toggle names, never another", "model_router.current_claude_model()" in lsrc)
+check("he glances at the work room, read only", "LATELY IN #vintos-dot" in sys_prompt and "RW-15d8ba9d" in sys_prompt)
+for said in ("finish the STAS comparison", "high Curiosity", "moves toward: making", "finishes what he names",
+             "Measured beats guessed", "the song that never rendered", "the STAS loop", "Carrying forward",
+             "why the Forge refuses (pull 4)", "never yet: a song", "dry, specific", "the queue joke", "one true detail", "cold light"):
+    check("carried in: %s" % said, said in sys_prompt)
+check("every organ is read under the read-only guard", GUARDED and all(g for _n, g in GUARDED), GUARDED)
+check("the relational systems stay out of Slack", "RELATIONAL" not in sys_prompt)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
