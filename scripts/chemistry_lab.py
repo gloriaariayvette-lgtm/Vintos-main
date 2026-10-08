@@ -56,6 +56,38 @@ ESMC_PYTHON = os.environ.get(
     os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"),
 )
 ESMC_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_esmc.py")
+# Structured tracing for eliot-tree (Vintos, 2026-10-08): the parser here and the ESMFold invoke in chemistry_mac each
+# run under an eliot action, and a run writes its JSON below ROOT. Without eliot installed nothing changes.
+try:
+    import eliot as _eliot
+except Exception:
+    _eliot = None
+ELIOT_LOG = os.path.join(ROOT, "eliot.jsonl")
+_ELIOT_READY = False
+LAST_FOLD_TASK = None   # serialized task id of the latest fold, so the parser that reads it nests under it
+
+
+def _eliot_ready():
+    global _ELIOT_READY
+    if _eliot is None: return False
+    if not _ELIOT_READY:
+        _ensure()
+        _eliot.to_file(open(ELIOT_LOG, "ab"))
+        _ELIOT_READY = True
+    return True
+
+
+@contextlib.contextmanager
+def trace(action_type, **fields):
+    """An eliot action, or nothing when eliot is absent. The parser continues the latest fold's task when no action
+    is already current, so eliot-tree prints the two under one task_uuid."""
+    if not _eliot_ready():
+        yield None; return
+    parent = contextlib.nullcontext()
+    if LAST_FOLD_TASK and action_type.startswith("chemistry_lab:") and _eliot.current_action() is None:
+        parent = _eliot.Action.continue_task(task_id=LAST_FOLD_TASK)
+    with parent, _eliot.start_action(action_type=action_type, **fields) as action:
+        yield action
 
 LLM_URL = os.environ.get("CHEM_LAB_LLM_URL", "http://127.0.0.1:8599/gemma-aegis/v1/chat/completions")
 LLM_MODEL = os.environ.get("CHEM_LAB_LLM_MODEL", "google/gemma-4-12b-qat")
@@ -770,6 +802,14 @@ def _close_open(text):
 
 
 def _json_object(text, keep=800):
+    # One eliot action per parse; a ModelJSONError leaves the action as a failure in the tree.
+    with trace("chemistry_lab:json_object", chars=len(str(text or ""))) as action:
+        value = _parse_json_object(text, keep)
+        if action is not None: action.add_success_fields(keys=sorted(map(str, value))[:12])
+        return value
+
+
+def _parse_json_object(text, keep=800):
     raw = str(text or "")
     evidence_id, events = uuid.uuid4().hex, ["captured"]
     _parser_evidence(evidence_id, events, raw=raw)

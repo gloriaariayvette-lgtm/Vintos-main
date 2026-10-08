@@ -18,6 +18,7 @@ The Mac's own ``code`` action still needs its own authenticated authority, separ
 the scheduled named-experiment route; ``docs/open-work.md`` carries that as open.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -353,20 +354,37 @@ def _fault(done, body):
             "stdout": (done.stdout or "")[-2000:], "stderr": (done.stderr or "")[-2000:]}
 
 
+@contextlib.contextmanager
+def _trace(action_type, **fields):
+    """The Lab's eliot action around a fold, remembered so the parser that reads the fold nests under its task.
+    Nothing when chemistry_lab or eliot is absent."""
+    try:
+        import chemistry_lab
+        ctx = chemistry_lab.trace(action_type, **fields)
+    except Exception:
+        yield None; return
+    with ctx as action:
+        if action is not None: chemistry_lab.LAST_FOLD_TASK = action.serialize_task_id()
+        yield action
+
+
 def _run_esmfold(parameters, contract, worker=None):
     body = {"accession": contract["requested_accession"], "sequence": contract["sequence"],
             "sequence_source": contract["source"], "hp_mapping": contract["hp_mapping"]}
     if worker is None:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chemistry_esmfold.py")
         try:
-            done = subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body), text=True,
-                                  capture_output=True, timeout=900, check=False)
-            if done.returncode and _short_of_memory(done):
-                # The fold shares a 16 GB GPU with Gemma, and nothing made room for it (2026-10-03). Once more with
-                # Gemma unloaded, the way Evo 2 runs, and Gemma put back after.
-                done = _with_gemma_unloaded(lambda: subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body),
-                                                                  text=True, capture_output=True, timeout=900,
-                                                                  check=False)) or done
+            with _trace("chemistry_mac:esmfold", accession=body["accession"],
+                        sequence_length=len(body["sequence"])) as action:
+                done = subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body), text=True,
+                                      capture_output=True, timeout=900, check=False)
+                if done.returncode and _short_of_memory(done):
+                    # The fold shares a 16 GB GPU with Gemma, and nothing made room for it (2026-10-03). Once more
+                    # with Gemma unloaded, the way Evo 2 runs, and Gemma put back after.
+                    done = _with_gemma_unloaded(lambda: subprocess.run([ESMFOLD_PYTHON, path], input=json.dumps(body),
+                                                                      text=True, capture_output=True, timeout=900,
+                                                                      check=False)) or done
+                if action is not None: action.add_success_fields(exit_code=done.returncode)
         except subprocess.TimeoutExpired:
             return {"ok": False, "state": "unknown_after_timeout",
                     "error": "local ESMFold timed out; outcome not retried"}
