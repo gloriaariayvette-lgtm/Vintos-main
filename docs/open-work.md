@@ -3,6 +3,19 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — an email is read whole, or says how much of it was read
+
+Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) was 5436 characters; both reading prompts cut every email at
+5000 without a word, so he read it as ending at "each ending with" and never saw the Nobel paragraph. And an email
+was taken as whole if its text was 400 characters or more, so a long search snippet passed for the message. Now:
+a message is whole only when its text is the message's own body (a search snippet is a preview at any length; a
+full read that returns only the snippet is still one); both prompts (reading, and his reply to an agent's letter)
+show the email in labelled parts of 5000, up to 3, ending "[END OF EMAIL: all N characters shown]" or saying how
+many characters are NOT shown; storage keeps up to 20000 with body_length and stored_whole; his Slack context marks
+its 500/400-character email excerpts as excerpts with their full length. Tested on the 5436-character case, plain
+and HTML. **Not verified on Aegis yet.** Next in this audit: links (redirect wrappers), result reconciliation
+(Merizo), accountable tasks from email commitments, failure evidence.
+
 ## 7 October — Haiku 4.5 replaced by Haiku 5.5
 
 Gloria asked. `claude-haiku-5-5` is listed for his key (models API, 7 Oct), and a test on Aegis showed it accepts

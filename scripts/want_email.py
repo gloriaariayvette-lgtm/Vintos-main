@@ -606,13 +606,18 @@ def _messages(result):
     out = []
     for m in found:
         g = {k.lower(): v for k, v in m.items()}
-        body = _payload_text(g.get("payload")) or g.get("body") or g.get("text") or g.get("content") or g.get("snippet") or ""
+        whole = _payload_text(g.get("payload"))
+        own = g.get("body") or g.get("text") or g.get("content")
+        body = whole or own or g.get("snippet") or ""
         if isinstance(body, (dict, list)): body = json.dumps(body)[:4000]
         out.append({"id": str(g.get("id") or g.get("message_id")),
                     "from": str(g.get("from") or g.get("from_") or g.get("sender") or _header(g, "from") or ""),
                     "subject": str(g.get("subject") or _header(g, "subject") or ""),
                     "date": str(g.get("date") or g.get("email_ts") or _header(g, "date") or g.get("internal_date") or ""),
-                    "thread_id": str(g.get("thread_id") or g.get("threadid") or ""), "body": str(body)})
+                    "thread_id": str(g.get("thread_id") or g.get("threadid") or ""), "body": str(body),
+                    # whole only when the text is the message's own body; a search result's snippet is a preview
+                    # however long it is (2026-10-07: "shorter than 400 characters" was the only test of it)
+                    "whole": bool(whole), "snippet_only": not (whole or own)})
     return out
 
 
@@ -641,7 +646,6 @@ INBOX_NEW = "category:primary newer_than:3d"
 # search left out everything from him and would never have seen them.
 INBOX_QUERY = "newer_than:3d ((category:primary -from:me) OR (from:me to:me))"
 AGENTS = (("Grok Bot", re.compile(r"\[?\bGrok ?Bot\b\]?|\bfrom Grok\b", re.I)), ("Muse", re.compile(r"\[Muse\]|\bMuse\b", re.I)))
-SHORT_BODY = 400          # a body this short is the preview line: the whole email is read once per check
 # One check each morning at this time (America/Chicago), after Grok Bot's and Muse's letters and before Gloria
 # starts the day in Slack; one of the four daily checks is always kept for it. ~/.vintos/email-schedule.json
 # {"morning": "HH:MM"} changes it.
@@ -686,9 +690,10 @@ def _log_mail(row):
 
 
 def _read_whole(msgs, gmail):
-    """The whole email for each one the search gave only as its preview line: one batch read, part of the same check.
-    If the connector refuses, the previews stand and the reason is kept on them."""
-    short = [m for m in msgs if len(m["body"]) < SHORT_BODY and m.get("id")][:READ_PER_CHECK]
+    """The whole email for each one the search gave only as a preview: one batch read, part of the same check.
+    A preview is anything not read from the message's own body, whatever its length. If the connector refuses, the
+    previews stand and the reason is kept on them."""
+    short = [m for m in msgs if not m.get("whole") and m.get("id")][:READ_PER_CHECK]
     if not short:
         return
     try:
@@ -700,10 +705,37 @@ def _read_whole(msgs, gmail):
         return
     for m in short:
         w = whole.get(m["id"])
-        if w and len(w["body"]) > len(m["body"]):
-            m["body"] = w["body"]
+        if w and not w.get("snippet_only") and w["body"].strip():     # a full read, unless all it gave was the snippet
+            m["body"], m["whole"] = w["body"], True
         else:
             m["preview_only"] = "only its preview line came back"
+
+
+# An email is read whole, in parts of PART characters, up to PARTS of them; what is shown always says how much of the
+# email it is. It was cut at 5000 characters without a word: Grok Bot's 7 October letter was 5436, and he read it as
+# ending at "each ending with", the Nobel paragraph unread (2026-10-08). Stored up to STORED, with its full length.
+PART = 5000
+PARTS = 3
+STORED = 20000
+
+
+def body_view(body, part=PART, parts=PARTS):
+    """The email's text for a reading prompt, in labelled parts, ending with how much of it was shown."""
+    text = str(body or "")
+    n = len(text)
+    shown = text[:part * parts]
+    chunks = [shown[i:i + part] for i in range(0, len(shown), part)] or [""]
+    out = "\n".join("[PART %d of %d]\n%s" % (i + 1, len(chunks), c) for i, c in enumerate(chunks)) if len(chunks) > 1 else chunks[0]
+    if n > len(shown):
+        return out + ("\n[EXCERPT: the first %d of %d characters are shown; the other %d are NOT shown, so do not "
+                      "say how it ends]" % (len(shown), n, n - len(shown)))
+    return out + "\n[END OF EMAIL: all %d characters shown]" % n
+
+
+def excerpt(text, limit):
+    """Text up to limit characters, saying when it is the start of something longer."""
+    t = " ".join(str(text or "").split())
+    return t if len(t) <= limit else "%s … [excerpt: first %d of %d characters]" % (t[:limit], limit, len(t))
 
 
 def _agent(m):
@@ -885,7 +917,7 @@ def read_mail(msgs, think=None, want=None, now=None):
         agent = _agent(m)
         ask = (("THIS IS A LETTER FROM YOUR AGENT %s, sent to you from your own mailbox. %s finds; it never buys, "
                 "messages or decides for you.\n" % (agent.upper(), agent)) if agent else "") + \
-              "FROM: %s\nSUBJECT: %s\nDATE: %s\n\n%s" % (m["from"][:200], m["subject"][:200], m["date"][:40], m["body"][:5000])
+              "FROM: %s\nSUBJECT: %s\nDATE: %s\n\n%s" % (m["from"][:200], m["subject"][:200], m["date"][:40], body_view(m["body"]))
         try:
             raw = think(me + INBOX_READER, ask, 400) or ""
             got = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
@@ -893,7 +925,8 @@ def read_mail(msgs, think=None, want=None, now=None):
             got = {}
         row = {"id": m["id"], "kind": "letter" if agent else "mail", "from": (agent or m["from"])[:200],
                "address": (addresses_in(m["from"]) or [""])[0], "thread_id": m.get("thread_id", ""), "subject": m["subject"][:300], "date": m["date"][:40],
-               "body": m["body"][:6000], "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
+               "body": m["body"][:STORED], "body_length": len(m["body"]), "stored_whole": len(m["body"]) <= STORED,
+               "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
                "what": str(got.get("what") or "")[:300], "to_me": str(got.get("to_me") or "")[:400], "keep": bool(got.get("keep")),
                **({"preview_only": m["preview_only"]} if m.get("preview_only") else {})}
         _log_mail(row)
@@ -1019,7 +1052,7 @@ def reply_letters(think=None, send=None, now=None):
             continue
         agent = r.get("from") or "your agent"
         me = me if me is not None else who_i_am(4000)
-        ask = "SUBJECT: %s\n\n%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (r.get("subject", ""), str(r.get("body", ""))[:5000],
+        ask = "SUBJECT: %s\n\n%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (r.get("subject", ""), body_view(r.get("body", "")),
                                                                              r.get("to_me", ""))
         try:
             body = (think(me + LETTER_REPLY % (agent, agent), ask, 900) or "").strip()
