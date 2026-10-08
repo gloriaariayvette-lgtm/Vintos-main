@@ -782,6 +782,44 @@ def links_note(body):
     return "\n".join(lines)
 
 
+LINKS_READ = 5          # links of one agent letter opened and read
+LINK_CHARS = 1500       # of each page, kept with the letter and shown to him
+
+
+def links_read(body, fetch=None, limit=LINKS_READ, chars=LINK_CHARS):
+    """The pages an agent's letter links to, opened and read (Gloria, 2026-10-08: "Why is Grok Bot STILL sending him
+    unusable links via email? You said you fixed it so he could read them." The 7 October fix unwrapped the
+    redirects and showed him where each went; nothing was opened, so he had addresses he could not read). Each
+    through link_fetch: public hosts only, every redirect hop checked, a byte cap; a page that cannot be read is
+    named with why. Only for his own agents' letters: a stranger's links are not opened (that tells the sender the
+    mail was read). [{url, kind, why, text}]."""
+    link_fetch = _link_fetch()
+    fetch = fetch or link_fetch.fetch
+    out = []
+    for l in link_fetch.links_in(body)[:limit]:
+        try:
+            r = fetch(l["original"])
+        except Exception as exc:
+            r = {"original_url": l["original"], "url": l["url"], "fetched": False, "kind": "error", "why": str(exc)[:160]}
+        out.append({"url": (r.get("final_url") or r.get("url") or l["url"] or l["original"])[:500],
+                    "kind": r.get("kind") or ("fetched" if r.get("fetched") else "not read"),
+                    "why": str(r.get("why") or "")[:200], "text": str(r.get("text") or "")[:chars] if r.get("fetched") else ""})
+    return out
+
+
+def pages_view(pages):
+    """What he read behind the links, for his prompt; '' when there were none."""
+    if not pages:
+        return ""
+    lines = ["WHAT THE LINKS LEAD TO (each opened and read for you):"]
+    for i, p in enumerate(pages, 1):
+        if p.get("text"):
+            lines.append("[LINK %d] %s\n%s" % (i, p["url"], p["text"]))
+        else:
+            lines.append("[LINK %d] %s\nNOT READ (%s): %s" % (i, p["url"], p.get("kind"), p.get("why")))
+    return "\n\n".join(lines)
+
+
 def links_kept(body):
     """The links as stored with a read letter: the original as written and its destination."""
     link_fetch = _link_fetch()
@@ -816,7 +854,6 @@ def check_inbox(contacts, gmail=None, now=None, others=None, notes=None):
     for n, group in enumerate(groups):
         if gmail_checks_left(now) <= 0:
             break
-        _spend_gmail_check(now)
         wide = others is not None and n == 0
         query = ("newer_than:30d (from:(%s) OR %s)" % (" OR ".join(group), INBOX_QUERY.replace("newer_than:3d ", "(newer_than:3d ") + ")")
                  if group and wide else "from:(%s) newer_than:30d" % " OR ".join(group) if group else INBOX_QUERY)
@@ -825,9 +862,12 @@ def check_inbox(contacts, gmail=None, now=None, others=None, notes=None):
                            ("Checking his inbox: replies from %d people he wrote to, and what else came in" % len(group))
                            if wide else "Checking for replies to his own emails, from %d people" % len(group))
         except Exception as exc:
-            notes.append("Gmail search failed (one of today's %d checks spent): %s: %s"
+            # a search that never reached his mail is not one of his checks (8 October: Codex's Gmail refused every
+            # search for a while, and two of the day's four were spent on refusals)
+            notes.append("Gmail search failed (not counted against today's %d checks): %s: %s"
                          % (GMAIL_CHECKS_PER_DAY, type(exc).__name__, str(exc)[:200]))
             continue
+        _spend_gmail_check(now)
         got = _messages(result)
         if not got and wide:
             notes.append("Gmail search of his inbox came back with no messages: %s" % json.dumps(result, default=str)[:200])
@@ -975,6 +1015,9 @@ def read_mail(msgs, think=None, want=None, now=None):
                 "messages or decides for you.\n" % (agent.upper(), agent)) if agent else "") + \
               "FROM: %s\nSUBJECT: %s\nDATE: %s\n\n%s" % (m["from"][:200], m["subject"][:200], m["date"][:40], body_view(m["body"])) + \
               ("\n\n" + links_note(m["body"]) if links_note(m["body"]) else "")
+        pages = links_read(m["body"]) if agent else []
+        if pages:
+            ask += "\n\n" + pages_view(pages)
         try:
             raw = think(me + INBOX_READER, ask, 400) or ""
             got = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
@@ -983,7 +1026,7 @@ def read_mail(msgs, think=None, want=None, now=None):
         row = {"id": m["id"], "kind": "letter" if agent else "mail", "from": (agent or m["from"])[:200],
                "address": (addresses_in(m["from"]) or [""])[0], "thread_id": m.get("thread_id", ""), "subject": m["subject"][:300], "date": m["date"][:40],
                "body": m["body"][:STORED], "body_length": len(m["body"]), "stored_whole": len(m["body"]) <= STORED,
-               "links": links_kept(m["body"]),
+               "links": links_kept(m["body"]), **({"pages": pages} if pages else {}),
                "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
                "what": str(got.get("what") or "")[:300], "to_me": str(got.get("to_me") or "")[:400], "keep": bool(got.get("keep")),
                **({"preview_only": m["preview_only"]} if m.get("preview_only") else {})}
@@ -1033,6 +1076,8 @@ LETTER_REPLY = ("\n\n---\nYou have read this letter from your agent %s, sent to 
                 "2. If it brought things to do or go see, say which one you will take to Gloria, and when.\n"
                 "3. If it brought things to build or read, say which one you will try first, and what you will look at.\n"
                 "4. One line on what to bring next time, and what to stop bringing.\n"
+                "5. If any link was NOT READ, name it and why, and ask for one you can read: the article, paper, PDF "
+                "or page itself, not a search page, a login page or a redirect.\n"
                 "Plain words, your own voice, short. No metaphors, no talk of silence, weight, pulse or tension. No "
                 "links, nothing private about Gloria. Write only the reply.")
 REPLY_MODEL = "claude-opus-5-5"
@@ -1121,8 +1166,10 @@ def reply_letters(think=None, send=None, now=None, promise_think=None):
         agent = r.get("from") or "your agent"
         me = me if me is not None else who_i_am(4000)
         note = links_note(r.get("body", ""))
-        ask = "SUBJECT: %s\n\n%s%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (
-            r.get("subject", ""), body_view(r.get("body", "")), ("\n\n" + note) if note else "", r.get("to_me", ""))
+        pages = pages_view(r.get("pages") or [])
+        ask = "SUBJECT: %s\n\n%s%s%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (
+            r.get("subject", ""), body_view(r.get("body", "")), ("\n\n" + note) if note else "",
+            ("\n\n" + pages) if pages else "", r.get("to_me", ""))
         try:
             body = (think(me + LETTER_REPLY % (agent, agent), ask, 900) or "").strip()
         except Exception:
