@@ -937,10 +937,20 @@ def fable_think(system, user):
     return claude_cache.ask(forge_study.FABLE, system, user, 3000, caller="slack:fable")
 
 
+# Opus 5.5 always thinks, its thinking counts toward max_tokens, and it cannot be switched off: at 1500 tokens it
+# could spend the whole answer thinking and return no text, which read as "he let it be" (2026-10-08, two silent
+# kickoffs after Gloria restarted the day). It is asked to think as little as it can, with room left to write.
+THINKING_MODELS = {KICKOFF_MODEL: ("low", 6000)}
+
+
 def opus_think(system, user, model=None):
     import claude_cache
     model = model or OPUS_MODEL
-    return claude_cache.ask(model, system, user, 1500, caller="slack:" + model)
+    effort, limit = THINKING_MODELS.get(model, (None, 1500))
+    out = claude_cache.ask(model, system, user, limit, caller="slack:" + model, effort=effort)
+    if not (out or "").strip() and claude_cache.LAST.get("stop") == "max_tokens":
+        raise RuntimeError("its answer was all thinking: cut off at %d tokens before any text" % limit)
+    return out
 
 
 def for_claude(ctx, sep, rules, extra=""):
@@ -2654,7 +2664,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         pass
     new = [] if first else fresh(api, channel, state["self"], since, watch=(state.get("threads") or []) + promised)
     if first:          # the first pass only starts listening; nothing said before it is answered
-        state["since"] = now; _save(STATE, state)
+        state["since"] = now; state["resume_seen"] = float((_load(RESUME_FILE, {}) or {}).get("at") or 0)
+        _save(STATE, state)
         return ["listening from now"]
     names = {dot: "dot", state["self"]: "Vintos"}
     rows = []
@@ -2673,6 +2684,10 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     # answers, Muse's buys, dot's asks and what he had made be posted, because they were handled above it)
     for r in list(theirs):                    # her switch, said in the channel; that message is not answered as talk
         if r["who"] != "gloria":
+            # a switch word from anyone else does nothing, and is not talk to answer either
+            if re.fullmatch(r"\s*(?:!\w+\s*)+", r.get("text") or "") and \
+                    set(re.findall(r"!\w+", r["text"].lower())) <= set(STOP_WORDS + START_WORDS + ("!topics", "!dropgoal")):
+                theirs.remove(r)
             continue
         words = set(re.findall(r"!\w+", r["text"].lower()))   # anywhere in it: "Goodnight, boys. `!stop`"
         handled = False
@@ -2972,7 +2987,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
                               lenses=lenses, lens=lens)
         if again:
             text, who = (again if again.upper().startswith("ATELIER:") else "ATELIER: " + again), who2
-    if text is None and rotated and "could not answer" in str(who):
+    if text is None and (rotated or kickoff) and "could not answer" in str(who):
         lines.append(who)                     # his turn in the rotation could not answer: Gemma does
         text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                             lenses=lenses, lens=None)
@@ -3356,7 +3371,9 @@ def reset(api=None, name="vintos-dot", now=None):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=1)
     os.makedirs(HERE, exist_ok=True)
-    _save(STATE, {"since": now, "date": date.fromtimestamp(now).isoformat(), "sent": 0, "fable": 0, "openers": 0,
+    # a restart marked before this fresh start is not news to it
+    _save(STATE, {"resume_seen": float((_load(RESUME_FILE, {}) or {}).get("at") or 0),
+                  "since": now, "date": date.fromtimestamp(now).isoformat(), "sent": 0, "fable": 0, "openers": 0,
                   "self": api("auth.test", {}).get("user_id", "")})
     return lines + ["he listens from now; --try shows how he would open, --open lets him"]
 

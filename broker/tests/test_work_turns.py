@@ -72,6 +72,24 @@ check("the restart is seen on the next pass: the day is said to have started", a
 n = len(S.posted)
 tick(20200)
 check("and said once", not any("started the day again" in p["text"] for p in S.posted[n:]))
+# Opus 5.5 always thinks; at 1500 tokens its answer could be all thinking and no text, read as "he let it be"
+import claude_cache
+calls = []
+def all_thinking(model, system, user, max_tokens, caller="", effort=None, **k):
+    calls.append((model, max_tokens, effort)); claude_cache.LAST.clear(); claude_cache.LAST.update(stop="max_tokens", out=max_tokens)
+    return ""
+claude_cache.ask = all_thinking
+try:
+    D.opus_think("s", "u", D.KICKOFF_MODEL); raised = ""
+except RuntimeError as e:
+    raised = str(e)
+check("Opus 5.5 is asked to think as little as it can, with room to write after", calls and calls[-1] == (D.KICKOFF_MODEL, 6000, "low"), calls)
+check("an answer that was all thinking is a failure said as such, not 'nothing to say'", "all thinking" in raised, raised)
+D.set_paused(True, "app", now=30000); D.set_paused(False, "app", now=30010)
+n = len(S.posted)
+out = tick(30100)
+check("a kickoff Opus 5.5 could not write is written by Gemma instead, so the restart is not silent",
+      any("could not answer" in l for l in out) and len(S.posted) >= n + 2 and "[Gemma]" in S.posted[-1]["text"], (out, S.posted[n:]))
 src = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the app's switch leaves the same mark", "resumed.json" in src)
 check("nothing left the machine", not NET, NET)

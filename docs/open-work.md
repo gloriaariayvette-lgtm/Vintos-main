@@ -3,6 +3,21 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — Opus 5.5's kickoff was all thinking and no text; a failed kickoff now falls to Gemma
+
+After the restart fix the log showed "Opus 5.5 sets the session going" then "he let it be", twice: at 23:55 on
+7 October and at 00:08 on 8 October.
+- Opus 5.5 always thinks (it cannot be disabled), and its thinking counts toward max_tokens. The channel gave it
+  1500. With his whole context, the thinking could use all of it, leaving no text, which read as "nothing to
+  say".
+- Now `opus_think` asks Opus 5.5 for effort "low" with 6000 tokens (`THINKING_MODELS`). An empty answer cut off at
+  max_tokens raises "its answer was all thinking" instead of passing as silence. Opus 4.8, which does not think
+  unless asked, keeps its 1500.
+- A kickoff that cannot answer now falls to Gemma, as a rotated turn already did, so a restart is never silent.
+- A bare switch word from anyone but Gloria (dot's "!stop") is ignored, not answered as talk.
+- A fresh channel, or its first pass, does not treat an older restart mark as news.
+- Test: `test_work_turns.py` (now 13 checks).
+
 ## 8 October — he takes work turns when nobody writes; a restart between passes still starts the day
 
 Gloria: "I stopped and restarted the day, but nothing moved in Slack." Two causes.
