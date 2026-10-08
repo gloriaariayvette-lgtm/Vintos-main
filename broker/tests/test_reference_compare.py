@@ -94,6 +94,64 @@ check("a strand half in the left-out loop is compared only where both have it", 
 check("it says what it is not", "not_proof" in r.get("truth_status", ""))
 check("the Lab's other files are untouched", sorted(os.listdir(C.REFERENCES)) == ["1ABC.cif", "9ZZZ.cif"], os.listdir(C.REFERENCES))
 
+# --- the numbering comes from the alignment; a wrong offset is refused (2026-10-08) ----------------------
+def run_compare(body):
+    done = subprocess.run([python, os.path.join(REPO, "scripts", "chemistry_reference_compare.py")], input=json.dumps(body),
+                          text=True, capture_output=True, timeout=300, env=dict(os.environ, no_proxy="*",
+                          http_proxy="http://0.0.0.0:9", https_proxy="http://0.0.0.0:9"))
+    try: return json.loads(done.stdout.strip().splitlines()[-1])
+    except Exception: return {"ok": False, "error": done.stdout[-300:] + done.stderr[-300:]}
+out = run_compare({"model": "O43511", "reference": "9ZZZ", "chain": "A", "ref_span": [6, 65]})
+r = out.get("result") or {}
+check("with no offset given, the alignment finds the five-residue shift itself", out.get("ok") and r.get("offset") == -5
+      and r.get("missing_in_entry") == [[31, 40]] and r.get("offset_from") == "sequence alignment", out)
+out = run_compare({"model": "O43511", "reference": "9ZZZ", "chain": "A", "ref_span": [6, 65], "offset": 0})
+check("a supplied offset the alignment contradicts is refused, naming the right one", not out.get("ok")
+      and "offset 0 disagrees" in out.get("error", "") and "give -5" in out.get("error", ""), out)
+
+# 8SGW as Grok Bot read it on 7 October: chain C numbered as human pendrin, no density 586-653, helix 669-686 and
+# strand 689-693 in the deposited records. His model is numbered as human too, so the shift is 0, not -5.
+import random
+rnd = random.Random(8)
+HUMAN = {n: rnd.choice(AA) for n in range(520, 741)}
+with open(os.path.join(C.MODELS, "Q8SGWX-test.pdb"), "w") as f:
+    for k, n in enumerate(range(520, 741), 1):
+        x, y, z = ca(n)
+        f.write("ATOM  %5d  CA  %3s A%4d    %8.3f%8.3f%8.3f  1.00 80.00           C\n" % (k, THREE[HUMAN[n]], n, x, y, z))
+    f.write("END\n")
+_tmp2 = os.path.join(HOME, "entry8.pdb")
+with open(_tmp2, "w") as f:
+    for k, n in enumerate(range(520, 741), 1):
+        if 586 <= n <= 653: continue
+        x, y, z = ca(n)
+        f.write("ATOM  %5d  CA  %3s C%4d    %8.3f%8.3f%8.3f  1.00 50.00           C\n" % (k, THREE[HUMAN[n]], n, x + 3, y, z - 2))
+    f.write("END\n")
+subprocess.run([python, "-c", "import sys; from Bio.PDB import PDBParser, MMCIFIO; io = MMCIFIO(); "
+                "io.set_structure(PDBParser(QUIET=True).get_structure('E8', sys.argv[1])); io.save(sys.argv[2])",
+                _tmp2, os.path.join(C.REFERENCES, "9SGW.cif")], check=True, timeout=120)
+open(os.path.join(C.REFERENCES, "9SGW.cif"), "a").write(
+       "loop_\n_struct_conf.conf_type_id\n_struct_conf.id\n_struct_conf.beg_auth_seq_id\n"
+       "_struct_conf.end_auth_seq_id\n_struct_conf.beg_auth_asym_id\nHELX_P HELX_P1 669 686 C\nHELX_P HELX_P2 696 706 C\n"
+       "#\nloop_\n_struct_sheet_range.sheet_id\n_struct_sheet_range.id\n_struct_sheet_range.beg_auth_seq_id\n"
+       "_struct_sheet_range.end_auth_seq_id\n_struct_sheet_range.beg_auth_asym_id\nAA1 1 689 693 C\n#\n")
+out = run_compare({"model": "Q8SGWX", "reference": "9SGW", "chain": "C", "ref_span": [535, 729]})
+r = out.get("result") or {}
+check("8SGW-shaped: chain C, 535-729 as numbered, the alignment gives offset 0", out.get("ok") and r.get("offset") == 0
+      and r.get("offset_agreement") == 1.0, out)
+check("8SGW-shaped: the no-density stretch is named 586-653, not 581-648", r.get("missing_in_entry") == [[586, 653]], r.get("missing_in_entry"))
+check("8SGW-shaped: 586-653 is not compared (195 in span, 68 left out: 127)", r.get("compared") == 127, r.get("compared"))
+els = {(e["kind"], tuple(e["protein"])) for e in r.get("elements", [])}
+check("8SGW-shaped: the helix and strand keep their own numbers", els == {("helix", (669, 686)), ("helix", (696, 706)),
+      ("strand", (689, 693))}, els)
+out = run_compare({"model": "Q8SGWX", "reference": "9SGW", "chain": "C", "ref_span": [540, 734], "offset": -5})
+check("8SGW-shaped: yesterday's five-residue shift is refused, not used to relabel", not out.get("ok")
+      and "offset -5 disagrees" in out.get("error", "") and "give 0" in out.get("error", ""), out)
+check("the example in the module is 8SGW chain C, 535-729, with no five-residue shift",
+      '"chain": "C"' in open(C.__file__).read() and "[535, 729]" in open(C.__file__).read()
+      and '"offset": -5' not in open(C.__file__).read())
+check("numbering(): a pure check, no structure needed", C.numbering([(0, 0), (1, 1), (2, 2)], [(10, "A", 0), (11, "C", 0), (12, "D", 0)],
+      [(15, "A", 0), (16, "C", 0), (17, "D", 0)]) == (-5, 1.0) and C.gaps_in({1, 2, 5}, [1, 6], 0) == [[3, 4], [6, 6]])
+
 # --- the Lab offers it, and runs it on Aegis, not through the relay ------------------------------------
 check("offered in the Lab's menu with his model", "reference_compare" in L.menu_block()
       and "artifacts/esmfold/O43511-abc123.pdb" in L.menu_block(), L.menu_block())
@@ -111,6 +169,9 @@ got = L.run(req)
 check("the Lab runs it in its own Python with the model and the entry", calls and calls[0][1]["model"] ==
       "artifacts/esmfold/O43511-abc123.pdb" and calls[0][1]["ref_span"] == [6, 65] and calls[0][0][1].endswith(
       "chemistry_reference_compare.py"), calls)
+L.run({k: v for k, v in req.items() if k != "offset"})
+check("a request with no offset reaches the comparison without one, so the alignment decides (not a default 0)",
+      "offset" not in calls[-1][1] and calls[0][1].get("offset") == -5, calls)
 check("and keeps what it found as Lab provenance", got["receipt"]["records"][0]["summary"] == "line one"
       and got["receipt"]["source"] == "instrument:reference_compare", got)
 try: L.validate(dict(req, files=["artifacts/sequences/x.fasta"])); ok = False

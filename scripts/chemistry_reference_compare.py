@@ -6,9 +6,16 @@ Runs in the Lab's own Python (the ESMFold environment, which has tmtools, BioPyt
 on stdin, one JSON receipt on stdout:
 
     {"model": "artifacts/esmfold/O43511-....pdb" or "O43511",      his ESMFold model (newest for an accession)
-     "reference": "8SGW", "chain": "A",                             an RCSB entry and its chain
-     "ref_span": [540, 734],                                        the stretch to compare, in the entry's numbering
-     "offset": -5}                                                  entry number + offset = his protein's number
+     "reference": "8SGW", "chain": "C",                             an RCSB entry and its chain
+     "ref_span": [535, 729],                                        the stretch to compare, in the entry's numbering
+     "offset": 0}                                                   optional: entry number + offset = his number
+
+8SGW is numbered as human pendrin across 520-740 (Grok Bot, 7 October, correcting the five-residue shift it gave on
+6 October: the pig UniProt entry is shifted, the deposited file is not), its STAS is described on chains C and D, and
+586-653 has no density. The offset is worked out from the sequence alignment itself (the commonest model-minus-entry
+number over the aligned residues in the span); a supplied offset that disagrees with it is refused, because it would
+only relabel the results (the structural alignment does not use it): with -5, the gap 586-653 is reported as
+581-648 and every helix five places off (2026-10-08).
 
 The model and the entry are lined up by their sequences, so a fragment model, a shifted numbering and a loop the
 entry leaves out (pendrin's IVS has no density) need no guessing: only residues present in both, inside the span,
@@ -24,6 +31,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 import urllib.request
 from pathlib import Path
 
@@ -66,7 +74,7 @@ def validate(req):
     ref = str(req.get("reference") or "").strip().upper()
     chain = str(req.get("chain") or "A").strip()
     span = req.get("ref_span")
-    offset = req.get("offset", 0)
+    offset = req.get("offset")
     if not PDB_ID.fullmatch(ref):
         raise ValueError("reference must be a four-character PDB id")
     if not CHAIN.fullmatch(chain):
@@ -74,8 +82,8 @@ def validate(req):
     if not (isinstance(span, list) and len(span) == 2 and all(isinstance(x, int) for x in span)
             and 0 < span[0] < span[1] and span[1] - span[0] <= MAX_SPAN):
         raise ValueError("ref_span must be [first, last] residue numbers in the entry")
-    if not isinstance(offset, int) or abs(offset) > 2000:
-        raise ValueError("offset must be a whole number")
+    if offset is not None and (not isinstance(offset, int) or isinstance(offset, bool) or abs(offset) > 2000):
+        raise ValueError("offset must be a whole number, or left out")
     return _model_path(req.get("model")), ref, chain, span, offset
 
 
@@ -129,6 +137,37 @@ def _pairs(model_res, ref_res):
     return pairs
 
 
+AGREE = 0.9     # share of aligned residues that must share one numbering shift for it to label the results
+
+
+def numbering(pairs, model_res, ref_res, offset=None):
+    """(offset, agreement): the shift from the entry's numbers to his, from the aligned residues themselves. A
+    supplied offset that disagrees with it is refused (ValueError), naming the one the alignment gives."""
+    diffs = Counter(model_res[i][0] - ref_res[j][0] for i, j in pairs)
+    derived, n = diffs.most_common(1)[0]
+    agree = n / sum(diffs.values())
+    if offset is not None and offset != derived:
+        i, j = next((i, j) for i, j in pairs if model_res[i][0] - ref_res[j][0] == derived)
+        raise ValueError("offset %d disagrees with the sequence alignment, which puts the entry's residue %d at your "
+                         "residue %d (offset %d, for %.0f%% of the aligned residues). Leave offset out, or give %d."
+                         % (offset, ref_res[j][0], model_res[i][0], derived, agree * 100, derived))
+    return derived, agree
+
+
+def gaps_in(present, span, offset):
+    """The entry's residue numbers in the span with no coordinates (no density), as [first, last] runs in his numbering."""
+    gaps, run = [], []
+    for n in range(span[0], span[1] + 1):
+        if n in present:
+            continue
+        if run and n != run[-1] + 1:
+            gaps.append([run[0] + offset, run[-1] + offset]); run = []
+        run.append(n)
+    if run:
+        gaps.append([run[0] + offset, run[-1] + offset])
+    return gaps
+
+
 def _kabsch(p, q):
     """Rotation and translation that put p onto q (rows are points)."""
     import numpy as np
@@ -173,6 +212,7 @@ def compare(req, get=None):
     pairs = [(i, j) for i, j in _pairs(model_res, ref_res) if span[0] <= ref_res[j][0] <= span[1]]
     if len(pairs) < 20:
         raise RuntimeError("only %d residues line up inside the span; nothing fair to compare" % len(pairs))
+    offset, agreement = numbering(pairs, model_res, ref_res, offset)
     p = np.array([model_res[i][2] for i, _ in pairs]); q = np.array([ref_res[j][2] for _, j in pairs])
     seq_m = "".join(model_res[i][1] for i, _ in pairs); seq_r = "".join(ref_res[j][1] for _, j in pairs)
     fixed = tm_align(p, q, seq_m, seq_r, [seq_m, seq_r])
@@ -189,18 +229,13 @@ def compare(req, get=None):
         d = [at[n] for n in range(b, e + 1) if n in at]
         elements.append({"kind": kind, "entry": [b, e], "protein": [b + offset, e + offset],
                          "compared": len(d), "mean_deviation_A": round(sum(d) / len(d), 2) if d else None})
-    missing = [n for n in range(span[0], span[1] + 1) if n not in present]
-    gaps, run = [], []
-    for n in missing:
-        if run and n != run[-1] + 1:
-            gaps.append([run[0] + offset, run[-1] + offset]); run = []
-        run.append(n)
-    if run:
-        gaps.append([run[0] + offset, run[-1] + offset])
+    gaps = gaps_in(present, span, offset)
     identity = sum(a == b for a, b in zip(seq_m, seq_r)) / len(pairs)
     lines = ["%s vs %s chain %s, residues %d-%d of the entry (%d-%d of his protein)" % (
                  model_path.name, ref, chain, span[0], span[1], span[0] + offset, span[1] + offset),
              "compared: %d residues present in both, %.0f%% identical" % (len(pairs), identity * 100),
+             "numbering: entry number %+d = his number, from the alignment (%.0f%% of aligned residues agree)%s" % (
+                 offset, agreement * 100, "" if agreement >= AGREE else "; NOT one shift, so positions below are approximate"),
              "TM-score on the sequence alignment: %.3f (by his model), %.3f (by the entry); RMSD %.2f A" % (
                  fixed.tm_norm_chain1, fixed.tm_norm_chain2, rmsd),
              "TM-align left free: %.3f / %.3f, RMSD %.2f A" % (free.tm_norm_chain1, free.tm_norm_chain2, free.rmsd)]
@@ -214,7 +249,8 @@ def compare(req, get=None):
         lines.append("the entry names no helices or strands in this span")
     return {"ok": True, "result": {
         "model": str(model_path.relative_to(WS)) if _inside(model_path, WS) else model_path.name,
-        "reference": ref, "chain": chain, "ref_span": span, "offset": offset, "compared": len(pairs),
+        "reference": ref, "chain": chain, "ref_span": span, "offset": offset, "offset_from": "sequence alignment",
+        "offset_agreement": round(agreement, 3), "compared": len(pairs),
         "identity": round(identity, 3), "tm_fixed": [round(fixed.tm_norm_chain1, 4), round(fixed.tm_norm_chain2, 4)],
         "tm_free": [round(free.tm_norm_chain1, 4), round(free.tm_norm_chain2, 4)], "rmsd_A": round(rmsd, 3),
         "missing_in_entry": gaps, "elements": elements, "display": lines,

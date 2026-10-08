@@ -416,7 +416,7 @@ RULES_WORKROOM = (
     "model of, ...} runs one of your Lab's own instruments on Aegis now, free, and the result is in your message: "
     "fold_read takes \"range\": [first, last] in your protein's numbering (helix, strand and confidence from your "
     "model); reference_compare takes \"reference\" (a PDB id), \"chain\", \"ref_span\": [first, last] in the "
-    "entry's numbering and \"offset\" (entry number + offset = your number), and gives TM-score, RMSD and the entry's "
+    "entry's numbering (the offset to your numbering is worked out from the alignment), and gives TM-score, RMSD and the entry's "
     "helices and strands beside your model. Use them yourself instead of asking someone to install another tool.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_WORKROOM + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 

@@ -94,7 +94,7 @@ def menu_block():
     if models:
         lines.append("- reference_compare, operation structure.compare, files [one of: " + ", ".join(models) + "], "
                      "with reference (a PDB id you have a source for), chain, ref_span [first, last] in the entry's "
-                     "numbering, and offset (entry number + offset = your protein's number). Lines your model up "
+                     "numbering; offset is worked out from the alignment (give it only to check it: a wrong one is refused). Lines your model up "
                      "with the real structure by sequence and gives TM-score, RMSD, and the entry's helices and strands "
                      "in your numbering.")
         lines.append("- fold_read, operation structure.read, files [one of: " + ", ".join(models) + "], with range "
@@ -161,7 +161,7 @@ def _compare_runner(req, run=None):
         model = os.path.relpath(input_files[0], LAB)
         body = ({"model": model, "range": req.get("range")} if skill == "fold_read" else
                 {"model": model, "reference": req.get("reference"), "chain": req.get("chain", "A"),
-                 "ref_span": req.get("ref_span"), "offset": req.get("offset", 0)})
+                 "ref_span": req.get("ref_span"), **({"offset": req["offset"]} if req.get("offset") is not None else {})})
         python = os.environ.get("VINTOS_ESMFOLD_PYTHON", os.path.expanduser("~/.vintos/tools/chemistry-lab/esmc/bin/python"))
         if not os.path.isfile(python):
             python = sys.executable

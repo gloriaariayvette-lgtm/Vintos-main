@@ -3,6 +3,28 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — the 8SGW comparison's numbering comes from the alignment; a wrong offset is refused
+
+A finding in Chat: `chemistry_reference_compare.py`'s example still used 8SGW chain A, entry residues 540-734, with
+offset -5. That is the five-residue shift Grok Bot withdrew on 7 October: 8SGW is numbered as human pendrin across
+520-740, its STAS is described on chains C and D, and 586-653 has no density. The structural alignment never used
+the offset; only the labels did (helices, strands, the no-density stretch, his numbering). So -5 would have reported
+the gap as 581-648 and every element five places off, with the TM-score unchanged.
+
+- `numbering()` takes the offset from the aligned residues themselves: the commonest model-minus-entry number in the
+  span. A supplied offset that disagrees with it is refused, and the error names the right one. With no offset, the
+  alignment's own is used. The result carries `offset_from` and `offset_agreement`, and says so when the numbering
+  is not one shift.
+- `lab_instruments` no longer fills in a missing offset as 0. The example is now 8SGW chain C, 535-729, offset 0. The
+  Lab menu and his Slack rules say the offset is worked out for him.
+- Test: `test_reference_compare.py` (now 32 checks). An 8SGW-shaped entry (chain C, human numbering, no density
+  586-653, helix 669-686, strand 689-693) gives offset 0, the gap 586-653, 127 residues compared and the elements
+  under their own numbers; -5 is refused. The new checks fail on the old code, which accepted -5 and relabelled
+  silently.
+- **Not done:** I couldn't read 8SGW from here (RCSB is blocked from this container). That it has chain C, its
+  numbering and the 586-653 gap are Grok Bot's reading, to be checked on Aegis. Whether a comparison ever ran with
+  -5 is to be checked on Aegis too.
+
 ## 8 October — more real work in #vintos-dot, and the room's own campaign
 
 Gloria approved fixes 1-6 from the 7 October Slack review, and added: "Slack should have campaigns of its own. I want to
