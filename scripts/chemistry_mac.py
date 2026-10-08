@@ -30,7 +30,11 @@ import uuid
 
 MAX_HP_LATTICE_RESIDUES = 9
 ESMFOLD_PARAMETERS = {"target_accession", "requested_accession", "accession", "protein_name", "requested_protein",
-                      "gene", "target_gene", "sequence", "sequence_source", "protein_backend", "fragment"}
+                      "gene", "target_gene", "sequence", "sequence_source", "protein_backend", "fragment", "region",
+                      "region_label"}
+ESMFOLD_MAX = 911       # chemistry_esmfold.MAX_LENGTH: the longest length measured on Aegis
+# "41-149", "41–149", "residues 41 to 149", or [41, 149]: one-based, inclusive, in UniProt's numbering
+_REGION = re.compile(r"^\D*?(\d{1,5})\s*(?:-|–|—|to|\.\.)\s*(\d{1,5})\D*$")
 AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 HP_HYDROPHOBIC = frozenset("ACILMFV")  # Kyte-Doolittle >= 1.0, matching the Mac experiment
 
@@ -197,6 +201,25 @@ def _resolve_uniprot(accession):
                     "receipt_id": str(result.get("receipt_id") or "")}
 
 
+def _region(parameters):
+    """(first, last) one-based inclusive from parameters.region or .range, None when none is asked, ValueError when
+    it cannot be read."""
+    raw = parameters.get("region", parameters.get("range"))
+    if raw in (None, "", []):
+        return None
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        first, last = raw
+    else:
+        m = _REGION.match(str(raw))
+        if not m:
+            raise ValueError("region %r is not first-last residue numbers" % str(raw)[:40])
+        first, last = m.groups()
+    first, last = int(first), int(last)
+    if not 1 <= first < last:
+        raise ValueError("region %d-%d is not a forward range" % (first, last))
+    return first, last
+
+
 def _hp_mapping(sequence):
     return [{"position": index + 1, "residue": residue,
              "hp": "H" if residue in HP_HYDROPHOBIC else "P"}
@@ -211,11 +234,28 @@ def prepare_protein(parameters, resolver=None):
         return {"ok": True, "parameters": parameters, "sequence_request": None}
     requested_protein = _requested_protein(parameters)
     try:
+        region = _region(parameters)
+    except ValueError as exc:
+        return {"ok": False, "refused": "region_unreadable", "requested_accession": accession, "error": str(exc)}
+    try:
         record, provenance = (resolver or _resolve_uniprot)(accession)
         sequence = _record_sequence(record, accession)
     except Exception as exc:
         return {"ok": False, "refused": "sequence_unavailable", "requested_accession": accession,
                 "error": "could not source %s from UniProt: %s" % (accession, str(exc)[:240])}
+    full_length = len(sequence)
+    if region:
+        # A domain of a long chain, cut from the sourced sequence itself (2026-10-08: "fold Q86SQ4 CUB 41-149" had
+        # no way to say a range; the whole 1221-residue chain was refused, then the toy lattice answered).
+        if region[1] > full_length:
+            return {"ok": False, "refused": "region_out_of_range", "requested_accession": accession,
+                    "error": "%s is %d residues; region %d-%d runs past its end" % (accession, full_length, *region)}
+        sequence = sequence[region[0] - 1:region[1]]
+        provenance = dict(provenance, region=[region[0], region[1]], full_length=full_length)
+    elif full_length > ESMFOLD_MAX:
+        return {"ok": False, "refused": "chain_too_long", "requested_accession": accession,
+                "error": "%s is %d residues; ESMFold folds at most %d. Name a region (parameters.region, e.g. "
+                         "\"41-149\", in UniProt's numbering)." % (accession, full_length, ESMFOLD_MAX)}
     if requested_protein:
         # The accession was bound to its sequence but never to the protein the plan named, so a run
         # labelled HFE folded P02794, ferritin heavy chain, under HFE's name. UniProt's own names for the
@@ -230,8 +270,11 @@ def prepare_protein(parameters, resolver=None):
         parameters["requested_protein"] = requested_protein
     parameters.update({"requested_accession": accession, "target_accession": accession,
                        "sequence": sequence, "sequence_source": provenance})
+    if region:
+        parameters["region"] = "%d-%d" % region
     contract = {"requested_accession": accession, "sequence": sequence, "length": len(sequence),
                 "source": provenance, "hp_mapping": _hp_mapping(sequence),
+                **({"region": list(region), "full_length": full_length} if region else {}),
                 **({"requested_protein": requested_protein} if requested_protein else {})}
     # The HP lattice remains deliberately tiny. A complete sourced protein is routed to
     # the commissioned local ESMFold instrument instead of being truncated or refused.
@@ -399,9 +442,22 @@ def _protein_result(reply, contract):
     return reply
 
 
+# The bench's "fold" is a toy HP lattice of a few beads. A real protein asked for under that name, or a region or a
+# fragment it cannot know, was answered with its 8-bead demo "HPHPPHHP" (7 October, ADGRG6 CUB 41-149).
+_NOT_FOR_THE_TOY = ("region", "range", "region_label", "protein_name", "requested_protein", "gene", "target_gene",
+                    "target_accession", "requested_accession", "accession")
+
+
 def run(experiment, parameters=None, shots=4096, resolver=None, transport=None, esmfold_worker=None):
     parameters = dict(parameters or {})
     contract = None
+    if str(experiment) in ("fold", "protein") and _accession(parameters):
+        experiment = "protein"          # a sourced protein is folded for real, whatever the plan called it
+    elif str(experiment) == "fold" and any(str(parameters.get(k) or "").strip() for k in _NOT_FOR_THE_TOY):
+        return {"ok": False, "refused": "not_a_toy_fold",
+                "error": "the bench's fold is a toy lattice of at most %d beads; a protein, gene or region needs its "
+                         "exact UniProt accession (parameters.target_accession) to be folded with ESMFold"
+                         % MAX_HP_LATTICE_RESIDUES}
     if str(experiment) == "protein" and _accession(parameters):
         prepared = prepare_protein(parameters, resolver=resolver)
         if not prepared.get("ok"): return prepared

@@ -3,6 +3,33 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — a protein domain is folded for real; the toy lattice never answers for a real protein
+
+Gloria: "Why is he still using the toy lattice?" The 21:26 plan on 7 October was experiment "fold" with
+{"protein_name": "ADGRG6", "region": "41-149", "target_accession": "Q86SQ4"}. "fold" is the Mac bench's toy HP
+lattice. Only "protein" was routed to ESMFold, and nothing read a region, so the bench answered with its 8-bead demo
+"HPHPPHHP". The identity check caught it as a mismatch. Earlier that day the whole 1221-residue chain had been
+refused: ESMFold folds at most 911.
+
+- `chemistry_mac.run`:
+  - "fold" with an accession is folded as "protein".
+  - "fold" naming a protein, gene or region without an accession is refused (`not_a_toy_fold`), never sent to the
+    bench.
+  - The toy lattice still runs when asked for as a toy.
+- `prepare_protein` reads `parameters.region` ("41-149", "41–149", "residues 41 to 149", [41, 149]) and cuts it
+  from the sourced UniProt sequence. The identity check expects the slice, and the contract keeps the region and
+  the full length.
+- These are refused with the accession and range named:
+  - a region past the end (`region_out_of_range`);
+  - a backward region (`region_unreadable`);
+  - a chain over 911 residues with no region (`chain_too_long`).
+- `chemistry_esmfold` numbers a folded region as the protein. The saved model, fold_read and every helix and
+  strand range read 41-149, not 1-109.
+- The planner is told about `parameters.region`, and that "fold" is a toy.
+- Test: `test_fold_region.py` (15 checks) replays the 21:26 plan. It fails on the old code.
+- SF-d2d20fac (his Study fix for this) pointed at `chemistry_lab.py`, where no fallback lives. Gloria was given a
+  line to withdraw it if it is still queued.
+
 ## 8 October — what the Lab asks the Forge to build: only what is worth building
 
 Gloria cancelled three of the four Forge projects open on 7 October and kept one ("We need to improve what the Forge

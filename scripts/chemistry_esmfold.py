@@ -45,6 +45,28 @@ def _validate(body):
     return accession, sequence, source, mapping
 
 
+def first_residue(source):
+    """The protein's own number for the first residue folded: 1, or a region's start (2026-10-08: a domain cut
+    from a long chain, such as ADGRG6 CUB 41-149, is numbered as the protein, not from 1)."""
+    region = (source or {}).get("region")
+    try:
+        return int(region[0]) if isinstance(region, (list, tuple)) and len(region) == 2 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def renumber(pdb, first):
+    """PDB text with residue numbers (columns 23-26) moved so the first residue is `first`."""
+    if first == 1:
+        return pdb
+    out = []
+    for line in str(pdb).splitlines():
+        if line.startswith(("ATOM", "HETATM", "TER")) and len(line) >= 26 and line[22:26].strip().lstrip("-").isdigit():
+            line = line[:22] + "%4d" % (int(line[22:26]) + first - 1) + line[26:]
+        out.append(line)
+    return "\n".join(out) + ("\n" if str(pdb).endswith("\n") else "")
+
+
 def fold(body):
     accession, sequence, source, mapping = _validate(body)
     import torch
@@ -58,7 +80,7 @@ def fold(body):
     model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
     inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
     with torch.no_grad(): output = model(inputs)
-    pdb = model.output_to_pdb(output)[0]
+    pdb = renumber(model.output_to_pdb(output)[0], first_residue(source))
     if "ATOM" not in pdb: raise RuntimeError("ESMFold returned no PDB atoms")
     digest = hashlib.sha256(pdb.encode()).hexdigest()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -81,6 +103,9 @@ def fold(body):
     except Exception as exc:
         structure_read = {"error": "the model could not be read: %s" % str(exc)[:200]}
     title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
+    if first_residue(source) != 1:
+        title += " [residues %d-%d of %s, numbered as in the protein]" % (
+            first_residue(source), first_residue(source) + len(sequence) - 1, accession)
     result = {"title": title, "requested_accession": accession,
               "modeled_sequence": sequence, "real_sequence": sequence,
               "modeled_sequence_length": len(sequence), "sequence_source": source,
