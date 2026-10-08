@@ -60,7 +60,9 @@ check("not again within twenty minutes", len(S.posted) == n, out)
 st = json.load(open(D.STATE)); st["room_work"]["open"][0]["paused_until"] = 10 ** 10; st["room_work"]["goal"]["touched"] = 1
 json.dump(st, open(D.STATE, "w"))
 n = len(S.posted)
-check("a work paused for a cause takes no turn", (tick(5000 + 90 * 60) or True) and len(S.posted) == n)
+tick(5000 + 90 * 60)
+check("a work paused for a cause is not pressed; with a place free he is asked for the campaign's next work beside it",
+      "waits on something outside you" in asked[-1] and "due its next step" not in asked[-1].split("== YOUR WORK")[0], asked[-1][-800:])
 
 # a stop and a start between two passes, from the app (the switch removes paused.json and leaves resumed.json)
 D.set_paused(True, "app", now=20000); D.set_paused(False, "app", now=20010)

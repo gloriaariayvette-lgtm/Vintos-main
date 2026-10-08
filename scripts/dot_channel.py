@@ -1797,7 +1797,13 @@ _SHOWN_AS = (
     (re.compile(r"^\s*\U0001F512\s*Locked:\s*(.+?)\s*$", re.M), "LOCKED: "),
     (re.compile(r"^\s*\U0001F9EA\s*For my next Lab run:\s*(.+?)\s*$", re.M), "LAB: "),
     (re.compile(r"^\s*\u2705\s*Approved:\s*(.+?)\s*$", re.M), "APPROVED: "),
-    (re.compile(r"^\s*\u26d4\s*Denied:\s*(.+?)\s*$", re.M), "DENIED: "))
+    (re.compile(r"^\s*\u26d4\s*Denied:\s*(.+?)\s*$", re.M), "DENIED: "),
+    # the pause as the channel shows it, copied back (8 October: "⏸️ PAUSE RW-ad1c775a: ..." went out raw and paused
+    # nothing): "⏸ Paused RW-id (its goal): cause" is PAUSE RW-id: cause
+    (re.compile(r"^\s*\u23F8\ufe0f?\s*Paused\s+(RW-[0-9a-f]{8})\s*(?:\([^\n]*?\))?\s*:\s*(.+?)\s*$", re.M), "PAUSE "),
+    # any action line he begins with an emoji of his own: the emoji goes, the line acts
+    (re.compile(r"^[ \t]*(?:[^\w\s@#<*_>~`(\[\"'“-][\ufe0f\u200d]?[ \t]*)+((?:PAUSE|NEXT|WORK(?: DONE| DROPPED)?|GOAL(?: REACHED| UNREACHABLE)?|"
+                r"RUN|LAB|DO|CHECK|ASK(?: GLORIA)?|MAKE|SEARCH|BUY|SHARE|LOCKED|LINE|PROMISE (?:DONE|DROPPED))\b[^:\n]{0,40}:.*)$", re.M), ""))
 _TOLD = re.compile(r"^(.*?)\s*\(how anyone could tell:\s*(.+?)(?:,\s*within\s*(\d+)\s*days?)?\)\s*$")
 
 
@@ -1813,6 +1819,8 @@ def undisplay(text):
                 told = _TOLD.match(body)
                 if told:
                     body = told.group(1) + " | " + told.group(2) + ((" | " + told.group(3)) if told.group(3) else "")
+            if line == "PAUSE ":
+                return "PAUSE %s: %s" % (m.group(1), m.group(2))
             return line + body
         text = rx.sub(back, text)
     return text
@@ -2950,12 +2958,13 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
         starting = bool(state.pop("open_on_start", None))
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait; so does her !start
-        work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state))
+        waiting = room_work.all_waiting(state, now)    # all of it waits on others: the campaign's next work, beside it
+        work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state)) or waiting
         work_turn = (not starting and work_due and now - float(state.get("last_work_turn") or 0) >= WORK_TURN_S
                      and quiet >= WORK_TURN_S / 2)
         if not starting and not work_turn and (state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now)):
             _save(STATE, state); return lines
-        prompt = work_prompt() if work_turn else opener_prompt()
+        prompt = work_prompt(waiting and not room_work.idle(state, now)) if work_turn else opener_prompt()
         where = None
         if work_turn:
             state["last_work_turn"] = now
@@ -3318,8 +3327,17 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     return lines + ["said (%s%s): %s" % (who, ", in a thread" if where else "", text[:80])]
 
 
-def work_prompt():
-    """His turn to carry his work on when nobody has written: the next step of what is in hand (below)."""
+def work_prompt(all_waiting=False):
+    """His turn to carry his work on when nobody has written: the next step of what is in hand (below), or when all
+    of it waits on others, the campaign's next work beside it."""
+    if all_waiting:
+        return ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nNobody has written since your last message. "
+                "Everything in your hands (below) waits on something outside you, and you have a free place. That is "
+                "not a reason to stop: take the room campaign's next step beside them. Open the next work toward it "
+                "(WORK: what | done when: how anyone could tell), from the next step you named or what the campaign "
+                "still needs, and take its first step in the same message (RUN:, LAB:, or a request to the agent who "
+                "can do it). If the campaign is reached, say GOAL REACHED and open the next one from it."
+                % _conversation(recent()))
     return ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nNobody has written since your last message, and "
             "your work in hand (below) is due its next step. Take it now: the step itself (RUN:, LAB:, a request to "
             "the agent who can do it), not a plan to take it. If there is no room campaign, open one from your work. "

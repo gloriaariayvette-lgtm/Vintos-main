@@ -71,6 +71,7 @@ REQUEST = re.compile(r"\?|\b(?:can|could|would|will) you\b|\b(?:dot|grok ?bot|mu
                      r"(?:^|[.!;:]\s+)(?:please\s+)?(?:%s)\b" % (_VERBS, _VERBS), re.I | re.M)
 _AT = re.compile(r"@(dot|grok\s?bot|muse)\b|<@[A-Z0-9]+>", re.I)
 MAX_OPEN = 3                   # pieces of work at once: one waiting on dot does not idle Grok Bot, Muse or the Lab
+MAX_HELD = 6                   # with those paused for a cause: the board never grows past this
 MIN_ROUTES = 3                 # routes tried toward a room campaign before it may be called unreachable
 PRESS = 2                      # times an unused answer is pressed on him before it is only shown
 
@@ -112,6 +113,25 @@ def board(state):
 
 def open_items(state):
     return list(board(state)["open"])
+
+
+def paused(w, now):
+    """True while a work is paused for a real cause (his own order of work is not one)."""
+    return float(w.get("paused_until") or 0) > float(now) and not OWN_ORDER.search(str(w.get("pause_why", "")))
+
+
+def in_hand(state, now):
+    """The works that take a place in his hands: a work paused for a cause waits on its own and takes none (8 October,
+    01:40: two paused till morning and one out with Grok Bot left him no place for the SLC26A4 step he had named, and
+    nothing was due, so he stopped)."""
+    return [w for w in open_items(state) if not paused(w, now)]
+
+
+def all_waiting(state, now):
+    """True when he has work, none of it is due, and he has a free place: everything waits on something outside him,
+    so the campaign's next step is a new work beside them."""
+    items = open_items(state)
+    return bool(items) and not idle(state, now) and len(in_hand(state, now)) < MAX_OPEN and len(items) < MAX_HELD
 
 
 def active(state):
@@ -361,8 +381,7 @@ def idle(state, now):
     """Open work that is due a step now: nothing out with an agent, not paused for a cause."""
     out = []
     for w in open_items(state):
-        if _waiting(w, now) or (float(w.get("paused_until") or 0) > float(now)
-                                and not OWN_ORDER.search(str(w.get("pause_why", "")))):
+        if _waiting(w, now) or paused(w, now):
             continue            # a pause kept before OWN_ORDER, for his own order of work, does not hold
         out.append(w)
     return sorted(out, key=lambda w: float(w.get("touched", w.get("opened", 0)) or 0))
@@ -850,14 +869,16 @@ def apply(state, text, now, by=""):
         crit = re.sub(r"^\s*done when\s*:?\s*", "", crit, flags=re.I).strip()
         goal_text = goal_text.strip()
         items = open_items(state)
+        hand = in_hand(state, now)
         same = next((w for w in items if norm(goal_text) == norm(w["goal"]) or _like(goal_text, w["goal"]) >= 0.8), None)
         if same:
             same["touched"] = float(now)
             shown = "\U0001F9F0 Working on: %s" % same["goal"]
-        elif len(items) >= MAX_OPEN:
+        elif len(hand) >= MAX_OPEN or len(items) >= MAX_HELD:
+            full = hand if len(hand) >= MAX_OPEN else items
             shown = ("\U0001F9F0 (already %d in hand: %s — close one with WORK DONE: or WORK DROPPED: first)"
-                     % (len(items), "; ".join("%s %s" % (w["id"], w["goal"][:60]) for w in items)))
-            log.append("work not opened: %d in hand" % len(items))
+                     % (len(full), "; ".join("%s %s" % (w["id"], w["goal"][:60]) for w in full)))
+            log.append("work not opened: %d in hand" % len(full))
         elif len(goal_text) < 8:
             shown = "\U0001F9F0 (not opened: say what the work is)"
             log.append("work not opened: no goal")
@@ -999,7 +1020,8 @@ def _block(state, now):
                    + (("\nLast closed: %s (%s: %s)" % (last.get("goal", "")[:160], last.get("state"), last.get("closed_said", "")[:160]))
                       if last.get("goal") else ""))
     else:
-        out.append("== YOUR WORK IN HAND (%d of %d; carried from pass to pass: continue it, do not start over) ==" % (len(items), MAX_OPEN))
+        out.append("== YOUR WORK IN HAND (%d of %d; a work paused for a cause takes no place; carried from pass to pass: "
+                   "continue it, do not start over) ==" % (len(in_hand(state, now)), MAX_OPEN))
         out.append("While one waits on an agent, take a step on another. Close each with WORK DONE RW-id: the proof "
                    "(a file, a link, an ID with its status, the result), or WORK DROPPED RW-id: why. Approved, asked "
                    "or handed on is not done.")
@@ -1008,7 +1030,7 @@ def _block(state, now):
         out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
                    + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
         out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
-        if float(w.get("paused_until") or 0) > float(now) and not OWN_ORDER.search(str(w.get("pause_why", ""))):
+        if paused(w, now):
             out.append("PAUSED for a cause: %s (due again %s)" % (w.get("pause_why", ""), _ago(now, w["paused_until"]).replace("ago", "from now")))
         elif not _waiting(w, now):
             out.append("DUE ITS NEXT STEP THIS MESSAGE (nothing is out with an agent for it).")

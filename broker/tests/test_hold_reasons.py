@@ -88,6 +88,30 @@ w.update(paused_until=10 ** 10, pause_why="switch-point listening waits while I 
 check("a pause already kept for that reason does not hold: the work is due", W.idle(st, 2000) == [w])
 w.update(pause_why="waits on Muse returning the ATAC numbers")
 check("a pause for something outside him still holds", W.idle(st, 2000) == [])
+
+# 8 October, 01:40: "⏸️ PAUSE RW-ad1c775a: ..." went out raw and paused nothing
+st = {"room_work": {"open": [{"id": "RW-ad1c775a", "goal": "EC-058d7a75 switch-point listening", "opened": 1, "touched": 1,
+                              "asks": [], "returns": [], "steps": []}], "history": []}}
+said = D.undisplay("Good. That closes the CUB question.\n\u23F8\ufe0f PAUSE RW-ad1c775a: waiting on a rendered patch and 9:00 for sound.")
+text, _l, _c = W.apply(st, said, 1000)
+check("a PAUSE line he begins with an emoji pauses", st["room_work"]["open"][0].get("paused_until") and "Paused RW-ad1c775a" in text, text)
+check("an ordinary line with a colon is left alone", D.undisplay("\U0001F9ED To my Lab's line L-c218c577: x") == "\U0001F9ED To my Lab's line L-c218c577: x")
+check("the pause as shown, copied back, pauses", D.undisplay("\u23F8 Paused RW-ad1c775a (switch-point listening): waits on 9:00 for sound")
+      == "PAUSE RW-ad1c775a: waits on 9:00 for sound")
+# two paused till morning and one out with Grok Bot: a place is free, and he is asked for the campaign's next work
+now = 2000
+ws = [dict(id="RW-0000000%d" % i, goal="work %d" % i, opened=1, touched=1, asks=[], returns=[], steps=[]) for i in range(3)]
+ws[0]["paused_until"] = ws[1]["paused_until"] = 10 ** 10; ws[0]["pause_why"] = ws[1]["pause_why"] = "waits on 9:00 for sound"
+ws[2]["asks"] = [{"to": "grokbot", "what": "read the Forge records", "at": now - 60}]
+st = {"room_work": {"open": ws, "history": [], "goal": {"id": "RC-00000001", "goal": "the Forge clean", "opened": 1, "touched": 1, "routes": []}}}
+check("all of it waits on others: nothing idle, and that is a reason for the campaign's next work",
+      W.idle(st, now) == [] and W.all_waiting(st, now) and len(W.in_hand(st, now)) == 1)
+text, _l, _c = W.apply(st, "WORK: SLC26A4 side of the scaffold | done when: the STAS comparison table is posted", now)
+check("he may open it: paused work takes no place", len(W.open_items(st)) == 4 and "already" not in text, text)
+for i in range(2):
+    W.apply(st, "WORK: next piece %d of the scaffold | done when: posted %d" % (i, i), now)
+text, _l, _c = W.apply(st, "WORK: a fourth piece in hand right now | done when: posted", now)
+check("three in hand is still the most", len(W.in_hand(st, now)) == 3 and "already 3 in hand" in text, text)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
