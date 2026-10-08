@@ -2382,6 +2382,9 @@ def sent_back(text, state, now, last=None, atelier=False):
     reopened = room_work.reopens(state, text, now)     # a topic he, or Gloria, settled (2026-10-05)
     if reopened:
         return reopened
+    stale = room_work.stale_claim(state, text, now)    # a finished result is not published as blocked (2026-10-08)
+    if stale:
+        return stale
     walked = room_work.lost_route(state, text, now)    # the room's campaign is not dropped at a hiccup (2026-10-08)
     if walked:
         return walked

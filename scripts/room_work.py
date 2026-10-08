@@ -491,8 +491,11 @@ def receive(state, row, now):
             in_thread = bool(thread) and str(thread) in (str(ask.get("ts")), str(ask.get("thread") or ""))
             in_channel = not thread and not ask.get("thread")
             if (in_thread and at - asked <= THREAD_REPLY_S) or (in_channel and at - asked <= CHANNEL_REPLY_S):
-                if best is None or asked > best[1]:          # the latest ask it can answer
-                    best = (w, asked, ask)
+                # the work it is about first, then the latest ask (7 October: dot's "Blocked: Forge installation
+                # requires local sudo" was put on the Merizo work only because it was dot's latest message)
+                key = (_about(row.get("text", ""), w), asked)
+                if best is None or key > best[1]:
+                    best = (w, key, ask)
     if not best:
         return False
     w, _, ask = best
@@ -514,6 +517,78 @@ def receive(state, row, now):
 # "Done: Merizo installed and the single CPU run succeeded" at 15:34 matched nothing and never came back to him).
 INTERIM = re.compile(r"^\s*(?:\W*\s*)?(?:working|blocked|queued|pending|started|waiting|in progress|on it|checking)\b"
                      r"|\b(?:still (?:running|working|installing)|not (?:finished|done) yet|will report back)\b", re.I)
+
+
+def _about(text, w):
+    """How much a message names this work's own subject (its goal's distinctive words, numbers and names)."""
+    shared = _marks(text) & _marks(w.get("goal", ""))
+    return sum(2 if any(c.isdigit() for c in m) else 1 for m in shared)
+
+
+# What a return says happened. A success is not undone by a blocker that came after it unless the blocker is about
+# this work (Gloria, 2026-10-08: "A late or stale event must not overwrite a verified completion"; 7 October: Merizo
+# succeeded at 15:34:16 and was published as blocked at 15:35:06, a Forge privilege problem generalised to Merizo).
+SUCCEEDED = re.compile(r"^\W*(?:done|completed?|finished|deployed|installed|delivered|kept|live)\b|\b(?:succeeded|"
+                       r"run succeeded|passed|is live|went live|deployed|delivered|completed successfully|"
+                       r"implemented (?:locally|externally)|verified local release)\b", re.I)
+BLOCKED = re.compile(r"^\W*(?:blocked|refused|failed|stuck)\b|\b(?:blocked|refused|requires? (?:local )?sudo|"
+                     r"permission denied|HTTP 403|403|failed|cannot|can't|could not|offline|stalled)\b", re.I)
+_STAGE_WORDS = (("deployed", re.compile(r"\b(?:deployed|is live|went live|released)\b", re.I)),
+                ("implemented externally", re.compile(r"\b(?:implemented[_ ]externally|verified local release|"
+                                                       r"implemented locally)\b", re.I)),
+                ("submitted", re.compile(r"\b(?:Sent to the Study \(SF-|submitted|registration only|queued)\b", re.I)),
+                ("approved", re.compile(r"^\s*(?:\u2705 )?Approved:", re.I | re.M)),
+                ("running", re.compile(r"^\W*(?:working|started|in progress|running)\b", re.I)))
+
+
+def _kind(text):
+    head = str(text or "")[:300]
+    if re.match(r"^\W*(?:blocked|refused|failed)\b", head, re.I):
+        return "blocked"
+    if SUCCEEDED.search(head):
+        return "succeeded"
+    if BLOCKED.search(head):
+        return "blocked"
+    return ""
+
+
+def stage(w):
+    """(stage, source, ts, text) of a work from what came back and what he did, in order. A blocker after a success
+    counts only when it is about this work; otherwise the success stands."""
+    out = ("open", "", "", "")
+    events = sorted([(float(r.get("ts") or 0), "return", r) for r in w.get("returns", [])] +
+                    [(float(s.get("at") or 0), "step", s) for s in w.get("steps", [])], key=lambda e: e[0])
+    for at, kind, e in events:
+        text = e.get("text") if kind == "return" else e.get("what", "")
+        named = next((n for n, rx in _STAGE_WORDS if rx.search(str(text or ""))), "")
+        k = _kind(text) if kind == "return" else ""
+        if k == "blocked" and out[0] in ("succeeded", "deployed", "implemented externally") and _about(text, w) < 2:
+            continue                       # stale, or about another task: the success stands
+        if k == "succeeded":
+            got = named if named in ("deployed", "implemented externally") else "succeeded"
+        elif k == "blocked":
+            got = "blocked"
+        elif named and not (out[0] in ("succeeded", "deployed", "implemented externally") and named in ("submitted", "approved", "running")):
+            got = named
+        else:
+            continue
+        out = (got, e.get("from", "you") if kind == "return" else "you", at, str(text or "")[:400])
+    return out
+
+
+def stale_claim(state, text, now):
+    """Why this draft calls finished work blocked or stalled, or "": a line that says blocked, stalled or locked about
+    a work whose result already came back."""
+    for line in str(text or "").splitlines():
+        if not (BLOCKED.search(line) or re.search(r"\b(?:locked on|stalled|dropp?(?:ed|ing))\b", line, re.I)):
+            continue
+        for w in open_items(state):
+            st, src, at, said = stage(w)
+            if st in ("succeeded", "deployed", "implemented externally") and _about(line, w) >= 2:
+                return ("%s reported %s %s: “%s”. A blocker said before it, or about another task, does not undo it. "
+                        "Use the result, or say what is wrong with it." % (
+                            SOURCES.get(src, src), "%s as %s" % (w["id"], st), _ago(at, now), said[:400]))
+    return ""
 
 
 def _interim(w, ask):
@@ -614,6 +689,12 @@ def _closing(state, rx, word, icon, text, now, log):
         shown = ("⏳ Not closed: %s — done needs something anyone could check: the file, the link, the ID with "
                  "its status, the result itself. Say it on WORK DONE:." % said)
         log.append("work not closed: %s had no proof" % w["id"])
+    elif word == "dropped" and BLOCKED.search(said) and stage(w)[0] in ("succeeded", "deployed", "implemented externally"):
+        st, src, at, got = stage(w)
+        w["touched"] = float(now)
+        shown = ("\u26D4 Not dropped: %s reported it %s %s: “%s”. A blocker does not undo a result: use it."
+                 % (SOURCES.get(src, src), st, _ago(at, now), got[:400]))
+        log.append("work not dropped: %s already %s" % (w["id"], st))
     elif word == "dropped" and any(not r.get("used") and not engages(said, r.get("text", "")) for r in w.get("returns", [])):
         # a late or stale reason must not overwrite what came back (7 October: Merizo succeeded at 15:34:16 and was
         # dropped as blocked at 15:35:06)
@@ -804,6 +885,10 @@ def _block(state, now):
         out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
                    + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
         out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
+        st, src, at, said = stage(w)
+        if st != "open":
+            out.append("Where it stands: %s (%s, %s)%s" % (st, SOURCES.get(src, src), _ago(at, now),
+                       " — the result stands until something about this work says otherwise" if st in ("succeeded", "deployed") else ""))
         for s in w.get("steps", [])[-4:]:
             out.append("You did, %s: %s" % (_ago(s["at"], now), s["what"][:200]))
         out += _returns_and_asks(w, now)

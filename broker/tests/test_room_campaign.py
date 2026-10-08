@@ -114,6 +114,41 @@ check("'Dot, can you ...' in passing, with no work open, is talk and not tracked
       (W.posted(lo, "Dot, can you look at the tide model?", ts="1791417600.0", thread=None, now=1791417600, to={"dot"}) or True)
       and all(a["to"] != "dot" for a in W.loose(lo)["asks"]))
 
+# --- reconciliation: blocker -> success -> stale blocker, two tasks with different permissions (2026-10-08) ---------
+rs = {}
+W.apply(rs, "WORK: install the mmWave Forge capability on Aegis, which needs sudo | done when: installed", now=100)
+W.apply(rs, "WORK: run Merizo on my O43511 ESMFold model, in its own venv without sudo | done when: domain ranges posted", now=101)
+forge, merizo = W.open_items(rs)
+W.posted(rs, "@dot install the mmWave Forge capability on Aegis.", ts="200.0", thread=None, now=200, to={"dot"})
+W.posted(rs, "@dot install Merizo into its own venv and run it on my O43511 model.", ts="201.0", thread=None, now=201, to={"dot"})
+W.receive(rs, {"who": "dot", "ts": "300.0", "text": "Blocked: the mmWave Forge capability installation requires local sudo authentication."}, now=300)
+check("a blocker is put on the task it names, not on dot's latest ask (the Forge, not Merizo)",
+      forge["returns"] and not merizo["returns"] and W.stage(forge)[0] == "blocked", (forge["returns"], merizo["returns"]))
+W.receive(rs, {"who": "dot", "ts": "400.0", "text": MERIZO}, now=400)
+check("Merizo's success is put on Merizo", W.stage(merizo)[0] in ("succeeded", "deployed") and merizo["returns"][-1]["ts"] == "400.0",
+      W.stage(merizo))
+W.posted(rs, "@dot is the Merizo venv kept?", ts="450.0", thread=None, now=450, to={"dot"})
+W.receive(rs, {"who": "dot", "ts": "500.0", "text": "Blocked: installation requires local sudo authentication, and Aegis has gone offline."}, now=500)
+check("a later blocker that does not name Merizo does not undo its success", W.stage(merizo)[0] in ("succeeded", "deployed"), W.stage(merizo))
+check("... while a blocker about Merizo itself would", W.stage(dict(merizo, returns=merizo["returns"] + [
+      {"from": "dot", "ts": "600.0", "text": "Failed: Merizo's O43511 run crashed on residue 607 in its venv."}]))[0] == "blocked")
+t, _, c = W.apply(rs, "WORK DROPPED %s: blocked on the install; I am not sitting in that doorway." % merizo["id"], now=700)
+check("dropping a task that succeeded, for a blocker, is refused", c is None and "Not dropped" in t and "succeeded" in t, t)
+why = W.stale_claim(rs, "LOCKED: the Merizo O43511 comparison — it's stalled until the install block clears.", now=700)
+check("a message calling it stalled is sent back with the result (Gemma, 7 Oct 15:26)", "does not undo it" in why and "Merizo" in why, why)
+check("the Forge task, really blocked, can still be called blocked", W.stale_claim(rs, "The mmWave Forge capability install is blocked on sudo.", now=700) == "")
+ph = {"room_work": {"open": [{"id": "RW-0000000a", "goal": "phone last-seen patch", "opened": 0, "touched": 0, "asks": [],
+      "steps": [{"at": 1, "what": "\u2705 Approved: dot, take this one patch through the Study"}],
+      "returns": [{"from": "dot", "ts": "2", "text": "Done: phone last-seen patch deployed. 41 source checks passed."},
+                  {"from": "dot", "ts": "3", "text": "Study ID SF-7e71e004 is registration only, still queued."}]}]}}
+check("stages are kept apart: approved, then deployed, and a later 'registration only' does not take it back to submitted",
+      W.stage(W.open_items(ph)[0])[0] == "deployed", W.stage(W.open_items(ph)[0]))
+ph2 = {"room_work": {"open": [{"id": "RW-0000000b", "goal": "parser diagnostics", "opened": 0, "touched": 0, "asks": [],
+       "steps": [{"at": 1, "what": "\U0001F6E0 Sent to the Study (SF-6f9a460b): keep raw text"}], "returns": []}]}}
+check("a Study ID alone is submitted, not succeeded", W.stage(W.open_items(ph2)[0])[0] == "submitted", W.stage(W.open_items(ph2)[0]))
+check("every lens sees where each work stands", "Where it stands: succeeded" in W.block(rs, 800) or "Where it stands: deployed" in W.block(rs, 800),
+      W.block(rs, 800)[:800])
+
 # --- 7. the room's campaign -------------------------------------------------------------------------------------------
 gs = {}
 t, _, _ = W.apply(gs, "GOAL: show whether my ESMFold model of pendrin's STAS matches 8SGW | done when: a TM-score and the helix/strand edges against 8SGW are posted",

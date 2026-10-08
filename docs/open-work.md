@@ -3,6 +3,32 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — a stale blocker does not undo a result; a reply goes to the task it names
+
+Audit item "result reconciliation". On 7 October dot posted the Merizo success at 15:34:16, and at 15:35:06 the work
+was published as dropped, blocked on installation. dot's 15:23 "Blocked: Forge installation requires local sudo ...
+Merizo is also pending" had been put on the Merizo work only because it was dot's latest message: a Forge privilege
+problem, applied to Merizo.
+
+- `room_work.receive` puts an agent's reply on the task it names (`_about`: the shared distinctive words, numbers
+  and names with the task's goal), then on the latest ask.
+- `room_work.stage(work)` builds the stage from what came back and what he did, in order. The stages are approved,
+  submitted, running, blocked, succeeded, deployed and implemented externally. A blocker after a success counts only
+  if it names this task. A later "registration only" or "queued" does not take a deployed task back to submitted. A
+  Study ID alone is "submitted", not succeeded.
+- Every model sees "Where it stands" for each task.
+- Refused once a task has succeeded:
+  - WORK DROPPED citing a blocker;
+  - any draft line calling it blocked, stalled or locked (`stale_claim`, in `sent_back`), as Gemma's 15:26 lock did.
+- Test: `test_room_campaign.py` (now 65 checks), with two tasks with different permissions: the Forge install that
+  needs sudo, and Merizo, which does not. It runs blocker, then success, then a stale blocker. It fails on the old
+  code.
+- **Not done:**
+  - This guards the room, not the Forge or Study stores themselves. No case of a stale event overwriting a
+    completion in those stores has been found; SF-7e71e004's implemented_externally reconciliation is Eve's,
+    already deployed.
+  - SF-1b8eb6cd and SF-6f9a460b are next.
+
 ## 8 October — the 8SGW comparison's numbering comes from the alignment; a wrong offset is refused
 
 A finding in Chat: `chemistry_reference_compare.py`'s example still used 8SGW chain A, entry residues 540-734, with
