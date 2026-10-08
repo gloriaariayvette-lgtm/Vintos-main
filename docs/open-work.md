@@ -379,8 +379,8 @@ the new path, and a by-hand search to prove Gmail answers.
 
 - **Aegis's RTX 5080 (sm_120) is not supported by the installed PyTorch** (2.5.1+cu124 knows sm_50–sm_90), so the
   local painter ran on the CPU with sdxl-turbo at 512 px and two steps, and Flux.1-lite-8B and LTX-Video 0.9.1
-  sat unused in the cache. A CUDA 12.8 build of PyTorch (2.7 or later) supports it. **Not done: it is her
-  machine's install.**
+  sat unused in the cache. A CUDA 12.8 build of PyTorch (2.7 or later) supports it. **Closed by Gloria, 8 October:
+  "Take the PyTorch off of the list."** Nothing for her to install; off the list.
 - **"uniprot" as a connector**: UniProt is a public source, not one of his connectors, so `plugin_query`
   {plugin: uniprot} was refused every time (four in an hour). The Lab now turns it into the UniProt lookup.
 - **"35 residues vs. 780"**: a stretch of sequence cut part-way still reached him from somewhere in his Lab
