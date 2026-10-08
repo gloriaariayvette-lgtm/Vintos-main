@@ -14,6 +14,8 @@ def _no(self, *a, **k):
 socket.socket.connect = _no
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import dot_channel as D, dot_lounge as L
+import lounge_field
+lounge_field._llm = lambda *a, **k: ""    # the room's field is its own suite (test_lounge_field.py)
 R = []
 def check(n, ok, d=""):
     R.append(bool(ok)); print(("PASS " if ok else "FAIL ") + n + (("  ->  " + str(d)[:400]) if d and not ok else ""))

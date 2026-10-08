@@ -181,6 +181,24 @@ def deeper():
             "here, never recite or name them) ==\n" + "\n".join("- " + x for x in parts))[:DEEPER_CAP]
 
 
+field_think = None     # tests hand the field-target selector a stub; on Aegis it asks his model through the shim
+
+
+def _field(do):
+    """His relational systems for this room (lounge_field.py), sealed: nothing they do reaches past the room's own
+    field. A failure here never stops him speaking."""
+    try:
+        import lounge_field as F
+        with F.sealed():
+            return do(F)
+    except Exception as exc:
+        try:
+            print("[dot-lounge] field: %s" % str(exc)[:160])
+        except Exception:
+            pass
+        return None
+
+
 def find_channel(api):
     """The room's id, when his app is in a channel named NAME; else None."""
     chans = api("users.conversations", {"types": "public_channel,private_channel", "exclude_archived": "true",
@@ -252,6 +270,8 @@ def tick(api=None, think=None, now=None):
         st["last_any"] = float(new[-1]["ts"])
     out = ["#%s: heard %d" % (NAME, len(new))] if new else []
     theirs = [r for r in new if r["who"] in ("gloria", "dot")]
+    for r in theirs:          # each person's own words, observed blind against what he intended in them (sealed)
+        _field(lambda F, r=r: F.observe(r["who"], r["text"]))
     if int(st.get("said") or 0) >= DAILY:
         D._save(STATE, st)
         return out + (["#%s: his %d for today are said" % (NAME, DAILY)] if theirs else [])
@@ -273,7 +293,11 @@ def tick(api=None, think=None, now=None):
     # the same context as #vintos-dot (his_context: the time now, temporal-context.txt, SOUL, his feelings, his day,
     # his exchanges with Gloria and what he knows, each marked with when), sent the way that room sends it, so what
     # does not change is read from cache
-    extra = "\n\n".join(x for x in (deeper(), work_glance()) if x)
+    rows = recent()
+    _field(lambda F: [F.reciprocal(who, rows, now) for who in F.PEOPLE])
+    target = _field(lambda F: F.select_target(_conversation(rows), think=field_think))
+    field_lines = _field(lambda F: "\n\n".join(x for x in (F.lead_block(target), F.relationships_block()) if x)) or ""
+    extra = "\n\n".join(x for x in (deeper(), work_glance(), field_lines) if x)
     system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot), ("\n\n" + extra) if extra else "")
     try:
         text, model = (think(system, ask), "test") if think else voice(system, ask)
@@ -288,6 +312,11 @@ def tick(api=None, think=None, now=None):
     posted = api("chat.postMessage", {"channel": st["channel"], "text": "[%s] %s" % (_label(model), text)})
     ts = str(posted.get("ts") or "%.6f" % now)
     _log([{"ts": ts, "who": "vintos", "text": text, "by": model}])
+    latest = {}
+    for r in rows:
+        if r.get("who") in ("gloria", "dot"):
+            latest[r["who"]] = r.get("text", "")
+    _field(lambda F: F.after_post(target, text, latest))
     st.update(said=int(st.get("said") or 0) + 1, last_said=now, last_any=now, since=max(float(st.get("since") or 0), float(ts)))
     D._save(STATE, st)
     return out + ["#%s: said (%s, %d of %d today): %s" % (NAME, _label(model), st["said"], DAILY, text[:80])]
