@@ -190,10 +190,6 @@ def from_slack(raw, runner=None):
     if not isinstance(req, dict) or req.get("skill") not in LOCAL:
         return None, "not run: RUN: takes one of your Lab's own instruments (%s)" % ", ".join(sorted(LOCAL))
     model = str(req.get("model") or (req.get("files") or [""])[0] or "").strip()
-    # an absolute Aegis path pasted into the room (.../memory/chemistry-lab/artifacts/esmfold/X.pdb) is the Lab's own
-    # file, not an accession: cut it to its artifacts/... form and let validate() check it against the artifact list
-    if "memory/chemistry-lab/" in model:
-        model = model.split("memory/chemistry-lab/", 1)[1].lstrip("/")
     if not model.startswith("artifacts/"):
         acc = re.sub(r"[^A-Za-z0-9-]", "", model).upper()
         found = [f for f in artifacts("structure", 50) if f.startswith("artifacts/esmfold/%s-" % acc) and f.endswith(".pdb")]
