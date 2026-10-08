@@ -303,6 +303,34 @@ check("the log line names the assertion too", any("AssertionError: the log line 
       row7.get("log"))
 check("a test failing in the Study says its exit status", "exit status" in open(S.__file__).read().split("def run_suite")[1][:900])
 
+# 8 October: SF-9cb9996c passed every test and was pushed, then reverted because ~/Vintos-main held another agent's
+# uncommitted skill_forge.py edit. A passing fix waits for a clean checkout instead.
+S.PER_DAY = 99
+r9, why9 = S.request("greet() should wave as well, a fix that waits for a clean checkout")
+r9 = next(r for r in S._load() if r["id"] == r9["id"])
+dirty_deploy = lambda run: S.DIRTY + "scripts/skill_forge.py"
+before_log = origin_log().splitlines()[0]
+SENT_BEFORE = len(SENT)
+S.work(r9, ask=fable_seq({"summary": "greet waves", "edits": [{"path": "scripts/greet.py", "old": "return", "new": "return"}],
+                          "new_files": [{"path": "broker/tests/test_greet_wave.py", "content": "assert True\n"}]}),
+       post=POSTS.append, send=SENT.append, suite=suite_seq([]), deploy=dirty_deploy)
+check("a passing fix blocked only by someone's uncommitted edits is not reverted: it waits",
+      r9["state"] == "waiting_deploy" and not origin_log().splitlines()[0].startswith("Revert"), (r9["state"], origin_log()[:200]))
+check("Gloria is told which files are in the way and how to set them aside, kept",
+      len(SENT) == SENT_BEFORE + 1 and "skill_forge.py" in SENT[-1] and "git stash push -u" in SENT[-1], SENT[-1:])
+rows9 = S._load()
+for x in rows9:
+    if x["id"] == r9["id"]:
+        x.update(r9)
+    elif x.get("state") == "watching":
+        x["state"] = "done"
+S._save(rows9)
+out9 = S.tend(deploy=deploy, run=fake_run(active=("vintos-server.service",)), post=POSTS.append, send=SENT.append)
+r9 = next(r for r in S._load() if r["id"] == r9["id"])
+check("once the checkout is clean, the Study's next pass deploys it and watches it", r9["state"] == "watching" and "is live" in POSTS[-1], (out9, r9["state"]))
+src9 = open(S.__file__).read()
+check("the deploy step looks at the checkout before pulling or deploying", "def _dirty(" in src9 and "return DIRTY + dirty" in src9)
+
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
 print("\n%d/%d" % (sum(R), len(R)))

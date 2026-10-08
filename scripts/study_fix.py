@@ -150,7 +150,7 @@ def _request(what, by):
     limit = software_quota.limit("study", PER_DAY, _today())
     if used_today(rows) >= limit:
         return None, "today's %d Study fixes are used; more tomorrow" % limit
-    if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching", "implemented_externally") for r in rows):
+    if any(r.get("what") == what and r.get("state") in ("queued", "working", "watching", "waiting_deploy", "implemented_externally") for r in rows):
         return None, "that fix is already in the Study"
     row = {"id": "SF-" + uuid.uuid4().hex[:8], "what": what[:2000], "by": by, "state": "queued",
            "asked": _now().isoformat(timespec="seconds")}
@@ -643,6 +643,26 @@ def work(row, ask=None, run=sh, post=None, suite=None, deploy=None, send=None):
         return row
     row["commit"] = run(["git", "rev-parse", "HEAD"], cwd=WORKBENCH).stdout.strip()
     out = (deploy or _deploy)(run)
+    return _after_deploy(row, out, changed, run=run, post=post, send=send)
+
+
+def _after_deploy(row, out, changed, run=sh, post=None, send=None):
+    """A pushed fix, after the deploy answered: live and watched, waiting for a clean checkout, or reverted."""
+    if str(out or "").startswith(DIRTY):
+        # someone else's edits in ~/Vintos-main are not a reason to throw away a fix that passed every test
+        # (8 October: SF-9cb9996c passed, was pushed, and was reverted because the checkout held another agent's
+        # uncommitted skill_forge.py edit). It waits, and is deployed on the next pass once the checkout is clean.
+        if row.get("state") != "waiting_deploy":
+            row["state"] = "waiting_deploy"
+            row["changed_waiting"] = changed
+            _event(row, "passed and pushed; waiting for a clean checkout to deploy (%s)" % out[len(DIRTY):][:200])
+            say("\U0001F6E0 Study fix %s passed every test and is pushed. It waits to go live: ~/Vintos-main has "
+                "someone else's uncommitted edits (%s)." % (row["id"], out[len(DIRTY):][:200]), post)
+            tell_gloria("Vintos's Study fix %s passed every test and is pushed, but cannot go live while ~/Vintos-main "
+                        "has uncommitted edits in: %s. To set them aside (kept, not lost): cd ~/Vintos-main && git diff > "
+                        "~/aegis-local-$(date +%%F-%%H%%M).diff && git stash push -u -m aegis-local . The fix goes live by "
+                        "itself on the Study's next pass." % (row["id"], out[len(DIRTY):][:300]), send)
+        return row
     m = re.search(r"rollback: bash (\S+restore\.sh)", out or "")
     if "deploy OK" not in (out or ""):
         revert(row, run=run, why="the deploy refused it")
@@ -673,8 +693,21 @@ def _dot():
         return "dot"
 
 
+DIRTY = "CHECKOUT HAS UNCOMMITTED EDITS: "
+
+
+def _dirty(run=sh):
+    """The uncommitted paths in ~/Vintos-main, or ''."""
+    r = run(["git", "-C", CHECKOUT, "status", "--porcelain"], timeout=120, check=False)
+    return ", ".join(l[3:] for l in (r.stdout or "").splitlines() if l.strip())[:400]
+
+
 def _deploy(run=sh):
-    """Pull the pushed fix into ~/Vintos-main and deploy it the ordinary way; its full output."""
+    """Pull the pushed fix into ~/Vintos-main and deploy it the ordinary way; its full output. When the checkout
+    holds someone's uncommitted edits, nothing is pulled or deployed: DIRTY and the paths."""
+    dirty = _dirty(run)
+    if dirty:
+        return DIRTY + dirty
     run(["git", "-C", CHECKOUT, "pull", "-q", "--ff-only"], timeout=600)
     r = run(["bash", os.path.join(CHECKOUT, "scripts", "deploy-atelier.sh")], cwd=CHECKOUT, timeout=3600, check=False)
     return (r.stdout or "") + (r.stderr or "")
@@ -774,6 +807,13 @@ def tend(**kw):
         except OSError:
             return "another Study fix pass is running"
         rows = _load()
+        waiting = next((r for r in rows if r.get("state") == "waiting_deploy"), None)
+        if waiting:              # a passed, pushed fix goes live once the checkout is clean
+            out = (kw.get("deploy") or _deploy)(kw.get("run") or sh)
+            _after_deploy(waiting, out, waiting.get("changed_waiting") or [], run=kw.get("run") or sh,
+                          post=kw.get("post"), send=kw.get("send"))
+            _save_progress(rows)
+            return "%s: %s" % (waiting["id"], waiting["state"])
         live = next((r for r in rows if r.get("state") == "watching"), None)
         if live:
             watch(live, **{k: v for k, v in kw.items() if k in ("run", "post", "send", "get", "now")})
