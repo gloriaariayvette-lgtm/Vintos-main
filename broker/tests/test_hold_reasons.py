@@ -139,6 +139,13 @@ json.dump([{"id": "EC-00000001", "state": "open", "quote": "I'll read the quicks
           open(E.STORE, "w"))
 check("only a promise to make something is owed as work; a reading chore stays in his letter",
       [r["id"] for r in E.open_rows()] == ["EC-00000002"] and json.load(open(E.STORE))[0]["state"] == "not work")
+import study_fix
+check("the Study store is a scratch one", study_fix.QUEUE.startswith(HOME))
+qb = D.quota_block()
+check("the day's Study fixes are at the top of his turn, with how to move the next one",
+      "STUDY FIXES" in qb and "of" in qb and "STUDY FIX:" in qb and "discussed here first" in qb, qb)
+used, limit = D.study_room()
+check("and while there is room, a turn is due even with nothing else to do", used < limit)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

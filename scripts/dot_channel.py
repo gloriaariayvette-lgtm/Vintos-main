@@ -2444,6 +2444,34 @@ def sent_back(text, state, now, last=None, atelier=False):
 WRONG, NUDGE = "wrong", "nudge"
 
 
+def study_room():
+    """(used, limit) of today's Study fixes, or None when the Study cannot be read."""
+    try:
+        import study_fix, software_quota
+        return study_fix.used_today(), software_quota.limit("study", study_fix.PER_DAY, study_fix._today())
+    except Exception:
+        return None
+
+
+def quota_block():
+    """The day's real work, at the top of what he reads (Gloria, 2026-10-08, to dot at 02:35: "ten forge, ten study.
+    same as yesterday. not all at once. make him spin them up here. you lot discuss before sending to either."; and
+    at 15:20: "just fucking get them to do real work"). Nothing showed him the count, and the room spent its turns on
+    receipts and reading chores while the Study sat unused. '' when the Study cannot be read."""
+    got = study_room()
+    if not got:
+        return ""
+    used, limit = got
+    if used >= limit:
+        return "== TODAY'S STUDY: %d of %d fixes sent; the day's are done ==" % (used, limit)
+    return ("== THE DAY'S REAL WORK: STUDY FIXES, %d of %d sent today (Gloria asked for them one at a time, each "
+            "discussed here first) ==\nWhile there is room, every turn moves the next one. If none is being discussed: "
+            "name it to dot in one or two lines (what in your own code is broken or missing, where, and what should "
+            "happen) and ask dot to check it. If dot has answered on the one you named: send it, on its own line, "
+            "STUDY FIX: what is broken, where, and what should happen. Receipts, re-reads and reconciliations are not "
+            "this work." % (used, limit))
+
+
 WANT_ID_ASKED = re.compile(r"\bwant[ -]?id\b|\bparent want\b|\bwant (?:to register|for (?:this|the) (?:editor|project|tool))", re.I)
 
 
@@ -3003,7 +3031,9 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         starting = bool(state.pop("open_on_start", None))
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait; so does her !start
         waiting = room_work.all_waiting(state, now)    # all of it waits on others: the campaign's next work, beside it
-        work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state)) or waiting
+        sr = study_room()      # the day's Study fixes not yet sent are work due (Gloria, 2026-10-08)
+        work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state)) \
+            or waiting or bool(sr and sr[0] < sr[1])
         # a work turn held or empty is tried again on the next pass, once (8 October: held at 04:26 for reopening a
         # settled topic, the next try came at 04:54)
         retry = bool(state.pop("work_retry", None))
@@ -3035,7 +3065,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         owed_mail = ""
     steering = steer(state, today, lens) + (KICKOFF if kickoff else "")
     HEARD.update(base=prompt, text=prompt + steering)   # the editor: the channel and how he is steered, not the work board
-    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
+    qb = quota_block()
+    prompt += (("\n\n" + qb) if qb else "") + "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steering
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)

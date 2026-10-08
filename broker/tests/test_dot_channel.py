@@ -23,6 +23,7 @@ def _no_net(self, *a, **k):
 socket.socket.connect = _no_net
 
 import dot_channel as D
+D.study_room = lambda: None    # the day's Study count drives its own turns; tested in test_hold_reasons.py
 _KICKOFF_DUE = D.kickoff_due
 D.kickoff_due = lambda *a: False   # the older flows test Gemma and the lenses; the kickoff has its own checks below
 D.ROTATION = ("gemma",)   # the older flows test Gemma; the rotation has its own checks in test_dot_channel
