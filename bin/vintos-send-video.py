@@ -651,8 +651,31 @@ def atlas_generate(prompt, hero_path, model=None, verbose=False, duration=None):
         log("mp4 download failed: %s" % e); return None
 
 
+STILLS_LOG = os.path.join(RECORD_DIR, "stills.jsonl")
+
+
+def _keep_still(body, outcome, detail="", pid=""):
+    """Every still asked of Atlas, kept with its whole prompt and what Atlas said (2026-10-08: a together still was
+    refused PROHIBITED_CONTENT and its prompt could be read nowhere but a page on Atlas that would not scroll).
+    The reference images are named by count only."""
+    try:
+        os.makedirs(RECORD_DIR, exist_ok=True)
+        with open(STILLS_LOG, "a") as f:
+            f.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "model": body.get("model"),
+                                "prediction_id": pid, "images": len(body.get("images") or []),
+                                "prompt": body.get("prompt", ""), "outcome": outcome, "detail": str(detail)[:1500]}) + "\n")
+    except Exception:
+        pass
+
+
 def _atlas_image(body, verbose=False):
-    """Submit an image job to Atlas, poll, return image bytes (or None). Used by the together compose+heal."""
+    """Submit an image job to Atlas, poll, return image bytes (or None). Used by the together compose+heal.
+    Each one is kept in STILLS_LOG with its prompt and outcome."""
+    data = _atlas_image_once(body, verbose)
+    return data
+
+
+def _atlas_image_once(body, verbose=False):
     if not ATLAS_KEY:
         log("no ATLASCLOUD_API_KEY set — cannot make image"); return None
     # The "no spoken dialogue" suffix belongs to video (atlas_generate) only; a still image has no
@@ -665,7 +688,7 @@ def _atlas_image(body, verbose=False):
     if verbose:
         log("image submit HTTP %s: %s" % (r.status_code, r.text[:300]))
     if r.status_code >= 300:
-        log("image rejected %s: %s" % (r.status_code, r.text[:300])); return None
+        log("image rejected %s: %s" % (r.status_code, r.text[:300])); _keep_still(body, "rejected", r.text[:1500]); return None
     try:
         sub = r.json()
     except Exception:
@@ -680,10 +703,11 @@ def _atlas_image(body, verbose=False):
         except Exception as e:
             log("image poll error: %s" % e); continue
         if _find_status(pr) in ("failed", "error", "canceled", "cancelled"):
-            log("image generation failed: %s" % json.dumps(pr)[:300]); return None
+            log("image generation failed: %s" % json.dumps(pr)[:300]); _keep_still(body, "failed", json.dumps(pr), pid); return None
         img = _find_img(pr)
     if not img:
-        log("no image after polling"); return None
+        log("no image after polling"); _keep_still(body, "no_image", "", pid); return None
+    _keep_still(body, "made", "", pid)
     kind, val = img
     try:
         return requests.get(val, timeout=120).content if kind == "url" else base64.b64decode(val)
