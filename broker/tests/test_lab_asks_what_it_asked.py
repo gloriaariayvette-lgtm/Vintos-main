@@ -162,12 +162,14 @@ check("cryo-EM, crystallography and mass spectrometry are equipment; a simulator
       and all(M.missing_limb(g) for g in ("a molecular dynamics simulator to watch the domains move",
                                           "access to the AlphaFold database", "a pressure sensor on the bed")))
 
-M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a molecular dynamics simulator to watch the domains move")
+# 2026-10-08: a limb worth building is specific and on his work; a simulator from one question is kept in the Lab
+# (forge_gaps.py, and its own test). The example is the kind Gloria kept: the H723R transcript mapping.
+M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a transcript-variant mapper that places p.H723R on each SLC26A4 transcript")
 reply = {"receipt": {"receipt_id": "REC-5", "response_sha256": "a" * 64, "records": [{"primaryAccession": "Q5"}]}}
 M.tick(); M.tick(); M.tick(); M.tick()
 check("a missing limb does open one, as a capability to build",
       len(offers) == 1 and offers[0][1].startswith("The Lab needs an instrument it does not have:")
-      and "molecular dynamics" in offers[0][1] and "Build or connect" in offers[0][1]
+      and "transcript-variant mapper" in offers[0][1] and "Build or connect" in offers[0][1]
       and "Document this sourced Lab question" not in offers[0][1], offers)
 reply = {"receipt": {"receipt_id": "REC-5b", "response_sha256": "b" * 64, "records": [{"primaryAccession": "Q5b"}]}}
 M.tick(); M.tick(); M.tick(); M.tick()
@@ -178,12 +180,12 @@ check("the notebook shows what he asked the Forge for",
 def refusing(ids, intent, **k):
     offers.append((ids, intent)); raise OSError("403 four unfinished reports")
 sys.modules["chemistry_sources"].offer_report = refusing
-M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a docking program for the glycan")
+M._reflect = lambda context, inquiry, records: dict(REFLECTION, instrument_gap="a glycan binding-site predictor for P62249")
 for n, h in (("REC-6", "1"), ("REC-7", "2")):
     reply = {"receipt": {"receipt_id": n, "response_sha256": h * 64, "records": [{"primaryAccession": n}]}}
     M.tick(); M.tick(); M.tick(); M.tick()
 check("a request the full Forge refused is not queued again on every later reflection",
-      sum("docking program" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
+      sum("binding-site predictor" in o[1] for o in offers) == 1, [o[1][:60] for o in offers])
 
 # --- a gene symbol written as a protein name is read as the gene it is -----------------------------
 import urllib.error as _ue

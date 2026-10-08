@@ -3,6 +3,34 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — what the Lab asks the Forge to build: only what is worth building
+
+Gloria cancelled three of the four Forge projects open on 7 October and kept one ("We need to improve what the Forge
+is suggesting"). Cancelled:
+- an Atlas "AVI_SCORE fields" database: a misreading of his own source;
+- NCBI protein and phage retrieval: he has both;
+- a molecular dynamics simulator for a passing question.
+
+Kept: a p.H723R transcript mapping, which is specific and sits beside his STAS work. The only rule before was "not
+laboratory equipment".
+
+- New `scripts/forge_gaps.py` (in the manifest). `judge(gap, question, declined)` runs with no model call and keeps
+  a gap in the Lab when it is one of these:
+  - own_source: it asks for fields inside a source he already reads;
+  - already_have: an inventory of the Lab's sources and instruments covers it;
+  - large: a simulator, quantum chemistry, docking or training a model, which waits until Gloria asks for it;
+  - vague: no protein, gene, variant or structure named;
+  - declined: like a Forge project she cancelled.
+
+  Only what passes goes to the Forge.
+- What is kept is noted in the reflection's note and in `instrument-gaps.json`, with the reason. His next reflection
+  is told what the Lab has and why his last gap was kept, so it is not raised again in other words.
+- Secondary structure is deliberately not counted as "had": fold_read is not DSSP, and the PyDSSP promise is open.
+- Tests: `test_forge_gaps.py` (12 checks), using the four real project titles. `test_lab_asks_what_it_asked.py`'s
+  example limb was a molecular dynamics simulator; it is now the H723R mapper, and the gate is unchanged.
+- **Not done:** Forge suggestions that come from his wants (the SK- cards from skill_forge) are not judged here.
+  Only the Lab's instrument gaps are.
+
 ## 8 October — SF-1b8eb6cd checked; a full Forge is not asked again by new reports; Study failures keep their evidence
 
 **SF-1b8eb6cd (four_unfinished 403 retries).** Checked before doing anything new: the Study's own fix landed as

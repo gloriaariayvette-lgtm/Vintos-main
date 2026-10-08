@@ -513,6 +513,32 @@ def record_instrument_gap(gap, now=None):
         _atomic(GAPS, gaps)
 
 
+def _keep_gap_verdict(gap, verdict):
+    """Why a gap was kept in the Lab, for his next reflection."""
+    with _locked():
+        gaps = _load(GAPS, {})
+        row = gaps.get(_gap_key(gap)) or {"gap": str(gap)[:400], "at": time.time()}
+        row.update(kept=verdict["kind"], why=verdict["why"][:300])
+        gaps[_gap_key(gap)] = row
+        _atomic(GAPS, gaps)
+
+
+def _gap_text():
+    """What the Lab already has, and why his last kept gap was not sent, for the reflection prompt."""
+    try:
+        import forge_gaps
+        have = forge_gaps.inventory()
+    except Exception:
+        return ""
+    kept = [r for r in _load(GAPS, {}).values() if isinstance(r, dict) and r.get("kept")]
+    kept.sort(key=lambda r: float(r.get("at") or 0))
+    last = kept[-1] if kept else None
+    return (" THIS LAB ALREADY HAS: " + have + ". An instrument_gap is only for what none of these can do, named "
+            "concretely (the protein, gene, variant or structure, and what it would measure); a simulator or a model "
+            "to train is not raised from one question." +
+            ((" Your last gap was kept here, not sent: \"%s\" — %s" % (last["gap"][:160], last["why"][:200])) if last else ""))
+
+
 def journal_source_saturated(accessions, limit=5):
     """An unchanged source set cannot justify another routine reflection."""
     target = tuple(sorted({str(x)[:80] for x in accessions if x}))
@@ -1521,7 +1547,7 @@ def _reflect(context, inquiry, records):
         "connected for you — a simulator, a model, a database or tool you cannot reach: name it and what it would "
         "measure. Laboratory equipment you could never operate — cryo-EM, crystallography, NMR, mass spectrometry, "
         "wet-lab assays — is not a gap; say what it would show in speculative_reading instead. Otherwise empty)."
-        + line_text,
+        + _gap_text() + line_text,
         temperature=0.35,
     )
     value = _json_object(raw)
@@ -2000,7 +2026,19 @@ def tick():
                         # Recorded first: a full Forge answers 403 and the outbox retries this one request.
                         record_instrument_gap(gap)
                         note["instrument_gap_recorded"] = gap[:400]
-                        if (limb and receipts and inquiry.get('browse_lane') != 'genome_mining'
+                        # Only what is worth building reaches the Forge (Gloria, 2026-10-08): not what he already
+                        # has, not a misreading of his own source, not a large build from one question, not a vague
+                        # one, not one she cancelled (forge_gaps.py).
+                        verdict = {"send": False, "kind": "lab_equipment", "why": "laboratory equipment"}
+                        if limb:
+                            import forge_gaps
+                            verdict = forge_gaps.judge(gap, inquiry.get("question", ""),
+                                                       forge_gaps.declined_titles(cfg["forge_report_intake"])
+                                                       if cfg.get("forge_report_intake") else ())
+                            if not verdict["send"]:
+                                note["instrument_gap_kept_in_lab"] = "%s: %s" % (verdict["kind"], verdict["why"])
+                                _keep_gap_verdict(gap, verdict)
+                        if (verdict["send"] and receipts and inquiry.get('browse_lane') != 'genome_mining'
                                 and cfg.get("forge_report_intake")):
                             import chemistry_sources
                             note["forge_report"] = chemistry_sources.offer_report(receipts,
