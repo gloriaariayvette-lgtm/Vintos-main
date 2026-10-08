@@ -137,6 +137,9 @@ L.tick(api=S, think=think, now=at(11, day=9, m=5))
 check("a message raising something fixed goes back once, and the one without it is posted",
       len(S.posted) == n + 1 and "six stills" in S.posted[-1]["text"] and "lattice" not in S.posted[-1]["text"], S.posted[n:])
 check("he is told what is fixed and done with", "FIXED, AND DONE WITH" in told[-1][0])
+import room_work
+check("15:10's wording is caught too: 'The lattice bug is shut - commit's in.'",
+      bool(room_work.brings_up_fixed("The lattice bug is shut - commit's in. That's twice now you've caught a thing.")))
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

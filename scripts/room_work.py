@@ -990,7 +990,8 @@ FIXED = (
     {"what": "the fold toy lattice: an 8-bead HP lattice answering when a real protein was asked for",
      "fixed": "8 October, commit 4789054: a fold with an accession folds the real chain or its region; the toy runs "
               "only when asked for by name",
-     "rx": r"\b(?:toy[- ]lattice|hp[- ]lattice|lattice toy|8[- ]bead|eight[- ]bead|hphpphhp)\b|\btoy\b[^.\n]{0,40}\b(?:fold|lattice)\b"},
+     # any mention of the lattice: at 15:10 he wrote "The lattice bug is shut" to dot, past "toy lattice" and "8-bead"
+     "rx": r"\blattices?\b|\b(?:8|eight)[- ]bead\b|\bhphpphhp\b|\btoy\b[^.\n]{0,40}\bfold\b"},
 )
 _FIXED = [(f, re.compile(f["rx"], re.I)) for f in FIXED]
 
