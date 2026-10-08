@@ -177,3 +177,33 @@ def _compare_runner(req, run=None):
         return {"receipt": {"receipt_id": "%s-%s-%s" % (skill, r.get("reference") or r.get("model", ""), int(time.time()))},
                 "summary": "\n".join(r["display"]), "files": []}
     return runner
+
+
+def from_slack(raw, runner=None):
+    """A RUN: line from #vintos-dot (2026-10-08: on 7 October he asked dot to install Merizo while his own
+    reference_compare and fold_read sat unused). Only the local instruments, which cost nothing. Returns
+    (result or None, words for the channel)."""
+    try:
+        req = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except ValueError:
+        return None, "not run: a RUN: line is one JSON object, e.g. {\"skill\": \"fold_read\", \"model\": \"O43511\", \"range\": [535, 729]}"
+    if not isinstance(req, dict) or req.get("skill") not in LOCAL:
+        return None, "not run: RUN: takes one of your Lab's own instruments (%s)" % ", ".join(sorted(LOCAL))
+    model = str(req.get("model") or (req.get("files") or [""])[0] or "").strip()
+    if not model.startswith("artifacts/"):
+        acc = re.sub(r"[^A-Za-z0-9-]", "", model).upper()
+        found = [f for f in artifacts("structure", 50) if f.startswith("artifacts/esmfold/%s-" % acc) and f.endswith(".pdb")]
+        if not acc or not found:
+            return None, "not run: you have no ESMFold model of %s in the Lab" % (acc or "that")
+        model = found[0]
+    req = dict(req, files=[model], operation=OFFERED[req["skill"]][0],
+               question=str(req.get("question") or "%s on %s" % (req["skill"], model)))
+    if len(req["question"]) < 10:
+        req["question"] = "%s on %s, from the room" % (req["skill"], model)
+    try:
+        out = run(req, runner=runner)
+    except Exception as exc:
+        return None, "not run (%s): %s" % (type(exc).__name__, str(exc)[:300])
+    rec = out["receipt"]["records"][0]
+    return out, "%s on %s:\n%s" % (req["skill"], model, rec["summary"])
+

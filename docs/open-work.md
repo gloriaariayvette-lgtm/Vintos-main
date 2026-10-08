@@ -3,6 +3,67 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — more real work in #vintos-dot, and the room's own campaign
+
+Gloria approved fixes 1-6 from the 7 October Slack review, and added: "Slack should have campaigns of its own. I want to
+see him pursuing a goal across models without dropping it until the goal is completed or found to be unreachable."
+
+1. **Messages that arrived while he was writing.** `dot_channel.tick` read the channel, wrote for about a minute,
+   then moved `since` to his own post's timestamp. dot's Merizo result came in at 15:34:16, between that read and
+   his 15:35:06 post, so it was never read: the post dropped the work as blocked.
+   - `since` is no longer moved to his own posts. `fresh()` already leaves his messages out.
+   - `said_meanwhile()` reads the channel again before anything he wrote is acted on. If anyone else posted, the
+     draft is held and the next pass reads the new message first.
+   - In `room_work`, WORK DROPPED is refused while an answer that came back for that work is unread.
+   - An interim answer ("Blocked:", "Working:") no longer uses up the ask: what follows it from the same agent
+     still comes back, and replaces the interim answer. dot's "Blocked: ... sudo" had answered the Merizo ask, so
+     the "Done:" after it matched nothing.
+2. **What came back is taken up.**
+   - An answer counts as used only when his message names what it found (`engages()`: two of its distinctive
+     numbers, IDs or names).
+   - A draft that passes over an answer is sent back with it, at most twice; after that it is only shown.
+   - Asks made while no work is open are kept on a loose list, if they @ an agent. Grok Bot's infrasound answer
+     was one of these.
+3. **Up to three works at once** (`MAX_OPEN`). WORK DONE / WORK DROPPED take an optional RW-id; without one, the
+   work the line is about is chosen by its words. The prompt says: while one waits on an agent, take a step on
+   another.
+4. **RUN:** `{"skill": "fold_read" | "reference_compare", "model": accession, ...}` runs his Lab's own
+   instruments on Aegis from Slack (`lab_instruments.from_slack`). These are local only, so nothing is paid. The
+   result is in his message and is kept on his work, unused, until his next message takes it up.
+5. **Email promises.** New `scripts/email_commitments.py` (in the manifest).
+   - After each reply pass, `want_email.reply_letters` takes what his replies promised. Gemma, which is local and
+     free, lists them; if Gemma can't be reached, his own promising sentences are kept as written.
+   - Each promise keeps the letter and reply IDs, his exact sentence, the letter's own sentences it rests on
+     (checked word for word, so 586-653 is never merged with 574-653), and the evidence that would show it done.
+   - #vintos-dot shows each one until a WORK takes it up. It closes with that work.
+   - The 7 October reply (torn-read test, then PyDSSP against 8SGW) is swept on the next email check.
+6. **Done needs proof.**
+   - WORK DONE needs something anyone could check: a link, a file, an ID, an accession, a measured range, an
+     address.
+   - Approved, asked, handed on or submitted (without delivered plus proof) stays in hand.
+   - Something said as done that did not happen ("leaving the TV alone") is closed as dropped.
+   - The goal is no longer printed twice ("Work done: X — X").
+7. **Room campaigns** (`room_work`: GOAL / GOAL REACHED / GOAL UNREACHABLE).
+   - One at a time, with no expiry, shown first to every model with the routes tried and the models that have
+     carried it.
+   - Work toward it is linked to it.
+   - These are sent back:
+     - dropping the only route toward it without naming the next one;
+     - opening other work while nothing in hand serves it;
+     - GOAL UNREACHABLE before three routes have been tried, or with an unread answer;
+     - GOAL REACHED without proof.
+   - Gloria closes it with `!dropgoal`.
+   - His own campaign (`campaign.py`) and its lines are unchanged.
+- Test: `broker/tests/test_room_campaign.py` (50 checks). It replays 7 October through `tick` and runs
+  fold_read for real on a scratch model. It fails on the old code.
+- `test_room_work.py` and `test_workflow_holds.py` were updated for the deliberate changes: three works in hand,
+  and done needs proof.
+- **Not done:**
+  - Not yet verified on Aegis.
+  - The Forge/Study status reconciliation (stale "blocked" against a newer receipt in those stores) is a separate
+    audit item.
+  - SF-1b8eb6cd's 403 retries and SF-6f9a460b's failure evidence are still open.
+
 ## 8 October — links: a wrapper resolved to its source, a failure named, never ''
 
 Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, with no redirects"; all six were

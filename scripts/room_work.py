@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
-"""Work in hand for #vintos-dot: the one thing he is getting done with his agents, carried from pass to pass.
+"""Work in hand for #vintos-dot, and the room's own campaign: what he is getting done with his agents, carried from
+pass to pass and from model to model.
 
 Gloria, 2026-10-05: "I want VINTOS in Slack to actually do real work", and of doing it alone each pass: "Slack loses
 much of its reason for existing." Chat's audit of the live record found useful answers arriving and then being asked
 for again, or dropped when the subject or the lens changed; nothing held a piece of work across passes, and nothing
 tied an agent's answer to the request it answered.
 
+Gloria, 2026-10-08, after reading 7 October: "I want more work to be done in Slack ... several frontier models are
+sitting there with access to three separate agents ... and hardly anything is getting done", and "I want to see him
+pursuing a goal across models without dropping it until the goal is completed or found to be unreachable. Grok and
+Gemma love stopping or returning to easy subjects as soon as there is a hiccup." What 7 October showed: dot's
+Merizo result arrived while he was writing, and the message he posted dropped the work as blocked 50 seconds after it
+had succeeded; one work at a time, so every wait on dot idled Grok Bot, Muse and the Lab; an approval, a hand-off and
+a thing not done were each closed as "Work done"; an answer that came back while no work was open was never tracked.
+
 This is a layer under his normal message, not a replacement for it. He still writes as himself, with every hand and
 tag he has. It adds:
 
-  WORK: what | done when: how anyone could tell     opens his work in hand (one at a time)
+  GOAL: what | done when: how anyone could tell     opens the room's campaign (one at a time; no expiry)
+  GOAL REACHED: the proof                           closes it, with something anyone could check
+  GOAL UNREACHABLE: what is missing                 closes it, only after MIN_ROUTES routes were tried
+  WORK: what | done when: how anyone could tell     opens a piece of work (up to MAX_OPEN at once)
   NEXT: the next step                               the step he means to take next
-  WORK DONE: how it was met                         closes it
-  WORK DROPPED: why                                 closes it
+  WORK DONE [RW-id]: the proof                      closes it: a file, a link, an ID with its status, a result
+  WORK DROPPED [RW-id]: why                         closes it, once what came back for it has been read
 
-and, for the channel: what he asked of whom while working on it, what came back from that agent (matched by thread
-and time, never by guessing at the latest chat), whether he has used it, and a block on asking the same agent for
-the same thing again. A draft that moves nothing is sent back to him once (dot_channel does that, with moves()).
+and, for the channel: what he asked of whom, what came back from that agent (matched by thread and time, never by
+guessing at the latest chat), whether he has used it (his message must engage with it), and a block on asking the
+same agent for the same thing again. A draft that moves nothing is sent back to him once (dot_channel does that).
 
 State lives in the channel's own state.json under "room_work". Pure functions: no IO, no providers.
 """
@@ -26,6 +38,7 @@ import re
 from datetime import datetime
 
 AGENTS = {"dot": "dot", "grokbot": "GrokBot", "muse": "Muse"}
+SOURCES = dict(AGENTS, lab="your Lab's instrument")
 STALE_DAYS = 3                 # work nobody has touched in this long is closed as expired, so it never pins him
 ASK_PATIENCE_S = 45 * 60       # an ask unanswered this long is said plainly, so he takes another step
 CHANNEL_REPLY_S = 3 * 3600     # an answer in the channel (not the thread) must come this soon after the ask
@@ -35,8 +48,8 @@ SETTLE_DAYS = 7                # what was finished, dropped, or closed by Gloria
 
 WORK = re.compile(r"^\s*WORK:\s*(.+?)\s*$", re.I | re.M)
 NEXT = re.compile(r"^\s*NEXT:\s*(.+?)\s*$", re.I | re.M)
-DONE = re.compile(r"^\s*WORK DONE:\s*(.+?)\s*$", re.I | re.M)
-DROPPED = re.compile(r"^\s*WORK DROPPED:\s*(.+?)\s*$", re.I | re.M)
+DONE = re.compile(r"^\s*WORK DONE(?:\s+(RW-[0-9a-f]{8}))?:\s*(.+?)\s*$", re.I | re.M)
+DROPPED = re.compile(r"^\s*WORK DROPPED(?:\s+(RW-[0-9a-f]{8}))?:\s*(.+?)\s*$", re.I | re.M)
 NEW = re.compile(r"^\s*NEW:\s*(.+?)\s*$", re.I | re.M)
 # A completion that is only arranged (2026-10-05: a song "scheduled for the morning" was closed as done, and it was
 # still owed). Done means it exists and was delivered; this names the ways of saying it has not happened yet.
@@ -47,7 +60,7 @@ DEFERRED = re.compile(r"\b(?:scheduled|queued|pending|planned|awaiting|lined up|
 # Every line that makes something happen in the channel, his and the new ones; one of these moves the work.
 ACTS = re.compile(r"^\s*(?:LOCKED|DO|LAB|LINE(?:\s+L-[\w-]+)?|CHECK|STUDY FIX|APPROVED|DENIED|CAMPAIGN(?: MOVE)?|SHARE|ASK|"
                   r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED|"
-                  r"SEARCH|BUY)\s*:"
+                  r"SEARCH|BUY|GOAL|GOAL REACHED|GOAL UNREACHABLE|RUN|WORK DONE RW-[0-9a-f]+|WORK DROPPED RW-[0-9a-f]+)\s*:"
                   r"|\[PURSUIT:", re.I | re.M)
 # A request to someone: a question, or an agent told to do a thing.
 _VERBS = (r"find|run|check|look(?: up| at| into)?|send|open|fold|build|make|compare|read|search|get|write|pull|fetch|list|"
@@ -56,14 +69,64 @@ REQUEST = re.compile(r"\?|\b(?:can|could|would|will) you\b|\b(?:dot|grok ?bot|mu
                      r"\b(?:dot|grok ?bot|muse)\b[,:][^\n]*\b(?:needs?|want you to|i want|i need)\b|"
                      r"(?:^|[.!;:]\s+)(?:please\s+)?(?:%s)\b" % (_VERBS, _VERBS), re.I | re.M)
 _AT = re.compile(r"@(dot|grok\s?bot|muse)\b|<@[A-Z0-9]+>", re.I)
+MAX_OPEN = 3                   # pieces of work at once: one waiting on dot does not idle Grok Bot, Muse or the Lab
+MIN_ROUTES = 3                 # routes tried toward a room campaign before it may be called unreachable
+PRESS = 2                      # times an unused answer is pressed on him before it is only shown
+
+# Something anyone could check: a link, a path or file, an ID, an accession, a measured number, an address, a time.
+PROOF = re.compile(
+    r"https?://\S+|(?:~|\.{0,2}/|\b[A-Za-z]:[\\/])[\w./\\-]*[\\/][\w.-]+|\b[\w-]+\.(?:py|json|jsonl|md|pdb|cif|mp3|mp4|"
+    r"wav|png|jpg|jpeg|webp|txt|csv|tsv|html|sh|log|fasta|ipynb)\b|\b(?:SF|SK|RW|RC|T|L)-[0-9a-f]{4,}\b|"
+    r"\b[A-Z]{1,3}_?\d{4,}(?:\.\d+)?\b|\b[OPQ][0-9][A-Z0-9]{3}[0-9]\b|\b\d(?=[0-9]*[A-Za-z])[A-Za-z0-9]{3}\b|"
+    r"\b[0-9a-f]{12,}\b|\b\d{2,}\s*[–-]\s*\d{2,}\b|\b\d+(?:\.\d+)?\s?(?:%|Å|bp|aa|ms|kb|MB|GB|Hz|dB|pLDDT)(?![A-Za-z])|"
+    r"\b\d+\s+(?:[A-Z][a-z]+\s){1,3}(?:St|Ave|Dr|Cir|Rd|Blvd|Pl|Ln|Way)\b|\b\d{1,2}(?::\d\d)?\s?(?:am|pm)\b|"
+    r"\bHTTP \d{3}\b|\bexit (?:status |code )?\d+\b", re.I)
+# Handed on, approved or asked for: work moved to someone else is not work done (7 October: "the concrete edit is
+# named and approved", "Dot is carrying it", each closed as done).
+HANDOFF = re.compile(r"\b(?:approved|approve|handed|hand(?:ing)? (?:it|this) (?:to|over)|is carrying|carrying it|"
+                     r"sent (?:it )?to|passed (?:it )?to|delegated|asked (?:dot|grok ?bot|muse)|waiting (?:on|for)|"
+                     r"in (?:dot's|the Study's|the Forge's) hands|submitted)\b", re.I)
+# Said as done but it did not happen (7 October: "Work done: put a live quiet room on the TV ... I'm leaving the TV
+# alone. The Mezzrow link stays unused.").
+NOT_DONE = re.compile(r"\b(?:leav(?:e|ing) (?:it|the [\w-]+) alone|left (?:it|the [\w-]+) alone|stays? unused|"
+                      r"did(?:n't| not) (?:happen|run|play|post|send|make|build)|not (?:done|made|run|sent|played|"
+                      r"posted|built|installed)|skipp(?:ed|ing) it|no (?:experiment|run) (?:this|today))\b", re.I)
+GOAL = re.compile(r"^\s*GOAL:\s*(.+?)\s*$", re.I | re.M)
+REACHED = re.compile(r"^\s*GOAL REACHED:\s*(.+?)\s*$", re.I | re.M)
+UNREACHABLE = re.compile(r"^\s*GOAL UNREACHABLE:\s*(.+?)\s*$", re.I | re.M)
+DELIVERED = re.compile(r"\b(?:deployed|is live|went live|delivered|installed|ran|run succeeded|produced|exists|posted|"
+                       r"played|rendered|returned|merged|committed|made|built|playing|attached)\b", re.I)
+_ID = re.compile(r"\b(RW-[0-9a-f]{8})\b")
+_MARK = re.compile(r"[A-Za-z]*\d[\w.–-]*|[A-Za-z][A-Za-z-]{6,}")
 
 
 def board(state):
-    return state.setdefault("room_work", {"active": None, "history": []})
+    b = state.setdefault("room_work", {"open": [], "history": []})
+    if "open" not in b:            # the one-work board before 8 October
+        b["open"] = [b["active"]] if b.get("active") else []
+    b.pop("active", None)
+    b.setdefault("history", [])
+    return b
+
+
+def open_items(state):
+    return list(board(state)["open"])
 
 
 def active(state):
-    return board(state).get("active")
+    """The work he touched last, or None (the one he is most likely writing about)."""
+    items = open_items(state)
+    return max(items, key=lambda w: float(w.get("touched", w.get("opened", 0)) or 0)) if items else None
+
+
+def loose(state):
+    """Asks made while no work was open, and what came back for them (7 October: Grok Bot's infrasound answer came
+    back to an ask made between works, and nothing tracked it)."""
+    return board(state).setdefault("loose", {"id": "loose", "goal": "", "asks": [], "returns": [], "steps": []})
+
+
+def _tracked(state):
+    return open_items(state) + [loose(state)]
 
 
 def _iso(now):
@@ -95,17 +158,187 @@ def _like(a, b):
     return len(wa & wb) / min(len(wa), len(wb))
 
 
-def _close(state, state_word, said, now):
-    w = active(state)
+def _marks(text):
+    """The distinctive things a text names: anything with a digit in it, and long words."""
+    return {m.lower().strip(".–-") for m in _MARK.findall(str(text or "")) if m.lower() not in _SCAFFOLD_MARKS}
+
+
+_SCAFFOLD_MARKS = frozenset("because without nothing through another already working whether something anything "
+                            "everything between results result answered channel message thought looking"
+                            .split())
+
+
+def engages(text, ret):
+    """True when his message takes up what came back: it names at least two of the distinctive things the answer
+    named (a number, an ID, a name), or the answer named none. "Thanks" or "locked on the install block" does not."""
+    theirs = _marks(ret)
+    if not theirs:
+        return True
+    shared = theirs & _marks(text)
+    weight = sum(2 if any(c.isdigit() for c in s) else 1 for s in shared)
+    return weight >= min(2, len(theirs))
+
+
+def proved(text):
+    """The checkable things in a claim of done: links, files, IDs, accessions, measured numbers."""
+    return PROOF.findall(str(text or ""))
+
+
+def _pick(state, text, items=None):
+    """The open work a line is about: the one it names by id, else the one whose goal it is closest to, else the one
+    touched last."""
+    items = open_items(state) if items is None else items
+    if not items:
+        return None
+    m = _ID.search(str(text or ""))
+    if m:
+        named = [w for w in items if w.get("id") == m.group(1)]
+        if named:
+            return named[0]
+    scored = sorted(((_like(text, w["goal"]), w) for w in items), key=lambda x: x[0], reverse=True)
+    if scored and scored[0][0] >= 0.25 and (len(scored) == 1 or scored[0][0] > scored[1][0]):
+        return scored[0][1]
+    return active(state) if items == open_items(state) else items[-1]
+
+
+def _close(state, w, state_word, said, now):
     if not w:
         return None
     w.update(state=state_word, closed_at=float(now), closed_said=str(said)[:300])
     b = board(state)
-    b["history"] = (b.get("history", []) + [w])[-8:]
-    b["active"] = None
+    b["open"] = [x for x in b["open"] if x is not w and x.get("id") != w.get("id")]
+    b["history"] = (b.get("history", []) + [w])[-12:]
+    g = goal(state)
+    if g and w.get("goal_id") == g.get("id"):
+        g.setdefault("routes", []).append({"work": w["id"], "what": w["goal"][:200], "state": state_word,
+                                           "said": str(said)[:240], "by": w.get("by", ""), "at": float(now)})
+        g["routes"] = g["routes"][-20:]
+        g["touched"] = float(now)
     if state_word in ("done", "dropped"):
         settle(state, w["goal"], "%s: %s" % (state_word, said), "vintos", now)
     return w
+
+
+# --- the room's campaign: one goal, held across passes and models until it is reached or shown unreachable ---------
+def goal(state):
+    return board(state).get("goal")
+
+
+def _serves(text, g):
+    return bool(g) and (g["id"] in str(text) or _like(text, g["goal"]) >= 0.3
+                        or bool(re.search(r"\b(?:for|toward|towards) (?:the|my|our) (?:goal|campaign)\b", str(text), re.I)))
+
+
+def goal_routes(g):
+    return [r for r in (g or {}).get("routes", []) if r.get("state") in ("done", "dropped", "expired")]
+
+
+def gloria_drops_goal(state, now, said="Gloria closed it"):
+    g = goal(state)
+    if not g:
+        return None
+    g.update(state="closed by Gloria", closed_at=float(now), closed_said=said[:300])
+    b = board(state)
+    b["goal_history"] = (b.get("goal_history", []) + [g])[-8:]
+    b["goal"] = None
+    return g
+
+
+def _goal_lines(state, text, now, by, log):
+    """GOAL / GOAL REACHED / GOAL UNREACHABLE: shown as what happened."""
+    b = board(state)
+    g = goal(state)
+    m = REACHED.search(text)
+    if m:
+        said = m.group(1)
+        if not g:
+            shown = "(no room campaign to close: %s)" % said
+        elif DEFERRED.search(said) or not proved(said) or NOT_DONE.search(said):
+            shown = ("⏳ Not reached yet: %s — a room campaign is reached when it exists and can be checked: say "
+                     "where (a file, a link, an ID with its status, the result itself)." % said)
+            log.append("goal not closed: no proof")
+        else:
+            g.update(state="reached", closed_at=float(now), closed_said=said[:300], closed_by=by)
+            b["goal_history"] = (b.get("goal_history", []) + [g])[-8:]
+            b["goal"] = None
+            shown = "\U0001F3C1 Room campaign reached: %s — %s" % (g["goal"][:160], said)
+            log.append("goal reached %s" % g["id"])
+            g = None
+        text = REACHED.sub(lambda _m: shown, text, count=1)
+    m = UNREACHABLE.search(text)
+    if m:
+        said = m.group(1)
+        tried = goal_routes(g)
+        fresh = [r for w in open_items(state) if g and w.get("goal_id") == g["id"]
+                 for r in w.get("returns", []) if not r.get("used") and not engages(said, r.get("text", ""))]
+        if not g:
+            shown = "(no room campaign to close: %s)" % said
+        elif fresh:
+            r = fresh[-1]
+            shown = ("⛔ Not given up: %s answered %s and it has not been read: “%s”. Read it first."
+                     % (SOURCES.get(r["from"], r["from"]), _ago(float(r["ts"]), now), r["text"][:400]))
+            log.append("goal not closed: an unread answer")
+        elif len(tried) < MIN_ROUTES or len(said) < 20:
+            shown = ("⛔ Not given up: %s. A hiccup is not unreachable: %d of %d routes tried (%s). Name the next "
+                     "route with WORK:, and what it would take." % (
+                         g["goal"][:160], len(tried), MIN_ROUTES,
+                         "; ".join("%s: %s" % (r["state"], r["what"][:60]) for r in tried[-3:]) or "none yet"))
+            log.append("goal not closed: %d routes" % len(tried))
+        else:
+            g.update(state="unreachable", closed_at=float(now), closed_said=said[:300], closed_by=by)
+            b["goal_history"] = (b.get("goal_history", []) + [g])[-8:]
+            b["goal"] = None
+            settle(state, g["goal"], "unreachable: " + said, "vintos", now)
+            shown = "\U0001F6A7 Room campaign unreachable: %s — %s (after %d routes)" % (g["goal"][:160], said, len(tried))
+            log.append("goal unreachable %s" % g["id"])
+            g = None
+        text = UNREACHABLE.sub(lambda _m: shown, text, count=1)
+    m = GOAL.search(text)
+    if m:
+        what, _, crit = m.group(1).partition("|")
+        crit = re.sub(r"^\s*done when\s*:?\s*", "", crit, flags=re.I).strip()
+        what = what.strip()
+        if g and (norm(what) == norm(g["goal"]) or _like(what, g["goal"]) >= 0.8):
+            shown = "\U0001F3C1 Room campaign: %s" % g["goal"]
+        elif g:
+            shown = ("\U0001F3C1 (still pursuing: %s — it stays until GOAL REACHED: with proof, or GOAL UNREACHABLE: "
+                     "after %d routes)" % (g["goal"][:160], MIN_ROUTES))
+            log.append("goal not opened: one is live")
+        elif len(what) < 8 or not crit:
+            shown = "\U0001F3C1 (not opened: a room campaign needs what, and | done when: how anyone could tell)"
+            log.append("goal not opened: no goal or test")
+        else:
+            g = {"id": "RC-" + hashlib.sha256(("%s %s" % (now, what)).encode()).hexdigest()[:8], "goal": what[:300],
+                 "done_when": crit[:300], "opened": float(now), "touched": float(now), "by": by, "routes": [], "lenses": [by]}
+            b["goal"] = g
+            shown = "\U0001F3C1 Room campaign: %s (done when: %s)" % (what, crit)
+            log.append("goal opened %s: %s" % (g["id"], what[:80]))
+        text = GOAL.sub(lambda _m: shown, text, count=1)
+    if g and by and by not in g.setdefault("lenses", []):
+        g["lenses"] = (g["lenses"] + [by])[-12:]
+    return text
+
+
+def lost_route(state, text, now):
+    """Why this draft walks away from the room campaign, or "": it drops the last route toward it without naming the
+    next, or opens other work while nothing in hand serves it (Gloria, 2026-10-08: "Grok and Gemma love stopping or
+    returning to easy subjects as soon as there is a hiccup")."""
+    g = goal(state)
+    if not g or UNREACHABLE.search(text) or REACHED.search(text):
+        return ""
+    serving = [w for w in open_items(state) if w.get("goal_id") == g["id"]]
+    opens = [m.group(1) for m in WORK.finditer(text)]
+    next_route = any(_serves(o, g) for o in opens)
+    dropped = DROPPED.search(text)
+    if dropped and serving and len(serving) == 1 and _pick(state, (dropped.group(1) or "") + " " + dropped.group(2), serving) is serving[0] and not next_route:
+        return ("you are dropping %s, the only route in hand toward your room campaign (%s), without naming the next. "
+                "In the same message open the next route (WORK: ... for the goal | done when: ...), or say GOAL "
+                "UNREACHABLE: what is missing, once %d routes have been tried (%d so far)."
+                % (serving[0]["id"], g["goal"][:160], MIN_ROUTES, len(goal_routes(g))))
+    if not serving and opens and not next_route:
+        return ("your room campaign (%s) has nothing in hand, and this opens other work. Open the next route toward it "
+                "first (WORK: ... for the goal | done when: ...); other work can sit beside it." % g["goal"][:160])
+    return ""
 
 
 # --- what is settled: kept in the channel's state, so the next pass and the next model read it (2026-10-05) ---------
@@ -196,15 +429,6 @@ def reopens(state, text, now):
             % (when, e["said"][:200], until))
 
 
-def expire(state, now):
-    """Work untouched for STALE_DAYS is closed as expired. The closed item, or None."""
-    w = active(state)
-    last = w.get("touched", w.get("opened")) if w else None
-    if w and last is not None and float(now) - float(last) > STALE_DAYS * 86400:
-        return _close(state, "expired", "untouched for %d days" % STALE_DAYS, now)
-    return None
-
-
 def owner(row):
     """Which of his agents a channel row is from, or None."""
     if row.get("who") == "dot":
@@ -229,34 +453,103 @@ def moves(text):
     return bool(ACTS.search(str(text or "")) or REQUEST.search(str(text or "")))
 
 
+def expire(state, now):
+    """Work untouched for STALE_DAYS is closed as expired. The last item closed, or None. A room campaign does not
+    expire: it stays until it is reached or shown unreachable, or Gloria closes it."""
+    gone = None
+    for w in open_items(state):
+        last = w.get("touched", w.get("opened"))
+        if last is not None and float(now) - float(last) > STALE_DAYS * 86400:
+            gone = _close(state, w, "expired", "untouched for %d days" % STALE_DAYS, now)
+    lo = loose(state)
+    lo["asks"] = [a for a in lo["asks"] if float(now) - float(a.get("at") or now) <= THREAD_REPLY_S]
+    lo["returns"] = [r for r in lo["returns"] if not r.get("used") or float(now) - float(r.get("at") or now) <= THREAD_REPLY_S]
+    return gone
+
+
 def receive(state, row, now):
-    """An agent's message, kept on his work when it answers an ask still out to that agent: in the ask's thread
-    within a day, or in the channel within three hours of it. True when kept."""
-    w = active(state)
+    """An agent's message, kept on the work (or the loose asks) it answers: an ask still out to that agent, in the
+    ask's thread within a day, or in the channel within three hours of it. True when kept."""
     who = owner(row)
-    if not w or not who:
+    if not who:
         return False
     try:
         at = float(row.get("ts"))
     except (TypeError, ValueError):
         return False
     thread = row.get("thread")
-    for ask in reversed(w.get("asks", [])):
-        if ask.get("to") != who or ask.get("answered"):
+    best = None
+    for w in _tracked(state):
+        for ask in w.get("asks", []):
+            if ask.get("to") != who:
+                continue
+            if ask.get("answered") and not _interim(w, ask):
+                continue
+            asked = float(ask.get("ts") or 0)
+            if not asked or at <= asked:
+                continue
+            in_thread = bool(thread) and str(thread) in (str(ask.get("ts")), str(ask.get("thread") or ""))
+            in_channel = not thread and not ask.get("thread")
+            if (in_thread and at - asked <= THREAD_REPLY_S) or (in_channel and at - asked <= CHANNEL_REPLY_S):
+                if best is None or asked > best[1]:          # the latest ask it can answer
+                    best = (w, asked, ask)
+    if not best:
+        return False
+    w, _, ask = best
+    if ask.get("answered"):
+        ask.setdefault("interim", []).append(ask["answered"])
+        for r in w.get("returns", []):     # the interim answer is overtaken by what came after it
+            if r.get("ts") == ask["answered"] and not r.get("used"):
+                r["used"] = "overtaken by %s" % row.get("ts")
+    ask["answered"] = str(row.get("ts"))
+    w.setdefault("returns", []).append({"from": who, "ts": str(row.get("ts")), "text": str(row.get("text", ""))[:3000],
+                                        "for": ask.get("what", "")[:200], "used": "", "pressed": 0, "at": float(now)})
+    w["returns"] = w["returns"][-12:]
+    w["touched"] = float(now)
+    return True
+
+
+# An answer that says it is not finished yet. What follows it from the same agent is the answer still to come
+# (7 October: dot's "Blocked: Forge installation requires local sudo" at 15:23 answered the Merizo ask, so its
+# "Done: Merizo installed and the single CPU run succeeded" at 15:34 matched nothing and never came back to him).
+INTERIM = re.compile(r"^\s*(?:\W*\s*)?(?:working|blocked|queued|pending|started|waiting|in progress|on it|checking)\b"
+                     r"|\b(?:still (?:running|working|installing)|not (?:finished|done) yet|will report back)\b", re.I)
+
+
+def _interim(w, ask):
+    got = next((r for r in w.get("returns", []) if r.get("ts") == ask.get("answered")), None)
+    return bool(got) and bool(INTERIM.search(str(got.get("text", ""))[:400]))
+
+
+def came_back(state, source, text, now, about=""):
+    """A result that came back from something he ran himself (his Lab's instruments): kept on the work it is about,
+    unused, so his next message takes it up."""
+    w = _pick(state, about) or loose(state)
+    w.setdefault("returns", []).append({"from": source, "ts": "%.6f" % float(now), "text": str(text)[:3000],
+                                        "for": "his own run", "used": "", "pressed": 0, "at": float(now), "this_pass": True})
+    w["returns"] = w["returns"][-12:]
+    w["touched"] = float(now)
+    return w
+
+
+def unused(state):
+    """[(work, return)] that came back and he has not taken up yet, oldest first."""
+    return [(w, r) for w in _tracked(state) for r in w.get("returns", []) if not r.get("used")]
+
+
+def ignoring(state, draft):
+    """Why this draft passes over an answer that came back, or "": the answer is in front of him and this message
+    does not take it up. Pressed PRESS times at most (a draft sent back, or a message posted past it), then only
+    shown, so one answer he has no use for cannot hold the room."""
+    for w, r in unused(state):
+        if int(r.get("pressed", 0)) >= PRESS or engages(draft, r.get("text", "")):
             continue
-        asked = float(ask.get("ts") or 0)
-        if not asked or at <= asked:
-            continue
-        in_thread = bool(thread) and str(thread) in (str(ask.get("ts")), str(ask.get("thread") or ""))
-        in_channel = not thread and not ask.get("thread")
-        if (in_thread and at - asked <= THREAD_REPLY_S) or (in_channel and at - asked <= CHANNEL_REPLY_S):
-            ask["answered"] = str(row.get("ts"))
-            w.setdefault("returns", []).append({"from": who, "ts": str(row.get("ts")), "text": str(row.get("text", ""))[:3000],
-                                                "for": ask.get("what", "")[:200], "used": ""})
-            w["returns"] = w["returns"][-12:]
-            w["touched"] = float(now)
-            return True
-    return False
+        r["pressed"] = int(r.get("pressed", 0)) + 1
+        return ("%s answered %s (%s) and you have not taken it up: “%s”. Use it first: say what it changes "
+                "(name what it found), then the next step. If it is no use, say why, naming it."
+                % (SOURCES.get(r["from"], r["from"]), "your work %s" % w["id"] if w["id"] != "loose" else "your ask",
+                   (w.get("goal") or r.get("for", ""))[:120], r["text"][:900]))
+    return ""
 
 
 _STATUS = re.compile(r"\b(?:any (?:update|news|luck)|how(?:'?s| is) it going|still (?:working|looking|on it)|"
@@ -264,81 +557,138 @@ _STATUS = re.compile(r"\b(?:any (?:update|news|luck)|how(?:'?s| is) it going|sti
 
 
 def asking_again(state, draft, now):
-    """Why this draft asks an agent for what it already asked for while working on this, or "". The answer it
-    already gave is named, so he is told to use it; an ask still out is named, so he does something else meanwhile."""
-    w = active(state)
-    if not w or not (REQUEST.search(str(draft or "")) or _STATUS.search(str(draft or ""))):
+    """Why this draft asks an agent for what it already asked for, or "". The answer it already gave is named, so he
+    is told to use it; an ask still out is named, so he does something else meanwhile."""
+    if not (REQUEST.search(str(draft or "")) or _STATUS.search(str(draft or ""))):
         return ""
     status = bool(_STATUS.search(str(draft or "")))
     for who in addressed(draft):
-        for ask in reversed(w.get("asks", [])):
-            if ask.get("to") != who:
-                continue
-            if not (_like(draft, ask.get("what", "")) >= SAME_ASK or (status and not ask.get("answered"))):
-                continue
-            name = AGENTS[who]
-            if ask.get("answered"):
-                got = next((r for r in w.get("returns", []) if r.get("ts") == ask["answered"]), {})
-                return ("%s already answered that (%s): “%s”. Use it: say what it changes and take the next "
-                        "step." % (name, _ago(float(ask["answered"]), now), str(got.get("text", ""))[:600]))
-            return ("you asked %s that %s and it has not answered yet. Do not ask again or ask for a status: take "
-                    "another step of your own meanwhile, or hand a different piece to someone else."
-                    % (name, _ago(float(ask.get("ts") or now), now)))
+        for w in _tracked(state):
+            for ask in reversed(w.get("asks", [])):
+                if ask.get("to") != who:
+                    continue
+                if not (_like(draft, ask.get("what", "")) >= SAME_ASK or (status and not ask.get("answered"))):
+                    continue
+                name = AGENTS[who]
+                if ask.get("answered"):
+                    got = next((r for r in w.get("returns", []) if r.get("ts") == ask["answered"]), {})
+                    return ("%s already answered that (%s): “%s”. Use it: say what it changes and take the next "
+                            "step." % (name, _ago(float(ask["answered"]), now), str(got.get("text", ""))[:600]))
+                return ("you asked %s that %s and it has not answered yet. Do not ask again or ask for a status: take "
+                        "another step of your own meanwhile, or hand a different piece to someone else."
+                        % (name, _ago(float(ask.get("ts") or now), now)))
     return ""
 
 
+def _closing(state, rx, word, icon, text, now, log):
+    """One WORK DONE / WORK DROPPED line: closed if it holds, or shown as why not. (text, closed)."""
+    m = rx.search(text)
+    if not m:
+        return text, None
+    said = m.group(2)
+    w = _pick(state, (m.group(1) or "") + " " + said)
+    closed = None
+    if not w:
+        shown = "(no work in hand to close: %s)" % said
+    elif word == "done" and DEFERRED.search(said):
+        # arranged is not delivered: the work stays in hand until it exists (2026-10-05, the scheduled song)
+        w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "arranged, not delivered: " + said[:240]}])[-12:]
+        w["touched"] = float(now)
+        shown = ("⏳ Not done yet: %s — arranged is not delivered. It stays in hand until it exists and has "
+                 "reached her; then WORK DONE: with where it is." % said)
+        log.append("work not closed: %s is arranged, not done" % w["id"])
+    elif word == "done" and NOT_DONE.search(said):
+        # said as done, and it did not happen: it is closed for what it is (7 October, the TV left alone)
+        closed = _close(state, w, "dropped", "not done: " + said, now)
+        shown = "\U0001F9F0 Dropped (it did not happen): %s — %s" % (closed["goal"][:160], said)
+        log.append("work dropped %s: said done, did not happen" % closed["id"])
+    elif word == "done" and HANDOFF.search(said) and not (DELIVERED.search(said) and proved(said)):
+        w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "handed on: " + said[:240]}])[-12:]
+        w["touched"] = float(now)
+        shown = ("⏳ Handed on, not done: %s — approved, asked or handed over is not made. It stays in hand "
+                 "until the thing exists; then WORK DONE: with where it is." % said)
+        log.append("work not closed: %s was handed on" % w["id"])
+    elif word == "done" and not proved(said):
+        w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "said done, no proof: " + said[:240]}])[-12:]
+        w["touched"] = float(now)
+        shown = ("⏳ Not closed: %s — done needs something anyone could check: the file, the link, the ID with "
+                 "its status, the result itself. Say it on WORK DONE:." % said)
+        log.append("work not closed: %s had no proof" % w["id"])
+    elif word == "dropped" and any(not r.get("used") and not engages(said, r.get("text", "")) for r in w.get("returns", [])):
+        # a late or stale reason must not overwrite what came back (7 October: Merizo succeeded at 15:34:16 and was
+        # dropped as blocked at 15:35:06)
+        r = [r for r in w.get("returns", []) if not r.get("used")][-1]
+        w["touched"] = float(now)
+        shown = ("⛔ Not dropped: %s answered %s and it has not been read: “%s”. Read it first: say what it "
+                 "changes, then drop it if it still does not help." % (
+                     SOURCES.get(r["from"], r["from"]), _ago(float(r["ts"]), now), r["text"][:500]))
+        log.append("work not dropped: %s has an unread answer" % w["id"])
+    else:
+        closed = _close(state, w, word, said, now)
+        shown = "%s: %s — %s" % (icon, closed["goal"][:160], _strip_goal(said, closed["goal"]))
+        log.append("work %s %s" % (word, closed["id"]))
+    return rx.sub(lambda _m: shown, text, count=1), closed
+
+
+def _strip_goal(said, goal_text):
+    """The closing words without the goal said again: "Work done: X — X" read twice on 7 October."""
+    s = str(said).strip()
+    g = str(goal_text).strip()
+    for lead in (g, g.rstrip(".")):
+        if lead and s.lower().startswith(lead.lower()):
+            rest = s[len(lead):].lstrip(" —–-:;,.")
+            return rest or s
+    return s
+
+
 def apply(state, text, now, by=""):
-    """His WORK / NEXT / WORK DONE / WORK DROPPED lines: done, and shown as what happened. (text, log lines, closed)."""
-    log, closed = [], None
-    w = active(state)
+    """His GOAL / WORK / NEXT / WORK DONE / WORK DROPPED lines: done, and shown as what happened.
+    (text, log lines, closed: the last work closed, or None)."""
+    log = []
+    text = _goal_lines(state, text, now, by, log)
     # A message that closes its work and names the work again (or opens the next) is read closing first: it showed
     # "still working on ... finish it with WORK DONE:" beside "✅ Work done" for the same work (2026-10-05)
-    for rx, word, icon in ((DONE, "done", "✅ Work done"), (DROPPED, "dropped", "\U0001F9F0 Dropped")):
-        m = rx.search(text)
-        if not m:
-            continue
-        if w and word == "done" and DEFERRED.search(m.group(1)):
-            # arranged is not delivered: the work stays in hand until it exists (2026-10-05, the scheduled song)
-            w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": "arranged, not delivered: " + m.group(1)[:240]}])[-12:]
-            w["touched"] = float(now)
-            shown = ("\u23F3 Not done yet: %s — arranged is not delivered. It stays in hand until it exists and has "
-                     "reached her; then WORK DONE: with where it is." % m.group(1))
-            log.append("work not closed: %s is arranged, not done" % w["id"])
-        elif w:
-            closed = _close(state, word, m.group(1), now)
-            shown = "%s: %s — %s" % (icon, closed["goal"][:160], m.group(1))
-            log.append("work %s %s" % (word, closed["id"]))
-            w = None
-        else:
-            shown = "(no work in hand to close: %s)" % m.group(1)
-        text = rx.sub(lambda _m: shown, text, count=1)
+    text, done = _closing(state, DONE, "done", "✅ Work done", text, now, log)
+    text, dropped = _closing(state, DROPPED, "dropped", "\U0001F9F0 Dropped", text, now, log)
+    closed = dropped or done
+    shut = [c for c in (done, dropped) if c]
     m = WORK.search(text)
-    if m and closed and (norm(m.group(1).partition("|")[0]) == norm(closed["goal"])
-                         or _like(m.group(1).partition("|")[0], closed["goal"]) >= 0.8):
+    if m and any(norm(m.group(1).partition("|")[0]) == norm(c["goal"]) or _like(m.group(1).partition("|")[0], c["goal"]) >= 0.8
+                 for c in shut):
         text = WORK.sub("", text, count=1).strip()       # the work just closed, named again: not reopened
         m = None
     if m:
-        goal, _, crit = m.group(1).partition("|")
+        goal_text, _, crit = m.group(1).partition("|")
         crit = re.sub(r"^\s*done when\s*:?\s*", "", crit, flags=re.I).strip()
-        goal = goal.strip()
-        if w and norm(goal) != norm(w["goal"]):
-            shown = "\U0001F9F0 (still working on: %s — finish it with WORK DONE: or WORK DROPPED: first)" % w["goal"][:160]
-            log.append("work not opened: one is in hand")
-        elif w:
-            shown = "\U0001F9F0 Working on: %s" % w["goal"]
-        elif len(goal) < 8:
+        goal_text = goal_text.strip()
+        items = open_items(state)
+        same = next((w for w in items if norm(goal_text) == norm(w["goal"]) or _like(goal_text, w["goal"]) >= 0.8), None)
+        if same:
+            same["touched"] = float(now)
+            shown = "\U0001F9F0 Working on: %s" % same["goal"]
+        elif len(items) >= MAX_OPEN:
+            shown = ("\U0001F9F0 (already %d in hand: %s — close one with WORK DONE: or WORK DROPPED: first)"
+                     % (len(items), "; ".join("%s %s" % (w["id"], w["goal"][:60]) for w in items)))
+            log.append("work not opened: %d in hand" % len(items))
+        elif len(goal_text) < 8:
             shown = "\U0001F9F0 (not opened: say what the work is)"
             log.append("work not opened: no goal")
         else:
-            w = {"id": "RW-" + hashlib.sha256(("%s %s" % (now, goal)).encode()).hexdigest()[:8], "goal": goal[:300],
+            g = goal(state)
+            w = {"id": "RW-" + hashlib.sha256(("%s %s" % (now, goal_text)).encode()).hexdigest()[:8], "goal": goal_text[:300],
                  "done_when": crit[:300], "opened": float(now), "touched": float(now), "by": by,
                  "asks": [], "returns": [], "steps": [], "next": ""}
-            board(state)["active"] = w
-            shown = "\U0001F9F0 Working on: %s%s" % (goal, (" (done when: %s)" % crit) if crit else "")
-            log.append("work opened %s: %s" % (w["id"], goal[:80]))
+            if g and _serves(m.group(0) + " " + goal_text, g):
+                w["goal_id"] = g["id"]
+                g["touched"] = float(now)
+            board(state)["open"].append(w)
+            shown = "\U0001F9F0 Working on%s: %s%s" % (
+                " (toward the room campaign)" if w.get("goal_id") else "", goal_text, (" (done when: %s)" % crit) if crit else "")
+            log.append("work opened %s: %s" % (w["id"], goal_text[:80]))
         text = WORK.sub(lambda _m: shown, text, count=1)
     m = NEXT.search(text)
     if m:
+        w = _pick(state, m.group(1))
         if w:
             w["next"] = m.group(1)[:300]
             w["touched"] = float(now)
@@ -353,24 +703,36 @@ def apply(state, text, now, by=""):
     return text, log, closed
 
 
-def posted(state, text, ts, thread, now, to=()):
-    """After his message is posted: the returns he was shown are marked used by it, its steps are kept, and a
-    request to an agent becomes an ask that agent's answer is matched to."""
-    w = active(state)
-    if not w:
-        return
-    for r in w.get("returns", []):
-        if not r.get("used"):
+def posted(state, text, ts, thread, now, to=(), by=""):
+    """After his message is posted: the answers it takes up are marked used (the others are pressed on him once
+    more), its steps are kept on the work it is about, and a request to an agent becomes an ask that agent's answer is
+    matched to (on the loose list when no work is open)."""
+    for w, r in unused(state):
+        if r.pop("this_pass", None):       # his own run, shown in this very message: taken up on the next one
+            continue
+        if engages(text, r.get("text", "")):
             r["used"] = str(ts)
+        else:
+            r["pressed"] = int(r.get("pressed", 0)) + 1
+    w = _pick(state, text) or loose(state)
     acts = [l.strip() for l in str(text).splitlines() if ACTS.search(l)]
     if acts:
-        w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": " / ".join(acts)[:300]}])[-12:]
+        w["steps"] = (w.get("steps", []) + [{"at": float(now), "what": " / ".join(acts)[:300], "by": by}])[-12:]
     if REQUEST.search(str(text)):
-        for who in (to or addressed(text)):
+        whom = set(to or addressed(text))
+        if w is loose(state):
+            # with no work open, only an ask that @s an agent is kept: "Dot, can you ..." in passing is talk
+            whom &= {re.sub(r"\s", "", (m.group(1) or "").lower()) for m in _AT.finditer(str(text)) if m.group(1)}
+        for who in whom:
             w.setdefault("asks", []).append({"to": who, "what": str(text)[:600], "ts": str(ts), "thread": thread or "",
                                              "at": float(now), "answered": ""})
         w["asks"] = w["asks"][-20:]
     w["touched"] = float(now)
+    g = goal(state)
+    if g and w.get("goal_id") == g["id"]:
+        g["touched"] = float(now)
+        if by and by not in g.setdefault("lenses", []):
+            g["lenses"] = (g["lenses"] + [by])[-12:]
 
 
 def settled_block(state, now):
@@ -390,29 +752,80 @@ def settled_block(state, now):
 
 
 def block(state, now):
-    """WORK IN HAND, and what is settled, for what he reads before he writes."""
+    """The room campaign, the work in hand, what came back, and what is settled, for what he reads before he writes."""
     sb = settled_block(state, now)
-    return _block(state, now) + (("\n\n" + sb) if sb else "")
+    return "\n\n".join(x for x in (goal_block(state, now), _block(state, now), sb) if x)
+
+
+def goal_block(state, now):
+    g = goal(state)
+    if not g:
+        last = (board(state).get("goal_history") or [{}])[-1]
+        return ("== THE ROOM'S CAMPAIGN ==\nNone. When there is something worth more than one piece of work, open it "
+                "with a line GOAL: what | done when: how anyone could tell. It is kept across every pass and every model "
+                "until GOAL REACHED: with proof, or GOAL UNREACHABLE: after %d routes." % MIN_ROUTES
+                + (("\nLast: %s (%s: %s)" % (last.get("goal", "")[:160], last.get("state"), last.get("closed_said", "")[:160]))
+                   if last.get("goal") else ""))
+    serving = [w for w in open_items(state) if w.get("goal_id") == g["id"]]
+    tried = goal_routes(g)
+    out = ["== THE ROOM'S CAMPAIGN (yours, across every model: it stays until it is reached or shown unreachable) ==",
+           "%s: %s" % (g["id"], g["goal"]) + (" | done when: %s" % g["done_when"] if g.get("done_when") else ""),
+           "Opened %s by %s; carried since by %s." % (_ago(g.get("opened", now), now), g.get("by") or "you",
+                                                      ", ".join(g.get("lenses") or []) or "you")]
+    for r in tried[-5:]:
+        out.append("Route tried (%s, %s): %s — %s" % (r["state"], _ago(r["at"], now), r["what"][:120], r["said"][:160]))
+    if serving:
+        out.append("In hand toward it: " + "; ".join("%s %s" % (w["id"], w["goal"][:100]) for w in serving))
+    else:
+        out.append("NOTHING IN HAND TOWARD IT. Open the next route now: WORK: ... for the goal | done when: ...")
+    out.append("A hiccup is a route that failed, not the goal: a refusal, a missing install or a slow agent means take "
+               "another route, or ask Gloria for what only she can give. Easier subjects can sit beside it, never "
+               "instead of it. GOAL UNREACHABLE: is for after %d routes (%d tried), naming what is missing."
+               % (MIN_ROUTES, len(tried)))
+    return "\n".join(out)
 
 
 def _block(state, now):
-    w = active(state)
-    if not w:
+    items = open_items(state)
+    out = []
+    if not items:
         last = (board(state).get("history") or [{}])[-1]
-        return ("== YOUR WORK IN HAND ==\nNone. When you and your agents settle on something to get done, open it "
-                "with a line WORK: what | done when: how anyone could tell."
-                + (("\nLast closed: %s (%s: %s)" % (last.get("goal", "")[:160], last.get("state"), last.get("closed_said", "")[:160]))
-                   if last.get("goal") else ""))
-    out = ["== YOUR WORK IN HAND (carried from pass to pass: continue it, do not start over) ==",
-           "%s: %s" % (w["id"], w["goal"]) + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""),
-           "Opened %s." % _ago(w.get("opened", now), now)]
-    for s in w.get("steps", [])[-4:]:
-        out.append("You did, %s: %s" % (_ago(s["at"], now), s["what"][:200]))
+        out.append("== YOUR WORK IN HAND ==\nNone. When you and your agents settle on something to get done, open it "
+                   "with a line WORK: what | done when: how anyone could tell."
+                   + (("\nLast closed: %s (%s: %s)" % (last.get("goal", "")[:160], last.get("state"), last.get("closed_said", "")[:160]))
+                      if last.get("goal") else ""))
+    else:
+        out.append("== YOUR WORK IN HAND (%d of %d; carried from pass to pass: continue it, do not start over) ==" % (len(items), MAX_OPEN))
+        out.append("While one waits on an agent, take a step on another. Close each with WORK DONE RW-id: the proof "
+                   "(a file, a link, an ID with its status, the result), or WORK DROPPED RW-id: why. Approved, asked "
+                   "or handed on is not done.")
+    for w in items:
+        out.append("")
+        out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
+                   + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
+        out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
+        for s in w.get("steps", [])[-4:]:
+            out.append("You did, %s: %s" % (_ago(s["at"], now), s["what"][:200]))
+        out += _returns_and_asks(w, now)
+        if w.get("next"):
+            out.append("The next step you set: " + w["next"])
+    lo = loose(state)
+    extra = _returns_and_asks(lo, now)
+    if extra:
+        out.append("")
+        out.append("ASKED WHILE NO WORK WAS OPEN:")
+        out += extra
+    return "\n".join(out)
+
+
+def _returns_and_asks(w, now):
+    out = []
     fresh = [r for r in w.get("returns", []) if not r.get("used")]
     if fresh:
-        out.append("CAME BACK, NOT USED YET (use it before anything else: say what it changes, then the next step):")
+        out.append("CAME BACK, NOT USED YET (use it before anything else: say what it changes, naming what it found, "
+                   "then the next step):")
         for r in fresh[-3:]:
-            out.append("- %s answered: “%s”" % (AGENTS[r["from"]], r["text"][:1500]))
+            out.append("- %s answered %s: “%s”" % (SOURCES.get(r["from"], r["from"]), _ago(float(r["ts"]), now), r["text"][:1500]))
     for ask in w.get("asks", [])[-6:]:
         if ask.get("answered"):
             continue
@@ -420,7 +833,5 @@ def _block(state, now):
         out.append("Out with %s since %s: “%s”%s" % (
             AGENTS.get(ask["to"], ask["to"]), _ago(ask.get("at", now), now), ask["what"][:200],
             (" — no answer yet. Do not ask again: take a different step, hand it to someone else, or WORK "
-             "DROPPED: why.") if waited > ASK_PATIENCE_S else " — while it works, take another step of your own."))
-    if w.get("next"):
-        out.append("The next step you set: " + w["next"])
-    return "\n".join(out)
+             "DROPPED: why.") if waited > ASK_PATIENCE_S else " — while it works, take a step on something else."))
+    return out

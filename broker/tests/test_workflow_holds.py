@@ -60,7 +60,7 @@ text, log, closed = RW.apply(st, "WORK: the Felt Edge song, finished\nWORK DONE:
 check("a message that closes its work and names it again clears it", RW.active(st) is None and closed
       and "✅ Work done" in text and "still working on" not in text and "finish it with WORK DONE" not in text, (text, RW.active(st)))
 text, log, closed = RW.apply(st, "WORK: map the mmWave intake | done when: a reading arrives on Aegis", T0 + 120)
-text, log, closed = RW.apply(st, "WORK DONE: spec written\nWORK: wire the mmWave reader to the intake | done when: a reading lands", T0 + 180)
+text, log, closed = RW.apply(st, "WORK DONE: spec written to docs/mmwave-intake-spec.md\nWORK: wire the mmWave reader to the intake | done when: a reading lands", T0 + 180)
 check("... and the next work it opens is opened after the close", closed and RW.active(st)
       and RW.active(st)["goal"].startswith("wire the mmWave reader"), RW.active(st))
 

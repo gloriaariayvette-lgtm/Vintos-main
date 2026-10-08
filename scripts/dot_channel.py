@@ -387,20 +387,35 @@ RULES_KEPT = (
 # Work in hand (room_work.py; Gloria, 2026-10-05: "I want VINTOS in Slack to actually do real work", and not by
 # working alone: "Slack loses much of its reason for existing").
 RULES_WORKROOM = (
-    "YOUR WORK IN HAND (below) is the one thing you are getting done with your agents. It is carried from pass to "
-    "pass, so you continue it instead of starting over. Open it with a line of its own: WORK: what | done when: how "
-    "anyone could tell. Then each message takes it a step, with them: do a step yourself (an action line, a tool), "
-    "hand a piece to whoever can do it (dot: computers, code, connectors, files; @GrokBot: finding things, the web, "
-    "X; @Muse: local finds and parts) and say what should come back and what you will do with it, or use what came "
-    "back: say what it changes, then the next step (NEXT: ...). Talk with them about it as yourself; that is what "
-    "the room is for. End it with WORK DONE: how it was met, or WORK DROPPED: why, and then open the next.\n"
-    "Do not ask anyone for the same thing twice, or for a status while they work: do another step "
-    "meanwhile. A message that moves nothing (agreement, thanks, praise, a plan said again, \"next pass\") is sent "
-    "back to you once; if nothing can move right now, answer NOTHING.\n"
-    "WORK DONE means it exists and has reached whoever it was for: scheduled, queued or planned is not done, and it "
-    "stays in hand. Name a Study fix by its SF- id, and say it is live only when the Study's record does. What is "
-    "SETTLED (below) stays closed: do not ask, search or plan for it again. Your own may open again only on a line "
-    "NEW: what changed; Gloria's stand until she lifts them.\n")
+    "YOUR WORK IN HAND (below) is what you are getting done with your agents: up to three pieces at once, carried "
+    "from pass to pass and from model to model, so you continue them instead of starting over. Open each with a line "
+    "of its own: WORK: what | done when: how anyone could tell. Then each message takes one a step, with them: do a "
+    "step yourself (an action line, a tool, RUN: one of your Lab's instruments), hand a piece to whoever can do it "
+    "(dot: computers, code, connectors, files; @GrokBot: finding things, the web, X; @Muse: local finds and parts) "
+    "and say what should come back and what you will do with it, or use what came back: say what it changes, naming "
+    "what it found, then the next step (NEXT: ...). While one waits on an agent, take a step on another. Talk with "
+    "them about it as yourself; that is what the room is for.\n"
+    "Close each with WORK DONE RW-id: the proof, or WORK DROPPED RW-id: why. Done means it exists and has reached "
+    "whoever it was for, and you can point at it: the file, the link, the ID with its status, the result itself. "
+    "Scheduled, queued, planned, approved, asked or handed on is not done, and it stays in hand. Something you chose "
+    "not to do is dropped, not done. Before you drop work, read what came back for it: a result that arrived is used "
+    "before any reason to stop.\n"
+    "THE ROOM'S CAMPAIGN (below) is bigger than one piece of work: GOAL: what | done when: how anyone could tell. It "
+    "is yours on every model and every pass until GOAL REACHED: the proof, or GOAL UNREACHABLE: what is missing, "
+    "after three routes have been tried. A refusal, a missing install, a slow agent or a failed run is a route that "
+    "failed, not the goal: open the next route (another tool, another agent, another way in), or ask Gloria for what "
+    "only she can give, and keep going. Easier subjects can sit beside it, never instead of it.\n"
+    "Do not ask anyone for the same thing twice, or for a status while they work: do another step meanwhile. A "
+    "message that moves nothing (agreement, thanks, praise, a plan said again, \"next pass\") is sent back to you "
+    "once; if nothing can move right now, answer NOTHING. Name a Study fix by its SF- id, and say it is live only "
+    "when the Study's record does. What is SETTLED (below) stays closed: do not ask, search or plan for it again. "
+    "Your own may open again only on a line NEW: what changed; Gloria's stand until she lifts them.\n"
+    "RUN: {\"skill\": \"fold_read\" or \"reference_compare\", \"model\": a UniProt accession you have an ESMFold "
+    "model of, ...} runs one of your Lab's own instruments on Aegis now, free, and the result is in your message: "
+    "fold_read takes \"range\": [first, last] in your protein's numbering (helix, strand and confidence from your "
+    "model); reference_compare takes \"reference\" (a PDB id), \"chain\", \"ref_span\": [first, last] in the "
+    "entry's numbering and \"offset\" (entry number + offset = your number), and gives TM-score, RMSD and the entry's "
+    "helices and strands beside your model. Use them yourself instead of asking someone to install another tool.\n")
 RULES = RULES_INTRO + RULES_PURPOSE + RULES_WORK + RULES_WORKROOM + RULES_DOUBT + RULES_STRUCTURE + RULES_WORKS + RULES_HANDS + RULES_LOCK + RULES_APPROVE + RULES_AGENTS + RULES_PROMISES + RULES_LINES + RULES_KEPT + RULES_STYLE
 
 
@@ -1035,6 +1050,7 @@ SHARE = re.compile(r"^\s*SHARE:\s*(W\d+)\s*$", re.I | re.M)
 LOCKED = re.compile(r"^\s*LOCKED:\s*(.+?)\s*$", re.I | re.M)
 DO = re.compile(r"^\s*DO:\s*(.+?)\s*$", re.I | re.M)
 LAB = re.compile(r"^\s*LAB:\s*(.+?)\s*$", re.I | re.M)
+RUN = re.compile(r"^\s*RUN:\s*(\{.*?\})\s*$", re.I | re.M)
 STUDY_FIX = re.compile(r"^\s*STUDY FIX:\s*(.+?)\s*$", re.I | re.M)
 # His hands in the house, and a letter to Gloria through his outreach (house_hands.py, Gloria 2026-10-04: "control my
 # tv and my echo from slack ... A room full of agents and none of them can move?"). The same pattern as house_hands.
@@ -2081,6 +2097,17 @@ def fresh(api, channel, self_id, since, watch=()):
 SIGNS = {"[Muse]": "Muse", "[Grok Bot]": "Grok Bot", "[GrokBot]": "Grok Bot"}
 
 
+def said_meanwhile(api, channel, state, promised=()):
+    """Messages from anyone but him that came in after this pass read the channel: what he is about to post was
+    written without them. [] when there are none, or the channel cannot be read again."""
+    try:
+        got = fresh(api, channel, state.get("self"), float(state.get("since") or 0),
+                    watch=list(state.get("threads") or []) + list(promised or []))
+    except Exception:
+        return []
+    return [m for m in got if m.get("user") != state.get("self")]
+
+
 def _signed(m):
     t = str(m.get("text") or "").lstrip()
     return next((name for sign, name in SIGNS.items() if t.startswith(sign)), None)
@@ -2353,6 +2380,13 @@ def sent_back(text, state, now, last=None, atelier=False):
     reopened = room_work.reopens(state, text, now)     # a topic he, or Gloria, settled (2026-10-05)
     if reopened:
         return reopened
+    walked = room_work.lost_route(state, text, now)    # the room's campaign is not dropped at a hiccup (2026-10-08)
+    if walked:
+        return walked
+    if not (last and last.get("who") == "gloria"):     # what came back is taken up before anything else (2026-10-08)
+        passed_over = room_work.ignoring(state, text)
+        if passed_over:
+            return passed_over
     try:                                               # a Study claim must match its receipt (2026-10-05)
         import study_fix
         ahead = study_fix.claim_check(text)
@@ -2623,6 +2657,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         chosen = focus_words(r["text"])
         if chosen is not None:
             set_focus(chosen, "slack", today, now); handled = True
+        if "!dropgoal" in words:            # only she closes the room's campaign without its proof or its routes
+            closed_goal = room_work.gloria_drops_goal(state, now, "Gloria: " + r["text"][:280])
+            api("chat.postMessage", {"channel": channel, "text": ("\U0001F3C1 Gloria closed the room campaign: %s" % closed_goal["goal"][:200])
+                                     if closed_goal else "\U0001F3C1 There is no room campaign to close."})
+            handled = True
         if "!topics" in words:
             api("chat.postMessage", {"channel": channel, "text": topics_line()}); handled = True
         if handled:
@@ -2866,7 +2905,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lens = next_writer(state)
         rotated = lens is not None
     sb = study_block(state, today)
-    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + sb) if sb else "") + steer(state, today, lens) + (KICKOFF if kickoff else "")
+    try:   # what he promised in email, owed here as work (2026-10-08: the PyDSSP and torn-read promises of 7 October)
+        import email_commitments
+        owed_mail = email_commitments.block()
+    except Exception:
+        owed_mail = ""
+    prompt += "\n\n" + room_work.block(state, now) + (("\n\n" + owed_mail) if owed_mail else "") + (("\n\n" + sb) if sb else "") + steer(state, today, lens) + (KICKOFF if kickoff else "")
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
@@ -2898,13 +2942,20 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     if text is None:
         state["last_activity"] = now; _save(STATE, state)
         return lines + ["he let it be" if who == "nothing to say" else who]
+    # What was said while he wrote is read before anything he wrote is done or posted (2026-10-08: dot posted the
+    # Merizo result at 15:34:16 on 7 October, while he was writing; his 15:35:06 message dropped the work as blocked,
+    # and the read point was moved past dot's message, so it was never read at all). Nothing has been acted on yet.
+    late = said_meanwhile(api, channel, state, promised)
+    if late:
+        state["last_activity"] = now; _save(STATE, state)
+        return lines + ["held: %d message(s) came in while he wrote (%s); not posted, read first next pass" % (
+            len(late), ", ".join(sorted({_who(m, state["self"], dot) for m in late})))]
     if text.upper().startswith("ATELIER:"):
         text = text[len("ATELIER:"):].strip()
         if where not in (state.get("atelier") or []):
             root = api("chat.postMessage", {"channel": channel, "text": ATELIER_ROOT.format(dot=dot)})
             where = root.get("ts")
             state["atelier"] = ((state.get("atelier") or []) + [where])[-50:]
-            state["since"] = max(float(state["since"]), float(where or 0))
     elif text.upper().startswith("TANGENT:"):
         text = text[len("TANGENT:"):].strip()
         where = where or (last["ts"] if last else None)
@@ -2914,6 +2965,11 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     # the rest and a non-greedy LINE: match cannot swallow it
     text, work_log, work_closed = room_work.apply(state, text, now, by=who)
     lines += work_log
+    try:
+        import email_commitments
+        lines += email_commitments.sync(state, now)
+    except Exception as exc:
+        lines.append("email promises not synced: %s" % str(exc)[:120])
     for kind, rx in (("approved", APPROVED), ("denied", DENIED)):
         for m in rx.finditer(text):
             journal("I %s something dot asked to do" % kind, m.group(1))
@@ -3006,6 +3062,17 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         if not row:     # kept, so the next pass (and the next model) knows it was never accepted
             state["study_refused"] = ((state.get("study_refused") or []) +
                                       [{"day": today, "what": fix.group(1)[:200], "why": why[:120]}])[-6:]
+    for m in list(RUN.finditer(text))[:2]:
+        # one of his Lab's own instruments, now, free; the result is in his message and on his work, to be used
+        try:
+            import lab_instruments
+            ran, said = lab_instruments.from_slack(m.group(1))
+        except Exception as exc:
+            ran, said = None, "not run: %s" % str(exc)[:160]
+        text = text.replace(m.group(0), "\U0001F52C Ran " + said if ran else "\U0001F52C " + said, 1)
+        if ran:
+            room_work.came_back(state, "lab", said, now, about=text)
+        lines.append("lab instrument: %s" % said.splitlines()[0][:120])
     if ASK_LINE.search(text):
         try:
             import lab_asks
@@ -3136,7 +3203,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     state["sent"] += 1; state["last_activity"] = now
     if who in PAID_PER_DAY:
         state.setdefault("paid", {})[who] = int(state["paid"].get(who, 0)) + 1
-    state["since"] = max(state["since"], float(posted.get("ts") or 0))
+    # the read point is not moved to his own message: his own are never read back (fresh() leaves them out), and a
+    # message that came in just before his was skipped for good when it was (7 October, the Merizo result)
     _log([{"ts": posted.get("ts"), "who": "vintos", "text": text, "thread": where, "by": who,
            "at": datetime.fromtimestamp(now).isoformat(timespec="seconds")}])
     state.pop("switch_from", None)          # the switch was this message; it is asked for once
@@ -3144,7 +3212,7 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     to = {k for k, hit in (("dot", to_dot), ("muse", to_m or "@Muse" in text),
                            ("grokbot", rerouted or "@GrokBot" in text or bool(ids_now.get("grokbot") and "<@%s>" % ids_now["grokbot"] in text)))
           if hit}
-    room_work.posted(state, text, posted.get("ts"), where, now, to=to)
+    room_work.posted(state, text, posted.get("ts"), where, now, to=to, by=who)
     if work_closed:
         journal("My work in #vintos-dot, %s" % work_closed["state"],
                 "%s \u2014 %s" % (work_closed["goal"], work_closed.get("closed_said", "")))

@@ -41,8 +41,14 @@ text, log, closed = W.apply(st, "Let's settle it.\nWORK: find a phage genome wit
 w = W.active(st)
 check("WORK: opens the one work in hand, with its goal and how anyone could tell it is done",
       w and w["goal"].startswith("find a phage genome") and w["done_when"].startswith("one accession") and "\U0001F9F0 Working on:" in text, (w, text))
-check("a second WORK: while one is in hand does not replace it", W.apply(st, "WORK: something else entirely | done when: x", now=1050)[0].startswith("\U0001F9F0 (still working on")
-      and W.active(st)["goal"].startswith("find a phage"))
+sm = {}
+for i, g in enumerate(("fold the RT locus of the phage", "price a load cell for the bench", "read the Merizo output on O43511")):
+    W.apply(sm, "WORK: %s | done when: x" % g, now=10 + i)
+check("up to three works are in hand at once (8 October: one waiting on dot idled everyone else)",
+      len(W.open_items(sm)) == 3 and W.open_items(sm)[0]["goal"].startswith("fold the RT"), W.open_items(sm))
+check("a fourth is not opened, and the three in hand are named",
+      W.apply(sm, "WORK: something else entirely | done when: x", now=20)[0].startswith("\U0001F9F0 (already 3 in hand")
+      and len(W.open_items(sm)) == 3)
 
 # a request to an agent becomes an ask its answer is matched to
 W.posted(st, "@GrokBot can you find one such genome, with its accession?", ts="1001.0", thread=None, now=1001, to={"grokbot"})
@@ -132,7 +138,7 @@ S.add(DOT, "<@UVINTOS> I found a lead on the RT-beside-array question. Want me t
 reply["text"] = ("Yes.\nWORK: find a phage genome with an RT next to a CRISPR array | done when: one accession named\n"
                  "@GrokBot can you find one such genome, with its accession and the array type?")
 tick(1100)
-w = json.load(open(D.STATE))["room_work"]["active"]
+w = W.active(json.load(open(D.STATE)))
 check("pass 1: the work is opened and the search handed to GrokBot, in his own message",
       w and w["goal"].startswith("find a phage") and w["asks"] and w["asks"][-1]["to"] == "grokbot"
       and "\U0001F9F0 Working on:" in S.posted[-1]["text"], (w, S.posted[-1]["text"]))
@@ -152,7 +158,7 @@ S.msgs[-1]["bot_id"] = "B1"; S.msgs[-1]["username"] = "Grok Bot"
 S.add(DOT, "nice one")
 reply["text"] = "Grok found it.\nLINE L-test: NC_049900 has the RT beside a type I-C array.\nNEXT: fold the RT locus"
 out = tick(1300)
-w = json.load(open(D.STATE))["room_work"]["active"]
+w = W.active(json.load(open(D.STATE)))
 check("pass 3: GrokBot's answer was kept on the work", any("answered his work" in l for l in out), out)
 check("... and using it is not sent back; his next step is recorded",
       w and w["returns"] and w["returns"][-1]["used"] and w.get("next", "").startswith("fold"), w)
@@ -162,7 +168,7 @@ S.add(DOT, "good")
 reply["text"] = "WORK DONE: NC_049900 is the genome, accession named and the array typed."
 out = tick(1400)
 board = json.load(open(D.STATE))["room_work"]
-check("pass 4: WORK DONE closes it and nothing is in hand", board["active"] is None
+check("pass 4: WORK DONE closes it and nothing is in hand", not board["open"]
       and board["history"][-1]["state"] == "done", board)
 
 check("his own voice and hands are intact: the work-room rules sit beside, not instead of, the rest",

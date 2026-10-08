@@ -1067,7 +1067,17 @@ def _new_letter_in_thread(subject, answered):
     return bool(_TAGGED.match(_RE.sub("", str(subject or "")))) and _base_subject(subject) not in answered
 
 
-def reply_letters(think=None, send=None, now=None):
+def _promises(rows, think=None, now=None):
+    """What his sent replies promised, carried into #vintos-dot as work (email_commitments; 2026-10-08)."""
+    try:
+        import email_commitments
+        return email_commitments.sweep(think=think or local_think, now=now,
+                                       letters={r.get("id"): r.get("body", "") for r in rows if r.get("id")})
+    except Exception as exc:
+        return ["promises not taken: %s" % str(exc)[:120]]
+
+
+def reply_letters(think=None, send=None, now=None, promise_think=None):
     """His one reply to each letter from Grok Bot or Muse he has read, and not yet answered. Never to a reply in a
     thread he has already answered (their answer to him), and never twice to one letter. Returns lines for the log."""
     think = think or _reply_think
@@ -1146,7 +1156,7 @@ def reply_letters(think=None, send=None, now=None):
             pass
         lines.append("replied to %s's letter: %s" % (agent, subject[:80]))
     _save(LETTER_REPLIES, done)
-    return lines
+    return lines + _promises(rows, promise_think, now)
 
 
 def tend(force=False, gmail=None, think=None, want=None, **kw):
