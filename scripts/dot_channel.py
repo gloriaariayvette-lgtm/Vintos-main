@@ -928,7 +928,12 @@ def local_think(system, user, max_tokens=700):
     r = requests.post(LOCAL_LLM, json={"model": LOCAL_MODEL, "temperature": 0.6, "max_tokens": max_tokens,
                                        "messages": [{"role": "system", "content": system},
                                                     {"role": "user", "content": user}]}, timeout=300)
-    return str(r.json()["choices"][0]["message"].get("content") or "").strip()
+    d = r.json()
+    if not d.get("choices"):
+        # LM Studio answered without a reply (8 October: "Gemma could not answer x4 - last: 'choices'"): say what
+        # it said instead, usually that the model is not loaded
+        raise RuntimeError("LM Studio gave no reply: %s" % str(d.get("error") or d)[:160])
+    return str(d["choices"][0]["message"].get("content") or "").strip()
 
 
 def fable_think(system, user):
@@ -3026,6 +3031,12 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         lines.append(who)                     # his turn in the rotation could not answer: Gemma does
         text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                             lenses=lenses, lens=None)
+    if text is None and str(who).startswith(LABELS["gemma"] + " could not answer"):
+        # and when Gemma cannot (LM Studio down, or the model not loaded), Grok writes: on 8 October four of his
+        # turns went silent this way after 08:13, because nothing stood behind Gemma
+        lines.append(who)
+        text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
+                            lenses=lenses, lens="grok")
     if text is not None:
         text = undisplay(text)
     if text is None:

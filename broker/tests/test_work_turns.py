@@ -99,6 +99,28 @@ check("a kickoff Opus 5.5 could not write is written by Gemma instead, so the re
       any("could not answer" in l for l in out) and len(S.posted) >= n + 2 and "[Gemma]" in S.posted[-1]["text"], (out, S.posted[n:]))
 src = open(os.path.join(REPO, "bin", "server.py")).read()
 check("the app's switch leaves the same mark", "resumed.json" in src)
+# 8 October, after 08:13: LM Studio answered without a reply, four Gemma turns went silent, nothing stood behind it
+import requests
+class _NoReply:
+    def json(self): return {"error": "model not loaded"}
+_post = requests.post; requests.post = lambda *a, **k: _NoReply()
+try:
+    D.local_think("s", "u"); said = ""
+except RuntimeError as e:
+    said = str(e)
+requests.post = _post
+check("LM Studio with no reply is said plainly, not as 'choices'", "model not loaded" in said, said)
+def dead_gemma(system, user):
+    if system == D.EDITOR: return "KEEP"
+    raise RuntimeError("LM Studio gave no reply: model not loaded")
+D.ROTATION = ("gemma",)
+st = json.load(open(D.STATE)); st["room_work"]["open"][0].pop("paused_until", None); st["last_work_turn"] = 0
+st["last_activity"] = 1; json.dump(st, open(D.STATE, "w"))
+n = len(S.posted)
+out = D.tick(api=S, think=dead_gemma, fable=lambda *a: "x", now=60000, today="2026-10-08",
+             lenses={"grok": lambda s_, u_: "Grok here: RUN: {\"skill\": \"fold_read\"} for RW-0000cafe"})
+check("when Gemma cannot answer, Grok writes his turn", len(S.posted) == n + 1 and "Gemma could not answer" in " ".join(out)
+      and "Grok" in S.posted[-1]["text"], (out, S.posted[n:]))
 check("nothing left the machine", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
