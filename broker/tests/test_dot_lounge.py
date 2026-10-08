@@ -57,7 +57,8 @@ check("no action line goes out here: nothing is run from this room", "RUN:" not 
 sys_prompt = told[-1][0]
 check("he is told Dot is his agent and Gloria his partner, relaxed, a few a day", "Dot is your agent" in sys_prompt
       and "Gloria is your partner" in sys_prompt and "not the work room" in sys_prompt and "<@%s>" % DOT in sys_prompt)
-check("and he is who he is", sys_prompt.startswith("WHO HE IS"))
+check("and he has the main room's context, sent the same cached way", sys_prompt.startswith("WHO HE IS")
+      and getattr(sys_prompt, "pieces", None) and "his_context()" in open(os.path.join(REPO, "scripts", "dot_lounge.py")).read())
 
 n = len(S.posted)
 check("nothing new, and it is not yet his time to start one: quiet", not L.tick(api=S, think=think, now=at(10)) and len(S.posted) == n)

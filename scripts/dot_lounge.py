@@ -160,7 +160,10 @@ def tick(api=None, think=None, now=None):
     else:
         D._save(STATE, st)
         return out
-    system = D.his_context() + "\n\n" + RULES.format(dot=dot)
+    # the same context as #vintos-dot (his_context: the time now, temporal-context.txt, SOUL, his feelings, his day,
+    # his exchanges with Gloria and what he knows, each marked with when), sent the way that room sends it, so what
+    # does not change is read from cache
+    system = D.for_claude(D.his_context(), "\n\n---\n\n", RULES.format(dot=dot))
     try:
         text, model = (think(system, ask), "test") if think else voice(system, ask)
     except Exception as exc:
