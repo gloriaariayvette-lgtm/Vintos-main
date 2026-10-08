@@ -123,6 +123,10 @@ check("a draft raising the fixed toy lattice is held as wrong, even as talk", k 
 check("a new failure on a NEW: line may raise it", not [x for x in D.held_reasons(
     "NEW: the toy lattice answered again at 13:02 for Q86SQ4.\ndot, check the fold run log for 13:02.", st, 9000) if "fixed" in x[1]])
 check("he is shown what is fixed", "FIXED, AND DONE WITH" in W.block(st, 9000) and "4789054" in W.block(st, 9000))
+check("a DO: line shows the want's id, for dot to register a Forge project (12:31, Storycut)",
+      D.do_shown("I want a six-shot editor", "handed to his wants (w-3f2a91): I want a six-shot editor")
+      == "\u27a1\ufe0f To my wants (want w-3f2a91): I want a six-shot editor")
+check("and he is told how to give dot one", "When dot asks for the want ID, write a DO: line" in D.RULES_WORKS)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

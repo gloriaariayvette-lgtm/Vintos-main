@@ -1071,7 +1071,7 @@ _t10 = S10.posted[-1]["text"]
 check("a DO with no LOCKED beside it goes to his wants (it ran only beside a lock)",
       _handed10 == [("I want to make a slow-motion clip of the rig", ""), ("I want the rig clip again", "")], _handed10)
 check("... and the message says what became of each, not the bare tag",
-      "➡️ To my wants: I want to make a slow-motion clip of the rig" in _t10
+      "➡️ To my wants (want w-9): I want to make a slow-motion clip of the rig" in _t10
       and "↩️ Not taken by my wants (an open want of yours already says this): I want the rig clip again" in _t10
       and "DO:" not in _t10, _t10)
 _st10 = json.load(open(D.STATE)); _st10["do_today"] = D.DO_PER_DAY; _st10["since"] = S10.n + 200; json.dump(_st10, open(D.STATE, "w"))

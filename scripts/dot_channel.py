@@ -263,6 +263,9 @@ RULES_WORKS = (
     "with a lock or on its own, and your wants make it. Your message then shows whether your wants took it, "
     "and why not if they did not (they do not take code or system work: that is STUDY FIX:). Dot can also run "
     "your tools on Aegis, with your keys.\n"
+    "A Forge project needs one of your wants as its parent. When dot asks for the want ID, write a DO: line saying "
+    "what you want to make or have, in plain words (DO: I want a six-shot editor that cuts my W1-W6 stills into one "
+    "short piece), never 'code', 'script', 'install' or 'fix'; your message shows the want's id, for dot.\n"
     "You have one more tool, used like SEARCH, READ and GREP: OPEN: a path on Aegis (a text file, a folder, a "
     "zip, or a file inside one as bundle.zip:inner/file.md), read only, inside your workspace and Gloria's "
     "Codex folder. A song, picture or video named by its path in the channel is heard and seen for you.\n"
@@ -1149,7 +1152,10 @@ def do_shown(want, said):
     """His DO: line as the channel shows it: what became of it, not the bare tag."""
     said = str(said or "")
     if said.startswith("handed"):
-        return "➡️ To my wants: " + want
+        # with its id, so dot can register a Forge project against it (2026-10-08: Storycut was blocked at 12:31 on
+        # "the genuine Storycut want ID", and a DO: line showed none)
+        m = re.match(r"handed to his wants \((.+?)\):", said)
+        return "➡️ To my wants%s: %s" % ((" (want %s)" % m.group(1)) if m else "", want)
     m = re.match(r"not taken by his wants \((.+?)\):", said)
     return "↩️ Not taken by my wants (%s): %s" % (m.group(1) if m else said[:120] or "no answer", want)
 
