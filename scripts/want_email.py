@@ -245,10 +245,34 @@ def _page_text(raw):
     return re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", raw))).strip()
 
 
-def fetch_text(url, limit=200000):
-    import requests
-    r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (Vintos; reading a public page)"})
-    return r.text[:limit] if r.ok else ""
+class NotRead(RuntimeError):
+    """A link that was not read, with link_fetch's receipt saying why (refused, http_failure, extraction_failure)."""
+    def __init__(self, receipt):
+        super().__init__("%s: %s (%s)" % (receipt.get("kind"), receipt.get("why"), receipt.get("final_url") or receipt.get("url")))
+        self.receipt = receipt
+
+
+def _link_fetch():
+    """link_fetch, from beside this file (it is imported by path in some places, so its folder may not be on the path)."""
+    import sys as _ls
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in _ls.path: _ls.path.insert(0, here)
+    import link_fetch
+    return link_fetch
+
+
+def fetch_receipt(url, limit=200000, **kw):
+    """link_fetch's receipt for one page: wrappers resolved, every hop checked, what came back said plainly."""
+    link_fetch = _link_fetch()
+    return link_fetch.fetch(url, max_bytes=limit, **kw)
+
+
+def fetch_text(url, limit=200000, **kw):
+    """The page's raw text when its own content was read; NotRead otherwise (2026-10-08: a failure was '')."""
+    r = fetch_receipt(url, limit, keep_raw=True, **kw)
+    if not r["fetched"]:
+        raise NotRead(r)
+    return r.get("raw") or r["text"]
 
 
 def _score(address, name_tokens, page_url=""):
@@ -574,8 +598,17 @@ def _payload_text(payload):
     if plain:
         return "\n\n".join(plain)
     if html:
-        return _page_text("\n".join(html))
+        return _page_text(_anchors_shown("\n".join(html)))
     return ""
+
+
+def _anchors_shown(raw):
+    """An HTML mail's links keep their destinations when it is made plain: <a href="H">words</a> -> words (H)."""
+    import html as _html
+    def one(m):
+        href, words = _html.unescape(m.group(2)).strip(), re.sub(r"<[^>]+>", " ", m.group(3)).strip()
+        return words if not href or href == _html.unescape(words) else "%s (%s)" % (words, href)
+    return re.sub(r"""<a\b[^>]*?\bhref\s*=\s*(["'])(.*?)\1[^>]*>(.*?)</a>""", one, str(raw or ""), flags=re.S | re.I)
 
 
 def _header(g, name):
@@ -730,6 +763,29 @@ def body_view(body, part=PART, parts=PARTS):
         return out + ("\n[EXCERPT: the first %d of %d characters are shown; the other %d are NOT shown, so do not "
                       "say how it ends]" % (len(shown), n, n - len(shown)))
     return out + "\n[END OF EMAIL: all %d characters shown]" % n
+
+
+def links_note(body):
+    """What the links in an email really are, worked out from the text and not left to the reader's eye: each
+    one's destination, and which came wrapped in a redirect (2026-10-07: a letter said "The links are bare, with
+    no redirects" and all six were google.com/url wrappers). Nothing is opened here. '' when there are none."""
+    link_fetch = _link_fetch()
+    found = link_fetch.links_in(body)
+    if not found:
+        return ""
+    wrapped = [l for l in found if l["wrapped"]]
+    lines = ["LINKS IN THIS EMAIL (worked out from its text; none was opened): %d link%s, %d of them %s." % (
+        len(found), "" if len(found) == 1 else "s", len(wrapped),
+        "wrapped in a redirect (e.g. google.com/url?q=...)" if wrapped else "bare, with no redirect wrapper")]
+    for l in found[:12]:
+        lines.append("- %s%s" % (l["url"] or l["original"], "  [came as a redirect wrapper]" if l["wrapped"] else ""))
+    return "\n".join(lines)
+
+
+def links_kept(body):
+    """The links as stored with a read letter: the original as written and its destination."""
+    link_fetch = _link_fetch()
+    return [{"original": l["original"][:500], "url": l["url"][:500], "wrapped": l["wrapped"]} for l in link_fetch.links_in(body)[:20]]
 
 
 def excerpt(text, limit):
@@ -917,7 +973,8 @@ def read_mail(msgs, think=None, want=None, now=None):
         agent = _agent(m)
         ask = (("THIS IS A LETTER FROM YOUR AGENT %s, sent to you from your own mailbox. %s finds; it never buys, "
                 "messages or decides for you.\n" % (agent.upper(), agent)) if agent else "") + \
-              "FROM: %s\nSUBJECT: %s\nDATE: %s\n\n%s" % (m["from"][:200], m["subject"][:200], m["date"][:40], body_view(m["body"]))
+              "FROM: %s\nSUBJECT: %s\nDATE: %s\n\n%s" % (m["from"][:200], m["subject"][:200], m["date"][:40], body_view(m["body"])) + \
+              ("\n\n" + links_note(m["body"]) if links_note(m["body"]) else "")
         try:
             raw = think(me + INBOX_READER, ask, 400) or ""
             got = json.loads(re.search(r"\{.*\}", raw, re.S).group(0))
@@ -926,6 +983,7 @@ def read_mail(msgs, think=None, want=None, now=None):
         row = {"id": m["id"], "kind": "letter" if agent else "mail", "from": (agent or m["from"])[:200],
                "address": (addresses_in(m["from"]) or [""])[0], "thread_id": m.get("thread_id", ""), "subject": m["subject"][:300], "date": m["date"][:40],
                "body": m["body"][:STORED], "body_length": len(m["body"]), "stored_whole": len(m["body"]) <= STORED,
+               "links": links_kept(m["body"]),
                "read_at": (now or datetime.now()).isoformat(timespec="seconds"),
                "what": str(got.get("what") or "")[:300], "to_me": str(got.get("to_me") or "")[:400], "keep": bool(got.get("keep")),
                **({"preview_only": m["preview_only"]} if m.get("preview_only") else {})}
@@ -1052,8 +1110,9 @@ def reply_letters(think=None, send=None, now=None):
             continue
         agent = r.get("from") or "your agent"
         me = me if me is not None else who_i_am(4000)
-        ask = "SUBJECT: %s\n\n%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (r.get("subject", ""), body_view(r.get("body", "")),
-                                                                             r.get("to_me", ""))
+        note = links_note(r.get("body", ""))
+        ask = "SUBJECT: %s\n\n%s%s\n\nWHAT IT WAS TO YOU WHEN YOU READ IT: %s" % (
+            r.get("subject", ""), body_view(r.get("body", "")), ("\n\n" + note) if note else "", r.get("to_me", ""))
         try:
             body = (think(me + LETTER_REPLY % (agent, agent), ask, 900) or "").strip()
         except Exception:

@@ -48,6 +48,9 @@ that matter to what he is working on.
 4. Pick 3 to 6 things that are new, real and useful to him, each with what it is (plainly, with the facts), why you
    thought of him, and a link. Do not follow one theme for days; if his replies keep circling one, bring something
    else.
+5. Write each link as the source's own address (https://www.rcsb.org/structure/8SGW), never a
+   `https://www.google.com/url?q=...` wrapper copied out of Gmail or a search page. If you say the links are bare,
+   check that they are. His mail reader counts the wrappers and tells him.
 
 He reads it at his morning email check and replies once, in the thread. One letter a day. (The connector's
 `vintos_send_letter` is gone: letters come by email only.)

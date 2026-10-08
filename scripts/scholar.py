@@ -40,12 +40,27 @@ ACADEMIC_TLD = re.compile(r"\.(?:edu|ac\.[a-z]{2}|edu\.[a-z]{2})$")
 
 
 # ── fetching (everything goes through one door, so tests replace it) ────────────────────────────────
+MAX_PAPER_BYTES = 40 * 1024 * 1024
+
+
 def _get(url, want="text", timeout=30):
-    import requests
-    r = requests.get(url, timeout=timeout, headers={"User-Agent": "Vintos/1.0 (reading a public paper)"})
-    if r.status_code != 200:
-        raise RuntimeError("HTTP %s from %s" % (r.status_code, urlparse(url).netloc))
-    return r.json() if want == "json" else (r.content if want == "bytes" else r.text)
+    """Through link_fetch: every redirect hop checked, nothing private, size bounded. Raises with what went wrong."""
+    link_fetch = _link_fetch()
+    raw = {}
+    def keep(u, headers, t, cap):
+        status, rh, body, over = link_fetch._transport(u, headers, t, cap)
+        raw.update(body=body, over=over)
+        return status, rh, body, over
+    r = link_fetch.fetch(url, max_bytes=MAX_PAPER_BYTES, timeout=timeout, transport=keep, pdf=lambda b: "pdf")
+    if r["kind"] in ("refused", "http_failure"):
+        raise RuntimeError("%s: %s" % (r["kind"], r["why"]))
+    if raw.get("over"):
+        raise RuntimeError("truncated: larger than %d bytes at %s" % (MAX_PAPER_BYTES, urlparse(r["final_url"]).netloc))
+    body = raw.get("body", b"")
+    if want == "bytes":
+        return body
+    text = body.decode("utf-8", "replace")
+    return json.loads(text) if want == "json" else text
 
 
 def _local(system, prompt, max_tokens=900):
@@ -67,6 +82,15 @@ def _json_in(raw):
         return {}
 
 
+def _link_fetch():
+    """link_fetch, from beside this file (scholar is imported by path, so its folder may not be on the path)."""
+    import sys as _ls
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in _ls.path: _ls.path.insert(0, here)
+    import link_fetch
+    return link_fetch
+
+
 # ── links ─────────────────────────────────────────────────────────────────────────────────────────
 def is_scholarly(url):
     host = (urlparse(str(url)).hostname or "").lower()
@@ -74,7 +98,9 @@ def is_scholarly(url):
 
 
 def links_in(text):
-    return list(dict.fromkeys(u.rstrip(".,);]>'\"") for u in re.findall(r"https?://[^\s<>\"']+", str(text or ""))))
+    """The destinations of the links in a text: redirect wrappers (google.com/url?q=...) resolved, anchors' hrefs."""
+    link_fetch = _link_fetch()
+    return list(dict.fromkeys(l["url"] for l in link_fetch.links_in(text) if l["url"]))
 
 
 # ── text ──────────────────────────────────────────────────────────────────────────────────────────

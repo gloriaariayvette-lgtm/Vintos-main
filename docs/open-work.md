@@ -3,6 +3,42 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — links: a wrapper resolved to its source, a failure named, never ''
+
+Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) said "The links are bare, with no redirects"; all six were
+`google.com/url?q=` wrappers. Fetching one reads Google's notice page, not the source, and every fetch failure
+(`want_email.fetch_text`, `vintos-websearch.fetch_page`) came back as `''`.
+
+- **New `scripts/link_fetch.py`** (in the deploy manifest). `unwrap()` resolves Google, Outlook-safelinks and
+  Facebook wrappers from their own query string, without fetching the wrapper. `links_in()` reads plain links and
+  HTML anchor hrefs, keeping the original and the destination. `fetch()` returns one receipt: `kind` is one of
+  fetched / truncated / refused / http_failure / extraction_failure, plus `fetched`, `original_url`, `url`,
+  `final_url`, `hops`, `http_status`, `bytes` and `why`. Every hop is checked: http(s) only, no user:password,
+  standard ports only, every resolved address public. It allows at most 5 redirects and reads at most max_bytes.
+  The only header sent is a User-Agent, so nothing carries credentials to any host. `lab_http.py`'s no-redirect
+  rule is unchanged.
+- **Mail.**
+  - read_mail and reply_letters get a LINKS IN THIS EMAIL note, worked out from the text: how many links there
+    are, how many are wrapped, and each one's destination.
+  - The stored row keeps `links` [{original, url, wrapped}] beside the unchanged body.
+  - HTML-only mail keeps each anchor's href when it is made plain.
+- **Callers.**
+  - `want_email.fetch_text` raises `NotRead(receipt)` instead of returning `''`, and returns the page as it came,
+    so find_address still sees mailto:.
+  - `grok_letters` shows each receipt: the destination and its text, or "NOT READ (kind): why".
+  - `vintos-websearch.fetch_page` logs the kind and the final URL.
+  - `scholar.links_in` gives destinations, so a wrapped arXiv link counts as scholarly; `scholar._get` goes
+    through link_fetch, with a 40 MB cap for papers.
+- **Grok Bot's skill doc:** write the source's own address, never a wrapper.
+- Test: `broker/tests/test_link_fetch.py` (40 checks). Stubbed transport and resolver; requests and sockets are
+  replaced so nothing can reach the network. It fails on the old code.
+- **Not done:**
+  - A DNS answer can change between the check and the connection (rebinding). The resolved address is checked
+    but not pinned for the request.
+  - `chemistry_reference_compare.fetch_reference` and the Lab's own fetches are left as they are (fixed RCSB
+    host; lab_http).
+  - Not yet verified on Aegis.
+
 ## 8 October — an email is read whole, or says how much of it was read
 
 Grok Bot's 7 October letter (Gmail 1a11690d001e1a03) was 5436 characters; both reading prompts cut every email at

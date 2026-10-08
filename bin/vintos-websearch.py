@@ -582,18 +582,32 @@ def fetch_pages(results, count=PAGES_READ):
     return "\n\n".join(parts)
 
 
-def fetch_page(url, max_chars=5000):
-    """Fetch and extract text content from a URL."""
+PAGE_BYTES = 2 * 1024 * 1024
+
+
+def fetch_receipt(url, transport=None, resolve=None):
+    """link_fetch's receipt for one result page: redirect wrappers resolved, every hop checked (public hosts only,
+    at most 5 redirects, PAGE_BYTES read), and refused / http_failure / extraction_failure / truncated told apart."""
+    for _p in (os.path.expanduser("~/.vintos/workspace/scripts"),
+               os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")):
+        if _p not in sys.path: sys.path.append(_p)
+    import link_fetch
+    return link_fetch.fetch(url, max_bytes=PAGE_BYTES, timeout=10, transport=transport, resolve=resolve, keep_raw=True)
+
+
+def fetch_page(url, max_chars=5000, transport=None, resolve=None):
+    """The page's readable text, or '' with the reason it was not read written to the log."""
     try:
-        import urllib.request
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; Vintos/1.0)"}
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as r:
-            raw = r.read().decode("utf-8", errors="ignore")
-        return page_text(raw, max_chars)
+        r = fetch_receipt(url, transport=transport, resolve=resolve)
     except Exception as e:
-        log(f"Fetch failed ({url[:60]}): {e}")
+        log(f"Fetch failed ({url[:60]}): {type(e).__name__}: {e}")
         return ""
+    if not r["fetched"]:
+        log(f"Not read ({r['kind']}) {url[:80]} -> {str(r['final_url'])[:80]}: {r['why'][:160]}")
+        return ""
+    if r["truncated"]:
+        log(f"Truncated at {PAGE_BYTES} bytes: {r['final_url'][:80]}")
+    return page_text(r.get("raw") or r["text"], max_chars)
 
 def synthesize(question, results, page_content="", image_path=None):
     """Have Vintos read the results and extract what resonates."""

@@ -165,13 +165,18 @@ def _read_links(links, fetch):
             page = fetch(u)
         except Exception as exc:
             page = "(could not open: %s)" % str(exc)[:80]
+        if isinstance(page, dict):                 # a link_fetch receipt: where it went and what was read
+            import link_fetch
+            out.append(link_fetch.say(page, PAGE_CAP))
+            continue
         out.append("%s\n%s" % (u, (page or "(empty)")[:PAGE_CAP]))
     return "\n\n".join(out) or "(no links)"
 
 
 def _default_fetch(url):
+    """link_fetch's receipt: a redirect wrapper resolved to its source, a failure named, never a silent ''."""
     import want_email
-    return want_email._page_text(want_email.fetch_text(url))
+    return want_email.fetch_receipt(url)
 
 
 def tend(think=None, fetch=None, context=None, want=None, now=None):
