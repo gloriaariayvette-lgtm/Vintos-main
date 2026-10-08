@@ -45,6 +45,12 @@ def _validate(body):
     return accession, sequence, source, mapping
 
 
+def per_residue_mean(structure_read, fallback):
+    """Mean pLDDT over residues (CA), from the model's own read; the fallback when the model could not be read."""
+    values = (structure_read or {}).get("plddt_by_residue") or []
+    return round(sum(values) / len(values), 6) if values else fallback
+
+
 def first_residue(source):
     """The protein's own number for the first residue folded: 1, or a region's start (2026-10-08: a domain cut
     from a long chain, such as ADGRG6 CUB 41-149, is numbered as the protein, not from 1)."""
@@ -102,6 +108,10 @@ def fold(body):
                                                  "plddt_by_residue", "method", "display")}
     except Exception as exc:
         structure_read = {"error": "the model could not be read: %s" % str(exc)[:200]}
+    # The mean over output.plddt averages all 37 atom slots of every residue, absent atoms included, and reads low
+    # (8 October, ADGRG6 CUB 41-149: 80.97 against 94.0 per residue). pLDDT is per residue, as written to the model's
+    # CA B-factors; that mean is the one reported. The all-slot figure is kept beside it, named for what it is.
+    all_slots, mean_plddt = mean_plddt, per_residue_mean(structure_read, mean_plddt)
     title = "Folding %s (%d aa): %s" % (accession, len(sequence), sequence)
     if first_residue(source) != 1:
         title += " [residues %d-%d of %s, numbered as in the protein]" % (
@@ -109,7 +119,7 @@ def fold(body):
     result = {"title": title, "requested_accession": accession,
               "modeled_sequence": sequence, "real_sequence": sequence,
               "modeled_sequence_length": len(sequence), "sequence_source": source,
-              "hp_mapping": mapping, "mean_plddt": mean_plddt,
+              "hp_mapping": mapping, "mean_plddt": mean_plddt, "mean_plddt_all_atom_slots": all_slots,
               "structure_read": structure_read,
               "structure_artifact": str(destination.relative_to(WS)),
               "structure_sha256": digest, "backend": "facebook/esmfold_v1",

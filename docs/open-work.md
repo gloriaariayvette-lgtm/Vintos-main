@@ -3,6 +3,23 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — ADGRG6 CUB folded on Gloria's approval; mean pLDDT was reported low
+
+Folded and posted to #vintos-dot by hand, on Aegis: Q86SQ4 41-149, 109 aa, ESMFold.
+- Identity check SEQUENCE_ACCESSION_MATCH, numbered 41-149.
+- 0 helix, 10 strands, very high confidence nearly throughout. That is the β-sandwich a CUB domain is.
+- Model `memory/chemistry-lab/artifacts/esmfold/Q86SQ4-6581a72fc01f.pdb`.
+- The result was put on his work in hand, for him to take up.
+
+It showed the "ESMFold mean pLDDT" was wrong:
+- `output.plddt.mean()` averages all 37 atom slots per residue, including atoms the residue does not have. It read
+  80.97 against 94.0 per residue.
+- Now `mean_plddt` is the per-residue (CA) mean from the model itself, and the old figure is kept as
+  `mean_plddt_all_atom_slots`.
+- Every earlier mean pLDDT in his Lab was understated the same way. Per-residue bands and fold_read were not
+  affected.
+- `chemistry_instrument_probe.py` still computes the all-slot mean, for its own probe only.
+
 ## 8 October — a protein domain is folded for real; the toy lattice never answers for a real protein
 
 Gloria: "Why is he still using the toy lattice?" The 21:26 plan on 7 October was experiment "fold" with

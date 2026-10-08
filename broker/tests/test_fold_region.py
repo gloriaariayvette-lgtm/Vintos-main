@@ -76,6 +76,10 @@ check("a whole chain keeps its numbering", E.renumber(pdb, E.first_residue({})) 
 src = open(os.path.join(REPO, "scripts", "chemistry_session.py")).read()
 check("the planner is told how to ask for a region, and that fold is a toy", "parameters.region" in src
       and "toy lattice of a few beads" in src)
+check("mean pLDDT is the per-residue mean, not the 37-atom-slot mean (8 Oct: 80.97 against 94.0)",
+      E.per_residue_mean({"plddt_by_residue": [90.0, 94.0, 98.0]}, 80.97) == 94.0
+      and E.per_residue_mean({"error": "unreadable"}, 80.97) == 80.97
+      and '"mean_plddt_all_atom_slots": all_slots' in open(E.__file__).read())
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)
