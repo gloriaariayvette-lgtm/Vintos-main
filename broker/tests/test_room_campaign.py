@@ -194,6 +194,20 @@ EC.sync(cs, 20)
 row = next(r for r in EC._load() if r["id"] == got[1]["id"])
 check("and closes it with what was said", row["state"] == "done" and "670-685" in row["closed_said"], row)
 
+# what is not his own action is set aside; the oldest is shown first; he closes one on its own line
+EC.record("1a11690d001e1a03", "Your text cut off at \"each ending with,\" so send the rest.", LETTER,
+          think=lambda *a: json.dumps([{"what": "get the rest", "quote": "Your text cut off at \"each ending with,\" so send the rest.",
+                                        "evidence": "", "rests_on": []}]))
+blk = EC.block()
+check("a request to the letter's writer is not kept as his promise (7 Oct, 'send the rest')", "send the rest" not in blk, blk)
+check("owed promises are shown oldest first (his first build at the top)", "First build: item 3" in blk.splitlines()[1], blk)
+torn = next(r for r in EC._load() if r["what"].startswith("torn-read"))
+t, log = EC.close_lines("PROMISE DONE %s: it went fine" % torn["id"], proved=W.proved)
+check("PROMISE DONE without proof is not kept", "Not closed" in t and next(r for r in EC._load() if r["id"] == torn["id"])["state"] == "open", t)
+t, log = EC.close_lines("PROMISE DONE %s: old open-and-dump failed 7071 of 8550 reads on Aegis; atomic write 0 of 48525" % torn["id"], proved=W.proved)
+check("PROMISE DONE with the numbers closes it", "kept" in t and next(r for r in EC._load() if r["id"] == torn["id"])["state"] == "done", t)
+check("his prompt names the PROMISE lines", all("PROMISE DONE EC-id" in D.rules_for(l) for l in ("grok", "gemma", "opus55")))
+
 # --- 4. RUN: his Lab's own fold_read, for real, on a scratch model ---------------------------------------------------
 os.makedirs(os.path.join(str(LI.ARTIFACTS), "esmfold"), exist_ok=True)
 pdb = os.path.join(str(LI.ARTIFACTS), "esmfold", "O43511-test.pdb")

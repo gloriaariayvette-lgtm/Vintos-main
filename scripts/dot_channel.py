@@ -410,6 +410,8 @@ RULES_WORKROOM = (
     "once; if nothing can move right now, answer NOTHING. Name a Study fix by its SF- id, and say it is live only "
     "when the Study's record does. What is SETTLED (below) stays closed: do not ask, search or plan for it again. "
     "Your own may open again only on a line NEW: what changed; Gloria's stand until she lifts them.\n"
+    "What you promised by email (below) is owed here: open it as WORK naming its EC- id, or close it on its own line, "
+    "PROMISE DONE EC-id: the proof, or PROMISE DROPPED EC-id: why.\n"
     "RUN: {\"skill\": \"fold_read\" or \"reference_compare\", \"model\": a UniProt accession you have an ESMFold "
     "model of, ...} runs one of your Lab's own instruments on Aegis now, free, and the result is in your message: "
     "fold_read takes \"range\": [first, last] in your protein's numbering (helix, strand and confidence from your "
@@ -2967,7 +2969,8 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     lines += work_log
     try:
         import email_commitments
-        lines += email_commitments.sync(state, now)
+        text, promise_log = email_commitments.close_lines(text, proved=room_work.proved)
+        lines += promise_log + email_commitments.sync(state, now)
     except Exception as exc:
         lines.append("email promises not synced: %s" % str(exc)[:120])
     for kind, rx in (("approved", APPROVED), ("denied", DENIED)):

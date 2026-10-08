@@ -152,17 +152,56 @@ def sweep(think=None, now=None, letters=None):
     return lines
 
 
+# His own action: the sentence speaks in the first person (7 October: Gemma kept "Your text cut off at 'each ending
+# with,' so send the rest" as his promise; it was his request to Grok Bot, and Grok Bot answered it in the room).
+MINE = re.compile(r"\b(?:I|I'll|I'd|I'm|I've|my|me)\b|^\s*(?:First build|Then)\b", re.I)
+CLOSE = re.compile(r"^\s*PROMISE (DONE|DROPPED)\s+(EC-[0-9a-f]{8})\s*:\s*(.+?)\s*$", re.I | re.M)
+
+
 def open_rows():
-    return [r for r in _load() if r.get("state") in ("open", "in work")]
+    """Owed promises, oldest first (they are owed in the order he made them). A sentence that is not his own action
+    is set aside as not his, once."""
+    rows, changed = _load(), False
+    for r in rows:
+        if r.get("state") == "open" and not MINE.search(r.get("quote", "")):
+            r["state"] = "not his"; changed = True
+    if changed:
+        _save(rows)
+    return [r for r in rows if r.get("state") in ("open", "in work")]
+
+
+def close_lines(text, now=None, proved=None):
+    """His PROMISE DONE EC-id: proof / PROMISE DROPPED EC-id: why lines: done, and shown as what happened.
+    A promise done needs something anyone could check (proved(), from room_work). Returns (text, log lines)."""
+    rows = _load()
+    log = []
+    def one(m):
+        word, pid, said = m.group(1).lower(), m.group(2), m.group(3)
+        r = next((x for x in rows if x.get("id") == pid), None)
+        if not r or r.get("state") not in ("open", "in work"):
+            return "\U0001F4E7 (no promise %s still owed)" % pid
+        if word == "done" and proved is not None and not proved(said):
+            log.append("promise %s not closed: no proof" % pid)
+            return ("\U0001F4E7 Not closed: %s — a promise kept needs something anyone could check (the file, the "
+                    "numbers, the link): %s" % (pid, said))
+        r.update(state="done" if word == "done" else "dropped", closed_said=said[:300],
+                 closed_at=(now or datetime.now()).isoformat(timespec="seconds"))
+        log.append("promise %s %s" % (pid, r["state"]))
+        return "\U0001F4E7 Email promise %s %s: “%s” — %s" % (pid, "kept" if word == "done" else "dropped", r["quote"][:160], said)
+    text = CLOSE.sub(one, str(text or ""))
+    if log:
+        _save(rows)
+    return text, log
 
 
 def block():
     """The promises from his email still owed, for his Slack prompt; '' when there are none."""
-    rows = open_rows()[-SHOWN:]
+    owed = open_rows()
+    rows = owed[:SHOWN]
     if not rows:
         return ""
-    out = ["== PROMISED BY EMAIL, STILL OWED (each becomes work here, or is dropped with why; Merizo-type results "
-           "that answer a different question do not keep a promise) =="]
+    out = ["== PROMISED BY EMAIL, STILL OWED (%d; oldest first. Each becomes work here, is kept, or is dropped with "
+           "why. A result that answers a different question does not keep a promise) ==" % len(owed)]
     for r in rows:
         out.append("- %s (%s; letter %s from %s%s): you wrote “%s”" % (
             r["id"], r["state"] + ((" as " + r["work_id"]) if r.get("work_id") else ""), r["letter_id"],
@@ -171,7 +210,11 @@ def block():
             out.append("    it rests on, in the letter's words: “%s”" % x[:300])
         if r.get("evidence"):
             out.append("    done when this exists: %s" % r["evidence"][:200])
-    out.append("Open one with WORK: naming its EC- id. Keep each source's numbers as that source wrote them.")
+    if len(owed) > len(rows):
+        out.append("(%d more after these.)" % (len(owed) - len(rows)))
+    out.append("Open one with WORK: naming its EC- id; or close one on its own line: PROMISE DONE EC-id: the proof, or "
+               "PROMISE DROPPED EC-id: why (already done elsewhere, overtaken, or not worth it now). Keep each "
+               "source's numbers as that source wrote them.")
     return "\n".join(out)
 
 

@@ -60,7 +60,7 @@ DEFERRED = re.compile(r"\b(?:scheduled|queued|pending|planned|awaiting|lined up|
 # Every line that makes something happen in the channel, his and the new ones; one of these moves the work.
 ACTS = re.compile(r"^\s*(?:LOCKED|DO|LAB|LINE(?:\s+L-[\w-]+)?|CHECK|STUDY FIX|APPROVED|DENIED|CAMPAIGN(?: MOVE)?|SHARE|ASK|"
                   r"TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|ASK GLORIA|MAKE|WORK|WORK DONE|WORK DROPPED|NEXT|DONE|RESHAPED|DROPPED|"
-                  r"SEARCH|BUY|GOAL|GOAL REACHED|GOAL UNREACHABLE|RUN|WORK DONE RW-[0-9a-f]+|WORK DROPPED RW-[0-9a-f]+)\s*:"
+                  r"SEARCH|BUY|GOAL|GOAL REACHED|GOAL UNREACHABLE|RUN|PROMISE (?:DONE|DROPPED) EC-[0-9a-f]+|WORK DONE RW-[0-9a-f]+|WORK DROPPED RW-[0-9a-f]+)\s*:"
                   r"|\[PURSUIT:", re.I | re.M)
 # A request to someone: a question, or an agent told to do a thing.
 _VERBS = (r"find|run|check|look(?: up| at| into)?|send|open|fold|build|make|compare|read|search|get|write|pull|fetch|list|"
@@ -80,7 +80,7 @@ PROOF = re.compile(
     r"\b[A-Z]{1,3}_?\d{4,}(?:\.\d+)?\b|\b[OPQ][0-9][A-Z0-9]{3}[0-9]\b|\b\d(?=[0-9]*[A-Za-z])[A-Za-z0-9]{3}\b|"
     r"\b[0-9a-f]{12,}\b|\b\d{2,}\s*[–-]\s*\d{2,}\b|\b\d+(?:\.\d+)?\s?(?:%|Å|bp|aa|ms|kb|MB|GB|Hz|dB|pLDDT)(?![A-Za-z])|"
     r"\b\d+\s+(?:[A-Z][a-z]+\s){1,3}(?:St|Ave|Dr|Cir|Rd|Blvd|Pl|Ln|Way)\b|\b\d{1,2}(?::\d\d)?\s?(?:am|pm)\b|"
-    r"\bHTTP \d{3}\b|\bexit (?:status |code )?\d+\b", re.I)
+    r"\bHTTP \d{3}\b|\bexit (?:status |code )?\d+\b|\b\d[\d,]* (?:of|out of) \d[\d,]*\b", re.I)
 # Handed on, approved or asked for: work moved to someone else is not work done (7 October: "the concrete edit is
 # named and approved", "Dot is carrying it", each closed as done).
 HANDOFF = re.compile(r"\b(?:approved|approve|handed|hand(?:ing)? (?:it|this) (?:to|over)|is carrying|carrying it|"

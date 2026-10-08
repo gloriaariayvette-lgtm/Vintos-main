@@ -54,6 +54,17 @@ see him pursuing a goal across models without dropping it until the goal is comp
      - GOAL REACHED without proof.
    - Gloria closes it with `!dropgoal`.
    - His own campaign (`campaign.py`) and its lines are unchanged.
+- **After the Aegis check (33 promises from 6 replies):**
+  - Promises are shown oldest first, with a count, so the torn-read "First build" is at the top.
+  - A sentence that is not his own action is set aside as "not his". Example: "Your text cut off ... so send the
+    rest", which Grok Bot had already answered.
+  - He closes one on its own line: PROMISE DONE EC-id: the proof (counts like "7071 of 8550" count as proof), or
+    PROMISE DROPPED EC-id: why.
+- **The live fold_read of O43511 535-729 on Aegis (P-SEA geometry, not DSSP):**
+  - The 669-687 helix, the 688-695 strand and the 696-707 helix sit within 1-2 residues of 8SGW's.
+  - 558-595 is one helix where 8SGW has two (555-571, 573-585).
+  - 595-651 is low or very low confidence, against the letter's no-density 586-653.
+  - The PyDSSP promise is still owed.
 - Test: `broker/tests/test_room_campaign.py` (50 checks). It replays 7 October through `tick` and runs
   fold_read for real on a scratch model. It fails on the old code.
 - `test_room_work.py` and `test_workflow_holds.py` were updated for the deliberate changes: three works in hand,
