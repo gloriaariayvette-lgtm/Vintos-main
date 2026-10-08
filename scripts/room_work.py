@@ -326,6 +326,12 @@ def _goal_lines(state, text, now, by, log):
 # assessed") and turned to a new paper; nothing made him take the step he had named.
 PAUSE_S = 12 * 3600            # a paused work waits this long, with its cause, then is due again
 PRESS_EVERY_S = 30 * 60       # an idle work (or a missing campaign) is sent back once, then not again for this long
+# A cause is something outside him that the work waits on. His own order of work is not one (8 October, 00:49:
+# "switch-point listening waits while I handle today's Forge focus" paused an email promise for twelve hours). He may
+# hold three works at once; one is carried beside another, not paused for it.
+OWN_ORDER = re.compile(r"\b(?:while I(?:'m| am)?|until I(?:'ve| have)?(?: finish\w*| handle\w*| done| clear\w*)|after I|"
+                       r"focus|priorit\w*|busy|bandwidth|later today|for now|first|other work|another work|"
+                       r"handle (?:today|this)|working on (?:the |my )?other)\b", re.I)
 
 
 def _waiting(w, now):
@@ -355,8 +361,9 @@ def idle(state, now):
     """Open work that is due a step now: nothing out with an agent, not paused for a cause."""
     out = []
     for w in open_items(state):
-        if _waiting(w, now) or float(w.get("paused_until") or 0) > float(now):
-            continue
+        if _waiting(w, now) or (float(w.get("paused_until") or 0) > float(now)
+                                and not OWN_ORDER.search(str(w.get("pause_why", "")))):
+            continue            # a pause kept before OWN_ORDER, for his own order of work, does not hold
         out.append(w)
     return sorted(out, key=lambda w: float(w.get("touched", w.get("opened", 0)) or 0))
 
@@ -379,7 +386,7 @@ def not_carried(state, text, now):
         return ("your work %s (%s) is due its next step and this message does not take it%s. Take it now, in this "
                 "message (an action line, RUN:, or a request to the agent who can do it, naming %s), beside anything "
                 "new. Stop only for a real cause: PAUSE %s: what it waits on (Gloria, hardware, an answer that has "
-                "not come), or close it with WORK DONE / WORK DROPPED." % (
+                "not come; never your own order of work), or close it with WORK DONE / WORK DROPPED." % (
                     w["id"], w["goal"][:140], (" (the next step you set: %s)" % w["next"][:200]) if w.get("next") else "",
                     w["id"], w["id"]))
     return ""
@@ -694,6 +701,24 @@ def unused(state):
     return [(w, r) for w in _tracked(state) for r in w.get("returns", []) if not r.get("used")]
 
 
+def ignoring_all(state, draft):
+    """Every answer this draft passes over, each once: [why]."""
+    out = []
+    for w, r in unused(state):
+        if int(r.get("pressed", 0)) >= PRESS or engages(draft, r.get("text", "")):
+            continue
+        r["pressed"] = int(r.get("pressed", 0)) + 1
+        out.append(_ignored(w, r))
+    return out
+
+
+def _ignored(w, r):
+    return ("%s answered %s (%s) and you have not taken it up: “%s”. Use it first: say what it changes "
+            "(name what it found), then the next step. If it is no use, say why, naming it."
+            % (SOURCES.get(r["from"], r["from"]), "your work %s" % w["id"] if w["id"] != "loose" else "your ask",
+               (w.get("goal") or r.get("for", ""))[:120], r["text"][:900]))
+
+
 def ignoring(state, draft):
     """Why this draft passes over an answer that came back, or "": the answer is in front of him and this message
     does not take it up. Pressed PRESS times at most (a draft sent back, or a message posted past it), then only
@@ -859,12 +884,15 @@ def apply(state, text, now, by=""):
     for m in list(PAUSE.finditer(text)):
         w = next((x for x in open_items(state) if x["id"] == m.group(1)), None)
         cause = m.group(2).strip()
-        if w and len(cause) >= 12:
+        if w and len(cause) >= 12 and not OWN_ORDER.search(cause):
             w.update(paused_until=float(now) + PAUSE_S, pause_why=cause[:300], touched=float(now))
             shown = "\u23F8 Paused %s (%s): %s" % (w["id"], w["goal"][:120], cause)
             log.append("work paused %s" % w["id"])
         else:
-            shown = "\u23F8 (not paused: %s)" % ("say what it waits on" if w else "no open work %s" % m.group(1))
+            shown = "\u23F8 (not paused: %s)" % (
+                "no open work %s" % m.group(1) if not w else
+                "your own order of work is not a cause; carry it beside the other" if OWN_ORDER.search(cause) else
+                "say what it waits on")
         text = text.replace(m.group(0), shown, 1)
     m = NEW.search(text)
     if m:
@@ -980,7 +1008,7 @@ def _block(state, now):
         out.append("%s%s: %s" % (w["id"], " (toward the room campaign)" if w.get("goal_id") else "", w["goal"])
                    + (" | done when: %s" % w["done_when"] if w.get("done_when") else ""))
         out.append("Opened %s%s." % (_ago(w.get("opened", now), now), (" by " + w["by"]) if w.get("by") else ""))
-        if float(w.get("paused_until") or 0) > float(now):
+        if float(w.get("paused_until") or 0) > float(now) and not OWN_ORDER.search(str(w.get("pause_why", ""))):
             out.append("PAUSED for a cause: %s (due again %s)" % (w.get("pause_why", ""), _ago(now, w["paused_until"]).replace("ago", "from now")))
         elif not _waiting(w, now):
             out.append("DUE ITS NEXT STEP THIS MESSAGE (nothing is out with an agent for it).")

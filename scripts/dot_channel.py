@@ -2392,55 +2392,67 @@ def study_block(state, today):
 
 
 def sent_back(text, state, now, last=None, atelier=False):
-    """Why a draft goes back to him once, or "". Asking an agent again for what it already answered, or is still
-    working on; or a message that moves nothing (Gloria, 2026-10-05: real work, not talk about work). Answering
-    Gloria, a question put to him, an Atelier or a promise thread is talk the room is for, and is never sent back
-    for moving nothing."""
+    """Why a draft goes back to him once, or "": the first of held_reasons()."""
+    found = held_reasons(text, state, now, last, atelier)
+    return found[0][1] if found else ""
+
+
+# What would make a message wrong to post (WRONG), and what only says it does not do enough yet (NUDGE). A nudge never
+# keeps him silent: on 8 October, 00:56 and 01:05, each draft was sent back for one thing, the second draft did that
+# thing and was held for the next (Muse's answer, then RW-c4013b41's step, then Grok Bot's answer), and two passes
+# posted nothing at all. Now every reason is given at once, and a second draft that moves something is posted.
+WRONG, NUDGE = "wrong", "nudge"
+
+
+def held_reasons(text, state, now, last=None, atelier=False):
+    """[(kind, why)], every reason this draft goes back to him, or []. Asking an agent again for what it already
+    answered, or is still working on; or a message that moves nothing (Gloria, 2026-10-05: real work, not talk about
+    work). Answering Gloria, a question put to him, an Atelier or a promise thread is talk the room is for, and is
+    never sent back for moving nothing."""
     if text is None:
-        return ""
+        return []
     import room_work
     text = undisplay(text)          # his action lines as the channel shows them are still action lines
-    again = room_work.asking_again(state, text, now)
-    if again:
-        return again
-    reopened = room_work.reopens(state, text, now)     # a topic he, or Gloria, settled (2026-10-05)
-    if reopened:
-        return reopened
-    stale = room_work.stale_claim(state, text, now)    # a finished result is not published as blocked (2026-10-08)
-    if stale:
-        return stale
-    walked = room_work.lost_route(state, text, now)    # the room's campaign is not dropped at a hiccup (2026-10-08)
-    if walked:
-        return walked
-    if not (last and last.get("who") == "gloria"):     # what came back is taken up before anything else (2026-10-08)
-        passed_over = room_work.ignoring(state, text)
-        if passed_over:
-            return passed_over
-        # his work is carried to its next step until a real cause to pause, and a campaign is always live
-        # (Gloria, 2026-10-08: "He needs to continue with the next step until there's actual cause for pause")
-        still = room_work.not_carried(state, text, now) or room_work.campaign_needed(state, text, now)
-        if still:
-            return still
+    out = []
+    for check in (room_work.asking_again,
+                  room_work.reopens,                   # a topic he, or Gloria, settled (2026-10-05)
+                  room_work.stale_claim,               # a finished result is not published as blocked (2026-10-08)
+                  room_work.lost_route):               # the room's campaign is not dropped at a hiccup (2026-10-08)
+        why = check(state, text, now)
+        if why:
+            out.append((WRONG, why))
     try:                                               # a Study claim must match its receipt (2026-10-05)
         import study_fix
         ahead = study_fix.claim_check(text)
         if ahead:
-            return ahead
+            out.append((WRONG, ahead))
     except Exception:
         pass
-    if atelier or text.upper().startswith("ATELIER:") or room_work.moves(text):
-        return ""
+    if not (last and last.get("who") == "gloria"):     # what came back is taken up before anything else (2026-10-08)
+        out += [(NUDGE, why) for why in room_work.ignoring_all(state, text)]
+        # his work is carried to its next step until a real cause to pause, and a campaign is always live
+        # (Gloria, 2026-10-08: "He needs to continue with the next step until there's actual cause for pause")
+        for _ in range(room_work.MAX_OPEN):
+            still = room_work.not_carried(state, text, now)
+            if not still:
+                break
+            out.append((NUDGE, still))
+        needed = room_work.campaign_needed(state, text, now)
+        if needed:
+            out.append((NUDGE, needed))
+    if out or atelier or text.upper().startswith("ATELIER:") or room_work.moves(text):
+        return out
     if last and (last.get("who") == "gloria" or "?" in str(last.get("text", ""))):
-        return ""
+        return []
     try:
         import promise_keeper
         if last and last.get("thread") and last["thread"] in promise_keeper.threads():
-            return ""
+            return []
     except Exception:
         pass
-    return ("it moves nothing: no step taken, nothing handed to anyone with what should come back, no use of what "
-            "came back. Take the next step of your work in hand, hand a piece to the agent who can do it, or answer "
-            "NOTHING.")
+    return [(NUDGE, "it moves nothing: no step taken, nothing handed to anyone with what should come back, no use of "
+                    "what came back. Take the next step of your work in hand, hand a piece to the agent who can do "
+                    "it, or answer NOTHING.")]
 
 
 def _guarded(text):
@@ -2968,17 +2980,21 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
     in_thread_atelier = bool(last) and last["thread"] in (state.get("atelier") or [])
     text, who = compose(prompt, think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                         lenses=lenses, lens=lens)
-    held = sent_back(text, state, now, last, in_thread_atelier)
+    held = held_reasons(text, state, now, last, in_thread_atelier)
     if held:
-        # once, back to him with why: asking again for what came back, or a message that moves nothing
-        lines.append("sent back to him: " + held[:120])
-        again, who2 = compose(prompt + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted: " + held,
+        # once, back to him with every reason at once, so the second draft can answer all of them
+        for _k, why in held:
+            lines.append("sent back to him: " + why[:120])
+        again, who2 = compose(prompt + "\n\nYou wrote this:\n" + text + "\n\nIt was not posted. Write it again "
+                              "answering ALL of these in one message:\n" + "\n".join("- " + w for _k, w in held),
                               think, fable, state, today, search=search, room=room, atelier=in_thread_atelier,
                               lenses=lenses, lens=lens)
-        still = sent_back(again, state, now, last, in_thread_atelier)
-        if again is not None and still:
+        still = held_reasons(again, state, now, last, in_thread_atelier)
+        if again is not None and still and (any(k == WRONG for k, _w in still) or not room_work.moves(undisplay(again))):
             state["last_activity"] = now; _save(STATE, state)
-            return lines + ["held: " + still[:160]]
+            return lines + ["held: " + still[0][1][:160]]
+        if again is not None and still:      # it moves something: posted; what it left is pressed again next time
+            lines.append("posted, still short of: " + still[0][1][:120])
         text, who = (again, who2) if again is not None else (None, who2)
     if text is not None and text.upper().startswith("ATELIER:") and not in_thread_atelier:
         # he chose to open an Atelier thread: he says it with his work in front of him
