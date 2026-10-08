@@ -7794,6 +7794,11 @@ async def agents_toggle(request: Request):
     if want:
         if os.path.exists(f):
             os.remove(f)
+        # a mark of the restart, so the channel starts the session even when off and on fell between two of its
+        # passes (2026-10-08: she stopped and restarted the day and nothing moved in Slack)
+        with open(f.replace("paused.json", "resumed.json") + ".tmp", "w") as fh:
+            json.dump({"at": time.time(), "by": "app"}, fh)
+        os.replace(f.replace("paused.json", "resumed.json") + ".tmp", f.replace("paused.json", "resumed.json"))
         return {"on": True, "message": "The day is on: his lenses and dot may talk again"}
     if os.path.exists(f):
         return {"on": False, "message": "The day was already paused"}

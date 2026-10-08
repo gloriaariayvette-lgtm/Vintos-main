@@ -3,6 +3,24 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — he takes work turns when nobody writes; a restart between passes still starts the day
+
+Gloria: "I stopped and restarted the day, but nothing moved in Slack." Two causes.
+- The app's day switch removed `paused.json` and left no trace, so a stop and start between two passes was never
+  seen: no start notice, no kickoff.
+- He only spoke when something was written, at a scheduled turn, or after four quiet hours. Open work never made
+  him speak.
+
+Changes:
+- **The restart is marked.** Switching the day on (the app, or !start) writes `resumed.json`. The next pass sees
+  a restart it has not yet seen, says the day has started, and opens the session.
+- **Work turns.** While work in hand is due its next step (nothing out with an agent, not paused), or there is
+  open work and no room campaign, he takes a turn every 20 minutes when nobody has written. The turn starts at
+  least 10 minutes after the last activity. His prompt asks for the step itself (RUN:, LAB:, a request), not a
+  plan. The pause, Gloria's live conversation and the daily cap still hold.
+- Test: `test_work_turns.py` (10 checks).
+- Also fixed: two tests were left on the old still-prompt wording (f3cb71b). That is why the deploy stopped.
+
 ## 8 October — he carries his work to its next step; a room campaign is always live
 
 Gloria: "He needs to continue with the next step until there's actual cause for pause or he reaches a goal. Even

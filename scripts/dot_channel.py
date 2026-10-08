@@ -123,6 +123,14 @@ def flush_held(api, channel):
     return ["posted %d message(s) held through the pause" % len(held)] if held else []
 
 
+# Her restart, kept: a stop and a start between two passes left nothing to read, and nothing moved (2026-10-08).
+RESUME_FILE = os.path.join(os.path.dirname(PAUSE_FILE), "resumed.json")
+# While work in hand is due its next step (or there is no room campaign), he takes a turn this often even when
+# nobody has written (Gloria, 2026-10-08: "He needs to continue with the next step until there's actual cause for
+# pause or he reaches a goal").
+WORK_TURN_S = 20 * 60
+
+
 def paused():
     """{since, by} while the day is paused, else None."""
     return _load(PAUSE_FILE, None) or None
@@ -131,8 +139,10 @@ def paused():
 def set_paused(on, by="gloria", now=None):
     if on:
         _save(PAUSE_FILE, {"since": datetime.fromtimestamp(now or time.time()).isoformat(timespec="seconds"), "by": by})
-    elif os.path.exists(PAUSE_FILE):
-        os.remove(PAUSE_FILE)
+    else:
+        if os.path.exists(PAUSE_FILE):
+            os.remove(PAUSE_FILE)
+        _save(RESUME_FILE, {"at": float(now or time.time()), "by": by})
 
 
 # Today's focus: topics Gloria picks to steer the day, in the channel (!focus forge research) or the app; they
@@ -2689,6 +2699,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
             state["last_activity"] = now
             state["open_on_start"] = True     # her !start opens a session now, not after four quiet hours
             state["kickoff"] = True           # and its first message is Opus 5.5's
+            state["resume_seen"] = float((_load(RESUME_FILE, {}) or {}).get("at") or now)
+    restarted = _load(RESUME_FILE, {}) or {}
+    if not is_paused and float(restarted.get("at") or 0) > float(state.get("resume_seen") or 0):
+        # stopped and started again between two passes: the same start, said and begun
+        state["resume_seen"] = float(restarted["at"])
+        api("chat.postMessage", {"channel": channel, "text": ("<@%s> " % dot) + RESUMED_SAY})
+        lines_pre.append("the day was stopped and started again between passes")
+        state["last_activity"] = now; state["open_on_start"] = True; state["kickoff"] = True
     if is_paused:
         # nothing is said or sent while she has paused the day, delayed results included; what came in is kept and
         # handled once she starts it again (2026-10-05)
@@ -2905,11 +2923,18 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         quiet = now - float(state.get("last_activity") or state.get("since") or now)
         starting = bool(state.pop("open_on_start", None))
         # open_now (Gloria, by hand: "force his first message now") skips only the quiet wait; so does her !start
-        if not starting and (state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now)):
+        work_due = bool(room_work.idle(state, now)) or (bool(room_work.open_items(state)) and not room_work.goal(state))
+        work_turn = (not starting and work_due and now - float(state.get("last_work_turn") or 0) >= WORK_TURN_S
+                     and quiet >= WORK_TURN_S / 2)
+        if not starting and not work_turn and (state["openers"] >= OPENERS_PER_DAY or (quiet < QUIET_HOURS * 3600 and not open_now)):
             _save(STATE, state); return lines
-        prompt = opener_prompt()
+        prompt = work_prompt() if work_turn else opener_prompt()
         where = None
-        state["openers"] += 0 if starting else 1
+        if work_turn:
+            state["last_work_turn"] = now
+            lines.append("a work turn: his work in hand is due its next step")
+        else:
+            state["openers"] += 0 if starting else 1
     kickoff = bool(state.pop("kickoff", None))
     if kickoff:       # his first message of this session, opener or answer, is Opus 5.5's; tried once, then the session goes on
         lens = "opus55"; state["kicked_day"] = today
@@ -3260,6 +3285,14 @@ def tick(api=None, think=None, fable=None, now=None, today=None, search=None, ro
         state["since_lock"] = state.get("since_lock", 0) + 1
     _save(STATE, state)
     return lines + ["said (%s%s): %s" % (who, ", in a thread" if where else "", text[:80])]
+
+
+def work_prompt():
+    """His turn to carry his work on when nobody has written: the next step of what is in hand (below)."""
+    return ("THE CONVERSATION SO FAR (most recent last):\n%s\n\nNobody has written since your last message, and "
+            "your work in hand (below) is due its next step. Take it now: the step itself (RUN:, LAB:, a request to "
+            "the agent who can do it), not a plan to take it. If there is no room campaign, open one from your work. "
+            "If a work truly cannot move, say why on a line PAUSE RW-id: what it waits on." % _conversation(recent()))
 
 
 def opener_prompt():
