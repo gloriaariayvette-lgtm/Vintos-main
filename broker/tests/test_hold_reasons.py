@@ -112,6 +112,10 @@ for i in range(2):
     W.apply(st, "WORK: next piece %d of the scaffold | done when: posted %d" % (i, i), now)
 text, _l, _c = W.apply(st, "WORK: a fourth piece in hand right now | done when: posted", now)
 check("three in hand is still the most", len(W.in_hand(st, now)) == 3 and "already 3 in hand" in text, text)
+# 04:54: two Lab lines with a blank line between were shown run together
+t = "LINE L-714d65ee: gnomAD read. next: STAS RMSD.\n\nLINE L-fd723427: not using it."
+found = [m.group(0) for m in D.LINE_TO.finditer(t)]
+check("a Lab line never takes the blank line above it", all("\n" not in f for f in found) and len(found) == 2, found)
 check("nothing reached the network", not NET, NET)
 print("\n%d/%d" % (sum(R), len(R)))
 sys.exit(0 if all(R) else 1)

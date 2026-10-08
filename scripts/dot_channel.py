@@ -1087,8 +1087,10 @@ HOUSE = re.compile(r"^\s*(TV|ECHO|LIGHTS|MISCHIEF|TO GLORIA|MAKE)\s*:\s*(.+?)\s*
 # supposed to be the one telling me what he wants to buy").
 BUY = re.compile(r"^\s*(?:\[Muse\]\s*)?BUY:\s*(.+?)\s*$", re.I | re.M)
 ASK_LINE = re.compile(r"^\s*ASK:\s*([\w-]+)\.([\w-]+)\s*(\{.*?\})?\s*(?:\|\s*(.+?))?\s*$", re.M)
-LINE_TO = re.compile(r"^\s*LINE\s+(L-[A-Za-z0-9-]{3,40})\s*:\s*(.+?)\s*$", re.M)      # onto a line of his Lab
-LINE_NEW = re.compile(r"^\s*LINE:\s*(.+?)\s*$", re.M)                                 # a new line
+# [ \t]*, not \s*, at the ends: \s* took the blank line above it, and two lines ran together as shown (8 October, 04:54:
+# "...STAS 535–729 isolated vs full-length RMSD.🧭 To my Lab's line L-fd723427: ...")
+LINE_TO = re.compile(r"^[ \t]*LINE[ \t]+(L-[A-Za-z0-9-]{3,40})[ \t]*:[ \t]*(.+?)[ \t]*$", re.M)   # onto a line of his Lab
+LINE_NEW = re.compile(r"^[ \t]*LINE:[ \t]*(.+?)[ \t]*$", re.M)                                 # a new line
 APPROVED = re.compile(r"^\s*APPROVED:\s*(.+?)\s*$", re.I | re.M)
 # His campaign, moved from here as from his chat (Gloria, 2026-10-01: "let campaigns be affected by Slack as wants
 # are"): through campaign.step, so its own caps (7 served turns, 3 days) and its plan bridge hold.
