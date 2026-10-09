@@ -110,6 +110,27 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source_gene_mismatch'):
             sources.verify_uniprot_identity('gene:SLC26A16',[valid])
 
+    def test_literature_only_human_question_is_grounded(self):
+        client = sources.Sources(fetch=self.fetch)
+        for source in ('ncbi', 'pubmed'):
+            raw = {'question':'What is the topology of the human SLC26A14 protein?',
+                   'source_query':{'source':source, 'operation':'literature',
+                                   'term':'human SLC26A14 topology'},
+                   'uniprot_query':lab.BASELINE_QUERY}
+            inquiry = lab._inquiry(raw)
+            self.assertIn('gene:SLC26A14', inquiry['uniprot_query'])
+            self.assertNotIn('length:', inquiry['uniprot_query'])
+            with patch.object(sources, 'Sources', return_value=client):
+                accepted, _ = lab._held_to_plan('', '', inquiry, raw, None, None, repeats)
+            self.assertIn('SLC26A14', accepted['refused'])
+            self.assertEqual(accepted['identity_check']['status'], 'unresolved')
+        valid = lab._inquiry(dict(raw, question='What is the human SLC26A4 architecture?'))
+        self.assertEqual(lab._ground_inquiry(valid, client)['status'], 'verified')
+        self.assertIn('gene:SLC26A4', valid['uniprot_query'])
+        self.assertEqual(lab._human_question_symbols('human O43511 at TM14, G598A and SLC26A4'), ['SLC26A4'])
+        untouched = lab._inquiry(dict(raw, question='What is the topology of a bacterial phage protein?'))
+        self.assertEqual(untouched['uniprot_query'], lab._safe_query(lab.BASELINE_QUERY))
+
     def test_symbols_in_human_queries_only(self):
         client = sources.Sources(fetch=self.fetch)
         for query in ('gene:SLC26A28 AND taxonomy_id:9606', 'protein_name:SLC26A28 AND organism_id:9606'):

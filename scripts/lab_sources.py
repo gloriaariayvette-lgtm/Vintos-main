@@ -94,6 +94,9 @@ def _strip_html(value, cap):
 
 def normalize_uniprot_subjects(query):
     """Preserve complete unquoted subject values instead of reading only their first word."""
+    # Boolean operators outside quoted names are case-insensitive in generated requests.
+    query = re.sub(r'"[^"\n]*"|\b(?:and|or|not)\b',
+                   lambda m: m[0] if m[0].startswith('"') else m[0].upper(), query, flags=re.I)
     pattern = r'\b(protein_name|gene|keyword):("[^"\n]*"|[^()]+?)(?=\s+(?:AND|OR|NOT)\b|\s+[A-Za-z_]+:|[()]|$)'
     human = False
     def subject(m):

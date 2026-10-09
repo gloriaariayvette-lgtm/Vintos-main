@@ -118,5 +118,35 @@ with patch.object(PG,'call',side_effect=AssertionError('plugin relay forbidden')
         except ValueError: pass
         else: raise AssertionError('malformed public search escaped')
     pg.assert_not_called(); cg.assert_not_called()
+# Actual query-shaped UniProt requests normalize both when planned and when
+# executing an already-saved request. Stub the real client's public response.
+args={'query':'protein_name:SLC26A8 and reviewed:true','limit':2}
+routed=C._inquiry({'question':'human SLC26A8 architecture', 'plugin_query':{
+    'plugin':'uniprot','tool':'uniprot_query','arguments':args}})
+assert routed['plugin_query'] is None and routed['source_query']['source']=='uniprot'
+assert routed['source_query']['limit']==2
+assert routed['source_query']['query']=='protein_name:SLC26A8 AND reviewed:true AND taxonomy_id:9606'
+assert S.normalize_uniprot_subjects('protein_name:"foo and bar" and reviewed:true') == 'protein_name:"foo and bar" AND reviewed:true'
+# Source object wraps captured UniProtKB response field names.
+record={'primaryAccession':'Q96RN1','genes':[{'geneName':{'value':'SLC26A8'}}]}
+def uniprot_fetch(url): return {'results':[record]}, {}
+public=S.Sources(fetch=uniprot_fetch,fetch_record=no_record)
+assert public.fetch is uniprot_fetch
+with patch.object(PG,'call',side_effect=AssertionError('plugin relay forbidden')) as pg, \
+     patch.object(CG,'call',side_effect=AssertionError('Claude relay forbidden')) as cg, \
+     patch.object(CS,'configured_sources',return_value=public) as configured, \
+     patch.object(FB,'assess',return_value={'fixture':True}) as assessment:
+    assert CS.configured_sources is configured and FB.assess is assessment
+    for tool in ('uniprot_query','uniprot.search'):
+        C._atomic(os.path.join(C.ROOT,'source-throttle.json'),{})
+        result=CS.query_plugin('uniprot',tool,args,'human SLC26A8 architecture')
+        assert result['receipt']['source']=='uniprot'
+        assert result['receipt']['records'][0]['primaryAccession']=='Q96RN1'
+        assert result['candidate']['receipt_id']==result['receipt']['receipt_id']
+    pg.assert_not_called(); cg.assert_not_called()
+for bad in ({'query':'gene:SLC26A8','limit':False}, {'query':'gene:SLC26A8','unknown':True}):
+    try: C.uniprot_from_plugin({'plugin':'uniprot','arguments':bad})
+    except ValueError: pass
+    else: raise AssertionError('invalid direct query accepted')
 assert net==[]
 print('PASS: actual string request and saved requests use direct PubMed with journal receipts; no relay')

@@ -617,7 +617,7 @@ def repeated_review(state):
     digest, _, receipt = review_evidence(state)
     if (not digest or inquiry.get('instrument_query') or state.get('atlas_analysis')
             or ((inquiry.get('plugin_query') or {}).get('plugin') not in (None, 'pubmed'))
-            or receipt.get('source') not in (None, 'uniprot', 'pubmed', 'pubmed_abstracts')):
+            or receipt.get('source') not in (None, 'uniprot', 'pubmed', 'pubmed_abstracts', 'ncbi')):
         return False
     for row in reversed(_tail_jsonl(NOTEBOOK, 8*1024*1024)):
         if row.get('kind') != 'reflection' or row.get('evidence_sha256') != digest:
@@ -1213,6 +1213,15 @@ def _atlas_text():
         return "Atlas reads one fixed window where the gene starts on GRCh38; its scores are predictions"
 
 
+def _human_question_symbols(question):
+    """Explicit gene-like tokens only; accessions and residue labels are not genes."""
+    from lab_sources import uniprot_identity_symbols
+    from lab_repeats import _ACCESSION, _NOT_SUBJECTS
+    words = uniprot_identity_symbols('protein_name:"' + str(question or '').replace('"', ' ') + '"')
+    return [w for w in words if w not in _NOT_SUBJECTS and not _ACCESSION.fullmatch(w)
+            and not re.fullmatch(r'TM[0-9]+|[ACDEFGHIKLMNPQRSTVWY][0-9]+[ACDEFGHIKLMNPQRSTVWY]', w)]
+
+
 def _ground_inquiry(inquiry, client=None):
     """Source-check generated human symbols before admitting them as research targets."""
     from lab_sources import Sources
@@ -1222,6 +1231,8 @@ def _ground_inquiry(inquiry, client=None):
     symbols = []
     if sq.get('source') == 'atlas' and sq.get('gene'): symbols.append(str(sq['gene']))
     human_question = bool(re.search(r'\b(?:human|Homo sapiens)\b', str(inquiry.get('question') or ''), re.I))
+    if human_question:
+        symbols.extend(_human_question_symbols(inquiry.get('question')))
     for query in queries:
         taxa = re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)\b', query)
         if human_question and any(t != '9606' for t in taxa):
@@ -1316,13 +1327,27 @@ def _on_line(inquiry, value, line):
 _UNIPROT_ARGS = ("accession", "protein_name", "gene", "organism_id", "taxonomy_id", "organism_name", "reviewed", "keyword")
 
 
-def uniprot_from_plugin(pq):
+def uniprot_from_plugin(pq, purpose=""):
     """UniProt asked for as if it were a connector ({plugin: "uniprot", arguments: {protein_name: "Pendrin", ...}}),
     as the public source it is. It is not one of his connectors, so the call was refused every time (2026-10-06,
     four refusals in an hour). The source query, or None."""
     if not isinstance(pq, dict) or str(pq.get("plugin") or "").lower() not in ("uniprot", "uniprotkb"):
         return None
+    def human_scope(query):
+        if (re.search(r'\b(?:human|Homo sapiens)\b', purpose, re.I)
+                and _human_question_symbols(purpose)
+                and not re.search(r'\b(?:taxonomy_id|organism_id|organism_name):', query)):
+            query += ' AND taxonomy_id:9606'
+        return query
     args = pq.get("arguments") if isinstance(pq.get("arguments"), dict) else {}
+    if isinstance(args.get('query'), str) and args['query'].strip():
+        from lab_sources import validate_uniprot
+        if set(args) - {'query', 'limit'}:
+            raise ValueError('unsupported public UniProt query arguments')
+        limit = args.get('limit', 4)
+        if type(limit) is not int or not 1 <= limit <= 8:
+            raise ValueError('UniProt limit must be 1..8')
+        return {'source': 'uniprot', 'query': human_scope(validate_uniprot(args['query'])), 'limit': limit}
     terms = []
     for key in _UNIPROT_ARGS:
         v = args.get(key)
@@ -1334,7 +1359,7 @@ def uniprot_from_plugin(pq):
         terms.append('%s:%s' % (key, ('"%s"' % v.replace('"', '')) if re.search(r"\s", v) else v))
     if not terms:
         return None
-    return {"source": "uniprot", "query": " AND ".join(terms), "limit": 1 if "accession" in args else 4}
+    return {"source": "uniprot", "query": human_scope(" AND ".join(terms)), "limit": 1 if "accession" in args else 4}
 
 
 def pubmed_from_plugin(pq):
@@ -1363,7 +1388,7 @@ def pubmed_from_plugin(pq):
 def _inquiry(value, lean=None):
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
     if not source_query:
-        source_query = uniprot_from_plugin(value.get("plugin_query"))
+        source_query = uniprot_from_plugin(value.get("plugin_query"), str(value.get("question") or ""))
         if source_query:
             value = dict(value, plugin_query=None)
     direct = pubmed_from_plugin(value.get("plugin_query"))
@@ -1372,6 +1397,12 @@ def _inquiry(value, lean=None):
         value = dict(value, plugin_query=None)
     requested_lane = value.get('browse_lane')
     query = _safe_query(value.get("uniprot_query"))
+    question = str(value.get('question') or '')
+    question_symbols = (_human_question_symbols(question)
+                        if re.search(r'\b(?:human|Homo sapiens)\b', question, re.I) else [])
+    if query in (BASELINE_QUERY, _safe_query(BASELINE_QUERY)) and question_symbols:
+        query = ('(' + ' OR '.join('gene:' + symbol for symbol in question_symbols) +
+                 ') AND taxonomy_id:9606 AND reviewed:true')
     from lab_repeats import _ACCESSION
     named = sorted(set(_ACCESSION.findall(str(value.get("question") or ""))))
     resolution = None

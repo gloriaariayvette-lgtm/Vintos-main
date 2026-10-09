@@ -1,0 +1,530 @@
+{
+  "literature_coverage": "not_assessed",
+  "metadata": {
+    "coverage": "bounded_first_page",
+    "database": "pubmed",
+    "service": "NCBI_EUtilities",
+    "total_count": "4610"
+  },
+  "novelty": "not_established",
+  "query": {
+    "limit": 4,
+    "operation": "literature",
+    "source": "ncbi",
+    "taxon_id": null,
+    "term": "human SLC26A24 protein structure domain architecture"
+  },
+  "receipt_id": "3ba69a0f538402aa08e3106389f0377063e1ea7af134d381419245e2df1b8450",
+  "records": [
+    {
+      "summary": {
+        "articleids": [
+          {
+            "idtype": "pubmed",
+            "idtypen": 1,
+            "value": "42852938"
+          },
+          {
+            "idtype": "doi",
+            "idtypen": 3,
+            "value": "10.1042/BCJ20260503"
+          },
+          {
+            "idtype": "pii",
+            "idtypen": 4,
+            "value": "238163"
+          }
+        ],
+        "attributes": [
+          "Has Abstract"
+        ],
+        "authors": [
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Barnes R"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Ouzon-Shubeita H"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Mandimutsira C"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Wang G"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Lee S"
+          }
+        ],
+        "availablefromurl": "",
+        "bookname": "",
+        "booktitle": "",
+        "chapter": "",
+        "doccontriblist": [],
+        "docdate": "",
+        "doctype": "citation",
+        "edition": "",
+        "elocationid": "pii: BCJ20260503. doi: 10.1042/BCJ20260503",
+        "epubdate": "2026 Oct 9",
+        "essn": "1470-8728",
+        "fulljournalname": "The Biochemical journal",
+        "history": [
+          {
+            "date": "2026/10/09 00:00",
+            "pubstatus": "accepted"
+          },
+          {
+            "date": "2026/07/13 00:00",
+            "pubstatus": "received"
+          },
+          {
+            "date": "2026/09/30 00:00",
+            "pubstatus": "revised"
+          },
+          {
+            "date": "2026/10/09 11:40",
+            "pubstatus": "medline"
+          },
+          {
+            "date": "2026/10/09 11:40",
+            "pubstatus": "pubmed"
+          },
+          {
+            "date": "2026/10/09 09:13",
+            "pubstatus": "entrez"
+          }
+        ],
+        "issn": "0264-6021",
+        "issue": "",
+        "lang": [
+          "eng"
+        ],
+        "lastauthor": "Lee S",
+        "locationlabel": "",
+        "medium": "",
+        "nlmuniqueid": "2984726R",
+        "pages": "",
+        "pmcrefcount": "",
+        "pubdate": "2026 Oct 9",
+        "publisherlocation": "",
+        "publishername": "",
+        "pubstatus": "10",
+        "pubtype": [
+          "Journal Article"
+        ],
+        "recordstatus": "PubMed - as supplied by publisher",
+        "references": [],
+        "reportnumber": "",
+        "sortfirstauthor": "Barnes R",
+        "sortpubdate": "2026/10/09 00:00",
+        "sorttitle": "structural and functional consequences of arg512 mutations in methyl cpg binding domain protein 4",
+        "source": "Biochem J",
+        "srccontriblist": [],
+        "srcdate": "",
+        "title": "Structural and Functional Consequences of Arg512 Mutations in Methyl-CpG-Binding Domain Protein 4.",
+        "uid": "42852938",
+        "vernaculartitle": "",
+        "volume": ""
+      },
+      "uid": "42852938"
+    },
+    {
+      "summary": {
+        "articleids": [
+          {
+            "idtype": "pubmed",
+            "idtypen": 1,
+            "value": "42847540"
+          },
+          {
+            "idtype": "doi",
+            "idtypen": 3,
+            "value": "10.1177/15578666261491762"
+          }
+        ],
+        "attributes": [
+          "Has Abstract"
+        ],
+        "authors": [
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Liang Q"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Zhao S"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Wang RH"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Zhang YW"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Chen L"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Li SC"
+          }
+        ],
+        "availablefromurl": "",
+        "bookname": "",
+        "booktitle": "",
+        "chapter": "",
+        "doccontriblist": [],
+        "docdate": "",
+        "doctype": "citation",
+        "edition": "",
+        "elocationid": "doi: 10.1177/15578666261491762",
+        "epubdate": "2026 Oct 8",
+        "essn": "1557-8666",
+        "fulljournalname": "Journal of computational biology : a journal of computational molecular cell biology",
+        "history": [
+          {
+            "date": "2026/10/08 17:35",
+            "pubstatus": "medline"
+          },
+          {
+            "date": "2026/10/08 17:35",
+            "pubstatus": "pubmed"
+          },
+          {
+            "date": "2026/10/08 15:20",
+            "pubstatus": "entrez"
+          }
+        ],
+        "issn": "1066-5277",
+        "issue": "",
+        "lang": [
+          "eng"
+        ],
+        "lastauthor": "Li SC",
+        "locationlabel": "",
+        "medium": "",
+        "nlmuniqueid": "9433358",
+        "pages": "15578666261491762",
+        "pmcrefcount": "",
+        "pubdate": "2026 Oct 8",
+        "publisherlocation": "",
+        "publishername": "",
+        "pubstatus": "10",
+        "pubtype": [
+          "Journal Article"
+        ],
+        "recordstatus": "PubMed - as supplied by publisher",
+        "references": [],
+        "reportnumber": "",
+        "sortfirstauthor": "Liang Q",
+        "sortpubdate": "2026/10/08 00:00",
+        "sorttitle": "identification of topologically associated domains via infomap entropy minimization",
+        "source": "J Comput Biol",
+        "srccontriblist": [],
+        "srcdate": "",
+        "title": "Identification of Topologically Associated Domains via Infomap Entropy Minimization.",
+        "uid": "42847540",
+        "vernaculartitle": "",
+        "volume": ""
+      },
+      "uid": "42847540"
+    },
+    {
+      "summary": {
+        "articleids": [
+          {
+            "idtype": "pubmed",
+            "idtypen": 1,
+            "value": "42842923"
+          },
+          {
+            "idtype": "doi",
+            "idtypen": 3,
+            "value": "10.1083/jcb.202601047"
+          },
+          {
+            "idtype": "pii",
+            "idtypen": 4,
+            "value": "283049"
+          }
+        ],
+        "attributes": [
+          "Has Abstract"
+        ],
+        "authors": [
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Du Y"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Zhou T"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Liu Y"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Ye N"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Zou B"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Chang W"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Deng L"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Ji WK"
+          }
+        ],
+        "availablefromurl": "",
+        "bookname": "",
+        "booktitle": "",
+        "chapter": "",
+        "doccontriblist": [],
+        "docdate": "",
+        "doctype": "citation",
+        "edition": "",
+        "elocationid": "pii: e202601047. doi: 10.1083/jcb.202601047",
+        "epubdate": "2026 Oct 7",
+        "essn": "1540-8140",
+        "fulljournalname": "The Journal of cell biology",
+        "history": [
+          {
+            "date": "2026/01/08 00:00",
+            "pubstatus": "received"
+          },
+          {
+            "date": "2026/08/10 00:00",
+            "pubstatus": "revised"
+          },
+          {
+            "date": "2026/09/11 00:00",
+            "pubstatus": "accepted"
+          },
+          {
+            "date": "2026/10/07 23:31",
+            "pubstatus": "medline"
+          },
+          {
+            "date": "2026/10/07 23:30",
+            "pubstatus": "pubmed"
+          },
+          {
+            "date": "2026/10/07 17:04",
+            "pubstatus": "entrez"
+          }
+        ],
+        "issn": "0021-9525",
+        "issue": "11",
+        "lang": [
+          "eng"
+        ],
+        "lastauthor": "Ji WK",
+        "locationlabel": "",
+        "medium": "",
+        "nlmuniqueid": "0375356",
+        "pages": "",
+        "pmcrefcount": "",
+        "pubdate": "2026 Nov 2",
+        "publisherlocation": "",
+        "publishername": "",
+        "pubstatus": "256",
+        "pubtype": [
+          "Journal Article"
+        ],
+        "recordstatus": "PubMed - indexed for MEDLINE",
+        "references": [],
+        "reportnumber": "",
+        "sortfirstauthor": "Du Y",
+        "sortpubdate": "2026/11/02 00:00",
+        "sorttitle": "mospd3 mediates the er recruitment of atg2a to promote autophagy",
+        "source": "J Cell Biol",
+        "srccontriblist": [],
+        "srcdate": "",
+        "title": "MOSPD3 mediates the ER recruitment of ATG2A to promote autophagy.",
+        "uid": "42842923",
+        "vernaculartitle": "",
+        "volume": "225"
+      },
+      "uid": "42842923"
+    },
+    {
+      "summary": {
+        "articleids": [
+          {
+            "idtype": "pubmed",
+            "idtypen": 1,
+            "value": "42831429"
+          },
+          {
+            "idtype": "pmc",
+            "idtypen": 8,
+            "value": "PMC13635751"
+          },
+          {
+            "idtype": "pmcid",
+            "idtypen": 5,
+            "value": "pmc-id: PMC13635751;"
+          },
+          {
+            "idtype": "doi",
+            "idtypen": 3,
+            "value": "10.1093/nar/gkag939"
+          },
+          {
+            "idtype": "pii",
+            "idtypen": 4,
+            "value": "8863817"
+          }
+        ],
+        "attributes": [
+          "Has Abstract"
+        ],
+        "authors": [
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Jayathilake C"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Gregory-Lott ER"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Virk RK"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Koh GK"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Cho E"
+          },
+          {
+            "authtype": "Author",
+            "clusterid": "",
+            "name": "Kim TH"
+          }
+        ],
+        "availablefromurl": "",
+        "bookname": "",
+        "booktitle": "",
+        "chapter": "",
+        "doccontriblist": [],
+        "docdate": "",
+        "doctype": "citation",
+        "edition": "",
+        "elocationid": "doi: 10.1093/nar/gkag939",
+        "epubdate": "",
+        "essn": "1362-4962",
+        "fulljournalname": "Nucleic acids research",
+        "history": [
+          {
+            "date": "2026/03/30 00:00",
+            "pubstatus": "received"
+          },
+          {
+            "date": "2026/08/20 00:00",
+            "pubstatus": "revised"
+          },
+          {
+            "date": "2026/09/03 00:00",
+            "pubstatus": "accepted"
+          },
+          {
+            "date": "2026/10/05 11:32",
+            "pubstatus": "medline"
+          },
+          {
+            "date": "2026/10/05 11:31",
+            "pubstatus": "pubmed"
+          },
+          {
+            "date": "2026/10/05 06:33",
+            "pubstatus": "entrez"
+          },
+          {
+            "date": "2026/10/05 00:00",
+            "pubstatus": "pmc-release"
+          }
+        ],
+        "issn": "0305-1048",
+        "issue": "18",
+        "lang": [
+          "eng"
+        ],
+        "lastauthor": "Kim TH",
+        "locationlabel": "",
+        "medium": "",
+        "nlmuniqueid": "0411011",
+        "pages": "",
+        "pmcrefcount": 88,
+        "pubdate": "2026 Sep 22",
+        "publisherlocation": "",
+        "publishername": "",
+        "pubstatus": "4",
+        "pubtype": [
+          "Journal Article"
+        ],
+        "recordstatus": "PubMed - indexed for MEDLINE",
+        "references": [],
+        "reportnumber": "",
+        "sortfirstauthor": "Jayathilake C",
+        "sortpubdate": "2026/09/22 00:00",
+        "sorttitle": "structural basis of parp2 recognition of nucleosomal dna breaks and inhibitor trapping",
+        "source": "Nucleic Acids Res",
+        "srccontriblist": [],
+        "srcdate": "",
+        "title": "Structural basis of PARP2 recognition of nucleosomal DNA breaks and inhibitor trapping.",
+        "uid": "42831429",
+        "vernaculartitle": "",
+        "volume": "54"
+      },
+      "uid": "42831429"
+    }
+  ],
+  "response_sha256": "d5f958e3371547f7f65ef3eb79bff1d12ff334d952dea6831317723dbb47cb6c",
+  "retrieved_at": "2026-10-09T22:57:32.563497+00:00",
+  "source": "ncbi",
+  "truth_status": "source_observation_not_validation"
+}

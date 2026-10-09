@@ -75,5 +75,25 @@ assert not C.repeated_review(plugin), 'other plugin results are not database rer
 old = C._jsonl(C.NOTEBOOK)[0]; old['at'] = (datetime.now(timezone.utc)-timedelta(days=8)).isoformat()
 Path(C.NOTEBOOK).write_text(json.dumps(old)+'\n')
 assert not C.repeated_review(state), 'expiry permits a later reread'
+# Real stored NCBI esummary response from the three repeated Oct 9 reviews.
+ncbi_receipt = json.loads((Path(__file__).parent / 'fixtures/lab_oct9_ncbi_literature.json').read_text())
+assert ncbi_receipt['source'] == 'ncbi' and ncbi_receipt['metadata']['database'] == 'pubmed'
+ncbi = copy.deepcopy(state)
+ncbi['inquiry']['source_query'] = {'source':'ncbi','operation':'literature','term':'human SLC26A24 topology'}
+ncbi['additional_source'] = {'receipt':ncbi_receipt}
+C._atomic(C.STATE, ncbi)
+assert C.tick()['kind'] == 'reflection'
+before = C._reflect.call_count
+for gene in ('SLC26A23', 'SLC26A14'):
+    repeated = copy.deepcopy(ncbi)
+    repeated['inquiry']['question'] = 'What is the topology of human ' + gene + '?'
+    repeated['inquiry']['source_query']['term'] = 'human ' + gene + ' topology'
+    repeated['additional_source']['receipt']['receipt_id'] = gene
+    C._atomic(C.STATE, repeated)
+    assert C.tick()['kind'] == 'browse_stale'
+assert C._reflect.call_count == before, 'NCBI route cannot bypass repeat guard'
+new_ncbi = copy.deepcopy(ncbi)
+new_ncbi['additional_source']['receipt']['records'][0]['uid'] = 'new-paper-fixture'
+assert not C.repeated_review(new_ncbi)
 print('PASS: duplicate tick skips reviewer; new evidence, instruments, expiry preserved')
 scratch.cleanup()
