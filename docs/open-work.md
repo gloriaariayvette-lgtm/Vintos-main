@@ -3,6 +3,37 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 9 October — overnight Lab and Forge review
+
+Lab 23:30–06:46: 187 inquiries, 172 reflections (4 yes, 144 no, 24 empty/unusable answers),
+205 repeat refusals and 3 off-plan refusals. Longest consecutive refusal streak 5, down from the
+observed 82-streak, but answer quality remains poor. Source failures: 26 expired Claude OAuth,
+23 empty UniProt, 8 unsourced NCBI accession.version, other malformed specs/invented gene names.
+The Aegis connector credential expired at 05:02 UTC with a refresh token present; no overriding
+auth environment variable in the Lab process. `claude auth status` says logged in but did not
+refresh it. Successful authenticated tool execution remains unverified; reauthentication is open.
+
+Forge has 66 projects: 35 complete (31 Lab-origin), 26 cancelled, four reconciliation_required,
+one ready. Completed report/assessment projects are NOT evidence that tools were installed.
+The four interrupted projects name LDLR regulatory data, MD free-energy simulation, phage sequence
+retrieval, and O43511 sequence retrieval. Their interrupted cycles have no receipt/artifact; this
+alone does not prove no external effect. Stop/inspect/reconcile remains open (sudo unavailable).
+The ready project is portfolio tracking; do not approve financial access or real-money activity.
+Two capability proposals remain proposed: mmWave presence intake and track_portfolio. Neither has
+a grant. Hardware/transport/privacy choices and financial scope remain unresolved respectively.
+
+15 old decisions still appeared waiting while the authoritative house snapshot held only two.
+Fix: retire absent waiting cards, retain real decisions, allow reoffer if eligible again, and label
+retired cards accurately. All 300 isolated suites passed on Aegis (228 seconds), including 42 decision checks.
+Ownership/test-report generators and three required follow-up checks passed. Privileged Forge install pending.
+No approvals, notifications, purchases, daily-cap resets or uncertain-cycle replays were made.
+
+Dropped example: SK-9ee141b8 (sense_gloria_presence) was withdrawn by Vintos on 7 October after
+SF-7e71e004 delivered phone last_seen. Its history explicitly says room/awake/attention sensing
+was NOT delivered. SK-aef22c78 (computer_use) was withdrawn by Claude on 5 October because the
+capability already existed. Denied credential proposals were recorded as wrong diagnoses of the
+Forge's own 403 guard, not missing keys. Preserve these distinctions rather than labeling all as failed builds.
+
 ## 8 October — Lab review inputs and missed Atelier morning
 
 At 23:19, the Lab had accepted 20 questions since the refusal fix and produced 17 reflections,

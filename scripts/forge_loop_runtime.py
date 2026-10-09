@@ -364,9 +364,18 @@ class Runtime:
                 body = {'id': cid, 'kind': card['kind'], 'ref': str(card.get('ref') or '')[:80],
                         'title': card['title'][:200], 'what': str(card.get('what') or '')[:1500],
                         'cost': str(card.get('cost') or '')[:300], 'details': [x[:400] for x in details[:60]],
-                        'state': old.get('state', 'waiting'), 'added': old.get('added', time.time()),
+                        'state': ('waiting' if old.get('state') == 'retired' else old.get('state', 'waiting')),
+                        'added': old.get('added', time.time()),
                         **({k: old[k] for k in ('decided_at', 'note') if k in old})}
                 db.execute('INSERT OR REPLACE INTO decisions (id, body) VALUES (?, ?)', (cid, json.dumps(body)))
+            # This is an authoritative snapshot, not an append-only list of requests.
+            # Keep decisions for audit, but never offer a stale card for approval.
+            current = {card['id'] for card in cards}
+            for row in db.execute('SELECT id, body FROM decisions').fetchall():
+                old = json.loads(row['body'])
+                if row['id'] not in current and old.get('state') == 'waiting':
+                    old.update(state='retired', note='No longer in the house decision snapshot; not an approval or denial.')
+                    db.execute('UPDATE decisions SET body=? WHERE id=?', (json.dumps(old), row['id']))
         return self.decisions()
 
     def decide(self, cid, verdict, note=''):

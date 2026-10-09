@@ -59,6 +59,20 @@ check("her page shows Waiting on you with Accept and Deny, above the projects",
       '<section id="waiting"></section>' in ui and ui.index('id="waiting"') < ui.index('id="projects"')
       and "'/accept','POST'" in ui and "'/deny','POST'" in ui and "Accept this list" in ui and "await renderWaiting();" in ui)
 
+# A removed proposal used to remain waiting forever after withdrawal/denial elsewhere.
+stale = dict(CARD, id="card:retired", ref="retired")
+call("POST", "/api/decisions-sync", {"cards": [stale]}, OWNER)
+call("POST", "/api/decisions-sync", {"cards": []}, OWNER)
+retired = next(x for x in r.decisions() if x["id"] == stale["id"])
+check("an absent waiting card retires without pretending Gloria decided", retired["state"] == "retired")
+check("a stale card cannot be accepted", call("POST", "/api/decisions/card:retired/accept", {})[0] == 403)
+call("POST", "/api/decisions-sync", {"cards": [stale]}, OWNER)
+check("an eligible card can be offered again", next(x for x in r.decisions() if x["id"] == stale["id"])["state"] == "waiting")
+call("POST", "/api/decisions/card:retired/deny", {"note": "real decision"})
+call("POST", "/api/decisions-sync", {"cards": []}, OWNER)
+check("retired cards are not presented as denials", "No longer waiting: " in ui)
+check("a real denial survives snapshots", next(x for x in r.decisions() if x["id"] == stale["id"])["state"] == "denied")
+
 # ---- the house side -----------------------------------------------------------------------------------
 import skill_forge as SF
 import forge_house as H

@@ -159,7 +159,7 @@ async function renderWaiting(){
     card.append(actions);box.append(card);
   }
   if(done.length){const det=el('details');det.append(el('summary',null,'Decided lately'));
-    for(const d of done)det.append(el('p','v',(d.state==='accepted'?'Accepted: ':'Denied: ')+d.title+(d.note?(' — '+d.note):'')));box.append(det)}
+    for(const d of done)det.append(el('p','v',(d.state==='accepted'?'Accepted: ':d.state==='denied'?'Denied: ':'No longer waiting: ')+d.title+(d.note?(' — '+d.note):'')));box.append(det)}
 }
 async function refresh(){
   await renderWaiting();
