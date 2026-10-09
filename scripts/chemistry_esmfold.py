@@ -7,12 +7,20 @@ JSON receipt used by chemistry_mac's existing identity and grading contracts.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sys
+
+# One eliot task per fold, written from this interpreter (2026-10-08: tracing chemistry_mac's invoke and the Lab's
+# parser made two processes and could never nest). Optional: the ESMFold interpreter may not carry eliot.
+try:
+    import eliot as _eliot
+except Exception:
+    _eliot = None
 
 # Measured on Aegis's RTX 5080 (15.9 GiB), 2026-10-01: 350 residues 8.7 GiB peak / 13 s, 600 10.3 GiB / 63 s,
 # 911 13.3 GiB / 443 s. 350 was a guess that refused Band 3 (P02730, 911). The limit is the longest length
@@ -22,6 +30,20 @@ AMINO_ACIDS = frozenset("ACDEFGHIKLMNPQRSTVWY")
 ACCESSION = re.compile(r"[A-Z0-9]{6,10}(?:-[1-9][0-9]*)?")
 WS = Path(os.environ.get("SPARK_WORKSPACE", "~/.vintos/workspace")).expanduser().resolve()
 ARTIFACTS = WS / "memory" / "chemistry-lab" / "artifacts" / "esmfold"
+ELIOT_LOG = WS / "memory" / "chemistry-lab" / "diagnostics" / "eliot-esmfold.log"
+
+
+def _action(action_type, **fields):
+    """An eliot action nested under the current one; a no-op when eliot is not in this interpreter."""
+    if _eliot is None: return contextlib.nullcontext()
+    return _eliot.start_action(action_type=action_type, **fields)
+
+
+def _eliot_open():
+    """Send this run's JSON lines to the Lab's diagnostics folder."""
+    if _eliot is None: return
+    ELIOT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    _eliot.to_file(open(ELIOT_LOG, "a", encoding="utf-8"))
 MODEL_CACHE = Path(os.environ.get(
     "VINTOS_CHEMISTRY_MODEL_CACHE",
     "~/.vintos/tools/chemistry-lab/checkpoints/huggingface")).expanduser().resolve()
@@ -85,8 +107,9 @@ def fold(body):
         model_name, cache_dir=str(MODEL_HUB), local_files_only=True, low_cpu_mem_usage=True)
     model.esm = model.esm.half(); model = model.cuda().eval(); model.trunk.set_chunk_size(32)
     inputs = tokenizer([sequence], return_tensors="pt", add_special_tokens=False)["input_ids"].cuda()
-    with torch.no_grad(): output = model(inputs)
-    pdb = renumber(model.output_to_pdb(output)[0], first_residue(source))
+    with _action("fold", accession=accession, sequence_length=len(sequence)):
+        with torch.no_grad(): output = model(inputs)
+        pdb = renumber(model.output_to_pdb(output)[0], first_residue(source))
     if "ATOM" not in pdb: raise RuntimeError("ESMFold returned no PDB atoms")
     digest = hashlib.sha256(pdb.encode()).hexdigest()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -131,8 +154,13 @@ def fold(body):
 
 
 def main():
+    _eliot_open()
     try:
-        value = fold(json.load(sys.stdin)); print(json.dumps(value, ensure_ascii=False)); return 0
+        with _action("esmfold_job"):
+            with _action("parse_input"):
+                body = json.load(sys.stdin)
+            value = fold(body)
+        print(json.dumps(value, ensure_ascii=False)); return 0
     except Exception as exc:
         print(json.dumps({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)})); return 2
 
