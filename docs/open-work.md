@@ -15,7 +15,14 @@ opportunity yields until two further accepted questions. Refusal rows retain the
 opportunity, without claiming a source ran. No repeat guard was removed.
 Live UniProt O43511 returned an empty PDB cross-reference list; this does not establish no structures
 exist. The reflection prompt now explicitly distinguishes that coverage limit from biological evidence.
-Regression replay and targeted suites pass. Full suite, deployment, and live recovery pending.
+Verified: all 300 suites passed in a clean scratch run and again in the deploy gate. Release
+`20261008-221819-42239bb.json` exited zero; installed module matches the commit; worker active/running.
+The exact live 82-refusal window now produces recovery count 82 and subject SLC26A4. After deployment,
+a repeat Atlas opportunity was refused at 22:18:28 and yielded. Next question accepted 22:18:50;
+UniProt records (including P57764) returned 22:19:10, representations 22:19:31, reflection
+`CLF-ee606be3548ddc2d` at 22:20:00. The reflection claims an answer with a PMID; its biology was not
+independently validated. This proves one progressing cycle, not sustained quality. The initial scratch
+archive contained macOS sidecars that caused five source-scanning test errors; the clean rerun passed.
 Still open: reflection scientific validity, invalid source specifications, and repeated-work selection
 beyond this concrete recovery defect; prompt changes alone do not guarantee sound interpretation.
 
