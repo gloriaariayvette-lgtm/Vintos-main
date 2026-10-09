@@ -30,8 +30,13 @@ plugin inquiry and its material terms returned four papers directly, including P
 Those papers are material to review, not an assertion that the full question is answered. Isolated regression
 replays cover these cases, same-query rejection, alternate-source allowance, and failed-finding gates.
 All 301 isolated suites passed against the final candidate on Aegis (225.5 seconds). Required
-ownership reports and follow-up checks passed. Deployment verification pending; sustained answer-rate
-improvement remains unverified.
+ownership reports and follow-up checks passed. Deployed 1d2bb21 through the normal deploy (full suite
+passed again; deploy OK), release 20261009-075823-1d2bb21.json. All four installed modules match
+the tested commit, and the Lab restarted at 07:58:14 CDT. The 07:58:29 review answered no and was
+not promoted. A repeated Atlas lookup was refused; the next real cycle fetched SLC26A2 and at
+08:00:34 answered yes with P50443 STAS-domain annotation 568–719 (protein length 739), fault streak zero.
+These are source annotations, not experimental validation. Sustained answer-rate improvement remains
+unverified; the first two reviews are too small a sample to claim it is solved.
 
 ## 9 October — overnight Lab and Forge review
 
