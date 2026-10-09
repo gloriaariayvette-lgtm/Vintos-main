@@ -11,7 +11,11 @@ could not see the sequence: `tick` removed it immediately before `_reflect`. Bro
 UniProt's `ft_domain` field. Live O43511 has 780 residues and a STAS annotation at 535–729 with
 PROSITE-ProRule evidence ECO:0000255/PRU00198. The candidate preserves sequences in review inputs,
 requests domain annotations, and retains their evidence qualifiers. These are annotations, not proof
-of experimental domain boundaries. Targeted tests pass; full suite, deployment and live proof pending.
+of experimental domain boundaries. All 300 isolated suites passed before push and again during deploy.
+Deployed `b05fb05`, release `20261008-233035-b05fb05.json`; installed module matches and Lab is active.
+A live read-only O43511 query returned 780 residues and the STAS annotation with evidence; the installed
+review prompt contained both, verified with its model call stubbed (no generated finding or provider spend).
+Sustained scientific answer quality is still unverified.
 Atelier was not shown broken: broker active, seal holding. Content-free `/projects` reports project
 `76850815baa2` KEPT at 2026-10-07 09:41:59 with eight artifacts, intentionally releasing the table.
 Aegis booted 2026-10-08 10:05:13, cron started 10:46:10, after the 09:10 threshold, 09:15 gate,
