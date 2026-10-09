@@ -48,6 +48,20 @@ got = M._browse("reviewed:true AND gene:SLC26A6", 1)
 rec = got["records"][0]
 check("a browsed 759-residue protein keeps all 759 residues", len(rec["sequence"]) == 759 and rec["sequence"] == SEQ
       and rec["length"] == 759 and "sequence_shown" not in rec, len(rec["sequence"]))
+# Domain shape captured from live UniProt O43511, 8 October 2026. The sequence fixture is synthetic.
+domain = {"type": "Domain", "location": {"start": {"value": 535, "modifier": "EXACT"},
+          "end": {"value": 729, "modifier": "EXACT"}}, "description": "STAS",
+          "evidences": [{"evidenceCode": "ECO:0000255", "source": "PROSITE-ProRule", "id": "PRU00198"}]}
+ROWS[:] = [dict(uniprot_row("O43511", "A" * 780), features=[domain])]
+requests_seen = []
+def source_fixture(req, timeout=None):
+    requests_seen.append(req.full_url); return Resp(json.dumps({"results": ROWS}).encode())
+M.urllib.request.urlopen = source_fixture
+drec = M._browse("accession:O43511", 1)["records"][0]
+check("domain boundaries and evidence survive compacting the real response shape",
+      drec["domains"] == [domain] and "ft_domain" in requests_seen[0])
+check("source transport is stubbed", M.urllib.request.urlopen is source_fixture)
+
 ROWS[:] = [uniprot_row("Q8WXI7", "A" * 6000)]
 huge = M._browse("reviewed:true AND gene:MUC16", 1)["records"][0]
 check("a protein longer than the Lab keeps says how much of it is shown",

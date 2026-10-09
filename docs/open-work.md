@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — Lab review inputs and missed Atelier morning
+
+At 23:19, the Lab had accepted 20 questions since the refusal fix and produced 17 reflections,
+16 explicitly unanswered. It was progressing but not reliably answering. The 23:14 Pendrin review
+could not see the sequence: `tick` removed it immediately before `_reflect`. Browse also omitted
+UniProt's `ft_domain` field. Live O43511 has 780 residues and a STAS annotation at 535–729 with
+PROSITE-ProRule evidence ECO:0000255/PRU00198. The candidate preserves sequences in review inputs,
+requests domain annotations, and retains their evidence qualifiers. These are annotations, not proof
+of experimental domain boundaries. Targeted tests pass; full suite, deployment and live proof pending.
+Atelier was not shown broken: broker active, seal holding. Content-free `/projects` reports project
+`76850815baa2` KEPT at 2026-10-07 09:41:59 with eight artifacts, intentionally releasing the table.
+Aegis booted 2026-10-08 10:05:13, cron started 10:46:10, after the 09:10 threshold, 09:15 gate,
+09:20 door and 09:40 visit. Those jobs did not run today. No sealed contents read, no finished project
+reopened and no late visit forced. Persistent catch-up scheduling remains open; current cron will
+try the normal morning sequence tomorrow if the host is up.
+
 ## 8 October — Lab refusal streak recovery
 
 The 21:21–21:56 apparent gap contained 82 `inquiry_refused` events, mostly the already-read

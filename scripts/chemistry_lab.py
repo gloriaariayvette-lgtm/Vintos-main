@@ -1254,7 +1254,7 @@ def _browse(query, limit):
     fallback_reason = None
     def fetch(value):
         params = urllib.parse.urlencode({"query": value, "format": "json", "size": int(limit),
-                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function,xref_pdb,xref_chembl"})
+                                         "fields": "accession,id,protein_name,organism_name,length,sequence,cc_function,ft_domain,xref_pdb,xref_chembl"})
         req = urllib.request.Request(UNIPROT_URL + "?" + params,
                                      headers={"User-Agent": "Vintos-Chemistry-Lab/1.0 (read-only creative study)"})
         with urllib.request.urlopen(req, timeout=45) as response:
@@ -1303,6 +1303,8 @@ def _browse(query, limit):
                      "protein_name": desc, "organism": (item.get("organism") or {}).get("scientificName"),
                      "length": (item.get("sequence") or {}).get("length"),
                      "function": " ".join(functions)[:1200],
+                     "domains": [{k: f[k] for k in ("type", "description", "location", "evidences") if k in f}
+                                 for f in item.get("features", []) if f.get("type") == "Domain"][:40],
                      "pdb_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "PDB"][:8],
                      "chembl_ids": [x.get("id") for x in item.get("uniProtKBCrossReferences", []) if x.get("database") == "ChEMBL"][:8],
                      "sequence": (item.get("sequence") or {}).get("value", "")[:SEQUENCE_KEPT],
@@ -1591,6 +1593,8 @@ def _reflect(context, inquiry, records):
         "An empty pdb_ids list means UniProt supplied no PDB cross-references in this response; it does NOT "
         "establish that no experimental structures exist. Missing cross-references and empty searches are "
         "coverage limits, not biological findings. Do not derive a biological hypothesis from their absence. "
+        "Domain coordinates are source annotations; retain their evidence qualifiers and do not call predicted "
+        "or sequence-rule annotations experimentally confirmed boundaries. "
         "The records may not contain the thing the question asked about. If they do not, say so plainly and "
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
         "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
@@ -2030,7 +2034,7 @@ def tick():
                 except Exception as exc:
                     _fault("settle_owed", exc)
                 inquiry, records = state.get("inquiry", {}), state.get("records", [])
-                visible_records = [{k: v for k, v in r.items() if k != "sequence"} for r in records]
+                visible_records = records  # the reviewer needs the sourced sequence, not just its embedding
                 _gather_material(state, inquiry)
                 literature = (state.get("material") or {}).get("records") or []
                 reflection = _reflect(context, inquiry,

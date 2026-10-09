@@ -59,9 +59,12 @@ M._embed_records = lambda records: {"ok": True, "model": "test-esmc", "device": 
                                     "embeddings": [{"accession": "P00001", "dimension": 4,
                                                     "embedding_sha256": "abc", "artifact": "memory/chemistry-lab/artifacts/esmc/test.npy"}]}
 M._gather_material = lambda state, inquiry, fresh_only=False: None   # no literature: the loop is under test here
-M._reflect = lambda context, inquiry, records: {"attention": "the compactness", "factual_observation": "the record says length 80", "speculative_reading": "it feels architectural", "next_question": "what recurs?"}
+REFLECT_INPUTS = []
+M._reflect = lambda context, inquiry, records: REFLECT_INPUTS.append(records) or {"attention": "the compactness", "factual_observation": "the record says length 80", "speculative_reading": "it feels architectural", "next_question": "what recurs?"}
 one, two, three, four = M.tick(), M.tick(), M.tick(), M.tick()
 check("four checkpointed turns complete the loop", [one.get("kind"), two.get("kind"), three.get("kind"), four.get("kind")] == ["inquiry", "source_read", "protein_representation", "reflection"], (one, two, three, four))
+check("the actual loop passes the complete sourced sequence into its reviewer",
+      REFLECT_INPUTS[0]["records"][0]["sequence"] == "A" * 80 and M._gather_material is not None)
 check("status accounts for completed turns and their last receipt",
       M.status()["turns"] == 4 and M.status()["last_outcome"] == "reflection"
       and bool(M.status()["last_turn_at"]), M.status())
