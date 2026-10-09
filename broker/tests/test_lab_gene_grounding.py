@@ -69,6 +69,18 @@ class Tests(unittest.TestCase):
         for symbol in ('SLC26A4','SLC26A28'):
             first = self.ground(symbol); count = len(self.calls)
             self.assertEqual(first, self.ground(symbol)); self.assertEqual(len(self.calls), count)
+    def test_actual_missing_taxonomy_failure(self):
+        raw = {'question': 'What is the documented structural topology of the human SLC26A28 protein?',
+               'uniprot_query': 'protein_name:SLC26A28 AND reviewed:true'}
+        client = sources.Sources(fetch=self.fetch)
+        with patch.object(sources, 'Sources', return_value=client):
+            inquiry, _ = lab._held_to_plan('', '', lab._inquiry(raw), raw, None, None, repeats)
+        self.assertEqual(inquiry['identity_check']['status'], 'unresolved')
+        self.assertIn('SLC26A28', inquiry['refused'])
+        self.assertEqual(repeats.repeat(inquiry), '')
+        raw['uniprot_query'] = 'gene:SLC26A4 AND taxonomy_id:10090'
+        self.assertIn('conflicts', lab._ground_inquiry(raw, client)['reason'])
+
     def test_symbols_in_human_queries_only(self):
         client = sources.Sources(fetch=self.fetch)
         for query in ('gene:SLC26A28 AND taxonomy_id:9606', 'protein_name:SLC26A28 AND organism_id:9606'):

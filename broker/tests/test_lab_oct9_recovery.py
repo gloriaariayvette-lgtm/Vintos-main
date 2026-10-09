@@ -87,3 +87,36 @@ except ValueError as error:
     assert 'source_accession_mismatch' in str(error)
 assert calls and not net
 print('PASS: recorded routing failures, exact identity, valid unreviewed query, subject-aware repeats; isolated')
+
+# Replay the actual string-shaped failed request through execution, including a saved
+# plugin request that never passes through _inquiry again. Neither relay may run.
+from unittest.mock import patch
+import chemistry_sources as CS
+import chemistry_frontier_bridge as FB
+import plugin_gateway as PG
+import claude_connector_gateway as CG
+failed = {'plugin':'pubmed','tool':'search_articles',
+          'arguments':{'terms':'human SLC26A4 pendrin structural topology SulP STAS domain hinge'}}
+routed = C._inquiry({'plugin_query':failed})
+assert routed['plugin_query'] is None
+assert routed['source_query']['terms'] == ['SLC26A4',failed['arguments']['terms']]
+assert all(str(p).startswith(HOME) for p in (C.ROOT,C.CONFIG,C.LOCK,C.FAULTS,C.COLLISION_ADAPTER,FB.INTEREST))
+C._atomic(C.CONFIG,dict(C.config(),allow_public_database_reads=True))
+with patch.object(PG,'call',side_effect=AssertionError('plugin relay forbidden')) as pg, \
+     patch.object(CG,'call',side_effect=AssertionError('Claude relay forbidden')) as cg, \
+     patch.object(CS,'configured_sources',return_value=client) as configured, \
+     patch.object(FB,'assess',return_value={'fixture':True}) as assessment:
+    assert CS.configured_sources is configured and FB.assess is assessment
+    for args in (failed['arguments'], {'terms':['SLC26A4','STAS'], 'limit':2}):
+        C._atomic(os.path.join(C.ROOT,'source-throttle.json'),{})
+        result=CS.query_plugin('pubmed','search_articles',args,'recorded failed inquiry')
+        assert result['receipt']['source']=='pubmed_abstracts'
+        assert result['receipt']['records']==[]
+        assert result['candidate']['receipt_id']==result['receipt']['receipt_id']
+    for bad in ({'terms':None},{'terms':['']},{'terms':'x','unknown':True}):
+        try: CS.query_plugin('pubmed','search_articles',bad,'bad request')
+        except ValueError: pass
+        else: raise AssertionError('malformed public search escaped')
+    pg.assert_not_called(); cg.assert_not_called()
+assert net==[]
+print('PASS: actual string request and saved requests use direct PubMed with journal receipts; no relay')

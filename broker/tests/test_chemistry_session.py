@@ -245,3 +245,24 @@ assert any("The preserved result was read." in x for x in chemistry_digest._fron
 assert not network_attempts, network_attempts
 assert session.mac is mac and probe_mod.probe_aegis is _fake_probe_aegis
 print("Chemistry session regressions passed")
+
+# A saved PubMed plugin plan may execute through the direct public source route.
+# Its source receipt must survive without inventing a plugin/provider receipt.
+import chemistry_sources as direct_sources
+from unittest.mock import patch
+original_plan = session._plan
+def plan_with_pubmed(*args, **kwargs):
+    plan = dict(original_plan(*args, **kwargs))
+    plan.pop('source_query', None); plan.pop('instrument_query', None)
+    plan['plugin_query'] = {'plugin':'pubmed','tool':'search_articles','arguments':{'terms':'SLC26A4'}}
+    return plan
+with patch.object(session,'_plan',side_effect=plan_with_pubmed), patch.object(
+        direct_sources,'query_plugin',return_value={'receipt':{'receipt_id':'direct-source-fixture','records':[]}}) as source_stub:
+    assert direct_sources.query_plugin is source_stub
+    direct_session = session.run()
+    source_stub.assert_called_once()
+assert direct_session['plan']['source_receipt_id']=='direct-source-fixture', direct_session
+assert 'plugin_receipt_id' not in direct_session['plan']
+assert direct_session['mac_result']['ok'], direct_session
+assert not network_attempts
+print('Direct PubMed session receipt regression passed')

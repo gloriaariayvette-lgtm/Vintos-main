@@ -1174,8 +1174,12 @@ def _ground_inquiry(inquiry, client=None):
     if sq.get('source') == 'uniprot': queries.append(str(sq.get('query') or ''))
     symbols = []
     if sq.get('source') == 'atlas' and sq.get('gene'): symbols.append(str(sq['gene']))
+    human_question = bool(re.search(r'\b(?:human|Homo sapiens)\b', str(inquiry.get('question') or ''), re.I))
     for query in queries:
-        if not re.search(r'\b(?:taxonomy_id|organism_id):9606\b', query): continue
+        taxa = re.findall(r'\b(?:taxonomy_id|organism_id):([0-9]+)\b', query)
+        if human_question and any(t != '9606' for t in taxa):
+            return {'status': 'unresolved', 'reason': 'human question conflicts with nonhuman query taxonomy'}
+        if not (human_question or '9606' in taxa): continue
         for field, quoted, bare in re.findall(r'\b(gene|protein_name):(?:"([A-Za-z][A-Za-z0-9-]{0,29})"|([A-Za-z][A-Za-z0-9-]{0,29})(?=\s|\)|$))', query):
             symbol = quoted or bare
             if field == 'gene' or re.fullmatch(r'[A-Z][A-Z0-9-]*[0-9][A-Z0-9-]*', symbol):
@@ -1288,27 +1292,39 @@ def uniprot_from_plugin(pq):
     return {"source": "uniprot", "query": " AND ".join(terms), "limit": 1 if "accession" in args else 4}
 
 
+def pubmed_from_plugin(pq):
+    """Normalize the public search at both planning and execution boundaries."""
+    if not isinstance(pq, dict) or pq.get('plugin') != 'pubmed' or pq.get('tool') != 'search_articles':
+        return None
+    args = pq.get('arguments') or {}
+    if not isinstance(args, dict) or set(args) - {'term', 'query', 'terms', 'limit'}:
+        raise ValueError('unsupported public PubMed search arguments')
+    terms = args.get('terms') or args.get('term') or args.get('query')
+    if isinstance(terms, str):
+        text = terms.strip()
+        # Keep the whole request first, with a named subject that the existing
+        # relaxation can retain if the descriptive phrase finds no papers.
+        tokens = re.findall(r'\b[A-Za-z][A-Za-z0-9-]*\b', text)
+        anchor = next((t for t in tokens if re.search(r'[0-9]', t) or
+                       (re.search(r'[a-z]', t) and re.search(r'[A-Z]', t[1:]))), None)
+        terms = [anchor, text] if anchor and anchor != text else [text]
+    if not isinstance(terms, list) or not terms or any(not isinstance(t, str) or not t.strip() for t in terms):
+        raise ValueError('public PubMed search requires nonempty terms')
+    spec = {'source': 'pubmed_abstracts', 'terms': terms}
+    if 'limit' in args: spec['limit'] = args['limit']
+    return spec
+
+
 def _inquiry(value, lean=None):
     source_query = value.get("source_query") if isinstance(value.get("source_query"), dict) else None
     if not source_query:
         source_query = uniprot_from_plugin(value.get("plugin_query"))
         if source_query:
             value = dict(value, plugin_query=None)
-    # Public PubMed search already has an Aegis client. It must not depend on the
-    # Claude account's OAuth session (26 expired-token failures on 9 October).
-    pq = value.get("plugin_query") or {}
-    args = pq.get("arguments") or {} if isinstance(pq, dict) else {}
-    if (not source_query and isinstance(pq, dict) and pq.get("plugin") == "pubmed"
-            and pq.get("tool") == "search_articles" and isinstance(args, dict)
-            and set(args) <= {"term", "query", "terms", "limit"}):
-        term = str(args.get("term") or args.get("query") or "").strip()
-        explicit_terms = args.get("terms")
-        if term or (isinstance(explicit_terms, list) and explicit_terms):
-            terms = explicit_terms if isinstance(explicit_terms, list) else [t.strip() for t in (value.get("material_terms") or [])
-                     if isinstance(t, str) and t.strip()][:5]
-            source_query = {"source": "pubmed_abstracts", "terms": terms or [term]}
-            if "limit" in args: source_query["limit"] = args["limit"]
-            value = dict(value, plugin_query=None)
+    direct = pubmed_from_plugin(value.get("plugin_query"))
+    if not source_query and direct:
+        source_query = direct
+        value = dict(value, plugin_query=None)
     requested_lane = value.get('browse_lane')
     query = _safe_query(value.get("uniprot_query"))
     from lab_repeats import _ACCESSION

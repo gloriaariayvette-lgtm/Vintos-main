@@ -661,8 +661,9 @@ def run():
                         pq = plan["plugin_query"]
                         source_result = chemistry_sources.query_plugin(pq["plugin"], pq["tool"],
                             pq.get("arguments") or {}, pq.get("purpose") or plan.get("question", ""))
-                        plan["source_receipt_id"] = source_result["source_receipt"]["receipt_id"]
-                        plan["plugin_receipt_id"] = source_result["plugin_receipt"]["receipt_id"]
+                        plan["source_receipt_id"] = (source_result.get("source_receipt") or source_result["receipt"])["receipt_id"]
+                        if source_result.get("plugin_receipt"):
+                            plan["plugin_receipt_id"] = source_result["plugin_receipt"]["receipt_id"]
                     else:
                         source_result = chemistry_sources.query(plan["source_query"], question=plan.get("question", ""))
                         plan["source_receipt_id"] = source_result["receipt"]["receipt_id"]

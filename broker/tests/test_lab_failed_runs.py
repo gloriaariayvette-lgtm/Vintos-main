@@ -35,7 +35,7 @@ assert not repeats.repeat(dict(inq, source_query={'source':'interpro','accession
 routed=lab._inquiry(dict(inq, plugin_query={"plugin":"pubmed","tool":"search_articles",
                                             "arguments":{"term":"human SLC26A5 protein structure"}}))
 assert routed['plugin_query'] is None
-assert routed['source_query'] == {'source':'pubmed_abstracts','terms':['human SLC26A5 protein structure']}
+assert routed['source_query'] == {'source':'pubmed_abstracts','terms':['SLC26A5','human SLC26A5 protein structure']}
 # A completed but unanswered review used to reset the failure streak on every pass.
 rows = []
 for _ in range(3):
