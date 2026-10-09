@@ -3,6 +3,22 @@
 What is not finished. The architecture document says what he is; this says what is left.
 It is the only place with a to-do in it.
 
+## 8 October — Lab refusal streak recovery
+
+The 21:21–21:56 apparent gap contained 82 `inquiry_refused` events, mostly the already-read
+`atlas:SLC26A4`. The worker was running. Its dead-end detector counted only accepted inquiries,
+so these refusals never triggered the existing exhausted-subject recovery. The next accepted query
+was `gene:SLC26A45`; UniProt returned no records.
+Refusals now count toward recovery (including older rows with only a question); exhausted lines
+remain open but cannot force that pass back to the exhausted subject. A rejected scheduled Atlas
+opportunity yields until two further accepted questions. Refusal rows retain the inquiry and scheduled
+opportunity, without claiming a source ran. No repeat guard was removed.
+Live UniProt O43511 returned an empty PDB cross-reference list; this does not establish no structures
+exist. The reflection prompt now explicitly distinguishes that coverage limit from biological evidence.
+Regression replay and targeted suites pass. Full suite, deployment, and live recovery pending.
+Still open: reflection scientific validity, invalid source specifications, and repeated-work selection
+beyond this concrete recovery defect; prompt changes alone do not guarantee sound interpretation.
+
 ## 8 October — Slack model costs and Lab churn audit
 
 Slack only: Opus 5.5 calls alternate with Haiku 5.5, including kickoff, tool follow-up and promise

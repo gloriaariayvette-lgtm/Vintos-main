@@ -448,8 +448,12 @@ def dead_ends(rows=None):
     asked = []
     for row in reversed(rows):
         if row.get("kind") in ("reflection", "genome_reflection"): break
-        if row.get("kind") == "inquiry" and isinstance(row.get("inquiry"), dict):
-            asked.append(row["inquiry"])
+        if row.get("kind") in ("inquiry", "inquiry_refused"):
+            inquiry = row.get("inquiry")
+            if isinstance(inquiry, dict):
+                asked.append(inquiry)
+            elif row.get("question"):
+                asked.append({"question": row["question"]})
     asked.reverse()
     if len(asked) < DEAD_END_RUN: return {"count": len(asked), "questions": [], "subjects": []}
     subjects = []
@@ -959,6 +963,11 @@ def atlas_turn_due(rows=None):
     rows = _tail_jsonl(NOTEBOOK) if rows is None else rows
     since = 0
     for row in reversed(rows):
+        if row.get("kind") == "inquiry_refused":
+            # A refused scheduled Atlas opportunity must yield, not force Atlas forever.
+            if row.get("atlas_turn") or ((row.get("inquiry") or {}).get("source_query") or {}).get("source") == "atlas":
+                return since >= ATLAS_EVERY - 1
+            continue
         if row.get("kind") != "inquiry": continue
         sq = (row.get("inquiry") or {}).get("source_query") or {}
         if isinstance(sq, dict) and sq.get("source") == "atlas": return since >= ATLAS_EVERY - 1
@@ -989,10 +998,17 @@ def _orient(context, lean=None):
         step = lab_repeats.frontier_step()
     except Exception as exc:
         _fault("frontier_step", exc); step = None; lab_repeats = None
+    spent = dead_ends()
+    remember_spent(spent["subjects"])
+    held = spent_subjects()
+    spent = dict(spent, subjects=list(dict.fromkeys(spent["subjects"] + held)))
     atlas_due = atlas_turn_due() and not step     # the frontier session's plan comes before a scheduled Atlas turn
     try:
         import lab_lines
         line = None if (atlas_due or step) else lab_lines.pick()
+        if line and repeats_dead_end({"question": str(line.get("question", "")) + " " +
+                                     str(line.get("next_step", ""))}, spent):
+            line = None  # leave the line open; an exhausted subject does not own this pass
     except Exception as exc:
         _fault("lab_lines_pick", exc); line = None
     lean_text = (("\n\nTODAY'S ATELIER LEAN (his explicit choice, a bias rather than an override):\n" +
@@ -1108,14 +1124,12 @@ def _orient(context, lean=None):
     if atlas_turn:
         task += ("\n\nTHIS IS A HUMAN-GENOME TURN: choose one human gene you are curious about. browse_lane 'protein', "
                  "uniprot_query 'gene:SYMBOL AND organism_id:9606', source_query {source:atlas, gene:SYMBOL}.")
-    spent = dead_ends()
-    remember_spent(spent["subjects"])
-    held = spent_subjects()
-    spent = dict(spent, subjects=list(dict.fromkeys(spent["subjects"] + held)))
     if spent["questions"]:
         task += ("\n\nYOUR LAST %d QUESTIONS ALL ENDED WITHOUT NEW EVIDENCE — no review came of any of them:\n- %s\n"
                  "That thread is spent for now. Choose a different protein, organism or instrument; "
-                 "do not rephrase the same question." % (spent["count"], "\n- ".join(spent["questions"])))
+                 "do not rephrase the same question. Do not invent a new accession or gene symbol by changing "
+                 "digits in a failed one. Choose a documented subject from sourced context or a plain-name "
+                 "discovery search instead." % (spent["count"], "\n- ".join(spent["questions"])))
     if spent["subjects"]:
         task += ("\n\nSPENT FOR TODAY — these found nothing new here; do not ask about them: "
                  + ", ".join(spent["subjects"]) + ".")
@@ -1127,6 +1141,8 @@ def _orient(context, lean=None):
         inquiry = _inquiry(value, lean)
     if lab_repeats:
         inquiry, value = _held_to_plan(system, task, inquiry, value, lean, step, lab_repeats)
+    if atlas_turn:
+        inquiry = dict(inquiry, atlas_turn=True)  # retain the opportunity even if a repair changed the route
     return _on_line(inquiry, value, line)
 
 
@@ -1572,6 +1588,9 @@ def _reflect(context, inquiry, records):
         "biological truth, and never dress a guess as a finding. No experimental protocols or synthesis "
         "instructions. " + _atlas_text() + " Evo 2 likelihood is a different quantity. Associative "
         "collisions supply no biological evidence. Do not infer novelty from missing literature coverage. "
+        "An empty pdb_ids list means UniProt supplied no PDB cross-references in this response; it does NOT "
+        "establish that no experimental structures exist. Missing cross-references and empty searches are "
+        "coverage limits, not biological findings. Do not derive a biological hypothesis from their absence. "
         "The records may not contain the thing the question asked about. If they do not, say so plainly and "
         "report what they are instead; never let a different protein stand in for the one asked about. LITERATURE holds "
         "published abstracts fetched for this question: they are the authors' claims, so cite the PMID of any you use "
@@ -1766,7 +1785,9 @@ def tick():
                     # refused before anything ran: a repeat, or off the frontier session's plan (2026-10-07)
                     next_phase = "orient"; state.pop("inquiry", None)
                     note = {"at": now_iso(), "kind": "inquiry_refused", "why": inquiry["refused"],
-                            "question": inquiry.get("question"), "truth_status": "refused_before_any_source_call"}
+                            "question": inquiry.get("question"), "inquiry": inquiry,
+                            "atlas_turn": bool(inquiry.get("atlas_turn")),
+                            "truth_status": "refused_before_any_source_call"}
                 else:
                     state["inquiry"] = inquiry; next_phase = "browse"; state.pop("material", None); state.pop("material_repeated", None)
                     note = {"at": now_iso(), "kind": "inquiry", "inquiry": inquiry,

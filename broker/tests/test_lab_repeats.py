@@ -52,9 +52,9 @@ check("reading the O43511 model is", L.on_frontier({"question": "Which residues 
 
 print("--- Gemma's question step ---")
 import chemistry_lab as C
-answers, asked = [], []
+answers, asked, systems = [], [], []
 def gemma(system, task, *a, **k):
-    asked.append(task); return json.dumps(answers.pop(0))
+    systems.append(system); asked.append(task); return json.dumps(answers.pop(0))
 C._ask = gemma
 OFF = {"browse_lane": "genome_mining", "question": "Where is the DRT3 locus in Escherichia coli?",
        "source_query": {"source": "ncbi", "operation": "taxonomy", "term": "Escherichia coli"}}
@@ -80,6 +80,34 @@ check("what an Atlas record is, in her question step and her reading", "ONE fixe
 for _ in range(L.FRONTIER_CYCLES):
     L.record({"question": "spent"}, refused="test")
 check("after %d cycles the step is done, refused ones included" % L.FRONTIER_CYCLES, L.frontier_step() is None)
+
+# Regression: 8 October's invisible 35-minute gap contained 82 refused Atlas inquiries.
+refused = [{"kind": "inquiry_refused", "question": "Which regulatory features of SLC26A4 can Atlas show?",
+            "why": "repeat: atlas:SLC26A4"} for _ in range(82)]
+spent = C.dead_ends([{"kind": "reflection"}] + refused)
+check("refused questions count toward exhausted-thread recovery", spent["count"] == 82 and "SLC26A4" in spent["subjects"], spent)
+cfg = C.config(); C._atomic(C.CONFIG, dict(cfg, alphagenome_key_file=os.path.join(HOME, "fake-key")))
+attempt = {"kind": "inquiry_refused", "atlas_turn": True, "inquiry": atlas}
+check("a refused scheduled Atlas opportunity yields instead of pinning every pass",
+      not C.atlas_turn_due([{"kind": "inquiry", "inquiry": {}}, {"kind": "inquiry", "inquiry": {}}, attempt]))
+check("Atlas returns after two further accepted questions",
+      C.atlas_turn_due([attempt, {"kind": "inquiry", "inquiry": {}}, {"kind": "inquiry", "inquiry": {}}]))
+C._atomic(C.CONFIG, dict(cfg, alphagenome_key_file=None))
+with open(C.NOTEBOOK, "w") as f:
+    for row in [{"kind": "reflection"}] + refused: f.write(json.dumps(row) + "\n")
+asked.clear(); answers[:] = [{"browse_lane": "microbiology", "question": "Which reviewed Bacillus subtilis catalase annotations are available?",
+                             "source_query": {"source": "ncbi", "operation": "protein", "term": "Bacillus subtilis catalase"}}]
+recovered = C._orient("ctx")
+check("replayed refusal streak reaches the next planning prompt and accepts another subject",
+      not recovered.get("refused") and "LAST 82 QUESTIONS" in asked[0] and "SPENT FOR TODAY" in asked[0]
+      and "SLC26A4" in asked[0], recovered)
+# No provider is called: inspect the actual reading prompt passed to the stub.
+answers[:] = [{"factual_observation": "No PDB cross-references in this response", "answers_question": "no"}]
+C._reflect("ctx", {}, [{"accession": "O43511", "pdb_ids": []}])
+check("empty cross-references are explicitly bounded in the reading prompt",
+      "does NOT establish that no experimental structures exist" in systems[-1])
+check("reflection remains a stub", C._ask is gemma)
+check("all newly used stores are scratch", all(p.startswith(HOME) for p in (C.CONFIG, C.STATE, C.NOTEBOOK, L.ROOT)))
 
 check("nothing reached the network", NET == [], NET)
 import shutil; shutil.rmtree(HOME, ignore_errors=True)
